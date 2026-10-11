@@ -1,3 +1,7 @@
+> **This is fdarian's proof-of-concept fork of [remorses/gpuix](https://github.com/remorses/gpuix).**
+> It lowers scroll and input latency (a guard so `test-support` builds do not draw inline, a display-link frame pump), adds spring transitions, and makes events, focus, layout, scrolling, paint and motion follow DOM/CSS semantics.
+> It is rebased on upstream regularly and is not published. See [FORK.md](./FORK.md).
+
 # GPUIX
 
 **React and Solid** for [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), Zed's GPU UI framework.
