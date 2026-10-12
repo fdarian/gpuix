@@ -56,6 +56,129 @@ describeNative("AnimatePresence", () => {
     expect(renderer.getAllText()).toEqual([])
   })
 
+  it("keeps an exiting motion.div until its spring settles", () => {
+    const { render, renderer } = createTestRoot()
+
+    function App({ show }: { show: boolean }) {
+      return (
+        <AnimatePresence>
+          {show ? (
+            <motion.div
+              key="card"
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: "spring", duration: 0.2, bounce: 0 }}
+            >
+              <text>Leaving</text>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      )
+    }
+
+    render(<App show />)
+    renderer.clockPause()
+    render(<App show={false} />)
+
+    renderer.clockFastForward(50)
+    renderer.dispatchNativeEvents()
+    expect(renderer.getAllText()).toEqual(["Leaving"])
+
+    renderer.clockFastForward(2000)
+    renderer.dispatchNativeEvents()
+    expect(renderer.getAllText()).toEqual([])
+  })
+
+  it("still removes an exiting child whose spring is invalid", () => {
+    const { render, renderer } = createTestRoot()
+
+    function App({ show }: { show: boolean }) {
+      return (
+        <AnimatePresence>
+          {show ? (
+            <motion.div
+              key="card"
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: "spring", stiffness: -1 }}
+            >
+              <text>Leaving</text>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      )
+    }
+
+    render(<App show />)
+    renderer.clockPause()
+    render(<App show={false} />)
+    renderer.clockFastForward(16)
+    renderer.dispatchNativeEvents()
+    expect(renderer.getAllText()).toEqual([])
+  })
+
+  it("starts a new motion generation when only the spring changes", () => {
+    const { render, renderer } = createTestRoot()
+
+    function App({ stiffness }: { stiffness: number }) {
+      return (
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1 }}
+          transition={{ type: "spring", stiffness }}
+        >
+          <text>Card</text>
+        </motion.div>
+      )
+    }
+
+    render(<App stiffness={100} />)
+    const first = renderer.findByType("div")[0]?.customProps?.motion?.generation
+    render(<App stiffness={300} />)
+    const second = renderer.findByType("div")[0]?.customProps?.motion?.generation
+    expect(second).toBeGreaterThan(first as number)
+  })
+
+  it("carries a spring's speed into the next target", () => {
+    const { render, renderer } = createTestRoot()
+
+    function Bar({ open }: { open: boolean }) {
+      return (
+        <motion.div
+          testId="bar"
+          initial={false}
+          animate={{ width: open ? 300 : 0 }}
+          transition={{ type: "spring", stiffness: 170, damping: 12 }}
+          style={{ height: 20 }}
+        >
+          <text>bar</text>
+        </motion.div>
+      )
+    }
+
+    const widthAt = () => {
+      renderer.dispatchNativeEvents()
+      const bar = renderer.findByTestId("bar")
+      return renderer.getElementBounds(bar.id).width
+    }
+
+    render(<Bar open={false} />)
+    renderer.clockPause()
+    render(<Bar open />)
+    renderer.clockFastForward(60)
+    const atRetarget = widthAt()
+    expect(atRetarget).toBeGreaterThan(0)
+
+    render(<Bar open={false} />)
+    renderer.clockFastForward(16)
+    const afterRetarget = widthAt()
+    // Aimed back at 0, but still moving outward: a restart from rest would
+    // have started shrinking on the first frame.
+    expect(afterRetarget).toBeGreaterThan(atRetarget)
+  })
+
   it("skips enter when AnimatePresence initial is false", () => {
     const { render, renderer } = createTestRoot()
 

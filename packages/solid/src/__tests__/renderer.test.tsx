@@ -99,6 +99,28 @@ describe.skipIf(!hasNativeTestRenderer)("Solid renderer", () => {
     })
   })
 
+  it("forwards spring transitions and restarts motion when they change", () => {
+    const [bounce, setBounce] = createSignal(0)
+    const app = createTestRoot()
+    app.render(() => (
+      <motion.div
+        testId="spring"
+        initial={false}
+        animate={{ width: 100 }}
+        transition={{ type: "spring", duration: 0.2, bounce: bounce() }}
+      />
+    ))
+    const first = app.renderer.findByTestId("spring")?.customProps?.motion
+    expect(first).toMatchObject({
+      transition: { type: "spring", duration: 0.2, bounce: 0 },
+    })
+
+    app.flushSync(() => setBounce(0.25))
+    const second = app.renderer.findByTestId("spring")?.customProps?.motion
+    expect(second).toMatchObject({ transition: { bounce: 0.25 } })
+    expect(Number(second?.generation)).toBeGreaterThan(Number(first?.generation))
+  })
+
   it("removes listeners and rejects stale events after remount", () => {
     const [enabled, setEnabled] = createSignal(true)
     let clicks = 0

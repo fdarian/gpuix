@@ -80,9 +80,7 @@ const MotionDiv = forwardRef<PublicInstance, MotionDivProps>(function MotionDiv(
     isPresent,
     motionStyleKey(resolvedInitial),
     motionStyleKey(resolvedAnimate),
-    transition?.duration,
-    transition?.delay,
-    transition?.ease,
+    transition,
   ])
   const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
 

@@ -1183,8 +1183,60 @@ The **transition** uses seconds, like Motion for React:
 | `delay` | `0` | Non-negative seconds |
 | `ease` | `"easeOut"` | `"linear"`, `"ease"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, or `[x1, y1, x2, y2]` |
 
-Springs, keyframes, variants, and shared layout animations are not available
-yet. **Exit** uses `AnimatePresence`, like Motion for React.
+Keyframes, variants, and shared layout animations are not available yet.
+**Exit** uses `AnimatePresence`, like Motion for React.
+
+### Springs
+
+Set **`type: "spring"`** to animate with a damped spring instead of a timed
+curve. Rust evaluates the spring analytically each frame, so it does not depend
+on the frame rate, and it needs no React render or N-API call per frame.
+
+```tsx
+<motion.div
+  animate={{ top: row * 32 }}
+  transition={{ type: 'spring', duration: 0.16, bounce: 0 }}
+/>
+```
+
+Describe a spring one of two ways. Mixing the two forms is an error.
+
+| Form | Options | Defaults |
+|---|---|---|
+| Physics | `stiffness`, `damping`, `mass` | `100`, `10`, `1` |
+| Duration | `duration` (seconds to settle, `0.01` to `10`), `bounce` (`0` to `1`) | `0.8`, `0.3` |
+
+`bounce: 0` is critically damped, so it settles without overshoot; larger values
+oscillate longer. The duration form is converted to stiffness and damping with
+the same formula as Motion's `spring()`. `stiffness`, `damping`, and `mass` must
+be greater than `0`; `sqrt(stiffness / mass)` and `damping / (2 * mass)` must be
+at most `1e6`.
+
+These apply to every spring:
+
+| Option | Default | Values |
+|---|---:|---|
+| `delay` | `0` | Non-negative seconds. The element holds its start until the delay passes |
+| `restDelta` | `0.5`, or `0.005` when the move is under 5 | Distance from the target, in the property's unit, under which the spring may settle |
+| `restSpeed` | `2`, or `0.01` when the move is under 5 | Speed, in units per second, under which the spring may settle |
+
+`ease` is not accepted with `type: "spring"`, and the spring options are not
+accepted without it.
+
+A spring **keeps its speed when the target changes**. Moving `top` from one row
+to the next while it is still travelling bends the path instead of stopping and
+restarting, which is what makes a hover highlight glide between rows. A tween
+that is interrupted by a spring hands over its current speed as well. A spring
+interrupted by a tween starts the tween from rest.
+
+Springs overshoot, so the applied value is clamped: `opacity` to `0..1`, and
+`width`, `height`, and `borderRadius` to zero or greater. Targets are still
+validated as before. The motion settles, and `onMotionComplete` fires, once
+every animated value is within `restDelta` and `restSpeed` of its target.
+
+`AnimatePresence` exit works with springs: the child leaves after the spring
+settles. Transform properties such as scale and translate are not animatable
+yet, so an enter that scales an element cannot be expressed.
 
 ### Animate a sidebar
 

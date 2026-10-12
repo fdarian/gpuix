@@ -43,13 +43,57 @@ export type MotionEase =
   | "easeInOut"
   | [number, number, number, number]
 
-export interface MotionTransition {
+export interface MotionTweenTransition {
+  type?: "tween"
   /** Duration in seconds. */
   duration?: number
   /** Delay in seconds. */
   delay?: number
   ease?: MotionEase
+  stiffness?: never
+  damping?: never
+  mass?: never
+  bounce?: never
+  restSpeed?: never
+  restDelta?: never
 }
+
+interface MotionSpringBase {
+  type: "spring"
+  /** Delay in seconds. The spring holds its start until the delay passes. */
+  delay?: number
+  ease?: never
+  /** Speed, in units per second, below which the spring may settle. */
+  restSpeed?: number
+  /** Distance from the target, in units, within which the spring may settle. */
+  restDelta?: number
+}
+
+/** A spring described by its physics. Defaults to stiffness 100, damping 10, mass 1. */
+export interface MotionSpringPhysicsTransition extends MotionSpringBase {
+  stiffness?: number
+  damping?: number
+  mass?: number
+  duration?: never
+  bounce?: never
+}
+
+/** A spring described by how long it takes to settle and how much it overshoots. */
+export interface MotionSpringDurationTransition extends MotionSpringBase {
+  /** Seconds to settle, 0.01 to 10. Defaults to 0.8. */
+  duration?: number
+  /** 0 is critically damped; toward 1 it oscillates longer. Defaults to 0.3. */
+  bounce?: number
+  stiffness?: never
+  damping?: never
+  mass?: never
+}
+
+export type MotionSpringTransition =
+  | MotionSpringPhysicsTransition
+  | MotionSpringDurationTransition
+
+export type MotionTransition = MotionTweenTransition | MotionSpringTransition
 
 export interface MotionProps {
   initial?: MotionStyle | false
