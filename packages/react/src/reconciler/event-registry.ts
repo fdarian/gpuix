@@ -24,11 +24,13 @@ export function attachRoot(renderer: NativeRenderer, container: Container): void
     onWindowKeyDown: container.windowKeyEventHandlers.onKeyDown,
     onWindowKeyUp: container.windowKeyEventHandlers.onKeyUp,
     onSelectionChange: container.windowKeyEventHandlers.onSelectionChange,
+    onAppearanceChange: container.windowKeyEventHandlers.onAppearanceChange,
     tabNavigation: container.windowKeyEventHandlers.tabNavigation,
     onEvent: container.onEvent,
   })
   container.windowKeyEventId = binding.windowKeyEventId
   container.windowSelectionEventId = binding.windowSelectionEventId
+  container.windowAppearanceEventId = binding.windowAppearanceEventId
   bindings.set(container, binding)
 }
 

@@ -274,8 +274,15 @@ function mountRoot(args: {
   options: RenderOptions
 }): Root {
   const { slot, node, options } = args
-  const { onEvent, onKeyDown, onKeyUp, onSelectionChange, tabNavigation, keyboardFocusDim } =
-    options
+  const {
+    onEvent,
+    onKeyDown,
+    onKeyUp,
+    onSelectionChange,
+    onAppearanceChange,
+    tabNavigation,
+    keyboardFocusDim,
+  } = options
   const host = slot.renderer
   if (!host) throw new Error("GPUIX renderer is not initialized")
   if (slot.root) slot.root.unmount()
@@ -284,6 +291,7 @@ function mountRoot(args: {
     onKeyDown,
     onKeyUp,
     onSelectionChange,
+    onAppearanceChange,
     tabNavigation,
     keyboardFocusDim,
     onUncaughtError: (error, errorInfo) => {
@@ -368,6 +376,7 @@ export function render(node: ReactNode, options: RenderOptions = {}): Root {
     onKeyDown,
     onKeyUp,
     onSelectionChange,
+    onAppearanceChange,
     tabNavigation,
     keyboardFocusDim,
     renderer: injected,
@@ -417,6 +426,7 @@ export function render(node: ReactNode, options: RenderOptions = {}): Root {
     onKeyDown,
     onKeyUp,
     onSelectionChange,
+    onAppearanceChange,
     tabNavigation,
     keyboardFocusDim,
   }

@@ -13,6 +13,7 @@ export { useWindowInsets, useWindowSize } from "./hooks/use-window-size.js"
 export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
 export {
   createTextSearchController,
+  observeAppearance,
   observeSelectedText,
   observeWindowInsets,
   observeWindowSize,
@@ -20,7 +21,7 @@ export {
   readWindowInsets,
   readWindowSize,
 } from "@gpuix/native/host"
-export type { DismissLayer } from "@gpuix/native/host"
+export type { Appearance, DismissLayer } from "@gpuix/native/host"
 export type {
   FindRangesOptions,
   TextSearch,

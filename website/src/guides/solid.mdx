@@ -192,6 +192,7 @@ interface RenderOptions extends WindowOptions, RootEventHandlers {
 | `width` / `height`                | Window size                                                |
 | `titlebarTransparent`             | Hide the native titlebar                                   |
 | `windowBackground`                | `"opaque"`, `"transparent"`, `"blurred"`                   |
+| `appearance`                      | `"system"` (default), `"light"`, `"dark"`                  |
 | `trafficLightX` / `trafficLightY` | Traffic-light origin                                       |
 | `appName`                         | Name inside macOS Hide and Quit items                      |
 | `focus`                           | `false` opens behind the active app                        |
@@ -201,6 +202,7 @@ interface RenderOptions extends WindowOptions, RootEventHandlers {
 | `onEvent`                         | Every dispatched native event                              |
 | `onKeyDown` / `onKeyUp`           | Window-level keys                                          |
 | `onSelectionChange`               | Window-level selection                                     |
+| `onAppearanceChange`              | Window-level light or dark change                          |
 | `onUncaughtError`                 | Native and flush errors                                    |
 
 ```tsx
@@ -322,6 +324,7 @@ There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWin
 function createWindowSize(options?: ObserverOptions): Accessor<WindowSize>
 function createWindowInsets(options?: ObserverOptions): Accessor<WindowInsets>
 function createSelectedText(): Accessor<string | null>
+function createAppearance(): Accessor<'light' | 'dark'>
 function createTextSearch(options: Accessor<TextSearchOptions>): {
   readonly props: Pick<HostProps, 'highlight' | 'onHighlight'>
   readonly total: number
@@ -370,6 +373,19 @@ function SelectionLabel() {
   return <text style={{ color: '#e2e2e2' }}>{selected() ?? 'none'}</text>
 }
 ```
+
+### Appearance
+
+```tsx
+import { createAppearance } from '@gpuix/solid'
+
+function Scheme() {
+  const appearance = createAppearance()
+  return <text style={{ color: appearance() === 'dark' ? '#e2e2e2' : '#1a1a1a' }}>{appearance()}</text>
+}
+```
+
+Force it with the `appearance` option or `renderer.setAppearance('light' | 'dark' | 'system')`.
 
 ### Find bar
 

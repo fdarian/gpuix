@@ -3,6 +3,7 @@ import {
   createMutationQueue,
   createRendererState,
   findRanges,
+  observeAppearance,
   observeWindowInsets,
   observeWindowSize,
   observeSelectedText,
@@ -210,5 +211,68 @@ describe("shared host runtime", () => {
     stop()
     listener?.({ value: "ignored" })
     expect(values).toEqual(["initial", "changed"])
+  })
+
+  it("observes the appearance, seeded from the renderer", () => {
+    const renderer = new RecordingRenderer() as RecordingRenderer & {
+      getAppearance(): string
+    }
+    renderer.getAppearance = () => "light"
+    let listener: ((event: { value?: string }) => void) | undefined
+    const values: string[] = []
+    const stop = observeAppearance(
+      renderer,
+      (next) => {
+        listener = next as typeof listener
+        return () => { listener = undefined }
+      },
+      (value) => values.push(value)
+    )
+    listener?.({ value: "dark" })
+    stop()
+    expect(listener).toBeUndefined()
+    expect(values).toEqual(["light", "dark"])
+  })
+
+  it("throws on an appearance that is not light or dark", () => {
+    const renderer = new RecordingRenderer() as RecordingRenderer & {
+      getAppearance(): string
+    }
+    renderer.getAppearance = () => "light"
+    let listener: ((event: { value?: string }) => void) | undefined
+    observeAppearance(
+      renderer,
+      (next) => {
+        listener = next as typeof listener
+        return () => {}
+      },
+      () => {}
+    )
+    expect(() => listener?.({ value: "vibrantDark" })).toThrow(/light" or "dark"/)
+    expect(() => listener?.({})).toThrow(/light" or "dark"/)
+  })
+
+  it("routes appearanceChange to the root handler by its own event id", () => {
+    const state = createRendererState(new RecordingRenderer())
+    const values: Array<string | undefined> = []
+    const binding = state.attach({
+      onAppearanceChange: (event) => values.push(event.value),
+    })
+    const event = { elementId: binding.windowAppearanceEventId, eventType: "appearanceChange", value: "dark" }
+    expect(state.dispatch(event)).toBe(true)
+    expect(state.dispatch({ ...event, elementId: binding.windowAppearanceEventId + 1 })).toBe(false)
+    expect(values).toEqual(["dark"])
+  })
+
+  it("drops appearanceChange when no root handler is set", () => {
+    const state = createRendererState(new RecordingRenderer())
+    const binding = state.attach({})
+    expect(
+      state.dispatch({
+        elementId: binding.windowAppearanceEventId,
+        eventType: "appearanceChange",
+        value: "dark",
+      })
+    ).toBe(false)
   })
 })

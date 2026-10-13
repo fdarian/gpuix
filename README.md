@@ -741,6 +741,7 @@ terminal.
 | `titlebarTransparent` | boolean | Hide the native titlebar so the app draws chrome under the traffic lights |
 | `windowBackground` | `"opaque"` (default), `"transparent"`, `"blurred"` | Window fill. `"blurred"` is the macOS vibrancy backdrop |
 | `trafficLightX` / `trafficLightY` | pixels | Traffic-light origin. The chat example uses `(16, 17)` |
+| `appearance` | `"system"` (default), `"light"`, `"dark"` | Force the app light or dark, or follow the OS. See [Appearance](#appearance) |
 | `transparent` | boolean | Same as `windowBackground: "transparent"` when that option is unset |
 | `appName` | string | Name inside the macOS `Hide X` and `Quit X` items. Defaults to `title` |
 | `focus` | boolean, default `true` | `false` opens the window behind the active app, like `open -g` |
@@ -841,6 +842,58 @@ function WindowControls() {
 `minimizeWindow()`, `zoomWindow()`, and `toggleFullscreen()` work on macOS,
 Windows, Linux, and FreeBSD. `zoomWindow()` uses the platform's native zoom or
 maximize operation. These methods are not available in the browser renderer.
+
+### Appearance
+
+By default the window follows the system light or dark setting. `appearance`
+overrides it for the whole app:
+
+```tsx
+render(<App />, {
+  appearance: 'dark', // 'system' (default) | 'light' | 'dark'
+  onAppearanceChange(event) {
+    setScheme(event.value) // 'light' | 'dark'
+  },
+})
+```
+
+Change it later, or read what the window is using right now, through the
+renderer:
+
+```tsx
+function ThemeToggle() {
+  const renderer = useGpuixRequired()
+  return (
+    <div onClick={() => renderer.setAppearance?.('light')}>
+      Light (now {renderer.getAppearance?.()})
+    </div>
+  )
+}
+```
+
+`setAppearance('system')` goes back to following the OS. `getAppearance()` is the
+**effective** appearance, always `"light"` or `"dark"`, even while following the
+system. GPUI's vibrant variants are reported as plain `"light"` / `"dark"`. An
+unknown string throws, both in the `appearance` option and in `setAppearance`.
+
+`onAppearanceChange` is a **window-level** callback on `render()` / `createRoot()`,
+the same attachment as `onSelectionChange`. `event.value` is `"light"` or
+`"dark"`. It fires when the effective appearance changes, whether the user
+flipped the OS setting or the app called `setAppearance`. It does not fire for
+the initial value, so read `getAppearance()` first, or use
+`observeAppearance(renderer, subscribe, callback)` from `@gpuix/react`, which
+does both: it calls `callback` with the current value and then on every event
+that `subscribe` delivers. In Solid, `createAppearance()` returns an accessor.
+
+macOS applies `appearance` and `setAppearance`. On Windows and Linux they are
+accepted and ignored, and `getAppearance()` reports GPUI's value for the
+window. GPUIX does not change the default theme of `<code>`, `<diff>` or
+`<markdown>` with the appearance; pass those your own colors.
+
+`TestRenderer.getAppearance()` reports the system appearance and
+`setAppearance` only validates its argument. The test window is a real
+offscreen platform window without a run loop, so it never receives an
+appearance change and `onAppearanceChange` does not fire under test.
 
 ### File picker
 
@@ -3191,6 +3244,7 @@ text imports no longer need a runtime flag.
 | Line click | `onLineClick` | `value`, `oldLine`, `newLine` — `<diff>` only |
 | Link click | `onLinkClick` | `value` (URL) — `<markdown>` only |
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
+| Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
 
 A Finder or OS file drop lands on the hovered element that lists
 **`onFileDrop`**. `paths` is an array of absolute Unicode filesystem paths.
@@ -3920,6 +3974,7 @@ The test renderer uses `VisualTestAppContext` with a `TestDispatcher` for determ
 - [x] Headless Select, Combobox, and Tooltip
 - [x] Native `hover` and `active` styles
 - [x] Window title (`setWindowTitle`)
+- [x] Light and dark appearance (`appearance`, `setAppearance`, `getAppearance`, `onAppearanceChange`)
 - [x] Native window controls (`minimizeWindow`, `zoomWindow`, `toggleFullscreen`)
 - [x] Window chrome (`titlebarTransparent`, `windowBackground`, traffic-light position)
 - [x] macOS menu bar with the standard shortcuts (`appName`)

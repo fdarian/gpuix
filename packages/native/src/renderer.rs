@@ -139,6 +139,9 @@ thread_local! {
     static PENDING_WINDOW_SELECTION_CHANGE: RefCell<Option<(bool, u64)>> =
         const { RefCell::new(None) };
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    static PENDING_WINDOW_APPEARANCE_CHANGE: RefCell<Option<(bool, u64)>> =
+        const { RefCell::new(None) };
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     static PENDING_FOCUS_ELEMENT: RefCell<Option<u64>> = const { RefCell::new(None) };
     /// Shared scroll handles — GpuixView writes here during render(),
     /// platform-local handlers read from here for programmatic scroll control.
@@ -474,6 +477,14 @@ enum UiCommand {
         enabled: bool,
         event_id: u64,
     },
+    SetWindowAppearanceChange {
+        enabled: bool,
+        event_id: u64,
+    },
+    SetAppearance(Option<gpui::WindowAppearance>),
+    GetAppearance {
+        response: SyncSender<String>,
+    },
     ControlClock {
         control: ClockControl,
         response: SyncSender<f64>,
@@ -744,6 +755,22 @@ async fn run_ui_commands(
                     view.set_selection_change_listener(enabled, event_id);
                     cx.notify();
                     window.refresh();
+                })
+            }
+            UiCommand::SetWindowAppearanceChange { enabled, event_id } => {
+                window.update(cx, move |view, _window, _cx| {
+                    view.set_appearance_change_listener(enabled, event_id);
+                })
+            }
+            UiCommand::SetAppearance(appearance) => {
+                cx.update(|cx| cx.set_window_appearance(appearance));
+                Ok(())
+            }
+            UiCommand::GetAppearance { response } => {
+                window.update(cx, move |_view, window, _cx| {
+                    response
+                        .send(appearance_name(window.appearance()).to_string())
+                        .ok();
                 })
             }
             UiCommand::ControlClock { control, response } => {
@@ -1173,6 +1200,7 @@ impl GpuixRenderer {
         // decides key status inside the app, activation is what steals focus.
         let activate = options.focus.unwrap_or(true);
         let window_options = options.clone();
+        let appearance = appearance_override(&options).map_err(Error::from_reason)?;
 
         let platform = Rc::new(gpui_macos::MacPlatform::new_embedded());
 
@@ -1194,6 +1222,7 @@ impl GpuixRenderer {
             // After the other bindings: `set_menus` reads key equivalents out of
             // the keymap, so every binding must exist before it runs.
             crate::app_menu::init(&app_name, cx);
+            cx.set_window_appearance(appearance);
             let bounds = gpui::Bounds::centered(
                 None,
                 gpui::size(gpui::px(width as f32), gpui::px(height as f32)),
@@ -1202,9 +1231,16 @@ impl GpuixRenderer {
 
             match cx.open_window(
                 to_gpui_window_options(&window_options, bounds),
-                |_window, cx| {
-                    cx.new(|_| {
-                        GpuixView::new(tree.clone(), callback.clone(), title, selection.clone())
+                |window, cx| {
+                    cx.new(|cx| {
+                        let mut view = GpuixView::new(
+                            tree.clone(),
+                            callback.clone(),
+                            title,
+                            selection.clone(),
+                        );
+                        view.observe_appearance(window, cx);
+                        view
                     })
                 },
             ) {
@@ -1301,6 +1337,7 @@ impl GpuixRenderer {
         // decides key status inside the app, activation is what steals focus.
         let activate = options.focus.unwrap_or(true);
         let window_options = options.clone();
+        let appearance = appearance_override(&options).map_err(Error::from_reason)?;
         let tree = self.tree.clone();
         let selection = self.selection.clone();
         let callback = self.event_callback_for_view();
@@ -1324,6 +1361,7 @@ impl GpuixRenderer {
                         .run(move |cx| {
                             crate::custom_elements::input::init(cx);
                             crate::custom_elements::img::init(cx);
+                            cx.set_window_appearance(appearance);
                             let size = gpui::size(gpui::px(width as f32), gpui::px(height as f32));
                             // A layer-shell surface is positioned by the compositor from its
                             // anchor, so it opens at the origin; a normal window is centered.
@@ -1337,8 +1375,13 @@ impl GpuixRenderer {
                             };
                             let window = match cx.open_window(
                                 to_gpui_window_options(&window_options, bounds),
-                                |_window, cx| {
-                                    cx.new(|_| GpuixView::new(tree, callback, title, selection))
+                                |window, cx| {
+                                    cx.new(|cx| {
+                                        let mut view =
+                                            GpuixView::new(tree, callback, title, selection);
+                                        view.observe_appearance(window, cx);
+                                        view
+                                    })
                                 },
                             ) {
                                 Ok(window) => window,
@@ -2024,6 +2067,78 @@ impl GpuixRenderer {
             target_os = "freebsd"
         )))]
         Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// Enable the window appearanceChange event requested by the React renderer.
+    #[napi]
+    pub fn set_window_appearance_change(&self, enabled: bool, event_id: f64) -> Result<()> {
+        let event_id = to_element_id(event_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, _window, _cx| {
+            view.set_appearance_change_listener(enabled, event_id);
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::SetWindowAppearanceChange { enabled, event_id });
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason(
+            "The production GPUIX renderer does not support this operating system",
+        ))
+    }
+
+    /// `"system"` follows the OS light/dark setting, `"light"` and `"dark"`
+    /// force it for the whole app. Only macOS applies it; elsewhere GPUI has no
+    /// override and the call is accepted and ignored.
+    #[napi]
+    pub fn set_appearance(&self, appearance: String) -> Result<()> {
+        let appearance = parse_window_appearance(&appearance).map_err(Error::from_reason)?;
+        #[cfg(target_os = "macos")]
+        return update_window_without_view(move |_window, cx| cx.set_window_appearance(appearance));
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::SetAppearance(appearance));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason(
+            "The production GPUIX renderer does not support this operating system",
+        ))
+    }
+
+    /// The effective appearance of the window, `"light"` or `"dark"`.
+    #[napi]
+    pub fn get_appearance(&self) -> Result<String> {
+        #[cfg(target_os = "macos")]
+        return update_window(|_view, window, _cx| {
+            appearance_name(window.appearance()).to_string()
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::GetAppearance { response })?;
+            return recv_ui_response(receiver, "the appearance query");
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason(
+            "The production GPUIX renderer does not support this operating system",
+        ))
     }
 
     // ── Selection API ────────────────────────────────────────────────
@@ -2838,13 +2953,14 @@ fn start_web_app(
             if let Some(mode) = PENDING_DEBUG_OVERLAY.with(|pending| pending.borrow_mut().take()) {
                 window.set_debug_frame_overlay_mode(mode);
             }
-            cx.new(|_| {
+            cx.new(|cx| {
                 let mut view = GpuixView::new(
                     tree,
                     Some(event_callback),
                     "GPUIX Web".to_string(),
                     selection,
                 );
+                view.observe_appearance(window, cx);
                 if let Some((key_down, key_up, event_id)) =
                     PENDING_WINDOW_KEY_EVENTS.with(|pending| pending.borrow_mut().take())
                 {
@@ -2856,6 +2972,11 @@ fn start_web_app(
                     PENDING_WINDOW_SELECTION_CHANGE.with(|pending| pending.borrow_mut().take())
                 {
                     view.set_selection_change_listener(enabled, event_id);
+                }
+                if let Some((enabled, event_id)) =
+                    PENDING_WINDOW_APPEARANCE_CHANGE.with(|pending| pending.borrow_mut().take())
+                {
+                    view.set_appearance_change_listener(enabled, event_id);
                 }
                 view
             })
@@ -3150,6 +3271,37 @@ impl WebGpuixRenderer {
             view.set_selection_change_listener(enabled, event_id);
             cx.notify();
         })
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setWindowAppearanceChange)]
+    pub fn set_window_appearance_change(
+        &self,
+        enabled: bool,
+        event_id: f64,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        let event_id = web_element_id(event_id)?;
+        if WEB_WINDOW.with(|window| window.borrow().is_none()) {
+            PENDING_WINDOW_APPEARANCE_CHANGE.with(|pending| {
+                *pending.borrow_mut() = Some((enabled, event_id));
+            });
+            return Ok(());
+        }
+        update_web_window(move |view, _window, _cx| {
+            view.set_appearance_change_listener(enabled, event_id);
+        })
+    }
+
+    /// The browser owns light/dark, so this validates and does nothing.
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setAppearance)]
+    pub fn set_appearance(&self, appearance: String) -> Result<(), wasm_bindgen::JsValue> {
+        parse_window_appearance(&appearance)
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?;
+        Ok(())
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = getAppearance)]
+    pub fn get_appearance(&self) -> Result<String, wasm_bindgen::JsValue> {
+        update_web_window(|_view, window, _cx| appearance_name(window.appearance()).to_string())
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getSelectedText)]
@@ -3540,6 +3692,9 @@ pub(crate) struct GpuixView {
     pub(crate) window_key_event_id: u64,
     pub(crate) window_selection_change: bool,
     pub(crate) window_selection_event_id: u64,
+    window_appearance_change: bool,
+    window_appearance_event_id: u64,
+    appearance_subscription: Option<gpui::Subscription>,
     /// Last identity delivered through `selectionChange`. Only written once an
     /// event is really queued, so adding the listener later still reports.
     reported_selection: Option<u64>,
@@ -3860,6 +4015,9 @@ impl GpuixView {
             window_key_event_id: 0,
             window_selection_change: false,
             window_selection_event_id: 0,
+            window_appearance_change: false,
+            window_appearance_event_id: 0,
+            appearance_subscription: None,
             reported_selection: None,
             focus_handles: HashMap::new(),
             pending_focus_element: None,
@@ -3990,6 +4148,35 @@ impl GpuixView {
         self.window_selection_change = enabled;
         self.window_selection_event_id = event_id;
         self.reported_selection = None;
+    }
+
+    pub(crate) fn set_appearance_change_listener(&mut self, enabled: bool, event_id: u64) {
+        self.window_appearance_change = enabled;
+        self.window_appearance_event_id = event_id;
+    }
+
+    /// Emit `appearanceChange` from GPUI's window appearance observer, not from
+    /// render: the platform reports the change, so there is nothing to diff.
+    pub(crate) fn observe_appearance(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        self.appearance_subscription =
+            Some(cx.observe_window_appearance(window, |view, window, _cx| {
+                if !view.window_appearance_change {
+                    return;
+                }
+                let value = appearance_name(window.appearance()).to_string();
+                emit_event_full(
+                    &view.event_callback,
+                    view.window_appearance_event_id,
+                    "appearanceChange",
+                    |payload| {
+                        payload.value = Some(value);
+                    },
+                );
+            }));
     }
 
     /// Emit `selectionChange` when the selected range set changed this frame.
@@ -7399,6 +7586,9 @@ pub struct WindowOptions {
     /// `"opaque"` | `"transparent"` | `"blurred"`. `transparent: true` is the
     /// same as `"transparent"` when this is unset.
     pub window_background: Option<String>,
+    /// `"system"` | `"light"` | `"dark"`. Defaults to `"system"`: follow the OS
+    /// setting. Applies to the whole app on macOS and is ignored elsewhere.
+    pub appearance: Option<String>,
     pub traffic_light_x: Option<f64>,
     pub traffic_light_y: Option<f64>,
     /// Give the window key focus when it opens. `false` opens it behind the
@@ -7430,6 +7620,7 @@ impl Default for WindowOptions {
             transparent: Some(false),
             titlebar_transparent: Some(false),
             window_background: None,
+            appearance: None,
             traffic_light_x: None,
             traffic_light_y: None,
             focus: Some(true),
@@ -7494,6 +7685,39 @@ fn to_layer_shell_options(options: &LayerShellOptions) -> gpui::layer_shell::Lay
             .map(layer_shell_anchor_bit),
         margin,
         keyboard_interactivity,
+    }
+}
+
+/// `Ok(None)` is `"system"`: no override, GPUI tracks the OS setting.
+pub(crate) fn parse_window_appearance(
+    value: &str,
+) -> std::result::Result<Option<gpui::WindowAppearance>, String> {
+    match value {
+        "system" => Ok(None),
+        "light" => Ok(Some(gpui::WindowAppearance::Light)),
+        "dark" => Ok(Some(gpui::WindowAppearance::Dark)),
+        other => Err(format!(
+            "Invalid appearance {other:?}: expected \"system\", \"light\" or \"dark\""
+        )),
+    }
+}
+
+/// The vibrant variants are the same light/dark choice with a translucent
+/// material, which JS has no use for.
+pub(crate) fn appearance_name(appearance: gpui::WindowAppearance) -> &'static str {
+    match appearance {
+        gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => "light",
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => "dark",
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn appearance_override(
+    options: &WindowOptions,
+) -> std::result::Result<Option<gpui::WindowAppearance>, String> {
+    match options.appearance.as_deref() {
+        Some(value) => parse_window_appearance(value),
+        None => Ok(None),
     }
 }
 
@@ -8108,6 +8332,45 @@ mod window_options_tests {
             gpui_options.window_min_size,
             Some(gpui::size(gpui::px(320.0), gpui::px(240.0)))
         );
+    }
+
+    #[test]
+    fn appearance_parses_system_light_and_dark() {
+        assert_eq!(parse_window_appearance("system"), Ok(None));
+        assert_eq!(
+            parse_window_appearance("light"),
+            Ok(Some(gpui::WindowAppearance::Light))
+        );
+        assert_eq!(
+            parse_window_appearance("dark"),
+            Ok(Some(gpui::WindowAppearance::Dark))
+        );
+    }
+
+    #[test]
+    fn appearance_rejects_anything_else() {
+        for value in ["", "Dark", "auto", "vibrantDark"] {
+            assert!(parse_window_appearance(value).is_err(), "{value:?}");
+        }
+    }
+
+    #[test]
+    fn missing_appearance_option_follows_the_system() {
+        assert_eq!(appearance_override(&WindowOptions::default()), Ok(None));
+        let invalid = WindowOptions {
+            appearance: Some("sepia".to_string()),
+            ..WindowOptions::default()
+        };
+        assert!(appearance_override(&invalid).is_err());
+    }
+
+    #[test]
+    fn vibrant_appearances_collapse_to_light_and_dark() {
+        use gpui::WindowAppearance::*;
+        assert_eq!(appearance_name(Light), "light");
+        assert_eq!(appearance_name(VibrantLight), "light");
+        assert_eq!(appearance_name(Dark), "dark");
+        assert_eq!(appearance_name(VibrantDark), "dark");
     }
 
     #[test]

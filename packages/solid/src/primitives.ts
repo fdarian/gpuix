@@ -5,8 +5,10 @@ import {
   observeWindowSize,
   readWindowInsets,
   readWindowSize,
+  toAppearance,
 } from "@gpuix/native/host"
 import type {
+  Appearance,
   ObserverOptions,
   TextSearchOptions,
   WindowInsets,
@@ -35,6 +37,16 @@ export function createSelectedText(): Accessor<string | null> {
   if (!context) throw new Error("createSelectedText must be used inside a GPUIX root")
   const [value, setValue] = createSignal(context.renderer.getSelectedText?.() ?? null)
   onCleanup(context.subscribeSelection(setValue))
+  return value
+}
+
+export function createAppearance(): Accessor<Appearance> {
+  const context = useGpuix()
+  if (!context) throw new Error("createAppearance must be used inside a GPUIX root")
+  const getAppearance = context.renderer.getAppearance
+  if (!getAppearance) throw new Error("This renderer does not report the window appearance")
+  const [value, setValue] = createSignal(toAppearance(getAppearance.call(context.renderer)))
+  onCleanup(context.subscribeAppearance(setValue))
   return value
 }
 

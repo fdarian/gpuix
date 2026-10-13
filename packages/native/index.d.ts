@@ -124,6 +124,16 @@ export declare class GpuixRenderer {
   blur(): void
   /** Enable the window selectionChange event requested by the React renderer. */
   setWindowSelectionChange(enabled: boolean, eventId: number): void
+  /** Enable the window appearanceChange event requested by the React renderer. */
+  setWindowAppearanceChange(enabled: boolean, eventId: number): void
+  /**
+   * `"system"` follows the OS light/dark setting, `"light"` and `"dark"`
+   * force it for the whole app. Only macOS applies it; elsewhere GPUI has no
+   * override and the call is accepted and ignored.
+   */
+  setAppearance(appearance: string): void
+  /** The effective appearance of the window, `"light"` or `"dark"`. */
+  getAppearance(): string
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -305,6 +315,15 @@ export declare class TestGpuixRenderer {
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
   setWindowSelectionChange(enabled: boolean, eventId: number): void
+  setWindowAppearanceChange(enabled: boolean, eventId: number): void
+  /**
+   * Validates and does nothing. This renderer drives the real offscreen
+   * platform window, which has no run loop here, so AppKit never delivers
+   * the appearance change and `getAppearance` would not follow. Forcing
+   * NSApp's appearance would only change the test process.
+   */
+  setAppearance(appearance: string): void
+  getAppearance(): string
   /**
    * Simulate a mouse down event at the given window coordinates.
    * Button: 0=left, 1=middle, 2=right. Defaults to left (0).
@@ -759,6 +778,11 @@ export interface WindowOptions {
    * same as `"transparent"` when this is unset.
    */
   windowBackground?: string
+  /**
+   * `"system"` | `"light"` | `"dark"`. Defaults to `"system"`: follow the OS
+   * setting. Applies to the whole app on macOS and is ignored elsewhere.
+   */
+  appearance?: string
   trafficLightX?: number
   trafficLightY?: number
   /**

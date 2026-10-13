@@ -5,7 +5,9 @@ import {
   createRendererState,
   unregisterEventHandlers,
 } from "@gpuix/native/host"
+import { toAppearance } from "@gpuix/native/host"
 import type {
+  Appearance,
   NativeRenderer,
   RendererRootBinding,
   RootEventHandlers,
@@ -16,6 +18,7 @@ import { universalRender } from "./universal.js"
 export interface GpuixContextValue {
   renderer: NativeRenderer
   subscribeSelection(callback: (text: string | null) => void): () => void
+  subscribeAppearance(callback: (appearance: Appearance) => void): () => void
 }
 
 export const GpuixContext = createContext<GpuixContextValue>()
@@ -79,12 +82,27 @@ export function createRoot(
     )
   }
 
+  const appearanceListeners = new Set<(appearance: Appearance) => void>()
+  const onAppearanceChange = (event: EventPayload, currentRenderer: NativeRenderer) => {
+    rootHandlers.onAppearanceChange?.(event, currentRenderer)
+    const appearance = toAppearance(event.value)
+    for (const listener of appearanceListeners) listener(appearance)
+  }
+  const syncAppearance = () => {
+    if (!binding) return
+    renderer.setWindowAppearanceChange?.(
+      Boolean(rootHandlers.onAppearanceChange) || appearanceListeners.size > 0,
+      binding.windowAppearanceEventId
+    )
+  }
+
   const attach = () => {
     binding = state.attach({
       eventHandlers,
       onWindowKeyDown: rootHandlers.onKeyDown,
       onWindowKeyUp: rootHandlers.onKeyUp,
       onSelectionChange,
+      onAppearanceChange,
       tabNavigation: rootHandlers.tabNavigation,
       onEvent: rootHandlers.onEvent,
     })
@@ -97,12 +115,14 @@ export function createRoot(
     // Sent on every attach, so a remount without the option restores the default.
     mutations.setKeyboardFocusDim(rootHandlers.keyboardFocusDim !== false)
     syncSelection()
+    syncAppearance()
   }
 
   const detach = () => {
     if (!binding?.detach()) return
     renderer.setWindowKeyEvents?.(false, false, binding.windowKeyEventId)
     renderer.setWindowSelectionChange?.(false, binding.windowSelectionEventId)
+    renderer.setWindowAppearanceChange?.(false, binding.windowAppearanceEventId)
     binding = undefined
   }
 
@@ -135,6 +155,14 @@ export function createRoot(
               return () => {
                 selectionListeners.delete(callback)
                 syncSelection()
+              }
+            },
+            subscribeAppearance(callback) {
+              appearanceListeners.add(callback)
+              syncAppearance()
+              return () => {
+                appearanceListeners.delete(callback)
+                syncAppearance()
               }
             },
           },

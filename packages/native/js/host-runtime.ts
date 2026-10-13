@@ -1,5 +1,7 @@
 import type { EventPayload } from "../index.js"
 import type {
+  Appearance,
+  AppearanceHost,
   EdgeInsets,
   HighlightSpec,
   HostProps,
@@ -123,6 +125,20 @@ export function observeSelectedText(
 ): () => void {
   callback(renderer.getSelectedText() ?? null)
   return subscribe((event) => callback(event.value ?? null))
+}
+
+export function toAppearance(value: string | undefined): Appearance {
+  if (value === "light" || value === "dark") return value
+  throw new Error(`Expected an appearance of "light" or "dark", got ${String(value)}`)
+}
+
+export function observeAppearance(
+  renderer: AppearanceHost,
+  subscribe: (listener: (event: EventPayload) => void) => () => void,
+  callback: (appearance: Appearance) => void
+): () => void {
+  callback(toAppearance(renderer.getAppearance()))
+  return subscribe((event) => callback(toAppearance(event.value)))
 }
 
 export interface FindRangesOptions {

@@ -715,6 +715,9 @@ export type MutationHost = Pick<GpuixRenderer, "applyBatch">
 export type WindowSizeHost = Pick<GpuixRenderer, "getWindowSize">
 export type WindowInsetsHost = Pick<GpuixRenderer, "getWindowInsets">
 export type SelectionHost = Pick<GpuixRenderer, "getSelectedText">
+export type AppearanceHost = Pick<GpuixRenderer, "getAppearance">
+/** The effective window appearance. `setAppearance` also takes `"system"`. */
+export type Appearance = "light" | "dark"
 /** `applyBatch` plus the live renderer methods a host may also expose. */
 export type NativeRenderer = MutationHost &
   Partial<
@@ -729,6 +732,7 @@ export type NativeRenderer = MutationHost &
       | "blur"
       | "setWindowKeyEvents"
       | "setWindowSelectionChange"
+      | "setWindowAppearanceChange"
       | "getElementBounds"
       | "getElementsAt"
       | "scrollTo"
@@ -745,6 +749,8 @@ export type NativeRenderer = MutationHost &
       | "getWindowInsets"
       | "setWindowTitle"
       | "registerFont"
+      | "setAppearance"
+      | "getAppearance"
       | "promptForPaths"
       | "activateWindow"
       | "minimizeWindow"
@@ -813,6 +819,9 @@ export interface WindowKeyEventHandlers {
   onKeyUp?: WindowKeyEventHandler
   /** Window-level text selection. Fires when the selected ranges change. */
   onSelectionChange?: WindowEventHandler
+  /** Window-level appearance. Fires when the effective appearance flips
+   *  between light and dark. `event.value` is `"light"` or `"dark"`. */
+  onAppearanceChange?: WindowEventHandler
   /**
    * Tab and Shift+Tab move focus through `tabIndex` elements. Defaults to
    * true. Call `event.preventDefault()` in any `onKeyDown` to keep one Tab.

@@ -79,12 +79,15 @@ export function createRoot(
     windowKeyEventHandlers: rootEventHandlers,
     windowKeyEventId: 0,
     windowSelectionEventId: 0,
+    windowAppearanceEventId: 0,
     onEvent: rootEventHandlers.onEvent,
   }
   attachRoot(renderer, gpuixContainer)
   // Sent on every root, so a remount without the option restores the default.
   batchedRenderer.setKeyboardFocusDim(rootEventHandlers.keyboardFocusDim !== false)
-  const { windowKeyEventId, windowSelectionEventId } = gpuixContainer
+  const windowKeyEventId = gpuixContainer.windowKeyEventId
+  const windowSelectionEventId = gpuixContainer.windowSelectionEventId
+  const windowAppearanceEventId = gpuixContainer.windowAppearanceEventId
   try {
     renderer.setWindowKeyEvents?.(
       // Always on: the Tab and Escape defaults run on the window event.
@@ -95,6 +98,10 @@ export function createRoot(
     renderer.setWindowSelectionChange?.(
       Boolean(rootEventHandlers.onSelectionChange),
       windowSelectionEventId
+    )
+    renderer.setWindowAppearanceChange?.(
+      Boolean(rootEventHandlers.onAppearanceChange),
+      windowAppearanceEventId
     )
   } catch (error) {
     detachRoot(renderer, gpuixContainer)
@@ -112,6 +119,7 @@ export function createRoot(
     if (detachRoot(renderer, gpuixContainer)) {
       renderer.setWindowKeyEvents?.(false, false, windowKeyEventId)
       renderer.setWindowSelectionChange?.(false, windowSelectionEventId)
+      renderer.setWindowAppearanceChange?.(false, windowAppearanceEventId)
     }
   }
 

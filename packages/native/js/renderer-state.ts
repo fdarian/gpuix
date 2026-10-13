@@ -14,6 +14,7 @@ export interface RendererRootHandlers {
   onWindowKeyDown?: WindowKeyEventHandler
   onWindowKeyUp?: WindowKeyEventHandler
   onSelectionChange?: WindowEventHandler
+  onAppearanceChange?: WindowEventHandler
   /** See `WindowKeyEventHandlers.tabNavigation`. Defaults to true. */
   tabNavigation?: boolean
   onEvent?: (event: EventPayload) => void
@@ -25,6 +26,7 @@ export interface RendererRootBinding {
   readonly eventHandlers: EventHandlerMap
   readonly windowKeyEventId: number
   readonly windowSelectionEventId: number
+  readonly windowAppearanceEventId: number
   detach(): boolean
 }
 
@@ -168,6 +170,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         eventHandlers,
         windowKeyEventId: generation,
         windowSelectionEventId: generation,
+        windowAppearanceEventId: generation,
         detach() {
           if (active !== binding) return false
           active = undefined
@@ -218,6 +221,13 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (event.eventType === "selectionChange") {
         if (event.elementId !== root.windowSelectionEventId) return false
         const handler = root.handlers.onSelectionChange
+        if (!handler) return false
+        schedule(() => handler({ ...event, elementId: 0 }, renderer))
+        return true
+      }
+      if (event.eventType === "appearanceChange") {
+        if (event.elementId !== root.windowAppearanceEventId) return false
+        const handler = root.handlers.onAppearanceChange
         if (!handler) return false
         schedule(() => handler({ ...event, elementId: 0 }, renderer))
         return true

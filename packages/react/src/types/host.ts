@@ -90,6 +90,7 @@ export interface Container {
   windowKeyEventHandlers: WindowKeyEventHandlers
   windowKeyEventId: number
   windowSelectionEventId: number
+  windowAppearanceEventId: number
   onEvent?: (event: EventPayload) => void
   /**
    * Set on a portal's container. Its children mount under this element instead

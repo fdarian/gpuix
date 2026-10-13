@@ -45,6 +45,9 @@ interface NativeTestRendererApi extends NativeRenderer {
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
   setWindowSelectionChange(enabled: boolean, eventId: number): void
+  setWindowAppearanceChange(enabled: boolean, eventId: number): void
+  setAppearance(appearance: string): void
+  getAppearance(): string
   simulateKeyDown(keystroke: string, isHeld?: boolean): void
   simulateKeyUp(keystroke: string): void
   simulateClick(x: number, y: number, button?: number, modifiers?: string): void
@@ -181,6 +184,9 @@ export class TestRenderer implements NativeRenderer {
   readonly setWindowSelectionChange: NonNullable<
     NativeRenderer["setWindowSelectionChange"]
   >
+  readonly setWindowAppearanceChange: NonNullable<
+    NativeRenderer["setWindowAppearanceChange"]
+  >
   readonly setWindowKeyEvents: NonNullable<NativeRenderer["setWindowKeyEvents"]>
   private readonly dispatchEvent: (event: EventPayload) => void
 
@@ -197,6 +203,9 @@ export class TestRenderer implements NativeRenderer {
     this.promptForPaths = this.native.promptForPaths.bind(this.native)
     this.setWindowKeyEvents = this.native.setWindowKeyEvents.bind(this.native)
     this.setWindowSelectionChange = this.native.setWindowSelectionChange.bind(
+      this.native
+    )
+    this.setWindowAppearanceChange = this.native.setWindowAppearanceChange.bind(
       this.native
     )
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
@@ -546,6 +555,17 @@ export class TestRenderer implements NativeRenderer {
   /** The offscreen window size, so `useWindowSize()` works under test. */
   getWindowSize(): { width: number; height: number } {
     return this.native.getWindowSize()
+  }
+
+  /** Validates the value and does nothing. The test window is a real offscreen
+   *  platform window with no run loop, so it never receives an appearance change. */
+  setAppearance(appearance: string): void {
+    this.native.setAppearance(appearance)
+  }
+
+  /** The offscreen window's appearance, which is the system's. */
+  getAppearance(): string {
+    return this.native.getAppearance()
   }
 
   // ── Scroll API ──────────────────────────────────────────────────

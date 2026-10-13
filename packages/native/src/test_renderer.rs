@@ -241,14 +241,16 @@ impl TestGpuixRenderer {
         // Open an offscreen window at (-10000, -10000) with the same GpuixView
         // and native GPU renderer as production.
         let window_handle = cx
-            .open_offscreen_window(window_size, |_window, app| {
-                app.new(|_cx| {
-                    GpuixView::new(
+            .open_offscreen_window(window_size, |window, app| {
+                app.new(|cx| {
+                    let mut view = GpuixView::new(
                         tree_clone,
                         callback_clone,
                         "GPUIX Test".to_string(),
                         selection_clone,
-                    )
+                    );
+                    view.observe_appearance(window, cx);
+                    view
                 })
             })
             .map_err(|e| Error::from_reason(format!("Failed to open test window: {}", e)))?;
@@ -612,6 +614,42 @@ impl TestGpuixRenderer {
             .map_err(|error| Error::from_reason(error.to_string()))?;
             cx.run_until_parked();
             Ok(())
+        })
+    }
+
+    #[napi]
+    pub fn set_window_appearance_change(&self, enabled: bool, event_id: f64) -> Result<()> {
+        let event_id = to_element_id(event_id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, _window, app| {
+                view.update(app, |view, _cx| {
+                    view.set_appearance_change_listener(enabled, event_id);
+                });
+            })
+            .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            Ok(())
+        })
+    }
+
+    /// Validates and does nothing. This renderer drives the real offscreen
+    /// platform window, which has no run loop here, so AppKit never delivers
+    /// the appearance change and `getAppearance` would not follow. Forcing
+    /// NSApp's appearance would only change the test process.
+    #[napi]
+    pub fn set_appearance(&self, appearance: String) -> Result<()> {
+        crate::renderer::parse_window_appearance(&appearance).map_err(Error::from_reason)?;
+        Ok(())
+    }
+
+    #[napi]
+    pub fn get_appearance(&self) -> Result<String> {
+        with_test_state(|cx, window, _view| {
+            let appearance = cx
+                .update_window(window, |_, window, _| window.appearance())
+                .map_err(|error| Error::from_reason(error.to_string()))?;
+            Ok(crate::renderer::appearance_name(appearance).to_string())
         })
     }
 

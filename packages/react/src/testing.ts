@@ -29,6 +29,7 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
     onKeyDown: options.onKeyDown,
     onKeyUp: options.onKeyUp,
     onSelectionChange: options.onSelectionChange,
+    onAppearanceChange: options.onAppearanceChange,
     tabNavigation: options.tabNavigation,
     keyboardFocusDim: options.keyboardFocusDim,
   })
