@@ -7,6 +7,7 @@ import {
   startFrameLoop,
   type FrameLoop,
   type FrameLoopOptions,
+  type WindowFontsOption,
 } from "@gpuix/native/runtime"
 import { createRoot, type Root } from "./root.js"
 
@@ -18,7 +19,10 @@ interface RenderSlot {
   loop?: FrameLoop
 }
 
-export interface RenderOptions extends WindowOptions, RootEventHandlers {
+export interface RenderOptions
+  extends WindowOptions,
+    WindowFontsOption,
+    RootEventHandlers {
   renderer?: NativeRenderer
   debugFrameOverlay?: "hidden" | "minimal" | "full"
   /**

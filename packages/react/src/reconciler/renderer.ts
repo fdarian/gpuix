@@ -7,6 +7,7 @@ import {
   enableAutomation as enableNativeAutomation,
   installBrowserAutomation as installNativeBrowserAutomation,
   startFrameLoop as startNativeFrameLoop,
+  type WindowFontsOption,
 } from "@gpuix/native/runtime"
 import { createRoot, flushSync, type Root } from "./reconciler.js"
 import type {
@@ -351,7 +352,10 @@ function renderSlot(): RenderSlot {
   return created
 }
 
-export interface RenderOptions extends WindowOptions, WindowKeyEventHandlers {
+export interface RenderOptions
+  extends WindowOptions,
+    WindowFontsOption,
+    WindowKeyEventHandlers {
   onEvent?: (event: EventPayload) => void
   renderer?: NativeRenderer
   /** GPUI scene overlay. Does not go through React or layout. */

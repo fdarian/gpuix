@@ -1,5 +1,5 @@
 import { GpuixRenderer } from "@gpuix/native"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload, WindowOptions } from "@gpuix/native"
 import {
   App,
   browserRendererAsTest,
@@ -8,7 +8,10 @@ import {
   serveAutomationStdio,
   type LiveAutomationRenderer,
 } from "./automation/client.js"
+import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import { createRendererState } from "./renderer-state.js"
+
+export type { WindowFontsOption }
 
 const DEFAULT_FRAME_MS = 8
 const FRAME_WAKE_FALLBACK_MS = 100
@@ -37,12 +40,14 @@ export function createNativeRenderer(
       options.onError?.(dispatchError)
     }
   })
-  if (typeof process !== "undefined" && process.stdin && !process.stdin.isTTY) {
-    const init = renderer.init.bind(renderer)
-    renderer.init = (windowOptions) => {
-      init(windowOptions)
-      enableAutomation(renderer)
-    }
+  const automated =
+    typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
+  const init = renderer.init.bind(renderer)
+  renderer.init = (windowOptions?: WindowOptions & WindowFontsOption | null) => {
+    const fonts = readFontFiles(windowOptions?.fonts)
+    init(windowOptions)
+    for (const font of fonts) renderer.registerFont(font)
+    if (automated) enableAutomation(renderer)
   }
   return renderer
 }

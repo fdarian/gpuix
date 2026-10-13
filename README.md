@@ -746,6 +746,7 @@ terminal.
 | `appName` | string | Name inside the macOS `Hide X` and `Quit X` items. Defaults to `title` |
 | `focus` | boolean, default `true` | `false` opens the window behind the active app, like `open -g` |
 | `show` | boolean, default `true` | `false` opens the window hidden. Call `activateWindow()` to reveal it |
+| `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. GPUIX ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. Variable fonts only render their default instance, so pass one static file per weight |
 
 Call it again after a save and it remounts the tree on the same window.
 
@@ -959,6 +960,12 @@ function LoadFonts() {
   return <div style={{ fontFamily: 'Inter' }}>Hello</div>
 }
 ```
+
+The `fonts` window option is a convenience over this: `render(<App />, { fonts: [path] })`
+and `createTestRoot({ fonts: [path] })` read each file and call `registerFont()` with its
+bytes as soon as the renderer exists, so the same checks apply. An unreadable path throws
+naming the path, before any window opens. Relative paths resolve against the process's
+current working directory.
 
 Text that already named the family repaints with the font once it is
 registered, so there is no need to register before the first render. Register
@@ -2909,6 +2916,9 @@ header. `style` is the surface, so the card look is yours.
 the theme. Rows are a fixed height, so `fontSize` alone scales that height by the
 theme's ratio; pass `lineHeight` to set it exactly.
 
+The theme's `fontSans` and `fontMono` set the default families. For a custom font, load
+the file with the `fonts` window option (see [Usage](#usage)).
+
 Two things stay owned by the element: lines **never wrap**, and the block is its
 own horizontal scroller. A long line pans on a horizontal wheel inside it, so
 `whiteSpace` and `overflowX` in `style` do nothing.
@@ -3502,6 +3512,8 @@ order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 
 **Text:** `fontSize`, `fontFamily`, `fontWeight`, `textAlign`, `lineHeight`, `whiteSpace`, `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
 
+`fontFamily` resolves installed fonts. To use your own, pass the files in the `fonts` window option or call [`registerFont()`](#custom-fonts). Variable fonts render only their default instance, so use one static file per weight. The family name must match the font's family name exactly.
+
 **Selection:** `userSelect` (`"text"` | `"none"`), `selectionColor` — both inherit down the tree
 
 **Focus:** `focusVisible`. See [Focus styles](#focus-styles)
@@ -3845,6 +3857,8 @@ const events = renderer.drainNativeEvents()
 renderer.captureScreenshot('/tmp/test.png')
 const text = renderer.getAllText()
 ```
+
+`createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
 
 ### Testing native elements
 

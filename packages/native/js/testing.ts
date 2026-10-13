@@ -24,6 +24,7 @@ import type {
   PathPromptOptions,
   WindowKeyEventHandlers,
 } from "./host.js"
+import { readFontFiles } from "./fonts.js"
 import { createRendererState } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
@@ -119,6 +120,8 @@ interface NativeTestRendererConstructor {
 export interface TestRendererOptions {
   width?: number
   height?: number
+  /** Font files registered right after the renderer is created. See `WindowFontsOption`. */
+  fonts?: string[]
   /** Framework scheduling boundary for events drained from native. */
   dispatchEvent?: (event: EventPayload) => void
 }
@@ -196,7 +199,9 @@ export class TestRenderer implements NativeRenderer {
         "TestGpuixRenderer is macOS and Windows only. Linux builds have no test-support because wgpu cannot read a rendered image back yet. GpuixRenderer still works on Linux."
       )
     }
+    const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options.width, options.height)
+    for (const font of fonts) this.native.registerFont(font)
     this.applyBatch = this.native.applyBatch.bind(this.native)
     this.focusNext = this.native.focusNext.bind(this.native)
     this.focusPrevious = this.native.focusPrevious.bind(this.native)

@@ -197,6 +197,7 @@ interface RenderOptions extends WindowOptions, RootEventHandlers {
 | `appName`                         | Name inside macOS Hide and Quit items                      |
 | `focus`                           | `false` opens behind the active app                        |
 | `show`                            | `false` opens hidden. Call `activateWindow()` to reveal it |
+| `fonts`                           | Font files passed to `registerFont`, so `fontFamily` finds them |
 | `debugFrameOverlay`               | `"hidden"`, `"minimal"`, `"full"`                          |
 | `renderer`                        | Inject a `TestRenderer` or custom host                     |
 | `onEvent`                         | Every dispatched native event                              |
@@ -216,6 +217,8 @@ render(() => <App />, {
   debugFrameOverlay: 'full',
 })
 ```
+
+**`fonts`** is a convenience over `renderer.registerFont()`: it reads each `.ttf` or `.otf` file and registers its bytes right after the window opens. Pass absolute paths; relative ones resolve against the process's current working directory. An unreadable path throws before the window opens. GPUIX ships no fonts. Variable fonts render only their default instance, so pass one static file per weight, and set `fontFamily` to the font's exact family name.
 
 **`createRenderer()`** stays public for tests and custom hosts. Pass `{ renderer }` into `render()` when you already have one.
 
@@ -567,6 +570,8 @@ interface TestRoot {
 ```
 
 `createTestRoot()` opens **no window**. It uses the GPU test renderer on macOS and Windows. Linux has no test renderer yet.
+
+`createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
 
 <Aside>
 <Info>
