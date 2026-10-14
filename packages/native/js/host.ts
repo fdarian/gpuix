@@ -10,6 +10,7 @@ import type {
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
 import type { PointerEventProps } from "./events/types.js"
+import type { ScrollEvent, WheelEvent } from "./scroll.js"
 
 export type {
   DebugFrameOverlayStats,
@@ -40,6 +41,7 @@ export * from "./mutations.js"
 export * from "./observers.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
+export * from "./scroll.js"
 
 export type DimensionValue = number | string
 
@@ -266,15 +268,26 @@ export interface StyleDesc {
   lineClamp?: number
   textDecoration?: "underline" | "line-through" | "none"
 
+  /** `"visible"` (default), `"hidden"` and `"clip"` (both clip), `"scroll"` and `"auto"`
+   *  (both scroll; scrollbars are overlays, so they differ in nothing). Overflow never
+   *  changes `display` or the element's children. */
   overflow?: string
   overflowX?: string
   overflowY?: string
   /** Colour of the scrollbar thumb. Setting it paints a native thumb over a container
-   *  that scrolls (`overflow: "scroll"`), on each axis that has more to show. The
+   *  that scrolls (`overflow: "scroll"` or `"auto"`), on each axis that has more to show. The
    *  thumb follows the scroll offset in the frame it paints, and takes no pointer input. */
   scrollbarColor?: string
   /** Thickness of that thumb in px. Defaults to 6. */
   scrollbarWidth?: number
+  /** What a scroller at its limit does with the wheel it cannot use, like CSS. `"auto"`
+   *  (default) passes it to the scroller around it, `"contain"` and `"none"` keep it. */
+  overscrollBehavior?: "auto" | "contain" | "none"
+  overscrollBehaviorX?: "auto" | "contain" | "none"
+  overscrollBehaviorY?: "auto" | "contain" | "none"
+  /** `"smooth"` animates `scrollTo` and `scrollIntoView` calls that name no `behavior`
+   *  (about 300 to 450 ms, firing `onScroll` each frame). An explicit `behavior` wins. */
+  scrollBehavior?: "auto" | "smooth"
 
   cursor?: CursorValue
   /** `"none"` makes the element never the target of a pointer event, so the
@@ -523,17 +536,20 @@ export interface HostProps extends AriaProps, PointerEventProps {
   onFocusOut?: (event: EventPayload) => void
 
   // ── Scroll events ──────────────────────────────────────────────
-  onScroll?: (event: EventPayload) => void
-
   /**
-   * The scroll offset of a `overflow: "scroll"` element changed, however it
-   * moved: wheel, scrollbar drag, `scrollTo`, `scrollIntoView`. `scrollX` and
-   * `scrollY` are the pair `getScrollOffset` returns: 0 at the start and
-   * negative as the content scrolls. The position at the first paint is not
-   * reported, only movement after it. Not for `<virtual-list>`; use
-   * `onVisibleRange`.
+   * One wheel or trackpad tick over the element, before any scroller applies it. Like
+   * the DOM `wheel`: `deltaY` is positive for down, `deltaMode` is always `0` (a mouse
+   * wheel's lines are converted to pixels), and it fires whether or not anything scrolls.
    */
-  onScrollChange?: (event: EventPayload) => void
+  onWheel?: (event: WheelEvent) => void
+  /**
+   * The scroll offset of an `overflow: "scroll"` or `"auto"` element changed, however it
+   * moved: wheel, scrollbar drag, keys, `scrollTo`, `scrollIntoView`, a smooth animation,
+   * or content shrinking under it. `scrollTop` and `scrollLeft` are read from the target,
+   * as on the DOM element. Does not bubble. The position at the first paint is not
+   * reported, only movement after it. Not for `<virtual-list>`; use `onVisibleRange`.
+   */
+  onScroll?: (event: ScrollEvent) => void
 
   // ── Layout events ──────────────────────────────────────────────
   /**
@@ -888,6 +904,8 @@ export type NativeRenderer = MutationHost &
       | "requestPointerLock"
       | "exitPointerLock"
       | "pointerLockElement"
+      | "getScrollMetrics"
+      | "scrollByKey"
       | "setImage"
       | "setImagePixels"
       | "selectText"

@@ -13,6 +13,7 @@ import type {
   WindowEventHandler,
   WindowKeyEventHandler,
 } from "./host.js"
+import { shapeScrollEvent } from "./scroll.js"
 
 export interface RendererRootHandlers {
   eventHandlers?: EventHandlerMap
@@ -219,7 +220,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     dispatch(received) {
       const root = active
       if (!root) return false
-      const event = normalizeEventType(received)
+      const event = shapeScrollEvent(normalizeEventType(received))
       if (deliverObservation(renderer, event)) return true
       if (!handlesEvent(root, event)) return false
       const run = () => {

@@ -59,6 +59,7 @@ export interface MotionDivProps extends MotionProps {
   onKeyUp?: Props["onKeyUp"]
   onFocus?: Props["onFocus"]
   onBlur?: Props["onBlur"]
+  onWheel?: Props["onWheel"]
   onScroll?: Props["onScroll"]
   onDrop?: Props["onDrop"]
   onMotionComplete?: Props["onMotionComplete"]

@@ -187,9 +187,18 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
       onKeyDown(event: KeyEvent) {
         props.onKeyDown?.(event)
         if (disabled()) return
-        if (event.key === "ArrowDown") state.open() ? state.move(1) : state.setOpen(true)
-        else if (event.key === "ArrowUp") state.open() ? state.move(-1) : state.setOpen(true)
-        else if (event.key === "Enter" || event.key === " ") state.setOpen(!state.open())
+        // preventDefault keeps the key from also scrolling, which is what an arrow key or
+        // Space does when nothing claims it.
+        if (event.key === "ArrowDown") {
+          event.preventDefault()
+          state.open() ? state.move(1) : state.setOpen(true)
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault()
+          state.open() ? state.move(-1) : state.setOpen(true)
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          state.setOpen(!state.open())
+        }
       },
     }, ["children"]),
     defaultTabIndex: 0,
@@ -241,9 +250,14 @@ export function SelectContent(props: SelectContentProps): JSX.Element {
               props.onKeyDown?.(event)
               // The popup is modal, like Base UI: Tab stays inside until it closes.
               if (event.key === "Tab") event.preventDefault()
-              else if (event.key === "ArrowDown") state.move(1)
-              else if (event.key === "ArrowUp") state.move(-1)
-              else if ((event.key === "Enter" || event.key === " ") && state.active()) {
+              else if (event.key === "ArrowDown") {
+                event.preventDefault()
+                state.move(1)
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault()
+                state.move(-1)
+              } else if ((event.key === "Enter" || event.key === " ") && state.active()) {
+                event.preventDefault()
                 state.select(state.active()!)
               }
             },

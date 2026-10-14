@@ -25,6 +25,7 @@ import type {
   NativeRenderer,
   RootEventHandlers,
   TextControlSelection,
+  ScrollableElement,
   WindowKeyEventHandlers,
 } from "@gpuix/native/host"
 
@@ -129,7 +130,6 @@ export interface Instance extends Partial<FocusableElement> {
   id: number
   type: ElementType
   props: Props
-  scrollIntoView?(): void
   setPointerCapture?(pointerId: number): void
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean
@@ -174,6 +174,7 @@ export interface TextInstance {
 /** What a `ref` receives: the methods are attached before a ref sees the instance. */
 export type PublicInstance = Instance &
   FocusableElement &
+  ScrollableElement &
   Required<Pick<Instance, "getBoundingClientRect" | typeof HOST_BINDING>>
 
 export interface HostContext {

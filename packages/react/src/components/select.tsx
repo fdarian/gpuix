@@ -247,13 +247,18 @@ export const SelectTrigger = forwardRef<PublicInstance, SelectTriggerProps>(
       onKeyDown: (event: KeyEvent) => {
         onKeyDown?.(event)
         if (disabled) return
+        // preventDefault keeps the key from also scrolling, which is what an arrow key or
+        // Space does when nothing claims it.
         if (event.key === "ArrowDown" || (event.key === "n" && event.modifiers?.ctrl)) {
+          event.preventDefault()
           if (!context.open) context.setOpen(true)
           else context.moveActive(1)
         } else if (event.key === "ArrowUp" || (event.key === "p" && event.modifiers?.ctrl)) {
+          event.preventDefault()
           if (!context.open) context.setOpen(true)
           else context.moveActive(-1)
         } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
           context.setOpen(!context.open)
         }
       },
@@ -317,10 +322,13 @@ export const SelectContent = forwardRef<PublicInstance, SelectContentProps>(
             }
             if (context.disabled) return
             if (event.key === "ArrowDown" || (event.key === "n" && event.modifiers?.ctrl)) {
+              event.preventDefault()
               context.moveActive(1)
             } else if (event.key === "ArrowUp" || (event.key === "p" && event.modifiers?.ctrl)) {
+              event.preventDefault()
               context.moveActive(-1)
             } else if ((event.key === "Enter" || event.key === " ") && context.activeValue) {
+              event.preventDefault()
               context.selectValue(context.activeValue)
             }
           }}

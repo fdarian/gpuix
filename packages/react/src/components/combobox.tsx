@@ -272,8 +272,10 @@ export const ComboboxInput = forwardRef<PublicInstance, ComboboxInputProps>(
           onKeyDown?.(event)
           if (disabled) return
           if (event.key === "ArrowDown" || (event.key === "n" && event.modifiers?.ctrl)) {
+            event.preventDefault()
             context.moveActive(1)
           } else if (event.key === "ArrowUp" || (event.key === "p" && event.modifiers?.ctrl)) {
+            event.preventDefault()
             context.moveActive(-1)
           } else if (event.key === "Enter" && context.activeIndex !== null) {
             const item = context.filteredItems[context.activeIndex]
@@ -313,7 +315,10 @@ export const ComboboxTrigger = forwardRef<PublicInstance, ComboboxTriggerProps>(
         onKeyDown: (event) => {
           onKeyDown?.(event)
           if (disabled) return
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") context.setOpen(true)
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault()
+            context.setOpen(true)
+          }
         },
       },
       ref,

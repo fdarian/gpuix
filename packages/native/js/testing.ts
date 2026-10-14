@@ -66,7 +66,8 @@ interface NativeTestRendererApi extends NativeRenderer {
     y: number,
     deltaX: number,
     deltaY: number,
-    modifiers?: string
+    modifiers?: string,
+    phase?: string
   ): void
   simulateMouseMove(
     x: number,
@@ -111,9 +112,14 @@ interface NativeTestRendererApi extends NativeRenderer {
   getRootId(): number | null
   getWindowSize(): { width: number; height: number }
   getAllText(): string[]
-  scrollTo(elementId: number, x: number, y: number): void
+  scrollTo(elementId: number, x: number, y: number, behavior?: string): void
   scrollToItem(elementId: number, index: number, offsetInItem?: number): void
-  scrollIntoView(elementId: number): void
+  scrollIntoView(
+    elementId: number,
+    block?: string,
+    inline?: string,
+    behavior?: string
+  ): void
   setPointerCapture(elementId: number, pointerId: number): void
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
@@ -124,6 +130,8 @@ interface NativeTestRendererApi extends NativeRenderer {
   pointerLockElement(): number | null
   simulatePointerLockGranting(granting: boolean): void
   simulatePointerLockLost(): void
+  getScrollMetrics(elementId: number): number[] | null
+  scrollByKey(key: string, shift: boolean): boolean
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   selectText(elementId: number): void
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
@@ -184,6 +192,11 @@ export interface MouseMovement {
   x: number
   y: number
 }
+
+/** Where a simulated wheel event sits in a gesture. A call that names none starts a
+ *  gesture of its own; the scroller that took a gesture's first delta keeps the rest of
+ *  it, so continue one with `"moved"`. */
+export type ScrollGesturePhase = "started" | "moved" | "ended" | "cancelled"
 
 export type TestWindowOptions = TestRendererOptions & WindowKeyEventHandlers
 
@@ -454,16 +467,18 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** End-to-end: simulate scroll wheel through GPUI →
-   *  dispatch resulting events to the framework. */
+   *  dispatch resulting events to the framework. Deltas follow GPUI: negative `deltaY`
+   *  scrolls down. */
   nativeSimulateScrollWheel(
     x: number,
     y: number,
     deltaX: number,
     deltaY: number,
-    modifiers?: string
+    modifiers?: string,
+    phase?: ScrollGesturePhase
   ): void {
     this.native.flush()
-    this.native.simulateScrollWheel(x, y, deltaX, deltaY, modifiers)
+    this.native.simulateScrollWheel(x, y, deltaX, deltaY, modifiers, phase)
     this.dispatchNativeEvents()
   }
 
@@ -475,9 +490,10 @@ export class TestRenderer implements NativeRenderer {
     y: number,
     deltaX: number,
     deltaY: number,
-    modifiers?: string
+    modifiers?: string,
+    phase?: ScrollGesturePhase
   ): void {
-    this.native.simulateScrollWheel(x, y, deltaX, deltaY, modifiers)
+    this.native.simulateScrollWheel(x, y, deltaX, deltaY, modifiers, phase)
     this.dispatchNativeEvents()
   }
 
@@ -787,9 +803,9 @@ export class TestRenderer implements NativeRenderer {
   /** Set the scroll offset of a scrollable element (overflow: "scroll").
    *  x and y are negative pixel values (scroll down = more negative y).
    *  Call flush() internally to apply. */
-  scrollTo(elementId: number, x: number, y: number): void {
+  scrollTo(elementId: number, x: number, y: number, behavior?: string): void {
     this.native.flush()
-    this.native.scrollTo(elementId, x, y)
+    this.native.scrollTo(elementId, x, y, behavior)
     // Flush again to re-render with the new offset
     this.native.flush()
   }
@@ -806,9 +822,16 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
-  scrollIntoView(elementId: number): void {
+  /** The DOM's `scrollIntoView`: every scrollable ancestor scrolls until the element sits
+   *  where `block` (default `"start"`) and `inline` (default `"nearest"`) ask. */
+  scrollIntoView(
+    elementId: number,
+    block?: string,
+    inline?: string,
+    behavior?: string
+  ): void {
     this.native.flush()
-    this.native.scrollIntoView(elementId)
+    this.native.scrollIntoView(elementId, block, inline, behavior)
     this.dispatchNativeEvents()
     this.native.flush()
   }
@@ -862,6 +885,22 @@ export class TestRenderer implements NativeRenderer {
   simulatePointerLockLost(): void {
     this.native.simulatePointerLockLost()
     this.dispatchNativeEvents()
+  }
+
+  /** The default action of a scrolling key. See `scrollByKey` on the native renderer. */
+  scrollByKey(key: string, shift: boolean): boolean {
+    this.native.flush()
+    const scrolled = this.native.scrollByKey(key, shift)
+    this.dispatchNativeEvents()
+    this.native.flush()
+    return scrolled
+  }
+
+  /** `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or
+   *  null for an element that has not been painted. */
+  getScrollMetrics(elementId: number): number[] | null {
+    this.native.flush()
+    return this.native.getScrollMetrics(elementId)
   }
 
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {

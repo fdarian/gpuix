@@ -10,6 +10,7 @@ import type { HostEventHandler } from "@gpuix/native/host"
 import {
   BUILT_IN_TYPES,
   createElementMethods,
+  defineScrollMembers,
   blurHostElement,
   eventTypesWithOverrides,
   focusHostElement,
@@ -86,9 +87,10 @@ function attachHostMethods(instance: Instance): PublicInstance {
     throw new Error(`Host element ${instance.id} was handed out before it was mounted.`)
   }
   const container = state.container
-  instance.scrollIntoView = () => {
-    container.nativeRenderer.scrollIntoView?.(instance.id)
-  }
+  defineScrollMembers(instance, () => ({
+    renderer: container.nativeRenderer,
+    id: instance.id,
+  }))
   Object.assign(instance, createElementMethods(container.nativeRenderer, instance.id))
   instance.focus = (options) => focusHostElement(container.nativeRenderer, instance.id, options)
   instance.blur = () => blurHostElement(container.nativeRenderer, instance.id)

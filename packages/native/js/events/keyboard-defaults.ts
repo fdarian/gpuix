@@ -6,6 +6,7 @@ import {
   type DomDispatchResult,
   type DomEvent,
 } from "./dispatch.js"
+import { scrollKeyName } from "../scroll.js"
 import { isDragEvent } from "./drag.js"
 import { handlerEventType, hasDomListener, isOutsidePress } from "./route.js"
 import { dispatchPropagating, document, window } from "./window-target.js"
@@ -111,5 +112,8 @@ function runKeyDefault(root: ActiveRoot, event: DomEvent, context: RootEventCont
   } else if (event.key === "Tab" && root.handlers.tabNavigation !== false) {
     if (event.modifiers?.shift) context.renderer.focusPrevious?.()
     else context.renderer.focusNext?.()
+  } else {
+    const scrollKey = scrollKeyName(event.key)
+    if (scrollKey) context.renderer.scrollByKey?.(scrollKey, Boolean(event.modifiers?.shift))
   }
 }

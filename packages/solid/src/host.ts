@@ -3,6 +3,7 @@
 import {
   BUILT_IN_TYPES,
   createElementMethods,
+  defineScrollMembers,
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
   blurHostElement,
@@ -34,6 +35,7 @@ import type {
   MutationRenderer,
   NativeRenderer,
   SelectionDirection,
+  ScrollableElement,
   StyleDesc,
   TextControlHost,
 } from "@gpuix/native/host"
@@ -96,10 +98,6 @@ export class HostElement {
   readonly mountListeners = new Set<() => void>()
 
   constructor(readonly type: ElementType) {}
-
-  scrollIntoView(): void {
-    this.root?.nativeRenderer.scrollIntoView?.(this.id)
-  }
 
   setPointerCapture(pointerId: number): void {
     this.methods().setPointerCapture(pointerId)
@@ -236,6 +234,13 @@ export class HostElement {
     )
   }
 }
+
+/** The DOM scroll members: `scrollTop`, `scrollTo`, `scrollIntoView` and the rest. */
+export interface HostElement extends ScrollableElement {}
+defineScrollMembers(HostElement.prototype, (element: HostElement) => ({
+  renderer: element.root?.nativeRenderer,
+  id: element.id,
+}))
 
 export class HostText {
   readonly kind = "text" as const

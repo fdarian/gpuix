@@ -113,9 +113,9 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onBlur", "blur"],
   ["onFocusIn", "focusIn"],
   ["onFocusOut", "focusOut"],
+  ["onWheel", "wheel"],
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
-  ["onScrollChange", "scrollChange"],
 ]
 
 export const EVENT_PROP_NAMES: ReadonlySet<string> = new Set(
