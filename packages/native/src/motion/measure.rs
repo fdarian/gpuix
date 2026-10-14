@@ -6,7 +6,7 @@
 //! out value. Layout only exists after the frame is built, so the paint of one
 //! frame records it here and the build of the next frame reads it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -54,19 +54,35 @@ impl Measurement {
 /// Shared with the paint closures, like the paint reports, so a handle is
 /// cheap to clone and every clone sees the same map.
 #[derive(Clone, Default)]
-pub(crate) struct Measurements(Rc<RefCell<HashMap<u64, Measurement>>>);
+pub(crate) struct Measurements {
+    by_element: Rc<RefCell<HashMap<u64, Measurement>>>,
+    painted_frames: Rc<Cell<u64>>,
+}
 
 impl Measurements {
     pub(crate) fn get(&self, id: u64) -> Option<Measurement> {
-        self.0.borrow().get(&id).copied()
+        self.by_element.borrow().get(&id).copied()
     }
 
     pub(crate) fn remove(&self, id: u64) {
-        self.0.borrow_mut().remove(&id);
+        self.by_element.borrow_mut().remove(&id);
     }
 
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
-        self.0.borrow_mut().retain(|id, _| keep(*id));
+        self.by_element.borrow_mut().retain(|id, _| keep(*id));
+    }
+
+    /// How many frames have been painted. An element without a measurement
+    /// after a frame was painted is not in that frame at all.
+    pub(crate) fn painted_frames(&self) -> u64 {
+        self.painted_frames.get()
+    }
+
+    /// The `on_painted` listener for the root element, which every painted
+    /// frame includes.
+    pub(crate) fn frame_counter(&self) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+        let painted_frames = self.painted_frames.clone();
+        move |_, _, _| painted_frames.set(painted_frames.get() + 1)
     }
 
     /// The `on_painted_layout` listener that keeps `id` measured. `border` is
@@ -76,7 +92,7 @@ impl Measurements {
         id: u64,
         border: VerticalBorder,
     ) -> impl Fn(Bounds<Pixels>, LayoutId, &mut Window, &mut App) + 'static {
-        let measurements = self.0.clone();
+        let measurements = self.by_element.clone();
         move |bounds, layout_id, window, _| {
             let content = window.layout_content_size(layout_id);
             let measurement = Measurement {
@@ -202,8 +218,8 @@ mod tests {
             parent_content: None,
             scale_factor: 1.0,
         };
-        measurements.0.borrow_mut().insert(1, measurement);
-        measurements.0.borrow_mut().insert(2, measurement);
+        measurements.by_element.borrow_mut().insert(1, measurement);
+        measurements.by_element.borrow_mut().insert(2, measurement);
         assert_eq!(measurements.get(1), Some(measurement));
         measurements.remove(1);
         assert_eq!(measurements.get(1), None);

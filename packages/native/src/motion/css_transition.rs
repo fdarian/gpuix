@@ -401,11 +401,58 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
     }
 }
 
-/// Rejects a style whose `transition*` values, in it or in a state style, do
-/// not parse, so a bad value fails where it is set instead of silently never
-/// running.
+/// CSS `interpolate-size`: whether a transition may run between a length and a
+/// sizing keyword (`auto`, or the `auto`/`none` an unset size computes to).
+/// Inherited, as in CSS.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum InterpolateSize {
+    #[default]
+    NumericOnly,
+    AllowKeywords,
+}
+
+impl InterpolateSize {
+    fn parse(text: &str) -> Result<Self, String> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "numeric-only" => Ok(Self::NumericOnly),
+            "allow-keywords" => Ok(Self::AllowKeywords),
+            _ => Err(format!(
+                "interpolateSize must be \"numeric-only\" or \"allow-keywords\", got {text:?}"
+            )),
+        }
+    }
+
+    /// What `style` declares. A value that does not parse was rejected when the
+    /// style was set, so it reads as undeclared here, as an invalid CSS
+    /// declaration does.
+    pub(crate) fn declared(style: &StyleDesc) -> Option<Self> {
+        Self::parse(style.interpolate_size.as_deref()?).ok()
+    }
+
+    fn allows_keywords(self) -> bool {
+        self == Self::AllowKeywords
+    }
+}
+
+/// Whether a transition on `prop` is between a length and a keyword, which
+/// browsers swap at once unless `interpolate-size` allows it.
+fn is_keyword_change(
+    prop: AnimProp,
+    before: Option<&AnimValue>,
+    after: Option<&AnimValue>,
+) -> bool {
+    let keyword = |value: Option<&AnimValue>| matches!(value, None | Some(AnimValue::Auto));
+    prop.size_axis().is_some() && (keyword(before) || keyword(after))
+}
+
+/// Rejects a style whose `transition*` or `interpolateSize` values, in it or in
+/// a state style, do not parse, so a bad value fails where it is set instead of
+/// silently never running.
 pub(crate) fn validate_transitions(style: &StyleDesc) -> Result<(), String> {
     TransitionList::parse(style)?;
+    if let Some(text) = style.interpolate_size.as_deref() {
+        InterpolateSize::parse(text)?;
+    }
     for (name, state) in [
         ("hover", &style.hover),
         ("active", &style.active),
@@ -413,6 +460,9 @@ pub(crate) fn validate_transitions(style: &StyleDesc) -> Result<(), String> {
     ] {
         if let Some(state) = state {
             TransitionList::parse(state).map_err(|error| format!("{name}.{error}"))?;
+            if let Some(text) = state.interpolate_size.as_deref() {
+                InterpolateSize::parse(text).map_err(|error| format!("{name}.{error}"))?;
+            }
         }
     }
     Ok(())
@@ -653,6 +703,7 @@ impl ElementState {
         after: &StyleDesc,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
+        interpolate_size: InterpolateSize,
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -676,7 +727,7 @@ impl ElementState {
                     .collect()
             };
             for prop in props {
-                self.restyle(id, prop, after, motion, measurement, now, events);
+                self.restyle(id, prop, after, motion, measurement, interpolate_size, now, events);
             }
             if style_changed {
                 self.previous = after.clone();
@@ -766,6 +817,7 @@ impl ElementState {
         after: &StyleDesc,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
+        interpolate_size: InterpolateSize,
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -793,7 +845,10 @@ impl ElementState {
                 return;
             }
             let before = declared_value(prop, &self.previous);
-            if before == after_value {
+            if before == after_value
+                || (!interpolate_size.allows_keywords()
+                    && is_keyword_change(prop, before.as_ref(), after_value.as_ref()))
+            {
                 return;
             }
             let from = laid_out_start(prop, before.as_ref(), measurement);
@@ -824,6 +879,10 @@ impl ElementState {
         let Some(end) = after_value else {
             return;
         };
+        if !interpolate_size.allows_keywords() && is_keyword_change(prop, Some(&current), Some(&end))
+        {
+            return;
+        }
         let Some(to) = laid_out_end(&end, measurement) else {
             return;
         };
@@ -880,20 +939,23 @@ impl CssTransitions {
     }
 
     /// Feeds one frame's after-change style. The first style an element is seen
-    /// with never transitions: there is nothing before it.
+    /// with never transitions: there is nothing before it. `inherited` is the
+    /// `interpolateSize` of the parent, which `after` overrides when it sets one.
     pub(crate) fn update(
         &mut self,
         id: u64,
         after: &StyleDesc,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
+        inherited: InterpolateSize,
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
             self.states.insert(id, ElementState::new(id, after));
             return None;
         };
-        state.step(id, after, motion, measurement, now, &mut self.events);
+        let interpolate_size = InterpolateSize::declared(after).unwrap_or(inherited);
+        state.step(id, after, motion, measurement, interpolate_size, now, &mut self.events);
         self.active |= !state.running.is_empty();
         let values = state.values(now);
         (!values.is_empty()).then_some(TransitionStyle(values))
@@ -1098,6 +1160,8 @@ mod tests {
     struct Clock {
         origin: Instant,
         transitions: CssTransitions,
+        /// The `interpolateSize` an ancestor gives the element.
+        inherited: InterpolateSize,
     }
 
     impl Clock {
@@ -1105,6 +1169,7 @@ mod tests {
             Self {
                 origin: Instant::now(),
                 transitions: CssTransitions::default(),
+                inherited: InterpolateSize::default(),
             }
         }
 
@@ -1136,7 +1201,7 @@ mod tests {
             let mut resolved = after.clone();
             if let Some(values) =
                 self.transitions
-                    .update(1, after, motion, measurement, self.at(millis))
+                    .update(1, after, motion, measurement, self.inherited, self.at(millis))
             {
                 values.apply_to(&mut resolved);
             }
@@ -1338,6 +1403,7 @@ mod tests {
             &serde_json::json!({ "animate": { "width": 100.0 }, "transition": { "duration": 1.0 } }),
             None,
             None,
+            0,
             now,
         )
         .unwrap();
@@ -1468,11 +1534,11 @@ mod tests {
         }
 
         fn closed() -> StyleDesc {
-            style(r#"{ "height": 0, "transition": "height 1s linear" }"#)
+            style(r#"{ "height": 0, "interpolateSize": "allow-keywords", "transition": "height 1s linear" }"#)
         }
 
         fn auto() -> StyleDesc {
-            style(r#"{ "transition": "height 1s linear" }"#)
+            style(r#"{ "interpolateSize": "allow-keywords", "transition": "height 1s linear" }"#)
         }
 
         fn height_of(style: &StyleDesc) -> f64 {
@@ -1513,7 +1579,7 @@ mod tests {
             let measured = measurement(80.0, 80.0);
             clock.frame_measured(0, &auto(), None, Some(&measured));
 
-            let target = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            let target = style(r#"{ "height": 100, "interpolateSize": "allow-keywords", "transition": "height 1s linear" }"#);
             assert_eq!(height_of(&clock.frame_measured(100, &target, None, Some(&measured))), 80.0);
             assert_eq!(height_of(&clock.frame_measured(600, &target, None, Some(&measured))), 90.0);
             assert_eq!(height_of(&clock.frame_measured(1100, &target, None, Some(&measured))), 100.0);
@@ -1540,7 +1606,7 @@ mod tests {
         fn interrupting_a_pixel_transition_toward_auto_runs_to_the_natural_height() {
             let mut clock = Clock::new();
             let measured = measurement(50.0, 80.0);
-            let tall = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            let tall = style(r#"{ "height": 100, "interpolateSize": "allow-keywords", "transition": "height 1s linear" }"#);
             clock.frame_measured(0, &closed(), None, Some(&measured));
             clock.frame_measured(0, &tall, None, Some(&measured));
             assert_eq!(height_of(&clock.frame_measured(500, &tall, None, Some(&measured))), 50.0);
@@ -1557,7 +1623,7 @@ mod tests {
             assert_eq!(clock.frame(100, &auto()).height, None);
             assert!(clock.events().is_empty());
             clock.frame(200, &auto());
-            let target = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            let target = style(r#"{ "height": 100, "interpolateSize": "allow-keywords", "transition": "height 1s linear" }"#);
             assert_eq!(height_of(&clock.frame(300, &target)), 100.0);
         }
 
@@ -1565,8 +1631,8 @@ mod tests {
         fn width_to_or_from_auto_stays_instant() {
             let mut clock = Clock::new();
             let measured = measurement(10.0, 10.0);
-            let sized = style(r#"{ "width": 50, "transition": "width 1s linear" }"#);
-            let unset = style(r#"{ "transition": "width 1s linear" }"#);
+            let sized = style(r#"{ "width": 50, "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#);
+            let unset = style(r#"{ "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#);
             clock.frame_measured(0, &sized, None, Some(&measured));
             assert_eq!(clock.frame_measured(100, &unset, None, Some(&measured)).width, None);
             assert_eq!(width_of(&clock.frame_measured(200, &sized, None, Some(&measured))), 50.0);
@@ -1577,13 +1643,131 @@ mod tests {
         fn an_unset_max_height_starts_from_the_laid_out_height() {
             let mut clock = Clock::new();
             let measured = measurement(80.0, 80.0);
-            let unset = style(r#"{ "transition": "max-height 1s linear" }"#);
-            let capped = style(r#"{ "maxHeight": 0, "transition": "max-height 1s linear" }"#);
+            let unset = style(r#"{ "interpolateSize": "allow-keywords", "transition": "max-height 1s linear" }"#);
+            let capped = style(r#"{ "maxHeight": 0, "interpolateSize": "allow-keywords", "transition": "max-height 1s linear" }"#);
             clock.frame_measured(0, &unset, None, Some(&measured));
             let started = clock.frame_measured(100, &capped, None, Some(&measured));
             assert_eq!(started.max_height, Some(DimensionValue::Pixels(80.0)));
             let middle = clock.frame_measured(600, &capped, None, Some(&measured));
             assert_eq!(middle.max_height, Some(DimensionValue::Pixels(40.0)));
+        }
+
+        fn numeric_only(declared: &str) -> StyleDesc {
+            style(&format!(r#"{{ {declared} "transition": "height 1s linear" }}"#))
+        }
+
+        #[test]
+        fn a_keyword_change_is_discrete_by_default() {
+            let mut clock = Clock::new();
+            let measured = measurement(0.0, 80.0);
+            let closed = numeric_only(r#""height": 0,"#);
+            let open = numeric_only("");
+            clock.frame_measured(0, &closed, None, Some(&measured));
+            assert_eq!(clock.frame_measured(100, &open, None, Some(&measured)).height, None);
+            assert_eq!(clock.frame_measured(600, &open, None, Some(&measured)).height, None);
+            assert!(clock.events().is_empty());
+
+            let measured = measurement(80.0, 80.0);
+            assert_eq!(
+                height_of(&clock.frame_measured(700, &closed, None, Some(&measured))),
+                0.0
+            );
+            assert!(clock.events().is_empty(), "leaving auto is discrete too");
+        }
+
+        #[test]
+        fn an_unset_max_height_is_a_keyword() {
+            let mut clock = Clock::new();
+            let measured = measurement(80.0, 80.0);
+            let unset = style(r#"{ "transition": "max-height 1s linear" }"#);
+            let capped = style(r#"{ "maxHeight": 0, "transition": "max-height 1s linear" }"#);
+            clock.frame_measured(0, &unset, None, Some(&measured));
+            let started = clock.frame_measured(100, &capped, None, Some(&measured));
+            assert_eq!(started.max_height, Some(DimensionValue::Pixels(0.0)));
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn lengths_still_transition_by_default() {
+            let mut clock = Clock::new();
+            let measured = measurement(0.0, 80.0);
+            clock.frame_measured(0, &numeric_only(r#""height": 0,"#), None, Some(&measured));
+            let tall = numeric_only(r#""height": 100,"#);
+            clock.frame_measured(0, &tall, None, Some(&measured));
+            assert_eq!(height_of(&clock.frame_measured(500, &tall, None, Some(&measured))), 50.0);
+        }
+
+        #[test]
+        fn interpolate_size_is_inherited_and_the_element_overrides_it() {
+            let measured = measurement(0.0, 80.0);
+            let closed = numeric_only(r#""height": 0,"#);
+
+            let mut clock = Clock::new();
+            clock.inherited = InterpolateSize::AllowKeywords;
+            clock.frame_measured(0, &closed, None, Some(&measured));
+            clock.frame_measured(100, &numeric_only(""), None, Some(&measured));
+            let middle = clock.frame_measured(600, &numeric_only(""), None, Some(&measured));
+            assert_eq!(height_of(&middle), 40.0);
+
+            let mut clock = Clock::new();
+            clock.inherited = InterpolateSize::AllowKeywords;
+            let own = numeric_only(r#""interpolateSize": "numeric-only","#);
+            clock.frame_measured(0, &closed, None, Some(&measured));
+            clock.frame_measured(100, &own, None, Some(&measured));
+            assert_eq!(clock.frame_measured(600, &own, None, Some(&measured)).height, None);
+        }
+
+        #[test]
+        fn an_interrupt_toward_a_keyword_is_discrete() {
+            let mut clock = Clock::new();
+            let measured = measurement(50.0, 80.0);
+            let tall = numeric_only(r#""height": 100,"#);
+            clock.frame_measured(0, &numeric_only(r#""height": 0,"#), None, Some(&measured));
+            clock.frame_measured(0, &tall, None, Some(&measured));
+            clock.frame_measured(500, &tall, None, Some(&measured));
+            clock.events();
+
+            assert_eq!(clock.frame_measured(500, &numeric_only(""), None, Some(&measured)).height, None);
+            assert_eq!(clock.events(), [(Cancel, "height".to_string(), 0.5)]);
+        }
+
+        #[test]
+        fn a_running_transition_survives_the_value_switching_off() {
+            let mut clock = Clock::new();
+            let measured = measurement(0.0, 80.0);
+            clock.frame_measured(0, &closed(), None, Some(&measured));
+            clock.frame_measured(100, &auto(), None, Some(&measured));
+            let off = numeric_only(r#""interpolateSize": "numeric-only","#);
+            assert_eq!(height_of(&clock.frame_measured(600, &off, None, Some(&measured))), 40.0);
+        }
+
+        #[test]
+        fn a_state_style_can_switch_it_on() {
+            let mut clock = Clock::new();
+            let measured = measurement(0.0, 80.0);
+            let rest = style(r#"{ "height": 0, "transition": "height 1s linear" }"#);
+            let hovered = resolve_state_styles(
+                &style(
+                    r#"{ "height": 0, "transition": "height 1s linear",
+                         "hover": { "height": "auto", "interpolateSize": "allow-keywords" } }"#,
+                ),
+                true,
+                false,
+            );
+            clock.frame_measured(0, &rest, None, Some(&measured));
+            clock.frame_measured(100, &hovered, None, Some(&measured));
+            assert_eq!(height_of(&clock.frame_measured(600, &hovered, None, Some(&measured))), 40.0);
+        }
+
+        #[test]
+        fn an_invalid_interpolate_size_is_an_error() {
+            assert!(validate_transitions(&style(r#"{ "interpolateSize": "allow-keywords" }"#)).is_ok());
+            let error = validate_transitions(&style(r#"{ "interpolateSize": "always" }"#))
+                .unwrap_err();
+            assert!(error.contains("interpolateSize"), "{error}");
+            let error = validate_transitions(&style(r#"{ "hover": { "interpolateSize": "x" } }"#))
+                .unwrap_err();
+            assert!(error.starts_with("hover."), "{error}");
         }
     }
 }

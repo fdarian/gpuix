@@ -394,6 +394,8 @@ pub struct StyleDesc {
     pub transition_duration: Option<String>,
     pub transition_timing_function: Option<String>,
     pub transition_delay: Option<String>,
+    /// `numeric-only` or `allow-keywords`. Inherited, like the CSS property.
+    pub interpolate_size: Option<String>,
 
     // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
     // Uses Box to avoid infinite-size struct (StyleDesc contains StyleDesc).

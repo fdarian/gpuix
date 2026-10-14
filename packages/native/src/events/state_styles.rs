@@ -62,7 +62,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
-        transition_delay,
+        transition_delay, interpolate_size,
         focus_visible, focus_within, keyboard_focus_dim, group, group_hover, group_active,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
@@ -284,6 +284,17 @@ mod tests {
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!(pressed.transition.as_deref(), Some("color 150ms"));
         assert_eq!(pressed.transition_delay.as_deref(), Some("50ms"));
+    }
+
+    #[test]
+    fn a_state_can_set_interpolate_size() {
+        let base = style(
+            r##"{ "interpolateSize": "numeric-only", "hover": { "interpolateSize": "allow-keywords" } }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.interpolate_size.as_deref(), Some("numeric-only"));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.interpolate_size.as_deref(), Some("allow-keywords"));
     }
 
     #[test]

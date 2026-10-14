@@ -4666,6 +4666,7 @@ fn sync_motion_states(
     measurements: &crate::motion::measure::Measurements,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
+    let painted = measurements.painted_frames();
     states.retain(|id, _| tree.motion_ids.contains(id));
     let mut active = false;
     let mut settled = Vec::new();
@@ -4687,7 +4688,7 @@ fn sync_motion_states(
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let created = match svg_attributes {
                     Some(attributes) => crate::motion::MotionState::new_svg(source, attributes, now),
-                    None => crate::motion::MotionState::new(source, base, measurement.as_ref(), now),
+                    None => crate::motion::MotionState::new(source, base, measurement.as_ref(), painted, now),
                 };
                 match created {
                     Ok(state) => entry.insert(state),
@@ -4700,7 +4701,7 @@ fn sync_motion_states(
         };
         let synced = match svg_attributes {
             Some(attributes) => state.sync_svg(source, attributes, now),
-            None => state.sync(source, base, measurement.as_ref(), now),
+            None => state.sync(source, base, measurement.as_ref(), painted, now),
         };
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
@@ -5466,6 +5467,8 @@ pub(crate) struct Inherited {
     /// The combined features, only on the element whose style declares one of the
     /// two: gpui inherits a text style on its own, so descendants add nothing.
     pub font_features: Option<gpui::FontFeatures>,
+    /// The nearest ancestor's `interpolateSize`.
+    pub interpolate_size: crate::motion::InterpolateSize,
 }
 
 impl Inherited {
@@ -5481,6 +5484,7 @@ impl Inherited {
             colors: crate::color::ColorContext::root(color_scheme_of(appearance)),
             font_state: Default::default(),
             font_features: None,
+            interpolate_size: Default::default(),
         }
     }
 
@@ -5513,6 +5517,9 @@ impl Inherited {
             Some("none") => self.pointer_events_none = true,
             Some("auto") => self.pointer_events_none = false,
             _ => {}
+        }
+        if let Some(interpolate_size) = crate::motion::InterpolateSize::declared(style) {
+            self.interpolate_size = interpolate_size;
         }
         self
     }
@@ -6252,7 +6259,9 @@ impl gpui::Render for GpuixView {
             use gpui::prelude::*;
             let drag_move_view = cx.weak_entity();
             let drag_end_view = drag_move_view.clone();
-            let root = gpui::div().size_full();
+            let root = gpui::div()
+                .size_full()
+                .on_painted(self.measurements.frame_counter());
             with_window_menu_actions(root)
                 .child(crate::events::listeners::pointer_frame(
                     cx.weak_entity(),
@@ -6373,6 +6382,7 @@ pub(crate) fn build_element(
                 element.style.as_deref().unwrap_or(&EMPTY_STYLE),
                 focus_visible,
                 measurement.as_ref(),
+                ctx.inherited.interpolate_size,
                 ctx.now,
             )
         });
