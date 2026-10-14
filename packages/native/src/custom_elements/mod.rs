@@ -23,6 +23,7 @@ pub mod markdown;
 pub(crate) mod text_selection;
 pub mod svg_paint;
 pub mod svg_path;
+pub mod svg_tree;
 
 // ── Render context ───────────────────────────────────────────────────
 
