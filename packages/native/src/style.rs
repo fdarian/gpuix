@@ -279,7 +279,18 @@ pub struct StyleDesc {
     pub border_right_width: Option<f64>,
     pub border_bottom_width: Option<f64>,
     pub border_left_width: Option<f64>,
+    /// One to four colours, like CSS `border-color`: `"red"`, `"red blue"`, ...
     pub border_color: Option<String>,
+    pub border_top_color: Option<String>,
+    pub border_right_color: Option<String>,
+    pub border_bottom_color: Option<String>,
+    pub border_left_color: Option<String>,
+    /// CSS shorthands, `"1px solid red"`. The longhands above win over them.
+    pub border: Option<String>,
+    pub border_top: Option<String>,
+    pub border_right: Option<String>,
+    pub border_bottom: Option<String>,
+    pub border_left: Option<String>,
     pub border_radius: Option<f64>,
     pub border_top_left_radius: Option<f64>,
     pub border_top_right_radius: Option<f64>,
@@ -473,6 +484,33 @@ impl StyleDesc {
         if state.border_color.is_none() {
             followers.border_color = follows(&self.border_color);
         }
+        // A border shorthand without a colour is `currentColor`, so it follows too.
+        let shorthand_follows = |value: &Option<String>| {
+            value
+                .as_deref()
+                .filter(|value| {
+                    crate::css::border::parse_border(value).is_some_and(|parsed| {
+                        parsed.width > 0.0 && parsed.color.to_ascii_lowercase().contains("currentcolor")
+                    })
+                })
+                .map(str::to_owned)
+        };
+        macro_rules! follow {
+            ($field:ident, $rule:expr) => {
+                if state.$field.is_none() {
+                    followers.$field = $rule(&self.$field);
+                }
+            };
+        }
+        follow!(border_top_color, follows);
+        follow!(border_right_color, follows);
+        follow!(border_bottom_color, follows);
+        follow!(border_left_color, follows);
+        follow!(border, shorthand_follows);
+        follow!(border_top, shorthand_follows);
+        follow!(border_right, shorthand_follows);
+        follow!(border_bottom, shorthand_follows);
+        follow!(border_left, shorthand_follows);
         if state.outline_color.is_none() {
             followers.outline_color = follows(&self.outline_color);
             if followers.outline_color.is_some() {

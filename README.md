@@ -4008,9 +4008,10 @@ CSS-like styling via the `style` prop:
 >   `position: "absolute"` children: they resolve against the nearest
 >   `relative`, `absolute` or `fixed` ancestor. Put `position: "relative"` on
 >   the parent of anything you place with `top`/`right`/`bottom`/`left`.
-> - **No shorthand values.** `padding` and `border` take numbers, and `margin`
->   takes a number, a percentage or `"auto"`.
->   CSS strings like `"0 16px"`, `"1px solid #fff"`, or `calc()` are ignored.
+> - **Few shorthand values.** `padding` takes numbers and `margin` takes a
+>   number, a percentage or `"auto"`, so CSS strings like `"0 16px"` or
+>   `calc()` are ignored. `border`, `borderColor` and `boxShadow` do take CSS
+>   strings, see below.
 > - **`boxShadow` takes the CSS string or a structured object.** See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
 > - **Do not nest `<text>` in `<text>`.** Adjacent `<text>` siblings merge
@@ -4027,7 +4028,27 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderStyle` (`"solid"` | `"dashed"`), `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+
+### Borders
+
+Widths, colours and corners can differ per side:
+
+```tsx
+<div style={{ borderBottomWidth: 2, borderBottomColor: '#89b4fa' }} />
+<div style={{ borderWidth: 4, borderColor: 'red blue' }} />   {/* top/bottom red, left/right blue */}
+<div style={{ border: '1px solid rgba(0,0,0,.2)', borderTop: '2px dashed currentColor' }} />
+```
+
+`borderColor` takes one to four colours with the CSS meaning. `border` and
+`borderTop` / `borderRight` / `borderBottom` / `borderLeft` take
+`<width> <style> <color>` in any order, with `solid` or `dashed` as the style.
+No style means no border, a missing colour is `currentColor`, and a missing width
+is 3px (`medium`; `thin` is 1px and `thick` 5px). Other line styles (`dotted`,
+`double`, ...) make the value invalid, so it is ignored. `border` is applied
+first, then the side shorthands, then the longhands (`borderWidth`,
+`borderTopColor`, ...). The line style is one for the whole element, because GPUI
+draws one: a `dashed` anywhere makes every side dashed.
 
 ### Layout like CSS
 

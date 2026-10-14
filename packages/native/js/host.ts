@@ -301,7 +301,26 @@ export interface StyleDesc {
   borderRightWidth?: number
   borderBottomWidth?: number
   borderLeftWidth?: number
+  /** One to four colours, like CSS: `"red"`, `"red blue"` (top-bottom, left-right),
+   *  `"red blue green"`, `"red blue green white"` (top, right, bottom, left). One
+   *  invalid colour ignores the whole value. */
   borderColor?: string
+  borderTopColor?: string
+  borderRightColor?: string
+  borderBottomColor?: string
+  borderLeftColor?: string
+  /** CSS shorthands: `"1px solid red"`, `"2px dashed"`, `"none"`. Width, style
+   *  (`solid`, `dashed`, `none`) and colour in any order; no style means no border,
+   *  a missing colour is `currentColor`, a missing width is `medium` (3px). Other
+   *  line styles (`dotted`, `double`, ...) make the value invalid. `border` sets all
+   *  sides, then `borderTop` ... `borderLeft` override one, then the longhands
+   *  (`borderWidth`, `borderColor`, ...) override those. The line style is shared
+   *  by every side, because GPUI has one. */
+  border?: string
+  borderTop?: string
+  borderRight?: string
+  borderBottom?: string
+  borderLeft?: string
   borderRadius?: number
   borderTopLeftRadius?: number
   borderTopRightRadius?: number

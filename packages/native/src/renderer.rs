@@ -7148,6 +7148,7 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(radius) = style.border_bottom_right_radius {
         el = el.rounded_br(gpui::px(radius as f32));
     }
+    el = crate::css::border::apply_shorthands(el, style, colors);
     // `borderWidth: 0` must clear a border, not be ignored: an element that
     // draws its own border needs a way for the caller to remove it.
     if let Some(width) = style.border_width {
@@ -7165,13 +7166,7 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(width) = style.border_left_width {
         el = el.border_l(gpui::px(width.max(0.0) as f32));
     }
-    if let Some(color) = style
-        .border_color
-        .as_deref()
-        .and_then(|value| colors.resolve(value))
-    {
-        el = el.border_color(color);
-    }
+    el = crate::css::border::apply_colors(el, style, colors);
     match style.border_style.as_deref() {
         Some("dashed") => el = el.border_dashed(),
         Some("solid") => el.style().border_style = Some(gpui::BorderStyle::Solid),
