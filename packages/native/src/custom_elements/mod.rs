@@ -22,6 +22,7 @@ mod input_rules;
 pub mod markdown;
 pub(crate) mod text_selection;
 pub mod svg_paint;
+pub mod svg_path;
 
 // ── Render context ───────────────────────────────────────────────────
 

@@ -34,6 +34,10 @@ unicode-segmentation = "1"
 web-time = "1"
 # Checks fonts handed to `registerFont`; GPUI's text system aborts on malformed ones.
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
+# Path data parsing and arc length for `<svg>` children. Both are already in the
+# lockfile through resvg, which rasterises what these serialise.
+kurbo = "0.13"
+svgtypes = "0.16"
 
 # Syntect compiles a grammar's TextMate regexes lazily, on the FIRST highlight
 # of that language, on the frame thread, inside a paint. fancy-regex takes
