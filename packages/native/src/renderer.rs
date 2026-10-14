@@ -5911,21 +5911,6 @@ pub(crate) fn build_host_container(
         let id = element.id;
         let callback = ctx.event_callback.clone();
         match event_type.as_str() {
-            // ── Mouse down outside ───────────────────────────────
-            // Fires when the user clicks OUTSIDE this element.
-            // Critical for "click outside to close" pattern (dropdowns, modals).
-            "mousedownoutside" => {
-                el = el.on_mouse_down_out(move |mouse_event, _window, _cx| {
-                    emit_event_full(&callback, id, "mousedownoutside", |p| {
-                        let (x, y) = point_to_xy(mouse_event.position);
-                        p.x = Some(x);
-                        p.y = Some(y);
-                        p.button = Some(mouse_button_to_u32(mouse_event.button));
-                        p.modifiers = Some(mouse_event.modifiers.into());
-                    });
-                });
-            }
-
             // ── File drop (Finder / OS paths) ────────────────────
             "drop" => {
                 el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {

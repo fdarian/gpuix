@@ -13,7 +13,7 @@
 //!     pointerout, pointerleave (innermost first), mouseout, mouseleave,
 //!     pointerover, pointerenter (outermost first), mouseover, mouseenter
 //!   then the event itself, pointer before mouse
-//!     pointermove/mousemove, pointerdown/mousedown (+ contextmenu),
+//!     pointermove/mousemove, pointerdown/mousedown, mousedownoutside, contextmenu,
 //!     pointerup, lostpointercapture, mouseup, then click, dblclick or auxclick
 //!
 //! A type is only produced when the target or an ancestor listens for it, so a
@@ -32,6 +32,7 @@ use super::state::{is_connected, PointerState, Press};
 const PRIMARY_BUTTON: u32 = 0;
 const SECONDARY_BUTTON: u32 = 2;
 const DOUBLE_CLICK: u32 = 2;
+const MOUSE_DOWN_OUTSIDE: &str = "mousedownoutside";
 
 pub enum PointerAction {
     Move {
@@ -66,6 +67,10 @@ pub struct DomEvent {
     pub event_type: &'static str,
     /// Target first, then each retained ancestor.
     pub path: Vec<u64>,
+    /// The one element the event is delivered to, when it does not go to the
+    /// target and its ancestors: `mousedownoutside` runs at the element that
+    /// listens for it, with the press target in `path`.
+    pub listener: Option<u64>,
     pub related_target: Option<u64>,
     pub button: Option<u32>,
     pub detail: Option<u32>,
@@ -102,7 +107,7 @@ impl Output {
         self.events
             .into_iter()
             .map(|event| EventPayload {
-                element_id: event.target() as f64,
+                element_id: event.listener.unwrap_or(event.target()) as f64,
                 event_type: event.event_type.to_string(),
                 target: Some(event.target() as f64),
                 path: Some(event.path.iter().map(|id| *id as f64).collect()),
@@ -155,6 +160,7 @@ impl Emitter<'_> {
         self.events.push(DomEvent {
             event_type,
             path: event_path(self.tree, target),
+            listener: None,
             related_target: fields.related_target,
             button: fields.button,
             detail: fields.detail,
@@ -162,6 +168,36 @@ impl Emitter<'_> {
             pressed_button: fields.pressed_button,
             hovered: fields.hovered,
         });
+    }
+
+    /// `mousedownoutside` for every element that listens for it and does not
+    /// contain `target` in its logical subtree: the target's retained path is
+    /// the elements it is inside, anchored layers included.
+    fn emit_outside_presses(&mut self, target: u64, fields: Fields) {
+        let path = event_path(self.tree, target);
+        let mut listeners: Vec<u64> = self
+            .tree
+            .elements
+            .iter()
+            .filter(|(id, element)| {
+                element.events().contains(MOUSE_DOWN_OUTSIDE) && !path.contains(id)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        listeners.sort_unstable();
+        for listener in listeners {
+            self.events.push(DomEvent {
+                event_type: MOUSE_DOWN_OUTSIDE,
+                path: path.clone(),
+                listener: Some(listener),
+                related_target: fields.related_target,
+                button: fields.button,
+                detail: fields.detail,
+                offset: self.offset(target),
+                pressed_button: fields.pressed_button,
+                hovered: fields.hovered,
+            });
+        }
     }
 
     fn offset(&self, target: u64) -> Option<(f64, f64)> {
@@ -399,6 +435,7 @@ fn press(
     };
     emitter.emit("pointerdown", target, fields);
     emitter.emit("mousedown", target, fields);
+    emitter.emit_outside_presses(target, fields);
     if button == SECONDARY_BUTTON {
         // Where macOS and Chrome open the context menu: on the press.
         emitter.emit(
@@ -817,6 +854,77 @@ mod tests {
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["mousedown@3", "contextmenu@3"]);
+    }
+
+    fn outside_presses(output: &Output) -> Vec<String> {
+        output
+            .events
+            .iter()
+            .filter(|event| event.event_type == "mousedownoutside")
+            .map(|event| {
+                format!(
+                    "{}<-{}",
+                    event.listener.expect("an outside press has a listener"),
+                    event.target()
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_press_outside_the_subtree_reaches_the_listener_only_with_the_press_as_target() {
+        let tree = tree(&[(3, "mousedownoutside")]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1])));
+        assert_eq!(outside_presses(&output), ["3<-4"]);
+        assert_eq!(output.events[0].path, [4, 1]);
+        let payloads = output.into_payloads();
+        assert_eq!(payloads[0].element_id, 3.0);
+        assert_eq!(payloads[0].target, Some(4.0));
+    }
+
+    #[test]
+    fn a_press_inside_the_element_or_its_anchored_layer_is_not_outside() {
+        let tree = tree(&[(3, "mousedownoutside")]);
+        let mut state = PointerState::default();
+        // The layer (5, content 6) is declared under 3 but paints against the window.
+        for chain in [vec![3, 2, 1], vec![6, 5, 3, 2, 1]] {
+            let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&chain)));
+            assert!(outside_presses(&output).is_empty(), "{chain:?}");
+        }
+    }
+
+    #[test]
+    fn a_press_on_an_overlay_above_the_element_is_outside() {
+        let tree = tree(&[(3, "mousedownoutside")]);
+        let mut state = PointerState::default();
+        // The overlay (4) paints over 3 but is not part of its subtree.
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1])));
+        assert_eq!(outside_presses(&output), ["3<-4"]);
+    }
+
+    #[test]
+    fn an_ancestor_listener_is_not_outside_a_press_on_its_descendant() {
+        let tree = tree(&[(1, "mousedownoutside"), (4, "mousedownoutside")]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[6, 5, 3, 2, 1])));
+        assert_eq!(outside_presses(&output), ["4<-6"]);
+    }
+
+    #[test]
+    fn every_button_fires_an_outside_press_after_mousedown() {
+        let tree = tree(&[(4, "mousedownoutside"), (3, "mousedown")]);
+        let mut state = PointerState::default();
+        for button in [0, 1, 2] {
+            let output = dispatch(&mut state, &tree, &down(button, 1, chain_of(&[3, 2, 1])));
+            assert_eq!(
+                names(&output),
+                ["mousedown@3", "mousedownoutside@3"],
+                "button {button}"
+            );
+            assert_eq!(output.events[1].button, Some(button));
+            dispatch(&mut state, &tree, &up(button, 1, chain_of(&[3, 2, 1])));
+        }
     }
 
     #[test]
