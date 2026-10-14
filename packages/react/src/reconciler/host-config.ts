@@ -8,6 +8,7 @@ import { createContext } from "react"
 import { DefaultEventPriority } from "react-reconciler/constants.js"
 import type { HostEventHandler } from "@gpuix/native/host"
 import {
+  assertSvgPlacement,
   BUILT_IN_TYPES,
   createElementMethods,
   defineScrollMembers,
@@ -167,6 +168,11 @@ function rendererFor(node: HostNode): MutationRenderer {
 
 function nextId(container: Container): number {
   return ++container.ids.nextElementId
+}
+
+/** SVG shapes exist only inside an `<svg>`; text and other elements go anywhere. */
+function assertPlacement(parent: Instance | undefined, child: Instance | TextInstance): void {
+  if ("type" in child) assertSvgPlacement(parent?.type, child.type)
 }
 
 // ── Event wiring helpers ─────────────────────────────────────────────
@@ -402,6 +408,7 @@ export const hostConfig = {
   },
 
   appendChild(parent: Instance, child: Instance | TextInstance): void {
+    assertPlacement(parent, child)
     const parentState = materialize(parent)
     materialize(child)
     parentState.container.renderer.appendChild(parent.id, child.id)
@@ -424,6 +431,7 @@ export const hostConfig = {
     child: Instance | TextInstance,
     beforeChild: Instance | TextInstance
   ): void {
+    assertPlacement(parent, child)
     const parentState = materialize(parent)
     materialize(child)
     parentState.container.renderer.insertBefore(parent.id, child.id, beforeChild.id)
@@ -439,6 +447,7 @@ export const hostConfig = {
   ): void {
     const target = container.portalTarget
     if (!target) return
+    assertPlacement(target, child)
     materialize(child)
     container.renderer.insertBefore(target.id, child.id, beforeChild.id)
   },
@@ -555,8 +564,9 @@ export const hostConfig = {
   },
 
   appendChildToContainer(container: Container, child: Instance): void {
-    materialize(child)
     const target = container.portalTarget
+    assertPlacement(target, child)
+    materialize(child)
     if (target) {
       materialize(target)
       container.renderer.appendChild(target.id, child.id)
@@ -566,6 +576,7 @@ export const hostConfig = {
   },
 
   appendInitialChild(parent: Instance, child: Instance | TextInstance): void {
+    assertPlacement(parent, child)
     const state = stateFor(parent)
     state.initialChildren ??= []
     state.initialChildren.push(child)

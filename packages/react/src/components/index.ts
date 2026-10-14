@@ -2,7 +2,20 @@
 
 import { createElement, forwardRef, useContext, useEffect, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { MotionProps, Props, PublicInstance, StyleDesc } from "../types/host.js"
+import type {
+  MotionProps,
+  Props,
+  PublicInstance,
+  StyleDesc,
+  SvgCircleProps,
+  SvgEllipseProps,
+  SvgGroupProps,
+  SvgLineProps,
+  SvgMotionProps,
+  SvgPathProps,
+  SvgPolyProps,
+  SvgRectProps,
+} from "../types/host.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
 
 let nextMotionGeneration = 0
@@ -53,52 +66,87 @@ export interface MotionDivProps extends MotionProps {
   autoFocus?: boolean
 }
 
-const MotionDiv = forwardRef<PublicInstance, MotionDivProps>(function MotionDiv(
-  { initial, animate, exit, transition, onMotionComplete, ...props },
-  ref
-): ReactElement {
-  const presence = useContext(PresenceContext)
-  const [isPresent, safeToRemove] = usePresence()
-  const resolvedInitial = presence?.initial === false ? false : initial
-  const resolvedAnimate = !isPresent && exit ? exit : animate
+/** What every `motion.*` component takes, whatever it animates. */
+interface MotionSource<Style, Transition> {
+  initial?: Style | false
+  animate: Style
+  exit?: Style
+  transition?: Transition
+  onMotionComplete?: Props["onMotionComplete"]
+}
 
-  useEffect(() => {
-    if (!isPresent && !exit) safeToRemove?.()
-  }, [exit, isPresent, safeToRemove])
+function createMotionComponent<Source extends MotionSource<object, object>>(tag: string) {
+  return forwardRef<PublicInstance, Source>(function Motion(
+    { initial, animate, exit, transition, onMotionComplete, ...props },
+    ref
+  ): ReactElement {
+    const presence = useContext(PresenceContext)
+    const [isPresent, safeToRemove] = usePresence()
+    const resolvedInitial = presence?.initial === false ? false : initial
+    const resolvedAnimate = !isPresent && exit ? exit : animate
 
-  const motionKey = JSON.stringify([
-    isPresent,
-    resolvedInitial,
-    resolvedAnimate,
-    transition,
-  ])
-  const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
+    useEffect(() => {
+      if (!isPresent && !exit) safeToRemove?.()
+    }, [exit, isPresent, safeToRemove])
 
-  const motionDescription = {
-    generation,
-    isExit: !isPresent && exit !== undefined,
-    initial: resolvedInitial,
-    animate: resolvedAnimate,
-    transition,
-  }
-  const hostProps: Props = {
-    ...props,
-    ref,
-    motion: motionDescription,
-  }
-  if (!isPresent || onMotionComplete) {
-    hostProps.onMotionComplete = (event) => {
-      if (event.motionGeneration !== generation) return
-      onMotionComplete?.(event)
-      if (!isPresent) safeToRemove?.()
+    const motionKey = JSON.stringify([
+      isPresent,
+      resolvedInitial,
+      resolvedAnimate,
+      transition,
+    ])
+    const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
+
+    const motionDescription = {
+      generation,
+      isExit: !isPresent && exit !== undefined,
+      initial: resolvedInitial,
+      animate: resolvedAnimate,
+      transition,
     }
-  }
-  return createElement("div", hostProps)
-})
+    const hostProps: Record<string, unknown> = {
+      ...props,
+      ref,
+      motion: motionDescription,
+    }
+    if (!isPresent || onMotionComplete) {
+      hostProps.onMotionComplete = (event: Parameters<NonNullable<Props["onMotionComplete"]>>[0]) => {
+        if (event.motionGeneration !== generation) return
+        onMotionComplete?.(event)
+        if (!isPresent) safeToRemove?.()
+      }
+    }
+    return createElement(tag, hostProps)
+  })
+}
 
-/** Native animations with a Motion-like declarative React API. */
+const MotionDiv = createMotionComponent<MotionDivProps>("div")
+
+/** Props of a `motion.path`, `motion.circle`, ...: the shape's own plus Framer's animation props. */
+export type MotionShapeProps<Shape> = Omit<Shape, "motion" | "ref" | "key"> &
+  SvgMotionProps & {
+    onMotionComplete?: Props["onMotionComplete"]
+  }
+
+function motionShape<Shape>(tag: string) {
+  return createMotionComponent<MotionShapeProps<Shape>>(tag)
+}
+
+/**
+ * Native animations with a Motion-like declarative React API. `motion.path`,
+ * `motion.circle` and the other SVG shapes animate attributes (`pathLength`,
+ * `d`, `stroke`, ...) instead of style, and are valid only inside `<svg>`.
+ */
 export const motion = {
   div: MotionDiv,
+  g: motionShape<SvgGroupProps>("g"),
+  path: motionShape<SvgPathProps>("path"),
+  circle: motionShape<SvgCircleProps>("circle"),
+  ellipse: motionShape<SvgEllipseProps>("ellipse"),
+  rect: motionShape<SvgRectProps>("rect"),
+  line: motionShape<SvgLineProps>("line"),
+  polyline: motionShape<SvgPolyProps>("polyline"),
+  polygon: motionShape<SvgPolyProps>("polygon"),
 } as const
 
 // There is no `VirtualList` React wrapper. Windowing on the React side is the

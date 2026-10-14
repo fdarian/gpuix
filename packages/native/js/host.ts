@@ -43,6 +43,7 @@ export * from "./observers.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
 export * from "./scroll.js"
+export * from "./svg.js"
 
 export type DimensionValue = number | string
 
@@ -194,6 +195,64 @@ export interface MotionProps {
   /** Target applied while this node is leaving `AnimatePresence`. */
   exit?: MotionStyle
   transition?: MotionTransition
+}
+
+/**
+ * The attributes of an SVG shape (`motion.path`, `motion.circle`, ...) that can
+ * animate. They go through the same engine as `MotionStyle`: tweens, springs,
+ * per-key transitions, and Oklab colours.
+ *
+ * `pathLength`, `pathOffset` and `pathSpacing` are Framer's normalised draw
+ * keys, each a fraction of the shape's length: `pathLength` is how much is
+ * stroked, `pathOffset` shifts where the stroke starts, `pathSpacing` is the
+ * gap after it (default 1, so one dash). They set the dash for you, so use them
+ * instead of `strokeDasharray` and `strokeDashoffset`. A bare `pathLength`
+ * *prop* is the DOM attribute instead: it declares a length that dash values
+ * are measured in.
+ *
+ * `d` morphs when both paths use the same commands, after relative commands are
+ * made absolute; otherwise it switches halfway. `strokeDasharray` lists of
+ * different lengths are repeated to a common length.
+ */
+export interface SvgMotionStyle {
+  pathLength?: number
+  pathOffset?: number
+  pathSpacing?: number
+  strokeDasharray?: number | string | number[]
+  strokeDashoffset?: number
+  strokeWidth?: number
+  fill?: string
+  stroke?: string
+  opacity?: number
+  fillOpacity?: number
+  strokeOpacity?: number
+  cx?: number
+  cy?: number
+  r?: number
+  rx?: number
+  ry?: number
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  x1?: number
+  y1?: number
+  x2?: number
+  y2?: number
+  d?: string
+}
+
+/** Same resolution as `MotionTransition`, keyed by `SvgMotionStyle`. */
+export type SvgMotionTransition = MotionCurve & {
+  default?: MotionCurve
+} & { [Attribute in keyof SvgMotionStyle]?: MotionCurve }
+
+export interface SvgMotionProps {
+  initial?: SvgMotionStyle | false
+  animate: SvgMotionStyle
+  /** Target applied while this node is leaving `AnimatePresence`. */
+  exit?: SvgMotionStyle
+  transition?: SvgMotionTransition
 }
 
 /**
@@ -619,6 +678,7 @@ export type ElementType =
   | "diff"
   | "markdown"
   | "virtual-list"
+  | SvgChildType
 
 // ── Theme ────────────────────────────────────────────────────────────
 
@@ -1079,12 +1139,120 @@ export interface ImagePixelsOptions {
   format?: ImagePixelFormat
 }
 
-// Props for full-colour SVGs. `currentColor` is the element's computed `color`.
-export interface SvgProps extends HostProps {
+/** The tags that are valid only inside an `<svg>`. */
+export type SvgChildType =
+  | "path"
+  | "circle"
+  | "ellipse"
+  | "rect"
+  | "line"
+  | "polyline"
+  | "polygon"
+  | "g"
+
+/**
+ * SVG presentation attributes, camelCase as in React DOM: `strokeWidth`
+ * becomes `stroke-width`. Lengths are user units; a string passes through.
+ */
+export interface SvgPresentationProps {
+  fill?: string
+  fillOpacity?: number | string
+  fillRule?: "nonzero" | "evenodd"
+  clipRule?: "nonzero" | "evenodd"
+  stroke?: string
+  strokeWidth?: number | string
+  strokeOpacity?: number | string
+  strokeLinecap?: "butt" | "round" | "square"
+  strokeLinejoin?: "miter" | "round" | "bevel"
+  strokeMiterlimit?: number | string
+  /** A number, a list, or `"4 2"`. Measured in `pathLength` units when set. */
+  strokeDasharray?: number | string | number[]
+  strokeDashoffset?: number | string
+  opacity?: number | string
+  /** An SVG transform list, passed through: `"rotate(45 12 12)"`. */
+  transform?: string
+  display?: string
+  visibility?: string
+  shapeRendering?: "auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision"
+}
+
+/**
+ * Props shared by the shapes inside an `<svg>`. A shape is part of its svg's
+ * one image, so it has no `style`, layout box or events: size and place the
+ * `<svg>`, and draw inside its `viewBox`.
+ */
+export interface SvgShapeProps extends SvgPresentationProps {
+  testId?: string
+  /** Internal native animation description used by `motion.*` shapes. */
+  motion?: SvgMotionProps
+  /**
+   * The DOM attribute: the length the shape's dash values are measured in, so
+   * `pathLength={1}` with `strokeDasharray="0.5 1"` strokes half the outline.
+   * (Animate Framer's normalised `pathLength` through `motion`.)
+   */
+  pathLength?: number
+}
+
+export interface SvgPathProps extends SvgShapeProps {
+  /** Path data. Relative commands are fine. */
+  d?: string
+}
+
+export interface SvgCircleProps extends SvgShapeProps {
+  cx?: number | string
+  cy?: number | string
+  r?: number | string
+}
+
+export interface SvgEllipseProps extends SvgShapeProps {
+  cx?: number | string
+  cy?: number | string
+  rx?: number | string
+  ry?: number | string
+}
+
+export interface SvgRectProps extends SvgShapeProps {
+  x?: number | string
+  y?: number | string
+  width?: number | string
+  height?: number | string
+  rx?: number | string
+  ry?: number | string
+}
+
+export interface SvgLineProps extends SvgShapeProps {
+  x1?: number | string
+  y1?: number | string
+  x2?: number | string
+  y2?: number | string
+}
+
+export interface SvgPolyProps extends SvgShapeProps {
+  /** `"x,y x,y ..."` */
+  points?: string
+}
+
+export type SvgGroupProps = SvgShapeProps
+
+/**
+ * Props for `<svg>`, a vector graphic rasterised in full colour at device
+ * resolution as one image. `currentColor` is the element's computed `color`.
+ *
+ * Give it DOM-style children (`path circle ellipse rect line polyline polygon
+ * g`) and a `viewBox`, or raw markup through `source` / `src`. Children win
+ * when both are given. `width` and `height` size the element unless `style`
+ * does; without either it has no size to paint into.
+ */
+export interface SvgProps extends HostProps, SvgPresentationProps {
   /** Desktop local path. Use source for portable browser rendering. */
   src?: string
   /** Raw SVG markup, rasterised in full colour at device resolution. */
   source?: string
+  /** `"minX minY width height"`: the coordinate system the children draw in. */
+  viewBox?: string
+  preserveAspectRatio?: string
+  width?: number | string
+  height?: number | string
 }
 
 /**

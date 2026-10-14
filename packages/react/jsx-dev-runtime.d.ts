@@ -14,7 +14,14 @@ import type {
   LabelProps,
   MarkdownProps,
   Props,
+  SvgCircleProps,
+  SvgEllipseProps,
+  SvgGroupProps,
+  SvgLineProps,
+  SvgPathProps,
+  SvgPolyProps,
   SvgProps,
+  SvgRectProps,
   TextareaProps,
   VirtualListProps,
 } from "./dist/types/host"
@@ -35,6 +42,14 @@ export namespace JSX {
     text: Props
     img: ImgProps
     svg: SvgProps
+    path: SvgPathProps
+    circle: SvgCircleProps
+    ellipse: SvgEllipseProps
+    rect: SvgRectProps
+    line: SvgLineProps
+    polyline: SvgPolyProps
+    polygon: SvgPolyProps
+    g: SvgGroupProps
     canvas: Props
     input: InputProps
     textarea: TextareaProps

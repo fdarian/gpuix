@@ -143,7 +143,7 @@ export type {
 } from "./hooks/use-window-size.js"
 
 // Re-export types
-export type { MotionDivProps } from "./components/index.js"
+export type { MotionDivProps, MotionShapeProps } from "./components/index.js"
 export type {
   AnchoredProps,
   CodeProps,
@@ -185,7 +185,17 @@ export type {
   Props,
   PublicInstance,
   StyleDesc,
+  SvgCircleProps,
+  SvgEllipseProps,
+  SvgGroupProps,
+  SvgLineProps,
+  SvgMotionProps,
+  SvgMotionStyle,
+  SvgMotionTransition,
+  SvgPathProps,
+  SvgPolyProps,
   SvgProps,
+  SvgRectProps,
   SelectionHost,
   SyntaxTheme,
   TextareaProps,

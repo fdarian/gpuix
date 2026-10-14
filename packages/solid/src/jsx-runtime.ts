@@ -10,7 +10,15 @@ import type {
   LabelProps,
   MarkdownProps,
   MotionProps,
+  SvgMotionProps,
+  SvgCircleProps,
+  SvgEllipseProps,
+  SvgGroupProps,
+  SvgLineProps,
+  SvgPathProps,
+  SvgPolyProps,
   SvgProps,
+  SvgRectProps,
   TextareaProps,
   VirtualListProps,
 } from "@gpuix/native/host"
@@ -58,6 +66,14 @@ export namespace JSX {
     span: SolidHostProps
     img: SolidHostProps<ImgProps>
     svg: SolidHostProps<SvgProps>
+    path: SolidHostProps<SvgPathProps>
+    circle: SolidHostProps<SvgCircleProps>
+    ellipse: SolidHostProps<SvgEllipseProps>
+    rect: SolidHostProps<SvgRectProps>
+    line: SolidHostProps<SvgLineProps>
+    polyline: SolidHostProps<SvgPolyProps>
+    polygon: SolidHostProps<SvgPolyProps>
+    g: SolidHostProps<SvgGroupProps>
     canvas: SolidHostProps
     input: SolidHostProps<InputProps>
     textarea: SolidHostProps<TextareaProps>
@@ -71,4 +87,4 @@ export namespace JSX {
   }
 }
 
-export type { MotionProps }
+export type { MotionProps, SvgMotionProps }

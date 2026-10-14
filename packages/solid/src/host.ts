@@ -1,6 +1,7 @@
 // Host-tree shape is based on jhomra21/gpuix-solid (MIT), stripped to GPUIX's
 // native elements and event contract.
 import {
+  assertSvgPlacement,
   BUILT_IN_TYPES,
   createElementMethods,
   defineScrollMembers,
@@ -275,6 +276,14 @@ function isElementType(type: string): type is ElementType {
     case "diff":
     case "markdown":
     case "virtual-list":
+    case "path":
+    case "circle":
+    case "ellipse":
+    case "rect":
+    case "line":
+    case "polyline":
+    case "polygon":
+    case "g":
       return true
     default:
       return false
@@ -392,6 +401,9 @@ export function insertHostNode(
 ): void {
   if (anchor && anchor.parent !== parent) {
     throw new Error("GPUIX Solid anchor is not a child of its parent")
+  }
+  if (node.kind === "element") {
+    assertSvgPlacement(parent.kind === "root" ? undefined : parent.type, node.type)
   }
   removeFromParent(node)
   const index = anchor ? parent.children.indexOf(anchor) : parent.children.length

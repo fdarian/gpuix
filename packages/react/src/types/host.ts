@@ -17,6 +17,13 @@ import type {
   TextareaProps as NativeTextareaProps,
   ImgProps as NativeImgProps,
   SvgProps as NativeSvgProps,
+  SvgCircleProps as NativeSvgCircleProps,
+  SvgEllipseProps as NativeSvgEllipseProps,
+  SvgGroupProps as NativeSvgGroupProps,
+  SvgLineProps as NativeSvgLineProps,
+  SvgPathProps as NativeSvgPathProps,
+  SvgPolyProps as NativeSvgPolyProps,
+  SvgRectProps as NativeSvgRectProps,
   CodeProps as NativeCodeProps,
   DiffProps as NativeDiffProps,
   MarkdownProps as NativeMarkdownProps,
@@ -75,6 +82,21 @@ export interface SvgProps extends ReactHostProps<NativeSvgProps> {
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
+
+/** A shape inside an `<svg>`. React adds `key`, `children` and `ref`. */
+type SvgShapeElementProps<Native> = Native & {
+  key?: Key | null
+  children?: ReactNode
+  ref?: Ref<PublicInstance>
+}
+
+export type SvgPathProps = SvgShapeElementProps<NativeSvgPathProps>
+export type SvgCircleProps = SvgShapeElementProps<NativeSvgCircleProps>
+export type SvgEllipseProps = SvgShapeElementProps<NativeSvgEllipseProps>
+export type SvgRectProps = SvgShapeElementProps<NativeSvgRectProps>
+export type SvgLineProps = SvgShapeElementProps<NativeSvgLineProps>
+export type SvgPolyProps = SvgShapeElementProps<NativeSvgPolyProps>
+export type SvgGroupProps = SvgShapeElementProps<NativeSvgGroupProps>
 
 export interface CodeProps extends ReactHostProps<NativeCodeProps> {
   key?: Key | null
