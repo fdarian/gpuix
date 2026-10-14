@@ -207,6 +207,7 @@ pub struct TestGpuixRenderer {
     /// Same handle GpuixView paints against, so tests can assert on the live
     /// selection after simulating a drag.
     selection: crate::text::SharedSelection,
+    pointer_capture: crate::events::state::PointerCapture,
 }
 
 #[napi]
@@ -232,6 +233,8 @@ impl TestGpuixRenderer {
         let callback_clone = event_callback.clone();
         let selection = crate::text::SharedSelection::default();
         let selection_clone = selection.clone();
+        let pointer_capture = crate::events::state::PointerCapture::default();
+        let pointer_capture_clone = pointer_capture.clone();
 
         let platform = gpui_platform::current_platform(false);
         let mut cx = gpui::VisualTestAppContext::new(platform);
@@ -250,6 +253,7 @@ impl TestGpuixRenderer {
                         callback_clone,
                         "GPUIX Test".to_string(),
                         selection_clone,
+                        pointer_capture_clone,
                     );
                     view.observe_appearance(window, cx);
                     crate::events::enable_dom_hit_testing(window);
@@ -289,6 +293,7 @@ impl TestGpuixRenderer {
             tree,
             events,
             selection,
+            pointer_capture,
         })
     }
 
@@ -903,6 +908,35 @@ impl TestGpuixRenderer {
             .map_err(|e| Error::from_reason(e.to_string()))?;
             Ok(())
         })
+    }
+
+    /// Capture the mouse for `element_id`; takes effect at the next simulated
+    /// pointer input. Ignored while no button is down.
+    #[napi]
+    pub fn set_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .set(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
+    }
+
+    #[napi]
+    pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .release(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
+    }
+
+    #[napi]
+    pub fn has_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<bool> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .has(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
     }
 
     /// Packed `"rgba"` (default) or `"bgra"` pixels onto an `<img>` host node.

@@ -6,10 +6,90 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use rustc_hash::FxHashMap;
 
 use super::ids::Hit;
+use super::path::event_path;
+use crate::retained_tree::RetainedTree;
+
+/// The only pointer there is: the mouse.
+pub const MOUSE_POINTER_ID: f64 = 1.0;
+
+/// Explicit pointer capture as JS asks for it, shared between the renderer
+/// handle and the view's `PointerState`.
+///
+/// Calls come from JS threads while the view lives on the UI thread, so a call
+/// only records the request here and the dispatcher applies it at the next
+/// native pointer input, which is when `gotpointercapture` and
+/// `lostpointercapture` fire. `has` reads the request, as Chrome's
+/// `hasPointerCapture` reads the pending capture, so it is true right after
+/// `set`.
+#[derive(Clone, Default)]
+pub struct PointerCapture(Arc<Mutex<Requested>>);
+
+#[derive(Default)]
+struct Requested {
+    target: Option<u64>,
+    /// Held buttons as of the last input. A pointer with none down has nothing
+    /// to capture, so `set` ignores it, as Chrome does for a mouse.
+    buttons: u32,
+}
+
+impl PointerCapture {
+    pub fn set(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
+        validate(tree, id, pointer_id)?;
+        let mut requested = self.0.lock().unwrap();
+        if requested.buttons != 0 {
+            requested.target = Some(id);
+        }
+        Ok(())
+    }
+
+    pub fn release(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
+        validate(tree, id, pointer_id)?;
+        let mut requested = self.0.lock().unwrap();
+        if requested.target == Some(id) {
+            requested.target = None;
+        }
+        Ok(())
+    }
+
+    pub fn has(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<bool, String> {
+        validate(tree, id, pointer_id)?;
+        Ok(self.0.lock().unwrap().target == Some(id))
+    }
+
+    pub(super) fn target(&self) -> Option<u64> {
+        self.0.lock().unwrap().target
+    }
+
+    pub(super) fn clear(&self) {
+        self.0.lock().unwrap().target = None;
+    }
+
+    pub(super) fn set_buttons(&self, buttons: u32) {
+        self.0.lock().unwrap().buttons = buttons;
+    }
+}
+
+fn validate(tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
+    if pointer_id != MOUSE_POINTER_ID {
+        return Err(format!(
+            "Unknown pointerId {pointer_id}: the only pointer is the mouse, pointerId {MOUSE_POINTER_ID}"
+        ));
+    }
+    if !is_connected(tree, id) {
+        return Err(format!("Element {id} is not connected to the tree"));
+    }
+    Ok(())
+}
+
+/// Whether `id` is in the tree and reaches its root.
+pub(super) fn is_connected(tree: &RetainedTree, id: u64) -> bool {
+    event_path(tree, id).last().copied() == tree.root_id
+}
 
 /// A button that is down: where it went down, so the release knows whether a
 /// `click` happened and on which ancestor.
@@ -37,8 +117,11 @@ pub struct PointerState {
     pub(super) buttons: u32,
     /// An element that keeps receiving pointer events after the pointer leaves
     /// it, armed by a press on an element that listens for both `mousedown` and
-    /// `mousemove`. Explicit capture replaces this.
+    /// `mousemove`. Explicit capture outranks it.
     pub(super) captured: Option<u64>,
+    /// The element holding `setPointerCapture`, as applied by the last input.
+    pub(super) explicit: Option<u64>,
+    pub(super) capture: PointerCapture,
     observed: ObservedTarget,
 }
 
@@ -60,7 +143,19 @@ impl PointerState {
 
     /// The element receiving pointer events while the pointer is held on it.
     pub fn captured(&self) -> Option<u64> {
-        self.captured
+        self.explicit.or(self.captured)
+    }
+
+    /// The element that holds explicit pointer capture, once an input applied it.
+    pub fn explicit_capture(&self) -> Option<u64> {
+        self.explicit
+    }
+
+    pub fn with_capture(capture: PointerCapture) -> Self {
+        Self {
+            capture,
+            ..Default::default()
+        }
     }
 
     /// A handle for the paint pass: the target the last input saw, so a frame
@@ -87,6 +182,88 @@ mod tests {
         assert!(!state.is_hovered(9));
         assert!(!state.is_active(3) && state.is_active(2));
         assert_eq!(state.hover_target(), Some(3));
+    }
+
+    fn connected_tree() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        for id in [1, 2, 3] {
+            tree.create_element(id, "div".to_string());
+        }
+        tree.set_root(1);
+        tree.append_child(1, 2);
+        // 3 is created but never attached.
+        tree
+    }
+
+    fn held(capture: &PointerCapture) {
+        capture.set_buttons(1);
+    }
+
+    #[test]
+    fn has_pointer_capture_follows_set_and_release() {
+        let tree = connected_tree();
+        let capture = PointerCapture::default();
+        held(&capture);
+        assert!(!capture.has(&tree, 2, 1.0).unwrap());
+        capture.set(&tree, 2, 1.0).unwrap();
+        assert!(capture.has(&tree, 2, 1.0).unwrap());
+        assert!(!capture.has(&tree, 1, 1.0).unwrap());
+        capture.release(&tree, 1, 1.0).unwrap();
+        assert!(
+            capture.has(&tree, 2, 1.0).unwrap(),
+            "only the holder can release"
+        );
+        capture.release(&tree, 2, 1.0).unwrap();
+        assert!(!capture.has(&tree, 2, 1.0).unwrap());
+    }
+
+    #[test]
+    fn setting_capture_replaces_the_previous_holder() {
+        let tree = connected_tree();
+        let capture = PointerCapture::default();
+        held(&capture);
+        capture.set(&tree, 2, 1.0).unwrap();
+        capture.set(&tree, 1, 1.0).unwrap();
+        assert!(!capture.has(&tree, 2, 1.0).unwrap());
+        assert!(capture.has(&tree, 1, 1.0).unwrap());
+    }
+
+    #[test]
+    fn a_pointer_with_no_button_down_captures_nothing() {
+        let tree = connected_tree();
+        let capture = PointerCapture::default();
+        capture.set(&tree, 2, 1.0).unwrap();
+        assert!(!capture.has(&tree, 2, 1.0).unwrap());
+    }
+
+    #[test]
+    fn an_unknown_pointer_id_throws() {
+        let tree = connected_tree();
+        let capture = PointerCapture::default();
+        held(&capture);
+        for pointer_id in [0.0, 2.0, -1.0, f64::NAN] {
+            assert!(capture
+                .set(&tree, 2, pointer_id)
+                .unwrap_err()
+                .contains("pointerId"));
+            assert!(capture.release(&tree, 2, pointer_id).is_err());
+            assert!(capture.has(&tree, 2, pointer_id).is_err());
+        }
+    }
+
+    #[test]
+    fn an_element_that_is_not_connected_throws() {
+        let tree = connected_tree();
+        let capture = PointerCapture::default();
+        held(&capture);
+        for id in [3, 99] {
+            assert!(capture
+                .set(&tree, id, 1.0)
+                .unwrap_err()
+                .contains("not connected"));
+            assert!(capture.release(&tree, id, 1.0).is_err());
+            assert!(capture.has(&tree, id, 1.0).is_err());
+        }
     }
 
     #[test]

@@ -935,6 +935,7 @@ pub struct GpuixRenderer {
     /// Shared with GpuixView so napi methods can read the live selection
     /// without an App context. Paint and napi calls can use different threads.
     selection: SharedSelection,
+    pointer_capture: crate::events::state::PointerCapture,
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
     ui_commands: Mutex<Option<mpsc::UnboundedSender<UiCommand>>>,
     /// False after `Platform::run` returns. `tick()` reports that so JS can
@@ -1146,6 +1147,7 @@ impl GpuixRenderer {
             tree: Arc::new(Mutex::new(RetainedTree::new())),
             initialized: Arc::new(Mutex::new(false)),
             selection: SharedSelection::default(),
+            pointer_capture: Default::default(),
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
             ui_commands: Mutex::new(None),
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1208,6 +1210,7 @@ impl GpuixRenderer {
         let callback = self.event_callback_for_view();
 
         let selection = self.selection.clone();
+        let pointer_capture = self.pointer_capture.clone();
         let opened_window = Rc::new(RefCell::new(None));
         let startup_error = Rc::new(RefCell::new(None));
         let opened_window_for_app = opened_window.clone();
@@ -1238,6 +1241,7 @@ impl GpuixRenderer {
                             callback.clone(),
                             title,
                             selection.clone(),
+                            pointer_capture.clone(),
                         );
                         view.observe_appearance(window, cx);
                         crate::events::enable_dom_hit_testing(window);
@@ -1341,6 +1345,7 @@ impl GpuixRenderer {
         let appearance = appearance_override(&options).map_err(Error::from_reason)?;
         let tree = self.tree.clone();
         let selection = self.selection.clone();
+        let pointer_capture = self.pointer_capture.clone();
         let callback = self.event_callback_for_view();
         let (command_sender, command_receiver) = mpsc::unbounded();
         let (startup_sender, startup_receiver) = sync_channel(1);
@@ -1378,8 +1383,13 @@ impl GpuixRenderer {
                                 to_gpui_window_options(&window_options, bounds),
                                 |window, cx| {
                                     cx.new(|cx| {
-                                        let mut view =
-                                            GpuixView::new(tree, callback, title, selection);
+                                        let mut view = GpuixView::new(
+                                            tree,
+                                            callback,
+                                            title,
+                                            selection,
+                                            pointer_capture,
+                                        );
                                         view.observe_appearance(window, cx);
                                         crate::events::enable_dom_hit_testing(window);
                                         view
@@ -2364,6 +2374,38 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// Capture the mouse for `element_id`. Takes effect at the next pointer
+    /// input, not before: the dispatcher applies it then and fires
+    /// `gotpointercapture`. Ignored while no button is down.
+    #[napi]
+    pub fn set_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .set(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
+    }
+
+    /// End `element_id`'s capture, if it holds one, at the next pointer input.
+    #[napi]
+    pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .release(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
+    }
+
+    /// Whether `element_id` holds, or has been asked to hold, the mouse capture.
+    #[napi]
+    pub fn has_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<bool> {
+        let id = to_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .has(&tree, id, pointer_id)
+            .map_err(Error::from_reason)
+    }
+
     /// Paint packed pixels onto an `<img>` host node. `format` is `"rgba"`
     /// (default) or `"bgra"`; BGRA skips the per-pixel swizzle.
     #[napi]
@@ -2941,6 +2983,7 @@ fn collect_text(id: u64, tree: &RetainedTree, texts: &mut Vec<String>) {
 fn start_web_app(
     tree: Arc<Mutex<RetainedTree>>,
     selection: SharedSelection,
+    pointer_capture: crate::events::state::PointerCapture,
     event_callback: EventCallback,
 ) -> Result<(), wasm_bindgen::JsValue> {
     if WEB_APP.with(|stored| stored.borrow().is_some()) {
@@ -2961,6 +3004,7 @@ fn start_web_app(
                     Some(event_callback),
                     "GPUIX Web".to_string(),
                     selection,
+                    pointer_capture,
                 );
                 view.observe_appearance(window, cx);
                 crate::events::enable_dom_hit_testing(window);
@@ -3103,6 +3147,7 @@ fn web_event_callback(callback: js_sys::Function) -> EventCallback {
 pub struct WebGpuixRenderer {
     tree: Arc<Mutex<RetainedTree>>,
     selection: SharedSelection,
+    pointer_capture: crate::events::state::PointerCapture,
     event_callback: EventCallback,
 }
 
@@ -3114,6 +3159,7 @@ impl WebGpuixRenderer {
         Self {
             tree: Arc::new(Mutex::new(RetainedTree::new())),
             selection: SharedSelection::default(),
+            pointer_capture: Default::default(),
             event_callback: web_event_callback(event_callback),
         }
     }
@@ -3122,6 +3168,7 @@ impl WebGpuixRenderer {
         start_web_app(
             self.tree.clone(),
             self.selection.clone(),
+            self.pointer_capture.clone(),
             self.event_callback.clone(),
         )
     }
@@ -3380,6 +3427,46 @@ impl WebGpuixRenderer {
                 window.refresh();
             }
         })
+    }
+
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setPointerCapture)]
+    pub fn set_pointer_capture(
+        &self,
+        element_id: f64,
+        pointer_id: f64,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .set(&tree, id, pointer_id)
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = releasePointerCapture)]
+    pub fn release_pointer_capture(
+        &self,
+        element_id: f64,
+        pointer_id: f64,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .release(&tree, id, pointer_id)
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = hasPointerCapture)]
+    pub fn has_pointer_capture(
+        &self,
+        element_id: f64,
+        pointer_id: f64,
+    ) -> Result<bool, wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let tree = self.tree.lock().unwrap();
+        self.pointer_capture
+            .has(&tree, id, pointer_id)
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = setImagePixels)]
@@ -4010,6 +4097,7 @@ impl GpuixView {
         event_callback: Option<EventCallback>,
         window_title: String,
         selection: SharedSelection,
+        pointer_capture: crate::events::state::PointerCapture,
     ) -> Self {
         Self {
             tree,
@@ -4038,7 +4126,7 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
-            pointer: Default::default(),
+            pointer: crate::events::state::PointerState::with_capture(pointer_capture),
         }
     }
 
