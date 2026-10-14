@@ -18,7 +18,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
-pub(crate) use css_transition::{CssTransitions, TransitionEvent};
+pub(crate) use css_transition::{validate_transitions, CssTransitions, TransitionEvent};
 use curve::Transition;
 use property::AnimProp;
 use track::Track;

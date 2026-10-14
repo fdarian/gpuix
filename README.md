@@ -1398,7 +1398,7 @@ The **transition** uses seconds, like Motion for React:
 |---|---:|---|
 | `duration` | `0.3` | Non-negative seconds |
 | `delay` | `0` | Non-negative seconds |
-| `ease` | `"easeOut"` | `"linear"`, `"ease"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, or `[x1, y1, x2, y2]` |
+| `ease` | `"easeOut"` | `"linear"`, `"ease"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `[x1, y1, x2, y2]`, or a CSS timing function string (`"ease-in"`, `"steps(4, jump-start)"`, `"linear(0, 0.25 75%, 1)"`) |
 
 **Per-property transitions** use Motion's shape. A property uses
 `transition[property]`, then `transition.default`, then the curve fields at the
@@ -4731,6 +4731,66 @@ a line outside the border box, like CSS `outline`. It takes **no layout space**,
 so a ring you add with `focusVisible` moves nothing. A negative offset draws it
 inside. It follows `borderRadius`. A parent with `overflow: "hidden"` clips it,
 like in a browser.
+
+### CSS transitions
+
+`transition` and its longhands take CSS syntax with kebab-case property names,
+as in a DOM inline style. When the value of an animatable property changes, the
+element animates from the value it showed to the new one, natively, with no React
+render per frame.
+
+```tsx
+<div
+  style={{
+    backgroundColor: '#313244',
+    transition: 'background-color 150ms ease-out, opacity .2s 50ms',
+    hover: { backgroundColor: '#45475a' },
+  }}
+/>
+```
+
+- **Properties.** `transition` is a comma list of `<property> <duration> <timing
+  function> <delay>` in any order, plus `all` and `none`. `transitionProperty`,
+  `transitionDuration`, `transitionTimingFunction` and `transitionDelay` win over
+  the shorthand, and shorter lists repeat to the length of `transitionProperty`.
+  Every property `motion` can animate (see [Targets and timing](#targets-and-timing))
+  can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
+  `flex`, ...) cover their longhands. A valid CSS name gpuix does not animate
+  (`transform`) is accepted and matches nothing. A camelCase name, a bad time or
+  timing function, or an unparsable value is rejected when the style is set, like
+  any other invalid style
+- **Timing functions.** `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`,
+  `cubic-bezier()` (it may overshoot), `steps(n, jump-start | jump-end |
+  jump-none | jump-both | start | end)`, `step-start`, `step-end` and `linear()`
+  stop lists. `motion` accepts the same strings as `ease`
+- **What starts one.** Each frame the element's style, with the state styles that
+  apply folded in, is compared with the previous frame's. A changed value starts a
+  transition when its duration plus delay is above zero. The first style an
+  element mounts with never transitions. A property that is unset starts from its
+  CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
+  an unset `width`) and a move between `px` and `%` change instantly
+- **Interrupts.** A change mid-flight starts from the visible value, not the old
+  target. Returning to where the transition began shortens the way back in
+  proportion, as CSS specifies. Changing `transition*` does not touch a running
+  transition, but dropping its property from `transitionProperty` cancels it. A
+  negative delay starts part-way through
+- **State styles.** `hover`, `active` and `focusVisible` are folded into the style
+  that is compared, so they animate in and out. A `transition` set inside `hover`
+  is the one used while entering hover; the base one is used leaving it. An
+  element that declares a transition has its state styles applied by gpuix instead
+  of GPUI's per-element refinements, so they show one frame after the pointer
+  moves. Elements without a transition behave as before
+- **`motion`.** A property `animate` names belongs to `motion` and is not
+  transitioned
+- **Events.** `onTransitionRun`, `onTransitionStart` (after the delay),
+  `onTransitionEnd` and `onTransitionCancel` carry `propertyName` (`"width"`,
+  `"background-color"`), `elapsedTime` in seconds and `pseudoElement: ""`. They
+  fire on the transitioning element only and do not bubble yet
+
+Not supported: `transition-behavior: allow-discrete`, so `display` and other
+discrete properties never transition; and the one transition-start case where an
+element's first style has no `transition` and a later style adds one together with
+a changed value (the change applies instantly; the next one animates).
 
 > **Note: `white-space: pre` is not supported.** GPUI's text system only has `normal` (wraps) and `nowrap` (single line). To preserve newlines like HTML `<pre>`, split your text on `\n` in React and render each line as a separate `<text>` element in a flex column:
 >

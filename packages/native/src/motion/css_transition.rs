@@ -400,6 +400,23 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
     }
 }
 
+/// Rejects a style whose `transition*` values, in it or in a state style, do
+/// not parse, so a bad value fails where it is set instead of silently never
+/// running.
+pub(crate) fn validate_transitions(style: &StyleDesc) -> Result<(), String> {
+    TransitionList::parse(style)?;
+    for (name, state) in [
+        ("hover", &style.hover),
+        ("active", &style.active),
+        ("focusVisible", &style.focus_visible),
+    ] {
+        if let Some(state) = state {
+            TransitionList::parse(state).map_err(|error| format!("{name}.{error}"))?;
+        }
+    }
+    Ok(())
+}
+
 /// Whether `style` sets a `transition*` field that is more than `none`.
 fn declares_transition(style: &StyleDesc) -> bool {
     let only_none = |text: &Option<String>| {
@@ -971,6 +988,15 @@ mod tests {
         assert_eq!(transitions.0.len(), 3);
         assert!(transitions.matching(AnimProp::Opacity).is_some());
         assert!(transitions.matching(AnimProp::Width).is_none());
+    }
+
+    #[test]
+    fn validation_covers_the_state_styles() {
+        assert!(validate_transitions(&style(r#"{ "transition": "width 1s" }"#)).is_ok());
+        let error = validate_transitions(&style(r#"{ "hover": { "transitionDelay": "soon" } }"#))
+            .unwrap_err();
+        assert!(error.starts_with("hover.transitionDelay"), "{error}");
+        assert!(validate_transitions(&style(r#"{ "transition": "width bogus" }"#)).is_err());
     }
 
     #[test]

@@ -115,6 +115,15 @@ export type MotionEase =
   | "easeOut"
   | "easeInOut"
   | [number, number, number, number]
+  /** A CSS `<easing-function>`, as `transitionTimingFunction` takes. */
+  | "ease-in"
+  | "ease-out"
+  | "ease-in-out"
+  | "step-start"
+  | "step-end"
+  | `cubic-bezier(${string})`
+  | `steps(${string})`
+  | `linear(${string})`
 
 export interface MotionTweenTransition {
   type?: "tween"

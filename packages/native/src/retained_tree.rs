@@ -210,6 +210,7 @@ impl StyleTable {
             }
         }
         let style: StyleDesc = serde_json::from_slice(raw).map_err(|error| error.to_string())?;
+        crate::motion::validate_transitions(&style)?;
         let shared = Arc::new(style);
         self.entries.entry(key).or_default().push(InternedStyle {
             raw: raw.into(),
