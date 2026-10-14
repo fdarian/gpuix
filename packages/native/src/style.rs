@@ -28,11 +28,33 @@ pub struct BoxShadowValue {
 }
 
 /// `boxShadow` is one shadow or a list of them, painted in the order given.
+/// JS may also send the CSS string, which is parsed into the same layers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, from = "BoxShadowInput")]
 pub enum BoxShadowValues {
     Many(Vec<BoxShadowValue>),
     One(BoxShadowValue),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BoxShadowInput {
+    Css(String),
+    Many(Vec<BoxShadowValue>),
+    One(BoxShadowValue),
+}
+
+impl From<BoxShadowInput> for BoxShadowValues {
+    fn from(input: BoxShadowInput) -> Self {
+        match input {
+            // An invalid declaration is ignored like in CSS: no layers, no shadow.
+            BoxShadowInput::Css(css) => {
+                Self::Many(crate::css::box_shadow::parse(&css).unwrap_or_default())
+            }
+            BoxShadowInput::Many(layers) => Self::Many(layers),
+            BoxShadowInput::One(layer) => Self::One(layer),
+        }
+    }
 }
 
 impl BoxShadowValues {
@@ -474,6 +496,28 @@ pub fn parse_cursor(name: &str) -> Option<gpui::CursorStyle> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn box_shadow_takes_a_css_string() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{"boxShadow":"0 1px 2px rgba(0,0,0,.2), inset 0 0 0 1px red"}"##,
+        )
+        .unwrap();
+        let shadows = style.box_shadow.as_ref().unwrap().as_slice();
+        assert_eq!(shadows.len(), 2);
+        assert_eq!(shadows[0].offset_y, 1.0);
+        assert_eq!(shadows[0].color, "rgba(0,0,0,.2)");
+        assert!(shadows[1].inset);
+        assert_eq!(shadows[1].spread_radius, 1.0);
+    }
+
+    #[test]
+    fn an_invalid_box_shadow_string_paints_nothing_and_keeps_the_rest_of_the_style() {
+        let style: StyleDesc =
+            serde_json::from_str(r##"{"boxShadow":"4 4 red","color":"red"}"##).unwrap();
+        assert!(style.box_shadow.as_ref().unwrap().as_slice().is_empty());
+        assert_eq!(style.color.as_deref(), Some("red"));
+    }
 
     #[test]
     fn a_state_that_sets_color_repaints_the_current_color_followers() {

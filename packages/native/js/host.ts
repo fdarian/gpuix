@@ -307,8 +307,12 @@ export interface StyleDesc {
   borderTopRightRadius?: number
   borderBottomLeftRadius?: number
   borderBottomRightRadius?: number
-  /** One shadow, or a list painted in the order given. */
-  boxShadow?: BoxShadow | BoxShadow[]
+  /** One shadow, a list painted in the order given, or the CSS string
+   *  (`"0 1px 2px rgba(0,0,0,.2), inset 0 0 0 1px red"`). In the string, lengths
+   *  are `px` (or a bare `0`), `inset` and the colour may lead or trail the
+   *  lengths, and a layer without a colour is `currentColor`, as in CSS. An
+   *  invalid string paints no shadow. */
+  boxShadow?: BoxShadow | BoxShadow[] | string
   /** Applies to every side. */
   borderStyle?: "solid" | "dashed"
   /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in

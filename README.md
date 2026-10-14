@@ -4011,7 +4011,7 @@ CSS-like styling via the `style` prop:
 > - **No shorthand values.** `padding` and `border` take numbers, and `margin`
 >   takes a number, a percentage or `"auto"`.
 >   CSS strings like `"0 16px"`, `"1px solid #fff"`, or `calc()` are ignored.
-> - **`boxShadow` is a structured object**, not a CSS string. See below.
+> - **`boxShadow` takes the CSS string or a structured object.** See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
 > - **Do not nest `<text>` in `<text>`.** Adjacent `<text>` siblings merge
 >   into one line. A `<text>` child of another `<text>` is a nested div.
@@ -4219,8 +4219,17 @@ Limited relative-color forms can derive a new color from a base value:
 />
 ```
 
-`boxShadow` accepts one structured shadow or an array of them, painted in the
-order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
+`boxShadow` accepts the CSS string, one structured shadow, or an array of them,
+painted in the order given. The string is parsed into the same layers:
+lengths are `px` (or a bare `0`), `inset` and the colour may lead or trail the
+lengths, the colour can be any [colour form](#colors) and defaults to
+`currentColor`, and `none` paints nothing. An invalid string paints no shadow.
+
+```tsx
+<div style={{ boxShadow: '0 1px 2px rgba(0,0,0,.2), inset 0 0 0 1px red' }} />
+```
+
+The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 `color`, and `inset`, which draws inside the border box:
 
 ```tsx
