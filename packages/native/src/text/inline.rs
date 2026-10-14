@@ -130,8 +130,6 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
 /// One text node of a paragraph.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Piece {
-    /// The element that holds the text.
-    pub leaf: u64,
     pub range: Range<usize>,
     /// The inline boxes around the text, outermost first. The container is not
     /// one of them: its own style reaches the paragraph through gpui.
@@ -148,16 +146,14 @@ pub struct Paragraph {
     pub pieces: Vec<Piece>,
     /// Every inline box that holds text, with the bytes it covers, outermost
     /// first. Hit-testing a character index back to its span reads this.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub boxes: Vec<(u64, Range<usize>)>,
 }
 
 impl Paragraph {
-    /// Whether the paragraph has any inline box around its text.
-    pub fn has_boxes(&self) -> bool {
-        self.pieces.iter().any(|piece| !piece.boxes.is_empty())
-    }
-
-    /// Innermost inline box at `byte`, if any.
+    /// Innermost inline box at `byte`, if any. Nothing hit-tests a span yet;
+    /// this is the lookup that will map a character index back to one.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn box_at(&self, byte: usize) -> Option<u64> {
         self.pieces
             .iter()
@@ -191,7 +187,6 @@ impl Builder {
         let start = self.text.len();
         self.text.push_str(content);
         self.pieces.push(Piece {
-            leaf,
             range: start..self.text.len(),
             boxes: boxes.to_vec(),
         });
@@ -380,7 +375,7 @@ mod tests {
         assert_eq!(paragraph.owner, 2);
         assert_eq!(paragraph.pieces.len(), 3);
         assert_eq!(paragraph.pieces[1].range, 6..11);
-        assert!(!paragraph.has_boxes());
+        assert!(paragraph.pieces.iter().all(|piece| piece.boxes.is_empty()));
     }
 
     #[test]
@@ -628,6 +623,19 @@ mod tests {
             at = piece.range.end;
         }
         assert_eq!(at, paragraph.text.len());
+    }
+
+    #[test]
+    fn only_paragraph_shaping_styles_regroup() {
+        let flex = style(serde_json::json!({"display": "flex"}));
+        let colored = style(serde_json::json!({"display": "flex", "color": "red"}));
+        assert!(same_paragraphs(Some(&flex), &colored));
+        assert!(same_paragraphs(None, &StyleDesc::default()));
+        assert!(!same_paragraphs(None, &flex));
+        assert!(!same_paragraphs(
+            Some(&flex),
+            &style(serde_json::json!({"display": "none"}))
+        ));
     }
 
     #[test]
