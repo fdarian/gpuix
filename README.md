@@ -1478,6 +1478,46 @@ every animated value is within `restDelta` and `restSpeed` of its target.
 settles. Transform properties such as scale and translate are not animatable
 yet, so an enter that scales an element cannot be expressed.
 
+### Animate SVG shapes
+
+`motion.path`, `motion.circle`, `motion.ellipse`, `motion.rect`, `motion.line`,
+`motion.polyline`, `motion.polygon` and `motion.g` animate the attributes of a
+shape inside an `<svg>`. They take the same `initial`, `animate`, `exit` and
+`transition` as `motion.div`, including per-key transitions, springs and
+`AnimatePresence`, but the keys are SVG attributes instead of style.
+
+```tsx
+<svg viewBox="0 0 100 100" width={100} height={100} style={{ color: '#5ca9ff' }}>
+  <motion.path
+    d="M10 50 L90 50"
+    stroke="#000"
+    strokeWidth={8}
+    initial={{ pathLength: 0 }}
+    animate={{ pathLength: 1 }}
+    transition={{ duration: 1, ease: 'easeInOut' }}
+  />
+</svg>
+```
+
+| Key | Value |
+|---|---|
+| `pathLength`, `pathOffset`, `pathSpacing` | Numbers, Framer's normalised draw: `pathLength` is the stroked fraction of the outline (default 1), `pathOffset` moves where the stroke starts, `pathSpacing` is the gap after it (default 1, one dash). They set the dash for you, so do not combine them with `strokeDasharray` |
+| `strokeDasharray`, `strokeDashoffset` | A number, a list or `"4 2"`, and a number. Lists of different lengths are repeated to a common length |
+| `strokeWidth`, `opacity`, `fillOpacity`, `strokeOpacity` | Numbers. Opacities are `0..1` |
+| `fill`, `stroke` | Colours, interpolated in Oklab with premultiplied alpha like `backgroundColor`. `none` counts as transparent |
+| `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `width`, `height`, `x1`, `y1`, `x2`, `y2` | Numbers in user units |
+| `d` | Path data. Both paths are made absolute first; with the same commands every number is interpolated, otherwise the value switches halfway through the progress (or when a spring passes halfway) |
+
+A key that `initial` does not name starts from the element's own attribute, and
+then from the SVG default (`fill` black, `stroke` transparent, opacities 1,
+`strokeWidth` 1). `r`, `width` and similar have no default, so an animation of
+one that the element does not declare jumps to its target. Naming a key that is
+not in the table, or a style such as `backgroundColor`, is an error.
+
+Because the `<svg>` is rasterised as one image, an animated shape paints a new
+image every frame. The cost is one atlas entry per frame until the rasteriser
+replaces the image in place.
+
 ### Animate a sidebar
 
 Animate an **outer clipping container** and keep the inner sidebar at a fixed
@@ -3802,6 +3842,40 @@ Give the element a `width` and `height`: an `<svg>` has no intrinsic size here.
 Earlier versions drew a monochrome mask tinted `#e2e2e2` when no `color` was set;
 now the SVG paints its own colours, so icons that used `fill="#000"` and relied
 on `style.color` to tint them need `fill="currentColor"`.
+
+#### Shapes as children
+
+`<svg>` also takes DOM-style children, so an icon or a chart can be written as
+JSX instead of a markup string: `path`, `circle`, `ellipse`, `rect`, `line`,
+`polyline`, `polygon` and `g`. They are valid only inside `<svg>` (anywhere else
+is an error), and they are not layout boxes: the `<svg>` paints them all as one
+image, so they take no `style` and no events.
+
+```tsx
+<svg viewBox="0 0 24 24" width={24} height={24} style={{ color: '#b4b4b4' }}>
+  <g fill="none" stroke="#000" strokeWidth={2} strokeLinecap="round">
+    <circle cx={11} cy={11} r={7} />
+    <path d="M16 16 L21 21" />
+  </g>
+</svg>
+```
+
+Props are camelCase, as in React DOM, and are written as kebab-case SVG
+attributes (`strokeWidth` becomes `stroke-width`). `transform` is an SVG
+transform list passed through as a string, and `strokeDasharray` takes a
+number, a list or a string. `width` and `height` size the element unless
+`style` sets its own; `viewBox` is the coordinate system the children draw in.
+When both children and `source` or `src` are given, the children win.
+
+The DOM `pathLength` attribute works as in a browser: it declares the length
+that `strokeDasharray` and `strokeDashoffset` are measured in, so
+`<path pathLength={1} strokeDasharray="0.5 1" />` strokes half of the outline.
+GPUIX measures the shape itself and writes absolute dash values, because the
+rasteriser does not support the attribute.
+
+The rasteriser still keeps only each pixel's coverage and tints it with
+`style.color`, so `fill` and `stroke` colours change opacity, not hue. Animate
+them with [`motion.path`](#animate-svg-shapes).
 
 #### Bun
 
