@@ -132,6 +132,12 @@ export interface RendererState {
   current(): RendererRootBinding | undefined
   /** Open a layer. Call the returned function when it closes. */
   pushLayer(layer: DismissLayer, options?: PushLayerOptions): () => void
+  /**
+   * Listen for the window environment `matchMedia` reads changing: the OS
+   * accessibility preferences, or the appearance. Independent of any mounted
+   * root. The renderer sends `mediaChange` only while a listener exists.
+   */
+  subscribeMedia(listener: () => void): () => void
 }
 
 export type ActiveRoot = RendererRootBinding & {
@@ -141,6 +147,25 @@ export type ActiveRoot = RendererRootBinding & {
 }
 
 const STATE_KEY = Symbol.for("@gpuix/native/renderer-states")
+const MOUNTED_KEY = Symbol.for("@gpuix/native/mounted-renderer")
+
+/** Mount order, oldest first. Shared through `globalThis` like the renderer states. */
+function mountedRenderers(): NativeRenderer[] {
+  const existing = Reflect.get(globalThis, MOUNTED_KEY) as NativeRenderer[] | undefined
+  if (existing) return existing
+  const created: NativeRenderer[] = []
+  Reflect.set(globalThis, MOUNTED_KEY, created)
+  return created
+}
+
+/**
+ * The renderer of the most recently mounted root that is still mounted, which
+ * is "the window" for code that has no component to ask, such as the global
+ * `matchMedia`.
+ */
+export function mountedRenderer(): NativeRenderer | undefined {
+  return mountedRenderers().at(-1)
+}
 
 /** Register an open overlay on this renderer's layer stack. */
 export function pushDismissLayer(
@@ -181,6 +206,8 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       dispatchDrag,
     })
 
+  const mediaListeners = new Set<() => void>()
+
   const state: RendererState = {
     ids,
     attach(handlers = {}) {
@@ -211,13 +238,20 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         detach() {
           if (active !== binding) return false
           active = undefined
+          const mounted = mountedRenderers()
+          mounted.splice(mounted.indexOf(renderer), 1)
           return true
         },
       }
       active = binding
+      mountedRenderers().push(renderer)
       return binding
     },
     dispatch(received) {
+      if (received.eventType === "mediaChange") {
+        for (const listener of [...mediaListeners]) listener()
+        return mediaListeners.size > 0
+      }
       const root = active
       if (!root) return false
       const event = shapeScrollEvent(normalizeEventType(received))
@@ -252,6 +286,21 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       return result
     },
     current: () => active,
+    subscribeMedia(listener) {
+      mediaListeners.add(listener)
+      if (mediaListeners.size === 1) {
+        try {
+          renderer.setWindowMediaChange?.(true)
+        } catch (error) {
+          mediaListeners.delete(listener)
+          throw error
+        }
+      }
+      return () => {
+        if (!mediaListeners.delete(listener)) return
+        if (mediaListeners.size === 0) renderer.setWindowMediaChange?.(false)
+      }
+    },
     pushLayer(layer, options = {}) {
       const entry: LayerEntry = {
         layer,
