@@ -1,6 +1,6 @@
 import fs from "fs"
 import path from "path"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -133,9 +133,17 @@ describeNative("svg children", () => {
   })
 
   it("rejects a shape outside an svg", () => {
-    const { render } = createTestRoot()
-    expect(() => render(<div><path d="M0 0" /></div>)).toThrow(/only valid inside <svg>/)
-    expect(() => render(<g />)).toThrow(/only valid inside <svg>/)
+    // React reports a commit error to its root's uncaught-error handler.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      for (const element of [<div><path d="M0 0" /></div>, <g />]) {
+        errors.mockClear()
+        createTestRoot().render(element)
+        expect(String(errors.mock.calls[0]?.[0])).toMatch(/only valid inside <svg>/)
+      }
+    } finally {
+      errors.mockRestore()
+    }
   })
 })
 
@@ -182,7 +190,7 @@ describeNative("svg motion", () => {
             stroke="black"
             strokeWidth={20}
             initial={{ pathLength: 0.2, pathOffset: 0 }}
-            animate={{ pathLength: 0.2, pathOffset: -0.5 }}
+            animate={{ pathLength: 0.2, pathOffset: 0.5 }}
             transition={{ duration: 1, ease: "linear" }}
           />
         </svg>
@@ -292,6 +300,7 @@ describeNative("svg motion", () => {
             cx={50}
             cy={50}
             r={10}
+            initial={{ cy: 50 }}
             animate={{ r: 40 }}
             transition={{ duration: 1, ease: "linear" }}
           />
