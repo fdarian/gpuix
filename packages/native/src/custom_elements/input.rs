@@ -2142,7 +2142,7 @@ impl gpui::Element for EditorTextElement {
                 input.update(cx, |input, cx| input.on_mouse_move(event, cx));
             }
         });
-        window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+        window.with_content_mask(Some(gpui::ContentMask::from_bounds(bounds)), |window| {
             for quad in prepaint.selection.drain(..) {
                 window.paint_quad(quad);
             }
