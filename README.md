@@ -4012,7 +4012,7 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"` | `"contents"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number) or percentages (string like `"100%"`). `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
@@ -4029,8 +4029,15 @@ CSS-like styling via the `style` prop:
   placeholders Solid creates for `<Show>` and `<For>` no longer add a flex or
   grid item (and a `gap`). Inside a `<text>` white space is kept.
 - **`display: "none"`** builds no box for the element or its descendants, and
-  leaves no gap. `display: "contents"`, the `inline-*` values and `table` are not
-  supported (the layout engine has no such box types).
+  leaves no gap. **`display: "contents"`** also builds no box: its children are
+  spliced, recursively, into the parent's child list, so they are the parent's
+  flex or grid items (and are sorted by `order` with them). The element's own box
+  styles (size, padding, background, border) do not apply, its inheritable text
+  style (`color`, `fontSize`, `fontFamily`, `fontWeight`, `textAlign`,
+  `lineHeight`, `whiteSpace`, `cursor`, `visibility`, `userSelect`) passes to the
+  children, and `getElementBounds` returns `null` for it. Its own pointer
+  handlers never fire, as it has no hitbox. The `inline-*` values and `table`
+  are not supported (the layout engine has no such box types).
 - **Static position.** An unpositioned box ignores `top`/`left` and is not a
   containing block. Known difference from CSS: an `overflow: "hidden"` static
   ancestor still clips an absolute descendant whose containing block is further

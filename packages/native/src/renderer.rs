@@ -5156,6 +5156,7 @@ impl GpuixView {
             highlight_events: &mut highlight_events,
             focus_styles,
             pointer: &self.pointer,
+            contents_overlay: None,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         emit_highlight_events(&callback, &highlight_events);
@@ -5290,6 +5291,9 @@ pub(crate) struct BuildCtx<'a> {
     pub focus_styles: crate::focus::FocusStyles,
     /// Which elements are hovered or pressed, for their `hover` / `active` styles.
     pub pointer: &'a crate::events::state::PointerState,
+    /// Inheritable style of the `display: contents` ancestors of the child about to be
+    /// built, taken by `build_element`.
+    pub contents_overlay: Option<StyleDesc>,
 }
 
 /// Style properties that cascade into descendants.
@@ -6058,6 +6062,7 @@ impl gpui::Render for GpuixView {
                     highlight_events: &mut highlight_events,
                     focus_styles,
                     pointer: &self.pointer,
+                    contents_overlay: None,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -6191,7 +6196,18 @@ pub(crate) fn build_element(
     } else {
         None
     };
-    let style = animated_style.as_ref().or(base_style);
+    let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
+        animated_style
+            .as_ref()
+            .or(base_style)
+            .cloned()
+            .unwrap_or_default()
+            .with_inherited_overlay(&overlay)
+    });
+    let style = overlaid_style
+        .as_ref()
+        .or(animated_style.as_ref())
+        .or(base_style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -6235,14 +6251,18 @@ pub(crate) fn build_element(
 
         // Polymorphic dispatch for all custom elements.
         custom_type => {
-            let custom_children: Vec<gpui::AnyElement> = element
-                .children
+            let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
+            let custom_children: Vec<gpui::AnyElement> = child_ids
                 .iter()
                 .copied()
                 .filter(|child_id| {
                     crate::layout::box_generation::generates_box(ctx.tree, element, *child_id)
                 })
-                .map(|child_id| build_element(child_id, ctx, window, cx))
+                .map(|child_id| {
+                    ctx.contents_overlay =
+                        crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                    build_element(child_id, ctx, window, cx)
+                })
                 .collect();
             let inherited = ctx.inherited.clone();
             let render_ctx = CustomRenderContext {
@@ -6676,6 +6696,7 @@ pub(crate) fn build_host_container(
                 .get(&child_id)
                 .and_then(|child| child.style.as_deref()),
         ));
+        ctx.contents_overlay = crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
         el = el.child(build_element(child_id, ctx, window, cx));
     }
     if paint_ranks.iter().any(|rank| *rank != 0) {

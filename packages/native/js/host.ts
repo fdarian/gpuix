@@ -185,8 +185,9 @@ export interface LinearGradientBackground {
 }
 
 export interface StyleDesc {
-  /** `"flex"`, `"grid"`, `"block"` (the default) or `"none"`, which builds no box at all.
-   *  `"contents"` and the `inline-*` values are not supported. */
+  /** `"flex"`, `"grid"`, `"block"` (the default), `"none"`, which builds no box at all, or
+   *  `"contents"`, which builds no box either and lays its children out as the parent's own.
+   *  The `inline-*` values are not supported. */
   display?: string
   visibility?: string
   /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */

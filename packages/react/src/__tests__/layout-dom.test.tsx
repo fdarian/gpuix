@@ -660,6 +660,61 @@ describeNative("DOM layout: paint order and zIndex", () => {
   })
 })
 
+describeNative("DOM layout: display contents", () => {
+  it("splices the children into the parent's flex layout and builds no box", () => {
+    withRoot(
+      <div style={{ display: "flex", gap: 10 }}>
+        <div testId="a" style={{ width: 20, height: 20 }} />
+        <div
+          testId="contents"
+          style={{ display: "contents", width: 500, padding: 40, backgroundColor: "#ff0000", borderWidth: 4 }}
+        >
+          <div testId="b" style={{ width: 20, height: 20 }} />
+          <div style={{ display: "contents" }}>
+            <div testId="c" style={{ width: 20, height: 20 }} />
+          </div>
+        </div>
+        <div testId="d" style={{ width: 20, height: 20 }} />
+      </div>,
+      (renderer) => {
+        expect([box(renderer, "a").x, box(renderer, "b").x, box(renderer, "c").x, box(renderer, "d").x]).toEqual([
+          0, 30, 60, 90,
+        ])
+        expect(renderer.getElementBounds(renderer.findByTestId("contents")!.id)).toBeNull()
+      }
+    )
+  })
+
+  it("lets the spliced children take part in the parent's order sort", () => {
+    withRoot(
+      <div style={{ display: "flex" }}>
+        <div testId="a" style={{ order: 1, width: 10, height: 10 }} />
+        <div style={{ display: "contents" }}>
+          <div testId="b" style={{ order: 2, width: 10, height: 10 }} />
+          <div testId="c" style={{ order: 0, width: 10, height: 10 }} />
+        </div>
+      </div>,
+      (renderer) => {
+        expect(["c", "a", "b"].map((id) => box(renderer, id).x)).toEqual([0, 10, 20])
+      }
+    )
+  })
+
+  it("lets an absolute child resolve past the removed box", () => {
+    withRoot(
+      <div testId="cb" style={{ position: "relative", width: 200, height: 100 }}>
+        <div style={{ display: "contents", position: "relative", left: 50 }}>
+          <div testId="abs" style={{ position: "absolute", left: 7, top: 3, width: 5, height: 5 }} />
+        </div>
+      </div>,
+      (renderer) => {
+        const cb = box(renderer, "cb")
+        expect(box(renderer, "abs")).toMatchObject({ x: cb.x + 7, y: cb.y + 3 })
+      }
+    )
+  })
+})
+
 describeNative("DOM layout: invalid values", () => {
   // Last in the file: a render that throws leaves the shared native window in a state the
   // following tests should not inherit.

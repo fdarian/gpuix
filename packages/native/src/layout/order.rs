@@ -3,7 +3,8 @@ use std::borrow::Cow;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
 
-/// The children of a flex or grid container in `order` order.
+/// The children of a container with `display: contents` elements spliced in, in `order` order
+/// when it is a flex or grid container.
 ///
 /// Taffy has no `order`, and GPUI paints children in the order they are added,
 /// so sorting the list that gets built moves layout and paint together. The sort
@@ -14,14 +15,15 @@ pub(crate) fn children_in_order<'a>(
     element: &'a RetainedElement,
     style: Option<&StyleDesc>,
 ) -> Cow<'a, [u64]> {
+    let children = super::contents::flatten(tree, &element.children);
     let is_flex_or_grid = matches!(
         style.and_then(|style| style.display.as_deref()),
         Some("flex") | Some("grid")
     );
-    if !is_flex_or_grid || !element.children.iter().any(|id| order_of(tree, *id) != 0) {
-        return Cow::Borrowed(&element.children);
+    if !is_flex_or_grid || !children.iter().any(|id| order_of(tree, *id) != 0) {
+        return children;
     }
-    let mut sorted = element.children.clone();
+    let mut sorted = children.into_owned();
     sorted.sort_by_key(|id| order_of(tree, *id));
     Cow::Owned(sorted)
 }
