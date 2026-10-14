@@ -9,7 +9,7 @@ import {
   type JSX,
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import type { HostMouseEvent, HostPointerEvent, HostProps, InputProps, KeyEvent } from "@gpuix/native/host"
+import { preventEventDefault, type HostMouseEvent, type HostPointerEvent, type HostProps, type InputProps, type KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"
@@ -308,6 +308,11 @@ export function ComboboxItem(props: ComboboxItemProps): JSX.Element {
       onMouseEnter(event: HostMouseEvent) {
         props.onMouseEnter?.(event)
         if (!itemState().disabled) state.setActive(state.filtered().indexOf(props.value))
+      },
+      // A press on an item must not take focus from the input, as in Base UI.
+      onMouseDown(event: HostMouseEvent) {
+        props.onMouseDown?.(event)
+        preventEventDefault(event)
       },
       onClick(event: HostPointerEvent) {
         props.onClick?.(event)

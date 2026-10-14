@@ -1775,7 +1775,6 @@ describeNative("focus styles", () => {
     const targetStyle = { width: 80, height: 40, borderRadius: 8, backgroundColor: "#303030", focusVisible }
     root.render(
       <div style={{ display: "flex", gap: 24, padding: 32, width: "100%", height: "100%", backgroundColor: "#101010" }}>
-        <div autoFocus tabIndex={0} testId="start" style={{ width: 1, height: 1 }} />
         {field
           ? <input testId="target" style={targetStyle} />
           : <div tabIndex={0} testId="target" style={targetStyle} />}

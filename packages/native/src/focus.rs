@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use crate::element_tree::EventPayload;
+use crate::events::keyboard::path_to_root;
 use crate::renderer::{emit_event_full, EventCallback};
 use crate::retained_tree::RetainedTree;
 
@@ -78,13 +79,15 @@ impl FocusState {
     ///
     /// `:focus-visible` follows the browser heuristic. A text control always
     /// matches. Otherwise focus matches when the keyboard moved it, or when a
-    /// script moved it off an element that matched. A key pressed while an
-    /// element is focused makes it match, whatever moved focus there.
+    /// script moved it off an element that matched, or before the user has
+    /// pressed any key or mouse button at all. A key pressed while an element is
+    /// focused makes it match, whatever moved focus there.
     pub fn observe(
         &mut self,
         current: Option<u64>,
         tree: &RetainedTree,
         keyboard_modality: bool,
+        user_input_seen: bool,
     ) -> Option<FocusChange> {
         let programmatic = std::mem::take(&mut self.programmatic);
         if current == self.focused {
@@ -100,7 +103,9 @@ impl FocusState {
             .is_some_and(|element| is_text_control(&element.element_type));
         self.focused = current;
         self.visible = current.is_some()
-            && (to_is_text_control || keyboard_modality || (programmatic && from_visible));
+            && (to_is_text_control
+                || keyboard_modality
+                || (programmatic && (from_visible || !user_input_seen)));
         // A removed element loses focus without an event, like a removed DOM node.
         let from_alive = from.is_some_and(|id| tree.elements.contains_key(&id));
         Some(FocusChange {
@@ -166,59 +171,50 @@ impl FocusEventKind {
             Self::FocusIn => "focusIn",
         }
     }
-
-    fn bubbles(self) -> bool {
-        matches!(self, Self::FocusOut | Self::FocusIn)
-    }
 }
 
 /// Emit blur(old), focusout(old), focus(new), focusin(new), in that order.
+///
+/// Each carries its `target`, the propagation `path` from it to the root, and
+/// the element on the other side of the move as `relatedTarget`. JS decides
+/// which of them bubble.
 pub(crate) fn emit_change(
     callback: &Option<EventCallback>,
     tree: &RetainedTree,
     change: &FocusChange,
 ) {
     if let Some(from) = change.from {
-        emit(callback, tree, FocusEventKind::Blur, from, change.from_visible);
-        emit(callback, tree, FocusEventKind::FocusOut, from, change.from_visible);
+        for kind in [FocusEventKind::Blur, FocusEventKind::FocusOut] {
+            emit(callback, tree, kind, from, change.to, change.from_visible);
+        }
     }
     if let Some(to) = change.to {
-        emit(callback, tree, FocusEventKind::Focus, to, change.to_visible);
-        emit(callback, tree, FocusEventKind::FocusIn, to, change.to_visible);
+        for kind in [FocusEventKind::Focus, FocusEventKind::FocusIn] {
+            emit(callback, tree, kind, to, change.from, change.to_visible);
+        }
     }
 }
 
 /// The one place a focus event payload is built.
-///
-/// A bubbling event is delivered to `target` and each ancestor that listens for
-/// it, innermost first.
 fn emit(
     callback: &Option<EventCallback>,
     tree: &RetainedTree,
     kind: FocusEventKind,
     target: u64,
+    related: Option<u64>,
     visible: bool,
 ) {
-    let event_type = kind.event_type();
-    let recipients = std::iter::successors(Some(target), |id| {
-        tree.elements.get(id).and_then(|element| element.parent)
+    emit_event_full(callback, target, kind.event_type(), |payload: &mut EventPayload| {
+        payload.focus_visible = Some(visible);
+        payload.target = Some(target as f64);
+        payload.path = Some(
+            path_to_root(tree, target)
+                .into_iter()
+                .map(|id| id as f64)
+                .collect(),
+        );
+        payload.related_target = related.map(|id| id as f64);
     });
-    let deliver = |id: u64| {
-        if tree
-            .elements
-            .get(&id)
-            .is_some_and(|element| element.events().contains(event_type))
-        {
-            emit_event_full(callback, id, event_type, |payload: &mut EventPayload| {
-                payload.focus_visible = Some(visible);
-            });
-        }
-    };
-    if kind.bubbles() {
-        recipients.for_each(deliver);
-    } else {
-        deliver(target);
-    }
 }
 
 #[cfg(test)]
@@ -255,9 +251,9 @@ mod tests {
     fn keyboard_focus_is_visible_and_mouse_focus_is_not() {
         let tree = tree_with(&[(1, "div"), (2, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false);
+        state.observe(Some(1), &tree, false, true);
         assert!(!state.matches(&tree, 1, ":focus-visible").unwrap());
-        state.observe(Some(2), &tree, true);
+        state.observe(Some(2), &tree, true, true);
         assert!(state.matches(&tree, 2, ":focus-visible").unwrap());
     }
 
@@ -265,9 +261,9 @@ mod tests {
     fn a_key_while_focused_makes_focus_visible() {
         let tree = tree_with(&[(1, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false);
+        state.observe(Some(1), &tree, false, true);
         assert!(!state.matches(&tree, 1, ":focus-visible").unwrap());
-        assert!(state.observe(Some(1), &tree, true).is_none());
+        assert!(state.observe(Some(1), &tree, true, true).is_none());
         assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
@@ -275,7 +271,7 @@ mod tests {
     fn text_controls_are_always_focus_visible() {
         let tree = tree_with(&[(1, "input")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false);
+        state.observe(Some(1), &tree, false, true);
         assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
@@ -283,28 +279,37 @@ mod tests {
     fn script_focus_inherits_visibility_from_the_element_it_leaves() {
         let tree = tree_with(&[(1, "div"), (2, "div"), (3, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, true);
+        state.observe(Some(1), &tree, true, true);
         state.note_programmatic();
-        state.observe(Some(2), &tree, false);
+        state.observe(Some(2), &tree, false, true);
         assert!(state.matches(&tree, 2, ":focus-visible").unwrap());
 
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false);
+        state.observe(Some(1), &tree, false, true);
         state.note_programmatic();
-        state.observe(Some(3), &tree, false);
+        state.observe(Some(3), &tree, false, true);
         assert!(!state.matches(&tree, 3, ":focus-visible").unwrap());
+    }
+
+    #[test]
+    fn script_focus_before_any_user_input_is_focus_visible() {
+        let tree = tree_with(&[(1, "div")]);
+        let mut state = FocusState::default();
+        state.note_programmatic();
+        state.observe(Some(1), &tree, false, false);
+        assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
     #[test]
     fn a_change_reports_both_ends_and_a_removed_element_is_silent() {
         let mut tree = tree_with(&[(1, "div"), (2, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false);
-        let change = state.observe(Some(2), &tree, false).unwrap();
+        state.observe(Some(1), &tree, false, true);
+        let change = state.observe(Some(2), &tree, false, true).unwrap();
         assert_eq!((change.from, change.to), (Some(1), Some(2)));
 
         tree.destroy_element(2);
-        let change = state.observe(None, &tree, false).unwrap();
+        let change = state.observe(None, &tree, false, true).unwrap();
         assert_eq!((change.from, change.to), (None, None));
     }
 

@@ -5516,10 +5516,12 @@ impl GpuixView {
         } else {
             None
         };
-        if let Some(change) = self
-            .focus
-            .observe(current, tree, window.last_input_was_keyboard())
-        {
+        if let Some(change) = self.focus.observe(
+            current,
+            tree,
+            window.last_input_was_keyboard(),
+            self.routing.user_input_seen(),
+        ) {
             crate::focus::emit_change(&self.event_callback, tree, &change);
         }
     }

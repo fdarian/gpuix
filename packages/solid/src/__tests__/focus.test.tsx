@@ -130,9 +130,10 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
         <div testId="b" tabIndex={0} style={box} onFocus={(event) => seen.push(event.focusVisible)} />
       </div>
     ))
+    // Script focus before any user input matches, like Chrome.
     renderer.focusElement(idOf("a"))
     renderer.simulateKeystrokes("tab")
-    expect(seen).toEqual([false, true])
+    expect(seen).toEqual([true, true])
   })
 
   it("matches :focus-within on every ancestor of the focused element", () => {

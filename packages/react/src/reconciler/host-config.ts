@@ -71,10 +71,16 @@ interface HostNodeState {
 
 const hostNodeStates = new WeakMap<HostNode, HostNodeState>()
 
-function attachHostMethods(instance: Instance): void {
-  if (instance.scrollIntoView) return
+function isPublicInstance(instance: Instance): instance is PublicInstance {
+  return Boolean(instance.focus && instance.blur && instance.matches)
+}
+
+function attachHostMethods(instance: Instance): PublicInstance {
+  if (isPublicInstance(instance)) return instance
   const container = hostNodeStates.get(instance)?.container
-  if (!container) return
+  if (!container) {
+    throw new Error(`Host element ${instance.id} was handed out before it was mounted.`)
+  }
   instance.scrollIntoView = () => {
     container.nativeRenderer.scrollIntoView?.(instance.id)
   }
@@ -85,22 +91,25 @@ function attachHostMethods(instance: Instance): void {
     hostElementMatches(container.nativeRenderer, instance.id, selector)
   if (instance.type === "input" || instance.type === "textarea") {
     attachTextControlMethods(instance as TextControlInstance, container)
-    return
+  } else if (instance.type === "img") {
+    const img = instance as ImgInstance
+    img.setImage = (bytes) => {
+      container.nativeRenderer.setImage?.(img.id, bytes as Buffer)
+    }
+    img.setImagePixels = (width, height, pixels, options) => {
+      container.nativeRenderer.setImagePixels?.(
+        img.id,
+        width,
+        height,
+        pixels as Buffer,
+        options?.format,
+      )
+    }
   }
-  if (instance.type !== "img") return
-  const img = instance as ImgInstance
-  img.setImage = (bytes) => {
-    container.nativeRenderer.setImage?.(img.id, bytes as Buffer)
+  if (!isPublicInstance(instance)) {
+    throw new Error(`Host element ${instance.id} is missing its focus methods.`)
   }
-  img.setImagePixels = (width, height, pixels, options) => {
-    container.nativeRenderer.setImagePixels?.(
-      img.id,
-      width,
-      height,
-      pixels as Buffer,
-      options?.format,
-    )
-  }
+  return instance
 }
 
 function attachTextControlMethods(control: TextControlInstance, container: Container): void {
@@ -610,8 +619,7 @@ export const hostConfig = {
   },
 
   getPublicInstance(instance: Instance): PublicInstance {
-    attachHostMethods(instance)
-    return instance
+    return attachHostMethods(instance)
   },
 
   preparePortalMount(_containerInfo: Container): void {},

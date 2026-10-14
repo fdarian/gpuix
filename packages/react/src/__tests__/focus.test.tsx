@@ -200,9 +200,23 @@ describeNative("focus model", () => {
           <div testId="b" tabIndex={0} style={box} onFocus={(event) => seen.push(event.focusVisible)} />
         </div>
       )
+      // Script focus before any input matches, like Chrome.
       renderer.focusElement(idOf("a"))
       renderer.simulateKeystrokes("tab")
-      expect(seen).toEqual([false, true])
+      expect(seen).toEqual([true, true])
+    })
+
+    it("does not report focusVisible for script focus once the mouse was used", () => {
+      const seen: boolean[] = []
+      const { renderer, idOf, center } = setup(
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="a" tabIndex={0} style={box} onFocus={(event) => seen.push(event.focusVisible)} />
+          <div testId="b" tabIndex={0} style={box} onFocus={(event) => seen.push(event.focusVisible)} />
+        </div>
+      )
+      renderer.nativeSimulateClick(...center("a"))
+      renderer.focusElement(idOf("b"))
+      expect(seen).toEqual([false, false])
     })
   })
 
@@ -354,7 +368,7 @@ describeNative("focus model", () => {
       expect(focused()).toBe("target")
       expect(node.matches(":focus")).toBe(true)
       expect(node.matches(":focus-within")).toBe(true)
-      expect(node.matches(":focus-visible")).toBe(false)
+      expect(node.matches(":focus-visible")).toBe(true)
       node.blur()
       expect(focused()).toBe(null)
       expect(node.matches(":focus")).toBe(false)

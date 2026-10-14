@@ -9,6 +9,7 @@ import React, {
 } from "react"
 import type { ReactElement, ReactNode } from "react"
 import type { EventPayload } from "@gpuix/native"
+import { preventEventDefault } from "@gpuix/native/host"
 import type {
   HostMouseEvent,
   HostPointerEvent,
@@ -398,7 +399,7 @@ export interface ComboboxItemProps extends Omit<Props, "children" | "style"> {
 
 export const ComboboxItem = forwardRef<PublicInstance, ComboboxItemProps>(
   function ComboboxItem(
-    { value, disabled = false, asChild, children, style, onClick, onMouseEnter, ...props },
+    { value, disabled = false, asChild, children, style, onClick, onMouseDown, onMouseEnter, ...props },
     ref
   ) {
     const context = useComboboxContext("ComboboxItem")
@@ -426,6 +427,11 @@ export const ComboboxItem = forwardRef<PublicInstance, ComboboxItemProps>(
         ...props,
         style: resolveStyle(style, state),
         onMouseEnter: onItemMouseEnter,
+        // A press on an item must not take focus from the input, as in Base UI.
+        onMouseDown: (event: HostMouseEvent) => {
+          onMouseDown?.(event)
+          preventEventDefault(event)
+        },
         onClick: onItemClick,
       },
       ref: itemRef,
