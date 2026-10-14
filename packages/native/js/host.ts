@@ -816,6 +816,7 @@ export type NativeRenderer = MutationHost &
       | "focusPreviousWithin"
       | "blur"
       | "setWindowKeyEvents"
+      | "setSyncEventHandler"
       | "setWindowSelectionChange"
       | "setWindowAppearanceChange"
       | "getElementBounds"
@@ -888,16 +889,22 @@ export type HostEventHandler = { handle(event: EventPayload): void }["handle"]
 export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
 
 /**
- * A `keyDown` / `keyUp` event. Element handlers and the window handler of one
- * keystroke share the flags, like one DOM event bubbling to `window`.
+ * A `keyDown` / `keyUp` event, the same object every handler of one keystroke
+ * sees, like one DOM event travelling from the focused element to `window`.
  */
 export interface KeyEvent extends EventPayload {
   /** True after any handler of this keystroke called `preventDefault()`. */
   readonly defaultPrevented: boolean
-  /** Cancel the default action, for example Tab moving focus. */
+  /**
+   * Cancel the default action. On `keyDown` that is native: no editor action
+   * (caret movement, deletion, Enter, Cmd+C), no text typed, and in JS, Tab
+   * moving focus and Escape closing the top overlay. Handlers run before native
+   * acts, except on Windows and Linux, where the key is delivered after the
+   * fact and only the JS defaults can be cancelled.
+   */
   preventDefault(): void
-  /** Skip ancestor `onKeyDown` handlers and the window handler. The default
-   *  action still runs, like the DOM. */
+  /** Skip the handlers further along the path, up to and including `window`.
+   *  The default action still runs, like the DOM. */
   stopPropagation(): void
 }
 
@@ -912,10 +919,10 @@ export type WindowEventHandler = (
 ) => void
 
 export interface WindowKeyEventHandlers {
-  /** Window-level GPUI listener. Runs after element `onKeyDown` handlers.
-   *  Key actions can consume an event before this runs. */
+  /** A `window` bubble listener for `keydown`, for this root only. Runs after
+   *  every element handler on the focused element's path. */
   onKeyDown?: WindowKeyEventHandler
-  /** Window-level GPUI listener. */
+  /** A `window` bubble listener for `keyup`, for this root only. */
   onKeyUp?: WindowKeyEventHandler
   /** Window-level text selection. Fires when the selected ranges change. */
   onSelectionChange?: WindowEventHandler

@@ -44,6 +44,9 @@ export function createNativeRenderer(
   })
   bindClipboard(renderer)
   bindEyeDropper(renderer)
+  // Keys reach JS here, inside the native call, so preventDefault() can still
+  // stop the editor. A throw becomes the error of the call on the stack.
+  renderer.setSyncEventHandler((event) => createRendererState(renderer).dispatchSync(event))
   const automated =
     typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
   const init = renderer.init.bind(renderer)

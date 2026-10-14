@@ -10,6 +10,7 @@ import type {
   Appearance,
   NativeRenderer,
   RendererRootBinding,
+  SyncDispatchResult,
   RootEventHandlers,
 } from "@gpuix/native/host"
 import { HostRoot, removeHostNode } from "./host.js"
@@ -38,6 +39,7 @@ export interface Root {
   flush(): void
   flushSync<Value>(fn: () => Value): Value
   dispatch(event: EventPayload): boolean
+  dispatchSync(event: EventPayload): SyncDispatchResult
   unmount(): void
 }
 
@@ -109,9 +111,10 @@ export function createRoot(
       onEvent: rootHandlers.onEvent,
     })
     renderer.setWindowKeyEvents?.(
-      // Always on: the Tab and Escape defaults run on the window event.
+      // Always on: the Tab and Escape defaults run on the key event, and
+      // `window` listeners can be added at any time.
       true,
-      Boolean(rootHandlers.onKeyUp),
+      true,
       binding.windowKeyEventId
     )
     // Sent on every attach, so a remount without the option restores the default.
@@ -187,6 +190,13 @@ export function createRoot(
     dispatch(event) {
       try {
         return state.dispatch(event)
+      } finally {
+        flush()
+      }
+    },
+    dispatchSync(event) {
+      try {
+        return state.dispatchSync(event)
       } finally {
         flush()
       }

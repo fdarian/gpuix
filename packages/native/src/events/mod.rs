@@ -2,11 +2,13 @@ pub mod dispatcher;
 pub mod element_drag;
 pub mod file_drag;
 pub mod ids;
+pub(crate) mod keyboard;
 pub mod listeners;
 pub mod path;
 pub mod pointer_lock;
 pub mod state;
 pub mod state_styles;
+pub(crate) mod sync_dispatch;
 pub mod synthetic_click;
 
 /// Every GPUIX window hit-tests like the DOM: the pointer hits the topmost

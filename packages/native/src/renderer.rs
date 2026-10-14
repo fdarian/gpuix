@@ -288,23 +288,50 @@ fn recv_ui_response<T>(receiver: std::sync::mpsc::Receiver<T>, operation: &str) 
     }
 }
 
+/// Runs `update` against the dispatching window while a sync event handler is
+/// in flight, where the app is already borrowed. See `events::sync_dispatch`.
+#[cfg(target_os = "macos")]
+fn update_window_in_sync_call<R>(
+    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
+) -> Result<R> {
+    crate::events::sync_dispatch::update_root_view(update).map_err(Error::from_reason)
+}
+
+/// `update_window` for a change that returns nothing. When it is called from a
+/// handler of an input that holds the root view, it runs after that input.
+#[cfg(target_os = "macos")]
+fn update_window_or_defer(
+    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + 'static,
+) -> Result<()> {
+    if crate::events::sync_dispatch::in_sync_call() {
+        return crate::events::sync_dispatch::update_root_view_or_defer(update)
+            .map_err(Error::from_reason);
+    }
+    update_window(update)
+}
+
 #[cfg(target_os = "macos")]
 fn update_window<R>(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
 ) -> Result<R> {
-    let window = GPUI_WINDOW
-        .with(|window| *window.borrow())
-        .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
+    crate::events::sync_dispatch::native_call(|| {
+        if crate::events::sync_dispatch::in_sync_call() {
+            return update_window_in_sync_call(update);
+        }
+        let window = GPUI_WINDOW
+            .with(|window| *window.borrow())
+            .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
 
-    GPUI_APP.with(|app| {
-        let app = app.borrow();
-        let app = app
-            .as_ref()
-            .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-        app.update(|cx| {
-            window
-                .update(cx, update)
-                .map_err(|error| Error::from_reason(error.to_string()))
+        GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            app.update(|cx| {
+                window
+                    .update(cx, update)
+                    .map_err(|error| Error::from_reason(error.to_string()))
+            })
         })
     })
 }
@@ -314,25 +341,35 @@ fn update_window<R>(
 fn update_window_without_view<R>(
     update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
 ) -> Result<R> {
-    let window = GPUI_WINDOW
-        .with(|window| *window.borrow())
-        .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
+    crate::events::sync_dispatch::native_call(|| {
+        if crate::events::sync_dispatch::in_sync_call() {
+            return crate::events::sync_dispatch::with_active_window(update).ok_or_else(|| {
+                Error::from_reason(crate::events::sync_dispatch::NESTED)
+            });
+        }
+        let window = GPUI_WINDOW
+            .with(|window| *window.borrow())
+            .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
 
-    GPUI_APP.with(|app| {
-        let app = app.borrow();
-        let app = app
-            .as_ref()
-            .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-        app.update(|cx| {
-            gpui::AnyWindowHandle::from(window)
-                .update(cx, move |_view, window, cx| update(window, cx))
-                .map_err(|error| Error::from_reason(error.to_string()))
+        GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            app.update(|cx| {
+                gpui::AnyWindowHandle::from(window)
+                    .update(cx, move |_view, window, cx| update(window, cx))
+                    .map_err(|error| Error::from_reason(error.to_string()))
+            })
         })
     })
 }
 
 #[cfg(target_os = "macos")]
 fn invalidate_window() -> Result<()> {
+    if crate::events::sync_dispatch::in_sync_call() {
+        return crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason);
+    }
     update_window(|_view, window, cx| {
         cx.notify();
         window.refresh();
@@ -805,9 +842,7 @@ async fn run_ui_commands(
                 key_up,
                 event_id,
             } => window.update(cx, move |view, window, cx| {
-                view.window_key_down = key_down;
-                view.window_key_up = key_up;
-                view.window_key_event_id = event_id;
+                view.routing.set_window_keys(key_down, key_up, event_id);
                 cx.notify();
                 window.refresh();
             }),
@@ -1341,6 +1376,7 @@ impl GpuixRenderer {
                         );
                         view.observe_appearance(window, cx);
                         crate::events::enable_dom_hit_testing(window);
+                        view.install_key_interception(cx);
                         view
                     })
                 },
@@ -1488,6 +1524,7 @@ impl GpuixRenderer {
                                         );
                                         view.observe_appearance(window, cx);
                                         crate::events::enable_dom_hit_testing(window);
+                                        view.install_key_interception(cx);
                                         view
                                     })
                                 },
@@ -1592,13 +1629,16 @@ impl GpuixRenderer {
 
         #[cfg(target_os = "macos")]
         {
-            let running = MAC_PLATFORM.with(|p| {
-                p.borrow()
-                    .as_ref()
-                    .map(|platform| platform.pump_events())
-                    .unwrap_or(false)
+            // Key input is dispatched while the platform pumps, and JS handlers
+            // run synchronously from there.
+            return crate::events::sync_dispatch::native_call(|| {
+                Ok(MAC_PLATFORM.with(|p| {
+                    p.borrow()
+                        .as_ref()
+                        .map(|platform| platform.pump_events())
+                        .unwrap_or(false)
+                }))
             });
-            return Ok(running);
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1624,6 +1664,23 @@ impl GpuixRenderer {
     #[napi]
     pub fn is_initialized(&self) -> bool {
         *self.initialized.lock().unwrap()
+    }
+
+    /// Registers the function native calls synchronously for events whose
+    /// default JS can cancel: `keyDown`, `keyUp`. It takes the `EventPayload`
+    /// and returns `{ defaultPrevented, propagationStopped }`. Pass `null` to
+    /// remove it.
+    ///
+    /// Synchronous on macOS, where GPUI runs on the JS thread inside `tick()`.
+    /// Windows and Linux run GPUI on another thread and keep delivering these
+    /// events through the queue, so their handlers cannot cancel anything.
+    #[napi]
+    pub fn set_sync_event_handler(
+        &self,
+        env: &Env,
+        handler: Option<Function<EventPayload, crate::events::sync_dispatch::SyncDispatchResult>>,
+    ) -> Result<()> {
+        crate::events::sync_dispatch::register(env, handler)
     }
 
     /// Wake JavaScript after the display link queues a frame. Returns true on macOS,
@@ -2057,7 +2114,7 @@ impl GpuixRenderer {
     pub fn focus_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
+        return update_window_or_defer(move |view, window, cx| {
             view.request_focus(id, window, cx);
             window.refresh();
         });
@@ -2079,7 +2136,7 @@ impl GpuixRenderer {
     pub fn blur_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
+        return update_window_or_defer(move |view, window, cx| {
             view.blur_element(id, window, cx);
             window.refresh();
         });
@@ -2132,7 +2189,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window(|_view, window, cx| window.focus_next(cx));
+        return update_window_without_view(|window, cx| window.focus_next(cx));
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusNext);
@@ -2150,7 +2207,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window(|_view, window, cx| window.focus_prev(cx));
+        return update_window_without_view(|window, cx| window.focus_prev(cx));
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusPrevious);
@@ -2194,7 +2251,7 @@ impl GpuixRenderer {
     pub fn focus_next_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
+        return update_window_or_defer(move |view, window, cx| {
             view.focus_next_within(id, window, cx);
             cx.notify();
             window.refresh();
@@ -2217,7 +2274,7 @@ impl GpuixRenderer {
     pub fn focus_previous_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
+        return update_window_or_defer(move |view, window, cx| {
             view.focus_previous_within(id, window, cx);
             cx.notify();
             window.refresh();
@@ -2241,9 +2298,7 @@ impl GpuixRenderer {
         let event_id = to_element_id(event_id)?;
         #[cfg(target_os = "macos")]
         return update_window(move |view, window, cx| {
-            view.window_key_down = key_down;
-            view.window_key_up = key_up;
-            view.window_key_event_id = event_id;
+            view.routing.set_window_keys(key_down, key_up, event_id);
             cx.notify();
             window.refresh();
         });
@@ -2267,7 +2322,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn blur(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window(move |_view, window, _cx| window.blur());
+        return update_window_without_view(move |window, _cx| window.blur());
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::Blur);
@@ -2576,7 +2631,7 @@ impl GpuixRenderer {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
         {
-            update_window(move |view, window, cx| {
+            update_window_or_defer(move |view, window, cx| {
                 if view.scroll_element_into_view(id) {
                     cx.notify();
                     window.refresh();
@@ -3338,12 +3393,11 @@ fn start_web_app(
                 );
                 view.observe_appearance(window, cx);
                 crate::events::enable_dom_hit_testing(window);
+                view.install_key_interception(cx);
                 if let Some((key_down, key_up, event_id)) =
                     PENDING_WINDOW_KEY_EVENTS.with(|pending| pending.borrow_mut().take())
                 {
-                    view.window_key_down = key_down;
-                    view.window_key_up = key_up;
-                    view.window_key_event_id = event_id;
+                    view.routing.set_window_keys(key_down, key_up, event_id);
                 }
                 if let Some((enabled, event_id)) =
                     PENDING_WINDOW_SELECTION_CHANGE.with(|pending| pending.borrow_mut().take())
@@ -3391,10 +3445,22 @@ fn web_string_array(values: impl IntoIterator<Item = String>) -> wasm_bindgen::J
     result.into()
 }
 
+/// The web counterpart of `update_window_in_sync_call`.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn update_web_window_in_sync_call<R>(
+    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
+) -> Result<R, wasm_bindgen::JsValue> {
+    crate::events::sync_dispatch::update_root_view(update)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn update_web_window<R>(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
 ) -> Result<R, wasm_bindgen::JsValue> {
+    if crate::events::sync_dispatch::in_sync_call() {
+        return update_web_window_in_sync_call(update);
+    }
     WEB_APP.with(|app| {
         let app = app.borrow();
         let app = app
@@ -3417,6 +3483,11 @@ fn update_web_window<R>(
 fn update_web_window_without_view<R>(
     update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
 ) -> Result<R, wasm_bindgen::JsValue> {
+    if crate::events::sync_dispatch::in_sync_call() {
+        return crate::events::sync_dispatch::with_active_window(update).ok_or_else(|| {
+            wasm_bindgen::JsValue::from_str(crate::events::sync_dispatch::NESTED)
+        });
+    }
     WEB_APP.with(|app| {
         let app = app.borrow();
         let app = app
@@ -3532,6 +3603,12 @@ impl WebGpuixRenderer {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = isInitialized)]
     pub fn is_initialized(&self) -> bool {
         WEB_APP.with(|app| app.borrow().is_some())
+    }
+
+    /// See `GpuixRenderer::setSyncEventHandler`. Always synchronous here.
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setSyncEventHandler)]
+    pub fn set_sync_event_handler(&self, handler: Option<js_sys::Function>) {
+        crate::events::sync_dispatch::register(handler);
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = requiresTick)]
@@ -3650,9 +3727,7 @@ impl WebGpuixRenderer {
             return Ok(());
         }
         update_web_window(move |view, _window, cx| {
-            view.window_key_down = key_down;
-            view.window_key_up = key_up;
-            view.window_key_event_id = event_id;
+            view.routing.set_window_keys(key_down, key_up, event_id);
             cx.notify();
         })
     }
@@ -4213,9 +4288,9 @@ pub(crate) struct GpuixView {
     pub(crate) tree: Arc<Mutex<RetainedTree>>,
     pub(crate) event_callback: Option<EventCallback>,
     pub(crate) window_title: String,
-    pub(crate) window_key_down: bool,
-    pub(crate) window_key_up: bool,
-    pub(crate) window_key_event_id: u64,
+    /// What the key and mouse listeners read about this view. See `InputRouting`.
+    pub(crate) routing: crate::events::keyboard::InputRouting,
+    key_down_interception: Option<gpui::Subscription>,
     pub(crate) window_selection_change: bool,
     pub(crate) window_selection_event_id: u64,
     window_appearance_change: bool,
@@ -4365,93 +4440,6 @@ fn emit_highlight_events(callback: &Option<EventCallback>, events: &[(u64, usize
     }
 }
 
-thread_local! {
-    /// Bumped once per GPUI key dispatch, before any key listener runs.
-    static KEYSTROKE_ID: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-/// Emit a key event stamped with the current dispatch's keystroke id.
-///
-/// JS handlers run after GPUI finished dispatching (the event callback is
-/// non-blocking), so they cannot stop GPUI propagation. The id lets the JS host
-/// group one keystroke's element events and its trailing window event, and
-/// apply `preventDefault` / `stopPropagation` across them.
-pub(crate) fn emit_key_event(
-    callback: &Option<EventCallback>,
-    element_id: u64,
-    event_type: &str,
-    keystroke: &gpui::Keystroke,
-    is_held: Option<bool>,
-) {
-    let keystroke_id = KEYSTROKE_ID.with(|id| id.get());
-    emit_event_full(callback, element_id, event_type, |payload| {
-        payload.key = Some(keystroke.key.clone());
-        payload.key_char = keystroke.key_char.clone();
-        payload.is_held = is_held;
-        payload.modifiers = Some(keystroke.modifiers.into());
-        payload.keystroke_id = Some(keystroke_id as f64);
-    });
-}
-
-fn next_keystroke_id() {
-    KEYSTROKE_ID.with(|id| id.set(id.get() + 1));
-}
-
-fn window_key_events(
-    callback: Option<EventCallback>,
-    key_down: bool,
-    key_up: bool,
-    event_id: u64,
-) -> impl gpui::IntoElement {
-    use gpui::prelude::*;
-
-    gpui::canvas(
-        |_, _, _| (),
-        move |_, _, window, _| {
-            // Root capture runs first in GPUI's key dispatch, before every
-            // element listener, so each keystroke gets a fresh id even when an
-            // element later stops propagation.
-            let callback_down = callback.clone();
-            window.on_root_key_event(move |event: &gpui::KeyDownEvent, phase, _window, _cx| {
-                if phase == gpui::DispatchPhase::Capture {
-                    next_keystroke_id();
-                    return;
-                }
-                if key_down {
-                    emit_key_event(
-                        &callback_down,
-                        event_id,
-                        "windowKeyDown",
-                        &event.keystroke,
-                        Some(event.is_held),
-                    );
-                }
-                // Tab is a navigation key, never text, like in a browser field.
-                // Every element listener already ran; stopping here only keeps
-                // the platform from inserting "\t" into the focused <input>
-                // and, on the web, keeps focus on GPUI's hidden keyboard
-                // element. The JS host decides whether focus moves.
-                if event.keystroke.key == "tab" {
-                    _cx.stop_propagation();
-                }
-            });
-            let callback_up = callback.clone();
-            window.on_root_key_event(move |event: &gpui::KeyUpEvent, phase, _window, _cx| {
-                if phase == gpui::DispatchPhase::Capture {
-                    next_keystroke_id();
-                    return;
-                }
-                if key_up {
-                    emit_key_event(&callback_up, event_id, "windowKeyUp", &event.keystroke, None);
-                }
-            });
-        },
-    )
-    .absolute()
-    .w(gpui::px(0.0))
-    .h(gpui::px(0.0))
-}
-
 /// Resolve one element's `highlight` prop, reusing both cache levels.
 ///
 /// Returns the context, plus the match count when `has_listener` and the result
@@ -4541,9 +4529,8 @@ impl GpuixView {
             tree,
             event_callback,
             window_title,
-            window_key_down: false,
-            window_key_up: false,
-            window_key_event_id: 0,
+            routing: Default::default(),
+            key_down_interception: None,
             window_selection_change: false,
             window_selection_event_id: 0,
             window_appearance_change: false,
@@ -4769,6 +4756,17 @@ impl GpuixView {
                 payload.target = event.element().map(|id| id as f64);
             });
         }
+    }
+
+    /// Send `keyDown` for every keystroke, before GPUI binds it to an action.
+    /// Call once, right after the view is created.
+    pub(crate) fn install_key_interception(&mut self, cx: &mut gpui::App) {
+        self.key_down_interception = Some(crate::events::keyboard::install_key_down(
+            cx,
+            self.tree.clone(),
+            self.event_callback.clone(),
+            self.routing.clone(),
+        ));
     }
 
     /// Emit `selectionChange` when the selected range set changed this frame.
@@ -5755,6 +5753,11 @@ impl GpuixView {
         // Clean up handles for elements that no longer exist.
         self.focus_handles
             .retain(|id, _| tree.focusable_ids.contains(id));
+        self.routing.set_focusables(
+            self.focus_handles
+                .iter()
+                .map(|(id, handle)| (*id, handle.downgrade())),
+        );
     }
 }
 
@@ -5890,11 +5893,10 @@ impl gpui::Render for GpuixView {
                     cx.weak_entity(),
                     self.pointer.observed(),
                 ))
-                .child(window_key_events(
+                .child(crate::events::keyboard::window_input_listeners(
+                    tree_arc.clone(),
                     callback.clone(),
-                    self.window_key_down,
-                    self.window_key_up,
-                    self.window_key_event_id,
+                    self.routing.clone(),
                 ))
                 .child(selection_frame_reset(
                     self.selection.clone(),
@@ -6445,31 +6447,11 @@ pub(crate) fn build_host_container(
                 });
             }
 
-            // ── Key down ─────────────────────────────────────────
-            // Requires .focusable() (set above). Element must be focused
-            // (clicked or tabbed to) for these to fire.
-            "keyDown" => {
-                el = el.on_key_down(move |key_event, _window, _cx| {
-                    emit_key_event(
-                        &callback,
-                        id,
-                        "keyDown",
-                        &key_event.keystroke,
-                        Some(key_event.is_held),
-                    );
-                });
-            }
-
-            // ── Key up ───────────────────────────────────────────
-            "keyUp" => {
-                el = el.on_key_up(move |key_event, _window, _cx| {
-                    emit_key_event(&callback, id, "keyUp", &key_event.keystroke, None);
-                });
-            }
-
-            // ── Focus events ─────────────────────────────────────
-            // Emitted from `GpuixView::observe_focus`, not per element.
-            "focus" | "blur" | "focusIn" | "focusOut" => {}
+            // ── Key and focus events ─────────────────────────────
+            // Not per element. One event per keystroke goes to the focused
+            // element and bubbles along its path in JS (`events::keyboard`),
+            // and focus events come from `GpuixView::observe_focus`.
+            "keyDown" | "keyUp" | "focus" | "blur" | "focusIn" | "focusOut" => {}
 
             _ => {}
         }

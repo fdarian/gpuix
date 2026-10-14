@@ -31,7 +31,7 @@ use super::text_selection::{
     describe, resolve, utf16_len, SelectionRequest, TextSelection,
 };
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
-use crate::renderer::{emit_event_full, emit_key_event, EventCallback};
+use crate::renderer::{emit_event_full, EventCallback};
 use crate::theme::Theme;
 
 actions!(
@@ -422,8 +422,6 @@ impl CustomElement for TextEditorElement {
         };
         let emits_change = ctx.events.contains("change");
         let emits_submit = ctx.events.contains("submit");
-        let emits_key_down = ctx.events.contains("keyDown");
-        let emits_key_up = ctx.events.contains("keyUp");
         let callback = ctx.event_callback.clone();
 
         let state = self
@@ -461,8 +459,6 @@ impl CustomElement for TextEditorElement {
                     callback,
                     emits_change,
                     emits_submit,
-                    emits_key_down,
-                    emits_key_up,
                     focus_handle: state_focus_handle,
                     content: value,
                     placeholder: placeholder.into(),
@@ -526,8 +522,6 @@ impl CustomElement for TextEditorElement {
                 state.emits_submit = emits_submit;
                 cx.notify();
             }
-            state.emits_key_down = emits_key_down;
-            state.emits_key_up = emits_key_up;
             state.placeholder = self.placeholder.clone().into();
             state.read_only = self.read_only;
             state.min_rows = self.min_rows.max(1);
@@ -790,8 +784,6 @@ struct TextEditorState {
     callback: Option<EventCallback>,
     emits_change: bool,
     emits_submit: bool,
-    emits_key_down: bool,
-    emits_key_up: bool,
     focus_handle: FocusHandle,
     content: String,
     placeholder: SharedString,
@@ -1929,9 +1921,6 @@ impl EntityInputHandler for TextEditorState {
 
 impl gpui::Render for TextEditorState {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let key_down_callback = self.callback.clone();
-        let key_up_callback = self.callback.clone();
-        let element_id = self.element_id;
         div()
             .key_context(if self.number_rules.is_some() {
                 NUMBER_INPUT_KEY_CONTEXT
@@ -1988,22 +1977,6 @@ impl gpui::Render for TextEditorState {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
-            .when(self.emits_key_down, move |editor| {
-                editor.on_key_down(move |event, _window, _cx| {
-                    emit_key_event(
-                        &key_down_callback,
-                        element_id,
-                        "keyDown",
-                        &event.keystroke,
-                        Some(event.is_held),
-                    );
-                })
-            })
-            .when(self.emits_key_up, move |editor| {
-                editor.on_key_up(move |event, _window, _cx| {
-                    emit_key_event(&key_up_callback, element_id, "keyUp", &event.keystroke, None);
-                })
-            })
             .w_full()
             .min_w_0()
             .child(EditorTextElement {

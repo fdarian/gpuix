@@ -1,7 +1,8 @@
 import type { EventPayload } from "../index.js"
-import { dispatchDomEvent } from "./events/dispatch.js"
+import { dispatchDomEvent, type DomDispatchResult, type DomEvent } from "./events/dispatch.js"
 import { createDragDispatcher, isDragEvent } from "./events/drag.js"
-import { handlerEventType, hasDomListener, toDomEvent } from "./events/route.js"
+import { handlerEventType, hasDomListener } from "./events/route.js"
+import { dispatchPropagating, GpuixEventTarget, window, document } from "./events/window-target.js"
 import type {
   ElementIdAllocator,
   EventHandlerMap,
@@ -33,6 +34,12 @@ export interface RendererRootBinding {
   readonly windowSelectionEventId: number
   readonly windowAppearanceEventId: number
   detach(): boolean
+}
+
+/** What a synchronous handler tells native about an event. */
+export interface SyncDispatchResult {
+  defaultPrevented: boolean
+  propagationStopped: boolean
 }
 
 /**
@@ -83,19 +90,26 @@ function isAncestor(ancestor: DismissLayer, layer: DismissLayer): boolean {
 export interface RendererState {
   readonly ids: ElementIdAllocator
   attach(handlers?: RendererRootHandlers): RendererRootBinding
+  /**
+   * Handles an event native queued. Returns whether anything was there to
+   * handle it.
+   */
   dispatch(event: EventPayload): boolean
+  /**
+   * Handles an event native is waiting on and returns what its handlers
+   * decided. The handler for `setSyncEventHandler`. Everything `dispatch` does,
+   * but now: native acts on the outcome as soon as this returns.
+   */
+  dispatchSync(event: EventPayload): SyncDispatchResult
   current(): RendererRootBinding | undefined
   /** Open a layer. Call the returned function when it closes. */
   pushLayer(layer: DismissLayer, options?: PushLayerOptions): () => void
 }
 
-type ActiveRoot = RendererRootBinding & { handlers: RendererRootHandlers }
-
-/** Shared by every event of one GPUI key dispatch. */
-interface KeystrokeFlags {
-  id: number | undefined
-  prevented: boolean
-  stopped: boolean
+type ActiveRoot = RendererRootBinding & {
+  handlers: RendererRootHandlers
+  /** Listens at the window level for this root only: the `onKeyDown` / `onKeyUp` options. */
+  scoped: GpuixEventTarget
 }
 
 const STATE_KEY = Symbol.for("@gpuix/native/renderer-states")
@@ -119,24 +133,48 @@ function allStates(): WeakMap<NativeRenderer, RendererState> {
   return states
 }
 
-function toKeyEvent(event: EventPayload, flags: KeystrokeFlags): KeyEvent {
-  return {
-    ...event,
-    get defaultPrevented() {
-      return flags.prevented
-    },
-    preventDefault() {
-      flags.prevented = true
-    },
-    stopPropagation() {
-      flags.stopped = true
-    },
-  }
-}
-
-function hasCommandModifier(event: KeyEvent): boolean {
+function hasCommandModifier(event: EventPayload): boolean {
   const modifiers = event.modifiers
   return Boolean(modifiers?.ctrl || modifiers?.alt || modifiers?.cmd)
+}
+
+const KEY_EVENT_TYPES: ReadonlySet<string> = new Set(["keyDown", "keyUp"])
+
+/**
+ * Native may still emit the old camelCase pointer names; handlers are
+ * registered under the DOM's lowercase ones.
+ */
+function normalizeEventType(event: EventPayload): EventPayload {
+  const eventType = handlerEventType(event.eventType)
+  return eventType === event.eventType ? event : { ...event, eventType }
+}
+
+/** Whether `event` was meant for the live root, and something is there to hear it. */
+function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
+  if (event.eventType === "selectionChange") {
+    return event.elementId === root.windowSelectionEventId && Boolean(root.handlers.onSelectionChange)
+  }
+  if (event.eventType === "appearanceChange") {
+    return event.elementId === root.windowAppearanceEventId && Boolean(root.handlers.onAppearanceChange)
+  }
+  // Document-level in the DOM, so no element id or listener flag: native
+  // fires them only for a lock JS asked for or held.
+  if (event.eventType === "pointerlockchange") return Boolean(root.handlers.onPointerLockChange)
+  if (event.eventType === "pointerlockerror") return Boolean(root.handlers.onPointerLockError)
+  if (KEY_EVENT_TYPES.has(event.eventType)) {
+    // Native aims a key at the window when nothing focused listens; that
+    // address goes stale when the root is replaced.
+    return event.path != null || event.elementId === root.windowKeyEventId
+  }
+  if (isDragEvent(event)) return true
+  if (event.path == null) {
+    return root.eventHandlers.get(event.elementId)?.has(event.eventType) === true
+  }
+  return (
+    hasDomListener(root.eventHandlers, event) ||
+    window.hasListeners(event.eventType) ||
+    document.hasListeners(event.eventType)
+  )
 }
 
 export function createRendererState(renderer: NativeRenderer): RendererState {
@@ -151,16 +189,50 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     if (!renderer.cancelDrag) throw new Error("This renderer does not support cancelDrag")
     renderer.cancelDrag()
   })
-  // Native emits one keystroke's events back to back, in GPUI bubble order,
-  // and the window event last. So only the latest keystroke needs flags.
-  let keystroke: KeystrokeFlags = { id: undefined, prevented: false, stopped: false }
-  const flagsFor = (event: EventPayload): KeystrokeFlags => {
-    // A synthetic event without an id never shares flags with another event.
-    if (event.keystrokeId == null) return { id: undefined, prevented: false, stopped: false }
-    if (keystroke.id !== event.keystrokeId) {
-      keystroke = { id: event.keystrokeId, prevented: false, stopped: false }
+  const notHandled: DomDispatchResult = { defaultPrevented: false, propagationStopped: false }
+
+  const runEvent = (root: ActiveRoot, event: EventPayload): DomDispatchResult => {
+    if (event.eventType === "selectionChange") {
+      root.handlers.onSelectionChange?.({ ...event, elementId: 0 }, renderer)
+      return notHandled
     }
-    return keystroke
+    if (event.eventType === "appearanceChange") {
+      root.handlers.onAppearanceChange?.({ ...event, elementId: 0 }, renderer)
+      return notHandled
+    }
+    if (event.eventType === "pointerlockchange") {
+      root.handlers.onPointerLockChange?.({ ...event, elementId: 0 }, renderer)
+      return notHandled
+    }
+    if (event.eventType === "pointerlockerror") {
+      root.handlers.onPointerLockError?.({ ...event, elementId: 0 }, renderer)
+      return notHandled
+    }
+    if (isDragEvent(event)) {
+      dispatchDrag(root, event)
+      return notHandled
+    }
+    if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType)) {
+      // Aimed at one element, with no path to walk, but still cancelable.
+      return dispatchDomEvent(root, event)
+    }
+    const { event: domEvent, ...result } = dispatchPropagating(root, event, root.scoped)
+    if (event.eventType === "keyDown" && !result.defaultPrevented) {
+      runKeyDefault(root, domEvent)
+    }
+    return result
+  }
+
+  // The default actions of a key run after every handler had the chance to
+  // call preventDefault().
+  const runKeyDefault = (root: ActiveRoot, event: DomEvent) => {
+    if (hasCommandModifier(event)) return
+    if (event.key === "escape") {
+      layers.at(-1)?.layer.onEscapeKeyDown(event)
+    } else if (event.key === "tab" && root.handlers.tabNavigation !== false) {
+      if (event.modifiers?.shift) renderer.focusPrevious?.()
+      else renderer.focusNext?.()
+    }
   }
 
   const state: RendererState = {
@@ -173,10 +245,20 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       }
       generation += 1
       const eventHandlers = handlers.eventHandlers ?? new Map()
+      const scoped = new GpuixEventTarget()
+      if (handlers.onWindowKeyDown) {
+        const onKeyDown = handlers.onWindowKeyDown
+        scoped.addEventListener("keydown", (event) => onKeyDown(event, renderer))
+      }
+      if (handlers.onWindowKeyUp) {
+        const onKeyUp = handlers.onWindowKeyUp
+        scoped.addEventListener("keyup", (event) => onKeyUp(event, renderer))
+      }
       const binding: ActiveRoot = {
         ids,
         handlers,
         eventHandlers,
+        scoped,
         windowKeyEventId: generation,
         windowSelectionEventId: generation,
         windowAppearanceEventId: generation,
@@ -189,94 +271,26 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       active = binding
       return binding
     },
-    dispatch(event) {
+    dispatch(received) {
       const root = active
       if (!root) return false
-      const schedule = (invoke: () => void) => {
-        const run = () => {
-          invoke()
-          root.handlers.onEvent?.(event)
-        }
-        if (root.handlers.schedule) root.handlers.schedule(run)
-        else run()
+      const event = normalizeEventType(received)
+      if (!handlesEvent(root, event)) return false
+      const run = () => {
+        runEvent(root, event)
+        root.handlers.onEvent?.(received)
       }
-
-      if (event.eventType === "windowKeyDown" || event.eventType === "windowKeyUp") {
-        if (event.elementId !== root.windowKeyEventId) return false
-        const keyDown = event.eventType === "windowKeyDown"
-        const handler = keyDown ? root.handlers.onWindowKeyDown : root.handlers.onWindowKeyUp
-        const flags = flagsFor(event)
-        const keyEvent = toKeyEvent(
-          { ...event, elementId: 0, eventType: keyDown ? "keyDown" : "keyUp" },
-          flags
-        )
-        // Default actions run last, after every element handler and the window
-        // handler of this keystroke had the chance to call preventDefault().
-        const runDefault = () => {
-          if (!keyDown || flags.prevented || hasCommandModifier(keyEvent)) return
-          if (keyEvent.key === "escape") {
-            layers.at(-1)?.layer.onEscapeKeyDown(keyEvent)
-          } else if (keyEvent.key === "tab" && root.handlers.tabNavigation !== false) {
-            if (keyEvent.modifiers?.shift) renderer.focusPrevious?.()
-            else renderer.focusNext?.()
-          }
-        }
-        schedule(() => {
-          if (handler && !flags.stopped) handler(keyEvent, renderer)
-          runDefault()
-        })
-        return true
-      }
-      if (event.eventType === "selectionChange") {
-        if (event.elementId !== root.windowSelectionEventId) return false
-        const handler = root.handlers.onSelectionChange
-        if (!handler) return false
-        schedule(() => handler({ ...event, elementId: 0 }, renderer))
-        return true
-      }
-      if (event.eventType === "appearanceChange") {
-        if (event.elementId !== root.windowAppearanceEventId) return false
-        const handler = root.handlers.onAppearanceChange
-        if (!handler) return false
-        schedule(() => handler({ ...event, elementId: 0 }, renderer))
-        return true
-      }
-      // Document-level in the DOM, so no element id or listener flag: native
-      // fires them only for a lock JS asked for or held.
-      if (event.eventType === "pointerlockchange" || event.eventType === "pointerlockerror") {
-        const handler =
-          event.eventType === "pointerlockchange"
-            ? root.handlers.onPointerLockChange
-            : root.handlers.onPointerLockError
-        if (!handler) return false
-        schedule(() => handler({ ...event, elementId: 0 }, renderer))
-        return true
-      }
-      const domEvent = toDomEvent(event)
-      if (domEvent) {
-        if (isDragEvent(domEvent)) {
-          schedule(() => dispatchDrag(root, domEvent))
-          return true
-        }
-        if (!hasDomListener(root.eventHandlers, domEvent)) return false
-        schedule(() => {
-          dispatchDomEvent(root, domEvent)
-        })
-        return true
-      }
-      const handler: HostEventHandler | undefined =
-        root.eventHandlers.get(event.elementId)?.get(handlerEventType(event.eventType))
-      if (!handler) return false
-      if (event.eventType === "keyDown" || event.eventType === "keyUp") {
-        const flags = flagsFor(event)
-        const keyEvent = toKeyEvent(event, flags)
-        schedule(() => {
-          if (!flags.stopped) handler(keyEvent)
-        })
-        return true
-      }
-      schedule(() => handler(event))
+      if (root.handlers.schedule) root.handlers.schedule(run)
+      else run()
       return true
+    },
+    dispatchSync(received) {
+      const root = active
+      const event = normalizeEventType(received)
+      if (!root || !handlesEvent(root, event)) return notHandled
+      const result = runEvent(root, event)
+      root.handlers.onEvent?.(received)
+      return result
     },
     current: () => active,
     pushLayer(layer, options = {}) {

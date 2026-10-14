@@ -365,11 +365,11 @@ describeNative("render()", () => {
     })
 
     handleGpuixEvent(
-      { elementId: 1, eventType: "windowKeyDown", key: "tab" },
+      { elementId: 1, eventType: "keyDown", key: "tab" },
       renderer
     )
     handleGpuixEvent(
-      { elementId: 2, eventType: "windowKeyDown", key: "tab" },
+      { elementId: 2, eventType: "keyDown", key: "tab" },
       renderer
     )
 

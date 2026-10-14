@@ -90,9 +90,10 @@ export function createRoot(
   const windowAppearanceEventId = gpuixContainer.windowAppearanceEventId
   try {
     renderer.setWindowKeyEvents?.(
-      // Always on: the Tab and Escape defaults run on the window event.
+      // Always on: the Tab and Escape defaults run on the key event, and
+      // `window` listeners can be added at any time.
       true,
-      Boolean(rootEventHandlers.onKeyUp),
+      true,
       windowKeyEventId
     )
     renderer.setWindowSelectionChange?.(

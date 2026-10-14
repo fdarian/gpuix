@@ -86,6 +86,12 @@ thread_local! {
 /// Access VisualTestAppContext + window + view mutably within thread_local.
 /// The closure receives (&mut cx, window_handle, &view_entity).
 /// Returns Err if no TestGpuixRenderer has been created on this thread.
+///
+/// Also marks the call as running inside a call from JS, so input dispatched by
+/// `f` can run JS handlers synchronously. A handler that calls a renderer
+/// method that needs the app context gets an error here: the app is already
+/// borrowed by the input being dispatched. The methods a handler may call go
+/// through `update_view` instead.
 fn with_test_state<R>(
     f: impl FnOnce(
         &mut gpui::VisualTestAppContext,
@@ -93,13 +99,73 @@ fn with_test_state<R>(
         &gpui::Entity<GpuixView>,
     ) -> Result<R>,
 ) -> Result<R> {
-    TEST_STATE.with(|cell| {
-        let mut borrow = cell.borrow_mut();
-        let state = borrow
-            .as_mut()
-            .ok_or_else(|| Error::from_reason("TestGpuixRenderer not initialized"))?;
-        f(&mut state.cx, state.window, &state.view)
+    crate::events::sync_dispatch::native_call(|| {
+        TEST_STATE.with(|cell| {
+            let mut borrow = cell.try_borrow_mut().map_err(|_| {
+                Error::from_reason(
+                    "This renderer call cannot run inside an event handler that native called synchronously (keyDown, keyUp). Make it from a microtask instead.",
+                )
+            })?;
+            let state = borrow
+                .as_mut()
+                .ok_or_else(|| Error::from_reason("TestGpuixRenderer not initialized"))?;
+            f(&mut state.cx, state.window, &state.view)
+        })
     })
+}
+
+/// Runs `update` on the view and the window, from anywhere: from inside a sync
+/// event handler it borrows nothing new and uses the window being dispatched
+/// to. The test context is not run until parked, since the dispatch that is
+/// still on the stack does that.
+fn update_view<R>(
+    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
+) -> Result<R> {
+    crate::events::sync_dispatch::native_call(|| {
+        if crate::events::sync_dispatch::in_sync_call() {
+            return crate::events::sync_dispatch::update_root_view(update)
+                .map_err(Error::from_reason);
+        }
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            let result = cx
+                .update_window(window, |_, window, app| {
+                    view.update(app, |view, cx| update(view, window, cx))
+                })
+                .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            Ok(result)
+        })
+    })
+}
+
+/// Runs `update` on the window alone, which a leased root view does not block.
+fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -> Result<R> {
+    crate::events::sync_dispatch::native_call(|| {
+        if crate::events::sync_dispatch::in_sync_call() {
+            return crate::events::sync_dispatch::with_active_window(update)
+                .ok_or_else(|| Error::from_reason(crate::events::sync_dispatch::NESTED));
+        }
+        with_test_state(|cx, window, _view| {
+            let result = cx
+                .update_window(window, |_, window, app| update(window, app))
+                .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            Ok(result)
+        })
+    })
+}
+
+/// `update_view` for a change that returns nothing. When it is called from a
+/// handler of an input that holds the root view, it runs after that input.
+fn update_view_or_defer(
+    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + 'static,
+) -> Result<()> {
+    if crate::events::sync_dispatch::in_sync_call() {
+        return crate::events::sync_dispatch::update_root_view_or_defer(update)
+            .map_err(Error::from_reason);
+    }
+    update_view(update)
 }
 
 /// Default offscreen window size. Matches gpui's `open_offscreen_window_default`,
@@ -222,16 +288,8 @@ impl TestGpuixRenderer {
         id: u64,
         request: crate::custom_elements::text_selection::SelectionRequest,
     ) -> Result<()> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.set_text_selection(id, request, window, cx)
-                })
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
+        update_view(|view, window, cx| view.set_text_selection(id, request, window, cx))?
             .map_err(Error::from_reason)
-        })
     }
 }
 
@@ -285,6 +343,7 @@ impl TestGpuixRenderer {
                     view.observe_appearance(window, cx);
                     view.simulate_platform_pointer_lock(simulated_platform_clone);
                     crate::events::enable_dom_hit_testing(window);
+                    view.install_key_interception(cx);
                     view
                 })
             })
@@ -326,6 +385,18 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// Registers the function native calls synchronously for `keyDown` and
+    /// `keyUp`; see `GpuixRenderer::setSyncEventHandler`. Without one, those
+    /// events are queued for `drainEvents` like every other.
+    #[napi]
+    pub fn set_sync_event_handler(
+        &self,
+        env: &Env,
+        handler: Option<Function<EventPayload, crate::events::sync_dispatch::SyncDispatchResult>>,
+    ) -> Result<()> {
+        crate::events::sync_dispatch::register(env, handler)
+    }
+
     /// How many elements the retained tree holds, reachable from the root or
     /// not. `getTreeJson` walks from the root, so it cannot see a node that was
     /// detached and never destroyed. This is the only way a test can prove a
@@ -352,18 +423,9 @@ impl TestGpuixRenderer {
     /// hit testing requires elements to be laid out).
     #[napi]
     pub fn flush(&self) -> Result<()> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, _window, app| {
-                view.update(app, |_, cx| {
-                    cx.notify();
-                });
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-            cx.run_until_parked();
-            Ok(())
-        })
+        // From a sync event handler this only marks the view dirty: the frame
+        // is drawn once the input that is being dispatched has returned.
+        update_view_or_defer(|_view, _window, cx| cx.notify())
     }
 
     /// Simulate a click at the given window coordinates.
@@ -525,68 +587,33 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn focus_element(&self, id: f64) -> Result<()> {
         let id = to_element_id(id)?;
-
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-
-            cx.update_window(window, |_, window, app| {
-                // Same path as the live renderer: an element whose focus
-                // handle does not exist yet (Solid applies its mutations in
-                // a microtask) takes focus when its handle is created.
-                view.update(app, |view, cx| view.request_focus(id, window, cx));
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-            cx.run_until_parked();
-            Ok(())
-        })
+        // Same path as the live renderer: an element whose focus handle does
+        // not exist yet (Solid applies its mutations in a microtask) takes
+        // focus when its handle is created.
+        update_view_or_defer(move |view, window, cx| view.request_focus(id, window, cx))
     }
 
     #[napi]
     pub fn blur_element(&self, id: f64) -> Result<()> {
         let id = to_element_id(id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| view.blur_element(id, window, cx));
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
-        })
+        update_view_or_defer(move |view, window, cx| view.blur_element(id, window, cx))
     }
 
     #[napi]
     pub fn matches_focus(&self, id: f64, selector: String) -> Result<bool> {
         let id = to_element_id(id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, _cx| view.matches_focus(id, &selector, window))
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?
+        update_view(|view, window, _cx| view.matches_focus(id, &selector, window))?
             .map_err(Error::from_reason)
-        })
     }
 
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, app| window.focus_next(app))
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
-        })
+        window_call(|window, cx| window.focus_next(cx))
     }
 
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, app| window.focus_prev(app))
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
-        })
+        window_call(|window, cx| window.focus_prev(cx))
     }
 
     #[napi]
@@ -618,50 +645,24 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn get_focused_element_id(&self) -> Result<Option<f64>> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let id = cx
-                .update_window(window, |_, window, app| {
-                    view.read(app)
-                        .focused_element_id(window)
-                        .map(|id| id as f64)
-                })
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            Ok(id)
-        })
+        update_view(|view, window, _cx| view.focused_element_id(window).map(|id| id as f64))
     }
 
     #[napi]
     pub fn focus_next_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.focus_next_within(id, window, cx);
-                    cx.notify();
-                });
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
+        update_view_or_defer(move |view, window, cx| {
+            view.focus_next_within(id, window, cx);
+            cx.notify();
         })
     }
 
     #[napi]
     pub fn focus_previous_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.focus_previous_within(id, window, cx);
-                    cx.notify();
-                });
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
+        update_view_or_defer(move |view, window, cx| {
+            view.focus_previous_within(id, window, cx);
+            cx.notify();
         })
     }
 
@@ -672,9 +673,7 @@ impl TestGpuixRenderer {
             let view = view.clone();
             cx.update_window(window, |_, window, app| {
                 view.update(app, |view, cx| {
-                    view.window_key_down = key_down;
-                    view.window_key_up = key_up;
-                    view.window_key_event_id = event_id;
+                    view.routing.set_window_keys(key_down, key_up, event_id);
                     cx.notify();
                 });
                 window.refresh();
@@ -1035,18 +1034,11 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn scroll_into_view(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    if view.scroll_element_into_view(id) {
-                        cx.notify();
-                        window.refresh();
-                    }
-                });
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(())
+        update_view_or_defer(move |view, window, cx| {
+            if view.scroll_element_into_view(id) {
+                cx.notify();
+                window.refresh();
+            }
         })
     }
 
@@ -1212,14 +1204,7 @@ impl TestGpuixRenderer {
         element_id: f64,
     ) -> Result<crate::custom_elements::text_selection::TextSelection> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, _window, app| {
-                view.update(app, |view, cx| view.text_selection(id, cx))
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
-            .map_err(Error::from_reason)
-        })
+        update_view(|view, _window, cx| view.text_selection(id, cx))?.map_err(Error::from_reason)
     }
 
     /// Make the fonts in a TrueType or OpenType file usable by `fontFamily`.

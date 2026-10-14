@@ -6,6 +6,7 @@ import {
   type TestWindowOptions,
 } from "@gpuix/native/testing"
 import { createRoot, flushSync, type Root } from "./reconciler/reconciler.js"
+import { createRendererState, type SyncDispatchResult } from "@gpuix/native/host"
 import { handleGpuixEvent } from "./reconciler/event-registry.js"
 
 export * from "@gpuix/native/testing"
@@ -23,6 +24,14 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
     ...options,
     dispatchEvent: (event: EventPayload) => {
       flushSync(() => handleGpuixEvent(event, renderer))
+    },
+    dispatchSyncEvent: (event: EventPayload) => {
+      let result: SyncDispatchResult | undefined
+      flushSync(() => {
+        result = createRendererState(renderer).dispatchSync(event)
+      })
+      if (!result) throw new Error("flushSync did not run the dispatch")
+      return result
     },
   })
   const root = createRoot(renderer, {

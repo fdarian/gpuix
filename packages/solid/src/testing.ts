@@ -21,6 +21,7 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
   const renderer = new TestRenderer({
     ...options,
     dispatchEvent: (event) => root.dispatch(event),
+    dispatchSyncEvent: (event) => root.dispatchSync(event),
   })
   root = createRoot(renderer, {
     onKeyDown: options.onKeyDown,

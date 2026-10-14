@@ -137,7 +137,7 @@ describe("shared host runtime", () => {
     expect(
       state.dispatch({
         elementId: first.windowKeyEventId,
-        eventType: "windowKeyDown",
+        eventType: "keyDown",
         key: "a",
       })
     ).toBe(true)
@@ -149,7 +149,7 @@ describe("shared host runtime", () => {
     expect(
       state.dispatch({
         elementId: first.windowKeyEventId,
-        eventType: "windowKeyDown",
+        eventType: "keyDown",
         key: "stale",
       })
     ).toBe(false)

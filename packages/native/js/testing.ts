@@ -26,7 +26,7 @@ import type {
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
 import { readFontFiles } from "./fonts.js"
-import { createRendererState } from "./renderer-state.js"
+import { createRendererState, type SyncDispatchResult } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
   MAC_CPU_THROTTLES,
@@ -41,6 +41,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   flush(): void
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
+  setSyncEventHandler(handler: ((event: EventPayload) => SyncDispatchResult) | null): void
   focusElement(elementId: number): void
   blurElement(elementId: number): void
   matchesFocus(elementId: number, selector: string): boolean
@@ -161,6 +162,11 @@ export interface TestRendererOptions {
   fonts?: string[]
   /** Framework scheduling boundary for events drained from native. */
   dispatchEvent?: (event: EventPayload) => void
+  /**
+   * Framework boundary for the events native waits on: `keyDown` and `keyUp`,
+   * which run inside the simulate call. Must return what the handlers decided.
+   */
+  dispatchSyncEvent?: (event: EventPayload) => SyncDispatchResult
 }
 
 /** The motion a simulated mouse move reports, in logical pixels. */
@@ -281,6 +287,7 @@ export class TestRenderer implements NativeRenderer {
   >
   readonly setWindowKeyEvents: NonNullable<NativeRenderer["setWindowKeyEvents"]>
   private readonly dispatchEvent: (event: EventPayload) => void
+  private readonly dispatchSyncEvent: (event: EventPayload) => SyncDispatchResult
 
   constructor(options: TestRendererOptions = {}) {
     if (!NativeTestRenderer) {
@@ -307,6 +314,9 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
       createRendererState(this).dispatch(event)
     })
+    this.dispatchSyncEvent =
+      options.dispatchSyncEvent ?? ((event) => createRendererState(this).dispatchSync(event))
+    this.native.setSyncEventHandler((event) => this.dispatchSyncEvent(event))
     bindClipboard(this)
   }
 
