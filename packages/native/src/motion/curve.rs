@@ -9,6 +9,28 @@ use serde::Deserialize;
 pub(super) enum Ease {
     Name(String),
     CubicBezier([f64; 4]),
+    /// CSS `steps()`. Only produced by [`parse_timing_function`].
+    #[serde(skip)]
+    Steps(Steps),
+    /// CSS `linear()` stops as `(input, output)`, inputs non-decreasing. Only
+    /// produced by [`parse_timing_function`].
+    #[serde(skip)]
+    Stops(Vec<(f64, f64)>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Steps {
+    count: u32,
+    jump: Jump,
+}
+
+/// Where the jumps of a `steps()` function fall.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Jump {
+    Start,
+    End,
+    None,
+    Both,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,7 +110,15 @@ impl TryFrom<RawTransition> for Transition {
                     }
                 }
                 let duration = raw.duration.unwrap_or_else(default_duration);
-                let ease = raw.ease.clone().unwrap_or_else(default_ease);
+                let ease = match raw.ease.clone() {
+                    // Framer's names are camelCase; anything else is a CSS
+                    // `<easing-function>` (`ease-in`, `steps(4)`, `linear(..)`).
+                    Some(Ease::Name(name)) if !FRAMER_EASES.contains(&name.as_str()) => {
+                        parse_timing_function(&name)
+                            .map_err(|error| format!("unknown motion easing: {name} ({error})"))?
+                    }
+                    other => other.unwrap_or_else(default_ease),
+                };
                 validate_seconds(duration, "duration")?;
                 validate_ease(&ease)?;
                 Curve::Tween { duration, ease }
@@ -336,14 +366,13 @@ pub(super) fn validate_seconds(value: f64, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+const FRAMER_EASES: [&str; 5] = ["linear", "ease", "easeIn", "easeOut", "easeInOut"];
+
 fn validate_ease(ease: &Ease) -> Result<(), String> {
     match ease {
-        Ease::Name(name)
-            if matches!(
-                name.as_str(),
-                "linear" | "ease" | "easeIn" | "easeOut" | "easeInOut"
-            ) => {}
+        Ease::Name(name) if FRAMER_EASES.contains(&name.as_str()) => {}
         Ease::Name(name) => return Err(format!("unknown motion easing: {name}")),
+        Ease::Steps(_) | Ease::Stops(_) => {}
         Ease::CubicBezier([x1, y1, x2, y2]) => {
             if ![x1, y1, x2, y2].iter().all(|value| value.is_finite())
                 || !(0.0..=1.0).contains(x1)
@@ -365,6 +394,8 @@ pub(super) fn seconds(value: f64) -> Duration {
 
 pub(super) fn ease(progress: f64, ease: &Ease) -> f64 {
     let curve = match ease {
+        Ease::Steps(steps) => return steps.output(progress),
+        Ease::Stops(stops) => return linear_stops(progress, stops),
         Ease::CubicBezier(curve) => *curve,
         Ease::Name(name) => match name.as_str() {
             "linear" => return progress,
@@ -377,13 +408,212 @@ pub(super) fn ease(progress: f64, ease: &Ease) -> f64 {
     cubic_bezier(progress, curve)
 }
 
-/// Slope of the easing curve at `progress`, by central difference over the
-/// unit interval so it stays defined at both ends.
+impl Steps {
+    /// CSS Easing 1 `steps()` output for an input in `0..=1`.
+    fn output(self, progress: f64) -> f64 {
+        let count = f64::from(self.count);
+        let mut step = (progress * count).floor();
+        if matches!(self.jump, Jump::Start | Jump::Both) {
+            step += 1.0;
+        }
+        let steps = match self.jump {
+            Jump::Both => count + 1.0,
+            Jump::None => count - 1.0,
+            Jump::Start | Jump::End => count,
+        };
+        (step / steps).clamp(0.0, 1.0)
+    }
+}
+
+/// Piecewise-linear output of CSS Easing 2 `linear()`. A jump (two stops at one
+/// input) takes the later stop's output, and inputs outside the stops continue
+/// along the nearest segment.
+fn linear_stops(progress: f64, stops: &[(f64, f64)]) -> f64 {
+    let (from, to) = stops_segment(progress, stops);
+    if to.0 == from.0 {
+        return if progress < stops[0].0 { stops[0].1 } else { stops[stops.len() - 1].1 };
+    }
+    from.1 + (to.1 - from.1) * (progress - from.0) / (to.0 - from.0)
+}
+
+/// The two stops `linear_stops` interpolates between at `progress`.
+fn stops_segment(progress: f64, stops: &[(f64, f64)]) -> ((f64, f64), (f64, f64)) {
+    let (first, last) = (stops[0], stops[stops.len() - 1]);
+    if progress < first.0 {
+        (first, stops[1])
+    } else if progress >= last.0 {
+        (stops[stops.len() - 2], last)
+    } else {
+        let next = stops.partition_point(|stop| stop.0 <= progress);
+        (stops[next - 1], stops[next])
+    }
+}
+
+/// Parses a CSS `<easing-function>`: `linear`, `ease`, `ease-in`, `ease-out`,
+/// `ease-in-out`, `cubic-bezier()`, `steps()`, `step-start`, `step-end` and
+/// `linear()` with stops.
+pub(super) fn parse_timing_function(text: &str) -> Result<Ease, String> {
+    let text = text.trim().to_ascii_lowercase();
+    let named = |curve: [f64; 4]| Ok(Ease::CubicBezier(curve));
+    match text.as_str() {
+        "linear" => return Ok(Ease::Name("linear".to_string())),
+        "ease" => return named([0.25, 0.1, 0.25, 1.0]),
+        "ease-in" => return named([0.42, 0.0, 1.0, 1.0]),
+        "ease-out" => return named([0.0, 0.0, 0.58, 1.0]),
+        "ease-in-out" => return named([0.42, 0.0, 0.58, 1.0]),
+        "step-start" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::Start })),
+        "step-end" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::End })),
+        _ => {}
+    }
+    let (name, arguments) = text
+        .strip_suffix(')')
+        .and_then(|text| text.split_once('('))
+        .ok_or_else(|| format!("not a timing function: {text}"))?;
+    let arguments: Vec<&str> = arguments.split(',').map(str::trim).collect();
+    match name.trim_end() {
+        "cubic-bezier" => {
+            let [x1, y1, x2, y2] = arguments[..] else {
+                return Err("cubic-bezier() takes four numbers".to_string());
+            };
+            let (x1, y1, x2, y2) = (
+                parse_number(x1)?,
+                parse_number(y1)?,
+                parse_number(x2)?,
+                parse_number(y2)?,
+            );
+            if !(0.0..=1.0).contains(&x1) || !(0.0..=1.0).contains(&x2) {
+                return Err("cubic-bezier() x values must be between 0 and 1".to_string());
+            }
+            Ok(Ease::CubicBezier([x1, y1, x2, y2]))
+        }
+        "steps" => parse_steps(&arguments),
+        "linear" => parse_linear_stops(&arguments),
+        other => Err(format!("unknown timing function: {other}()")),
+    }
+}
+
+fn parse_number(text: &str) -> Result<f64, String> {
+    text.parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
+        .ok_or_else(|| format!("not a number: {text}"))
+}
+
+fn parse_steps(arguments: &[&str]) -> Result<Ease, String> {
+    let (count, jump) = match arguments {
+        [count] => (count, "jump-end"),
+        [count, jump] => (count, *jump),
+        _ => return Err("steps() takes a count and an optional jump term".to_string()),
+    };
+    let count: u32 = count
+        .parse()
+        .ok()
+        .filter(|count| *count >= 1)
+        .ok_or_else(|| format!("steps() count must be a positive integer: {count}"))?;
+    let jump = match jump {
+        "jump-start" | "start" => Jump::Start,
+        "jump-end" | "end" => Jump::End,
+        "jump-none" => Jump::None,
+        "jump-both" => Jump::Both,
+        other => return Err(format!("unknown steps() jump term: {other}")),
+    };
+    if jump == Jump::None && count < 2 {
+        return Err("steps() with jump-none needs at least two steps".to_string());
+    }
+    Ok(Ease::Steps(Steps { count, jump }))
+}
+
+/// CSS Easing 2 `linear()`: each stop is a number with up to two percentage
+/// inputs. Missing inputs are filled in as the spec says: the first stop is 0%,
+/// the last 100%, a stop below an earlier one rises to it, and a run of unset
+/// stops spreads evenly between its neighbours.
+fn parse_linear_stops(arguments: &[&str]) -> Result<Ease, String> {
+    let mut stops: Vec<(Option<f64>, f64)> = Vec::new();
+    for argument in arguments {
+        let mut parts = argument.split_whitespace();
+        let output = parse_number(parts.next().ok_or("linear() has an empty stop")?)?;
+        let inputs: Vec<f64> = parts
+            .map(|part| {
+                let percent = part
+                    .strip_suffix('%')
+                    .ok_or_else(|| format!("linear() stop input must be a percentage: {part}"))?;
+                Ok(parse_number(percent)? / 100.0)
+            })
+            .collect::<Result<_, String>>()?;
+        match inputs[..] {
+            [] => stops.push((None, output)),
+            [input] => stops.push((Some(input), output)),
+            [start, end] => {
+                stops.push((Some(start), output));
+                stops.push((Some(end), output));
+            }
+            _ => return Err("linear() stop takes at most two inputs".to_string()),
+        }
+    }
+    if stops.len() < 2 {
+        return Err("linear() needs at least two stops".to_string());
+    }
+    let last = stops.len() - 1;
+    stops[0].0.get_or_insert(0.0);
+    if stops[last].0.is_none() {
+        stops[last].0 = Some(1.0);
+    }
+    let mut largest = f64::NEG_INFINITY;
+    for stop in &mut stops {
+        if let Some(input) = stop.0 {
+            largest = largest.max(input);
+            stop.0 = Some(largest);
+        }
+    }
+    let mut resolved = Vec::with_capacity(stops.len());
+    let mut index = 0;
+    while index < stops.len() {
+        if let Some(input) = stops[index].0 {
+            resolved.push((input, stops[index].1));
+            index += 1;
+            continue;
+        }
+        let run_end = (index..stops.len())
+            .find(|candidate| stops[*candidate].0.is_some())
+            .expect("the last stop always has an input");
+        let before = resolved[index - 1].0;
+        let after = stops[run_end].0.expect("found above");
+        let count = (run_end - index + 1) as f64;
+        for offset in index..run_end {
+            let fraction = (offset - index + 1) as f64 / count;
+            resolved.push((before + (after - before) * fraction, stops[offset].1));
+        }
+        index = run_end;
+    }
+    Ok(Ease::Stops(resolved))
+}
+
+/// Slope of the easing curve at `progress`. `steps()` is flat between its
+/// jumps and `linear()` is flat across one, so both are 0 there: a central
+/// difference would straddle the jump and report thousands of units per second,
+/// which a spring retargeted next to it would take as the speed to carry. A
+/// `linear()` segment has its own constant slope. A bezier is smooth, so a
+/// central difference over the unit interval is enough and stays defined at
+/// both ends.
 pub(super) fn ease_slope(progress: f64, curve: &Ease) -> f64 {
     const STEP: f64 = 1e-4;
-    let low = (progress - STEP).max(0.0);
-    let high = (progress + STEP).min(1.0);
-    (ease(high, curve) - ease(low, curve)) / (high - low)
+    match curve {
+        Ease::Steps(_) => 0.0,
+        Ease::Stops(stops) => {
+            let (from, to) = stops_segment(progress, stops);
+            if to.0 == from.0 {
+                0.0
+            } else {
+                (to.1 - from.1) / (to.0 - from.0)
+            }
+        }
+        Ease::Name(name) if name == "linear" => 1.0,
+        Ease::Name(_) | Ease::CubicBezier(_) => {
+            let low = (progress - STEP).max(0.0);
+            let high = (progress + STEP).min(1.0);
+            (ease(high, curve) - ease(low, curve)) / (high - low)
+        }
+    }
 }
 
 pub(crate) fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
@@ -394,6 +624,9 @@ pub(crate) fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
         ((a * t + b) * t + c) * t
     }
 
+    if x <= 0.0 || x >= 1.0 {
+        return x.clamp(0.0, 1.0);
+    }
     let mut low = 0.0;
     let mut high = 1.0;
     for _ in 0..20 {
@@ -404,7 +637,9 @@ pub(crate) fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
             high = middle;
         }
     }
-    sample((low + high) / 2.0, y1, y2).clamp(0.0, 1.0)
+    // Not clamped: CSS and Framer both let `y` leave 0..1, which is how a
+    // back-ease overshoots.
+    sample((low + high) / 2.0, y1, y2)
 }
 
 #[cfg(test)]
@@ -441,6 +676,165 @@ mod tests {
                     rest_delta: None,
                 };
                 Spring::from_raw(&raw).unwrap();
+            }
+        }
+    }
+    fn css(text: &str) -> Ease {
+        parse_timing_function(text).unwrap()
+    }
+
+    fn at(text: &str, progress: f64) -> f64 {
+        ease(progress, &css(text))
+    }
+
+    #[test]
+    fn css_keywords_are_the_standard_cubic_beziers() {
+        assert_eq!(css("ease"), Ease::CubicBezier([0.25, 0.1, 0.25, 1.0]));
+        assert_eq!(css("EASE-IN"), Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]));
+        assert_eq!(css("ease-out"), Ease::CubicBezier([0.0, 0.0, 0.58, 1.0]));
+        assert!((at("ease-in-out", 0.5) - 0.5).abs() < 1e-3);
+        assert_eq!(at("linear", 0.3), 0.3);
+        assert_eq!(
+            css(" cubic-bezier( 0.1 , 0.2,0.3 , 1 ) "),
+            Ease::CubicBezier([0.1, 0.2, 0.3, 1.0])
+        );
+    }
+
+    #[test]
+    fn a_cubic_bezier_may_overshoot() {
+        let back = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+        assert!(at(back, 0.6) > 1.05, "{}", at(back, 0.6));
+        assert_eq!(at(back, 1.0), 1.0);
+        assert!(at("cubic-bezier(0.6, -0.5, 0.7, 0.7)", 0.2) < 0.0);
+    }
+
+    #[test]
+    fn steps_jump_at_the_ends_the_term_names() {
+        let outputs = |text: &str| {
+            [0.0, 0.24, 0.25, 0.5, 0.99, 1.0].map(|progress| at(text, progress))
+        };
+        assert_eq!(outputs("steps(4)"), [0.0, 0.0, 0.25, 0.5, 0.75, 1.0]);
+        assert_eq!(outputs("steps(4, end)"), outputs("steps(4, jump-end)"));
+        assert_eq!(outputs("steps(4, jump-start)"), [0.25, 0.25, 0.5, 0.75, 1.0, 1.0]);
+        assert_eq!(outputs("steps(4, start)"), outputs("steps(4, jump-start)"));
+        assert_eq!(at("steps(3, jump-none)", 0.0), 0.0);
+        assert_eq!(at("steps(3, jump-none)", 0.5), 0.5);
+        assert_eq!(at("steps(3, jump-none)", 0.7), 1.0);
+        assert_eq!(at("steps(2, jump-both)", 0.0), 1.0 / 3.0);
+        assert_eq!(at("steps(2, jump-both)", 0.5), 2.0 / 3.0);
+        assert_eq!(at("steps(2, jump-both)", 1.0), 1.0);
+        assert_eq!((at("step-start", 0.0), at("step-start", 0.5)), (1.0, 1.0));
+        assert_eq!((at("step-end", 0.99), at("step-end", 1.0)), (0.0, 1.0));
+    }
+
+    #[test]
+    fn linear_stops_interpolate_between_their_inputs() {
+        assert_eq!(at("linear(0, 0.25 75%, 1)", 0.375), 0.125);
+        assert_eq!(at("linear(0, 0.25 75%, 1)", 0.75), 0.25);
+        assert_eq!(at("linear(0, 0.25 75%, 1)", 0.875), 0.625);
+        assert_eq!(at("linear(0, 0.25 75%, 1)", 1.0), 1.0);
+    }
+
+    #[test]
+    fn linear_stops_without_an_input_spread_evenly() {
+        let stops = css("linear(0, 0.5, 0.25, 1)");
+        assert_eq!(
+            stops,
+            Ease::Stops(vec![(0.0, 0.0), (1.0 / 3.0, 0.5), (2.0 / 3.0, 0.25), (1.0, 1.0)])
+        );
+    }
+
+    #[test]
+    fn linear_stops_with_two_inputs_hold_and_a_stop_never_runs_backwards() {
+        assert_eq!(
+            css("linear(0, 0.5 20% 40%, 1)"),
+            Ease::Stops(vec![(0.0, 0.0), (0.2, 0.5), (0.4, 0.5), (1.0, 1.0)])
+        );
+        assert_eq!(
+            css("linear(0, 0.5 60%, 0.8 30%, 1)"),
+            Ease::Stops(vec![(0.0, 0.0), (0.6, 0.5), (0.6, 0.8), (1.0, 1.0)])
+        );
+    }
+
+    #[test]
+    fn a_linear_jump_takes_the_later_stop_and_the_ends_extrapolate() {
+        let jump = "linear(0, 0.5 50%, 1 50%, 1)";
+        assert!((at(jump, 0.49) - 0.49).abs() < 1e-9);
+        assert_eq!(at(jump, 0.5), 1.0);
+        assert_eq!(at(jump, 0.9), 1.0);
+        assert_eq!(at("linear(0 10%, 1 20%)", 0.0), -1.0);
+        assert_eq!(at("linear(0, 1 50%)", 0.75), 1.5);
+    }
+
+    #[test]
+    fn rejects_malformed_timing_functions() {
+        for bad in [
+            "",
+            "bouncy",
+            "ease(2)",
+            "cubic-bezier(0, 0, 1)",
+            "cubic-bezier(2, 0, 0, 1)",
+            "cubic-bezier(a, 0, 0, 1)",
+            "steps(0)",
+            "steps(1.5)",
+            "steps(1, jump-none)",
+            "steps(2, middle)",
+            "steps()",
+            "linear(1)",
+            "linear(0, 1 50)",
+            "linear(0, 1 10% 20% 30%)",
+            "linear(0, nan)",
+        ] {
+            assert!(parse_timing_function(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_motion_ease_accepts_css_timing_functions() {
+        let tween = |ease: &str| {
+            Transition::parse(serde_json::json!({ "duration": 1.0, "ease": ease }))
+        };
+        for accepted in ["ease-in", "steps(4, jump-start)", "linear(0, 1)", "easeInOut"] {
+            assert!(tween(accepted).is_ok(), "{accepted}");
+        }
+        assert!(tween("steps(0)").is_err());
+        assert!(tween("sproing").is_err());
+    }
+
+    #[test]
+    fn slope_is_zero_at_and_next_to_a_steps_jump() {
+        for text in ["steps(4)", "steps(4, jump-start)", "steps(4, jump-both)", "steps(3, jump-none)", "step-end"] {
+            let curve = css(text);
+            for progress in [0.0, 0.25 - 1e-9, 0.25, 0.25 + 1e-9, 0.5 - 5e-5, 0.5, 1.0 - 1e-5, 1.0] {
+                assert_eq!(ease_slope(progress, &curve), 0.0, "{text} at {progress}");
+            }
+        }
+    }
+
+    #[test]
+    fn slope_of_linear_stops_is_the_segment_slope_and_zero_across_a_jump() {
+        let curve = css("linear(0, 0.5 25%, 0.5 50%, 1 50%, 0.5 100%)");
+        assert!((ease_slope(0.1, &curve) - 2.0).abs() < 1e-9);
+        // The plateau between 25% and 50%.
+        assert_eq!(ease_slope(0.3, &curve), 0.0);
+        // Immediately either side of the jump at 50%, and on it.
+        assert_eq!(ease_slope(0.5 - 1e-6, &curve), 0.0);
+        assert!((ease_slope(0.5, &curve) + 1.0).abs() < 1e-9);
+        assert!((ease_slope(0.75, &curve) + 1.0).abs() < 1e-9);
+        let jump_only = css("linear(0, 0 50%, 1 50%, 1)");
+        for progress in [0.5 - 1e-6, 0.5 - 1e-12, 0.5, 0.5 + 1e-12, 0.5 + 1e-6] {
+            assert_eq!(ease_slope(progress, &jump_only), 0.0, "at {progress}");
+        }
+    }
+
+    #[test]
+    fn slope_of_the_linear_name_is_one_and_a_bezier_stays_finite_at_its_ends() {
+        assert_eq!(ease_slope(0.0, &Ease::Name("linear".to_string())), 1.0);
+        assert_eq!(ease_slope(1.0, &Ease::Name("linear".to_string())), 1.0);
+        for text in ["ease", "ease-in", "ease-out", "ease-in-out"] {
+            let curve = css(text);
+            for progress in [0.0, 0.5, 1.0] {
+                assert!(ease_slope(progress, &curve).is_finite(), "{text} at {progress}");
             }
         }
     }
