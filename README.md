@@ -4843,6 +4843,15 @@ render per frame.
   element mounts with never transitions. A property that is unset starts from its
   CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
   an unset `width`) and a move between `px` and `%` change instantly
+- **`auto` heights.** As in a browser, a change between a length and `auto` is
+  discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an
+  ancestor (it inherits, default `'numeric-only'`). That covers `height` to or from
+  `auto` or unset, and an unset `minHeight` / `maxHeight` (CSS computes them to
+  `auto` / `none`). With it set, the transition starts from the laid-out height and
+  runs to the content's height, follows the content while it grows, and hands back
+  to `auto` at the end. `width` to or from `auto` stays discrete. `motion` animates
+  to `height: 'auto'` whatever `interpolateSize` is, since that is Framer's
+  behaviour
 - **Interrupts.** A change mid-flight starts from the visible value, not the old
   target. Returning to where the transition began shortens the way back in
   proportion, as CSS specifies. Changing `transition*` does not touch a running

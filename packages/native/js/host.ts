@@ -601,6 +601,9 @@ export interface StyleDesc {
    * transition on the same property. Events: `onTransitionRun`,
    * `onTransitionStart`, `onTransitionEnd`, `onTransitionCancel`.
    * An invalid value is an error. `transition-behavior` is not supported.
+   * A change between a length and `auto` (a `height` that is `auto` or unset,
+   * and an unset `minHeight` / `maxHeight`, whose value is `auto` / `none`)
+   * applies at once, as in a browser, unless `interpolateSize` allows it.
    */
   transition?: string
   /** `none`, `all`, or a list of CSS property names. Wins over `transition`. */
@@ -612,6 +615,15 @@ export interface StyleDesc {
   transitionTimingFunction?: string
   /** A list of `<time>`s. Negative starts the transition part-way through. */
   transitionDelay?: string
+  /**
+   * `"allow-keywords"` lets a CSS transition run between a length and a sizing
+   * keyword: `height` to or from `auto`, and from an unset `minHeight` /
+   * `maxHeight`. `"numeric-only"` (the default) makes those changes discrete.
+   * Inherited like the CSS property, so set it once on a container. `width` to
+   * or from `auto` stays discrete either way. `motion` animates to `height:
+   * "auto"` whatever this is set to.
+   */
+  interpolateSize?: "numeric-only" | "allow-keywords"
 
   // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
   // Nesting is one level deep: a state style cannot contain another.
