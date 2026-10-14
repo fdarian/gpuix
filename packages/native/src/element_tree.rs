@@ -152,6 +152,31 @@ pub struct EventPayload {
     /// Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents.
     pub related_target: Option<f64>,
 
+    // ── DOM pointer and mouse event fields ───────────────────────────
+    /// Pointer position in window coordinates, the DOM `clientX`/`clientY`.
+    /// Same values as `x`/`y`, which stay for existing handlers.
+    pub client_x: Option<f64>,
+    pub client_y: Option<f64>,
+
+    /// Pointer position relative to the target's padding edge (its border box
+    /// minus its border widths), the DOM `offsetX`/`offsetY`.
+    pub offset_x: Option<f64>,
+    pub offset_y: Option<f64>,
+
+    /// Buttons held while the event fires, as the DOM bitmask: 1 primary,
+    /// 2 secondary, 4 auxiliary, 8 back, 16 forward.
+    pub buttons: Option<u32>,
+
+    /// The DOM `detail`: the consecutive click count on click-family and
+    /// down/up events.
+    pub detail: Option<u32>,
+
+    /// The DOM `pointerId`. 1 for the mouse.
+    pub pointer_id: Option<u32>,
+
+    /// The DOM `pointerType`. "mouse" for every event native produces.
+    pub pointer_type: Option<String>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -191,6 +216,14 @@ impl Default for EventPayload {
             target: None,
             path: None,
             related_target: None,
+            client_x: None,
+            client_y: None,
+            offset_x: None,
+            offset_y: None,
+            buttons: None,
+            detail: None,
+            pointer_id: None,
+            pointer_type: None,
             modifiers: None,
         }
     }

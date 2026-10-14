@@ -669,6 +669,32 @@ export interface EventPayload {
    * Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents.
    */
   relatedTarget?: number
+  /**
+   * Pointer position in window coordinates, the DOM `clientX`/`clientY`.
+   * Same values as `x`/`y`, which stay for existing handlers.
+   */
+  clientX?: number
+  clientY?: number
+  /**
+   * Pointer position relative to the target's padding edge (its border box
+   * minus its border widths), the DOM `offsetX`/`offsetY`.
+   */
+  offsetX?: number
+  offsetY?: number
+  /**
+   * Buttons held while the event fires, as the DOM bitmask: 1 primary,
+   * 2 secondary, 4 auxiliary, 8 back, 16 forward.
+   */
+  buttons?: number
+  /**
+   * The DOM `detail`: the consecutive click count on click-family and
+   * down/up events.
+   */
+  detail?: number
+  /** The DOM `pointerId`. 1 for the mouse. */
+  pointerId?: number
+  /** The DOM `pointerType`. "mouse" for every event native produces. */
+  pointerType?: string
   modifiers?: EventModifiers
 }
 
