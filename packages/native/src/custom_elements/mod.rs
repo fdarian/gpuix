@@ -21,6 +21,7 @@ pub mod input;
 mod input_rules;
 pub mod markdown;
 pub(crate) mod text_selection;
+pub mod svg_paint;
 
 // ── Render context ───────────────────────────────────────────────────
 

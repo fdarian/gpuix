@@ -658,11 +658,16 @@ fn looks_like_svg(bytes: &[u8]) -> bool {
     start.starts_with("<svg") || start.starts_with("<?xml")
 }
 
-#[derive(Debug, Clone, Default)]
+/// `<svg>`: the document is rasterised in full colour at device resolution
+/// (`svg_paint`), and `currentColor` is the element's computed `color`.
+#[derive(Default)]
 pub struct SvgElement {
     src: String,
     bytes: Option<std::sync::Arc<[u8]>>,
-    source: String,
+    /// Inline markup from the `source` prop; wins over `src` when not blank.
+    source: Option<std::sync::Arc<[u8]>>,
+    /// Shared with the paint closure, which runs after `render` returns.
+    paint: std::rc::Rc<std::cell::RefCell<super::svg_paint::SvgPaint>>,
 }
 
 impl SvgElement {
@@ -725,43 +730,40 @@ impl CustomElement for SvgElement {
         &mut self,
         ctx: CustomRenderContext,
         _window: &mut gpui::Window,
-        _cx: &mut gpui::Context<crate::renderer::GpuixView>,
+        cx: &mut gpui::Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
-        let bytes = if self.source.trim().is_empty() {
-            self.bytes.as_deref()
-        } else {
-            Some(self.source.as_bytes())
-        };
         let element_id = crate::events::ids::host_element_id(ctx.id);
-        let Some(bytes) = bytes else {
-            let empty = super::custom_surface(gpui::div().id(element_id), &ctx);
-            return empty.into_any_element();
-        };
-
-        let tint = ctx
-            .colors
-            .declared
-            .unwrap_or_else(|| gpui::rgb(0xe2e2e2).into());
-        let mut icon = gpui::svg()
-            .data(bytes)
-            .flex_none()
-            .text_color(tint)
-            .id(element_id);
-        icon = crate::events::ids::host_hitbox(icon, ctx.pointer_events_none);
-        if let Some(style) = ctx.style {
-            icon = crate::renderer::apply_interactive_styles(icon, style, &ctx.colors);
+        let mut surface = super::custom_surface(gpui::div().id(element_id).flex_none(), &ctx);
+        let bytes = self.source.clone().or_else(|| self.bytes.clone());
+        if let Some(bytes) = bytes {
+            let paint = self.paint.clone();
+            let renderer = cx.svg_renderer();
+            let color = ctx.colors.current;
+            surface = surface.child(
+                gpui::canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        paint_svg(&paint, &renderer, &bytes, bounds, color, window);
+                    },
+                )
+                // In flow, not absolute: an absolute child is sized against the padding box.
+                .size_full(),
+            );
         }
-        icon = crate::accessibility::apply_accessibility(icon, ctx.id, ctx.props, None);
-        let icon = super::wire_host_events(icon, &ctx);
-        crate::automation::track_own_bounds(icon, ctx.id, ctx.observe.clone()).into_any_element()
+        surface.into_any_element()
     }
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
             "src" => self.load_src(value.as_str().unwrap_or_default().to_string()),
-            "source" => self.source = value.as_str().unwrap_or_default().to_string(),
+            "source" => {
+                self.source = value
+                    .as_str()
+                    .filter(|markup| !markup.trim().is_empty())
+                    .map(|markup| std::sync::Arc::from(markup.as_bytes()));
+            }
             _ => {}
         }
     }
@@ -775,4 +777,49 @@ impl CustomElement for SvgElement {
     }
 
     fn destroy(&mut self) {}
+
+    /// The held raster, so the registry drops it from the atlas with the element.
+    fn live_image(&self) -> Option<std::sync::Arc<gpui::RenderImage>> {
+        self.paint.borrow().held()
+    }
+}
+
+fn paint_svg(
+    paint: &std::cell::RefCell<super::svg_paint::SvgPaint>,
+    renderer: &gpui::SvgRenderer,
+    bytes: &std::sync::Arc<[u8]>,
+    bounds: gpui::Bounds<gpui::Pixels>,
+    color: gpui::Rgba,
+    window: &mut gpui::Window,
+) {
+    let scale = window.scale_factor();
+    if bounds.size.width <= gpui::px(0.0) || bounds.size.height <= gpui::px(0.0) {
+        return;
+    }
+    let image = match paint
+        .borrow_mut()
+        .image(window, renderer, bytes, bounds.size, scale, color)
+    {
+        Ok(image) => image,
+        Err(error) => {
+            log::warn!("<svg> could not be rasterised: {error}");
+            return;
+        }
+    };
+    let size = image.size(0);
+    let drawn = gpui::size(
+        gpui::px(size.width.0 as f32 / scale),
+        gpui::px(size.height.0 as f32 / scale),
+    );
+    let image_bounds = gpui::Bounds {
+        origin: bounds.origin
+            + gpui::point(
+                (bounds.size.width - drawn.width) / 2.0,
+                (bounds.size.height - drawn.height) / 2.0,
+            ),
+        size: drawn,
+    };
+    window
+        .paint_image(bounds, image_bounds, gpui::Corners::default(), image, 0, false)
+        .ok();
 }

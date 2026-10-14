@@ -926,11 +926,11 @@ export interface ImagePixelsOptions {
   format?: ImagePixelFormat
 }
 
-// Props for monochrome SVGs tinted by style.color.
+// Props for full-colour SVGs. `currentColor` is the element's computed `color`.
 export interface SvgProps extends HostProps {
   /** Desktop local path. Use source for portable browser rendering. */
   src?: string
-  /** Raw SVG markup rendered directly by GPUI. */
+  /** Raw SVG markup, rasterised in full colour at device resolution. */
   source?: string
 }
 

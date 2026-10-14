@@ -3614,9 +3614,23 @@ The [waveform example](./examples/waveform.tsx) writes BGRA by hand, at 2x.
 
 ### `<svg>`
 
-`<svg>` uses GPUI's **monochrome icon renderer**. Raw `source` works on desktop
-and in the browser. Desktop apps can also use a local `src` path. The icon is
-drawn as one shape and tinted with `style.color`.
+`<svg>` rasterises the document with resvg in **full colour**, at the window's
+device resolution, so fills, strokes, gradients and opacity all paint. Raw
+`source` works on desktop and in the browser. Desktop apps can also use a local
+`src` path. The drawing keeps its aspect ratio inside the box, centred, like
+`preserveAspectRatio="xMidYMid meet"`.
+
+The raster is made once per size, colour and document. A box that changes size
+every frame (a transition, a window drag) keeps drawing the last raster,
+stretched to fit, and is rasterised again 100 ms after the size stops changing;
+the first change after a pause is sharp at once. Rasterising happens on the
+paint thread, so a very large SVG costs a frame when its size changes.
+
+`currentColor` in the SVG is the element's computed `color`, inherited like in
+the DOM, so `style.color` recolours an icon drawn with `fill="currentColor"` and a
+`color` on an ancestor reaches it too. An SVG that sets its own `color` on the
+root keeps it. The default `color` is black, white under a dark `colorScheme`, and
+an element with no fill paints black, as in a browser.
 
 For application icons, prefer **raw SVG source**. It works with both GPUIX
 targets and lets a bundler embed each icon in the JavaScript bundle. Use `src`
@@ -3626,9 +3640,10 @@ only for a desktop app that intentionally ships loose asset files.
 Bun `import … with { type: 'file' }` bindings emit the data URL. GPUIX decodes
 both.
 
-`style.color` is required. Without it the icon does not paint. Prefer
-`fill="#000"` or `stroke="#000"` in the file. `currentColor` in the SVG is not
-the same as `style.color`.
+Give the element a `width` and `height`: an `<svg>` has no intrinsic size here.
+Earlier versions drew a monochrome mask tinted `#e2e2e2` when no `color` was set;
+now the SVG paints its own colours, so icons that used `fill="#000"` and relied
+on `style.color` to tint them need `fill="currentColor"`.
 
 #### Bun
 
