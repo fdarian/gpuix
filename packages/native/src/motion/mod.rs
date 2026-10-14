@@ -4,6 +4,7 @@
 //! animated property. A retarget restarts only the properties whose target or
 //! transition changed, so the rest keep running undisturbed.
 
+mod css_transition;
 mod curve;
 mod property;
 mod track;
@@ -16,6 +17,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
+pub(crate) use css_transition::{CssTransitions, TransitionEvent, TransitionStyle};
 use curve::Transition;
 use property::AnimProp;
 use track::Track;
@@ -239,6 +241,12 @@ impl MotionState {
             tracks.insert(*prop, next);
         }
         Ok((tracks, moving))
+    }
+
+    /// Whether this description animates `prop`, which then is not a CSS
+    /// transition's to animate.
+    fn owns(&self, prop: AnimProp) -> bool {
+        self.valid && self.tracks.contains_key(&prop)
     }
 
     pub(crate) fn visible_style(&self, now: Instant) -> Option<MotionStyle> {

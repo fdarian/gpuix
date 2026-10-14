@@ -184,11 +184,31 @@ impl Layout {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct Pair {
     pub(super) layout: Layout,
     pub(super) from: Vec<f64>,
     pub(super) to: Vec<f64>,
+}
+
+impl Pair {
+    /// The value `progress` of the way from `from` to `to`. Progress outside
+    /// 0..=1 extrapolates, which is how an overshooting easing is applied.
+    pub(super) fn at(&self, progress: f64) -> AnimValue {
+        let channels: Vec<f64> = self
+            .from
+            .iter()
+            .zip(&self.to)
+            .map(|(from, to)| from + (to - from) * progress)
+            .collect();
+        self.layout.decode(&channels)
+    }
+
+    /// Shadow lists that differ in `inset` flip at half instead of blending,
+    /// which a CSS transition does not run at all.
+    pub(super) fn is_discrete(&self) -> bool {
+        matches!(self.layout, Layout::DiscreteShadows { .. })
+    }
 }
 
 pub(super) fn pair(name: &str, from: &AnimValue, to: &AnimValue) -> Result<Pair, String> {

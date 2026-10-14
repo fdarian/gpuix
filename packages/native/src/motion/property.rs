@@ -169,6 +169,8 @@ macro_rules! properties {
         }
 
         impl AnimProp {
+            pub(super) const ALL: &'static [AnimProp] = &[$(Self::$variant),*];
+
             pub(super) fn from_name(name: &str) -> Option<Self> {
                 match name {
                     $($name => Some(Self::$variant),)*
