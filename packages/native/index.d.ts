@@ -652,6 +652,23 @@ export interface EventPayload {
    * Populated for: fileDrop.
    */
   paths?: Array<string>
+  /**
+   * Element the event was aimed at (the DOM `event.target`). Absent means
+   * `element_id` is the target. Ids are `f64` like `element_id`: `u64` would
+   * reach JS as a `bigint` and never match the `number` keys of the handler map.
+   */
+  target?: number
+  /**
+   * Propagation path, target first and then each ancestor up to the root.
+   * JS runs capture over it root to target and bubble target to root. Absent
+   * means the event is handled at `element_id` only.
+   */
+  path?: Array<number>
+  /**
+   * The other element of a boundary event (the DOM `event.relatedTarget`).
+   * Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents.
+   */
+  relatedTarget?: number
   modifiers?: EventModifiers
 }
 

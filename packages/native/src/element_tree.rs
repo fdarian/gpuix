@@ -137,6 +137,21 @@ pub struct EventPayload {
     /// Populated for: fileDrop.
     pub paths: Option<Vec<String>>,
 
+    // ── DOM event propagation ────────────────────────────────────────
+    /// Element the event was aimed at (the DOM `event.target`). Absent means
+    /// `element_id` is the target. Ids are `f64` like `element_id`: `u64` would
+    /// reach JS as a `bigint` and never match the `number` keys of the handler map.
+    pub target: Option<f64>,
+
+    /// Propagation path, target first and then each ancestor up to the root.
+    /// JS runs capture over it root to target and bubble target to root. Absent
+    /// means the event is handled at `element_id` only.
+    pub path: Option<Vec<f64>>,
+
+    /// The other element of a boundary event (the DOM `event.relatedTarget`).
+    /// Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents.
+    pub related_target: Option<f64>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -173,6 +188,9 @@ impl Default for EventPayload {
             match_count: None,
             motion_generation: None,
             paths: None,
+            target: None,
+            path: None,
+            related_target: None,
             modifiers: None,
         }
     }
