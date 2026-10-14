@@ -152,6 +152,16 @@ export declare class GpuixRenderer {
   setAppearance(appearance: string): void
   /** The effective appearance of the window, `"light"` or `"dark"`. */
   getAppearance(): string
+  /**
+   * Enable the `mediaChange` event behind `matchMedia`. It fires when the OS
+   * accessibility preferences or the window appearance change.
+   */
+  setWindowMediaChange(enabled: boolean): void
+  /**
+   * The OS accessibility preferences that media queries expose. All false
+   * where the OS has no read (everything but macOS).
+   */
+  getMediaFeatures(): MediaFeatures
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -424,6 +434,14 @@ export declare class TestGpuixRenderer {
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
   setWindowSelectionChange(enabled: boolean, eventId: number): void
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
+  setWindowMediaChange(enabled: boolean): void
+  /** The preferences this window reports, which start as "no preference". */
+  getMediaFeatures(): MediaFeatures
+  /**
+   * Change the reported OS preferences. Queues a `mediaChange` event when
+   * something changed and a listener is enabled, like the OS notification.
+   */
+  setMediaFeatures(reducedMotion?: boolean | undefined | null, increasedContrast?: boolean | undefined | null, forcedColors?: boolean | undefined | null): void
   /**
    * Validates and does nothing. This renderer drives the real offscreen
    * platform window, which has no run loop here, so AppKit never delivers
@@ -1147,6 +1165,16 @@ export interface WindowOptions {
    * normal window. Linux/Wayland only; ignored elsewhere.
    */
   layerShell?: LayerShellOptions
+}
+
+/** The OS accessibility preferences that media queries expose. */
+export interface MediaFeatures {
+  /** `prefers-reduced-motion: reduce`. */
+  reducedMotion: boolean
+  /** `prefers-contrast: more`. */
+  increasedContrast: boolean
+  /** `forced-colors: active`. macOS has no forced colors mode. */
+  forcedColors: boolean
 }
 
 export interface WindowSize {

@@ -288,6 +288,9 @@ pub struct TestGpuixRenderer {
     /// The platform's side of pointer lock, which the offscreen window cannot
     /// provide: it is never key, so a real request is always refused.
     platform: crate::events::pointer_lock::SimulatedPlatform,
+    /// What `getMediaFeatures` reports. The test window never receives OS
+    /// notifications, so `setMediaFeatures` is the only way it changes.
+    media: Arc<Mutex<crate::media::TestMedia>>,
 }
 
 impl TestGpuixRenderer {
@@ -394,6 +397,7 @@ impl TestGpuixRenderer {
             selection,
             pointer_requests,
             platform: simulated_platform,
+            media: Arc::new(Mutex::new(crate::media::TestMedia::default())),
         })
     }
 
@@ -704,6 +708,36 @@ impl TestGpuixRenderer {
         update_view_or_defer(move |view, _window, _cx| {
             view.set_appearance_change_listener(enabled, event_id);
         })
+    }
+
+    #[napi]
+    pub fn set_window_media_change(&self, enabled: bool) {
+        self.media.lock().unwrap().listening = enabled;
+    }
+
+    /// The preferences this window reports, which start as "no preference".
+    #[napi]
+    pub fn get_media_features(&self) -> crate::media::MediaFeatures {
+        self.media.lock().unwrap().features
+    }
+
+    /// Change the reported OS preferences. Queues a `mediaChange` event when
+    /// something changed and a listener is enabled, like the OS notification.
+    #[napi]
+    pub fn set_media_features(
+        &self,
+        reduced_motion: Option<bool>,
+        increased_contrast: Option<bool>,
+        forced_colors: Option<bool>,
+    ) {
+        let event = self
+            .media
+            .lock()
+            .unwrap()
+            .set(reduced_motion, increased_contrast, forced_colors);
+        if let Some(event) = event {
+            self.events.lock().unwrap().push(event);
+        }
     }
 
     /// Validates and does nothing. This renderer drives the real offscreen

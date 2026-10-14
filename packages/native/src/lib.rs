@@ -25,6 +25,7 @@ mod focus;
 mod forms;
 mod layout;
 mod markdown;
+mod media;
 mod motion;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod platform;
@@ -51,6 +52,7 @@ mod test_renderer;
 
 pub use element_tree::*;
 pub use observers::Observation;
+pub use media::MediaFeatures;
 pub use renderer::*;
 pub use style::*;
 

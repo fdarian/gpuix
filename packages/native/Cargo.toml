@@ -83,6 +83,10 @@ web-sys = { version = "0.3", features = ["Navigator", "Window"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"
 core-graphics = "=0.24.0"
+# Same Objective-C bindings GPUI's macOS platform uses, for the NSWorkspace
+# accessibility reads in media.rs.
+objc = "0.2"
+block = "0.1"
 tar = "0.4"
 flate2 = "1"
 # Production uses the embedded AppKit loop; tests use the native Metal renderer.

@@ -13,6 +13,7 @@ import {
   hasTestGpuixRenderer,
   TestGpuixRenderer,
   type EventPayload,
+  type MediaFeatures,
 } from "../index.js"
 import type {
   DebugFrameOverlayMode,
@@ -58,6 +59,13 @@ interface NativeTestRendererApi extends NativeRenderer {
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
   setAppearance(appearance: string): void
   getAppearance(): string
+  setWindowMediaChange(enabled: boolean): void
+  getMediaFeatures(): MediaFeatures
+  setMediaFeatures(
+    reducedMotion?: boolean,
+    increasedContrast?: boolean,
+    forcedColors?: boolean
+  ): void
   simulateKeyDown(keystroke: string, isHeld?: boolean): void
   simulateKeyUp(keystroke: string): void
   simulateClick(x: number, y: number, button?: number, modifiers?: string): void
@@ -308,6 +316,10 @@ export class TestRenderer implements NativeRenderer {
   readonly setWindowAppearanceChange: NonNullable<
     NativeRenderer["setWindowAppearanceChange"]
   >
+  readonly setWindowMediaChange: NonNullable<
+    NativeRenderer["setWindowMediaChange"]
+  >
+  readonly getMediaFeatures: NonNullable<NativeRenderer["getMediaFeatures"]>
   readonly setWindowKeyEvents: NonNullable<NativeRenderer["setWindowKeyEvents"]>
   private readonly dispatchEvent: (event: EventPayload) => void
   private readonly dispatchSyncEvent: (event: EventPayload) => SyncDispatchResult
@@ -336,6 +348,8 @@ export class TestRenderer implements NativeRenderer {
       this.native
     )
     this.onError = options.onError
+    this.setWindowMediaChange = this.native.setWindowMediaChange.bind(this.native)
+    this.getMediaFeatures = this.native.getMediaFeatures.bind(this.native)
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
       createRendererState(this).dispatch(event)
     })
@@ -796,6 +810,18 @@ export class TestRenderer implements NativeRenderer {
   /** The offscreen window's appearance, which is the system's. */
   getAppearance(): string {
     return this.native.getAppearance()
+  }
+
+  /** Set the OS accessibility preferences this window reports (all start as
+   *  "no preference") and deliver the resulting `mediaChange` event. The test
+   *  window never hears from the OS, so this is how a test flips reduced motion. */
+  setMediaFeatures(features: Partial<MediaFeatures>): void {
+    this.native.setMediaFeatures(
+      features.reducedMotion,
+      features.increasedContrast,
+      features.forcedColors
+    )
+    this.dispatchNativeEvents()
   }
 
   // ── Scroll API ──────────────────────────────────────────────────

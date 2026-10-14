@@ -2592,6 +2592,7 @@ version = "0.10.0"
 dependencies = [
  "anyhow",
  "base64",
+ "block",
  "block2 0.6.2",
  "core-graphics 0.24.0",
  "core-text",
@@ -2610,6 +2611,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "objc",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "parking_lot",

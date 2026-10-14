@@ -616,6 +616,9 @@ enum UiCommand {
         enabled: bool,
         event_id: u64,
     },
+    SetWindowMediaChange {
+        enabled: bool,
+    },
     SetAppearance(Option<gpui::WindowAppearance>),
     GetAppearance {
         response: SyncSender<String>,
@@ -940,6 +943,11 @@ async fn run_ui_commands(
             UiCommand::SetWindowAppearanceChange { enabled, event_id } => {
                 window.update(cx, move |view, _window, _cx| {
                     view.set_appearance_change_listener(enabled, event_id);
+                })
+            }
+            UiCommand::SetWindowMediaChange { enabled } => {
+                window.update(cx, move |view, _window, _cx| {
+                    view.set_media_change_listener(enabled);
                 })
             }
             UiCommand::SetAppearance(appearance) => {
@@ -2471,6 +2479,36 @@ impl GpuixRenderer {
         Err(Error::from_reason(
             "The production GPUIX renderer does not support this operating system",
         ))
+    }
+
+    /// Enable the `mediaChange` event behind `matchMedia`. It fires when the OS
+    /// accessibility preferences or the window appearance change.
+    #[napi]
+    pub fn set_window_media_change(&self, enabled: bool) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, _window, _cx| {
+            view.set_media_change_listener(enabled);
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::SetWindowMediaChange { enabled });
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason(
+            "The production GPUIX renderer does not support this operating system",
+        ))
+    }
+
+    /// The OS accessibility preferences that media queries expose. All false
+    /// where the OS has no read (everything but macOS).
+    #[napi]
+    pub fn get_media_features(&self) -> crate::media::MediaFeatures {
+        crate::media::read_system_features()
     }
 
     /// `"system"` follows the OS light/dark setting, `"light"` and `"dark"`
@@ -4518,6 +4556,9 @@ pub(crate) struct GpuixView {
     /// Stands in for the platform's pointer lock in the test renderer, whose
     /// offscreen window is never key and so can never take a real one.
     simulated_platform: Option<crate::events::pointer_lock::SimulatedPlatform>,
+    window_media_change: bool,
+    #[cfg(target_os = "macos")]
+    media_observer: Option<crate::media::MediaChangeObserver>,
     /// Last identity delivered through `selectionChange`. Only written once an
     /// event is really queued, so adding the listener later still reports.
     reported_selection: Option<u64>,
@@ -4758,6 +4799,9 @@ impl GpuixView {
             window_appearance_event_id: 0,
             appearance_subscription: None,
             simulated_platform: None,
+            window_media_change: false,
+            #[cfg(target_os = "macos")]
+            media_observer: None,
             reported_selection: None,
             focus_handles: HashMap::new(),
             pending_focus_element: None,
@@ -4985,6 +5029,21 @@ impl GpuixView {
         self.window_appearance_event_id = event_id;
     }
 
+    pub(crate) fn set_media_change_listener(&mut self, enabled: bool) {
+        self.window_media_change = enabled;
+        #[cfg(target_os = "macos")]
+        {
+            if !enabled {
+                self.media_observer = None;
+            } else if self.media_observer.is_none() {
+                let callback = self.event_callback.clone();
+                self.media_observer = Some(crate::media::MediaChangeObserver::new(move || {
+                    crate::media::emit_media_change(&callback, "system");
+                }));
+            }
+        }
+    }
+
     /// Emit `appearanceChange` from GPUI's window appearance observer, not from
     /// render: the platform reports the change, so there is nothing to diff.
     pub(crate) fn observe_appearance(
@@ -4998,6 +5057,9 @@ impl GpuixView {
                 // while building, so a change has to rebuild even when no JS
                 // listener asked for the event.
                 cx.notify();
+                if view.window_media_change {
+                    crate::media::emit_media_change(&view.event_callback, "appearance");
+                }
                 if !view.window_appearance_change {
                     return;
                 }
