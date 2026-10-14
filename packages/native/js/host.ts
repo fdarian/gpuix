@@ -349,6 +349,18 @@ export interface StyleDesc {
    *  lengths, and a layer without a colour is `currentColor`, as in CSS. An
    *  invalid string paints no shadow. */
   boxShadow?: BoxShadow | BoxShadow[] | string
+  /** CSS `filter`: a space-separated list of `blur()`, `brightness()`,
+   *  `contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`,
+   *  `saturate()`, `sepia()` and `drop-shadow()`, applied in order to the element
+   *  and everything in it, or `"none"`. Amounts are numbers or percentages;
+   *  lengths are `px` (or a bare `0`); angles are `deg`, `rad`, `turn` or `grad`.
+   *  A `drop-shadow()` colour defaults to `currentColor`. An invalid string is
+   *  ignored, as in CSS. `url()` references are not supported. */
+  filter?: string
+  /** CSS `backdrop-filter`: the same functions as `filter`, applied to what is
+   *  painted behind the element, within its border box. The element's own
+   *  background should be translucent for the effect to show. */
+  backdropFilter?: string
   /** Applies to every side. */
   borderStyle?: "solid" | "dashed"
   /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in

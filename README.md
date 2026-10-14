@@ -4099,7 +4099,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Borders
 
@@ -4383,6 +4383,24 @@ The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadi
     ],
   }}
 />
+```
+
+`filter` and `backdropFilter` take the CSS function list: `blur()`, `brightness()`,
+`contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`,
+`sepia()` and `drop-shadow()`, applied in order, or `none`. Amounts are numbers or
+percentages, lengths are `px` (or a bare `0`), and angles are `deg`, `rad`, `turn`
+or `grad`. A `drop-shadow()` colour can be any [colour form](#colors) and defaults
+to `currentColor`. An invalid string is ignored, as in CSS, and `url()` references
+are not supported. `filter` applies to the element and everything in it, and
+`backdropFilter` to what is painted behind it, so give the element a translucent
+background for the effect to show. `opacity` also composites the element as a
+group, so overlapping children of a half-transparent parent do not show through
+each other.
+
+```tsx
+<div style={{ filter: 'blur(4px) brightness(1.2)' }} />
+<div style={{ backdropFilter: 'blur(12px)', backgroundColor: 'rgba(255,255,255,0.4)' }} />
+<div style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,.4))' }} />
 ```
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
