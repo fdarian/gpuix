@@ -202,6 +202,10 @@ pub struct SelectableText {
     /// inheriting from ancestor `style` props. Pass `Some(..)` only when the
     /// element owns its own colours, as `<code>` and `<diff>` do.
     pub runs: Option<Vec<TextRun>>,
+    /// Per-run changes laid over the inherited text style, for a paragraph whose
+    /// inline boxes restyle parts of it. Empty means plain text; otherwise the
+    /// lengths cover `text` exactly. Mutually exclusive with `runs`.
+    pub run_styles: Vec<super::paragraph::RunStyle>,
     pub selection: SharedSelection,
     pub wash_color: Hsla,
     /// Paints additional quads under the glyphs before the selection wash:
@@ -235,6 +239,7 @@ impl SelectableText {
             sub,
             text,
             runs,
+            run_styles: Vec::new(),
             selection,
             wash_color,
             extra_wash: None,
@@ -255,6 +260,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         sub,
         text,
         runs,
+        run_styles,
         selection,
         wash_color,
         extra_wash,
@@ -266,11 +272,20 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
     } = opts;
     let key = selection_key(element_id, sub);
 
-    let styled = match runs {
-        Some(runs) => StyledText::new(text.clone()).with_runs(runs),
-        None => StyledText::new(text.clone()),
+    debug_assert!(
+        runs.is_none() || run_styles.is_empty(),
+        "a text has either explicit runs or inline run styles"
+    );
+    let (layout, glyphs) = if run_styles.is_empty() {
+        let styled = match runs {
+            Some(runs) => StyledText::new(text.clone()).with_runs(runs),
+            None => StyledText::new(text.clone()),
+        };
+        (styled.layout().clone(), styled.into_any_element())
+    } else {
+        let inline = super::paragraph::InlineText::new(text.clone(), run_styles);
+        (inline.layout().clone(), inline.into_any_element())
     };
-    let layout = styled.layout().clone();
 
     let underlay = canvas(
         |_, _, _| (),
@@ -327,7 +342,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
     div()
         .relative()
         .child(underlay)
-        .child(styled)
+        .child(glyphs)
         .into_any_element()
 }
 

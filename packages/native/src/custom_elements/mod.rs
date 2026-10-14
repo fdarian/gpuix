@@ -7,7 +7,7 @@
 ///
 /// Architecture:
 ///   build_element()
-///     "div" | "text" → build_host_container()  (built-in)
+///     "div" | "text" | "span" → build_host_container()  (built-in)
 ///     _              → registry.render(ctx)    (trait dispatch)
 use std::collections::{HashMap, HashSet};
 

@@ -90,8 +90,8 @@ describe("highlight", () => {
     expect(matched(renderer)).toEqual(["outer", "inner"])
   })
 
-  // React makes a separate host node for every interpolated string, so this
-  // is three painted runs of one logical line.
+  // React makes a separate host node for every interpolated string. They are
+  // one inline paragraph, painted as one string, so a match is one wash.
   it("matches across the host nodes React split apart", () => {
     const { render, renderer } = createTestRoot()
     const name = "Tommy"
@@ -102,8 +102,8 @@ describe("highlight", () => {
     )
 
     const hits = renderer.getPaintedHighlights()
-    expect(hits).toHaveLength(2)
-    expect(hits.map((hit) => hit.text.slice(hit.start, hit.end))).toEqual(["Hello ", "Tommy"])
+    expect(hits).toHaveLength(1)
+    expect(hits.map((hit) => hit.text.slice(hit.start, hit.end))).toEqual(["Hello Tommy"])
   })
 
   it("does not match across a line boundary", () => {

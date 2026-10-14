@@ -6273,8 +6273,9 @@ pub(crate) fn build_element(
         // `<text>` is a `<div>` that happens to carry a string. Giving it its
         // own builder meant every interaction prop on the shared `Props` type
         // (onClick, hover, focus, tabIndex) type-checked, registered a JS
-        // listener, and then silently did nothing.
-        "div" | "text" | "label" | "form" => {
+        // listener, and then silently did nothing. `<span>` is the same box;
+        // it only differs in being inline inside a paragraph.
+        "div" | "text" | "label" | "form" | "span" => {
             ctx.custom_registry.destroy(id);
             build_host_container(element, style, ctx, window, cx)
         }
@@ -6293,7 +6294,7 @@ pub(crate) fn build_element(
                 .iter()
                 .copied()
                 .filter(|child_id| {
-                    crate::layout::box_generation::generates_box(ctx.tree, element, *child_id)
+                    crate::layout::box_generation::generates_box(ctx.tree, *child_id)
                 })
                 .map(|child_id| {
                     ctx.contents_overlay =
@@ -6544,28 +6545,7 @@ fn is_text_node(element: &crate::retained_tree::RetainedElement) -> bool {
         && element.events().is_empty()
 }
 
-fn joined_text_content(
-    tree: &RetainedTree,
-    element: &crate::retained_tree::RetainedElement,
-) -> Option<String> {
-    if let Some(content) = element.content.as_deref().filter(|value| !value.is_empty()) {
-        return Some(content.to_string());
-    }
-    let mut joined = String::new();
-    for child_id in &element.children {
-        let Some(child) = tree.elements.get(child_id) else {
-            continue;
-        };
-        if child.element_type == "text" {
-            if let Some(content) = child.content.as_deref() {
-                joined.push_str(content);
-            }
-        }
-    }
-    (!joined.is_empty()).then_some(joined)
-}
-
-/// The one builder for `<div>` and `<text>`.
+/// The one builder for `<div>`, `<text>` and `<span>`.
 ///
 /// Both get the same stable GPUI id, so gpui keeps their interactive element
 /// state (hover, active, pointer capture, scroll, accessibility node) across
@@ -6665,7 +6645,7 @@ pub(crate) fn build_host_container(
     };
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
-        if let Some(content) = joined_text_content(ctx.tree, element) {
+        if let Some(content) = crate::text::inline::accessible_text(ctx.tree, element) {
             el = el.aria_value(content);
         }
     }
@@ -6742,25 +6722,35 @@ pub(crate) fn build_host_container(
     // `{cond && x}`). Emitting those as full-height lines inflated every
     // conditional row. React never sends empty text, so this is a no-op there.
     let mut paint_ranks = Vec::new();
-    if let Some(content) = element.content.as_deref().filter(|value| !value.is_empty()) {
-        el = el.child(text_content(element, content, ctx));
-        paint_ranks.push(0);
+    if element.children.is_empty() {
+        if let Some(content) = element.content.as_deref().filter(|value| !value.is_empty()) {
+            el = el.child(text_content(element, content, ctx));
+            paint_ranks.push(0);
+        }
     }
 
-    // Children
-    let children = crate::layout::order::children_in_order(ctx.tree, element, style);
-    for &child_id in children.iter() {
-        if !crate::layout::box_generation::generates_box(ctx.tree, element, child_id) {
-            continue;
+    // Children. Consecutive inline children are one paragraph, see
+    // `text::inline`; the rest are elements of their own.
+    if !element.children.is_empty() {
+        for child in crate::text::inline::plan_children(ctx.tree, element) {
+            match child {
+                crate::text::inline::Child::Block(child_id) => {
+                    paint_ranks.push(crate::layout::stacking::paint_rank(
+                        ctx.tree
+                            .elements
+                            .get(&child_id)
+                            .and_then(|child| child.style.as_deref()),
+                    ));
+                    ctx.contents_overlay =
+                        crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                    el = el.child(build_element(child_id, ctx, window, cx));
+                }
+                crate::text::inline::Child::Paragraph(paragraph) => {
+                    paint_ranks.push(0);
+                    el = el.child(paragraph_content(&paragraph, ctx));
+                }
+            }
         }
-        paint_ranks.push(crate::layout::stacking::paint_rank(
-            ctx.tree
-                .elements
-                .get(&child_id)
-                .and_then(|child| child.style.as_deref()),
-        ));
-        ctx.contents_overlay = crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-        el = el.child(build_element(child_id, ctx, window, cx));
     }
     if paint_ranks.iter().any(|rank| *rank != 0) {
         el = el.paint_ranks(paint_ranks);
@@ -6866,6 +6856,38 @@ fn text_content(
             element.id,
             0,
             gpui::SharedString::from(content.to_string()),
+            None,
+            ctx.selection.clone(),
+            ctx.inherited.selection_wash,
+        )
+    })
+}
+
+/// One paragraph of inline content: a single string with a run per text node,
+/// selected, searched and copied as one line of text. Its group is its own
+/// owner, so two paragraphs never join into one copied line.
+fn paragraph_content(
+    paragraph: &crate::text::inline::Paragraph,
+    ctx: &BuildCtx,
+) -> gpui::AnyElement {
+    selectable_text(crate::text::SelectableText {
+        group: Some(paragraph.owner),
+        selectable: ctx.inherited.selectable,
+        highlight: ctx
+            .inherited
+            .highlight
+            .clone()
+            .map(crate::text::HighlightSource::Resolved),
+        run_styles: crate::text::paragraph::run_styles(
+            ctx.tree,
+            paragraph,
+            &ctx.inherited.colors,
+            &ctx.inherited.font_state,
+        ),
+        ..crate::text::SelectableText::new(
+            paragraph.owner,
+            0,
+            gpui::SharedString::from(paragraph.text.clone()),
             None,
             ctx.selection.clone(),
             ctx.inherited.selection_wash,

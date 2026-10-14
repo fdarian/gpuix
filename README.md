@@ -1966,6 +1966,39 @@ The timeline example measures both, on 3,259 clips across 26 tracks:
 > update and none of the GPUI build, layout, and paint that follows. The
 > `memo`-only number above looks like **0.6 ms** if you forget.
 
+## Inline text
+
+Text lays out like the DOM's inline formatting. Raw strings and `<span>` are
+inline, and so is a `<text>` inside a `<text>` or `<span>`. A run of consecutive
+inline children is one paragraph: one string that wraps across its runs, selects
+and copies as one line, and is searched by `highlight` as one piece of text.
+
+```tsx
+<text style={{ color: '#e2e2e2' }}>
+  Saved <span style={{ color: '#7ee787', fontWeight: 700 }}>3 files</span> in{' '}
+  <span style={{ backgroundColor: '#ffe58a55' }}>2.1s</span>
+</text>
+```
+
+An inline box can set `color`, `backgroundColor` (a `<mark>`-style wash),
+`fontWeight`, `fontFamily`, `textDecoration` (`underline` or `line-through`),
+`fontVariantNumeric` and `fontFeatureSettings`. A box inherits from the box
+around it, as in CSS.
+
+- A `<text>` anywhere else is a block, and a block child ends a paragraph.
+- In a `display: flex` or `grid` container each run of raw strings is one item
+  and every `<span>` or nested `<text>` is an item of its own, with its content as
+  a paragraph.
+- Whitespace-only text (space, tab, newline, CR, form feed; not a no-break space)
+  makes no box, and neither does a child with `display: none`.
+- Text is not collapsed: spaces and newlines inside a string are painted as written.
+
+Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
+size), padding, border and margin on an inline box, `fontStyle` (there is no
+`fontStyle` style yet), and events or hit testing on a `<span>`. A `<span>` with
+a style that needs a box of its own (`position: absolute`, `display: block`,
+`flex` or `grid`) is laid out as a block instead.
+
 ## Text input
 
 `<input>` and `<textarea>` use GPUI's platform input handler. They support a

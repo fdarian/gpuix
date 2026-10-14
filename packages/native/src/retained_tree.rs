@@ -548,17 +548,24 @@ impl RetainedTree {
     /// ~80-field compare, which is what decides whether this repaints.
     pub fn set_style(&mut self, id: u64, style: Arc<StyleDesc>) {
         let mut changed = false;
+        let mut regrouped = false;
         if let Some(element) = self.elements.get_mut(&id) {
             let same = element
                 .style
                 .as_ref()
                 .is_some_and(|current| Arc::ptr_eq(current, &style) || **current == *style);
             if !same {
+                regrouped =
+                    !crate::text::inline::same_paragraphs(element.style.as_deref(), &style);
                 element.style = Some(style);
                 changed = true;
             }
         }
-        if changed {
+        if regrouped {
+            // `display` decides which text nodes form one paragraph, and a
+            // paragraph is what search matches.
+            self.mark_changed(id);
+        } else if changed {
             self.mark_render_changed(id);
         }
     }

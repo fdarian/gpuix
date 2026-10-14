@@ -565,19 +565,34 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
     if !is_root && element.custom_props().contains_key("highlight") {
         return;
     }
-    // Own content is a line of its own. Only for built-ins: `build_custom`
-    // renders from props and ignores `content`, so collecting it there would
-    // invent matches that never paint.
-    let paints_own_content = element.element_type == "text" || element.element_type == "div";
-    if let Some(content) = element
-        .content
-        .as_ref()
-        .filter(|text| !text.is_empty() && paints_own_content)
-    {
-        out.push(Group::new(
-            vec![(crate::text::selection_key(id, 0), 0..content.len())],
-            content.clone(),
-        ));
+    // Only for built-ins: `build_custom` renders from props and ignores
+    // `content`, so collecting it there would invent matches that never paint.
+    if super::inline::is_host_container(element) {
+        if element.children.is_empty() {
+            // Own content is a line of its own.
+            if let Some(content) = element.content.as_ref().filter(|text| !text.is_empty()) {
+                out.push(Group::new(
+                    vec![(crate::text::selection_key(id, 0), 0..content.len())],
+                    content.clone(),
+                ));
+            }
+            return;
+        }
+        // A paragraph is one painted string, so it is one group. The container's
+        // own content leads the first one.
+        for child in super::inline::plan_children(tree, element) {
+            match child {
+                super::inline::Child::Block(child_id) => collect_into(tree, child_id, false, out),
+                super::inline::Child::Paragraph(paragraph) => out.push(Group::new(
+                    vec![(
+                        crate::text::selection_key(paragraph.owner, 0),
+                        0..paragraph.text.len(),
+                    )],
+                    paragraph.text,
+                )),
+            }
+        }
+        return;
     }
 
     let mut pending: Vec<(Arc<str>, Range<usize>)> = Vec::new();
@@ -923,17 +938,68 @@ mod tests {
         tree
     }
 
+    /// Text nodes of a `<text>` are one paragraph, painted as one string under
+    /// the key of the first node.
     #[test]
     fn interpolated_children_form_one_group() {
         let groups = GroupList::collect(&interpolated_tree(), 1);
         assert_eq!(groups.groups.len(), 1);
         assert_eq!(groups.groups[0].text, "Hello Tommy!");
-        assert_eq!(groups.groups[0].parts.len(), 3);
+        assert_eq!(groups.groups[0].parts.len(), 1);
     }
 
     #[test]
-    fn a_match_across_runs_splits_into_per_run_washes() {
+    fn a_match_across_text_nodes_is_one_wash_of_the_paragraph() {
         let groups = GroupList::collect(&interpolated_tree(), 1);
+        let set = HighlightSet {
+            specs: vec![spec("Hello Tommy")],
+        };
+        let ctx = context(&groups, set);
+        assert_eq!(ctx.matches.total, 1);
+        let painted = paint(&ctx, &groups);
+        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..11);
+        assert!(!painted.contains_key(&Arc::<str>::from("4:0")));
+    }
+
+    #[test]
+    fn a_match_crosses_the_inline_boxes_of_a_paragraph() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "text".to_string());
+        tree.create_element(2, "text".to_string());
+        tree.append_child(1, 2);
+        tree.set_text(2, "Hello ".to_string());
+        tree.create_element(3, "span".to_string());
+        tree.append_child(1, 3);
+        tree.create_element(4, "text".to_string());
+        tree.append_child(3, 4);
+        tree.set_text(4, "World".to_string());
+        let groups = GroupList::collect(&tree, 1);
+        assert_eq!(groups.groups.len(), 1);
+        let set = HighlightSet {
+            specs: vec![spec("o w")],
+        };
+        let ctx = context(&groups, set);
+        assert_eq!(ctx.matches.total, 1);
+        assert_eq!(paint(&ctx, &groups)[&Arc::from("2:0")][0].range, 4..7);
+    }
+
+    /// Text children of an element the renderer does not lay out itself still
+    /// paint one string each, and merge into a line only for search and copy.
+    fn custom_parent_tree() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "anchored".to_string());
+        for (id, text) in [(3, "Hello "), (4, "Tommy"), (5, "!")] {
+            tree.create_element(id, "text".to_string());
+            tree.append_child(1, id);
+            tree.set_text(id, text.to_string());
+        }
+        tree
+    }
+
+    #[test]
+    fn a_match_across_a_custom_elements_text_children_splits_per_run() {
+        let groups = GroupList::collect(&custom_parent_tree(), 1);
+        assert_eq!(groups.groups[0].parts.len(), 3);
         let set = HighlightSet {
             specs: vec![spec("Hello Tommy")],
         };
@@ -987,7 +1053,7 @@ mod tests {
         s.ranges = vec![(6, 11)];
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
         assert_eq!(ctx.matches.total, 1);
-        assert_eq!(paint(&ctx, &groups)[&Arc::from("4:0")][0].range, 0..5);
+        assert_eq!(paint(&ctx, &groups)[&Arc::from("3:0")][0].range, 6..11);
     }
 
     #[test]
@@ -1144,7 +1210,7 @@ mod tests {
     #[test]
     fn a_split_match_takes_one_ordinal() {
         let mut tree = RetainedTree::new();
-        tree.create_element(1, "text".to_string());
+        tree.create_element(1, "anchored".to_string());
         for (id, text) in [(2, "ab"), (3, "ab")] {
             tree.create_element(id, "text".to_string());
             tree.append_child(1, id);
