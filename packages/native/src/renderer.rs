@@ -2390,9 +2390,8 @@ impl GpuixRenderer {
     #[napi]
     pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        let tree = self.tree.lock().unwrap();
         self.pointer_capture
-            .release(&tree, id, pointer_id)
+            .release(id, pointer_id)
             .map_err(Error::from_reason)
     }
 
@@ -3450,9 +3449,8 @@ impl WebGpuixRenderer {
         pointer_id: f64,
     ) -> Result<(), wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
-        let tree = self.tree.lock().unwrap();
         self.pointer_capture
-            .release(&tree, id, pointer_id)
+            .release(id, pointer_id)
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 
@@ -5992,10 +5990,6 @@ pub(crate) fn build_host_container(
 
             _ => {}
         }
-    }
-
-    if element.events().contains("mousedown") && element.events().contains("mousemove") {
-        el = el.capture_pointer();
     }
 
     // Text content — selectable, same as a <text> leaf.

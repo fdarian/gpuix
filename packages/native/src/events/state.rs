@@ -38,8 +38,12 @@ struct Requested {
 }
 
 impl PointerCapture {
+    /// Throws for an element that is not connected, as the DOM's `InvalidStateError`.
     pub fn set(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
-        validate(tree, id, pointer_id)?;
+        validate_pointer_id(pointer_id)?;
+        if !is_connected(tree, id) {
+            return Err(format!("Element {id} is not connected to the tree"));
+        }
         let mut requested = self.0.lock().unwrap();
         if requested.buttons != 0 {
             requested.target = Some(id);
@@ -47,8 +51,9 @@ impl PointerCapture {
         Ok(())
     }
 
-    pub fn release(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
-        validate(tree, id, pointer_id)?;
+    /// A no-op for an element that is not connected, as in the DOM.
+    pub fn release(&self, id: u64, pointer_id: f64) -> Result<(), String> {
+        validate_pointer_id(pointer_id)?;
         let mut requested = self.0.lock().unwrap();
         if requested.target == Some(id) {
             requested.target = None;
@@ -56,9 +61,10 @@ impl PointerCapture {
         Ok(())
     }
 
+    /// False for an element that is not connected, as in the DOM.
     pub fn has(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<bool, String> {
-        validate(tree, id, pointer_id)?;
-        Ok(self.0.lock().unwrap().target == Some(id))
+        validate_pointer_id(pointer_id)?;
+        Ok(is_connected(tree, id) && self.0.lock().unwrap().target == Some(id))
     }
 
     pub(super) fn target(&self) -> Option<u64> {
@@ -74,14 +80,11 @@ impl PointerCapture {
     }
 }
 
-fn validate(tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
+fn validate_pointer_id(pointer_id: f64) -> Result<(), String> {
     if pointer_id != MOUSE_POINTER_ID {
         return Err(format!(
             "Unknown pointerId {pointer_id}: the only pointer is the mouse, pointerId {MOUSE_POINTER_ID}"
         ));
-    }
-    if !is_connected(tree, id) {
-        return Err(format!("Element {id} is not connected to the tree"));
     }
     Ok(())
 }
@@ -115,10 +118,6 @@ pub struct PointerState {
     pub(super) pressed: FxHashMap<u32, Press>,
     /// Held buttons as the DOM `buttons` bitmask.
     pub(super) buttons: u32,
-    /// An element that keeps receiving pointer events after the pointer leaves
-    /// it, armed by a press on an element that listens for both `mousedown` and
-    /// `mousemove`. Explicit capture outranks it.
-    pub(super) captured: Option<u64>,
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
     pub(super) capture: PointerCapture,
@@ -139,11 +138,6 @@ impl PointerState {
     /// The hover target, the innermost element of the hover chain.
     pub fn hover_target(&self) -> Option<u64> {
         self.hovered.first().copied()
-    }
-
-    /// The element receiving pointer events while the pointer is held on it.
-    pub fn captured(&self) -> Option<u64> {
-        self.explicit.or(self.captured)
     }
 
     /// The element that holds explicit pointer capture, once an input applied it.
@@ -208,12 +202,12 @@ mod tests {
         capture.set(&tree, 2, 1.0).unwrap();
         assert!(capture.has(&tree, 2, 1.0).unwrap());
         assert!(!capture.has(&tree, 1, 1.0).unwrap());
-        capture.release(&tree, 1, 1.0).unwrap();
+        capture.release(1, 1.0).unwrap();
         assert!(
             capture.has(&tree, 2, 1.0).unwrap(),
             "only the holder can release"
         );
-        capture.release(&tree, 2, 1.0).unwrap();
+        capture.release(2, 1.0).unwrap();
         assert!(!capture.has(&tree, 2, 1.0).unwrap());
     }
 
@@ -246,13 +240,13 @@ mod tests {
                 .set(&tree, 2, pointer_id)
                 .unwrap_err()
                 .contains("pointerId"));
-            assert!(capture.release(&tree, 2, pointer_id).is_err());
+            assert!(capture.release(2, pointer_id).is_err());
             assert!(capture.has(&tree, 2, pointer_id).is_err());
         }
     }
 
     #[test]
-    fn an_element_that_is_not_connected_throws() {
+    fn only_set_throws_for_an_element_that_is_not_connected() {
         let tree = connected_tree();
         let capture = PointerCapture::default();
         held(&capture);
@@ -261,9 +255,19 @@ mod tests {
                 .set(&tree, id, 1.0)
                 .unwrap_err()
                 .contains("not connected"));
-            assert!(capture.release(&tree, id, 1.0).is_err());
-            assert!(capture.has(&tree, id, 1.0).is_err());
+            capture.release(id, 1.0).unwrap();
+            assert!(!capture.has(&tree, id, 1.0).unwrap());
         }
+    }
+
+    #[test]
+    fn has_is_false_for_a_holder_that_left_the_tree() {
+        let mut tree = connected_tree();
+        let capture = PointerCapture::default();
+        held(&capture);
+        capture.set(&tree, 2, 1.0).unwrap();
+        tree.destroy_element(2);
+        assert!(!capture.has(&tree, 2, 1.0).unwrap());
     }
 
     #[test]

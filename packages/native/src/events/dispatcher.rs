@@ -14,7 +14,7 @@
 //!     pointerover, pointerenter (outermost first), mouseover, mouseenter
 //!   then the event itself, pointer before mouse
 //!     pointermove/mousemove, pointerdown/mousedown (+ contextmenu),
-//!     pointerup/mouseup (+ lostpointercapture, then click, dblclick or auxclick)
+//!     pointerup, lostpointercapture, mouseup, then click, dblclick or auxclick
 //!
 //! A type is only produced when the target or an ancestor listens for it, so a
 //! window with no `mousemove` handler pays nothing for the traffic.
@@ -232,13 +232,6 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             .collect();
         !chain_follows_path(&chain, &event_path(tree, target))
     });
-    if state
-        .captured
-        .is_some_and(|id| !tree.elements.contains_key(&id))
-    {
-        state.captured = None;
-    }
-
     match sample.action {
         PointerAction::Down { button, .. } => state.buttons |= button_bit(button),
         PointerAction::Up { button, .. } => state.buttons &= !button_bit(button),
@@ -261,14 +254,9 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
 
     apply_capture(state, &mut emitter);
     // A captured element keeps the pointer: it is the hover target and takes
-    // every event until the release, wherever the pointer is. Explicit capture
-    // moves hover onto its element; implicit capture leaves it where it was.
-    if let Some(captured) = state.explicit {
-        restyle |= update_hover(state, &mut emitter, Some(captured));
-    } else if state.captured.is_none() {
-        restyle |= update_hover(state, &mut emitter, geometric);
-    }
-    let target = state.explicit.or(state.captured).or(geometric);
+    // every event until the release, wherever the pointer is.
+    restyle |= update_hover(state, &mut emitter, state.explicit.or(geometric));
+    let target = state.explicit.or(geometric);
 
     match sample.action {
         PointerAction::Move { pressed_button } => {
@@ -428,9 +416,6 @@ fn press(
         state.pressed.insert(button, Press { path });
         return false;
     }
-    if state.captured.is_none() && state.explicit.is_none() {
-        state.captured = path.iter().copied().find(|id| listens_to_drag(tree, *id));
-    }
     let restyle = set_active(state, tree, path.clone());
     state.pressed.insert(button, Press { path });
     restyle
@@ -452,10 +437,11 @@ fn release(
     };
     if let Some(target) = target {
         emitter.emit("pointerup", target, fields);
-        emitter.emit("mouseup", target, fields);
     }
 
-    // Explicit capture lasts until the last button is up.
+    // Capture lasts until the last button is up. The Pointer Events spec
+    // releases it right after pointerup, so mouseup still goes to the captured
+    // element but lostpointercapture comes before it.
     let mut released = false;
     if state.buttons == 0 {
         state.capture.clear();
@@ -463,6 +449,10 @@ fn release(
             emitter.emit("lostpointercapture", captured, Fields::default());
             released = true;
         }
+    }
+
+    if let Some(target) = target {
+        emitter.emit("mouseup", target, fields);
     }
 
     if let Some(press) = state.pressed.remove(&button) {
@@ -484,20 +474,11 @@ fn release(
     let mut restyle = false;
     if button == PRIMARY_BUTTON {
         restyle |= set_active(state, tree, Vec::new());
-        released |= state.captured.take().is_some();
     }
     if released {
         restyle |= update_hover(state, emitter, geometric);
     }
     restyle
-}
-
-/// The old `capture_pointer` rule: an element that listens for both halves of a
-/// drag keeps the pointer from the press on.
-fn listens_to_drag(tree: &RetainedTree, id: u64) -> bool {
-    tree.elements.get(&id).is_some_and(|element| {
-        element.events().contains("mousedown") && element.events().contains("mousemove")
-    })
 }
 
 fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path: Vec<u64>) -> bool {
@@ -871,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pressed_element_listening_for_down_and_move_keeps_the_pointer() {
+    fn a_press_and_move_listener_captures_nothing_without_an_explicit_capture() {
         let tree = tree(&[
             (2, "mousedown"),
             (2, "mousemove"),
@@ -880,50 +861,35 @@ mod tests {
         ]);
         let mut state = PointerState::default();
         dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
-        assert_eq!(state.captured(), Some(2));
+        assert_eq!(state.explicit_capture(), None);
 
-        let output = dispatch(
-            &mut state,
-            &tree,
-            &at(
-                PointerAction::Move {
-                    pressed_button: Some(0),
-                },
-                chain_of(&[4, 1]),
-            ),
+        let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[4, 1])));
+        assert_eq!(
+            names(&output),
+            ["mousemove@4"],
+            "the move goes to what is under the pointer, not to the pressed element"
         );
-        assert_eq!(names(&output), ["mousemove@2"]);
-        assert!(
-            state.is_hovered(3),
-            "hover does not follow a captured pointer"
-        );
+        assert!(state.is_hovered(4));
 
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
-        assert_eq!(names(&output), ["mouseup@2"]);
-        assert_eq!(state.captured(), None);
         assert!(
-            state.is_hovered(4),
-            "the release hands hover back to the pointer"
+            output.events.is_empty(),
+            "the press element hears nothing outside itself"
         );
     }
 
     #[test]
-    fn listening_for_only_one_half_of_a_drag_captures_nothing() {
-        let tree = tree(&[(2, "mousedown"), (2, "mouseup")]);
+    fn a_click_on_a_child_is_not_swallowed_by_a_press_and_move_listener() {
+        let tree = tree(&[
+            (2, "mousedown"),
+            (2, "mousemove"),
+            (2, "mouseup"),
+            (3, "click"),
+        ]);
         let mut state = PointerState::default();
         dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
-        assert_eq!(state.captured(), None);
-    }
-
-    #[test]
-    fn capture_ends_when_the_captured_element_is_removed() {
-        let mut tree = tree(&[(2, "mousedown"), (2, "mousemove"), (1, "mousemove")]);
-        let mut state = PointerState::default();
-        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
-        tree.destroy_element(2);
-        let output = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
-        assert_eq!(names(&output), ["mousemove@4"]);
-        assert_eq!(state.captured(), None);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mouseup@3", "click@3"]);
     }
 
     #[test]
@@ -1014,14 +980,31 @@ mod tests {
             names(&output),
             [
                 "pointerup@4",
-                "mouseup@4",
                 "lostpointercapture@4",
+                "mouseup@4",
                 "pointerout@4",
                 "pointerover@3"
             ]
         );
         assert_eq!(state.explicit_capture(), None);
         assert_eq!(state.capture.target(), None);
+    }
+
+    #[test]
+    fn the_release_fires_pointerup_then_lostpointercapture_then_mouseup_then_click() {
+        let tree = tree(&listening_everywhere(&[
+            "pointerup",
+            "lostpointercapture",
+            "mouseup",
+            "click",
+        ]));
+        let mut state = pressed_with_capture_on_c(&tree);
+        dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(
+            names(&output),
+            ["pointerup@4", "lostpointercapture@4", "mouseup@4", "click@1"]
+        );
     }
 
     #[test]
@@ -1054,27 +1037,11 @@ mod tests {
     }
 
     #[test]
-    fn explicit_capture_wins_over_implicit_capture() {
-        let tree = tree(&[
-            (2, "mousedown"),
-            (2, "mousemove"),
-            (4, "mousemove"),
-            (4, "gotpointercapture"),
-        ]);
-        let mut state = pressed_with_capture_on_c(&tree);
-        assert_eq!(state.captured, Some(2));
-        let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
-        assert_eq!(names(&output), ["gotpointercapture@4", "mousemove@4"]);
-        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
-        assert_eq!(state.captured(), None);
-    }
-
-    #[test]
     fn releasing_from_js_loses_the_capture_at_the_next_input() {
         let tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
         let mut state = pressed_with_capture_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
-        state.capture.release(&tree, 4, 1.0).unwrap();
+        state.capture.release(4, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),

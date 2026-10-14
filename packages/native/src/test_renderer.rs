@@ -924,9 +924,8 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        let tree = self.tree.lock().unwrap();
         self.pointer_capture
-            .release(&tree, id, pointer_id)
+            .release(id, pointer_id)
             .map_err(Error::from_reason)
     }
 
