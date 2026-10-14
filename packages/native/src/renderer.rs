@@ -59,6 +59,15 @@ fn with_window_menu_actions(root: gpui::Div) -> gpui::Div {
     root
 }
 
+pub(crate) fn parse_font_style(value: &str) -> Option<gpui::FontStyle> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "normal" => Some(gpui::FontStyle::Normal),
+        "italic" => Some(gpui::FontStyle::Italic),
+        "oblique" => Some(gpui::FontStyle::Oblique),
+        _ => None,
+    }
+}
+
 /// Parse a CSS font-weight value (string or number) into a GPUI FontWeight.
 /// Accepts named keywords ("bold", "semibold"), numeric strings ("700"),
 /// and raw numbers (700). Falls back to 400 (normal) for unrecognized values.
@@ -7124,6 +7133,9 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     }
     if let Some(ref weight) = style.font_weight {
         el = el.font_weight(parse_font_weight(weight));
+    }
+    if let Some(font_style) = style.font_style.as_deref().and_then(parse_font_style) {
+        el.text_style().font_style = Some(font_style);
     }
     // `textAlign` was in the style type but implemented nowhere.
     match style.text_align.as_deref() {

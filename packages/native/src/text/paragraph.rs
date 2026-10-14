@@ -31,6 +31,7 @@ pub struct RunStyle {
     pub color: Option<Hsla>,
     pub background: Option<Hsla>,
     pub weight: Option<FontWeight>,
+    pub font_style: Option<gpui::FontStyle>,
     pub family: Option<SharedString>,
     pub features: Option<gpui::FontFeatures>,
     pub underline: bool,
@@ -92,6 +93,13 @@ pub fn run_styles(
             }
             if let Some(weight) = declared.font_weight.as_ref() {
                 style.weight = Some(crate::renderer::parse_font_weight(weight));
+            }
+            if let Some(font_style) = declared
+                .font_style
+                .as_deref()
+                .and_then(crate::renderer::parse_font_style)
+            {
+                style.font_style = Some(font_style);
             }
             if let Some(family) = declared.font_family.as_ref() {
                 style.family = Some(SharedString::from(family.clone()));
@@ -159,6 +167,9 @@ impl InlineText {
                 }
                 if let Some(weight) = style.weight {
                     run.font.weight = weight;
+                }
+                if let Some(font_style) = style.font_style {
+                    run.font.style = font_style;
                 }
                 if let Some(family) = &style.family {
                     run.font.family = family.clone();
@@ -380,6 +391,17 @@ mod tests {
         assert_eq!(lens, vec![2, 7, 4], "the nested none keeps the parent's underline");
         assert!(runs[1].underline);
         assert!(!runs[2].underline);
+    }
+
+    #[test]
+    fn font_style_is_inherited_and_a_child_can_reset_it() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontStyle": "italic"})),
+            (5, serde_json::json!({"fontStyle": "normal"})),
+        ]);
+        let runs = runs_of(&tree);
+        assert_eq!(runs[1].font_style, Some(gpui::FontStyle::Italic));
+        assert_eq!(runs[2].font_style, Some(gpui::FontStyle::Normal));
     }
 
     #[test]

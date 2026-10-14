@@ -322,6 +322,8 @@ pub struct StyleDesc {
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
     pub font_weight: Option<FontWeightValue>,
+    /// CSS `font-style`: `normal`, `italic` or `oblique`. Inherited.
+    pub font_style: Option<String>,
     pub text_align: Option<String>,
     pub line_height: Option<f64>,
     pub white_space: Option<String>,

@@ -364,6 +364,8 @@ export interface StyleDesc {
   fontSize?: number
   fontFamily?: string
   fontWeight?: string | number
+  /** CSS `font-style`, inherited. Applies to the element and to inline runs. */
+  fontStyle?: "normal" | "italic" | "oblique"
   textAlign?: string
   lineHeight?: number
   whiteSpace?: "normal" | "nowrap"

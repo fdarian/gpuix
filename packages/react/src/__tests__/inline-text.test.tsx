@@ -308,4 +308,55 @@ describeNative("inline text", () => {
       expect(labels.map((aria) => aria?.value)).toContain("Hello big wide world")
     })
   })
+
+  describe("fontStyle", () => {
+    const WHITE = { width: 220, backgroundColor: "#ffffff", color: "#000000", ...TEXT } as const
+
+    function signature(name: string, node: React.ReactNode) {
+      const testRoot = createTestRoot()
+      testRoot.render(node)
+      const pixels = shoot(testRoot, name)
+      const rows: string[] = []
+      for (let y = 0; y < LINE + 4; y++) {
+        for (let x = 0; x < WHITE.width; x++) rows.push(pixels.at(x, y).join(","))
+      }
+      return rows.join(";")
+    }
+
+    it("slants a block's text and a span inside it inherits it", () => {
+      const plain = signature("style-plain", <text style={WHITE}>Hilly fish</text>)
+      const italic = signature("style-italic", <text style={{ ...WHITE, fontStyle: "italic" }}>Hilly fish</text>)
+      const inherited = signature(
+        "style-inherited",
+        <text style={{ ...WHITE, fontStyle: "italic" }}>
+          Hilly <span>fish</span>
+        </text>
+      )
+
+      expect(italic).not.toBe(plain)
+      expect(inherited).toBe(italic)
+    })
+
+    it("lets a span set and reset the style of its own run", () => {
+      const plain = signature("style-run-plain", <text style={WHITE}>Hilly fish</text>)
+      const italic = signature("style-run-italic", <text style={{ ...WHITE, fontStyle: "italic" }}>Hilly fish</text>)
+      const spanItalic = signature(
+        "style-run-set",
+        <text style={WHITE}>
+          Hilly <span style={{ fontStyle: "italic" }}>fish</span>
+        </text>
+      )
+      const spanNormal = signature(
+        "style-run-reset",
+        <text style={{ ...WHITE, fontStyle: "italic" }}>
+          Hilly <span style={{ fontStyle: "normal" }}>fish</span>
+        </text>
+      )
+
+      expect(spanItalic).not.toBe(plain)
+      expect(spanItalic).not.toBe(italic)
+      expect(spanNormal).not.toBe(plain)
+      expect(spanNormal).not.toBe(italic)
+    })
+  })
 })
