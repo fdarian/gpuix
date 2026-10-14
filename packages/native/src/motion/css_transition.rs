@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use web_time::Instant;
 
 use super::curve::{ease, parse_timing_function, Ease};
+use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp};
 use super::value::{pair, AnimValue, Pair};
 use super::MotionState;
@@ -492,10 +493,12 @@ struct Running {
 impl Running {
     /// `None` when the two values cannot be interpolated, which in CSS means
     /// the change is simply not transitioned.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         prop: AnimProp,
         from: &AnimValue,
         to: &AnimValue,
+        end: AnimValue,
         entry: &Entry,
         reversing_start: AnimValue,
         shortening: f64,
@@ -512,7 +515,7 @@ impl Running {
             duration: entry.duration * shortening,
             timing: entry.timing.clone(),
             segment,
-            end: to.clone(),
+            end,
             reversing_start,
             shortening,
             began: false,
@@ -540,9 +543,63 @@ impl Running {
         self.segment.at(self.progress(self.elapsed(now)))
     }
 
+    /// Moves the end of a transition running to `height: auto` onto the
+    /// content's current height, without moving the value showing now: the
+    /// start is solved so the same eased progress still lands on the old value.
+    /// The schedule and the events are untouched.
+    fn follow(&mut self, natural: f64, now: Instant) {
+        // Too near the end the start would be solved from almost nothing, and
+        // the transition is about to hand over to the literal `auto` anyway.
+        const NEAR_END: f64 = 0.999;
+        let progress = self.progress(self.elapsed(now));
+        if self.end != AnimValue::Auto || self.segment.to == [natural] || progress >= NEAR_END {
+            return;
+        }
+        let from = self.segment.from[0];
+        let current = from + (self.segment.to[0] - from) * progress;
+        self.segment.from[0] = (current - natural * progress) / (1.0 - progress);
+        self.segment.to[0] = natural;
+    }
+
     /// `elapsedTime` of `transitionrun` and `transitionstart`.
     fn initial_elapsed(&self) -> f64 {
         (-self.delay).min(self.duration).max(0.0)
+    }
+}
+
+/// What a style declares for `prop`: `Auto` for a height that is unset or
+/// `auto`, which a transition runs to or from the laid-out height.
+fn declared_value(prop: AnimProp, style: &StyleDesc) -> Option<AnimValue> {
+    let value = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(style)));
+    match (value, prop) {
+        (None, AnimProp::Height) => Some(AnimValue::Auto),
+        (value, _) => value,
+    }
+}
+
+/// The number a transition leaves from. A value the style leaves unset or
+/// `auto` is the size layout gave the element. `width` is left out: going to
+/// or from `auto` there needs a second layout, so it changes at once.
+fn laid_out_start(
+    prop: AnimProp,
+    declared: Option<&AnimValue>,
+    measurement: Option<&Measurement>,
+) -> Option<AnimValue> {
+    match declared {
+        Some(AnimValue::Auto) | None if prop != AnimProp::Width => {
+            measurement?.laid_out(prop).map(AnimValue::Number)
+        }
+        Some(AnimValue::Auto) | None => None,
+        Some(value) => Some(value.clone()),
+    }
+}
+
+/// The number a transition runs to: `auto` is the height the content wants.
+/// `None` when the end is unset, which only a height can resolve.
+fn laid_out_end(declared: &AnimValue, measurement: Option<&Measurement>) -> Option<AnimValue> {
+    match declared {
+        AnimValue::Auto => measurement.map(|measurement| AnimValue::Number(measurement.natural_height_px())),
+        value => Some(value.clone()),
     }
 }
 
@@ -595,6 +652,7 @@ impl ElementState {
         id: u64,
         after: &StyleDesc,
         motion: Option<&MotionState>,
+        measurement: Option<&Measurement>,
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -618,13 +676,19 @@ impl ElementState {
                     .collect()
             };
             for prop in props {
-                self.restyle(id, prop, after, motion, now, events);
+                self.restyle(id, prop, after, motion, measurement, now, events);
             }
             if style_changed {
                 self.previous = after.clone();
             }
         }
         self.advance(id, now, events);
+        if let Some(measurement) = measurement {
+            let natural = measurement.natural_height_px();
+            for running in self.running.values_mut() {
+                running.follow(natural, now);
+            }
+        }
     }
 
     /// Reports transitions that began and moves finished ones to `completed`.
@@ -694,12 +758,14 @@ impl ElementState {
 
     /// The start rules of CSS Transitions 1 §3 for one property, run when its
     /// style or the element's `transition*` changed.
+    #[allow(clippy::too_many_arguments)]
     fn restyle(
         &mut self,
         id: u64,
         prop: AnimProp,
         after: &StyleDesc,
         motion: Option<&MotionState>,
+        measurement: Option<&Measurement>,
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -714,7 +780,7 @@ impl ElementState {
             return;
         };
 
-        let after_value = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(after)));
+        let after_value = declared_value(prop, after);
         if let Some(end) = self.completed.get(&prop) {
             if after_value.as_ref() != Some(end) {
                 self.completed.remove(&prop);
@@ -726,14 +792,18 @@ impl ElementState {
             if self.completed.contains_key(&prop) || !has_duration {
                 return;
             }
-            let before = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(&self.previous)));
-            if let (Some(before), Some(after_value)) = (before, after_value) {
-                if before != after_value {
-                    if let Some(running) =
-                        Running::new(prop, &before, &after_value, &entry, before.clone(), 1.0, now)
-                    {
-                        self.begin(id, prop, running, events);
-                    }
+            let before = declared_value(prop, &self.previous);
+            if before == after_value {
+                return;
+            }
+            let from = laid_out_start(prop, before.as_ref(), measurement);
+            let to = after_value.as_ref().and_then(|end| laid_out_end(end, measurement));
+            if let (Some(from), Some(to), Some(end)) = (from, to, after_value) {
+                let reversing_start = before.unwrap_or_else(|| from.clone());
+                if let Some(running) =
+                    Running::new(prop, &from, &to, end, &entry, reversing_start, 1.0, now)
+                {
+                    self.begin(id, prop, running, events);
                 }
             }
             return;
@@ -751,22 +821,19 @@ impl ElementState {
             (old.end.clone(), shortening)
         });
         self.cancel(id, prop, now, events);
-        let Some(after_value) = after_value else {
+        let Some(end) = after_value else {
             return;
         };
-        if current == after_value || !has_duration {
+        let Some(to) = laid_out_end(&end, measurement) else {
+            return;
+        };
+        if current == to || !has_duration {
             return;
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
-        if let Some(running) = Running::new(
-            prop,
-            &current,
-            &after_value,
-            &entry,
-            reversing_start,
-            shortening,
-            now,
-        ) {
+        if let Some(running) =
+            Running::new(prop, &current, &to, end, &entry, reversing_start, shortening, now)
+        {
             self.begin(id, prop, running, events);
         }
     }
@@ -819,13 +886,14 @@ impl CssTransitions {
         id: u64,
         after: &StyleDesc,
         motion: Option<&MotionState>,
+        measurement: Option<&Measurement>,
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
             self.states.insert(id, ElementState::new(id, after));
             return None;
         };
-        state.step(id, after, motion, now, &mut self.events);
+        state.step(id, after, motion, measurement, now, &mut self.events);
         self.active |= !state.running.is_empty();
         let values = state.values(now);
         (!values.is_empty()).then_some(TransitionStyle(values))
@@ -1056,7 +1124,7 @@ mod tests {
             motion: Option<&MotionState>,
         ) -> StyleDesc {
             let mut resolved = after.clone();
-            if let Some(values) = self.transitions.update(1, after, motion, self.at(millis)) {
+            if let Some(values) = self.transitions.update(1, after, motion, None, self.at(millis)) {
                 values.apply_to(&mut resolved);
             }
             resolved
@@ -1255,6 +1323,7 @@ mod tests {
         let now = Instant::now();
         let motion = MotionState::new(
             &serde_json::json!({ "animate": { "width": 100.0 }, "transition": { "duration": 1.0 } }),
+            None,
             None,
             now,
         )

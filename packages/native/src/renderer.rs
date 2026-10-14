@@ -4663,6 +4663,7 @@ fn emit_motion_settled(
 fn sync_motion_states(
     tree: &crate::retained_tree::RetainedTree,
     states: &mut HashMap<u64, crate::motion::MotionState>,
+    measurements: &crate::motion::measure::Measurements,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
     states.retain(|id, _| tree.motion_ids.contains(id));
@@ -4677,6 +4678,7 @@ fn sync_motion_states(
             continue;
         };
         let base = element.style.as_deref();
+        let measurement = measurements.get(id);
         // An SVG shape animates its attributes, not a style.
         let svg_attributes = crate::custom_elements::svg_tree::is_svg_child_type(&element.element_type)
             .then(|| element.custom_props());
@@ -4685,7 +4687,7 @@ fn sync_motion_states(
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let created = match svg_attributes {
                     Some(attributes) => crate::motion::MotionState::new_svg(source, attributes, now),
-                    None => crate::motion::MotionState::new(source, base, now),
+                    None => crate::motion::MotionState::new(source, base, measurement.as_ref(), now),
                 };
                 match created {
                     Ok(state) => entry.insert(state),
@@ -4698,7 +4700,7 @@ fn sync_motion_states(
         };
         let synced = match svg_attributes {
             Some(attributes) => state.sync_svg(source, attributes, now),
-            None => state.sync(source, base, now),
+            None => state.sync(source, base, measurement.as_ref(), now),
         };
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
@@ -5235,7 +5237,7 @@ impl GpuixView {
         let callback = self.event_callback.clone();
         let now = self.clock.now();
         let (motion_active, motion_settled) =
-            sync_motion_states(&tree, &mut self.motion_states, now);
+            sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
         let mut highlight_events = Vec::new();
 
         // Re-resolve against the tree as it is NOW. gpui calls this during
@@ -6186,7 +6188,7 @@ impl gpui::Render for GpuixView {
         crate::scrollbar::begin_frame(now);
         let scroll_animating = crate::scroll::advance_animations(now);
         let (motion_active, motion_settled) =
-            sync_motion_states(&tree, &mut self.motion_states, now);
+            sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
         self.measurements
@@ -6353,6 +6355,7 @@ pub(crate) fn build_element(
 
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition.
+    let measurement = ctx.measurements.get(id);
     let transitioned = ctx
         .css_transitions
         .wants(id, element.style.as_deref())
@@ -6369,6 +6372,7 @@ pub(crate) fn build_element(
                 id,
                 element.style.as_deref().unwrap_or(&EMPTY_STYLE),
                 focus_visible,
+                measurement.as_ref(),
                 ctx.now,
             )
         });

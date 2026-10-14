@@ -132,6 +132,9 @@ pub(super) enum AnimValue {
     Numbers(Vec<f64>),
     /// SVG path data, normalised to absolute commands.
     Path(PathData),
+    /// `height: auto`. Never interpolated: a track swaps it for the measured
+    /// height while it runs and applies it again once it settles.
+    Auto,
 }
 
 impl AnimValue {
@@ -143,6 +146,7 @@ impl AnimValue {
             Self::Shadows(_) => "a shadow list",
             Self::Numbers(_) => "a list of numbers",
             Self::Path(_) => "path data",
+            Self::Auto => "auto",
         }
     }
 }

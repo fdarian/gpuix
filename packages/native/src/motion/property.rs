@@ -75,6 +75,7 @@ impl Field for Option<DimensionValue> {
         *self = Some(match value {
             AnimValue::Number(value) => DimensionValue::Pixels(value),
             AnimValue::Percent(value) => DimensionValue::Percentage(value),
+            AnimValue::Auto => DimensionValue::Auto,
             other => unreachable!("a dimension field was given {other:?}"),
         });
     }
@@ -307,7 +308,24 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
     })
 }
 
+/// The side of the border box a size property measures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Axis {
+    Width,
+    Height,
+}
+
 impl AnimProp {
+    /// The axis whose laid-out size an unset value of this property is, so an
+    /// animation can start from what layout produced.
+    pub(super) fn size_axis(self) -> Option<Axis> {
+        match self {
+            Self::Width | Self::MinWidth | Self::MaxWidth => Some(Axis::Width),
+            Self::Height | Self::MinHeight | Self::MaxHeight => Some(Axis::Height),
+            _ => None,
+        }
+    }
+
     /// The value before the style sets it. `None` means CSS leaves it to layout
     /// or inheritance, which a track cannot start from yet.
     pub(super) fn initial(self, base: Option<&StyleDesc>) -> Option<AnimValue> {
@@ -340,6 +358,7 @@ impl AnimProp {
                     DimensionValue::Percentage(value) => {
                         AnimValue::Percent(check_finite(name, value)?)
                     }
+                    DimensionValue::Auto if self == Self::Height => AnimValue::Auto,
                     DimensionValue::Auto => {
                         return Err(format!(
                             "motion cannot animate {name} to or from auto: mixed units are not supported"

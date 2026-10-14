@@ -34,7 +34,20 @@ impl Track {
         transition: Transition,
         now: Instant,
     ) -> Result<Self, String> {
-        let pair = pair(name, from, &target)?;
+        Self::resolved(name, from, target.clone(), target, transition, now)
+    }
+
+    /// A segment that runs to `to` while the style asked for `target`: they
+    /// differ for `height: auto`, which runs to the measured height.
+    pub(super) fn resolved(
+        name: &str,
+        from: &AnimValue,
+        target: AnimValue,
+        to: AnimValue,
+        transition: Transition,
+        now: Instant,
+    ) -> Result<Self, String> {
+        let pair = pair(name, from, &to)?;
         Ok(Self {
             from_velocity: vec![0.0; pair.from.len()],
             layout: pair.layout,
@@ -46,6 +59,20 @@ impl Track {
         })
     }
 
+    /// A `height: auto` that was never anything else, so there is nothing to
+    /// animate.
+    pub(super) fn resting_at_auto(transition: Transition, now: Instant) -> Self {
+        Self {
+            layout: Layout::Number,
+            from: vec![0.0],
+            from_velocity: vec![0.0],
+            to: vec![0.0],
+            target: AnimValue::Auto,
+            transition,
+            started: now,
+        }
+    }
+
     pub(super) fn target(&self) -> &AnimValue {
         &self.target
     }
@@ -54,27 +81,65 @@ impl Track {
         &self.transition
     }
 
-    /// Restarts toward `target` from wherever this track is now. A spring
-    /// continues from the current speed as well, so interrupting it bends the
-    /// path instead of stopping and restarting. An interrupted tween hands over
-    /// its instantaneous speed too, so a tween-to-spring switch does not stall;
-    /// a spring-to-tween switch drops the speed, as the tween has no notion of
-    /// it.
-    pub(super) fn retarget(
+    pub(super) fn is_auto(&self) -> bool {
+        self.target == AnimValue::Auto
+    }
+
+    /// Whether the style has gone back to literal `auto`, which is the layout's
+    /// height again and not the number the segment ended on.
+    pub(super) fn rests_at_auto(&self, now: Instant) -> bool {
+        self.is_auto() && !self.sample(now).active
+    }
+
+    /// The value the track shows at `now`.
+    pub(super) fn current(&self, now: Instant) -> AnimValue {
+        self.layout.decode(&self.sample(now).position)
+    }
+
+    /// Hands the speed `previous` had at `now` to this segment. Only a spring
+    /// reads it: interrupting one bends the path instead of stopping and
+    /// restarting. An interrupted tween hands over its instantaneous speed
+    /// too, so a tween-to-spring switch does not stall; a spring-to-tween
+    /// switch drops it, as the tween has no notion of it.
+    pub(super) fn carry_velocity(&mut self, previous: &Self, now: Instant) {
+        let is_spring = matches!(self.transition.curve, Curve::Spring(_));
+        if is_spring && previous.layout.carries_velocity_to(&self.layout) {
+            self.from_velocity = previous.sample(now).velocity;
+        }
+    }
+
+    /// Moves a `height: auto` segment to a new measured height. While the
+    /// delay still holds the start nothing has moved, so the end changes in
+    /// place; after that the segment restarts from where it is, with its speed.
+    /// `None` when the end is already `to`.
+    pub(super) fn follow(
         &self,
         name: &str,
-        target: AnimValue,
-        transition: Transition,
+        to: AnimValue,
         now: Instant,
-    ) -> Result<Self, String> {
-        let current = self.sample(now);
-        let from = self.layout.decode(&current.position);
-        let mut next = Self::new(name, &from, target, transition, now)?;
-        let is_spring = matches!(next.transition.curve, Curve::Spring(_));
-        if is_spring && self.layout.carries_velocity_to(&next.layout) {
-            next.from_velocity = current.velocity;
+    ) -> Result<Option<Self>, String> {
+        let start = self.layout.decode(&self.from);
+        let moved = pair(name, &start, &to)?;
+        if moved.to == self.to {
+            return Ok(None);
         }
-        Ok(next)
+        let elapsed = now.saturating_duration_since(self.started);
+        if elapsed < seconds(self.transition.delay) {
+            return Ok(Some(Self {
+                to: moved.to,
+                ..self.clone()
+            }));
+        }
+        let mut next = Self::resolved(
+            name,
+            &self.current(now),
+            self.target.clone(),
+            to,
+            self.transition.clone(),
+            now,
+        )?;
+        next.carry_velocity(self, now);
+        Ok(Some(next))
     }
 
     /// Whether the segment starts away from rest, so a frame must run even

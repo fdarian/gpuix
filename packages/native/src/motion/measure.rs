@@ -12,11 +12,9 @@ use std::rc::Rc;
 
 use gpui::{App, Bounds, LayoutId, Pixels, Size, Window};
 
+use super::property::{AnimProp, Axis};
 use crate::style::StyleDesc;
 
-// Recorded ahead of the engine: nothing reads a measurement until `height: "auto"`
-// and unset starts land.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Measurement {
     /// The painted border box.
@@ -26,7 +24,31 @@ pub(crate) struct Measurement {
     pub natural_height: Pixels,
     /// The content box of the parent, which a percentage length resolves
     /// against. `None` for a root.
+    // Read once percentages resolve against it (slice 4d).
+    #[allow(dead_code)]
     pub parent_content: Option<Size<Pixels>>,
+    /// Device pixels per layout pixel.
+    pub scale_factor: f32,
+}
+
+impl Measurement {
+    /// The natural height rounded up to a whole device pixel, so content that
+    /// ends part-way through a pixel is not clipped by a height that stops
+    /// short of it. The epsilon keeps a height that is already whole, but off
+    /// by f32 rounding, from gaining a pixel.
+    pub(super) fn natural_height_px(&self) -> f64 {
+        let scale = f64::from(self.scale_factor);
+        let device = f64::from(self.natural_height.as_f32()) * scale;
+        (device - 1e-3).ceil().max(0.0) / scale
+    }
+
+    /// The painted border-box size along the axis `prop` sizes.
+    pub(super) fn laid_out(&self, prop: AnimProp) -> Option<f64> {
+        Some(f64::from(match prop.size_axis()? {
+            Axis::Width => self.border_box.width.as_f32(),
+            Axis::Height => self.border_box.height.as_f32(),
+        }))
+    }
 }
 
 /// Shared with the paint closures, like the paint reports, so a handle is
@@ -35,7 +57,6 @@ pub(crate) struct Measurement {
 pub(crate) struct Measurements(Rc<RefCell<HashMap<u64, Measurement>>>);
 
 impl Measurements {
-    #[allow(dead_code)]
     pub(crate) fn get(&self, id: u64) -> Option<Measurement> {
         self.0.borrow().get(&id).copied()
     }
@@ -62,6 +83,7 @@ impl Measurements {
                 border_box: bounds.size,
                 natural_height: natural_height(content.height, border),
                 parent_content: window.layout_parent_content_size(layout_id),
+                scale_factor: window.scale_factor(),
             };
             measurements.borrow_mut().insert(id, measurement);
         }
@@ -119,6 +141,35 @@ mod tests {
         );
     }
 
+    fn measurement(natural_height: f32, scale_factor: f32) -> Measurement {
+        Measurement {
+            border_box: gpui::size(gpui::px(40.0), gpui::px(30.0)),
+            natural_height: gpui::px(natural_height),
+            parent_content: None,
+            scale_factor,
+        }
+    }
+
+    #[test]
+    fn the_natural_height_rounds_up_to_the_device_pixel() {
+        assert_eq!(measurement(80.2, 1.0).natural_height_px(), 81.0);
+        assert_eq!(measurement(80.2, 2.0).natural_height_px(), 80.5);
+        assert_eq!(measurement(80.0, 2.0).natural_height_px(), 80.0);
+        assert_eq!(measurement(0.0, 2.0).natural_height_px(), 0.0);
+        // f32 noise on a whole height is not a pixel of content.
+        assert_eq!(measurement(80.000_01, 2.0).natural_height_px(), 80.0);
+    }
+
+    #[test]
+    fn a_size_property_reads_its_axis_of_the_border_box() {
+        let measurement = measurement(50.0, 1.0);
+        assert_eq!(measurement.laid_out(AnimProp::Width), Some(40.0));
+        assert_eq!(measurement.laid_out(AnimProp::MaxWidth), Some(40.0));
+        assert_eq!(measurement.laid_out(AnimProp::Height), Some(30.0));
+        assert_eq!(measurement.laid_out(AnimProp::MinHeight), Some(30.0));
+        assert_eq!(measurement.laid_out(AnimProp::Top), None);
+    }
+
     #[test]
     fn a_side_width_beats_the_shorthand() {
         let border = VerticalBorder::of(Some(&style(
@@ -149,6 +200,7 @@ mod tests {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
             natural_height: gpui::px(2.0),
             parent_content: None,
+            scale_factor: 1.0,
         };
         measurements.0.borrow_mut().insert(1, measurement);
         measurements.0.borrow_mut().insert(2, measurement);
