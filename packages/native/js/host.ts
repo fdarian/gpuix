@@ -385,6 +385,17 @@ export interface StyleDesc {
   // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
   // Nesting is one level deep: a state style cannot contain another.
   hover?: StateStyleDesc
+  /** Makes this element a group for `groupHover` and `groupActive` on its
+   *  descendants, like a Tailwind `group`. `true` is the default group; a string
+   *  names it, so groups can nest. */
+  group?: string | true
+  /** Applied while the nearest ancestor `group` is hovered (the pointer is over
+   *  it or anything inside it). `{ group: "card", ... }` follows the nearest
+   *  ancestor named `card` instead of the default group. */
+  groupHover?: GroupStateStyleDesc
+  /** Applied while the mouse is down inside the nearest ancestor `group`. Same
+   *  `group` field as `groupHover`. */
+  groupActive?: GroupStateStyleDesc
   active?: StateStyleDesc
   /** While the element matches `:focus-visible`: focused by the keyboard (Tab),
    *  or a text control, or focus moved there by script from an element that
@@ -406,9 +417,16 @@ export type StateStyleDesc = Omit<
   | "focusVisible"
   | "focusWithin"
   | "keyboardFocusDim"
+  | "group"
+  | "groupHover"
+  | "groupActive"
   | "fontVariantNumeric"
   | "fontFeatureSettings"
 >
+
+/** A `groupHover`/`groupActive` style. Its `group` picks which ancestor group to
+ *  follow (default group when omitted). */
+export type GroupStateStyleDesc = StateStyleDesc & { group?: string | true }
 
 // Element types supported by GPUIX
 export type ElementType =

@@ -4267,6 +4267,29 @@ The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadi
 
 **Focus:** `focusVisible`, `focusWithin`. See [Focus styles](#focus-styles)
 
+**Ancestor state:** `group`, `groupHover`, `groupActive`. See [Group state styles](#group-state-styles)
+
+### Group state styles
+
+There is no stylesheet, so an element cannot react to a hovered ancestor with a
+selector. Mark the ancestor with `group` and style the descendants with
+`groupHover` and `groupActive`, like Tailwind's `group-hover:`:
+
+```tsx
+<div style={{ group: true, padding: 12, backgroundColor: '#fff' }}>
+  <text style={{ color: '#666', groupHover: { color: '#000' } }}>Title</text>
+  <div style={{ opacity: 0, groupHover: { opacity: 1 }, groupActive: { backgroundColor: '#eee' } }} />
+</div>
+```
+
+`group: true` is the default group, which an unnamed `groupHover` follows. Name a
+group (`group: 'card'`) and point at it with `groupHover: { group: 'card',
+backgroundColor: '#eee' }` when groups nest: the style follows the nearest
+ancestor with that name. `groupHover` applies while the pointer is over the
+group or anything inside it, `groupActive` while the mouse is down inside it.
+Each element takes one `groupHover` and one `groupActive`. `groupFocusWithin` is
+not available, because GPUI has no group focus state.
+
 ### Hover and active
 
 `hover` and `active` are **nested style objects**, like CSS `:hover` and

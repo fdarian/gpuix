@@ -352,12 +352,48 @@ pub struct StyleDesc {
     pub focus_visible: Option<Box<StyleDesc>>,
     /// While this element or a descendant is focused, like CSS `:focus-within`.
     pub focus_within: Option<Box<StyleDesc>>,
+    /// Makes this element a group that `groupHover`/`groupActive` styles on its
+    /// descendants react to. `true` is the default group, a string names one.
+    /// Inside `groupHover`/`groupActive` it names the group to follow instead.
+    pub group: Option<GroupName>,
+    /// Applied while the nearest ancestor `group` of that name is hovered.
+    pub group_hover: Option<Box<StyleDesc>>,
+    /// Applied while the mouse is down inside the nearest ancestor `group` of that name.
+    pub group_active: Option<Box<StyleDesc>>,
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,
 }
 
 pub use crate::color::{parse_color, parse_color_hex};
+
+/// `group: true` or `group: "card"`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GroupName {
+    Flag(bool),
+    Name(String),
+}
+
+/// Name of the group `group: true` and an unnamed `groupHover` refer to.
+const DEFAULT_GROUP: &str = "__gpuix_group";
+
+impl StyleDesc {
+    /// The group this element declares, if any.
+    pub(crate) fn declared_group(&self) -> Option<gpui::SharedString> {
+        match self.group.as_ref()? {
+            GroupName::Flag(true) => Some(DEFAULT_GROUP.into()),
+            GroupName::Name(name) if !name.is_empty() => Some(name.clone().into()),
+            _ => None,
+        }
+    }
+
+    /// The group a `groupHover`/`groupActive` style follows: its own `group`
+    /// field, or the default group.
+    pub(crate) fn followed_group(&self) -> gpui::SharedString {
+        self.declared_group().unwrap_or_else(|| DEFAULT_GROUP.into())
+    }
+}
 use crate::color::ColorContext;
 
 impl StyleDesc {
@@ -367,6 +403,8 @@ impl StyleDesc {
         Self {
             hover: None,
             active: None,
+            group_hover: None,
+            group_active: None,
             cursor: None,
             ..self.clone()
         }
@@ -523,6 +561,25 @@ mod tests {
             serde_json::from_str(r##"{"boxShadow":"4 4 red","color":"red"}"##).unwrap();
         assert!(style.box_shadow.as_ref().unwrap().as_slice().is_empty());
         assert_eq!(style.color.as_deref(), Some("red"));
+    }
+
+    #[test]
+    fn group_names_and_the_default_group() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{"group":true,"groupHover":{"backgroundColor":"red"},"groupActive":{"group":"card","color":"blue"}}"##,
+        )
+        .unwrap();
+        let default = style.declared_group().unwrap();
+        // An unnamed groupHover follows the default group, which `true` declares.
+        assert_eq!(style.group_hover.as_ref().unwrap().followed_group(), default);
+        assert_eq!(style.group_active.as_ref().unwrap().followed_group().as_ref(), "card");
+
+        let named: StyleDesc = serde_json::from_str(r##"{"group":"card"}"##).unwrap();
+        assert_eq!(named.declared_group().unwrap().as_ref(), "card");
+        for none in [r##"{"group":false}"##, r##"{"group":""}"##, r##"{}"##] {
+            let style: StyleDesc = serde_json::from_str(none).unwrap();
+            assert_eq!(style.declared_group(), None, "{none}");
+        }
     }
 
     #[test]

@@ -6908,14 +6908,32 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
 /// are hovered or pressed. `focusVisible` and `focusWithin` need the focus state, so
 /// `apply_focus_styles` applies it where the element calls `track_focus`.
 pub(crate) fn apply_interactive_styles<E>(
-    el: E,
+    mut el: E,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
 ) -> E
 where
     E: gpui::Styled + gpui::StatefulInteractiveElement,
 {
-    apply_styles(el, style, colors)
+    el = apply_styles(el, style, colors);
+    if let Some(group) = style.declared_group() {
+        el = el.group(group);
+    }
+    // gpui keeps one group style of each kind per element, matched by name
+    // against the nearest ancestor that declared it.
+    if let Some(hover_style) = style.group_hover.as_deref() {
+        let colors = colors.for_state(hover_style);
+        el = el.group_hover(hover_style.followed_group(), |refinement| {
+            apply_state_styles(refinement, style, hover_style, &colors)
+        });
+    }
+    if let Some(active_style) = style.group_active.as_deref() {
+        let colors = colors.for_state(active_style);
+        el = el.group_active(active_style.followed_group(), |refinement| {
+            apply_state_styles(refinement, style, active_style, &colors)
+        });
+    }
+    el
 }
 
 /// A state refinement: the base colours that follow `currentColor` first, so a
