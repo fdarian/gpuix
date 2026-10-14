@@ -4662,17 +4662,17 @@ fn sync_motion_states(
     let mut settled = Vec::new();
 
     for &id in &tree.motion_ids {
-        let Some(source) = tree
-            .elements
-            .get(&id)
-            .and_then(|element| element.custom_props().get("motion"))
-        else {
+        let Some(element) = tree.elements.get(&id) else {
             continue;
         };
+        let Some(source) = element.custom_props().get("motion") else {
+            continue;
+        };
+        let base = element.style.as_deref();
         let state = match states.entry(id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                match crate::motion::MotionState::new(source, now) {
+                match crate::motion::MotionState::new(source, base, now) {
                     Ok(state) => entry.insert(state),
                     Err(error) => {
                         log::warn!("Invalid motion description for element {id}: {error}");
@@ -4681,7 +4681,7 @@ fn sync_motion_states(
                 }
             }
         };
-        if let Err(error) = state.sync(source, now) {
+        if let Err(error) = state.sync(source, base, now) {
             log::warn!("Invalid motion update for element {id}: {error}");
         }
         let frame = state.frame(now);
