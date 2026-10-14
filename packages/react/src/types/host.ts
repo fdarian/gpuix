@@ -4,6 +4,7 @@ import type {
   ElementIdAllocator,
   ElementType,
   EventHandlerMap,
+  FocusableElement,
   HostProps,
   ImagePixelsOptions,
   InputProps as NativeInputProps,
@@ -24,61 +25,64 @@ import type {
 
 export * from "@gpuix/native/host"
 
-export interface Props extends HostProps {
+/** `onFocusIn` and `onFocusOut` do not exist in React, where `onFocus` and `onBlur` bubble. */
+type ReactHostProps<Props> = Omit<Props, "onFocusIn" | "onFocusOut">
+
+export interface Props extends ReactHostProps<HostProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface InputProps extends NativeInputProps {
+export interface InputProps extends ReactHostProps<NativeInputProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<TextControlInstance>
 }
 
-export interface LabelProps extends NativeLabelProps {
+export interface LabelProps extends ReactHostProps<NativeLabelProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface TextareaProps extends NativeTextareaProps {
+export interface TextareaProps extends ReactHostProps<NativeTextareaProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<TextControlInstance>
 }
 
-export interface ImgProps extends NativeImgProps {
+export interface ImgProps extends ReactHostProps<NativeImgProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<ImgInstance>
 }
 
-export interface SvgProps extends NativeSvgProps {
+export interface SvgProps extends ReactHostProps<NativeSvgProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface CodeProps extends NativeCodeProps {
+export interface CodeProps extends ReactHostProps<NativeCodeProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface DiffProps extends NativeDiffProps {
+export interface DiffProps extends ReactHostProps<NativeDiffProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface MarkdownProps extends NativeMarkdownProps {
+export interface MarkdownProps extends ReactHostProps<NativeMarkdownProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
 }
 
-export interface AnchoredProps extends NativeAnchoredProps {
+export interface AnchoredProps extends ReactHostProps<NativeAnchoredProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
@@ -109,7 +113,8 @@ export interface Container {
   portalTarget?: Instance
 }
 
-export interface Instance {
+/** Host methods are attached when React hands out a ref, not per instance. */
+export interface Instance extends Partial<FocusableElement> {
   id: number
   type: ElementType
   props: Props
@@ -121,7 +126,7 @@ export interface Instance {
   requestPointerLock?(): void
 }
 
-export interface ImgInstance extends Instance {
+export interface ImgInstance extends PublicInstance {
   type: "img"
   setImage(bytes: Buffer | Uint8Array): void
   setImagePixels(
@@ -143,7 +148,7 @@ export interface TextInstance {
   parentId: number | null
 }
 
-export type PublicInstance = Instance
+export type PublicInstance = Instance & FocusableElement
 
 export interface HostContext {
   isInsideText: boolean

@@ -10,7 +10,10 @@ import type { HostEventHandler } from "@gpuix/native/host"
 import {
   BUILT_IN_TYPES,
   createElementMethods,
-  EVENT_TYPE_BY_PROP,
+  blurHostElement,
+  eventTypesWithOverrides,
+  focusHostElement,
+  hostElementMatches,
   isReservedProp,
   sameMutationValue,
   serializeCustomProp,
@@ -21,6 +24,17 @@ import {
 } from "@gpuix/native/host"
 
 const NoEventPriority = 0
+
+/**
+ * React DOM listens to `focusin` and `focusout` for `onFocus` and `onBlur`, so
+ * they bubble. React has no `onFocusIn` or `onFocusOut`.
+ */
+const EVENT_TYPE_BY_PROP = eventTypesWithOverrides({
+  onFocus: "focusIn",
+  onBlur: "focusOut",
+  onFocusIn: null,
+  onFocusOut: null,
+})
 import type {
   Container,
   ElementType,
@@ -65,6 +79,10 @@ function attachHostMethods(instance: Instance): void {
     container.nativeRenderer.scrollIntoView?.(instance.id)
   }
   Object.assign(instance, createElementMethods(container.nativeRenderer, instance.id))
+  instance.focus = (options) => focusHostElement(container.nativeRenderer, instance.id, options)
+  instance.blur = () => blurHostElement(container.nativeRenderer, instance.id)
+  instance.matches = (selector) =>
+    hostElementMatches(container.nativeRenderer, instance.id, selector)
   if (instance.type === "input" || instance.type === "textarea") {
     attachTextControlMethods(instance as TextControlInstance, container)
     return

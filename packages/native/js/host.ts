@@ -23,6 +23,7 @@ export type {
 export * from "./events/listeners.js"
 export * from "./events/types.js"
 export type { AriaProps }
+export * from "./focus.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
@@ -280,9 +281,14 @@ export interface StyleDesc {
   // Nesting is one level deep: a state style cannot contain another.
   hover?: StateStyleDesc
   active?: StateStyleDesc
-  /** While focused after keyboard input (Tab), like CSS `:focus-visible`.
-   *  A mouse press never shows it. Needs a focusable element. */
+  /** While the element matches `:focus-visible`: focused by the keyboard (Tab),
+   *  or a text control, or focus moved there by script from an element that
+   *  matched. A mouse press on a button never shows it. Needs a focusable
+   *  element. */
   focusVisible?: StateStyleDesc
+  /** While the element or any descendant is focused, like CSS `:focus-within`.
+   *  Works on any element, focusable or not. */
+  focusWithin?: StateStyleDesc
   /** `false` keeps this focusable element at full opacity while another
    *  control has keyboard focus. Default dims it. Not inherited. */
   keyboardFocusDim?: boolean
@@ -290,7 +296,7 @@ export interface StyleDesc {
 
 export type StateStyleDesc = Omit<
   StyleDesc,
-  "hover" | "active" | "focusVisible" | "keyboardFocusDim"
+  "hover" | "active" | "focusVisible" | "focusWithin" | "keyboardFocusDim"
 >
 
 // Element types supported by GPUIX
@@ -477,14 +483,31 @@ export interface HostProps extends AriaProps, PointerEventProps {
    */
   onMouseDownOutside?: (event: EventPayload) => void
 
-  // ── Keyboard events (need focus: autoFocus, or a click on the element) ──
-  /** Fires on the focused element, then on ancestors that declare it. */
+  // ── Keyboard events ────────────────────────────────────────────
+  /** Fires on the focused element, then on ancestors that declare it. A key
+   *  listener does not make an element focusable: give it a `tabIndex`. */
   onKeyDown?: (event: KeyEvent) => void
   onKeyUp?: (event: KeyEvent) => void
 
   // ── Focus events ───────────────────────────────────────────────
+  // Focus changes dispatch in DOM order: blur and focusout on the element
+  // losing focus, then focus and focusin on the element gaining it.
+  // `event.focusVisible` says whether the element matches `:focus-visible`.
+  // Only a focusable element (`tabIndex`, or an enabled input/textarea) takes
+  // focus; a listener does not make one focusable.
+  //
+  // `onFocus`/`onBlur` follow each framework's web behaviour. Solid, like
+  // plain DOM: `onFocus`/`onBlur` do not bubble, `onFocusIn`/`onFocusOut` do.
+  // React DOM: `onFocus` and `onBlur` bubble (they listen to `focusin` and
+  // `focusout`), and there is no `onFocusIn`/`onFocusOut`.
+  /** `focus`. Does not bubble. */
   onFocus?: (event: EventPayload) => void
+  /** `blur`. Does not bubble. */
   onBlur?: (event: EventPayload) => void
+  /** `focusin`. Bubbles to ancestors. Solid only. */
+  onFocusIn?: (event: EventPayload) => void
+  /** `focusout`. Bubbles to ancestors. Solid only. */
+  onFocusOut?: (event: EventPayload) => void
 
   // ── Scroll events ──────────────────────────────────────────────
   onScroll?: (event: EventPayload) => void
@@ -537,7 +560,13 @@ export interface HostProps extends AriaProps, PointerEventProps {
   /** Take keyboard focus when the element first mounts. Required for `<input>`:
    *  without it, or a click, the field never receives key events. */
   autoFocus?: boolean
-  /** Native GPUI tab order. Use 0 for normal keyboard focus. */
+  /**
+   * Makes the element focusable, like the DOM. `-1` is focusable by click or
+   * `focus()` but not by Tab. `0` joins the tab order in document order.
+   * Positive values come first, in ascending order, then the 0s. An enabled
+   * `<input>`/`<textarea>` is focusable without it. Key and focus listeners do
+   * not make an element focusable.
+   */
   tabIndex?: number
   /**
    * Makes the element a drag source, like the DOM attribute. A primary press on
@@ -770,6 +799,8 @@ export type NativeRenderer = MutationHost &
     Pick<
       GpuixRenderer,
       | "focusElement"
+      | "blurElement"
+      | "matchesFocus"
       | "focusNext"
       | "focusPrevious"
       | "getFocusedElementId"

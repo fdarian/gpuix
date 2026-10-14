@@ -5,6 +5,9 @@ import {
   createElementMethods,
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
+  blurHostElement,
+  focusHostElement,
+  hostElementMatches,
   isUniversalProp,
   registerEventListener,
   serializeCustomProp,
@@ -18,6 +21,7 @@ import type {
   ElementMethods,
   ElementType,
   EventHandlerMap,
+  FocusOptions,
   HostProps,
   ImagePixelsOptions,
   MutationRenderer,
@@ -105,9 +109,28 @@ export class HostElement {
     this.methods().requestPointerLock()
   }
 
+  focus(options?: FocusOptions): void {
+    focusHostElement(this.mountedRenderer("focus"), this.id, options)
+  }
+
+  blur(): void {
+    blurHostElement(this.mountedRenderer("blur"), this.id)
+  }
+
+  matches(selector: string): boolean {
+    return hostElementMatches(this.mountedRenderer("matches"), this.id, selector)
+  }
+
   private methods(): ElementMethods {
     if (!this.root) throw new Error("The element is not in a root")
     return createElementMethods(this.root.nativeRenderer, this.id)
+  }
+
+  private mountedRenderer(method: string): NativeRenderer {
+    if (!this.root || !this.mounted) {
+      throw new Error(`Cannot call ${method}() on an element that is not mounted`)
+    }
+    return this.root.nativeRenderer
   }
 
   /** `<input>` and `<textarea>` only: select all of the text. */

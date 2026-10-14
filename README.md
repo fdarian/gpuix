@@ -2155,8 +2155,16 @@ Retained element ID ► persistent gpui::FocusHandle ► keyboard/action dispatc
       React rerenders
 ```
 
-Inputs and textareas are tab stops automatically. Add `tabIndex` to a `div` when
-it should participate in explicit focus traversal:
+### What is focusable
+
+Like the DOM: an enabled `<input>` or `<textarea>`, or any element with a
+`tabIndex`. **A key or focus listener does not make an element focusable.**
+`onKeyDown` on a parent still hears the keys of a focused descendant, by
+bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it a
+`tabIndex` (`-1` is enough when it should not be a tab stop).
+
+```tsx
+<div
 
 ```tsx
 <div
@@ -2173,17 +2181,38 @@ it should participate in explicit focus traversal:
 
 | Prop | Behavior |
 |---|---|
-| `tabIndex={0}` | Joins the normal focus traversal order |
-| `tabIndex={n}` | Uses `n` as its GPUI tab-order index |
-| `tabIndex={-1}` | Skipped by focus traversal, but focusable by click or renderer API |
+| `tabIndex={0}` | Joins the tab order, in document order |
+| `tabIndex={n}`, `n > 0` | Tabbed first, in ascending order of `n` (document order among equal values), then the `0`s |
+| `tabIndex={-1}` | Focusable by click, `focus()` or `focusElement`, but never a Tab stop |
 | `autoFocus` | Takes focus once, when its native focus handle is created |
+| `disabled` (`<input>`, `<textarea>`) | Not focusable. Focus leaves it when it becomes disabled |
+
+### Focus events
+
+A focus change dispatches in DOM order: `blur` then `focusout` on the element
+losing focus, then `focus` then `focusin` on the element gaining it. `focus` and
+`blur` do not bubble. `focusin` and `focusout` bubble to ancestors that listen.
+Every event carries `focusVisible`, whether the element matches
+`:focus-visible` (see [Focus styles](#focus-styles)). Removing a focused element
+from the tree fires nothing, like the DOM.
+
+The props follow each framework's web behaviour:
+
+| | `focus` | `blur` | `focusin` | `focusout` |
+|---|---|---|---|---|
+| Solid | `onFocus` | `onBlur` | `onFocusIn` | `onFocusOut` |
+| React | none | none | `onFocus` | `onBlur` |
+
+React DOM listens to `focusin` and `focusout` for `onFocus` and `onBlur`, so in
+`@gpuix/react` those props bubble and there is no `onFocusIn` or `onFocusOut`.
+`@gpuix/solid` is plain DOM.
 
 ### Element keyboard callbacks
 
 `onKeyDown` fires for the focused element and then for ancestors that declare
 `onKeyDown`, following GPUI's focus dispatch path. `onKeyUp` follows the same
-path when the key is released. Adding either callback creates the element's
-native focus handle.
+path when the key is released. The element must be focusable for its own
+`onKeyDown` to fire; a listener does not make it so.
 
 ```tsx
 <div
@@ -2269,21 +2298,29 @@ render(<App />, {
 while WebGPU opens are queued and applied after the first focus handles exist. If
 several requests arrive before that render, the latest request wins.
 
-Use a ref for imperative focus:
+Element refs have the DOM focus methods (React instances and Solid
+`HostElement`):
 
 ```tsx
-const buttonRef = useRef<{ id: number }>(null)
+const buttonRef = useRef(null)
 
-function focusButton() {
-  if (buttonRef.current) renderer.focusElement(buttonRef.current.id)
-}
+buttonRef.current.focus()                       // scrolls it into view
+buttonRef.current.focus({ preventScroll: true })
+buttonRef.current.blur()                        // no-op unless it is focused
+buttonRef.current.matches(':focus-visible')
 
 <div ref={buttonRef} tabIndex={-1}>Focused on demand</div>
 ```
 
-Adding `onKeyDown`, `onKeyUp`, `onFocus`, or `onBlur` creates a persistent focus
-handle. Add `tabIndex` as well when the element must be reachable through focus
-traversal. Removing `tabIndex` removes the element from that order.
+`matches()` supports `:focus`, `:focus-visible` and `:focus-within`; any other
+selector throws. Removing `tabIndex` removes the element from the focus order and
+blurs it if it was focused.
+
+Programmatic focus is the one place `:focus-visible` is inherited: `focus()`
+shows the ring when the element focus leaves was showing one. Before any key or
+mouse press it shows the ring too, so a script-focused button on a fresh window
+has one, as in Chrome. After a mouse press, `focus()` from a mouse-focused
+element shows none.
 
 ## Headless controls
 
@@ -3349,8 +3386,10 @@ text imports no longer need a runtime flag.
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
-| Focus | `onFocus` | — |
-| Blur | `onBlur` | — |
+| Focus | `onFocus` | `focusVisible`. See [Focus events](#focus-events) |
+| Blur | `onBlur` | `focusVisible` |
+| Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`. Bubbles |
+| Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
 | Scroll | `onScroll` | `deltaX`, `deltaY`, `precise`, `touchPhase`, `modifiers` |
 | Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only |
@@ -3510,9 +3549,10 @@ sets state paints the new size one frame later. Read it for decisions such as
 which layout to render, not to position something against the element in the
 same frame.
 
-Keyboard and focus listeners create a persistent GPUI `FocusHandle`
-automatically. A listener alone does not put a `div` in the Tab order; add
-`tabIndex={0}` for that. Inputs and textareas already use tab index `0`.
+Only a focusable element holds a GPUI `FocusHandle`: an enabled input or
+textarea, or an element with a `tabIndex`. A key or focus listener alone does not
+make a `div` focusable; add `tabIndex` (see
+[What is focusable](#what-is-focusable)).
 
 `onMouseLeave` also fires when the pointer leaves the **window** without a final
 move over the element, and the element's `hover` style ends with it.
@@ -3831,7 +3871,7 @@ order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 
 **Selection:** `userSelect` (`"text"` | `"none"`), `selectionColor` — both inherit down the tree
 
-**Focus:** `focusVisible`. See [Focus styles](#focus-styles)
+**Focus:** `focusVisible`, `focusWithin`. See [Focus styles](#focus-styles)
 
 ### Hover and active
 
@@ -3865,12 +3905,21 @@ wrapping `<div>`.
 
 ### Focus styles
 
-`focusVisible` is a nested style object, like `hover`. It applies while the
-element has focus **and the last input was the keyboard**, like CSS
-`:focus-visible`. GPUI applies it natively.
+`focusVisible` and `focusWithin` are nested style objects, like `hover`.
+`focusVisible` applies while the element matches CSS `:focus-visible`;
+`focusWithin` while it or any descendant has focus, like `:focus-within`, on
+focusable and plain elements alike. There is no separate `focus` key.
 
-A mouse press never shows it, on text fields too. There is no separate
-`focus` key.
+`:focus-visible` follows the browser heuristic, tracked per focus change rather
+than from the live input device:
+
+- A text field (`<input>`, `<textarea>`) always matches while focused, mouse or
+  keyboard
+- Focus moved by Tab (or any keyboard input) matches
+- Focus moved by a mouse press does not match, until a key goes down while the
+  element is focused
+- Focus moved by script (`focus()`, `autoFocus`) matches only if the element it
+  left matched
 
 ```tsx
 <div
@@ -3883,8 +3932,8 @@ A mouse press never shows it, on text fields too. There is no separate
 />
 ```
 
-It needs a **focusable** element: `tabIndex`, a key or focus listener,
-`<input>`, `<textarea>`, or a primitive such as `Button`.
+`focusVisible` needs a **focusable** element: `tabIndex`, `<input>`,
+`<textarea>`, or a primitive such as `Button`.
 
 **Default: everything else dims.** GPUIX draws no ring. While a control
 (`Button`, a `tabIndex` div) has keyboard focus, every **other** focusable
@@ -3895,8 +3944,9 @@ see at a glance everything Tab can reach.
 Tab  ► [ Save ]  (dim New)  (dim Search)  (dim input)
 ```
 
-- A mouse press, a drag, or a mouse move of more than 8px ends it. Smaller
-  jitter from a hand resting on the trackpad keeps it
+- It follows `:focus-visible`, so it lasts while that control stays focused,
+  and ends when focus moves to a control that does not match (a mouse press on
+  another control, for example). Moving the mouse does not end it
 - A focused `<input>` or `<textarea>` dims nothing: typing is keyboard input
   too, and the caret already shows focus
 - The focused element's ancestors never dim, because opacity covers the subtree

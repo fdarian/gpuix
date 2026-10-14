@@ -108,6 +108,8 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onKeyUp", "keyUp"],
   ["onFocus", "focus"],
   ["onBlur", "blur"],
+  ["onFocusIn", "focusIn"],
+  ["onFocusOut", "focusOut"],
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
   ["onScrollChange", "scrollChange"],
@@ -123,6 +125,23 @@ export const EVENT_PROP_NAMES: ReadonlySet<string> = new Set(
  * element that has two or three props.
  */
 export const EVENT_TYPE_BY_PROP: ReadonlyMap<string, string> = new Map(EVENT_PROPS)
+
+/**
+ * `EVENT_TYPE_BY_PROP` for a framework whose prop means a different native
+ * event. A `null` removes the prop. React DOM listens to `focusin` and
+ * `focusout` for `onFocus` and `onBlur`, so those props bubble there; Solid
+ * follows plain DOM, where they do not.
+ */
+export function eventTypesWithOverrides(
+  overrides: Readonly<Record<string, string | null>>
+): ReadonlyMap<string, string> {
+  const types = new Map(EVENT_PROPS as readonly (readonly [string, string])[])
+  for (const [prop, type] of Object.entries(overrides)) {
+    if (type === null) types.delete(prop)
+    else types.set(prop, type)
+  }
+  return types
+}
 
 export const RESERVED_PROPS: ReadonlySet<string> = new Set([
   "style",
