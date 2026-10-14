@@ -586,9 +586,8 @@ export interface HostProps extends AriaProps, PointerEventProps {
   /**
    * DOM `id`. Exposed as `AXIdentifier` / UIA AutomationId, and what
    * `htmlFor` and the `aria-*` id references (`aria-labelledby`,
-   * `aria-describedby`, ...) resolve against. Only an element that is in the
-   * accessibility tree (it has a `role`) can be the target of an `aria-*`
-   * reference.
+   * `aria-describedby`, ...) resolve against. An element without a `role`
+   * that one of those props names gets a group node, named by its text.
    */
   id?: string
   /** Stable locator id for automation. */

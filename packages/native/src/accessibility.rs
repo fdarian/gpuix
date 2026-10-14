@@ -43,8 +43,13 @@ where
             .or(default_role)
             .filter(|role| *role != Role::GenericContainer)
     };
+    let links = links::current();
+    let referenced_text = links.referenced_text(host_id);
     // `aria-hidden` removes the whole subtree, and only a node can carry that.
-    let Some(role) = role.or(hidden.then_some(Role::Group)) else {
+    // An element an `aria-*` reference names needs a node to be the target.
+    let fallback_role = (hidden || referenced_text.is_some()).then_some(Role::Group);
+    let named_by_content = role.is_none() && fallback_role.is_some();
+    let Some(role) = role.or(fallback_role) else {
         return el;
     };
     let role = if role == Role::TextInput && aria::is_true_prop(props, "aria-multiline") {
@@ -54,7 +59,9 @@ where
     };
     el = el.role(role);
 
-    let links = links::current();
+    if let Some(text) = referenced_text.filter(|text| named_by_content && !text.is_empty()) {
+        el = el.aria_label(text.to_string());
+    }
     let author_id = aria::string_prop(props, "id")
         .or_else(|| links.label_author_id(host_id).map(str::to_string));
     if let Some(author_id) = author_id {

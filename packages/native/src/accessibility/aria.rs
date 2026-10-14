@@ -334,7 +334,7 @@ impl AriaNode {
 }
 
 /// `aria-*` props that name other elements, with the relation each becomes.
-const RELATION_PROPS: [(&str, A11yRelation); 8] = [
+pub(super) const RELATION_PROPS: [(&str, A11yRelation); 8] = [
     ("aria-labelledby", A11yRelation::LabelledBy),
     ("aria-describedby", A11yRelation::DescribedBy),
     ("aria-controls", A11yRelation::Controls),

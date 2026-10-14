@@ -73,6 +73,24 @@ describe.skipIf(!hasNativeTestRenderer)("Solid accessibility", () => {
     )
   })
 
+  it("gives a referenced role-less element a node named by its text", () => {
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ width: 300, height: 100 }}>
+        <div id="field" role="textbox" aria-labelledby="title" style={{ width: 80, height: 24 }} />
+        <div id="title" style={{ width: 120, height: 20 }}>
+          <text>Name</text>
+        </div>
+      </div>
+    ))
+
+    const tree = app.renderer.getA11yTree()
+    expect(byAuthorId(tree, "title")).toEqual(
+      expect.objectContaining({ role: "Group", label: "Name" })
+    )
+    expect(byAuthorId(tree, "field").labelled_by).toEqual([keyOf(tree, "title")])
+  })
+
   it("hides an aria-hidden subtree", () => {
     const app = createTestRoot()
     app.render(() => (

@@ -2101,8 +2101,9 @@ AccessKit has no equivalent.
 The relation props hold element `id`s, space-separated (`aria-errormessage` and
 `aria-activedescendant` take one). They resolve against the DOM `id` of nodes
 in the accessibility tree, after the whole frame is built, so the target may
-come later in the tree. An `id` that matches no node is dropped. A target must
-be in the tree, so give it a `role`, or use a `<text>` (which is a `Label`).
+come later in the tree. An `id` that matches no element is dropped. A role-less
+element that one of these props names gets a `group` node so it can be the
+target, named by its text content, as the DOM names an element from content.
 `aria-activedescendant` on a focused container also reports the target as the
 focused node. `aria-hidden` on an element with no role still works: the element
 gets a hidden `group` node to carry it.

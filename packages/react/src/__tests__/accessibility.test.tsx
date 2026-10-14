@@ -456,6 +456,25 @@ describeNative("accessibility", () => {
     )
   })
 
+  it("gives a role-less element an aria reference names a node named by its text", () => {
+    testRoot.render(
+      <div style={{ width: 300, height: 100 }}>
+        <div id="field" role="textbox" aria-describedby="hint" style={{ width: 80, height: 24 }} />
+        <div id="hint" style={{ width: 120, height: 20 }}>
+          <text>Be brief</text>
+        </div>
+        <div id="unreferenced" style={{ width: 80, height: 20 }} />
+      </div>,
+    )
+
+    const tree = testRoot.renderer.getA11yTree()
+    expect(byAuthorId(tree, "hint")).toEqual(
+      expect.objectContaining({ role: "Group", label: "Be brief" }),
+    )
+    expect(byAuthorId(tree, "field").described_by).toEqual([keyOf(tree, "hint")])
+    expect(ariaOf(tree).some((aria) => aria.author_id === "unreferenced")).toBe(false)
+  })
+
   it("points aria-activedescendant at the descendant's node", () => {
     testRoot.render(
       <div id="combo" role="combobox" aria-activedescendant="opt2" style={{ width: 120, height: 60 }}>

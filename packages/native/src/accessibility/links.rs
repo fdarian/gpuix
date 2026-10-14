@@ -1,4 +1,6 @@
-//! `<label>` to control association, resolved once per tree revision.
+//! Cross-element accessibility links, resolved once per tree revision:
+//! `<label>` to control, and which role-less elements an `aria-*` id reference
+//! names.
 //!
 //! A control's accessible name comes from its labels, so `apply_accessibility`
 //! needs to know which labels point at it while it builds the control, and the
@@ -25,6 +27,10 @@ pub(crate) struct A11yLinks {
     /// Author ids of labels that have no DOM `id`.
     label_author_ids: HashMap<u64, String>,
     label_text: HashMap<u64, String>,
+    /// Role-less elements whose `id` some `aria-*` reference names, with their
+    /// text content. They need a node to be a relation target, and the text is
+    /// their name, like the DOM's "name from content".
+    referenced_text: HashMap<u64, String>,
 }
 
 impl A11yLinks {
@@ -43,6 +49,10 @@ impl A11yLinks {
 
     pub(crate) fn label_text(&self, label: u64) -> Option<&str> {
         self.label_text.get(&label).map(String::as_str)
+    }
+
+    pub(crate) fn referenced_text(&self, element: u64) -> Option<&str> {
+        self.referenced_text.get(&element).map(String::as_str)
     }
 }
 
@@ -99,13 +109,28 @@ fn dom_id(element: &RetainedElement) -> Option<&str> {
         .filter(|id| !id.is_empty())
 }
 
+fn has_role(element: &RetainedElement) -> bool {
+    element
+        .custom_props()
+        .get("role")
+        .and_then(|value| value.as_str())
+        .is_some_and(|role| !matches!(role, "" | "none" | "presentation" | "generic"))
+}
+
 fn compute(tree: &RetainedTree, root: &RetainedElement) -> A11yLinks {
     let mut links = A11yLinks::default();
-    if !tree
-        .elements
-        .values()
-        .any(|element| element.element_type == "label")
-    {
+    let mut referenced: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut has_labels = false;
+    for element in tree.elements.values() {
+        has_labels |= element.element_type == "label";
+        let props = element.custom_props();
+        for (key, _) in super::aria::RELATION_PROPS {
+            if let Some(value) = props.get(key).and_then(|value| value.as_str()) {
+                referenced.extend(value.split_whitespace());
+            }
+        }
+    }
+    if !has_labels && referenced.is_empty() {
         return links;
     }
 
@@ -127,6 +152,19 @@ fn compute(tree: &RetainedTree, root: &RetainedElement) -> A11yLinks {
                 .rev()
                 .filter_map(|child| tree.elements.get(child)),
         );
+    }
+
+    for (id, element) in &first_by_dom_id {
+        let is_text_host = element.element_type == "text" && element.content.is_none();
+        if referenced.contains(id)
+            && !has_role(element)
+            && !is_text_host
+            && element.element_type != "label"
+        {
+            links
+                .referenced_text
+                .insert(element.id, text_of(tree, element));
+        }
     }
 
     for label in labels {
@@ -258,6 +296,24 @@ mod tests {
         assert_eq!(links.control_of(1), Some(3));
         assert_eq!(links.labels_of(3), Some(&["lbl".to_string()][..]));
         assert_eq!(links.label_author_id(1), None);
+    }
+
+    #[test]
+    fn referenced_role_less_elements_are_listed_with_their_text() {
+        let tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"input"],["appendChild",1,2],
+                ["setCustomProp",2,"aria-describedby","hint other"],
+                ["createElement",3,"div"],["appendChild",1,3],["setCustomProp",3,"id","hint"],
+                ["createElement",4,"text"],["appendChild",3,4],["setText",4,"Be brief"],
+                ["createElement",5,"div"],["appendChild",1,5],["setCustomProp",5,"id","other"],
+                ["setCustomProp",5,"role","note"],
+                ["createElement",6,"div"],["appendChild",1,6],["setCustomProp",6,"id","unused"]]"#,
+        );
+        let links = links_of(&tree);
+        assert_eq!(links.referenced_text(3), Some("Be brief"));
+        assert_eq!(links.referenced_text(5), None);
+        assert_eq!(links.referenced_text(6), None);
     }
 
     #[test]
