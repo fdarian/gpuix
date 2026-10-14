@@ -18,6 +18,9 @@ import {
 } from "@gpuix/native/host"
 
 const NoEventPriority = 0
+  readTextControlSelection,
+  selectTextControl,
+  setTextControlSelectionRange,
 import type {
   Container,
   ElementType,
@@ -41,6 +44,7 @@ type HostNode = Instance | TextInstance
 
 interface HostNodeState {
   container: Container
+  TextControlInstance,
   initialChildren?: HostNode[]
   mounted: boolean
   /**
@@ -75,6 +79,10 @@ function attachHostMethods(instance: Instance): void {
       options?.format,
     )
   }
+  if (instance.type === "input" || instance.type === "textarea") {
+    attachTextControlMethods(instance as TextControlInstance, container)
+    return
+  }
 }
 
 function stateFor(node: HostNode): HostNodeState {
@@ -95,6 +103,22 @@ function rendererFor(node: HostNode): MutationRenderer {
 
 function nextId(container: Container): number {
   return ++container.ids.nextElementId
+function attachTextControlMethods(control: TextControlInstance, container: Container): void {
+  const host = {
+    id: control.id,
+    nativeRenderer: container.nativeRenderer,
+    flushMutations: () => container.renderer.flushMutations(),
+  }
+  control.select = () => selectTextControl(host)
+  control.setSelectionRange = (start, end, direction) =>
+    setTextControlSelectionRange(host, start, end, direction)
+  Object.defineProperties(control, {
+    selectionStart: { get: () => readTextControlSelection(host).start },
+    selectionEnd: { get: () => readTextControlSelection(host).end },
+    selectionDirection: { get: () => readTextControlSelection(host).direction },
+  })
+}
+
 }
 
 // ── Event wiring helpers ─────────────────────────────────────────────

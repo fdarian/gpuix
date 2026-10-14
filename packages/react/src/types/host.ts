@@ -19,6 +19,7 @@ import type {
   NativeRenderer,
   RootEventHandlers,
   WindowKeyEventHandlers,
+  TextControlSelection,
 } from "@gpuix/native/host"
 
 export * from "@gpuix/native/host"
@@ -38,13 +39,13 @@ export interface InputProps extends NativeInputProps {
 export interface LabelProps extends NativeLabelProps {
   key?: Key | null
   children?: ReactNode
-  ref?: Ref<PublicInstance>
+  ref?: Ref<TextControlInstance>
 }
 
 export interface TextareaProps extends NativeTextareaProps {
   key?: Key | null
   children?: ReactNode
-  ref?: Ref<PublicInstance>
+  ref?: Ref<TextControlInstance>
 }
 
 export interface ImgProps extends NativeImgProps {
@@ -136,6 +137,11 @@ export interface TextInstance {
   text: string
   parentId: number | null
 }
+/** The ref of an `<input>` or `<textarea>`: the DOM selection API. */
+export interface TextControlInstance extends PublicInstance, TextControlSelection {
+  type: "input" | "textarea"
+}
+
 
 export type PublicInstance = Instance
 

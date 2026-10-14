@@ -14,6 +14,9 @@ import {
 import type {
   ElementMethods,
   ElementType,
+  readTextControlSelection,
+  selectTextControl,
+  setTextControlSelectionRange,
   EventHandlerMap,
   HostProps,
   ImagePixelsOptions,
@@ -23,7 +26,9 @@ import type {
 } from "@gpuix/native/host"
 import type { EventPayload } from "@gpuix/native"
 
+  SelectionDirection,
 export type HostNode = HostElement | HostText
+  TextControlHost,
 export type HostParent = HostRoot | HostElement
 export type HostPropertyValue =
   | object
@@ -107,6 +112,44 @@ export class HostElement {
 
   setImage(bytes: Buffer | Uint8Array): void {
     this.root?.nativeRenderer.setImage?.(this.id, bytes as Buffer)
+  }
+
+  /** `<input>` and `<textarea>` only: select all of the text. */
+  select(): void {
+    selectTextControl(this.textControl("select()"))
+  }
+
+  /** `<input>` and `<textarea>` only. Offsets are UTF-16 code units. */
+  setSelectionRange(start: number, end: number, direction?: SelectionDirection): void {
+    setTextControlSelectionRange(this.textControl("setSelectionRange()"), start, end, direction)
+  }
+
+  /** `<input>` and `<textarea>` only. */
+  get selectionStart(): number {
+    return readTextControlSelection(this.textControl("selectionStart")).start
+  }
+
+  /** `<input>` and `<textarea>` only. */
+  get selectionEnd(): number {
+    return readTextControlSelection(this.textControl("selectionEnd")).end
+  }
+
+  /** `<input>` and `<textarea>` only. */
+  get selectionDirection(): SelectionDirection {
+    return readTextControlSelection(this.textControl("selectionDirection")).direction
+  }
+
+  private textControl(member: string): TextControlHost {
+    const root = this.root
+    if (!root || !this.mounted) throw new Error(`${member} needs a mounted element`)
+    if (this.type !== "input" && this.type !== "textarea") {
+      throw new Error(`${member} is only valid on <input> and <textarea>, got <${this.type}>`)
+    }
+    return {
+      id: this.id,
+      nativeRenderer: root.nativeRenderer,
+      flushMutations: () => root.mutations.flushMutations(),
+    }
   }
 
   setImagePixels(

@@ -27,6 +27,7 @@ export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
 
+export * from "./text-selection.js"
 export type DimensionValue = number | string
 
 export interface MotionStyle {
@@ -567,8 +568,8 @@ export interface HostProps extends AriaProps, PointerEventProps {
   motion?: MotionProps
 }
 
-// Props for native text editor elements.
-export interface InputProps extends HostProps {
+// Props shared by the native text editor elements.
+export interface TextControlProps extends HostProps {
   /** External editor value. Native edits apply immediately and report through onChange. */
   value?: string
   placeholder?: string
@@ -576,7 +577,31 @@ export interface InputProps extends HostProps {
   theme?: GpuixTheme
 }
 
-export interface TextareaProps extends InputProps {
+/** Values of `<input type>`. */
+export type InputType = "text" | "password" | "number" | "email" | "search" | "tel" | "url"
+
+export interface InputProps extends TextControlProps {
+  /**
+   * Defaults to `"text"`; an unknown value is `"text"` too.
+   *
+   * - `"password"` paints one bullet per character and disables copy and cut.
+   * - `"number"` makes ArrowUp and ArrowDown step the value by `step`, within
+   *   `min` and `max`, and report it through `onChange`. Typing is not
+   *   restricted: `onChange` reports exactly the text, even when it is not a
+   *   number. There is no spinner.
+   * - `"search"` is exposed to assistive technology as a search field.
+   * - `"email"`, `"tel"` and `"url"` behave as `"text"`.
+   */
+  type?: InputType
+  /** `type="number"` only. A number or numeric string. */
+  min?: number | string
+  /** `type="number"` only. A number or numeric string. */
+  max?: number | string
+  /** `type="number"` only: the ArrowUp and ArrowDown step. Defaults to 1. */
+  step?: number | string
+}
+
+export interface TextareaProps extends TextControlProps {
   minRows?: number
   maxRows?: number
 }
@@ -602,6 +627,18 @@ export type VirtualListShared = AriaProps & {
 }
 
 /** A variable-height list that builds only rows near its viewport. */
+  /**
+   * Like the DOM: not focusable, not a tab stop, no caret, no editing, no
+   * mouse, click or key events, the text in the theme's muted colour, and
+   * reported as disabled to assistive technology. Focus leaves the control
+   * when it becomes disabled.
+   */
+  disabled?: boolean
+  /**
+   * The most UTF-16 code units the user can type or paste. Longer input is
+   * cut to fit. A `value` set from code is kept whole, even when it is longer.
+   */
+  maxLength?: number
 export type VirtualListProps =
   | (VirtualListShared & {
       estimatedItemHeight?: number
@@ -788,6 +825,9 @@ export interface MutationRenderer {
   appendChild(parentId: number, childId: number): void
   insertBefore(parentId: number, childId: number, beforeId: number): void
   setStyle(id: number, style: object): void
+      | "selectText"
+      | "setSelectionRange"
+      | "getTextSelection"
   setText(id: number, content: string): void
   setEventListener(id: number, eventType: string, hasHandler: boolean): void
   setRoot(id: number): void

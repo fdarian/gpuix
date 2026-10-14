@@ -118,6 +118,9 @@ interface NativeTestRendererApi extends NativeRenderer {
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
+  selectText(elementId: number): void
+  setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
+  getTextSelection(elementId: number): { start: number; end: number; direction: string }
   setImagePixels(
     elementId: number,
     width: number,
@@ -803,6 +806,28 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
     this.native.setImagePixels(elementId, width, height, pixels as Buffer, format)
     this.native.flush()
+  selectText(elementId: number): void {
+    this.native.flush()
+    this.native.selectText(elementId)
+    this.native.flush()
+  }
+
+  setSelectionRange(
+    elementId: number,
+    start: number,
+    end: number,
+    direction?: string
+  ): void {
+    this.native.flush()
+    this.native.setSelectionRange(elementId, start, end, direction)
+    this.native.flush()
+  }
+
+  getTextSelection(elementId: number): { start: number; end: number; direction: string } {
+    this.native.flush()
+    return this.native.getTextSelection(elementId)
+  }
+
   }
 
   /** Get the current scroll offset [x, y] or null if element is not scrollable. */

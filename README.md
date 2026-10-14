@@ -1931,6 +1931,53 @@ that height. An explicit `height` still overrides both.
 />
 ```
 
+### Selection, `disabled`, `type` and `maxLength`
+
+A ref to an `<input>` or `<textarea>` has the DOM selection API. Offsets are
+UTF-16 code units, and the getters are synchronous.
+
+```tsx
+const ref = useRef<TextControlInstance>(null) // Solid: a HostElement
+
+<input ref={ref} value={value} onFocus={() => ref.current?.select()} />
+
+ref.current.setSelectionRange(1, 4, 'backward') // direction: 'forward' | 'backward' | 'none'
+ref.current.selectionStart // 1
+ref.current.selectionEnd // 4
+ref.current.selectionDirection // 'backward'
+```
+
+`select()` selects all the text and `setSelectionRange(start, end)` clamps both
+ends to the text; an `end` at or before `start` collapses the selection to
+`end`. Neither moves focus. A selection made from code reports
+`selectionDirection` `'none'` until the user changes it. A call right after a
+controlled `value` update sees the new value, even before the next frame.
+Select-on-focus works with `onFocus`, for keyboard focus and for a click.
+
+`disabled` works like the DOM. The control is not focusable and not a tab stop,
+a click does not focus it, and focus leaves it when it becomes disabled. It
+shows no caret, takes no editing, and gets no `click` or `keyDown` events. Its
+text is painted in the theme's muted colour (`theme.textMuted`), and it is
+reported as disabled to assistive technology.
+
+`type` on an `<input>` is `'text'` (the default), `'password'`, `'number'`,
+`'email'`, `'search'`, `'tel'` or `'url'`. `type` on a `<textarea>` is ignored.
+
+- `'password'` paints one bullet per character. `onChange` and `value` carry
+  the real text. Copy and cut do nothing, double click selects all, and the
+  value is not exposed to assistive technology (the role is `PasswordInput`).
+- `'number'` makes `ArrowUp` and `ArrowDown` step the value by `step` (default
+  1), clamped to `min` and `max`, and report it through `onChange`. Text that
+  is not a number steps from 0. Typing is not restricted and `onChange`
+  reports the raw text, so `'1e'` stays `'1e'`. There is no spinner. `min`,
+  `max` and `step` are ignored for other types.
+- `'search'` is exposed to assistive technology as a search field.
+- `'email'`, `'tel'` and `'url'` behave as `'text'`.
+
+`maxLength` cuts what the user types or pastes so the text stays within that
+many UTF-16 code units. A `value` set from code is kept whole even when it is
+longer; the user can then only delete.
+
 ### Scrollbars
 
 A container with `overflow: 'scroll'` scrolls but draws no scrollbar. Give it a
