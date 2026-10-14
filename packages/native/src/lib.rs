@@ -20,6 +20,7 @@ mod custom_elements;
 mod diff;
 mod element_tree;
 pub mod events;
+mod focus;
 mod markdown;
 mod motion;
 mod renderer;

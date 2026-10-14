@@ -66,7 +66,6 @@ impl Drop for VisualTestState {
                     tree.root_id = None;
                 }
                 view.custom_registry.destroy_all();
-                view.focus_subscriptions.clear();
                 view.focus_handles.clear();
                 cx.notify();
             });
@@ -520,8 +519,8 @@ impl TestGpuixRenderer {
     }
 
     /// Focus an element by its numeric ID.
-    /// The element must have a FocusHandle (created by sync_focus_handles when
-    /// the element has keyDown, keyUp, focus, or blur listeners).
+    /// The element must be DOM-focusable (an enabled input or textarea, or an
+    /// element with a `tabIndex`), which is what gives it a FocusHandle.
     /// Call flush() before this so the element tree and focus handles exist.
     #[napi]
     pub fn focus_element(&self, id: f64) -> Result<()> {
@@ -540,6 +539,33 @@ impl TestGpuixRenderer {
 
             cx.run_until_parked();
             Ok(())
+        })
+    }
+
+    #[napi]
+    pub fn blur_element(&self, id: f64) -> Result<()> {
+        let id = to_element_id(id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| view.blur_element(id, window, cx));
+            })
+            .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            Ok(())
+        })
+    }
+
+    #[napi]
+    pub fn matches_focus(&self, id: f64, selector: String) -> Result<bool> {
+        let id = to_element_id(id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| view.matches_focus(id, &selector, window, cx))
+            })
+            .map_err(|error| Error::from_reason(error.to_string()))?
+            .map_err(Error::from_reason)
         })
     }
 

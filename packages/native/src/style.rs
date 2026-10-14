@@ -269,6 +269,8 @@ pub struct StyleDesc {
     pub active: Option<Box<StyleDesc>>,
     /// While focused after keyboard input, like CSS `:focus-visible`.
     pub focus_visible: Option<Box<StyleDesc>>,
+    /// While this element or a descendant is focused, like CSS `:focus-within`.
+    pub focus_within: Option<Box<StyleDesc>>,
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,

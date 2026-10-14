@@ -39,6 +39,8 @@ interface NativeTestRendererApi extends NativeRenderer {
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
   focusElement(elementId: number): void
+  blurElement(elementId: number): void
+  matchesFocus(elementId: number, selector: string): boolean
   focusNext(): void
   focusPrevious(): void
   getFocusedElementId(): number | null
@@ -668,6 +670,19 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
     this.native.focusElement(elementId)
     this.dispatchNativeEvents()
+  }
+
+  blurElement(elementId: number): void {
+    this.native.flush()
+    this.native.blurElement(elementId)
+    this.dispatchNativeEvents()
+  }
+
+  matchesFocus(elementId: number, selector: string): boolean {
+    this.native.flush()
+    const matches = this.native.matchesFocus(elementId, selector)
+    this.dispatchNativeEvents()
+    return matches
   }
 
   getFocusedElementId(): number | null {

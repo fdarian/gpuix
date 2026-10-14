@@ -109,6 +109,13 @@ export declare class GpuixRenderer {
   /** Open the platform path picker. Returns null when the user cancels. */
   promptForPaths(options?: PathPromptOptions | undefined | null): Promise<Array<string> | null>
   focusElement(elementId: number): void
+  /** `element.blur()`: clear focus when `element_id` is the focused element. */
+  blurElement(elementId: number): void
+  /**
+   * `element.matches(selector)` for `:focus`, `:focus-visible` and
+   * `:focus-within`. Any other selector is an error.
+   */
+  matchesFocus(elementId: number, selector: string): boolean
   /** Move focus to the next GPUI tab stop. */
   focusNext(): void
   /** Move focus to the previous GPUI tab stop. */
@@ -353,11 +360,13 @@ export declare class TestGpuixRenderer {
   simulateMouseExit(x: number, y: number): void
   /**
    * Focus an element by its numeric ID.
-   * The element must have a FocusHandle (created by sync_focus_handles when
-   * the element has keyDown, keyUp, focus, or blur listeners).
+   * The element must be DOM-focusable (an enabled input or textarea, or an
+   * element with a `tabIndex`), which is what gives it a FocusHandle.
    * Call flush() before this so the element tree and focus handles exist.
    */
   focusElement(id: number): void
+  blurElement(id: number): void
+  matchesFocus(id: number, selector: string): boolean
   focusNext(): void
   focusPrevious(): void
   promptForPaths(options?: PathPromptOptions | undefined | null): Promise<Array<string> | null>
@@ -822,6 +831,12 @@ export interface EventPayload {
   pointerId?: number
   /** The DOM `pointerType`. "mouse" for the mouse, empty for a click no pointer made. */
   pointerType?: string
+  /**
+   * Whether the element matches `:focus-visible`: the new focus for `focus`
+   * and `focusIn`, the focus being left for `blur` and `focusOut`.
+   * Populated for: focus, blur, focusIn, focusOut.
+   */
+  focusVisible?: boolean
   modifiers?: EventModifiers
 }
 

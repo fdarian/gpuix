@@ -35,14 +35,13 @@ pub struct CustomRenderContext<'a> {
     pub events: &'a HashSet<String>,
     /// Callback for emitting events back to JS.
     pub event_callback: &'a Option<EventCallback>,
-    /// Pre-created FocusHandle for this element (if it has keyboard/focus listeners).
+    /// Pre-created FocusHandle for this element (if it is DOM-focusable).
     pub focus_handle: Option<&'a gpui::FocusHandle>,
-    /// The control holding keyboard focus and its ancestors. See
-    /// `renderer::apply_focus_visible`.
-    pub keyboard_focus: Option<std::sync::Arc<[u64]>>,
     /// The element and its retained ancestors, for the click a VoiceOver press
     /// makes. Empty unless the element listens for `click`.
     pub click_path: Vec<u64>,
+    /// The DOM focus state for styling. See `renderer::apply_focus_styles`.
+    pub focus_styles: crate::focus::FocusStyles,
     /// Style object from the retained element for layout and appearance.
     pub style: Option<&'a crate::style::StyleDesc>,
     /// Built child elements from the retained tree for this custom node.

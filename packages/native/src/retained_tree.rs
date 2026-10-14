@@ -84,15 +84,20 @@ impl RetainedElement {
             .unwrap_or(false)
     }
 
-    /// Whether the element must own a gpui focus handle: it takes text, is in the
-    /// tab order, or listens for a key or focus event.
+    /// Whether the element must own a gpui focus handle, which is what DOM calls
+    /// focusable: an enabled text control, or any element with a `tabIndex`.
+    /// A key or focus listener does not make an element focusable; an ancestor's
+    /// key listener still hears the keys of a focused descendant.
     pub fn needs_focus(&self) -> bool {
-        matches!(self.element_type.as_str(), "input" | "textarea")
+        crate::focus::is_text_control(&self.element_type) && !self.is_disabled()
             || self.tab_index().is_some()
-            || self.events().contains("keyDown")
-            || self.events().contains("keyUp")
-            || self.events().contains("focus")
-            || self.events().contains("blur")
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        self.custom_props()
+            .get("disabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
     }
 
     pub fn new(id: u64, element_type: String, revision: u64) -> Self {
@@ -504,9 +509,6 @@ impl RetainedTree {
             // Which listeners exist decides how the element is built, though it
             // does not touch any cached text.
             self.dirty |= changed;
-            if changed {
-                self.track_focusable(id);
-            }
         }
     }
 
@@ -520,7 +522,7 @@ impl RetainedTree {
         let mut changed = false;
         let is_highlight = key == "highlight";
         let is_motion = key == "motion";
-        let is_tab_index = key == "tabIndex";
+        let affects_focusability = key == "tabIndex" || key == "disabled";
         let was_declaration = self
             .elements
             .get(&id)
@@ -554,7 +556,7 @@ impl RetainedTree {
         if !changed {
             return;
         }
-        if is_tab_index {
+        if affects_focusability {
             self.track_focusable(id);
         }
         if is_motion {
@@ -1109,21 +1111,20 @@ mod tests {
         tree.append_child(1, 4);
         let focusable =
             |tree: &RetainedTree| tree.focusable_ids.iter().copied().collect::<Vec<_>>();
-        assert_eq!(focusable(&tree), vec![2], "inputs always take focus");
+        assert_eq!(focusable(&tree), vec![2], "enabled inputs take focus");
 
+        // Listeners have nothing to do with focus; a tabIndex does.
         tree.set_event_listener(3, "keyDown".to_string(), true);
-        tree.set_custom_prop(4, "tabIndex".to_string(), serde_json::json!(0));
-        assert_eq!(focusable(&tree), vec![2, 3, 4]);
-
-        // A click listener has nothing to do with focus.
+        tree.set_event_listener(3, "focus".to_string(), true);
         tree.set_event_listener(1, "click".to_string(), true);
-        assert_eq!(focusable(&tree), vec![2, 3, 4]);
+        assert_eq!(focusable(&tree), vec![2]);
+        tree.set_custom_prop(4, "tabIndex".to_string(), serde_json::json!(0));
+        assert_eq!(focusable(&tree), vec![2, 4]);
 
-        // Other listeners keep an element in the set until the last one goes.
-        tree.set_event_listener(3, "blur".to_string(), true);
-        tree.set_event_listener(3, "keyDown".to_string(), false);
-        assert_eq!(focusable(&tree), vec![2, 3, 4]);
-        tree.set_event_listener(3, "blur".to_string(), false);
+        // A disabled input is out of the set, and back in when re-enabled.
+        tree.set_custom_prop(2, "disabled".to_string(), serde_json::json!(true));
+        assert_eq!(focusable(&tree), vec![4]);
+        tree.set_custom_prop(2, "disabled".to_string(), serde_json::json!(false));
         assert_eq!(focusable(&tree), vec![2, 4]);
 
         tree.set_custom_prop(4, "tabIndex".to_string(), serde_json::Value::Null);

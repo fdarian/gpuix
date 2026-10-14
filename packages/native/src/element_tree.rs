@@ -184,6 +184,11 @@ pub struct EventPayload {
     /// The DOM `pointerType`. "mouse" for the mouse, empty for a click no pointer made.
     pub pointer_type: Option<String>,
 
+    /// Whether the element matches `:focus-visible`: the new focus for `focus`
+    /// and `focusIn`, the focus being left for `blur` and `focusOut`.
+    /// Populated for: focus, blur, focusIn, focusOut.
+    pub focus_visible: Option<bool>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -233,6 +238,7 @@ impl Default for EventPayload {
             detail: None,
             pointer_id: None,
             pointer_type: None,
+            focus_visible: None,
             modifiers: None,
         }
     }

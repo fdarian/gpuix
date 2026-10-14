@@ -472,6 +472,12 @@ enum UiCommand {
         response: SyncSender<Option<crate::automation::ElementBounds>>,
     },
     FocusElement(u64),
+    BlurElement(u64),
+    MatchesFocus {
+        id: u64,
+        selector: String,
+        response: SyncSender<std::result::Result<bool, String>>,
+    },
     FocusNext,
     FocusPrevious,
     GetFocusedElementId {
@@ -744,6 +750,19 @@ async fn run_ui_commands(
             UiCommand::FocusElement(id) => window.update(cx, move |view, window, cx| {
                 view.request_focus(id, window, cx);
                 window.refresh();
+            }),
+            UiCommand::BlurElement(id) => window.update(cx, move |view, window, cx| {
+                view.blur_element(id, window, cx);
+                window.refresh();
+            }),
+            UiCommand::MatchesFocus {
+                id,
+                selector,
+                response,
+            } => window.update(cx, move |view, window, cx| {
+                response
+                    .send(view.matches_focus(id, &selector, window, cx))
+                    .ok();
             }),
             UiCommand::FocusNext => window.update(cx, |_view, window, cx| window.focus_next(cx)),
             UiCommand::FocusPrevious => {
@@ -1955,6 +1974,60 @@ impl GpuixRenderer {
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusElement(id));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// `element.blur()`: clear focus when `element_id` is the focused element.
+    #[napi]
+    pub fn blur_element(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, window, cx| {
+            view.blur_element(id, window, cx);
+            window.refresh();
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::BlurElement(id));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// `element.matches(selector)` for `:focus`, `:focus-visible` and
+    /// `:focus-within`. Any other selector is an error.
+    #[napi]
+    pub fn matches_focus(&self, element_id: f64, selector: String) -> Result<bool> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, window, cx| {
+            view.matches_focus(id, &selector, window, cx)
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::MatchesFocus {
+                id,
+                selector,
+                response,
+            })?;
+            return recv_ui_response(receiver, "the focus selector query")?
+                .map_err(Error::from_reason);
+        }
 
         #[cfg(not(any(
             target_os = "macos",
@@ -3417,6 +3490,23 @@ fn apply_web_text_selection(
         Ok(())
     }
 
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = blurElement)]
+    pub fn blur_element(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        update_web_window(move |view, window, cx| view.blur_element(id, window, cx))
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = matchesFocus)]
+    pub fn matches_focus(
+        &self,
+        element_id: f64,
+        selector: String,
+    ) -> Result<bool, wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        update_web_window(move |view, window, cx| view.matches_focus(id, &selector, window, cx))?
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = focusNext)]
     pub fn focus_next(&self) -> Result<(), wasm_bindgen::JsValue> {
         update_web_window(|_view, window, cx| window.focus_next(cx))
@@ -4048,12 +4138,11 @@ pub(crate) struct GpuixView {
     /// event is really queued, so adding the listener later still reports.
     reported_selection: Option<u64>,
     /// Persistent FocusHandles keyed by element ID.
-    /// Created lazily for elements with keyboard or focus/blur listeners.
+    /// Created for every DOM-focusable element (`RetainedElement::needs_focus`).
     /// Handles persist across renders so GPUI maintains focus state.
     pub(crate) focus_handles: HashMap<u64, gpui::FocusHandle>,
     pending_focus_element: Option<PendingFocus>,
-    /// Active focus/blur subscriptions keyed by element and event type.
-    pub(crate) focus_subscriptions: HashMap<(u64, String), gpui::Subscription>,
+    pub(crate) focus: crate::focus::FocusState,
     /// Registry for custom element types (input, editor, diff, etc.).
     /// Stores factories (one per type) and live instances (one per element ID).
     pub(crate) custom_registry: CustomElementRegistry,
@@ -4374,7 +4463,7 @@ impl GpuixView {
             reported_selection: None,
             focus_handles: HashMap::new(),
             pending_focus_element: None,
-            focus_subscriptions: HashMap::new(),
+            focus: crate::focus::FocusState::default(),
             custom_registry: CustomElementRegistry::with_defaults(),
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
@@ -4697,7 +4786,7 @@ impl GpuixView {
                 .map(|(context, _)| context);
         }
 
-        let keyboard_focus = self.keyboard_focus_path(&tree, window, cx);
+        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
         let mut build_ctx = BuildCtx {
             tree: &tree,
@@ -4713,7 +4802,7 @@ impl GpuixView {
             highlights: &mut self.highlights,
             paint_reports: &self.paint_reports,
             highlight_events: &mut highlight_events,
-            keyboard_focus,
+            focus_styles,
             pointer: &self.pointer,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
@@ -4845,8 +4934,8 @@ pub(crate) struct BuildCtx<'a> {
     /// would re-enter the build and emit again. They are flushed once the root
     /// build has returned.
     highlight_events: &'a mut Vec<(u64, usize)>,
-    /// See `GpuixView::keyboard_focus_path`.
-    pub keyboard_focus: Option<Arc<[u64]>>,
+    /// See `crate::focus::FocusState::styles`.
+    pub focus_styles: crate::focus::FocusStyles,
     /// Which elements are hovered or pressed, for their `hover` / `active` styles.
     pub pointer: &'a crate::events::state::PointerState,
 }
@@ -4877,25 +4966,43 @@ pub(crate) struct Inherited {
 /// keyboard focus. Paint only, so it moves nothing.
 const KEYBOARD_FOCUS_DIM: f32 = 0.4;
 
-/// Keyboard focus look for a focusable element, applied right after
-/// `track_focus` (gpui applies focus refinements only to a tracked element).
-///
-/// Two independent states. `focusVisible` styles the element while it has
-/// keyboard focus, like CSS `:focus-visible`. While another control has
-/// keyboard focus, the element dims unless its style sets
-/// `keyboardFocusDim: false`; that also shows at a glance where Tab can go.
-pub(crate) fn apply_focus_visible<E: gpui::InteractiveElement + gpui::Styled>(
+/// `focusWithin`, for any element: an ancestor of the focused element is not
+/// focusable itself, so this cannot wait for `apply_focus_styles`.
+pub(crate) fn apply_focus_within<E: gpui::Styled>(
     mut el: E,
     id: u64,
     style: Option<&StyleDesc>,
-    keyboard_focus: Option<&[u64]>,
+    focus: &crate::focus::FocusStyles,
 ) -> E {
-    // gpui runs the refinement eagerly, so borrowing the style is fine.
-    if let Some(declared) = style.and_then(|style| style.focus_visible.as_deref()) {
-        el = el.focus_visible(|refinement| apply_styles(refinement, declared));
+    if focus.within.contains(&id) {
+        if let Some(declared) = style.and_then(|style| style.focus_within.as_deref()) {
+            el = apply_styles(el, declared);
+        }
+    }
+    el
+}
+
+/// Focus look for a focusable element, applied right after `track_focus`.
+///
+/// `focusWithin` and `focusVisible` follow the DOM focus state in
+/// `crate::focus`, not gpui's live input modality: gpui's `.focus_visible()`
+/// would hide the ring on a text field focused by a click. While a control is
+/// focus-visible, every other element dims unless its style sets
+/// `keyboardFocusDim: false`; that also shows at a glance where Tab can go.
+pub(crate) fn apply_focus_styles<E: gpui::Styled>(
+    mut el: E,
+    id: u64,
+    style: Option<&StyleDesc>,
+    focus: &crate::focus::FocusStyles,
+) -> E {
+    el = apply_focus_within(el, id, style, focus);
+    if focus.visible == Some(id) {
+        if let Some(declared) = style.and_then(|style| style.focus_visible.as_deref()) {
+            el = apply_styles(el, declared);
+        }
     }
     let opted_out = style.and_then(|style| style.keyboard_focus_dim) == Some(false);
-    match keyboard_focus {
+    match focus.dim_path.as_deref() {
         // Opacity applies to the subtree, so the focused element's own
         // focusable ancestors must stay at full opacity too.
         Some(path) if !opted_out && !path.contains(&id) => {
@@ -5269,11 +5376,65 @@ impl GpuixView {
         self.reveal_virtual_list_ancestor(id);
         if let Some(handle) = self.focus_handles.get(&id) {
             self.pending_focus_element = None;
+            self.focus.note_programmatic();
             handle.focus(window, cx);
+            self.observe_focus(window);
         } else {
             self.pending_focus_element = Some(PendingFocus::new(id, window, cx));
         }
         cx.notify();
+    }
+
+    /// `element.blur()`: a no-op unless `id` is the focused element.
+    pub(crate) fn blur_element(&mut self, id: u64, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        self.observe_focus(window);
+        if self.focus.focused() == Some(id) {
+            window.blur();
+            self.observe_focus(window);
+        }
+        cx.notify();
+    }
+
+    /// `element.matches(':focus' | ':focus-visible' | ':focus-within')`.
+    pub(crate) fn matches_focus(
+        &mut self,
+        id: u64,
+        selector: &str,
+        window: &gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> std::result::Result<bool, String> {
+        self.observe_focus(window);
+        let tree = self.tree.lock().unwrap();
+        self.focus.matches(&tree, id, selector)
+    }
+
+    /// Record where window focus is now and emit the events for a move.
+    ///
+    /// The one place focus changes are noticed. Called every frame from
+    /// `sync_focus_handles`, and right after anything that moves focus or asks
+    /// about it, so `focus()` and `matches()` agree without waiting for a frame.
+    /// Never call it from inside a build: it takes the tree lock.
+    pub(crate) fn observe_focus(&mut self, window: &gpui::Window) {
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        self.observe_focus_in(&tree, window);
+    }
+
+    fn observe_focus_in(&mut self, tree: &RetainedTree, window: &gpui::Window) {
+        // gpui reports no focus path while the window is inactive, and so does DOM
+        // (the window's blur event blurs the active element).
+        let current = if window.is_window_active() {
+            self.focused_element_id(window)
+                .filter(|id| tree.focusable_ids.contains(id))
+        } else {
+            None
+        };
+        if let Some(change) = self
+            .focus
+            .observe(current, tree, window.last_input_was_keyboard())
+        {
+            crate::focus::emit_change(&self.event_callback, tree, &change);
+        }
     }
 
     pub(crate) fn focused_element_id(&self, window: &gpui::Window) -> Option<u64> {
@@ -5435,43 +5596,12 @@ impl GpuixView {
         self.schedule_selection_scroll(cx);
     }
 
-    /// Sync focus handles with the current element tree.
-    /// Creates handles for new focusable elements, subscribes on_focus/on_blur,
-    /// and cleans up handles for destroyed elements.
-    /// The control holding focus while the user navigates with the keyboard,
-    /// and its ancestors, or None. Text fields do not count: typing is keyboard
-    /// input too, and dimming the window while someone types is noise. A mouse
-    /// move or a focus change refreshes the window, so it is recomputed each
-    /// frame.
-    fn keyboard_focus_path(
-        &self,
-        tree: &RetainedTree,
-        window: &gpui::Window,
-        cx: &gpui::App,
-    ) -> Option<Arc<[u64]>> {
-        if !tree.keyboard_focus_dim() || !window.last_input_was_keyboard() {
-            return None;
-        }
-        let focused = window.focused(cx)?.id();
-        let (&id, _) = self
-            .focus_handles
-            .iter()
-            .find(|(_, handle)| handle.id() == focused)?;
-        let element = tree.elements.get(&id)?;
-        if matches!(element.element_type.as_str(), "input" | "textarea") {
-            return None;
-        }
-        let path: Vec<u64> = std::iter::successors(Some(id), |id| {
-            tree.elements.get(id).and_then(|element| element.parent)
-        })
-        .collect();
-        Some(path.into())
-    }
-
+    /// Give every DOM-focusable element a gpui focus handle in tab order, report
+    /// focus changes, and drop the handles of elements that are no longer
+    /// focusable.
     fn sync_focus_handles(
         &mut self,
         tree: &RetainedTree,
-        callback: &Option<EventCallback>,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) {
@@ -5484,35 +5614,27 @@ impl GpuixView {
         }
         // Only the focusable elements are visited. This runs every frame, and
         // the rest of the tree is orders of magnitude larger.
-        //
-        // Create handles for elements that need focus but don't have one yet.
         for &id in &tree.focusable_ids {
             let Some(element) = tree.elements.get(&id) else {
                 continue;
             };
-            let tab_index = element.tab_index().or_else(|| {
-                matches!(element.element_type.as_str(), "input" | "textarea").then_some(0)
-            });
+            // A text control without a `tabIndex` is a tab stop at 0.
+            let (tab_index, tab_stop) = element
+                .tab_index()
+                .map_or((0, true), crate::focus::gpui_tab_stop);
 
-            if !self.focus_handles.contains_key(&id) {
-                let handle = match tab_index {
-                    Some(index) => cx.focus_handle().tab_index(index).tab_stop(index >= 0),
-                    None => cx.focus_handle(),
-                };
-                // Focus once, at creation. Re-focusing every frame would
-                // steal focus back from whatever the user clicked next.
-                if element.auto_focus {
-                    handle.focus(window, cx);
-                }
-                self.focus_handles.insert(id, handle);
-            } else if let (Some(handle), Some(index)) =
-                (self.focus_handles.get(&id).cloned(), tab_index)
-            {
-                self.focus_handles
-                    .insert(id, handle.tab_index(index).tab_stop(index >= 0));
-            } else if let Some(handle) = self.focus_handles.get(&id).cloned() {
-                self.focus_handles.insert(id, handle.tab_stop(false));
+            if let Some(handle) = self.focus_handles.get(&id) {
+                handle.clone().tab_index(tab_index).tab_stop(tab_stop);
+                continue;
             }
+            let handle = cx.focus_handle().tab_index(tab_index).tab_stop(tab_stop);
+            // Focus once, at creation. Re-focusing every frame would
+            // steal focus back from whatever the user clicked next.
+            if element.auto_focus {
+                self.focus.note_programmatic();
+                handle.focus(window, cx);
+            }
+            self.focus_handles.insert(id, handle);
         }
 
         // Keep the request until the handle exists. A frame can render before
@@ -5522,42 +5644,24 @@ impl GpuixView {
             .pending_focus_element
             .and_then(|pending| self.focus_handles.get(&pending.id).cloned())
         {
+            self.focus.note_programmatic();
             handle.focus(window, cx);
             self.pending_focus_element = None;
         }
 
-        self.focus_subscriptions.retain(|(id, event), _| {
-            tree.elements
-                .get(id)
-                .is_some_and(|element| element.events().contains(event))
+        // An element that stopped being focusable while focused (`disabled`, or
+        // its `tabIndex` removed) must give up focus; its handle is dropped below.
+        // A destroyed element is not blurred: DOM removes it without an event.
+        let lost_focusability = self.focus_handles.iter().any(|(id, handle)| {
+            !tree.focusable_ids.contains(id)
+                && tree.elements.contains_key(id)
+                && handle.is_focused(window)
         });
-        for &id in &tree.focusable_ids {
-            let (Some(element), Some(handle)) =
-                (tree.elements.get(&id), self.focus_handles.get(&id).cloned())
-            else {
-                continue;
-            };
-            let focus_key = (id, "focus".to_string());
-            if element.events().contains("focus")
-                && !self.focus_subscriptions.contains_key(&focus_key)
-            {
-                let callback = callback.clone();
-                let subscription = cx.on_focus(&handle, window, move |_this, _window, _cx| {
-                    emit_event_full(&callback, id, "focus", |_| {});
-                });
-                self.focus_subscriptions.insert(focus_key, subscription);
-            }
-            let blur_key = (id, "blur".to_string());
-            if element.events().contains("blur")
-                && !self.focus_subscriptions.contains_key(&blur_key)
-            {
-                let callback = callback.clone();
-                let subscription = cx.on_blur(&handle, window, move |_this, _window, _cx| {
-                    emit_event_full(&callback, id, "blur", |_| {});
-                });
-                self.focus_subscriptions.insert(blur_key, subscription);
-            }
+        if lost_focusability {
+            window.blur();
         }
+
+        self.observe_focus_in(tree, window);
 
         // Clean up handles for elements that no longer exist.
         self.focus_handles
@@ -5605,7 +5709,7 @@ impl gpui::Render for GpuixView {
         let callback = self.event_callback.clone();
 
         // Sync focus handles before building elements.
-        self.sync_focus_handles(&tree, &callback, window, cx);
+        self.sync_focus_handles(&tree, window, cx);
 
         // Ensure custom element instances are destroyed when their IDs disappear.
         self.custom_registry
@@ -5652,7 +5756,7 @@ impl gpui::Render for GpuixView {
                 .is_some_and(|element| element.custom_props().contains_key("highlight"))
         });
         let mut highlight_events = Vec::new();
-        let keyboard_focus = self.keyboard_focus_path(&tree, window, cx);
+        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
         let result = match tree.root_id {
             Some(root_id) => {
@@ -5670,7 +5774,7 @@ impl gpui::Render for GpuixView {
                     highlights: &mut self.highlights,
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
-                    keyboard_focus,
+                    focus_styles,
                     pointer: &self.pointer,
                 };
                 build_element(root_id, &mut ctx, window, cx)
@@ -5854,7 +5958,7 @@ pub(crate) fn build_element(
                 events: element.events(),
                 event_callback: ctx.event_callback,
                 focus_handle: ctx.focus_handles.get(&id),
-                keyboard_focus: ctx.keyboard_focus.clone(),
+                focus_styles: ctx.focus_styles.clone(),
                 click_path: click_path(ctx.tree, element),
                 style,
                 children: custom_children,
@@ -6183,15 +6287,9 @@ pub(crate) fn build_host_container(
 
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
-        el = apply_focus_visible(el, element.id, style, ctx.keyboard_focus.as_deref());
-    }
-    if let Some(tab_index) = element
-        .custom_props()
-        .get("tabIndex")
-        .and_then(|value| value.as_i64())
-        .and_then(|index| isize::try_from(index).ok())
-    {
-        el = el.tab_index(tab_index).tab_stop(tab_index >= 0);
+        el = apply_focus_styles(el, element.id, style, &ctx.focus_styles);
+    } else {
+        el = apply_focus_within(el, element.id, style, &ctx.focus_styles);
     }
 
     // React text instances (`createTextInstance`) are also type `text` and
@@ -6280,11 +6378,9 @@ pub(crate) fn build_host_container(
                 });
             }
 
-            // ── Focus / Blur ─────────────────────────────────────
-            // Event emission is handled by FocusHandle subscriptions
-            // set up in GpuixView::sync_focus_handles(). The handle is
-            // attached to this element via .track_focus() above.
-            "focus" | "blur" => {}
+            // ── Focus events ─────────────────────────────────────
+            // Emitted from `GpuixView::observe_focus`, not per element.
+            "focus" | "blur" | "focusIn" | "focusOut" => {}
 
             _ => {}
         }
@@ -6659,8 +6755,8 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
 ///
 /// `hover` and `active` are not applied here: `build_element` folds them into
 /// `style` before any builder runs, for the elements the pointer dispatcher says
-/// are hovered or pressed. `focusVisible` needs the focus handle, so
-/// `apply_focus_visible` applies it where the element calls `track_focus`.
+/// are hovered or pressed. `focusVisible` and `focusWithin` need the focus state, so
+/// `apply_focus_styles` applies it where the element calls `track_focus`.
 pub(crate) fn apply_interactive_styles<E>(el: E, style: &StyleDesc) -> E
 where
     E: gpui::Styled + gpui::StatefulInteractiveElement,

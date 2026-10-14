@@ -56,7 +56,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         line_clamp, text_decoration,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, user_select, selection_color,
-        focus_visible, keyboard_focus_dim,
+        focus_visible, focus_within, keyboard_focus_dim,
     )
 }
 
