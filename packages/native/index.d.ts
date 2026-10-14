@@ -534,7 +534,8 @@ export interface EventPayload {
   elementId: number
   /**
    * Event type string — matches the key used in EVENT_PROPS on the JS side.
-   * e.g. "click", "mouseDown", "mouseEnter", "keyDown", "scroll", etc.
+   * e.g. "click", "mousedown", "mouseenter", "keyDown", "scroll", etc. Pointer,
+   * mouse and drag types are the lowercase DOM names.
    */
   eventType: string
   /** Mouse X position in window coordinates (pixels). */
@@ -543,12 +544,12 @@ export interface EventPayload {
   y?: number
   /**
    * Which mouse button: 0=left, 1=middle, 2=right.
-   * Populated for: mouseDown, mouseUp, click, mouseDownOutside, contextMenu.
+   * Populated for: mousedown, mouseup, click, auxclick, contextmenu, mousedownoutside.
    */
   button?: number
   /**
    * Number of consecutive clicks (1=single, 2=double, 3=triple).
-   * Populated for: mouseDown, mouseUp, click.
+   * Populated for: the click-family and down/up events; `detail` carries the same count.
    */
   clickCount?: number
   /**
@@ -559,7 +560,7 @@ export interface EventPayload {
   /**
    * Which mouse button is currently held during a mouseMove.
    * Same encoding as `button`: 0=left, 1=middle, 2=right.
-   * Populated for: mouseMove.
+   * Populated for: mousemove.
    */
   pressedButton?: number
   /**
@@ -607,7 +608,7 @@ export interface EventPayload {
   touchPhase?: string
   /**
    * true = mouse entered element, false = mouse left element.
-   * Populated for: mouseEnter, mouseLeave.
+   * Populated for: mouseenter, mouseleave.
    */
   hovered?: boolean
   /**
@@ -652,7 +653,7 @@ export interface EventPayload {
   motionGeneration?: number
   /**
    * Absolute filesystem paths from a Finder / OS file drop.
-   * Populated for: fileDrop.
+   * Populated for: drop (an OS file drop).
    */
   paths?: Array<string>
   /**

@@ -25,7 +25,7 @@ use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
 use super::ids::Hit;
-use super::path::{common_ancestor, event_path, path_listens};
+use super::path::{chain_follows_path, common_ancestor, event_path, path_listens};
 use super::state::{PointerState, Press};
 
 const PRIMARY_BUTTON: u32 = 0;
@@ -85,6 +85,9 @@ pub struct Output {
     /// An element that entered or left the hover or active chain has a state
     /// style, so the view must rebuild to restyle it.
     pub restyle: bool,
+    /// GPUI's hit chain and the retained path disagree about the target's
+    /// ancestry. The retained path is what events use; this reports the drift.
+    pub chain_mismatch: bool,
     position: (f64, f64),
     modifiers: EventModifiers,
     buttons: u32,
@@ -219,6 +222,15 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
         .map(|hit| hit.id)
         .find(|id| tree.elements.contains_key(id));
     state.observe(geometric);
+    let chain_mismatch = geometric.is_some_and(|target| {
+        let chain: Vec<u64> = sample
+            .hits
+            .iter()
+            .map(|hit| hit.id)
+            .filter(|id| tree.elements.contains_key(id))
+            .collect();
+        !chain_follows_path(&chain, &event_path(tree, target))
+    });
     if state
         .captured
         .is_some_and(|id| !tree.elements.contains_key(&id))
@@ -284,6 +296,7 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
     Output {
         events: emitter.events,
         restyle,
+        chain_mismatch,
         position: sample.position,
         modifiers: sample.modifiers.clone(),
         buttons: state.buttons,
@@ -592,6 +605,23 @@ mod tests {
         assert_eq!(output.events.len(), 1);
         assert_eq!(output.events[0].path, [3, 2, 1]);
         assert_eq!(output.events[0].target(), 3);
+    }
+
+    #[test]
+    fn the_hit_chain_and_the_retained_path_agree_for_every_shape_in_the_tree() {
+        let tree = tree(&[(1, "mousedown")]);
+        let mut state = PointerState::default();
+        for chain in [
+            vec![3, 2, 1],
+            vec![4, 1],
+            vec![6, 5, 3, 2, 1],
+            vec![6, 3, 1],
+        ] {
+            let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&chain)));
+            assert!(!output.chain_mismatch, "{chain:?}");
+        }
+        let wrong = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 4, 1])));
+        assert!(wrong.chain_mismatch);
     }
 
     #[test]

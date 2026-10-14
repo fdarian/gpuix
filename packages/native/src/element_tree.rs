@@ -24,7 +24,8 @@ pub struct EventPayload {
     pub element_id: f64,
 
     /// Event type string — matches the key used in EVENT_PROPS on the JS side.
-    /// e.g. "click", "mouseDown", "mouseEnter", "keyDown", "scroll", etc.
+    /// e.g. "click", "mousedown", "mouseenter", "keyDown", "scroll", etc. Pointer,
+    /// mouse and drag types are the lowercase DOM names.
     pub event_type: String,
 
     // ── Mouse position ───────────────────────────────────────────────
@@ -35,11 +36,11 @@ pub struct EventPayload {
 
     // ── Mouse button ─────────────────────────────────────────────────
     /// Which mouse button: 0=left, 1=middle, 2=right.
-    /// Populated for: mouseDown, mouseUp, click, mouseDownOutside, contextMenu.
+    /// Populated for: mousedown, mouseup, click, auxclick, contextmenu, mousedownoutside.
     pub button: Option<u32>,
 
     /// Number of consecutive clicks (1=single, 2=double, 3=triple).
-    /// Populated for: mouseDown, mouseUp, click.
+    /// Populated for: the click-family and down/up events; `detail` carries the same count.
     pub click_count: Option<u32>,
 
     /// Whether this is a right-click (convenience for click events).
@@ -48,7 +49,7 @@ pub struct EventPayload {
 
     /// Which mouse button is currently held during a mouseMove.
     /// Same encoding as `button`: 0=left, 1=middle, 2=right.
-    /// Populated for: mouseMove.
+    /// Populated for: mousemove.
     pub pressed_button: Option<u32>,
 
     // ── Keyboard ─────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ pub struct EventPayload {
 
     // ── Hover ────────────────────────────────────────────────────────
     /// true = mouse entered element, false = mouse left element.
-    /// Populated for: mouseEnter, mouseLeave.
+    /// Populated for: mouseenter, mouseleave.
     pub hovered: Option<bool>,
 
     // ── Custom element payloads ──────────────────────────────────────
@@ -134,7 +135,7 @@ pub struct EventPayload {
     pub motion_generation: Option<f64>,
 
     /// Absolute filesystem paths from a Finder / OS file drop.
-    /// Populated for: fileDrop.
+    /// Populated for: drop (an OS file drop).
     pub paths: Option<Vec<String>>,
 
     // ── DOM event propagation ────────────────────────────────────────

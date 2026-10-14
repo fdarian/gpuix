@@ -40,6 +40,14 @@ pub struct Hit {
     pub bounds: Bounds<Pixels>,
 }
 
+/// The host element the pointer is over, without collecting the chain. Painted
+/// every frame to notice a layout that moved under a still pointer.
+pub fn host_hit_target(window: &Window) -> Option<u64> {
+    window
+        .hit_chain()
+        .find_map(|(global_id, _)| global_id.last().and_then(host_id_of))
+}
+
 /// The host elements under the pointer, target first.
 ///
 /// GPUI reports the topmost hitbox and the hitboxes that enclosed it when it was

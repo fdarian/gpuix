@@ -428,7 +428,7 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
-  /** End-to-end: Finder-style file drop through GPUI to `onFileDrop`. */
+  /** End-to-end: Finder-style file drop through GPUI to `onDrop`. */
   nativeSimulateFileDrop(x: number, y: number, paths: string[]): void {
     this.native.flush()
     this.native.simulateFileDrop(x, y, paths)

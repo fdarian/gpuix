@@ -16,7 +16,7 @@ use crate::element_tree::EventModifiers;
 use crate::renderer::GpuixView;
 
 use super::dispatcher::{PointerAction, PointerSample};
-use super::ids::host_hit_chain;
+use super::ids::{host_hit_chain, host_hit_target};
 use super::state::ObservedTarget;
 
 /// The DOM `MouseEvent.button` for a GPUI button.
@@ -127,7 +127,7 @@ pub(crate) fn pointer_frame(
                 );
             });
 
-            let target = host_hit_chain(window).first().map(|hit| hit.id);
+            let target = host_hit_target(window);
             if observed.get().is_some_and(|seen| seen != target) {
                 submit(
                     &view,

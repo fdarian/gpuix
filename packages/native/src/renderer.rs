@@ -4053,6 +4053,12 @@ impl GpuixView {
             let tree = self.tree.lock().unwrap();
             crate::events::dispatcher::dispatch(&mut self.pointer, &tree, &sample)
         };
+        if output.chain_mismatch {
+            log::warn!(
+                "GPUI's hit chain and the retained path of the target disagree: \
+                 a host element is built under a different parent than the tree gives it"
+            );
+        }
         if output.restyle {
             cx.notify();
         }

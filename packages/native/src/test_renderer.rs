@@ -213,6 +213,8 @@ pub struct TestGpuixRenderer {
 impl TestGpuixRenderer {
     #[napi(constructor)]
     pub fn new(width: Option<f64>, height: Option<f64>) -> Result<Self> {
+        // Quiet unless RUST_LOG asks, so a suite can be run for its warnings.
+        let _ = env_logger::try_init();
         let window_size = gpui::size(
             gpui::px(window_dimension(width, DEFAULT_WINDOW_WIDTH, "width")?),
             gpui::px(window_dimension(height, DEFAULT_WINDOW_HEIGHT, "height")?),
