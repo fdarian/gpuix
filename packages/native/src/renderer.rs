@@ -7252,6 +7252,21 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(opacity) = style.opacity {
         el = el.opacity(opacity as f32);
     }
+    // Some(empty) is `none`, which a state style needs in order to clear the base filter.
+    if let Some(filters) = style
+        .filter
+        .as_deref()
+        .and_then(|value| crate::css::filter::parse_resolved(value, colors))
+    {
+        el.style().filter = Some(filters);
+    }
+    if let Some(filters) = style
+        .backdrop_filter
+        .as_deref()
+        .and_then(|value| crate::css::filter::parse_resolved(value, colors))
+    {
+        el.style().backdrop_filter = Some(filters);
+    }
     if let Some(cursor) = style.cursor.as_deref().and_then(crate::style::parse_cursor) {
         el = el.cursor(cursor);
     }

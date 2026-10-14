@@ -7,6 +7,7 @@ pub(crate) mod box_shadow;
 pub(crate) mod color_function;
 pub(crate) mod color_mix;
 pub(crate) mod color_space;
+pub(crate) mod filter;
 pub(crate) mod font_features;
 pub(crate) mod gradient;
 pub(crate) mod position;

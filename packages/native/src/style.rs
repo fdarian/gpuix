@@ -307,6 +307,11 @@ pub struct StyleDesc {
     pub border_bottom_left_radius: Option<f64>,
     pub border_bottom_right_radius: Option<f64>,
     pub box_shadow: Option<BoxShadowValues>,
+    /// CSS `filter`, e.g. `"blur(4px) brightness(1.2)"`. Applied to the element and
+    /// everything in it. An invalid string is ignored.
+    pub filter: Option<String>,
+    /// CSS `backdrop-filter`: the same functions, applied to what is behind the element.
+    pub backdrop_filter: Option<String>,
     /// `"solid"` or `"dashed"`, for every side.
     pub border_style: Option<String>,
     /// Width divided by height, applied to whichever axis is not definite.
@@ -556,6 +561,22 @@ impl StyleDesc {
             })
         {
             followers.box_shadow = self.box_shadow.clone();
+        }
+        if state.filter.is_none()
+            && self
+                .filter
+                .as_deref()
+                .is_some_and(crate::css::filter::follows_current_color)
+        {
+            followers.filter = self.filter.clone();
+        }
+        if state.backdrop_filter.is_none()
+            && self
+                .backdrop_filter
+                .as_deref()
+                .is_some_and(crate::css::filter::follows_current_color)
+        {
+            followers.backdrop_filter = self.backdrop_filter.clone();
         }
         (followers != StyleDesc::default()).then_some(followers)
     }
