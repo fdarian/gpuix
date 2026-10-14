@@ -29,8 +29,8 @@ import type {
   TextInstance,
 } from "../types/host.js"
 import {
-  registerEventHandler,
-  unregisterEventHandler,
+  registerEventListener,
+  unregisterEventListener,
   unregisterEventHandlers,
 } from "./event-registry.js"
 
@@ -103,13 +103,13 @@ function syncEventListeners(container: Container, id: number, props: Props): voi
     const eventType = EVENT_TYPE_BY_PROP.get(propName)
     const handler = record[propName]
     if (eventType && handler) {
-      registerEventHandler(
+      registerEventListener(
         container.eventHandlers,
+        container.renderer,
         id,
         eventType,
         handler as HostEventHandler
       )
-      container.renderer.setEventListener(id, eventType, true)
     }
   }
 }
@@ -132,26 +132,22 @@ function diffEventListeners(
     const oldHandler = previous[propName]
     const newHandler = next[propName]
     if (oldHandler && !newHandler) {
-      unregisterEventHandler(container.eventHandlers, id, eventType)
-      container.renderer.setEventListener(id, eventType, false)
+      unregisterEventListener(container.eventHandlers, container.renderer, id, eventType)
     } else if (newHandler && newHandler !== oldHandler) {
-      registerEventHandler(
+      registerEventListener(
         container.eventHandlers,
+        container.renderer,
         id,
         eventType,
         newHandler as HostEventHandler
       )
-      if (!oldHandler) {
-        container.renderer.setEventListener(id, eventType, true)
-      }
     }
   }
   for (const propName in previous) {
     if (propName in next) continue
     const eventType = EVENT_TYPE_BY_PROP.get(propName)
     if (eventType && previous[propName]) {
-      unregisterEventHandler(container.eventHandlers, id, eventType)
-      container.renderer.setEventListener(id, eventType, false)
+      unregisterEventListener(container.eventHandlers, container.renderer, id, eventType)
     }
   }
 }

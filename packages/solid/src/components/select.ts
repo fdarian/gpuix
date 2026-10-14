@@ -8,8 +8,7 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
-import type { HostProps, KeyEvent } from "@gpuix/native/host"
+import type { HostMouseEvent, HostPointerEvent, HostProps, KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"
@@ -160,7 +159,7 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
           placeholder: state.value() === undefined,
         })
       },
-      onClick(event: EventPayload) {
+      onClick(event: HostPointerEvent) {
         props.onClick?.(event)
         if (!disabled()) state.setOpen(!state.open())
       },
@@ -255,11 +254,11 @@ export function SelectItem(props: SelectItemProps): JSX.Element {
     props: {
       ...props,
       get style() { return resolveStyle(props.style, itemState()) },
-      onMouseEnter(event: EventPayload) {
+      onMouseEnter(event: HostMouseEvent) {
         props.onMouseEnter?.(event)
         if (!itemState().disabled) state.setActive(props.value)
       },
-      onClick(event: EventPayload) {
+      onClick(event: HostPointerEvent) {
         props.onClick?.(event)
         if (!itemState().disabled) state.select(props.value)
       },

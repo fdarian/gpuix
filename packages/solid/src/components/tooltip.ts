@@ -8,7 +8,7 @@ import {
   type JSX,
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import type { HostProps } from "@gpuix/native/host"
+import type { HostMouseEvent, HostPointerEvent, HostProps } from "@gpuix/native/host"
 import { jsx } from "../jsx-runtime.js"
 import {
   FloatingLayer,
@@ -132,10 +132,10 @@ export function TooltipTrigger(props: TooltipTriggerProps): JSX.Element {
     children: props.children,
     props: {
       ...props,
-      onMouseEnter(event: EventPayload) { props.onMouseEnter?.(event); state.scheduleOpen() },
-      onMouseLeave(event: EventPayload) { props.onMouseLeave?.(event); state.scheduleClose() },
-      onMouseDown(event: EventPayload) { props.onMouseDown?.(event); state.close() },
-      onClick(event: EventPayload) { props.onClick?.(event); state.close() },
+      onMouseEnter(event: HostMouseEvent) { props.onMouseEnter?.(event); state.scheduleOpen() },
+      onMouseLeave(event: HostMouseEvent) { props.onMouseLeave?.(event); state.scheduleClose() },
+      onMouseDown(event: HostMouseEvent) { props.onMouseDown?.(event); state.close() },
+      onClick(event: HostPointerEvent) { props.onClick?.(event); state.close() },
       onFocus(event: EventPayload) { props.onFocus?.(event); state.openNow() },
       onBlur(event: EventPayload) { props.onBlur?.(event); state.close() },
     },

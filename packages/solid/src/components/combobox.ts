@@ -9,7 +9,7 @@ import {
   type JSX,
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import type { HostProps, InputProps, KeyEvent } from "@gpuix/native/host"
+import type { HostMouseEvent, HostPointerEvent, HostProps, InputProps, KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"
@@ -179,7 +179,7 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
     get value() { return state.input() },
     get readOnly() { return disabled() || props.readOnly },
     get autoFocus() { return state.open() },
-    onClick(event: EventPayload) {
+    onClick(event: HostPointerEvent) {
       props.onClick?.(event)
       if (!disabled()) state.setOpen(true)
     },
@@ -224,7 +224,7 @@ export function ComboboxTrigger(props: ComboboxTriggerProps): JSX.Element {
     props: {
       ...props,
       get tabIndex() { return disabled() ? -1 : props.tabIndex },
-      onClick(event: EventPayload) {
+      onClick(event: HostPointerEvent) {
         props.onClick?.(event)
         if (!disabled()) state.setOpen(!state.open())
       },
@@ -309,11 +309,11 @@ export function ComboboxItem(props: ComboboxItemProps): JSX.Element {
     props: {
       ...props,
       get style() { return resolveStyle(props.style, itemState()) },
-      onMouseEnter(event: EventPayload) {
+      onMouseEnter(event: HostMouseEvent) {
         props.onMouseEnter?.(event)
         if (!itemState().disabled) state.setActive(state.filtered().indexOf(props.value))
       },
-      onClick(event: EventPayload) {
+      onClick(event: HostPointerEvent) {
         props.onClick?.(event)
         if (!itemState().disabled) state.select(props.value)
       },

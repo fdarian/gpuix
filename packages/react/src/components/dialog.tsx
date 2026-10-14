@@ -8,9 +8,8 @@ import React, {
   useRef,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
 import { resolveFocusTarget } from "@gpuix/native/host"
-import type { FocusTarget, KeyEvent, Props, PublicInstance } from "../types/host.js"
+import type { FocusTarget, HostMouseEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
 import { useGpuix } from "../hooks/use-gpuix.js"
 import { buttonProps } from "./button.js"
 import {
@@ -157,7 +156,7 @@ export const DialogBackdrop = forwardRef<PublicInstance, DialogBackdropProps>(
         {...props}
         ref={ref}
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, ...style }}
-        onMouseDown={(event: EventPayload) => {
+        onMouseDown={(event: HostMouseEvent) => {
           onMouseDown?.(event)
           if (!context.disablePointerDismissal) context.setOpen(false)
         }}

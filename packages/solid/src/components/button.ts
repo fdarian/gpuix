@@ -1,8 +1,7 @@
 /** Headless Base UI-shaped Button: a focusable `div` that acts like `<button>`. */
 
 import { splitProps, type JSX } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
-import type { HostProps, KeyEvent } from "@gpuix/native/host"
+import type { HostPointerEvent, HostProps, KeyEvent } from "@gpuix/native/host"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 
 export interface ButtonState {
@@ -13,10 +12,19 @@ export interface ButtonBehavior {
   disabled?: boolean
   /** Keep a disabled button in the Tab order, for example while it saves. */
   focusableWhenDisabled?: boolean
-  onClick?: (event: EventPayload) => void
+  onClick?: (event: HostPointerEvent) => void
   onKeyDown?: (event: KeyEvent) => void
   onKeyUp?: (event: KeyEvent) => void
   tabIndex?: number
+}
+
+/**
+ * Enter and Space activate a button through `onClick` with the key event, which
+ * has no `target` or `path`. It is not a DOM click, and handlers that read
+ * those fields see them missing on keyboard activation.
+ */
+function asClickEvent(event: KeyEvent): HostPointerEvent {
+  return event as unknown as HostPointerEvent
 }
 
 /**
@@ -33,20 +41,20 @@ export function buttonProps(behavior: ButtonBehavior): Record<string, unknown> {
     get tabIndex() {
       return disabled() && !behavior.focusableWhenDisabled ? -1 : behavior.tabIndex
     },
-    onClick(event: EventPayload) {
+    onClick(event: HostPointerEvent) {
       if (!disabled()) behavior.onClick?.(event)
     },
     onKeyDown(event: KeyEvent) {
       behavior.onKeyDown?.(event)
       if (disabled() || event.defaultPrevented) return
-      if (event.key === "enter" && !event.isHeld) behavior.onClick?.(event)
+      if (event.key === "enter" && !event.isHeld) behavior.onClick?.(asClickEvent(event))
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === "space") event.preventDefault()
     },
     onKeyUp(event: KeyEvent) {
       behavior.onKeyUp?.(event)
       if (!disabled() && !event.defaultPrevented && event.key === "space") {
-        behavior.onClick?.(event)
+        behavior.onClick?.(asClickEvent(event))
       }
     },
   }

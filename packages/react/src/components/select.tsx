@@ -11,8 +11,7 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
-import type { KeyEvent, Props, PublicInstance } from "../types/host.js"
+import type { HostMouseEvent, HostPointerEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
 import { useGpuix } from "../hooks/use-gpuix.js"
 import {
   FloatingLayer,
@@ -362,11 +361,11 @@ export const SelectItem = forwardRef<PublicInstance, SelectItemProps>(
       context.registerItem({ value, disabled, mounted: true })
       return () => context.registerItem({ value, disabled, mounted: false })
     }, [context.registerItem, value, disabled])
-    const onItemMouseEnter = (event: EventPayload) => {
+    const onItemMouseEnter = (event: HostMouseEvent) => {
       onMouseEnter?.(event)
       if (!disabled && !context.disabled) context.setActiveValue(value)
     }
-    const onItemClick = (event: EventPayload) => {
+    const onItemClick = (event: HostPointerEvent) => {
       onClick?.(event)
       if (!disabled && !context.disabled) context.selectValue(value)
     }

@@ -3233,11 +3233,14 @@ text imports no longer need a runtime flag.
 |-------|-------|----------------|
 | Click | `onClick` | `x`, `y`, `button`, `clickCount`, `isRightClick`, `modifiers` — primary button only |
 | Aux click | `onAuxClick` | `x`, `y`, `clickCount`, `isRightClick`, `modifiers` — non-primary buttons |
-| Mouse down | `onMouseDown` | `x`, `y`, `button`, `clickCount`, `modifiers` |
-| Mouse up | `onMouseUp` | `x`, `y`, `button`, `clickCount`, `modifiers` |
-| Mouse enter | `onMouseEnter` | `hovered` |
-| Mouse leave | `onMouseLeave` | `hovered` |
+| Double click | `onDoubleClick` | as `onClick` |
+| Context menu | `onContextMenu` | as `onClick` |
+| Mouse down / up | `onMouseDown`, `onMouseUp` | `x`, `y`, `button`, `clickCount`, `modifiers` |
 | Mouse move | `onMouseMove` | `x`, `y`, `pressedButton`, `modifiers` |
+| Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `hovered` — do not bubble |
+| Mouse over / out | `onMouseOver`, `onMouseOut` | as `onMouseMove` — bubble |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut`, `onPointerCancel`, `onGotPointerCapture`, `onLostPointerCapture` | the mouse fields, plus `pointerId` and `pointerType` |
+| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, plus `dataTransfer` |
 | Click outside | `onMouseDownOutside` | `x`, `y`, `button`, `modifiers` |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
@@ -3246,7 +3249,6 @@ text imports no longer need a runtime flag.
 | Scroll | `onScroll` | `deltaX`, `deltaY`, `precise`, `touchPhase`, `modifiers` |
 | Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only |
-| File drop | `onFileDrop` | `paths`, `x`, `y` — Unicode filesystem paths from Finder or the OS |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
 | Submit | `onSubmit` | `value` — `<input>` always, `<textarea>` when `onSubmit` is set |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
@@ -3256,23 +3258,25 @@ text imports no longer need a runtime flag.
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
 | Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
 
-A Finder or OS file drop lands on the hovered element that lists
-**`onFileDrop`**. `paths` is an array of absolute Unicode filesystem paths.
-`x` and `y` are the drop point in window pixels. An empty drop, or a drop
-that contains a non-Unicode path, does not fire.
+Every pointer, mouse and drag handler also has a capture-phase twin:
+`onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
+`onMouseDownOutside` is gpuix's own event and has none.
 
-Put the listener on a **`div`**, **`text`**, **`img`**, **`svg`**, **`input`**,
-**`textarea`**, **`code`**, **`markdown`**, **`diff`**, or **`anchored`**.
-`<virtual-list>` does not take this event. Wrap it:
+Events are DOM-shaped and propagate like the DOM. A handler receives
+`target` and `currentTarget` (element ids), `eventPhase`, `bubbles`,
+`cancelable`, `defaultPrevented`, `stopPropagation()`,
+`stopImmediatePropagation()` and `preventDefault()`, plus `clientX`/`clientY`,
+`offsetX`/`offsetY`, `button`, `buttons`, `detail`, `relatedTarget`,
+`movementX`/`movementY` and `modifiers` where the event has them. Capture
+handlers run from the root down to the target, then the target's handlers,
+then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
+`pointerleave` do not bubble. Event types are the lowercase DOM names
+(`event.type === "pointerdown"`).
 
-```tsx
-<div
-  onFileDrop={(event) => openFiles(event.paths ?? [])}
-  style={{ width: 400, height: 300 }}
->
-  <virtual-list estimatedItemHeight={24}>{rows}</virtual-list>
-</div>
-```
+**`onFileDrop` is removed.** A Finder or OS file drop is a `drop` event: use
+**`onDrop`** and read `event.dataTransfer.files`, whose entries carry `path`,
+`name`, `size`, `type` and `lastModified`. Native emits `drop` along with the
+rest of the pointer event model; until then file drops are not delivered.
 
 **`onScroll`** reports wheel input: the delta, before GPUI has applied it.
 **`onScrollChange`** reports the result, after any cause: the wheel, a

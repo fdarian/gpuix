@@ -2,7 +2,9 @@ import type { EventPayload } from "@gpuix/native"
 import {
   createRendererState,
   registerEventHandler,
+  registerEventListener,
   unregisterEventHandler,
+  unregisterEventListener,
   unregisterEventHandlers,
 } from "@gpuix/native/host"
 import type {
@@ -50,7 +52,9 @@ export function handleGpuixEvent(
 
 export {
   registerEventHandler,
+  registerEventListener,
   unregisterEventHandler,
+  unregisterEventListener,
   unregisterEventHandlers,
 }
 

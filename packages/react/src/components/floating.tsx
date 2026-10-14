@@ -14,7 +14,7 @@ import React, {
 } from "react"
 import type { ReactElement, ReactNode, Ref } from "react"
 import type { EventPayload } from "@gpuix/native"
-import { pushDismissLayer } from "@gpuix/native/host"
+import { EVENT_PROP_NAMES, pushDismissLayer } from "@gpuix/native/host"
 import type {
   DismissLayer,
   KeyEvent,
@@ -213,6 +213,20 @@ function composeHandlers<Event extends EventPayload>(
   }
 }
 
+/** Every handler prop, capture variants included, runs the child's handler and then the part's. */
+function composeEventHandlers(merged: Props, childProps: Props, props: Props): void {
+  const target = merged as Record<string, unknown>
+  const own = childProps as Record<string, unknown>
+  const part = props as Record<string, unknown>
+  for (const propName of EVENT_PROP_NAMES) {
+    const composed = composeHandlers(
+      own[propName] as ((event: EventPayload) => void) | undefined,
+      part[propName] as ((event: EventPayload) => void) | undefined
+    )
+    if (composed) target[propName] = composed
+  }
+}
+
 /**
  * Render `props` on a `div`, or merge them into the single `asChild` element.
  *
@@ -249,24 +263,8 @@ export function renderSlot({
     ...childProps,
     ...props,
     style: mergeStyles(childProps.style, props.style),
-    onClick: composeHandlers(childProps.onClick, props.onClick),
-    onMouseDown: composeHandlers(childProps.onMouseDown, props.onMouseDown),
-    onMouseUp: composeHandlers(childProps.onMouseUp, props.onMouseUp),
-    onMouseEnter: composeHandlers(childProps.onMouseEnter, props.onMouseEnter),
-    onMouseLeave: composeHandlers(childProps.onMouseLeave, props.onMouseLeave),
-    onMouseMove: composeHandlers(childProps.onMouseMove, props.onMouseMove),
-    onMouseDownOutside: composeHandlers(
-      childProps.onMouseDownOutside,
-      props.onMouseDownOutside
-    ),
-    onKeyDown: composeHandlers(childProps.onKeyDown, props.onKeyDown),
-    onKeyUp: composeHandlers(childProps.onKeyUp, props.onKeyUp),
-    onFocus: composeHandlers(childProps.onFocus, props.onFocus),
-    onBlur: composeHandlers(childProps.onBlur, props.onBlur),
-    onScroll: composeHandlers(childProps.onScroll, props.onScroll),
-    onChange: composeHandlers(childProps.onChange, props.onChange),
-    onSubmit: composeHandlers(childProps.onSubmit, props.onSubmit),
   }
+  composeEventHandlers(merged, childProps, props)
   merged.tabIndex = props.tabIndex ?? childProps.tabIndex ?? defaultTabIndex
   const childRef = getElementRef(child)
   if (childRef || ref) merged.ref = mergeRefs(childRef, ref)

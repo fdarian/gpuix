@@ -5,10 +5,10 @@ import {
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
   UNIVERSAL_PROPS,
-  registerEventHandler,
+  registerEventListener,
   serializeCustomProp,
-  unregisterEventHandler,
   unregisterEventHandlers,
+  unregisterEventListener,
 } from "@gpuix/native/host"
 import type {
   ElementType,
@@ -172,19 +172,16 @@ export function setHostProperty(
     if (isEventHandler(value)) node.props.set(name, value)
     else node.props.delete(name)
     if (!node.root || !node.mounted) return
-    if (isEventHandler(previous)) {
-      unregisterEventHandler(node.root.eventHandlers, node.id, eventType)
-    }
     if (isEventHandler(value)) {
-      registerEventHandler(
+      registerEventListener(
         node.root.eventHandlers,
+        node.root.mutations,
         node.id,
         eventType,
         value
       )
-    }
-    if (isEventHandler(previous) !== isEventHandler(value)) {
-      node.root.mutations.setEventListener(node.id, eventType, isEventHandler(value))
+    } else if (isEventHandler(previous)) {
+      unregisterEventListener(node.root.eventHandlers, node.root.mutations, node.id, eventType)
     }
     return
   }
@@ -214,8 +211,7 @@ function mount(root: HostRoot, node: HostNode): void {
     for (const [name, value] of node.props) {
       const eventType = eventTypeFor(name)
       if (eventType && isEventHandler(value)) {
-        registerEventHandler(root.eventHandlers, node.id, eventType, value)
-        root.mutations.setEventListener(node.id, eventType, true)
+        registerEventListener(root.eventHandlers, root.mutations, node.id, eventType, value)
       } else if (!EVENT_PROP_NAMES.has(name) && customPropAllowed(node, name)) {
         root.mutations.setCustomProp(
           node.id,
