@@ -1491,46 +1491,33 @@ await app.clock.resume()
 
 ## Scrolling
 
-Containers with `overflow: "scroll"` become natively scrollable. GPUI handles scroll physics, clipping, and offset persistence automatically.
+A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. Scrollbars are overlays, so the two values differ in nothing. `"hidden"` and `"clip"` clip without scrolling, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
+
+Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its children, their padding, and its own padding and border reach, measured from where the padding box starts. Content that fits never scrolls, and neither does an empty scroller.
 
 Plain scroll containers still build every child. Use `<virtual-list>` below when the collection can grow large.
 
-> [!IMPORTANT]
-> **Nested scrolling is not supported.** One parent may scroll. An inner
-> `overflow: "scroll"`, `<virtual-list>`, or `<diff>` must not. GPUI gives both
-> hitboxes the same wheel event, so the inner list steals the gesture.
->
-> Keep long inner content in that parent. Collapse it behind an **expandable**
-> (preview plus Show more) instead of giving the child its own viewport.
->
-> Horizontal overflow is the exception. `overflowX: "scroll"` on a wide child
-> (a code row, a table) does not steal the vertical wheel. GPUIX lays that
-> scroller out as a flex viewport with `minWidth: 0`. The wide child must not
-> shrink: set `flexShrink: 0` or a definite width. Swipe on **X** to pan.
-> A vertical wheel stays on the parent.
+### The wheel
+
+The wheel goes to the innermost scroller under the pointer that can still scroll in the direction of the delta. Each axis is independent: a scroller takes the part of the delta it can use, and the rest goes to the scroller around it. A scroller at its limit hands the whole delta on, which is how a list inside a page lets you carry on scrolling the page. Nested scrollers work. The exception is `<virtual-list>`, which takes every tick under the pointer itself and neither receives nor hands on a delta, so keep other scrollers out of it and it out of other scrollers.
+
+`overscrollBehavior` (and `overscrollBehaviorX` / `Y`) decides what happens to the delta a scroller cannot use. `"auto"`, the default, passes it on. `"contain"` and `"none"` keep it, so the page behind does not move.
+
+A trackpad gesture stays on the scroller that took its first delta, momentum included, so a fling does not jump to the parent when the inner list runs out. A mouse wheel does the same until it pauses for half a second or the pointer moves. `onWheel` listeners on every element under the pointer still run, whichever scroller moved.
 
 ```tsx
-function Expandable({
-  preview,
-  children,
-}: {
-  preview: React.ReactNode
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {open ? children : preview}
-      {!open && <div onClick={() => setOpen(true)}>Show more</div>}
-    </div>
-  )
-}
+<div style={{ height: 300, overflow: 'auto' }}>
+  <div style={{ height: 120, overflow: 'auto', overscrollBehavior: 'contain' }}>
+    {/* scrolls itself, and never scrolls the outer list from its ends */}
+  </div>
+  {items}
+</div>
 ```
 
 ```tsx
 function ScrollableList() {
   return (
-    <div style={{ height: 300, overflow: 'scroll' }}>
+    <div style={{ height: 300, overflow: 'auto' }}>
       {items.map((item, i) => (
         <div key={i} style={{ height: 60, padding: 12 }}>
           {item.name}
@@ -1541,12 +1528,7 @@ function ScrollableList() {
 }
 ```
 
-Per-axis scrolling: use `overflowX: "scroll"` or `overflowY: "scroll"`.
-`overflow: "scroll"` scrolls both axes at once from a single diagonal gesture,
-like a browser.
-
-A flex column stretches its children to the cross axis, so a two-axis container
-needs its rows to state a width. Without one there is nothing to pan on **X**:
+`overflow: "scroll"` scrolls both axes at once from a single diagonal gesture, like a browser. A flex column stretches its children to the cross axis, so a two-axis container needs its rows to state a width. Without one there is nothing to pan on **X**:
 
 ```tsx
 <div style={{ width: 260, height: 220, overflow: 'scroll', display: 'flex', flexDirection: 'column' }}>
@@ -1558,6 +1540,72 @@ needs its rows to state a width. Without one there is nothing to pan on **X**:
 </div>
 ```
 
+Flex items shrink as in CSS, so a row of items in a flex scroller needs `flexShrink: 0` or a definite width to overflow.
+
+### Events
+
+`onWheel` is the DOM `wheel`: every tick over the element, before any scroller applies it, with `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY` and `modifiers`. `deltaY` is positive for down, and `deltaMode` is always `0`: a mouse wheel's lines are converted to pixels at 20 px a line. `touchPhase` and `precise` say how the tick arrived.
+
+`onScroll` is the DOM `scroll`: it fires whenever the scroll offset changes, whatever moved it: the wheel, a scrollbar drag, the keyboard, `scrollTo`, `scrollIntoView`, a smooth animation, or content that shrank under the offset. The payload is `{ scrollTop, scrollLeft }` of the target, and it does not bubble. The position at the first paint is not reported, only movement after it. It does not fire for `<virtual-list>`; use `onVisibleRange`.
+
+### Keyboard
+
+Scrolling keys are a default action, like Tab: they run after every `onKeyDown` handler and do nothing if one called `event.preventDefault()`. The arrow keys scroll 40 px, PageUp, PageDown and Space (Shift+Space goes back) 90% of the client size, and Home and End go to the ends. They scroll the innermost scrollable ancestor of the focused element that can move that way, then the one around it. With nothing focused they scroll the scroller under the pointer. Ctrl, Alt and Cmd turn them off.
+
+A focused `<input>` or `<textarea>` keeps its keys, and Space on a focused element with `onClick` activates it instead of scrolling. A handler that wants an arrow key for itself, like a listbox moving a highlight, must call `preventDefault()`, as in the DOM.
+
+### Reading and moving a scroller
+
+A host ref has the DOM's scroll members. Reads come from the last layout.
+
+```tsx
+function ProgrammaticScroll() {
+  const list = useRef<PublicInstance>(null)
+  const lastItem = useRef<PublicInstance>(null)
+
+  return (
+    <>
+      <div ref={list} style={{ height: 200, overflow: 'auto' }}>
+        {items.map((item, i) => (
+          <div key={i} ref={i === items.length - 1 ? lastItem : undefined}>
+            {item}
+          </div>
+        ))}
+      </div>
+      <div onClick={() => lastItem.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })}>
+        Jump to last
+      </div>
+      <div onClick={() => list.current?.scrollTo({ top: 0 })}>Back to top</div>
+    </>
+  )
+}
+```
+
+| Member | |
+|---|---|
+| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range. |
+| `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. |
+| `clientWidth`, `clientHeight` | The padding box. Overlay scrollbars take nothing from it. |
+| `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. |
+| `scrollBy({ top, left, behavior })`, `scrollBy(dx, dy)` | Relative to the current position. |
+| `scrollIntoView({ block, inline, behavior })` | `block` defaults to `"start"` and `inline` to `"nearest"`; each takes `"start"`, `"center"`, `"end"` or `"nearest"`. `scrollIntoView(false)` aligns the end. |
+
+`scrollIntoView` works for a descendant at any depth and scrolls every scrollable ancestor, outermost last, as the DOM does. It aligns by the element's laid-out box, not by its index among its siblings. Inside a `<virtual-list>` it scrolls to the row that holds the element and aligns that row.
+
+`behavior` is `"instant"`, `"smooth"` or `"auto"`. With `"auto"`, or nothing, a scroller follows its `scrollBehavior` style. `scrollBehavior: "smooth"` makes `scrollTo` and `scrollIntoView` animate over about 300 to 450 ms (longer for longer distances), firing `onScroll` each frame. A wheel tick, another `scrollTo` or a drag ends the animation. An explicit `behavior` always wins.
+
+An element that `overflow: "hidden"` clips has no scroll range: GPUI does not scroll a clipped container. Use `"auto"` and hide the scrollbar by not giving it a `scrollbarColor`.
+
+The same calls exist on the renderer for code that holds an id. `scrollTo` takes a negative offset there, the way GPUI keeps it:
+
+```tsx
+renderer.scrollTo(elementId, x, y, behavior?)             // set the offset directly
+renderer.scrollToItem(elementId, index)                    // a virtual list's row
+renderer.scrollIntoView(elementId, block?, inline?, behavior?)
+renderer.getScrollOffset(elementId)                        // [x, y], or null
+renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]
+```
+
 ### Panes that must move together
 
 A native scroll container cannot drive a **frozen header**. GPUI moves the
@@ -1565,7 +1613,7 @@ container on the wheel frame, and the JavaScript callback that would move the
 header arrives a frame later, so the header tears away during a fast pan.
 
 When two panes must stay locked to the pixel, own the offset in React: put one
-`onScroll` listener on a non-scrolling parent, keep `scrollX` and `scrollY` in
+`onWheel` listener on a non-scrolling parent, keep `scrollX` and `scrollY` in
 state, and translate each pane's content with an absolutely positioned wrapper.
 Zed does the same; the editor owns its scroll position and paints the gutter and
 the text from it.
@@ -1587,34 +1635,6 @@ Keep the moving subtree in a `memo` component whose props do not change during a
 pan. The wheel then costs a handful of style mutations, not one per row. The
 [timeline example](./examples/timeline.tsx) does this for a ruler, a track
 column, and a clip grid.
-
-For programmatic scroll, use a host ref. `scrollIntoView()` walks to the nearest
-scroll parent. `scrollTo` and `scrollToItem` still exist on the renderer when
-you already have an id.
-
-```tsx
-function ProgrammaticScroll() {
-  const lastItem = useRef<PublicInstance>(null)
-
-  return (
-    <>
-      <div style={{ height: 200, overflow: 'scroll' }}>
-        {items.map((item, i) => (
-          <div key={i} ref={i === items.length - 1 ? lastItem : undefined}>
-            {item}
-          </div>
-        ))}
-      </div>
-      <div onClick={() => lastItem.current?.scrollIntoView?.()}>Jump to last</div>
-    </>
-  )
-}
-
-renderer.scrollTo(elementId, x, y)        // set offset directly
-renderer.scrollToItem(elementId, index)   // scroll child into view
-renderer.scrollIntoView(elementId)        // nearest scroll parent
-renderer.getScrollOffset(elementId)       // returns [x, y] or null
-```
 
 ## Virtual lists
 
@@ -1702,7 +1722,7 @@ Each **direct host child** is one virtual row. Give every row a stable React key
 </virtual-list>
 ```
 
-A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. Those children must not scroll. Nested scrolling is not supported; see [Scrolling](#scrolling).
+A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. Those children must not scroll: a `<virtual-list>` takes every wheel tick under the pointer itself and does not hand any to the scrollers around it or inside it (see [Scrolling](#scrolling)).
 
 ### Chat tail behavior
 
@@ -1889,10 +1909,6 @@ function ChatApp() {
 `turns` is a new array only when a message arrives. Sidebar and draft updates
 leave that reference alone, so `memo` skips the map. The chat example uses
 this pattern.
-
-`overflowX: "scroll"` on a wide child must not steal the vertical wheel.
-GPUIX sets `restrict_scroll_to_axis` on that path. Native
-`overflow_x_scroll()` must call the same method.
 
 Turn on `debugFrameOverlay: 'full'` while you scroll. The overlay is **draw
 time**. `8.3 MS` is about 120 Hz.
@@ -3608,8 +3624,8 @@ text imports no longer need a runtime flag.
 | Blur | `onBlur` | `focusVisible` |
 | Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`. Bubbles |
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
-| Scroll | `onScroll` | `deltaX`, `deltaY`, `precise`, `touchPhase`, `modifiers` |
-| Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
+| Wheel | `onWheel` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `precise`, `touchPhase`, `modifiers` |
+| Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
@@ -3735,17 +3751,18 @@ more than 4px (logical pixels, from the press) starts a drag:
 drag image and nothing follows the pointer. The drag stays inside the window: it
 cannot drop on another app, and a drag from another app is a file drag.
 
-**`onScroll`** reports wheel input: the delta, before GPUI has applied it.
-**`onScrollChange`** reports the result, after any cause: the wheel, a
-scrollbar drag, `scrollTo`, `scrollIntoView`, or content that shrank under the
-offset. `scrollX` and `scrollY` are the pair `getScrollOffset` returns, 0 at the
-start and negative as the content scrolls. The offset at the first paint is the
-baseline and is not reported. Use `onVisibleRange` on a `<virtual-list>`.
+**`onWheel`** reports wheel input: the delta, before any scroller has applied it,
+signed like the DOM (`deltaY` is positive for down). **`onScroll`** reports the
+result, after any cause: the wheel, a scrollbar drag, the keyboard, `scrollTo`,
+`scrollIntoView`, a smooth animation, or content that shrank under the offset.
+`scrollTop` and `scrollLeft` are pixels from the start, as on the DOM element. The
+offset at the first paint is the baseline and is not reported. Use
+`onVisibleRange` on a `<virtual-list>`. See [Scrolling](#scrolling).
 
 ```tsx
 <div
   style={{ height: 300, overflow: 'scroll' }}
-  onScrollChange={(event) => setStuck((event.scrollY ?? 0) < -80)}
+  onScroll={(event) => setStuck(event.scrollTop > 80)}
 >
   {rows}
 </div>
@@ -4081,7 +4098,7 @@ order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 />
 ```
 
-**Overflow:** `overflow`, `overflowX`, `overflowY` — `"hidden"` clips content, `"scroll"` creates a native scrollable container with persistent scroll state
+**Overflow:** `overflow`, `overflowX`, `overflowY` — `"hidden"` and `"clip"` clip content, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
 **Text:** `fontSize`, `fontFamily`, `fontWeight`, `textAlign`, `lineHeight`, `whiteSpace`, `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
 
