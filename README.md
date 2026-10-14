@@ -3364,6 +3364,38 @@ is one event per pointer move.
 Capture arms on the **left** button only. A right-button drag is not captured,
 so it ends when the pointer leaves the element.
 
+### Explicit pointer capture
+
+A host ref has `setPointerCapture(pointerId)`, `releasePointerCapture(pointerId)`
+and `hasPointerCapture(pointerId)`, as DOM elements do. The mouse is pointer
+`1`; any other `pointerId`, and an element that is not in the tree, throws.
+
+```tsx
+<div
+  ref={handle}
+  onPointerDown={() => handle.current?.setPointerCapture(1)}
+  onPointerMove={moveDrag}
+  onPointerUp={endDrag}
+/>
+```
+
+While an element holds the capture, pointer and mouse events target it, with the
+event path built from it, wherever the pointer is. `:hover` and the boundary
+events follow, as in Chrome: the chain the pointer was in gets `pointerout` and
+`pointerleave`, the capturing element gets `pointerover` and `pointerenter`.
+`gotpointercapture` fires before the first event the capture changes, and
+`lostpointercapture` right after `pointerup` and `mouseup` once the last button
+is up. Removing the element ends the capture with no event. Explicit capture wins
+over the implicit capture above.
+
+The call crosses from JS to the UI thread without waiting for it, so the capture
+**applies from the next native pointer event**, not within the handler that asked
+for it. `hasPointerCapture` answers for the request, so it is `true` right after
+`setPointerCapture`. Calling `setPointerCapture` with no button down does
+nothing, as in Chrome. `renderer.setPointerCapture(elementId, pointerId)`,
+`releasePointerCapture` and `hasPointerCapture` are the same calls on the
+renderer.
+
 `onClick` fires on primary-button mouse-up. Use **`onAuxClick`** for the others,
 and read `event.isRightClick`. `onMouseDown` and `onMouseUp` see every
 button through `event.button` (`0` left, `1` middle, `2` right).

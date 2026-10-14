@@ -12,6 +12,42 @@ import type {
   WindowSizeHost,
 } from "./host.js"
 
+/**
+ * `setPointerCapture`, `releasePointerCapture` and `hasPointerCapture` for one
+ * host element, as the DOM's `Element` has them. The mouse is `pointerId` 1.
+ *
+ * Capture applies from the next native pointer input, because the call crosses
+ * from JS to the UI thread without waiting for it: calling `setPointerCapture`
+ * from a `pointerdown` handler works, the element receives the events after that
+ * one, and `gotpointercapture` fires before the first of them. `hasPointerCapture`
+ * answers for the request, so it is true right after `setPointerCapture`.
+ * Calling it with no button down does nothing. The calls throw for a `pointerId`
+ * other than 1 and for an element that is not in the tree.
+ */
+export interface PointerCaptureMethods {
+  setPointerCapture(pointerId: number): void
+  releasePointerCapture(pointerId: number): void
+  hasPointerCapture(pointerId: number): boolean
+}
+
+export function createPointerCaptureMethods(
+  renderer: NativeRenderer,
+  elementId: number
+): PointerCaptureMethods {
+  const supported = <Name extends "setPointerCapture" | "releasePointerCapture" | "hasPointerCapture">(
+    name: Name
+  ): NonNullable<NativeRenderer[Name]> => {
+    const method = renderer[name]
+    if (!method) throw new Error(`This renderer does not support ${name}`)
+    return method.bind(renderer) as NonNullable<NativeRenderer[Name]>
+  }
+  return {
+    setPointerCapture: (pointerId) => supported("setPointerCapture")(elementId, pointerId),
+    releasePointerCapture: (pointerId) => supported("releasePointerCapture")(elementId, pointerId),
+    hasPointerCapture: (pointerId) => supported("hasPointerCapture")(elementId, pointerId),
+  }
+}
+
 export interface WindowSize {
   width: number
   height: number

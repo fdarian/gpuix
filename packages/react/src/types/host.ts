@@ -106,6 +106,9 @@ export interface Instance {
   type: ElementType
   props: Props
   scrollIntoView?(): void
+  setPointerCapture?(pointerId: number): void
+  releasePointerCapture?(pointerId: number): void
+  hasPointerCapture?(pointerId: number): boolean
 }
 
 export interface ImgInstance extends Instance {

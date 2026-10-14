@@ -98,6 +98,9 @@ interface NativeTestRendererApi extends NativeRenderer {
   scrollTo(elementId: number, x: number, y: number): void
   scrollToItem(elementId: number, index: number, offsetInItem?: number): void
   scrollIntoView(elementId: number): void
+  setPointerCapture(elementId: number, pointerId: number): void
+  releasePointerCapture(elementId: number, pointerId: number): void
+  hasPointerCapture(elementId: number, pointerId: number): boolean
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
@@ -618,6 +621,19 @@ export class TestRenderer implements NativeRenderer {
     this.native.scrollIntoView(elementId)
     this.dispatchNativeEvents()
     this.native.flush()
+  }
+
+  /** Applies from the next simulated pointer input. See `PointerCaptureMethods`. */
+  setPointerCapture(elementId: number, pointerId: number): void {
+    this.native.setPointerCapture(elementId, pointerId)
+  }
+
+  releasePointerCapture(elementId: number, pointerId: number): void {
+    this.native.releasePointerCapture(elementId, pointerId)
+  }
+
+  hasPointerCapture(elementId: number, pointerId: number): boolean {
+    return this.native.hasPointerCapture(elementId, pointerId)
   }
 
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {

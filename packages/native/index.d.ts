@@ -170,6 +170,16 @@ export declare class GpuixRenderer {
   /** Scroll this element's nearest scroll parent until the element is visible. */
   scrollIntoView(elementId: number): void
   /**
+   * Capture the mouse for `element_id`. Takes effect at the next pointer
+   * input, not before: the dispatcher applies it then and fires
+   * `gotpointercapture`. Ignored while no button is down.
+   */
+  setPointerCapture(elementId: number, pointerId: number): void
+  /** End `element_id`'s capture, if it holds one, at the next pointer input. */
+  releasePointerCapture(elementId: number, pointerId: number): void
+  /** Whether `element_id` holds, or has been asked to hold, the mouse capture. */
+  hasPointerCapture(elementId: number, pointerId: number): boolean
+  /**
    * Paint packed pixels onto an `<img>` host node. `format` is `"rgba"`
    * (default) or `"bgra"`; BGRA skips the per-pixel swizzle.
    */
@@ -400,6 +410,13 @@ export declare class TestGpuixRenderer {
   scrollToItem(elementId: number, index: number, offsetInItem?: number | undefined | null): void
   /** Scroll this element's nearest scroll parent until the element is visible. */
   scrollIntoView(elementId: number): void
+  /**
+   * Capture the mouse for `element_id`; takes effect at the next simulated
+   * pointer input. Ignored while no button is down.
+   */
+  setPointerCapture(elementId: number, pointerId: number): void
+  releasePointerCapture(elementId: number, pointerId: number): void
+  hasPointerCapture(elementId: number, pointerId: number): boolean
   /** Packed `"rgba"` (default) or `"bgra"` pixels onto an `<img>` host node. */
   setImagePixels(elementId: number, width: number, height: number, pixels: Buffer, format?: string | undefined | null): void
   /** Encoded image bytes onto an `<img>` host node. */
