@@ -782,6 +782,10 @@ impl TestGpuixRenderer {
 
     /// Simulate a scroll wheel event at the given position.
     /// delta_x and delta_y are in pixels (negative = scroll up/left).
+    ///
+    /// `phase` is `"started"` (the default, a gesture of its own), `"moved"`, `"ended"` or
+    /// `"cancelled"`. The scroller that took a gesture's first delta keeps the rest of it, so
+    /// continue one with `"moved"`.
     #[napi]
     pub fn simulate_scroll_wheel(
         &self,
@@ -790,8 +794,11 @@ impl TestGpuixRenderer {
         delta_x: f64,
         delta_y: f64,
         modifiers: Option<String>,
+        phase: Option<String>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        let touch_phase =
+            crate::scroll::parse_touch_phase(phase.as_deref()).map_err(Error::from_reason)?;
         with_test_state(|cx, window, _view| {
             cx.simulate_event(
                 window,
@@ -802,7 +809,7 @@ impl TestGpuixRenderer {
                         gpui::px(delta_y as f32),
                     )),
                     modifiers,
-                    touch_phase: gpui::TouchPhase::Moved,
+                    touch_phase,
                 },
             );
             Ok(())
@@ -963,14 +970,27 @@ impl TestGpuixRenderer {
     /// x and y are negative pixel values (scroll down = more negative y).
     /// Call flush() after to apply the offset and re-render.
     #[napi]
-    pub fn scroll_to(&self, element_id: f64, x: f64, y: f64) -> Result<()> {
+    pub fn scroll_to(
+        &self,
+        element_id: f64,
+        x: f64,
+        y: f64,
+        behavior: Option<String>,
+    ) -> Result<()> {
         let id = to_element_id(element_id)?;
+        let behavior =
+            crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
         update_view_or_defer(move |view, _window, _cx| {
             if view.set_virtual_list_offset(id, x as f32, y as f32) {
                 return;
             }
             if let Some(handle) = view.scroll_handles.get(&id) {
-                handle.set_offset(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
+                crate::scroll::scroll_to(
+                    id,
+                    handle,
+                    gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
+                    behavior,
+                );
             }
         })
     }
@@ -1000,12 +1020,22 @@ impl TestGpuixRenderer {
         })
     }
 
-    /// Scroll this element's nearest scroll parent until the element is visible.
+    /// The DOM's `scrollIntoView`: scrolls every scrollable ancestor until the element sits where
+    /// `block` (default `"start"`) and `inline` (default `"nearest"`) ask.
     #[napi]
-    pub fn scroll_into_view(&self, element_id: f64) -> Result<()> {
+    pub fn scroll_into_view(
+        &self,
+        element_id: f64,
+        block: Option<String>,
+        inline: Option<String>,
+        behavior: Option<String>,
+    ) -> Result<()> {
         let id = to_element_id(element_id)?;
+        let options =
+            crate::scroll::IntoView::parse(block.as_deref(), inline.as_deref(), behavior.as_deref())
+                .map_err(Error::from_reason)?;
         update_view_or_defer(move |view, window, cx| {
-            if view.scroll_element_into_view(id) {
+            if view.scroll_element_into_view(id, options) {
                 cx.notify();
                 window.refresh();
             }
@@ -1263,6 +1293,47 @@ impl TestGpuixRenderer {
                 debug_frame_overlay_stats_js(window.debug_frame_overlay_stats())
             })
             .map_err(|e| Error::from_reason(e.to_string()))
+        })
+    }
+
+    /// The default action of a scrolling key. See `GpuixRenderer::scroll_by_key`.
+    #[napi]
+    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<bool> {
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| {
+                    let scrolled = view.scroll_by_key(&key, shift, window);
+                    if scrolled {
+                        cx.notify();
+                        window.refresh();
+                    }
+                    scrolled
+                })
+            })
+            .map_err(|e| Error::from_reason(e.to_string()))
+        })
+    }
+
+    /// The DOM scroll geometry of an element:
+    /// `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null
+    /// if it has not been painted.
+    #[napi]
+    pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
+        let id = to_element_id(element_id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            let result = cx
+                .update_window(window, |_, _window, app| {
+                    view.update(app, |view, _cx| {
+                        let painted = crate::automation::get_bounds(id)
+                            .map(|bounds| (bounds.width as f32, bounds.height as f32));
+                        crate::scroll::metrics(view.scroll_handles.get(&id), painted)
+                            .map(|metrics| metrics.to_vec())
+                    })
+                })
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+            Ok(result)
         })
     }
 

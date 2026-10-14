@@ -763,9 +763,8 @@ impl RetainedTree {
 
         let mut clipped = clipped;
         if let (Some(style), Some(bounds)) = (style, &own_box) {
-            let clips = |axis: Option<&str>| matches!(axis, Some("hidden" | "scroll"));
-            let clip_x = clips(style.overflow_x.as_deref().or(style.overflow.as_deref()));
-            let clip_y = clips(style.overflow_y.as_deref().or(style.overflow.as_deref()));
+            let axes = crate::scroll::Axes::of(style);
+            let (clip_x, clip_y) = (axes.x.clips(), axes.y.clips());
             if (clip_x || clip_y) && !inside(bounds, clip_x, clip_y) {
                 if self.anchored_count == 0 {
                     return;

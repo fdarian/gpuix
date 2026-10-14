@@ -248,6 +248,13 @@ pub struct StyleDesc {
     pub scrollbar_color: Option<String>,
     /// Thickness of that thumb in px. Defaults to 6.
     pub scrollbar_width: Option<f64>,
+    /// `"auto"`, `"contain"` or `"none"`: whether a scroller at its limit hands the wheel to
+    /// the scroller around it. `overscrollBehaviorX` / `Y` override it per axis.
+    pub overscroll_behavior: Option<String>,
+    pub overscroll_behavior_x: Option<String>,
+    pub overscroll_behavior_y: Option<String>,
+    /// `"smooth"` animates `scrollTo` and `scrollIntoView` calls that name no behavior.
+    pub scroll_behavior: Option<String>,
 
     // Cursor
     pub cursor: Option<String>,

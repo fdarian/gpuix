@@ -212,6 +212,32 @@ pub(crate) fn queue_virtual_list_scroll(id: u64, index: usize, offset_in_item: f
     });
 }
 
+/// Scrolls the virtual list or scroll container `id` to an offset (zero, then negative).
+fn scroll_element_to(id: u64, x: f32, y: f32, behavior: crate::scroll::Behavior) {
+    let offset = gpui::point(gpui::px(x), gpui::px(y));
+    if VIRTUAL_LIST_STATES.with(|cell| {
+        let states = cell.borrow();
+        let Some(state) = states.get(&id) else {
+            return false;
+        };
+        state.set_offset_from_scrollbar(offset);
+        true
+    }) {
+        return;
+    }
+    SCROLL_HANDLES.with(|cell| {
+        if let Some(handle) = cell.borrow().get(&id) {
+            crate::scroll::scroll_to(id, handle, offset, behavior);
+        }
+    });
+}
+
+/// `Element.scrollTop` and friends, from the last layout. See `scroll::metrics`.
+fn scroll_metrics(id: u64) -> Option<[f64; 6]> {
+    let painted = crate::automation::get_bounds(id).map(|b| (b.width as f32, b.height as f32));
+    SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
+}
+
 fn parse_debug_frame_overlay_mode_str(
     mode: &str,
 ) -> std::result::Result<gpui::DebugFrameOverlayMode, String> {
@@ -428,6 +454,7 @@ enum MouseInput {
         delta_x: f64,
         delta_y: f64,
         modifiers: gpui::Modifiers,
+        phase: gpui::TouchPhase,
     },
 }
 
@@ -480,6 +507,7 @@ enum UiCommand {
         id: u64,
         x: f32,
         y: f32,
+        behavior: crate::scroll::Behavior,
     },
     ScrollToItem {
         id: u64,
@@ -488,6 +516,7 @@ enum UiCommand {
     },
     ScrollIntoView {
         id: u64,
+        options: crate::scroll::IntoView,
     },
     SetImagePixels {
         id: u64,
@@ -524,6 +553,15 @@ enum UiCommand {
     GetScrollOffset {
         id: u64,
         response: SyncSender<Option<[f64; 2]>>,
+    },
+    GetScrollMetrics {
+        id: u64,
+        response: SyncSender<Option<[f64; 6]>>,
+    },
+    ScrollByKey {
+        key: String,
+        shift: bool,
+        response: SyncSender<bool>,
     },
     GetListScrollTop {
         id: u64,
@@ -678,21 +716,8 @@ async fn run_ui_commands(
             UiCommand::ResetDebugFrameOverlayStats => window.update(cx, |_view, window, _cx| {
                 window.reset_debug_frame_overlay_stats();
             }),
-            UiCommand::ScrollTo { id, x, y } => {
-                if !VIRTUAL_LIST_STATES.with(|cell| {
-                    let states = cell.borrow();
-                    let Some(state) = states.get(&id) else {
-                        return false;
-                    };
-                    state.set_offset_from_scrollbar(gpui::point(gpui::px(x), gpui::px(y)));
-                    true
-                }) {
-                    SCROLL_HANDLES.with(|cell| {
-                        if let Some(handle) = cell.borrow().get(&id) {
-                            handle.set_offset(gpui::point(gpui::px(x), gpui::px(y)));
-                        }
-                    });
-                }
+            UiCommand::ScrollTo { id, x, y, behavior } => {
+                scroll_element_to(id, x, y, behavior);
                 refresh_ui_window(window, cx)
             }
             UiCommand::ScrollToItem { id, index, offset } => {
@@ -711,12 +736,26 @@ async fn run_ui_commands(
                 }
                 refresh_ui_window(window, cx)
             }
-            UiCommand::ScrollIntoView { id } => window.update(cx, |view, window, cx| {
-                if view.scroll_element_into_view(id) {
+            UiCommand::ScrollIntoView { id, options } => window.update(cx, move |view, window, cx| {
+                if view.scroll_element_into_view(id, options) {
                     cx.notify();
                     window.refresh();
                 }
             }),
+            UiCommand::GetScrollMetrics { id, response } => {
+                response.send(scroll_metrics(id)).ok();
+                Ok(())
+            }
+            UiCommand::ScrollByKey { key, shift, response } => {
+                window.update(cx, move |view, window, cx| {
+                    let scrolled = view.scroll_by_key(&key, shift, window);
+                    if scrolled {
+                        cx.notify();
+                        window.refresh();
+                    }
+                    response.send(scrolled).ok();
+                })
+            }
             UiCommand::SetImagePixels {
                 id,
                 width,
@@ -962,9 +1001,10 @@ async fn run_ui_commands(
                                 delta_x,
                                 delta_y,
                                 modifiers,
+                                phase,
                             } => {
                                 crate::automation::dispatch_scroll_wheel(
-                                    window, cx, x, y, delta_x, delta_y, modifiers,
+                                    window, cx, x, y, delta_x, delta_y, modifiers, phase,
                                 );
                             }
                         }
@@ -2483,33 +2523,32 @@ impl GpuixRenderer {
 
     /// Set the scroll offset of a scrollable element.
     /// x and y are negative pixel values (scroll down = more negative y).
+    ///
+    /// `behavior` is `"instant"`, `"smooth"` or `"auto"` (the default), which follows the
+    /// element's `scrollBehavior` style. A smooth scroll animates over the next frames.
     #[napi]
-    pub fn scroll_to(&self, element_id: f64, x: f64, y: f64) -> Result<()> {
+    pub fn scroll_to(
+        &self,
+        element_id: f64,
+        x: f64,
+        y: f64,
+        behavior: Option<String>,
+    ) -> Result<()> {
         let id = to_element_id(element_id)?;
+        let behavior =
+            crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
         #[cfg(target_os = "macos")]
-        if !VIRTUAL_LIST_STATES.with(|cell| {
-            let states = cell.borrow();
-            let Some(state) = states.get(&id) else {
-                return false;
-            };
-            state.set_offset_from_scrollbar(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
-            true
-        }) {
-            SCROLL_HANDLES.with(|cell| {
-                let handles = cell.borrow();
-                if let Some(handle) = handles.get(&id) {
-                    handle.set_offset(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
-                }
-            });
+        {
+            scroll_element_to(id, x as f32, y as f32, behavior);
+            return invalidate_window();
         }
-        #[cfg(target_os = "macos")]
-        return invalidate_window();
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::ScrollTo {
             id,
             x: x as f32,
             y: y as f32,
+            behavior,
         });
 
         #[cfg(not(any(
@@ -2657,14 +2696,25 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
-    /// Scroll this element's nearest scroll parent until the element is visible.
+    /// The DOM's `scrollIntoView`: scrolls every scrollable ancestor so the element sits where
+    /// `block` (default `"start"`) and `inline` (default `"nearest"`) ask. Each is `"start"`,
+    /// `"center"`, `"end"` or `"nearest"`. `behavior` is as for `scrollTo`.
     #[napi]
-    pub fn scroll_into_view(&self, element_id: f64) -> Result<()> {
+    pub fn scroll_into_view(
+        &self,
+        element_id: f64,
+        block: Option<String>,
+        inline: Option<String>,
+        behavior: Option<String>,
+    ) -> Result<()> {
         let id = to_element_id(element_id)?;
+        let options =
+            crate::scroll::IntoView::parse(block.as_deref(), inline.as_deref(), behavior.as_deref())
+                .map_err(Error::from_reason)?;
         #[cfg(target_os = "macos")]
         {
             update_window_or_defer(move |view, window, cx| {
-                if view.scroll_element_into_view(id) {
+                if view.scroll_element_into_view(id, options) {
                     cx.notify();
                     window.refresh();
                 }
@@ -2673,7 +2723,64 @@ impl GpuixRenderer {
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-        return self.send_ui_command(UiCommand::ScrollIntoView { id });
+        return self.send_ui_command(UiCommand::ScrollIntoView { id, options });
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// The default action of a scrolling key (`"up"`, `"down"`, `"left"`, `"right"`,
+    /// `"pageup"`, `"pagedown"`, `"home"`, `"end"`, `"space"`): scrolls the innermost scrollable
+    /// ancestor of the focused element, or the scroller under the pointer if nothing is focused.
+    /// Returns whether anything scrolled. A focused text input or control keeps its keys.
+    #[napi]
+    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<bool> {
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, window, cx| {
+            let scrolled = view.scroll_by_key(&key, shift, window);
+            if scrolled {
+                cx.notify();
+                window.refresh();
+            }
+            scrolled
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::ScrollByKey { key, shift, response })?;
+            return recv_ui_response(receiver, "the scroll key command");
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// The DOM scroll geometry of an element:
+    /// `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null
+    /// if it has not been painted.
+    #[napi]
+    pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return Ok(scroll_metrics(id).map(|metrics| metrics.to_vec()));
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::GetScrollMetrics { id, response })?;
+            return Ok(recv_ui_response(receiver, "the GPUI scroll query")?.map(|m| m.to_vec()));
+        }
 
         #[cfg(not(any(
             target_os = "macos",
@@ -3247,6 +3354,10 @@ impl GpuixRenderer {
     /// Dispatch a wheel event through the same GPUI hit test the trackpad uses.
     /// Deltas are pixels: negative `delta_y` scrolls down, negative `delta_x`
     /// pans right, matching `TestGpuixRenderer::simulate_scroll_wheel`.
+    ///
+    /// `phase` is `"started"` (the default, a gesture of its own), `"moved"`,
+    /// `"ended"` or `"cancelled"`. The scroller that took a gesture's first delta
+    /// keeps the rest of it, so continue one with `"moved"`.
     #[napi]
     pub fn simulate_scroll_wheel(
         &self,
@@ -3255,12 +3366,16 @@ impl GpuixRenderer {
         delta_x: f64,
         delta_y: f64,
         modifiers: Option<String>,
+        phase: Option<String>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        let phase = crate::scroll::parse_touch_phase(phase.as_deref()).map_err(Error::from_reason)?;
 
         #[cfg(target_os = "macos")]
         return update_window_without_view(move |window, cx| {
-            crate::automation::dispatch_scroll_wheel(window, cx, x, y, delta_x, delta_y, modifiers);
+            crate::automation::dispatch_scroll_wheel(
+                window, cx, x, y, delta_x, delta_y, modifiers, phase,
+            );
         });
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -3270,6 +3385,7 @@ impl GpuixRenderer {
             delta_x,
             delta_y,
             modifiers,
+            phase,
         });
 
         #[cfg(not(any(
@@ -3279,7 +3395,7 @@ impl GpuixRenderer {
             target_os = "freebsd"
         )))]
         {
-            let _ = (x, y, delta_x, delta_y, modifiers);
+            let _ = (x, y, delta_x, delta_y, modifiers, phase);
             Err(Error::from_reason(
                 "The production GPUIX renderer does not support this operating system",
             ))
@@ -3859,22 +3975,17 @@ impl WebGpuixRenderer {
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = scrollTo)]
-    pub fn scroll_to(&self, element_id: f64, x: f64, y: f64) -> Result<(), wasm_bindgen::JsValue> {
+    pub fn scroll_to(
+        &self,
+        element_id: f64,
+        x: f64,
+        y: f64,
+        behavior: Option<String>,
+    ) -> Result<(), wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
-        if !VIRTUAL_LIST_STATES.with(|states| {
-            let states = states.borrow();
-            let Some(state) = states.get(&id) else {
-                return false;
-            };
-            state.set_offset_from_scrollbar(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
-            true
-        }) {
-            SCROLL_HANDLES.with(|handles| {
-                if let Some(handle) = handles.borrow().get(&id) {
-                    handle.set_offset(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
-                }
-            });
-        }
+        let behavior = crate::scroll::Behavior::parse(behavior.as_deref())
+            .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
+        scroll_element_to(id, x as f32, y as f32, behavior);
         notify_web();
         Ok(())
     }
@@ -3907,10 +4018,22 @@ impl WebGpuixRenderer {
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = scrollIntoView)]
-    pub fn scroll_into_view(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+    pub fn scroll_into_view(
+        &self,
+        element_id: f64,
+        block: Option<String>,
+        inline: Option<String>,
+        behavior: Option<String>,
+    ) -> Result<(), wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
+        let options = crate::scroll::IntoView::parse(
+            block.as_deref(),
+            inline.as_deref(),
+            behavior.as_deref(),
+        )
+        .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
         update_web_window(move |view, window, cx| {
-            if view.scroll_element_into_view(id) {
+            if view.scroll_element_into_view(id, options) {
                 cx.notify();
                 window.refresh();
             }
@@ -4261,10 +4384,15 @@ impl WebGpuixRenderer {
         delta_x: f64,
         delta_y: f64,
         modifiers: Option<String>,
+        phase: Option<String>,
     ) -> Result<(), wasm_bindgen::JsValue> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        let phase = crate::scroll::parse_touch_phase(phase.as_deref())
+            .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
         update_web_window_without_view(move |window, cx| {
-            crate::automation::dispatch_scroll_wheel(window, cx, x, y, delta_x, delta_y, modifiers);
+            crate::automation::dispatch_scroll_wheel(
+                window, cx, x, y, delta_x, delta_y, modifiers, phase,
+            );
         })
     }
 
@@ -4395,7 +4523,7 @@ pub(crate) struct GpuixView {
     /// Resolved `highlight` state, keyed by the element that declared it.
     /// Empty in every app that does not use search.
     highlights: HashMap<u64, HighlightCacheEntry>,
-    /// What `onLayout` and `onScrollChange` last reported, for the elements that
+    /// What `onLayout` and `onScroll` last reported, for the elements that
     /// have the listener. Shared with the paint closures that compare against it.
     paint_reports: SharedPaintReports,
     /// Where the pointer is and what it is pressing.
@@ -4406,7 +4534,7 @@ pub(crate) struct GpuixView {
 pub(crate) struct PaintReports {
     /// Border-box size last delivered through `onLayout`.
     sizes: HashMap<u64, (f32, f32)>,
-    /// Scroll offset last seen for `onScrollChange`. Recorded on the first paint
+    /// Scroll offset last seen for `onScroll`. Recorded on the first paint
     /// without an event, so only movement is reported.
     scrolls: HashMap<u64, (f32, f32)>,
     /// What `ResizeObserver` and `IntersectionObserver` last saw.
@@ -4732,36 +4860,90 @@ impl GpuixView {
         Ok(())
     }
 
-    pub(crate) fn scroll_element_into_view(&self, id: u64) -> bool {
-        let Some((scroller_id, child_index)) = self.scroll_target(id) else {
+    /// Scrolls for a key nothing consumed. See `GpuixRenderer::scroll_by_key`.
+    pub(crate) fn scroll_by_key(&self, key: &str, shift: bool, window: &gpui::Window) -> bool {
+        let Some(key) = crate::scroll::KeyScroll::parse(key, shift) else {
             return false;
         };
-        if self.scroll_virtual_list_to_item(scroller_id, child_index, 0.0) {
-            return true;
+        let tree = self.tree.lock().unwrap();
+        let mut scrollers: Vec<(u64, &gpui::ScrollHandle)> = Vec::new();
+        if let Some(focused) = self.focused_element_id(window) {
+            let Some(element) = tree.elements.get(&focused) else {
+                return false;
+            };
+            if matches!(element.element_type.as_str(), "input" | "textarea") {
+                return false;
+            }
+            if key.activates_controls && element.events().contains("click") {
+                return false;
+            }
+            let mut current = Some(focused);
+            while let Some(id) = current {
+                if let Some(handle) = self.scroll_handles.get(&id) {
+                    scrollers.push((id, handle));
+                }
+                current = tree.elements.get(&id).and_then(|element| element.parent);
+            }
+        } else {
+            let pointer = window.mouse_position();
+            let mut under_pointer: Vec<(f32, u64, &gpui::ScrollHandle)> = self
+                .scroll_handles
+                .iter()
+                .filter_map(|(id, handle)| {
+                    let port = handle.padding_box();
+                    port.contains(&pointer).then(|| {
+                        (f32::from(port.size.width) * f32::from(port.size.height), *id, handle)
+                    })
+                })
+                .collect();
+            under_pointer.sort_by(|a, b| a.0.total_cmp(&b.0));
+            scrollers.extend(under_pointer.into_iter().map(|(_, id, handle)| (id, handle)));
         }
-        if let Some(handle) = self.scroll_handles.get(&scroller_id) {
-            handle.scroll_to_item(child_index);
-            return true;
-        }
-        false
+        crate::scroll::scroll_by_key(scrollers, key)
     }
 
-    fn scroll_target(&self, id: u64) -> Option<(u64, usize)> {
+    /// The DOM's `scrollIntoView`. Walks the scrollers around the element from the inside out
+    /// and scrolls each until the element sits where `options` ask, using the element's painted
+    /// box rather than its index among its siblings, so a descendant of any depth works.
+    /// An element that has not been painted has no box to align, which only a virtual list's row
+    /// can do without (it goes to the top). False if nothing scrolled.
+    pub(crate) fn scroll_element_into_view(&self, id: u64, options: crate::scroll::IntoView) -> bool {
+        let mut target = crate::automation::get_bounds(id).map(|painted| crate::scroll::Rect {
+            x: painted.x as f32,
+            y: painted.y as f32,
+            width: painted.width as f32,
+            height: painted.height as f32,
+        });
         let tree = self.tree.lock().unwrap();
-        let mut current = id;
-        loop {
-            let element = tree.elements.get(&current)?;
-            let parent_id = element.parent?;
-            let parent = tree.elements.get(&parent_id)?;
-            let index = parent.children.iter().position(|child| *child == current)?;
-            if let Some(entry) = self.virtual_lists.get(&parent_id) {
-                return Some((parent_id, entry.logical_index_of(current)?));
+        let mut scrolled = false;
+        let mut child = id;
+        let mut current = tree.elements.get(&id).and_then(|element| element.parent);
+        while let Some(ancestor_id) = current {
+            if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
+                if let Some(index) = entry.logical_index_of(child) {
+                    let viewport = entry.state.viewport_bounds();
+                    let row = crate::automation::get_bounds(child);
+                    let offset = crate::scroll::virtual_list_offset(
+                        options.block,
+                        row.map(|row| (row.y as f32, row.height as f32)),
+                        (f32::from(viewport.origin.y), f32::from(viewport.size.height)),
+                    );
+                    if let Some(offset) = offset {
+                        scrolled |= self.scroll_virtual_list_to_item(ancestor_id, index, offset);
+                        // The row moves when the list does, and the list applies that on the
+                        // next frame, so the scrollers around it have no box to align yet.
+                        target = None;
+                    }
+                }
+            } else if let (Some(handle), Some(target)) =
+                (self.scroll_handles.get(&ancestor_id), target.as_mut())
+            {
+                scrolled |= crate::scroll::scroll_into_view(ancestor_id, handle, target, options);
             }
-            if self.scroll_handles.contains_key(&parent_id) {
-                return Some((parent_id, index));
-            }
-            current = parent_id;
+            child = ancestor_id;
+            current = tree.elements.get(&ancestor_id).and_then(|element| element.parent);
         }
+        scrolled
     }
 
     pub(crate) fn set_selection_change_listener(&mut self, enabled: bool, event_id: u64) {
@@ -5810,7 +5992,7 @@ impl gpui::Render for GpuixView {
                 reports.scrolls.retain(|id, _| {
                     tree.elements
                         .get(id)
-                        .is_some_and(|element| element.events().contains("scrollChange"))
+                        .is_some_and(|element| element.events().contains("scroll"))
                 });
             }
             crate::observers::prune(
@@ -5827,6 +6009,8 @@ impl gpui::Render for GpuixView {
         // are different fields of self, so Rust allows borrowing all simultaneously.
         let theme = Theme::dark();
         let now = self.clock.now();
+        crate::scroll::begin_frame();
+        let scroll_animating = crate::scroll::advance_animations(now);
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, now);
         // Pruned by DECLARATION, not existence: an element that drops its
@@ -5939,7 +6123,7 @@ impl gpui::Render for GpuixView {
         // no longer match what JS meant.
         PENDING_VIRTUAL_LIST_SCROLLS.with(|cell| cell.borrow_mut().clear());
 
-        if motion_active {
+        if motion_active || scroll_animating {
             window.request_animation_frame();
         }
 
@@ -6327,59 +6511,7 @@ pub(crate) fn build_host_container(
         el = apply_interactive_styles(el, style);
     }
 
-    // ── Overflow: scroll ─────────────────────────────────────────────
-    // overflow_scroll() requires StatefulInteractiveElement (only on Stateful<Div>),
-    // so we handle it here rather than in apply_styles (which takes E: Styled).
-    //
-    // CSS precedence: axis-specific props (overflowX/Y) override the shorthand
-    // (overflow). E.g. { overflow: "scroll", overflowY: "hidden" } → scroll X only.
-    //
-    // overflow-x only works as a flex viewport. Default display is Block, so a
-    // wide child fills the parent instead of overflowing. Zed's code-block path:
-    // flex + min_w_0 on the scroller, flex_none on the child.
-    let mut overflow_x_only = false;
-    if let Some(style) = style {
-        // Resolve each axis: axis-specific overrides shorthand.
-        let resolved_x = style.overflow_x.as_deref().or(style.overflow.as_deref());
-        let resolved_y = style.overflow_y.as_deref().or(style.overflow.as_deref());
-
-        let needs_scroll_x = resolved_x == Some("scroll");
-        let needs_scroll_y = resolved_y == Some("scroll");
-
-        if needs_scroll_x && needs_scroll_y {
-            el = el.overflow_scroll();
-            // GPUI zeroes the smaller of the two deltas by default, so one
-            // diagonal wheel moves one axis. A browser moves both, and a
-            // two-axis container is exactly where a user expects that.
-            el.style().allow_concurrent_scroll = Some(true);
-        } else if needs_scroll_x {
-            overflow_x_only = true;
-            el = el
-                .flex()
-                .min_w_0()
-                .overflow_x_scroll()
-                .restrict_scroll_to_axis();
-        } else if needs_scroll_y {
-            el = el.overflow_y_scroll();
-        }
-
-        // Attach a persistent ScrollHandle when scrolling is enabled.
-        // The handle persists across renders (stored in GpuixView::scroll_handles)
-        // so GPUI maintains the scroll offset between frames.
-        if needs_scroll_x || needs_scroll_y {
-            let handle = ctx
-                .scroll_handles
-                .entry(element.id)
-                .or_insert_with(gpui::ScrollHandle::new);
-            el = el.track_scroll(handle);
-        } else {
-            // Element is no longer scrollable — remove stale handle.
-            ctx.scroll_handles.remove(&element.id);
-        }
-    } else {
-        // No style at all — remove stale handle if it existed.
-        ctx.scroll_handles.remove(&element.id);
-    }
+    el = crate::scroll::apply_container(el, element.id, style, ctx.scroll_handles);
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
     // attach it via track_focus. This makes the element focusable — clicking it
@@ -6454,10 +6586,10 @@ pub(crate) fn build_host_container(
         let id = element.id;
         let callback = ctx.event_callback.clone();
         match event_type.as_str() {
-            // ── Scroll wheel ─────────────────────────────────────
-            "scroll" => {
+            // ── Wheel: DOM `wheel`, every tick over the element ──────
+            "wheel" => {
                 el = el.on_scroll_wheel(move |scroll_event, _window, _cx| {
-                    emit_event_full(&callback, id, "scroll", |p| {
+                    emit_event_full(&callback, id, "wheel", |p| {
                         let (x, y) = point_to_xy(scroll_event.position);
                         p.x = Some(x);
                         p.y = Some(y);
@@ -6468,8 +6600,11 @@ pub(crate) fn build_host_container(
                         // For Lines delta, we use a default line height of 20px.
                         let line_height = gpui::px(20.0);
                         let pixel_delta = scroll_event.delta.pixel_delta(line_height);
-                        p.delta_x = Some(f64::from(f32::from(pixel_delta.x)));
-                        p.delta_y = Some(f64::from(f32::from(pixel_delta.y)));
+                        // GPUI's delta is how far the content moves; the DOM's is how far
+                        // the scroll position does, so the sign flips.
+                        // `0.0 -` so a zero delta is +0, not -0.
+                        p.delta_x = Some(0.0 - f64::from(f32::from(pixel_delta.x)));
+                        p.delta_y = Some(0.0 - f64::from(f32::from(pixel_delta.y)));
 
                         p.touch_phase = Some(match scroll_event.touch_phase {
                             gpui::TouchPhase::Started => "started".to_string(),
@@ -6503,22 +6638,17 @@ pub(crate) fn build_host_container(
 
     // Children
     for &child_id in &element.children {
-        let child = build_element(child_id, ctx, window, cx);
-        el = if overflow_x_only {
-            el.child(gpui::div().flex_none().child(child))
-        } else {
-            el.child(child)
-        };
+        el = el.child(build_element(child_id, ctx, window, cx));
     }
 
-    // Last, so the thumb paints over the content.
     if let (Some(style), Some(handle)) = (style, ctx.scroll_handles.get(&element.id)) {
+        let axes = crate::scroll::Axes::of(style);
         if let Some(thumbs) = ThumbStyle::of(
             style,
-            style.overflow_x.as_deref().or(style.overflow.as_deref()) == Some("scroll"),
-            style.overflow_y.as_deref().or(style.overflow.as_deref()) == Some("scroll"),
+            axes.x == crate::scroll::Overflow::Scroll,
+            axes.y == crate::scroll::Overflow::Scroll,
         ) {
-            el = el.child(scrollbar_overlay(handle.clone(), thumbs));
+            el = scrollbar_overlay(el, handle.clone(), thumbs);
         }
     }
 
@@ -6626,31 +6756,26 @@ fn paint_scrollbars(
 /// The thumbs of a scroll container, painted from its own scroll offset in the
 /// frame the content moves in, so a wheel tick costs nothing beyond that frame.
 ///
-/// It is the container's last child, absolutely placed over its padding box.
-/// Children of a scroller are painted shifted by the scroll offset, so the
-/// viewport is this box moved back by it. It has no hitbox and takes no input.
-fn scrollbar_overlay(handle: gpui::ScrollHandle, thumbs: ThumbStyle) -> gpui::AnyElement {
+/// They paint over the container's children as an overlay rather than as a child:
+/// a child would count toward what the container can scroll. They have no hitbox and
+/// take no input.
+fn scrollbar_overlay(
+    el: gpui::Stateful<gpui::Div>,
+    handle: gpui::ScrollHandle,
+    thumbs: ThumbStyle,
+) -> gpui::Stateful<gpui::Div> {
     use gpui::prelude::*;
 
-    gpui::canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            let offset = handle.offset();
-            paint_scrollbars(
-                window,
-                bounds.origin - offset,
-                bounds.size,
-                handle.max_offset(),
-                offset,
-                thumbs,
-            );
-        },
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    el.paint_overlay(move |bounds, window, _| {
+        paint_scrollbars(
+            window,
+            bounds.origin,
+            bounds.size,
+            handle.max_offset(),
+            handle.offset(),
+            thumbs,
+        );
+    })
 }
 
 /// How far a virtual list can scroll and has, for `paint_scrollbars`. Rows the
@@ -7196,18 +7321,16 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     if let Some(cursor) = style.cursor.as_deref().and_then(crate::style::parse_cursor) {
         el = el.cursor(cursor);
     }
-    // Overflow: hidden is on the Styled trait, so we handle it here.
-    // overflow: "scroll" requires StatefulInteractiveElement — handled in build_host_container().
-    // CSS precedence: axis-specific (overflowX/Y) overrides the shorthand (overflow).
+    // `hidden` and `clip` are on the Styled trait; scrolling needs a stateful
+    // element and is applied by `scroll::apply_container`.
     {
-        let resolved_x = style.overflow_x.as_deref().or(style.overflow.as_deref());
-        let resolved_y = style.overflow_y.as_deref().or(style.overflow.as_deref());
-        // Only apply hidden here — scroll is handled in build_host_container.
-        if resolved_x == Some("hidden") && resolved_y == Some("hidden") {
+        let axes = crate::scroll::Axes::of(style);
+        let hides = |overflow| overflow == crate::scroll::Overflow::Clip;
+        if hides(axes.x) && hides(axes.y) {
             el = el.overflow_hidden();
-        } else if resolved_x == Some("hidden") {
+        } else if hides(axes.x) {
             el = el.overflow_x_hidden();
-        } else if resolved_y == Some("hidden") {
+        } else if hides(axes.y) {
             el = el.overflow_y_hidden();
         }
     }
@@ -7238,7 +7361,7 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
 /// each time its size changes. A move without a resize reports nothing, so
 /// scrolling a list does not queue an event per row.
 ///
-/// `onScrollChange`: its scroll offset each time it differs from the last paint,
+/// `onScroll`: its scroll offset each time it differs from the last paint,
 /// whatever moved it. The wheel is only one cause; a scrollbar drag or
 /// `scrollTo` moves it too, and gpui raises no event for those.
 ///
@@ -7253,7 +7376,7 @@ fn paint_reporter(
 ) -> Option<crate::automation::PaintReporter> {
     let layout = events.contains("layout");
     let scroll = events
-        .contains("scrollChange")
+        .contains("scroll")
         .then(|| ctx.scroll_handles.get(&id).cloned())
         .flatten();
     let observe = crate::observers::reporter(
@@ -7344,7 +7467,7 @@ fn report_scroll(
     }
     let callback = Some(callback.clone());
     cx.defer(move |_| {
-        emit_event_full(&callback, id, "scrollChange", |payload| {
+        emit_event_full(&callback, id, "scroll", |payload| {
             payload.scroll_x = Some(f64::from(offset.0));
             payload.scroll_y = Some(f64::from(offset.1));
         });

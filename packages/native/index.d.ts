@@ -159,8 +159,11 @@ export declare class GpuixRenderer {
   /**
    * Set the scroll offset of a scrollable element.
    * x and y are negative pixel values (scroll down = more negative y).
+   *
+   * `behavior` is `"instant"`, `"smooth"` or `"auto"` (the default), which follows the
+   * element's `scrollBehavior` style. A smooth scroll animates over the next frames.
    */
-  scrollTo(elementId: number, x: number, y: number): void
+  scrollTo(elementId: number, x: number, y: number, behavior?: string | undefined | null): void
   /**
    * Scroll a child into view by its index in the children list.
    *
@@ -185,8 +188,25 @@ export declare class GpuixRenderer {
    * Returns [x, y] or null if the element has no scroll handle.
    */
   getScrollOffset(elementId: number): Array<number> | null
-  /** Scroll this element's nearest scroll parent until the element is visible. */
-  scrollIntoView(elementId: number): void
+  /**
+   * The DOM's `scrollIntoView`: scrolls every scrollable ancestor so the element sits where
+   * `block` (default `"start"`) and `inline` (default `"nearest"`) ask. Each is `"start"`,
+   * `"center"`, `"end"` or `"nearest"`. `behavior` is as for `scrollTo`.
+   */
+  scrollIntoView(elementId: number, block?: string | undefined | null, inline?: string | undefined | null, behavior?: string | undefined | null): void
+  /**
+   * The default action of a scrolling key (`"up"`, `"down"`, `"left"`, `"right"`,
+   * `"pageup"`, `"pagedown"`, `"home"`, `"end"`, `"space"`): scrolls the innermost scrollable
+   * ancestor of the focused element, or the scroller under the pointer if nothing is focused.
+   * Returns whether anything scrolled. A focused text input or control keeps its keys.
+   */
+  scrollByKey(key: string, shift: boolean): boolean
+  /**
+   * The DOM scroll geometry of an element:
+   * `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null
+   * if it has not been painted.
+   */
+  getScrollMetrics(elementId: number): Array<number> | null
   /**
    * Capture the mouse for `element_id`. Takes effect at the next pointer
    * input, not before: the dispatcher applies it then and fires
@@ -289,8 +309,12 @@ export declare class GpuixRenderer {
    * Dispatch a wheel event through the same GPUI hit test the trackpad uses.
    * Deltas are pixels: negative `delta_y` scrolls down, negative `delta_x`
    * pans right, matching `TestGpuixRenderer::simulate_scroll_wheel`.
+   *
+   * `phase` is `"started"` (the default, a gesture of its own), `"moved"`,
+   * `"ended"` or `"cancelled"`. The scroller that took a gesture's first delta
+   * keeps the rest of it, so continue one with `"moved"`.
    */
-  simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null): void
+  simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null, phase?: string | undefined | null): void
   clockPause(): number
   clockSet(nowMs: number): number
   clockFastForward(deltaMs: number): number
@@ -421,8 +445,12 @@ export declare class TestGpuixRenderer {
   /**
    * Simulate a scroll wheel event at the given position.
    * delta_x and delta_y are in pixels (negative = scroll up/left).
+   *
+   * `phase` is `"started"` (the default, a gesture of its own), `"moved"`, `"ended"` or
+   * `"cancelled"`. The scroller that took a gesture's first delta keeps the rest of it, so
+   * continue one with `"moved"`.
    */
-  simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null): void
+  simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null, phase?: string | undefined | null): void
   /** Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`). */
   simulateFileDragEnter(x: number, y: number, paths: Array<string>): void
   /** The dragged files move to `x`, `y` (`FileDropEvent::Pending`). */
@@ -480,7 +508,7 @@ export declare class TestGpuixRenderer {
    * x and y are negative pixel values (scroll down = more negative y).
    * Call flush() after to apply the offset and re-render.
    */
-  scrollTo(elementId: number, x: number, y: number): void
+  scrollTo(elementId: number, x: number, y: number, behavior?: string | undefined | null): void
   /**
    * Scroll a child into view by its index in the children list.
    * Call flush() after to apply and re-render. For a `<virtual-list>` the
@@ -489,8 +517,11 @@ export declare class TestGpuixRenderer {
    * viewport top above the item.
    */
   scrollToItem(elementId: number, index: number, offsetInItem?: number | undefined | null): void
-  /** Scroll this element's nearest scroll parent until the element is visible. */
-  scrollIntoView(elementId: number): void
+  /**
+   * The DOM's `scrollIntoView`: scrolls every scrollable ancestor until the element sits where
+   * `block` (default `"start"`) and `inline` (default `"nearest"`) ask.
+   */
+  scrollIntoView(elementId: number, block?: string | undefined | null, inline?: string | undefined | null, behavior?: string | undefined | null): void
   /**
    * Capture the mouse for `element_id`; takes effect at the next simulated
    * pointer input. Ignored while no button is down.
@@ -555,6 +586,14 @@ export declare class TestGpuixRenderer {
   resetDebugFrameOverlayStats(): void
   /** Same numbers as the on-screen overlay: current, p90, p99, max, frames. */
   getDebugFrameOverlayStats(): DebugFrameOverlayStats
+  /** The default action of a scrolling key. See `GpuixRenderer::scroll_by_key`. */
+  scrollByKey(key: string, shift: boolean): boolean
+  /**
+   * The DOM scroll geometry of an element:
+   * `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null
+   * if it has not been painted.
+   */
+  getScrollMetrics(elementId: number): Array<number> | null
   /**
    * Get the current scroll offset of a scrollable element.
    * Returns [x, y] or null if the element has no scroll handle.
@@ -682,7 +721,7 @@ export interface EventPayload {
   elementId: number
   /**
    * Event type string — matches the key used in EVENT_PROPS on the JS side.
-   * e.g. "click", "mousedown", "mouseenter", "keyDown", "scroll", etc. Pointer,
+   * e.g. "click", "mousedown", "mouseenter", "keyDown", "wheel", etc. Pointer,
    * mouse and drag types are the lowercase DOM names.
    */
   eventType: string
@@ -735,23 +774,23 @@ export interface EventPayload {
    */
   keystrokeId?: number
   /**
-   * Scroll delta on the X axis (pixels or lines, see `precise`).
-   * Populated for: scroll.
+   * Wheel delta on the X axis in pixels, positive towards the end, like the DOM.
+   * Populated for: wheel.
    */
   deltaX?: number
   /**
-   * Scroll delta on the Y axis (pixels or lines, see `precise`).
-   * Populated for: scroll.
+   * Wheel delta on the Y axis in pixels, positive towards the end, like the DOM.
+   * Populated for: wheel.
    */
   deltaY?: number
   /**
    * true = pixel-precise (trackpad), false = line-based (mouse wheel).
-   * Populated for: scroll.
+   * Populated for: wheel.
    */
   precise?: boolean
   /**
    * Touch phase for scroll: "started", "moved", "ended".
-   * Populated for: scroll (trackpad gestures).
+   * Populated for: wheel (trackpad gestures).
    */
   touchPhase?: string
   /**
@@ -783,7 +822,7 @@ export interface EventPayload {
   height?: number
   /**
    * Scroll offset of the element, the pair `getScrollOffset` returns: 0 at the
-   * start and negative as the content moves. Populated for: scrollChange.
+   * start and negative as the content moves. Populated for: scroll.
    */
   scrollX?: number
   scrollY?: number

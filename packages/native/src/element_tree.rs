@@ -24,7 +24,7 @@ pub struct EventPayload {
     pub element_id: f64,
 
     /// Event type string — matches the key used in EVENT_PROPS on the JS side.
-    /// e.g. "click", "mousedown", "mouseenter", "keyDown", "scroll", etc. Pointer,
+    /// e.g. "click", "mousedown", "mouseenter", "keyDown", "wheel", etc. Pointer,
     /// mouse and drag types are the lowercase DOM names.
     pub event_type: String,
 
@@ -92,20 +92,20 @@ pub struct EventPayload {
     pub meta_key: Option<bool>,
 
     // ── Scroll ───────────────────────────────────────────────────────
-    /// Scroll delta on the X axis (pixels or lines, see `precise`).
-    /// Populated for: scroll.
+    /// Wheel delta on the X axis in pixels, positive towards the end, like the DOM.
+    /// Populated for: wheel.
     pub delta_x: Option<f64>,
 
-    /// Scroll delta on the Y axis (pixels or lines, see `precise`).
-    /// Populated for: scroll.
+    /// Wheel delta on the Y axis in pixels, positive towards the end, like the DOM.
+    /// Populated for: wheel.
     pub delta_y: Option<f64>,
 
     /// true = pixel-precise (trackpad), false = line-based (mouse wheel).
-    /// Populated for: scroll.
+    /// Populated for: wheel.
     pub precise: Option<bool>,
 
     /// Touch phase for scroll: "started", "moved", "ended".
-    /// Populated for: scroll (trackpad gestures).
+    /// Populated for: wheel (trackpad gestures).
     pub touch_phase: Option<String>,
 
     // ── Hover ────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ pub struct EventPayload {
     pub height: Option<f64>,
 
     /// Scroll offset of the element, the pair `getScrollOffset` returns: 0 at the
-    /// start and negative as the content moves. Populated for: scrollChange.
+    /// start and negative as the content moves. Populated for: scroll.
     pub scroll_x: Option<f64>,
     pub scroll_y: Option<f64>,
 

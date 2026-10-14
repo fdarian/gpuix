@@ -824,7 +824,7 @@ fn ease_slope(progress: f64, curve: &MotionEase) -> f64 {
     (ease(high, curve) - ease(low, curve)) / (high - low)
 }
 
-fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
+pub(crate) fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
     fn sample(t: f64, a: f64, b: f64) -> f64 {
         let c = 3.0 * a;
         let b = 3.0 * (b - a) - c;

@@ -405,13 +405,14 @@ pub fn dispatch_scroll_wheel(
     delta_x: f64,
     delta_y: f64,
     modifiers: Modifiers,
+    touch_phase: gpui::TouchPhase,
 ) {
     window.dispatch_event(
         gpui::ScrollWheelEvent {
             position: point(px(x as f32), px(y as f32)),
             delta: gpui::ScrollDelta::Pixels(point(px(delta_x as f32), px(delta_y as f32))),
             modifiers,
-            touch_phase: gpui::TouchPhase::Moved,
+            touch_phase,
         }
         .to_platform_input(),
         cx,
