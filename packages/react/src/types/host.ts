@@ -1,12 +1,15 @@
 import type { Key, ReactNode, Ref } from "react"
 import type { EventPayload } from "@gpuix/native"
+import { HOST_BINDING } from "@gpuix/native/host"
 import type {
+  BoundingClientRect,
   ElementIdAllocator,
   ElementType,
   EventHandlerMap,
   FocusableElement,
   FormMethods,
   FormProps as NativeFormProps,
+  HostBinding,
   HostProps,
   ImagePixelsOptions,
   InputProps as NativeInputProps,
@@ -132,6 +135,13 @@ export interface Instance extends Partial<FocusableElement> {
   hasPointerCapture?(pointerId: number): boolean
   click?(): void
   requestPointerLock?(): void
+  /**
+   * The border box in window coordinates, like the DOM. Pending changes are
+   * sent and laid out first, so it is never stale. An element with no box
+   * (not painted) reports a zero rect.
+   */
+  getBoundingClientRect?(): BoundingClientRect
+  [HOST_BINDING]?(): HostBinding | undefined
 }
 
 export interface ImgInstance extends PublicInstance {
@@ -161,7 +171,10 @@ export interface TextInstance {
   parentId: number | null
 }
 
-export type PublicInstance = Instance & FocusableElement
+/** What a `ref` receives: the methods are attached before a ref sees the instance. */
+export type PublicInstance = Instance &
+  FocusableElement &
+  Required<Pick<Instance, "getBoundingClientRect" | typeof HOST_BINDING>>
 
 export interface HostContext {
   isInsideText: boolean

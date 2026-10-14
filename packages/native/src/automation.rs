@@ -62,10 +62,10 @@ pub fn bounds_frame_reset() -> impl IntoElement {
 
 /// Record this element's own painted box, with no extra element in the tree.
 ///
-/// `bounds_tracker` needs a positioned parent and one canvas child, which a leaf
-/// such as `gpui::img` cannot have. Wrapping the leaf in a div instead would
-/// move the layout box: the wrapper would become the flex item and the image
-/// would lose intrinsic sizing and corner clipping.
+/// A leaf such as `gpui::img` cannot have a canvas child to measure it.
+/// Wrapping the leaf in a div instead would move the layout box: the wrapper
+/// would become the flex item and the image would lose intrinsic sizing and
+/// corner clipping.
 pub fn track_own_bounds<E: gpui::InteractiveElement>(el: E, id: u64) -> E {
     el.on_painted(move |bounds, _, _| record_bounds(id, bounds))
 }
@@ -74,16 +74,15 @@ pub fn track_own_bounds<E: gpui::InteractiveElement>(el: E, id: u64) -> E {
 /// automation and text selection.
 ///
 /// The element reports its own box through `on_painted`, so tracking it adds
-/// nothing to the tree. The previous `bounds_tracker` child doubled the number
-/// of nodes gpui laid out, prepainted and painted for every `<div>` and
-/// `<text>`.
+/// nothing to the tree. A canvas child per element would double the number of
+/// nodes gpui lays out, prepaints and paints.
 ///
 /// gpui paints nothing for `visibility: hidden`, not the element and not its
 /// children, so a hidden element reports no box and fires no `onLayout`. A
 /// canvas child cannot work around that: it is never painted either.
 ///
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
-/// reports. `bounds_tracker` fills the padding box instead.
+/// reports.
 ///
 /// `report` sees the painted box right after it is recorded. `on_painted`
 /// takes one listener, so the paint-driven events share this one.
@@ -124,24 +123,6 @@ pub fn get_bounds(id: u64) -> Option<ElementBounds> {
 
 pub fn all_bounds() -> HashMap<u64, ElementBounds> {
     BOUNDS.with(|cell| cell.borrow().clone())
-}
-
-pub fn bounds_tracker(id: u64, selection_start: Option<bool>) -> impl IntoElement {
-    canvas(
-        |bounds, _, _| bounds,
-        move |bounds, _, _, _| {
-            record_bounds(id, bounds);
-            if let Some(selectable) = selection_start {
-                crate::text::record_start_region(bounds, selectable);
-            }
-        },
-    )
-    // Inset 0, or Taffy places an absolute child at the content box and the
-    // box, click target and selection region all shift by the padding.
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
 }
 
 enum ClockMode {

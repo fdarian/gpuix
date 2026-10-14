@@ -10,6 +10,7 @@ import {
 } from "./automation/client.js"
 import { bindClipboard } from "./clipboard.js"
 import { bindEyeDropper } from "./eyedropper.js"
+import { flushPendingMutations } from "./bounds.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 
@@ -52,6 +53,18 @@ export function createNativeRenderer(
       options.onError
     )
   )
+  // A read must see mutations a framework has queued but not sent yet (Solid
+  // sends in a microtask), and native draws pending changes before answering.
+  const getElementBounds = renderer.getElementBounds.bind(renderer)
+  renderer.getElementBounds = (id) => {
+    flushPendingMutations(renderer)
+    return getElementBounds(id)
+  }
+  const getElementsAt = renderer.getElementsAt.bind(renderer)
+  renderer.getElementsAt = (x, y) => {
+    flushPendingMutations(renderer)
+    return getElementsAt(x, y)
+  }
   const automated =
     typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
   const init = renderer.init.bind(renderer)

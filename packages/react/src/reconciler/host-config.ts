@@ -13,8 +13,10 @@ import {
   blurHostElement,
   eventTypesWithOverrides,
   focusHostElement,
+  HOST_BINDING,
   hostElementMatches,
   isReservedProp,
+  readBoundingClientRect,
   sameMutationValue,
   serializeCustomProp,
   isUniversalProp,
@@ -79,10 +81,11 @@ function isPublicInstance(instance: Instance): instance is PublicInstance {
 
 function attachHostMethods(instance: Instance): PublicInstance {
   if (isPublicInstance(instance)) return instance
-  const container = hostNodeStates.get(instance)?.container
-  if (!container) {
+  const state = hostNodeStates.get(instance)
+  if (!state) {
     throw new Error(`Host element ${instance.id} was handed out before it was mounted.`)
   }
+  const container = state.container
   instance.scrollIntoView = () => {
     container.nativeRenderer.scrollIntoView?.(instance.id)
   }
@@ -91,6 +94,12 @@ function attachHostMethods(instance: Instance): PublicInstance {
   instance.blur = () => blurHostElement(container.nativeRenderer, instance.id)
   instance.matches = (selector) =>
     hostElementMatches(container.nativeRenderer, instance.id, selector)
+  instance.getBoundingClientRect = () =>
+    readBoundingClientRect(container.nativeRenderer, instance.id)
+  instance[HOST_BINDING] = () =>
+    state.mounted
+      ? { renderer: container.nativeRenderer, mutations: container.renderer }
+      : undefined
   if (instance.type === "input" || instance.type === "textarea") {
     attachTextControlMethods(instance as TextControlInstance, container)
   } else if (instance.type === "form") {

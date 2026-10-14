@@ -1,4 +1,5 @@
 import { POINTER_EVENT_HANDLER_PROPS } from "./events/event-props.js"
+import { registerMutationQueue } from "./bounds.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
 
 export type MutationValue = number | string | boolean | object | null
@@ -83,6 +84,7 @@ export function createMutationQueue(
       queue = []
     },
   }
+  registerMutationQueue(renderer, mutations)
   return mutations
 }
 

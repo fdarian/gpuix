@@ -10,6 +10,9 @@ import {
   hostElementMatches,
   isUniversalProp,
   registerEventListener,
+  HOST_BINDING,
+  readBoundingClientRect,
+  toBoundingClientRect,
   serializeCustomProp,
   unregisterEventHandlers,
   unregisterEventListener,
@@ -20,9 +23,11 @@ import {
 } from "@gpuix/native/host"
 import type {
   ElementMethods,
+  BoundingClientRect,
   ElementType,
   EventHandlerMap,
   FocusOptions,
+  HostBinding,
   HostProps,
   ImagePixelsOptions,
   MutationRenderer,
@@ -184,6 +189,21 @@ export class HostElement {
       nativeRenderer: root.nativeRenderer,
       flushMutations: () => root.mutations.flushMutations(),
     }
+  }
+
+  /**
+   * The border box in window coordinates, like the DOM. Pending changes are
+   * sent and laid out first, so it is never stale. An element that is not
+   * mounted, or has no box (not painted), reports a zero rect.
+   */
+  getBoundingClientRect(): BoundingClientRect {
+    if (!this.root || !this.mounted) return toBoundingClientRect(null)
+    return readBoundingClientRect(this.root.nativeRenderer, this.id)
+  }
+
+  [HOST_BINDING](): HostBinding | undefined {
+    if (!this.root || !this.mounted) return undefined
+    return { renderer: this.root.nativeRenderer, mutations: this.root.mutations }
   }
 
   setImage(bytes: Buffer | Uint8Array): void {

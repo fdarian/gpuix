@@ -25,6 +25,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
+import { flushPendingMutations } from "./bounds.js"
 import { readFontFiles } from "./fonts.js"
 import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
@@ -685,11 +686,13 @@ export class TestRenderer implements NativeRenderer {
   }
 
   getElementBounds(elementId: number): ElementBounds | null {
+    flushPendingMutations(this)
     return this.native.getElementBounds(elementId)
   }
 
   /** Ids of the elements under the window point, topmost first. */
   getElementsAt(x: number, y: number): number[] {
+    flushPendingMutations(this)
     return this.native.getElementsAt(x, y)
   }
 

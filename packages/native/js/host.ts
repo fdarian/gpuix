@@ -34,6 +34,7 @@ export {
 export { preventEventDefault, type DomEvent } from "./events/dispatch.js"
 export * from "./focus.js"
 export * from "./forms.js"
+export * from "./bounds.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"

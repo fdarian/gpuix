@@ -27,6 +27,7 @@ export {
 export type {
   Appearance,
   AddEventListenerOptions,
+  BoundingClientRect,
   Clipboard,
   DismissLayer,
   DomEvent,

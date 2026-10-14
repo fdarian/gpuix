@@ -813,22 +813,18 @@ async fn run_ui_commands(
                         .ok();
                 })
             }
+            // Not `window.update`: drawing builds the root view, which that
+            // call has leased.
             UiCommand::GetAutomationBounds { response } => {
-                window.update(cx, move |_view, window, cx| {
-                    cx.notify();
-                    window.refresh();
-                    window.on_next_frame(move |_window, _cx| {
-                        response.send(crate::automation::all_bounds()).ok();
-                    });
+                gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
+                    window.draw_if_dirty(cx);
+                    response.send(crate::automation::all_bounds()).ok();
                 })
             }
             UiCommand::GetElementBounds { id, response } => {
-                window.update(cx, move |_view, window, cx| {
-                    cx.notify();
-                    window.refresh();
-                    window.on_next_frame(move |_window, _cx| {
-                        response.send(crate::automation::get_bounds(id)).ok();
-                    });
+                gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
+                    window.draw_if_dirty(cx);
+                    response.send(crate::automation::get_bounds(id)).ok();
                 })
             }
             UiCommand::FocusElement(id) => window.update(cx, move |view, window, cx| {
@@ -1201,9 +1197,27 @@ impl GpuixRenderer {
         recv_ui_response(response_receiver, "the GPUI key command")?.map_err(Error::from_reason)
     }
 
+    /// Lay out and paint any pending change now, so a bounds read answers for
+    /// the tree as it is, like `getBoundingClientRect` forcing layout.
+    ///
+    /// Without this, bounds come from the last display-link frame, which may
+    /// not exist yet right after a commit. Call it before locking `tree`: the
+    /// draw builds the view from it. The display-link step that follows only
+    /// presents.
+    #[cfg(target_os = "macos")]
+    fn draw_pending_changes(&self) -> Result<()> {
+        if !*self.initialized.lock().unwrap() {
+            return Ok(());
+        }
+        update_window_without_view(|window, cx| window.draw_if_dirty(cx)).map(|_| ())
+    }
+
     fn automation_bounds(&self) -> Result<HashMap<u64, crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
-        return Ok(crate::automation::all_bounds());
+        {
+            self.draw_pending_changes()?;
+            return Ok(crate::automation::all_bounds());
+        }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
@@ -1224,6 +1238,7 @@ impl GpuixRenderer {
     fn elements_at(&self, x: f64, y: f64) -> Result<Vec<u64>> {
         #[cfg(target_os = "macos")]
         {
+            self.draw_pending_changes()?;
             let tree = self.tree.lock().unwrap();
             return Ok(tree.elements_at(x, y, &crate::automation::get_bounds));
         }
@@ -1249,7 +1264,10 @@ impl GpuixRenderer {
 
     fn element_bounds(&self, id: u64) -> Result<Option<crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
-        return Ok(crate::automation::get_bounds(id));
+        {
+            self.draw_pending_changes()?;
+            return Ok(crate::automation::get_bounds(id));
+        }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {

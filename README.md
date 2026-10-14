@@ -2802,16 +2802,31 @@ elements live in the tree, not the order gpui paints them in.
 
 ### Measure an element
 
-`getElementBounds(id)` returns the last painted box, or `null` if that node did
-not paint. It works on the live `GpuixRenderer` and on the test renderer.
-Bounds are recorded during **paint**, so read them after a frame, not in the
-same commit as mount. The box is the element's border box, like a DOM
-`getBoundingClientRect`.
+`element.getBoundingClientRect()` returns the element's border box in window
+coordinates, like the DOM: `{ x, y, width, height, top, left, right, bottom }`.
+It is never stale. Mutations your framework has queued are sent first (Solid
+sends in a microtask, React at commit) and the window is laid out and painted
+synchronously if anything changed, so the first read after a mount, or a read
+right after a style change in the same turn, answers for the tree as it is. An
+element with no box (not mounted, not painted) returns a zero
+rect, as in the DOM.
 
 ```tsx
-const box = renderer.getElementBounds?.(ref.current.id)
-// { x, y, width, height }
+const ref = useRef<PublicInstance>(null)
+useLayoutEffect(() => {
+  const { width } = ref.current!.getBoundingClientRect()
+}, [])
 ```
+
+Two reads in one turn see the same frame: a window with nothing pending does not
+redraw, so the offset between a parent and a child stays constant under a moving
+ancestor.
+
+`renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
+on the test renderer. It does the same flush and draw, and returns `null`
+instead of a zero rect when the element has no box. `<input>` reports its border
+box like every other element. The browser (wasm) build still answers from the
+last painted frame.
 
 ### Find what is under a point
 
@@ -3548,7 +3563,7 @@ text imports no longer need a runtime flag.
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
 | Scroll | `onScroll` | `deltaX`, `deltaY`, `precise`, `touchPhase`, `modifiers` |
 | Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
-| Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only |
+| Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
