@@ -1240,6 +1240,7 @@ impl GpuixRenderer {
                             selection.clone(),
                         );
                         view.observe_appearance(window, cx);
+                        crate::events::enable_dom_hit_testing(window);
                         view
                     })
                 },
@@ -1380,6 +1381,7 @@ impl GpuixRenderer {
                                         let mut view =
                                             GpuixView::new(tree, callback, title, selection);
                                         view.observe_appearance(window, cx);
+                                        crate::events::enable_dom_hit_testing(window);
                                         view
                                     })
                                 },
@@ -2961,6 +2963,7 @@ fn start_web_app(
                     selection,
                 );
                 view.observe_appearance(window, cx);
+                crate::events::enable_dom_hit_testing(window);
                 if let Some((key_down, key_up, event_id)) =
                     PENDING_WINDOW_KEY_EVENTS.with(|pending| pending.borrow_mut().take())
                 {
@@ -3730,6 +3733,8 @@ pub(crate) struct GpuixView {
     /// What `onLayout` and `onScrollChange` last reported, for the elements that
     /// have the listener. Shared with the paint closures that compare against it.
     paint_reports: SharedPaintReports,
+    /// Where the pointer is and what it is pressing.
+    pub(crate) pointer: crate::events::state::PointerState,
 }
 
 #[derive(Default)]
@@ -4033,6 +4038,29 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
+            pointer: Default::default(),
+        }
+    }
+
+    /// Hands one pointer input to the dispatcher and delivers the events it
+    /// produces. Runs deferred, after GPUI is done with the event.
+    pub(crate) fn handle_pointer(
+        &mut self,
+        sample: crate::events::dispatcher::PointerSample,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let output = {
+            let tree = self.tree.lock().unwrap();
+            crate::events::dispatcher::dispatch(&mut self.pointer, &tree, &sample)
+        };
+        if output.restyle {
+            cx.notify();
+        }
+        let Some(callback) = &self.event_callback else {
+            return;
+        };
+        for payload in output.into_payloads() {
+            callback(payload);
         }
     }
 
@@ -4300,6 +4328,7 @@ impl GpuixView {
             paint_reports: &self.paint_reports,
             highlight_events: &mut highlight_events,
             keyboard_focus,
+            pointer: &self.pointer,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         emit_highlight_events(&callback, &highlight_events);
@@ -4432,6 +4461,8 @@ pub(crate) struct BuildCtx<'a> {
     highlight_events: &'a mut Vec<(u64, usize)>,
     /// See `GpuixView::keyboard_focus_path`.
     pub keyboard_focus: Option<Arc<[u64]>>,
+    /// Which elements are hovered or pressed, for their `hover` / `active` styles.
+    pub pointer: &'a crate::events::state::PointerState,
 }
 
 /// Style properties that cascade into descendants.
@@ -4451,6 +4482,9 @@ pub(crate) struct Inherited {
     /// render returns, and on Windows and Linux the Node thread can edit text
     /// in between, so a stale range would paint over the wrong glyphs.
     pub highlight: Option<Arc<crate::text::HighlightContext>>,
+    /// True below an element with `pointerEvents: "none"` and above any
+    /// descendant that sets `auto` again, as in CSS where it is inherited.
+    pub pointer_events_none: bool,
 }
 
 /// Opacity multiplier for every other focusable element while a control has
@@ -4494,6 +4528,7 @@ impl Inherited {
             selectable: true,
             selection_wash: wash,
             highlight: None,
+            pointer_events_none: false,
         }
     }
 
@@ -4511,6 +4546,11 @@ impl Inherited {
             .and_then(crate::color::parse_color_rgba)
         {
             self.selection_wash = color.into();
+        }
+        match style.pointer_events.as_deref() {
+            Some("none") => self.pointer_events_none = true,
+            Some("auto") => self.pointer_events_none = false,
+            _ => {}
         }
         self
     }
@@ -5243,6 +5283,7 @@ impl gpui::Render for GpuixView {
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
                     keyboard_focus,
+                    pointer: &self.pointer,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -5264,6 +5305,10 @@ impl gpui::Render for GpuixView {
             let drag_end_view = drag_move_view.clone();
             let root = gpui::div().size_full();
             with_window_menu_actions(root)
+                .child(crate::events::listeners::pointer_frame(
+                    cx.weak_entity(),
+                    self.pointer.observed(),
+                ))
                 .child(window_key_events(
                     callback.clone(),
                     self.window_key_down,
@@ -5342,6 +5387,15 @@ pub(crate) fn build_element(
         return gpui::Empty.into_any_element();
     };
 
+    // `hover` and `active` are folded into the base here, before motion, so the
+    // GPUI element never sees them: the dispatcher decides who is hovered.
+    let state_style = element.style.as_deref().and_then(|style| {
+        let hovered = style.hover.is_some() && ctx.pointer.is_hovered(id);
+        let active = style.active.is_some() && ctx.pointer.is_active(id);
+        (hovered || active).then(|| crate::events::state_styles::resolve_state_styles(style, hovered, active))
+    });
+    let base_style = state_style.as_ref().or(element.style.as_deref());
+
     let animated_style = if element.custom_props().contains_key("motion") {
         ctx.motion_states
             .get(&id)
@@ -5350,14 +5404,14 @@ pub(crate) fn build_element(
                 // `Arc<StyleDesc>` is shared, so the animated frame is applied to a
                 // copy. Mutating through the pointer would restyle every element
                 // that declared the same style.
-                let mut resolved = element.style.as_deref().cloned().unwrap_or_default();
+                let mut resolved = base_style.cloned().unwrap_or_default();
                 style.apply_to(&mut resolved);
                 resolved
             })
     } else {
         None
     };
-    let style = animated_style.as_ref().or(element.style.as_deref());
+    let style = animated_style.as_ref().or(base_style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -5420,6 +5474,7 @@ pub(crate) fn build_element(
                 selection_wash: inherited.selection_wash,
                 highlight_set: inherited.highlight.clone(),
                 props: element.custom_props(),
+                pointer_events_none: inherited.pointer_events_none,
             };
             ctx.custom_registry
                 .render(custom_type, element.custom_props(), render_ctx, window, cx)
@@ -5604,6 +5659,15 @@ fn virtual_row_ancestor(tree: &RetainedTree, list_id: u64, element_id: u64) -> O
     }
 }
 
+/// A text instance: a bare string with no style, children or listeners.
+fn is_text_node(element: &crate::retained_tree::RetainedElement) -> bool {
+    element.element_type == "text"
+        && element.content.is_some()
+        && element.style.is_none()
+        && element.children.is_empty()
+        && element.events().is_empty()
+}
+
 fn joined_text_content(
     tree: &RetainedTree,
     element: &crate::retained_tree::RetainedElement,
@@ -5639,33 +5703,17 @@ pub(crate) fn build_host_container(
 ) -> gpui::AnyElement {
     use gpui::prelude::*;
 
-    // `ElementId::Integer` rather than a formatted name: host ids are already
-    // unique per renderer, and every `<div>` and `<text>` builds one of these on
-    // every frame, so the string allocation was pure overhead. Custom elements
-    // use `ElementId::Name`, which is a different variant and cannot collide.
-    let mut el = gpui::div().id(gpui::ElementId::Integer(element.id));
+    // Every host element has a hitbox under an id that is its retained id and
+    // nothing else, so the dispatcher can map GPUI's hit chain back to elements.
+    // Text instances are the exception: the DOM has no box for a text node, so the
+    // pointer is over the element holding it.
+    let mut el = gpui::div().id(crate::events::ids::host_element_id(element.id));
+    if !is_text_node(element) {
+        el = crate::events::ids::host_hitbox(el, ctx.inherited.pointer_events_none);
+    }
 
     if let Some(style) = style {
         el = apply_interactive_styles(el, style);
-
-        if crate::style::should_occlude(style) {
-            // BlockMouse (occlude) stops the hit test, so the parent scroller
-            // never sees the wheel. HTML does not work that way: a wheel over
-            // an absolutely positioned card still scrolls the ancestor. Only
-            // `pointerEvents: "auto"` opts into stealing it. Everything else
-            // uses BlockMouseExceptScroll.
-            //
-            // Absolute used to steal it too. That made a pannable canvas
-            // impossible: every absolutely placed item (a timeline clip, a
-            // graph node) ended the hit test before the pan listener ran.
-            // `<anchored>` still occludes through its own `occlude` prop, so
-            // menus and tooltips are unaffected.
-            el = if style.pointer_events.as_deref() == Some("auto") {
-                el.occlude()
-            } else {
-                el.block_mouse_except_scroll()
-            };
-        }
     }
 
     // ── Overflow: scroll ─────────────────────────────────────────────
@@ -5762,144 +5810,21 @@ pub(crate) fn build_host_container(
         }
     }
 
-    // Wire up events.
-    // Some events (on_hover, on_aux_click) require a stateful element (.id()),
-    // which we already set above. Others (on_mouse_down, on_key_down) work
-    // on any InteractiveElement.
-    if element.events().contains("click") {
-        let id = element.id;
-        let callback = ctx.event_callback.clone();
-        // GPUI's higher-level on_click gesture is not finalized by the
-        // embedded macOS pump. Bubble listeners run in reverse registration
-        // order, so attach click first to keep onMouseUp ahead of onClick.
-        el = el.on_mouse_up(gpui::MouseButton::Left, move |mouse_event, _window, _cx| {
-            emit_event_full(&callback, id, "click", |p| {
-                let (x, y) = point_to_xy(mouse_event.position);
-                p.x = Some(x);
-                p.y = Some(y);
-                p.button = Some(0);
-                p.modifiers = Some(mouse_event.modifiers.into());
-                p.click_count = Some(mouse_event.click_count as u32);
-                p.is_right_click = Some(false);
-            });
-        });
-        el = apply_a11y_click(el, element.events(), id, ctx.event_callback);
-    }
+    // Pointer, mouse and click events are not wired here: the window-level
+    // dispatcher (`crate::events`) finds the target and runs them along the
+    // retained tree. What is left are the events GPUI still owns.
+    el = apply_a11y_click(el, element.events(), element.id, ctx.event_callback);
 
     for event_type in element.events() {
         let id = element.id;
         let callback = ctx.event_callback.clone();
         match event_type.as_str() {
-            // ── Aux click (non-primary), like the DOM `auxclick` ──
-            "auxClick" => {
-                el = el.on_aux_click(move |click_event, _window, _cx| {
-                    emit_event_full(&callback, id, "auxClick", |p| {
-                        let (x, y) = point_to_xy(click_event.position());
-                        p.x = Some(x);
-                        p.y = Some(y);
-                        p.modifiers = Some(click_event.modifiers().into());
-                        p.click_count = Some(click_event.click_count() as u32);
-                        p.is_right_click = Some(click_event.is_right_click());
-                    });
-                });
-            }
-
-            // ── Mouse down (all buttons) ─────────────────────────
-            "mouseDown" => {
-                // Wire all three buttons so JS gets right-click, middle-click, etc.
-                for &button in &[
-                    gpui::MouseButton::Left,
-                    gpui::MouseButton::Middle,
-                    gpui::MouseButton::Right,
-                ] {
-                    let callback = callback.clone();
-                    el = el.on_mouse_down(button, move |mouse_event, _window, _cx| {
-                        emit_event_full(&callback, id, "mouseDown", |p| {
-                            let (x, y) = point_to_xy(mouse_event.position);
-                            p.x = Some(x);
-                            p.y = Some(y);
-                            p.button = Some(mouse_button_to_u32(mouse_event.button));
-                            p.click_count = Some(mouse_event.click_count as u32);
-                            p.modifiers = Some(mouse_event.modifiers.into());
-                        });
-                    });
-                }
-            }
-
-            // ── Mouse up (all buttons) ───────────────────────────
-            "mouseUp" => {
-                for &button in &[
-                    gpui::MouseButton::Left,
-                    gpui::MouseButton::Middle,
-                    gpui::MouseButton::Right,
-                ] {
-                    let callback = callback.clone();
-                    el = el.on_mouse_up(button, move |mouse_event, _window, _cx| {
-                        emit_event_full(&callback, id, "mouseUp", |p| {
-                            let (x, y) = point_to_xy(mouse_event.position);
-                            p.x = Some(x);
-                            p.y = Some(y);
-                            p.button = Some(mouse_button_to_u32(mouse_event.button));
-                            p.click_count = Some(mouse_event.click_count as u32);
-                            p.modifiers = Some(mouse_event.modifiers.into());
-                        });
-                    });
-                }
-            }
-
-            // ── Mouse move ───────────────────────────────────────
-            "mouseMove" => {
-                el = el.on_mouse_move(move |mouse_event, _window, _cx| {
-                    emit_event_full(&callback, id, "mouseMove", |p| {
-                        let (x, y) = point_to_xy(mouse_event.position);
-                        p.x = Some(x);
-                        p.y = Some(y);
-                        p.modifiers = Some(mouse_event.modifiers.into());
-                        p.pressed_button = mouse_event.pressed_button.map(mouse_button_to_u32);
-                    });
-                });
-            }
-
-            // ── Hover (mouseEnter + mouseLeave) ──────────────────
-            // GPUI's on_hover fires with true on enter, false on leave.
-            // We split into two distinct event types for the React side.
-            "mouseEnter" | "mouseLeave" => {
-                // Only wire once even if both mouseEnter and mouseLeave are registered.
-                // Check if we already wired on_hover via the other event.
-                let has_enter = element.events().contains("mouseEnter");
-                let has_leave = element.events().contains("mouseLeave");
-                // Wire on first encounter (mouseEnter sorts before mouseLeave).
-                if event_type.as_str() == "mouseEnter" || !has_enter {
-                    let callback_enter = if has_enter {
-                        ctx.event_callback.clone()
-                    } else {
-                        None
-                    };
-                    let callback_leave = if has_leave {
-                        ctx.event_callback.clone()
-                    } else {
-                        None
-                    };
-                    el = el.on_hover(move |&is_hovered, _window, _cx| {
-                        if is_hovered {
-                            emit_event_full(&callback_enter, id, "mouseEnter", |p| {
-                                p.hovered = Some(true);
-                            });
-                        } else {
-                            emit_event_full(&callback_leave, id, "mouseLeave", |p| {
-                                p.hovered = Some(false);
-                            });
-                        }
-                    });
-                }
-            }
-
             // ── Mouse down outside ───────────────────────────────
             // Fires when the user clicks OUTSIDE this element.
             // Critical for "click outside to close" pattern (dropdowns, modals).
-            "mouseDownOutside" => {
+            "mousedownoutside" => {
                 el = el.on_mouse_down_out(move |mouse_event, _window, _cx| {
-                    emit_event_full(&callback, id, "mouseDownOutside", |p| {
+                    emit_event_full(&callback, id, "mousedownoutside", |p| {
                         let (x, y) = point_to_xy(mouse_event.position);
                         p.x = Some(x);
                         p.y = Some(y);
@@ -5910,7 +5835,7 @@ pub(crate) fn build_host_container(
             }
 
             // ── File drop (Finder / OS paths) ────────────────────
-            "fileDrop" => {
+            "drop" => {
                 el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
                     emit_file_drop(&callback, id, dropped, window.mouse_position());
                 });
@@ -5975,7 +5900,7 @@ pub(crate) fn build_host_container(
         }
     }
 
-    if element.events().contains("mouseDown") && element.events().contains("mouseMove") {
+    if element.events().contains("mousedown") && element.events().contains("mousemove") {
         el = el.capture_pointer();
     }
 
@@ -6344,27 +6269,17 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
     }
 }
 
-/// Base styles plus gpui's `hover` and `active` refinements.
+/// The base styles of a stateful GPUI root.
 ///
-/// Every stateful GPUI root must go through this, never `apply_styles` alone.
-/// `StyleDesc` carries `hover` and `active` for every element type, so a custom
-/// element that only applied the base styles accepted the prop, serialized it,
-/// and dropped it. gpui reads both refinements from the element state behind the
-/// element's `ElementId`, so the caller must have called `.id(..)` first.
-pub(crate) fn apply_interactive_styles<E>(mut el: E, style: &StyleDesc) -> E
+/// `hover` and `active` are not applied here: `build_element` folds them into
+/// `style` before any builder runs, for the elements the pointer dispatcher says
+/// are hovered or pressed. `focusVisible` needs the focus handle, so
+/// `apply_focus_visible` applies it where the element calls `track_focus`.
+pub(crate) fn apply_interactive_styles<E>(el: E, style: &StyleDesc) -> E
 where
     E: gpui::Styled + gpui::StatefulInteractiveElement,
 {
-    el = apply_styles(el, style);
-    if let Some(hover_style) = style.hover.as_deref() {
-        el = el.hover(|refinement| apply_styles(refinement, hover_style));
-    }
-    if let Some(active_style) = style.active.as_deref() {
-        el = el.active(|refinement| apply_styles(refinement, active_style));
-    }
-    // `focusVisible` needs the focus handle, so `apply_focus_visible` applies
-    // it where the element calls track_focus.
-    el
+    apply_styles(el, style)
 }
 
 pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
@@ -6532,8 +6447,8 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
         el = el.ml(gpui::px(ml as f32));
     }
     // Taffy has no viewport-fixed position, and GPUI has no scrolling document,
-    // so "fixed" lays out exactly like "absolute". `should_occlude` already
-    // treated the two the same; without this arm a "fixed" box stayed in flow.
+    // so "fixed" lays out exactly like "absolute". Without this arm a "fixed" box
+    // stayed in flow.
     match style.position.as_deref() {
         Some("absolute") | Some("fixed") => el = el.absolute(),
         Some("relative") => el = el.relative(),
@@ -6743,7 +6658,7 @@ pub(crate) fn emit_file_drop(
     let Some(paths) = file_drop_paths(dropped) else {
         return;
     };
-    emit_event_full(callback, element_id, "fileDrop", |payload| {
+    emit_event_full(callback, element_id, "drop", |payload| {
         let (x, y) = point_to_xy(position);
         payload.x = Some(x);
         payload.y = Some(y);

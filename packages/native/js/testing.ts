@@ -66,8 +66,20 @@ interface NativeTestRendererApi extends NativeRenderer {
     modifiers?: string
   ): void
   simulateMouseExit(x: number, y: number): void
-  simulateMouseDown(x: number, y: number, button: number, modifiers?: string): void
-  simulateMouseUp(x: number, y: number, button: number, modifiers?: string): void
+  simulateMouseDown(
+    x: number,
+    y: number,
+    button: number,
+    modifiers?: string,
+    clickCount?: number
+  ): void
+  simulateMouseUp(
+    x: number,
+    y: number,
+    button: number,
+    modifiers?: string,
+    clickCount?: number
+  ): void
   simulateFileDrop(x: number, y: number, paths: string[]): void
   getTreeJson(): string
   getA11yTree(): string
@@ -384,30 +396,34 @@ export class TestRenderer implements NativeRenderer {
 
   /** End-to-end: simulate mouse down through GPUI hit testing →
    *  dispatch resulting events to the framework.
-   *  @param button - 0=left (default), 1=middle, 2=right */
+   *  @param button - 0=left (default), 1=middle, 2=right
+   *  @param clickCount - the platform's count: 2 for the second press of a double click */
   nativeSimulateMouseDown(
     x: number,
     y: number,
     button?: number,
-    modifiers?: string
+    modifiers?: string,
+    clickCount?: number
   ): void {
     this.native.flush()
-    this.native.simulateMouseDown(x, y, button ?? 0, modifiers)
+    this.native.simulateMouseDown(x, y, button ?? 0, modifiers, clickCount)
     this.dispatchNativeEvents()
     this.native.flush()
   }
 
   /** End-to-end: simulate mouse up through GPUI hit testing →
    *  dispatch resulting events to the framework.
-   *  @param button - 0=left (default), 1=middle, 2=right */
+   *  @param button - 0=left (default), 1=middle, 2=right
+   *  @param clickCount - the platform's count: 2 for the release of a double click */
   nativeSimulateMouseUp(
     x: number,
     y: number,
     button?: number,
-    modifiers?: string
+    modifiers?: string,
+    clickCount?: number
   ): void {
     this.native.flush()
-    this.native.simulateMouseUp(x, y, button ?? 0, modifiers)
+    this.native.simulateMouseUp(x, y, button ?? 0, modifiers, clickCount)
     this.dispatchNativeEvents()
     this.native.flush()
   }

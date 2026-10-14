@@ -256,7 +256,7 @@ impl CustomElement for DiffElement {
             // diff would be the one state with no automation bounds and no
             // click or hover events.
             let empty = gpui::div()
-                .id(SharedString::from(format!("__gpuix_diff_empty_{}", ctx.id)))
+                .id(crate::events::ids::host_element_id(ctx.id))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -369,7 +369,7 @@ impl CustomElement for DiffElement {
         };
 
         let mut container = gpui::div()
-            .id(SharedString::from(format!("__gpuix_diff_{}", ctx.id)))
+            .id(crate::events::ids::host_element_id(ctx.id))
             .flex()
             .flex_col()
             .bg(theme.bg);
@@ -418,15 +418,7 @@ impl CustomElement for DiffElement {
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &[
-            "toggleFile",
-            "showMore",
-            "lineClick",
-            "click",
-            "mouseEnter",
-            "mouseLeave",
-            "fileDrop",
-        ]
+        &["toggleFile", "showMore", "lineClick"]
     }
 
     fn destroy(&mut self) {

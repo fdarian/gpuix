@@ -250,6 +250,7 @@ impl TestGpuixRenderer {
                         selection_clone,
                     );
                     view.observe_appearance(window, cx);
+                    crate::events::enable_dom_hit_testing(window);
                     view
                 })
             })
@@ -655,6 +656,8 @@ impl TestGpuixRenderer {
 
     /// Simulate a mouse down event at the given window coordinates.
     /// Button: 0=left, 1=middle, 2=right. Defaults to left (0).
+    /// `click_count` is what the platform reports for the press: 1 for a single
+    /// click, 2 for the second press of a double click.
     #[napi]
     pub fn simulate_mouse_down(
         &self,
@@ -662,6 +665,7 @@ impl TestGpuixRenderer {
         y: f64,
         button: Option<u32>,
         modifiers: Option<String>,
+        click_count: Option<u32>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         with_test_state(|cx, window, _view| {
@@ -672,7 +676,7 @@ impl TestGpuixRenderer {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
                     modifiers,
                     button: u32_to_mouse_button(button.unwrap_or(0)),
-                    click_count: 1,
+                    click_count: click_count.unwrap_or(1) as usize,
                     first_mouse: false,
                 },
             );
@@ -682,6 +686,7 @@ impl TestGpuixRenderer {
 
     /// Simulate a mouse up event at the given window coordinates.
     /// Button: 0=left, 1=middle, 2=right. Defaults to left (0).
+    /// `click_count` is the count the platform reports for the release.
     #[napi]
     pub fn simulate_mouse_up(
         &self,
@@ -689,6 +694,7 @@ impl TestGpuixRenderer {
         y: f64,
         button: Option<u32>,
         modifiers: Option<String>,
+        click_count: Option<u32>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         with_test_state(|cx, window, _view| {
@@ -699,7 +705,7 @@ impl TestGpuixRenderer {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
                     modifiers,
                     button: u32_to_mouse_button(button.unwrap_or(0)),
-                    click_count: 1,
+                    click_count: click_count.unwrap_or(1) as usize,
                 },
             );
             Ok(())
@@ -812,11 +818,11 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn drag_select(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> Result<()> {
         self.flush()?;
-        self.simulate_mouse_down(x1, y1, None, None)?;
+        self.simulate_mouse_down(x1, y1, None, None, None)?;
         self.flush()?;
         self.simulate_mouse_move(x2, y2, Some(0), None)?;
         self.flush()?;
-        self.simulate_mouse_up(x2, y2, None, None)?;
+        self.simulate_mouse_up(x2, y2, None, None, None)?;
         self.flush()?;
         Ok(())
     }

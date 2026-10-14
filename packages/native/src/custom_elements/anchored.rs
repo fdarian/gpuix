@@ -121,7 +121,6 @@ pub struct AnchoredElement {
     snap_margin: f32,
     deferred: bool,
     priority: usize,
-    occlude: bool,
     /// `fill: "window"`: cover the whole viewport, like a dialog portal.
     fill_window: bool,
 }
@@ -139,7 +138,6 @@ impl Default for AnchoredElement {
             snap_margin: 8.0,
             deferred: true,
             priority: 1,
-            occlude: true,
             fill_window: false,
         }
     }
@@ -297,11 +295,9 @@ impl CustomElement for AnchoredElement {
         // knows where that is, so it reports its own painted box instead of
         // carrying a `bounds_tracker` child.
         let mut content = gpui::div()
-            .id(gpui::SharedString::from(format!(
-                "__gpuix_anchored_{}",
-                ctx.id
-            )))
+            .id(crate::events::ids::host_element_id(ctx.id))
             .flex_col();
+        content = crate::events::ids::host_hitbox(content, ctx.pointer_events_none);
         content = crate::automation::track_own_bounds(content, ctx.id);
         if let Some(style) = ctx.style {
             content = crate::renderer::apply_interactive_styles(content, style);
@@ -316,7 +312,7 @@ impl CustomElement for AnchoredElement {
             content = content.w(viewport.width).h(viewport.height);
         }
         content = crate::accessibility::apply_accessibility(content, ctx.props, None);
-        content = super::wire_standard_events(content, &ctx);
+        content = super::wire_host_events(content, &ctx);
         // Deferred overlays paint over the window blur. A missing fill lets the
         // page show through the card. Force an opaque surface when JS omitted
         // one. An explicit transparent fill opts out: gpui paints no quad for it,
@@ -327,9 +323,6 @@ impl CustomElement for AnchoredElement {
             .is_some();
         if !declares_fill {
             content = content.bg(gpui::rgb(0x1A1A1A));
-        }
-        if self.occlude {
-            content = content.occlude();
         }
         for child in ctx.children {
             content = content.child(child);
@@ -409,7 +402,6 @@ impl CustomElement for AnchoredElement {
                     .and_then(|priority| usize::try_from(priority).ok())
                     .unwrap_or(1);
             }
-            "occlude" => self.occlude = value.as_bool().unwrap_or(true),
             "fill" => self.fill_window = value.as_str() == Some("window"),
             _ => {}
         }
@@ -427,13 +419,12 @@ impl CustomElement for AnchoredElement {
             "snapMargin",
             "deferred",
             "priority",
-            "occlude",
             "fill",
         ]
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &["click", "mouseEnter", "mouseLeave", "fileDrop"]
+        &[]
     }
 
     fn destroy(&mut self) {}

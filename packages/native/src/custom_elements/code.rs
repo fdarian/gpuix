@@ -238,7 +238,7 @@ impl CustomElement for CodeElement {
             .child(content);
 
         let block = super::custom_surface(
-            gpui::div().id(SharedString::from(format!("__gpuix_code_{}", ctx.id))),
+            gpui::div().id(crate::events::ids::host_element_id(ctx.id)),
             &ctx,
         );
         block.child(body).into_any_element()
@@ -260,7 +260,7 @@ impl CustomElement for CodeElement {
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &["click", "mouseEnter", "mouseLeave", "fileDrop"]
+        &[]
     }
 
     fn destroy(&mut self) {}

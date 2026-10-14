@@ -27,7 +27,9 @@ pub mod markdown;
 pub struct CustomRenderContext<'a> {
     /// Numeric element ID (matches React's instance ID).
     pub id: u64,
-    /// Event types registered by React (e.g. "keyDown", "click").
+    /// Event types registered by React that this element wires itself (e.g.
+    /// "keyDown", "change"). Pointer and mouse events are not among them: the
+    /// dispatcher in `crate::events` delivers those for every element.
     pub events: &'a HashSet<String>,
     /// Callback for emitting events back to JS.
     pub event_callback: &'a Option<EventCallback>,
@@ -57,6 +59,8 @@ pub struct CustomRenderContext<'a> {
     pub highlight_set: Option<std::sync::Arc<crate::text::HighlightContext>>,
     /// Retained custom props, including `role` and `aria-*`.
     pub props: &'a HashMap<String, serde_json::Value>,
+    /// `pointerEvents: "none"` here or on an ancestor, with no `auto` between.
+    pub pointer_events_none: bool,
 }
 
 impl CustomRenderContext<'_> {
@@ -103,19 +107,21 @@ impl CustomRenderContext<'_> {
 
 /// Prepare the stateful gpui root of a custom element.
 ///
-/// Applies the declared styles including `hover` and `active`, records the last
-/// painted box so `getElementBounds` and automation locators can find the
-/// element, and installs the mouse handlers the adapter listed in
-/// `supported_events`. Call it before adding children.
+/// Applies the declared styles, makes the root a target of pointer hit testing,
+/// records the last painted box so `getElementBounds` and automation locators can
+/// find the element, and wires what gpui still owns for it. Call it before adding
+/// children.
 ///
-/// The caller must have given `el` a host-derived id already: gpui keys both the
-/// pseudo-style state and the accessibility node off that id.
+/// The caller must have given `el` `host_element_id(ctx.id)` already: gpui keys
+/// the accessibility node off that id, and the pointer dispatcher maps its hit
+/// chain back to elements through it.
 pub(crate) fn custom_surface(
     mut el: gpui::Stateful<gpui::Div>,
     ctx: &CustomRenderContext,
 ) -> gpui::Stateful<gpui::Div> {
     use gpui::prelude::*;
 
+    el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
     if let Some(style) = ctx.style {
         el = crate::renderer::apply_interactive_styles(el, style);
     }
@@ -130,68 +136,24 @@ pub(crate) fn custom_surface(
     }
     el = crate::automation::track_host_bounds(el, ctx.id, None, None);
     el = crate::accessibility::apply_accessibility(el, ctx.props, None);
-    wire_standard_events(el, ctx)
+    wire_host_events(el, ctx)
 }
 
-/// Attach the mouse events a custom element declares in `supported_events`.
+/// Wires the events of a custom element's root that the pointer dispatcher does
+/// not deliver: the VoiceOver press, and a file drop from the OS.
 ///
-/// Declaring an event and never installing a handler is worse than not
-/// supporting it: the prop type-checks, the listener is registered on the JS
-/// side, and nothing ever fires.
 /// Generic over the element, not just `Stateful<Div>`, because `<img>` and
-/// `<svg>` are gpui leaves and cannot hold a child. They declare the same props
-/// as everything else, so they have to wire the same events.
-pub(crate) fn wire_standard_events<E: gpui::StatefulInteractiveElement>(
+/// `<svg>` are gpui leaves and cannot hold a child.
+pub(crate) fn wire_host_events<E: gpui::StatefulInteractiveElement>(
     mut el: E,
     ctx: &CustomRenderContext,
 ) -> E {
-    let id = ctx.id;
-    for event in ctx.events {
+    if ctx.events.contains("drop") {
+        let id = ctx.id;
         let callback = ctx.event_callback.clone();
-        match event.as_str() {
-            "click" => {
-                // Match retained hosts: GPUI's semantic click is unreliable under
-                // embedded AppKit pumping, so primary mouse-up is the click boundary.
-                el = el.on_mouse_up(gpui::MouseButton::Left, move |mouse_event, _window, _cx| {
-                    crate::renderer::emit_event_full(&callback, id, "click", |p| {
-                        let (x, y) = crate::renderer::point_to_xy(mouse_event.position);
-                        p.x = Some(x);
-                        p.y = Some(y);
-                        p.button = Some(0);
-                        p.click_count = Some(mouse_event.click_count as u32);
-                        p.modifiers = Some(mouse_event.modifiers.into());
-                        p.is_right_click = Some(false);
-                    });
-                });
-            }
-            "mouseEnter" | "mouseLeave" => {
-                // gpui reports both edges through one listener, so wire it once.
-                if event == "mouseEnter" || !ctx.events.contains("mouseEnter") {
-                    let enter = ctx.events.contains("mouseEnter");
-                    let leave = ctx.events.contains("mouseLeave");
-                    let callback = ctx.event_callback.clone();
-                    el = el.on_hover(move |&hovered, _window, _cx| {
-                        let kind = if hovered { "mouseEnter" } else { "mouseLeave" };
-                        if (hovered && enter) || (!hovered && leave) {
-                            crate::renderer::emit_event_full(&callback, id, kind, |p| {
-                                p.hovered = Some(hovered);
-                            });
-                        }
-                    });
-                }
-            }
-            "fileDrop" => {
-                el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
-                    crate::renderer::emit_file_drop(
-                        &callback,
-                        id,
-                        dropped,
-                        window.mouse_position(),
-                    );
-                });
-            }
-            _ => {}
-        }
+        el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
+            crate::renderer::emit_file_drop(&callback, id, dropped, window.mouse_position());
+        });
     }
     crate::accessibility::apply_a11y_click(el, ctx.events, ctx.id, ctx.event_callback)
 }
@@ -377,7 +339,9 @@ impl CustomElementRegistry {
         let filtered: HashSet<String> = ctx
             .events
             .iter()
-            .filter(|event| supported.contains(&event.as_str()))
+            .filter(|event| {
+                supported.contains(&event.as_str()) || crate::events::is_pointer_event(event)
+            })
             .cloned()
             .collect();
         let ctx = CustomRenderContext {

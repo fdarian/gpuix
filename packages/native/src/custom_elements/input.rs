@@ -433,9 +433,8 @@ impl CustomElement for TextEditorElement {
         });
         self.last_prop_value = Some(self.value.clone());
 
-        let element_id = gpui::SharedString::from(format!("__gpuix_editor_{}", ctx.id));
         let mut editor = div()
-            .id(element_id)
+            .id(crate::events::ids::host_element_id(ctx.id))
             .flex()
             .min_w_0()
             .w_full()
@@ -445,6 +444,7 @@ impl CustomElement for TextEditorElement {
         if !self.multiline {
             editor = editor.items_center();
         }
+        editor = crate::events::ids::host_hitbox(editor, ctx.pointer_events_none);
         if let Some(style) = ctx.style {
             editor = crate::renderer::apply_interactive_styles(editor, style);
             // Clip text to rounded corners, matching HTML input behavior.
@@ -486,33 +486,7 @@ impl CustomElement for TextEditorElement {
         // selection-start region: a drag inside an editor must move the caret,
         // not start a document selection.
         editor = editor.child(crate::automation::bounds_tracker(ctx.id, Some(false)));
-        if ctx.events.contains("click") {
-            let callback = ctx.event_callback.clone();
-            let id = ctx.id;
-            // Match retained hosts: GPUI's semantic click is unreliable under
-            // embedded AppKit pumping, so primary mouse-up is the click boundary.
-            editor = editor.on_mouse_up(MouseButton::Left, move |event, _window, _cx| {
-                emit_event_full(&callback, id, "click", |payload| {
-                    let (x, y) = crate::renderer::point_to_xy(event.position);
-                    payload.x = Some(x);
-                    payload.y = Some(y);
-                    payload.button = Some(0);
-                    payload.click_count = Some(event.click_count as u32);
-                    payload.modifiers = Some(event.modifiers.into());
-                    payload.is_right_click = Some(false);
-                });
-            });
-        }
-        if ctx.events.contains("fileDrop") {
-            let callback = ctx.event_callback.clone();
-            let id = ctx.id;
-            editor = editor.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
-                crate::renderer::emit_file_drop(&callback, id, dropped, window.mouse_position());
-            });
-        }
-        editor =
-            crate::accessibility::apply_a11y_click(editor, ctx.events, ctx.id, ctx.event_callback);
-        editor.into_any_element()
+        super::wire_host_events(editor, &ctx).into_any_element()
     }
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
@@ -545,7 +519,7 @@ impl CustomElement for TextEditorElement {
 
     fn supported_events(&self) -> &'static [&'static str] {
         &[
-            "change", "submit", "click", "keyDown", "keyUp", "focus", "blur", "fileDrop",
+            "change", "submit", "keyDown", "keyUp", "focus", "blur",
         ]
     }
 

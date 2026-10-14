@@ -251,8 +251,8 @@ pub struct StyleDesc {
 
     // Cursor
     pub cursor: Option<String>,
-    /// `"auto"` blocks mouse hits behind this element. `"none"` never does.
-    /// Unset: block when this element paints a fill or is absolutely positioned.
+    /// `"none"` makes the element never a pointer target; it inherits and a
+    /// descendant's `"auto"` restores it, as in CSS.
     pub pointer_events: Option<String>,
 
     // Text selection. "none" opts an element and its subtree out of the
@@ -334,33 +334,6 @@ impl StyleDesc {
     }
 }
 
-/// Whether this style should insert a mouse hitbox.
-///
-/// GPUI only hit-tests elements that own a hitbox. A painted overlay without
-/// one stays visible while clicks fall through. CSS `pointer-events` maps
-/// here: `none` never blocks, `auto` always does. Unset follows the painted
-/// surface: a fill or an absolute/fixed box blocks.
-///
-/// In-flow fills use BlockMouseExceptScroll so a parent scroller still gets
-/// the wheel. `occlude()` (BlockMouse) is only for overlays that steal it.
-pub fn should_occlude(style: &StyleDesc) -> bool {
-    match style.pointer_events.as_deref() {
-        Some("none") => return false,
-        Some("auto") => return true,
-        _ => {}
-    }
-    if matches!(style.position.as_deref(), Some("absolute") | Some("fixed")) {
-        return true;
-    }
-    if !style.has_background() {
-        return false;
-    }
-    match style.resolved_background() {
-        Some(background) => !background.is_transparent(),
-        None => true,
-    }
-}
-
 /// Map a CSS `cursor` keyword onto a GPUI cursor. Unknown keywords return
 /// `None` so the property is ignored, like every other invalid style value.
 ///
@@ -400,24 +373,6 @@ pub fn parse_cursor(name: &str) -> Option<gpui::CursorStyle> {
 mod tests {
     use super::*;
 
-    fn with_fill(fill: &str) -> StyleDesc {
-        StyleDesc {
-            background_color: Some(fill.to_owned()),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn transparent_function_does_not_occlude() {
-        assert!(!should_occlude(&with_fill("transparent")));
-        assert!(!should_occlude(&with_fill("oklch(50% 0.2 30 / 0%)")));
-    }
-
-    #[test]
-    fn invalid_fill_keeps_conservative_occlusion() {
-        assert!(should_occlude(&with_fill("not-a-color")));
-    }
-
     #[test]
     fn resolves_a_two_stop_linear_gradient() {
         let style: StyleDesc = serde_json::from_str(
@@ -432,16 +387,6 @@ mod tests {
         .color_space(gpui::ColorSpace::Oklab);
 
         assert_eq!(style.resolved_background(), Some(expected));
-    }
-
-    #[test]
-    fn transparent_gradient_does_not_occlude() {
-        let style: StyleDesc = serde_json::from_str(
-            r##"{"background":{"type":"linear-gradient","angle":0,"stops":[{"color":"transparent","position":0},{"color":"#00000000","position":1}]}}"##,
-        )
-        .unwrap();
-
-        assert!(!should_occlude(&style));
     }
 
     #[test]

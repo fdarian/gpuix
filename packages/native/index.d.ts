@@ -327,13 +327,16 @@ export declare class TestGpuixRenderer {
   /**
    * Simulate a mouse down event at the given window coordinates.
    * Button: 0=left, 1=middle, 2=right. Defaults to left (0).
+   * `click_count` is what the platform reports for the press: 1 for a single
+   * click, 2 for the second press of a double click.
    */
-  simulateMouseDown(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
+  simulateMouseDown(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null, clickCount?: number | undefined | null): void
   /**
    * Simulate a mouse up event at the given window coordinates.
    * Button: 0=left, 1=middle, 2=right. Defaults to left (0).
+   * `click_count` is the count the platform reports for the release.
    */
-  simulateMouseUp(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
+  simulateMouseUp(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null, clickCount?: number | undefined | null): void
   /**
    * Simulate a scroll wheel event at the given position.
    * delta_x and delta_y are in pixels (negative = scroll up/left).

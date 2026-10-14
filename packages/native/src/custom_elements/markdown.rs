@@ -11,7 +11,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gpui::SharedString;
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 use crate::markdown::parser::{parse, BlockTree};
@@ -102,7 +101,7 @@ impl CustomElement for MarkdownElement {
         let body = render_tree(&tree, &mut md, window);
 
         let container = gpui::div()
-            .id(SharedString::from(format!("__gpuix_markdown_{}", ctx.id)))
+            .id(crate::events::ids::host_element_id(ctx.id))
             .flex()
             .flex_col()
             .w_full()
@@ -130,7 +129,7 @@ impl CustomElement for MarkdownElement {
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &["linkClick", "click", "mouseEnter", "mouseLeave", "fileDrop"]
+        &["linkClick"]
     }
 
     fn destroy(&mut self) {

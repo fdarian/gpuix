@@ -156,7 +156,7 @@ fn img_fallback(ctx: &CustomRenderContext, alt: &str, message: &str) -> gpui::An
 
     let mut fallback = super::custom_surface(
         gpui::div()
-            .id(gpui::SharedString::from(format!("__gpuix_img_{}", ctx.id)))
+            .id(crate::events::ids::host_element_id(ctx.id))
             .flex()
             .items_center()
             .justify_center()
@@ -213,7 +213,8 @@ impl CustomElement for ImgElement {
                     .child("img: load failed")
                     .into_any_element()
             })
-            .id(gpui::SharedString::from(format!("__gpuix_img_{}", ctx.id)));
+            .id(crate::events::ids::host_element_id(ctx.id));
+        el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
 
         if let Some(style) = ctx.style {
             el = crate::renderer::apply_interactive_styles(el, style);
@@ -234,7 +235,7 @@ impl CustomElement for ImgElement {
         let mut el =
             crate::accessibility::apply_accessibility(el, ctx.props, Some(gpui::Role::Image));
         el = crate::accessibility::apply_image_label(el, ctx.props, &self.alt);
-        let el = super::wire_standard_events(el, &ctx);
+        let el = super::wire_host_events(el, &ctx);
         crate::automation::track_own_bounds(el, ctx.id).into_any_element()
     }
 
@@ -265,7 +266,7 @@ impl CustomElement for ImgElement {
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &["click", "mouseEnter", "mouseLeave", "fileDrop"]
+        &[]
     }
 
     fn destroy(&mut self) {}
@@ -473,7 +474,7 @@ impl CustomElement for SvgElement {
         } else {
             Some(self.source.as_bytes())
         };
-        let element_id = gpui::SharedString::from(format!("__gpuix_svg_{}", ctx.id));
+        let element_id = crate::events::ids::host_element_id(ctx.id);
         let Some(bytes) = bytes else {
             let empty = super::custom_surface(gpui::div().id(element_id), &ctx);
             return empty.into_any_element();
@@ -489,11 +490,12 @@ impl CustomElement for SvgElement {
             .flex_none()
             .text_color(tint)
             .id(element_id);
+        icon = crate::events::ids::host_hitbox(icon, ctx.pointer_events_none);
         if let Some(style) = ctx.style {
             icon = crate::renderer::apply_interactive_styles(icon, style);
         }
         icon = crate::accessibility::apply_accessibility(icon, ctx.props, None);
-        let icon = super::wire_standard_events(icon, &ctx);
+        let icon = super::wire_host_events(icon, &ctx);
         crate::automation::track_own_bounds(icon, ctx.id).into_any_element()
     }
 
@@ -510,7 +512,7 @@ impl CustomElement for SvgElement {
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &["click", "mouseEnter", "mouseLeave", "fileDrop"]
+        &[]
     }
 
     fn destroy(&mut self) {}
