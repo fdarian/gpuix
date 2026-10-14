@@ -628,26 +628,20 @@ impl TestGpuixRenderer {
         &self,
         options: Option<PathPromptOptions>,
     ) -> AsyncTask<PromptForPathsTask> {
-        let receiver = PathPromptOptions::to_gpui(options).and_then(|options| {
-            with_test_state(|cx, _window, _view| Ok(cx.update(|cx| cx.prompt_for_paths(options))))
-        });
+        let receiver = PathPromptOptions::to_gpui(options)
+            .and_then(|options| window_call(|_window, cx| cx.prompt_for_paths(options)));
         AsyncTask::new(PromptForPathsTask::new(receiver))
     }
 
     /// The test window's own in-memory clipboard, never the system's.
     #[napi]
     pub fn write_clipboard_text(&self, text: String) -> Result<()> {
-        with_test_state(|cx, _window, _view| {
-            cx.update(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
-            Ok(())
-        })
+        window_call(|_window, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)))
     }
 
     #[napi]
     pub fn read_clipboard_text(&self) -> Result<Option<String>> {
-        with_test_state(|cx, _window, _view| {
-            Ok(cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())))
-        })
+        window_call(|_window, cx| cx.read_from_clipboard().and_then(|item| item.text()))
     }
 
     #[napi]
@@ -676,52 +670,28 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn set_window_key_events(&self, key_down: bool, key_up: bool, event_id: f64) -> Result<()> {
         let event_id = to_element_id(event_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.routing.set_window_keys(key_down, key_up, event_id);
-                    cx.notify();
-                });
-                window.refresh();
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
+        update_view_or_defer(move |view, window, cx| {
+            view.routing.set_window_keys(key_down, key_up, event_id);
+            cx.notify();
+            window.refresh();
         })
     }
 
     #[napi]
     pub fn set_window_selection_change(&self, enabled: bool, event_id: f64) -> Result<()> {
         let event_id = to_element_id(event_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.set_selection_change_listener(enabled, event_id);
-                    cx.notify();
-                });
-                window.refresh();
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
+        update_view_or_defer(move |view, window, cx| {
+            view.set_selection_change_listener(enabled, event_id);
+            cx.notify();
+            window.refresh();
         })
     }
 
     #[napi]
     pub fn set_window_appearance_change(&self, enabled: bool, event_id: f64) -> Result<()> {
         let event_id = to_element_id(event_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, _window, app| {
-                view.update(app, |view, _cx| {
-                    view.set_appearance_change_listener(enabled, event_id);
-                });
-            })
-            .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(())
+        update_view_or_defer(move |view, _window, _cx| {
+            view.set_appearance_change_listener(enabled, event_id);
         })
     }
 
@@ -737,12 +707,8 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn get_appearance(&self) -> Result<String> {
-        with_test_state(|cx, window, _view| {
-            let appearance = cx
-                .update_window(window, |_, window, _| window.appearance())
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            Ok(crate::renderer::appearance_name(appearance).to_string())
-        })
+        let appearance = window_call(|window, _cx| window.appearance())?;
+        Ok(crate::renderer::appearance_name(appearance).to_string())
     }
 
     /// Simulate a mouse down event at the given window coordinates.
@@ -988,20 +954,13 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn scroll_to(&self, element_id: f64, x: f64, y: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, _window, app| {
-                view.update(app, |view, _cx| {
-                    if view.set_virtual_list_offset(id, x as f32, y as f32) {
-                        return;
-                    }
-                    if let Some(handle) = view.scroll_handles.get(&id) {
-                        handle.set_offset(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
-                    }
-                });
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(())
+        update_view_or_defer(move |view, _window, _cx| {
+            if view.set_virtual_list_offset(id, x as f32, y as f32) {
+                return;
+            }
+            if let Some(handle) = view.scroll_handles.get(&id) {
+                handle.set_offset(gpui::point(gpui::px(x as f32), gpui::px(y as f32)));
+            }
         })
     }
 
@@ -1020,20 +979,13 @@ impl TestGpuixRenderer {
         let id = to_element_id(element_id)?;
         let index = index as usize;
         let offset = offset_in_item.unwrap_or(0.0) as f32;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, _window, app| {
-                view.update(app, |view, _cx| {
-                    if view.scroll_virtual_list_to_item(id, index, offset) {
-                        return;
-                    }
-                    if let Some(handle) = view.scroll_handles.get(&id) {
-                        handle.scroll_to_item(index);
-                    }
-                });
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(())
+        update_view_or_defer(move |view, _window, _cx| {
+            if view.scroll_virtual_list_to_item(id, index, offset) {
+                return;
+            }
+            if let Some(handle) = view.scroll_handles.get(&id) {
+                handle.scroll_to_item(index);
+            }
         })
     }
 
@@ -1310,25 +1262,17 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_scroll_offset(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, _cx| {
-                        if let Some(offset) = view.virtual_list_offset(id) {
-                            return Some(offset.to_vec());
-                        }
-                        view.scroll_handles.get(&id).map(|handle| {
-                            let offset = handle.offset();
-                            vec![
-                                f64::from(f32::from(offset.x)),
-                                f64::from(f32::from(offset.y)),
-                            ]
-                        })
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(result)
+        update_view(|view, _window, _cx| {
+            if let Some(offset) = view.virtual_list_offset(id) {
+                return Some(offset.to_vec());
+            }
+            view.scroll_handles.get(&id).map(|handle| {
+                let offset = handle.offset();
+                vec![
+                    f64::from(f32::from(offset.x)),
+                    f64::from(f32::from(offset.y)),
+                ]
+            })
         })
     }
 

@@ -26,7 +26,7 @@ import type {
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
 import { readFontFiles } from "./fonts.js"
-import { createRendererState, type SyncDispatchResult } from "./renderer-state.js"
+import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
   MAC_CPU_THROTTLES,
@@ -167,6 +167,12 @@ export interface TestRendererOptions {
    * which run inside the simulate call. Must return what the handlers decided.
    */
   dispatchSyncEvent?: (event: EventPayload) => SyncDispatchResult
+  /**
+   * Receives an error thrown by an event handler, as `onError` does for a live
+   * renderer. Without it the error is thrown from the simulate call that
+   * delivered the event.
+   */
+  onError?: (error: unknown) => void
 }
 
 /** The motion a simulated mouse move reports, in logical pixels. */
@@ -288,6 +294,7 @@ export class TestRenderer implements NativeRenderer {
   readonly setWindowKeyEvents: NonNullable<NativeRenderer["setWindowKeyEvents"]>
   private readonly dispatchEvent: (event: EventPayload) => void
   private readonly dispatchSyncEvent: (event: EventPayload) => SyncDispatchResult
+  private readonly onError: ((error: unknown) => void) | undefined
 
   constructor(options: TestRendererOptions = {}) {
     if (!NativeTestRenderer) {
@@ -311,11 +318,14 @@ export class TestRenderer implements NativeRenderer {
     this.setWindowAppearanceChange = this.native.setWindowAppearanceChange.bind(
       this.native
     )
+    this.onError = options.onError
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
       createRendererState(this).dispatch(event)
     })
-    this.dispatchSyncEvent =
-      options.dispatchSyncEvent ?? ((event) => createRendererState(this).dispatchSync(event))
+    this.dispatchSyncEvent = reportSyncErrors(
+      options.dispatchSyncEvent ?? ((event) => createRendererState(this).dispatchSync(event)),
+      options.onError
+    )
     this.native.setSyncEventHandler((event) => this.dispatchSyncEvent(event))
     bindClipboard(this)
   }
@@ -347,7 +357,12 @@ export class TestRenderer implements NativeRenderer {
       const events = this.native.drainEvents()
       if (events.length === 0) break
       for (const event of events) {
-        this.dispatchEvent(event)
+        try {
+          this.dispatchEvent(event)
+        } catch (error) {
+          if (!this.onError) throw error
+          this.onError(error)
+        }
       }
     }
   }

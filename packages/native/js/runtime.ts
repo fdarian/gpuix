@@ -11,7 +11,7 @@ import {
 import { bindClipboard } from "./clipboard.js"
 import { bindEyeDropper } from "./eyedropper.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
-import { createRendererState } from "./renderer-state.js"
+import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 
 export type { WindowFontsOption }
 
@@ -46,7 +46,12 @@ export function createNativeRenderer(
   bindEyeDropper(renderer)
   // Keys reach JS here, inside the native call, so preventDefault() can still
   // stop the editor. A throw becomes the error of the call on the stack.
-  renderer.setSyncEventHandler((event) => createRendererState(renderer).dispatchSync(event))
+  renderer.setSyncEventHandler(
+    reportSyncErrors(
+      (event) => createRendererState(renderer).dispatchSync(event),
+      options.onError
+    )
+  )
   const automated =
     typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
   const init = renderer.init.bind(renderer)

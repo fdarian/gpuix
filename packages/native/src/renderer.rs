@@ -364,6 +364,28 @@ fn update_window_without_view<R>(
 }
 
 #[cfg(target_os = "macos")]
+/// Runs `update` against the app alone. From inside a sync handler the app is
+/// already borrowed by the input being dispatched, so it uses that one.
+fn update_app<R>(update: impl FnOnce(&mut gpui::App) -> R) -> Result<R> {
+    crate::events::sync_dispatch::route(
+        update,
+        |update| {
+            crate::events::sync_dispatch::update_active_window(|_window, cx| update(cx))
+        },
+        Error::from_reason,
+        |update| {
+            GPUI_APP.with(|app| {
+                let app = app.borrow();
+                let app = app
+                    .as_ref()
+                    .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+                Ok(app.update(update))
+            })
+        },
+    )
+}
+
+#[cfg(target_os = "macos")]
 fn invalidate_window() -> Result<()> {
     if crate::events::sync_dispatch::in_sync_call() {
         return crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason);
@@ -1100,17 +1122,11 @@ impl GpuixRenderer {
     fn begin_path_prompt(&self, options: gpui::PathPromptOptions, deferred: PathPromptDeferred) {
         #[cfg(target_os = "macos")]
         {
-            let prompt = GPUI_APP.with(|app| {
-                let app = app.borrow();
-                let app = app
-                    .as_ref()
-                    .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-                Ok(app.update(|cx| {
-                    (
-                        cx.background_executor().clone(),
-                        cx.prompt_for_paths(options),
-                    )
-                }))
+            let prompt = update_app(|cx| {
+                (
+                    cx.background_executor().clone(),
+                    cx.prompt_for_paths(options),
+                )
             });
             match prompt {
                 Ok((background_executor, receiver)) => {
@@ -2039,14 +2055,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn write_clipboard_text(&self, text: String) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return GPUI_APP.with(|app| {
-            let app = app.borrow();
-            let app = app
-                .as_ref()
-                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-            app.update(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
-            Ok(())
-        });
+        return update_app(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
@@ -2068,13 +2077,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn read_clipboard_text(&self) -> Result<Option<String>> {
         #[cfg(target_os = "macos")]
-        return GPUI_APP.with(|app| {
-            let app = app.borrow();
-            let app = app
-                .as_ref()
-                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-            Ok(app.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())))
-        });
+        return update_app(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {

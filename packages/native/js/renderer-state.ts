@@ -24,6 +24,11 @@ export interface RendererRootHandlers {
   /** See `WindowKeyEventHandlers.tabNavigation`. Defaults to true. */
   tabNavigation?: boolean
   onEvent?: (event: EventPayload) => void
+  /**
+   * Wraps each dispatch, for a framework that must flush around it. Synchronous
+   * events need their outcome before native continues, so it has to call
+   * `dispatch` before it returns.
+   */
   schedule?: (dispatch: () => void) => void
 }
 
@@ -85,6 +90,27 @@ function isAncestor(ancestor: DismissLayer, layer: DismissLayer): boolean {
     if (current === ancestor) return true
   }
   return false
+}
+
+/**
+ * Sends an error thrown by a synchronous handler to `onError`, as queued events
+ * do, and tells native the event was not handled. Without `onError` the error
+ * is rethrown into the native call on the stack, which is the only place left
+ * to report it.
+ */
+export function reportSyncErrors(
+  dispatch: (event: EventPayload) => SyncDispatchResult,
+  onError: ((error: unknown) => void) | undefined
+): (event: EventPayload) => SyncDispatchResult {
+  if (!onError) return dispatch
+  return (event) => {
+    try {
+      return dispatch(event)
+    } catch (error) {
+      onError(error)
+      return { defaultPrevented: false, propagationStopped: false }
+    }
+  }
 }
 
 export interface RendererState {
@@ -208,8 +234,18 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (!root || !handlesEvent(root, event)) {
         return { defaultPrevented: false, propagationStopped: false }
       }
-      const result = runEvent(root, event)
-      root.handlers.onEvent?.(received)
+      let result: SyncDispatchResult | undefined
+      const run = () => {
+        result = runEvent(root, event)
+        root.handlers.onEvent?.(received)
+      }
+      if (root.handlers.schedule) root.handlers.schedule(run)
+      else run()
+      if (!result) {
+        throw new Error(
+          "The schedule handler did not run the dispatch before returning. A synchronous event needs its outcome now, so schedule must call it synchronously."
+        )
+      }
       return result
     },
     current: () => active,
