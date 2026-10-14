@@ -13,6 +13,7 @@ import { jsx } from "../jsx-runtime.js"
 import {
   FloatingLayer,
   floatingRootStyle,
+  overrideProps,
   renderSlot,
   type FloatingContentProps,
   DismissableLayer,
@@ -115,11 +116,10 @@ export function Tooltip(props: TooltipProps): JSX.Element {
   return createComponent(TooltipContext.Provider, {
     value: state,
     get children() {
-      return jsx("div", {
-        ...props,
+      return jsx("div", overrideProps(props, {
         style: floatingRootStyle(props.style),
         get children() { return props.children },
-      })
+      }))
     },
   })
 }
@@ -130,15 +130,14 @@ export function TooltipTrigger(props: TooltipTriggerProps): JSX.Element {
   return renderSlot({
     asChild: props.asChild,
     children: props.children,
-    props: {
-      ...props,
+    props: overrideProps(props, {
       onMouseEnter(event: HostMouseEvent) { props.onMouseEnter?.(event); state.scheduleOpen() },
       onMouseLeave(event: HostMouseEvent) { props.onMouseLeave?.(event); state.scheduleClose() },
       onMouseDown(event: HostMouseEvent) { props.onMouseDown?.(event); state.close() },
       onClick(event: HostPointerEvent) { props.onClick?.(event); state.close() },
       onFocus(event: EventPayload) { props.onFocus?.(event); state.openNow() },
       onBlur(event: EventPayload) { props.onBlur?.(event); state.close() },
-    },
+    }, ["children"]),
     defaultTabIndex: 0,
   })
 }

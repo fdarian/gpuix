@@ -15,6 +15,7 @@ import { useGpuixRequired } from "../root.js"
 import {
   FloatingLayer,
   floatingRootStyle,
+  overrideProps,
   renderSlot,
   resolveStyle,
   type FloatingContentProps,
@@ -129,11 +130,10 @@ export function Select(props: SelectProps): JSX.Element {
   return createComponent(SelectContext.Provider, {
     value: valueContext,
     get children() {
-      return jsx("div", {
-        ...props,
+      return jsx("div", overrideProps(props, {
         style: floatingRootStyle(props.style),
         get children() { return props.children },
-      })
+      }))
     },
   })
 }
@@ -153,8 +153,7 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
   return renderSlot({
     asChild: props.asChild,
     children: props.children,
-    props: {
-      ...props,
+    props: overrideProps(props, {
       ref(element: HostElement) {
         state.trigger.current = element
         props.ref?.(element)
@@ -192,7 +191,7 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
         else if (event.key === "up") state.open() ? state.move(-1) : state.setOpen(true)
         else if (event.key === "enter" || event.key === "space") state.setOpen(!state.open())
       },
-    },
+    }, ["children"]),
     defaultTabIndex: 0,
   })
 }
@@ -200,13 +199,12 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
 export interface SelectValueProps extends HostProps { children?: JSX.Element; placeholder?: JSX.Element }
 export function SelectValue(props: SelectValueProps): JSX.Element {
   const state = context("SelectValue")
-  return jsx("div", {
-    ...props,
+  return jsx("div", overrideProps(props, {
     get children() {
       const selected = state.value()
       return props.children ?? (selected === undefined ? props.placeholder : (state.labels.get(selected) ?? selected))
     },
-    })
+  }))
 }
 
 export interface SelectContentProps extends FloatingContentProps {
@@ -277,8 +275,7 @@ export function SelectItem(props: SelectItemProps): JSX.Element {
     get children() {
       return typeof props.children === "function" ? props.children(itemState()) : props.children
     },
-    props: {
-      ...props,
+    props: overrideProps(props, {
       get style() { return resolveStyle(props.style, itemState()) },
       onMouseEnter(event: HostMouseEvent) {
         props.onMouseEnter?.(event)
@@ -288,7 +285,7 @@ export function SelectItem(props: SelectItemProps): JSX.Element {
         props.onClick?.(event)
         if (!itemState().disabled) state.select(props.value)
       },
-    },
+    }, ["children"]),
   })
 }
 

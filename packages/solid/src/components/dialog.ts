@@ -15,7 +15,7 @@ import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"
 import { buttonProps } from "./button.js"
-import { DismissableLayer, renderSlot } from "./floating.js"
+import { DismissableLayer, overrideProps, renderSlot } from "./floating.js"
 
 interface DialogState {
   open(): boolean
@@ -77,14 +77,13 @@ export function DialogTrigger(props: DialogTriggerProps): JSX.Element {
     asChild: props.asChild,
     children: props.children,
     props: Object.defineProperties(
-      {
-        ...props,
+      overrideProps(props, {
         ref(element: HostElement) {
           state.trigger.current = element
           props.ref?.(element)
         },
         get "aria-expanded"() { return state.open() },
-      },
+      }, ["children"]),
       Object.getOwnPropertyDescriptors(buttonProps({
         get tabIndex() { return props.tabIndex },
         onKeyDown: (event) => props.onKeyDown?.(event),
@@ -113,8 +112,7 @@ export function DialogPortal(props: DialogPortalProps): JSX.Element {
     get when() { return state.open() },
     keyed: true,
     get children() {
-      return jsx("anchored", {
-        ...props,
+      return jsx("anchored", overrideProps(props, {
         // Native sizes the layer to the viewport, so a resize never leaves an
         // uncovered strip that clicks could reach.
         fill: "window",
@@ -134,7 +132,7 @@ export function DialogPortal(props: DialogPortalProps): JSX.Element {
           }
         },
         get children() { return props.children },
-      })
+      }))
     },
   })
 }
@@ -229,7 +227,7 @@ export function DialogClose(props: DialogCloseProps): JSX.Element {
     asChild: props.asChild,
     children: props.children,
     props: Object.defineProperties(
-      { ...props },
+      overrideProps(props, {}, ["children"]),
       Object.getOwnPropertyDescriptors(buttonProps({
         get tabIndex() { return props.tabIndex },
         onKeyDown: (event) => props.onKeyDown?.(event),

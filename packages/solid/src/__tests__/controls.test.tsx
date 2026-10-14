@@ -333,4 +333,40 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     app.renderer.dispatchNativeEvents()
     expect(seen).toEqual([{ detail: 0, pointerId: -1, target: row.id }])
   })
+
+  it("builds DialogPortal children once", () => {
+    let built = 0
+    const Probe = () => {
+      built += 1
+      return <text>probe</text>
+    }
+    const [open, setOpen] = createSignal(false)
+    const app = createTestRoot()
+    app.render(() => (
+      <Dialog open={open()} onOpenChange={setOpen}>
+        <DialogPortal>
+          <Probe />
+        </DialogPortal>
+      </Dialog>
+    ))
+    expect(built).toBe(0)
+    setOpen(true)
+    expect(built).toBe(1)
+  })
+
+  it("builds floating content children once", () => {
+    let built = 0
+    const Probe = () => {
+      built += 1
+      return <text>probe</text>
+    }
+    const app = createTestRoot()
+    app.render(() => (
+      <Tooltip open>
+        <TooltipTrigger testId="trigger" style={{ width: 40, height: 20 }} />
+        <TooltipContent><Probe /></TooltipContent>
+      </Tooltip>
+    ))
+    expect(built).toBe(1)
+  })
 })

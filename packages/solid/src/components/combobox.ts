@@ -16,6 +16,7 @@ import { useGpuixRequired } from "../root.js"
 import {
   FloatingLayer,
   floatingRootStyle,
+  overrideProps,
   renderSlot,
   resolveStyle,
   type FloatingContentProps,
@@ -154,11 +155,10 @@ export function Combobox(props: ComboboxProps): JSX.Element {
   return createComponent(ComboboxContext.Provider, {
     value: state,
     get children() {
-      return jsx("div", {
-        ...props,
+      return jsx("div", overrideProps(props, {
         style: floatingRootStyle(props.style),
         get children() { return props.children },
-      })
+      }))
     },
   })
 }
@@ -221,14 +221,13 @@ export function ComboboxTrigger(props: ComboboxTriggerProps): JSX.Element {
   return renderSlot({
     asChild: props.asChild,
     children: props.children,
-    props: {
-      ...props,
+    props: overrideProps(props, {
       get tabIndex() { return disabled() ? -1 : props.tabIndex },
       onClick(event: HostPointerEvent) {
         props.onClick?.(event)
         if (!disabled()) state.setOpen(!state.open())
       },
-    },
+    }, ["children"]),
     defaultTabIndex: 0,
   })
 }
@@ -239,15 +238,14 @@ export interface ComboboxValueProps extends HostProps {
 }
 export function ComboboxValue(props: ComboboxValueProps): JSX.Element {
   const state = context("ComboboxValue")
-  return jsx("div", {
-    ...props,
+  return jsx("div", overrideProps(props, {
     get children() {
       if (typeof props.children === "function") return props.children(state.value())
       if (props.children !== undefined) return props.children
       const value = state.value()
       return Array.isArray(value) ? value.join(", ") : (value ?? props.placeholder)
     },
-  })
+  }))
 }
 
 export function ComboboxContent(props: FloatingContentProps): JSX.Element {
@@ -275,13 +273,12 @@ export function ComboboxContent(props: FloatingContentProps): JSX.Element {
 export interface ComboboxListProps extends HostProps { children?: JSX.Element | ((item: string) => JSX.Element) }
 export function ComboboxList(props: ComboboxListProps): JSX.Element {
   const state = context("ComboboxList")
-  return jsx("div", {
-    ...props,
+  return jsx("div", overrideProps(props, {
     get children() {
       if (typeof props.children !== "function") return props.children
       return createComponent(For, { get each() { return state.filtered() }, children: props.children })
     },
-  })
+  }))
 }
 
 export interface ComboboxItemState { selected: boolean; highlighted: boolean; disabled: boolean }
@@ -306,8 +303,7 @@ export function ComboboxItem(props: ComboboxItemProps): JSX.Element {
   return renderSlot({
     asChild: props.asChild,
     get children() { return typeof props.children === "function" ? props.children(itemState()) : props.children },
-    props: {
-      ...props,
+    props: overrideProps(props, {
       get style() { return resolveStyle(props.style, itemState()) },
       onMouseEnter(event: HostMouseEvent) {
         props.onMouseEnter?.(event)
@@ -317,7 +313,7 @@ export function ComboboxItem(props: ComboboxItemProps): JSX.Element {
         props.onClick?.(event)
         if (!itemState().disabled) state.select(props.value)
       },
-    },
+    }, ["children"]),
   })
 }
 

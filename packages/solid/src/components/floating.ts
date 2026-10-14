@@ -36,6 +36,23 @@ export function mergeStyles(
   return { ...base, ...override }
 }
 
+/**
+ * `own` on top of `props`, keeping `props` live. Writing `{ ...props, ...own }`
+ * would call every getter on `props`, and `children` is a getter that builds
+ * the subtree: when `own` or the caller then supplies the children again, the
+ * first build is thrown away. `omit` drops `props` keys the caller handles
+ * itself.
+ */
+export function overrideProps<Own extends object>(
+  props: object,
+  own: Own,
+  omit: readonly string[] = []
+): Own & Record<string, unknown> {
+  const descriptors = Object.getOwnPropertyDescriptors(props)
+  for (const key of [...Object.keys(own), ...omit]) delete descriptors[key]
+  return Object.defineProperties(own, descriptors) as never
+}
+
 export function floatingRootStyle(style?: StyleDesc): StyleDesc {
   return { display: "flex", position: "relative", alignItems: "start", ...style }
 }
@@ -169,11 +186,10 @@ export function FloatingLayer(props: FloatingContentProps): JSX.Element {
         : { pointerEvents: props.style.pointerEvents }
     },
     get children() {
-      return jsx("div", {
-        ...props,
+      return jsx("div", overrideProps(props, {
         style: mergeStyles({ backgroundColor: "#1A1A1A" }, props.style),
         get children() { return props.children },
-      })
+      }))
     },
   })
 }
