@@ -63,6 +63,16 @@ fn overscroll(value: Option<&str>) -> gpui::OverscrollBehavior {
     }
 }
 
+/// The vertical `overscrollBehavior` of a style: the axis value, else the shorthand.
+pub(crate) fn overscroll_y(style: &StyleDesc) -> gpui::OverscrollBehavior {
+    overscroll(
+        style
+            .overscroll_behavior_y
+            .as_deref()
+            .or(style.overscroll_behavior.as_deref()),
+    )
+}
+
 /// Makes `el` a scroll container if its style asks for one, and drops the handle of an
 /// element that no longer is.
 ///

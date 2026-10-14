@@ -6408,7 +6408,10 @@ fn build_virtual_list(
         .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
         .id(list_element_id);
     if let Some(style) = element.style.as_deref() {
-        list = apply_styles(list, style);
+        list = apply_styles(list, style).overscroll_behavior(
+            gpui::OverscrollBehavior::Auto,
+            crate::scroll::overscroll_y(style),
+        );
     }
     let list = apply_accessibility(list, element.id, element.custom_props(), None).into_any_element();
     match element
