@@ -223,6 +223,9 @@ export interface StyleDesc {
   marginBottom?: number
   marginLeft?: number
 
+  /** `"sticky"` lays out like `"relative"` and then stays inside the scrollport of its nearest
+   *  scroll container (or the window), inset by `top`, `right`, `bottom` and `left`, without
+   *  leaving its parent's content box. */
   position?: string
   top?: number
   right?: number

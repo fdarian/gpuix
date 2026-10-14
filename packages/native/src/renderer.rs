@@ -6967,6 +6967,9 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     match style.position.as_deref() {
         Some("absolute") | Some("fixed") => el = el.absolute(),
         Some("relative") => el = el.relative(),
+        // Laid out like relative with the insets ignored, then held inside the scrollport
+        // by them when it is prepainted.
+        Some("sticky") => el.style().position = Some(gpui::Position::Sticky),
         _ => {}
     }
     if let Some(top) = style.top {

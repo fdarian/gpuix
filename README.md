@@ -1604,6 +1604,25 @@ renderer.getScrollOffset(elementId)                        // [x, y], or null
 renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]
 ```
 
+### Sticky positioning
+
+`position: "sticky"` with `top`, `right`, `bottom` and `left` works as in CSS. The element lays out like a relative one and its insets do not move its siblings. Then it is moved to stay inside the scrollport of its nearest scroll container (the window, if none scrolls around it), that far from the edges its insets name, and never out of its parent's content box. A header sticks at the top of the scroller while its section is in view, and the next section's header pushes it out as the section ends. A sticky element also sticks sideways with `left` or `right`.
+
+```tsx
+<div style={{ height: 300, overflow: 'auto' }}>
+  {sections.map((section) => (
+    <div key={section.id}>
+      <div style={{ position: 'sticky', top: 0, height: 28, backgroundColor: '#222' }}>
+        {section.title}
+      </div>
+      {section.rows}
+    </div>
+  ))}
+</div>
+```
+
+Its insets are pixels. `hidden` and `scroll` containers hold sticky elements the same way, and the geometry (`getElementBounds`, hit testing, `onLayout`) is the stuck position.
+
 ### Panes that must move together
 
 A native scroll container cannot drive a **frozen header**. GPUI moves the
@@ -3981,7 +4000,7 @@ CSS-like styling via the `style` prop:
 
 **Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left`
 
-**Position:** `position` (`"relative"` | `"absolute"` | `"fixed"`), `top`, `right`, `bottom`, `left` — `"fixed"` lays out like `"absolute"`, because GPUI has no scrolling document to be fixed against
+**Position:** `position` (`"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` — `"fixed"` lays out like `"absolute"`, because GPUI has no scrolling document to be fixed against. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
 **Visual:** `background`, `backgroundColor`, `color`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderStyle` (`"solid"` | `"dashed"`), `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
