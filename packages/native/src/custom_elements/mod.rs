@@ -53,6 +53,9 @@ pub struct CustomRenderContext<'a> {
     pub font_features: Option<gpui::FontFeatures>,
     /// Built child elements from the retained tree for this custom node.
     pub children: Vec<gpui::AnyElement>,
+    /// For `<svg>`: the XML of its shape children, which win over `src` and
+    /// `source`. `None` when it has none.
+    pub svg_markup: Option<std::sync::Arc<str>>,
     /// Live text selection. Elements that paint text MUST route it through
     /// `crate::text::selectable_text` with this handle, otherwise their glyphs
     /// are invisible to a drag that starts outside them.

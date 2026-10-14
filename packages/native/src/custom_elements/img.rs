@@ -744,7 +744,10 @@ impl CustomElement for SvgElement {
         if !overflow_declared {
             surface = surface.overflow_hidden();
         }
-        let bytes = self.source.clone().or_else(|| self.bytes.clone());
+        let bytes = match &ctx.svg_markup {
+            Some(markup) => Some(std::sync::Arc::from(markup.as_bytes())),
+            None => self.source.clone().or_else(|| self.bytes.clone()),
+        };
         if let Some(bytes) = bytes {
             let paint = self.paint.clone();
             let renderer = cx.svg_renderer();

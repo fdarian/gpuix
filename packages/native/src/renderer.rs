@@ -4581,6 +4581,8 @@ pub(crate) struct GpuixView {
     css_transitions: crate::motion::CssTransitions,
     /// Hover and press state for those elements, until the event model owns it.
     state_source: crate::motion::state_source::StateSource,
+    /// Serialised markup of the `<svg>` elements that have shape children.
+    svg_trees: crate::custom_elements::svg_tree::SvgTrees,
     /// Live text selection, shared with the paint closures and the napi methods.
     pub(crate) selection: SharedSelection,
     /// Persistent measurement and scroll state for React-backed virtual lists.
@@ -4673,10 +4675,17 @@ fn sync_motion_states(
             continue;
         };
         let base = element.style.as_deref();
+        // An SVG shape animates its attributes, not a style.
+        let svg_attributes = crate::custom_elements::svg_tree::is_svg_child_type(&element.element_type)
+            .then(|| element.custom_props());
         let state = match states.entry(id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                match crate::motion::MotionState::new(source, base, now) {
+                let created = match svg_attributes {
+                    Some(attributes) => crate::motion::MotionState::new_svg(source, attributes, now),
+                    None => crate::motion::MotionState::new(source, base, now),
+                };
+                match created {
                     Ok(state) => entry.insert(state),
                     Err(error) => {
                         log::warn!("Invalid motion description for element {id}: {error}");
@@ -4685,7 +4694,11 @@ fn sync_motion_states(
                 }
             }
         };
-        if let Err(error) = state.sync(source, base, now) {
+        let synced = match svg_attributes {
+            Some(attributes) => state.sync_svg(source, attributes, now),
+            None => state.sync(source, base, now),
+        };
+        if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
         }
         let frame = state.frame(now);
@@ -4837,6 +4850,7 @@ impl GpuixView {
             motion_states: HashMap::new(),
             css_transitions: Default::default(),
             state_source: Default::default(),
+            svg_trees: Default::default(),
             selection,
             virtual_lists: HashMap::new(),
             selection_drag_position: None,
@@ -5257,6 +5271,7 @@ impl GpuixView {
             motion_states: &mut self.motion_states,
             css_transitions: &mut self.css_transitions,
             state_source: &self.state_source,
+            svg_trees: &mut self.svg_trees,
             now,
             selection: self.selection.clone(),
             inherited,
@@ -5385,6 +5400,7 @@ pub(crate) struct BuildCtx<'a> {
     pub motion_states: &'a mut HashMap<u64, crate::motion::MotionState>,
     css_transitions: &'a mut crate::motion::CssTransitions,
     state_source: &'a crate::motion::state_source::StateSource,
+    svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
     pub now: web_time::Instant,
     pub selection: SharedSelection,
     /// Inherited text state, resolved the way CSS inherits it. The renderer's
@@ -6170,6 +6186,7 @@ impl gpui::Render for GpuixView {
             .retain(|id| tree.elements.contains_key(&id));
         self.state_source
             .retain(|id| tree.elements.contains_key(&id));
+        self.svg_trees.retain(|id| tree.elements.contains_key(&id));
         // Pruned by DECLARATION, not existence: an element that drops its
         // `highlight` prop keeps living, and its cached group list holds a copy
         // of every string in its subtree.
@@ -6193,6 +6210,7 @@ impl gpui::Render for GpuixView {
                     motion_states: &mut self.motion_states,
                     css_transitions: &mut self.css_transitions,
                     state_source: &self.state_source,
+                    svg_trees: &mut self.svg_trees,
                     now,
                     selection: self.selection.clone(),
                     inherited: Inherited::root(&theme, window.appearance()),
@@ -6422,25 +6440,39 @@ pub(crate) fn build_element(
 
         // Polymorphic dispatch for all custom elements.
         custom_type => {
+            // An `<svg>` paints its shape children as one image, so they are
+            // serialised instead of built.
+            let is_svg = custom_type == "svg";
+            let svg_markup = is_svg
+                .then(|| ctx.svg_trees.markup(ctx.tree, id, ctx.motion_states, ctx.now))
+                .flatten();
+            let sized_style = is_svg
+                .then(|| crate::custom_elements::svg_tree::sized_style(style, element.custom_props()))
+                .flatten();
+            let style = sized_style.as_ref().or(style);
             if custom_type == "anchored" {
                 crate::layout::anchor_size::begin_build(id);
             }
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
-            let custom_children: Vec<gpui::AnyElement> = child_ids
-                .iter()
-                .copied()
-                .filter(|child_id| {
-                    crate::layout::box_generation::generates_box(ctx.tree, *child_id)
-                })
-                .map(|child_id| {
-                    ctx.contents_overlay =
-                        crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-                    if custom_type == "anchored" {
-                        ctx.anchor_scope = Some(id);
-                    }
-                    build_element(child_id, ctx, window, cx)
-                })
-                .collect();
+            let custom_children: Vec<gpui::AnyElement> = if is_svg {
+                Vec::new()
+            } else {
+                child_ids
+                    .iter()
+                    .copied()
+                    .filter(|child_id| {
+                        crate::layout::box_generation::generates_box(ctx.tree, *child_id)
+                    })
+                    .map(|child_id| {
+                        ctx.contents_overlay =
+                            crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                        if custom_type == "anchored" {
+                            ctx.anchor_scope = Some(id);
+                        }
+                        build_element(child_id, ctx, window, cx)
+                    })
+                    .collect()
+            };
             let inherited = ctx.inherited.clone();
             let render_ctx = CustomRenderContext {
                 id,
@@ -6453,6 +6485,7 @@ pub(crate) fn build_element(
                 colors: inherited.colors,
                 font_features: inherited.font_features.clone(),
                 children: custom_children,
+                svg_markup,
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
                 inert: inherited.inert,
