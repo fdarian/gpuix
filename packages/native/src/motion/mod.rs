@@ -6,6 +6,7 @@
 
 mod css_transition;
 mod curve;
+pub(crate) mod measure;
 mod property;
 pub(crate) mod state_source;
 mod svg_attr;

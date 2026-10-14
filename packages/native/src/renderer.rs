@@ -4579,6 +4579,8 @@ pub(crate) struct GpuixView {
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
     /// CSS transition state of the elements that declare `transition*`.
     css_transitions: crate::motion::CssTransitions,
+    /// What the last paint measured for the elements that animate.
+    measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
     state_source: crate::motion::state_source::StateSource,
     /// Serialised markup of the `<svg>` elements that have shape children.
@@ -4849,6 +4851,7 @@ impl GpuixView {
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
             css_transitions: Default::default(),
+            measurements: Default::default(),
             state_source: Default::default(),
             svg_trees: Default::default(),
             selection,
@@ -5270,6 +5273,7 @@ impl GpuixView {
             virtual_lists: &mut self.virtual_lists,
             motion_states: &mut self.motion_states,
             css_transitions: &mut self.css_transitions,
+            measurements: &self.measurements,
             state_source: &self.state_source,
             svg_trees: &mut self.svg_trees,
             now,
@@ -5399,6 +5403,7 @@ pub(crate) struct BuildCtx<'a> {
     virtual_lists: &'a mut HashMap<u64, VirtualListEntry>,
     pub motion_states: &'a mut HashMap<u64, crate::motion::MotionState>,
     css_transitions: &'a mut crate::motion::CssTransitions,
+    measurements: &'a crate::motion::measure::Measurements,
     state_source: &'a crate::motion::state_source::StateSource,
     svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
     pub now: web_time::Instant,
@@ -6184,6 +6189,8 @@ impl gpui::Render for GpuixView {
             sync_motion_states(&tree, &mut self.motion_states, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
+        self.measurements
+            .retain(|id| tree.elements.contains_key(&id));
         self.state_source
             .retain(|id| tree.elements.contains_key(&id));
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
@@ -6209,6 +6216,7 @@ impl gpui::Render for GpuixView {
                     virtual_lists: &mut self.virtual_lists,
                     motion_states: &mut self.motion_states,
                     css_transitions: &mut self.css_transitions,
+                    measurements: &self.measurements,
                     state_source: &self.state_source,
                     svg_trees: &mut self.svg_trees,
                     now,
@@ -6784,6 +6792,18 @@ pub(crate) fn build_host_container(
         selection_start,
         paint_reporter(element.id, element.events(), style, ctx),
     );
+    // Motion and CSS transitions read layout back one frame later, so only the
+    // elements they drive pay for the measurement.
+    if element.custom_props().contains_key("motion")
+        || ctx.css_transitions.wants(element.id, element.style.as_deref())
+    {
+        el = el.on_painted_layout(
+            ctx.measurements
+                .recorder(element.id, crate::motion::measure::VerticalBorder::of(style)),
+        );
+    } else {
+        ctx.measurements.remove(element.id);
+    }
 
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
