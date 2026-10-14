@@ -1,4 +1,6 @@
 import type { EventPayload } from "../index.js"
+import { dispatchDomEvent } from "./events/dispatch.js"
+import { handlerEventType, hasDomListener, toDomEvent } from "./events/route.js"
 import type {
   ElementIdAllocator,
   EventHandlerMap,
@@ -232,8 +234,16 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         schedule(() => handler({ ...event, elementId: 0 }, renderer))
         return true
       }
+      const domEvent = toDomEvent(event)
+      if (domEvent) {
+        if (!hasDomListener(root.eventHandlers, domEvent)) return false
+        schedule(() => {
+          dispatchDomEvent(root, domEvent)
+        })
+        return true
+      }
       const handler: HostEventHandler | undefined =
-        root.eventHandlers.get(event.elementId)?.get(event.eventType)
+        root.eventHandlers.get(event.elementId)?.get(handlerEventType(event.eventType))
       if (!handler) return false
       if (event.eventType === "keyDown" || event.eventType === "keyUp") {
         const flags = flagsFor(event)

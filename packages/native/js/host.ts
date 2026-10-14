@@ -8,6 +8,7 @@ import type {
   PathPromptOptions,
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
+import type { PointerEventProps } from "./events/types.js"
 
 export type {
   DebugFrameOverlayStats,
@@ -18,6 +19,8 @@ export type {
   PathPromptOptions,
 }
 
+export * from "./events/listeners.js"
+export * from "./events/types.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
@@ -453,19 +456,10 @@ export interface HighlightSpec {
 // Props passed to elements.
 // Element IDs are auto-generated numeric IDs (not user-settable).
 // Framework adapters add their own children, key, and ref fields.
-export interface HostProps {
+export interface HostProps extends PointerEventProps {
   style?: StyleDesc
 
-  // ── Mouse events ───────────────────────────────────────────────
-  /** Primary button only, like the DOM. Use `onAuxClick` for the others. */
-  onClick?: (event: EventPayload) => void
-  /** Non-primary click, like the DOM `auxclick`. `isRightClick` says which. */
-  onAuxClick?: (event: EventPayload) => void
-  onMouseDown?: (event: EventPayload) => void
-  onMouseUp?: (event: EventPayload) => void
-  onMouseEnter?: (event: EventPayload) => void
-  onMouseLeave?: (event: EventPayload) => void
-  onMouseMove?: (event: EventPayload) => void
+  // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
   /** Fires when user clicks OUTSIDE this element. Use for "click outside to close". */
   onMouseDownOutside?: (event: EventPayload) => void
 
@@ -498,9 +492,6 @@ export interface HostProps {
    * Moving without resizing reports nothing. Supported on `div` and `text`.
    */
   onLayout?: (event: EventPayload) => void
-
-  // ── File drop (Finder / OS paths) ───────────────────────────────
-  onFileDrop?: (event: EventPayload) => void
 
   // ── Text editor events ─────────────────────────────────────────
   onChange?: (event: EventPayload) => void

@@ -1,3 +1,4 @@
+import { POINTER_EVENT_HANDLER_PROPS } from "./events/event-props.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
 
 export type MutationValue = number | string | boolean | object | null
@@ -85,7 +86,13 @@ export function createMutationQueue(
   return mutations
 }
 
-export const EVENT_PROPS = [
+/**
+ * Handler prop to the key its handler is stored under in `EventHandlerMap`.
+ * Pointer, mouse and drag keys are lowercase DOM types, and each has an
+ * `on…Capture` twin keyed `captureHandlerKey(type)`. The other keys are native
+ * event names. See `nativeEventType` for the type native is asked to emit.
+ */
+export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onToggleFile", "toggleFile"],
   ["onShowMore", "showMore"],
   ["onLineClick", "lineClick"],
@@ -95,14 +102,8 @@ export const EVENT_PROPS = [
   ["onMotionComplete", "motionComplete"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
-  ["onClick", "click"],
-  ["onAuxClick", "auxClick"],
-  ["onMouseDown", "mouseDown"],
-  ["onMouseUp", "mouseUp"],
-  ["onMouseEnter", "mouseEnter"],
-  ["onMouseLeave", "mouseLeave"],
-  ["onMouseMove", "mouseMove"],
-  ["onMouseDownOutside", "mouseDownOutside"],
+  ...POINTER_EVENT_HANDLER_PROPS,
+  ["onMouseDownOutside", "mousedownoutside"],
   ["onKeyDown", "keyDown"],
   ["onKeyUp", "keyUp"],
   ["onFocus", "focus"],
@@ -110,8 +111,7 @@ export const EVENT_PROPS = [
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
   ["onScrollChange", "scrollChange"],
-  ["onFileDrop", "fileDrop"],
-] as const
+]
 
 export const EVENT_PROP_NAMES: ReadonlySet<string> = new Set(
   EVENT_PROPS.map(([name]) => name)
