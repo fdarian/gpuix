@@ -122,37 +122,43 @@ fn update_view<R>(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
 ) -> Result<R> {
     crate::events::sync_dispatch::native_call(|| {
-        if crate::events::sync_dispatch::in_sync_call() {
-            return crate::events::sync_dispatch::update_root_view(update)
-                .map_err(Error::from_reason);
-        }
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, window, app| {
-                    view.update(app, |view, cx| update(view, window, cx))
+        crate::events::sync_dispatch::route(
+            update,
+            crate::events::sync_dispatch::update_root_view,
+            Error::from_reason,
+            |update| {
+                with_test_state(|cx, window, view| {
+                    let view = view.clone();
+                    let result = cx
+                        .update_window(window, |_, window, app| {
+                            view.update(app, |view, cx| update(view, window, cx))
+                        })
+                        .map_err(|error| Error::from_reason(error.to_string()))?;
+                    cx.run_until_parked();
+                    Ok(result)
                 })
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(result)
-        })
+            },
+        )
     })
 }
 
 /// Runs `update` on the window alone, which a leased root view does not block.
 fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -> Result<R> {
     crate::events::sync_dispatch::native_call(|| {
-        if crate::events::sync_dispatch::in_sync_call() {
-            return crate::events::sync_dispatch::with_active_window(update)
-                .ok_or_else(|| Error::from_reason(crate::events::sync_dispatch::NESTED));
-        }
-        with_test_state(|cx, window, _view| {
-            let result = cx
-                .update_window(window, |_, window, app| update(window, app))
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            Ok(result)
-        })
+        crate::events::sync_dispatch::route(
+            update,
+            crate::events::sync_dispatch::update_active_window,
+            Error::from_reason,
+            |update| {
+                with_test_state(|cx, window, _view| {
+                    let result = cx
+                        .update_window(window, |_, window, app| update(window, app))
+                        .map_err(|error| Error::from_reason(error.to_string()))?;
+                    cx.run_until_parked();
+                    Ok(result)
+                })
+            },
+        )
     })
 }
 
@@ -161,11 +167,12 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
 fn update_view_or_defer(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + 'static,
 ) -> Result<()> {
-    if crate::events::sync_dispatch::in_sync_call() {
-        return crate::events::sync_dispatch::update_root_view_or_defer(update)
-            .map_err(Error::from_reason);
-    }
-    update_view(update)
+    crate::events::sync_dispatch::route(
+        update,
+        crate::events::sync_dispatch::update_root_view_or_defer,
+        Error::from_reason,
+        update_view,
+    )
 }
 
 /// Default offscreen window size. Matches gpui's `open_offscreen_window_default`,

@@ -1,4 +1,4 @@
-//! Keyboard events and the pointer defaults that decide focus.
+//! Keyboard events.
 //!
 //! One `keyDown` per keystroke, aimed at the focused element, sent from a GPUI
 //! keystroke interceptor. Interceptors run before key bindings and actions, so a
@@ -75,7 +75,7 @@ impl InputRouting {
     }
 
     /// The focus handle of the first of `ids` that is focusable.
-    fn first_focusable(&self, ids: &[u64]) -> Option<gpui::FocusHandle> {
+    pub(crate) fn first_focusable(&self, ids: &[u64]) -> Option<gpui::FocusHandle> {
         let focusables = self.0.focusables.borrow();
         ids.iter()
             .find_map(|id| focusables.get(id))
@@ -181,7 +181,8 @@ pub(crate) fn install_key_down(
     })
 }
 
-/// The window-level listeners: `keyUp`, and the focus defaults of a mouse press.
+/// The window-level listeners: `keyUp`, and the focus default of a mouse press
+/// (`focus::register_mouse_down_default`).
 ///
 /// A zero-size canvas, because listeners are registered during paint.
 pub(crate) fn window_input_listeners(
@@ -194,17 +195,16 @@ pub(crate) fn window_input_listeners(
     gpui::canvas(
         |_, _, _| (),
         move |_, _, window, _| {
-            let routing_for_key_up = routing.clone();
-            let tree_for_mouse = tree.clone();
-            let tree = tree.clone();
+            let key_up_routing = routing.clone();
+            let key_up_tree = tree.clone();
             let callback = callback.clone();
             window.on_root_key_event(move |event: &gpui::KeyUpEvent, phase, window, cx| {
                 if phase != gpui::DispatchPhase::Capture {
                     return;
                 }
                 let prevented = key_payload(
-                    &routing_for_key_up,
-                    &tree,
+                    &key_up_routing,
+                    &key_up_tree,
                     window,
                     cx,
                     "keyUp",
@@ -218,41 +218,7 @@ pub(crate) fn window_input_listeners(
                 }
             });
 
-            let routing = routing.clone();
-            let tree = tree_for_mouse.clone();
-            window.on_mouse_event(move |event: &gpui::MouseDownEvent, phase, window, cx| {
-                if phase != gpui::DispatchPhase::Capture {
-                    return;
-                }
-                routing.note_user_input();
-                let position = event.position;
-                let routing = routing.clone();
-                let tree = tree.clone();
-                // The DOM default of a mouse press is to focus the nearest
-                // focusable element under it, or nothing. A focusable element
-                // under a bare pointer does that itself and calls
-                // `prevent_default`, which is also what a JS `preventDefault()`
-                // on `mousedown` maps to. What is left is a press gpui's own
-                // transfer did not take: the pointer is over something that
-                // does not block it from the ancestors (a filled box does), or
-                // over nothing focusable at all. It waits until the dispatch is
-                // over: every listener, however deep, has had its say by then,
-                // and stopping propagation does not skip it.
-                window.defer(cx, move |window, cx| {
-                    if window.default_prevented() {
-                        return;
-                    }
-                    let under_pointer = tree.lock().unwrap().elements_at(
-                        f32::from(position.x) as f64,
-                        f32::from(position.y) as f64,
-                        &crate::automation::get_bounds,
-                    );
-                    match routing.first_focusable(&under_pointer) {
-                        Some(handle) => window.focus(&handle, cx),
-                        None => window.blur(),
-                    }
-                });
-            });
+            crate::focus::register_mouse_down_default(window, tree.clone(), routing.clone());
         },
     )
     .absolute()

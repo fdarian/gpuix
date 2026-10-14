@@ -549,7 +549,7 @@ impl CustomElement for TextEditorElement {
                 editor = editor.overflow_hidden();
             }
         }
-        editor = crate::renderer::apply_focus_styles(editor, ctx.id, ctx.style, &ctx.focus_styles);
+        editor = crate::focus::apply_focus_styles(editor, ctx.id, ctx.style, &ctx.focus_styles);
         if ctx
             .style
             .and_then(|style| style.position.as_deref())

@@ -7,11 +7,11 @@
 //! subscription order, so per-element listeners fired in whatever order the
 //! elements were created rather than blur(old) before focus(new).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::element_tree::EventPayload;
-use crate::events::keyboard::path_to_root;
-use crate::renderer::{emit_event_full, EventCallback};
+use crate::events::keyboard::{path_to_root, InputRouting};
+use crate::renderer::{emit_event_full, EventCallback, GpuixView};
 use crate::retained_tree::RetainedTree;
 
 pub(crate) fn is_text_control(element_type: &str) -> bool {
@@ -215,6 +215,152 @@ fn emit(
         );
         payload.related_target = related.map(|id| id as f64);
     });
+}
+
+/// The DOM default of a mouse press: focus the nearest focusable element under
+/// it, or nothing.
+///
+/// A focusable element under a bare pointer does that itself and calls
+/// `prevent_default`, which is also what a JS `preventDefault()` on `mousedown`
+/// maps to. What is left is a press gpui's own transfer did not take: the
+/// pointer is over something that does not block it from the ancestors (a
+/// filled box does), or over nothing focusable at all. It waits until the
+/// dispatch is over: every listener, however deep, has had its say by then, and
+/// stopping propagation does not skip it.
+pub(crate) fn register_mouse_down_default(
+    window: &mut gpui::Window,
+    tree: Arc<Mutex<RetainedTree>>,
+    routing: InputRouting,
+) {
+    window.on_mouse_event(move |event: &gpui::MouseDownEvent, phase, window, cx| {
+        if phase != gpui::DispatchPhase::Capture {
+            return;
+        }
+        routing.note_user_input();
+        let position = event.position;
+        let routing = routing.clone();
+        let tree = tree.clone();
+        window.defer(cx, move |window, cx| {
+            if window.default_prevented() {
+                return;
+            }
+            let under_pointer = tree.lock().unwrap().elements_at(
+                f32::from(position.x) as f64,
+                f32::from(position.y) as f64,
+                &crate::automation::get_bounds,
+            );
+            match routing.first_focusable(&under_pointer) {
+                Some(handle) => window.focus(&handle, cx),
+                None => window.blur(),
+            }
+        });
+    });
+}
+
+/// Opacity multiplier for every other focusable element while a control has
+/// keyboard focus. Paint only, so it moves nothing.
+const KEYBOARD_FOCUS_DIM: f32 = 0.4;
+
+/// `focusWithin`, for any element: an ancestor of the focused element is not
+/// focusable itself, so this cannot wait for `apply_focus_styles`.
+pub(crate) fn apply_focus_within<E: gpui::Styled>(
+    mut el: E,
+    id: u64,
+    style: Option<&crate::style::StyleDesc>,
+    focus: &crate::focus::FocusStyles,
+) -> E {
+    if focus.within.contains(&id) {
+        if let Some(declared) = style.and_then(|style| style.focus_within.as_deref()) {
+            el = crate::renderer::apply_styles(el, declared);
+        }
+    }
+    el
+}
+
+/// Focus look for a focusable element, applied right after `track_focus`.
+///
+/// `focusWithin` and `focusVisible` follow the DOM focus state in
+/// `crate::focus`, not gpui's live input modality: gpui's `.focus_visible()`
+/// would hide the ring on a text field focused by a click. While a control is
+/// focus-visible, every other element dims unless its style sets
+/// `keyboardFocusDim: false`; that also shows at a glance where Tab can go.
+pub(crate) fn apply_focus_styles<E: gpui::Styled>(
+    mut el: E,
+    id: u64,
+    style: Option<&crate::style::StyleDesc>,
+    focus: &crate::focus::FocusStyles,
+) -> E {
+    el = apply_focus_within(el, id, style, focus);
+    if focus.visible == Some(id) {
+        if let Some(declared) = style.and_then(|style| style.focus_visible.as_deref()) {
+            el = crate::renderer::apply_styles(el, declared);
+        }
+    }
+    let opted_out = style.and_then(|style| style.keyboard_focus_dim) == Some(false);
+    match focus.dim_path.as_deref() {
+        // Opacity applies to the subtree, so the focused element's own
+        // focusable ancestors must stay at full opacity too.
+        Some(path) if !opted_out && !path.contains(&id) => {
+            let base = style.and_then(|style| style.opacity).unwrap_or(1.0) as f32;
+            el.opacity(base * KEYBOARD_FOCUS_DIM)
+        }
+        _ => el,
+    }
+}
+
+impl GpuixView {
+    /// `element.blur()`: a no-op unless `id` is the focused element.
+    pub(crate) fn blur_element(&mut self, id: u64, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        self.observe_focus(window);
+        if self.focus.focused() == Some(id) {
+            window.blur();
+            self.observe_focus(window);
+        }
+        cx.notify();
+    }
+
+    /// `element.matches(':focus' | ':focus-visible' | ':focus-within')`.
+    pub(crate) fn matches_focus(
+        &mut self,
+        id: u64,
+        selector: &str,
+        window: &gpui::Window,
+    ) -> std::result::Result<bool, String> {
+        self.observe_focus(window);
+        let tree = self.tree.lock().unwrap();
+        self.focus.matches(&tree, id, selector)
+    }
+
+    /// Record where window focus is now and emit the events for a move.
+    ///
+    /// The one place focus changes are noticed. Called every frame from
+    /// `sync_focus_handles`, and right after anything that moves focus or asks
+    /// about it, so `focus()` and `matches()` agree without waiting for a frame.
+    /// Never call it from inside a build: it takes the tree lock.
+    pub(crate) fn observe_focus(&mut self, window: &gpui::Window) {
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        self.observe_focus_in(&tree, window);
+    }
+
+    pub(crate) fn observe_focus_in(&mut self, tree: &RetainedTree, window: &gpui::Window) {
+        // gpui reports no focus path while the window is inactive, and so does DOM
+        // (the window's blur event blurs the active element).
+        let current = if window.is_window_active() {
+            self.focused_element_id(window)
+                .filter(|id| tree.focusable_ids.contains(id))
+        } else {
+            None
+        };
+        if let Some(change) = self.focus.observe(
+            current,
+            tree,
+            window.last_input_was_keyboard(),
+            self.routing.user_input_seen(),
+        ) {
+            crate::focus::emit_change(&self.event_callback, tree, &change);
+        }
+    }
 }
 
 #[cfg(test)]

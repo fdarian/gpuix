@@ -288,26 +288,18 @@ fn recv_ui_response<T>(receiver: std::sync::mpsc::Receiver<T>, operation: &str) 
     }
 }
 
-/// Runs `update` against the dispatching window while a sync event handler is
-/// in flight, where the app is already borrowed. See `events::sync_dispatch`.
-#[cfg(target_os = "macos")]
-fn update_window_in_sync_call<R>(
-    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
-) -> Result<R> {
-    crate::events::sync_dispatch::update_root_view(update).map_err(Error::from_reason)
-}
-
 /// `update_window` for a change that returns nothing. When it is called from a
 /// handler of an input that holds the root view, it runs after that input.
 #[cfg(target_os = "macos")]
 fn update_window_or_defer(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + 'static,
 ) -> Result<()> {
-    if crate::events::sync_dispatch::in_sync_call() {
-        return crate::events::sync_dispatch::update_root_view_or_defer(update)
-            .map_err(Error::from_reason);
-    }
-    update_window(update)
+    crate::events::sync_dispatch::route(
+        update,
+        crate::events::sync_dispatch::update_root_view_or_defer,
+        Error::from_reason,
+        update_window,
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -315,24 +307,28 @@ fn update_window<R>(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
 ) -> Result<R> {
     crate::events::sync_dispatch::native_call(|| {
-        if crate::events::sync_dispatch::in_sync_call() {
-            return update_window_in_sync_call(update);
-        }
-        let window = GPUI_WINDOW
-            .with(|window| *window.borrow())
-            .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
+        crate::events::sync_dispatch::route(
+            update,
+            crate::events::sync_dispatch::update_root_view,
+            Error::from_reason,
+            |update| {
+                let window = GPUI_WINDOW
+                    .with(|window| *window.borrow())
+                    .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
 
-        GPUI_APP.with(|app| {
-            let app = app.borrow();
-            let app = app
-                .as_ref()
-                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-            app.update(|cx| {
-                window
-                    .update(cx, update)
-                    .map_err(|error| Error::from_reason(error.to_string()))
-            })
-        })
+                GPUI_APP.with(|app| {
+                    let app = app.borrow();
+                    let app = app.as_ref().ok_or_else(|| {
+                        Error::from_reason("GPUI application is not initialized")
+                    })?;
+                    app.update(|cx| {
+                        window
+                            .update(cx, update)
+                            .map_err(|error| Error::from_reason(error.to_string()))
+                    })
+                })
+            },
+        )
     })
 }
 
@@ -342,26 +338,28 @@ fn update_window_without_view<R>(
     update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
 ) -> Result<R> {
     crate::events::sync_dispatch::native_call(|| {
-        if crate::events::sync_dispatch::in_sync_call() {
-            return crate::events::sync_dispatch::with_active_window(update).ok_or_else(|| {
-                Error::from_reason(crate::events::sync_dispatch::NESTED)
-            });
-        }
-        let window = GPUI_WINDOW
-            .with(|window| *window.borrow())
-            .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
+        crate::events::sync_dispatch::route(
+            update,
+            crate::events::sync_dispatch::update_active_window,
+            Error::from_reason,
+            |update| {
+                let window = GPUI_WINDOW
+                    .with(|window| *window.borrow())
+                    .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?;
 
-        GPUI_APP.with(|app| {
-            let app = app.borrow();
-            let app = app
-                .as_ref()
-                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
-            app.update(|cx| {
-                gpui::AnyWindowHandle::from(window)
-                    .update(cx, move |_view, window, cx| update(window, cx))
-                    .map_err(|error| Error::from_reason(error.to_string()))
-            })
-        })
+                GPUI_APP.with(|app| {
+                    let app = app.borrow();
+                    let app = app.as_ref().ok_or_else(|| {
+                        Error::from_reason("GPUI application is not initialized")
+                    })?;
+                    app.update(|cx| {
+                        gpui::AnyWindowHandle::from(window)
+                            .update(cx, move |_view, window, cx| update(window, cx))
+                            .map_err(|error| Error::from_reason(error.to_string()))
+                    })
+                })
+            },
+        )
     })
 }
 
@@ -3445,65 +3443,62 @@ fn web_string_array(values: impl IntoIterator<Item = String>) -> wasm_bindgen::J
     result.into()
 }
 
-/// The web counterpart of `update_window_in_sync_call`.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-fn update_web_window_in_sync_call<R>(
-    update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
-) -> Result<R, wasm_bindgen::JsValue> {
-    crate::events::sync_dispatch::update_root_view(update)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn update_web_window<R>(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) -> R,
 ) -> Result<R, wasm_bindgen::JsValue> {
-    if crate::events::sync_dispatch::in_sync_call() {
-        return update_web_window_in_sync_call(update);
-    }
-    WEB_APP.with(|app| {
-        let app = app.borrow();
-        let app = app
-            .as_ref()
-            .ok_or_else(|| wasm_bindgen::JsValue::from_str("GPUIX web is not initialized"))?;
-        app.update(|cx| {
-            WEB_WINDOW.with(|window| {
-                let window = (*window.borrow()).ok_or_else(|| {
-                    wasm_bindgen::JsValue::from_str("GPUIX web window is not ready")
+    crate::events::sync_dispatch::route(
+        update,
+        crate::events::sync_dispatch::update_root_view,
+        |error| wasm_bindgen::JsValue::from_str(&error),
+        |update| {
+            WEB_APP.with(|app| {
+                let app = app.borrow();
+                let app = app.as_ref().ok_or_else(|| {
+                    wasm_bindgen::JsValue::from_str("GPUIX web is not initialized")
                 })?;
-                window
-                    .update(cx, update)
-                    .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+                app.update(|cx| {
+                    WEB_WINDOW.with(|window| {
+                        let window = (*window.borrow()).ok_or_else(|| {
+                            wasm_bindgen::JsValue::from_str("GPUIX web window is not ready")
+                        })?;
+                        window
+                            .update(cx, update)
+                            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+                    })
+                })
             })
-        })
-    })
+        },
+    )
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn update_web_window_without_view<R>(
     update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
 ) -> Result<R, wasm_bindgen::JsValue> {
-    if crate::events::sync_dispatch::in_sync_call() {
-        return crate::events::sync_dispatch::with_active_window(update).ok_or_else(|| {
-            wasm_bindgen::JsValue::from_str(crate::events::sync_dispatch::NESTED)
-        });
-    }
-    WEB_APP.with(|app| {
-        let app = app.borrow();
-        let app = app
-            .as_ref()
-            .ok_or_else(|| wasm_bindgen::JsValue::from_str("GPUIX web is not initialized"))?;
-        app.update(|cx| {
-            WEB_WINDOW.with(|window| {
-                let window = (*window.borrow()).ok_or_else(|| {
-                    wasm_bindgen::JsValue::from_str("GPUIX web window is not ready")
+    crate::events::sync_dispatch::route(
+        update,
+        crate::events::sync_dispatch::update_active_window,
+        |error| wasm_bindgen::JsValue::from_str(&error),
+        |update| {
+            WEB_APP.with(|app| {
+                let app = app.borrow();
+                let app = app.as_ref().ok_or_else(|| {
+                    wasm_bindgen::JsValue::from_str("GPUIX web is not initialized")
                 })?;
-                gpui::AnyWindowHandle::from(window)
-                    .update(cx, move |_view, window, cx| update(window, cx))
-                    .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+                app.update(|cx| {
+                    WEB_WINDOW.with(|window| {
+                        let window = (*window.borrow()).ok_or_else(|| {
+                            wasm_bindgen::JsValue::from_str("GPUIX web window is not ready")
+                        })?;
+                        gpui::AnyWindowHandle::from(window)
+                            .update(cx, move |_view, window, cx| update(window, cx))
+                            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+                    })
+                })
             })
-        })
-    })
+        },
+    )
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -5050,57 +5045,6 @@ pub(crate) struct Inherited {
     pub pointer_events_none: bool,
 }
 
-/// Opacity multiplier for every other focusable element while a control has
-/// keyboard focus. Paint only, so it moves nothing.
-const KEYBOARD_FOCUS_DIM: f32 = 0.4;
-
-/// `focusWithin`, for any element: an ancestor of the focused element is not
-/// focusable itself, so this cannot wait for `apply_focus_styles`.
-pub(crate) fn apply_focus_within<E: gpui::Styled>(
-    mut el: E,
-    id: u64,
-    style: Option<&StyleDesc>,
-    focus: &crate::focus::FocusStyles,
-) -> E {
-    if focus.within.contains(&id) {
-        if let Some(declared) = style.and_then(|style| style.focus_within.as_deref()) {
-            el = apply_styles(el, declared);
-        }
-    }
-    el
-}
-
-/// Focus look for a focusable element, applied right after `track_focus`.
-///
-/// `focusWithin` and `focusVisible` follow the DOM focus state in
-/// `crate::focus`, not gpui's live input modality: gpui's `.focus_visible()`
-/// would hide the ring on a text field focused by a click. While a control is
-/// focus-visible, every other element dims unless its style sets
-/// `keyboardFocusDim: false`; that also shows at a glance where Tab can go.
-pub(crate) fn apply_focus_styles<E: gpui::Styled>(
-    mut el: E,
-    id: u64,
-    style: Option<&StyleDesc>,
-    focus: &crate::focus::FocusStyles,
-) -> E {
-    el = apply_focus_within(el, id, style, focus);
-    if focus.visible == Some(id) {
-        if let Some(declared) = style.and_then(|style| style.focus_visible.as_deref()) {
-            el = apply_styles(el, declared);
-        }
-    }
-    let opted_out = style.and_then(|style| style.keyboard_focus_dim) == Some(false);
-    match focus.dim_path.as_deref() {
-        // Opacity applies to the subtree, so the focused element's own
-        // focusable ancestors must stay at full opacity too.
-        Some(path) if !opted_out && !path.contains(&id) => {
-            let base = style.and_then(|style| style.opacity).unwrap_or(1.0) as f32;
-            el.opacity(base * KEYBOARD_FOCUS_DIM)
-        }
-        _ => el,
-    }
-}
-
 impl Inherited {
     fn root(theme: &Theme) -> Self {
         let mut wash = theme.accent;
@@ -5471,59 +5415,6 @@ impl GpuixView {
             self.pending_focus_element = Some(PendingFocus::new(id, window, cx));
         }
         cx.notify();
-    }
-
-    /// `element.blur()`: a no-op unless `id` is the focused element.
-    pub(crate) fn blur_element(&mut self, id: u64, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
-        self.observe_focus(window);
-        if self.focus.focused() == Some(id) {
-            window.blur();
-            self.observe_focus(window);
-        }
-        cx.notify();
-    }
-
-    /// `element.matches(':focus' | ':focus-visible' | ':focus-within')`.
-    pub(crate) fn matches_focus(
-        &mut self,
-        id: u64,
-        selector: &str,
-        window: &gpui::Window,
-    ) -> std::result::Result<bool, String> {
-        self.observe_focus(window);
-        let tree = self.tree.lock().unwrap();
-        self.focus.matches(&tree, id, selector)
-    }
-
-    /// Record where window focus is now and emit the events for a move.
-    ///
-    /// The one place focus changes are noticed. Called every frame from
-    /// `sync_focus_handles`, and right after anything that moves focus or asks
-    /// about it, so `focus()` and `matches()` agree without waiting for a frame.
-    /// Never call it from inside a build: it takes the tree lock.
-    pub(crate) fn observe_focus(&mut self, window: &gpui::Window) {
-        let tree_arc = self.tree.clone();
-        let tree = tree_arc.lock().unwrap();
-        self.observe_focus_in(&tree, window);
-    }
-
-    fn observe_focus_in(&mut self, tree: &RetainedTree, window: &gpui::Window) {
-        // gpui reports no focus path while the window is inactive, and so does DOM
-        // (the window's blur event blurs the active element).
-        let current = if window.is_window_active() {
-            self.focused_element_id(window)
-                .filter(|id| tree.focusable_ids.contains(id))
-        } else {
-            None
-        };
-        if let Some(change) = self.focus.observe(
-            current,
-            tree,
-            window.last_input_was_keyboard(),
-            self.routing.user_input_seen(),
-        ) {
-            crate::focus::emit_change(&self.event_callback, tree, &change);
-        }
     }
 
     pub(crate) fn focused_element_id(&self, window: &gpui::Window) -> Option<u64> {
@@ -6380,9 +6271,9 @@ pub(crate) fn build_host_container(
 
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
-        el = apply_focus_styles(el, element.id, style, &ctx.focus_styles);
+        el = crate::focus::apply_focus_styles(el, element.id, style, &ctx.focus_styles);
     } else {
-        el = apply_focus_within(el, element.id, style, &ctx.focus_styles);
+        el = crate::focus::apply_focus_within(el, element.id, style, &ctx.focus_styles);
     }
 
     // React text instances (`createTextInstance`) are also type `text` and

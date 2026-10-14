@@ -40,7 +40,7 @@ pub struct CustomRenderContext<'a> {
     /// The element and its retained ancestors, for the click a VoiceOver press
     /// makes. Empty unless the element listens for `click`.
     pub click_path: Vec<u64>,
-    /// The DOM focus state for styling. See `renderer::apply_focus_styles`.
+    /// The DOM focus state for styling. See `focus::apply_focus_styles`.
     pub focus_styles: crate::focus::FocusStyles,
     /// Style object from the retained element for layout and appearance.
     pub style: Option<&'a crate::style::StyleDesc>,

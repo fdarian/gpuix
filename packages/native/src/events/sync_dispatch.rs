@@ -195,6 +195,31 @@ pub(crate) fn update_root_view_or_defer(
     .unwrap_or_else(|| Err(NESTED.to_string()))
 }
 
+/// Runs `update` against the window being dispatched, which a leased root view
+/// does not block. Fails when called from inside another such call.
+pub(crate) fn update_active_window<R>(
+    update: impl FnOnce(&mut Window, &mut App) -> R,
+) -> Result<R, String> {
+    with_active_window(update).ok_or_else(|| NESTED.to_string())
+}
+
+/// Sends a renderer call down one of two paths: `inside` while a sync call is in
+/// flight, where the app is already borrowed by the input being dispatched, and
+/// `outside` otherwise. `inside` is one of the `update_*` functions above and
+/// reports its error as a `String`, which `map_error` turns into the caller's.
+pub(crate) fn route<U, R, E>(
+    update: U,
+    inside: impl FnOnce(U) -> Result<R, String>,
+    map_error: impl FnOnce(String) -> E,
+    outside: impl FnOnce(U) -> Result<R, E>,
+) -> Result<R, E> {
+    if in_sync_call() {
+        inside(update).map_err(map_error)
+    } else {
+        outside(update)
+    }
+}
+
 /// Redraws the window without leasing the root view, which `applyBatch` may
 /// need while the input holds it.
 pub(crate) fn invalidate_root_view() -> Result<(), String> {
