@@ -1,3 +1,6 @@
+// objc 0.2's msg_send! expands to cfg(feature = "cargo-clippy"), which rustc flags as unexpected.
+#![allow(unexpected_cfgs)]
+
 //! OS display preferences behind `matchMedia`.
 //!
 //! JS owns the media query language (`js/media-query.ts`). Native only answers
