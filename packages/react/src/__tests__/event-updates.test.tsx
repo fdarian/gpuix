@@ -78,7 +78,7 @@ describeNative("event handler updates", () => {
 
       const events = renderer.findByType("div")[0]!.events
       expect(events.has("click")).toBe(false)
-      expect(events.has("mouseDown")).toBe(true)
+      expect(events.has("mousedown")).toBe(true)
     } finally {
       unmount()
     }

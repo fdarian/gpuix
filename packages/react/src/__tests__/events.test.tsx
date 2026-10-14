@@ -1020,13 +1020,13 @@ describeNative("events", () => {
   })
 
   describe("file drop events", () => {
-    it("should handle onFileDrop with the dropped paths", () => {
+    it("should handle onDrop with the dropped paths", () => {
       const received: EventPayload[] = []
 
       testRoot.render(
         <div
           style={{ width: 200, height: 200 }}
-          onFileDrop={(event: EventPayload) => received.push(event)}
+          onDrop={(event: EventPayload) => received.push(event)}
         >
           <text>drop</text>
         </div>,
@@ -1037,7 +1037,7 @@ describeNative("events", () => {
       ])
 
       expect(received).toHaveLength(1)
-      expect(received[0]!.eventType).toBe("fileDrop")
+      expect(received[0]!.eventType).toBe("drop")
       expect(received[0]!.paths).toEqual(["/tmp/gpuix-drop-a.txt"])
       expect(received[0]!.x).toBe(100)
       expect(received[0]!.y).toBe(100)
@@ -1049,7 +1049,7 @@ describeNative("events", () => {
       testRoot.render(
         <div
           style={{ width: 200, height: 200 }}
-          onFileDrop={(event: EventPayload) =>
+          onDrop={(event: EventPayload) =>
             received.push(event.paths ?? [])
           }
         />,
@@ -1076,11 +1076,11 @@ describeNative("events", () => {
             display: "flex",
             flexDirection: "column",
           }}
-          onFileDrop={() => received.push("outer")}
+          onDrop={() => received.push("outer")}
         >
           <div
             style={{ width: 100, height: 100 }}
-            onFileDrop={() => received.push("inner")}
+            onDrop={() => received.push("inner")}
           />
         </div>,
       )
@@ -1102,7 +1102,7 @@ describeNative("events", () => {
       testRoot.render(
         <div
           style={{ width: 200, height: 200 }}
-          onFileDrop={(event: EventPayload) => received.push(event)}
+          onDrop={(event: EventPayload) => received.push(event)}
         />,
       )
 
@@ -1121,7 +1121,7 @@ describeNative("events", () => {
             display: "flex",
             flexDirection: "column",
           }}
-          onFileDrop={() => received.push("outer")}
+          onDrop={() => received.push("outer")}
         >
           <div style={{ width: 100, height: 100 }} />
         </div>,
@@ -1133,7 +1133,7 @@ describeNative("events", () => {
       expect(received).toEqual(["outer"])
     })
 
-    it("should handle onFileDrop on a loaded img leaf", () => {
+    it("should handle onDrop on a loaded img leaf", () => {
       const received: string[][] = []
       const svg =
         '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#5ca9ff"/></svg>'
@@ -1143,7 +1143,7 @@ describeNative("events", () => {
         <img
           src={src}
           style={{ width: 220, height: 120 }}
-          onFileDrop={(event: EventPayload) =>
+          onDrop={(event: EventPayload) =>
             received.push(event.paths ?? [])
           }
         />,
@@ -1329,10 +1329,10 @@ describeNative("events", () => {
 
       expect(receivedEvents.length).toBeGreaterThanOrEqual(1)
       const moveEvent = receivedEvents.find(
-        (e) => e.eventType === "mouseMove"
+        (e) => e.eventType === "mousemove"
       )
       expect(moveEvent).toBeDefined()
-      expect(moveEvent!.eventType).toBe("mouseMove")
+      expect(moveEvent!.eventType).toBe("mousemove")
       expect(moveEvent!.x).toBe(50)
       expect(moveEvent!.y).toBe(75)
     })
@@ -1354,13 +1354,13 @@ describeNative("events", () => {
       // Move without button pressed
       testRoot.renderer.nativeSimulateMouseMove(10, 10)
       expect(receivedEvents.length).toBeGreaterThanOrEqual(1)
-      const noButtonEvent = receivedEvents.find((e) => e.eventType === "mouseMove")!
+      const noButtonEvent = receivedEvents.find((e) => e.eventType === "mousemove")!
       expect(noButtonEvent.pressedButton).toBeUndefined()
 
       // Move with left button pressed (simulating drag)
       receivedEvents.length = 0
       testRoot.renderer.nativeSimulateMouseMove(50, 50, 0)
-      const dragEvent = receivedEvents.find((e) => e.eventType === "mouseMove")!
+      const dragEvent = receivedEvents.find((e) => e.eventType === "mousemove")!
       expect(dragEvent.pressedButton).toBe(0)
     })
 
@@ -2086,12 +2086,11 @@ describeNative("events", () => {
       expect(deltas).toEqual([-80])
     })
 
-    it("lets an absolute sibling pass the wheel to a scroller below it", () => {
-      // BlockMouseExceptScroll is not DOM ancestor bubbling: it lets every
-      // scroll hitbox behind the element take the wheel, including one that
-      // is not an ancestor. An overlay that must not do this needs
-      // `pointerEvents: "auto"`.
-      function OverlayOverScroller() {
+    it("does not pass the wheel to a scroller behind an unrelated overlay", () => {
+      // The wheel goes to the target's scrolling ancestors, as in the DOM. The
+      // overlay is the target and the scroller is not its ancestor. An overlay
+      // that should let the wheel through sets `pointerEvents: "none"`.
+      function OverlayOverScroller({ passThrough }: { passThrough: boolean }) {
         return (
           <div style={{ width: 320, height: 200, position: "relative" }}>
             <div style={{ width: 320, height: 200, overflowY: "scroll" }}>
@@ -2107,6 +2106,7 @@ describeNative("events", () => {
                 width: 320,
                 height: 200,
                 backgroundColor: "#101010",
+                pointerEvents: passThrough ? "none" : undefined,
               }}
             >
               <text>card</text>
@@ -2115,18 +2115,19 @@ describeNative("events", () => {
         )
       }
 
-      testRoot.render(<OverlayOverScroller />)
+      testRoot.render(<OverlayOverScroller passThrough={false} />)
       const scroller = testRoot.renderer
         .findByType("div")
         .find((d) => d.style.overflowY === "scroll")!
       testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, -80)
+      expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBe(0)
 
-      const offset = testRoot.renderer.getScrollOffset(scroller.id)
-      expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0)
+      testRoot.render(<OverlayOverScroller passThrough />)
+      testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, -80)
+      expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBeLessThan(0)
     })
 
-    it("stops the wheel at a child with pointerEvents auto", () => {
+    it("does not stop the wheel at a child with pointerEvents auto", () => {
       const deltas: number[] = []
 
       function ModalOverCanvas() {
@@ -2155,7 +2156,7 @@ describeNative("events", () => {
       testRoot.render(<ModalOverCanvas />)
       testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, -80)
 
-      expect(deltas).toEqual([])
+      expect(deltas).toEqual([-80])
     })
 
     it("reports the modifiers held during a simulated wheel", () => {

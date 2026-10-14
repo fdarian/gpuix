@@ -140,7 +140,7 @@ describeNative("floating controls", () => {
         opacity: surfaceActive.opacity,
         borderBottomRightRadius: surfaceActive.borderBottomRightRadius,
       },
-      occlude: anchored.customProps?.occlude,
+      pointerEvents: anchored.style.pointerEvents,
     }).toMatchInlineSnapshot(`
       {
         "active": {
@@ -157,8 +157,8 @@ describeNative("floating controls", () => {
           "borderTopLeftRadius": 24,
           "opacity": 0.75,
         },
-        "occlude": false,
         "opacity": 0.5,
+        "pointerEvents": "none",
         "visibility": "hidden",
       }
     `)
@@ -314,7 +314,7 @@ describeNative("floating controls", () => {
     expect(testRoot.renderer.getAllText()).toContain("Behind: 1")
   })
 
-  it("lets a transparent overlapping element pass clicks through", () => {
+  it("a transparent overlapping element is still the target of a click", () => {
     function Demo() {
       const [behind, setBehind] = useState(0)
       return (
@@ -350,7 +350,7 @@ describeNative("floating controls", () => {
 
     testRoot.render(<Demo />)
     testRoot.renderer.nativeSimulateClick(80, 70)
-    expect(testRoot.renderer.getAllText()).toContain("Behind: 1")
+    expect(testRoot.renderer.getAllText()).toContain("Behind: 0")
   })
 
   it("occludes controls behind SelectContent", () => {
@@ -620,7 +620,7 @@ describeNative("floating controls", () => {
 
     const trigger = testRoot.renderer
       .findByType("div")
-      .find((element) => element.events.has("mouseEnter"))!
+      .find((element) => element.events.has("mouseenter"))!
     testRoot.renderer.nativeSimulateKeyDown(trigger.id, "escape")
     expect(testRoot.renderer.getAllText()).toEqual(["Hover me"])
 

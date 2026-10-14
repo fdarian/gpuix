@@ -84,34 +84,41 @@ describeNative("text element identity", () => {
     expect(testRoot.renderer.getAllText()).toEqual(["idle"])
   })
 
-  // Now that `<text>` runs through the same builder as `<div>`, a filled text
-  // node inserts a hitbox and stops clicks behind it, exactly like an HTML
-  // element with a background. The old text builder inserted none.
-  it("blocks a click behind a filled <text>", () => {
-    const behind = vi.fn()
+  // A `<text>` runs through the same builder as `<div>`, so it is the target of
+  // a click where it paints, and the click bubbles to its ancestors. An
+  // unrelated element under it is not hit, as in HTML.
+  it("is the target of a click and hides an unrelated element under it", () => {
+    const under = vi.fn()
+    const ancestor = vi.fn()
     testRoot.render(
-      <div style={{ width: 600, height: 400 }} onClick={behind}>
+      <div style={{ width: 600, height: 400 }} onClick={ancestor}>
         <div
+          style={{ position: "absolute", top: 0, left: 0, width: 200, height: 100 }}
+          onClick={under}
+        />
+        <text
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             width: 200,
             height: 100,
+            backgroundColor: "#f38ba8",
           }}
         >
-          <text style={{ width: 200, height: 100, backgroundColor: "#f38ba8" }}>
-            label
-          </text>
-        </div>
+          label
+        </text>
       </div>,
     )
+    const label = testRoot.renderer.findByType("text").find((t) => t.style.width === 200)!
 
     testRoot.renderer.nativeSimulateClick(100, 50)
-    expect(behind).not.toHaveBeenCalled()
+    expect(under).not.toHaveBeenCalled()
+    expect(ancestor).toHaveBeenCalledTimes(1)
+    expect(ancestor.mock.calls[0][0].target).toBe(label.id)
 
     testRoot.renderer.nativeSimulateClick(400, 300)
-    expect(behind).toHaveBeenCalledTimes(1)
+    expect(ancestor).toHaveBeenCalledTimes(2)
   })
 
   it("paints the hover style declared on a <text> node", () => {

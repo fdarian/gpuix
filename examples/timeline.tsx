@@ -39,9 +39,11 @@
  * ── Why the translating wrappers set pointerEvents: "none" ──────────────────
  *
  * Each pane holds one absolutely positioned child that carries the scroll
- * offset. An absolutely positioned box takes hits in HTML too, even with no
+ * offset. An absolutely positioned box is a hit target in HTML too, even with no
  * background, so without `pointerEvents: "none"` that wrapper would swallow
- * every press meant for the ruler or the empty grid behind it.
+ * every press meant for the ruler or the empty grid behind it. As in CSS,
+ * `none` is inherited, so the clips and track headers inside set
+ * `pointerEvents: "auto"` to be targets again.
  */
 
 import React, { memo, useCallback, useMemo, useRef, useState } from 'react'
@@ -153,8 +155,11 @@ interface DragState {
  * the same node is what arms GPUI's pointer capture, so `move` and `end` keep
  * arriving after the pointer leaves that node, and after it leaves the window.
  */
+/** A mouse down. It bubbles, so a clip stops it before the grid starts a marquee. */
+type PressEvent = EventPayload & { stopPropagation(): void }
+
 interface GestureHandlers {
-  begin: (kind: DragKind, clip: Clip | null, event: EventPayload) => void
+  begin: (kind: DragKind, clip: Clip | null, event: PressEvent) => void
   move: (event: EventPayload) => void
   end: () => void
 }
@@ -497,6 +502,7 @@ const TrackHeaders = memo(function TrackHeaders({
             backgroundColor: C.chrome,
             cursor: 'pointer',
             userSelect: 'none',
+            pointerEvents: 'auto',
             hover: { backgroundColor: '#212129' },
           }}
           onClick={() => onToggle(track.id)}
@@ -611,6 +617,7 @@ const ClipView = memo(function ClipView({
         overflow: 'hidden',
         cursor: 'grab',
         userSelect: 'none',
+        pointerEvents: 'auto',
         hover: { backgroundColor: color.hover },
         active: { cursor: 'grabbing' },
       }}
@@ -908,7 +915,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
 
   // ── Gesture start ─────────────────────────────────────────────────────────
   const beginDrag = useCallback(
-    (kind: DragKind, clip: Clip | null, event: EventPayload) => {
+    (kind: DragKind, clip: Clip | null, event: PressEvent) => {
       const state = live.current
       updateDrag({
         kind,
@@ -928,8 +935,9 @@ export function TimelineApp(props: TimelineAppProps = {}) {
   )
 
   const beginClipDrag = useCallback(
-    (kind: DragKind, clip: Clip | null, event: EventPayload) => {
+    (kind: DragKind, clip: Clip | null, event: PressEvent) => {
       if (clip) {
+        event.stopPropagation()
         const additive = event.modifiers?.shift || event.modifiers?.cmd
         setSelection((current) => {
           if (!additive) return new Set([clip.id])
