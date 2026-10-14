@@ -1033,15 +1033,15 @@ describeNative("events", () => {
     })
   })
 
-  describe("scroll events", () => {
-    it("should handle onScroll and receive exact delta values", () => {
+  describe("wheel events", () => {
+    it("should handle onWheel and receive DOM-signed pixel deltas", () => {
       const receivedEvents: EventPayload[] = []
 
       function ScrollBox() {
         return (
           <div
             style={{ width: 200, height: 200 }}
-            onScroll={(e: EventPayload) => receivedEvents.push(e)}
+            onWheel={(e: EventPayload) => receivedEvents.push(e)}
           >
             <text>scrollable</text>
           </div>
@@ -1052,23 +1052,26 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, -50)
 
       expect(receivedEvents.length).toBeGreaterThanOrEqual(1)
-      const scrollEvent = receivedEvents.find(
-        (e) => e.eventType === "scroll"
-      )
-      expect(scrollEvent).toBeDefined()
-      expect(scrollEvent!.eventType).toBe("scroll")
-      expect(scrollEvent!.deltaX).toBe(0)
-      expect(scrollEvent!.deltaY).toBe(-50)
-      expect(scrollEvent!.touchPhase).toBe("moved")
+      const wheelEvent = receivedEvents.find((e) => e.eventType === "wheel")
+      expect(wheelEvent).toBeDefined()
+      // GPUI reports -50 for a wheel that scrolls down; the DOM reports +50.
+      expect(wheelEvent!.deltaX).toBe(0)
+      expect(wheelEvent!.deltaY).toBe(50)
+      expect(wheelEvent).toMatchObject({
+        deltaMode: 0,
+        clientX: 100,
+        clientY: 100,
+        touchPhase: "started",
+      })
     })
 
-    it("should update state on scroll", () => {
+    it("should update state on wheel", () => {
       function ScrollCounter() {
         const [scrollCount, setScrollCount] = useState(0)
         return (
           <div
             style={{ width: 200, height: 200 }}
-            onScroll={() => setScrollCount((c) => c + 1)}
+            onWheel={() => setScrollCount((c) => c + 1)}
           >
             <text>{`Scrolls: ${scrollCount}`}</text>
           </div>
@@ -2424,7 +2427,7 @@ describeNative("events", () => {
         return (
           <div
             style={{ width: 320, height: 200, position: "relative" }}
-            onScroll={(e: EventPayload) => deltas.push(e.deltaY ?? 0)}
+            onWheel={(e: EventPayload) => deltas.push(e.deltaY ?? 0)}
           >
             <div
               style={{
@@ -2445,7 +2448,7 @@ describeNative("events", () => {
       testRoot.render(<Canvas />)
       testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, -80)
 
-      expect(deltas).toEqual([-80])
+      expect(deltas).toEqual([80])
     })
 
     it("does not pass the wheel to a scroller behind an unrelated overlay", () => {
@@ -2496,7 +2499,7 @@ describeNative("events", () => {
         return (
           <div
             style={{ width: 320, height: 200, position: "relative" }}
-            onScroll={(e: EventPayload) => deltas.push(e.deltaY ?? 0)}
+            onWheel={(e: EventPayload) => deltas.push(e.deltaY ?? 0)}
           >
             <div
               style={{
@@ -2528,7 +2531,7 @@ describeNative("events", () => {
         return (
           <div
             style={{ width: 200, height: 200, backgroundColor: "#101010" }}
-            onScroll={(e: EventPayload) => held.push(e.modifiers?.cmd)}
+            onWheel={(e: EventPayload) => held.push(e.modifiers?.cmd)}
           >
             <text>surface</text>
           </div>
@@ -2706,14 +2709,14 @@ describeNative("events", () => {
       expect(fs.readFileSync(path0).equals(fs.readFileSync(path1))).toBe(false)
     })
 
-    it("should combine onScroll event with overflow scroll", () => {
+    it("should combine onWheel with overflow scroll", () => {
       const receivedScrollEvents: EventPayload[] = []
 
       function ScrollWithEvent() {
         return (
           <div
             style={{ width: 300, height: 100, overflow: "scroll" }}
-            onScroll={(e: EventPayload) => receivedScrollEvents.push(e)}
+            onWheel={(e: EventPayload) => receivedScrollEvents.push(e)}
           >
             <div style={{ height: 500 }}>
               <text>Scrollable with events</text>
@@ -2724,16 +2727,16 @@ describeNative("events", () => {
 
       testRoot.render(<ScrollWithEvent />)
 
-      // Scroll should fire the onScroll event AND move the content
+      // The wheel should fire onWheel AND move the content
       testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, -40)
 
       // Event should have fired
       expect(receivedScrollEvents.length).toBeGreaterThanOrEqual(1)
       const scrollEvent = receivedScrollEvents.find(
-        (e) => e.eventType === "scroll"
+        (e) => e.eventType === "wheel"
       )
       expect(scrollEvent).toBeDefined()
-      expect(scrollEvent!.deltaY).toBe(-40)
+      expect(scrollEvent!.deltaY).toBe(40)
 
       // Content should have scrolled
       const container = testRoot.renderer

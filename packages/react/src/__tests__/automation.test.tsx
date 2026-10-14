@@ -167,7 +167,7 @@ describeNative("automation", () => {
         <div
           testId="surface"
           style={{ width: 300, height: 200, backgroundColor: "#101010" }}
-          onScroll={(event) =>
+          onWheel={(event) =>
             seen.push({
               deltaY: event.deltaY ?? 0,
               cmd: event.modifiers?.cmd ?? false,
@@ -187,8 +187,8 @@ describeNative("automation", () => {
     await app.getByTestId("surface").wheel(0, -60, { modifiers: "cmd" })
 
     expect(seen).toEqual([
-      { deltaY: -60, cmd: false },
-      { deltaY: -60, cmd: true },
+      { deltaY: 60, cmd: false },
+      { deltaY: 60, cmd: true },
     ])
     await app.close()
   })

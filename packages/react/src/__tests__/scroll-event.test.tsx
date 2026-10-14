@@ -1,24 +1,25 @@
 import { describe, expect, it } from "vitest"
-import type { EventPayload } from "@gpuix/native"
+import type { ScrollEvent } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
-const offset = (event: EventPayload) => [event.scrollX, event.scrollY]
+/** `onScroll` reports the offset the way the DOM reads it: pixels from the start. */
+const offset = (event: ScrollEvent) => [event.scrollLeft, event.scrollTop]
 
-function scroller(onScrollChange?: (event: EventPayload) => void) {
+function scroller(onScroll?: (event: ScrollEvent) => void) {
   return (
     <div
       testId="scroller"
       style={{ width: 200, height: 100, overflow: "scroll" }}
-      onScrollChange={onScrollChange}
+      onScroll={onScroll}
     >
       <div style={{ height: 500 }} />
     </div>
   )
 }
 
-describeNative("onScrollChange", () => {
+describeNative("onScroll", () => {
   it("reports movement, not the position it starts at", () => {
     const { render, renderer, unmount } = createTestRoot()
     try {
@@ -30,7 +31,7 @@ describeNative("onScrollChange", () => {
       const id = renderer.findByTestId("scroller")!.id
       renderer.scrollTo(id, 0, -100)
       renderer.dispatchNativeEvents()
-      expect(offsets).toEqual([[0, -100]])
+      expect(offsets).toEqual([[0, 100]])
       expect(renderer.getScrollOffset(id)).toEqual([0, -100])
     } finally {
       unmount()
@@ -46,8 +47,10 @@ describeNative("onScrollChange", () => {
 
       expect(offsets).toHaveLength(1)
       const id = renderer.findByTestId("scroller")!.id
-      expect(offsets[0]).toEqual(renderer.getScrollOffset(id))
-      expect(offsets[0]![1]).toBeLessThan(0)
+      expect(offsets[0]).toEqual(
+        renderer.getScrollOffset(id)!.map((value) => 0 - value)
+      )
+      expect(offsets[0]![1]).toBeGreaterThan(0)
     } finally {
       unmount()
     }
@@ -87,7 +90,7 @@ describeNative("onScrollChange", () => {
 
       renderer.scrollTo(id, 0, -120)
       renderer.dispatchNativeEvents()
-      expect(offsets).toEqual([[0, -120]])
+      expect(offsets).toEqual([[0, 120]])
     } finally {
       unmount()
     }
@@ -101,7 +104,7 @@ describeNative("onScrollChange", () => {
         <div
           testId="scroller"
           style={{ width: 200, height: 100, overflow: "scroll" }}
-          onScrollChange={(event) => offsets.push(offset(event))}
+          onScroll={(event) => offsets.push(offset(event))}
         >
           <div style={{ height: 400 }} />
           <div testId="target" style={{ height: 20 }} />
@@ -113,7 +116,7 @@ describeNative("onScrollChange", () => {
       renderer.scrollIntoView(renderer.findByTestId("target")!.id)
       renderer.dispatchNativeEvents()
       expect(offsets).toHaveLength(1)
-      expect((offsets[0] as number[])[1]).toBeLessThan(0)
+      expect((offsets[0] as number[])[1]).toBeGreaterThan(0)
     } finally {
       unmount()
     }
@@ -126,7 +129,7 @@ describeNative("onScrollChange", () => {
       render(
         <div
           style={{ width: 200, height: 100 }}
-          onScrollChange={(event) => offsets.push(offset(event))}
+          onScroll={(event) => offsets.push(offset(event))}
         />
       )
       renderer.dispatchNativeEvents()
