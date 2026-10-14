@@ -61,6 +61,8 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         line_clamp, text_decoration,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, user_select, selection_color,
+        transition, transition_property, transition_duration, transition_timing_function,
+        transition_delay,
         focus_visible, focus_within, keyboard_focus_dim, group, group_hover, group_active,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
@@ -100,6 +102,12 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.border_top_right_radius = None;
         base.border_bottom_left_radius = None;
         base.border_bottom_right_radius = None;
+    }
+    if over.transition.is_some() {
+        base.transition_property = None;
+        base.transition_duration = None;
+        base.transition_timing_function = None;
+        base.transition_delay = None;
     }
     if over.overflow.is_some() {
         base.overflow_x = None;
@@ -255,6 +263,27 @@ mod tests {
         assert_eq!((hovered.padding, hovered.padding_top), (Some(8.0), Some(1.0)));
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!((pressed.padding, pressed.padding_top), (Some(3.0), Some(2.0)));
+    }
+
+    #[test]
+    fn a_state_transition_replaces_the_base_transition_and_its_longhands() {
+        let base = style(
+            r##"{
+                "transition": "opacity 1s", "transitionDuration": "2s",
+                "hover": { "transition": "color 150ms" },
+                "active": { "transitionDelay": "50ms" }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.transition_duration.as_deref(), Some("2s"));
+
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.transition.as_deref(), Some("color 150ms"));
+        assert_eq!(hovered.transition_duration, None);
+
+        let pressed = resolve_state_styles(&base, true, true);
+        assert_eq!(pressed.transition.as_deref(), Some("color 150ms"));
+        assert_eq!(pressed.transition_delay.as_deref(), Some("50ms"));
     }
 
     #[test]

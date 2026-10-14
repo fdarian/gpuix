@@ -387,6 +387,14 @@ pub struct StyleDesc {
     /// 35% opacity, the same tone Comet uses.
     pub selection_color: Option<String>,
 
+    // CSS transitions: CSS syntax, kebab-case property names, as in a DOM inline
+    // style. The longhands win over the `transition` shorthand.
+    pub transition: Option<String>,
+    pub transition_property: Option<String>,
+    pub transition_duration: Option<String>,
+    pub transition_timing_function: Option<String>,
+    pub transition_delay: Option<String>,
+
     // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
     // Uses Box to avoid infinite-size struct (StyleDesc contains StyleDesc).
     pub hover: Option<Box<StyleDesc>>,
