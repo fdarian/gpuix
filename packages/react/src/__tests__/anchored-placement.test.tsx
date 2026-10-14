@@ -150,4 +150,68 @@ describeNative("<anchored> placement", () => {
       }
     )
   })
+
+  describe("re-places on every layout", () => {
+    it("flips when the trigger scrolls toward the window edge, and reports it", () => {
+      const events: AnchoredPlacementEvent[] = []
+      const { render, renderer, unmount } = createTestRoot(WINDOW)
+      try {
+        render(
+          <div testId="scroller" style={{ width: 800, height: 600, overflow: "scroll" }}>
+            <div style={{ height: 450 }} />
+            <div testId="trigger" style={{ position: "relative", width: 100, height: 30 }}>
+              <anchored gap={4} snapMargin={8} onPlacement={(event) => events.push(event)}>
+                <div testId="popup" style={{ width: 80, height: 200 }} />
+              </anchored>
+            </div>
+            <div style={{ height: 1000 }} />
+          </div>
+        )
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+        const scroller = renderer.findByTestId("scroller")!.id
+        // 450 + 30 + 4 + 200 does not fit above 592: opens upward.
+        expect(events.at(-1)).toMatchObject({ side: "top" })
+        expect(box(renderer, "popup").y).toBe(450 - 4 - 200)
+
+        renderer.scrollTo(scroller, 0, -300)
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+        expect(events.at(-1)).toMatchObject({ side: "bottom" })
+        expect(box(renderer, "popup").y).toBe(150 + 30 + 4)
+
+        renderer.scrollTo(scroller, 0, 0)
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+        expect(events.at(-1)).toMatchObject({ side: "top" })
+        expect(events.map((event) => event.side)).toEqual(["top", "bottom", "top"])
+      } finally {
+        unmount()
+      }
+    })
+
+    it("flips when the popup grows or shrinks", () => {
+      const events: AnchoredPlacementEvent[] = []
+      const { render, renderer, unmount } = createTestRoot(WINDOW)
+      try {
+        const ui = (height: number) =>
+          scene({ x: 100, y: 400 }, { width: 80, height }, {}, (event) => events.push(event))
+        render(ui(100))
+        renderer.dispatchNativeEvents()
+        expect(events.at(-1)).toMatchObject({ side: "bottom" })
+
+        render(ui(300))
+        renderer.dispatchNativeEvents()
+        expect(events.at(-1)).toMatchObject({ side: "top" })
+        expect(box(renderer, "popup").y).toBe(400 - 4 - 300)
+
+        render(ui(100))
+        renderer.dispatchNativeEvents()
+        expect(events.at(-1)).toMatchObject({ side: "bottom" })
+        expect(events.map((event) => event.side)).toEqual(["bottom", "top", "bottom"])
+      } finally {
+        unmount()
+      }
+    })
+  })
 })
