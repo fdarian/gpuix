@@ -307,6 +307,12 @@ pub struct StyleDesc {
     pub text_overflow: Option<String>,
     pub line_clamp: Option<f64>,
     pub text_decoration: Option<String>,
+    /// CSS `font-variant-numeric` keywords, e.g. `"tabular-nums slashed-zero"`.
+    /// Inherited. Not supported inside `hover`/`active`/`focusVisible`.
+    pub font_variant_numeric: Option<String>,
+    /// CSS `font-feature-settings`, e.g. `'"tnum" 1, "liga" 0'`. Inherited, and it
+    /// wins over `fontVariantNumeric` on a feature both name.
+    pub font_feature_settings: Option<String>,
 
     // Overflow
     pub overflow: Option<String>,

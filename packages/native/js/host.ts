@@ -334,6 +334,16 @@ export interface StyleDesc {
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   textDecoration?: "underline" | "line-through" | "none"
+  /** CSS `font-variant-numeric`, inherited: `tabular-nums`, `proportional-nums`,
+   *  `lining-nums`, `oldstyle-nums`, `slashed-zero`, `diagonal-fractions`,
+   *  `stacked-fractions`, `ordinal`, or `normal`. One keyword per group (figure,
+   *  spacing, fraction), combined with spaces. Needs a font with the feature.
+   *  Not available inside a state style. */
+  fontVariantNumeric?: string
+  /** CSS `font-feature-settings`, inherited: `'"tnum" 1, "liga" 0'`. A tag is four
+   *  characters; the value is an integer, `on`, `off`, or omitted (1). Wins over
+   *  `fontVariantNumeric` on a tag both name. Not available inside a state style. */
+  fontFeatureSettings?: string
 
   /** `"visible"` (default); `"clip"` clips; `"hidden"` clips and is a scroll container that
    *  only code scrolls (`scrollTo`, `scrollTop`, `scrollIntoView`), not the wheel or the keys;
@@ -391,7 +401,13 @@ export interface StyleDesc {
 
 export type StateStyleDesc = Omit<
   StyleDesc,
-  "hover" | "active" | "focusVisible" | "focusWithin" | "keyboardFocusDim"
+  | "hover"
+  | "active"
+  | "focusVisible"
+  | "focusWithin"
+  | "keyboardFocusDim"
+  | "fontVariantNumeric"
+  | "fontFeatureSettings"
 >
 
 // Element types supported by GPUIX

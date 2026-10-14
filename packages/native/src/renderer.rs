@@ -5332,6 +5332,11 @@ pub(crate) struct Inherited {
     /// Computed `color` and `colorScheme`, which `currentColor` and
     /// `light-dark()` resolve against.
     pub colors: crate::color::ColorContext,
+    /// `fontVariantNumeric` and `fontFeatureSettings` as inherited so far.
+    pub font_state: crate::css::font_features::FontFeatureState,
+    /// The combined features, only on the element whose style declares one of the
+    /// two: gpui inherits a text style on its own, so descendants add nothing.
+    pub font_features: Option<gpui::FontFeatures>,
 }
 
 impl Inherited {
@@ -5345,16 +5350,23 @@ impl Inherited {
             highlight: None,
             pointer_events_none: false,
             colors: crate::color::ColorContext::root(color_scheme_of(appearance)),
+            font_state: Default::default(),
+            font_features: None,
         }
     }
 
     /// Apply the inheritable parts of `style` for the subtree below it.
     fn descend(mut self, style: Option<&StyleDesc>, inert: bool) -> Self {
+        self.font_features = None;
         self.inert |= inert;
         if self.inert {
             self.selectable = false;
         }
         let Some(style) = style else { return self };
+        (self.font_state, self.font_features) = self.font_state.descend(
+            style.font_variant_numeric.as_deref(),
+            style.font_feature_settings.as_deref(),
+        );
         match style.user_select.as_deref() {
             Some("none") => self.selectable = false,
             Some("text") | Some("auto") if !self.inert => self.selectable = true,
@@ -6300,6 +6312,7 @@ pub(crate) fn build_element(
                 click_path: click_path(ctx.tree, element),
                 style,
                 colors: inherited.colors,
+                font_features: inherited.font_features.clone(),
                 children: custom_children,
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
@@ -6480,6 +6493,9 @@ fn build_virtual_list(
             gpui::OverscrollBehavior::Auto,
             crate::scroll::overscroll_y(style),
         );
+        if let Some(features) = ctx.inherited.font_features.clone() {
+            list = list.font_features(features);
+        }
     }
     let list = apply_accessibility(list, element.id, element.custom_props(), None).into_any_element();
     let look = element
@@ -6584,6 +6600,10 @@ pub(crate) fn build_host_container(
 
     if let Some(style) = style {
         el = apply_interactive_styles(el, style, &ctx.inherited.colors);
+
+        if let Some(features) = ctx.inherited.font_features.clone() {
+            el = el.font_features(features);
+        }
     }
 
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);

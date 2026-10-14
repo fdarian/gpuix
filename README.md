@@ -4259,6 +4259,8 @@ The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadi
 
 **Text:** `fontSize`, `fontFamily`, `fontWeight`, `textAlign`, `lineHeight`, `whiteSpace`, `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
 
+`fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
+
 `fontFamily` resolves installed fonts. To use your own, pass the files in the `fonts` window option or call [`registerFont()`](#custom-fonts). Variable fonts render only their default instance, so use one static file per weight. The family name must match the font's family name exactly.
 
 **Selection:** `userSelect` (`"text"` | `"none"`), `selectionColor` — both inherit down the tree

@@ -46,6 +46,8 @@ pub struct CustomRenderContext<'a> {
     pub style: Option<&'a crate::style::StyleDesc>,
     /// Computed `color` and `colorScheme` of this element, for `currentColor`.
     pub colors: crate::color::ColorContext,
+    /// Font features this element declares, for the text it paints.
+    pub font_features: Option<gpui::FontFeatures>,
     /// Built child elements from the retained tree for this custom node.
     pub children: Vec<gpui::AnyElement>,
     /// Live text selection. Elements that paint text MUST route it through
@@ -144,6 +146,9 @@ pub(crate) fn custom_surface(
         } else {
             crate::renderer::apply_interactive_styles(el, style, &ctx.colors)
         };
+    }
+    if let Some(features) = ctx.font_features.clone() {
+        el = el.font_features(features);
     }
     if ctx
         .style

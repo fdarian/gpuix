@@ -52,7 +52,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         border_left_width, border_color, border_radius, border_top_left_radius,
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
         box_shadow, border_style, aspect_ratio, outline_width, outline_color, outline_offset,
-        font_size, font_family, font_weight, text_align, line_height, white_space, text_overflow,
+        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, text_overflow,
         line_clamp, text_decoration,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, user_select, selection_color,
