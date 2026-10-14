@@ -275,8 +275,23 @@ export interface StyleDesc {
   bottom?: DimensionValue
   left?: DimensionValue
 
+  /** The CSS shorthand (`"linear-gradient(...) center / cover no-repeat, #fff"`: layers
+   *  then a final colour), a plain colour, or the two-stop object form. The
+   *  `background*` longhands below override parts of the shorthand. */
   background?: string | LinearGradientBackground
   backgroundColor?: string
+  /** Comma list of `linear-`, `radial-`, `conic-gradient()` and `repeating-` forms
+   *  (any number of stops and colour hints, `in srgb | oklab`), `none`, or `url()`
+   *  (valid but not drawn). The first layer is on top. */
+  backgroundImage?: string
+  /** CSS lists, one entry per layer, repeating to cover the layers. */
+  backgroundSize?: string
+  backgroundPosition?: string
+  backgroundRepeat?: string
+  backgroundOrigin?: "border-box" | "padding-box" | "content-box" | string
+  /** `text` is accepted and ignored. Clips the gradient layers only, not
+   *  `backgroundColor`. */
+  backgroundClip?: "border-box" | "padding-box" | "content-box" | "text" | string
   /** Text colour, inherited. Every colour prop accepts CSS colours: hex, named,
    *  `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, relative
    *  colours, and the context-aware forms below, which nest freely:

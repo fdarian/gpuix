@@ -266,6 +266,16 @@ pub struct StyleDesc {
     // Background & Colors
     pub background: Option<BackgroundValue>,
     pub background_color: Option<String>,
+    /// CSS `background-image`: a comma list of `linear-`, `radial-` and
+    /// `conic-gradient()` (and `repeating-` forms), `none` or `url()`. First is on top.
+    pub background_image: Option<String>,
+    /// CSS `background-size`, `-position`, `-repeat`, `-origin` and `-clip`. Each
+    /// is a comma list that repeats to cover the layers.
+    pub background_size: Option<String>,
+    pub background_position: Option<String>,
+    pub background_repeat: Option<String>,
+    pub background_origin: Option<String>,
+    pub background_clip: Option<String>,
     pub color: Option<String>,
     /// CSS `color-scheme`: `"normal"`, `"light"`, `"dark"`, `"light dark"`,
     /// `"only light"`, `"only dark"`. Inherited. Picks the side of `light-dark()`
@@ -422,6 +432,13 @@ impl StyleDesc {
     }
 }
 
+/// What a style paints behind its content.
+pub(crate) struct Fill {
+    pub color: Option<gpui::Background>,
+    /// First is on top.
+    pub layers: Vec<gpui::BackgroundLayer>,
+}
+
 impl BackgroundValue {
     fn resolve(&self, colors: &ColorContext) -> Option<gpui::Background> {
         match self {
@@ -463,7 +480,9 @@ impl BackgroundValue {
 
 impl StyleDesc {
     pub(crate) fn has_background(&self) -> bool {
-        self.background_color.is_some() || self.background.is_some()
+        self.background_color.is_some()
+            || self.background.is_some()
+            || self.background_image.is_some()
     }
 
     /// The colour declarations of this style that mention `currentColor` and
@@ -502,6 +521,14 @@ impl StyleDesc {
                 }
             };
         }
+        follow!(background_image, follows);
+        if state.background.is_none() {
+            if let Some(BackgroundValue::Color(value)) = &self.background {
+                if value.to_ascii_lowercase().contains("currentcolor") {
+                    followers.background = self.background.clone();
+                }
+            }
+        }
         follow!(border_top_color, follows);
         follow!(border_right_color, follows);
         follow!(border_bottom_color, follows);
@@ -531,11 +558,45 @@ impl StyleDesc {
         (followers != StyleDesc::default()).then_some(followers)
     }
 
-    pub(crate) fn resolved_background(&self, colors: &ColorContext) -> Option<gpui::Background> {
-        if let Some(value) = self.background_color.as_deref() {
-            return colors.resolve(value).map(Into::into);
+    /// The background colour (or object gradient) and the gradient layers.
+    ///
+    /// `background` takes a plain colour as it always did, or the CSS shorthand
+    /// with layers and a final colour. `backgroundColor` wins over the
+    /// shorthand's colour, and the `background-*` longhands replace its parts.
+    pub(crate) fn resolved_fill(&self, colors: &ColorContext) -> Fill {
+        let shorthand = match self.background.as_ref() {
+            Some(BackgroundValue::Color(value)) if colors.resolve(value).is_none() => {
+                Some(value.as_str())
+            }
+            _ => None,
+        };
+        let inputs = crate::css::background::Inputs {
+            shorthand,
+            image: self.background_image.as_deref(),
+            size: self.background_size.as_deref(),
+            position: self.background_position.as_deref(),
+            repeat: self.background_repeat.as_deref(),
+            origin: self.background_origin.as_deref(),
+            clip: self.background_clip.as_deref(),
+        };
+        let parsed = crate::css::background::resolve(&inputs, colors);
+        let color = if let Some(value) = self.background_color.as_deref() {
+            colors.resolve(value).map(Into::into)
+        } else if let Some(background) = self.background.as_ref() {
+            match background {
+                BackgroundValue::Color(value) => colors
+                    .resolve(value)
+                    .or(parsed.color)
+                    .map(Into::into),
+                gradient => gradient.resolve(colors),
+            }
+        } else {
+            None
+        };
+        Fill {
+            color,
+            layers: parsed.layers,
         }
-        self.background.as_ref()?.resolve(colors)
     }
 }
 
@@ -661,7 +722,7 @@ mod tests {
         )
         .color_space(gpui::ColorSpace::Oklab);
 
-        assert_eq!(style.resolved_background(&light()), Some(expected));
+        assert_eq!(style.resolved_fill(&light()).color, Some(expected));
     }
 
     #[test]

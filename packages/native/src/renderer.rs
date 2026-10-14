@@ -7082,8 +7082,12 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(ratio) = style.aspect_ratio.and_then(|ratio| ratio.ratio()) {
         el = el.aspect_ratio(ratio as f32);
     }
-    if let Some(background) = style.resolved_background(colors) {
+    let fill = style.resolved_fill(colors);
+    if let Some(background) = fill.color {
         el = el.bg(background);
+    }
+    if !fill.layers.is_empty() {
+        el.style().background_layers = Some(fill.layers);
     }
     if let Some(color) = colors.declared {
         el = el.text_color(color);

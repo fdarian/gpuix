@@ -393,8 +393,8 @@ impl CustomElement for AnchoredElement {
         // and a full-window layer such as a dialog portal must paint nothing.
         let declares_fill = ctx
             .style
-            .and_then(|style| style.resolved_background(&ctx.colors))
-            .is_some();
+            .map(|style| style.resolved_fill(&ctx.colors))
+            .is_some_and(|fill| fill.color.is_some() || !fill.layers.is_empty());
         if !declares_fill {
             content = content.bg(gpui::rgb(0x1A1A1A));
         }

@@ -4028,7 +4028,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Borders
 
@@ -4151,10 +4151,46 @@ Standard comma and modern space/slash alpha forms work. Values are converted
 to hard-clipped sRGB before GPUI paints them. Invalid strings are ignored for
 that property; they do not reject the full style object.
 
-### Linear gradients
+### Gradients and background layers
 
-`background` accepts GPUI's native **two-stop linear gradient**. Angles follow
-CSS: `0` points up and values increase clockwise. Stop positions use `0` to `1`.
+`backgroundImage` takes a comma list of CSS gradients, the first on top:
+`linear-gradient()`, `radial-gradient()`, `conic-gradient()` and their
+`repeating-` forms, with any number of stops, colour hints, `in srgb` / `in
+oklab`, and `none`. Colours are any [colour form](#colors), including
+`currentColor`. `backgroundSize`, `backgroundPosition`, `backgroundRepeat`
+(including `space` and `round`), `backgroundOrigin` and `backgroundClip` are comma
+lists that repeat to cover the layers, as in CSS. `background` is the shorthand:
+layers, `position / size`, repeat, origin and clip boxes, and a final colour.
+
+```tsx
+<div
+  style={{
+    backgroundColor: '#0d1117',
+    backgroundImage:
+      'radial-gradient(circle at 20% 20%, #ffffff33, transparent 40%), linear-gradient(to right in oklab, #7c3aed, #06b6d4)',
+    backgroundSize: '100% 100%, 24px 24px',
+    backgroundRepeat: 'no-repeat, repeat',
+    borderRadius: 12,
+  }}
+/>
+
+<div style={{ background: 'repeating-linear-gradient(45deg, #0001 0 8px, transparent 8px 16px) #fff' }} />
+```
+
+Longhands win over the shorthand. Limits:
+- `url(...)` images are valid but not drawn: that layer is skipped and the others
+  still paint.
+- Interpolation spaces other than `srgb` and `oklab` skip the layer.
+- `backgroundClip: 'text'` is accepted and ignored for now.
+- `backgroundOrigin` and `backgroundClip` move the gradient layers only. The
+  background *colour* always fills the border box.
+- `backgroundAttachment` has no meaning here and is ignored in the shorthand.
+
+#### The object form
+
+`background` also accepts GPUI's native **two-stop linear gradient** object.
+Angles follow CSS: `0` points up and values increase clockwise. Stop positions
+use `0` to `1`.
 
 ```tsx
 <div
@@ -4174,8 +4210,8 @@ CSS: `0` points up and values increase clockwise. Stop positions use `0` to `1`.
 ```
 
 `colorSpace` is optional and defaults to `"srgb"`. GPUI also supports
-`"oklab"`. It does not support radial, conic, repeating, or gradients with
-more than two stops.
+`"oklab"`. For radial, conic, repeating and many-stop gradients use
+`backgroundImage`.
 
 `hsv()`, `hsva()`, and `hwba()` are parser extensions rather than CSS Color 4
 standard functions. Platform/dynamic colors and numeric color integers are not
