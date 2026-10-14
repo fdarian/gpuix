@@ -150,6 +150,10 @@ pub struct EventPayload {
     pub align: Option<String>,
     pub available_width: Option<f64>,
     pub available_height: Option<f64>,
+    /// Border-box size of the trigger an `<anchored>` layer is placed against.
+    /// Populated for: placement.
+    pub anchor_width: Option<f64>,
+    pub anchor_height: Option<f64>,
 
     /// Matches found by this element's `highlight` prop. Counted once per match
     /// even when it is split across several painted runs, and it counts every
@@ -268,6 +272,8 @@ impl Default for EventPayload {
             align: None,
             available_width: None,
             available_height: None,
+            anchor_width: None,
+            anchor_height: None,
             match_count: None,
             motion_generation: None,
             files: None,

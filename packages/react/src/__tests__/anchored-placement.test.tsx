@@ -214,4 +214,63 @@ describeNative("<anchored> placement", () => {
       }
     })
   })
+
+  describe("anchor size", () => {
+    it("reports the trigger's border box in onPlacement", () => {
+      const events: AnchoredPlacementEvent[] = []
+      withScene(
+        scene({ x: 100, y: 100 }, { width: 80, height: 50 }, {}, (event) => events.push(event)),
+        () => {
+          expect(events.at(-1)).toMatchObject({ anchorWidth: 100, anchorHeight: 30 })
+        }
+      )
+    })
+
+    it("resolves anchor-size() on a direct child against the trigger", () => {
+      const ui = (triggerWidth: number) => (
+        <div>
+          <div
+            testId="trigger"
+            style={{ position: "absolute", left: 100, top: 100, width: triggerWidth, height: 30 }}
+          >
+            <anchored gap={4}>
+              <div
+                testId="match"
+                style={{ width: "anchor-size(width)", minHeight: "anchor-size(height)", height: 10 }}
+              />
+              <div testId="floor" style={{ minWidth: "anchor-size(width)", maxWidth: 400 }}>
+                <div style={{ width: 20, height: 10 }} />
+              </div>
+            </anchored>
+          </div>
+        </div>
+      )
+      const { render, renderer, unmount } = createTestRoot(WINDOW)
+      try {
+        render(ui(140))
+        renderer.flush()
+        renderer.flush()
+        expect(box(renderer, "match")).toMatchObject({ width: 140, height: 30 })
+        expect(box(renderer, "floor").width).toBe(140)
+
+        // The trigger changes size: the child follows without any JS measuring.
+        render(ui(220))
+        renderer.flush()
+        renderer.flush()
+        expect(box(renderer, "match").width).toBe(220)
+        expect(box(renderer, "floor").width).toBe(220)
+      } finally {
+        unmount()
+      }
+    })
+
+    it("rejects an unknown anchor-size axis", () => {
+      const { render, unmount } = createTestRoot(WINDOW)
+      try {
+        expect(() => render(<div style={{ width: "anchor-size(depth)" }} />)).toThrow(/anchor-size/)
+      } finally {
+        unmount()
+      }
+    })
+  })
 })

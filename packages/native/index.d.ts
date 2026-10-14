@@ -836,6 +836,12 @@ export interface EventPayload {
   availableWidth?: number
   availableHeight?: number
   /**
+   * Border-box size of the trigger an `<anchored>` layer is placed against.
+   * Populated for: placement.
+   */
+  anchorWidth?: number
+  anchorHeight?: number
+  /**
    * Matches found by this element's `highlight` prop. Counted once per match
    * even when it is split across several painted runs, and it counts every
    * retained match, not only the ones currently on screen.

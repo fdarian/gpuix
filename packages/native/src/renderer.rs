@@ -5157,6 +5157,7 @@ impl GpuixView {
             focus_styles,
             pointer: &self.pointer,
             contents_overlay: None,
+            anchor_scope: None,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         emit_highlight_events(&callback, &highlight_events);
@@ -5294,6 +5295,9 @@ pub(crate) struct BuildCtx<'a> {
     /// Inheritable style of the `display: contents` ancestors of the child about to be
     /// built, taken by `build_element`.
     pub contents_overlay: Option<StyleDesc>,
+    /// Set to an `<anchored>` element's id while building its direct children, taken by
+    /// `build_element` to resolve `anchor-size()`.
+    pub anchor_scope: Option<u64>,
 }
 
 /// Style properties that cascade into descendants.
@@ -6063,6 +6067,7 @@ impl gpui::Render for GpuixView {
                     focus_styles,
                     pointer: &self.pointer,
                     contents_overlay: None,
+                    anchor_scope: None,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -6208,6 +6213,10 @@ pub(crate) fn build_element(
         .as_ref()
         .or(animated_style.as_ref())
         .or(base_style);
+    let anchored_style = ctx.anchor_scope.take().and_then(|anchored_id| {
+        style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
+    });
+    let style = anchored_style.as_ref().or(style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -6251,6 +6260,9 @@ pub(crate) fn build_element(
 
         // Polymorphic dispatch for all custom elements.
         custom_type => {
+            if custom_type == "anchored" {
+                crate::layout::anchor_size::begin_build(id);
+            }
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = child_ids
                 .iter()
@@ -6261,6 +6273,9 @@ pub(crate) fn build_element(
                 .map(|child_id| {
                     ctx.contents_overlay =
                         crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                    if custom_type == "anchored" {
+                        ctx.anchor_scope = Some(id);
+                    }
                     build_element(child_id, ctx, window, cx)
                 })
                 .collect();
@@ -6827,7 +6842,7 @@ pub(crate) fn apply_width<E: gpui::Styled>(el: E, dim: &crate::style::DimensionV
         crate::style::DimensionValue::Pixels(v) => el.w(gpui::px(*v as f32)),
         crate::style::DimensionValue::Percentage(v) if *v >= 0.999 => el.w_full(),
         crate::style::DimensionValue::Percentage(v) => el.w(gpui::relative(*v as f32)),
-        crate::style::DimensionValue::Auto => el,
+        crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => el,
     }
 }
 
@@ -6836,7 +6851,7 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
         crate::style::DimensionValue::Pixels(v) => el.h(gpui::px(*v as f32)),
         crate::style::DimensionValue::Percentage(v) if *v >= 0.999 => el.h_full(),
         crate::style::DimensionValue::Percentage(v) => el.h(gpui::relative(*v as f32)),
-        crate::style::DimensionValue::Auto => el,
+        crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => el,
     }
 }
 
@@ -6937,28 +6952,28 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
         match min_w {
             crate::style::DimensionValue::Pixels(v) => el = el.min_w(gpui::px(*v as f32)),
             crate::style::DimensionValue::Percentage(v) => el = el.min_w(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto => {}
+            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
         }
     }
     if let Some(ref min_h) = style.min_height {
         match min_h {
             crate::style::DimensionValue::Pixels(v) => el = el.min_h(gpui::px(*v as f32)),
             crate::style::DimensionValue::Percentage(v) => el = el.min_h(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto => {}
+            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
         }
     }
     if let Some(ref max_w) = style.max_width {
         match max_w {
             crate::style::DimensionValue::Pixels(v) => el = el.max_w(gpui::px(*v as f32)),
             crate::style::DimensionValue::Percentage(v) => el = el.max_w(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto => {}
+            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
         }
     }
     if let Some(ref max_h) = style.max_height {
         match max_h {
             crate::style::DimensionValue::Pixels(v) => el = el.max_h(gpui::px(*v as f32)),
             crate::style::DimensionValue::Percentage(v) => el = el.max_h(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto => {}
+            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
         }
     }
     if let Some(p) = style.padding {

@@ -11,7 +11,7 @@ fn length(value: &DimensionValue) -> gpui::Length {
     match value {
         DimensionValue::Pixels(pixels) => gpui::px(*pixels as f32).into(),
         DimensionValue::Percentage(fraction) => gpui::relative(*fraction as f32).into(),
-        DimensionValue::Auto => gpui::Length::Auto,
+        DimensionValue::Auto | DimensionValue::AnchorSize(_) => gpui::Length::Auto,
     }
 }
 

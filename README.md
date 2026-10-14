@@ -2764,7 +2764,14 @@ or on the side with more room if neither fits (`fit="flip"`, the default;
 `fit="snap"` never flips), then slides along the other axis to stay inside the
 window, `snapMargin` away from its edges. `align="center"` centers on the
 trigger. `onPlacement` fires with `{ side, align, availableWidth,
-availableHeight }` (whole pixels) when any of them changes, and
+availableHeight, anchorWidth, anchorHeight }` (whole pixels, the last two being
+the trigger's border box) when any of them changes. Placement is recomputed on
+every layout, so the side changes live as the trigger scrolls, the window
+resizes or the layer's content changes size. A direct child of `<anchored>` can
+size itself from the trigger with `width`, `minWidth`, `maxWidth`, `height`,
+`minHeight` or `maxHeight` set to `"anchor-size(width)"` or
+`"anchor-size(height)"`, resolved natively (the child is transparent for the
+one frame before the trigger is first measured). And
 `constrainToAvailable` caps the layer's `maxWidth` / `maxHeight` to that room
 natively on every layout, with no JS round trip. An explicit `anchor` corner
 keeps the older corner-based placement.

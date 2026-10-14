@@ -235,6 +235,9 @@ export interface StyleDesc {
   /** An area name, or `"row-start / column-start / row-end / column-end"`. */
   gridArea?: number | string
 
+  /** px, a percentage, `"auto"`, or on a direct child of `<anchored>` the trigger's border box:
+   *  `"anchor-size(width)"` / `"anchor-size(height)"`. Accepted by the six size properties only,
+   *  and resolved natively on every layout. */
   width?: DimensionValue
   height?: DimensionValue
   minWidth?: DimensionValue
@@ -896,6 +899,9 @@ export interface AnchoredPlacementEvent extends EventPayload {
   availableWidth: number
   /** Height the layer can take on its side of the trigger, minus `snapMargin` and `gap`. */
   availableHeight: number
+  /** Border-box size of the trigger. 0 when placed at a `position` point. */
+  anchorWidth: number
+  anchorHeight: number
 }
 
 // Props for the <anchored> custom element.

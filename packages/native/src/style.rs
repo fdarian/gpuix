@@ -77,6 +77,15 @@ pub enum DimensionValue {
     Pixels(f64),
     Percentage(f64), // 0.0 to 1.0
     Auto,
+    /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
+    /// `<anchored>`. Only the six size properties of its direct children resolve it.
+    AnchorSize(AnchorAxis),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub enum AnchorAxis {
+    Width,
+    Height,
 }
 
 impl Default for DimensionValue {
@@ -128,6 +137,15 @@ impl<'de> Deserialize<'de> for DimensionValue {
             {
                 if v == "auto" {
                     Ok(DimensionValue::Auto)
+                } else if let Some(axis) = v
+                    .strip_prefix("anchor-size(")
+                    .and_then(|rest| rest.strip_suffix(')'))
+                {
+                    match axis.trim() {
+                        "width" => Ok(DimensionValue::AnchorSize(AnchorAxis::Width)),
+                        "height" => Ok(DimensionValue::AnchorSize(AnchorAxis::Height)),
+                        _ => Err(de::Error::custom(format!("invalid anchor-size: {}", v))),
+                    }
                 } else if v.ends_with('%') {
                     let num_str = v.trim_end_matches('%');
                     match num_str.parse::<f64>() {

@@ -14,3 +14,4 @@ Layout follows CSS more closely:
 - `gridTemplateColumns` / `gridTemplateRows` take full CSS track lists; new `gridColumn`, `gridRow`, `gridColumnStart/End`, `gridRowStart/End`, `gridArea`, `gridTemplateAreas`, `gridAutoColumns`, `gridAutoRows`, `gridAutoFlow`, `justifyItems`, `justifySelf`.
 - `<anchored>` flips to the other side of the trigger when it does not fit (the default `fit` is now `"flip"`), no longer offsets `align="center"` twice, and has `onPlacement` and `constrainToAvailable`.
 - Positioned children paint (and take hits) above in-flow siblings, and `zIndex` orders them. Tab order is unchanged.
+- `display: "contents"` splices an element's children into its parent. `<anchored>` `onPlacement` also reports `anchorWidth`/`anchorHeight`, and its direct children accept `"anchor-size(width)"` / `"anchor-size(height)"` for the six size properties.

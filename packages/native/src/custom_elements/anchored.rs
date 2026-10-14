@@ -11,8 +11,11 @@ impl CustomElementFactory for AnchoredFactory {
         "anchored"
     }
 
-    fn create(&self, _id: u64) -> Box<dyn CustomElement> {
-        Box::new(AnchoredElement::default())
+    fn create(&self, id: u64) -> Box<dyn CustomElement> {
+        Box::new(AnchoredElement {
+            id,
+            ..AnchoredElement::default()
+        })
     }
 }
 
@@ -122,6 +125,8 @@ struct PlacementReport {
     align: Alignment,
     available_width: i32,
     available_height: i32,
+    anchor_width: i32,
+    anchor_height: i32,
 }
 
 impl Side {
@@ -169,6 +174,7 @@ pub struct AnchoredElement {
     /// `constrainToAvailable`: cap the layer's size to the room placement left.
     constrain_to_available: bool,
     placement_state: Rc<PlacementState>,
+    id: u64,
 }
 
 impl Default for AnchoredElement {
@@ -187,6 +193,7 @@ impl Default for AnchoredElement {
             fill_window: false,
             constrain_to_available: false,
             placement_state: Rc::default(),
+            id: 0,
         }
     }
 }
@@ -428,9 +435,17 @@ impl CustomElement for AnchoredElement {
                         },
                         available_width: f32::from(resolved.available_width).round() as i32,
                         available_height: f32::from(resolved.available_height).round() as i32,
+                        anchor_width: f32::from(resolved.anchor_size.width).round() as i32,
+                        anchor_height: f32::from(resolved.anchor_size.height).round() as i32,
                     };
                     let previous = state.latest.replace(Some(report));
-                    if constrain && previous != Some(report) {
+                    let anchor_changed = crate::layout::anchor_size::record(
+                        element_id,
+                        (report.anchor_width, report.anchor_height),
+                    );
+                    if (constrain && previous != Some(report))
+                        || (anchor_changed && crate::layout::anchor_size::uses_anchor_size(element_id))
+                    {
                         // The layer was built with the previous size cap.
                         app.notify(notify_view);
                     }
@@ -445,6 +460,8 @@ impl CustomElement for AnchoredElement {
                                 payload.align = Some(report.align.as_str().to_string());
                                 payload.available_width = Some(report.available_width as f64);
                                 payload.available_height = Some(report.available_height as f64);
+                                payload.anchor_width = Some(report.anchor_width as f64);
+                                payload.anchor_height = Some(report.anchor_height as f64);
                             },
                         );
                     }
@@ -555,5 +572,7 @@ impl CustomElement for AnchoredElement {
         &["placement"]
     }
 
-    fn destroy(&mut self) {}
+    fn destroy(&mut self) {
+        crate::layout::anchor_size::forget(self.id);
+    }
 }

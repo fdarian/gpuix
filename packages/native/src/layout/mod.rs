@@ -1,6 +1,7 @@
 //! DOM/CSS layout rules that sit between the retained tree and GPUI's
 //! element builders. `renderer.rs` only calls into these.
 
+pub(crate) mod anchor_size;
 pub mod aspect_ratio;
 pub(crate) mod box_generation;
 pub(crate) mod contents;
