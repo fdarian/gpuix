@@ -262,6 +262,10 @@ export interface StyleDesc {
    *  scrollport of its nearest scroll container (or the window), inset by `top`, `right`,
    *  `bottom` and `left`, without leaving its parent's content box. */
   position?: string
+  /** Paint and hit-test order among positioned siblings (`position` other than static).
+   *  Negative paints below in-flow siblings, positive above. Only reorders siblings of the same
+   *  parent, never against cousins. */
+  zIndex?: number
   top?: DimensionValue
   right?: DimensionValue
   bottom?: DimensionValue

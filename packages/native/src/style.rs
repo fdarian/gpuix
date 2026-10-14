@@ -216,6 +216,8 @@ pub struct StyleDesc {
 
     // Position
     pub position: Option<String>,
+    /// Paint order among positioned siblings. Only applies when `position` is set.
+    pub z_index: Option<f64>,
     pub top: Option<DimensionValue>,
     pub right: Option<DimensionValue>,
     pub bottom: Option<DimensionValue>,

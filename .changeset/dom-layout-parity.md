@@ -13,3 +13,4 @@ Layout follows CSS more closely:
 - `margin*` and `top`/`right`/`bottom`/`left` accept percentages and `"auto"`; `display` accepts `block` and `none`.
 - `gridTemplateColumns` / `gridTemplateRows` take full CSS track lists; new `gridColumn`, `gridRow`, `gridColumnStart/End`, `gridRowStart/End`, `gridArea`, `gridTemplateAreas`, `gridAutoColumns`, `gridAutoRows`, `gridAutoFlow`, `justifyItems`, `justifySelf`.
 - `<anchored>` flips to the other side of the trigger when it does not fit (the default `fit` is now `"flip"`), no longer offsets `align="center"` twice, and has `onPlacement` and `constrainToAvailable`.
+- Positioned children paint (and take hits) above in-flow siblings, and `zIndex` orders them. Tab order is unchanged.

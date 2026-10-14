@@ -567,7 +567,102 @@ describeNative("DOM layout: grid", () => {
       }
     )
   })
+})
 
+describeNative("DOM layout: paint order and zIndex", () => {
+  /** Clicks the middle of the stack and returns which labelled child took it. */
+  function topmost(children: (hit: (id: string) => () => void) => React.ReactElement): string {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      let hit = ""
+      render(children((id) => () => (hit = id)))
+      renderer.nativeSimulateClick(50, 50)
+      renderer.dispatchNativeEvents()
+      return hit
+    } finally {
+      unmount()
+    }
+  }
+
+  const fill = { width: 100, height: 100, backgroundColor: "#336699" }
+  const overlay = { position: "absolute", left: 0, top: 0 } as const
+
+  it("paints a positioned child above an in-flow sibling listed after it", () => {
+    const hit = topmost((on) => (
+      <div style={{ position: "relative", width: 100, height: 100 }}>
+        <div style={{ ...fill, ...overlay }} onClick={on("overlay")} />
+        <div style={fill} onClick={on("in-flow")} />
+      </div>
+    ))
+    expect(hit).toBe("overlay")
+  })
+
+  it("keeps tree order between positioned siblings", () => {
+    const hit = topmost((on) => (
+      <div style={{ position: "relative", width: 100, height: 100 }}>
+        <div style={{ ...fill, ...overlay }} onClick={on("first")} />
+        <div style={{ ...fill, ...overlay }} onClick={on("second")} />
+      </div>
+    ))
+    expect(hit).toBe("second")
+  })
+
+  it("orders positioned siblings by zIndex", () => {
+    const hit = topmost((on) => (
+      <div style={{ position: "relative", width: 100, height: 100 }}>
+        <div style={{ ...fill, ...overlay, zIndex: 3 }} onClick={on("three")} />
+        <div style={{ ...fill, ...overlay, zIndex: 1 }} onClick={on("one")} />
+        <div style={{ ...fill, ...overlay, zIndex: 2 }} onClick={on("two")} />
+      </div>
+    ))
+    expect(hit).toBe("three")
+  })
+
+  it("paints a negative zIndex below in-flow siblings", () => {
+    const hit = topmost((on) => (
+      <div style={{ position: "relative", width: 100, height: 100 }}>
+        <div style={fill} onClick={on("in-flow")} />
+        <div style={{ ...fill, ...overlay, zIndex: -1 }} onClick={on("behind")} />
+      </div>
+    ))
+    expect(hit).toBe("in-flow")
+  })
+
+  it("keeps tab order in document order when painting positioned children later", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      render(
+        <div>
+          <div testId="a" tabIndex={0} style={{ width: 20, height: 20 }} />
+          <div testId="b" tabIndex={0} style={{ position: "relative", zIndex: 5, width: 20, height: 20 }} />
+          <div testId="c" tabIndex={0} style={{ width: 20, height: 20 }} />
+        </div>
+      )
+      const order: (string | undefined)[] = []
+      for (let press = 0; press < 3; press++) {
+        renderer.simulateKeystrokes("tab")
+        order.push(renderer.getElement(renderer.getFocusedElementId())?.testId)
+      }
+      expect(order).toEqual(["a", "b", "c"])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("ignores zIndex on a static box", () => {
+    const hit = topmost((on) => (
+      <div style={{ position: "relative", width: 100, height: 100 }}>
+        <div style={{ ...fill, ...overlay }} onClick={on("overlay")} />
+        <div style={{ ...fill, zIndex: 99 }} onClick={on("static")} />
+      </div>
+    ))
+    expect(hit).toBe("overlay")
+  })
+})
+
+describeNative("DOM layout: invalid values", () => {
+  // Last in the file: a render that throws leaves the shared native window in a state the
+  // following tests should not inherit.
   it("rejects an invalid track list", () => {
     const { render, unmount } = createTestRoot()
     try {

@@ -6,4 +6,5 @@ pub(crate) mod box_generation;
 pub mod grid;
 pub mod grid_values;
 pub(crate) mod order;
+pub(crate) mod stacking;
 pub(crate) mod style;

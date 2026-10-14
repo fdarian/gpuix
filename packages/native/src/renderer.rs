@@ -6658,8 +6658,10 @@ pub(crate) fn build_host_container(
     // creates an empty placeholder text node for every dynamic hole (`<Show>`,
     // `{cond && x}`). Emitting those as full-height lines inflated every
     // conditional row. React never sends empty text, so this is a no-op there.
+    let mut paint_ranks = Vec::new();
     if let Some(content) = element.content.as_deref().filter(|value| !value.is_empty()) {
         el = el.child(text_content(element, content, ctx));
+        paint_ranks.push(0);
     }
 
     // Children
@@ -6668,7 +6670,16 @@ pub(crate) fn build_host_container(
         if !crate::layout::box_generation::generates_box(ctx.tree, element, child_id) {
             continue;
         }
+        paint_ranks.push(crate::layout::stacking::paint_rank(
+            ctx.tree
+                .elements
+                .get(&child_id)
+                .and_then(|child| child.style.as_deref()),
+        ));
         el = el.child(build_element(child_id, ctx, window, cx));
+    }
+    if paint_ranks.iter().any(|rank| *rank != 0) {
+        el = el.paint_ranks(paint_ranks);
     }
 
     el.into_any_element()

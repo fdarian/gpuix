@@ -4039,6 +4039,13 @@ CSS-like styling via the `style` prop:
   one and the image's intrinsic ratio (or `aspectRatio`), a percentage of an
   indefinite parent counts as `auto`, and with neither set it takes its
   intrinsic size. `maxWidth` keeps the proportions.
+- **Paint order.** Within a parent, in-flow children paint first, then children
+  with a `position` other than `static`, in tree order. Hit testing follows
+  paint order, so an `absolute` overlay listed before an in-flow sibling is on top
+  of it. `zIndex` (an integer, positioned children only) puts a child below the
+  in-flow ones when negative and above them when positive. Each parent is its
+  own stacking context: `zIndex` orders siblings only, never against cousins.
+  Tab order stays in document order.
 - **`order`** stable-sorts the children of a flex or grid container. Layout and
   paint follow it; tab order stays in document order.
 
