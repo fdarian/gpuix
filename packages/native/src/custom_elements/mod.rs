@@ -44,6 +44,8 @@ pub struct CustomRenderContext<'a> {
     pub focus_styles: crate::focus::FocusStyles,
     /// Style object from the retained element for layout and appearance.
     pub style: Option<&'a crate::style::StyleDesc>,
+    /// Computed `color` and `colorScheme` of this element, for `currentColor`.
+    pub colors: crate::color::ColorContext,
     /// Built child elements from the retained tree for this custom node.
     pub children: Vec<gpui::AnyElement>,
     /// Live text selection. Elements that paint text MUST route it through
@@ -134,9 +136,13 @@ pub(crate) fn custom_surface(
     el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
     if let Some(style) = ctx.style {
         el = if ctx.inert {
-            crate::renderer::apply_interactive_styles(el, &style.without_pointer_states())
+            crate::renderer::apply_interactive_styles(
+                el,
+                &style.without_pointer_states(),
+                &ctx.colors,
+            )
         } else {
-            crate::renderer::apply_interactive_styles(el, style)
+            crate::renderer::apply_interactive_styles(el, style, &ctx.colors)
         };
     }
     if ctx

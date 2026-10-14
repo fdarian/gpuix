@@ -245,6 +245,10 @@ pub struct StyleDesc {
     pub background: Option<BackgroundValue>,
     pub background_color: Option<String>,
     pub color: Option<String>,
+    /// CSS `color-scheme`: `"normal"`, `"light"`, `"dark"`, `"light dark"`,
+    /// `"only light"`, `"only dark"`. Inherited. Picks the side of `light-dark()`
+    /// that applies; `"light dark"` follows the window appearance.
+    pub color_scheme: Option<String>,
     pub opacity: Option<f64>,
 
     // Border
@@ -326,6 +330,7 @@ pub struct StyleDesc {
 }
 
 pub use crate::color::{parse_color, parse_color_hex};
+use crate::color::ColorContext;
 
 impl StyleDesc {
     /// The style with everything that needs a mouse hitbox removed: `hover`,
@@ -341,9 +346,9 @@ impl StyleDesc {
 }
 
 impl BackgroundValue {
-    fn resolve(&self) -> Option<gpui::Background> {
+    fn resolve(&self, colors: &ColorContext) -> Option<gpui::Background> {
         match self {
-            Self::Color(value) => crate::color::parse_color_rgba(value).map(Into::into),
+            Self::Color(value) => colors.resolve(value).map(Into::into),
             Self::Gradient(gradient) => {
                 let GradientValue::LinearGradient {
                     angle,
@@ -369,14 +374,8 @@ impl BackgroundValue {
                 Some(
                     gpui::linear_gradient(
                         angle,
-                        gpui::linear_color_stop(
-                            crate::color::parse_color_rgba(&from.color)?,
-                            from_position,
-                        ),
-                        gpui::linear_color_stop(
-                            crate::color::parse_color_rgba(&to.color)?,
-                            to_position,
-                        ),
+                        gpui::linear_color_stop(colors.resolve(&from.color)?, from_position),
+                        gpui::linear_color_stop(colors.resolve(&to.color)?, to_position),
                     )
                     .color_space(color_space),
                 )
@@ -390,11 +389,49 @@ impl StyleDesc {
         self.background_color.is_some() || self.background.is_some()
     }
 
-    pub(crate) fn resolved_background(&self) -> Option<gpui::Background> {
-        if let Some(value) = self.background_color.as_deref() {
-            return crate::color::parse_color_rgba(value).map(Into::into);
+    /// The colour declarations of this style that mention `currentColor` and
+    /// that `state` does not set itself. A state that changes `color` repaints
+    /// them, because in CSS the keyword follows the element's colour.
+    pub(crate) fn colors_following_current(&self, state: &StyleDesc) -> Option<StyleDesc> {
+        fn follows(value: &Option<String>) -> Option<String> {
+            value
+                .as_deref()
+                .filter(|value| value.to_ascii_lowercase().contains("currentcolor"))
+                .map(str::to_owned)
         }
-        self.background.as_ref()?.resolve()
+        state.color.as_ref()?;
+        let mut followers = StyleDesc::default();
+        if state.background_color.is_none() && state.background.is_none() {
+            followers.background_color = follows(&self.background_color);
+        }
+        if state.border_color.is_none() {
+            followers.border_color = follows(&self.border_color);
+        }
+        if state.outline_color.is_none() {
+            followers.outline_color = follows(&self.outline_color);
+            if followers.outline_color.is_some() {
+                followers.outline_width = self.outline_width;
+                followers.outline_offset = self.outline_offset;
+            }
+        }
+        if state.box_shadow.is_none()
+            && self.box_shadow.as_ref().is_some_and(|shadows| {
+                shadows
+                    .as_slice()
+                    .iter()
+                    .any(|shadow| follows(&Some(shadow.color.clone())).is_some())
+            })
+        {
+            followers.box_shadow = self.box_shadow.clone();
+        }
+        (followers != StyleDesc::default()).then_some(followers)
+    }
+
+    pub(crate) fn resolved_background(&self, colors: &ColorContext) -> Option<gpui::Background> {
+        if let Some(value) = self.background_color.as_deref() {
+            return colors.resolve(value).map(Into::into);
+        }
+        self.background.as_ref()?.resolve(colors)
     }
 }
 
@@ -439,6 +476,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_state_that_sets_color_repaints_the_current_color_followers() {
+        let base: StyleDesc = serde_json::from_str(
+            r##"{"borderColor":"currentColor","backgroundColor":"#fff","outlineColor":"color-mix(in srgb, currentcolor, red)","outlineWidth":2,"boxShadow":{"offsetX":0,"offsetY":0,"blurRadius":0,"spreadRadius":1,"color":"currentColor"}}"##,
+        )
+        .unwrap();
+        let hover = StyleDesc {
+            color: Some("red".to_owned()),
+            ..Default::default()
+        };
+        let followers = base.colors_following_current(&hover).unwrap();
+        assert_eq!(followers.border_color.as_deref(), Some("currentColor"));
+        assert_eq!(followers.background_color, None);
+        assert_eq!(followers.outline_width, Some(2.0));
+        assert!(followers.outline_color.is_some());
+
+        let overriding = StyleDesc {
+            border_color: Some("blue".to_owned()),
+            ..hover.clone()
+        };
+        assert_eq!(
+            base.colors_following_current(&overriding).unwrap().border_color,
+            None
+        );
+        // Without a new colour nothing changes, so nothing is repainted.
+        assert_eq!(base.colors_following_current(&StyleDesc::default()), None);
+    }
+
+    #[test]
     fn resolves_a_two_stop_linear_gradient() {
         let style: StyleDesc = serde_json::from_str(
             r##"{"background":{"type":"linear-gradient","angle":90,"stops":[{"color":"#ff0000","position":0},{"color":"#0000ff","position":1}],"colorSpace":"oklab"}}"##,
@@ -451,7 +516,7 @@ mod tests {
         )
         .color_space(gpui::ColorSpace::Oklab);
 
-        assert_eq!(style.resolved_background(), Some(expected));
+        assert_eq!(style.resolved_background(&light()), Some(expected));
     }
 
     #[test]

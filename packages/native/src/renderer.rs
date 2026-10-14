@@ -4982,7 +4982,11 @@ impl GpuixView {
         cx: &mut gpui::Context<Self>,
     ) {
         self.appearance_subscription =
-            Some(cx.observe_window_appearance(window, |view, window, _cx| {
+            Some(cx.observe_window_appearance(window, |view, window, cx| {
+                // `colorScheme: "light dark"` resolves against the appearance
+                // while building, so a change has to rebuild even when no JS
+                // listener asked for the event.
+                cx.notify();
                 if !view.window_appearance_change {
                     return;
                 }
@@ -5325,10 +5329,13 @@ pub(crate) struct Inherited {
     /// True below an element with `pointerEvents: "none"` and above any
     /// descendant that sets `auto` again, as in CSS where it is inherited.
     pub pointer_events_none: bool,
+    /// Computed `color` and `colorScheme`, which `currentColor` and
+    /// `light-dark()` resolve against.
+    pub colors: crate::color::ColorContext,
 }
 
 impl Inherited {
-    fn root(theme: &Theme) -> Self {
+    fn root(theme: &Theme, appearance: gpui::WindowAppearance) -> Self {
         let mut wash = theme.accent;
         wash.a = 0.35;
         Self {
@@ -5337,6 +5344,7 @@ impl Inherited {
             selection_wash: wash,
             highlight: None,
             pointer_events_none: false,
+            colors: crate::color::ColorContext::root(color_scheme_of(appearance)),
         }
     }
 
@@ -5352,10 +5360,11 @@ impl Inherited {
             Some("text") | Some("auto") if !self.inert => self.selectable = true,
             _ => {}
         }
+        self.colors = self.colors.descend(style);
         if let Some(color) = style
             .selection_color
             .as_deref()
-            .and_then(crate::color::parse_color_rgba)
+            .and_then(|value| self.colors.resolve(value))
         {
             self.selection_wash = color.into();
         }
@@ -6062,7 +6071,7 @@ impl gpui::Render for GpuixView {
                     motion_states: &mut self.motion_states,
                     now,
                     selection: self.selection.clone(),
-                    inherited: Inherited::root(&theme),
+                    inherited: Inherited::root(&theme, window.appearance()),
                     highlights: &mut self.highlights,
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
@@ -6290,6 +6299,7 @@ pub(crate) fn build_element(
                 focus_styles: ctx.focus_styles.clone(),
                 click_path: click_path(ctx.tree, element),
                 style,
+                colors: inherited.colors,
                 children: custom_children,
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
@@ -6466,7 +6476,7 @@ fn build_virtual_list(
         .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
         .id(list_element_id);
     if let Some(style) = element.style.as_deref() {
-        list = apply_styles(list, style).overscroll_behavior(
+        list = apply_styles(list, style, &ctx.inherited.colors).overscroll_behavior(
             gpui::OverscrollBehavior::Auto,
             crate::scroll::overscroll_y(style),
         );
@@ -6475,8 +6485,10 @@ fn build_virtual_list(
     let look = element
         .style
         .as_deref()
-        .map(crate::scrollbar::Look::of)
-        .unwrap_or_else(|| crate::scrollbar::Look::of(&StyleDesc::default()));
+        .map(|style| crate::scrollbar::Look::of(style, &ctx.inherited.colors))
+        .unwrap_or_else(|| {
+            crate::scrollbar::Look::of(&StyleDesc::default(), &ctx.inherited.colors)
+        });
     if look.hidden() {
         return list;
     }
@@ -6571,10 +6583,10 @@ pub(crate) fn build_host_container(
     };
 
     if let Some(style) = style {
-        el = apply_interactive_styles(el, style);
+        el = apply_interactive_styles(el, style, &ctx.inherited.colors);
     }
 
-    el = crate::scroll::apply_container(el, element.id, style, ctx.scroll_handles);
+    el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
     // attach it via track_focus. This makes the element focusable — clicking it
@@ -6601,9 +6613,21 @@ pub(crate) fn build_host_container(
 
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
-        el = crate::focus::apply_focus_styles(el, element.id, style, &ctx.focus_styles);
+        el = crate::focus::apply_focus_styles(
+            el,
+            element.id,
+            style,
+            &ctx.inherited.colors,
+            &ctx.focus_styles,
+        );
     } else {
-        el = crate::focus::apply_focus_within(el, element.id, style, &ctx.focus_styles);
+        el = crate::focus::apply_focus_within(
+            el,
+            element.id,
+            style,
+            &ctx.inherited.colors,
+            &ctx.focus_styles,
+        );
     }
 
     // React text instances (`createTextInstance`) are also type `text` and
@@ -6863,14 +6887,38 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
 /// `style` before any builder runs, for the elements the pointer dispatcher says
 /// are hovered or pressed. `focusVisible` and `focusWithin` need the focus state, so
 /// `apply_focus_styles` applies it where the element calls `track_focus`.
-pub(crate) fn apply_interactive_styles<E>(el: E, style: &StyleDesc) -> E
+pub(crate) fn apply_interactive_styles<E>(
+    el: E,
+    style: &StyleDesc,
+    colors: &crate::color::ColorContext,
+) -> E
 where
     E: gpui::Styled + gpui::StatefulInteractiveElement,
 {
-    apply_styles(el, style)
+    apply_styles(el, style, colors)
 }
 
-pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
+/// A state refinement: the base colours that follow `currentColor` first, so a
+/// state that changes `color` repaints them, then the state's own styles.
+pub(crate) fn apply_state_styles<E: gpui::Styled>(
+    mut refinement: E,
+    base: &StyleDesc,
+    state: &StyleDesc,
+    colors: &crate::color::ColorContext,
+) -> E {
+    if let Some(followers) = base.colors_following_current(state) {
+        refinement = apply_styles(refinement, &followers, colors);
+    }
+    apply_styles(refinement, state, colors)
+}
+
+/// `colors` is the context of the element `style` belongs to: its own computed
+/// `color`, so `currentColor` in a border or shadow means what CSS says.
+pub(crate) fn apply_styles<E: gpui::Styled>(
+    mut el: E,
+    style: &StyleDesc,
+    colors: &crate::color::ColorContext,
+) -> E {
     el = crate::layout::style::apply(el, style);
     match style.flex_wrap.as_deref() {
         Some("wrap") => el = el.flex_wrap(),
@@ -6996,13 +7044,11 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     if let Some(ratio) = style.aspect_ratio.and_then(|ratio| ratio.ratio()) {
         el = el.aspect_ratio(ratio as f32);
     }
-    if let Some(background) = style.resolved_background() {
+    if let Some(background) = style.resolved_background(colors) {
         el = el.bg(background);
     }
-    if let Some(ref color) = style.color {
-        if let Some(color) = crate::color::parse_color_rgba(color) {
-            el = el.text_color(color);
-        }
+    if let Some(color) = colors.declared {
+        el = el.text_color(color);
     }
     if let Some(size) = style.font_size {
         el = el.text_size(gpui::px(size as f32));
@@ -7081,10 +7127,12 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     if let Some(width) = style.border_left_width {
         el = el.border_l(gpui::px(width.max(0.0) as f32));
     }
-    if let Some(ref color) = style.border_color {
-        if let Some(color) = crate::color::parse_color_rgba(color) {
-            el = el.border_color(color);
-        }
+    if let Some(color) = style
+        .border_color
+        .as_deref()
+        .and_then(|value| colors.resolve(value))
+    {
+        el = el.border_color(color);
     }
     match style.border_style.as_deref() {
         Some("dashed") => el = el.border_dashed(),
@@ -7098,7 +7146,7 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
             .as_slice()
             .iter()
             .filter_map(|shadow| {
-                let color = crate::color::parse_color_rgba(&shadow.color)?;
+                let color = colors.resolve(&shadow.color)?;
                 let built = gpui::BoxShadow::new(
                     gpui::px(shadow.offset_x as f32),
                     gpui::px(shadow.offset_y as f32),
@@ -7117,7 +7165,7 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
         let color = style
             .outline_color
             .as_deref()
-            .and_then(crate::color::parse_color_rgba)
+            .and_then(|value| colors.resolve(value))
             .unwrap_or_else(|| gpui::transparent_black().into());
         el = el.outline(gpui::Outline {
             width: gpui::px(style.outline_width.unwrap_or(1.0).max(0.0) as f32),
@@ -8147,6 +8195,17 @@ pub(crate) fn parse_window_appearance(
 
 /// The vibrant variants are the same light/dark choice with a translucent
 /// material, which JS has no use for.
+pub(crate) fn color_scheme_of(appearance: gpui::WindowAppearance) -> crate::color::Scheme {
+    match appearance {
+        gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => {
+            crate::color::Scheme::Light
+        }
+        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => {
+            crate::color::Scheme::Dark
+        }
+    }
+}
+
 pub(crate) fn appearance_name(appearance: gpui::WindowAppearance) -> &'static str {
     match appearance {
         gpui::WindowAppearance::Light | gpui::WindowAppearance::VibrantLight => "light",

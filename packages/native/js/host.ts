@@ -277,7 +277,23 @@ export interface StyleDesc {
 
   background?: string | LinearGradientBackground
   backgroundColor?: string
+  /** Text colour, inherited. Every colour prop accepts CSS colours: hex, named,
+   *  `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, relative
+   *  colours, and the context-aware forms below, which nest freely:
+   *  - `currentColor`: this element's computed `color`, so `borderColor:
+   *    "currentColor"` follows the text.
+   *  - `light-dark(a, b)`: `a` under a light `colorScheme`, `b` under a dark one.
+   *  - `color-mix(in oklab, a 30%, b)`: any of srgb, srgb-linear, display-p3,
+   *    a98-rgb, prophoto-rgb, rec2020, xyz, xyz-d50, xyz-d65, lab, lch, oklab,
+   *    oklch, hsl, hwb, with `shorter|longer|increasing|decreasing hue` for the
+   *    polar ones.
+   *  - `color(display-p3 1 0 0)`: the same spaces, clipped to sRGB.
+   *  An invalid colour is ignored. */
   color?: string
+  /** CSS `color-scheme`, inherited: `"normal"` (light), `"light"`, `"dark"`,
+   *  `"light dark"` (follows the window appearance), `"only light"`, `"only dark"`.
+   *  It picks the side of `light-dark()`; it does not recolour default text. */
+  colorScheme?: string
   opacity?: number
 
   borderWidth?: number

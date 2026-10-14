@@ -530,13 +530,19 @@ impl CustomElement for TextEditorElement {
         }
         editor = crate::events::ids::host_hitbox(editor, ctx.pointer_events_none);
         if let Some(style) = ctx.style {
-            editor = crate::renderer::apply_interactive_styles(editor, style);
+            editor = crate::renderer::apply_interactive_styles(editor, style, &ctx.colors);
             // Clip text to rounded corners, matching HTML input behavior.
             if style.border_radius.is_some() {
                 editor = editor.overflow_hidden();
             }
         }
-        editor = crate::focus::apply_focus_styles(editor, ctx.id, ctx.style, &ctx.focus_styles);
+        editor = crate::focus::apply_focus_styles(
+            editor,
+            ctx.id,
+            ctx.style,
+            &ctx.colors,
+            &ctx.focus_styles,
+        );
         if ctx
             .style
             .and_then(|style| style.position.as_deref())

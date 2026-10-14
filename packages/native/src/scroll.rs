@@ -91,6 +91,7 @@ pub(crate) fn apply_container(
     mut el: gpui::Stateful<gpui::Div>,
     id: u64,
     style: Option<&StyleDesc>,
+    colors: &crate::color::ColorContext,
     handles: &mut HashMap<u64, gpui::ScrollHandle>,
 ) -> gpui::Stateful<gpui::Div> {
     let Some(style) = style else {
@@ -132,6 +133,7 @@ pub(crate) fn apply_container(
                 handle: handle.clone(),
             },
             style,
+            colors,
         );
     }
     el

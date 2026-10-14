@@ -367,7 +367,7 @@ impl CustomElement for AnchoredElement {
         content = crate::events::ids::host_hitbox(content, ctx.pointer_events_none);
         content = crate::automation::track_own_bounds(content, ctx.id, ctx.observe.clone());
         if let Some(style) = ctx.style {
-            content = crate::renderer::apply_interactive_styles(content, style);
+            content = crate::renderer::apply_interactive_styles(content, style, &ctx.colors);
         }
         if self.fill_window {
             // `anchored()` is absolute and sized by its content, so a percentage
@@ -393,7 +393,7 @@ impl CustomElement for AnchoredElement {
         // and a full-window layer such as a dialog portal must paint nothing.
         let declares_fill = ctx
             .style
-            .and_then(crate::style::StyleDesc::resolved_background)
+            .and_then(|style| style.resolved_background(&ctx.colors))
             .is_some();
         if !declares_fill {
             content = content.bg(gpui::rgb(0x1A1A1A));

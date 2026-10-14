@@ -1,0 +1,100 @@
+//! Tokenising helpers shared by the CSS value parsers.
+
+/// The text between the parentheses of `name( ... )`, when `value` is exactly
+/// one such function call. The name is matched case-insensitively and no space
+/// may precede the `(`, as in CSS.
+pub(crate) fn function_args<'a>(value: &'a str, name: &str) -> Option<&'a str> {
+    let value = value.trim();
+    let head = value.get(..name.len())?;
+    if !head.eq_ignore_ascii_case(name) {
+        return None;
+    }
+    let rest = value[name.len()..].strip_prefix('(')?;
+    let mut depth = 1usize;
+    for (index, character) in rest.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    // The call must close at the very end: `f(a) g(b)` is not one call.
+                    return (index + 1 == rest.len()).then(|| &rest[..index]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits at commas that are not inside parentheses. Empty pieces are kept so
+/// the caller can reject `a,,b`.
+pub(crate) fn split_commas(value: &str) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (index, character) in value.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                pieces.push(value[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    pieces.push(value[start..].trim());
+    pieces
+}
+
+/// Splits at whitespace that is not inside parentheses, so `rgb(0 0 0) 30%` is
+/// two tokens.
+pub(crate) fn split_whitespace(value: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let mut depth = 0i32;
+    let mut start: Option<usize> = None;
+    for (index, character) in value.char_indices() {
+        match character {
+            '(' => {
+                depth += 1;
+                start.get_or_insert(index);
+            }
+            ')' => depth -= 1,
+            character if character.is_whitespace() && depth == 0 => {
+                if let Some(begin) = start.take() {
+                    tokens.push(&value[begin..index]);
+                }
+            }
+            _ => {
+                start.get_or_insert(index);
+            }
+        }
+    }
+    if let Some(begin) = start {
+        tokens.push(&value[begin..]);
+    }
+    tokens
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn function_args_requires_one_whole_call() {
+        assert_eq!(function_args("Color-Mix(in srgb, a, b)", "color-mix"), Some("in srgb, a, b"));
+        assert_eq!(function_args("f(g(1)) ", "f"), Some("g(1)"));
+        assert_eq!(function_args("f(a) g(b)", "f"), None);
+        assert_eq!(function_args("f (a)", "f"), None);
+        assert_eq!(function_args("f(a", "f"), None);
+        assert_eq!(function_args("other(a)", "f"), None);
+    }
+
+    #[test]
+    fn splits_respect_parentheses() {
+        assert_eq!(split_commas("a, rgb(1, 2, 3) ,b"), vec!["a", "rgb(1, 2, 3)", "b"]);
+        assert_eq!(split_commas("a,,b"), vec!["a", "", "b"]);
+        assert_eq!(split_whitespace("  rgb(0 0 0)  30% "), vec!["rgb(0 0 0)", "30%"]);
+    }
+}

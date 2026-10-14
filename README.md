@@ -4027,7 +4027,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `color`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderStyle` (`"solid"` | `"dashed"`), `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderStyle` (`"solid"` | `"dashed"`), `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Layout like CSS
 
@@ -4157,8 +4157,42 @@ CSS: `0` points up and values increase clockwise. Stop positions use `0` to `1`.
 more than two stops.
 
 `hsv()`, `hsva()`, and `hwba()` are parser extensions rather than CSS Color 4
-standard functions. `color()`, platform/dynamic colors, and numeric color
-integers are not accepted.
+standard functions. Platform/dynamic colors and numeric color integers are not
+accepted.
+
+Every colour prop (`color`, `backgroundColor`, gradient stops, `borderColor`,
+`outlineColor`, `boxShadow` colours, `scrollbarColor`, `selectionColor`, the
+tint of an `<svg>`) also takes the CSS forms that depend on context. They nest
+freely:
+
+| Form | Meaning |
+|---|---|
+| `currentColor` | The element's computed `color`, inherited like in CSS. The root `color` is black, GPUI's default text colour. |
+| `light-dark(a, b)` | `a` under a light `colorScheme`, `b` under a dark one. |
+| `color-mix(in oklab, a 30%, b)` | Mixes in `srgb`, `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`, `xyz`, `xyz-d50`, `xyz-d65`, `lab`, `lch`, `oklab`, `oklch`, `hsl` or `hwb`. Polar spaces take `shorter` (default), `longer`, `increasing` or `decreasing` `hue`. |
+| `color(display-p3 1 0 0)` | The same RGB and XYZ spaces, converted to sRGB and clipped to its gamut. |
+
+`colorScheme` is inherited and takes the CSS values: `"normal"` (light, the
+default), `"light"`, `"dark"`, `"light dark"` (follows the window appearance, see
+[`getAppearance()`](#appearance) and updates when it changes) and `"only light"` /
+`"only dark"`. It only picks the side of `light-dark()`: unlike a browser, it does
+not change the default text colour.
+
+```tsx
+<div
+  style={{
+    colorScheme: 'light dark',
+    color: 'light-dark(#1f2328, #e6edf3)',
+    borderWidth: 1,
+    borderColor: 'color-mix(in srgb, currentColor 20%, transparent)',
+    backgroundColor: 'light-dark(#fff, #0d1117)',
+  }}
+/>
+```
+
+A `hover` or `active` style that sets `color` changes `currentColor` for that
+element's own colours, but not for its descendants: they are built before the
+pointer state is known.
 
 Theme values can use the same modern grammar:
 

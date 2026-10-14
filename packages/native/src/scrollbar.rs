@@ -47,13 +47,16 @@ pub(crate) struct Look {
 impl Look {
     /// `scrollbarWidth` is `auto`, `thin` or `none`, and `scrollbarColor` is `auto` or
     /// `<thumb> <track>`. A value that is none of those is ignored, as CSS ignores it.
-    pub(crate) fn of(style: &StyleDesc) -> Self {
+    pub(crate) fn of(style: &StyleDesc, context: &crate::color::ColorContext) -> Self {
         let width = match style.scrollbar_width.as_deref() {
             Some("thin") => Width::Thin,
             Some("none") => Width::None,
             _ => Width::Auto,
         };
-        let colors = style.scrollbar_color.as_deref().and_then(parse_colors);
+        let colors = style
+            .scrollbar_color
+            .as_deref()
+            .and_then(|value| parse_colors(value, context));
         Self { width, colors }
     }
 
@@ -72,7 +75,10 @@ impl Look {
 
 /// `"<thumb> <track>"`: two colours, each a CSS colour that may itself contain spaces inside
 /// parentheses.
-fn parse_colors(value: &str) -> Option<(gpui::Rgba, gpui::Rgba)> {
+fn parse_colors(
+    value: &str,
+    context: &crate::color::ColorContext,
+) -> Option<(gpui::Rgba, gpui::Rgba)> {
     let mut tokens = Vec::new();
     let (mut depth, mut start) = (0usize, None);
     for (index, character) in value.char_indices() {
@@ -97,10 +103,7 @@ fn parse_colors(value: &str) -> Option<(gpui::Rgba, gpui::Rgba)> {
     let [thumb, track] = tokens.as_slice() else {
         return None;
     };
-    Some((
-        crate::color::parse_color_rgba(thumb)?,
-        crate::color::parse_color_rgba(track)?,
-    ))
+    Some((context.resolve(thumb)?, context.resolve(track)?))
 }
 
 fn default_colors(window: &gpui::Window) -> (gpui::Rgba, gpui::Rgba) {
@@ -258,8 +261,9 @@ pub(crate) fn attach(
     id: u64,
     source: Source,
     style: &StyleDesc,
+    colors: &crate::color::ColorContext,
 ) -> gpui::Stateful<gpui::Div> {
-    let look = Look::of(style);
+    let look = Look::of(style, colors);
     if look.hidden() {
         return el;
     }
@@ -600,6 +604,8 @@ mod tests {
 
     #[test]
     fn colors_are_two_css_colors_with_spaces_allowed_inside_parentheses() {
+        let context = crate::color::ColorContext::root(crate::color::Scheme::Light);
+        let parse_colors = |value| parse_colors(value, &context);
         let (thumb, track) = parse_colors("rgb(255 0 0 / 50%)   #00ff00").unwrap();
         assert_eq!((thumb.r, thumb.a), (1.0, 0.5));
         assert_eq!(track.g, 1.0);
@@ -611,7 +617,10 @@ mod tests {
     #[test]
     fn width_is_auto_thin_or_none() {
         let look = |width: &str| {
-            Look::of(&StyleDesc { scrollbar_width: Some(width.to_string()), ..Default::default() })
+            Look::of(
+                &StyleDesc { scrollbar_width: Some(width.to_string()), ..Default::default() },
+                &crate::color::ColorContext::root(crate::color::Scheme::Light),
+            )
         };
         assert_eq!(look("thin").thickness(), (4.0, 7.0));
         assert!(look("none").hidden());

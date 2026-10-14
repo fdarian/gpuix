@@ -304,11 +304,14 @@ pub(crate) fn apply_focus_within<E: gpui::Styled>(
     mut el: E,
     id: u64,
     style: Option<&crate::style::StyleDesc>,
+    colors: &crate::color::ColorContext,
     focus: &crate::focus::FocusStyles,
 ) -> E {
     if focus.within.contains(&id) {
-        if let Some(declared) = style.and_then(|style| style.focus_within.as_deref()) {
-            el = crate::renderer::apply_styles(el, declared);
+        if let Some((base, declared)) =
+            style.and_then(|base| Some((base, base.focus_within.as_deref()?)))
+        {
+            el = crate::renderer::apply_state_styles(el, base, declared, &colors.for_state(declared));
         }
     }
     el
@@ -325,12 +328,15 @@ pub(crate) fn apply_focus_styles<E: gpui::Styled>(
     mut el: E,
     id: u64,
     style: Option<&crate::style::StyleDesc>,
+    colors: &crate::color::ColorContext,
     focus: &crate::focus::FocusStyles,
 ) -> E {
-    el = apply_focus_within(el, id, style, focus);
+    el = apply_focus_within(el, id, style, colors, focus);
     if focus.visible == Some(id) {
-        if let Some(declared) = style.and_then(|style| style.focus_visible.as_deref()) {
-            el = crate::renderer::apply_styles(el, declared);
+        if let Some((base, declared)) =
+            style.and_then(|base| Some((base, base.focus_visible.as_deref()?)))
+        {
+            el = crate::renderer::apply_state_styles(el, base, declared, &colors.for_state(declared));
         }
     }
     let opted_out = style.and_then(|style| style.keyboard_focus_dim) == Some(false);
