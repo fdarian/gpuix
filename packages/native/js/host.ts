@@ -24,6 +24,14 @@ export * from "./events/listeners.js"
 export * from "./events/types.js"
 export type { AriaProps }
 export * from "./clipboard.js"
+export {
+  document,
+  GpuixEventTarget,
+  window,
+  type AddEventListenerOptions,
+  type WindowEventListener,
+} from "./events/window-target.js"
+export { preventEventDefault, type DomEvent } from "./events/dispatch.js"
 export * from "./focus.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"

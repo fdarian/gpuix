@@ -68,8 +68,10 @@ export function captureHandlerKey(eventType: string): string {
 /** The event object handlers receive: the native payload plus the DOM surface. */
 export interface DomEvent extends EventPayload {
   readonly type: string
-  readonly target: number
-  currentTarget: number | null
+  /** Undefined only for an event aimed at the window, such as a key with nothing focused. */
+  readonly target: number | undefined
+  /** An element id, or the `window` / `document` object during their phases. */
+  currentTarget: number | object | null
   eventPhase: number
   readonly bubbles: boolean
   readonly cancelable: boolean
@@ -87,6 +89,58 @@ export interface DomDispatchResult {
 
 export interface DomEventRoot {
   eventHandlers: EventHandlerMap
+}
+
+/** What `stopPropagation()` and `stopImmediatePropagation()` have done so far. */
+export interface DomEventState {
+  readonly propagationStopped: boolean
+  readonly immediatePropagationStopped: boolean
+}
+
+/**
+ * Phases that belong outside the element tree: `window` and `document` wrap
+ * the path. They run with the live event, so a `preventDefault()` or
+ * `stopPropagation()` on either side is seen by the other.
+ */
+export interface DomDispatchHooks {
+  /** Before the first capture handler. Skipped phases follow `state`. */
+  beforeCapture?(event: DomEvent, state: DomEventState): void
+  /** After the last bubble handler, for an event that bubbles and was not stopped. */
+  afterBubble?(event: DomEvent, state: DomEventState): void
+}
+
+/**
+ * Creates the event object and the state behind its stop methods. `target` is
+ * undefined for an event with no element to aim at.
+ */
+export function createDomEvent(
+  payload: EventPayload,
+  target: number | undefined
+): { event: DomEvent; state: DomEventState } {
+  const state = { propagationStopped: false, immediatePropagationStopped: false }
+  const cancelable = eventIsCancelable(payload.eventType)
+  const event: DomEvent = {
+    ...payload,
+    type: payload.eventType,
+    target,
+    currentTarget: null,
+    eventPhase: EVENT_PHASE_NONE,
+    bubbles: eventBubbles(payload.eventType),
+    cancelable,
+    timeStamp: performance.now(),
+    defaultPrevented: false,
+    stopPropagation() {
+      state.propagationStopped = true
+    },
+    stopImmediatePropagation() {
+      state.propagationStopped = true
+      state.immediatePropagationStopped = true
+    },
+    preventDefault() {
+      if (cancelable) event.defaultPrevented = true
+    },
+  }
+  return { event, state }
 }
 
 /**
@@ -111,7 +165,11 @@ function reportHandlerError(error: unknown): void {
  * only. A handler that throws does not end the dispatch: the error is reported
  * after the dispatch, as the DOM reports it, and the rest of the handlers run.
  */
-export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): DomDispatchResult {
+export function dispatchDomEvent(
+  root: DomEventRoot,
+  payload: EventPayload,
+  hooks?: DomDispatchHooks
+): DomDispatchResult {
   const path = payload.path ?? [payload.elementId]
   if (path.length === 0) {
     throw new Error(`Event "${payload.eventType}" has an empty propagation path.`)
@@ -123,31 +181,7 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
     )
   }
 
-  let propagationStopped = false
-  let immediatePropagationStopped = false
-  const cancelable = eventIsCancelable(payload.eventType)
-  const event: DomEvent = {
-    ...payload,
-    type: payload.eventType,
-    target,
-    currentTarget: null,
-    eventPhase: EVENT_PHASE_NONE,
-    bubbles: eventBubbles(payload.eventType),
-    cancelable,
-    timeStamp: performance.now(),
-    defaultPrevented: false,
-    stopPropagation() {
-      propagationStopped = true
-    },
-    stopImmediatePropagation() {
-      propagationStopped = true
-      immediatePropagationStopped = true
-    },
-    preventDefault() {
-      if (cancelable) event.defaultPrevented = true
-    },
-  }
-
+  const { event, state } = createDomEvent(payload, target)
   const errors: unknown[] = []
   const captureKey = captureHandlerKey(payload.eventType)
   const visit = (elementId: number, phase: number, keys: string[]) => {
@@ -156,7 +190,7 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
     const handlers = root.eventHandlers.get(elementId)
     if (!handlers) return
     for (const key of keys) {
-      if (immediatePropagationStopped) return
+      if (state.immediatePropagationStopped) return
       try {
         handlers.get(key)?.(event)
       } catch (error) {
@@ -165,20 +199,38 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
     }
   }
 
-  for (let index = path.length - 1; index > 0 && !propagationStopped; index--) {
+  hooks?.beforeCapture?.(event, state)
+  for (let index = path.length - 1; index > 0 && !state.propagationStopped; index--) {
     visit(path[index], EVENT_PHASE_CAPTURING, [captureKey])
   }
-  if (!propagationStopped) {
+  if (!state.propagationStopped) {
     visit(target, EVENT_PHASE_AT_TARGET, [captureKey, payload.eventType])
   }
   if (event.bubbles) {
-    for (let index = 1; index < path.length && !propagationStopped; index++) {
+    for (let index = 1; index < path.length && !state.propagationStopped; index++) {
       visit(path[index], EVENT_PHASE_BUBBLING, [payload.eventType])
     }
   }
+  if (event.bubbles && !state.propagationStopped) hooks?.afterBubble?.(event, state)
 
   event.currentTarget = null
   event.eventPhase = EVENT_PHASE_NONE
   errors.forEach(reportHandlerError)
-  return { defaultPrevented: event.defaultPrevented, propagationStopped }
+  return {
+    defaultPrevented: event.defaultPrevented,
+    propagationStopped: state.propagationStopped,
+  }
+}
+
+/**
+ * `event.preventDefault()` for a handler typed with the plain payload. Throws
+ * for an event that did not come through `dispatchDomEvent`, where there is no
+ * default to cancel.
+ */
+export function preventEventDefault(event: EventPayload): void {
+  const cancelable = event as Partial<DomEvent>
+  if (!cancelable.preventDefault) {
+    throw new Error(`Event "${event.eventType}" cannot be cancelled: it was not dispatched through the DOM walk.`)
+  }
+  cancelable.preventDefault()
 }

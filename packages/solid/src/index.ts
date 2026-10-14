@@ -13,6 +13,12 @@ export {
 } from "./universal.js"
 export { createRoot, GpuixContext, useGpuix, useGpuixRequired } from "./root.js"
 export type { HostElement } from "./host.js"
+export { document, window } from "@gpuix/native/host"
+export type {
+  AddEventListenerOptions,
+  DomEvent,
+  WindowEventListener,
+} from "@gpuix/native/host"
 export { createRenderer, render, resetRender } from "./renderer.js"
 export {
   createAppearance,

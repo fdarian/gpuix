@@ -14,6 +14,7 @@ export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
 export {
   clipboard,
   createTextSearchController,
+  document,
   observeAppearance,
   observeSelectedText,
   observeWindowInsets,
@@ -21,11 +22,15 @@ export {
   pushDismissLayer,
   readWindowInsets,
   readWindowSize,
+  window,
 } from "@gpuix/native/host"
 export type {
   Appearance,
+  AddEventListenerOptions,
   Clipboard,
   DismissLayer,
+  DomEvent,
+  WindowEventListener,
 } from "@gpuix/native/host"
 export type {
   FindRangesOptions,
