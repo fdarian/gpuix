@@ -10,12 +10,16 @@ export {
 } from "./reconciler/renderer.js"
 export { GpuixContext, useGpuix, useGpuixRequired } from "./hooks/use-gpuix.js"
 export { useWindowInsets, useWindowSize } from "./hooks/use-window-size.js"
+export { useMatchMedia, useMediaQuery, useReducedMotion } from "./hooks/use-media-query.js"
 export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
 export {
   clipboard,
+  MediaQueryList,
+  MediaQueryListEvent,
   createTextSearchController,
   document,
   IntersectionObserver,
+  matchMedia,
   observeAppearance,
   observeSelectedText,
   observeWindowInsets,
@@ -37,6 +41,7 @@ export type {
   IntersectionObserverCallback,
   IntersectionObserverEntry,
   IntersectionObserverInit,
+  MatchMedia,
   ObservableElement,
   ResizeObserverBoxOptions,
   ResizeObserverCallback,

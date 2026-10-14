@@ -896,6 +896,72 @@ window. GPUIX does not change the default theme of `<code>`, `<diff>` or
 offscreen platform window without a run loop, so it never receives an
 appearance change and `onAppearanceChange` does not fire under test.
 
+### matchMedia
+
+`matchMedia(query)` works as it does in a browser: it returns a `MediaQueryList`
+with `matches`, `media`, `addEventListener('change', ...)`,
+`removeEventListener`, `onchange`, and the legacy `addListener` /
+`removeListener`. A `change` event is a `MediaQueryListEvent` with `matches` and
+`media`, and it fires only when `matches` flips.
+
+```tsx
+import { useMediaQuery, useReducedMotion } from '@gpuix/react'
+
+function Sidebar() {
+  const wide = useMediaQuery('(min-width: 800px)')
+  const reduceMotion = useReducedMotion() // true when the OS asks for less motion
+  return wide ? <FullSidebar animate={!reduceMotion} /> : <Rail />
+}
+```
+
+A query is evaluated against the window it is asked in, so each adapter hands you
+one bound to the window your component is rendered in:
+
+| | React | Solid |
+|---|---|---|
+| Bound `matchMedia` | `useMatchMedia()` | `createMatchMedia()` |
+| Boolean that tracks a query | `useMediaQuery(query)` | `createMediaQuery(query)` (the query may be a signal) |
+| OS reduced motion | `useReducedMotion()` | `createReducedMotion()` |
+
+Code with no component to ask can import `matchMedia` from the adapter. It uses
+the window of the most recently mounted root and throws before any root is
+mounted. Outside an adapter, `matchMediaFor(renderer)` from `@gpuix/native/host`
+binds to a renderer.
+
+Supported syntax is Media Queries Level 4: `and`, `or`, `not`, `only`, comma
+lists, parentheses, and range syntax such as `(400px <= width < 800px)`. The
+media types `all` and `screen` match, `print` and `speech` do not.
+
+| Feature | Value in GPUIX |
+|---|---|
+| `width`, `height`, `aspect-ratio`, `orientation` | The window's content size. `min-` / `max-` prefixes and ranges work. Lengths take `px`, `em`, `rem` (16px), `pt`, `pc`, `in`, `cm`, `mm`, `Q`, `vw`, `vh`, `vmin`, `vmax`. |
+| `prefers-color-scheme` | The window's effective appearance, the same value as `getAppearance()`. |
+| `prefers-reduced-motion` | The OS "Reduce motion" setting. |
+| `prefers-contrast` | `more` when the OS "Increase contrast" setting is on, otherwise `no-preference`. |
+| `forced-colors` | Always `none`. |
+| `hover`, `any-hover` | Always `hover`. |
+| `pointer`, `any-pointer` | Always `fine`. |
+| `color`, `monochrome` | `8` and `0`. |
+
+A query item that does not parse, or names a feature or value GPUIX does not
+know, is `not all`: it never matches and `media` reports `not all`. The other
+items of a comma list still count.
+
+The OS settings are read on macOS (`NSWorkspace` accessibility display options)
+and change events arrive from its notification. Windows, Linux and FreeBSD have
+no OS read yet and report no preference. `prefers-color-scheme` changes arrive
+on every desktop platform that reports appearance changes.
+
+The renderer has no resize event, so while a `change` listener is attached to a
+query that reads the size, the window size is sampled every 100 ms
+(`MEDIA_SIZE_POLL_MS`). Queries that do not read the size cost nothing while idle,
+and a `MediaQueryList` with no listener is not subscribed to anything.
+
+Under test, the OS settings start as "no preference" regardless of the machine.
+`TestRenderer.setMediaFeatures({ reducedMotion: true })` changes them and
+delivers the `change` events. `prefers-color-scheme` reports the system
+appearance and cannot be flipped, for the reason given under Appearance.
+
 ### File picker
 
 `promptForPaths()` opens the operating system's file picker. It resolves with

@@ -1,6 +1,8 @@
-import { createSignal, onCleanup, type Accessor } from "solid-js"
+import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js"
 import {
+  REDUCED_MOTION_QUERY,
   createTextSearchController,
+  matchMediaFor,
   observeWindowInsets,
   observeWindowSize,
   readWindowInsets,
@@ -9,6 +11,8 @@ import {
 } from "@gpuix/native/host"
 import type {
   Appearance,
+  MatchMedia,
+  MediaQueryListEvent,
   ObserverOptions,
   TextSearchOptions,
   WindowInsets,
@@ -48,6 +52,34 @@ export function createAppearance(): Accessor<Appearance> {
   const [value, setValue] = createSignal(toAppearance(getAppearance.call(context.renderer)))
   onCleanup(context.subscribeAppearance(setValue))
   return value
+}
+
+/**
+ * `window.matchMedia` bound to the window this component is rendered in. The
+ * same function comes back while the window is the same.
+ */
+export function createMatchMedia(): MatchMedia {
+  return matchMediaFor(useGpuixRequired())
+}
+
+/** Whether the media query matches. The query may be a signal. */
+export function createMediaQuery(query: string | Accessor<string>): Accessor<boolean> {
+  const matchMedia = createMatchMedia()
+  const read = typeof query === "function" ? query : () => query
+  const [value, setValue] = createSignal(matchMedia(read()).matches)
+  createEffect(() => {
+    const list = matchMedia(read())
+    setValue(list.matches)
+    const onChange = (event: Event) => setValue((event as MediaQueryListEvent).matches)
+    list.addEventListener("change", onChange)
+    onCleanup(() => list.removeEventListener("change", onChange))
+  })
+  return value
+}
+
+/** True when the OS asks for reduced motion. */
+export function createReducedMotion(): Accessor<boolean> {
+  return createMediaQuery(REDUCED_MOTION_QUERY)
 }
 
 export function createTextSearch(options: Accessor<TextSearchOptions>) {
