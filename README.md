@@ -1345,21 +1345,52 @@ function WelcomeCard() {
 }
 ```
 
-Set **`initial={false}`** when the element must mount at its first `animate`
-target. Later `animate` changes still transition normally. If a target changes
-while motion is active, the next transition starts from the current visible
-value, so reversing an animation does not jump.
+Set **`initial={false}`** (or leave `initial` out) when the element must mount at
+its first `animate` target. Later `animate` changes still transition normally. If
+a target changes while motion is active, the next transition starts from the
+current visible value, so reversing an animation does not jump.
+
+A property that `initial` does not name starts from the element's own `style`
+value, as Motion for React reads it from the DOM, and otherwise from the CSS
+initial value (`0` for padding, margin and radii, `1` for `opacity`,
+`transparent` for `backgroundColor`, the element's `color` for `borderColor` and
+`outlineColor`). A value CSS leaves to layout or inheritance (`width` and
+`height` unset, `top` unset, `fontSize`, `color`) has no start yet, so that
+property begins at its target.
 
 ### Targets and timing
 
-Motion currently accepts these **numeric targets**:
+Any `StyleDesc` longhand whose value is a number, a length, a colour or a shadow
+list can be animated, in `animate`, `initial` and `exit`:
 
 | Target | Range or unit |
 |---|---|
-| `width`, `height` | pixels, zero or greater |
+| `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater |
 | `top`, `right`, `bottom`, `left` | pixels |
+| `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `outlineOffset` | pixels, may be negative |
+| `paddingTop` ... `paddingLeft`, `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight`, `flexGrow`, `flexShrink`, `flexBasis`, `aspectRatio` | zero or greater |
 | `opacity` | `0` through `1` |
-| `borderRadius` | pixels, zero or greater |
+| `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
+| `backgroundColor`, `color`, `borderColor`, `outlineColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
+| `boxShadow` | one shadow or a list |
+
+`padding`, `margin`, `borderWidth`, `borderRadius` and `gap` are shorthands that
+expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
+`borderTopLeftRadius` in `style`. When a description names a shorthand and one of
+its longhands, the longhand wins.
+
+Naming a discrete property (`display`, `position`, ...) or an unknown key is an
+error, not a silent no-op. A length cannot animate between units (`px` to `%`) or
+to or from `auto`; that is rejected with an error until layout can resolve it.
+
+**Colours** interpolate in Oklab with premultiplied alpha, like CSS
+`color-mix(in oklab, ...)`, so a fade to `transparent` keeps its hue and a red
+to blue move does not pass through a dull purple. Overshoot is clamped to sRGB.
+
+**Box shadows** animate per layer (offset, blur, spread and colour). When the
+lists differ in length, the shorter one is padded with `0 0 0 0 transparent`
+layers, as CSS does. If a layer's `inset` differs between the two lists, the
+shadow switches at the halfway point instead of interpolating.
 
 The **transition** uses seconds, like Motion for React:
 
@@ -1368,6 +1399,27 @@ The **transition** uses seconds, like Motion for React:
 | `duration` | `0.3` | Non-negative seconds |
 | `delay` | `0` | Non-negative seconds |
 | `ease` | `"easeOut"` | `"linear"`, `"ease"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, or `[x1, y1, x2, y2]` |
+
+**Per-property transitions** use Motion's shape. A property uses
+`transition[property]`, then `transition.default`, then the curve fields at the
+top level, then the 0.3 s `easeOut` tween. Each level replaces the next as a
+whole, it is never merged, and every property keeps its own `delay`.
+
+```tsx
+<motion.div
+  animate={{ opacity: 1, backgroundColor: '#3b82f6', paddingLeft: 24 }}
+  transition={{
+    duration: 0.3,
+    opacity: { duration: 0.15, ease: 'linear' },
+    paddingLeft: { type: 'spring', stiffness: 300, damping: 24 },
+  }}
+/>
+```
+
+A key in `transition` that is neither a curve field, `default`, nor an animatable
+property is an error. Changing the target or transition of one property
+restarts only that property, from where it is now; the others keep running.
+A property left out of a later `animate` keeps running toward its old target.
 
 Keyframes, variants, and shared layout animations are not available yet.
 **Exit** uses `AnimatePresence`, like Motion for React.
@@ -1415,9 +1467,11 @@ restarting, which is what makes a hover highlight glide between rows. A tween
 that is interrupted by a spring hands over its current speed as well. A spring
 interrupted by a tween starts the tween from rest.
 
-Springs overshoot, so the applied value is clamped: `opacity` to `0..1`, and
-`width`, `height`, and `borderRadius` to zero or greater. Targets are still
-validated as before. The motion settles, and `onMotionComplete` fires, once
+Springs overshoot, so the applied value is clamped to the property's range
+(`opacity` to `0..1`, lengths that cannot be negative to zero or greater, colours
+to sRGB), while the spring itself keeps the unclamped value. Margins, insets and
+shadow offsets are not clamped. Targets are still validated as before. A colour
+or shadow spring carries its speed per channel when the target changes. The motion settles, and `onMotionComplete` fires, once
 every animated value is within `restDelta` and `restSpeed` of its target.
 
 `AnimatePresence` exit works with springs: the child leaves after the spring

@@ -7,20 +7,6 @@ import { PresenceContext, usePresence } from "./animate-presence.js"
 
 let nextMotionGeneration = 0
 
-function motionStyleKey(style: MotionProps["animate"] | false | undefined) {
-  if (!style) return style
-  return [
-    style.width,
-    style.height,
-    style.opacity,
-    style.top,
-    style.right,
-    style.bottom,
-    style.left,
-    style.borderRadius,
-  ]
-}
-
 export {
   AnimatePresence,
   PresenceContext,
@@ -82,8 +68,8 @@ const MotionDiv = forwardRef<PublicInstance, MotionDivProps>(function MotionDiv(
 
   const motionKey = JSON.stringify([
     isPresent,
-    motionStyleKey(resolvedInitial),
-    motionStyleKey(resolvedAnimate),
+    resolvedInitial,
+    resolvedAnimate,
     transition,
   ])
   const generation = useMemo(() => ++nextMotionGeneration, [motionKey])

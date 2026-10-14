@@ -46,16 +46,67 @@ export * from "./scroll.js"
 
 export type DimensionValue = number | string
 
-export interface MotionStyle {
-  width?: number
-  height?: number
-  opacity?: number
-  top?: number
-  right?: number
-  bottom?: number
-  left?: number
-  borderRadius?: number
-}
+/**
+ * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
+ * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
+ * `borderRadius` and `gap` shorthands, which expand to their longhands.
+ * Discrete properties (`display`, `position`, ...) are an error. A length
+ * cannot move between units (px to `%`) or to `auto`.
+ */
+export type MotionStyle = Pick<
+  StyleDesc,
+  | "width"
+  | "height"
+  | "minWidth"
+  | "minHeight"
+  | "maxWidth"
+  | "maxHeight"
+  | "top"
+  | "right"
+  | "bottom"
+  | "left"
+  | "flexGrow"
+  | "flexShrink"
+  | "flexBasis"
+  | "gap"
+  | "rowGap"
+  | "columnGap"
+  | "padding"
+  | "paddingTop"
+  | "paddingRight"
+  | "paddingBottom"
+  | "paddingLeft"
+  | "margin"
+  | "marginTop"
+  | "marginRight"
+  | "marginBottom"
+  | "marginLeft"
+  | "opacity"
+  | "backgroundColor"
+  | "color"
+  | "borderWidth"
+  | "borderTopWidth"
+  | "borderRightWidth"
+  | "borderBottomWidth"
+  | "borderLeftWidth"
+  | "borderColor"
+  | "borderRadius"
+  | "borderTopLeftRadius"
+  | "borderTopRightRadius"
+  | "borderBottomLeftRadius"
+  | "borderBottomRightRadius"
+  | "boxShadow"
+  | "aspectRatio"
+  | "outlineWidth"
+  | "outlineColor"
+  | "outlineOffset"
+  | "fontSize"
+  | "fontWeight"
+  | "lineHeight"
+  | "scrollbarColor"
+  | "scrollbarWidth"
+  | "selectionColor"
+>
 
 export type MotionEase =
   | "linear"
@@ -115,7 +166,18 @@ export type MotionSpringTransition =
   | MotionSpringPhysicsTransition
   | MotionSpringDurationTransition
 
-export type MotionTransition = MotionTweenTransition | MotionSpringTransition
+export type MotionCurve = MotionTweenTransition | MotionSpringTransition
+
+/**
+ * One curve for every property, or a curve per property as in Framer Motion.
+ * A property resolves to `transition[property]`, then `transition.default`,
+ * then the curve fields at the top level, then a 0.3 s `easeOut` tween. Each
+ * level replaces the next as a whole. A shorthand key (`padding`) sets all its
+ * longhands, and a longhand beside it wins.
+ */
+export type MotionTransition = MotionCurve & {
+  default?: MotionCurve
+} & { [Property in keyof MotionStyle]?: MotionCurve }
 
 export interface MotionProps {
   initial?: MotionStyle | false

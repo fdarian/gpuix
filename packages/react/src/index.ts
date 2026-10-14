@@ -171,6 +171,7 @@ export type {
   LinearGradientBackground,
   LinearGradientStop,
   MarkdownProps,
+  MotionCurve,
   MotionEase,
   MotionProps,
   MotionSpringTransition,
