@@ -84,6 +84,7 @@ describeNative("inline text", () => {
 
   it("wraps across runs like the same string in one run", () => {
     const words = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
+    // A second test root replaces the first one's native window, so measure one at a time.
     const spanned = createTestRoot()
     spanned.render(
       <div style={{ width: 140 }}>
@@ -93,6 +94,10 @@ describeNative("inline text", () => {
         </text>
       </div>
     )
+    expect(spanned.renderer.getPaintedText()).toEqual([words])
+    const spannedHeight = bounds(spanned, "p").height
+    expect(spannedHeight / LINE).toBeGreaterThanOrEqual(3)
+
     const plain = createTestRoot()
     plain.render(
       <div style={{ width: 140 }}>
@@ -101,12 +106,8 @@ describeNative("inline text", () => {
         </text>
       </div>
     )
-
-    expect(spanned.renderer.getPaintedText()).toEqual([words])
-    const lines = bounds(spanned, "p").height / LINE
-    expect(lines).toBeGreaterThanOrEqual(3)
     // Bold is wider, so it may wrap further, never less.
-    expect(bounds(spanned, "p").height).toBeGreaterThanOrEqual(bounds(plain, "p").height)
+    expect(spannedHeight).toBeGreaterThanOrEqual(bounds(plain, "p").height)
   })
 
   it("flows sibling text nodes of a block div on one line", () => {

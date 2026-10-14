@@ -376,8 +376,10 @@ mod tests {
             (5, serde_json::json!({"textDecoration": "none"})),
         ]);
         let runs = runs_of(&tree);
+        let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
+        assert_eq!(lens, vec![2, 7, 4], "the nested none keeps the parent's underline");
         assert!(runs[1].underline);
-        assert!(runs[2].underline);
+        assert!(!runs[2].underline);
     }
 
     #[test]
