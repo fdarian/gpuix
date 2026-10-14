@@ -139,6 +139,19 @@ describe("TestGpuixRenderer availability", () => {
     ).rejects.toThrow("requires files or directories")
   })
 
+  it("rejects a malformed accept filter through the production promise bridge", async () => {
+    const native = createRequire(import.meta.url)("@gpuix/native") as {
+      GpuixRenderer: new () => {
+        promptForPaths(options: { accept: string }): Promise<string[] | null>
+      }
+    }
+    const renderer = new native.GpuixRenderer()
+
+    await expect(renderer.promptForPaths({ accept: "png" })).rejects.toThrow(
+      'Invalid accept token "png"'
+    )
+  })
+
   it("exports desktop window controls through the production renderer", () => {
     const native = createRequire(import.meta.url)("@gpuix/native") as {
       GpuixRenderer: new () => {
@@ -190,6 +203,15 @@ describeNative("render()", () => {
         prompt: "Import",
       })
     ).resolves.toBeNull()
+  })
+
+  it("accepts an HTML accept filter and rejects a malformed one", async () => {
+    await expect(
+      renderer.promptForPaths({ accept: ".png,.JPG,image/*,application/pdf" })
+    ).resolves.toBeNull()
+    await expect(renderer.promptForPaths({ accept: "png" })).rejects.toThrow(
+      "Invalid accept token"
+    )
   })
 
   it("rejects a path prompt that selects nothing", async () => {

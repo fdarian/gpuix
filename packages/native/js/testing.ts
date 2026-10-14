@@ -24,6 +24,7 @@ import type {
   PathPromptOptions,
   WindowKeyEventHandlers,
 } from "./host.js"
+import { bindClipboard } from "./clipboard.js"
 import { readFontFiles } from "./fonts.js"
 import { createRendererState } from "./renderer-state.js"
 export {
@@ -35,6 +36,8 @@ export type { MacCpuThrottle } from "./cpu-throttle.js"
 
 interface NativeTestRendererApi extends NativeRenderer {
   promptForPaths(options?: PathPromptOptions): Promise<string[] | null>
+  writeClipboardText(text: string): void
+  readClipboardText(): string | null
   flush(): void
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
@@ -267,6 +270,9 @@ export class TestRenderer implements NativeRenderer {
   readonly focusNext: () => void
   readonly focusPrevious: () => void
   readonly promptForPaths: NonNullable<NativeRenderer["promptForPaths"]>
+  /** The test window's own clipboard. It never touches the system's. */
+  readonly writeClipboardText: NonNullable<NativeRenderer["writeClipboardText"]>
+  readonly readClipboardText: NonNullable<NativeRenderer["readClipboardText"]>
   readonly setWindowSelectionChange: NonNullable<
     NativeRenderer["setWindowSelectionChange"]
   >
@@ -289,6 +295,8 @@ export class TestRenderer implements NativeRenderer {
     this.focusNext = this.native.focusNext.bind(this.native)
     this.focusPrevious = this.native.focusPrevious.bind(this.native)
     this.promptForPaths = this.native.promptForPaths.bind(this.native)
+    this.writeClipboardText = this.native.writeClipboardText.bind(this.native)
+    this.readClipboardText = this.native.readClipboardText.bind(this.native)
     this.setWindowKeyEvents = this.native.setWindowKeyEvents.bind(this.native)
     this.setWindowSelectionChange = this.native.setWindowSelectionChange.bind(
       this.native
@@ -299,6 +307,7 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
       createRendererState(this).dispatch(event)
     })
+    bindClipboard(this)
   }
 
   // ── GPUI pipeline methods ───────────────────────────────────────

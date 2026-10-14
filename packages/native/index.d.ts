@@ -108,6 +108,17 @@ export declare class GpuixRenderer {
   setWindowTitle(title: string): void
   /** Open the platform path picker. Returns null when the user cancels. */
   promptForPaths(options?: PathPromptOptions | undefined | null): Promise<Array<string> | null>
+  /** Replace the system clipboard's contents with plain text. */
+  writeClipboardText(text: string): void
+  /** The system clipboard's text, or null when it holds none. */
+  readClipboardText(): string | null
+  /** Whether `openEyeDropper` exists on this platform. macOS only. */
+  supportsEyeDropper(): boolean
+  /**
+   * Run the screen colour picker. Resolves `#rrggbb`, or null when the user
+   * cancels. There is no way to dismiss it from code.
+   */
+  openEyeDropper(): Promise<string | null>
   focusElement(elementId: number): void
   /** `element.blur()`: clear focus when `element_id` is the focused element. */
   blurElement(elementId: number): void
@@ -370,6 +381,9 @@ export declare class TestGpuixRenderer {
   focusNext(): void
   focusPrevious(): void
   promptForPaths(options?: PathPromptOptions | undefined | null): Promise<Array<string> | null>
+  /** The test window's own in-memory clipboard, never the system's. */
+  writeClipboardText(text: string): void
+  readClipboardText(): string | null
   getFocusedElementId(): number | null
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
@@ -926,6 +940,11 @@ export interface PathPromptOptions {
   multiple?: boolean
   /** Label for the picker confirmation button. */
   prompt?: string
+  /**
+   * Restrict the selectable files with the HTML `accept` syntax, such as
+   * ".png,.jpg,image/*,application/pdf". Directories are never filtered.
+   */
+  accept?: string
 }
 
 /** `selectionStart`, `selectionEnd` and `selectionDirection` of a text control. */

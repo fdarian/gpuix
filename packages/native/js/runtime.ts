@@ -8,6 +8,8 @@ import {
   serveAutomationStdio,
   type LiveAutomationRenderer,
 } from "./automation/client.js"
+import { bindClipboard } from "./clipboard.js"
+import { bindEyeDropper } from "./eyedropper.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import { createRendererState } from "./renderer-state.js"
 
@@ -40,6 +42,8 @@ export function createNativeRenderer(
       options.onError?.(dispatchError)
     }
   })
+  bindClipboard(renderer)
+  bindEyeDropper(renderer)
   const automated =
     typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
   const init = renderer.init.bind(renderer)

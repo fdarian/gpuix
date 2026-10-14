@@ -931,6 +931,68 @@ On the current Windows GPUI backend, the system dialog does not distinguish
 cancellation from other `IFileDialog::Show` errors, so both resolve with
 `null`. This needs a fix in GPUI before GPUIX can report those errors.
 
+`accept` filters the selectable files with the HTML `accept` syntax:
+extensions, MIME types and `type/*` wildcards, separated by commas and
+case-insensitive.
+
+```tsx
+await renderer.promptForPaths?.({ accept: '.png,.jpg,image/*,application/pdf' })
+```
+
+A file matches when it matches any entry, `*/*` matches everything, and
+directories are never filtered. A token that is neither `.ext` nor
+`type/subtype` rejects the prompt, so a typo cannot silently widen the picker.
+macOS and Linux apply the filter. Windows ignores `accept` for now, because
+its GPUI backend has no filter support and a MIME type needs an extension
+table there; filter the returned paths yourself.
+
+### Clipboard
+
+`clipboard` is the text subset of `navigator.clipboard`. Both methods return
+promises, as in the DOM.
+
+```tsx
+import { clipboard } from '@gpuix/react' // or '@gpuix/solid'
+
+await clipboard.writeText('copied')
+const text = await clipboard.readText() // '' when the clipboard has no text
+```
+
+When a renderer is created and the runtime has no `navigator.clipboard`,
+GPUIX installs `clipboard` there (and a minimal `navigator` if the runtime has
+none), so code written for the web runs unchanged. An existing
+`navigator.clipboard` is never replaced. It always talks to the renderer
+created last. Only text is supported, not images or `ClipboardItem`s; the
+browser build leaves the browser's own `navigator.clipboard` alone.
+
+`TestRenderer` has its own in-memory clipboard, so a test can
+`writeText()` then paste into an `<input>`, or copy out of one and
+`readText()`, without touching the system pasteboard.
+
+### EyeDropper
+
+On macOS, `EyeDropper` is defined globally and works as in the browser:
+
+```tsx
+if (typeof EyeDropper !== 'undefined') {
+  const controller = new AbortController()
+  const { sRGBHex } = await new EyeDropper().open({ signal: controller.signal })
+  // '#ff8000'
+}
+```
+
+`open()` shows the system magnifier and resolves with a lowercase `#rrggbb` in
+sRGB. It rejects with an `AbortError` when the user presses Escape, and with
+`signal.reason` when `signal` aborts. Windows and Linux do not define
+`EyeDropper`, like a browser without it. `EyeDropper` is also exported from
+`@gpuix/react` and `@gpuix/solid` for typed use, but it is only a working
+picker where the global exists.
+
+macOS cannot dismiss the magnifier from code. After an abort the picker stays
+on screen until the user clicks or presses Escape, and `open()` rejects with an
+`InvalidStateError` until then. The test renderer cannot run it, so test your
+handling with a stub `EyeDropper`.
+
 | Platform | `focus: false` | `show: false` |
 |---|---|---|
 | macOS | window orders in front without becoming key, like `open -g` | honored |
