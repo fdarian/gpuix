@@ -2859,15 +2859,21 @@ element or `null` for the window. Entries have `isIntersecting`,
 `time` and `target`. Each target gets an entry after `observe()` (an element
 that never paints reports not intersecting) and then one per threshold crossing
 or `isIntersecting` flip. The intersection is the target's border box clipped by
-every ancestor's `overflow`, then by the root. `rootMargin` takes 1 to 4 lengths
-in `px` or `%`. With a non-zero margin the target is tested unclipped by its
-ancestors, because the clip native reports is already cut at the window edge.
+every ancestor's `overflow` between it and the root, then by the root.
+`rootMargin` takes 1 to 4 lengths in `px` or `%`, and with no `root` it can reach
+past the window edge, which does not clip the target.
 
 Callbacks run once per batch of a frame's reports, after the frame, so state set
 in one paints a frame later. Observing an element that is not mounted yet is
-allowed for one microtask, then throws. Removing an element does not report; call
-`unobserve` or `disconnect`. Both observers work on `<div>` and `<text>`, like
-`onLayout`, and nowhere else yet.
+allowed, as in the DOM: it reports once it has a box, and an `IntersectionObserver`
+first reports it as not intersecting. An element that is removed behaves like one
+that stopped painting: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`
+reports `isIntersecting: false`, once, and nothing after that. Call `unobserve` or
+`disconnect` to release it.
+
+Observers work on `<div>`, `<text>`, `<input>`, `<textarea>`, `<img>`, `<svg>`,
+`<anchored>`, `<code>`, `<diff>` and `<markdown>`. `<virtual-list>` itself does not
+report; its rows do, and a row outside the window reports as not painting.
 
 ### Find what is under a point
 

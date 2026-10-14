@@ -17,6 +17,7 @@ use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled, Window};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
 
+use crate::retained_tree::RetainedTree;
 use crate::renderer::{emit_event_full, EventCallback, SharedPaintReports};
 use crate::style::StyleDesc;
 
@@ -50,17 +51,38 @@ pub struct Observation {
     /// inside the padding box (`ResizeObserverEntry.contentRect.x` and `.y`).
     pub padding_left: f64,
     pub padding_top: f64,
-    /// The border box clipped by every ancestor's `overflow` and by the
-    /// window, in window coordinates. Zero-sized when clipped away entirely.
-    pub visible_x: f64,
-    pub visible_y: f64,
-    pub visible_width: f64,
-    pub visible_height: f64,
+    /// The `overflow` clips of the ancestors, nearest first, in window
+    /// coordinates. JS applies the ones below its root. The window edge is not
+    /// one of them: an `IntersectionObserver` with a `rootMargin` sees past it.
+    pub clips: Vec<ObservationClip>,
     /// The window's paintable size, which is the viewport of an
     /// `IntersectionObserver` with no `root`.
     pub viewport_width: f64,
     pub viewport_height: f64,
 }
+
+/// One ancestor's clip rect. An axis the ancestor does not clip spans
+/// `UNCLIPPED` either way.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(
+    all(target_arch = "wasm32", target_os = "unknown"),
+    derive(serde::Serialize)
+)]
+#[cfg_attr(
+    all(target_arch = "wasm32", target_os = "unknown"),
+    serde(rename_all = "camelCase")
+)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct ObservationClip {
+    /// The clipping ancestor's element id.
+    pub id: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+const UNCLIPPED: f32 = 1.0e9;
 
 /// What the observers of every element last reported, so a repaint that changed
 /// nothing queues nothing.
@@ -84,11 +106,11 @@ struct ResizeSample {
     content: (f32, f32),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct IntersectionSample {
     present: bool,
     border: Bounds<Pixels>,
-    visible: Bounds<Pixels>,
+    clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
 }
 
@@ -124,6 +146,79 @@ fn insets(style: Option<&StyleDesc>) -> (Insets, Insets) {
     (padding, border)
 }
 
+/// An ancestor that clips its descendants, as gpui's `overflow_mask` does.
+struct ClippingAncestor {
+    id: u64,
+    clip_x: bool,
+    clip_y: bool,
+    /// Inset by the border, which gpui only does for a visible border colour.
+    border: Insets,
+}
+
+fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
+    let mut found = Vec::new();
+    let mut next = tree.elements.get(&id).and_then(|element| element.parent);
+    while let Some(ancestor) = next {
+        let Some(element) = tree.elements.get(&ancestor) else {
+            break;
+        };
+        let style = element.style.as_deref();
+        let (mut clip_x, mut clip_y) = style.map_or((false, false), |style| {
+            let axes = crate::scroll::Axes::of(style);
+            (axes.x.clips(), axes.y.clips())
+        });
+        if element.element_type == "virtual-list" {
+            clip_x = true;
+            clip_y = true;
+        }
+        if clip_x || clip_y {
+            let visible_border = style.is_some_and(|style| {
+                style
+                    .border_color
+                    .as_deref()
+                    .and_then(crate::color::parse_color_rgba)
+                    .is_some_and(|color| color.a > 0.0)
+            });
+            found.push(ClippingAncestor {
+                id: ancestor,
+                clip_x,
+                clip_y,
+                border: if visible_border { insets(style).1 } else { Insets::default() },
+            });
+        }
+        next = element.parent;
+    }
+    found
+}
+
+fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
+    ancestors
+        .iter()
+        .filter_map(|ancestor| {
+            let painted = crate::automation::get_bounds(ancestor.id)?;
+            let (x, y) = (painted.x as f32, painted.y as f32);
+            let (width, height) = (painted.width as f32, painted.height as f32);
+            let (left, right) = if ancestor.clip_x {
+                (x + ancestor.border.left, x + width - ancestor.border.right)
+            } else {
+                (-UNCLIPPED, UNCLIPPED)
+            };
+            let (top, bottom) = if ancestor.clip_y {
+                (y + ancestor.border.top, y + height - ancestor.border.bottom)
+            } else {
+                (-UNCLIPPED, UNCLIPPED)
+            };
+            Some((
+                ancestor.id,
+                Bounds {
+                    origin: gpui::point(px(left), px(top)),
+                    size: gpui::size(px((right - left).max(0.0)), px((bottom - top).max(0.0))),
+                },
+            ))
+        })
+        .collect()
+}
+
 pub(crate) type ObserverReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
 
 /// The reporter for an element that has an observer listener, or `None` for
@@ -132,6 +227,7 @@ pub(crate) fn reporter(
     id: u64,
     events: &HashSet<String>,
     style: Option<&StyleDesc>,
+    tree: &RetainedTree,
     reports: &SharedPaintReports,
     callback: &Option<EventCallback>,
 ) -> Option<ObserverReporter> {
@@ -143,14 +239,19 @@ pub(crate) fn reporter(
     let callback = callback.clone()?;
     let reports = reports.clone();
     let (padding, border) = insets(style);
+    let ancestors = if intersection {
+        clipping_ancestors(tree, id)
+    } else {
+        Vec::new()
+    };
     Some(Rc::new(move |bounds, window, cx| {
         let viewport = window.viewport_size();
         if resize {
             report_resize(id, bounds, padding, border, &reports, &callback, cx);
         }
         if intersection {
-            let mask = window.content_mask().bounds;
-            report_intersection(id, bounds, mask, viewport, &reports, &callback, cx);
+            let clips = clip_rects(&ancestors);
+            report_intersection(id, bounds, clips, viewport, &reports, &callback, cx);
         }
     }))
 }
@@ -168,18 +269,6 @@ fn same_bounds(left: Bounds<Pixels>, right: Bounds<Pixels>) -> bool {
         && near(f32::from(left.origin.y), f32::from(right.origin.y))
         && near(f32::from(left.size.width), f32::from(right.size.width))
         && near(f32::from(left.size.height), f32::from(right.size.height))
-}
-
-/// `a` clipped to `b`. Empty, not negative, when they do not overlap.
-fn clip(a: Bounds<Pixels>, b: Bounds<Pixels>) -> Bounds<Pixels> {
-    let left = a.origin.x.max(b.origin.x);
-    let top = a.origin.y.max(b.origin.y);
-    let right = a.right().min(b.right());
-    let bottom = a.bottom().min(b.bottom());
-    Bounds {
-        origin: gpui::point(left, top),
-        size: gpui::size((right - left).max(px(0.0)), (bottom - top).max(px(0.0))),
-    }
 }
 
 fn report_resize(
@@ -225,19 +314,23 @@ fn report_resize(
 fn report_intersection(
     id: u64,
     bounds: Bounds<Pixels>,
-    mask: Bounds<Pixels>,
+    clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
     reports: &SharedPaintReports,
     callback: &EventCallback,
     cx: &mut App,
 ) {
-    let visible = clip(bounds, mask);
     {
         let mut reports = reports.borrow_mut();
         let unchanged = reports.observers.intersection.get(&id).is_some_and(|last| {
             last.present
                 && same_bounds(last.border, bounds)
-                && same_bounds(last.visible, visible)
+                && last.clips.len() == clips.len()
+                && last
+                    .clips
+                    .iter()
+                    .zip(&clips)
+                    .all(|(left, right)| left.0 == right.0 && same_bounds(left.1, right.1))
                 && near(f32::from(last.viewport.width), f32::from(viewport.width))
                 && near(f32::from(last.viewport.height), f32::from(viewport.height))
         });
@@ -249,17 +342,23 @@ fn report_intersection(
             IntersectionSample {
                 present: true,
                 border: bounds,
-                visible,
+                clips: clips.clone(),
                 viewport,
             },
         );
     }
     let observation = Observation {
         present: true,
-        visible_x: f64::from(f32::from(visible.origin.x)),
-        visible_y: f64::from(f32::from(visible.origin.y)),
-        visible_width: f64::from(f32::from(visible.size.width)),
-        visible_height: f64::from(f32::from(visible.size.height)),
+        clips: clips
+            .iter()
+            .map(|(id, rect)| ObservationClip {
+                id: *id as f64,
+                x: f64::from(f32::from(rect.origin.x)),
+                y: f64::from(f32::from(rect.origin.y)),
+                width: f64::from(f32::from(rect.size.width)),
+                height: f64::from(f32::from(rect.size.height)),
+            })
+            .collect(),
         viewport_width: f64::from(f32::from(viewport.width)),
         viewport_height: f64::from(f32::from(viewport.height)),
         ..Observation::default()
@@ -289,14 +388,28 @@ fn queue(
 
 /// Drop what an element reported once it stopped listening, so adding the
 /// listener back reports again like a fresh observer.
+///
+/// An element that no longer exists keeps its sample until `sweep` has reported
+/// it gone, because a destroyed element is one that stopped painting.
 pub(crate) fn prune(
     reports: &mut ObserverReports,
+    exists: impl Fn(u64) -> bool,
     has_listener: impl Fn(u64, &str) -> bool,
 ) {
-    reports.resize.retain(|id, _| has_listener(*id, RESIZE_EVENT));
-    reports
-        .intersection
-        .retain(|id, _| has_listener(*id, INTERSECTION_EVENT));
+    reports.resize.retain(|id, last| {
+        if exists(*id) {
+            has_listener(*id, RESIZE_EVENT)
+        } else {
+            *last != ResizeSample::default()
+        }
+    });
+    reports.intersection.retain(|id, last| {
+        if exists(*id) {
+            has_listener(*id, INTERSECTION_EVENT)
+        } else {
+            last.present
+        }
+    });
 }
 
 /// A zero-size child that runs once per frame, after the frame has painted,

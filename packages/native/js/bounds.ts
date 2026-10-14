@@ -97,6 +97,14 @@ export function readBoundingClientRect(renderer: NativeRenderer, id: number): Bo
  */
 export const HOST_BINDING: unique symbol = Symbol.for("@gpuix/native/host-binding")
 
+/**
+ * Key of the method a host element offers to be told each time it is created
+ * natively. Solid creates the native element when the tree is inserted and
+ * again after a removal, so an observer started earlier must follow it. An
+ * element that is always mounted when handed out (React) does not have it.
+ */
+export const HOST_MOUNT: unique symbol = Symbol.for("@gpuix/native/host-mount")
+
 export interface HostBinding {
   readonly renderer: NativeRenderer
   readonly mutations: MutationRenderer
@@ -107,4 +115,6 @@ export interface ObservableElement {
   readonly id: number
   /** The binding while the element is mounted, `undefined` before and after. */
   [HOST_BINDING](): HostBinding | undefined
+  /** Calls `listener` each time the element is created natively. Returns the stop function. */
+  [HOST_MOUNT]?(listener: () => void): () => void
 }

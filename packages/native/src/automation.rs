@@ -66,8 +66,17 @@ pub fn bounds_frame_reset() -> impl IntoElement {
 /// Wrapping the leaf in a div instead would move the layout box: the wrapper
 /// would become the flex item and the image would lose intrinsic sizing and
 /// corner clipping.
-pub fn track_own_bounds<E: gpui::InteractiveElement>(el: E, id: u64) -> E {
-    el.on_painted(move |bounds, _, _| record_bounds(id, bounds))
+pub fn track_own_bounds<E: gpui::InteractiveElement>(
+    el: E,
+    id: u64,
+    report: Option<PaintReporter>,
+) -> E {
+    el.on_painted(move |bounds, window, cx| {
+        record_bounds(id, bounds);
+        if let Some(report) = &report {
+            report(bounds, window, cx);
+        }
+    })
 }
 
 /// Record a host element's painted box, and its selection-start region, for

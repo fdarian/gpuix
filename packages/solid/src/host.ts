@@ -11,6 +11,7 @@ import {
   isUniversalProp,
   registerEventListener,
   HOST_BINDING,
+  HOST_MOUNT,
   readBoundingClientRect,
   toBoundingClientRect,
   serializeCustomProp,
@@ -88,6 +89,11 @@ export class HostElement {
   id = 0
   mounted = false
   style: StyleDesc = {}
+  /**
+   * Held on the instance, not in a module map: the JSX runtime can load a second
+   * copy of this module, and the copy that mounts the node must see them.
+   */
+  readonly mountListeners = new Set<() => void>()
 
   constructor(readonly type: ElementType) {}
 
@@ -199,6 +205,11 @@ export class HostElement {
   getBoundingClientRect(): BoundingClientRect {
     if (!this.root || !this.mounted) return toBoundingClientRect(null)
     return readBoundingClientRect(this.root.nativeRenderer, this.id)
+  }
+
+  [HOST_MOUNT](listener: () => void): () => void {
+    this.mountListeners.add(listener)
+    return () => this.mountListeners.delete(listener)
   }
 
   [HOST_BINDING](): HostBinding | undefined {
@@ -350,6 +361,9 @@ function mount(root: HostRoot, node: HostNode): void {
         )
       }
     }
+  }
+  if (node.kind === "element") {
+    for (const listener of [...node.mountListeners]) listener()
   }
   for (const child of node.children) {
     mount(root, child)

@@ -1,6 +1,7 @@
 import type { EventPayload } from "../index.js"
 import {
   HOST_BINDING,
+  HOST_MOUNT,
   readBoundingClientRect,
   toBoundingClientRect,
   type BoundingClientRect,
@@ -74,63 +75,77 @@ function hubFor(renderer: object): Hub {
   return hub
 }
 
-function setNativeListener(binding: HostBinding, id: number, kind: ObserveEvent, on: boolean) {
+function setNativeListener(
+  binding: HostBinding,
+  id: number,
+  kind: ObserveEvent,
+  on: boolean,
+  flush: boolean
+) {
   binding.mutations.setEventListener(id, kind, on)
-  binding.mutations.flushMutations()
+  if (flush) binding.mutations.flushMutations()
 }
 
+/**
+ * `settle` is for an element that is mounted now: the listener is sent and the
+ * window laid out and painted at once, so the first report is already on its
+ * way. An element that has only just been mounted is mid-commit, so its
+ * listener rides the commit's own batch.
+ */
 function attach(
   binding: HostBinding,
   id: number,
   kind: ObserveEvent,
-  subscriber: Subscriber
+  subscriber: Subscriber,
+  settle: boolean
 ): () => void {
   const listening = hubFor(binding.renderer).listening[kind]
   let entry = listening.get(id)
   if (!entry) {
     entry = { binding, subscribers: new Set() }
     listening.set(id, entry)
-    setNativeListener(binding, id, kind, true)
+    setNativeListener(binding, id, kind, true, settle)
   }
   const current = entry
   current.subscribers.add(subscriber)
-  // Asking for the bounds lays out and paints now, which sends the first
-  // report instead of leaving it to the next frame.
-  if (!binding.renderer.getElementBounds) {
-    throw new Error("This renderer cannot observe elements: it has no getElementBounds")
+  let painted = false
+  if (settle) {
+    if (!binding.renderer.getElementBounds) {
+      throw new Error("This renderer cannot observe elements: it has no getElementBounds")
+    }
+    painted = binding.renderer.getElementBounds(id) !== null
   }
-  subscriber.bound?.(binding, binding.renderer.getElementBounds(id) !== null)
+  subscriber.bound?.(binding, painted)
   return () => {
     current.subscribers.delete(subscriber)
     if (current.subscribers.size > 0 || listening.get(id) !== current) return
     listening.delete(id)
-    setNativeListener(binding, id, kind, false)
+    setNativeListener(binding, id, kind, false, true)
   }
 }
 
 /**
  * Subscribe to an element's native reports. An element that is not mounted yet
- * (a Solid `ref` runs before the tree is inserted) gets one microtask to be
- * mounted; after that it is an error rather than a silent observer that never
- * fires. Returns the function that stops the subscription.
+ * (a Solid `ref` runs before the tree is inserted) stays pending, as in the
+ * DOM, and reports once it has a box. An element created natively again after
+ * a removal is subscribed again.
  */
 function listen(kind: ObserveEvent, element: ObservableElement, subscriber: Subscriber): () => void {
   let release: (() => void) | undefined
-  let cancelled = false
-  const bind = (): boolean => {
+  const bind = (settle: boolean) => {
     const binding = element[HOST_BINDING]()
-    if (!binding) return false
-    release = attach(binding, element.id, kind, subscriber)
-    return true
+    if (!binding) return
+    if (release) {
+      // Created again: the native element is new and has no listener.
+      setNativeListener(binding, element.id, kind, true, false)
+      return
+    }
+    release = attach(binding, element.id, kind, subscriber, settle)
   }
-  if (!bind()) {
-    queueMicrotask(() => {
-      if (cancelled || bind()) return
-      throw new Error(`Cannot observe element ${element.id}: it is not mounted`)
-    })
-  }
+  bind(true)
+  const stopMountWatch = element[HOST_MOUNT]?.(() => bind(false))
   return () => {
-    cancelled = true
+    stopMountWatch?.()
     release?.()
     release = undefined
   }
@@ -355,7 +370,8 @@ interface Rect {
 interface IntersectionSample {
   present: boolean
   border: Rect
-  visible: Rect
+  /** Ancestor `overflow` clips, nearest first. */
+  clips: readonly { id: number; rect: Rect }[]
   viewport: { width: number; height: number }
 }
 
@@ -525,12 +541,10 @@ export class IntersectionObserver {
             width: event.width ?? 0,
             height: event.height ?? 0,
           },
-          visible: {
-            x: observation.visibleX,
-            y: observation.visibleY,
-            width: observation.visibleWidth,
-            height: observation.visibleHeight,
-          },
+          clips: observation.clips.map((clip) => ({
+            id: clip.id,
+            rect: { x: clip.x, y: clip.y, width: clip.width, height: clip.height },
+          })),
           viewport: { width: observation.viewportWidth, height: observation.viewportHeight },
         }
       : absentSample(record.sample?.viewport)
@@ -572,11 +586,13 @@ export class IntersectionObserver {
     let intersection = zero
     let isIntersecting = false
     if (sample.present) {
-      // Native clips the border box by every ancestor and the window. A margin
-      // can reach past the window, where that clip has already cut the box
-      // off, so with a margin the test falls back to the unclipped box.
-      const marginless = this.#margin.every((length) => length.value === 0)
-      const clipped = marginless ? sample.visible : border
+      // Clip by the ancestors between the target and the root, like the DOM.
+      // Ancestors above the root, and the window edge, do not clip.
+      let clipped = border
+      for (const clip of sample.clips) {
+        if (this.root && clip.id === this.root.id) break
+        clipped = overlap(clipped, clip.rect)
+      }
       intersection = overlap(clipped, rootBounds)
       isIntersecting =
         area(intersection) > 0 || (area(border) === 0 && contains(rootBounds, border))
@@ -618,5 +634,5 @@ export class IntersectionObserver {
 
 function absentSample(viewport = { width: 0, height: 0 }): IntersectionSample {
   const zero = { x: 0, y: 0, width: 0, height: 0 }
-  return { present: false, border: zero, visible: zero, viewport }
+  return { present: false, border: zero, clips: [], viewport }
 }

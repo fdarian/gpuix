@@ -5813,11 +5813,15 @@ impl gpui::Render for GpuixView {
                         .is_some_and(|element| element.events().contains("scrollChange"))
                 });
             }
-            crate::observers::prune(&mut reports.observers, |id, event| {
-                tree.elements
-                    .get(&id)
-                    .is_some_and(|element| element.events().contains(event))
-            });
+            crate::observers::prune(
+                &mut reports.observers,
+                |id| tree.elements.contains_key(&id),
+                |id, event| {
+                    tree.elements
+                        .get(&id)
+                        .is_some_and(|element| element.events().contains(event))
+                },
+            );
         }
         // Build the element tree. custom_registry, focus_handles, and scroll_handles
         // are different fields of self, so Rust allows borrowing all simultaneously.
@@ -6052,6 +6056,16 @@ pub(crate) fn build_element(
                 highlight_set: inherited.highlight.clone(),
                 props: element.custom_props(),
                 pointer_events_none: inherited.pointer_events_none,
+                // Built from every listener: the registry hands the element only
+                // the events it declares support for.
+                observe: crate::observers::reporter(
+                    id,
+                    element.events(),
+                    style,
+                    ctx.tree,
+                    ctx.paint_reports,
+                    ctx.event_callback,
+                ),
             };
             ctx.custom_registry
                 .render(custom_type, element.custom_props(), render_ctx, window, cx)
@@ -7246,6 +7260,7 @@ fn paint_reporter(
         id,
         events,
         style,
+        ctx.tree,
         ctx.paint_reports,
         ctx.event_callback,
     );

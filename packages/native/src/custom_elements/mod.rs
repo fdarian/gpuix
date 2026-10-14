@@ -68,6 +68,9 @@ pub struct CustomRenderContext<'a> {
     pub props: &'a HashMap<String, serde_json::Value>,
     /// `pointerEvents: "none"` here or on an ancestor, with no `auto` between.
     pub pointer_events_none: bool,
+    /// Reports this element's painted box to the observers that watch it. Pass it
+    /// to whichever of `track_host_bounds` or `track_own_bounds` records the box.
+    pub observe: Option<crate::automation::PaintReporter>,
 }
 
 impl CustomRenderContext<'_> {
@@ -145,7 +148,7 @@ pub(crate) fn custom_surface(
     {
         el = el.relative();
     }
-    el = crate::automation::track_host_bounds(el, ctx.id, None, None);
+    el = crate::automation::track_host_bounds(el, ctx.id, None, ctx.observe.clone());
     el = crate::accessibility::apply_accessibility(el, ctx.id, ctx.props, None);
     wire_host_events(el, ctx)
 }

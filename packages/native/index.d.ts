@@ -971,19 +971,30 @@ export interface Observation {
   paddingLeft: number
   paddingTop: number
   /**
-   * The border box clipped by every ancestor's `overflow` and by the
-   * window, in window coordinates. Zero-sized when clipped away entirely.
+   * The `overflow` clips of the ancestors, nearest first, in window
+   * coordinates. JS applies the ones below its root. The window edge is not
+   * one of them: an `IntersectionObserver` with a `rootMargin` sees past it.
    */
-  visibleX: number
-  visibleY: number
-  visibleWidth: number
-  visibleHeight: number
+  clips: Array<ObservationClip>
   /**
    * The window's paintable size, which is the viewport of an
    * `IntersectionObserver` with no `root`.
    */
   viewportWidth: number
   viewportHeight: number
+}
+
+/**
+ * One ancestor's clip rect. An axis the ancestor does not clip spans
+ * `UNCLIPPED` either way.
+ */
+export interface ObservationClip {
+  /** The clipping ancestor's element id. */
+  id: number
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface PathPromptOptions {

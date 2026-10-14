@@ -169,6 +169,57 @@ describeNative("ResizeObserver", () => {
     }
   })
 
+  it("reports 0 by 0 once when the element is removed, then stays quiet", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const sizes: number[][] = []
+      const app = (shown: boolean) => (
+        <div style={{ flexDirection: "column" }}>
+          {shown ? <div ref={ref("a")} style={{ width: 40, height: 20 }} /> : null}
+        </div>
+      )
+      render(app(true))
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) sizes.push([entry.contentRect.width, entry.contentRect.height])
+      })
+      observer.observe(element("a"))
+      renderer.dispatchNativeEvents()
+
+      render(app(false))
+      renderer.dispatchNativeEvents()
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      expect(sizes).toEqual([
+        [40, 20],
+        [0, 0],
+      ])
+    } finally {
+      unmount()
+    }
+  })
+
+  it.each([
+    ["input", (ref: ReturnType<typeof setup>["ref"]) => <input ref={ref("a")} style={{ width: 120, height: 30 }} />],
+    ["img", (ref: ReturnType<typeof setup>["ref"]) => <img ref={ref("a")} style={{ width: 120, height: 30 }} />],
+    ["svg", (ref: ReturnType<typeof setup>["ref"]) => <svg ref={ref("a")} style={{ width: 120, height: 30 }} />],
+    ["textarea", (ref: ReturnType<typeof setup>["ref"]) => <textarea ref={ref("a")} style={{ width: 120, height: 30 }} />],
+    ["code", (ref: ReturnType<typeof setup>["ref"]) => <code ref={ref("a")} code="let a = 1" language="ts" style={{ width: 120, height: 30 }} />],
+    ["markdown", (ref: ReturnType<typeof setup>["ref"]) => <markdown ref={ref("a")} source="# hi" style={{ width: 120, height: 30 }} />],
+  ])("observes a <%s>", (_name, build) => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const sizes: number[][] = []
+      render(<div style={{ flexDirection: "column" }}>{build(ref)}</div>)
+      new ResizeObserver((entries) => {
+        for (const entry of entries) sizes.push([entry.borderBoxSize[0].inlineSize, entry.borderBoxSize[0].blockSize])
+      }).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect(sizes).toEqual([[120, 30]])
+    } finally {
+      unmount()
+    }
+  })
+
   it("rejects a box it cannot observe", () => {
     const { ref, element, unmount, render } = setup()
     try {
@@ -333,6 +384,73 @@ describeNative("IntersectionObserver", () => {
     }
   })
 
+  it("reports not intersecting once when the target is removed", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const { entries, callback } = collect()
+      const app = (shown: boolean) => (
+        <div style={{ flexDirection: "column" }}>
+          {shown ? <div ref={ref("a")} style={{ width: 20, height: 20 }} /> : null}
+        </div>
+      )
+      render(app(true))
+      new IntersectionObserver(callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      render(app(false))
+      renderer.dispatchNativeEvents()
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      expect(entries.map((entry) => entry.isIntersecting)).toEqual([true, false])
+      expect(entries[1]!.boundingClientRect.width).toBe(0)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("clips by an ancestor even when rootMargin reaches past it", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const { entries, callback } = collect()
+      render(
+        <div style={{ flexDirection: "column" }}>
+          <div style={{ width: 100, height: 100, overflow: "hidden" }}>
+            <div
+              ref={ref("a")}
+              style={{ position: "absolute", top: 150, left: 0, width: 40, height: 40 }}
+            />
+          </div>
+        </div>
+      )
+      new IntersectionObserver(callback, { rootMargin: "100px" }).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      // Inside the window and its margin, but the clip hides all of it.
+      expect(entries.map((entry) => entry.isIntersecting)).toEqual([false])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("sees a target past the window edge through rootMargin when nothing clips it", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const { entries, callback } = collect()
+      const { height } = renderer.getWindowSize()
+      render(
+        <div style={{ flexDirection: "column" }}>
+          <div
+            ref={ref("a")}
+            style={{ position: "absolute", top: height + 50, left: 0, width: 40, height: 40 }}
+          />
+        </div>
+      )
+      new IntersectionObserver(callback, { rootMargin: "100px" }).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect(entries.map((entry) => entry.isIntersecting)).toEqual([true])
+    } finally {
+      unmount()
+    }
+  })
+
   it("takeRecords drains the queue, and disconnect stops reports", () => {
     const { render, renderer, ref, element, unmount } = setup()
     try {
@@ -352,6 +470,31 @@ describeNative("IntersectionObserver", () => {
       unmount()
     }
   })
+
+  it.each(["auto", "clip", "scroll", "hidden"])(
+    "clips by an ancestor with overflow: %s",
+    (overflow) => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(
+          <div style={{ flexDirection: "column" }}>
+            <div style={{ width: 100, height: 100, overflow }}>
+              <div
+                ref={ref("a")}
+                style={{ position: "absolute", top: 150, left: 0, width: 40, height: 40 }}
+              />
+            </div>
+          </div>
+        )
+        new IntersectionObserver(callback).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([false])
+      } finally {
+        unmount()
+      }
+    }
+  )
 
   it("rejects thresholds and margins that are not valid", () => {
     expect(() => new IntersectionObserver(() => {}, { threshold: 2 })).toThrow(RangeError)

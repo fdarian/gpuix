@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { describe, expect, it } from "bun:test"
 import type { HostElement, IntersectionObserverEntry, ResizeObserverEntry } from "../index.js"
 import { IntersectionObserver, ResizeObserver } from "../index.js"
@@ -98,5 +98,50 @@ describe.skipIf(!hasNativeTestRenderer)("IntersectionObserver", () => {
     app.renderer.dispatchNativeEvents()
 
     expect(entries.map((entry) => entry.intersectionRatio)).toEqual([0.5])
+  })
+})
+
+describe.skipIf(!hasNativeTestRenderer)("observers on elements that come and go", () => {
+  it("keeps an IntersectionObserver started from a ref pending until the element has a box", async () => {
+    const entries: IntersectionObserverEntry[] = []
+    const observer = new IntersectionObserver((batch) => entries.push(...batch))
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ flexDirection: "column" }}>
+        <div ref={(host) => observer.observe(host)} style={{ width: 30, height: 20 }} />
+      </div>
+    ))
+    await Promise.resolve()
+    app.renderer.flush()
+    app.renderer.dispatchNativeEvents()
+
+    expect(entries.at(-1)).toMatchObject({ isIntersecting: true, intersectionRatio: 1 })
+  })
+
+  it("reports 0 by 0 when the element is removed", () => {
+    const [shown, setShown] = createSignal(true)
+    const sizes: number[][] = []
+    const app = createTestRoot()
+    let target!: HostElement
+    app.render(() => (
+      <div style={{ flexDirection: "column" }}>
+        <Show when={shown()}>
+          <div ref={(host) => (target = host)} style={{ width: 30, height: 20 }} />
+        </Show>
+      </div>
+    ))
+    new ResizeObserver((entries) => {
+      for (const entry of entries) sizes.push([entry.contentRect.width, entry.contentRect.height])
+    }).observe(target)
+    app.renderer.dispatchNativeEvents()
+    app.flushSync(() => setShown(false))
+    app.renderer.dispatchNativeEvents()
+    app.renderer.flush()
+    app.renderer.dispatchNativeEvents()
+
+    expect(sizes).toEqual([
+      [30, 20],
+      [0, 0],
+    ])
   })
 })
