@@ -260,9 +260,10 @@ export interface StyleDesc {
   scrollbarWidth?: number
 
   cursor?: CursorValue
-  /** `"auto"` blocks hits behind this element **and its wheel**. `"none"` never
-   *  blocks. Unset blocks clicks when the element paints a fill or is
-   *  positioned, but lets the wheel reach the ancestor scroller, like HTML. */
+  /** `"none"` makes the element never the target of a pointer event, so the
+   *  pointer reaches what is under it. It inherits, and a descendant's `"auto"`
+   *  restores it, like CSS. Every other element is a target where it paints,
+   *  whatever its fill or position. */
   pointerEvents?: "auto" | "none"
 
   /** "none" opts this element and its subtree out of text selection.
@@ -696,7 +697,6 @@ export interface AnchoredProps extends HostProps {
   snapMargin?: number
   deferred?: boolean
   priority?: number
-  occlude?: boolean
   /** `"window"` covers the whole viewport and tracks resizes natively. Ignores
    *  position, side, align, anchor, offset and fit. */
   fill?: "window"

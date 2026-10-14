@@ -87,6 +87,9 @@ function floatingSurfaceStateStyle(style?: InteractiveStyle): InteractiveStyle |
 
 function floatingSurfaceStyle(style?: StyleDesc): StyleDesc {
   const surface: StyleDesc = floatingSurfaceStateStyle(style) ?? {}
+  // The anchored surface is hit where it paints, so a layer that must not take
+  // the pointer (a tooltip) has to say so on the surface itself.
+  if (style?.pointerEvents !== undefined) surface.pointerEvents = style.pointerEvents
   const hover = floatingSurfaceStateStyle(style?.hover)
   const active = floatingSurfaceStateStyle(style?.active)
   if (hover) surface.hover = hover
@@ -300,7 +303,6 @@ export const FloatingLayer = forwardRef<PublicInstance, FloatingContentProps>(
         snapMargin={collisionPadding}
         deferred
         priority={1}
-        occlude={props.style?.pointerEvents !== "none"}
       >
         <div
           {...props}

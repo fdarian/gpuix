@@ -128,7 +128,6 @@ export const DialogPortal = forwardRef<PublicInstance, DialogPortalProps>(
         // Below menus and tooltips (priority 1), so a Select inside the popup
         // opens on top of it.
         priority={0}
-        occlude={modal}
         style={{
           display: "flex",
           alignItems: "center",

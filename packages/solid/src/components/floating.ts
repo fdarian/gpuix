@@ -161,7 +161,13 @@ export function FloatingLayer(props: FloatingContentProps): JSX.Element {
     snapMargin: props.collisionPadding ?? 8,
     deferred: true,
     priority: 1,
-    occlude: props.style?.pointerEvents !== "none",
+    // The anchored surface is hit where it paints, so a layer that must not take
+    // the pointer (a tooltip) has to say so on the surface itself.
+    get style() {
+      return props.style?.pointerEvents === undefined
+        ? undefined
+        : { pointerEvents: props.style.pointerEvents }
+    },
     get children() {
       return jsx("div", {
         ...props,
