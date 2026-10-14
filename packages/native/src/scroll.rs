@@ -14,9 +14,10 @@ use crate::style::StyleDesc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Overflow {
     Visible,
-    /// `hidden` and `clip`: the content is cut off. GPUI has no state in which a script can
-    /// still scroll such an element.
+    /// `clip`: the content is cut off and the element is not a scroll container.
     Clip,
+    /// `hidden`: cut off, but a scroll container that only code scrolls, as in a browser.
+    Hidden,
     /// `scroll` and `auto`. Scrollbars are overlays, so the two differ in nothing.
     Scroll,
 }
@@ -25,13 +26,19 @@ impl Overflow {
     pub(crate) fn parse(value: Option<&str>) -> Self {
         match value {
             Some("scroll" | "auto") => Self::Scroll,
-            Some("hidden" | "clip") => Self::Clip,
+            Some("hidden") => Self::Hidden,
+            Some("clip") => Self::Clip,
             _ => Self::Visible,
         }
     }
 
     pub(crate) fn clips(self) -> bool {
         self != Self::Visible
+    }
+
+    /// Whether the element has a scroll offset: `scroll`, `auto` and `hidden`.
+    pub(crate) fn has_offset(self) -> bool {
+        matches!(self, Self::Scroll | Self::Hidden)
     }
 }
 
@@ -50,8 +57,9 @@ impl Axes {
         }
     }
 
+    /// Whether the element has a scroll offset on either axis.
     pub(crate) fn scrolls(self) -> bool {
-        self.x == Overflow::Scroll || self.y == Overflow::Scroll
+        self.x.has_offset() || self.y.has_offset()
     }
 }
 
@@ -94,11 +102,12 @@ pub(crate) fn apply_container(
         handles.remove(&id);
         return el;
     }
-    el = match (axes.x, axes.y) {
-        (Overflow::Scroll, Overflow::Scroll) => el.overflow_scroll(),
-        (Overflow::Scroll, _) => el.overflow_x_scroll(),
+    el = match (axes.x.has_offset(), axes.y.has_offset()) {
+        (true, true) => el.overflow_scroll(),
+        (true, false) => el.overflow_x_scroll(),
         _ => el.overflow_y_scroll(),
     };
+    el = el.programmatic_scroll_only(axes.x == Overflow::Hidden, axes.y == Overflow::Hidden);
     // A browser moves both axes of a diagonal wheel, and gives each axis only its own delta.
     // This is also what makes GPUI hand the unused delta to an ancestor.
     el.style().allow_concurrent_scroll = Some(true);
@@ -430,6 +439,10 @@ impl KeyScroll {
         let offset = handle.offset();
         let max = handle.max_offset();
         let client = handle.padding_box().size;
+        let user = handle.user_scrollable();
+        if !(if self.vertical { user.y } else { user.x }) {
+            return None;
+        }
         let (position, range, size) = if self.vertical {
             (-f32::from(offset.y), f32::from(max.y), f32::from(client.height))
         } else {
@@ -567,11 +580,13 @@ mod tests {
     }
 
     #[test]
-    fn auto_scrolls_like_scroll_and_clip_like_hidden() {
+    fn auto_scrolls_like_scroll_and_hidden_is_a_scroll_container_the_wheel_ignores() {
         assert_eq!(Overflow::parse(Some("auto")), Overflow::Scroll);
         assert_eq!(Overflow::parse(Some("scroll")), Overflow::Scroll);
         assert_eq!(Overflow::parse(Some("clip")), Overflow::Clip);
-        assert_eq!(Overflow::parse(Some("hidden")), Overflow::Clip);
+        assert_eq!(Overflow::parse(Some("hidden")), Overflow::Hidden);
+        assert!(Overflow::Hidden.has_offset());
+        assert!(!Overflow::Clip.has_offset());
         assert_eq!(Overflow::parse(Some("visible")), Overflow::Visible);
         assert_eq!(Overflow::parse(None), Overflow::Visible);
     }
@@ -579,9 +594,10 @@ mod tests {
     #[test]
     fn axis_overflow_overrides_the_shorthand() {
         let axes = Axes::of(&style(Some("scroll"), None, Some("hidden")));
-        assert_eq!((axes.x, axes.y), (Overflow::Scroll, Overflow::Clip));
+        assert_eq!((axes.x, axes.y), (Overflow::Scroll, Overflow::Hidden));
         assert!(axes.scrolls());
-        assert!(!Axes::of(&style(Some("hidden"), None, None)).scrolls());
+        assert!(Axes::of(&style(Some("hidden"), None, None)).scrolls());
+        assert!(!Axes::of(&style(Some("clip"), None, None)).scrolls());
     }
 
     #[test]

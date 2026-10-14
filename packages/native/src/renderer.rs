@@ -7328,7 +7328,12 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     // element and is applied by `scroll::apply_container`.
     {
         let axes = crate::scroll::Axes::of(style);
-        let hides = |overflow| overflow == crate::scroll::Overflow::Clip;
+        let hides = |overflow| {
+            matches!(
+                overflow,
+                crate::scroll::Overflow::Clip | crate::scroll::Overflow::Hidden
+            )
+        };
         if hides(axes.x) && hides(axes.y) {
             el = el.overflow_hidden();
         } else if hides(axes.x) {

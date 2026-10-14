@@ -298,7 +298,7 @@ describeNative("overflow values", () => {
     }
   })
 
-  it.each(["hidden", "clip", "visible"])("does not scroll on %s", (overflow) => {
+  it.each(["clip", "visible"])("is not a scroll container on %s", (overflow) => {
     const { renderer, unmount } = setup(
       <div testId="scroller" style={{ width: 200, height: 100, overflow }}>
         <div style={{ height: 400 }} />
@@ -308,6 +308,68 @@ describeNative("overflow values", () => {
       renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
       const id = renderer.findByTestId("scroller")!.id
       expect(renderer.getScrollOffset(id)).toBeNull()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("is a scroll container that only code scrolls on hidden", () => {
+    const { renderer, unmount } = setup(
+      <div
+        testId="scroller"
+        tabIndex={0}
+        style={{ width: 200, height: 100, padding: 10, overflow: "hidden" }}
+      >
+        <div style={{ height: 400 }} />
+      </div>
+    )
+    try {
+      const id = renderer.findByTestId("scroller")!.id
+      // The same extent as any scroller: 10 + 400 + 10 padding and the 10 above.
+      expect(metrics(renderer, "scroller")).toMatchObject({ scrollHeight: 420, clientHeight: 100 })
+
+      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      expect(renderer.getScrollOffset(id)).toEqual([0, 0])
+      renderer.nativeSimulateKeystrokes(id, "down")
+      renderer.nativeSimulateKeystrokes(id, "pagedown")
+      expect(renderer.getScrollOffset(id)).toEqual([0, 0])
+
+      renderer.scrollTo(id, 0, -60)
+      expect(renderer.getScrollOffset(id)).toEqual([0, -60])
+      renderer.scrollTo(id, 0, -10_000)
+      expect(renderer.getScrollOffset(id)).toEqual([0, -320])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("lets a wheel over hidden go to the scroller around it", () => {
+    const { renderer, unmount } = setup(
+      <div testId="outer" style={{ width: 200, height: 100, overflow: "auto" }}>
+        <div style={{ width: 200, height: 100, overflow: "hidden" }}>
+          <div style={{ height: 400 }} />
+        </div>
+        <div style={{ height: 400 }} />
+      </div>
+    )
+    try {
+      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, -40])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("scrolls a hidden element into view for a descendant", () => {
+    const { renderer, unmount } = setup(
+      <div testId="scroller" style={{ width: 200, height: 100, overflow: "hidden" }}>
+        <div style={{ height: 300 }} />
+        <div testId="target" style={{ height: 20 }} />
+      </div>
+    )
+    try {
+      renderer.scrollIntoView(renderer.findByTestId("target")!.id, "start")
+      expect(renderer.getScrollOffset(renderer.findByTestId("scroller")!.id)).toEqual([0, -220])
     } finally {
       unmount()
     }
