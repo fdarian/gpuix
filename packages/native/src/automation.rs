@@ -95,20 +95,22 @@ pub fn track_host_bounds<E>(
 where
     E: gpui::InteractiveElement,
 {
-    el.on_painted(move |bounds, _, cx| {
+    el.on_painted(move |bounds, window, cx| {
         record_bounds(id, bounds);
         if let Some(selectable) = selection_start {
             crate::text::record_start_region(bounds, selectable);
         }
         if let Some(report) = &report {
-            report(bounds, cx);
+            report(bounds, window, cx);
         }
     })
 }
 
 /// Called with an element's painted box on every paint, from inside paint. It
-/// is how `onLayout` and `onScrollChange` see what the frame produced.
-pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, &mut App)>;
+/// is how `onLayout`, `onScrollChange` and the observers see what the frame
+/// produced. The window is the one being painted, so a reporter can read the
+/// content mask the element was painted under.
+pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
 
 pub fn record_bounds(id: u64, bounds: Bounds<Pixels>) {
     BOUNDS.with(|cell| {

@@ -865,6 +865,12 @@ export interface EventPayload {
    * Populated for: focus, blur, focusIn, focusOut.
    */
   focusVisible?: boolean
+  /**
+   * Content box, visible rect and viewport for an observer.
+   * Populated for: resizeObserve, intersectObserve. With `x`, `y`, `width`
+   * and `height` as the border box.
+   */
+  observation?: Observation
   modifiers?: EventModifiers
 }
 
@@ -943,6 +949,41 @@ export interface LayerShellOptions {
    * overlay that never takes keyboard focus.
    */
   keyboardInteractivity?: string
+}
+
+/**
+ * What one observation event carries beyond the element's border box, which
+ * travels in the payload's `x`, `y`, `width` and `height`.
+ */
+export interface Observation {
+  /**
+   * False when the element did not paint this frame (`visibility: hidden`, a
+   * virtual list row outside its window, removed). Every number is then 0.
+   */
+  present: boolean
+  /** Size of the content box: the border box minus border and padding. */
+  contentWidth: number
+  contentHeight: number
+  /**
+   * Padding on the left and top, which is where the content box starts
+   * inside the padding box (`ResizeObserverEntry.contentRect.x` and `.y`).
+   */
+  paddingLeft: number
+  paddingTop: number
+  /**
+   * The border box clipped by every ancestor's `overflow` and by the
+   * window, in window coordinates. Zero-sized when clipped away entirely.
+   */
+  visibleX: number
+  visibleY: number
+  visibleWidth: number
+  visibleHeight: number
+  /**
+   * The window's paintable size, which is the viewport of an
+   * `IntersectionObserver` with no `root`.
+   */
+  viewportWidth: number
+  viewportHeight: number
 }
 
 export interface PathPromptOptions {

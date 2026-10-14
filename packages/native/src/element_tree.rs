@@ -212,6 +212,11 @@ pub struct EventPayload {
     /// Populated for: focus, blur, focusIn, focusOut.
     pub focus_visible: Option<bool>,
 
+    /// Content box, visible rect and viewport for an observer.
+    /// Populated for: resizeObserve, intersectObserve. With `x`, `y`, `width`
+    /// and `height` as the border box.
+    pub observation: Option<crate::observers::Observation>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -269,6 +274,7 @@ impl Default for EventPayload {
             pointer_id: None,
             pointer_type: None,
             focus_visible: None,
+            observation: None,
             modifiers: None,
         }
     }

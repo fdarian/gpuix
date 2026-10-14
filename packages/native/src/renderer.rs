@@ -4409,6 +4409,8 @@ pub(crate) struct PaintReports {
     /// Scroll offset last seen for `onScrollChange`. Recorded on the first paint
     /// without an event, so only movement is reported.
     scrolls: HashMap<u64, (f32, f32)>,
+    /// What `ResizeObserver` and `IntersectionObserver` last saw.
+    pub(crate) observers: crate::observers::ObserverReports,
 }
 
 pub(crate) type SharedPaintReports = Rc<RefCell<PaintReports>>;
@@ -5811,6 +5813,11 @@ impl gpui::Render for GpuixView {
                         .is_some_and(|element| element.events().contains("scrollChange"))
                 });
             }
+            crate::observers::prune(&mut reports.observers, |id, event| {
+                tree.elements
+                    .get(&id)
+                    .is_some_and(|element| element.events().contains(event))
+            });
         }
         // Build the element tree. custom_registry, focus_handles, and scroll_handles
         // are different fields of self, so Rust allows borrowing all simultaneously.
@@ -5899,6 +5906,10 @@ impl gpui::Render for GpuixView {
                     },
                 ))
                 .child(crate::automation::bounds_frame_reset())
+                .child(crate::observers::frame_sweep(
+                    self.paint_reports.clone(),
+                    callback.clone(),
+                ))
                 .child(result)
                 .into_any_element()
         };
@@ -6376,7 +6387,7 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
-        paint_reporter(element.id, element.events(), ctx),
+        paint_reporter(element.id, element.events(), style, ctx),
     );
 
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
@@ -7223,6 +7234,7 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
 fn paint_reporter(
     id: u64,
     events: &HashSet<String>,
+    style: Option<&StyleDesc>,
     ctx: &BuildCtx,
 ) -> Option<crate::automation::PaintReporter> {
     let layout = events.contains("layout");
@@ -7230,17 +7242,27 @@ fn paint_reporter(
         .contains("scrollChange")
         .then(|| ctx.scroll_handles.get(&id).cloned())
         .flatten();
-    if !layout && scroll.is_none() {
+    let observe = crate::observers::reporter(
+        id,
+        events,
+        style,
+        ctx.paint_reports,
+        ctx.event_callback,
+    );
+    if !layout && scroll.is_none() && observe.is_none() {
         return None;
     }
     let callback = ctx.event_callback.clone()?;
     let reports = ctx.paint_reports.clone();
-    Some(Rc::new(move |bounds, cx| {
+    Some(Rc::new(move |bounds, window, cx| {
         if layout {
             report_layout(id, bounds, &reports, &callback, cx);
         }
         if let Some(handle) = &scroll {
             report_scroll(id, handle.offset(), &reports, &callback, cx);
+        }
+        if let Some(observe) = &observe {
+            observe(bounds, window, cx);
         }
     }))
 }

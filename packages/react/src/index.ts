@@ -15,6 +15,7 @@ export {
   clipboard,
   createTextSearchController,
   document,
+  IntersectionObserver,
   observeAppearance,
   observeSelectedText,
   observeWindowInsets,
@@ -23,6 +24,7 @@ export {
   readWindowInsets,
   readWindowSize,
   window,
+  ResizeObserver,
 } from "@gpuix/native/host"
 export type {
   Appearance,
@@ -32,6 +34,15 @@ export type {
   DismissLayer,
   DomEvent,
   WindowEventListener,
+  IntersectionObserverCallback,
+  IntersectionObserverEntry,
+  IntersectionObserverInit,
+  ObservableElement,
+  ResizeObserverBoxOptions,
+  ResizeObserverCallback,
+  ResizeObserverEntry,
+  ResizeObserverOptions,
+  ResizeObserverSize,
 } from "@gpuix/native/host"
 export type {
   FindRangesOptions,

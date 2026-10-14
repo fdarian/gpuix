@@ -37,6 +37,7 @@ export * from "./forms.js"
 export * from "./bounds.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"
+export * from "./observers.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
 

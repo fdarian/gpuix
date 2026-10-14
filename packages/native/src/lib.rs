@@ -26,6 +26,7 @@ mod markdown;
 mod motion;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod platform;
+mod observers;
 mod renderer;
 // The data model is public so `examples/bench_serde.rs` measures the real
 // types instead of a copy that silently drifts from them.
@@ -45,6 +46,7 @@ mod updater;
 mod test_renderer;
 
 pub use element_tree::*;
+pub use observers::Observation;
 pub use renderer::*;
 pub use style::*;
 

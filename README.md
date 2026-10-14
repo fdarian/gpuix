@@ -2828,6 +2828,47 @@ instead of a zero rect when the element has no box. `<input>` reports its border
 box like every other element. The browser (wasm) build still answers from the
 last painted frame.
 
+### Observe size and visibility
+
+`ResizeObserver` and `IntersectionObserver` follow the DOM. Export them from
+`@gpuix/react` or `@gpuix/solid` and pass a host element (a React `ref`, a Solid
+`ref`) where the DOM takes an `Element`. They are not installed as globals.
+
+```tsx
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) setWidth(entry.contentRect.width)
+})
+useEffect(() => {
+  observer.observe(ref.current!, { box: "border-box" })
+  return () => observer.disconnect()
+}, [])
+```
+
+`ResizeObserver` calls back with `entries` (`target`, `contentRect`,
+`borderBoxSize`, `contentBoxSize`) and the observer. The first callback follows
+`observe()` for an element that is not 0 by 0, then one per change of the
+observed box (`"content-box"`, the default, or `"border-box"`). The content box
+is the border box minus the element's own `padding` and `borderWidth`; `hover`
+and `active` overrides of those are not counted. An element that stops painting
+(`visibility: "hidden"`, a virtual list row outside its window) reports 0 by 0.
+`device-pixel-content-box` throws a `TypeError`.
+
+`IntersectionObserver` takes `{ root, rootMargin, threshold }`. `root` is a host
+element or `null` for the window. Entries have `isIntersecting`,
+`intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds`,
+`time` and `target`. Each target gets an entry after `observe()` (an element
+that never paints reports not intersecting) and then one per threshold crossing
+or `isIntersecting` flip. The intersection is the target's border box clipped by
+every ancestor's `overflow`, then by the root. `rootMargin` takes 1 to 4 lengths
+in `px` or `%`. With a non-zero margin the target is tested unclipped by its
+ancestors, because the clip native reports is already cut at the window edge.
+
+Callbacks run once per batch of a frame's reports, after the frame, so state set
+in one paints a frame later. Observing an element that is not mounted yet is
+allowed for one microtask, then throws. Removing an element does not report; call
+`unobserve` or `disconnect`. Both observers work on `<div>` and `<text>`, like
+`onLayout`, and nowhere else yet.
+
 ### Find what is under a point
 
 `getElementsAt(x, y)` returns the ids of the elements whose last painted box
@@ -3563,7 +3604,7 @@ text imports no longer need a runtime flag.
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
 | Scroll | `onScroll` | `deltaX`, `deltaY`, `precise`, `touchPhase`, `modifiers` |
 | Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
-| Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. |
+| Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |

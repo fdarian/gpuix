@@ -26,6 +26,7 @@ import type {
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
 import { flushPendingMutations } from "./bounds.js"
+import { flushObservations } from "./observers.js"
 import { readFontFiles } from "./fonts.js"
 import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
@@ -374,6 +375,8 @@ export class TestRenderer implements NativeRenderer {
         }
       }
     }
+    // Nothing else would run the observers' batch in a synchronous test.
+    flushObservations(this)
   }
 
   /** End-to-end: focus element → simulate keystrokes through GPUI →
