@@ -51,6 +51,22 @@ describe("bindClipboard", () => {
     expect(await clipboard.readText()).toBe("second")
   })
 
+  it("does not create a navigator", () => {
+    const saved = Object.getOwnPropertyDescriptor(globalThis, "navigator")
+    Object.defineProperty(globalThis, "navigator", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+    try {
+      bindClipboard(fakeHost())
+      expect(scope.navigator).toBeUndefined()
+    } finally {
+      if (saved) Object.defineProperty(globalThis, "navigator", saved)
+      else delete scope.navigator
+    }
+  })
+
   it("leaves an existing navigator.clipboard alone", () => {
     const existing = { readText: async () => "web" }
     Object.defineProperty(scope.navigator, "clipboard", {

@@ -24,7 +24,6 @@ export * from "./events/listeners.js"
 export * from "./events/types.js"
 export type { AriaProps }
 export * from "./clipboard.js"
-export * from "./eyedropper.js"
 export * from "./focus.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"

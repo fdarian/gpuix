@@ -959,8 +959,7 @@ const text = await clipboard.readText() // '' when the clipboard has no text
 ```
 
 When a renderer is created and the runtime has no `navigator.clipboard`,
-GPUIX installs `clipboard` there (and a minimal `navigator` if the runtime has
-none), so code written for the web runs unchanged. An existing
+GPUIX installs `clipboard` there so code written for the web runs unchanged. An existing
 `navigator.clipboard` is never replaced. It always talks to the renderer
 created last. Only text is supported, not images or `ClipboardItem`s; the
 browser build leaves the browser's own `navigator.clipboard` alone.
@@ -984,9 +983,8 @@ if (typeof EyeDropper !== 'undefined') {
 `open()` shows the system magnifier and resolves with a lowercase `#rrggbb` in
 sRGB. It rejects with an `AbortError` when the user presses Escape, and with
 `signal.reason` when `signal` aborts. Windows and Linux do not define
-`EyeDropper`, like a browser without it. `EyeDropper` is also exported from
-`@gpuix/react` and `@gpuix/solid` for typed use, but it is only a working
-picker where the global exists.
+`EyeDropper`, like a browser without it. It is a global only; nothing is
+imported.
 
 macOS cannot dismiss the magnifier from code. After an abort the picker stays
 on screen until the user clicks or presses Escape, and `open()` rejects with an

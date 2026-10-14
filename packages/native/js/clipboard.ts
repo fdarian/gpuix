@@ -41,20 +41,14 @@ export const clipboard: Clipboard = createClipboard(() => activeHost)
 
 /**
  * Point `clipboard` at `host`, and expose it as `navigator.clipboard` when the
- * runtime has none, so code written for the web runs unchanged.
+ * runtime has a `navigator` without one, so code written for the web runs
+ * unchanged. A runtime with no `navigator` is left without one.
  */
 export function bindClipboard(host: ClipboardHost): void {
   activeHost = host
   const scope = globalThis as { navigator?: { clipboard?: Clipboard } }
-  if (scope.navigator === undefined) {
-    Object.defineProperty(globalThis, "navigator", {
-      value: {},
-      configurable: true,
-      writable: true,
-    })
-  }
-  const target = scope.navigator as { clipboard?: Clipboard }
-  if (target.clipboard === undefined) {
+  const target = scope.navigator
+  if (target !== undefined && target.clipboard === undefined) {
     Object.defineProperty(target, "clipboard", {
       value: clipboard,
       configurable: true,

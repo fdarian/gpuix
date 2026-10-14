@@ -14,7 +14,6 @@ export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
 export {
   clipboard,
   createTextSearchController,
-  EyeDropper,
   observeAppearance,
   observeSelectedText,
   observeWindowInsets,
@@ -26,8 +25,6 @@ export {
 export type {
   Appearance,
   Clipboard,
-  ColorSelectionOptions,
-  ColorSelectionResult,
   DismissLayer,
 } from "@gpuix/native/host"
 export type {
