@@ -307,7 +307,9 @@ export interface StyleDesc {
   color?: string
   /** CSS `color-scheme`, inherited: `"normal"` (light), `"light"`, `"dark"`,
    *  `"light dark"` (follows the window appearance), `"only light"`, `"only dark"`.
-   *  It picks the side of `light-dark()`; it does not recolour default text. */
+   *  It picks the side of `light-dark()` and sets the default text colour (CSS
+   *  `CanvasText`): black under a light scheme, white under a dark one, until some
+   *  element declares a `color`. */
   colorScheme?: string
   opacity?: number
 

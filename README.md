@@ -4224,7 +4224,7 @@ freely:
 
 | Form | Meaning |
 |---|---|
-| `currentColor` | The element's computed `color`, inherited like in CSS. The root `color` is black, GPUI's default text colour. |
+| `currentColor` | The element's computed `color`, inherited like in CSS. The default `color` is black under a light `colorScheme` and white under a dark one (CSS `CanvasText`). |
 | `light-dark(a, b)` | `a` under a light `colorScheme`, `b` under a dark one. |
 | `color-mix(in oklab, a 30%, b)` | Mixes in `srgb`, `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`, `xyz`, `xyz-d50`, `xyz-d65`, `lab`, `lch`, `oklab`, `oklch`, `hsl` or `hwb`. Polar spaces take `shorter` (default), `longer`, `increasing` or `decreasing` `hue`. |
 | `color(display-p3 1 0 0)` | The same RGB and XYZ spaces, converted to sRGB and clipped to its gamut. |
@@ -4232,8 +4232,10 @@ freely:
 `colorScheme` is inherited and takes the CSS values: `"normal"` (light, the
 default), `"light"`, `"dark"`, `"light dark"` (follows the window appearance, see
 [`getAppearance()`](#appearance) and updates when it changes) and `"only light"` /
-`"only dark"`. It only picks the side of `light-dark()`: unlike a browser, it does
-not change the default text colour.
+`"only dark"`. It picks the side of `light-dark()`, and it sets the default text
+colour like CSS `CanvasText`: black under a light scheme and white under a dark
+one, until an element declares a `color`. A window with no `colorScheme` is
+light, so its default text stays black even when the system is dark.
 
 ```tsx
 <div

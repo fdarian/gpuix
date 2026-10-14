@@ -90,21 +90,35 @@ pub(crate) struct ColorContext {
     pub appearance: Scheme,
     /// The parent's computed `color`, which is what `color: currentColor` means.
     inherited: gpui::Rgba,
-    /// Set when this element's own style declared a `color` that resolved.
+    /// The text colour this element sets on gpui, if any: its own `color` when that
+    /// resolved, or the new default text colour when its `colorScheme` changed it.
     pub declared: Option<gpui::Rgba>,
+    /// No element up to this one declared a `color`, so the text colour is still
+    /// the initial `CanvasText`, which follows `colorScheme`.
+    canvas_text: bool,
+}
+
+/// CSS `CanvasText`: the initial `color`, black on a light scheme and white on a dark one.
+fn canvas_text(scheme: Scheme) -> gpui::Rgba {
+    let value = match scheme {
+        Scheme::Light => 0.0,
+        Scheme::Dark => 1.0,
+    };
+    gpui::Rgba { r: value, g: value, b: value, a: 1.0 }
 }
 
 impl ColorContext {
-    /// The initial `color` is GPUI's default text colour, black, and the initial
-    /// `color-scheme` is `normal`, which is light.
+    /// The initial `color-scheme` is `normal`, which is light, and the initial
+    /// `color` is `CanvasText`, so black. GPUI's default text colour is black too.
     pub(crate) fn root(appearance: Scheme) -> Self {
-        let black = gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+        let black = canvas_text(Scheme::Light);
         Self {
             current: black,
             scheme: Scheme::Light,
             appearance,
             inherited: black,
             declared: None,
+            canvas_text: true,
         }
     }
 
@@ -142,7 +156,19 @@ impl ColorContext {
             .color
             .as_deref()
             .and_then(|value| resolve_color(value, &context));
-        context.current = context.declared.unwrap_or(kept_color);
+        context.canvas_text = base.canvas_text && context.declared.is_none();
+        context.current = match context.declared {
+            Some(color) => color,
+            None if context.canvas_text => {
+                let color = canvas_text(scheme);
+                // gpui's text colour is black until told otherwise.
+                if scheme != base.scheme {
+                    context.declared = Some(color);
+                }
+                color
+            }
+            None => kept_color,
+        };
         context
     }
 
@@ -400,6 +426,36 @@ mod tests {
         // An element's color is resolved under its own scheme.
         let both = root.descend(&style(Some(value), Some("dark")));
         assert_eq!(both.current, rgba(0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn the_default_text_colour_follows_the_scheme_until_a_color_is_declared() {
+        let root = ColorContext::root(Scheme::Dark);
+        assert_eq!(root.current, rgba(0.0, 0.0, 0.0));
+        let dark = root.descend(&style(None, Some("dark")));
+        assert_eq!(dark.current, rgba(1.0, 1.0, 1.0));
+        assert_eq!(dark.declared, Some(rgba(1.0, 1.0, 1.0)));
+        // Inherited without being re-declared.
+        let child = dark.descend(&style(None, None));
+        assert_eq!((child.current, child.declared), (rgba(1.0, 1.0, 1.0), None));
+        // A light island inside it flips back.
+        let light = dark.descend(&style(None, Some("light")));
+        assert_eq!((light.current, light.declared), (rgba(0.0, 0.0, 0.0), Some(rgba(0.0, 0.0, 0.0))));
+        // `light dark` follows the window, and `normal` stays black.
+        assert_eq!(root.descend(&style(None, Some("light dark"))).current, rgba(1.0, 1.0, 1.0));
+        assert_eq!(ColorContext::root(Scheme::Light).descend(&style(None, Some("light dark"))).current, rgba(0.0, 0.0, 0.0));
+        assert_eq!(root.descend(&style(None, Some("normal"))).declared, None);
+    }
+
+    #[test]
+    fn a_declared_color_stops_following_the_scheme() {
+        let root = ColorContext::root(Scheme::Dark);
+        let red = root.descend(&style(Some("#ff0000"), None));
+        let dark_child = red.descend(&style(None, Some("dark")));
+        assert_eq!((dark_child.current, dark_child.declared), (rgba(1.0, 0.0, 0.0), None));
+        // Same element: the color wins over the scheme's default.
+        let both = root.descend(&style(Some("#ff0000"), Some("dark")));
+        assert_eq!(both.declared, Some(rgba(1.0, 0.0, 0.0)));
     }
 
     #[test]
