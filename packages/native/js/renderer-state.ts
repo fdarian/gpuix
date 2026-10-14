@@ -1,8 +1,8 @@
 import type { EventPayload } from "../index.js"
-import { dispatchDomEvent, type DomDispatchResult, type DomEvent } from "./events/dispatch.js"
-import { createDragDispatcher, isDragEvent } from "./events/drag.js"
-import { handlerEventType, hasDomListener } from "./events/route.js"
-import { dispatchPropagating, GpuixEventTarget, window, document } from "./events/window-target.js"
+import type { DomDispatchResult } from "./events/dispatch.js"
+import { createDragDispatcher } from "./events/drag.js"
+import { handlesEvent, normalizeEventType, runRootEvent } from "./events/keyboard-defaults.js"
+import { GpuixEventTarget } from "./events/window-target.js"
 import type {
   ElementIdAllocator,
   EventHandlerMap,
@@ -106,7 +106,7 @@ export interface RendererState {
   pushLayer(layer: DismissLayer, options?: PushLayerOptions): () => void
 }
 
-type ActiveRoot = RendererRootBinding & {
+export type ActiveRoot = RendererRootBinding & {
   handlers: RendererRootHandlers
   /** Listens at the window level for this root only: the `onKeyDown` / `onKeyUp` options. */
   scoped: GpuixEventTarget
@@ -133,50 +133,6 @@ function allStates(): WeakMap<NativeRenderer, RendererState> {
   return states
 }
 
-function hasCommandModifier(event: EventPayload): boolean {
-  const modifiers = event.modifiers
-  return Boolean(modifiers?.ctrl || modifiers?.alt || modifiers?.cmd)
-}
-
-const KEY_EVENT_TYPES: ReadonlySet<string> = new Set(["keyDown", "keyUp"])
-
-/**
- * Native may still emit the old camelCase pointer names; handlers are
- * registered under the DOM's lowercase ones.
- */
-function normalizeEventType(event: EventPayload): EventPayload {
-  const eventType = handlerEventType(event.eventType)
-  return eventType === event.eventType ? event : { ...event, eventType }
-}
-
-/** Whether `event` was meant for the live root, and something is there to hear it. */
-function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
-  if (event.eventType === "selectionChange") {
-    return event.elementId === root.windowSelectionEventId && Boolean(root.handlers.onSelectionChange)
-  }
-  if (event.eventType === "appearanceChange") {
-    return event.elementId === root.windowAppearanceEventId && Boolean(root.handlers.onAppearanceChange)
-  }
-  // Document-level in the DOM, so no element id or listener flag: native
-  // fires them only for a lock JS asked for or held.
-  if (event.eventType === "pointerlockchange") return Boolean(root.handlers.onPointerLockChange)
-  if (event.eventType === "pointerlockerror") return Boolean(root.handlers.onPointerLockError)
-  if (KEY_EVENT_TYPES.has(event.eventType)) {
-    // Native aims a key at the window when nothing focused listens; that
-    // address goes stale when the root is replaced.
-    return event.path != null || event.elementId === root.windowKeyEventId
-  }
-  if (isDragEvent(event)) return true
-  if (event.path == null) {
-    return root.eventHandlers.get(event.elementId)?.has(event.eventType) === true
-  }
-  return (
-    hasDomListener(root.eventHandlers, event) ||
-    window.hasListeners(event.eventType) ||
-    document.hasListeners(event.eventType)
-  )
-}
-
 export function createRendererState(renderer: NativeRenderer): RendererState {
   const existing = allStates().get(renderer)
   if (existing) return existing
@@ -189,51 +145,13 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     if (!renderer.cancelDrag) throw new Error("This renderer does not support cancelDrag")
     renderer.cancelDrag()
   })
-  const notHandled: DomDispatchResult = { defaultPrevented: false, propagationStopped: false }
 
-  const runEvent = (root: ActiveRoot, event: EventPayload): DomDispatchResult => {
-    if (event.eventType === "selectionChange") {
-      root.handlers.onSelectionChange?.({ ...event, elementId: 0 }, renderer)
-      return notHandled
-    }
-    if (event.eventType === "appearanceChange") {
-      root.handlers.onAppearanceChange?.({ ...event, elementId: 0 }, renderer)
-      return notHandled
-    }
-    if (event.eventType === "pointerlockchange") {
-      root.handlers.onPointerLockChange?.({ ...event, elementId: 0 }, renderer)
-      return notHandled
-    }
-    if (event.eventType === "pointerlockerror") {
-      root.handlers.onPointerLockError?.({ ...event, elementId: 0 }, renderer)
-      return notHandled
-    }
-    if (isDragEvent(event)) {
-      dispatchDrag(root, event)
-      return notHandled
-    }
-    if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType)) {
-      // Aimed at one element, with no path to walk, but still cancelable.
-      return dispatchDomEvent(root, event)
-    }
-    const { event: domEvent, ...result } = dispatchPropagating(root, event, root.scoped)
-    if (event.eventType === "keyDown" && !result.defaultPrevented) {
-      runKeyDefault(root, domEvent)
-    }
-    return result
-  }
-
-  // The default actions of a key run after every handler had the chance to
-  // call preventDefault().
-  const runKeyDefault = (root: ActiveRoot, event: DomEvent) => {
-    if (hasCommandModifier(event)) return
-    if (event.key === "escape") {
-      layers.at(-1)?.layer.onEscapeKeyDown(event)
-    } else if (event.key === "tab" && root.handlers.tabNavigation !== false) {
-      if (event.modifiers?.shift) renderer.focusPrevious?.()
-      else renderer.focusNext?.()
-    }
-  }
+  const runEvent = (root: ActiveRoot, event: EventPayload): DomDispatchResult =>
+    runRootEvent(root, event, {
+      renderer,
+      topLayer: () => layers.at(-1)?.layer,
+      dispatchDrag,
+    })
 
   const state: RendererState = {
     ids,
@@ -287,7 +205,9 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     dispatchSync(received) {
       const root = active
       const event = normalizeEventType(received)
-      if (!root || !handlesEvent(root, event)) return notHandled
+      if (!root || !handlesEvent(root, event)) {
+        return { defaultPrevented: false, propagationStopped: false }
+      }
       const result = runEvent(root, event)
       root.handlers.onEvent?.(received)
       return result
