@@ -562,7 +562,7 @@ impl TestGpuixRenderer {
         with_test_state(|cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| view.matches_focus(id, &selector, window, cx))
+                view.update(app, |view, _cx| view.matches_focus(id, &selector, window))
             })
             .map_err(|error| Error::from_reason(error.to_string()))?
             .map_err(Error::from_reason)

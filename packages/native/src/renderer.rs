@@ -759,9 +759,9 @@ async fn run_ui_commands(
                 id,
                 selector,
                 response,
-            } => window.update(cx, move |view, window, cx| {
+            } => window.update(cx, move |view, window, _cx| {
                 response
-                    .send(view.matches_focus(id, &selector, window, cx))
+                    .send(view.matches_focus(id, &selector, window))
                     .ok();
             }),
             UiCommand::FocusNext => window.update(cx, |_view, window, cx| window.focus_next(cx)),
@@ -2012,8 +2012,8 @@ impl GpuixRenderer {
     pub fn matches_focus(&self, element_id: f64, selector: String) -> Result<bool> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
-            view.matches_focus(id, &selector, window, cx)
+        return update_window(move |view, window, _cx| {
+            view.matches_focus(id, &selector, window)
         })?
         .map_err(Error::from_reason);
 
@@ -3503,7 +3503,7 @@ fn apply_web_text_selection(
         selector: String,
     ) -> Result<bool, wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
-        update_web_window(move |view, window, cx| view.matches_focus(id, &selector, window, cx))?
+        update_web_window(move |view, window, _cx| view.matches_focus(id, &selector, window))?
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 
@@ -5401,7 +5401,6 @@ impl GpuixView {
         id: u64,
         selector: &str,
         window: &gpui::Window,
-        cx: &mut gpui::Context<Self>,
     ) -> std::result::Result<bool, String> {
         self.observe_focus(window);
         let tree = self.tree.lock().unwrap();
