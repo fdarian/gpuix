@@ -25,16 +25,15 @@
  *
  * ── Why a drag needs no overlay ─────────────────────────────────────────────
  *
- * A node that listens for `onMouseDown` and `onMouseMove` captures the pointer,
- * so move and up keep arriving after the pointer leaves the clip, leaves the
- * timeline, and leaves the window. That is HTML `setPointerCapture`. A
- * full-window overlay mounted on press cannot do the same job: capture is armed
- * by the press itself, and the overlay does not exist yet when that happens, so
- * a release outside the window is lost.
+ * The press handler calls `setPointerCapture` on the element, as in HTML, so
+ * move and up keep arriving after the pointer leaves the clip, leaves the
+ * timeline, and leaves the window. A full-window overlay mounted on press
+ * cannot do the same job: the overlay does not exist yet when the press
+ * happens, so a release outside the window is lost.
  *
- * Only the pressed element receives moves while the gesture runs, and only the
- * hovered element receives them otherwise, so the cost is one event per pointer
- * move, exactly like a DOM `mousemove` listener.
+ * Only the capturing element receives moves while the gesture runs, and only
+ * the hovered element receives them otherwise, so the cost is one event per
+ * pointer move, exactly like a DOM `mousemove` listener.
  *
  * ── Why the translating wrappers set pointerEvents: "none" ──────────────────
  *
@@ -52,6 +51,7 @@ import {
   render,
   useWindowSize,
   type EventPayload,
+  type PublicInstance,
   type StyleDesc,
 } from '@gpuix/react'
 import {
@@ -150,18 +150,33 @@ interface DragState {
   scrollY: number
 }
 
-/**
- * The three listeners every draggable surface installs. `begin` and `move` on
- * the same node is what arms GPUI's pointer capture, so `move` and `end` keep
- * arriving after the pointer leaves that node, and after it leaves the window.
- */
 /** A mouse down. It bubbles, so a clip stops it before the grid starts a marquee. */
 type PressEvent = EventPayload & { stopPropagation(): void }
 
+/**
+ * The three listeners every draggable surface installs. `begin` runs on the
+ * press, where `usePointerGrab` captures the pointer on the surface, so `move`
+ * and `end` keep arriving after the pointer leaves it, and after it leaves the
+ * window.
+ */
 interface GestureHandlers {
   begin: (kind: DragKind, clip: Clip | null, event: PressEvent) => void
   move: (event: EventPayload) => void
   end: () => void
+}
+
+/**
+ * A `ref` and an `onMouseDown` for a surface the user grabs: the press captures
+ * the pointer on the element, then runs `press`.
+ */
+function usePointerGrab(press: (event: PressEvent) => void) {
+  const ref = useRef<PublicInstance>(null)
+  const onMouseDown = (event: PressEvent) => {
+    if (event.pointerId === undefined) throw new Error('A mousedown carries no pointerId')
+    ref.current?.setPointerCapture?.(event.pointerId)
+    press(event)
+  }
+  return { ref, onMouseDown }
 }
 
 // ── Layout geometry ──────────────────────────────────────────────────────────
@@ -599,9 +614,13 @@ const ClipView = memo(function ClipView({
 }: ClipViewProps) {
   const color = CLIP_COLORS[clip.kind]
   const width = Math.max(2, clip.duration * pxPerSecond)
+  const body = usePointerGrab((event) => gesture.begin('move', clip, event))
+  const trimStart = usePointerGrab((event) => gesture.begin('trim-start', clip, event))
+  const trimEnd = usePointerGrab((event) => gesture.begin('trim-end', clip, event))
 
   return (
     <div
+      ref={body.ref}
       testId={testId}
       style={{
         position: 'absolute',
@@ -621,7 +640,7 @@ const ClipView = memo(function ClipView({
         hover: { backgroundColor: color.hover },
         active: { cursor: 'grabbing' },
       }}
-      onMouseDown={(event) => gesture.begin('move', clip, event)}
+      onMouseDown={body.onMouseDown}
       onMouseMove={gesture.move}
       onMouseUp={gesture.end}
     >
@@ -638,16 +657,18 @@ const ClipView = memo(function ClipView({
       {width > TRIM_HANDLE_WIDTH * 3 && (
         <>
           <div
+            ref={trimStart.ref}
             testId={`${testId}-trim-start`}
             style={{ ...TRIM_HANDLE_BASE, left: 0 }}
-            onMouseDown={(event) => gesture.begin('trim-start', clip, event)}
+            onMouseDown={trimStart.onMouseDown}
             onMouseMove={gesture.move}
             onMouseUp={gesture.end}
           />
           <div
+            ref={trimEnd.ref}
             testId={`${testId}-trim-end`}
             style={{ ...TRIM_HANDLE_BASE, right: 0 }}
-            onMouseDown={(event) => gesture.begin('trim-end', clip, event)}
+            onMouseDown={trimEnd.onMouseDown}
             onMouseMove={gesture.move}
             onMouseUp={gesture.end}
           />
@@ -1065,6 +1086,8 @@ export function TimelineApp(props: TimelineAppProps = {}) {
     () => ({ begin: beginDrag, move: onGestureMove, end: commitDrag }),
     [beginDrag, onGestureMove, commitDrag]
   )
+  const rulerGrab = usePointerGrab(onRulerMouseDown)
+  const gridGrab = usePointerGrab(onGridMouseDown)
 
   const onToggleTrack = useCallback((trackId: string) => {
     setCollapsed((current) => {
@@ -1116,6 +1139,12 @@ export function TimelineApp(props: TimelineAppProps = {}) {
   const zoomRatio =
     Math.log(viewport.pxPerSecond / MIN_PX_PER_SECOND) /
     Math.log(MAX_PX_PER_SECOND / MIN_PX_PER_SECOND)
+  const zoomGrab = usePointerGrab((event) => {
+    zoomOriginRef.current = {
+      left: (event.x ?? 0) - zoomRatio * ZOOM_SLIDER_WIDTH,
+    }
+    chromeGesture.begin('zoom', null, event)
+  })
 
   return (
     <div
@@ -1213,7 +1242,8 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               borderColor: C.border,
               cursor: 'col-resize',
             }}
-            onMouseDown={onRulerMouseDown}
+            ref={rulerGrab.ref}
+            onMouseDown={rulerGrab.onMouseDown}
             onMouseMove={chromeGesture.move}
             onMouseUp={chromeGesture.end}
           >
@@ -1290,7 +1320,8 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               position: 'relative',
               backgroundColor: C.grid,
             }}
-            onMouseDown={onGridMouseDown}
+            ref={gridGrab.ref}
+            onMouseDown={gridGrab.onMouseDown}
             onMouseMove={chromeGesture.move}
             onMouseUp={chromeGesture.end}
           >
@@ -1399,12 +1430,8 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               backgroundColor: C.border,
               cursor: 'ew-resize',
             }}
-            onMouseDown={(event) => {
-              zoomOriginRef.current = {
-                left: (event.x ?? 0) - zoomRatio * ZOOM_SLIDER_WIDTH,
-              }
-              chromeGesture.begin('zoom', null, event)
-            }}
+            ref={zoomGrab.ref}
+            onMouseDown={zoomGrab.onMouseDown}
             onMouseMove={chromeGesture.move}
             onMouseUp={chromeGesture.end}
           >

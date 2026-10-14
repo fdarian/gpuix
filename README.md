@@ -3254,7 +3254,7 @@ text imports no longer need a runtime flag.
 | Mouse move | `onMouseMove` | the mouse fields below, `pressedButton` |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` and the capture events are not emitted yet |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` is not emitted yet |
 | Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | `onDrop` carries `paths` for a file dropped from the OS. The rest are not emitted yet |
 | Click outside | `onMouseDownOutside` | `x`, `y`, `button`, `modifiers` |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
@@ -3337,56 +3337,49 @@ automatically. A listener alone does not put a `div` in the Tab order; add
 `onMouseLeave` also fires when the pointer leaves the **window** without a final
 move over the element, and the element's `hover` style ends with it.
 
-A node that listens for both `onMouseDown` and `onMouseMove` **captures the
-pointer**, like HTML [`setPointerCapture`](https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture).
-`onMouseMove` and `onMouseUp` keep firing after the pointer leaves the hitbox,
-leaves the parent, and leaves the window. A node with only `onMouseDown` /
-`onMouseUp` does not capture, so a click still ends if you release outside.
+### Pointer capture
 
-Capture is armed by the **press itself**, so put all three listeners on the
-element the user grabs:
-
-```tsx
-<div
-  style={{ cursor: 'grab', active: { cursor: 'grabbing' } }}
-  onMouseDown={(e) => beginDrag(e)}
-  onMouseMove={(e) => moveDrag(e)}
-  onMouseUp={endDrag}
-/>
-```
-
-A full-window overlay mounted on the press cannot replace this. The overlay does
-not exist yet when the press happens, so it never arms capture, and a release
-past the window edge is lost. Only the pressed element receives moves while the
-gesture runs, and only the hovered element receives them otherwise, so the cost
-is one event per pointer move.
-
-Capture arms on the **left** button only. A right-button drag is not captured,
-so it ends when the pointer leaves the element.
-
-### Explicit pointer capture
-
-A host ref has `setPointerCapture(pointerId)`, `releasePointerCapture(pointerId)`
-and `hasPointerCapture(pointerId)`, as DOM elements do. The mouse is pointer
-`1`; any other `pointerId`, and an element that is not in the tree, throws.
+Nothing captures the pointer on its own. Listening for `onMouseDown` and
+`onMouseMove` on one element does not keep the moves coming once the pointer
+leaves it: that element hears only what happens over it, as in the DOM. To keep
+a gesture alive past the element's edge, past its parent, and past the window,
+capture the pointer on the press with `setPointerCapture`, like HTML
+[`setPointerCapture`](https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture):
 
 ```tsx
+const handle = useRef<PublicInstance>(null)
+
 <div
   ref={handle}
-  onPointerDown={() => handle.current?.setPointerCapture(1)}
+  style={{ cursor: 'grab', active: { cursor: 'grabbing' } }}
+  onPointerDown={(e) => handle.current?.setPointerCapture?.(e.pointerId)}
   onPointerMove={moveDrag}
   onPointerUp={endDrag}
 />
 ```
 
+`onMouseDown` works the same way; its event carries `pointerId` too. A full-window
+overlay mounted on the press cannot replace the capture: the overlay does not
+exist yet when the press happens, and a release past the window edge is lost.
+Only the capturing element receives moves while the gesture runs, and only the
+hovered element receives them otherwise, so the cost is one event per pointer
+move. A press on a child is still a click on that child: listening for
+`onMouseDown` and `onMouseMove` swallows nothing.
+
+A host ref has `setPointerCapture(pointerId)`, `releasePointerCapture(pointerId)`
+and `hasPointerCapture(pointerId)`, as DOM elements do. The mouse is pointer
+`1`; any other `pointerId` throws for all three. `setPointerCapture` also throws
+for an element that is not in the tree, while `releasePointerCapture` on one does
+nothing and `hasPointerCapture` returns `false`.
+
 While an element holds the capture, pointer and mouse events target it, with the
 event path built from it, wherever the pointer is. `:hover` and the boundary
 events follow, as in Chrome: the chain the pointer was in gets `pointerout` and
 `pointerleave`, the capturing element gets `pointerover` and `pointerenter`.
-`gotpointercapture` fires before the first event the capture changes, and
-`lostpointercapture` right after `pointerup` and `mouseup` once the last button
-is up. Removing the element ends the capture with no event. Explicit capture wins
-over the implicit capture above.
+`gotpointercapture` fires before the first event the capture changes. The capture
+ends once the last button is up, in the Pointer Events order: `pointerup`, then
+`lostpointercapture`, then `mouseup`, then `click`. Removing the element ends the
+capture with no event.
 
 The call crosses from JS to the UI thread without waiting for it, so the capture
 **applies from the next native pointer event**, not within the handler that asked

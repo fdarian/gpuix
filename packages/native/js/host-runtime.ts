@@ -21,8 +21,9 @@ import type {
  * from a `pointerdown` handler works, the element receives the events after that
  * one, and `gotpointercapture` fires before the first of them. `hasPointerCapture`
  * answers for the request, so it is true right after `setPointerCapture`.
- * Calling it with no button down does nothing. The calls throw for a `pointerId`
- * other than 1 and for an element that is not in the tree.
+ * Calling it with no button down does nothing. All three throw for a `pointerId`
+ * other than 1. For an element that is not in the tree, `setPointerCapture`
+ * throws, `releasePointerCapture` does nothing and `hasPointerCapture` is false.
  */
 export interface PointerCaptureMethods {
   setPointerCapture(pointerId: number): void

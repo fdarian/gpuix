@@ -3,10 +3,11 @@
 import fs from "fs"
 import os from "os"
 import path from "path"
-import React, { useState } from "react"
+import React, { useRef, useState } from "react"
 import { describe, expect, it } from "vitest"
 import { connectTest } from "../automation/index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import type { PublicInstance } from "../types/host.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -70,6 +71,7 @@ describeNative("automation", () => {
     const log: string[] = []
 
     function Draggable() {
+      const handle = useRef<PublicInstance>(null)
       const [x, setX] = useState(20)
       const [origin, setOrigin] = useState<{ pointer: number; box: number } | null>(
         null
@@ -77,6 +79,7 @@ describeNative("automation", () => {
       return (
         <div style={{ width: 600, height: 200, position: "relative" }}>
           <div
+            ref={handle}
             testId="handle"
             style={{
               position: "absolute",
@@ -88,6 +91,7 @@ describeNative("automation", () => {
             }}
             onMouseDown={(event) => {
               log.push("down")
+              handle.current?.setPointerCapture?.(1)
               setOrigin({ pointer: event.x ?? 0, box: x })
             }}
             onMouseMove={(event) => {

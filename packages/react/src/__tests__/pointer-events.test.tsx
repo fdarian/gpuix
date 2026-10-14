@@ -486,6 +486,7 @@ describeNative("pointer events", () => {
         onPointerOut: record(name),
         onPointerMove: record(name),
         onPointerUp: record(name),
+        onMouseUp: record(name),
         onGotPointerCapture: record(name),
         onLostPointerCapture: record(name),
       })
@@ -559,7 +560,7 @@ describeNative("pointer events", () => {
       expect(log).toEqual(["second:pointermove"])
     })
 
-    it("releases after pointerup, which fires lostpointercapture", () => {
+    it("releases after pointerup: lostpointercapture comes before mouseup", () => {
       testRoot.render(<Boxes onFirstDown={() => first.setPointerCapture(1)} />)
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
       testRoot.renderer.nativeSimulateMouseMove(50, 125, 0)
@@ -569,6 +570,7 @@ describeNative("pointer events", () => {
       expect(log).toEqual([
         "first:pointerup",
         "first:lostpointercapture",
+        "first:mouseup",
         "first:pointerout",
         "second:pointerover",
       ])
@@ -634,12 +636,32 @@ describeNative("pointer events", () => {
       expect(() => first.hasPointerCapture(7)).toThrow(/pointerId/)
     })
 
-    it("throws for an element that is not connected", () => {
+    it("throws from setPointerCapture only, for an element that is not connected", () => {
       testRoot.render(<Boxes />)
       const { renderer } = testRoot
 
       expect(() => renderer.setPointerCapture(987654, 1)).toThrow(/not connected/)
-      expect(() => renderer.hasPointerCapture(987654, 1)).toThrow(/not connected/)
+      expect(() => renderer.releasePointerCapture(987654, 1)).not.toThrow()
+      expect(renderer.hasPointerCapture(987654, 1)).toBe(false)
+    })
+
+    it("still throws for an unknown pointerId on an element that is not connected", () => {
+      testRoot.render(<Boxes />)
+      const { renderer } = testRoot
+
+      expect(() => renderer.releasePointerCapture(987654, 7)).toThrow(/pointerId/)
+      expect(() => renderer.hasPointerCapture(987654, 7)).toThrow(/pointerId/)
+    })
+
+    it("reports no capture on an element once it is removed", () => {
+      testRoot.render(<Boxes onFirstDown={() => second.setPointerCapture(1)} />)
+      testRoot.renderer.nativeSimulateMouseDown(50, 50)
+      expect(second.hasPointerCapture(1)).toBe(true)
+
+      testRoot.render(<Boxes second={false} />)
+
+      expect(second.hasPointerCapture(1)).toBe(false)
+      expect(() => second.releasePointerCapture(1)).not.toThrow()
     })
   })
 })

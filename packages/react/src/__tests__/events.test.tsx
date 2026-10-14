@@ -19,6 +19,7 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { startFrameLoop } from "../reconciler/renderer.js"
 import { motion } from "../index"
 import type { EventPayload } from "@gpuix/native"
+import type { PublicInstance } from "../types/host.js"
 import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./test-utils"
 
 // All tests require the native GPUI test renderer (cargo build with test-support).
@@ -1394,14 +1395,19 @@ describeNative("events", () => {
       `)
     })
 
-    it("keeps mouseMove and mouseUp after the pointer leaves the hitbox", () => {
+    it("keeps mouseMove and mouseUp after the pointer leaves the hitbox when mouseDown captures", () => {
       const received: string[] = []
 
       function Handle() {
+        const handle = useRef<PublicInstance>(null)
         return (
           <div
+            ref={handle}
             style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
-            onMouseDown={() => received.push("down")}
+            onMouseDown={() => {
+              received.push("down")
+              handle.current?.setPointerCapture?.(1)
+            }}
             onMouseMove={(e: EventPayload) =>
               received.push(`move:${Math.round(e.x ?? 0)},${e.pressedButton}`)
             }
@@ -1418,6 +1424,59 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateMouseUp(200, 20, 0)
 
       expect(received).toEqual(["down", "move:200,0", "up"])
+    })
+
+    it("does not capture when the element listens for both mouseDown and mouseMove", () => {
+      const received: string[] = []
+
+      function Handle() {
+        return (
+          <div
+            style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
+            onMouseDown={() => received.push("down")}
+            onMouseMove={() => received.push("move")}
+            onMouseUp={() => received.push("up")}
+          >
+            <text>handle</text>
+          </div>
+        )
+      }
+
+      testRoot.render(<Handle />)
+      testRoot.renderer.nativeSimulateMouseDown(20, 20)
+      testRoot.renderer.nativeSimulateMouseMove(30, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(200, 20, 0)
+      testRoot.renderer.nativeSimulateMouseUp(200, 20, 0)
+
+      expect(received).toEqual(["down", "move"])
+    })
+
+    it("does not swallow a child's click when nothing has captured", () => {
+      const received: string[] = []
+
+      function Row() {
+        return (
+          <div
+            style={{ width: 200, height: 60 }}
+            onMouseDown={() => received.push("row-down")}
+            onMouseMove={() => received.push("row-move")}
+            onMouseUp={() => received.push("row-up")}
+          >
+            <div
+              style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
+              onClick={() => received.push("child-click")}
+            >
+              <text>child</text>
+            </div>
+          </div>
+        )
+      }
+
+      testRoot.render(<Row />)
+      testRoot.renderer.nativeSimulateMouseDown(20, 20)
+      testRoot.renderer.nativeSimulateMouseUp(20, 20, 0)
+
+      expect(received).toEqual(["row-down", "row-up", "child-click"])
     })
 
     it("does not capture when the element only listens for mouseDown and mouseUp", () => {
@@ -1497,10 +1556,15 @@ describeNative("events", () => {
       const received: string[] = []
 
       function Handle() {
+        const handle = useRef<PublicInstance>(null)
         return (
           <div
+            ref={handle}
             style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
-            onMouseDown={() => received.push("down")}
+            onMouseDown={() => {
+              received.push("down")
+              handle.current?.setPointerCapture?.(1)
+            }}
             onMouseMove={() => received.push("move")}
             onMouseUp={() => received.push("up")}
           >
@@ -1521,11 +1585,16 @@ describeNative("events", () => {
       const received: string[] = []
 
       function Pair() {
+        const handle = useRef<PublicInstance>(null)
         return (
           <div style={{ width: 400, height: 80, display: "flex" }}>
             <div
+              ref={handle}
               style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
-              onMouseDown={() => received.push("handle-down")}
+              onMouseDown={() => {
+                received.push("handle-down")
+                handle.current?.setPointerCapture?.(1)
+              }}
               onMouseMove={() => received.push("handle-move")}
               onMouseUp={() => received.push("handle-up")}
             >
@@ -1554,6 +1623,7 @@ describeNative("events", () => {
       const received: string[] = []
 
       function Drag() {
+        const handle = useRef<PublicInstance>(null)
         const [gone, setGone] = useState(false)
         if (gone) {
           return (
@@ -1568,9 +1638,11 @@ describeNative("events", () => {
         }
         return (
           <div
+            ref={handle}
             style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
             onMouseDown={() => {
               received.push("down")
+              handle.current?.setPointerCapture?.(1)
               setGone(true)
             }}
             onMouseMove={() => received.push("handle-move")}
@@ -1593,11 +1665,16 @@ describeNative("events", () => {
       const received: string[] = []
 
       function Pair() {
+        const handle = useRef<PublicInstance>(null)
         return (
           <div style={{ width: 400, height: 80, display: "flex" }}>
             <div
+              ref={handle}
               style={{ width: 80, height: 40, backgroundColor: "#3366ff" }}
-              onMouseDown={() => received.push("handle-down")}
+              onMouseDown={() => {
+                received.push("handle-down")
+                handle.current?.setPointerCapture?.(1)
+              }}
               onMouseMove={() => received.push("handle-move")}
               onMouseUp={() => received.push("handle-up")}
             >
