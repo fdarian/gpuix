@@ -22,6 +22,7 @@ mod element_tree;
 pub mod events;
 mod focus;
 mod forms;
+mod layout;
 mod markdown;
 mod motion;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

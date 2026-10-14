@@ -6163,6 +6163,9 @@ pub(crate) fn build_element(
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
+    if crate::layout::box_generation::is_display_none(element) {
+        return gpui::Empty.into_any_element();
+    }
 
     // `hover` and `active` are folded into the base here, before motion, so the
     // GPUI element never sees them: the dispatcher decides who is hovered.
@@ -6236,7 +6239,9 @@ pub(crate) fn build_element(
                 .children
                 .iter()
                 .copied()
-                .filter(|child_id| ctx.tree.elements.contains_key(child_id))
+                .filter(|child_id| {
+                    crate::layout::box_generation::generates_box(ctx.tree, element, *child_id)
+                })
                 .map(|child_id| build_element(child_id, ctx, window, cx))
                 .collect();
             let inherited = ctx.inherited.clone();
@@ -6539,7 +6544,7 @@ pub(crate) fn build_host_container(
     // or tabbing to it gives it keyboard focus. The handle persists across renders
     // because it's stored in GpuixView::focus_handles.
     if style.and_then(|style| style.position.as_deref()).is_none() {
-        el = el.relative();
+        el.style().position = Some(gpui::Position::Static);
     }
     // The inert root claims its box as a non-selectable start region; below it,
     // a descendant's `userSelect: "text"` must not reopen one.
@@ -6658,7 +6663,11 @@ pub(crate) fn build_host_container(
     }
 
     // Children
-    for &child_id in &element.children {
+    let children = crate::layout::order::children_in_order(ctx.tree, element, style);
+    for &child_id in children.iter() {
+        if !crate::layout::box_generation::generates_box(ctx.tree, element, child_id) {
+            continue;
+        }
         el = el.child(build_element(child_id, ctx, window, cx));
     }
 
@@ -6813,33 +6822,7 @@ where
 }
 
 pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
-    match style.display.as_deref() {
-        Some("flex") => el = el.flex(),
-        Some("grid") => el = el.grid(),
-        _ => {}
-    }
-    if let Some(cols) = style.grid_template_columns {
-        let count = cols.round().clamp(1.0, 64.0) as u16;
-        el = match style.grid_column_min.as_deref() {
-            Some("min-content") => el.grid_cols_min_content(count),
-            Some("max-content") => el.grid_cols_max_content(count),
-            _ => el.grid_cols(count),
-        };
-    }
-    if let Some(rows) = style.grid_template_rows {
-        let count = rows.round().clamp(1.0, 64.0) as u16;
-        el = match style.grid_row_min.as_deref() {
-            Some("min-content") => el.grid_rows_min_content(count),
-            Some("max-content") => el.grid_rows_max_content(count),
-            _ => el.grid_rows(count),
-        };
-    }
-    if style.flex_direction.as_deref() == Some("column") {
-        el = el.flex_col();
-    }
-    if style.flex_direction.as_deref() == Some("row") {
-        el = el.flex_row();
-    }
+    el = crate::layout::style::apply(el, style);
     match style.flex_wrap.as_deref() {
         Some("wrap") => el = el.flex_wrap(),
         Some("wrap-reverse") => el = el.flex_wrap_reverse(),
@@ -6961,48 +6944,8 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
     if let Some(pl) = style.padding_left {
         el = el.pl(gpui::px(pl as f32));
     }
-    if let Some(m) = style.margin {
-        el = el.m(gpui::px(m as f32));
-    }
-    if let Some(mt) = style.margin_top {
-        el = el.mt(gpui::px(mt as f32));
-    }
-    if let Some(mr) = style.margin_right {
-        el = el.mr(gpui::px(mr as f32));
-    }
-    if let Some(mb) = style.margin_bottom {
-        el = el.mb(gpui::px(mb as f32));
-    }
-    if let Some(ml) = style.margin_left {
-        el = el.ml(gpui::px(ml as f32));
-    }
-    // Taffy has no viewport-fixed position, and GPUI has no scrolling document,
-    // so "fixed" lays out exactly like "absolute". Without this arm a "fixed" box
-    // stayed in flow.
-    match style.position.as_deref() {
-        Some("absolute") | Some("fixed") => el = el.absolute(),
-        Some("relative") => el = el.relative(),
-        // Laid out like relative with the insets ignored, then held inside the scrollport
-        // by them when it is prepainted.
-        Some("sticky") => el.style().position = Some(gpui::Position::Sticky),
-        _ => {}
-    }
-    if let Some(top) = style.top {
-        el = el.top(gpui::px(top as f32));
-    }
-    if let Some(right) = style.right {
-        el = el.right(gpui::px(right as f32));
-    }
-    if let Some(bottom) = style.bottom {
-        el = el.bottom(gpui::px(bottom as f32));
-    }
-    if let Some(left) = style.left {
-        el = el.left(gpui::px(left as f32));
-    }
-    if let Some(ratio) = style.aspect_ratio {
-        if ratio > 0.0 && ratio.is_finite() {
-            el = el.aspect_ratio(ratio as f32);
-        }
+    if let Some(ratio) = style.aspect_ratio.and_then(|ratio| ratio.ratio()) {
+        el = el.aspect_ratio(ratio as f32);
     }
     if let Some(background) = style.resolved_background() {
         el = el.bg(background);

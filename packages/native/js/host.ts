@@ -185,9 +185,13 @@ export interface LinearGradientBackground {
 }
 
 export interface StyleDesc {
+  /** `"flex"`, `"grid"`, `"block"` (the default) or `"none"`, which builds no box at all.
+   *  `"contents"` and the `inline-*` values are not supported. */
   display?: string
   visibility?: string
+  /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */
   flexDirection?: string
+  /** `"nowrap"`, `"wrap"` or `"wrap-reverse"`. */
   flexWrap?: string
   flexGrow?: number
   flexShrink?: number
@@ -199,10 +203,36 @@ export interface StyleDesc {
   gap?: number
   rowGap?: number
   columnGap?: number
-  gridTemplateColumns?: number
-  gridTemplateRows?: number
+  /** Reorders the children of a flex or grid container, lowest first. Ties keep document
+   *  order. Layout and paint follow it; focus order stays in the document order. */
+  order?: number
+  justifyItems?: string
+  justifySelf?: string
+  /** A CSS track list (`"1fr 200px"`, `"repeat(auto-fill, minmax(120px, 1fr))"`,
+   *  `"[sidebar] 240px [main] 1fr"`, `"none"`) or a column count `n`, which means
+   *  `repeat(n, minmax(0, 1fr))`. Units are px, `%`, `fr`; `auto`, `min-content`,
+   *  `max-content`, `minmax()`, `fit-content()` and `repeat()` are supported. */
+  gridTemplateColumns?: number | string
+  gridTemplateRows?: number | string
   gridColumnMin?: "zero" | "min-content" | "max-content"
   gridRowMin?: "zero" | "min-content" | "max-content"
+  /** Size of implicitly created columns / rows: a CSS track size list or a pixel count. */
+  gridAutoColumns?: number | string
+  gridAutoRows?: number | string
+  /** `"row"`, `"column"`, optionally followed by `"dense"`. */
+  gridAutoFlow?: string
+  /** Quoted rows of area names: `'"header header" "side main"'`. Use `.` for an empty cell. */
+  gridTemplateAreas?: string
+  /** Item placement: a line number (negative counts from the end), `"span 2"`, a line or
+   *  area name, or a pair such as `"1 / 3"`. */
+  gridColumn?: number | string
+  gridRow?: number | string
+  gridColumnStart?: number | string
+  gridColumnEnd?: number | string
+  gridRowStart?: number | string
+  gridRowEnd?: number | string
+  /** An area name, or `"row-start / column-start / row-end / column-end"`. */
+  gridArea?: number | string
 
   width?: DimensionValue
   height?: DimensionValue
@@ -217,20 +247,25 @@ export interface StyleDesc {
   paddingBottom?: number
   paddingLeft?: number
 
-  margin?: number
-  marginTop?: number
-  marginRight?: number
-  marginBottom?: number
-  marginLeft?: number
+  /** px, a percentage of the containing block's width, or `"auto"` (which absorbs free
+   *  space in flex layouts). */
+  margin?: DimensionValue
+  marginTop?: DimensionValue
+  marginRight?: DimensionValue
+  marginBottom?: DimensionValue
+  marginLeft?: DimensionValue
 
-  /** `"sticky"` lays out like `"relative"` and then stays inside the scrollport of its nearest
-   *  scroll container (or the window), inset by `top`, `right`, `bottom` and `left`, without
-   *  leaving its parent's content box. */
+  /** `"static"` (the default), `"relative"`, `"absolute"`, `"fixed"` or `"sticky"`. An absolute box
+   *  resolves `top`/`right`/`bottom`/`left` and percentage sizes against the padding box
+   *  of its nearest non-static ancestor (a sticky one counts), a fixed one against the window.
+   *  `"sticky"` lays out like `"relative"` with the insets ignored and then stays inside the
+   *  scrollport of its nearest scroll container (or the window), inset by `top`, `right`,
+   *  `bottom` and `left`, without leaving its parent's content box. */
   position?: string
-  top?: number
-  right?: number
-  bottom?: number
-  left?: number
+  top?: DimensionValue
+  right?: DimensionValue
+  bottom?: DimensionValue
+  left?: DimensionValue
 
   background?: string | LinearGradientBackground
   backgroundColor?: string
@@ -252,8 +287,9 @@ export interface StyleDesc {
   boxShadow?: BoxShadow | BoxShadow[]
   /** Applies to every side. */
   borderStyle?: "solid" | "dashed"
-  /** Width divided by height. Fills in whichever axis has no definite size. */
-  aspectRatio?: number
+  /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in
+   *  whichever axis has no definite size. An `<img>` uses its intrinsic ratio unless this is set. */
+  aspectRatio?: number | string
   /** CSS `outline`: a line outside the border box. Takes no layout space, so it
    *  can appear on focus without moving anything. Width defaults to 1. */
   outlineWidth?: number

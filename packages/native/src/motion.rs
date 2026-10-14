@@ -119,16 +119,16 @@ impl MotionStyle {
             style.opacity = Some(value);
         }
         if let Some(value) = self.top {
-            style.top = Some(value);
+            style.top = Some(DimensionValue::Pixels(value));
         }
         if let Some(value) = self.right {
-            style.right = Some(value);
+            style.right = Some(DimensionValue::Pixels(value));
         }
         if let Some(value) = self.bottom {
-            style.bottom = Some(value);
+            style.bottom = Some(DimensionValue::Pixels(value));
         }
         if let Some(value) = self.left {
-            style.left = Some(value);
+            style.left = Some(DimensionValue::Pixels(value));
         }
         if let Some(value) = self.border_radius {
             style.border_radius = Some(value);

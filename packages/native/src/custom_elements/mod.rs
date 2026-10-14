@@ -139,14 +139,12 @@ pub(crate) fn custom_surface(
             crate::renderer::apply_interactive_styles(el, style)
         };
     }
-    // `bounds_tracker` is `absolute().size_full()`, so it needs a positioned
-    // parent to measure.
     if ctx
         .style
         .and_then(|style| style.position.as_deref())
         .is_none()
     {
-        el = el.relative();
+        el.style().position = Some(gpui::Position::Static);
     }
     el = crate::automation::track_host_bounds(el, ctx.id, None, ctx.observe.clone());
     el = crate::accessibility::apply_accessibility(el, ctx.id, ctx.props, None);

@@ -1,5 +1,10 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::layout::grid_values::{
+    GridAreaValue, GridAutoTracks, GridLinePairValue, GridLineValue, GridTemplateAreasValue,
+    GridTemplateValue,
+};
+
 /// Font weight value — accepts both CSS strings ("bold", "700") and numbers (700).
 /// JS style objects commonly use both `fontWeight: "bold"` and `fontWeight: 700`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -165,10 +170,27 @@ pub struct StyleDesc {
     pub gap: Option<f64>,
     pub row_gap: Option<f64>,
     pub column_gap: Option<f64>,
-    pub grid_template_columns: Option<f64>,
-    pub grid_template_rows: Option<f64>,
+    /// Stable-sorts the children of a flex or grid container. Default 0.
+    pub order: Option<f64>,
+    pub justify_items: Option<String>,
+    pub justify_self: Option<String>,
+
+    // Grid. A template is a column count `n` or a CSS track list.
+    pub grid_template_columns: Option<GridTemplateValue>,
+    pub grid_template_rows: Option<GridTemplateValue>,
     pub grid_column_min: Option<String>,
     pub grid_row_min: Option<String>,
+    pub grid_auto_columns: Option<GridAutoTracks>,
+    pub grid_auto_rows: Option<GridAutoTracks>,
+    pub grid_auto_flow: Option<String>,
+    pub grid_template_areas: Option<GridTemplateAreasValue>,
+    pub grid_area: Option<GridAreaValue>,
+    pub grid_column: Option<GridLinePairValue>,
+    pub grid_row: Option<GridLinePairValue>,
+    pub grid_column_start: Option<GridLineValue>,
+    pub grid_column_end: Option<GridLineValue>,
+    pub grid_row_start: Option<GridLineValue>,
+    pub grid_row_end: Option<GridLineValue>,
 
     // Sizing - now supports both numbers and strings like "100%" or "auto"
     pub width: Option<DimensionValue>,
@@ -185,19 +207,19 @@ pub struct StyleDesc {
     pub padding_bottom: Option<f64>,
     pub padding_left: Option<f64>,
 
-    // Spacing (margin)
-    pub margin: Option<f64>,
-    pub margin_top: Option<f64>,
-    pub margin_right: Option<f64>,
-    pub margin_bottom: Option<f64>,
-    pub margin_left: Option<f64>,
+    // Spacing (margin): px, a percentage of the containing block width, or "auto".
+    pub margin: Option<DimensionValue>,
+    pub margin_top: Option<DimensionValue>,
+    pub margin_right: Option<DimensionValue>,
+    pub margin_bottom: Option<DimensionValue>,
+    pub margin_left: Option<DimensionValue>,
 
     // Position
     pub position: Option<String>,
-    pub top: Option<f64>,
-    pub right: Option<f64>,
-    pub bottom: Option<f64>,
-    pub left: Option<f64>,
+    pub top: Option<DimensionValue>,
+    pub right: Option<DimensionValue>,
+    pub bottom: Option<DimensionValue>,
+    pub left: Option<DimensionValue>,
 
     // Background & Colors
     pub background: Option<BackgroundValue>,
@@ -221,7 +243,8 @@ pub struct StyleDesc {
     /// `"solid"` or `"dashed"`, for every side.
     pub border_style: Option<String>,
     /// Width divided by height, applied to whichever axis is not definite.
-    pub aspect_ratio: Option<f64>,
+    /// A number or a CSS ratio string such as `"16 / 9"`.
+    pub aspect_ratio: Option<crate::layout::aspect_ratio::AspectRatio>,
     /// CSS `outline`: a line outside the border box that takes no layout
     /// space, so it can appear on focus without moving anything.
     pub outline_width: Option<f64>,
