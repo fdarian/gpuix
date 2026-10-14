@@ -222,6 +222,19 @@ export declare class GpuixRenderer {
    * exist then has already fallen back to another font.
    */
   registerFont(data: Buffer): void
+  /** `select()` on an `<input>` or `<textarea>`: select all of its text. */
+  selectText(elementId: number): void
+  /**
+   * `setSelectionRange(start, end, direction)` on an `<input>` or
+   * `<textarea>`. Offsets are UTF-16 code units; `direction` is
+   * `"forward"`, `"backward"` or `"none"`.
+   */
+  setSelectionRange(elementId: number, start: number, end: number, direction?: string | undefined | null): void
+  /**
+   * `selectionStart`, `selectionEnd` and `selectionDirection` of an
+   * `<input>` or `<textarea>`.
+   */
+  getTextSelection(elementId: number): TextSelection
   getAutomationTree(): string
   getElementBounds(id: number): ElementBounds | null
   /**
@@ -496,6 +509,12 @@ export declare class TestGpuixRenderer {
    */
   getListScrollTop(elementId: number): Array<number> | null
   /** `"hidden"` | `"minimal"` | `"full"`. */
+  /** `select()` on an `<input>` or `<textarea>`. */
+  selectText(elementId: number): void
+  /** `setSelectionRange(start, end, direction)`; offsets are UTF-16 units. */
+  setSelectionRange(elementId: number, start: number, end: number, direction?: string | undefined | null): void
+  /** `selectionStart`, `selectionEnd` and `selectionDirection`. */
+  getTextSelection(elementId: number): TextSelection
   setDebugFrameOverlay(mode: string): string
   /** Hidden → minimal → full → hidden. */
   cycleDebugFrameOverlay(): string
@@ -909,6 +928,14 @@ export interface WindowInsets {
 export interface WindowOptions {
   title?: string
   /**
+/** `selectionStart`, `selectionEnd` and `selectionDirection` of a text control. */
+export interface TextSelection {
+  start: number
+  end: number
+  /** `"forward"`, `"backward"` or `"none"`. */
+  direction: string
+}
+
    * The name used inside the macOS "Hide" and "Quit" menu items. Defaults to
    * `title`. It does NOT set the title of the application menu itself: macOS
    * takes that from the executable, and only a `.app` bundle changes it.

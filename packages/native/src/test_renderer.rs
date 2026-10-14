@@ -216,6 +216,25 @@ pub struct TestGpuixRenderer {
     /// provide: it is never key, so a real request is always refused.
     platform: crate::events::pointer_lock::SimulatedPlatform,
 }
+impl TestGpuixRenderer {
+    fn apply_text_selection(
+        &self,
+        id: u64,
+        request: crate::custom_elements::text_selection::SelectionRequest,
+    ) -> Result<()> {
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| {
+                    view.set_text_selection(id, request, window, cx)
+                })
+            })
+            .map_err(|e| Error::from_reason(e.to_string()))?
+            .map_err(Error::from_reason)
+        })
+    }
+}
+
 
 #[napi]
 impl TestGpuixRenderer {
@@ -1142,6 +1161,51 @@ impl TestGpuixRenderer {
                 .update_window(window, |_, _window, app| {
                     view.update(app, |view, _cx| {
                         view.virtual_list_scroll_top(id).map(|top| top.to_vec())
+    /// `select()` on an `<input>` or `<textarea>`.
+    #[napi]
+    pub fn select_text(&self, element_id: f64) -> Result<()> {
+        self.apply_text_selection(
+            to_element_id(element_id)?,
+            crate::custom_elements::text_selection::SelectionRequest::select_all(),
+        )
+    }
+
+    /// `setSelectionRange(start, end, direction)`; offsets are UTF-16 units.
+    #[napi]
+    pub fn set_selection_range(
+        &self,
+        element_id: f64,
+        start: f64,
+        end: f64,
+        direction: Option<String>,
+    ) -> Result<()> {
+        self.apply_text_selection(
+            to_element_id(element_id)?,
+            crate::custom_elements::text_selection::SelectionRequest::from_dom(
+                start,
+                end,
+                direction.as_deref(),
+            ),
+        )
+    }
+
+    /// `selectionStart`, `selectionEnd` and `selectionDirection`.
+    #[napi]
+    pub fn get_text_selection(
+        &self,
+        element_id: f64,
+    ) -> Result<crate::custom_elements::text_selection::TextSelection> {
+        let id = to_element_id(element_id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, _window, app| {
+                view.update(app, |view, cx| view.text_selection(id, cx))
+            })
+            .map_err(|e| Error::from_reason(e.to_string()))?
+            .map_err(Error::from_reason)
+        })
+    }
+
                     })
                 })
                 .map_err(|e| Error::from_reason(e.to_string()))?;

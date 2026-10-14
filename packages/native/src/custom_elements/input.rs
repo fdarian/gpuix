@@ -23,6 +23,13 @@ use gpui::{
 use unicode_segmentation::UnicodeSegmentation;
 use web_time::Instant;
 
+use super::input_rules::{
+    content_to_masked, masked, masked_to_content, number_from_json, step_from_json, step_number,
+    truncate_to_utf16, InputType, NumberRules,
+};
+use super::text_selection::{
+    describe, resolve, utf16_len, SelectionRequest, TextSelection,
+};
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 use crate::renderer::{emit_event_full, emit_key_event, EventCallback};
 use crate::theme::Theme;
@@ -64,10 +71,15 @@ actions!(
         Redo,
         Newline,
         Submit,
+        StepUp,
+        StepDown,
     ]
 );
 
 const INPUT_KEY_CONTEXT: &str = "GpuixInput";
+/// `type="number"` is an input that also owns ArrowUp and ArrowDown.
+const NUMBER_KEY_CONTEXT: &str = "GpuixNumberInput";
+const NUMBER_INPUT_KEY_CONTEXT: &str = "GpuixInput GpuixNumberInput";
 const TEXTAREA_KEY_CONTEXT: &str = "GpuixTextarea";
 const TEXTAREA_SUBMIT_KEY_CONTEXT: &str = "GpuixTextareaSubmit";
 const CARET_BLINK_MS: u64 = 500;
@@ -177,6 +189,10 @@ pub fn init(cx: &mut App) {
         word_navigation_uses_alt,
         bind_paste_shortcut,
     ));
+    bindings.extend([
+        KeyBinding::new("up", StepUp, Some(NUMBER_KEY_CONTEXT)),
+        KeyBinding::new("down", StepDown, Some(NUMBER_KEY_CONTEXT)),
+    ]);
     cx.bind_keys(bindings);
 }
 
@@ -312,11 +328,22 @@ struct TextEditorElement {
     value: String,
     placeholder: String,
     read_only: bool,
+    disabled: bool,
+    input_type: InputType,
+    max_length: Option<usize>,
+    min: Option<f64>,
+    max: Option<f64>,
+    step: f64,
     min_rows: usize,
     max_rows: usize,
     last_prop_value: Option<String>,
     theme: Theme,
     state: Option<Entity<TextEditorState>>,
+    /// Stands in for the real focus handle while disabled: the editor keeps one
+    /// but never tracks it, so nothing can focus it.
+    inert_focus: Option<FocusHandle>,
+    /// A selection requested before the first render created the state.
+    pending_selection: Option<SelectionRequest>,
 }
 
 impl TextEditorElement {
@@ -326,12 +353,51 @@ impl TextEditorElement {
             value: String::new(),
             placeholder: String::new(),
             read_only: false,
+            disabled: false,
+            input_type: InputType::Text,
+            max_length: None,
+            min: None,
+            max: None,
+            step: 1.0,
             min_rows: 1,
             max_rows: if multiline { 10 } else { 1 },
             last_prop_value: None,
             theme: Theme::dark(),
             state: None,
+            inert_focus: None,
+            pending_selection: None,
         }
+    }
+
+    /// `type` is ignored on `<textarea>`, as in the DOM.
+    fn effective_type(&self) -> InputType {
+        if self.multiline {
+            InputType::Text
+        } else {
+            self.input_type
+        }
+    }
+
+    fn number_rules(&self) -> Option<NumberRules> {
+        (self.effective_type() == InputType::Number).then_some(NumberRules {
+            min: self.min,
+            max: self.max,
+            step: self.step,
+        })
+    }
+
+    /// Push a changed `value` prop into the editor now, rather than at the next
+    /// frame, so an imperative call right after a controlled update sees it.
+    fn apply_value(&mut self, cx: &mut App) {
+        let Some(state) = self.state.clone() else {
+            return;
+        };
+        if self.last_prop_value.as_ref() == Some(&self.value) {
+            return;
+        }
+        let value = self.value.clone();
+        state.update(cx, |state, cx| state.sync_prop_value(value, cx));
+        self.last_prop_value = Some(self.value.clone());
     }
 }
 
@@ -342,10 +408,18 @@ impl CustomElement for TextEditorElement {
         _window: &mut Window,
         cx: &mut Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
-        let focus_handle = ctx
-            .focus_handle
-            .cloned()
-            .unwrap_or_else(|| cx.focus_handle());
+        let disabled = self.disabled;
+        let input_type = self.effective_type();
+        let number_rules = self.number_rules();
+        let focus_handle = if disabled {
+            self.inert_focus
+                .get_or_insert_with(|| cx.focus_handle())
+                .clone()
+        } else {
+            ctx.focus_handle
+                .cloned()
+                .unwrap_or_else(|| cx.focus_handle())
+        };
         let emits_change = ctx.events.contains("change");
         let emits_submit = ctx.events.contains("submit");
         let emits_key_down = ctx.events.contains("keyDown");
@@ -359,12 +433,28 @@ impl CustomElement for TextEditorElement {
                 let placeholder = self.placeholder.clone();
                 let multiline = self.multiline;
                 let read_only = self.read_only;
+                let disabled = self.disabled;
+                let max_length = self.max_length;
+                let muted_color = self.theme.text_muted;
+                let initial_selection = self
+                    .pending_selection
+                    .take()
+                    .map(|request| resolve(&value, request));
                 let min_rows = self.min_rows;
                 let max_rows = self.max_rows;
                 let caret_color = self.theme.caret;
                 let callback = callback.clone();
                 let id = ctx.id;
                 let cursor = value.len();
+                let (selected_range, selection_reversed, directionless_range) =
+                    match initial_selection {
+                        Some(selection) => (
+                            selection.range.clone(),
+                            selection.reversed,
+                            selection.directionless.then_some(selection.range),
+                        ),
+                        None => (cursor..cursor, false, None),
+                    };
                 let state_focus_handle = focus_handle.clone();
                 cx.new(move |cx| TextEditorState {
                     element_id: id,
@@ -378,10 +468,16 @@ impl CustomElement for TextEditorElement {
                     placeholder: placeholder.into(),
                     multiline,
                     read_only,
+                    disabled,
+                    input_type,
+                    max_length,
+                    number_rules,
+                    muted_color,
                     min_rows,
                     max_rows,
-                    selected_range: cursor..cursor,
-                    selection_reversed: false,
+                    selected_range,
+                    selection_reversed,
+                    directionless_range,
                     marked_range: None,
                     is_selecting: false,
                     drag_position: None,
@@ -409,8 +505,21 @@ impl CustomElement for TextEditorElement {
             })
             .clone();
 
-        let prop_changed = self.last_prop_value.as_ref() != Some(&self.value);
+        self.apply_value(cx);
         state.update(cx, |state, cx| {
+            if state.focus_handle != focus_handle {
+                state.focus_handle = focus_handle.clone();
+            }
+            if state.disabled != disabled {
+                state.disabled = disabled;
+                state.is_selecting = false;
+                state.drag_position = None;
+                cx.notify();
+            }
+            state.input_type = input_type;
+            state.max_length = self.max_length;
+            state.number_rules = number_rules;
+            state.muted_color = self.theme.text_muted;
             state.callback = callback;
             state.emits_change = emits_change;
             if state.emits_submit != emits_submit {
@@ -427,19 +536,13 @@ impl CustomElement for TextEditorElement {
                 state.caret_color = self.theme.caret;
                 cx.notify();
             }
-            if prop_changed {
-                state.sync_prop_value(self.value.clone(), cx);
-            }
         });
-        self.last_prop_value = Some(self.value.clone());
 
-        let mut editor = div()
-            .id(crate::events::ids::host_element_id(ctx.id))
-            .flex()
-            .min_w_0()
-            .w_full()
-            .track_focus(&focus_handle)
-            .child(state);
+        let mut editor = div().id(crate::events::ids::host_element_id(ctx.id)).flex().min_w_0().w_full();
+        if !disabled {
+            editor = editor.track_focus(&focus_handle);
+        }
+        let mut editor = editor.child(state);
         // Single-line inputs center text vertically when given extra height.
         if !self.multiline {
             editor = editor.items_center();
@@ -468,7 +571,11 @@ impl CustomElement for TextEditorElement {
         let default_role = if self.multiline {
             gpui::Role::MultilineTextInput
         } else {
-            gpui::Role::TextInput
+            match input_type {
+                InputType::Search => gpui::Role::SearchInput,
+                InputType::Password => gpui::Role::PasswordInput,
+                _ => gpui::Role::TextInput,
+            }
         };
         editor = crate::accessibility::apply_accessibility(
             editor,
@@ -476,7 +583,10 @@ impl CustomElement for TextEditorElement {
             ctx.props,
             Some(default_role),
         );
-        if ctx.props.get("aria-valuetext").is_none() && !self.value.is_empty() {
+        if input_type != InputType::Password
+            && ctx.props.get("aria-valuetext").is_none()
+            && !self.value.is_empty()
+        {
             editor = editor.aria_value(self.value.clone());
         }
         if !self.placeholder.is_empty() {
@@ -491,9 +601,21 @@ impl CustomElement for TextEditorElement {
         // selection-start region: a drag inside an editor must move the caret,
         // not start a document selection.
         editor = editor.child(crate::automation::bounds_tracker(ctx.id, Some(false)));
-        super::wire_host_events(editor, &ctx).into_any_element()
+        // A disabled control gets no events, like the DOM.
+        if !disabled {
+            editor = super::wire_host_events(editor, &ctx);
+        }
+        editor.into_any_element()
     }
 
+            "disabled" => self.disabled = value.as_bool().unwrap_or(false),
+            "type" => self.input_type = InputType::parse(value.as_str().unwrap_or_default()),
+            "maxLength" => {
+                self.max_length = value.as_u64().and_then(|length| usize::try_from(length).ok())
+            }
+            "min" => self.min = number_from_json(&value),
+            "max" => self.max = number_from_json(&value),
+            "step" => self.step = step_from_json(Some(&value)),
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
             "value" => self.value = value.as_str().unwrap_or_default().to_string(),
@@ -511,6 +633,12 @@ impl CustomElement for TextEditorElement {
         }
     }
 
+            "disabled",
+            "type",
+            "maxLength",
+            "min",
+            "max",
+            "step",
     fn supported_props(&self) -> &'static [&'static str] {
         &[
             "value",
@@ -525,6 +653,38 @@ impl CustomElement for TextEditorElement {
     fn supported_events(&self) -> &'static [&'static str] {
         &[
             "change", "submit", "keyDown", "keyUp", "focus", "blur",
+        self.inert_focus = None;
+    }
+
+    fn text_selection(&mut self, cx: &mut App) -> Option<TextSelection> {
+        self.apply_value(cx);
+        Some(match &self.state {
+            Some(state) => state.read(cx).selection(),
+            None => {
+                let cursor = self.value.len();
+                match self.pending_selection {
+                    Some(request) => {
+                        let selection = resolve(&self.value, request);
+                        describe(
+                            &self.value,
+                            &selection.range,
+                            selection.reversed,
+                            selection.directionless.then_some(&selection.range),
+                        )
+                    }
+                    None => describe(&self.value, &(cursor..cursor), false, None),
+                }
+            }
+        })
+    }
+
+    fn set_text_selection(&mut self, request: SelectionRequest, cx: &mut App) -> bool {
+        self.apply_value(cx);
+        match self.state.clone() {
+            Some(state) => state.update(cx, |state, cx| state.select_request(request, cx)),
+            None => self.pending_selection = Some(request),
+        }
+        true
         ]
     }
 
@@ -620,10 +780,18 @@ struct TextEditorState {
     emits_submit: bool,
     emits_key_down: bool,
     emits_key_up: bool,
+    disabled: bool,
+    input_type: InputType,
+    max_length: Option<usize>,
+    number_rules: Option<NumberRules>,
+    muted_color: gpui::Hsla,
     focus_handle: FocusHandle,
     content: String,
     placeholder: SharedString,
     multiline: bool,
+    /// The range a programmatic selection set without a direction, which the
+    /// DOM reports as `"none"` until the selection changes.
+    directionless_range: Option<Range<usize>>,
     read_only: bool,
     min_rows: usize,
     max_rows: usize,
@@ -673,6 +841,57 @@ impl TextEditorState {
                 if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }
+    fn masks_text(&self) -> bool {
+        self.input_type == InputType::Password && !self.multiline
+    }
+
+    /// What is painted and measured: the content, bullets for a password, or
+    /// the placeholder while empty.
+    fn display_text(&self) -> (SharedString, bool) {
+        if self.content.is_empty() {
+            (self.placeholder.clone(), true)
+        } else if self.masks_text() {
+            (SharedString::from(masked(&self.content)), false)
+        } else {
+            (SharedString::from(self.content.clone()), false)
+        }
+    }
+
+    fn content_to_display(&self, offset: usize) -> usize {
+        if self.masks_text() {
+            content_to_masked(&self.content, offset)
+        } else {
+            offset
+        }
+    }
+
+    fn display_to_content(&self, offset: usize) -> usize {
+        if self.masks_text() {
+            masked_to_content(&self.content, offset)
+        } else {
+            offset
+        }
+    }
+
+    fn selection(&self) -> TextSelection {
+        describe(
+            &self.content,
+            &self.selected_range,
+            self.selection_reversed,
+            self.directionless_range.as_ref(),
+        )
+    }
+
+    fn select_request(&mut self, request: SelectionRequest, cx: &mut Context<Self>) {
+        let selection = resolve(&self.content, request);
+        self.selected_range = selection.range.clone();
+        self.selection_reversed = selection.reversed;
+        self.directionless_range = selection.directionless.then_some(selection.range);
+        self.follow_cursor = true;
+        self.reset_blink(cx);
+        cx.notify();
+    }
+
             }));
         }
         caret_visible(self.blink_anchor.elapsed().as_millis() as u64)
@@ -1054,6 +1273,10 @@ impl TextEditorState {
                 return;
             }
             self.select_to(end, cx);
+        // A password never reaches the clipboard.
+        if self.masks_text() {
+            return;
+        }
         }
         self.replace_text_in_range(None, "", window, cx);
     }
@@ -1067,7 +1290,7 @@ impl TextEditorState {
     }
 
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only || self.selected_range.is_empty() {
+        if self.read_only || self.masks_text() || self.selected_range.is_empty() {
             return;
         }
         self.copy(&Copy, window, cx);
@@ -1112,6 +1335,73 @@ impl TextEditorState {
             self.replace_text_in_range(None, "\n", window, cx);
         }
     }
+    /// Replace `range` and put the caret after the new text. `user_input`
+    /// applies `maxLength`; a programmatic edit such as the number stepper does not.
+    fn edit(&mut self, range: Range<usize>, new_text: &str, user_input: bool, cx: &mut Context<Self>) {
+        let replacement = self.single_line_if_needed(new_text);
+        let replacement = if user_input {
+            self.fit_max_length(&range, replacement)
+        } else {
+            replacement
+        };
+        if range.is_empty() && replacement.is_empty() {
+            return;
+        }
+        if self.marked_range.is_none() {
+            self.record_edit(&range, &replacement, cx.background_executor().now());
+        }
+        self.content =
+            self.content[..range.start].to_owned() + &replacement + &self.content[range.end..];
+        let cursor = range.start + replacement.len();
+        self.selected_range = cursor..cursor;
+        self.selection_reversed = false;
+        self.marked_range = None;
+        self.follow_cursor = true;
+        self.reset_blink(cx);
+        self.emit_change();
+        cx.notify();
+    }
+
+    fn single_line_if_needed(&self, text: &str) -> String {
+        if self.multiline {
+            text.to_string()
+        } else {
+            single_line_text(text)
+        }
+    }
+
+    /// Cut `replacement` so the content stays within `maxLength` UTF-16 units.
+    /// Content a program set beyond the limit is kept; it only blocks insertion.
+    fn fit_max_length(&self, range: &Range<usize>, replacement: String) -> String {
+        let Some(max_length) = self.max_length else {
+            return replacement;
+        };
+        let kept = utf16_len(&self.content[..range.start]) + utf16_len(&self.content[range.end..]);
+        truncate_to_utf16(&replacement, max_length.saturating_sub(kept)).to_string()
+    }
+
+    fn step_up(&mut self, _: &StepUp, _: &mut Window, cx: &mut Context<Self>) {
+        self.step_number(1.0, cx);
+    }
+
+    fn step_down(&mut self, _: &StepDown, _: &mut Window, cx: &mut Context<Self>) {
+        self.step_number(-1.0, cx);
+    }
+
+    fn step_number(&mut self, direction: f64, cx: &mut Context<Self>) {
+        if self.read_only || self.disabled {
+            return;
+        }
+        let Some(rules) = self.number_rules else {
+            return;
+        };
+        let Some(next) = step_number(&self.content, direction, rules) else {
+            return;
+        };
+        // Not user typing, so `maxLength` does not apply.
+        self.edit(0..self.content.len(), &next, false, cx);
+    }
+
 
     fn submit(&mut self, _: &Submit, _: &mut Window, _: &mut Context<Self>) {
         self.emit_submit();
@@ -1125,6 +1415,7 @@ impl TextEditorState {
         }
         if target_y >= self.content_height {
             return Some(self.content.len());
+        let index = self.content_to_display(index);
         }
         Some(self.index_for_point(point(current.x, px(target_y))))
     }
@@ -1160,7 +1451,9 @@ impl TextEditorState {
                 let index = line
                     .closest_index_for_position(local, self.line_height)
                     .unwrap_or_else(|index| index);
-                return (line_start + index).min(self.content.len());
+                return self
+                    .display_to_content(line_start + index)
+                    .min(self.content.len());
             }
             y -= height;
         }
@@ -1178,6 +1471,9 @@ impl TextEditorState {
     }
 
     fn on_mouse_down(
+        if self.disabled {
+            return;
+        }
         &mut self,
         event: &MouseDownEvent,
         window: &mut Window,
@@ -1192,6 +1488,11 @@ impl TextEditorState {
         self.drag_position = intent.arms_drag().then_some(event.position);
         self.drag_generation = self.drag_generation.wrapping_add(1);
         self.drag_autoscroll_active = false;
+            // A browser selects the whole password: word breaks would leak its shape.
+            PressIntent::SelectWord if self.masks_text() => {
+                self.move_to(0, cx);
+                self.select_to(self.content.len(), cx);
+            }
         match intent {
             PressIntent::SelectAll => {
                 self.move_to(0, cx);
@@ -1363,15 +1664,13 @@ impl TextEditorState {
     }
 
     fn layout_text(&mut self, width: Pixels, style: &TextStyle, window: &mut Window) -> f32 {
-        let (display, is_placeholder) = if self.content.is_empty() {
-            (self.placeholder.clone(), true)
-        } else {
-            (SharedString::from(self.content.clone()), false)
-        };
+        let (display, is_placeholder) = self.display_text();
         let rem_size = window.rem_size();
         let font_size = style.font_size.to_pixels(rem_size);
         self.font_size = font_size;
         // Taffy measures after parent `with_text_style` is gone, so
+        } else if self.disabled {
+            self.muted_color
         // `window.line_height()` is always 16×φ. Use the style captured during
         // request_layout instead.
         self.line_height = style.line_height_in_pixels(rem_size);
@@ -1392,7 +1691,10 @@ impl TextEditorState {
             }),
             strikethrough: None,
         };
-        let runs = match self.marked_range.as_ref() {
+        let marked = self.marked_range.as_ref().map(|marked| {
+            self.content_to_display(marked.start)..self.content_to_display(marked.end)
+        });
+        let runs = match marked {
             Some(marked) if !is_placeholder => vec![
                 run(marked.start, false),
                 run(marked.len(), true),
@@ -1509,7 +1811,7 @@ impl EntityInputHandler for TextEditorState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only {
+        if self.read_only || self.disabled {
             return;
         }
         let range = range_utf16
@@ -1517,24 +1819,7 @@ impl EntityInputHandler for TextEditorState {
             .map(|range| self.range_from_utf16(range))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
-        let replacement = if self.multiline {
-            new_text.to_string()
-        } else {
-            single_line_text(new_text)
-        };
-        if self.marked_range.is_none() {
-            self.record_edit(&range, &replacement, cx.background_executor().now());
-        }
-        self.content =
-            self.content[..range.start].to_owned() + &replacement + &self.content[range.end..];
-        let cursor = range.start + replacement.len();
-        self.selected_range = cursor..cursor;
-        self.selection_reversed = false;
-        self.marked_range = None;
-        self.follow_cursor = true;
-        self.reset_blink(cx);
-        self.emit_change();
-        cx.notify();
+        self.edit(range, new_text, true, cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -1545,7 +1830,7 @@ impl EntityInputHandler for TextEditorState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only {
+        if self.read_only || self.disabled {
             return;
         }
         let range = range_utf16
@@ -1559,11 +1844,8 @@ impl EntityInputHandler for TextEditorState {
             self.redo_stack.clear();
             self.last_edit = None;
         }
-        let replacement = if self.multiline {
-            new_text.to_string()
-        } else {
-            single_line_text(new_text)
-        };
+        let replacement = self.single_line_if_needed(new_text);
+        let replacement = self.fit_max_length(&range, replacement);
         self.content =
             self.content[..range.start].to_owned() + &replacement + &self.content[range.end..];
         self.marked_range =
@@ -1626,7 +1908,7 @@ impl EntityInputHandler for TextEditorState {
     }
 
     fn accepts_text_input(&self, _: &mut Window, _: &mut Context<Self>) -> bool {
-        !self.read_only
+        !self.read_only && !self.disabled
     }
 }
 
@@ -1636,15 +1918,21 @@ impl gpui::Render for TextEditorState {
         let key_up_callback = self.callback.clone();
         let element_id = self.element_id;
         div()
-            .key_context(if !self.multiline {
+            .key_context(if self.number_rules.is_some() {
+                NUMBER_INPUT_KEY_CONTEXT
+            } else if !self.multiline {
                 INPUT_KEY_CONTEXT
             } else if self.emits_submit {
                 TEXTAREA_SUBMIT_KEY_CONTEXT
             } else {
                 TEXTAREA_KEY_CONTEXT
             })
-            .track_focus(&self.focus_handle)
-            .cursor(CursorStyle::IBeam)
+            .when(!self.disabled, |editor| editor.track_focus(&self.focus_handle))
+            .cursor(if self.disabled {
+                CursorStyle::Arrow
+            } else {
+                CursorStyle::IBeam
+            })
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::left))
@@ -1674,6 +1962,8 @@ impl gpui::Render for TextEditorState {
             .on_action(cx.listener(Self::delete_to_line_end))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
+            .on_action(cx.listener(Self::step_up))
+            .on_action(cx.listener(Self::step_down))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
@@ -1781,7 +2071,9 @@ impl gpui::Element for EditorTextElement {
         );
         let mut selection = Vec::new();
         let mut caret = None;
-        if input.selected_range.is_empty() || input.display_is_placeholder {
+        if input.disabled {
+            // No caret and no selection wash on a control that cannot be edited.
+        } else if input.selected_range.is_empty() || input.display_is_placeholder {
             let caret_point = input
                 .point_for_index(input.cursor_offset())
                 .unwrap_or(point(px(0.0), px(0.0)));
@@ -1845,11 +2137,13 @@ impl gpui::Element for EditorTextElement {
         cx: &mut App,
     ) {
         let focus_handle = self.input.read(cx).focus_handle.clone();
-        window.handle_input(
-            &focus_handle,
-            ElementInputHandler::new(bounds, self.input.clone()),
-            cx,
-        );
+        if !self.input.read(cx).disabled {
+            window.handle_input(
+                &focus_handle,
+                ElementInputHandler::new(bounds, self.input.clone()),
+                cx,
+            );
+        }
         let input = self.input.clone();
         window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
             if phase == DispatchPhase::Bubble && event.pressed_button == Some(MouseButton::Left) {
@@ -1862,11 +2156,7 @@ impl gpui::Element for EditorTextElement {
             }
             let (lines, line_height, scroll_top, scroll_left, display) =
                 self.input.update(cx, |input, _| {
-                    let display = if input.content.is_empty() {
-                        input.placeholder.clone()
-                    } else {
-                        input.content.clone().into()
-                    };
+                    let display = input.display_text().0;
                     (
                         std::mem::take(&mut input.last_lines),
                         input.line_height,
