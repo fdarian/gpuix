@@ -48,6 +48,16 @@ describeNative("text control selection", () => {
     expect(testRoot.renderer.getAllText()).toContain("Value: x")
   })
 
+  it("reports no direction after select all from the keyboard", () => {
+    let input
+    testRoot.render(<Field initial="hello" onRef={(el) => (input = el)} />)
+    const id = testRoot.renderer.findByType("input")[0].id
+    testRoot.renderer.nativeSimulateKeystrokes(id, "cmd-a")
+    expect([input.selectionStart, input.selectionEnd, input.selectionDirection]).toEqual([0, 5, "none"])
+    testRoot.renderer.nativeSimulateKeystrokes(id, "shift-left")
+    expect(input.selectionDirection).toBe("forward")
+  })
+
   it("setSelectionRange() selects a range with a direction", () => {
     let input
     testRoot.render(<Field initial="hello" onRef={(el) => (input = el)} />)
@@ -411,6 +421,17 @@ describeNative("<input type>", () => {
     expect(roles).toContain("PasswordInput")
     expect(roles).toContain("TextInput")
     expect(JSON.stringify(tree)).not.toContain("hunter2")
+  })
+  it("exposes type=number as a spin button with its numeric value and range", () => {
+    testRoot.render(
+      <input type="number" min={1} max={9} step={2} value="5" style={{ width: 100, height: 30 }} />,
+    )
+    testRoot.renderer.flush()
+    const tree = testRoot.renderer.getA11yTree()
+    const spin = Object.values(tree.nodes ?? {})
+      .map((node) => node.aria)
+      .find((aria) => aria?.role === "SpinButton")
+    expect(spin).toMatchObject({ numeric_value: 5, min_numeric_value: 1, max_numeric_value: 9 })
   })
 })
 

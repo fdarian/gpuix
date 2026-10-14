@@ -1950,7 +1950,8 @@ ref.current.selectionDirection // 'backward'
 `select()` selects all the text and `setSelectionRange(start, end)` clamps both
 ends to the text; an `end` at or before `start` collapses the selection to
 `end`. Neither moves focus. A selection made from code reports
-`selectionDirection` `'none'` until the user changes it. A call right after a
+`selectionDirection` `'none'` until the user changes it, and so does Select All
+(`Cmd+A`, triple click). A call right after a
 controlled `value` update sees the new value, even before the next frame.
 Select-on-focus works with `onFocus`, for keyboard focus and for a click.
 
@@ -1970,7 +1971,8 @@ reported as disabled to assistive technology.
   1), clamped to `min` and `max`, and report it through `onChange`. Text that
   is not a number steps from 0. Typing is not restricted and `onChange`
   reports the raw text, so `'1e'` stays `'1e'`. There is no spinner. `min`,
-  `max` and `step` are ignored for other types.
+  `max` and `step` are ignored for other types. It is exposed to assistive
+  technology as a spin button with its numeric value, `min`, `max` and `step`.
 - `'search'` is exposed to assistive technology as a search field.
 - `'email'`, `'tel'` and `'url'` behave as `'text'`.
 

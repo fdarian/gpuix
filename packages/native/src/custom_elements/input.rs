@@ -569,9 +569,26 @@ impl CustomElement for TextEditorElement {
             match input_type {
                 InputType::Search => gpui::Role::SearchInput,
                 InputType::Password => gpui::Role::PasswordInput,
+                InputType::Number => gpui::Role::SpinButton,
                 _ => gpui::Role::TextInput,
             }
         };
+        // Before `apply_accessibility`, so an explicit `aria-valuenow`, `-valuemin`
+        // or `-valuemax` from the app wins.
+        if let Some(rules) = number_rules {
+            if let Ok(value) = self.value.trim().parse::<f64>() {
+                if value.is_finite() {
+                    editor = editor.aria_numeric_value(value);
+                }
+            }
+            if let Some(min) = rules.min {
+                editor = editor.aria_min_numeric_value(min);
+            }
+            if let Some(max) = rules.max {
+                editor = editor.aria_max_numeric_value(max);
+            }
+            editor = editor.aria_numeric_value_step(rules.step);
+        }
         editor = crate::accessibility::apply_accessibility(
             editor,
             ctx.id,
@@ -1152,6 +1169,8 @@ impl TextEditorState {
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.selected_range = 0..self.content.len();
         self.selection_reversed = false;
+        // Non-directional, as a browser reports it.
+        self.directionless_range = Some(self.selected_range.clone());
         self.reset_blink(cx);
         cx.notify();
     }
@@ -1487,6 +1506,7 @@ impl TextEditorState {
             PressIntent::SelectAll => {
                 self.move_to(0, cx);
                 self.select_to(self.content.len(), cx);
+                self.directionless_range = Some(self.selected_range.clone());
             }
             // A browser selects the whole password: word breaks would leak its shape.
             PressIntent::SelectWord if self.masks_text() => {
