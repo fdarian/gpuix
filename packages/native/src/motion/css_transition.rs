@@ -1123,8 +1123,21 @@ mod tests {
             after: &StyleDesc,
             motion: Option<&MotionState>,
         ) -> StyleDesc {
+            self.frame_measured(millis, after, motion, None)
+        }
+
+        fn frame_measured(
+            &mut self,
+            millis: u64,
+            after: &StyleDesc,
+            motion: Option<&MotionState>,
+            measurement: Option<&Measurement>,
+        ) -> StyleDesc {
             let mut resolved = after.clone();
-            if let Some(values) = self.transitions.update(1, after, motion, None, self.at(millis)) {
+            if let Some(values) =
+                self.transitions
+                    .update(1, after, motion, measurement, self.at(millis))
+            {
                 values.apply_to(&mut resolved);
             }
             resolved
@@ -1440,5 +1453,137 @@ mod tests {
         assert!(clock.transitions.wants(1, None));
         clock.transitions.retain(|_| false);
         assert!(!clock.transitions.wants(1, None));
+    }
+
+    mod measured {
+        use super::*;
+
+        fn measurement(height: f32, natural: f32) -> Measurement {
+            Measurement {
+                border_box: gpui::size(gpui::px(100.0), gpui::px(height)),
+                natural_height: gpui::px(natural),
+                parent_content: None,
+                scale_factor: 1.0,
+            }
+        }
+
+        fn closed() -> StyleDesc {
+            style(r#"{ "height": 0, "transition": "height 1s linear" }"#)
+        }
+
+        fn auto() -> StyleDesc {
+            style(r#"{ "transition": "height 1s linear" }"#)
+        }
+
+        fn height_of(style: &StyleDesc) -> f64 {
+            match style.height {
+                Some(DimensionValue::Pixels(height)) => height,
+                ref other => panic!("expected px, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn a_height_runs_to_the_natural_height_and_ends_on_auto() {
+            let mut clock = Clock::new();
+            let measured = measurement(0.0, 80.2);
+            clock.frame_measured(0, &closed(), None, Some(&measured));
+
+            let started = clock.frame_measured(100, &auto(), None, Some(&measured));
+            assert_eq!(height_of(&started), 0.0);
+            assert_eq!(
+                clock.events(),
+                [(Run, "height".to_string(), 0.0), (Start, "height".to_string(), 0.0)]
+            );
+            // The target is the natural height rounded up to the device pixel.
+            let middle = clock.frame_measured(600, &auto(), None, Some(&measured));
+            assert_eq!(height_of(&middle), 40.5);
+            assert!(clock.transitions.take_active());
+
+            let ended = clock.frame_measured(1100, &auto(), None, Some(&measured));
+            assert_eq!(ended.height, None, "the style is literal auto again");
+            assert_eq!(clock.events(), [(End, "height".to_string(), 1.0)]);
+            assert!(!clock.transitions.take_active());
+            assert_eq!(clock.frame_measured(1200, &auto(), None, Some(&measured)).height, None);
+            assert!(clock.events().is_empty(), "a finished transition does not restart");
+        }
+
+        #[test]
+        fn leaving_auto_starts_from_the_laid_out_height() {
+            let mut clock = Clock::new();
+            let measured = measurement(80.0, 80.0);
+            clock.frame_measured(0, &auto(), None, Some(&measured));
+
+            let target = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            assert_eq!(height_of(&clock.frame_measured(100, &target, None, Some(&measured))), 80.0);
+            assert_eq!(height_of(&clock.frame_measured(600, &target, None, Some(&measured))), 90.0);
+            assert_eq!(height_of(&clock.frame_measured(1100, &target, None, Some(&measured))), 100.0);
+        }
+
+        #[test]
+        fn the_end_follows_the_content_without_moving_the_value_or_the_schedule() {
+            let mut clock = Clock::new();
+            clock.frame_measured(0, &closed(), None, Some(&measurement(0.0, 80.0)));
+            clock.frame_measured(100, &auto(), None, Some(&measurement(0.0, 80.0)));
+            clock.events();
+
+            let grown = measurement(40.0, 120.0);
+            assert_eq!(height_of(&clock.frame_measured(600, &auto(), None, Some(&grown))), 40.0);
+            assert_eq!(height_of(&clock.frame_measured(850, &auto(), None, Some(&grown))), 80.0);
+            assert!(clock.events().is_empty(), "following is not a new transition");
+
+            let ended = clock.frame_measured(1100, &auto(), None, Some(&grown));
+            assert_eq!(ended.height, None);
+            assert_eq!(clock.events(), [(End, "height".to_string(), 1.0)]);
+        }
+
+        #[test]
+        fn interrupting_a_pixel_transition_toward_auto_runs_to_the_natural_height() {
+            let mut clock = Clock::new();
+            let measured = measurement(50.0, 80.0);
+            let tall = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            clock.frame_measured(0, &closed(), None, Some(&measured));
+            clock.frame_measured(0, &tall, None, Some(&measured));
+            assert_eq!(height_of(&clock.frame_measured(500, &tall, None, Some(&measured))), 50.0);
+
+            assert_eq!(height_of(&clock.frame_measured(500, &auto(), None, Some(&measured))), 50.0);
+            assert_eq!(height_of(&clock.frame_measured(1000, &auto(), None, Some(&measured))), 65.0);
+            assert_eq!(clock.frame_measured(1500, &auto(), None, Some(&measured)).height, None);
+        }
+
+        #[test]
+        fn without_a_measurement_the_change_is_instant() {
+            let mut clock = Clock::new();
+            clock.frame(0, &closed());
+            assert_eq!(clock.frame(100, &auto()).height, None);
+            assert!(clock.events().is_empty());
+            clock.frame(200, &auto());
+            let target = style(r#"{ "height": 100, "transition": "height 1s linear" }"#);
+            assert_eq!(height_of(&clock.frame(300, &target)), 100.0);
+        }
+
+        #[test]
+        fn width_to_or_from_auto_stays_instant() {
+            let mut clock = Clock::new();
+            let measured = measurement(10.0, 10.0);
+            let sized = style(r#"{ "width": 50, "transition": "width 1s linear" }"#);
+            let unset = style(r#"{ "transition": "width 1s linear" }"#);
+            clock.frame_measured(0, &sized, None, Some(&measured));
+            assert_eq!(clock.frame_measured(100, &unset, None, Some(&measured)).width, None);
+            assert_eq!(width_of(&clock.frame_measured(200, &sized, None, Some(&measured))), 50.0);
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn an_unset_max_height_starts_from_the_laid_out_height() {
+            let mut clock = Clock::new();
+            let measured = measurement(80.0, 80.0);
+            let unset = style(r#"{ "transition": "max-height 1s linear" }"#);
+            let capped = style(r#"{ "maxHeight": 0, "transition": "max-height 1s linear" }"#);
+            clock.frame_measured(0, &unset, None, Some(&measured));
+            let started = clock.frame_measured(100, &capped, None, Some(&measured));
+            assert_eq!(started.max_height, Some(DimensionValue::Pixels(80.0)));
+            let middle = clock.frame_measured(600, &capped, None, Some(&measured));
+            assert_eq!(middle.max_height, Some(DimensionValue::Pixels(40.0)));
+        }
     }
 }
