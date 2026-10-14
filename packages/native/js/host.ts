@@ -26,8 +26,8 @@ export type { AriaProps }
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
-
 export * from "./text-selection.js"
+
 export type DimensionValue = number | string
 
 export interface MotionStyle {
@@ -574,6 +574,18 @@ export interface TextControlProps extends HostProps {
   value?: string
   placeholder?: string
   readOnly?: boolean
+  /**
+   * Like the DOM: not focusable, not a tab stop, no caret, no editing, no
+   * mouse, click or key events, the text in the theme's muted colour, and
+   * reported as disabled to assistive technology. Focus leaves the control
+   * when it becomes disabled.
+   */
+  disabled?: boolean
+  /**
+   * The most UTF-16 code units the user can type or paste. Longer input is
+   * cut to fit. A `value` set from code is kept whole, even when it is longer.
+   */
+  maxLength?: number
   theme?: GpuixTheme
 }
 
@@ -627,18 +639,6 @@ export type VirtualListShared = AriaProps & {
 }
 
 /** A variable-height list that builds only rows near its viewport. */
-  /**
-   * Like the DOM: not focusable, not a tab stop, no caret, no editing, no
-   * mouse, click or key events, the text in the theme's muted colour, and
-   * reported as disabled to assistive technology. Focus leaves the control
-   * when it becomes disabled.
-   */
-  disabled?: boolean
-  /**
-   * The most UTF-16 code units the user can type or paste. Longer input is
-   * cut to fit. A `value` set from code is kept whole, even when it is longer.
-   */
-  maxLength?: number
 export type VirtualListProps =
   | (VirtualListShared & {
       estimatedItemHeight?: number
@@ -794,6 +794,9 @@ export type NativeRenderer = MutationHost &
       | "pointerLockElement"
       | "setImage"
       | "setImagePixels"
+      | "selectText"
+      | "setSelectionRange"
+      | "getTextSelection"
       | "getScrollOffset"
       | "getListScrollTop"
       | "getSelectedText"
@@ -825,9 +828,6 @@ export interface MutationRenderer {
   appendChild(parentId: number, childId: number): void
   insertBefore(parentId: number, childId: number, beforeId: number): void
   setStyle(id: number, style: object): void
-      | "selectText"
-      | "setSelectionRange"
-      | "getTextSelection"
   setText(id: number, content: string): void
   setEventListener(id: number, eventType: string, hasHandler: boolean): void
   setRoot(id: number): void

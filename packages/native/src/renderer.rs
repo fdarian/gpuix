@@ -660,12 +660,6 @@ async fn run_ui_commands(
                     .send(view.set_encoded_image(id, bytes, window, cx))
                     .ok();
             }),
-            UiCommand::RegisterFont { bytes, response } => {
-                window.update(cx, move |view, window, cx| {
-                    response.send(view.register_font(bytes, window, cx)).ok();
-                })
-            }
-            UiCommand::GetScrollOffset { id, response } => {
             UiCommand::SetTextSelection {
                 id,
                 request,
@@ -680,6 +674,12 @@ async fn run_ui_commands(
                     response.send(view.text_selection(id, cx)).ok();
                 })
             }
+            UiCommand::RegisterFont { bytes, response } => {
+                window.update(cx, move |view, window, cx| {
+                    response.send(view.register_font(bytes, window, cx)).ok();
+                })
+            }
+            UiCommand::GetScrollOffset { id, response } => {
                 let offset = VIRTUAL_LIST_STATES
                     .with(|cell| {
                         cell.borrow().get(&id).map(|state| {
@@ -991,25 +991,6 @@ pub struct GpuixRenderer {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[napi]
-impl GpuixRenderer {
-    fn event_callback_for_view(&self) -> Option<EventCallback> {
-        self.event_callback.lock().unwrap().clone().map(|tsf| {
-            Arc::new(move |payload: EventPayload| {
-                tsf.call(Ok(payload), ThreadsafeFunctionCallMode::NonBlocking);
-            }) as EventCallback
-        })
-    }
-
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-    fn send_ui_command(&self, command: UiCommand) -> Result<()> {
-        self.ui_commands
-            .lock()
-            .unwrap()
-            .as_ref()
-            .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?
-            .unbounded_send(command)
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 impl GpuixRenderer {
     fn apply_text_selection(
         &self,
@@ -1044,6 +1025,25 @@ impl GpuixRenderer {
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[napi]
+impl GpuixRenderer {
+    fn event_callback_for_view(&self) -> Option<EventCallback> {
+        self.event_callback.lock().unwrap().clone().map(|tsf| {
+            Arc::new(move |payload: EventPayload| {
+                tsf.call(Ok(payload), ThreadsafeFunctionCallMode::NonBlocking);
+            }) as EventCallback
+        })
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+    fn send_ui_command(&self, command: UiCommand) -> Result<()> {
+        self.ui_commands
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?
+            .unbounded_send(command)
             .map_err(|_| Error::from_reason("The GPUI UI thread is not running"))
     }
 
@@ -2671,6 +2671,65 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// `select()` on an `<input>` or `<textarea>`: select all of its text.
+    #[napi]
+    pub fn select_text(&self, element_id: f64) -> Result<()> {
+        self.apply_text_selection(
+            to_element_id(element_id)?,
+            crate::custom_elements::text_selection::SelectionRequest::select_all(),
+        )
+    }
+
+    /// `setSelectionRange(start, end, direction)` on an `<input>` or
+    /// `<textarea>`. Offsets are UTF-16 code units; `direction` is
+    /// `"forward"`, `"backward"` or `"none"`.
+    #[napi]
+    pub fn set_selection_range(
+        &self,
+        element_id: f64,
+        start: f64,
+        end: f64,
+        direction: Option<String>,
+    ) -> Result<()> {
+        self.apply_text_selection(
+            to_element_id(element_id)?,
+            crate::custom_elements::text_selection::SelectionRequest::from_dom(
+                start,
+                end,
+                direction.as_deref(),
+            ),
+        )
+    }
+
+    /// `selectionStart`, `selectionEnd` and `selectionDirection` of an
+    /// `<input>` or `<textarea>`.
+    #[napi]
+    pub fn get_text_selection(
+        &self,
+        element_id: f64,
+    ) -> Result<crate::custom_elements::text_selection::TextSelection> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, _window, cx| view.text_selection(id, cx))?
+            .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::GetTextSelection { id, response })?;
+            return recv_ui_response(receiver, "the text selection query")?
+                .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
     /// Make the fonts in a TrueType or OpenType file (or a collection) usable by
     /// `fontFamily`, under the family names the file declares. Call it before
     /// the text that names the family is first laid out: a family that did not
@@ -2744,65 +2803,6 @@ impl GpuixRenderer {
     pub fn get_painted_text(&self) -> Vec<String> {
         crate::text::painted_text()
     }
-    /// `select()` on an `<input>` or `<textarea>`: select all of its text.
-    #[napi]
-    pub fn select_text(&self, element_id: f64) -> Result<()> {
-        self.apply_text_selection(
-            to_element_id(element_id)?,
-            crate::custom_elements::text_selection::SelectionRequest::select_all(),
-        )
-    }
-
-    /// `setSelectionRange(start, end, direction)` on an `<input>` or
-    /// `<textarea>`. Offsets are UTF-16 code units; `direction` is
-    /// `"forward"`, `"backward"` or `"none"`.
-    #[napi]
-    pub fn set_selection_range(
-        &self,
-        element_id: f64,
-        start: f64,
-        end: f64,
-        direction: Option<String>,
-    ) -> Result<()> {
-        self.apply_text_selection(
-            to_element_id(element_id)?,
-            crate::custom_elements::text_selection::SelectionRequest::from_dom(
-                start,
-                end,
-                direction.as_deref(),
-            ),
-        )
-    }
-
-    /// `selectionStart`, `selectionEnd` and `selectionDirection` of an
-    /// `<input>` or `<textarea>`.
-    #[napi]
-    pub fn get_text_selection(
-        &self,
-        element_id: f64,
-    ) -> Result<crate::custom_elements::text_selection::TextSelection> {
-        let id = to_element_id(element_id)?;
-        #[cfg(target_os = "macos")]
-        return update_window(move |view, _window, cx| view.text_selection(id, cx))?
-            .map_err(Error::from_reason);
-
-        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-        {
-            let (response, receiver) = sync_channel(1);
-            self.send_ui_command(UiCommand::GetTextSelection { id, response })?;
-            return recv_ui_response(receiver, "the text selection query")?
-                .map_err(Error::from_reason);
-        }
-
-        #[cfg(not(any(
-            target_os = "macos",
-            target_os = "windows",
-            target_os = "linux",
-            target_os = "freebsd"
-        )))]
-        Err(Error::from_reason("Unsupported operating system"))
-    }
-
 
     /// Every highlight wash painted in the last frame, in paint order.
     ///
@@ -3346,6 +3346,16 @@ fn update_web_window_without_view<R>(
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn apply_web_text_selection(
+    element_id: f64,
+    request: crate::custom_elements::text_selection::SelectionRequest,
+) -> Result<(), wasm_bindgen::JsValue> {
+    let id = web_element_id(element_id)?;
+    update_web_window(move |view, window, cx| view.set_text_selection(id, request, window, cx))?
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn notify_web() {
     if let Err(error) = update_web_window(|_view, _window, cx| cx.notify()) {
         if WEB_WINDOW.with(|window| window.borrow().is_some()) {
@@ -3421,16 +3431,6 @@ impl WebGpuixRenderer {
         let mut tree = self.tree.lock().unwrap();
         let destroyed = apply_batch_to_tree(&mut tree, json.as_bytes())
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?;
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-fn apply_web_text_selection(
-    element_id: f64,
-    request: crate::custom_elements::text_selection::SelectionRequest,
-) -> Result<(), wasm_bindgen::JsValue> {
-    let id = web_element_id(element_id)?;
-    update_web_window(move |view, window, cx| view.set_text_selection(id, request, window, cx))?
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
         let dirty = tree.take_dirty();
         drop(tree);
         if dirty {
@@ -3807,6 +3807,51 @@ fn apply_web_text_selection(
         })?
     }
 
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = selectText)]
+    pub fn select_text(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+        apply_web_text_selection(
+            element_id,
+            crate::custom_elements::text_selection::SelectionRequest::select_all(),
+        )
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setSelectionRange)]
+    pub fn set_selection_range(
+        &self,
+        element_id: f64,
+        start: f64,
+        end: f64,
+        direction: Option<String>,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        apply_web_text_selection(
+            element_id,
+            crate::custom_elements::text_selection::SelectionRequest::from_dom(
+                start,
+                end,
+                direction.as_deref(),
+            ),
+        )
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = getTextSelection)]
+    pub fn get_text_selection(
+        &self,
+        element_id: f64,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let selection = update_web_window(move |view, _window, cx| view.text_selection(id, cx))?
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?;
+        let object = js_sys::Object::new();
+        for (key, value) in [
+            ("start", wasm_bindgen::JsValue::from_f64(f64::from(selection.start))),
+            ("end", wasm_bindgen::JsValue::from_f64(f64::from(selection.end))),
+            ("direction", wasm_bindgen::JsValue::from_str(&selection.direction)),
+        ] {
+            js_sys::Reflect::set(&object, &wasm_bindgen::JsValue::from_str(key), &value)?;
+        }
+        Ok(object.into())
+    }
+
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getListScrollTop)]
     pub fn get_list_scroll_top(
         &self,
@@ -3897,51 +3942,6 @@ fn apply_web_text_selection(
     pub fn get_painted_text(&self) -> wasm_bindgen::JsValue {
         web_string_array(crate::text::painted_text())
     }
-    #[wasm_bindgen::prelude::wasm_bindgen(js_name = selectText)]
-    pub fn select_text(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
-        apply_web_text_selection(
-            element_id,
-            crate::custom_elements::text_selection::SelectionRequest::select_all(),
-        )
-    }
-
-    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setSelectionRange)]
-    pub fn set_selection_range(
-        &self,
-        element_id: f64,
-        start: f64,
-        end: f64,
-        direction: Option<String>,
-    ) -> Result<(), wasm_bindgen::JsValue> {
-        apply_web_text_selection(
-            element_id,
-            crate::custom_elements::text_selection::SelectionRequest::from_dom(
-                start,
-                end,
-                direction.as_deref(),
-            ),
-        )
-    }
-
-    #[wasm_bindgen::prelude::wasm_bindgen(js_name = getTextSelection)]
-    pub fn get_text_selection(
-        &self,
-        element_id: f64,
-    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
-        let id = web_element_id(element_id)?;
-        let selection = update_web_window(move |view, _window, cx| view.text_selection(id, cx))?
-            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?;
-        let object = js_sys::Object::new();
-        for (key, value) in [
-            ("start", wasm_bindgen::JsValue::from_f64(f64::from(selection.start))),
-            ("end", wasm_bindgen::JsValue::from_f64(f64::from(selection.end))),
-            ("direction", wasm_bindgen::JsValue::from_str(&selection.direction)),
-        ] {
-            js_sys::Reflect::set(&object, &wasm_bindgen::JsValue::from_str(key), &value)?;
-        }
-        Ok(object.into())
-    }
-
 
     /// The same array of objects the napi build returns.
     ///

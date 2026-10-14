@@ -603,6 +603,11 @@ impl CustomElement for TextEditorElement {
         editor.into_any_element()
     }
 
+    fn set_prop(&mut self, key: &str, value: serde_json::Value) {
+        match key {
+            "value" => self.value = value.as_str().unwrap_or_default().to_string(),
+            "placeholder" => self.placeholder = value.as_str().unwrap_or_default().to_string(),
+            "readOnly" => self.read_only = value.as_bool().unwrap_or(false),
             "disabled" => self.disabled = value.as_bool().unwrap_or(false),
             "type" => self.input_type = InputType::parse(value.as_str().unwrap_or_default()),
             "maxLength" => {
@@ -611,11 +616,6 @@ impl CustomElement for TextEditorElement {
             "min" => self.min = number_from_json(&value),
             "max" => self.max = number_from_json(&value),
             "step" => self.step = step_from_json(Some(&value)),
-    fn set_prop(&mut self, key: &str, value: serde_json::Value) {
-        match key {
-            "value" => self.value = value.as_str().unwrap_or_default().to_string(),
-            "placeholder" => self.placeholder = value.as_str().unwrap_or_default().to_string(),
-            "readOnly" => self.read_only = value.as_bool().unwrap_or(false),
             "minRows" => self.min_rows = value.as_u64().unwrap_or(1) as usize,
             "maxRows" => {
                 self.max_rows = value
@@ -628,17 +628,17 @@ impl CustomElement for TextEditorElement {
         }
     }
 
+    fn supported_props(&self) -> &'static [&'static str] {
+        &[
+            "value",
+            "placeholder",
+            "readOnly",
             "disabled",
             "type",
             "maxLength",
             "min",
             "max",
             "step",
-    fn supported_props(&self) -> &'static [&'static str] {
-        &[
-            "value",
-            "placeholder",
-            "readOnly",
             "minRows",
             "maxRows",
             "theme",
@@ -648,6 +648,11 @@ impl CustomElement for TextEditorElement {
     fn supported_events(&self) -> &'static [&'static str] {
         &[
             "change", "submit", "keyDown", "keyUp", "focus", "blur",
+        ]
+    }
+
+    fn destroy(&mut self) {
+        self.state = None;
         self.inert_focus = None;
     }
 
@@ -680,11 +685,6 @@ impl CustomElement for TextEditorElement {
             None => self.pending_selection = Some(request),
         }
         true
-        ]
-    }
-
-    fn destroy(&mut self) {
-        self.state = None;
     }
 }
 
@@ -775,23 +775,23 @@ struct TextEditorState {
     emits_submit: bool,
     emits_key_down: bool,
     emits_key_up: bool,
+    focus_handle: FocusHandle,
+    content: String,
+    placeholder: SharedString,
+    multiline: bool,
+    read_only: bool,
     disabled: bool,
     input_type: InputType,
     max_length: Option<usize>,
     number_rules: Option<NumberRules>,
     muted_color: gpui::Hsla,
-    focus_handle: FocusHandle,
-    content: String,
-    placeholder: SharedString,
-    multiline: bool,
-    /// The range a programmatic selection set without a direction, which the
-    /// DOM reports as `"none"` until the selection changes.
-    directionless_range: Option<Range<usize>>,
-    read_only: bool,
     min_rows: usize,
     max_rows: usize,
     selected_range: Range<usize>,
     selection_reversed: bool,
+    /// The range a programmatic selection set without a direction, which the
+    /// DOM reports as `"none"` until the selection changes.
+    directionless_range: Option<Range<usize>>,
     marked_range: Option<Range<usize>>,
     is_selecting: bool,
     drag_position: Option<Point<Pixels>>,
@@ -836,6 +836,11 @@ impl TextEditorState {
                 if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }
+            }));
+        }
+        caret_visible(self.blink_anchor.elapsed().as_millis() as u64)
+    }
+
     fn masks_text(&self) -> bool {
         self.input_type == InputType::Password && !self.multiline
     }
@@ -885,11 +890,6 @@ impl TextEditorState {
         self.follow_cursor = true;
         self.reset_blink(cx);
         cx.notify();
-    }
-
-            }));
-        }
-        caret_visible(self.blink_anchor.elapsed().as_millis() as u64)
     }
 
     fn snapshot(&self) -> EditSnapshot {
@@ -1268,15 +1268,15 @@ impl TextEditorState {
                 return;
             }
             self.select_to(end, cx);
-        // A password never reaches the clipboard.
-        if self.masks_text() {
-            return;
-        }
         }
         self.replace_text_in_range(None, "", window, cx);
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
+        // A password never reaches the clipboard.
+        if self.masks_text() {
+            return;
+        }
         if !self.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
@@ -1330,6 +1330,11 @@ impl TextEditorState {
             self.replace_text_in_range(None, "\n", window, cx);
         }
     }
+
+    fn submit(&mut self, _: &Submit, _: &mut Window, _: &mut Context<Self>) {
+        self.emit_submit();
+    }
+
     /// Replace `range` and put the caret after the new text. `user_input`
     /// applies `maxLength`; a programmatic edit such as the number stepper does not.
     fn edit(&mut self, range: Range<usize>, new_text: &str, user_input: bool, cx: &mut Context<Self>) {
@@ -1397,11 +1402,6 @@ impl TextEditorState {
         self.edit(0..self.content.len(), &next, false, cx);
     }
 
-
-    fn submit(&mut self, _: &Submit, _: &mut Window, _: &mut Context<Self>) {
-        self.emit_submit();
-    }
-
     fn vertical_target(&self, direction: f32) -> Option<usize> {
         let current = self.point_for_index(self.cursor_offset())?;
         let target_y = f32::from(current.y) + direction * f32::from(self.line_height);
@@ -1410,12 +1410,12 @@ impl TextEditorState {
         }
         if target_y >= self.content_height {
             return Some(self.content.len());
-        let index = self.content_to_display(index);
         }
         Some(self.index_for_point(point(current.x, px(target_y))))
     }
 
     fn point_for_index(&self, index: usize) -> Option<Point<Pixels>> {
+        let index = self.content_to_display(index);
         for (line_index, line) in self.last_lines.iter().enumerate() {
             let line_start = *self.line_starts.get(line_index)?;
             if index < line_start || index > line_start + line.len() {
@@ -1466,14 +1466,14 @@ impl TextEditorState {
     }
 
     fn on_mouse_down(
-        if self.disabled {
-            return;
-        }
         &mut self,
         event: &MouseDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.disabled {
+            return;
+        }
         if !self.read_only {
             window.request_text_input();
         }
@@ -1483,13 +1483,13 @@ impl TextEditorState {
         self.drag_position = intent.arms_drag().then_some(event.position);
         self.drag_generation = self.drag_generation.wrapping_add(1);
         self.drag_autoscroll_active = false;
-            // A browser selects the whole password: word breaks would leak its shape.
-            PressIntent::SelectWord if self.masks_text() => {
+        match intent {
+            PressIntent::SelectAll => {
                 self.move_to(0, cx);
                 self.select_to(self.content.len(), cx);
             }
-        match intent {
-            PressIntent::SelectAll => {
+            // A browser selects the whole password: word breaks would leak its shape.
+            PressIntent::SelectWord if self.masks_text() => {
                 self.move_to(0, cx);
                 self.select_to(self.content.len(), cx);
             }
@@ -1664,13 +1664,13 @@ impl TextEditorState {
         let font_size = style.font_size.to_pixels(rem_size);
         self.font_size = font_size;
         // Taffy measures after parent `with_text_style` is gone, so
-        } else if self.disabled {
-            self.muted_color
         // `window.line_height()` is always 16×φ. Use the style captured during
         // request_layout instead.
         self.line_height = style.line_height_in_pixels(rem_size);
         let color = if is_placeholder {
             gpui::rgba(0x8f8f8fff).into()
+        } else if self.disabled {
+            self.muted_color
         } else {
             style.color
         };
@@ -1957,13 +1957,13 @@ impl gpui::Render for TextEditorState {
             .on_action(cx.listener(Self::delete_to_line_end))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
-            .on_action(cx.listener(Self::step_up))
-            .on_action(cx.listener(Self::step_down))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::newline))
             .on_action(cx.listener(Self::submit))
+            .on_action(cx.listener(Self::step_up))
+            .on_action(cx.listener(Self::step_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))

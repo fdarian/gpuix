@@ -215,6 +215,7 @@ pub struct TestGpuixRenderer {
     /// provide: it is never key, so a real request is always refused.
     platform: crate::events::pointer_lock::SimulatedPlatform,
 }
+
 impl TestGpuixRenderer {
     fn apply_text_selection(
         &self,
@@ -233,7 +234,6 @@ impl TestGpuixRenderer {
         })
     }
 }
-
 
 #[napi]
 impl TestGpuixRenderer {
@@ -1161,32 +1161,6 @@ impl TestGpuixRenderer {
         })
     }
 
-    /// Make the fonts in a TrueType or OpenType file usable by `fontFamily`.
-    #[napi]
-    pub fn register_font(&self, data: Buffer) -> Result<()> {
-        let bytes = data.to_vec();
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| view.register_font(bytes, window, cx))
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
-            .map_err(Error::from_reason)
-        })
-    }
-
-    /// The logical scroll anchor of a `<virtual-list>`:
-    /// `[itemIndex, offsetInItemPx, viewportHeightPx]`, or null for anything
-    /// else. `itemIndex == item count` is gpui's at-end sentinel.
-    #[napi]
-    pub fn get_list_scroll_top(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
-        let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, _cx| {
-                        view.virtual_list_scroll_top(id).map(|top| top.to_vec())
     /// `select()` on an `<input>` or `<textarea>`.
     #[napi]
     pub fn select_text(&self, element_id: f64) -> Result<()> {
@@ -1232,6 +1206,32 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// Make the fonts in a TrueType or OpenType file usable by `fontFamily`.
+    #[napi]
+    pub fn register_font(&self, data: Buffer) -> Result<()> {
+        let bytes = data.to_vec();
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| view.register_font(bytes, window, cx))
+            })
+            .map_err(|e| Error::from_reason(e.to_string()))?
+            .map_err(Error::from_reason)
+        })
+    }
+
+    /// The logical scroll anchor of a `<virtual-list>`:
+    /// `[itemIndex, offsetInItemPx, viewportHeightPx]`, or null for anything
+    /// else. `itemIndex == item count` is gpui's at-end sentinel.
+    #[napi]
+    pub fn get_list_scroll_top(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
+        let id = to_element_id(element_id)?;
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            let result = cx
+                .update_window(window, |_, _window, app| {
+                    view.update(app, |view, _cx| {
+                        view.virtual_list_scroll_top(id).map(|top| top.to_vec())
                     })
                 })
                 .map_err(|e| Error::from_reason(e.to_string()))?;

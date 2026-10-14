@@ -10,25 +10,25 @@ import {
   serializeCustomProp,
   unregisterEventHandlers,
   unregisterEventListener,
+  readTextControlSelection,
+  selectTextControl,
+  setTextControlSelectionRange,
 } from "@gpuix/native/host"
 import type {
   ElementMethods,
   ElementType,
-  readTextControlSelection,
-  selectTextControl,
-  setTextControlSelectionRange,
   EventHandlerMap,
   HostProps,
   ImagePixelsOptions,
   MutationRenderer,
   NativeRenderer,
+  SelectionDirection,
   StyleDesc,
+  TextControlHost,
 } from "@gpuix/native/host"
 import type { EventPayload } from "@gpuix/native"
 
-  SelectionDirection,
 export type HostNode = HostElement | HostText
-  TextControlHost,
 export type HostParent = HostRoot | HostElement
 export type HostPropertyValue =
   | object
@@ -110,10 +110,6 @@ export class HostElement {
     return createElementMethods(this.root.nativeRenderer, this.id)
   }
 
-  setImage(bytes: Buffer | Uint8Array): void {
-    this.root?.nativeRenderer.setImage?.(this.id, bytes as Buffer)
-  }
-
   /** `<input>` and `<textarea>` only: select all of the text. */
   select(): void {
     selectTextControl(this.textControl("select()"))
@@ -150,6 +146,10 @@ export class HostElement {
       nativeRenderer: root.nativeRenderer,
       flushMutations: () => root.mutations.flushMutations(),
     }
+  }
+
+  setImage(bytes: Buffer | Uint8Array): void {
+    this.root?.nativeRenderer.setImage?.(this.id, bytes as Buffer)
   }
 
   setImagePixels(

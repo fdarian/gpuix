@@ -222,13 +222,6 @@ export declare class GpuixRenderer {
    * an `<img>` host node. Prefer `setImagePixels` for live waveforms.
    */
   setImage(elementId: number, bytes: Buffer): void
-  /**
-   * Make the fonts in a TrueType or OpenType file (or a collection) usable by
-   * `fontFamily`, under the family names the file declares. Call it before
-   * the text that names the family is first laid out: a family that did not
-   * exist then has already fallen back to another font.
-   */
-  registerFont(data: Buffer): void
   /** `select()` on an `<input>` or `<textarea>`: select all of its text. */
   selectText(elementId: number): void
   /**
@@ -242,6 +235,13 @@ export declare class GpuixRenderer {
    * `<input>` or `<textarea>`.
    */
   getTextSelection(elementId: number): TextSelection
+  /**
+   * Make the fonts in a TrueType or OpenType file (or a collection) usable by
+   * `fontFamily`, under the family names the file declares. Call it before
+   * the text that names the family is first laid out: a family that did not
+   * exist then has already fallen back to another font.
+   */
+  registerFont(data: Buffer): void
   getAutomationTree(): string
   getElementBounds(id: number): ElementBounds | null
   /**
@@ -509,6 +509,12 @@ export declare class TestGpuixRenderer {
   setImagePixels(elementId: number, width: number, height: number, pixels: Buffer, format?: string | undefined | null): void
   /** Encoded image bytes onto an `<img>` host node. */
   setImage(elementId: number, bytes: Buffer): void
+  /** `select()` on an `<input>` or `<textarea>`. */
+  selectText(elementId: number): void
+  /** `setSelectionRange(start, end, direction)`; offsets are UTF-16 units. */
+  setSelectionRange(elementId: number, start: number, end: number, direction?: string | undefined | null): void
+  /** `selectionStart`, `selectionEnd` and `selectionDirection`. */
+  getTextSelection(elementId: number): TextSelection
   /** Make the fonts in a TrueType or OpenType file usable by `fontFamily`. */
   registerFont(data: Buffer): void
   /**
@@ -518,12 +524,6 @@ export declare class TestGpuixRenderer {
    */
   getListScrollTop(elementId: number): Array<number> | null
   /** `"hidden"` | `"minimal"` | `"full"`. */
-  /** `select()` on an `<input>` or `<textarea>`. */
-  selectText(elementId: number): void
-  /** `setSelectionRange(start, end, direction)`; offsets are UTF-16 units. */
-  setSelectionRange(elementId: number, start: number, end: number, direction?: string | undefined | null): void
-  /** `selectionStart`, `selectionEnd` and `selectionDirection`. */
-  getTextSelection(elementId: number): TextSelection
   setDebugFrameOverlay(mode: string): string
   /** Hidden → minimal → full → hidden. */
   cycleDebugFrameOverlay(): string
@@ -928,6 +928,14 @@ export interface PathPromptOptions {
   prompt?: string
 }
 
+/** `selectionStart`, `selectionEnd` and `selectionDirection` of a text control. */
+export interface TextSelection {
+  start: number
+  end: number
+  /** `"forward"`, `"backward"` or `"none"`. */
+  direction: string
+}
+
 /** One extra HTTP header on the feed or download request. */
 export interface UpdaterHeader {
   name: string
@@ -943,14 +951,6 @@ export interface WindowInsets {
 export interface WindowOptions {
   title?: string
   /**
-/** `selectionStart`, `selectionEnd` and `selectionDirection` of a text control. */
-export interface TextSelection {
-  start: number
-  end: number
-  /** `"forward"`, `"backward"` or `"none"`. */
-  direction: string
-}
-
    * The name used inside the macOS "Hide" and "Quit" menu items. Defaults to
    * `title`. It does NOT set the title of the application menu itself: macOS
    * takes that from the executable, and only a `.app` bundle changes it.

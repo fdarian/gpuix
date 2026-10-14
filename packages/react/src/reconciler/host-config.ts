@@ -15,12 +15,12 @@ import {
   sameMutationValue,
   serializeCustomProp,
   isUniversalProp,
-} from "@gpuix/native/host"
-
-const NoEventPriority = 0
   readTextControlSelection,
   selectTextControl,
   setTextControlSelectionRange,
+} from "@gpuix/native/host"
+
+const NoEventPriority = 0
 import type {
   Container,
   ElementType,
@@ -30,6 +30,7 @@ import type {
   MutationRenderer,
   Props,
   PublicInstance,
+  TextControlInstance,
   TextInstance,
 } from "../types/host.js"
 import {
@@ -44,7 +45,6 @@ type HostNode = Instance | TextInstance
 
 interface HostNodeState {
   container: Container
-  TextControlInstance,
   initialChildren?: HostNode[]
   mounted: boolean
   /**
@@ -65,6 +65,10 @@ function attachHostMethods(instance: Instance): void {
     container.nativeRenderer.scrollIntoView?.(instance.id)
   }
   Object.assign(instance, createElementMethods(container.nativeRenderer, instance.id))
+  if (instance.type === "input" || instance.type === "textarea") {
+    attachTextControlMethods(instance as TextControlInstance, container)
+    return
+  }
   if (instance.type !== "img") return
   const img = instance as ImgInstance
   img.setImage = (bytes) => {
@@ -79,10 +83,22 @@ function attachHostMethods(instance: Instance): void {
       options?.format,
     )
   }
-  if (instance.type === "input" || instance.type === "textarea") {
-    attachTextControlMethods(instance as TextControlInstance, container)
-    return
+}
+
+function attachTextControlMethods(control: TextControlInstance, container: Container): void {
+  const host = {
+    id: control.id,
+    nativeRenderer: container.nativeRenderer,
+    flushMutations: () => container.renderer.flushMutations(),
   }
+  control.select = () => selectTextControl(host)
+  control.setSelectionRange = (start, end, direction) =>
+    setTextControlSelectionRange(host, start, end, direction)
+  Object.defineProperties(control, {
+    selectionStart: { get: () => readTextControlSelection(host).start },
+    selectionEnd: { get: () => readTextControlSelection(host).end },
+    selectionDirection: { get: () => readTextControlSelection(host).direction },
+  })
 }
 
 function stateFor(node: HostNode): HostNodeState {
@@ -103,22 +119,6 @@ function rendererFor(node: HostNode): MutationRenderer {
 
 function nextId(container: Container): number {
   return ++container.ids.nextElementId
-function attachTextControlMethods(control: TextControlInstance, container: Container): void {
-  const host = {
-    id: control.id,
-    nativeRenderer: container.nativeRenderer,
-    flushMutations: () => container.renderer.flushMutations(),
-  }
-  control.select = () => selectTextControl(host)
-  control.setSelectionRange = (start, end, direction) =>
-    setTextControlSelectionRange(host, start, end, direction)
-  Object.defineProperties(control, {
-    selectionStart: { get: () => readTextControlSelection(host).start },
-    selectionEnd: { get: () => readTextControlSelection(host).end },
-    selectionDirection: { get: () => readTextControlSelection(host).direction },
-  })
-}
-
 }
 
 // ── Event wiring helpers ─────────────────────────────────────────────

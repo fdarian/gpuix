@@ -203,6 +203,7 @@ pub trait CustomElement: 'static {
         _image: std::sync::Arc<gpui::RenderImage>,
     ) -> Option<std::sync::Arc<gpui::RenderImage>> {
         None
+    }
 
     /// The selection of `<input>` and `<textarea>`, in DOM terms.
     fn text_selection(&mut self, _cx: &mut gpui::App) -> Option<text_selection::TextSelection> {
@@ -217,7 +218,6 @@ pub trait CustomElement: 'static {
         _cx: &mut gpui::App,
     ) -> bool {
         false
-    }
     }
 }
 
@@ -374,6 +374,7 @@ impl CustomElementRegistry {
             .ok_or_else(|| "img factory is not registered".to_string())?;
         Ok(entry.element.replace_live_image(image))
     }
+
     /// Run `f` on the adapter for `id` after the retained props are synchronized
     /// into it. Imperative element APIs need this because props otherwise reach
     /// an adapter only while a frame renders.
@@ -388,7 +389,6 @@ impl CustomElementRegistry {
         entry.sync(props);
         Some(f(entry.element.as_mut()))
     }
-
 
     /// Called when React destroys an element.
     pub fn destroy(&mut self, id: u64) {

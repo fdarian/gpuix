@@ -18,8 +18,8 @@ import type {
   MutationRenderer,
   NativeRenderer,
   RootEventHandlers,
-  WindowKeyEventHandlers,
   TextControlSelection,
+  WindowKeyEventHandlers,
 } from "@gpuix/native/host"
 
 export * from "@gpuix/native/host"
@@ -33,13 +33,13 @@ export interface Props extends HostProps {
 export interface InputProps extends NativeInputProps {
   key?: Key | null
   children?: ReactNode
-  ref?: Ref<PublicInstance>
+  ref?: Ref<TextControlInstance>
 }
 
 export interface LabelProps extends NativeLabelProps {
   key?: Key | null
   children?: ReactNode
-  ref?: Ref<TextControlInstance>
+  ref?: Ref<PublicInstance>
 }
 
 export interface TextareaProps extends NativeTextareaProps {
@@ -132,16 +132,16 @@ export interface ImgInstance extends Instance {
   ): void
 }
 
-export interface TextInstance {
-  id: number
-  text: string
-  parentId: number | null
-}
 /** The ref of an `<input>` or `<textarea>`: the DOM selection API. */
 export interface TextControlInstance extends PublicInstance, TextControlSelection {
   type: "input" | "textarea"
 }
 
+export interface TextInstance {
+  id: number
+  text: string
+  parentId: number | null
+}
 
 export type PublicInstance = Instance
 

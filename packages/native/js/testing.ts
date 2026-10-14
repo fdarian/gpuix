@@ -118,11 +118,11 @@ interface NativeTestRendererApi extends NativeRenderer {
   simulatePointerLockGranting(granting: boolean): void
   simulatePointerLockLost(): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
-  /** Make a TrueType or OpenType font usable by `fontFamily`. */
-  registerFont(bytes: Buffer | Uint8Array): void
   selectText(elementId: number): void
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
   getTextSelection(elementId: number): { start: number; end: number; direction: string }
+  /** Make a TrueType or OpenType font usable by `fontFamily`. */
+  registerFont(bytes: Buffer | Uint8Array): void
   setImagePixels(
     elementId: number,
     width: number,
@@ -806,21 +806,6 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
-  registerFont(bytes: Buffer | Uint8Array): void {
-    this.native.registerFont(bytes as Buffer)
-    this.native.flush()
-  }
-
-  setImagePixels(
-    elementId: number,
-    width: number,
-    height: number,
-    pixels: Buffer | Uint8Array,
-    format?: ImagePixelFormat
-  ): void {
-    this.native.flush()
-    this.native.setImagePixels(elementId, width, height, pixels as Buffer, format)
-    this.native.flush()
   selectText(elementId: number): void {
     this.native.flush()
     this.native.selectText(elementId)
@@ -843,6 +828,21 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getTextSelection(elementId)
   }
 
+  registerFont(bytes: Buffer | Uint8Array): void {
+    this.native.registerFont(bytes as Buffer)
+    this.native.flush()
+  }
+
+  setImagePixels(
+    elementId: number,
+    width: number,
+    height: number,
+    pixels: Buffer | Uint8Array,
+    format?: ImagePixelFormat
+  ): void {
+    this.native.flush()
+    this.native.setImagePixels(elementId, width, height, pixels as Buffer, format)
+    this.native.flush()
   }
 
   /** Get the current scroll offset [x, y] or null if element is not scrollable. */
