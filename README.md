@@ -2398,7 +2398,8 @@ a prevented Tab keeps it open. Combobox and Tooltip triggers
 are tab stops like the Select trigger. Tooltip `asChild` preserves the child ref
 and merges trigger behavior into that host element. The child's own handlers
 run first. All floating content uses GPUI's deferred `anchored()` layer,
-snaps inside the window, and occludes controls behind it.
+snaps inside the window, and sits above the controls behind it, so those controls
+are not hit where the content is.
 
 ### Overlay menus
 
@@ -2446,31 +2447,45 @@ follows a resize in the same frame. It ignores `position`, `side`, `align`,
 surface, so rounded Select, Combobox, and Tooltip content does not show square
 corners behind it. It also puts `visibility` and `opacity` on that outer surface
 so the fallback fill follows them without multiplying nested opacity.
-`pointerEvents: "none"` disables the anchored occluder. Backgrounds, borders,
+`pointerEvents: "none"` makes the anchored layer transparent to the pointer.
+Backgrounds, borders,
 shadows, overflow, and layout remain on the inner content to avoid double paint
 or changed popup geometry.
 
-A `div` that paints a fill, or that is positioned, blocks clicks and hovers
-behind it. The **wheel still passes**, so a pannable canvas can place its items
-absolutely and keep panning.
+### Which element gets a pointer event
 
-Set **`pointerEvents: "auto"`** on an element that must swallow the wheel too,
-like a modal backdrop. `<anchored>` occludes by default and has its own
-`occlude` prop, so menus and tooltips need neither.
+GPUIX hit-tests like the DOM. The pointer's **target** is the topmost element
+under it, whatever that element paints or has a listener for, and the event
+then runs along the target's ancestors in the tree you wrote: capture from the
+root down, the target, bubble back up. A `div` with no fill, a transparent
+overlay and an absolutely positioned card are all targets where they are, and
+none of them hides its ancestors, which still get the event as bubbling and
+are still hovered. A card positioned outside its parent's box is still in the
+parent's subtree, so the parent's `onMouseEnter` fires when the pointer moves
+onto the card.
+
+An `<anchored>` layer paints in a later pass, over the page, but its events
+bubble to the element it is declared under, as a React portal's do. The layer
+is a target where it paints, so it is hit before what it covers.
+
+Set **`pointerEvents: "none"`** to make an element never the target. The pointer
+reaches whatever is under it. It **inherits**: a descendant of a `none` element
+is also not a target until one sets **`pointerEvents: "auto"`**, which is how a
+clickable control sits inside a `none` layer. An element with `none` stays in
+the path of an event whose target is one of its descendants, so its own
+listeners still hear it.
+
+A filled child of a click target (switch thumb, radio dot, check icon) needs no
+special care: a click on it bubbles to the parent's `onClick` like any child's.
+Give it `pointerEvents: "none"` only if you want the pointer to treat it as part
+of the parent.
 
 > [!IMPORTANT]
-> The wheel does not bubble the way DOM events do. GPUI hit-tests one flat list
-> of painted boxes, so the wheel reaches **any** scroller behind the element,
-> not only an ancestor. An absolute card floating over an unrelated scroll pane
-> will scroll that pane. Give a real overlay `pointerEvents: "auto"`.
-
-`pointerEvents: "none"` means the element inserts **no hitbox**, so it blocks
-nothing behind it. It does not disable the listeners on that same element, and
-it does not inherit, so children keep their own hitboxes.
-
-A filled child of a click target (switch thumb, radio dot, check icon) needs
-**`pointerEvents: "none"`**, or it eats the parent's click. For Select and
-Combobox rows, use the item primitive's `asChild` prop instead.
+> This changes three rules from earlier versions. A filled or absolutely
+> positioned `div` no longer blocks what is behind it from hover: it is only the
+> target where it paints. `pointerEvents: "auto"` no longer stops the wheel. And
+> `<anchored>` has no `occlude` prop: set `pointerEvents: "none"` to let the
+> pointer through. The wheel itself is unchanged.
 
 ### Portals
 
@@ -3231,16 +3246,16 @@ text imports no longer need a runtime flag.
 
 | Event | Props | Payload fields |
 |-------|-------|----------------|
-| Click | `onClick` | `x`, `y`, `button`, `clickCount`, `isRightClick`, `modifiers` — primary button only |
-| Aux click | `onAuxClick` | `x`, `y`, `clickCount`, `isRightClick`, `modifiers` — non-primary buttons |
-| Double click | `onDoubleClick` | as `onClick` |
-| Context menu | `onContextMenu` | as `onClick` |
-| Mouse down / up | `onMouseDown`, `onMouseUp` | `x`, `y`, `button`, `clickCount`, `modifiers` |
-| Mouse move | `onMouseMove` | `x`, `y`, `pressedButton`, `modifiers` |
-| Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `hovered` — do not bubble |
-| Mouse over / out | `onMouseOver`, `onMouseOut` | as `onMouseMove` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut`, `onPointerCancel`, `onGotPointerCapture`, `onLostPointerCapture` | the mouse fields, plus `pointerId` and `pointerType` |
-| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, plus `dataTransfer` |
+| Click | `onClick` | the mouse fields below, `detail` — primary button only. Fires on the nearest common ancestor of the press and release targets |
+| Aux click | `onAuxClick` | as `onClick` — non-primary buttons |
+| Double click | `onDoubleClick` | as `onClick`, after the click whose `detail` is 2 |
+| Context menu | `onContextMenu` | as `onClick`, on the secondary button **press** |
+| Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` |
+| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton` |
+| Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
+| Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` and the capture events are not emitted yet |
+| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | `onDrop` carries `paths` for a file dropped from the OS. The rest are not emitted yet |
 | Click outside | `onMouseDownOutside` | `x`, `y`, `button`, `modifiers` |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
@@ -3267,7 +3282,10 @@ Events are DOM-shaped and propagate like the DOM. A handler receives
 `cancelable`, `defaultPrevented`, `stopPropagation()`,
 `stopImmediatePropagation()` and `preventDefault()`, plus `clientX`/`clientY`,
 `offsetX`/`offsetY`, `button`, `buttons`, `detail`, `relatedTarget`,
-`movementX`/`movementY` and `modifiers` where the event has them. Capture
+`pointerId`, `pointerType` and `modifiers` where the event has them.
+`x`/`y` are the same as `clientX`/`clientY`. `offsetX`/`offsetY` are relative
+to the target's padding edge. Native only produces an event type when the
+target or one of its ancestors listens for it. Capture
 handlers run from the root down to the target, then the target's handlers,
 then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
 `pointerleave` do not bubble. Event types are the lowercase DOM names
@@ -3276,7 +3294,9 @@ then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
 **`onFileDrop` is removed.** A Finder or OS file drop is a `drop` event: use
 **`onDrop`** and read `event.dataTransfer.files`, whose entries carry `path`,
 `name`, `size`, `type` and `lastModified`. Native emits `drop` along with the
-rest of the pointer event model; until then file drops are not delivered.
+rest of the pointer event model; until then `onDrop` reports an OS file drop
+with `paths` and `x`/`y`, delivered to the innermost element that listens,
+and `dataTransfer` is not filled in.
 
 **`onScroll`** reports wheel input: the delta, before GPUI has applied it.
 **`onScrollChange`** reports the result, after any cause: the wheel, a
@@ -3524,9 +3544,10 @@ order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 
 ### Hover and active
 
-`hover` and `active` are **nested style objects**. GPUI applies them natively
-when the pointer is over the element or the mouse is down. There is no
-JavaScript round trip.
+`hover` and `active` are **nested style objects**, like CSS `:hover` and
+`:active`. Native applies them with no JavaScript round trip. `hover` applies to
+the element under the pointer **and to each of its ancestors**; `active` to the
+element the primary button went down on and its ancestors, until the release.
 
 ```tsx
 <div
