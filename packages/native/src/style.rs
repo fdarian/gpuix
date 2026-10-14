@@ -243,11 +243,10 @@ pub struct StyleDesc {
     pub overflow: Option<String>,
     pub overflow_x: Option<String>,
     pub overflow_y: Option<String>,
-    /// Thumb colour for a container that scrolls (`overflow: "scroll"`). Setting
-    /// it is what turns the native scrollbar on.
+    /// `"auto"` or `"<thumb> <track>"`. Without it the colours follow the system appearance.
     pub scrollbar_color: Option<String>,
-    /// Thickness of that thumb in px. Defaults to 6.
-    pub scrollbar_width: Option<f64>,
+    /// `"auto"`, `"thin"` or `"none"`, which hides the bar but leaves the container scrollable.
+    pub scrollbar_width: Option<String>,
     /// `"auto"`, `"contain"` or `"none"`: whether a scroller at its limit hands the wheel to
     /// the scroller around it. `overscrollBehaviorX` / `Y` override it per axis.
     pub overscroll_behavior: Option<String>,

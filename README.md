@@ -1491,7 +1491,7 @@ await app.clock.resume()
 
 ## Scrolling
 
-A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. Scrollbars are overlays, so the two values differ in nothing. `"hidden"` and `"clip"` clip without scrolling, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
+A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. Scrollbars are overlays, so the two values differ in nothing. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
 
 Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its children, their padding, and its own padding and border reach, measured from where the padding box starts. Content that fits never scrolls, and neither does an empty scroller.
 
@@ -1593,8 +1593,6 @@ function ProgrammaticScroll() {
 `scrollIntoView` works for a descendant at any depth and scrolls every scrollable ancestor, outermost last, as the DOM does. It aligns by the element's laid-out box, not by its index among its siblings. Inside a `<virtual-list>` it scrolls to the row that holds the element and aligns that row.
 
 `behavior` is `"instant"`, `"smooth"` or `"auto"`. With `"auto"`, or nothing, a scroller follows its `scrollBehavior` style. `scrollBehavior: "smooth"` makes `scrollTo` and `scrollIntoView` animate over about 300 to 450 ms (longer for longer distances), firing `onScroll` each frame. A wheel tick, another `scrollTo` or a drag ends the animation. An explicit `behavior` always wins.
-
-An element that `overflow: "hidden"` clips has no scroll range: GPUI does not scroll a clipped container. Use `"auto"` and hide the scrollbar by not giving it a `scrollbarColor`.
 
 The same calls exist on the renderer for code that holds an id. `scrollTo` takes a negative offset there, the way GPUI keeps it:
 
@@ -2065,28 +2063,39 @@ long leaves the text and the selection as they were.
 
 ### Scrollbars
 
-A container with `overflow: 'scroll'` scrolls but draws no scrollbar. Give it a
-`scrollbarColor` and gpuix paints a thumb over its content, on each axis that has
-more to show:
+Every container with scrollable `overflow` (`"scroll"` or `"auto"`), and every `<virtual-list>`,
+gets a macOS-style overlay scrollbar. It is hidden at rest and appears when the scroll offset
+changes for any reason (the wheel, `scrollTo`, a key, a drag). It fades out after about a second
+without movement, over 200 ms. While the pointer is over the bar it stays, the thumb thickens
+from 7 to 11 px, and a faint track shows behind it.
+
+The thumb drags, and that scrolls the container and fires `onScroll`. Pressing the track pages
+toward the pointer, by 90% of the viewport. The bar's hitbox exists only where a bar is visible,
+so at rest nothing blocks the content under the edge. The bar is an overlay: it never changes
+what the container can scroll, and it sits on the right edge, and the bottom for sideways
+scrolling, leaving the corner free when both show.
+
+Two CSS properties style it:
 
 ```tsx
-<div style={{ height: 300, overflow: 'scroll', scrollbarColor: '#8884', scrollbarWidth: 6 }}>
+<div style={{ height: 300, overflow: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#8888 #0001' }}>
   {rows}
 </div>
 ```
 
-`scrollbarWidth` is the thickness in px and defaults to 6. The thumb is as long
-as the viewport is of the content (never under 20px), fully rounded, and sits
-on the right edge, or the bottom for sideways scrolling, leaving the corner free
-when both show. It is painted from the scroll offset in the frame the content
-moves, so a wheel tick costs nothing beyond that frame. It is a drawing, not a
-control: it takes no pointer input, so it cannot be dragged. It applies to
-`overflow: 'scroll'` containers and to `<virtual-list>`. A list's thumb comes
-from the heights the list has measured (and `estimatedItemHeight` for rows it has
-not reached), the same totals it scrolls by, so it only runs along the right edge
-and its length settles as rows are measured. `padding` on a `<virtual-list>` insets
-its rows on all four sides, and the thumb stays at the list's own edge, past the
-padding, where a browser puts a padded scroller's scrollbar.
+| Property | |
+|---|---|
+| `scrollbarWidth` | `"auto"` (default, 7 px, 11 under the pointer), `"thin"` (4 px, 7 under the pointer), or `"none"`, which draws no bar and leaves the container scrollable. |
+| `scrollbarColor` | `"auto"` (default), or `"<thumb> <track>"`: two CSS colours, the thumb and the faint track that shows under the pointer. A value that is not two colours is ignored, as in CSS. |
+
+By default the thumb is 50% black on a light window and 50% white on a dark one, following the
+system appearance. A list's bar comes from the heights the list has measured (and
+`estimatedItemHeight` for rows it has not reached), the same totals it scrolls by, so its length
+settles as rows are measured. `padding` on a `<virtual-list>` insets its rows on all four sides,
+and the bar stays at the list's own edge.
+
+`scrollbarWidth` used to be a number of pixels and `scrollbarColor` a single thumb colour that
+turned the bar on. Both are replaced by the CSS forms above, and the bar is on by default.
 
 ### Give memory back when idle
 
@@ -4098,7 +4107,7 @@ order given. Its fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
 />
 ```
 
-**Overflow:** `overflow`, `overflowX`, `overflowY` — `"hidden"` and `"clip"` clip content, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
+**Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
 **Text:** `fontSize`, `fontFamily`, `fontWeight`, `textAlign`, `lineHeight`, `whiteSpace`, `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
 

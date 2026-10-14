@@ -268,18 +268,21 @@ export interface StyleDesc {
   lineClamp?: number
   textDecoration?: "underline" | "line-through" | "none"
 
-  /** `"visible"` (default), `"hidden"` and `"clip"` (both clip), `"scroll"` and `"auto"`
-   *  (both scroll; scrollbars are overlays, so they differ in nothing). Overflow never
-   *  changes `display` or the element's children. */
+  /** `"visible"` (default); `"clip"` clips; `"hidden"` clips and is a scroll container that
+   *  only code scrolls (`scrollTo`, `scrollTop`, `scrollIntoView`), not the wheel or the keys;
+   *  `"scroll"` and `"auto"` scroll for the user too (scrollbars are overlays, so they differ
+   *  in nothing). Overflow never changes `display` or the element's children. */
   overflow?: string
   overflowX?: string
   overflowY?: string
-  /** Colour of the scrollbar thumb. Setting it paints a native thumb over a container
-   *  that scrolls (`overflow: "scroll"` or `"auto"`), on each axis that has more to show. The
-   *  thumb follows the scroll offset in the frame it paints, and takes no pointer input. */
+  /** `"auto"` follows the system appearance (a 50% black thumb on light, 50% white on dark), or
+   *  `"<thumb> <track>"` sets both colours, each any CSS colour. The track is the faint
+   *  strip that shows while the pointer is over the bar. Anything else is ignored, as in CSS. */
   scrollbarColor?: string
-  /** Thickness of that thumb in px. Defaults to 6. */
-  scrollbarWidth?: number
+  /** `"auto"` (the default) or `"thin"` for a narrower bar. `"none"` draws no bar and leaves
+   *  the container scrollable. The bar is a macOS-style overlay: hidden at rest, shown while
+   *  the offset moves, faded out after about a second, and thicker under the pointer. */
+  scrollbarWidth?: "auto" | "thin" | "none"
   /** What a scroller at its limit does with the wheel it cannot use, like CSS. `"auto"`
    *  (default) passes it to the scroller around it, `"contain"` and `"none"` keep it. */
   overscrollBehavior?: "auto" | "contain" | "none"

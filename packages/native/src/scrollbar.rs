@@ -94,7 +94,7 @@ fn parse_colors(value: &str) -> Option<(gpui::Rgba, gpui::Rgba)> {
     if let Some(from) = start {
         tokens.push(&value[from..]);
     }
-    let [thumb, track] = tokens[..] else {
+    let [thumb, track] = tokens.as_slice() else {
         return None;
     };
     Some((
@@ -214,7 +214,7 @@ struct AxisLayout {
 }
 
 #[derive(Default)]
-struct State {
+pub(crate) struct State {
     last_offset: Option<gpui::Point<gpui::Pixels>>,
     last_active: Option<Instant>,
     hover: [bool; 2],

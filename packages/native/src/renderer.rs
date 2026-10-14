@@ -6010,6 +6010,7 @@ impl gpui::Render for GpuixView {
         let theme = Theme::dark();
         let now = self.clock.now();
         crate::scroll::begin_frame();
+        crate::scrollbar::begin_frame(now);
         let scroll_animating = crate::scroll::advance_animations(now);
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, now);
@@ -6414,19 +6415,21 @@ fn build_virtual_list(
         );
     }
     let list = apply_accessibility(list, element.id, element.custom_props(), None).into_any_element();
-    match element
+    let look = element
         .style
         .as_deref()
-        .and_then(|style| ThumbStyle::of(style, false, true))
-    {
-        Some(thumbs) => ListWithScrollbar {
-            list,
-            state: scroll_state,
-            thumbs,
-        }
-        .into_any_element(),
-        None => list,
+        .map(crate::scrollbar::Look::of)
+        .unwrap_or_else(|| crate::scrollbar::Look::of(&StyleDesc::default()));
+    if look.hidden() {
+        return list;
     }
+    ListWithScrollbar {
+        list,
+        source: crate::scrollbar::Source::List(scroll_state),
+        look,
+        state: crate::scrollbar::state_for(element.id),
+    }
+    .into_any_element()
 }
 
 fn unmounted_virtual_row(height: f32) -> gpui::AnyElement {
@@ -6644,173 +6647,20 @@ pub(crate) fn build_host_container(
         el = el.child(build_element(child_id, ctx, window, cx));
     }
 
-    if let (Some(style), Some(handle)) = (style, ctx.scroll_handles.get(&element.id)) {
-        let axes = crate::scroll::Axes::of(style);
-        if let Some(thumbs) = ThumbStyle::of(
-            style,
-            axes.x == crate::scroll::Overflow::Scroll,
-            axes.y == crate::scroll::Overflow::Scroll,
-        ) {
-            el = scrollbar_overlay(el, handle.clone(), thumbs);
-        }
-    }
-
     el.into_any_element()
 }
 
-/// A classic scrollbar's default thickness.
-const SCROLLBAR_WIDTH: f32 = 6.0;
-/// The shortest a thumb gets, however long the content.
-const MIN_SCROLLBAR_THUMB: f32 = 20.0;
-
-/// Where a thumb starts and how long it is along one axis, in the track's own
-/// coordinates. `track` is the viewport's extent, `max_scroll` how far the
-/// content can move, and `offset` how far it has (zero or negative). `None`
-/// when the content fits, so there is nothing to show.
-fn scrollbar_thumb(track: f32, max_scroll: f32, offset: f32) -> Option<(f32, f32)> {
-    if track <= 0.0 || max_scroll <= 1.0 {
-        return None;
-    }
-    let length =
-        (track * track / (track + max_scroll)).clamp(MIN_SCROLLBAR_THUMB.min(track), track);
-    let progress = (-offset / max_scroll).clamp(0.0, 1.0);
-    Some((progress * (track - length), length))
-}
-
-/// What a scroller asks its thumbs to look like, and along which axes it has any.
-#[derive(Clone, Copy)]
-struct ThumbStyle {
-    color: gpui::Hsla,
-    thickness: f32,
-    horizontal: bool,
-    vertical: bool,
-}
-
-impl ThumbStyle {
-    /// `None` unless the style names a `scrollbarColor` that parses.
-    fn of(style: &StyleDesc, horizontal: bool, vertical: bool) -> Option<Self> {
-        let color = style
-            .scrollbar_color
-            .as_deref()
-            .and_then(crate::color::parse_color_rgba)?;
-        Some(Self {
-            color: color.into(),
-            thickness: style.scrollbar_width.unwrap_or(SCROLLBAR_WIDTH as f64) as f32,
-            horizontal,
-            vertical,
-        })
-    }
-}
-
-/// Paints the thumbs of a viewport at `origin` with `size`. `max` is how far
-/// its content can move and `offset` how far it has (zero or negative).
-fn paint_scrollbars(
-    window: &mut gpui::Window,
-    origin: gpui::Point<gpui::Pixels>,
-    size: gpui::Size<gpui::Pixels>,
-    max: gpui::Point<gpui::Pixels>,
-    offset: gpui::Point<gpui::Pixels>,
-    thumbs: ThumbStyle,
-) {
-    let ThumbStyle {
-        color,
-        thickness,
-        horizontal,
-        vertical,
-    } = thumbs;
-    let (width, height) = (f32::from(size.width), f32::from(size.height));
-    let along = |show: bool, track: f32, max_scroll: gpui::Pixels, offset: gpui::Pixels| {
-        show.then(|| scrollbar_thumb(track, f32::from(max_scroll), f32::from(offset)))
-            .flatten()
-    };
-    let mut across = along(vertical, height, max.y, offset.y);
-    let mut sideways = along(horizontal, width, max.x, offset.x);
-    if across.is_some() && sideways.is_some() {
-        // Leave the corner to whichever thumb reaches it first.
-        across = along(vertical, height - thickness, max.y, offset.y);
-        sideways = along(horizontal, width - thickness, max.x, offset.x);
-    }
-    let paint = |window: &mut gpui::Window, x: f32, y: f32, w: f32, h: f32| {
-        // Whole pixels, so a thumb is as crisp as a browser's.
-        let rect = gpui::Bounds::new(
-            gpui::point(
-                origin.x + gpui::px(x.round()),
-                origin.y + gpui::px(y.round()),
-            ),
-            gpui::size(gpui::px(w.round()), gpui::px(h.round())),
-        );
-        window.paint_quad(gpui::quad(
-            rect,
-            gpui::px(thickness / 2.0),
-            color,
-            gpui::px(0.0),
-            gpui::transparent_black(),
-            gpui::BorderStyle::default(),
-        ));
-    };
-    if let Some((start, length)) = across {
-        paint(window, width - thickness, start, thickness, length);
-    }
-    if let Some((start, length)) = sideways {
-        paint(window, start, height - thickness, length, thickness);
-    }
-}
-
-/// The thumbs of a scroll container, painted from its own scroll offset in the
-/// frame the content moves in, so a wheel tick costs nothing beyond that frame.
+/// A virtual list with its scrollbar.
 ///
-/// They paint over the container's children as an overlay rather than as a child:
-/// a child would count toward what the container can scroll. They have no hitbox and
-/// take no input.
-fn scrollbar_overlay(
-    el: gpui::Stateful<gpui::Div>,
-    handle: gpui::ScrollHandle,
-    thumbs: ThumbStyle,
-) -> gpui::Stateful<gpui::Div> {
-    use gpui::prelude::*;
-
-    el.paint_overlay(move |bounds, window, _| {
-        paint_scrollbars(
-            window,
-            bounds.origin,
-            bounds.size,
-            handle.max_offset(),
-            handle.offset(),
-            thumbs,
-        );
-    })
-}
-
-/// How far a virtual list can scroll and has, for `paint_scrollbars`. Rows the
-/// list has not measured count as the average measured row, not as the single
-/// `estimatedItemHeight`, which a list of tall rows would otherwise miss by
-/// a few times. Before any row is measured the list's own totals stand.
-fn list_scroll_extent(
-    state: &gpui::ListState,
-) -> (gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>) {
-    match state.averaged_scroll_extent() {
-        Some((max, offset)) => (
-            gpui::point(gpui::px(0.0), max),
-            gpui::point(gpui::px(0.0), -offset),
-        ),
-        None => (
-            state.max_offset_for_scrollbar(),
-            state.scroll_px_offset_for_scrollbar(),
-        ),
-    }
-}
-
-/// A virtual list with its thumb painted over it.
-///
-/// A list element takes no children, and wrapping it in a box would change the
-/// layout its style asks for. This lays out, prepaints and paints as the list
-/// does (it answers with the list's own layout node), then draws the thumb in
-/// the list's bounds from what its `ListState` has measured: the same totals
-/// the list scrolls by, so the thumb and the scroll position cannot disagree.
+/// A list element takes no children, and wrapping it in a box would change the layout its style
+/// asks for. This lays out, prepaints and paints as the list does (it answers with the list's
+/// own layout node), and puts the bar over it from what its `ListState` has measured: the same
+/// totals the list scrolls by, so the thumb and the scroll position cannot disagree.
 struct ListWithScrollbar {
     list: gpui::AnyElement,
-    state: gpui::ListState,
-    thumbs: ThumbStyle,
+    source: crate::scrollbar::Source,
+    look: crate::scrollbar::Look,
+    state: std::rc::Rc<std::cell::RefCell<crate::scrollbar::State>>,
 }
 
 impl gpui::IntoElement for ListWithScrollbar {
@@ -6847,12 +6697,13 @@ impl gpui::Element for ListWithScrollbar {
         &mut self,
         _: Option<&gpui::GlobalElementId>,
         _: Option<&gpui::InspectorElementId>,
-        _: gpui::Bounds<gpui::Pixels>,
+        bounds: gpui::Bounds<gpui::Pixels>,
         _: &mut (),
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) {
         self.list.prepaint(window, cx);
+        crate::scrollbar::prepaint(&self.state, &self.source, self.look, bounds, window);
     }
 
     fn paint(
@@ -6866,58 +6717,7 @@ impl gpui::Element for ListWithScrollbar {
         cx: &mut gpui::App,
     ) {
         self.list.paint(window, cx);
-        let (max, offset) = list_scroll_extent(&self.state);
-        paint_scrollbars(window, bounds.origin, bounds.size, max, offset, self.thumbs);
-    }
-}
-
-#[cfg(test)]
-mod scrollbar_tests {
-    use super::scrollbar_thumb;
-
-    #[test]
-    fn a_thumb_is_the_viewports_share_of_the_content() {
-        // 100 of 300: a third of the track.
-        let (start, length) = scrollbar_thumb(100.0, 200.0, 0.0).unwrap();
-        assert_eq!(start, 0.0);
-        assert!((length - 100.0 / 3.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn a_thumb_runs_the_whole_track_as_the_content_runs_its_distance() {
-        let (_, length) = scrollbar_thumb(100.0, 200.0, 0.0).unwrap();
-        let (start, same_length) = scrollbar_thumb(100.0, 200.0, -200.0).unwrap();
-        assert_eq!(length, same_length);
-        assert!(
-            (start + length - 100.0).abs() < 0.01,
-            "ends at the end of the track"
-        );
-        let (halfway, _) = scrollbar_thumb(100.0, 200.0, -100.0).unwrap();
-        assert!((halfway - (100.0 - length) / 2.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn a_thumb_stays_inside_the_track_when_the_offset_overshoots() {
-        let (start, length) = scrollbar_thumb(100.0, 200.0, -450.0).unwrap();
-        assert!((start + length - 100.0).abs() < 0.01);
-        assert_eq!(scrollbar_thumb(100.0, 200.0, 30.0).unwrap().0, 0.0);
-    }
-
-    #[test]
-    fn a_thumb_is_never_shorter_than_a_grabbable_length_nor_longer_than_the_track() {
-        assert_eq!(scrollbar_thumb(100.0, 100_000.0, 0.0).unwrap().1, 20.0);
-        assert_eq!(scrollbar_thumb(10.0, 100_000.0, 0.0).unwrap().1, 10.0);
-    }
-
-    #[test]
-    fn content_that_fits_has_no_thumb() {
-        assert_eq!(scrollbar_thumb(100.0, 0.0, 0.0), None);
-        assert_eq!(
-            scrollbar_thumb(100.0, 0.5, 0.0),
-            None,
-            "a fraction of a pixel is rounding"
-        );
-        assert_eq!(scrollbar_thumb(0.0, 200.0, 0.0), None);
+        crate::scrollbar::paint(&self.state, &self.source, self.look, bounds, window, cx);
     }
 }
 

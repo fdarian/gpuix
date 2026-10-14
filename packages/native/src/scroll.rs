@@ -122,7 +122,19 @@ pub(crate) fn apply_container(
         }
     });
     let handle = handles.entry(id).or_insert_with(gpui::ScrollHandle::new);
-    el.track_scroll(handle)
+    el = el.track_scroll(handle);
+    if axes.x == Overflow::Scroll || axes.y == Overflow::Scroll {
+        el = crate::scrollbar::attach(
+            el,
+            id,
+            crate::scrollbar::Source::Container {
+                id,
+                handle: handle.clone(),
+            },
+            style,
+        );
+    }
+    el
 }
 
 /// `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]` as the DOM
