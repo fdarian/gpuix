@@ -55,6 +55,7 @@ export namespace JSX {
   export interface IntrinsicElements {
     div: SolidHostProps
     text: SolidHostProps
+    span: SolidHostProps
     img: SolidHostProps<ImgProps>
     svg: SolidHostProps<SvgProps>
     canvas: SolidHostProps

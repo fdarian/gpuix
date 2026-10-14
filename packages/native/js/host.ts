@@ -464,10 +464,13 @@ export type StateStyleDesc = Omit<
  *  follow (default group when omitted). */
 export type GroupStateStyleDesc = StateStyleDesc & { group?: string | true }
 
-// Element types supported by GPUIX
+// Element types supported by GPUIX. `span` is inline: it, raw strings and a
+// `text` inside a `text` or `span` are runs of one paragraph, see README
+// "Inline text".
 export type ElementType =
   | "div"
   | "text"
+  | "span"
   | "img"
   | "svg"
   | "canvas"

@@ -34,6 +34,7 @@ export namespace JSX {
   interface IntrinsicElements {
     div: Props
     text: Props
+    span: Props
     img: ImgProps
     svg: SvgProps
     canvas: Props

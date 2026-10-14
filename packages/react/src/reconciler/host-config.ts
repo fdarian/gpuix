@@ -470,7 +470,7 @@ export const hostConfig = {
     type: ElementType,
     _rootContainerInstance: Container
   ): HostContext {
-    const isInsideText = type === "text"
+    const isInsideText = type === "text" || type === "span"
     return { ...parentHostContext, isInsideText }
   },
 

@@ -262,6 +262,7 @@ function isElementType(type: string): type is ElementType {
   switch (type) {
     case "div":
     case "text":
+    case "span":
     case "img":
     case "svg":
     case "canvas":

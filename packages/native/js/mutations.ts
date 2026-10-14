@@ -169,7 +169,7 @@ export const RESERVED_PROPS: ReadonlySet<string> = new Set([
   "ref",
 ])
 
-export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text", "label", "form"])
+export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text", "label", "form", "span"])
 
 const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "autoFocus",
