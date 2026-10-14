@@ -132,9 +132,9 @@ export const RESERVED_PROPS: ReadonlySet<string> = new Set([
   "ref",
 ])
 
-export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text"])
+export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text", "label"])
 
-export const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
+const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "autoFocus",
   "tabIndex",
   "draggable",
@@ -142,14 +142,14 @@ export const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "testId",
   "highlight",
   "role",
-  "aria-label",
-  "aria-description",
-  "aria-id",
-  "aria-expanded",
-  "aria-selected",
-  "aria-valuetext",
-  "aria-level",
+  "id",
+  "htmlFor",
 ])
+
+/** Props a `div`, `text` or `label` forwards to native; every other prop is dropped. */
+export function isUniversalProp(name: string): boolean {
+  return UNIVERSAL_PROPS.has(name) || name.startsWith("aria-")
+}
 
 export function isReservedProp(name: string): boolean {
   return RESERVED_PROPS.has(name) || EVENT_PROP_NAMES.has(name)

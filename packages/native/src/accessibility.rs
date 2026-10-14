@@ -2,7 +2,12 @@
 //!
 //! A node reaches AccessKit only with both an `.id(...)` and a `.role(...)`.
 //! GPUIX already sets the id. This module sets the role and ARIA fields.
-//! Prop names match React DOM: `aria-label`, not `ariaLabel`.
+//! Prop names match React DOM: `aria-label`, not `ariaLabel`, and the DOM `id`
+//! is the node's author id.
+
+mod aria;
+pub(crate) mod label;
+pub(crate) mod links;
 
 use std::collections::HashMap;
 
@@ -12,50 +17,69 @@ use gpui::{AccessibleAction, Role};
 use crate::events::synthetic_click::click_payload;
 use crate::renderer::EventCallback;
 
-/// Apply `role` and `aria-*` from React, plus a default role when the app
-/// did not set one. `none` / `presentation` produce no node.
+/// Apply `role`, `id` and `aria-*` from React, plus a default role when the
+/// app did not set one. `none` / `presentation` produce no node.
+///
+/// `host_id` is the element's renderer id, which finds the `<label>`s that
+/// name it.
 pub(crate) fn apply_accessibility<E>(
     mut el: E,
+    host_id: u64,
     props: &HashMap<String, serde_json::Value>,
     default_role: Option<Role>,
 ) -> E
 where
     E: StatefulInteractiveElement,
 {
-    let explicit = props.get("role").and_then(|value| value.as_str());
-    if matches!(explicit, Some("none" | "presentation")) {
-        return el;
-    }
+    let aria = aria::has_node_props(props).then(|| aria::AriaNode::parse(props));
+    let hidden = aria.as_ref().is_some_and(aria::AriaNode::hidden);
 
-    let role = explicit
-        .and_then(role_from_aria)
-        .or(default_role)
-        .filter(|role| *role != Role::GenericContainer);
-    let Some(role) = role else {
+    let explicit = props.get("role").and_then(|value| value.as_str());
+    let role = if matches!(explicit, Some("none" | "presentation")) {
+        None
+    } else {
+        explicit
+            .and_then(role_from_aria)
+            .or(default_role)
+            .filter(|role| *role != Role::GenericContainer)
+    };
+    // `aria-hidden` removes the whole subtree, and only a node can carry that.
+    let Some(role) = role.or(hidden.then_some(Role::Group)) else {
         return el;
+    };
+    let role = if role == Role::TextInput && aria::is_true_prop(props, "aria-multiline") {
+        Role::MultilineTextInput
+    } else {
+        role
     };
     el = el.role(role);
 
-    if let Some(id) = string_prop(props, "aria-id") {
-        el = el.accessibility_id(id);
+    let links = links::current();
+    let author_id = aria::string_prop(props, "id")
+        .or_else(|| links.label_author_id(host_id).map(str::to_string));
+    if let Some(author_id) = author_id {
+        el = el.accessibility_id(author_id);
     }
-    if let Some(label) = string_prop(props, "aria-label") {
-        el = el.aria_label(label);
+    if let Some(aria) = aria {
+        el = el.a11y_node(move |node| aria.write(node));
     }
-    if let Some(description) = string_prop(props, "aria-description") {
-        el = el.aria_description(description);
+
+    let mut relations = aria::relations(props);
+    // A DOM `aria-label` or `aria-labelledby` outranks a `<label>`.
+    let named_by_author = props.contains_key("aria-label")
+        || relations
+            .iter()
+            .any(|(relation, _)| *relation == gpui::A11yRelation::LabelledBy);
+    if let Some(labels) = links.labels_of(host_id).filter(|_| !named_by_author) {
+        let labels = labels
+            .iter()
+            .cloned()
+            .map(gpui::SharedString::from)
+            .collect();
+        relations.push((gpui::A11yRelation::LabelledBy, labels));
     }
-    if let Some(value) = string_prop(props, "aria-valuetext") {
-        el = el.aria_value(value);
-    }
-    if let Some(expanded) = bool_prop(props, "aria-expanded") {
-        el = el.aria_expanded(expanded);
-    }
-    if let Some(selected) = bool_prop(props, "aria-selected") {
-        el = el.aria_selected(selected);
-    }
-    if let Some(level) = usize_prop(props, "aria-level") {
-        el = el.aria_level(level);
+    for (relation, ids) in relations {
+        el = el.a11y_relation(relation, ids);
     }
     el
 }
@@ -97,26 +121,6 @@ where
             callback(click_payload(path.clone()));
         }
     })
-}
-
-fn string_prop(props: &HashMap<String, serde_json::Value>, key: &str) -> Option<String> {
-    props
-        .get(key)
-        .and_then(|value| value.as_str())
-        .map(str::to_string)
-        .filter(|value| !value.is_empty())
-}
-
-fn bool_prop(props: &HashMap<String, serde_json::Value>, key: &str) -> Option<bool> {
-    props.get(key).and_then(|value| value.as_bool())
-}
-
-fn usize_prop(props: &HashMap<String, serde_json::Value>, key: &str) -> Option<usize> {
-    props
-        .get(key)
-        .and_then(|value| value.as_u64())
-        .and_then(|value| usize::try_from(value).ok())
-        .filter(|value| *value > 0)
 }
 
 /// ARIA token → AccessKit role. Unknown tokens are ignored, like a bad style.

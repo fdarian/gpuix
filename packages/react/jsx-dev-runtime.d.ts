@@ -10,6 +10,7 @@ import type {
   DiffProps,
   ImgProps,
   InputProps,
+  LabelProps,
   MarkdownProps,
   Props,
   SvgProps,
@@ -36,6 +37,7 @@ export namespace JSX {
     canvas: Props
     input: InputProps
     textarea: TextareaProps
+    label: LabelProps
     anchored: AnchoredProps
     code: CodeProps
     diff: DiffProps

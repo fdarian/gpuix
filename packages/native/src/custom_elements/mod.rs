@@ -138,7 +138,7 @@ pub(crate) fn custom_surface(
         el = el.relative();
     }
     el = crate::automation::track_host_bounds(el, ctx.id, None, None);
-    el = crate::accessibility::apply_accessibility(el, ctx.props, None);
+    el = crate::accessibility::apply_accessibility(el, ctx.id, ctx.props, None);
     wire_host_events(el, ctx)
 }
 

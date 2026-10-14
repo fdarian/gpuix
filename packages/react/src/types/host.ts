@@ -7,6 +7,7 @@ import type {
   HostProps,
   ImagePixelsOptions,
   InputProps as NativeInputProps,
+  LabelProps as NativeLabelProps,
   TextareaProps as NativeTextareaProps,
   ImgProps as NativeImgProps,
   SvgProps as NativeSvgProps,
@@ -29,6 +30,12 @@ export interface Props extends HostProps {
 }
 
 export interface InputProps extends NativeInputProps {
+  key?: Key | null
+  children?: ReactNode
+  ref?: Ref<PublicInstance>
+}
+
+export interface LabelProps extends NativeLabelProps {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>

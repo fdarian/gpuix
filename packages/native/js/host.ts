@@ -1,3 +1,4 @@
+import type { AriaProps } from "./aria.js"
 import type {
   DebugFrameOverlayStats,
   EdgeInsets,
@@ -21,6 +22,7 @@ export type {
 
 export * from "./events/listeners.js"
 export * from "./events/types.js"
+export type { AriaProps }
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
@@ -299,6 +301,7 @@ export type ElementType =
   | "canvas"
   | "input"
   | "textarea"
+  | "label"
   | "anchored"
   | "code"
   | "diff"
@@ -458,7 +461,7 @@ export interface HighlightSpec {
 // Props passed to elements.
 // Element IDs are auto-generated numeric IDs (not user-settable).
 // Framework adapters add their own children, key, and ref fields.
-export interface HostProps extends PointerEventProps {
+export interface HostProps extends AriaProps, PointerEventProps {
   style?: StyleDesc
 
   // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
@@ -550,18 +553,14 @@ export interface HostProps extends PointerEventProps {
    * and a role. `"none"` / `"presentation"` produce no node.
    */
   role?: string
-  /** Accessible name. Maps to GPUI `aria_label`. */
-  "aria-label"?: string
-  /** Extra description announced after name, role, and value. */
-  "aria-description"?: string
-  /** Author id exposed as `AXIdentifier` / UIA AutomationId. */
-  "aria-id"?: string
-  "aria-expanded"?: boolean
-  "aria-selected"?: boolean
-  /** String value reported to assistive technology. */
-  "aria-valuetext"?: string
-  /** Heading level, 1-based. */
-  "aria-level"?: number
+  /**
+   * DOM `id`. Exposed as `AXIdentifier` / UIA AutomationId, and what
+   * `htmlFor` and the `aria-*` id references (`aria-labelledby`,
+   * `aria-describedby`, ...) resolve against. Only an element that is in the
+   * accessibility tree (it has a `role`) can be the target of an `aria-*`
+   * reference.
+   */
+  id?: string
   /** Stable locator id for automation. */
   testId?: string
   /** Internal native animation description used by motion components. */
@@ -582,7 +581,14 @@ export interface TextareaProps extends InputProps {
   maxRows?: number
 }
 
-export type VirtualListShared = {
+/** `<label>`: names a control and forwards a click to it. */
+export interface LabelProps extends HostProps {
+  /** The `id` of the control to label. Without it, the first `<input>` or
+   *  `<textarea>` inside the label is the control. */
+  htmlFor?: string
+}
+
+export type VirtualListShared = AriaProps & {
   /** No `hover` or `active`: gpui's `List` has no pressed or hovered style
    *  state. Put those on a wrapping `<div>` instead. */
   style?: Omit<StyleDesc, "hover" | "active">
@@ -591,13 +597,7 @@ export type VirtualListShared = {
   overdraw?: number
   onVisibleRange?: (event: EventPayload) => void
   role?: string
-  "aria-label"?: string
-  "aria-description"?: string
-  "aria-id"?: string
-  "aria-expanded"?: boolean
-  "aria-selected"?: boolean
-  "aria-valuetext"?: string
-  "aria-level"?: number
+  id?: string
   testId?: string
 }
 

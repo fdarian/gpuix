@@ -4524,6 +4524,7 @@ impl GpuixView {
         }
 
         let keyboard_focus = self.keyboard_focus_path(&tree, window, cx);
+        crate::accessibility::links::sync(&tree);
         let mut build_ctx = BuildCtx {
             tree: &tree,
             event_callback: &callback,
@@ -5478,6 +5479,7 @@ impl gpui::Render for GpuixView {
         });
         let mut highlight_events = Vec::new();
         let keyboard_focus = self.keyboard_focus_path(&tree, window, cx);
+        crate::accessibility::links::sync(&tree);
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -5654,7 +5656,7 @@ pub(crate) fn build_element(
         // own builder meant every interaction prop on the shared `Props` type
         // (onClick, hover, focus, tabIndex) type-checked, registered a JS
         // listener, and then silently did nothing.
-        "div" | "text" => {
+        "div" | "text" | "label" => {
             ctx.custom_registry.destroy(id);
             build_host_container(element, style, ctx, window, cx)
         }
@@ -5848,7 +5850,7 @@ fn build_virtual_list(
     if let Some(style) = element.style.as_deref() {
         list = apply_styles(list, style);
     }
-    let list = apply_accessibility(list, element.custom_props(), None).into_any_element();
+    let list = apply_accessibility(list, element.id, element.custom_props(), None).into_any_element();
     match element
         .style
         .as_deref()
@@ -6023,12 +6025,22 @@ pub(crate) fn build_host_container(
     // Label. The inner nodes stay out of the AX tree so VoiceOver does not
     // hear the same string twice.
     let is_text_host = element.element_type == "text" && element.content.is_none();
-    let default_role = is_text_host.then_some(gpui::Role::Label);
-    el = apply_accessibility(el, element.custom_props(), default_role);
+    let is_label = element.element_type == "label";
+    let default_role = (is_text_host || is_label).then_some(gpui::Role::Label);
+    el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
         if let Some(content) = joined_text_content(ctx.tree, element) {
             el = el.aria_value(content);
         }
+    }
+    if is_label {
+        el = crate::accessibility::label::describe_and_activate(
+            el,
+            element.id,
+            ctx.tree,
+            ctx.focus_handles,
+            ctx.event_callback,
+        );
     }
 
     // Pointer, mouse and click events are not wired here: the window-level

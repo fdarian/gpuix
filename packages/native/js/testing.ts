@@ -198,9 +198,52 @@ export interface A11yTreeNode {
     description?: string
     value?: string
     author_id?: string
+    keyboard_shortcut?: string
+    placeholder?: string
+    role_description?: string
+    braille_label?: string
+    braille_role_description?: string
+    row_index_text?: string
+    column_index_text?: string
     expanded?: boolean
     selected?: boolean
+    toggled?: "False" | "True" | "Mixed"
+    hidden?: boolean
+    disabled?: boolean
+    required?: boolean
+    read_only?: boolean
+    multiselectable?: boolean
+    busy?: boolean
+    live_atomic?: boolean
+    modal?: boolean
+    invalid?: "True" | "Grammar" | "Spelling"
+    live?: "Off" | "Polite" | "Assertive"
+    aria_current?: string
+    has_popup?: string
+    orientation?: "Horizontal" | "Vertical"
+    sort_direction?: "Ascending" | "Descending" | "Other"
+    auto_complete?: "Inline" | "List" | "Both"
+    numeric_value?: number
+    min_numeric_value?: number
+    max_numeric_value?: number
     level?: number
+    position_in_set?: number
+    size_of_set?: number
+    row_index?: number
+    column_index?: number
+    row_count?: number
+    column_count?: number
+    row_span?: number
+    column_span?: number
+    /** Relations hold the dump's ephemeral node keys; see `A11yTreeDump.nodes`. */
+    labelled_by?: string[]
+    described_by?: string[]
+    controls?: string[]
+    owns?: string[]
+    details?: string[]
+    flow_to?: string[]
+    error_message?: string
+    active_descendant?: string
     on_action?: string[]
   }
 }

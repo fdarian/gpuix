@@ -470,7 +470,12 @@ impl CustomElement for TextEditorElement {
         } else {
             gpui::Role::TextInput
         };
-        editor = crate::accessibility::apply_accessibility(editor, ctx.props, Some(default_role));
+        editor = crate::accessibility::apply_accessibility(
+            editor,
+            ctx.id,
+            ctx.props,
+            Some(default_role),
+        );
         if ctx.props.get("aria-valuetext").is_none() && !self.value.is_empty() {
             editor = editor.aria_value(self.value.clone());
         }

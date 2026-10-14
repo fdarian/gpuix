@@ -5,7 +5,7 @@ import {
   createElementMethods,
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
-  UNIVERSAL_PROPS,
+  isUniversalProp,
   registerEventListener,
   serializeCustomProp,
   unregisterEventHandlers,
@@ -150,6 +150,7 @@ function isElementType(type: string): type is ElementType {
     case "canvas":
     case "input":
     case "textarea":
+    case "label":
     case "anchored":
     case "code":
     case "diff":
@@ -177,7 +178,7 @@ function eventTypeFor(name: string): string | undefined {
 }
 
 function customPropAllowed(node: HostElement, name: string): boolean {
-  return !BUILT_IN_TYPES.has(node.type) || UNIVERSAL_PROPS.has(name)
+  return !BUILT_IN_TYPES.has(node.type) || isUniversalProp(name)
 }
 
 export function setHostProperty(

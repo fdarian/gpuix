@@ -2015,26 +2015,65 @@ PascalCase. `"none"` and `"presentation"` produce no node.
 
 ```tsx
 <div
+  id="notes.delete"
   role="button"
   aria-label="Delete note"
   aria-description="Removes this note"
-  aria-id="notes.delete"
   onClick={remove}
 >
   Delete
 </div>
 ```
 
-| Prop               | GPUI / AccessKit                          |
-| ------------------ | ----------------------------------------- |
-| `role`             | `.role(Role::…)`                          |
-| `aria-label`       | accessible name                           |
-| `aria-description` | extra description after name, role, value |
-| `aria-id`          | `AXIdentifier` / UIA AutomationId         |
-| `aria-expanded`    | expanded state                            |
-| `aria-selected`    | selected state                            |
-| `aria-valuetext`   | string value                              |
-| `aria-level`       | heading level                             |
+`id` is the DOM `id`. It becomes the node's author id (`AXIdentifier` / UIA
+AutomationId), and it is what `htmlFor` and the id-reference props below
+resolve against. It replaces the old gpuix-only `aria-id`, which is gone.
+
+Any `aria-*` prop is accepted. Booleans may be written as `true` or `"true"`;
+a value the attribute does not allow is ignored. These map to AccessKit:
+
+| Prop | AccessKit |
+| ---- | --------- |
+| `aria-label`, `aria-description`, `aria-placeholder` | label, description, placeholder |
+| `aria-valuetext` | string value |
+| `aria-valuenow`, `aria-valuemin`, `aria-valuemax` | numeric value, min, max |
+| `aria-checked`, `aria-pressed` | toggled (`true`, `false`, `"mixed"`) |
+| `aria-expanded`, `aria-selected` | expanded, selected |
+| `aria-disabled`, `aria-required`, `aria-readonly`, `aria-multiselectable`, `aria-busy`, `aria-atomic`, `aria-modal` | the matching flag |
+| `aria-hidden` | hidden: the element and its subtree leave the tree |
+| `aria-invalid`, `aria-live`, `aria-current`, `aria-haspopup`, `aria-orientation`, `aria-sort`, `aria-autocomplete` | the matching enum |
+| `aria-multiline` | `role="textbox"` becomes a multiline text input |
+| `aria-level`, `aria-posinset`, `aria-setsize` | level, position in set, size of set |
+| `aria-rowindex`, `aria-colindex`, `aria-rowcount`, `aria-colcount`, `aria-rowspan`, `aria-colspan` | the matching table property, passed through unchanged |
+| `aria-rowindextext`, `aria-colindextext`, `aria-roledescription`, `aria-keyshortcuts`, `aria-braillelabel`, `aria-brailleroledescription` | the matching string |
+| `aria-labelledby`, `aria-describedby`, `aria-controls`, `aria-owns`, `aria-details`, `aria-flowto`, `aria-errormessage`, `aria-activedescendant` | relations, see below |
+
+`aria-relevant`, `aria-grabbed` and `aria-dropeffect` are accepted and ignored:
+AccessKit has no equivalent.
+
+The relation props hold element `id`s, space-separated (`aria-errormessage` and
+`aria-activedescendant` take one). They resolve against the DOM `id` of nodes
+in the accessibility tree, after the whole frame is built, so the target may
+come later in the tree. An `id` that matches no node is dropped. A target must
+be in the tree, so give it a `role`, or use a `<text>` (which is a `Label`).
+`aria-activedescendant` on a focused container also reports the target as the
+focused node. `aria-hidden` on an element with no role still works: the element
+gets a hidden `group` node to carry it.
+
+### `<label>`
+
+`<label htmlFor="email">` names the `<input>` or `<textarea>` whose `id` is
+`"email"`. Without `htmlFor`, the label names the first `<input>` or
+`<textarea>` inside it. The control's accessible name comes from the label
+(AccessKit `labelled_by`), unless the control has its own `aria-label` or
+`aria-labelledby`. A control can have several labels. Clicking a label focuses
+its control and dispatches a `click` on it, like the DOM, except when the click
+lands on the control itself.
+
+```tsx
+<label htmlFor="email">Email</label>
+<input id="email" value={email} onChange={onChange} />
+```
 
 Native defaults, so common elements are not silent:
 
@@ -2044,6 +2083,7 @@ Native defaults, so common elements are not silent:
 | `<input>`     | `TextInput`             | `value` and `placeholder`            |
 | `<textarea>`  | `MultilineTextInput`    | `value` and `placeholder`            |
 | `<img>`       | `Image`                 | `alt` as `aria-label`                |
+| `<label>`     | `Label`                 | its text as `aria-valuetext`         |
 
 An explicit `role` wins over those defaults. A clickable `div` is **not** a
 button until you set `role="button"`. `onClick` registers AccessKit `Click`,

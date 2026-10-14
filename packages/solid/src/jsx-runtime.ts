@@ -6,6 +6,7 @@ import type {
   HostProps,
   ImgProps,
   InputProps,
+  LabelProps,
   MarkdownProps,
   MotionProps,
   SvgProps,
@@ -58,6 +59,7 @@ export namespace JSX {
     canvas: SolidHostProps
     input: SolidHostProps<InputProps>
     textarea: SolidHostProps<TextareaProps>
+    label: SolidHostProps<LabelProps>
     anchored: SolidHostProps<AnchoredProps>
     code: SolidHostProps<CodeProps>
     diff: SolidHostProps<DiffProps>

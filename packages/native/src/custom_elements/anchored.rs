@@ -311,7 +311,7 @@ impl CustomElement for AnchoredElement {
             let viewport = window.viewport_size();
             content = content.w(viewport.width).h(viewport.height);
         }
-        content = crate::accessibility::apply_accessibility(content, ctx.props, None);
+        content = crate::accessibility::apply_accessibility(content, ctx.id, ctx.props, None);
         content = super::wire_host_events(content, &ctx);
         // Deferred overlays paint over the window blur. A missing fill lets the
         // page show through the card. Force an opaque surface when JS omitted

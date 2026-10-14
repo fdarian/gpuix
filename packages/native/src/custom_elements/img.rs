@@ -166,8 +166,12 @@ fn img_fallback(ctx: &CustomRenderContext, alt: &str, message: &str) -> gpui::An
             .text_color(gpui::rgba(0xa4accdff)),
         ctx,
     );
-    fallback =
-        crate::accessibility::apply_accessibility(fallback, ctx.props, Some(gpui::Role::Image));
+    fallback = crate::accessibility::apply_accessibility(
+        fallback,
+        ctx.id,
+        ctx.props,
+        Some(gpui::Role::Image),
+    );
     fallback = crate::accessibility::apply_image_label(fallback, ctx.props, alt);
     fallback
         .child(ctx.chrome_text(message.to_string(), None))
@@ -232,8 +236,12 @@ impl CustomElement for ImgElement {
             }
         }
 
-        let mut el =
-            crate::accessibility::apply_accessibility(el, ctx.props, Some(gpui::Role::Image));
+        let mut el = crate::accessibility::apply_accessibility(
+            el,
+            ctx.id,
+            ctx.props,
+            Some(gpui::Role::Image),
+        );
         el = crate::accessibility::apply_image_label(el, ctx.props, &self.alt);
         let el = super::wire_host_events(el, &ctx);
         crate::automation::track_own_bounds(el, ctx.id).into_any_element()
@@ -494,7 +502,7 @@ impl CustomElement for SvgElement {
         if let Some(style) = ctx.style {
             icon = crate::renderer::apply_interactive_styles(icon, style);
         }
-        icon = crate::accessibility::apply_accessibility(icon, ctx.props, None);
+        icon = crate::accessibility::apply_accessibility(icon, ctx.id, ctx.props, None);
         let icon = super::wire_host_events(icon, &ctx);
         crate::automation::track_own_bounds(icon, ctx.id).into_any_element()
     }
