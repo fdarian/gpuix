@@ -8,10 +8,11 @@ mod css_transition;
 mod curve;
 mod property;
 pub(crate) mod state_source;
+mod svg_attr;
 mod track;
 mod value;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde_json::{Map, Value};
 use web_time::Instant;
@@ -21,6 +22,7 @@ pub(crate) use curve::cubic_bezier;
 pub(crate) use css_transition::{validate_transitions, CssTransitions, TransitionEvent};
 use curve::Transition;
 use property::AnimProp;
+use svg_attr::SvgAttr;
 use track::Track;
 use value::AnimValue;
 
@@ -35,7 +37,91 @@ impl MotionStyle {
     }
 }
 
-type Styles = BTreeMap<AnimProp, AnimValue>;
+/// What a track animates: a style property of a layout element, or an
+/// attribute of an SVG shape. One description targets one or the other,
+/// decided by the element it sits on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum PropKey {
+    Style(AnimProp),
+    Svg(SvgAttr),
+}
+
+impl PropKey {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Style(prop) => prop.name(),
+            Self::Svg(attr) => attr.name(),
+        }
+    }
+
+    fn from_name(target: Target, name: &str) -> Option<Self> {
+        match target {
+            Target::Style => AnimProp::from_name(name).map(Self::Style),
+            Target::Svg => SvgAttr::from_name(name).map(Self::Svg),
+        }
+    }
+
+    fn parse(self, value: &Value) -> Result<AnimValue, String> {
+        match self {
+            Self::Style(prop) => prop.parse(value),
+            Self::Svg(attr) => attr.parse(value),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Target {
+    Style,
+    Svg,
+}
+
+/// Where an animation starts from when `initial` does not name a property:
+/// the element's own style, or its own attributes.
+#[derive(Clone, Copy)]
+enum Base<'a> {
+    Style(Option<&'a StyleDesc>),
+    Svg(&'a HashMap<String, Value>),
+}
+
+impl Base<'_> {
+    fn target(self) -> Target {
+        match self {
+            Self::Style(_) => Target::Style,
+            Self::Svg(_) => Target::Svg,
+        }
+    }
+}
+
+type Styles = BTreeMap<PropKey, AnimValue>;
+
+/// Framer's normalised draw keys: how much of the shape's length is stroked
+/// (`length`), where the dash starts (`offset`) and the gap after it
+/// (`spacing`), each as a fraction of the length.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PathDraw {
+    pub length: f64,
+    pub offset: f64,
+    pub spacing: f64,
+}
+
+impl Default for PathDraw {
+    fn default() -> Self {
+        Self {
+            length: 1.0,
+            offset: 0.0,
+            spacing: 1.0,
+        }
+    }
+}
+
+/// An SVG shape's animated attributes at one instant.
+#[derive(Debug, Default)]
+pub(crate) struct SvgMotion {
+    /// XML attribute name and text, replacing the element's own.
+    pub attributes: Vec<(&'static str, String)>,
+    /// Present when any of `pathLength`, `pathOffset` or `pathSpacing` animates.
+    pub draw: Option<PathDraw>,
+}
 
 /// Fields of a transition object that describe one curve. Every other key is
 /// `default` or the name of the property it applies to.
@@ -58,15 +144,15 @@ const CURVE_KEYS: [&str; 10] = [
 #[derive(Clone, Debug, PartialEq)]
 struct Transitions {
     fallback: Transition,
-    per_prop: BTreeMap<AnimProp, Transition>,
+    per_prop: BTreeMap<PropKey, Transition>,
 }
 
 impl Transitions {
-    fn for_prop(&self, prop: AnimProp) -> &Transition {
+    fn for_prop(&self, prop: PropKey) -> &Transition {
         self.per_prop.get(&prop).unwrap_or(&self.fallback)
     }
 
-    fn parse(source: Option<&Value>) -> Result<Self, String> {
+    fn parse(source: Option<&Value>, target: Target) -> Result<Self, String> {
         let mut fields = match source {
             None | Some(Value::Null) => Map::new(),
             Some(Value::Object(fields)) => fields.clone(),
@@ -89,20 +175,27 @@ impl Transitions {
 
         let mut per_prop = BTreeMap::new();
         // Shorthands first, so a longhand named beside them is the more specific.
-        by_prop.sort_by_key(|(key, _)| property::expand_shorthand(key).is_none());
+        by_prop.sort_by_key(|(key, _)| shorthand(target, key).is_none());
         for (key, value) in by_prop {
             let transition = Transition::parse(value)?;
-            if let Some(props) = property::expand_shorthand(&key) {
+            if let Some(props) = shorthand(target, &key) {
                 for prop in props {
-                    per_prop.insert(*prop, transition.clone());
+                    per_prop.insert(PropKey::Style(*prop), transition.clone());
                 }
-            } else if let Some(prop) = AnimProp::from_name(&key) {
+            } else if let Some(prop) = PropKey::from_name(target, &key) {
                 per_prop.insert(prop, transition);
             } else {
                 return Err(format!("unknown motion transition key: {key}"));
             }
         }
         Ok(Self { fallback, per_prop })
+    }
+}
+
+fn shorthand(target: Target, name: &str) -> Option<&'static [AnimProp]> {
+    match target {
+        Target::Style => property::expand_shorthand(name),
+        Target::Svg => None,
     }
 }
 
@@ -124,7 +217,7 @@ pub(crate) struct MotionFrame {
 
 pub(crate) struct MotionState {
     source: Value,
-    tracks: BTreeMap<AnimProp, Track>,
+    tracks: BTreeMap<PropKey, Track>,
     valid: bool,
     needs_settle: bool,
     generation: u64,
@@ -138,7 +231,22 @@ impl MotionState {
         base: Option<&StyleDesc>,
         now: Instant,
     ) -> Result<Self, String> {
-        let description = parse_description(source)?;
+        Self::mount(source, Base::Style(base), now)
+    }
+
+    /// The state of an SVG shape, whose animated keys are attributes.
+    /// `attributes` are the element's props: Framer reads the DOM attribute
+    /// for the value an animation starts from when `initial` does not name it.
+    pub(crate) fn new_svg(
+        source: &Value,
+        attributes: &HashMap<String, Value>,
+        now: Instant,
+    ) -> Result<Self, String> {
+        Self::mount(source, Base::Svg(attributes), now)
+    }
+
+    fn mount(source: &Value, base: Base, now: Instant) -> Result<Self, String> {
+        let description = parse_description(source, base.target())?;
         let tracks = mount_tracks(&description, base, now)?;
         Ok(Self {
             source: source.clone(),
@@ -165,12 +273,25 @@ impl MotionState {
         base: Option<&StyleDesc>,
         now: Instant,
     ) -> Result<(), String> {
+        self.retarget(source, Base::Style(base), now)
+    }
+
+    pub(crate) fn sync_svg(
+        &mut self,
+        source: &Value,
+        attributes: &HashMap<String, Value>,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.retarget(source, Base::Svg(attributes), now)
+    }
+
+    fn retarget(&mut self, source: &Value, base: Base, now: Instant) -> Result<(), String> {
         if self.source == *source {
             return Ok(());
         }
 
         let previous_generation = self.generation;
-        let description = match parse_description(source) {
+        let description = match parse_description(source, base.target()) {
             Ok(description) => description,
             Err(error) => {
                 self.source = source.clone();
@@ -217,9 +338,9 @@ impl MotionState {
     fn retarget_tracks(
         &self,
         description: &Description,
-        base: Option<&StyleDesc>,
+        base: Base,
         now: Instant,
-    ) -> Result<(BTreeMap<AnimProp, Track>, bool), String> {
+    ) -> Result<(BTreeMap<PropKey, Track>, bool), String> {
         let mut tracks = self.tracks.clone();
         let mut moving = false;
         for (prop, target) in &description.animate {
@@ -247,7 +368,7 @@ impl MotionState {
     /// Whether this description animates `prop`, which then is not a CSS
     /// transition's to animate.
     fn owns(&self, prop: AnimProp) -> bool {
-        self.valid && self.tracks.contains_key(&prop)
+        self.valid && self.tracks.contains_key(&PropKey::Style(prop))
     }
 
     pub(crate) fn visible_style(&self, now: Instant) -> Option<MotionStyle> {
@@ -255,12 +376,46 @@ impl MotionState {
             MotionStyle(
                 self.tracks
                     .iter()
-                    .map(|(prop, track)| {
+                    .filter_map(|(key, track)| {
+                        let PropKey::Style(prop) = key else {
+                            return None;
+                        };
                         let position = track.sample(now).position;
-                        (*prop, prop.clamp_value(track.value(&position)))
+                        Some((*prop, prop.clamp_value(track.value(&position))))
                     })
                     .collect(),
             )
+        })
+    }
+
+    /// The animated attributes of an SVG shape, ready to lay over its own.
+    pub(crate) fn visible_svg(&self, now: Instant) -> Option<SvgMotion> {
+        self.valid.then(|| {
+            let mut motion = SvgMotion::default();
+            let mut draw = PathDraw::default();
+            let mut drawing = false;
+            for (key, track) in &self.tracks {
+                let PropKey::Svg(attr) = key else {
+                    continue;
+                };
+                let position = track.sample(now).position;
+                let value = attr.clamp_value(track.value(&position));
+                if let Some(name) = attr.attribute() {
+                    motion.attributes.push((name, svg_attr::attribute_text(&value)));
+                    continue;
+                }
+                let AnimValue::Number(number) = value else {
+                    unreachable!("a draw key is always a number");
+                };
+                drawing = true;
+                match attr {
+                    SvgAttr::PathLength => draw.length = number,
+                    SvgAttr::PathOffset => draw.offset = number,
+                    _ => draw.spacing = number,
+                }
+            }
+            motion.draw = drawing.then_some(draw);
+            motion
         })
     }
 
@@ -332,16 +487,23 @@ fn fold_state_styles(
 /// What an animation starts from when `initial` does not name the property:
 /// the element's own style, else CSS's initial value. `None` when that is
 /// `auto` or inherited, which only layout can resolve.
-fn resolve_start(prop: AnimProp, base: Option<&StyleDesc>) -> Option<AnimValue> {
-    base.and_then(|style| prop.read(style))
-        .or_else(|| prop.initial(base))
+fn resolve_start(key: PropKey, base: Base) -> Option<AnimValue> {
+    match (key, base) {
+        (PropKey::Style(prop), Base::Style(style)) => style
+            .and_then(|style| prop.read(style))
+            .or_else(|| prop.initial(style)),
+        (PropKey::Svg(attr), Base::Svg(attributes)) => {
+            attr.read(attributes).or_else(|| attr.initial())
+        }
+        _ => unreachable!("a description only holds keys of its own target"),
+    }
 }
 
 fn mount_tracks(
     description: &Description,
-    base: Option<&StyleDesc>,
+    base: Base,
     now: Instant,
-) -> Result<BTreeMap<AnimProp, Track>, String> {
+) -> Result<BTreeMap<PropKey, Track>, String> {
     let mut tracks = BTreeMap::new();
     for (prop, target) in &description.animate {
         let from = match &description.initial {
@@ -384,7 +546,7 @@ fn source_is_exit(source: &Value) -> bool {
         .unwrap_or_default()
 }
 
-fn parse_description(source: &Value) -> Result<Description, String> {
+fn parse_description(source: &Value, target: Target) -> Result<Description, String> {
     let fields = source
         .as_object()
         .ok_or_else(|| "motion description must be an object".to_string())?;
@@ -403,11 +565,11 @@ fn parse_description(source: &Value) -> Result<Description, String> {
     };
     let initial = match fields.get("initial") {
         None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Object(style)) => Some(parse_styles("initial", style)?),
+        Some(Value::Object(style)) => Some(parse_styles("initial", style, target)?),
         Some(_) => return Err("motion initial only accepts false or a style object".to_string()),
     };
     let animate = match fields.get("animate") {
-        Some(Value::Object(style)) => parse_styles("animate", style)?,
+        Some(Value::Object(style)) => parse_styles("animate", style, target)?,
         _ => return Err("motion animate must be a style object".to_string()),
     };
     Ok(Description {
@@ -415,28 +577,37 @@ fn parse_description(source: &Value) -> Result<Description, String> {
         is_exit,
         initial,
         animate,
-        transition: Transitions::parse(fields.get("transition"))?,
+        transition: Transitions::parse(fields.get("transition"), target)?,
     })
 }
 
 /// Expands shorthands (`padding`, `margin`, `borderRadius`, `borderWidth`,
 /// `gap`) into longhands. Where both are given the longhand wins, as the more
 /// specific one does in CSS.
-fn parse_styles(context: &str, style: &Map<String, Value>) -> Result<Styles, String> {
+fn parse_styles(
+    context: &str,
+    style: &Map<String, Value>,
+    target: Target,
+) -> Result<Styles, String> {
     let mut styles = Styles::new();
     let mut longhands = Vec::new();
     for (key, value) in style {
-        if let Some(props) = property::expand_shorthand(key) {
+        if let Some(props) = shorthand(target, key) {
             let parsed = props[0].parse(value).map_err(|error| rename(error, props[0], key))?;
             for prop in props {
-                styles.insert(*prop, parsed.clone());
+                styles.insert(PropKey::Style(*prop), parsed.clone());
             }
-        } else if let Some(prop) = AnimProp::from_name(key) {
+        } else if let Some(prop) = PropKey::from_name(target, key) {
             longhands.push((prop, value));
         } else {
-            return Err(format!(
-                "motion {context} cannot animate {key}: it is not an animatable property"
-            ));
+            return Err(match target {
+                Target::Style => format!(
+                    "motion {context} cannot animate {key}: it is not an animatable property"
+                ),
+                Target::Svg => format!(
+                    "motion {context} cannot animate {key}: it is not an animatable SVG attribute"
+                ),
+            });
         }
     }
     for (prop, value) in longhands {
@@ -660,11 +831,11 @@ mod tests {
     }
 
     fn width(state: &MotionState, now: Instant) -> f64 {
-        state.tracks[&AnimProp::Width].sample(now).position[0]
+        state.tracks[&PropKey::Style(AnimProp::Width)].sample(now).position[0]
     }
 
     fn width_velocity(state: &MotionState, now: Instant) -> f64 {
-        state.tracks[&AnimProp::Width].sample(now).velocity[0]
+        state.tracks[&PropKey::Style(AnimProp::Width)].sample(now).velocity[0]
     }
 
     #[test]
@@ -937,7 +1108,7 @@ mod tests {
         let mut overshot = false;
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
-            overshot |= state.tracks[&AnimProp::Opacity].sample(now).position[0] > 1.0;
+            overshot |= state.tracks[&PropKey::Style(AnimProp::Opacity)].sample(now).position[0] > 1.0;
             let visible = state.applied(now).unwrap().opacity.unwrap();
             assert!((0.0..=1.0).contains(&visible));
         }
@@ -1247,7 +1418,7 @@ mod tests {
             "transition": spring
         });
         let mut state = MotionState::new(&description, None, started).unwrap();
-        let track = |state: &MotionState| state.tracks[&AnimProp::BackgroundColor].clone();
+        let track = |state: &MotionState| state.tracks[&PropKey::Style(AnimProp::BackgroundColor)].clone();
 
         let retarget_at = at(started, 0.1);
         let before = track(&state).sample(retarget_at);
@@ -1289,7 +1460,7 @@ mod tests {
         // Width was not retargeted, so it keeps its original timeline.
         assert_eq!(width(&state, at(started, 0.75)), 75.0);
         // Opacity restarted from 0.5 toward 0 over a fresh second.
-        let opacity = state.tracks[&AnimProp::Opacity].sample(at(retarget_at, 0.5));
+        let opacity = state.tracks[&PropKey::Style(AnimProp::Opacity)].sample(at(retarget_at, 0.5));
         assert_eq!(opacity.position, vec![0.25]);
     }
 
@@ -1348,7 +1519,7 @@ mod tests {
         let mut undershot = false;
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
-            undershot |= state.tracks[&AnimProp::PaddingTop].sample(now).position[0] < 0.0;
+            undershot |= state.tracks[&PropKey::Style(AnimProp::PaddingTop)].sample(now).position[0] < 0.0;
             assert!(style_at(&state, now).padding_top.unwrap() >= 0.0);
         }
         assert!(undershot);
@@ -1397,6 +1568,170 @@ mod tests {
 
         for folded in [rest, focused, both] {
             assert_eq!((folded.hover, folded.active, folded.focus_visible), (None, None, None));
+        }
+    }
+
+    mod svg {
+        use super::*;
+
+        fn attributes(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+            pairs
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.clone()))
+                .collect()
+        }
+
+        fn at(state: &MotionState, started: Instant, millis: u64) -> SvgMotion {
+            state
+                .visible_svg(started + Duration::from_millis(millis))
+                .unwrap()
+        }
+
+        fn attribute<'a>(motion: &'a SvgMotion, name: &str) -> &'a str {
+            &motion
+                .attributes
+                .iter()
+                .find(|(attribute, _)| *attribute == name)
+                .unwrap_or_else(|| panic!("no {name} in {motion:?}"))
+                .1
+        }
+
+        #[test]
+        fn draws_a_path_with_the_normalised_keys() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": { "pathLength": 0.0 },
+                "animate": { "pathLength": 1.0 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+
+            let draw = at(&state, started, 250).draw.unwrap();
+            assert!((draw.length - 0.25).abs() < 1e-9);
+            assert_eq!((draw.offset, draw.spacing), (0.0, 1.0));
+            assert!(at(&state, started, 250).attributes.is_empty());
+            assert_eq!(at(&state, started, 1000).draw.unwrap().length, 1.0);
+        }
+
+        #[test]
+        fn offset_and_spacing_alone_still_draw() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": false,
+                "animate": { "pathOffset": 0.25, "pathSpacing": 0.5 },
+                "transition": {}
+            });
+            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let draw = at(&state, started, 0).draw.unwrap();
+            assert_eq!(
+                draw,
+                PathDraw {
+                    length: 1.0,
+                    offset: 0.25,
+                    spacing: 0.5
+                }
+            );
+        }
+
+        #[test]
+        fn starts_from_the_elements_own_attribute() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": {},
+                "animate": { "r": 20.0, "fill": "#0000ff" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let own = attributes(&[("r", serde_json::json!(10)), ("fill", serde_json::json!("#ff0000"))]);
+            let state = MotionState::new_svg(&description, &own, started).unwrap();
+            assert_eq!(attribute(&at(&state, started, 0), "r"), "10");
+            assert_eq!(attribute(&at(&state, started, 500), "r"), "15");
+            assert_eq!(attribute(&at(&state, started, 1000), "r"), "20");
+            // Oklab midpoint of red and blue, as for a style colour.
+            let middle = attribute(&at(&state, started, 500), "fill").to_string();
+            let rgba = crate::color::parse_color_rgba(&middle).unwrap();
+            assert!((rgba.r as f64 * 255.0 - 140.0).abs() < 4.0, "{middle}");
+        }
+
+        #[test]
+        fn morphs_paths_with_the_same_commands_and_flips_others() {
+            let started = Instant::now();
+            let morph = |to: &str| {
+                let description = serde_json::json!({
+                    "initial": { "d": "M0 0 L10 0" },
+                    "animate": { "d": to },
+                    "transition": { "duration": 1.0, "ease": "linear" }
+                });
+                MotionState::new_svg(&description, &attributes(&[]), started).unwrap()
+            };
+            let same = morph("M10 10 L30 10");
+            assert_eq!(attribute(&at(&same, started, 500), "d"), "M 5 5 L 20 5");
+            let other = morph("M10 10 H30");
+            assert_eq!(attribute(&at(&other, started, 499), "d"), "M 0 0 L 10 0");
+            assert_eq!(attribute(&at(&other, started, 500), "d"), "M 10 10 H 30");
+        }
+
+        #[test]
+        fn each_attribute_has_its_own_transition() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": { "cx": 0.0, "cy": 0.0 },
+                "animate": { "cx": 100.0, "cy": 100.0 },
+                "transition": { "duration": 1.0, "ease": "linear", "cx": { "duration": 0.1, "ease": "linear" } }
+            });
+            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let motion = at(&state, started, 500);
+            assert_eq!(attribute(&motion, "cx"), "100");
+            assert_eq!(attribute(&motion, "cy"), "50");
+        }
+
+        #[test]
+        fn retargets_from_the_visible_value() {
+            let started = Instant::now();
+            let first = serde_json::json!({
+                "initial": { "strokeWidth": 0.0 },
+                "animate": { "strokeWidth": 10.0 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let mut state = MotionState::new_svg(&first, &attributes(&[]), started).unwrap();
+            let second = serde_json::json!({
+                "initial": false,
+                "animate": { "strokeWidth": 0.0 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            state
+                .sync_svg(&second, &attributes(&[]), started + Duration::from_millis(500))
+                .unwrap();
+            assert_eq!(attribute(&at(&state, started, 500), "stroke-width"), "5");
+            assert_eq!(attribute(&at(&state, started, 1000), "stroke-width"), "2.5");
+        }
+
+        #[test]
+        fn style_keys_are_not_svg_attributes_and_the_other_way_round() {
+            let now = Instant::now();
+            let svg_with_style_key = serde_json::json!({ "animate": { "backgroundColor": "#fff" }, "transition": {} });
+            let error = MotionState::new_svg(&svg_with_style_key, &attributes(&[]), now)
+                .err()
+                .unwrap();
+            assert!(error.contains("animatable SVG attribute"), "{error}");
+            let style_with_svg_key = serde_json::json!({ "animate": { "pathLength": 1.0 }, "transition": {} });
+            assert!(MotionState::new(&style_with_svg_key, None, now).is_err());
+            let unknown_transition = serde_json::json!({ "animate": {}, "transition": { "backgroundColor": { "duration": 1 } } });
+            assert!(MotionState::new_svg(&unknown_transition, &attributes(&[]), now).is_err());
+        }
+
+        #[test]
+        fn springs_overshoot_without_leaving_the_valid_range() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": { "opacity": 0.0 },
+                "animate": { "opacity": 1.0 },
+                "transition": { "type": "spring", "stiffness": 400, "damping": 5 }
+            });
+            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            for millis in (0..600).step_by(10) {
+                let opacity: f64 = attribute(&at(&state, started, millis), "opacity").parse().unwrap();
+                assert!((0.0..=1.0).contains(&opacity), "{opacity}");
+            }
         }
     }
 }

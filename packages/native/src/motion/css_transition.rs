@@ -714,7 +714,7 @@ impl ElementState {
             return;
         };
 
-        let after_value = super::resolve_start(prop, Some(after));
+        let after_value = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(after)));
         if let Some(end) = self.completed.get(&prop) {
             if after_value.as_ref() != Some(end) {
                 self.completed.remove(&prop);
@@ -726,7 +726,7 @@ impl ElementState {
             if self.completed.contains_key(&prop) || !has_duration {
                 return;
             }
-            let before = super::resolve_start(prop, Some(&self.previous));
+            let before = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(&self.previous)));
             if let (Some(before), Some(after_value)) = (before, after_value) {
                 if before != after_value {
                     if let Some(running) =

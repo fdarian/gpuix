@@ -4,6 +4,8 @@
 //! values of the same kind into a [`Layout`] plus a start and end channel
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
+use crate::custom_elements::svg_path::PathData;
+
 /// The one place a colour string is parsed, so the context-aware resolver
 /// (`currentColor`, `light-dark()`, `color-mix()`) can replace it in one edit.
 fn resolve_color(value: &str) -> Option<gpui::Rgba> {
@@ -126,6 +128,10 @@ pub(super) enum AnimValue {
     Percent(f64),
     Color(Color),
     Shadows(Vec<Shadow>),
+    /// A list of numbers, such as `stroke-dasharray`.
+    Numbers(Vec<f64>),
+    /// SVG path data, normalised to absolute commands.
+    Path(PathData),
 }
 
 impl AnimValue {
@@ -135,6 +141,8 @@ impl AnimValue {
             Self::Percent(_) => "a percentage",
             Self::Color(_) => "a colour",
             Self::Shadows(_) => "a shadow list",
+            Self::Numbers(_) => "a list of numbers",
+            Self::Path(_) => "path data",
         }
     }
 }
@@ -150,6 +158,12 @@ pub(super) enum Layout {
     /// Shadow lists whose `inset` flags differ at some index cannot be
     /// interpolated, so one channel runs 0 to 1 and the value flips at half.
     DiscreteShadows { from: Vec<Shadow>, to: Vec<Shadow> },
+    Numbers,
+    /// Paths with the same commands: the channels are their numbers, in order.
+    Path(PathData),
+    /// Paths with different commands cannot blend, so one channel runs 0 to 1
+    /// and the value flips at half.
+    DiscretePath { from: PathData, to: PathData },
 }
 
 impl Layout {
@@ -168,6 +182,11 @@ impl Layout {
             Self::DiscreteShadows { from, to } => {
                 AnimValue::Shadows(if channels[0] < 0.5 { from } else { to }.clone())
             }
+            Self::Numbers => AnimValue::Numbers(channels.to_vec()),
+            Self::Path(template) => AnimValue::Path(template.with_numbers(channels)),
+            Self::DiscretePath { from, to } => {
+                AnimValue::Path(if channels[0] < 0.5 { from } else { to }.clone())
+            }
         }
     }
 
@@ -179,6 +198,8 @@ impl Layout {
             | (Self::Percent, Self::Percent)
             | (Self::Color, Self::Color) => true,
             (Self::Shadows(a), Self::Shadows(b)) => a.len() == b.len(),
+            (Self::Numbers, Self::Numbers) => true,
+            (Self::Path(a), Self::Path(b)) => a.same_structure(b),
             _ => false,
         }
     }
@@ -207,7 +228,10 @@ impl Pair {
     /// Shadow lists that differ in `inset` flip at half instead of blending,
     /// which a CSS transition does not run at all.
     pub(super) fn is_discrete(&self) -> bool {
-        matches!(self.layout, Layout::DiscreteShadows { .. })
+        matches!(
+            self.layout,
+            Layout::DiscreteShadows { .. } | Layout::DiscretePath { .. }
+        )
     }
 }
 
@@ -229,11 +253,50 @@ pub(super) fn pair(name: &str, from: &AnimValue, to: &AnimValue) -> Result<Pair,
             to: to.channels().to_vec(),
         }),
         (AnimValue::Shadows(from), AnimValue::Shadows(to)) => Ok(pair_shadows(from, to)),
+        (AnimValue::Numbers(from), AnimValue::Numbers(to)) => pair_numbers(name, from, to),
+        (AnimValue::Path(from), AnimValue::Path(to)) => Ok(pair_paths(from, to)),
         _ => Err(format!(
             "motion {name} cannot animate from {} to {}: mixed units are not supported",
             from.describe(),
             to.describe()
         )),
+    }
+}
+
+/// Lists of different lengths are repeated to their least common multiple, as
+/// CSS interpolates `stroke-dasharray`.
+fn pair_numbers(name: &str, from: &[f64], to: &[f64]) -> Result<Pair, String> {
+    if from.is_empty() || to.is_empty() {
+        return Err(format!("motion {name} cannot animate from or to an empty list"));
+    }
+    let divisor = (1..=from.len().min(to.len()))
+        .rev()
+        .find(|candidate| from.len() % candidate == 0 && to.len() % candidate == 0)
+        .unwrap_or(1);
+    let length = from.len() / divisor * to.len();
+    let repeat = |list: &[f64]| list.iter().copied().cycle().take(length).collect();
+    Ok(Pair {
+        layout: Layout::Numbers,
+        from: repeat(from),
+        to: repeat(to),
+    })
+}
+
+fn pair_paths(from: &PathData, to: &PathData) -> Pair {
+    if from.same_structure(to) {
+        return Pair {
+            layout: Layout::Path(from.clone()),
+            from: from.numbers(),
+            to: to.numbers(),
+        };
+    }
+    Pair {
+        layout: Layout::DiscretePath {
+            from: from.clone(),
+            to: to.clone(),
+        },
+        from: vec![0.0],
+        to: vec![1.0],
     }
 }
 
@@ -432,5 +495,52 @@ mod tests {
         let error = pair("width", &AnimValue::Number(10.0), &AnimValue::Percent(0.5)).unwrap_err();
         assert!(error.contains("width") && error.contains("mixed units"), "{error}");
         assert!(pair("color", &AnimValue::Number(1.0), &AnimValue::Color(color("#fff"))).is_err());
+    }
+
+    fn path(data: &str) -> PathData {
+        PathData::parse(data).unwrap()
+    }
+
+    fn at(from: &AnimValue, to: &AnimValue, progress: f64) -> AnimValue {
+        let pair = pair("d", from, to).unwrap();
+        let channels: Vec<f64> = pair
+            .from
+            .iter()
+            .zip(&pair.to)
+            .map(|(from, to)| from + (to - from) * progress)
+            .collect();
+        pair.layout.decode(&channels)
+    }
+
+    #[test]
+    fn paths_with_the_same_commands_blend_every_number() {
+        let from = AnimValue::Path(path("M0 0 L10 0 C0 0 5 5 10 10"));
+        let to = AnimValue::Path(path("m10 10 l10 10 c0 0 5 5 10 10"));
+        match at(&from, &to, 0.5) {
+            AnimValue::Path(middle) => {
+                assert_eq!(middle.to_data(), "M 5 5 L 15 10 C 10 10 15 15 20 20");
+            }
+            other => panic!("expected a path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn paths_with_other_commands_switch_at_half() {
+        let from = AnimValue::Path(path("M0 0 L10 10"));
+        let to = AnimValue::Path(path("M0 0 H10"));
+        assert!(pair("d", &from, &to).unwrap().is_discrete());
+        assert_eq!(at(&from, &to, 0.49), from);
+        assert_eq!(at(&from, &to, 0.5), to);
+    }
+
+    #[test]
+    fn dash_lists_repeat_to_a_common_length() {
+        let from = AnimValue::Numbers(vec![4.0, 2.0]);
+        let to = AnimValue::Numbers(vec![6.0, 0.0, 6.0]);
+        assert_eq!(
+            at(&from, &to, 0.5),
+            AnimValue::Numbers(vec![5.0, 1.0, 5.0, 4.0, 2.0, 4.0])
+        );
+        assert!(pair("strokeDasharray", &from, &AnimValue::Numbers(Vec::new())).is_err());
     }
 }
