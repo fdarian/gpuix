@@ -174,7 +174,6 @@ export function FloatingLayer(props: FloatingContentProps): JSX.Element {
     align,
     gap: props.sideOffset ?? 0,
     offset,
-    fit: "snap",
     snapMargin: props.collisionPadding ?? 8,
     deferred: true,
     priority: 1,

@@ -143,6 +143,14 @@ pub struct EventPayload {
     pub scroll_x: Option<f64>,
     pub scroll_y: Option<f64>,
 
+    /// Where an `<anchored>` layer settled: `"top"`, `"right"`, `"bottom"` or `"left"`, and
+    /// the requested alignment. With the room left for the layer in whole pixels.
+    /// Populated for: placement.
+    pub side: Option<String>,
+    pub align: Option<String>,
+    pub available_width: Option<f64>,
+    pub available_height: Option<f64>,
+
     /// Matches found by this element's `highlight` prop. Counted once per match
     /// even when it is split across several painted runs, and it counts every
     /// retained match, not only the ones currently on screen.
@@ -256,6 +264,10 @@ impl Default for EventPayload {
             height: None,
             scroll_x: None,
             scroll_y: None,
+            side: None,
+            align: None,
+            available_width: None,
+            available_height: None,
             match_count: None,
             motion_generation: None,
             files: None,

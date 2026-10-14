@@ -99,6 +99,7 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onShowMore", "showMore"],
   ["onLineClick", "lineClick"],
   ["onLinkClick", "linkClick"],
+  ["onPlacement", "placement"],
   ["onVisibleRange", "visibleRange"],
   ["onHighlight", "highlight"],
   ["onMotionComplete", "motionComplete"],

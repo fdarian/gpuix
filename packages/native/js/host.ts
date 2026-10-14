@@ -883,6 +883,16 @@ export interface MarkdownProps extends HostProps {
   onLinkClick?: (event: EventPayload) => void
 }
 
+/** Payload of `<anchored onPlacement>`. */
+export interface AnchoredPlacementEvent extends EventPayload {
+  side: "top" | "right" | "bottom" | "left"
+  align: "start" | "center" | "end"
+  /** Width the layer can take without leaving the window, minus `snapMargin`. */
+  availableWidth: number
+  /** Height the layer can take on its side of the trigger, minus `snapMargin` and `gap`. */
+  availableHeight: number
+}
+
 // Props for the <anchored> custom element.
 export interface AnchoredProps extends HostProps {
   position?: { x: number; y: number }
@@ -899,8 +909,18 @@ export interface AnchoredProps extends HostProps {
     | "bottomLeft"
     | "leftCenter"
   offset?: { x: number; y: number }
-  fit?: "switch" | "snap"
+  /** `"flip"` (default, `"switch"` is the same) opens on the opposite side of the trigger,
+   *  with the same `gap`, when the preferred side runs out of room, or on the side with more
+   *  room when neither fits, then shifts along the other axis to stay inside the window.
+   *  `"snap"` only shifts. Applies when `anchor` is not set. */
+  fit?: "flip" | "switch" | "snap"
+  /** Distance kept to the window edges, also taken off `available*`. */
   snapMargin?: number
+  /** Cap the layer's `maxWidth`/`maxHeight` to the room left in the window, natively on every
+   *  layout. Like floating-ui's `size` middleware. */
+  constrainToAvailable?: boolean
+  /** Fires when side, alignment or the available room change (whole pixels). */
+  onPlacement?: (event: AnchoredPlacementEvent) => void
   deferred?: boolean
   priority?: number
   /** `"window"` covers the whole viewport and tracks resizes natively. Ignores

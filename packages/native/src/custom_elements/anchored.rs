@@ -1,4 +1,7 @@
 /// Anchored custom element for deferred, trigger-relative floating layers.
+use std::cell::Cell;
+use std::rc::Rc;
+
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 
 pub struct AnchoredFactory;
@@ -54,7 +57,7 @@ impl AnchorPoint {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 enum Side {
     Top,
     Right,
@@ -74,7 +77,7 @@ impl Side {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 enum Alignment {
     #[default]
     Start,
@@ -92,21 +95,61 @@ impl Alignment {
     }
 }
 
+/// `Flip` is floating-ui's flip + shift, `Snap` only shifts. `Switch` is `Flip`, and with an
+/// explicit `anchor` corner it picks gpui's corner switching instead of snapping.
 #[derive(Debug, Clone, Copy, Default)]
 enum FitMode {
-    Switch,
     #[default]
+    Flip,
+    Switch,
     Snap,
 }
 
 impl FitMode {
     fn from_str(value: &str) -> Self {
-        if value == "switch" {
-            Self::Switch
-        } else {
-            Self::Snap
+        match value {
+            "snap" => Self::Snap,
+            "switch" => Self::Switch,
+            _ => Self::Flip,
         }
     }
+}
+
+/// Where the last placement settled and how much room it left, in whole pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PlacementReport {
+    side: Side,
+    align: Alignment,
+    available_width: i32,
+    available_height: i32,
+}
+
+impl Side {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Right => "right",
+            Self::Bottom => "bottom",
+            Self::Left => "left",
+        }
+    }
+}
+
+impl Alignment {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Center => "center",
+            Self::End => "end",
+        }
+    }
+}
+
+/// Written during prepaint, read by the next `render`.
+#[derive(Debug, Default)]
+struct PlacementState {
+    latest: Cell<Option<PlacementReport>>,
+    emitted: Cell<Option<PlacementReport>>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +166,9 @@ pub struct AnchoredElement {
     priority: usize,
     /// `fill: "window"`: cover the whole viewport, like a dialog portal.
     fill_window: bool,
+    /// `constrainToAvailable`: cap the layer's size to the room placement left.
+    constrain_to_available: bool,
+    placement_state: Rc<PlacementState>,
 }
 
 impl Default for AnchoredElement {
@@ -134,11 +180,13 @@ impl Default for AnchoredElement {
             anchor: None,
             gap: 0.0,
             offset: (0.0, 0.0),
-            fit: FitMode::Snap,
+            fit: FitMode::Flip,
             snap_margin: 8.0,
             deferred: true,
             priority: 1,
             fill_window: false,
+            constrain_to_available: false,
+            placement_state: Rc::default(),
         }
     }
 }
@@ -177,6 +225,30 @@ impl AnchoredElement {
         )
     }
 
+    /// Placement from side/align/gap, when no explicit `anchor` corner overrides it.
+    fn placement(&self) -> Option<gpui::AnchoredPlacement> {
+        if self.anchor.is_some() {
+            return None;
+        }
+        Some(gpui::AnchoredPlacement {
+            side: match self.side {
+                Side::Top => gpui::PlacementSide::Top,
+                Side::Right => gpui::PlacementSide::Right,
+                Side::Bottom => gpui::PlacementSide::Bottom,
+                Side::Left => gpui::PlacementSide::Left,
+            },
+            align: match self.align {
+                Alignment::Start => gpui::PlacementAlign::Start,
+                Alignment::Center => gpui::PlacementAlign::Center,
+                Alignment::End => gpui::PlacementAlign::End,
+            },
+            gap: gpui::px(self.gap),
+            offset: gpui::point(gpui::px(self.offset.0), gpui::px(self.offset.1)),
+            flip: !matches!(self.fit, FitMode::Snap),
+            margin: gpui::px(self.snap_margin),
+        })
+    }
+
     fn wrap_at_trigger(&self, layer: gpui::AnyElement) -> gpui::AnyElement {
         use gpui::prelude::*;
 
@@ -191,11 +263,8 @@ impl AnchoredElement {
             (Side::Top, Alignment::Center) => gpui::div()
                 .absolute()
                 .top_0()
-                .left_0()
-                .h_0()
-                .w_full()
-                .flex()
-                .justify_center()
+                .left(gpui::relative(0.5))
+                .size_0()
                 .child(layer)
                 .into_any_element(),
             (Side::Top, Alignment::End) => gpui::div()
@@ -214,12 +283,9 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Right, Alignment::Center) => gpui::div()
                 .absolute()
-                .top_0()
+                .top(gpui::relative(0.5))
                 .right_0()
-                .w_0()
-                .h_full()
-                .flex()
-                .items_center()
+                .size_0()
                 .child(layer)
                 .into_any_element(),
             (Side::Right, Alignment::End) => gpui::div()
@@ -239,11 +305,8 @@ impl AnchoredElement {
             (Side::Bottom, Alignment::Center) => gpui::div()
                 .absolute()
                 .bottom_0()
-                .left_0()
-                .h_0()
-                .w_full()
-                .flex()
-                .justify_center()
+                .left(gpui::relative(0.5))
+                .size_0()
                 .child(layer)
                 .into_any_element(),
             (Side::Bottom, Alignment::End) => gpui::div()
@@ -262,12 +325,9 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Left, Alignment::Center) => gpui::div()
                 .absolute()
-                .top_0()
+                .top(gpui::relative(0.5))
                 .left_0()
-                .w_0()
-                .h_full()
-                .flex()
-                .items_center()
+                .size_0()
                 .child(layer)
                 .into_any_element(),
             (Side::Left, Alignment::End) => gpui::div()
@@ -311,6 +371,13 @@ impl CustomElement for AnchoredElement {
             let viewport = window.viewport_size();
             content = content.w(viewport.width).h(viewport.height);
         }
+        if self.constrain_to_available {
+            if let Some(report) = self.placement_state.latest.get() {
+                content = content
+                    .max_w(gpui::px(report.available_width as f32))
+                    .max_h(gpui::px(report.available_height as f32));
+            }
+        }
         content = crate::accessibility::apply_accessibility(content, ctx.id, ctx.props, None);
         content = super::wire_host_events(content, &ctx);
         // Deferred overlays paint over the window blur. A missing fill lets the
@@ -334,6 +401,54 @@ impl CustomElement for AnchoredElement {
             anchored = anchored
                 .anchor(gpui::Anchor::TopLeft)
                 .position(gpui::point(gpui::px(0.0), gpui::px(0.0)));
+        } else if let Some(placement) = self.placement() {
+            if let Some((x, y)) = self.position {
+                anchored = anchored.position(gpui::point(gpui::px(x), gpui::px(y)));
+            }
+            let state = self.placement_state.clone();
+            let notify_view = _cx.entity_id();
+            let constrain = self.constrain_to_available;
+            let callback = ctx.event_callback.clone();
+            let element_id = ctx.id;
+            let reports_placement = ctx.events.contains("placement");
+            anchored = anchored
+                .placement(placement)
+                .on_placement(move |resolved, _window, app| {
+                    let report = PlacementReport {
+                        side: match resolved.side {
+                            gpui::PlacementSide::Top => Side::Top,
+                            gpui::PlacementSide::Right => Side::Right,
+                            gpui::PlacementSide::Bottom => Side::Bottom,
+                            gpui::PlacementSide::Left => Side::Left,
+                        },
+                        align: match resolved.align {
+                            gpui::PlacementAlign::Start => Alignment::Start,
+                            gpui::PlacementAlign::Center => Alignment::Center,
+                            gpui::PlacementAlign::End => Alignment::End,
+                        },
+                        available_width: f32::from(resolved.available_width).round() as i32,
+                        available_height: f32::from(resolved.available_height).round() as i32,
+                    };
+                    let previous = state.latest.replace(Some(report));
+                    if constrain && previous != Some(report) {
+                        // The layer was built with the previous size cap.
+                        app.notify(notify_view);
+                    }
+                    if reports_placement && state.emitted.get() != Some(report) {
+                        state.emitted.set(Some(report));
+                        crate::renderer::emit_event_full(
+                            &callback,
+                            element_id,
+                            "placement",
+                            |payload| {
+                                payload.side = Some(report.side.as_str().to_string());
+                                payload.align = Some(report.align.as_str().to_string());
+                                payload.available_width = Some(report.available_width as f64);
+                                payload.available_height = Some(report.available_height as f64);
+                            },
+                        );
+                    }
+                });
         } else {
             anchored = anchored
                 .anchor(self.resolved_anchor().as_gpui())
@@ -341,7 +456,7 @@ impl CustomElement for AnchoredElement {
             if let Some((x, y)) = self.position {
                 anchored = anchored.position(gpui::point(gpui::px(x), gpui::px(y)));
             }
-            if matches!(self.fit, FitMode::Snap) {
+            if !matches!(self.fit, FitMode::Switch) {
                 anchored = anchored.snap_to_window_with_margin(gpui::px(self.snap_margin));
             }
         }
@@ -357,6 +472,15 @@ impl CustomElement for AnchoredElement {
 
         if self.position.is_some() || self.fill_window {
             layer
+        } else if self.placement().is_some() {
+            // Covers the trigger, so placement can measure the box it flips around.
+            gpui::div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .child(layer)
+                .into_any_element()
         } else {
             self.wrap_at_trigger(layer)
         }
@@ -403,6 +527,9 @@ impl CustomElement for AnchoredElement {
                     .unwrap_or(1);
             }
             "fill" => self.fill_window = value.as_str() == Some("window"),
+            "constrainToAvailable" => {
+                self.constrain_to_available = value.as_bool().unwrap_or(false)
+            }
             _ => {}
         }
     }
@@ -420,11 +547,12 @@ impl CustomElement for AnchoredElement {
             "deferred",
             "priority",
             "fill",
+            "constrainToAvailable",
         ]
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &[]
+        &["placement"]
     }
 
     fn destroy(&mut self) {}

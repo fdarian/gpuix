@@ -2757,6 +2757,18 @@ through Metal to the desktop.
 A raw `<anchored>` with no fill in its style paints `#1A1A1A`. Set
 `backgroundColor: "transparent"` to paint nothing, as `Dialog.Portal` does.
 
+`<anchored>` placement follows floating-ui. With `side`, `align`, `gap` and
+`offset` it opens on `side` of its parent (the trigger). When that side runs
+out of room in the window it opens on the opposite side with the same `gap`,
+or on the side with more room if neither fits (`fit="flip"`, the default;
+`fit="snap"` never flips), then slides along the other axis to stay inside the
+window, `snapMargin` away from its edges. `align="center"` centers on the
+trigger. `onPlacement` fires with `{ side, align, availableWidth,
+availableHeight }` (whole pixels) when any of them changes, and
+`constrainToAvailable` caps the layer's `maxWidth` / `maxHeight` to that room
+natively on every layout, with no JS round trip. An explicit `anchor` corner
+keeps the older corner-based placement.
+
 `fill="window"` makes an `<anchored>` cover the whole window, like
 `Dialog.Portal`. Native reads the viewport size every frame, so the layer
 follows a resize in the same frame. It ignores `position`, `side`, `align`,
@@ -3984,7 +3996,13 @@ CSS-like styling via the `style` prop:
 >   props are silently ignored.
 > - **A flex child that must shrink needs `minWidth: 0`.** Same rule as CSS,
 >   but easier to miss because there is no browser DevTools to inspect.
-> - **No shorthand values.** `padding`, `margin`, and `border` take numbers.
+> - **`position` is `static` unless you set it**, as in CSS. `top`/`left` do
+>   nothing on a static box, and a static box is not the reference for
+>   `position: "absolute"` children: they resolve against the nearest
+>   `relative`, `absolute` or `fixed` ancestor. Put `position: "relative"` on
+>   the parent of anything you place with `top`/`right`/`bottom`/`left`.
+> - **No shorthand values.** `padding` and `border` take numbers, and `margin`
+>   takes a number, a percentage or `"auto"`.
 >   CSS strings like `"0 16px"`, `"1px solid #fff"`, or `calc()` are ignored.
 > - **`boxShadow` is a structured object**, not a CSS string. See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
@@ -3994,15 +4012,62 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"`), `flexDirection`, `flexWrap`, `flexGrow`, `flexShrink`, `flexBasis`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `gap`, `rowGap`, `columnGap`, `gridTemplateColumns`, `gridTemplateRows`, `gridColumnMin`, `gridRowMin`
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
-**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number) or percentages (string like `"100%"`). `aspectRatio` (width divided by height) sizes whichever axis has no definite size
+**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number) or percentages (string like `"100%"`). `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
-**Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left`
+**Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — margins take pixels, a percentage of the containing block's width, or `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
-**Position:** `position` (`"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` — `"fixed"` lays out like `"absolute"`, because GPUI has no scrolling document to be fixed against. See [Sticky positioning](#sticky-positioning) for `"sticky"`
+**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
 **Visual:** `background`, `backgroundColor`, `color`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderStyle` (`"solid"` | `"dashed"`), `boxShadow`, `outlineWidth`, `outlineColor`, `outlineOffset`
+
+### Layout like CSS
+
+- **Text nodes.** An empty text node produces no box, and neither does a
+  white-space-only one that sits directly in a `div`, so `{" "}` and the empty
+  placeholders Solid creates for `<Show>` and `<For>` no longer add a flex or
+  grid item (and a `gap`). Inside a `<text>` white space is kept.
+- **`display: "none"`** builds no box for the element or its descendants, and
+  leaves no gap. `display: "contents"`, the `inline-*` values and `table` are not
+  supported (the layout engine has no such box types).
+- **Static position.** An unpositioned box ignores `top`/`left` and is not a
+  containing block. Known difference from CSS: an `overflow: "hidden"` static
+  ancestor still clips an absolute descendant whose containing block is further
+  up, and a scroller scrolls it.
+- **`<img>`** is a replaced element. A missing dimension comes from the other
+  one and the image's intrinsic ratio (or `aspectRatio`), a percentage of an
+  indefinite parent counts as `auto`, and with neither set it takes its
+  intrinsic size. `maxWidth` keeps the proportions.
+- **`order`** stable-sorts the children of a flex or grid container. Layout and
+  paint follow it; tab order stays in document order.
+
+#### Grid
+
+`gridTemplateColumns` and `gridTemplateRows` take a CSS track list: `px`, `%`
+and `fr` units, `auto`, `min-content`, `max-content`, `minmax()`,
+`fit-content()`, `repeat(n | auto-fill | auto-fit, ...)`, `[line names]` and
+`none`. A bare number `n` still means `repeat(n, minmax(0, 1fr))` (with
+`gridColumnMin` / `gridRowMin` to pick the minimum). A track list that does not
+parse makes the batch throw, like any other invalid style value.
+
+```tsx
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: '[sidebar] 240px [main] repeat(auto-fill, minmax(120px, 1fr))',
+  gridTemplateAreas: '"head head" "side main"',
+  gridAutoRows: 'minmax(40px, auto)',
+}}>
+  <div style={{ gridArea: 'head' }} />
+  <div style={{ gridColumn: 'sidebar / span 2', gridRow: '2' }} />
+</div>
+```
+
+Also: `gridAutoColumns`, `gridAutoRows`, `gridAutoFlow` (`"row"`, `"column"`,
+`"dense"`), `gridTemplateAreas` (quoted rows, `.` for an empty cell),
+`gridArea`, `gridColumn`, `gridRow`, `gridColumnStart/End`, `gridRowStart/End`
+(a line number, negative counted from the end, `"span n"`, a line or area name),
+`justifyItems` and `justifySelf`.
 
 ### Cursors
 

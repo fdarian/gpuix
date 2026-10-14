@@ -827,6 +827,15 @@ export interface EventPayload {
   scrollX?: number
   scrollY?: number
   /**
+   * Where an `<anchored>` layer settled: `"top"`, `"right"`, `"bottom"` or `"left"`, and
+   * the requested alignment. With the room left for the layer in whole pixels.
+   * Populated for: placement.
+   */
+  side?: string
+  align?: string
+  availableWidth?: number
+  availableHeight?: number
+  /**
    * Matches found by this element's `highlight` prop. Counted once per match
    * even when it is split across several painted runs, and it counts every
    * retained match, not only the ones currently on screen.

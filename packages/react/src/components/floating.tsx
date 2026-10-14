@@ -299,7 +299,6 @@ export const FloatingLayer = forwardRef<PublicInstance, FloatingContentProps>(
         align={align}
         gap={sideOffset}
         offset={offset}
-        fit="snap"
         snapMargin={collisionPadding}
         deferred
         priority={1}
