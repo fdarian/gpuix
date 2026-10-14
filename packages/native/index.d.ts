@@ -818,6 +818,12 @@ export interface EventPayload {
   /** Exclusive end of the visible logical range. Populated for: visibleRange. */
   endIndex?: number
   /**
+   * Intrinsic size of the decoded image, in pixels.
+   * Populated for: `<img>` load.
+   */
+  naturalWidth?: number
+  naturalHeight?: number
+  /**
    * Border-box size of the element, in pixels. With `x` and `y`, its position
    * in window coordinates. Populated for: layout.
    */

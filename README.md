@@ -3460,9 +3460,10 @@ Bash, TOML, YAML, Markdown, HTML, CSS, C.
 
 ## Images and icons
 
-`<img>` takes a **filesystem path, data URL, or http(s) URL**. Resolve local
-files with `fileURLToPath` or `path.join`, encode in-memory bytes as base64, or
-pass a remote URL and let GPUI fetch it.
+`<img>` takes a **filesystem path, `file://` URL, data URL, `blob:` URL, or
+http(s) URL**. Pass a path or `file://` URL for local files, encode in-memory
+bytes as base64 or wrap them in a `Blob`, or pass a remote URL and let GPUI
+fetch it.
 
 ### `<img>`
 
@@ -3497,13 +3498,35 @@ task. The tree does not wait. Without a definite size the box is empty until
 decode, then jumps to the bitmap size.
 
 Data URLs support every image format listed above. Base64 and percent-encoded
-payloads are accepted. Remote URLs use the same GPUI image cache as disk files.
-They are not written to a temp file.
+payloads are accepted. Base64 is read as browsers read it: white space is
+ignored, padding may be left off, and the payload may itself be percent-encoded.
+A `file://` URL's query and fragment are not part of the path. Remote URLs use
+the same GPUI image cache as disk files. They are not written to a temp file.
 
 `objectFit` matches CSS: `"contain"` (default), `"cover"`, `"fill"`,
 `"scaleDown"`, or `"none"`. An empty `src` or a failed load shows a fallback
 placeholder instead of crashing. A URL that is still loading paints an empty
 box of the declared size. There is no spinner.
+
+`onLoad` and `onError` fire once per `src` change, like the DOM events. The
+`onLoad` payload carries `naturalWidth` and `naturalHeight` in pixels; `onError`
+carries the reason in `value`. An empty `src` fires neither. As in a browser,
+an `<img>` that `display: none` keeps out of the layout (itself or an ancestor)
+still loads and fires them. Removing `src` clears the image.
+
+```tsx
+<img
+  src={url}
+  onLoad={(event) => setSize([event.naturalWidth, event.naturalHeight])}
+  onError={(event) => console.warn('image failed:', event.value)}
+/>
+```
+
+A `blob:` URL from `URL.createObjectURL(new Blob([bytes]))` works in this
+process: the JS layer fetches the blob and hands the bytes to `setImage`. Revoke
+the URL only after `onLoad`; a revoked URL fires `onError`. Blob URLs are not
+files, so the box is empty until the fetch resolves, and it needs a runtime where
+`fetch` accepts blob URLs (Bun does).
 
 `borderRadius` clips the bitmap. GPUI paints the image with those corner
 radii. A parent `overflow: "hidden"` wrapper does **not** clip an `<img>`

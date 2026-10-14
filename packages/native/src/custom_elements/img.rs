@@ -6,6 +6,11 @@
 /// HTTP(S) `src` is a GPUI URI resource. GPUI fetches it through the app
 /// `HttpClient` on a background task and paints once decode finishes. A
 /// definite `width` and `height` keep the layout box stable during that load.
+///
+/// `load` and `error` fire once per `src`. Every kind of source resolves to a
+/// `RenderImage` here, in `render`, so the element knows the outcome and the
+/// natural size. A `blob:` src is fetched by the JS layer (`js/blob-images.ts`),
+/// which hands the bytes to `setImage`, or reports failure through `srcError`.
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 use base64::Engine as _;
 
@@ -78,7 +83,9 @@ enum ImgSource {
     Uri(gpui::SharedUri),
     Data(std::sync::Arc<gpui::Image>),
     Render(std::sync::Arc<gpui::RenderImage>),
-    Invalid,
+    /// A `blob:` src whose bytes the JS layer is still fetching.
+    Pending,
+    Failed(String),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -87,26 +94,134 @@ pub struct ImgElement {
     object_fit: ImgObjectFit,
     alt: String,
     dropped: Option<std::sync::Arc<gpui::RenderImage>>,
+    /// The decoded `Data` source, decoded once on first paint.
+    decoded: Option<Result<std::sync::Arc<gpui::RenderImage>, String>>,
+    /// A src was set and its `load` or `error` has not fired yet.
+    awaiting_outcome: bool,
+    /// gpui rasterises an SVG at twice its size, so the bitmap is not the
+    /// intrinsic size.
+    supersampled: bool,
 }
 
 impl ImgElement {
     fn load_src(&mut self, src: &str) {
         let src = src.trim();
-        self.source = if src.is_empty() {
-            ImgSource::Empty
-        } else if src.starts_with("data:") {
-            // TODO: Replace JSON data URLs with binary mutations to keep base64 decoding off paint.
-            decode_image_data_url(src)
-                .map(|(format, bytes)| {
-                    ImgSource::Data(std::sync::Arc::new(gpui::Image::from_bytes(format, bytes)))
-                })
-                .unwrap_or(ImgSource::Invalid)
-        } else if let Some(uri) = http_image_uri(src) {
-            ImgSource::Uri(uri)
-        } else {
-            ImgSource::Path(src.into())
-        };
+        self.decoded = None;
+        self.awaiting_outcome = !src.is_empty();
+        (self.source, self.supersampled) = resolve_src(src);
     }
+
+    /// Fires `load` or `error` once per src, after the outcome is known. Deferred
+    /// so a handler that sets state never re-enters the build in progress.
+    fn report(
+        &mut self,
+        ctx: &CustomRenderContext,
+        cx: &mut gpui::App,
+        outcome: Result<(u32, u32), String>,
+    ) {
+        if !std::mem::take(&mut self.awaiting_outcome) {
+            return;
+        }
+        let event = if outcome.is_ok() { "load" } else { "error" };
+        if !ctx.events.contains(event) {
+            return;
+        }
+        let callback = ctx.event_callback.clone();
+        let id = ctx.id;
+        cx.defer(move |_| {
+            crate::renderer::emit_event_full(&callback, id, event, |payload| match outcome {
+                Ok((width, height)) => {
+                    payload.natural_width = Some(width as f64);
+                    payload.natural_height = Some(height as f64);
+                }
+                Err(message) => payload.value = Some(message),
+            });
+        });
+    }
+}
+
+/// The source `src` names, and whether gpui will rasterise it as an SVG.
+fn resolve_src(src: &str) -> (ImgSource, bool) {
+    if src.is_empty() {
+        (ImgSource::Empty, false)
+    } else if src.starts_with("blob:") {
+        (ImgSource::Pending, false)
+    } else if src.starts_with("data:") {
+        // TODO: Replace JSON data URLs with binary mutations to keep base64 decoding off paint.
+        match decode_image_data_url(src) {
+            Some((format, bytes)) => (
+                ImgSource::Data(std::sync::Arc::new(gpui::Image::from_bytes(format, bytes))),
+                format == gpui::ImageFormat::Svg,
+            ),
+            None => (ImgSource::Failed("invalid data URL".to_string()), false),
+        }
+    } else if let Some(uri) = http_image_uri(src) {
+        let svg = uri_path_is_svg(uri.as_ref());
+        (ImgSource::Uri(uri), svg)
+    } else if src
+        .get(..7)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("file://"))
+    {
+        match file_url_path(src) {
+            Some(path) => {
+                let svg = file_is_svg(&path);
+                (ImgSource::Path(path), svg)
+            }
+            None => (ImgSource::Failed(format!("invalid file URL {src}")), false),
+        }
+    } else {
+        let path = std::path::PathBuf::from(src);
+        let svg = file_is_svg(&path);
+        (ImgSource::Path(path), svg)
+    }
+}
+
+/// gpui hands any file it does not recognise as a raster format to the SVG
+/// renderer. A file that cannot be read fails to load, and `error` reports why.
+fn file_is_svg(path: &std::path::Path) -> bool {
+    use std::io::Read as _;
+    let mut head = [0u8; 512];
+    let Ok(read) = std::fs::File::open(path).and_then(|mut file| file.read(&mut head)) else {
+        return false;
+    };
+    rasterised_as_svg(&head[..read])
+}
+
+/// gpui fetches an `http(s)` image itself, so its bytes are not here to sniff:
+/// the URL's extension stands in.
+fn uri_path_is_svg(uri: &str) -> bool {
+    let path = uri.split(['?', '#']).next().unwrap_or(uri).as_bytes();
+    path.len() >= 4 && path[path.len() - 4..].eq_ignore_ascii_case(b".svg")
+}
+
+/// What `gpui::Image::to_image_data` and the image asset loader do with `bytes`.
+fn rasterised_as_svg(bytes: &[u8]) -> bool {
+    matches!(sniff_image_format(bytes), None | Some(gpui::ImageFormat::Svg))
+}
+
+/// The intrinsic size in CSS px of a bitmap that is `scale` times its size.
+fn css_size(device: (i32, i32), scale: f32) -> (u32, u32) {
+    let css = |pixels: i32| (pixels.max(0) as f32 / scale).round() as u32;
+    (css(device.0), css(device.1))
+}
+
+/// `file:///a/b%20c.png` as a path. Accepts an empty or `localhost` host.
+fn file_url_path(src: &str) -> Option<std::path::PathBuf> {
+    let rest = src.get(7..)?;
+    let path = match rest.find('/') {
+        Some(0) => rest,
+        Some(index) if rest[..index].eq_ignore_ascii_case("localhost") => &rest[index..],
+        _ => return None,
+    };
+    let decoded = String::from_utf8(percent_decode(path)).ok()?;
+    // `file:///C:/x.png` carries a slash before the drive letter.
+    let bytes = decoded.as_bytes();
+    let path = if cfg!(windows) && bytes.len() > 2 && bytes[0] == b'/' && bytes[2] == b':' {
+        &decoded[1..]
+    } else {
+        decoded.as_str()
+    };
+    Some(path.into())
 }
 
 fn http_image_uri(src: &str) -> Option<gpui::SharedUri> {
@@ -136,7 +251,79 @@ pub fn init(cx: &mut gpui::App) {
 
 #[cfg(test)]
 mod tests {
-    use super::http_image_uri;
+    use super::{
+        css_size, file_url_path, http_image_uri, uri_path_is_svg, CustomElement, ImgElement,
+        ImgSource,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn svg_sources_are_flagged_as_supersampled() {
+        let mut element = ImgElement::default();
+        for (src, svg) in [
+            ("data:image/svg+xml,%3Csvg%2F%3E", true),
+            ("data:image/svg+xml;base64,PHN2Zy8+", true),
+            ("data:image/png;base64,iVBORw0K", false),
+            ("https://example.test/a.SVG?v=2#x", true),
+            ("https://example.test/a.png", false),
+            ("/does/not/exist.svg", false),
+        ] {
+            element.set_prop("src", json!(src));
+            assert_eq!(element.supersampled, svg, "{src}");
+        }
+    }
+
+    #[test]
+    fn an_svg_file_is_sniffed_from_its_content() {
+        let dir = std::env::temp_dir().join(format!("gpuix-img-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let svg = dir.join("icon.dat");
+        std::fs::write(&svg, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+        let png = dir.join("pic.svg");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G', 0, 0, 0, 0]).unwrap();
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!(svg.to_str().unwrap()));
+        assert!(element.supersampled);
+        element.set_prop("src", json!(png.to_str().unwrap()));
+        assert!(!element.supersampled);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_supersampled_bitmap_reports_its_css_size() {
+        assert_eq!(css_size((20, 12), 2.0), (10, 6));
+        assert_eq!(css_size((20, 12), 1.0), (20, 12));
+        assert_eq!(css_size((-1, 0), 1.0), (0, 0));
+    }
+
+    #[test]
+    fn uri_extension_ignores_query_and_fragment() {
+        assert!(uri_path_is_svg("https://e.test/a.svg"));
+        assert!(uri_path_is_svg("https://e.test/a.svg?x=.png"));
+        assert!(!uri_path_is_svg("https://e.test/a.svg/b"));
+        assert!(!uri_path_is_svg("https://e.test/é"));
+    }
+
+    #[test]
+    fn each_blob_failure_applies_while_the_blob_is_pending() {
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!("blob:one"));
+        element.set_prop("srcError", json!({ "message": "boom", "ticket": 1 }));
+        assert!(matches!(&element.source, ImgSource::Failed(message) if message == "boom"));
+        element.set_prop("src", json!("blob:two"));
+        assert!(matches!(element.source, ImgSource::Pending));
+        element.set_prop("srcError", json!({ "message": "boom", "ticket": 2 }));
+        assert!(matches!(&element.source, ImgSource::Failed(message) if message == "boom"));
+    }
+
+    #[test]
+    fn file_urls_become_paths() {
+        assert_eq!(file_url_path("file:///tmp/a.png"), Some("/tmp/a.png".into()));
+        assert_eq!(file_url_path("FILE:///tmp/a%20b.png"), Some("/tmp/a b.png".into()));
+        assert_eq!(file_url_path("file://localhost/tmp/a.png"), Some("/tmp/a.png".into()));
+        assert_eq!(file_url_path("file://example.test/tmp/a.png"), None);
+        assert_eq!(file_url_path("file://relative.png"), None);
+    }
 
     #[test]
     fn only_http_urls_become_uri_sources() {
@@ -178,12 +365,25 @@ fn img_fallback(ctx: &CustomRenderContext, alt: &str, message: &str) -> gpui::An
         .into_any_element()
 }
 
+/// An `<img>` with nothing to show yet: it keeps its box and bounds while a
+/// source loads.
+fn img_blank(ctx: &CustomRenderContext) -> gpui::AnyElement {
+    use gpui::prelude::*;
+
+    let blank = super::custom_surface(
+        gpui::div().id(crate::events::ids::host_element_id(ctx.id)),
+        ctx,
+    );
+    crate::accessibility::apply_accessibility(blank, ctx.id, ctx.props, Some(gpui::Role::Image))
+        .into_any_element()
+}
+
 impl CustomElement for ImgElement {
     fn render(
         &mut self,
         ctx: CustomRenderContext,
         window: &mut gpui::Window,
-        _cx: &mut gpui::Context<crate::renderer::GpuixView>,
+        cx: &mut gpui::Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
@@ -191,14 +391,51 @@ impl CustomElement for ImgElement {
             window.drop_image(image).ok();
         }
 
-        let el = match &self.source {
-            ImgSource::Path(path) => gpui::img(path.clone()),
-            ImgSource::Uri(uri) => gpui::img(uri.clone()),
-            ImgSource::Data(image) => gpui::img(image.clone()),
-            ImgSource::Render(image) => gpui::img(image.clone()),
+        // Resolve every source to a decoded image here, so the outcome and the
+        // natural size are known for `load` and `error`.
+        let loaded = match &self.source {
             ImgSource::Empty => return img_fallback(&ctx, &self.alt, "img: no src"),
-            ImgSource::Invalid => return img_fallback(&ctx, &self.alt, "img: load failed"),
+            ImgSource::Pending => return img_blank(&ctx),
+            ImgSource::Failed(message) => {
+                let message = message.clone();
+                self.report(&ctx, cx, Err(message));
+                return img_fallback(&ctx, &self.alt, "img: load failed");
+            }
+            ImgSource::Render(image) => Ok(image.clone()),
+            ImgSource::Path(path) => {
+                let resource = gpui::Resource::Path(path.as_path().into());
+                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
+                    Some(result) => result.map_err(|error| error.to_string()),
+                    None => return img_blank(&ctx),
+                }
+            }
+            ImgSource::Uri(uri) => {
+                let resource = gpui::Resource::Uri(uri.clone());
+                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
+                    Some(result) => result.map_err(|error| error.to_string()),
+                    None => return img_blank(&ctx),
+                }
+            }
+            ImgSource::Data(image) => {
+                let renderer = cx.svg_renderer();
+                self.decoded
+                    .get_or_insert_with(|| {
+                        image.to_image_data(renderer).map_err(|error| error.to_string())
+                    })
+                    .clone()
+            }
         };
+        let image = match loaded {
+            Ok(image) => image,
+            Err(message) => {
+                self.report(&ctx, cx, Err(message));
+                return img_fallback(&ctx, &self.alt, "img: load failed");
+            }
+        };
+        let size = image.size(0);
+        let scale = if self.supersampled { gpui::SMOOTH_SVG_SCALE_FACTOR } else { 1.0 };
+        self.report(&ctx, cx, Ok(css_size((size.width.0, size.height.0), scale)));
+        let el = gpui::img(image);
         // The id is what makes gpui's `ImgState` persist. Without it `Img` has no
         // `GlobalElementId`, so the animated-GIF frame index and the delayed
         // loading state are rebuilt from scratch on every frame and an animation
@@ -265,16 +502,23 @@ impl CustomElement for ImgElement {
                     .unwrap_or_default()
             }
             "alt" => self.alt = value.as_str().unwrap_or_default().to_string(),
+            // Sent by `js/blob-images.ts` when it cannot fetch a `blob:` src.
+            "srcError" => {
+                let message = value.get("message").and_then(|message| message.as_str());
+                if let (ImgSource::Pending, Some(message)) = (&self.source, message) {
+                    self.source = ImgSource::Failed(message.to_string());
+                }
+            }
             _ => {}
         }
     }
 
     fn supported_props(&self) -> &'static [&'static str] {
-        &["src", "objectFit", "alt"]
+        &["src", "objectFit", "alt", "srcError"]
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
-        &[]
+        &["load", "error"]
     }
 
     fn destroy(&mut self) {}
@@ -293,9 +537,12 @@ impl CustomElement for ImgElement {
     fn replace_live_image(
         &mut self,
         image: std::sync::Arc<gpui::RenderImage>,
+        supersampled: bool,
     ) -> Option<std::sync::Arc<gpui::RenderImage>> {
         let previous = self.live_image();
         self.source = ImgSource::Render(image);
+        self.decoded = None;
+        self.supersampled = supersampled;
         previous
     }
 }
@@ -353,6 +600,11 @@ pub fn render_image_from_pixels(
     gpui::RenderImage::from_bgra(width, height, bytes)
         .map(std::sync::Arc::new)
         .ok_or_else(|| format!("{name} pixel buffer is not a valid image"))
+}
+
+/// Whether gpui rasterises `bytes` as an SVG, at twice its size.
+pub fn encoded_is_svg(bytes: &[u8]) -> bool {
+    rasterised_as_svg(bytes)
 }
 
 pub fn render_image_from_encoded(

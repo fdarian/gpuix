@@ -1,5 +1,6 @@
 import { POINTER_EVENT_HANDLER_PROPS } from "./events/event-props.js"
 import { registerMutationQueue } from "./bounds.js"
+import { createBlobImageLoader, type BlobImageHost } from "./blob-images.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
 
 export type MutationValue = number | string | boolean | object | null
@@ -22,7 +23,7 @@ export interface MutationQueue extends MutationRenderer {
 }
 
 export function createMutationQueue(
-  renderer: MutationHost,
+  renderer: MutationHost & BlobImageHost,
   onDestroyed: (ids: readonly number[]) => void = () => {},
   scheduleFlush?: (flush: () => void) => void
 ): MutationQueue {
@@ -40,14 +41,24 @@ export function createMutationQueue(
     })
   }
 
+  const blobImages = createBlobImageLoader(renderer, {
+    flush: () => mutations.flushMutations(),
+    fail: (id, message, ticket) => {
+      enqueue(["setCustomProp", id, "srcError", { message, ticket }])
+      if (!scheduleFlush) mutations.flushMutations()
+    },
+  })
+
   const mutations: MutationQueue = {
     get pending() {
       return queue.length
     },
     createElement(id, elementType) {
+      blobImages.created(id, elementType)
       enqueue(["createElement", id, elementType])
     },
     destroyElement(id) {
+      blobImages.destroyed(id)
       enqueue(["destroyElement", id])
       return []
     },
@@ -73,6 +84,7 @@ export function createMutationQueue(
       enqueue(["setKeyboardFocusDim", enabled])
     },
     setCustomProp(id, key, value) {
+      blobImages.prop(id, key, value)
       enqueue(["setCustomProp", id, key, value])
     },
     flushMutations() {
@@ -117,6 +129,8 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onWheel", "wheel"],
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
+  ["onLoad", "load"],
+  ["onError", "error"],
 ]
 
 export const EVENT_PROP_NAMES: ReadonlySet<string> = new Set(

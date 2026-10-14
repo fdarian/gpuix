@@ -699,6 +699,14 @@ export interface HostProps extends AriaProps, PointerEventProps {
    */
   onLayout?: (event: EventPayload) => void
 
+  // ── Image loading (`<img>`) ──────────────────────────────────────
+  /** The `src` decoded. Fires once per `src` change, with `naturalWidth` and
+   *  `naturalHeight` in pixels. An empty `src` fires nothing. */
+  onLoad?: (event: EventPayload) => void
+  /** The `src` could not be read or decoded. Fires once per `src` change, with
+   *  the reason in `value`. */
+  onError?: (event: EventPayload) => void
+
   // ── Text editor events ─────────────────────────────────────────
   onChange?: (event: EventPayload) => void
   /** The DOM `submit` event of a descendant `<form>`, bubbling: see
@@ -902,8 +910,10 @@ export type VirtualListProps =
 
 // Props for native <img> rendering.
 export interface ImgProps extends HostProps {
-  /** Filesystem path, data URL, or http(s) URL. */
+  /** Filesystem path, `file://` URL, data URL, `blob:` URL (from
+   *  `URL.createObjectURL` in this process) or http(s) URL. */
   src?: string
+  /** CSS `object-fit`. Default `"contain"`. */
   objectFit?: "fill" | "contain" | "cover" | "scaleDown" | "none"
   alt?: string
 }

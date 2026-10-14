@@ -133,6 +133,11 @@ pub struct EventPayload {
     /// Exclusive end of the visible logical range. Populated for: visibleRange.
     pub end_index: Option<f64>,
 
+    /// Intrinsic size of the decoded image, in pixels.
+    /// Populated for: `<img>` load.
+    pub natural_width: Option<f64>,
+    pub natural_height: Option<f64>,
+
     /// Border-box size of the element, in pixels. With `x` and `y`, its position
     /// in window coordinates. Populated for: layout.
     pub width: Option<f64>,
@@ -264,6 +269,8 @@ impl Default for EventPayload {
             new_line: None,
             start_index: None,
             end_index: None,
+            natural_width: None,
+            natural_height: None,
             width: None,
             height: None,
             scroll_x: None,
