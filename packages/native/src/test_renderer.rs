@@ -600,6 +600,22 @@ impl TestGpuixRenderer {
         AsyncTask::new(PromptForPathsTask::new(receiver))
     }
 
+    /// The test window's own in-memory clipboard, never the system's.
+    #[napi]
+    pub fn write_clipboard_text(&self, text: String) -> Result<()> {
+        with_test_state(|cx, _window, _view| {
+            cx.update(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
+            Ok(())
+        })
+    }
+
+    #[napi]
+    pub fn read_clipboard_text(&self) -> Result<Option<String>> {
+        with_test_state(|cx, _window, _view| {
+            Ok(cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())))
+        })
+    }
+
     #[napi]
     pub fn get_focused_element_id(&self) -> Result<Option<f64>> {
         with_test_state(|cx, window, view| {

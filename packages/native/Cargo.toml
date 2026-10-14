@@ -88,6 +88,19 @@ flate2 = "1"
 # Production uses the embedded AppKit loop; tests use the native Metal renderer.
 gpui_macos = { path = "../../zed/crates/gpui_macos", default-features = false, features = ["font-kit"] }
 
+# `EyeDropper` is an `NSColorSampler` session (src/platform/eyedropper.rs). The
+# versions and the default-features-off style match zed/Cargo.toml, so Cargo
+# resolves one copy of each.
+objc2 = "0.6"
+block2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "NSColor",
+    "NSColorSampler",
+    "NSColorSpace",
+    "block2",
+    "objc2-core-foundation",
+] }
+
 # Same crate GPUI uses. A .node cannot ship an exe manifest, so Windows DPI
 # awareness is set at runtime in renderer.rs instead of via windows-manifest.
 [target.'cfg(target_os = "windows")'.dependencies]

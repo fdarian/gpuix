@@ -401,6 +401,13 @@ enum UiCommand {
         options: gpui::PathPromptOptions,
         deferred: PathPromptDeferred,
     },
+    WriteClipboardText {
+        text: String,
+        response: SyncSender<()>,
+    },
+    ReadClipboardText {
+        response: SyncSender<Option<String>>,
+    },
     SetDebugFrameOverlay(gpui::DebugFrameOverlayMode),
     CycleDebugFrameOverlay {
         response: SyncSender<String>,
@@ -562,6 +569,16 @@ async fn run_ui_commands(
                 let background_executor = cx.background_executor().clone();
                 let receiver = cx.update(|cx| cx.prompt_for_paths(options));
                 settle_path_prompt(background_executor, receiver, deferred);
+                Ok(())
+            }
+            UiCommand::WriteClipboardText { text, response } => {
+                cx.update(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
+                response.send(()).ok();
+                Ok(())
+            }
+            UiCommand::ReadClipboardText { response } => {
+                let text = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+                response.send(text).ok();
                 Ok(())
             }
             UiCommand::SetDebugFrameOverlay(mode) => {
@@ -1960,6 +1977,79 @@ impl GpuixRenderer {
             Ok(options) => self.begin_path_prompt(options, deferred),
             Err(error) => deferred.reject(error),
         }
+        Ok(promise)
+    }
+
+    /// Replace the system clipboard's contents with plain text.
+    #[napi]
+    pub fn write_clipboard_text(&self, text: String) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            app.update(|cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
+            Ok(())
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::WriteClipboardText { text, response })?;
+            return recv_ui_response(receiver, "the clipboard write");
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// The system clipboard's text, or null when it holds none.
+    #[napi]
+    pub fn read_clipboard_text(&self) -> Result<Option<String>> {
+        #[cfg(target_os = "macos")]
+        return GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            Ok(app.update(|cx| cx.read_from_clipboard().and_then(|item| item.text())))
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::ReadClipboardText { response })?;
+            return recv_ui_response(receiver, "the clipboard read");
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// Whether `openEyeDropper` exists on this platform. macOS only.
+    #[napi]
+    pub fn supports_eye_dropper(&self) -> bool {
+        crate::platform::eyedropper::is_supported()
+    }
+
+    /// Run the screen colour picker. Resolves `#rrggbb`, or null when the user
+    /// cancels. There is no way to dismiss it from code.
+    #[napi(ts_return_type = "Promise<string | null>")]
+    pub fn open_eye_dropper<'env>(&self, env: &'env Env) -> Result<Object<'env>> {
+        let (deferred, promise): (crate::platform::eyedropper::EyeDropperDeferred, Object<'env>) =
+            env.create_deferred()?;
+        crate::platform::eyedropper::open(deferred);
         Ok(promise)
     }
 
@@ -7708,6 +7798,9 @@ pub struct PathPromptOptions {
     pub multiple: Option<bool>,
     /// Label for the picker confirmation button.
     pub prompt: Option<String>,
+    /// Restrict the selectable files with the HTML `accept` syntax, such as
+    /// ".png,.jpg,image/*,application/pdf". Directories are never filtered.
+    pub accept: Option<String>,
 }
 
 impl PathPromptOptions {
@@ -7726,11 +7819,17 @@ impl PathPromptOptions {
                 "Selecting files and directories together is only supported on macOS",
             ));
         }
+        let filters = match options.accept {
+            Some(accept) => crate::platform::file_filter::parse_accept(&accept)
+                .map_err(Error::from_reason)?,
+            None => Vec::new(),
+        };
         Ok(gpui::PathPromptOptions {
             files,
             directories,
             multiple: options.multiple.unwrap_or(false),
             prompt: options.prompt.map(Into::into),
+            filters,
         })
     }
 }
@@ -8587,6 +8686,7 @@ mod path_prompt_options_tests {
         assert!(!defaults.directories);
         assert!(!defaults.multiple);
         assert!(defaults.prompt.is_none());
+        assert!(defaults.filters.is_empty());
 
         let directories = PathPromptOptions::to_gpui(Some(PathPromptOptions {
             directories: Some(true),
@@ -8599,6 +8699,29 @@ mod path_prompt_options_tests {
         assert!(directories.directories);
         assert!(directories.multiple);
         assert_eq!(directories.prompt.as_deref(), Some("Choose folder"));
+    }
+
+    #[test]
+    fn accept_becomes_filters_and_a_typo_is_an_error() {
+        let options = PathPromptOptions::to_gpui(Some(PathPromptOptions {
+            accept: Some(".png,image/*".to_string()),
+            ..PathPromptOptions::default()
+        }))
+        .expect("accept prompt");
+        assert_eq!(
+            options.filters,
+            vec![
+                gpui::PathPromptFilter::Extension("png".into()),
+                gpui::PathPromptFilter::MimeType("image/*".into())
+            ]
+        );
+
+        let error = PathPromptOptions::to_gpui(Some(PathPromptOptions {
+            accept: Some("png".to_string()),
+            ..PathPromptOptions::default()
+        }))
+        .expect_err("a bare word is not an accept token");
+        assert!(error.reason.contains("Invalid accept token"));
     }
 
     #[test]
