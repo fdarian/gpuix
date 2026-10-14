@@ -522,6 +522,29 @@ export interface StyleDesc {
   /** Selection wash colour for this subtree. Defaults to the theme accent at 35%. */
   selectionColor?: string
 
+  /**
+   * CSS transitions, in CSS syntax with kebab-case property names, as in a DOM
+   * inline style: `"background-color 150ms ease-out, opacity .2s 50ms"`, `"all
+   * 1s"`, `"none"`. When the value of an animatable property changes (a style
+   * prop, or a `hover` / `active` / `focusVisible` state style applying or
+   * ending) the element animates from the value it showed to the new one. An
+   * interrupted transition continues from the visible value. The element's
+   * first style never transitions. `animate` on a `motion` element beats a
+   * transition on the same property. Events: `onTransitionRun`,
+   * `onTransitionStart`, `onTransitionEnd`, `onTransitionCancel`.
+   * An invalid value is an error. `transition-behavior` is not supported.
+   */
+  transition?: string
+  /** `none`, `all`, or a list of CSS property names. Wins over `transition`. */
+  transitionProperty?: string
+  /** A list of `<time>`s (`150ms`, `.2s`). Wins over `transition`. */
+  transitionDuration?: string
+  /** A list of `ease`, `linear`, `ease-in`, `ease-out`, `ease-in-out`,
+   *  `cubic-bezier()`, `steps()`, `step-start`, `step-end` or `linear()`. */
+  transitionTimingFunction?: string
+  /** A list of `<time>`s. Negative starts the transition part-way through. */
+  transitionDelay?: string
+
   // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
   // Nesting is one level deep: a state style cannot contain another.
   hover?: StateStyleDesc
@@ -834,6 +857,20 @@ export interface HostProps extends AriaProps, PointerEventProps {
   onHighlight?: (event: EventPayload) => void
   /** A native `motion` track reached its current target. */
   onMotionComplete?: (event: EventPayload) => void
+
+  // ── CSS transition events (DOM `TransitionEvent`) ────────────────
+  // `propertyName` is the CSS name (`background-color`), `elapsedTime` is in
+  // seconds and `pseudoElement` is always `""`. Fired on the element that
+  // transitions; they do not bubble yet.
+  /** A transition was created, before its delay. */
+  onTransitionRun?: (event: EventPayload) => void
+  /** A transition's delay ended and it started animating. */
+  onTransitionStart?: (event: EventPayload) => void
+  /** A transition reached its end value. */
+  onTransitionEnd?: (event: EventPayload) => void
+  /** A transition was interrupted: its property changed again, left the
+   *  transition list, or became owned by `motion`. */
+  onTransitionCancel?: (event: EventPayload) => void
 
   // ── Highlight ──────────────────────────────────────────────────
   /**

@@ -7,6 +7,7 @@
 mod css_transition;
 mod curve;
 mod property;
+pub(crate) mod state_source;
 mod track;
 mod value;
 
@@ -17,7 +18,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
-pub(crate) use css_transition::{CssTransitions, TransitionEvent, TransitionStyle};
+pub(crate) use css_transition::{CssTransitions, TransitionEvent};
 use curve::Transition;
 use property::AnimProp;
 use track::Track;
@@ -278,6 +279,54 @@ impl MotionState {
             generation: self.generation,
         }
     }
+}
+
+/// The style `style` has after the state styles that currently apply (focus,
+/// hover, then press, the order GPUI refines them in), with the CSS transitions
+/// running on it laid on top. The result has no state styles left, so GPUI's own
+/// `.hover()` / `.active()` / `.focus_visible()` refinements do not apply them a
+/// second time, instantly.
+pub(crate) fn resolve_transitioned_style(
+    transitions: &mut CssTransitions,
+    pointer: (bool, bool),
+    motion: Option<&MotionState>,
+    id: u64,
+    style: &StyleDesc,
+    focus_visible: bool,
+    now: Instant,
+) -> StyleDesc {
+    let mut after = fold_state_styles(style, focus_visible, pointer);
+    if let Some(running) = transitions.update(id, &after, motion, now) {
+        running.apply_to(&mut after);
+    }
+    after
+}
+
+fn fold_state_styles(
+    style: &StyleDesc,
+    focus_visible: bool,
+    (hovered, pressed): (bool, bool),
+) -> StyleDesc {
+    use crate::events::state_styles::resolve_state_styles;
+
+    let focused = match style.focus_visible.as_deref() {
+        // `focusVisible` rides through the fold as a `hover` of its own, so the
+        // fold's field rules apply to it; the real `hover` and `active` come
+        // back for the second pass.
+        Some(declared) if focus_visible => {
+            let mut carrier = style.clone();
+            carrier.hover = Some(Box::new(declared.clone()));
+            carrier.active = None;
+            let mut folded = resolve_state_styles(&carrier, true, false);
+            folded.hover = style.hover.clone();
+            folded.active = style.active.clone();
+            folded
+        }
+        _ => style.clone(),
+    };
+    let mut after = resolve_state_styles(&focused, hovered, pressed);
+    after.focus_visible = None;
+    after
 }
 
 /// What an animation starts from when `initial` does not name the property:
@@ -1323,5 +1372,31 @@ mod tests {
         assert_eq!(shadows.as_slice()[0].blur_radius, 10.0);
         assert!((rgba(&shadows.as_slice()[0].color)[3] - 0.5).abs() < 0.01);
         assert!(state.frame(at(started, 1.0)).just_settled);
+    }
+    #[test]
+    fn state_styles_fold_in_gpui_order_and_leave_none_behind() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{
+                "color": "#000000", "opacity": 1,
+                "focusVisible": { "color": "#111111", "opacity": 0.9 },
+                "hover": { "color": "#222222" },
+                "active": { "opacity": 0.5 }
+            }"##,
+        )
+        .unwrap();
+        let rest = fold_state_styles(&style, false, (false, false));
+        assert_eq!(rest.color.as_deref(), Some("#000000"));
+
+        let focused = fold_state_styles(&style, true, (false, false));
+        assert_eq!(focused.color.as_deref(), Some("#111111"));
+        assert_eq!(focused.opacity, Some(0.9));
+
+        let both = fold_state_styles(&style, true, (true, true));
+        assert_eq!(both.color.as_deref(), Some("#222222"), "hover beats focus-visible");
+        assert_eq!(both.opacity, Some(0.5), "active beats focus-visible");
+
+        for folded in [rest, focused, both] {
+            assert_eq!((folded.hover, folded.active, folded.focus_visible), (None, None, None));
+        }
     }
 }

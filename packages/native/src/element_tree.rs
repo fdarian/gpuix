@@ -233,6 +233,19 @@ pub struct EventPayload {
     /// Populated for: resizeObserve, intersectObserve. With `x`, `y`, `width`
     /// and `height` as the border box.
     pub observation: Option<crate::observers::Observation>,
+    /// CSS name of the property a transition animates, `background-color`.
+    /// Populated for: transitionRun, transitionStart, transitionEnd,
+    /// transitionCancel.
+    pub property_name: Option<String>,
+
+    /// Seconds of the transition's active time, as the DOM `elapsedTime`.
+    /// Populated for: the transition events.
+    pub elapsed_time: Option<f64>,
+
+    /// Always `""`: gpuix has no pseudo-elements. Populated for: the transition
+    /// events.
+    pub pseudo_element: Option<String>,
+
 
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
@@ -300,6 +313,9 @@ impl Default for EventPayload {
             pointer_type: None,
             focus_visible: None,
             observation: None,
+            property_name: None,
+            elapsed_time: None,
+            pseudo_element: None,
             modifiers: None,
         }
     }

@@ -4577,6 +4577,10 @@ pub(crate) struct GpuixView {
     pub(crate) scroll_handles: HashMap<u64, gpui::ScrollHandle>,
     /// Native animation clocks keyed by retained element ID.
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
+    /// CSS transition state of the elements that declare `transition*`.
+    css_transitions: crate::motion::CssTransitions,
+    /// Hover and press state for those elements, until the event model owns it.
+    state_source: crate::motion::state_source::StateSource,
     /// Live text selection, shared with the paint closures and the napi methods.
     pub(crate) selection: SharedSelection,
     /// Persistent measurement and scroll state for React-backed virtual lists.
@@ -4694,6 +4698,28 @@ fn sync_motion_states(
     (active, settled)
 }
 
+fn emit_transition_events(
+    callback: &Option<EventCallback>,
+    tree: &crate::retained_tree::RetainedTree,
+    events: Vec<crate::motion::TransitionEvent>,
+) {
+    for event in events {
+        let event_type = event.kind.event_type();
+        let listens = tree
+            .elements
+            .get(&event.id)
+            .is_some_and(|element| element.events().contains(event_type));
+        if !listens {
+            continue;
+        }
+        emit_event_full(callback, event.id, event_type, |payload| {
+            payload.property_name = Some(event.property_name());
+            payload.elapsed_time = Some(event.elapsed);
+            payload.pseudo_element = Some(String::new());
+        });
+    }
+}
+
 fn emit_highlight_events(callback: &Option<EventCallback>, events: &[(u64, usize)]) {
     for &(id, total) in events {
         emit_event_full(callback, id, "highlight", |payload| {
@@ -4809,6 +4835,8 @@ impl GpuixView {
             custom_registry: CustomElementRegistry::with_defaults(),
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
+            css_transitions: Default::default(),
+            state_source: Default::default(),
             selection,
             virtual_lists: HashMap::new(),
             selection_drag_position: None,
@@ -5227,6 +5255,8 @@ impl GpuixView {
             custom_registry: &mut self.custom_registry,
             virtual_lists: &mut self.virtual_lists,
             motion_states: &mut self.motion_states,
+            css_transitions: &mut self.css_transitions,
+            state_source: &self.state_source,
             now,
             selection: self.selection.clone(),
             inherited,
@@ -5241,7 +5271,8 @@ impl GpuixView {
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
-        if motion_active {
+        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        if self.css_transitions.take_active() || motion_active {
             window.request_animation_frame();
         }
         let Some(focus_handle) = row_focus_handle else {
@@ -5352,6 +5383,8 @@ pub(crate) struct BuildCtx<'a> {
     pub custom_registry: &'a mut CustomElementRegistry,
     virtual_lists: &'a mut HashMap<u64, VirtualListEntry>,
     pub motion_states: &'a mut HashMap<u64, crate::motion::MotionState>,
+    css_transitions: &'a mut crate::motion::CssTransitions,
+    state_source: &'a crate::motion::state_source::StateSource,
     pub now: web_time::Instant,
     pub selection: SharedSelection,
     /// Inherited text state, resolved the way CSS inherits it. The renderer's
@@ -6133,6 +6166,10 @@ impl gpui::Render for GpuixView {
         let scroll_animating = crate::scroll::advance_animations(now);
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, now);
+        self.css_transitions
+            .retain(|id| tree.elements.contains_key(&id));
+        self.state_source
+            .retain(|id| tree.elements.contains_key(&id));
         // Pruned by DECLARATION, not existence: an element that drops its
         // `highlight` prop keeps living, and its cached group list holds a copy
         // of every string in its subtree.
@@ -6154,6 +6191,8 @@ impl gpui::Render for GpuixView {
                     custom_registry: &mut self.custom_registry,
                     virtual_lists: &mut self.virtual_lists,
                     motion_states: &mut self.motion_states,
+                    css_transitions: &mut self.css_transitions,
+                    state_source: &self.state_source,
                     now,
                     selection: self.selection.clone(),
                     inherited: Inherited::root(&theme, window.appearance()),
@@ -6173,6 +6212,8 @@ impl gpui::Render for GpuixView {
         // re-enter this build.
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
+        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        let transitions_active = self.css_transitions.take_active();
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -6245,7 +6286,7 @@ impl gpui::Render for GpuixView {
         // no longer match what JS meant.
         PENDING_VIRTUAL_LIST_SCROLLS.with(|cell| cell.borrow_mut().clear());
 
-        if motion_active || scroll_animating {
+        if motion_active || transitions_active || scroll_animating {
             window.request_animation_frame();
         }
 
@@ -6254,6 +6295,8 @@ impl gpui::Render for GpuixView {
 }
 
 // ── Element builders ─────────────────────────────────────────────────
+
+static EMPTY_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(StyleDesc::default);
 
 pub(crate) fn build_element(
     id: u64,
@@ -6282,6 +6325,28 @@ pub(crate) fn build_element(
     });
     let base_style = state_style.as_ref().or(element.style.as_deref());
 
+    // State styles and CSS transitions come before motion: an `animate` value
+    // is an inline style and beats a transition.
+    let transitioned = ctx
+        .css_transitions
+        .wants(id, element.style.as_deref())
+        .then(|| {
+            let focus_visible = ctx
+                .focus_handles
+                .get(&id)
+                .is_some_and(|handle| handle.is_focused(window))
+                && window.last_input_was_keyboard();
+            crate::motion::resolve_transitioned_style(
+                ctx.css_transitions,
+                (ctx.pointer.is_hovered(id), ctx.pointer.is_active(id)),
+                ctx.motion_states.get(&id),
+                id,
+                element.style.as_deref().unwrap_or(&EMPTY_STYLE),
+                focus_visible,
+                ctx.now,
+            )
+        });
+    let declared_style = transitioned.as_ref().or(base_style);
     let animated_style = if element.custom_props().contains_key("motion") {
         ctx.motion_states
             .get(&id)
@@ -6290,7 +6355,7 @@ pub(crate) fn build_element(
                 // `Arc<StyleDesc>` is shared, so the animated frame is applied to a
                 // copy. Mutating through the pointer would restyle every element
                 // that declared the same style.
-                let mut resolved = base_style.cloned().unwrap_or_default();
+                let mut resolved = declared_style.cloned().unwrap_or_default();
                 style.apply_to(&mut resolved);
                 resolved
             })
@@ -6300,7 +6365,7 @@ pub(crate) fn build_element(
     let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
         animated_style
             .as_ref()
-            .or(base_style)
+            .or(declared_style)
             .cloned()
             .unwrap_or_default()
             .with_inherited_overlay(&overlay)
@@ -6308,7 +6373,7 @@ pub(crate) fn build_element(
     let style = overlaid_style
         .as_ref()
         .or(animated_style.as_ref())
-        .or(base_style);
+        .or(declared_style);
     let anchored_style = ctx.anchor_scope.take().and_then(|anchored_id| {
         style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
     });
@@ -6412,6 +6477,9 @@ pub(crate) fn build_element(
     };
 
     ctx.inherited = parent_inherited;
+    if transitioned.is_some() {
+        return ctx.state_source.probe(id, built);
+    }
     built
 }
 
