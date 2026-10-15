@@ -7279,7 +7279,7 @@ pub(crate) fn build_host_container(
         el = crate::accessibility::label::describe(el, element.id);
     }
 
-    // Pointer, mouse and click events are not wired here: the window-level
+    // Pointer, mouse, click and wheel events are not wired here: the window-level
     // dispatcher (`crate::events`) finds the target and runs them along the
     // retained tree. What is left are the events GPUI still owns.
     if !inert {
@@ -7291,49 +7291,10 @@ pub(crate) fn build_host_container(
         );
     }
 
-    for event_type in element.events().iter().filter(|_| !inert) {
-        let id = element.id;
-        let callback = ctx.event_callback.clone();
-        match event_type.as_str() {
-            // ── Wheel: DOM `wheel`, every tick over the element ──────
-            "wheel" => {
-                el = el.on_scroll_wheel(move |scroll_event, _window, _cx| {
-                    emit_event_full(&callback, id, "wheel", |p| {
-                        let (x, y) = point_to_xy(scroll_event.position);
-                        p.x = Some(x);
-                        p.y = Some(y);
-                        p.modifiers = Some(scroll_event.modifiers.into());
-                        p.precise = Some(scroll_event.delta.precise());
-
-                        // Convert ScrollDelta to pixel values.
-                        // For Lines delta, we use a default line height of 20px.
-                        let line_height = gpui::px(20.0);
-                        let pixel_delta = scroll_event.delta.pixel_delta(line_height);
-                        // GPUI's delta is how far the content moves; the DOM's is how far
-                        // the scroll position does, so the sign flips.
-                        // `0.0 -` so a zero delta is +0, not -0.
-                        p.delta_x = Some(0.0 - f64::from(f32::from(pixel_delta.x)));
-                        p.delta_y = Some(0.0 - f64::from(f32::from(pixel_delta.y)));
-
-                        p.touch_phase = Some(match scroll_event.touch_phase {
-                            gpui::TouchPhase::Started => "started".to_string(),
-                            gpui::TouchPhase::Moved => "moved".to_string(),
-                            gpui::TouchPhase::Ended => "ended".to_string(),
-                            gpui::TouchPhase::Cancelled => "cancelled".to_string(),
-                        });
-                    });
-                });
-            }
-
-            // ── Key and focus events ─────────────────────────────
-            // Not per element. One event per keystroke goes to the focused
-            // element and bubbles along its path in JS (`events::keyboard`),
-            // and focus events come from `GpuixView::observe_focus`.
-            "keyDown" | "keyUp" | "focus" | "blur" | "focusIn" | "focusOut" => {}
-
-            _ => {}
-        }
-    }
+    // Key and focus events are not wired per element either: one event per keystroke
+    // goes to the focused element and bubbles along its path in JS (`events::keyboard`),
+    // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
+    // input like the pointer's (`events::listeners`).
 
     // Text content — selectable, same as a <text> leaf.
     // An empty string paints no glyphs, so it must take no space: gpui's text
@@ -7927,11 +7888,6 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
 }
 
 // ── Event emission ───────────────────────────────────────────────────
-
-/// Helper to convert a GPUI Point<Pixels> to (f64, f64).
-pub(crate) fn point_to_xy(p: gpui::Point<gpui::Pixels>) -> (f64, f64) {
-    (f64::from(f32::from(p.x)), f64::from(f32::from(p.y)))
-}
 
 /// Convert GPUI MouseButton to our u32 encoding: 0=left, 1=middle, 2=right.
 pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {

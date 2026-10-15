@@ -1,5 +1,6 @@
 import type { EventPayload } from "../index.js"
 import { flushPendingMutations } from "./bounds.js"
+import type { HostWheelEvent } from "./events/types.js"
 import type { NativeRenderer } from "./host.js"
 
 export type ScrollBehavior = "auto" | "instant" | "smooth"
@@ -22,16 +23,8 @@ export interface ScrollIntoViewOptions {
   behavior?: ScrollBehavior
 }
 
-/** `onWheel`: one wheel or trackpad tick over the element. */
-export interface WheelEvent extends EventPayload {
-  /** Pixels the content moves, positive for down and right, like the DOM. */
-  deltaX: number
-  deltaY: number
-  /** Always `0` (pixels). A mouse wheel's lines are converted to pixels natively. */
-  deltaMode: 0
-  clientX: number
-  clientY: number
-}
+/** `onWheel`'s event: see `HostWheelEvent`. */
+export type WheelEvent = HostWheelEvent
 
 /** `onScroll`: the element's scroll offset changed, whatever moved it. */
 export interface ScrollEvent extends EventPayload {
@@ -50,18 +43,8 @@ export interface ScrollMetrics {
   clientHeight: number
 }
 
-/** Fills in the DOM names of a native `wheel` or `scroll` payload. */
+/** Fills in the DOM names of a native `scroll` payload. A `wheel` arrives complete from the dispatcher. */
 export function shapeScrollEvent(event: EventPayload): EventPayload {
-  if (event.eventType === "wheel") {
-    const wheel: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "clientX" | "clientY"> = {
-      deltaX: required(event.deltaX, "deltaX"),
-      deltaY: required(event.deltaY, "deltaY"),
-      deltaMode: 0,
-      clientX: required(event.x, "x"),
-      clientY: required(event.y, "y"),
-    }
-    return { ...event, ...wheel }
-  }
   if (event.eventType === "scroll") {
     // Native reports the offset the way GPUI keeps it: zero, then negative.
     const scroll: Pick<ScrollEvent, "scrollLeft" | "scrollTop"> = {

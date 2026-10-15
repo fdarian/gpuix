@@ -37,6 +37,7 @@ const POINTER_PROPS: ReadonlyArray<readonly [string, string]> = [
   ["onDragOver", "dragover"],
   ["onDragLeave", "dragleave"],
   ["onDrop", "drop"],
+  ["onWheel", "wheel"],
 ]
 
 describe("EVENT_PROPS", () => {
@@ -65,7 +66,6 @@ describe("EVENT_PROPS", () => {
     expect(EVENT_TYPE_BY_PROP.get("onFocus")).toBe("focus")
     expect(EVENT_TYPE_BY_PROP.get("onScroll")).toBe("scroll")
     expect(EVENT_TYPE_BY_PROP.get("onLayout")).toBe("layout")
-    expect(EVENT_TYPE_BY_PROP.get("onWheel")).toBe("wheel")
     expect(EVENT_TYPE_BY_PROP.has("onScrollChange")).toBe(false)
   })
 

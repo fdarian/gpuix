@@ -100,6 +100,11 @@ pub struct EventPayload {
     /// Populated for: wheel.
     pub delta_y: Option<f64>,
 
+    /// DOM `WheelEvent.deltaMode`. Always 0 (pixels): a mouse wheel's lines are
+    /// converted natively.
+    /// Populated for: wheel.
+    pub delta_mode: Option<u32>,
+
     /// true = pixel-precise (trackpad), false = line-based (mouse wheel).
     /// Populated for: wheel.
     pub precise: Option<bool>,
@@ -279,6 +284,7 @@ impl Default for EventPayload {
             meta_key: None,
             delta_x: None,
             delta_y: None,
+            delta_mode: None,
             precise: None,
             touch_phase: None,
             hovered: None,

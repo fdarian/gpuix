@@ -1615,9 +1615,12 @@ impl TextEditorState {
     fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if window.default_prevented() {
+            return;
+        }
         let Some(bounds) = self.last_bounds else {
             return;
         };

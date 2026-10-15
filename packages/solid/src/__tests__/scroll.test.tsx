@@ -56,6 +56,41 @@ describe.skipIf(!hasNativeTestRenderer)("Solid scrolling", () => {
   })
 })
 
+describe.skipIf(!hasNativeTestRenderer)("Solid wheel events", () => {
+  it("bubbles and captures along the path, and preventDefault cancels the scroll", () => {
+    const log: string[] = []
+    let prevent = true
+    const app = createTestRoot()
+    app.render(() => (
+      <div
+        style={{ width: 300, height: 300 }}
+        onWheelCapture={() => log.push("outer-capture")}
+        onWheel={() => log.push("outer")}
+      >
+        <div
+          testId="scroller"
+          style={{ width: 200, height: 100, overflow: "scroll" }}
+          onWheel={(event) => {
+            log.push("scroller")
+            if (prevent) event.preventDefault()
+          }}
+        >
+          <div style={{ height: 400 }} />
+        </div>
+      </div>
+    ))
+    const scroller = app.renderer.findByTestId("scroller")!.id
+
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+    expect(log).toEqual(["outer-capture", "scroller", "outer"])
+    expect(app.renderer.getScrollOffset(scroller)).toEqual([0, 0])
+
+    prevent = false
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+    expect(app.renderer.getScrollOffset(scroller)).toEqual([0, -40])
+  })
+})
+
 describe.skipIf(!hasNativeTestRenderer)("Solid scroll reads are never stale", () => {
   it("reads scrollHeight in the turn that changed the content, before Solid flushes", () => {
     const [rows, setRows] = createSignal(2)

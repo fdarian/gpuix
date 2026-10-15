@@ -299,6 +299,7 @@ export declare class GpuixRenderer {
    * Deliver the click an activation that is not a pointer press makes on
    * `element_id`, such as Enter on a button: a `click` with `detail` 0 that
    * bubbles along the element's path. Arrives through the event callback.
+   * A disabled form control gets none, like `HTMLElement.click()`.
    */
   clickElement(elementId: number): void
   /**
@@ -890,6 +891,12 @@ export interface EventPayload {
    * Populated for: wheel.
    */
   deltaY?: number
+  /**
+   * DOM `WheelEvent.deltaMode`. Always 0 (pixels): a mouse wheel's lines are
+   * converted natively.
+   * Populated for: wheel.
+   */
+  deltaMode?: number
   /**
    * true = pixel-precise (trackpad), false = line-based (mouse wheel).
    * Populated for: wheel.

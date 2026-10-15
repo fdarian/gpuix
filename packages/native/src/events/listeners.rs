@@ -17,6 +17,11 @@
 //! cancel the focus change, and a label always activates its control. The
 //! dispatcher state is therefore shared with the view instead of being
 //! reached through it.
+//!
+//! A wheel tick is dispatched the same way, from the capture phase and before
+//! any scroller, so a `preventDefault()` on it is known when the scrollers
+//! claim the delta (GPUI's scroll routing skips a prevented event). Where
+//! `emit` queues, the scroll is unconditional.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -25,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use gpui::{
     canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
     MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
-    Pixels, Point, Styled, WeakEntity, Window,
+    Pixels, Point, ScrollWheelEvent, Styled, TouchPhase, WeakEntity, Window,
 };
 
 use crate::accessibility::label;
@@ -33,7 +38,7 @@ use crate::element_tree::{EventModifiers, EventPayload};
 use crate::renderer::{EventCallback, GpuixView};
 use crate::retained_tree::RetainedTree;
 
-use super::dispatcher::{dispatch, Output, PointerAction, PointerSample};
+use super::dispatcher::{dispatch, Output, PointerAction, PointerSample, WheelTick};
 use super::ids::host_hit_chain;
 use super::keyboard::InputRouting;
 use super::state::{chain_changed, ObservedChain, PointerState};
@@ -144,6 +149,45 @@ impl PointerDispatch {
     }
 }
 
+/// Pixels a line of a mouse wheel is worth in the `wheel` event. Scrollers pick their own
+/// rate when they scroll; this is the one JS sees.
+const WHEEL_LINE_PIXELS: f32 = 20.0;
+
+fn wheel_tick(event: &ScrollWheelEvent) -> WheelTick {
+    let pixels = event.delta.pixel_delta(gpui::px(WHEEL_LINE_PIXELS));
+    // GPUI's delta is how far the content moves; the DOM's is how far the scroll position
+    // does, so the sign flips. `0.0 -` so a zero delta is +0, not -0.
+    WheelTick {
+        delta: (
+            0.0 - f64::from(f32::from(pixels.x)),
+            0.0 - f64::from(f32::from(pixels.y)),
+        ),
+        precise: event.delta.precise(),
+        phase: match event.touch_phase {
+            TouchPhase::Started => "started",
+            TouchPhase::Moved => "moved",
+            TouchPhase::Ended => "ended",
+            TouchPhase::Cancelled => "cancelled",
+        },
+    }
+}
+
+impl PointerDispatch {
+    /// Dispatches a wheel tick, then cancels the scroll it would cause if a
+    /// handler prevented its default.
+    fn wheel(&self, sample: PointerSample, window: &mut Window, cx: &mut App) {
+        let output = dispatch_sample(&self.pointer, &self.tree, &sample);
+        let mut prevented = false;
+        for payload in output.into_payloads() {
+            let outcome = sync_dispatch::emit(window, cx, &self.callback, payload);
+            prevented |= outcome.default_prevented;
+        }
+        if prevented {
+            window.prevent_default();
+        }
+    }
+}
+
 impl PointerDispatch {
     /// Dispatches a release and delivers its events in order. A `click` that
     /// no handler cancelled activates the control of a label on its path, as
@@ -215,6 +259,7 @@ pub(crate) fn pointer_frame(
         move |_, _, window, cx| {
             let down_view = view.clone();
             let release = press.clone();
+            let wheel = press.clone();
             let press = press.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
@@ -259,6 +304,14 @@ pub(crate) fn pointer_frame(
                 window.defer(cx, move |window, cx| {
                     release.release(&up_view, sample, window, cx);
                 });
+            });
+            window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                let action = PointerAction::Wheel(wheel_tick(event));
+                let sample = sample(window, action, event.position, event.modifiers);
+                wheel.wheel(sample, window, cx);
             });
             let move_view = view.clone();
             window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {

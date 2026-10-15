@@ -107,7 +107,7 @@ export function createMutationQueue(
 
 /**
  * Handler prop to the key its handler is stored under in `EventHandlerMap`.
- * Pointer, mouse and drag keys are lowercase DOM types, and each has an
+ * Pointer, mouse, drag and wheel keys are lowercase DOM types, and each has an
  * `on…Capture` twin keyed `captureHandlerKey(type)`. The other keys are native
  * event names. See `nativeEventType` for the type native is asked to emit.
  */
@@ -141,7 +141,6 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onBlur", "blur"],
   ["onFocusIn", "focusIn"],
   ["onFocusOut", "focusOut"],
-  ["onWheel", "wheel"],
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
   ["onLoad", "load"],

@@ -2072,6 +2072,13 @@ The wheel goes to the innermost scroller under the pointer that can still scroll
 
 A trackpad gesture stays on the scroller that took its first delta, momentum included, so a fling does not jump to the parent when the inner list runs out. A mouse wheel does the same until it pauses for half a second or the pointer moves. `onWheel` listeners on every element under the pointer still run, whichever scroller moved.
 
+`wheel` is one DOM event per wheel input, aimed at the element under the pointer and run along its path: `onWheelCapture` from the outermost ancestor down, then `onWheel` from the target up, and `stopPropagation()` works. Pointer capture does not redirect it, as in a browser; a pointer lock does. It runs before any scroller takes the delta, so `scrollTop` read in a handler is the position before this input. Calling `preventDefault()` in either phase cancels the scroll that input would cause, in every scroller and text input. Two deviations from the DOM:
+
+- It cancels that input only. A browser that sees the first wheel of a gesture cancelled cancels the whole gesture; here the next input scrolls unless its own handler cancels it, so a handler that wants a gesture cancelled calls `preventDefault()` on each input.
+- It needs the handler to run before the scroll, which only holds on macOS and in the test renderer. On Windows and Linux the event reaches JavaScript through a queue after native scrolled, so `preventDefault()` has no effect there.
+
+`scroll` does not follow the wheel's path: it stays on the scroller that moved and does not bubble, like the DOM's element `scroll`.
+
 ```tsx
 <div style={{ height: 300, overflow: 'auto' }}>
   <div style={{ height: 120, overflow: 'auto', overscrollBehavior: 'contain' }}>
@@ -2111,7 +2118,7 @@ Flex items shrink as in CSS, so a row of items in a flex scroller needs `flexShr
 
 ### Events
 
-`onWheel` is the DOM `wheel`: every tick over the element, before any scroller applies it, with `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY` and `modifiers`. `deltaY` is positive for down, and `deltaMode` is always `0`: a mouse wheel's lines are converted to pixels at 20 px a line. `touchPhase` and `precise` say how the tick arrived.
+`onWheel` is the DOM `wheel`: every tick over the element or a descendant, before any scroller applies it, with `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons` and `modifiers`. `deltaY` is positive for down, and `deltaMode` is always `0`: a mouse wheel's lines are converted to pixels at 20 px a line. `touchPhase` and `precise` say how the tick arrived.
 
 `onScroll` is the DOM `scroll`: it fires whenever the scroll offset changes, whatever moved it: the wheel, a scrollbar drag, the keyboard, `scrollTo`, `scrollIntoView`, a smooth animation, or content that shrank under the offset. The payload is `{ scrollTop, scrollLeft }` of the target, and it does not bubble. The position at the first paint is not reported, only movement after it. It does not fire for `<virtual-list>`; use `onVisibleRange`.
 
@@ -4354,7 +4361,7 @@ text imports no longer need a runtime flag.
 | Blur | `onBlur` | `focusVisible` |
 | Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`. Bubbles |
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
-| Wheel | `onWheel` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `precise`, `touchPhase`, `modifiers` |
+| Wheel | `onWheel`, `onWheelCapture` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons`, `precise`, `touchPhase`, `modifiers`. Bubbles, cancelable. See [The wheel](#the-wheel) |
 | Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
@@ -4530,6 +4537,8 @@ The VoiceOver Press and Enter or Space on a `Button` (`buttonProps`) deliver a
 ancestors' `onClick`. A host ref has the same `click()`, and
 `renderer.clickElement(elementId)` is the same call on the renderer. In your own
 `onKeyDown` or `onKeyUp`, call `click()` on the ref of the element that listens.
+`click()` and the VoiceOver Press do nothing on a `button`, `input`, `textarea` or
+`select` that is `disabled`, or on an element inside one, as in HTML.
 Every mouse and pointer event type has `pointerId` and `pointerType` as required
 fields: `1` and `"mouse"` for the mouse.
 
@@ -4537,8 +4546,6 @@ fields: `1` and `"mouse"` for the mouse.
 
 Nothing captures the pointer on its own. Listening for `onMouseDown` and
 `onMouseMove` on one element does not keep the moves coming once the pointer
-`click()` and the VoiceOver Press do nothing on a `button`, `input`, `textarea` or
-`select` that is `disabled`, or on an element inside one, as in HTML.
 leaves it: that element hears only what happens over it, as in the DOM. To keep
 a gesture alive past the element's edge, past its parent, and past the window,
 capture the pointer on the press with `setPointerCapture`, like HTML

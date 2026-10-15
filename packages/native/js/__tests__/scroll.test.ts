@@ -45,11 +45,6 @@ function element(scroller: FakeScroller): ScrollableElement {
 }
 
 describe("shapeScrollEvent", () => {
-  it("gives a wheel event its DOM names", () => {
-    const shaped = shapeScrollEvent(payload({ deltaX: 0, deltaY: 40, x: 12, y: 34 }))
-    expect(shaped).toMatchObject({ deltaX: 0, deltaY: 40, deltaMode: 0, clientX: 12, clientY: 34 })
-  })
-
   it("reads scrollTop and scrollLeft from the offset, which native keeps negative", () => {
     const shaped = shapeScrollEvent(payload({ eventType: "scroll", scrollX: -5, scrollY: -120 }))
     expect(shaped).toMatchObject({ scrollLeft: 5, scrollTop: 120 })
@@ -59,12 +54,14 @@ describe("shapeScrollEvent", () => {
   })
 
   it("fails loudly on a payload native left incomplete", () => {
-    expect(() => shapeScrollEvent(payload({ deltaX: 0, x: 1, y: 1 }))).toThrow("deltaY")
+    expect(() => shapeScrollEvent(payload({ eventType: "scroll", scrollX: 0 }))).toThrow("scrollY")
   })
 
-  it("leaves other events alone", () => {
+  it("leaves other events alone, a wheel included", () => {
     const click = payload({ eventType: "click" })
     expect(shapeScrollEvent(click)).toBe(click)
+    const wheel = payload({ deltaY: 40 })
+    expect(shapeScrollEvent(wheel)).toBe(wheel)
   })
 })
 

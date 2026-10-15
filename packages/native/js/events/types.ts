@@ -120,6 +120,26 @@ export interface HostDragEvent extends HostMouseEvent {
   dataTransfer?: HostDataTransfer
 }
 
+/**
+ * `wheel`: one wheel or trackpad input, aimed at the element under the pointer
+ * (pointer capture does not redirect it). It bubbles and `preventDefault()` cancels
+ * the scroll that input would cause, but only where native can wait for the handler
+ * (macOS and the test renderer).
+ *
+ * `deltaX` and `deltaY` are pixels, positive for down and right, like the DOM.
+ * `deltaMode` is always `0`: a mouse wheel's lines are converted to pixels natively
+ * at 20 px a line. `precise` says a trackpad sent it, and `touchPhase` (`"started"`,
+ * `"moved"`, `"ended"` or `"cancelled"`) where it sits in a gesture. It fires
+ * whether or not anything scrolls.
+ */
+export interface HostWheelEvent extends HostMouseEvent {
+  deltaX: number
+  deltaY: number
+  deltaMode: 0
+  precise: boolean
+  touchPhase: "started" | "moved" | "ended" | "cancelled"
+}
+
 export interface PointerEventHandlerProps {
   /** Primary button only, like the DOM. Use `onAuxClick` for the others. */
   onClick?: (event: HostPointerEvent) => void
@@ -157,6 +177,7 @@ export interface PointerEventHandlerProps {
   onDragOver?: (event: HostDragEvent) => void
   onDragLeave?: (event: HostDragEvent) => void
   onDrop?: (event: HostDragEvent) => void
+  onWheel?: (event: HostWheelEvent) => void
 }
 
 type CaptureProps<Props> = {

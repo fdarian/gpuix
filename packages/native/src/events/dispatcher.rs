@@ -71,6 +71,21 @@ pub enum PointerAction {
     FileDragLeave,
     /// The key that cancels a drag of an element went down.
     CancelDrag,
+    /// One wheel or trackpad tick. It reads the pointer but does not move it: no
+    /// boundary event, hover or capture changes.
+    Wheel(WheelTick),
+}
+
+/// What one wheel input carries, in the DOM's terms.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WheelTick {
+    /// Pixels the scroll position would move, positive for down and right. A
+    /// mouse wheel's lines are already converted.
+    pub delta: (f64, f64),
+    /// Pixel-precise (a trackpad) rather than line-based (a mouse wheel).
+    pub precise: bool,
+    /// Where the tick sits in a gesture: `started`, `moved`, `ended` or `cancelled`.
+    pub phase: &'static str,
 }
 
 #[derive(Clone)]
@@ -106,6 +121,7 @@ pub struct DomEvent {
     pub hovered: Option<bool>,
     /// `dataTransfer.files`, on the first event of a file drag.
     pub files: Option<Vec<DroppedFile>>,
+    pub wheel: Option<WheelTick>,
 }
 
 impl DomEvent {
@@ -173,6 +189,11 @@ impl Output {
                 pressed_button: event.pressed_button,
                 hovered: event.hovered,
                 files: event.files,
+                delta_x: event.wheel.map(|wheel| wheel.delta.0),
+                delta_y: event.wheel.map(|wheel| wheel.delta.1),
+                delta_mode: event.wheel.map(|_| 0),
+                precise: event.wheel.map(|wheel| wheel.precise),
+                touch_phase: event.wheel.map(|wheel| wheel.phase.to_string()),
                 pointer_id: Some(1),
                 pointer_type: Some("mouse".to_string()),
                 modifiers: Some(modifiers.clone()),
@@ -190,6 +211,7 @@ pub(super) struct Fields {
     pub detail: Option<u32>,
     pub pressed_button: Option<u32>,
     pub hovered: Option<bool>,
+    pub wheel: Option<WheelTick>,
 }
 
 pub(super) struct Emitter<'a> {
@@ -248,6 +270,7 @@ impl<'a> Emitter<'a> {
             pressed_button: fields.pressed_button,
             hovered: fields.hovered,
             files: None,
+            wheel: fields.wheel,
         });
     }
 
@@ -271,6 +294,7 @@ impl<'a> Emitter<'a> {
             pressed_button: None,
             hovered: None,
             files,
+            wheel: None,
         });
     }
 
@@ -313,6 +337,7 @@ impl<'a> Emitter<'a> {
                 pressed_button: fields.pressed_button,
                 hovered: fields.hovered,
                 files: None,
+                wheel: None,
             });
         }
     }
@@ -398,6 +423,9 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
             .collect();
         !chain_follows_path(&chain, &event_path(tree, target))
     });
+    if let PointerAction::Wheel(tick) = sample.action {
+        return dispatch_wheel(state, tree, sample, tick, geometric, chain_mismatch);
+    }
     if state.requests.take_drag_cancel() {
         state.element_drag = None;
     }
@@ -426,7 +454,8 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
-        | PointerAction::FileDragLeave => unreachable!("handled above"),
+        | PointerAction::FileDragLeave
+        | PointerAction::Wheel(_) => unreachable!("handled above"),
     }
     state.requests.set_buttons(state.buttons);
 
@@ -489,11 +518,39 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         PointerAction::Exit | PointerAction::Resync | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
-        | PointerAction::FileDragLeave => unreachable!("handled above"),
+        | PointerAction::FileDragLeave
+        | PointerAction::Wheel(_) => unreachable!("handled above"),
     }
 
     state.hits = sample.hits.clone();
     Output::new(emitter.events, restyle, chain_mismatch, sample, state.buttons)
+}
+
+/// Dispatches one wheel tick, a `wheel` event at what is under the pointer.
+///
+/// Pointer capture does not redirect it: a browser aims a wheel at the element
+/// under the pointer even while another holds the capture. A pointer lock does,
+/// as it does every mouse event. The tick changes no state: the pointer did not
+/// move, so there is no hover or boundary event, and the next move diffs against
+/// the chain the last one saw.
+fn dispatch_wheel(
+    state: &mut PointerState,
+    tree: &RetainedTree,
+    sample: &PointerSample,
+    tick: WheelTick,
+    geometric: Option<u64>,
+    chain_mismatch: bool,
+) -> Output {
+    let locked = state.lock_element().filter(|id| is_connected(tree, *id));
+    let mut emitter = Emitter::new(tree, sample, &state.hits);
+    if let Some(target) = locked.or(geometric) {
+        let fields = Fields {
+            wheel: Some(tick),
+            ..Default::default()
+        };
+        emitter.emit("wheel", target, fields);
+    }
+    Output::new(emitter.events, false, chain_mismatch, sample, state.buttons)
 }
 
 /// Dispatches one input of an OS file drag.
@@ -2466,5 +2523,98 @@ mod tests {
         };
         let payloads = dispatch(&mut state, &tree, &moved).into_payloads();
         assert_eq!((payloads[0].movement_x, payloads[0].movement_y), (Some(-7.0), Some(1.0)));
+    }
+
+    fn wheel(delta: (f64, f64), hits: Vec<Hit>) -> PointerSample {
+        at(
+            PointerAction::Wheel(WheelTick {
+                delta,
+                precise: true,
+                phase: "moved",
+            }),
+            hits,
+        )
+    }
+
+    #[test]
+    fn a_wheel_is_one_event_at_the_target_with_its_path_and_the_tick() {
+        let tree = tree(&listening_everywhere(&["wheel"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["wheel@3"]);
+        assert!(!output.restyle);
+        let payload = &output.into_payloads()[0];
+        assert_eq!(payload.path, Some(vec![3.0, 2.0, 1.0]));
+        assert_eq!(payload.target, Some(3.0));
+        assert_eq!((payload.delta_x, payload.delta_y), (Some(0.0), Some(40.0)));
+        assert_eq!(payload.delta_mode, Some(0));
+        assert_eq!(payload.precise, Some(true));
+        assert_eq!(payload.touch_phase.as_deref(), Some("moved"));
+        assert_eq!((payload.client_x, payload.client_y), (Some(15.0), Some(30.0)));
+        assert_eq!((payload.offset_x, payload.offset_y), (Some(5.0), Some(10.0)));
+        assert_eq!(payload.buttons, Some(0));
+        assert!(payload.modifiers.is_some());
+    }
+
+    #[test]
+    fn a_listener_on_an_ancestor_is_enough_and_nobody_listening_produces_nothing() {
+        let mut state = PointerState::default();
+        let listening_above = tree(&[(1, "wheel")]);
+        let output = dispatch(&mut state, &listening_above, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["wheel@3"]);
+
+        let listening_aside = tree(&[(4, "wheel")]);
+        let output = dispatch(&mut state, &listening_aside, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn a_wheel_over_nothing_has_no_target() {
+        let tree = tree(&listening_everywhere(&["wheel"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), Vec::new()));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn a_wheel_moves_no_hover_and_fires_no_boundary_event() {
+        let tree = tree(&listening_everywhere(&["wheel", "pointerover", "mouseenter"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["wheel@3"]);
+        assert!(!state.is_hovered(3));
+        // The move that follows still enters everything the wheel passed over.
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert!(names(&output).contains(&"pointerover@3".to_string()));
+    }
+
+    #[test]
+    fn a_capture_held_elsewhere_does_not_redirect_a_wheel() {
+        let tree = tree(&listening_everywhere(&["wheel", "mouseup"]));
+        let mut state = pressed_with_capture_on_c(&tree);
+        let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["wheel@3"]);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mouseup@4"]);
+    }
+
+    #[test]
+    fn a_wheel_while_a_button_is_held_reports_the_buttons() {
+        let tree = tree(&listening_everywhere(&["wheel"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let payload = &dispatch(&mut state, &tree, &wheel((8.0, 0.0), chain_of(&[3, 2, 1])))
+            .into_payloads()[0];
+        assert_eq!(payload.buttons, Some(1));
+        assert_eq!((payload.delta_x, payload.delta_y), (Some(8.0), Some(0.0)));
+    }
+
+    #[test]
+    fn the_lock_element_takes_the_wheel() {
+        let tree = tree(&listening_everywhere(&["wheel"]));
+        let mut state = PointerState::default();
+        state.begin_lock(4);
+        let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["wheel@4"]);
     }
 }

@@ -2,7 +2,7 @@ import { captureHandlerKey } from "./dispatch.js"
 import type { PointerEventHandlerProps } from "./types.js"
 
 /**
- * Pointer, mouse and drag handler props and the DOM event type each one
+ * Pointer, mouse, drag and wheel handler props and the DOM event type each one
  * listens for. Types are the lowercase DOM names.
  */
 const POINTER_EVENT_PROPS = [
@@ -34,6 +34,7 @@ const POINTER_EVENT_PROPS = [
   ["onDragOver", "dragover"],
   ["onDragLeave", "dragleave"],
   ["onDrop", "drop"],
+  ["onWheel", "wheel"],
 ] as const satisfies readonly (readonly [keyof PointerEventHandlerProps, string])[]
 
 // Fails to compile when PointerEventHandlerProps declares a prop the table lacks.

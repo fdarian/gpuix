@@ -10,7 +10,7 @@ import type {
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
 import type { PointerEventProps } from "./events/types.js"
-import type { ScrollEvent, WheelEvent } from "./scroll.js"
+import type { ScrollEvent } from "./scroll.js"
 import type { MotionValue } from "./motion-value.js"
 
 export type {
@@ -990,12 +990,6 @@ export interface HostProps extends AriaProps, PointerEventProps {
   onFocusOut?: (event: EventPayload) => void
 
   // ── Scroll events ──────────────────────────────────────────────
-  /**
-   * One wheel or trackpad tick over the element, before any scroller applies it. Like
-   * the DOM `wheel`: `deltaY` is positive for down, `deltaMode` is always `0` (a mouse
-   * wheel's lines are converted to pixels), and it fires whether or not anything scrolls.
-   */
-  onWheel?: (event: WheelEvent) => void
   /**
    * The scroll offset of an `overflow: "scroll"` or `"auto"` element changed, however it
    * moved: wheel, scrollbar drag, keys, `scrollTo`, `scrollIntoView`, a smooth animation,
