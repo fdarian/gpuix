@@ -3553,12 +3553,18 @@ invalid style value.
 | Pointing | `default`, `auto`, `pointer`, `context-menu`, `not-allowed`, `no-drop` |
 | Text | `text`, `vertical-text`, `crosshair` |
 | Dragging | `grab`, `grabbing`, `move`, `all-scroll`, `alias`, `copy` |
+| Hidden | `none` |
 | Resizing | `col-resize`, `row-resize`, `ew-resize`, `ns-resize`, `nwse-resize`, `nesw-resize`, `n-resize`, `e-resize`, `s-resize`, `w-resize`, `ne-resize`, `nw-resize`, `se-resize`, `sw-resize` |
 
 ```tsx
 <div style={{ cursor: 'grab', active: { cursor: 'grabbing' } }} />
 <div style={{ cursor: 'col-resize' }} />
+<div style={{ cursor: 'none' }} />
 ```
+
+`cursor: 'none'` hides the cursor while it is over the element, as in CSS. It is
+implemented on macOS. The Windows backend hides it too but has not been
+tested; on Linux (X11 and Wayland) the default cursor stays visible.
 
 ### Colors
 

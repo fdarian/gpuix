@@ -140,6 +140,7 @@ export type CursorValue =
   | "alias"
   | "copy"
   | "context-menu"
+  | "none"
 
 export interface BoxShadow {
   offsetX: number

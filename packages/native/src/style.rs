@@ -365,6 +365,7 @@ pub fn parse_cursor(name: &str) -> Option<gpui::CursorStyle> {
         "alias" => CursorStyle::DragLink,
         "copy" => CursorStyle::DragCopy,
         "context-menu" => CursorStyle::ContextualMenu,
+        "none" => CursorStyle::None,
         _ => return None,
     })
 }
@@ -431,6 +432,11 @@ mod tests {
             Some(gpui::CursorStyle::PointingHand)
         );
         assert_eq!(parse_cursor("default"), Some(gpui::CursorStyle::Arrow));
+    }
+
+    #[test]
+    fn cursor_none_hides_the_cursor() {
+        assert_eq!(parse_cursor("none"), Some(gpui::CursorStyle::None));
     }
 
     #[test]
