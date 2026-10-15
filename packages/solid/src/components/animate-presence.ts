@@ -19,12 +19,21 @@ import { HostElement, setHostProperty } from "../host.js"
 export interface PresenceContextValue {
   isPresent: Accessor<boolean>
   initial: false | undefined
-  /** The `custom` of the `AnimatePresence` the child is in, for an `exit` function. */
-  custom: Accessor<unknown>
   safeToRemove(): void
 }
 
 export const PresenceContext = createContext<PresenceContextValue>()
+
+/**
+ * What a `motion.*` can see of its `AnimatePresence`. `PresenceContext` cannot
+ * reach it: the children resolve before `AnimatePresence` wraps each one, so
+ * the exit itself is driven from the outside (see the render effect below).
+ */
+export interface PresenceGroupContextValue {
+  custom: Accessor<unknown>
+}
+
+export const PresenceGroupContext = createContext<PresenceGroupContextValue>()
 
 export function usePresence(): [Accessor<boolean>, () => void] {
   const context = useContext(PresenceContext)
@@ -63,7 +72,13 @@ function normalize(value: JSX.Element): JSX.Element[] {
 }
 
 export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
-  const resolved = children(() => props.children)
+  const group: PresenceGroupContextValue = { custom: () => props.custom }
+  const resolved = children(() =>
+    createComponent(PresenceGroupContext.Provider, {
+      value: group,
+      get children() { return props.children },
+    })
+  )
   const [rendered, setRendered] = createSignal(normalize(resolved()))
   const presence = new Map<JSX.Element, Signal<boolean>>()
   const unpopped = new Map<HostElement, StyleDesc>()
@@ -156,10 +171,18 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
     }
     const waiting = props.mode === "wait" && exiting.length > 0
     const visible = waiting ? current.filter((item) => previous.includes(item)) : current
-    const next = [...visible, ...exiting]
+    // Exiting nodes keep their place: a node that moves is destroyed and
+    // created again, which restarts its exit and drops its handlers. Read
+    // `rendered` again: a child with no exit was already removed above, and
+    // `previous` would bring it back for good.
+    const remaining = untrack(rendered)
+    const next = [...visible]
+    remaining.forEach((item, index) => {
+      if (!current.includes(item)) next.splice(index, 0, item)
+    })
     if (
-      next.length !== previous.length ||
-      next.some((item, index) => item !== previous[index])
+      next.length !== remaining.length ||
+      next.some((item, index) => item !== remaining[index])
     ) {
       setRendered(next)
     }
@@ -175,7 +198,6 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
         value: {
           isPresent: entry[0],
           initial: initial && props.initial === false ? false : undefined,
-          custom: () => props.custom,
           safeToRemove: () => remove(item, entry),
         },
         get children() { return item },

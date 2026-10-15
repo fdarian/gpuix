@@ -27,7 +27,7 @@ import type {
 import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
 import { useContext } from "solid-js"
-import { PresenceContext } from "./animate-presence.js"
+import { PresenceContext, PresenceGroupContext } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
 
@@ -58,14 +58,15 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
       "layoutId",
     ])
     const presence = useContext(PresenceContext)
+    const group = useContext(PresenceGroupContext)
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = () => config !== undefined && config.reduced()
     // An `exit` function has nothing to leave from outside an `AnimatePresence`.
     const exit = () =>
-      typeof motionProps.exit === "function" && !presence
+      typeof motionProps.exit === "function" && !group
         ? undefined
-        : resolveExit(motionProps.exit, presence?.custom() ?? motionProps.custom)
+        : resolveExit(motionProps.exit, group?.custom() ?? motionProps.custom)
     createRenderEffect(() => {
       if (!reduced()) return
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
