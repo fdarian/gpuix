@@ -358,9 +358,19 @@ export declare class TestGpuixRenderer {
    * delta_x and delta_y are in pixels (negative = scroll up/left).
    */
   simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null): void
+  /** Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`). */
+  simulateFileDragEnter(x: number, y: number, paths: Array<string>): void
+  /** The dragged files move to `x`, `y` (`FileDropEvent::Pending`). */
+  simulateFileDragMove(x: number, y: number): void
+  /** The dragged files are released at `x`, `y` (`FileDropEvent::Submit`). */
+  simulateFileDragSubmit(x: number, y: number): void
+  /** The dragged files leave the window (`FileDropEvent::Exited`). */
+  simulateFileDragExit(): void
+  /** The platform's drag session ends (`FileDropEvent::Ended`). */
+  simulateFileDragEnd(): void
   /**
-   * Simulate a Finder-style file drop at the given window coordinates.
-   * Dispatches FileDrop Entered then Submit, matching GPUI's OS drop path.
+   * A whole Finder-style drop at `x`, `y`, in the order the platform sends
+   * it: Entered, Submit, then Exited and Ended.
    */
   simulateFileDrop(x: number, y: number, paths: Array<string>): void
   /** The current text selection joined in document order, or null. */
@@ -534,6 +544,20 @@ export interface DebugFrameOverlayStats {
   samples: number
 }
 
+/**
+ * One file of an OS file drag, as the DOM `File` plus the path the browser
+ * would hide.
+ */
+export interface DroppedFile {
+  path: string
+  name: string
+  size: number
+  /** MIME type guessed from the extension, empty when unknown. */
+  type: string
+  /** Milliseconds since the Unix epoch. */
+  lastModified: number
+}
+
 export interface EdgeInsets {
   top: number
   right: number
@@ -680,10 +704,10 @@ export interface EventPayload {
    */
   motionGeneration?: number
   /**
-   * Absolute filesystem paths from a Finder / OS file drop.
-   * Populated for: drop (an OS file drop).
+   * The files of an OS file drag (`dataTransfer.files`). Sent once per drag,
+   * with its first event, a `dragenter`.
    */
-  paths?: Array<string>
+  files?: Array<DroppedFile>
   /**
    * Element the event was aimed at (the DOM `event.target`). Absent means
    * `element_id` is the target. Ids are `f64` like `element_id`: `u64` would

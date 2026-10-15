@@ -11,6 +11,8 @@
 /// JSX types now resolve to GPUIX's Props via jsxImportSource in tsconfig.
 
 import fs from "fs"
+import os from "node:os"
+import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { describe, it, expect, beforeEach } from "vitest"
@@ -18,7 +20,7 @@ import React, { useState, useRef } from "react"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { startFrameLoop } from "../reconciler/renderer.js"
 import { motion } from "../index"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload, HostDataTransfer, HostDragEvent, HostFile, HostMouseEvent } from "@gpuix/native"
 import type { PublicInstance } from "../types/host.js"
 import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./test-utils"
 
@@ -1090,122 +1092,339 @@ describeNative("events", () => {
     })
   })
 
-  describe("file drop events", () => {
-    it("should handle onDrop with the dropped paths", () => {
-      const received: EventPayload[] = []
+  describe("file drag events", () => {
+    const dragDir = fs.mkdtempSync(path.join(os.tmpdir(), "gpuix-file-drag-"))
+    const textFile = `${dragDir}/notes.txt`
+    const imageFile = `${dragDir}/Photo.PNG`
+    const bareFile = `${dragDir}/README`
+    fs.writeFileSync(textFile, "hello")
+    fs.writeFileSync(imageFile, "12345678")
+    fs.writeFileSync(bareFile, "")
+    fs.utimesSync(textFile, new Date(1_700_000_000_000), new Date(1_700_000_000_000))
+
+    const acceptDrops = (event: HostDragEvent) => event.preventDefault()
+
+    it("delivers enter, over and drop in order with the dropped files", () => {
+      const log: string[] = []
+      let files: readonly HostFile[] = []
 
       testRoot.render(
         <div
           style={{ width: 200, height: 200 }}
-          onDrop={(event: EventPayload) => received.push(event)}
-        >
-          <text>drop</text>
-        </div>,
-      )
-
-      testRoot.renderer.nativeSimulateFileDrop(100, 100, [
-        "/tmp/gpuix-drop-a.txt",
-      ])
-
-      expect(received).toHaveLength(1)
-      expect(received[0]!.eventType).toBe("drop")
-      expect(received[0]!.paths).toEqual(["/tmp/gpuix-drop-a.txt"])
-      expect(received[0]!.x).toBe(100)
-      expect(received[0]!.y).toBe(100)
-    })
-
-    it("should deliver every path in one drop", () => {
-      const received: string[][] = []
-
-      testRoot.render(
-        <div
-          style={{ width: 200, height: 200 }}
-          onDrop={(event: EventPayload) =>
-            received.push(event.paths ?? [])
-          }
+          onDragEnter={(event) => log.push(event.type)}
+          onDragOver={(event) => {
+            log.push(event.type)
+            event.preventDefault()
+          }}
+          onDragLeave={(event) => log.push(event.type)}
+          onDrop={(event) => {
+            log.push(event.type)
+            files = event.dataTransfer?.files ?? []
+          }}
         />,
       )
 
-      testRoot.renderer.nativeSimulateFileDrop(40, 40, [
-        "/tmp/gpuix-drop-a.txt",
-        "/tmp/gpuix-drop-b.png",
-      ])
+      testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])
+      testRoot.renderer.nativeSimulateFileDragMove(110, 100)
+      testRoot.renderer.nativeSimulateFileDragSubmit(110, 100)
+      testRoot.renderer.nativeSimulateFileDragExit()
+      testRoot.renderer.nativeSimulateFileDragEnd()
 
-      expect(received).toEqual([
-        ["/tmp/gpuix-drop-a.txt", "/tmp/gpuix-drop-b.png"],
-      ])
+      expect(log).toEqual(["dragenter", "dragover", "dragover", "drop"])
+      expect(files.map((file) => file.path)).toEqual([textFile])
     })
 
-    it("should deliver a nested drop to the inner listener only", () => {
-      const received: string[] = []
-
-      testRoot.render(
-        <div
-          style={{
-            width: 400,
-            height: 400,
-            display: "flex",
-            flexDirection: "column",
-          }}
-          onDrop={() => received.push("outer")}
-        >
-          <div
-            style={{ width: 100, height: 100 }}
-            onDrop={() => received.push("inner")}
-          />
-        </div>,
-      )
-
-      testRoot.renderer.nativeSimulateFileDrop(50, 50, [
-        "/tmp/gpuix-drop-inner.txt",
-      ])
-      expect(received).toEqual(["inner"])
-
-      testRoot.renderer.nativeSimulateFileDrop(200, 200, [
-        "/tmp/gpuix-drop-outer.txt",
-      ])
-      expect(received).toEqual(["inner", "outer"])
-    })
-
-    it("should not fire an empty drop", () => {
-      const received: EventPayload[] = []
+    it("fires dragleave when the files exit the window", () => {
+      const log: string[] = []
 
       testRoot.render(
         <div
           style={{ width: 200, height: 200 }}
-          onDrop={(event: EventPayload) => received.push(event)}
+          onDragEnter={(event) => log.push(`enter:${event.relatedTarget}`)}
+          onDragOver={acceptDrops}
+          onDragLeave={(event) => log.push(`leave:${event.relatedTarget}`)}
+          onDrop={(event) => log.push(event.type)}
         />,
       )
 
-      testRoot.renderer.nativeSimulateFileDrop(40, 40, [])
-      expect(received).toEqual([])
+      testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])
+      testRoot.renderer.nativeSimulateFileDragExit()
+      testRoot.renderer.nativeSimulateFileDragEnd()
+      // Nothing is left to leave.
+      testRoot.renderer.nativeSimulateFileDragExit()
+
+      expect(log).toEqual(["enter:undefined", "leave:undefined"])
     })
 
-    it("should deliver a drop on a child to the ancestor listener", () => {
-      const received: string[] = []
+    it("enters the element dragged onto before leaving the one dragged off", () => {
+      const log: string[] = []
+      const track = (name: string) => ({
+        onDragEnter: () => log.push(`${name}:enter`),
+        onDragLeave: () => log.push(`${name}:leave`),
+        onDragOver: () => log.push(`${name}:over`),
+      })
+
+      testRoot.render(
+        <div style={{ width: 400, height: 400, display: "flex", flexDirection: "column" }}>
+          <div style={{ width: 100, height: 100 }} {...track("a")} />
+          <div style={{ width: 100, height: 100 }} {...track("b")} />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateFileDragEnter(50, 50, [textFile])
+      testRoot.renderer.nativeSimulateFileDragMove(50, 60)
+      testRoot.renderer.nativeSimulateFileDragMove(50, 150)
+
+      expect(log).toEqual(["a:enter", "a:over", "a:over", "b:enter", "a:leave", "b:over"])
+    })
+
+    it("bubbles drag events to ancestors and the drop to the ancestor of a child", () => {
+      const log: string[] = []
 
       testRoot.render(
         <div
-          style={{
-            width: 200,
-            height: 200,
-            display: "flex",
-            flexDirection: "column",
-          }}
-          onDrop={() => received.push("outer")}
+          style={{ width: 200, height: 200, display: "flex", flexDirection: "column" }}
+          onDragOver={acceptDrops}
+          onDrop={(event) => log.push(`drop:${event.target}->${event.currentTarget}`)}
         >
           <div style={{ width: 100, height: 100 }} />
         </div>,
       )
 
-      testRoot.renderer.nativeSimulateFileDrop(40, 40, [
-        "/tmp/gpuix-drop-child.txt",
-      ])
-      expect(received).toEqual(["outer"])
+      testRoot.renderer.nativeSimulateFileDrop(40, 40, [textFile])
+
+      expect(log).toHaveLength(1)
+      expect(log[0]).toMatch(/^drop:\d+->\d+$/)
+      const [target, currentTarget] = log[0]!.slice(5).split("->")
+      expect(target).not.toBe(currentTarget)
     })
 
-    it("should handle onDrop on a loaded img leaf", () => {
-      const received: string[][] = []
+    it("does not deliver a drop whose last dragover was not cancelled", () => {
+      const log: string[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragOver={() => log.push("over")}
+          onDragLeave={(event) => log.push(`leave:${event.relatedTarget}`)}
+          onDrop={() => log.push("drop")}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(100, 100, [textFile])
+
+      expect(log).toEqual(["over", "leave:undefined"])
+    })
+
+    it("does not deliver a drop when a target without dragover follows an accepting one", () => {
+      const log: string[] = []
+
+      testRoot.render(
+        <div style={{ width: 400, height: 400, display: "flex", flexDirection: "column" }}>
+          <div
+            style={{ width: 100, height: 100 }}
+            onDragOver={acceptDrops}
+            onDrop={() => log.push("a:drop")}
+          />
+          <div style={{ width: 100, height: 100 }} onDrop={() => log.push("b:drop")} />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateFileDragEnter(50, 50, [textFile])
+      testRoot.renderer.nativeSimulateFileDragMove(50, 150)
+      testRoot.renderer.nativeSimulateFileDragSubmit(50, 150)
+
+      expect(log).toEqual([])
+    })
+
+    it("does not deliver a drop whose dropEffect is none", () => {
+      const log: string[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            event.dataTransfer!.dropEffect = "none"
+          }}
+          onDrop={() => log.push("drop")}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(100, 100, [textFile])
+
+      expect(log).toEqual([])
+    })
+
+    it("lets the next drag start fresh after one that was refused", () => {
+      const log: string[] = []
+      let accept = false
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragOver={(event) => {
+            if (accept) event.preventDefault()
+          }}
+          onDrop={() => log.push("drop")}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(100, 100, [textFile])
+      accept = true
+      testRoot.renderer.nativeSimulateFileDrop(100, 100, [textFile])
+
+      expect(log).toEqual(["drop"])
+    })
+
+    it("fires no pointer or mouse event during a file drag", () => {
+      const log: string[] = []
+      const record = (event: HostMouseEvent) => log.push(event.type)
+
+      testRoot.render(
+        <div
+          style={{ width: 400, height: 400, display: "flex", flexDirection: "column" }}
+          onPointerMove={record}
+          onMouseMove={record}
+          onPointerOver={record}
+          onMouseOver={record}
+          onPointerEnter={record}
+          onMouseEnter={record}
+          onPointerOut={record}
+          onMouseOut={record}
+          onPointerLeave={record}
+          onMouseLeave={record}
+          onPointerUp={record}
+          onMouseUp={record}
+          onClick={record}
+          onDragOver={acceptDrops}
+          onDrop={record}
+        >
+          <div style={{ width: 100, height: 100 }} />
+          <div style={{ width: 100, height: 100 }} />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateFileDragEnter(50, 50, [textFile])
+      testRoot.renderer.nativeSimulateFileDragMove(50, 150)
+      testRoot.renderer.nativeSimulateFileDragSubmit(50, 150)
+      testRoot.renderer.nativeSimulateFileDragExit()
+      testRoot.renderer.nativeSimulateFileDragEnd()
+
+      expect(log).toEqual(["drop"])
+    })
+
+    it("gives every file its size, type, name and modification time", () => {
+      let files: readonly HostFile[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragOver={acceptDrops}
+          onDrop={(event) => {
+            files = event.dataTransfer?.files ?? []
+          }}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(40, 40, [textFile, imageFile, bareFile])
+
+      expect(files).toEqual([
+        {
+          path: textFile,
+          name: "notes.txt",
+          size: 5,
+          type: "text/plain",
+          lastModified: 1_700_000_000_000,
+        },
+        {
+          path: imageFile,
+          name: "Photo.PNG",
+          size: 8,
+          type: "image/png",
+          lastModified: Math.floor(fs.statSync(imageFile).mtimeMs),
+        },
+        {
+          path: bareFile,
+          name: "README",
+          size: 0,
+          type: "",
+          lastModified: Math.floor(fs.statSync(bareFile).mtimeMs),
+        },
+      ])
+    })
+
+    it("hands every event of one drag the same dataTransfer, with the files", () => {
+      const seen: HostDataTransfer[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragEnter={(event) => seen.push(event.dataTransfer!)}
+          onDragOver={(event) => {
+            seen.push(event.dataTransfer!)
+            event.preventDefault()
+          }}
+          onDrop={(event) => seen.push(event.dataTransfer!)}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(40, 40, [textFile])
+
+      expect(seen).toHaveLength(3)
+      expect(new Set(seen).size).toBe(1)
+      expect(seen[0]!.types).toEqual(["Files"])
+      expect(seen[0]!.files.map((file) => file.name)).toEqual(["notes.txt"])
+      expect(seen[0]!.getData("text/plain")).toBe("")
+    })
+
+    it("ignores a drag with no files", () => {
+      const log: string[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onDragEnter={(event) => log.push(event.type)}
+          onDragOver={(event) => log.push(event.type)}
+          onDrop={(event) => log.push(event.type)}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(40, 40, [])
+      testRoot.renderer.nativeSimulateFileDrop(40, 40, [`${dragDir}/deleted.txt`])
+
+      expect(log).toEqual([])
+    })
+
+    it("delivers a nested drop to the innermost accepting element, then bubbles", () => {
+      const log: string[] = []
+
+      testRoot.render(
+        <div
+          style={{ width: 400, height: 400, display: "flex", flexDirection: "column" }}
+          onDragOver={acceptDrops}
+          onDrop={() => log.push("outer")}
+        >
+          <div
+            style={{ width: 100, height: 100 }}
+            onDragOver={acceptDrops}
+            onDrop={(event) => {
+              log.push("inner")
+              event.stopPropagation()
+            }}
+          />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateFileDrop(50, 50, [textFile])
+      expect(log).toEqual(["inner"])
+
+      testRoot.renderer.nativeSimulateFileDrop(200, 200, [textFile])
+      expect(log).toEqual(["inner", "outer"])
+    })
+
+    it("delivers the drag events to an img leaf", () => {
+      const log: string[] = []
       const svg =
         '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#5ca9ff"/></svg>'
       const src = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`
@@ -1214,17 +1433,14 @@ describeNative("events", () => {
         <img
           src={src}
           style={{ width: 220, height: 120 }}
-          onDrop={(event: EventPayload) =>
-            received.push(event.paths ?? [])
-          }
+          onDragOver={acceptDrops}
+          onDrop={(event) => log.push(event.dataTransfer!.files[0]!.name)}
         />,
       )
 
-      testRoot.renderer.nativeSimulateFileDrop(80, 40, [
-        "/tmp/gpuix-drop-img.txt",
-      ])
+      testRoot.renderer.nativeSimulateFileDrop(80, 40, [textFile])
 
-      expect(received).toEqual([["/tmp/gpuix-drop-img.txt"]])
+      expect(log).toEqual(["notes.txt"])
     })
   })
 
