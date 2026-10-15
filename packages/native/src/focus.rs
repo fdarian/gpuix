@@ -7,7 +7,7 @@
 //! subscription order, so per-element listeners fired in whatever order the
 //! elements were created rather than blur(old) before focus(new).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
@@ -247,50 +247,40 @@ fn emit(
 }
 
 /// The DOM default of a mouse press: focus the nearest focusable element at or
-/// above the topmost element under it, or nothing.
+/// above the target of the press, or nothing.
+///
+/// `target_path` is the one the pointer dispatcher gave the press, so this and
+/// the `mousedown` JS heard agree on it. Only the topmost element is the
+/// target: what it covers is not pressed, and a click on a modal backdrop must
+/// not focus an input under it.
 ///
 /// A focusable element under a bare pointer does that itself and calls
 /// `prevent_default`, which is also what a JS `preventDefault()` on `mousedown`
-/// maps to. What is left is a press gpui's own transfer did not take: the
-/// pointer is over something that does not block it from the ancestors (a
-/// filled box does), or over nothing focusable at all. It waits until the
-/// dispatch is over: every listener, however deep, has had its say by then, and
-/// stopping propagation does not skip it.
-pub(crate) fn register_mouse_down_default(
+/// maps to (`events::listeners`). What is left is a press gpui's own transfer
+/// did not take: the pointer is over something that does not block it from the
+/// ancestors (a filled box does), or over nothing focusable at all. It waits
+/// until the dispatch is over: every listener, however deep, has had its say
+/// by then, and stopping propagation does not skip it.
+///
+/// Queue it before the press reaches JS. A focus change JS makes during the
+/// press (a closing layer giving focus back) is deferred too, and has to land
+/// after this, the way a DOM default action runs before a `setTimeout(0)`.
+pub(crate) fn defer_mouse_down_default(
     window: &mut gpui::Window,
-    tree: Arc<Mutex<RetainedTree>>,
-    routing: InputRouting,
+    cx: &mut gpui::App,
+    routing: &InputRouting,
+    target_path: Vec<u64>,
 ) {
-    window.on_mouse_event(move |event: &gpui::MouseDownEvent, phase, window, cx| {
-        if phase != gpui::DispatchPhase::Capture {
+    routing.note_user_input();
+    let routing = routing.clone();
+    window.defer(cx, move |window, cx| {
+        if window.default_prevented() {
             return;
         }
-        routing.note_user_input();
-        let position = event.position;
-        let routing = routing.clone();
-        let tree = tree.clone();
-        window.defer(cx, move |window, cx| {
-            if window.default_prevented() {
-                return;
-            }
-            // Only the topmost element is the target. What it covers is not
-            // pressed: a click on a modal backdrop must not focus an input under it.
-            let target_path = {
-                let tree = tree.lock().unwrap();
-                tree.elements_at(
-                    f32::from(position.x) as f64,
-                    f32::from(position.y) as f64,
-                    &crate::automation::get_bounds,
-                )
-                .first()
-                .map(|target| path_to_root(&tree, *target))
-                .unwrap_or_default()
-            };
-            match routing.first_focusable(&target_path) {
-                Some(handle) => window.focus(&handle, cx),
-                None => window.blur(),
-            }
-        });
+        match routing.first_focusable(&target_path) {
+            Some(handle) => window.focus(&handle, cx),
+            None => window.blur(),
+        }
     });
 }
 

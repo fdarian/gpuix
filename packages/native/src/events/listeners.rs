@@ -5,6 +5,19 @@
 //! while the event is being dispatched, then hands the sample to the view in a
 //! deferred update: AppKit dispatches with `GpuixView` leased, so updating it
 //! here would panic.
+//!
+//! A button press is the exception. Its `mousedown` handlers decide whether
+//! the focus default runs, so the press is dispatched in the listener, where
+//! GPUI is still dispatching the event, and delivered through
+//! `sync_dispatch::emit`. That reaches JS and returns what it decided on macOS
+//! and in the test renderer; on Windows and Linux GPUI runs off the JS thread,
+//! so `emit` queues as every other event does and `preventDefault()` cannot
+//! cancel the focus change there. The dispatcher state is therefore shared
+//! with the view instead of being reached through it.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use gpui::{
     canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
@@ -13,11 +26,14 @@ use gpui::{
 };
 
 use crate::element_tree::EventModifiers;
-use crate::renderer::GpuixView;
+use crate::renderer::{EventCallback, GpuixView};
+use crate::retained_tree::RetainedTree;
 
-use super::dispatcher::{PointerAction, PointerSample};
+use super::dispatcher::{dispatch, Output, PointerAction, PointerSample};
 use super::ids::host_hit_chain;
-use super::state::{chain_changed, ObservedChain};
+use super::keyboard::InputRouting;
+use super::state::{chain_changed, ObservedChain, PointerState};
+use super::sync_dispatch;
 
 /// The DOM `MouseEvent.button` for a GPUI button.
 pub fn dom_button(button: MouseButton) -> u32 {
@@ -56,6 +72,74 @@ fn sample(
     }
 }
 
+/// Runs one input through the dispatcher.
+pub(crate) fn dispatch_sample(
+    pointer: &RefCell<PointerState>,
+    tree: &Mutex<RetainedTree>,
+    sample: &PointerSample,
+) -> Output {
+    let output = {
+        let tree = tree.lock().unwrap();
+        dispatch(&mut pointer.borrow_mut(), &tree, sample)
+    };
+    if output.chain_mismatch {
+        log::warn!(
+            "GPUI's hit chain and the retained path of the target disagree: \
+             a host element is built under a different parent than the tree gives it"
+        );
+    }
+    output
+}
+
+/// What a press needs to be dispatched where it is heard.
+#[derive(Clone)]
+pub(crate) struct PressDispatch {
+    pub pointer: Rc<RefCell<PointerState>>,
+    pub tree: Arc<Mutex<RetainedTree>>,
+    pub callback: Option<EventCallback>,
+    pub routing: InputRouting,
+}
+
+impl PressDispatch {
+    /// Dispatches a press and delivers its events in order. A `mousedown`
+    /// handler that cancels it keeps the focus default from running, the same
+    /// way GPUI's own handlers do. `pointerdown` does not: in the DOM only
+    /// `mousedown` decides that.
+    fn press(
+        &self,
+        view: &WeakEntity<GpuixView>,
+        button: u32,
+        sample: PointerSample,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let output = dispatch_sample(&self.pointer, &self.tree, &sample);
+        if output.restyle {
+            // The view may be leased by the input being dispatched.
+            if let Some(view) = view.upgrade() {
+                cx.notify(view.entity_id());
+            }
+        }
+        // A press that hit nothing has no path, and the default blurs.
+        let target_path = self
+            .pointer
+            .borrow()
+            .press_path(button)
+            .map(<[u64]>::to_vec)
+            .unwrap_or_default();
+        crate::focus::defer_mouse_down_default(window, cx, &self.routing, target_path);
+        let mut mouse_down_prevented = false;
+        for payload in output.into_payloads() {
+            let is_mouse_down = payload.event_type == "mousedown";
+            let outcome = sync_dispatch::emit(window, cx, &self.callback, payload);
+            mouse_down_prevented |= is_mouse_down && outcome.default_prevented;
+        }
+        if mouse_down_prevented {
+            window.prevent_default();
+        }
+    }
+}
+
 fn submit(view: &WeakEntity<GpuixView>, sample: PointerSample, cx: &mut App) {
     let view = view.clone();
     cx.defer(move |cx| {
@@ -75,25 +159,25 @@ fn submit(view: &WeakEntity<GpuixView>, sample: PointerSample, cx: &mut App) {
 /// content under the pointer, and a popover can open beneath it.
 pub(crate) fn pointer_frame(
     view: WeakEntity<GpuixView>,
+    press: PressDispatch,
     observed: ObservedChain,
 ) -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |_, _, window, cx| {
             let down_view = view.clone();
+            let press = press.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
                     return;
                 }
+                let button = dom_button(event.button);
                 let action = PointerAction::Down {
-                    button: dom_button(event.button),
+                    button,
                     click_count: event.click_count as u32,
                 };
-                submit(
-                    &down_view,
-                    sample(window, action, event.position, event.modifiers),
-                    cx,
-                );
+                let sample = sample(window, action, event.position, event.modifiers);
+                press.press(&down_view, button, sample, window, cx);
             });
             let up_view = view.clone();
             window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {

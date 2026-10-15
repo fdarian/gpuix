@@ -1683,13 +1683,13 @@ impl TestGpuixRenderer {
     /// call `stopMotionValue` first to take the value from the animation.
     #[napi]
     pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
+        self.write_motion_values(move |values, now| values.set(id, &value, now))
     }
 
     /// Writes the value, ending any animation and dropping its velocity.
     #[napi]
     pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
+        self.write_motion_values(move |values, now| values.jump(id, &value, now))
     }
 
     /// Animates a value from where it is, with the speed it has. `transition`
@@ -1701,7 +1701,7 @@ impl TestGpuixRenderer {
         target: serde_json::Value,
         transition: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.with_motion_values(true, move |values, now| {
+        self.write_motion_values(move |values, now| {
             values.animate(id, &target, transition.as_ref(), now)
         })
     }
@@ -1709,7 +1709,7 @@ impl TestGpuixRenderer {
     /// Ends an animation where it is, keeping the speed for the next one.
     #[napi]
     pub fn stop_motion_value(&self, id: f64) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.stop(id, now))
+        self.write_motion_values(move |values, now| values.stop(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
@@ -1726,6 +1726,24 @@ impl TestGpuixRenderer {
     pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
         self.with_motion_state(false, move |view, _now| {
             view.keyframes.define(&name, &frames_json)
+        })
+    }
+
+    /// `with_motion_values` for a write. A handler of an input that holds the
+    /// root view cannot reach the values, so its write lands once that input is done.
+    fn write_motion_values(
+        &self,
+        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<(), String> + 'static,
+    ) -> Result<()> {
+        if !crate::events::sync_dispatch::in_sync_call() {
+            return self.with_motion_values(true, run);
+        }
+        update_view_or_defer(move |view, _window, cx| {
+            let now = view.clock.now();
+            if let Err(message) = run(&mut view.motion_values, now) {
+                crate::events::sync_dispatch::report_deferred_error(message);
+            }
+            cx.notify();
         })
     }
 

@@ -222,6 +222,13 @@ pub(crate) fn route<U, R, E>(
     }
 }
 
+/// Reports a failure of a change that was deferred past its caller, which can
+/// no longer be given the error. It is thrown from the call on the stack when
+/// that is still the one that dispatched the input.
+pub(crate) fn report_deferred_error(message: String) {
+    backend::report_deferred_error(message);
+}
+
 /// Redraws the window without leasing the root view, which `applyBatch` may
 /// need while the input holds it.
 pub(crate) fn invalidate_root_view() -> Result<(), String> {
@@ -373,6 +380,16 @@ mod backend {
         }
     }
 
+    pub(super) fn report_deferred_error(message: String) {
+        if NATIVE_DEPTH.with(|depth| depth.get()) == 0 {
+            log::error!("GPUIX deferred call failed: {message}");
+            return;
+        }
+        PENDING_ERROR.with(|slot| {
+            slot.borrow_mut().get_or_insert(Error::from_reason(message));
+        });
+    }
+
     /// Marks `f` as running inside a call from JS, which is what lets `emit`
     /// call back into JS. Surfaces an error thrown by a sync handler when the
     /// outermost call returns.
@@ -412,6 +429,10 @@ mod backend {
     /// be called back.
     pub(super) fn available(_window: gpui::WindowId) -> bool {
         HANDLER.with(|slot| slot.borrow().is_some())
+    }
+
+    pub(super) fn report_deferred_error(message: String) {
+        log::error!("GPUIX deferred call failed: {message}");
     }
 
     pub(super) fn call(_window: gpui::WindowId, payload: EventPayload) -> DispatchOutcome {

@@ -394,6 +394,60 @@ describeNative("mouse press focus", () => {
     expect(focused()).toBe("field")
   })
 
+  /** `plain` and `field` side by side, under a wrapper that takes the handlers. */
+  function Wrapped(props: Record<string, Function>) {
+    return (
+      <div testId="wrapper" style={{ width: 300, height: 200 }} {...props}>
+        <div testId="field" tabIndex={0} style={{ width: 100, height: 40 }} />
+        <div testId="plain" style={{ width: 100, height: 40 }} />
+      </div>
+    )
+  }
+
+  it("keeps focus when an ancestor prevents mousedown", () => {
+    testRoot.render(<Wrapped onMouseDown={(event) => event.preventDefault()} />)
+    testRoot.renderer.focusElement(testRoot.renderer.findByTestId("field").id)
+    press("plain")
+    expect(focused()).toBe("field")
+  })
+
+  it("keeps focus when a capture handler prevents mousedown", () => {
+    testRoot.render(<Wrapped onMouseDownCapture={(event) => event.preventDefault()} />)
+    testRoot.renderer.focusElement(testRoot.renderer.findByTestId("field").id)
+    press("plain")
+    expect(focused()).toBe("field")
+  })
+
+  it("does not move focus onto a focusable that mousedown was prevented on", () => {
+    testRoot.render(<Wrapped onMouseDown={(event) => event.preventDefault()} />)
+    press("field")
+    expect(focused()).toBe(null)
+  })
+
+  it("moves focus when only pointerdown is prevented, as in the DOM", () => {
+    testRoot.render(<Wrapped onPointerDown={(event) => event.preventDefault()} />)
+    testRoot.renderer.focusElement(testRoot.renderer.findByTestId("field").id)
+    press("plain")
+    expect(focused()).toBe(null)
+  })
+
+  it("focuses an input on mousedown unless it was prevented on an ancestor", () => {
+    const Scene = (props: { prevent: boolean }) => (
+      <div
+        style={{ width: 300, height: 100 }}
+        onMouseDown={props.prevent ? (event) => event.preventDefault() : undefined}
+      >
+        <input testId="text" style={{ width: 200, height: 40 }} />
+      </div>
+    )
+    testRoot.render(<Scene prevent={true} />)
+    press("text")
+    expect(focused()).toBe(null)
+    testRoot.render(<Scene prevent={false} />)
+    press("text")
+    expect(focused()).toBe("text")
+  })
+
   it("focuses a focusable ancestor of a filled child", () => {
     testRoot.render(
       <div style={{ width: 300, height: 200 }}>

@@ -1370,6 +1370,29 @@ impl GpuixRenderer {
         recv_ui_response(receiver, "the automation clock command")
     }
 
+    /// `with_motion_values` for a write. A handler of an input that holds the
+    /// root view cannot reach the values, so its write lands once that input is
+    /// done. Only macOS runs handlers synchronously.
+    fn write_motion_values(
+        &self,
+        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<(), String>
+            + Send
+            + 'static,
+    ) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        if crate::events::sync_dispatch::in_sync_call() {
+            return update_window_or_defer(move |view, window, cx| {
+                let now = view.clock.now();
+                if let Err(message) = run(&mut view.motion_values, now) {
+                    crate::events::sync_dispatch::report_deferred_error(message);
+                }
+                cx.notify();
+                window.refresh();
+            });
+        }
+        self.with_motion_values(true, run)
+    }
+
     /// Runs `run` on the UI thread against the window's motion values at the
     /// window clock's instant. A write repaints, so the frame samples it.
     fn with_motion_values<R: Send + 'static>(
@@ -2716,13 +2739,13 @@ impl GpuixRenderer {
     /// call `stopMotionValue` first to take the value from the animation.
     #[napi]
     pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
+        self.write_motion_values(move |values, now| values.set(id, &value, now))
     }
 
     /// Writes the value, ending any animation and dropping its velocity.
     #[napi]
     pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
+        self.write_motion_values(move |values, now| values.jump(id, &value, now))
     }
 
     /// Animates a value from where it is, with the speed it has. `transition`
@@ -2734,7 +2757,7 @@ impl GpuixRenderer {
         target: serde_json::Value,
         transition: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.with_motion_values(true, move |values, now| {
+        self.write_motion_values(move |values, now| {
             values.animate(id, &target, transition.as_ref(), now)
         })
     }
@@ -2742,7 +2765,7 @@ impl GpuixRenderer {
     /// Ends an animation where it is, keeping the speed for the next one.
     #[napi]
     pub fn stop_motion_value(&self, id: f64) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.stop(id, now))
+        self.write_motion_values(move |values, now| values.stop(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
@@ -4816,7 +4839,9 @@ pub(crate) struct GpuixView {
     /// have the listener. Shared with the paint closures that compare against it.
     paint_reports: SharedPaintReports,
     /// Where the pointer is and what it is pressing.
-    pub(crate) pointer: crate::events::state::PointerState,
+    /// Shared with the window's mouse-down listener, which dispatches a press
+    /// while AppKit and the test renderer hold this view leased.
+    pub(crate) pointer: Rc<RefCell<crate::events::state::PointerState>>,
 }
 
 #[derive(Default)]
@@ -5186,12 +5211,15 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
-            pointer: crate::events::state::PointerState::with_requests(pointer_requests),
+            pointer: Rc::new(RefCell::new(crate::events::state::PointerState::with_requests(
+                pointer_requests,
+            ))),
         }
     }
 
     /// Hands one pointer input to the dispatcher and delivers the events it
-    /// produces. Runs deferred, after GPUI is done with the event.
+    /// produces. Runs deferred, after GPUI is done with the event. A button
+    /// press does not come through here: its listener dispatches it at once.
     pub(crate) fn handle_pointer(
         &mut self,
         mut sample: crate::events::dispatcher::PointerSample,
@@ -5202,16 +5230,7 @@ impl GpuixView {
         {
             sample.movement = platform.movement();
         }
-        let output = {
-            let tree = self.tree.lock().unwrap();
-            crate::events::dispatcher::dispatch(&mut self.pointer, &tree, &sample)
-        };
-        if output.chain_mismatch {
-            log::warn!(
-                "GPUI's hit chain and the retained path of the target disagree: \
-                 a host element is built under a different parent than the tree gives it"
-            );
-        }
+        let output = crate::events::listeners::dispatch_sample(&self.pointer, &self.tree, &sample);
         if output.restyle {
             cx.notify();
         }
@@ -5459,8 +5478,8 @@ impl GpuixView {
         let events = {
             let tree = self.tree.lock().unwrap();
             match self.simulated_platform.clone() {
-                Some(mut platform) => apply(&mut self.pointer, &tree, &mut platform),
-                None => apply(&mut self.pointer, &tree, &mut GpuiLock { window, cx }),
+                Some(mut platform) => apply(&mut self.pointer.borrow_mut(), &tree, &mut platform),
+                None => apply(&mut self.pointer.borrow_mut(), &tree, &mut GpuiLock { window, cx }),
             }
         };
         for event in events {
@@ -5590,6 +5609,8 @@ impl GpuixView {
 
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
         let mut build_ctx = BuildCtx {
             tree: &tree,
             event_callback: &callback,
@@ -5612,11 +5633,12 @@ impl GpuixView {
             paint_reports: &self.paint_reports,
             highlight_events: &mut highlight_events,
             focus_styles,
-            pointer: &self.pointer,
+            pointer: &pointer,
             contents_overlay: None,
             anchor_scope: None,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
+        drop(pointer);
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
@@ -6557,6 +6579,8 @@ impl gpui::Render for GpuixView {
         let mut highlight_events = Vec::new();
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -6581,7 +6605,7 @@ impl gpui::Render for GpuixView {
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
                     focus_styles,
-                    pointer: &self.pointer,
+                    pointer: &pointer,
                     contents_overlay: None,
                     anchor_scope: None,
                 };
@@ -6589,6 +6613,7 @@ impl gpui::Render for GpuixView {
             }
             None => gpui::Empty.into_any_element(),
         };
+        drop(pointer);
         // Flushed after the root build so a `setState` in the handler cannot
         // re-enter this build.
         emit_highlight_events(&callback, &highlight_events);
@@ -6615,7 +6640,13 @@ impl gpui::Render for GpuixView {
             with_window_menu_actions(root)
                 .child(crate::events::listeners::pointer_frame(
                     cx.weak_entity(),
-                    self.pointer.observed(),
+                    crate::events::listeners::PressDispatch {
+                        pointer: self.pointer.clone(),
+                        tree: tree_arc.clone(),
+                        callback: callback.clone(),
+                        routing: self.routing.clone(),
+                    },
+                    self.pointer.borrow().observed(),
                 ))
                 .child(crate::events::keyboard::window_input_listeners(
                     tree_arc.clone(),

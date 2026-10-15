@@ -278,6 +278,12 @@ impl PointerState {
         self.observed.clone()
     }
 
+    /// The path the dispatcher gave the press of `button`, target first. `None`
+    /// when that press had no target or the button is up.
+    pub fn press_path(&self, button: u32) -> Option<&[u64]> {
+        self.pressed.get(&button).map(|press| press.path.as_slice())
+    }
+
     pub(super) fn observe(&self, hits: &[Hit]) {
         *self.observed.borrow_mut() = Some(hits.iter().map(|hit| hit.id).collect());
     }

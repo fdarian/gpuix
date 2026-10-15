@@ -207,8 +207,8 @@ pub(crate) fn install_key_down(
     })
 }
 
-/// The window-level listeners: `keyUp`, and the focus default of a mouse press
-/// (`focus::register_mouse_down_default`).
+/// The window-level listeners: `keyUp`. The focus default of a mouse press is
+/// queued by the press itself (`focus::defer_mouse_down_default`).
 ///
 /// A zero-size canvas, because listeners are registered during paint.
 pub(crate) fn window_input_listeners(
@@ -243,8 +243,6 @@ pub(crate) fn window_input_listeners(
                     cx.stop_propagation();
                 }
             });
-
-            crate::focus::register_mouse_down_default(window, tree.clone(), routing.clone());
         },
     )
     .absolute()
