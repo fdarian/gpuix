@@ -6,9 +6,11 @@ import { expectScreenshotsEqual, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
-/** Only `tnum` and `pnum` are asserted by width: on macOS, CoreText applies
- *  them to the system font, while glyph substitutions (`zero`, `onum`, `smcp`)
- *  paint identically to the default in every family tried. */
+/** Only `tnum` and `pnum` are asserted by width, because the default system font
+ *  has them. Glyph substitutions work too, but only in a font that carries the
+ *  feature: the system font has `smcp` and `frac` but no `zero` or `onum`, so
+ *  those paint like the default there (Avenir Next and Baskerville have `smcp`
+ *  and `onum`). */
 function capture(name: string, tree: ReactElement) {
   const testRoot = createTestRoot()
   try {

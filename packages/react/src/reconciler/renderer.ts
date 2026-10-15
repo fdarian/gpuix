@@ -67,8 +67,6 @@ export function createRenderer(
   })
 }
 
-/** ~125fps. Above any common display refresh rate, so frames are never the
- *  bottleneck, while still leaving the Node event loop almost entirely idle. */
 export interface FrameLoop {
   stop: () => void
 }

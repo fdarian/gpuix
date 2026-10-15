@@ -16,7 +16,8 @@
 //! element ends on `dragend`, and on a cancel with no event at all: `cancelDrag`,
 //! which JS calls when `dragstart` was cancelled.
 //!
-//! There is no drag image: GPUI has no OS drag, so nothing follows the pointer.
+//! There is no drag image: this state machine does not use GPUI's drag ghost
+//! (`App::active_drag`, crate-private), so nothing follows the pointer.
 
 use crate::retained_tree::RetainedTree;
 
