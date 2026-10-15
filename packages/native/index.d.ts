@@ -180,6 +180,12 @@ export declare class GpuixRenderer {
   /** Whether `element_id` holds, or has been asked to hold, the mouse capture. */
   hasPointerCapture(elementId: number, pointerId: number): boolean
   /**
+   * End the element drag in progress, without a `dragend`: JS calls it when
+   * `dragstart` was cancelled. Applies at the next pointer input, so a move
+   * or two may already have been delivered.
+   */
+  cancelDrag(): void
+  /**
    * Deliver the click an activation that is not a pointer press makes on
    * `element_id`, such as Enter on a button: a `click` with `detail` 0 that
    * bubbles along the element's path. Arrives through the event callback.
@@ -433,6 +439,11 @@ export declare class TestGpuixRenderer {
   setPointerCapture(elementId: number, pointerId: number): void
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
+  /**
+   * Ends the element drag in progress without a `dragend`; applies at the
+   * next simulated pointer input.
+   */
+  cancelDrag(): void
   /**
    * The click an activation that is not a pointer press makes on `element_id`;
    * collected for `drainEvents` like every other event.

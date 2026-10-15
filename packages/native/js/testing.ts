@@ -107,6 +107,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
   clickElement(elementId: number): void
+  cancelDrag(): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
@@ -684,6 +685,11 @@ export class TestRenderer implements NativeRenderer {
 
   clickElement(elementId: number): void {
     this.native.clickElement(elementId)
+  }
+
+  /** Applies from the next simulated pointer input. */
+  cancelDrag(): void {
+    this.native.cancelDrag()
   }
 
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {

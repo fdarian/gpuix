@@ -137,6 +137,7 @@ export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text"])
 export const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "autoFocus",
   "tabIndex",
+  "draggable",
   "motion",
   "testId",
   "highlight",

@@ -12,14 +12,38 @@ export type HostFile = {
 
 export type HostDropEffect = "none" | "copy" | "link" | "move"
 
+export type HostEffectAllowed =
+  | "none"
+  | "copy"
+  | "copyLink"
+  | "copyMove"
+  | "link"
+  | "linkMove"
+  | "move"
+  | "all"
+  | "uninitialized"
+
+/**
+ * The data of one drag, shared by every event of it. DOM protected mode
+ * applies: `getData` returns `""` and `setData` does nothing except in
+ * `dragstart` (where both work) and `drop` (where only `getData` does).
+ */
 export type HostDataTransfer = {
+  /**
+   * What the drop will do. A `dragover` handler picks it; it must be allowed
+   * by `effectAllowed` and not `"none"` for the drop to be delivered. In
+   * `dragend` it is what the drop did, `"none"` when nothing was dropped.
+   */
   dropEffect: HostDropEffect
-  effectAllowed: string
+  /** What the source allows. Writable in `dragstart` only. */
+  effectAllowed: HostEffectAllowed
   readonly files: readonly HostFile[]
   readonly types: readonly string[]
   getData(format: string): string
   setData(format: string, data: string): void
   clearData(format?: string): void
+  /** Accepted and ignored: there is no drag image. */
+  setDragImage(element: unknown, x: number, y: number): void
 }
 
 /**
@@ -69,10 +93,13 @@ export interface HostMouseEvent extends HostDomEvent {
 export interface HostPointerEvent extends HostMouseEvent {}
 
 /**
- * A drag of files from the OS fires `dragenter`, `dragover`, `dragleave` and
- * `drop`, which all carry the drag's one `dataTransfer`. `drop` is delivered only
- * after a `dragover` whose handler called `preventDefault()`. Dragging an element
- * (`dragstart`, `drag`, `dragend`) is not emitted yet.
+ * A drag fires `dragenter`, `dragover`, `dragleave` and `drop` at what is under
+ * the pointer, and all carry the drag's one `dataTransfer`. `drop` is delivered
+ * only after a `dragover` whose handler called `preventDefault()`.
+ *
+ * Files dragged from the OS fire only those four. Dragging an element that has
+ * `draggable` adds `dragstart`, `drag` and `dragend` at the dragged element,
+ * the source. No pointer or mouse event fires during either kind of drag.
  */
 export interface HostDragEvent extends HostMouseEvent {
   dataTransfer?: HostDataTransfer

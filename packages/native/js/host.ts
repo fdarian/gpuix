@@ -535,6 +535,15 @@ export interface HostProps extends PointerEventProps {
   /** Native GPUI tab order. Use 0 for normal keyboard focus. */
   tabIndex?: number
   /**
+   * Makes the element a drag source, like the DOM attribute. A primary press on
+   * it or inside it that moves more than 4px starts a drag: `onDragStart` fires
+   * on the element, `onDrag` follows the pointer, `onDragEnter`/`onDragOver`/
+   * `onDragLeave`/`onDrop` fire on what is under it, and `onDragEnd` on the
+   * element when the drag ends. No pointer or mouse event fires meanwhile.
+   * `preventDefault()` in `onDragStart` cancels the drag. There is no drag image.
+   */
+  draggable?: boolean
+  /**
    * AccessKit role, as an ARIA token (`"button"`, `"heading"`).
    * A node is in the accessibility tree only with both an id (always set)
    * and a role. `"none"` / `"presentation"` produce no node.
@@ -741,6 +750,7 @@ export type NativeRenderer = MutationHost &
       | "releasePointerCapture"
       | "hasPointerCapture"
       | "clickElement"
+      | "cancelDrag"
       | "setImage"
       | "setImagePixels"
       | "getScrollOffset"
