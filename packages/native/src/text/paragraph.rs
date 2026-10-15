@@ -466,6 +466,23 @@ mod tests {
     }
 
     #[test]
+    fn a_direct_display_contents_child_passes_its_style_to_the_text() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.append_child(1, 2);
+        tree.create_element(3, "text".to_string());
+        tree.append_child(2, 3);
+        tree.set_text(3, "red".to_string());
+        let style = serde_json::json!({"display": "contents", "color": "#ff0000", "fontWeight": 700});
+        tree.set_style(2, Arc::new(serde_json::from_value(style).expect("a style")));
+        let runs = runs_of(&tree);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].weight, Some(FontWeight(700.0)));
+        assert!(runs[0].color.is_some());
+    }
+
+    #[test]
     fn font_style_is_inherited_and_a_child_can_reset_it() {
         let tree = tree_with(&[
             (3, serde_json::json!({"fontStyle": "italic"})),

@@ -367,6 +367,23 @@ impl Builder {
         }
     }
 
+    /// Runs `push` inside the `display: contents` elements `contents`, outermost
+    /// first: they have no box, but their text inherits their `white-space` and
+    /// they are in the chain of every piece that comes out of it.
+    fn within(
+        &mut self,
+        contents: &[&RetainedElement],
+        push: impl FnOnce(&mut Self, &mut Vec<u64>),
+    ) {
+        let mut chain = Vec::with_capacity(contents.len());
+        for element in contents {
+            chain.push(element.id);
+            self.modes.push(white_space::of_box(element, self.mode()));
+        }
+        push(self, &mut chain);
+        self.modes.truncate(self.modes.len() - contents.len());
+    }
+
     /// Ends the paragraph. A collapsible space at its end is removed, and so is
     /// a single final line feed, which ends the last line and starts no new
     /// one. A paragraph with nothing left generates no box.
@@ -413,12 +430,16 @@ pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Ch
         .filter_map(|id| tree.elements.get(id))
         .filter(|child| !is_display_none(child))
     {
+        // `children_in_order` spliced the `display: contents` elements out, but
+        // their descendants still inherit from them.
+        let contents = crate::layout::contents::contents_between(tree, container, child.id)
+            .unwrap_or_default();
         if is_raw_text(child) {
             if let Some(content) = child.content.as_deref() {
-                paragraph.push_text(content, &[]);
+                paragraph.within(&contents, |paragraph, chain| paragraph.push_text(content, chain));
             }
         } else if !items && is_inline_box(tree, child, container) {
-            paragraph.push_element(tree, child, &mut Vec::new());
+            paragraph.within(&contents, |paragraph, chain| paragraph.push_element(tree, child, chain));
         } else {
             paragraph.finish(&mut out);
             out.push(Child::Block(child.id));
@@ -802,6 +823,22 @@ mod tests {
         assert_eq!(paragraph.text, "a bc d");
         let boxes: Vec<_> = paragraph.pieces.iter().map(|p| p.boxes.clone()).collect();
         assert_eq!(boxes, vec![vec![], vec![3, 4], vec![3, 4, 6], vec![]]);
+    }
+
+    #[test]
+    fn a_direct_display_contents_child_is_in_the_chain_and_gives_its_white_space() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "div").styled(3, serde_json::json!({"display": "contents", "whiteSpace": "pre"}));
+        f.text(3, 4, "b  c");
+        f.add(3, 5, "div").styled(5, serde_json::json!({"display": "contents"}));
+        f.text(5, 6, "d");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "ab  cd");
+        let chains: Vec<_> = paragraph.pieces.iter().map(|piece| piece.boxes.clone()).collect();
+        assert_eq!(chains, vec![vec![], vec![3], vec![3, 5]]);
+        assert!(paragraph.boxes.is_empty(), "a contents element covers no bytes");
     }
 
     #[test]

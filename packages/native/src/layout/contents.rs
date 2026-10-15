@@ -38,6 +38,23 @@ fn splice(tree: &RetainedTree, children: &[u64], into: &mut Vec<u64>) {
     }
 }
 
+/// The `display: contents` ancestors between `parent` and a spliced child,
+/// outermost first. Empty for a direct child.
+pub(crate) fn contents_between<'a>(
+    tree: &'a RetainedTree,
+    parent: &RetainedElement,
+    child_id: u64,
+) -> Option<Vec<&'a RetainedElement>> {
+    let mut chain = Vec::new();
+    let mut current = tree.elements.get(&child_id)?.parent?;
+    while current != parent.id {
+        chain.push(tree.elements.get(&current)?);
+        current = tree.elements.get(&current)?.parent?;
+    }
+    chain.reverse();
+    Some(chain)
+}
+
 /// The inheritable style the `display: contents` ancestors between `parent` and a
 /// spliced `child` would have passed down, for `build_element` to fill into the
 /// child's own style. `None` for a direct child.
@@ -46,19 +63,14 @@ pub(crate) fn inherited_overlay(
     parent: &RetainedElement,
     child_id: u64,
 ) -> Option<StyleDesc> {
-    let mut chain = Vec::new();
-    let mut current = tree.elements.get(&child_id)?.parent?;
-    while current != parent.id {
-        chain.push(tree.elements.get(&current)?);
-        current = tree.elements.get(&current)?.parent?;
-    }
+    let chain = contents_between(tree, parent, child_id)?;
     if chain.is_empty() {
         return None;
     }
 
     let mut overlay = StyleDesc::default();
     // Outermost first, so a nearer ancestor overrides a farther one.
-    for ancestor in chain.iter().rev() {
+    for ancestor in chain {
         if let Some(style) = ancestor.style.as_deref() {
             overlay.take_inheritable_from(style);
         }

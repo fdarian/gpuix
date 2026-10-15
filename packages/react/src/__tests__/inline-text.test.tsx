@@ -393,6 +393,48 @@ describeNative("inline text", () => {
       expect(count(pixels, area, [0, 0, 0])).toBe(0)
     })
 
+    it("passes the colour and weight of a direct display contents child to its text", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <div style={{ width: 600, backgroundColor: "#ffffff" }}>
+          <text testId="p" style={{ ...TEXT, color: "#000000" }}>
+            <span style={{ display: "contents", color: "#ff0000" }}>redred</span>
+          </text>
+          <div testId="q" style={{ ...TEXT, color: "#000000" }}>
+            <div style={{ display: "contents", color: "#0000ff" }}>blue</div>
+          </div>
+        </div>
+      )
+
+      const pixels = shoot(testRoot, "contents-direct")
+      const red = bounds(testRoot, "p")
+      expect(count(pixels, red, [255, 0, 0])).toBeGreaterThan(20)
+      expect(count(pixels, red, [0, 0, 0])).toBe(0)
+      const blue = bounds(testRoot, "q")
+      expect(count(pixels, blue, [0, 0, 255])).toBeGreaterThan(20)
+      expect(count(pixels, blue, [0, 0, 0])).toBe(0)
+    })
+
+    it("passes what a direct display contents child declares to its text next to a block", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <div style={{ width: 600, backgroundColor: "#ffffff" }}>
+          <div testId="p" style={{ ...TEXT, color: "#000000" }}>
+            <div style={{ display: "contents", color: "#ff0000" }}>
+              redred
+              <div style={{ height: 30 }} />
+              redred
+            </div>
+          </div>
+        </div>
+      )
+
+      const area = bounds(testRoot, "p")
+      const pixels = shoot(testRoot, "contents-direct-block")
+      expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(40)
+      expect(count(pixels, area, [0, 0, 0])).toBe(0)
+    })
+
     it("does not paint the background of a display contents element", () => {
       const testRoot = createTestRoot()
       testRoot.render(
