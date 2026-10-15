@@ -1686,6 +1686,69 @@ function DeferredRemoval() {
 }
 ```
 
+#### `mode`, `custom` and `popLayout`
+
+**`mode`** decides how entering and leaving children overlap.
+
+| `mode` | Behaviour |
+| --- | --- |
+| `"sync"` (default) | Entering and leaving children animate together. |
+| `"wait"` | A child that enters while another is leaving renders only after every exit is done, then `onExitComplete` runs. Children that stay keep rendering. |
+| `"popLayout"` | A leaving child is taken out of flow at once, so its siblings reflow while it fades. |
+
+```tsx
+<div style={{ display: 'flex', flexDirection: 'column' }}>
+  <AnimatePresence mode="popLayout">
+    {items.map((item) => (
+      <motion.div
+        key={item.id}
+        layout
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <text>{item.label}</text>
+      </motion.div>
+    ))}
+  </AnimatePresence>
+</div>
+```
+
+`popLayout` reads the box the child last painted, and its parent's, through
+`getElementBounds`, then sets `position: 'absolute'` with `top`, `left`, `width`
+and `height` relative to the parent. Absolute children are placed against their
+parent in GPUIX, so the parent needs no `position: 'relative'`. The parent's
+border is not subtracted. The child must take `style` (a `motion.*` or a host
+element) and, in React, a `ref`; a custom component that spreads neither is not
+pinned. Add `layout` to the siblings, as above, to glide them into the gap
+instead of jumping. Bring a leaving child back and it returns to flow.
+
+A window has one root element, so put `AnimatePresence` inside a `div` when more
+than one child can be present.
+
+**`custom`** is handed to the `exit` of every child that leaves, which may be a
+function. The `custom` of `AnimatePresence` is the one read when the child
+leaves, so it can change in the same render that removes the child. A
+`motion.*` can also take `custom` itself, which is used when `AnimatePresence`
+has none. An `exit` function is only called inside an `AnimatePresence`.
+
+```tsx
+<AnimatePresence custom={direction}>
+  {page ? (
+    <motion.div
+      key={page}
+      initial={false}
+      animate={{ opacity: 1 }}
+      exit={(direction) => ({ opacity: direction === 'left' ? 0.2 : 0.8 })}
+    />
+  ) : null}
+</AnimatePresence>
+```
+
+Variants do not exist in GPUIX, so `exit` is either a target or a function of
+`custom` that returns one. `useIsPresent()` and `usePresence()` work in React. In
+Solid, `AnimatePresence` drives the exit from outside the child, so a descendant
+component reads them as present.
+
 `motion.div` accepts **`onMotionComplete`**. It runs when the current native
 target settles. If React changes the target before an older completion reaches
 JavaScript, the stale completion is ignored.
