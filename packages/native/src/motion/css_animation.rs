@@ -1661,6 +1661,7 @@ mod tests {
         assert_eq!(frames.frame(400, &fading("none")).opacity, None);
         assert_eq!(frames.events(), [named(Cancel, "fade", 0.4)]);
         assert!(!frames.animations.wants(1, Some(&fading("none"))));
+        assert!(frames.animations.states.is_empty(), "the state goes with the cancel");
 
         let mut frames = Frames::new();
         frames.define("fade", FADE);
@@ -1676,6 +1677,7 @@ mod tests {
         frames.events();
         frames.frame(3000, &fading("none"));
         assert!(frames.events().is_empty(), "an animation that ended is not cancelled");
+        assert!(frames.animations.states.is_empty());
     }
 
     #[test]

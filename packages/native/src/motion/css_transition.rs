@@ -735,6 +735,11 @@ impl ElementState {
         }
     }
 
+    /// Nothing runs and nothing finished that a later style could repeat.
+    fn is_idle(&self) -> bool {
+        self.running.is_empty() && self.completed.is_empty()
+    }
+
     fn step(
         &mut self,
         id: u64,
@@ -964,15 +969,28 @@ pub(crate) struct CssTransitions {
 
 impl CssTransitions {
     /// Whether `id` takes part in transitions: it declares one, in its own
-    /// style or a state style, or already has transition state to keep.
-    pub(crate) fn wants(&self, id: u64, style: Option<&StyleDesc>) -> bool {
-        self.states.contains_key(&id)
-            || style.is_some_and(|style| {
-                declares_transition(style)
-                    || [&style.hover, &style.active, &style.focus_visible]
-                        .into_iter()
-                        .any(|state| state.as_deref().is_some_and(declares_transition))
-            })
+    /// style or a state style, or still has transitions to settle.
+    ///
+    /// An element that stopped declaring keeps its state for the one update
+    /// that cancels what was running (`transitioncancel`); once the state is
+    /// idle the next call drops it.
+    pub(crate) fn wants(&mut self, id: u64, style: Option<&StyleDesc>) -> bool {
+        if style.is_some_and(|style| {
+            declares_transition(style)
+                || [&style.hover, &style.active, &style.focus_visible]
+                    .into_iter()
+                    .any(|state| state.as_deref().is_some_and(declares_transition))
+        }) {
+            return true;
+        }
+        match self.states.get(&id) {
+            None => false,
+            Some(state) if state.is_idle() => {
+                self.states.remove(&id);
+                false
+            }
+            Some(_) => true,
+        }
     }
 
     /// Feeds one frame's after-change style. The first style an element is seen
@@ -1533,7 +1551,7 @@ mod tests {
 
     #[test]
     fn wants_follows_declared_transitions_in_any_state_style() {
-        let clock = CssTransitions::default();
+        let mut clock = CssTransitions::default();
         assert!(!clock.wants(1, None));
         assert!(!clock.wants(1, Some(&style(r#"{ "width": 1 }"#))));
         assert!(!clock.wants(1, Some(&style(r#"{ "transition": "none" }"#))));
@@ -1553,9 +1571,53 @@ mod tests {
     fn retain_drops_state_for_removed_elements() {
         let mut clock = Clock::new();
         clock.frame(0, &sized(0.0, "width 1s"));
+        clock.frame(0, &sized(100.0, "width 1s"));
         assert!(clock.transitions.wants(1, None));
         clock.transitions.retain(|_| false);
-        assert!(!clock.transitions.wants(1, None));
+        assert!(clock.transitions.states.is_empty());
+    }
+
+    #[test]
+    fn removing_the_declaration_cancels_what_runs_and_then_drops_the_state() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.frame(0, &sized(100.0, "width 1s linear"));
+        clock.events();
+
+        let plain = style(r#"{ "width": 100 }"#);
+        assert!(clock.transitions.wants(1, Some(&plain)), "the running transition still has to be cancelled");
+        assert_eq!(width_of(&clock.frame(500, &plain)), 100.0);
+        assert_eq!(clock.events(), [(Cancel, "width".to_string(), 0.5)]);
+
+        assert!(!clock.transitions.wants(1, Some(&plain)));
+        assert!(clock.transitions.states.is_empty());
+    }
+
+    #[test]
+    fn a_finished_transition_does_not_keep_state_once_the_declaration_is_gone() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.frame(0, &sized(100.0, "width 1s linear"));
+        clock.frame(1000, &sized(100.0, "width 1s linear"));
+        assert_eq!(clock.events().last(), Some(&(End, "width".to_string(), 1.0)));
+
+        let plain = style(r#"{ "width": 100 }"#);
+        assert!(clock.transitions.wants(1, Some(&plain)));
+        clock.frame(1100, &plain);
+        assert!(clock.events().is_empty(), "an ended transition is not cancelled");
+        assert!(!clock.transitions.wants(1, Some(&plain)));
+    }
+
+    #[test]
+    fn a_transition_declared_in_a_state_style_keeps_its_state_while_the_element_rests() {
+        let base = style(
+            r##"{ "width": 0, "hover": { "width": 100, "transition": "width 1s linear" } }"##,
+        );
+        let mut clock = Clock::new();
+        let rest = resolve_state_styles(&base, false, false);
+        clock.frame(0, &rest);
+        assert!(clock.transitions.wants(1, Some(&base)));
+        assert!(!clock.transitions.states.is_empty());
     }
 
     mod measured {
