@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Shadow};
 use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Number,
     Dimension,
@@ -352,6 +352,13 @@ impl AnimProp {
             Initial::CurrentColor => Self::Color.read(base?),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
         }
+    }
+
+    /// Whether `items` is one value of a list-valued property (a shadow's
+    /// layers) and not keyframes. Keyframes of such a property wrap each list
+    /// in an array of its own.
+    pub(super) fn is_list_value(self, items: &[Value]) -> bool {
+        self.kind() == Kind::Shadow && items.iter().all(Value::is_object)
     }
 
     /// Parses and validates one value from a description.

@@ -133,6 +133,13 @@ impl SvgAttr {
         self.parse(attributes.get(self.name())?).ok()
     }
 
+    /// Whether `items` is one value of a list-valued attribute (a dash list)
+    /// and not keyframes. Keyframes of such an attribute wrap each list in an
+    /// array of its own, or write it as a string.
+    pub(super) fn is_list_value(self, items: &[Value]) -> bool {
+        matches!(self.kind(), Kind::Dashes) && items.iter().all(Value::is_number)
+    }
+
     pub(super) fn parse(self, value: &Value) -> Result<AnimValue, String> {
         let name = self.name();
         let parsed = match self.kind() {

@@ -37,6 +37,55 @@ enum Jump {
 pub(super) struct Transition {
     pub(super) delay: f64,
     pub(super) curve: Curve,
+    /// Where each keyframe sits in the iteration, as fractions of its duration.
+    /// `None` spaces them evenly. Tweens only.
+    pub(super) times: Option<Vec<f64>>,
+    /// One easing per keyframe segment. When set it replaces the tween's
+    /// single `ease`. Tweens only.
+    pub(super) segment_eases: Option<Vec<Ease>>,
+    pub(super) repeat: Repeat,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Repeat {
+    pub(super) count: RepeatCount,
+    pub(super) kind: RepeatType,
+    /// Seconds held at the end of each iteration before the next one.
+    pub(super) delay: f64,
+}
+
+impl Default for Repeat {
+    fn default() -> Self {
+        Self {
+            count: RepeatCount::Finite(0),
+            kind: RepeatType::Loop,
+            delay: 0.0,
+        }
+    }
+}
+
+/// How many times an iteration runs again after the first.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum RepeatCount {
+    Finite(u32),
+    Infinite,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum RepeatType {
+    /// Every iteration plays from the first keyframe to the last.
+    Loop,
+    /// Odd iterations play backwards in time, so their easing runs backwards too.
+    Reverse,
+    /// Odd iterations play the keyframes in reverse order with the same
+    /// timing and easing as the first.
+    Mirror,
+}
+
+impl Repeat {
+    pub(super) fn repeats(&self) -> bool {
+        self.count != RepeatCount::Finite(0)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,6 +102,9 @@ impl Default for Transition {
                 duration: default_duration(),
                 ease: default_ease(),
             },
+            times: None,
+            segment_eases: None,
+            repeat: Repeat::default(),
         }
     }
 }
@@ -65,14 +117,35 @@ fn default_ease() -> Ease {
     Ease::Name("easeOut".to_string())
 }
 
-#[derive(Deserialize)]
+/// A single easing, or one per keyframe segment.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(super) enum EaseSpec {
+    One(Ease),
+    Each(Vec<Ease>),
+}
+
+/// A repeat count: a number, or the string `"Infinity"` because JSON has no
+/// infinity.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(super) enum RawRepeat {
+    Count(f64),
+    Name(String),
+}
+
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct RawTransition {
     #[serde(rename = "type")]
     pub(super) kind: Option<String>,
     pub(super) duration: Option<f64>,
     pub(super) delay: Option<f64>,
-    pub(super) ease: Option<Ease>,
+    pub(super) ease: Option<EaseSpec>,
+    pub(super) times: Option<Vec<f64>>,
+    pub(super) repeat: Option<RawRepeat>,
+    pub(super) repeat_type: Option<String>,
+    pub(super) repeat_delay: Option<f64>,
     pub(super) stiffness: Option<f64>,
     pub(super) damping: Option<f64>,
     pub(super) mass: Option<f64>,
@@ -111,6 +184,9 @@ impl Transition {
                 duration: 0.0,
                 ease: Ease::Name("linear".to_string()),
             },
+            times: None,
+            segment_eases: None,
+            repeat: Repeat::default(),
         }
     }
 
@@ -127,6 +203,9 @@ impl TryFrom<RawTransition> for Transition {
     fn try_from(raw: RawTransition) -> Result<Self, String> {
         let delay = raw.delay.unwrap_or(0.0);
         validate_seconds(delay, "delay")?;
+        let repeat = parse_repeat(&raw)?;
+        let mut times = None;
+        let mut segment_eases = None;
         let curve = match raw.kind.as_deref() {
             None | Some("tween") => {
                 for (name, value) in [
@@ -142,26 +221,141 @@ impl TryFrom<RawTransition> for Transition {
                     }
                 }
                 let duration = raw.duration.unwrap_or_else(default_duration);
-                let ease = match raw.ease.clone() {
-                    Some(ease) => resolve_ease(ease)?,
-                    None => default_ease(),
-                };
                 validate_seconds(duration, "duration")?;
+                let ease = match raw.ease.clone() {
+                    None => default_ease(),
+                    Some(EaseSpec::One(ease)) => resolve_ease(ease)?,
+                    Some(EaseSpec::Each(list)) => {
+                        let list = list
+                            .into_iter()
+                            .map(resolve_ease)
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let first = list
+                            .first()
+                            .cloned()
+                            .ok_or_else(|| "motion ease list needs at least one easing".to_string())?;
+                        segment_eases = Some(list);
+                        first
+                    }
+                };
+                for ease in segment_eases.iter().flatten() {
+                    validate_ease(ease)?;
+                }
                 validate_ease(&ease)?;
+                times = raw.times.clone().map(validate_times).transpose()?;
                 Curve::Tween { duration, ease }
             }
             Some("spring") => {
                 if raw.ease.is_some() {
                     return Err("motion spring transitions do not accept ease".to_string());
                 }
+                if raw.times.is_some() {
+                    return Err("motion spring transitions do not accept times".to_string());
+                }
                 Curve::Spring(Spring::from_raw(&raw)?)
             }
             Some(other) => return Err(format!("unknown motion transition type: {other}")),
         };
-        Ok(Self { delay, curve })
+        Ok(Self {
+            delay,
+            curve,
+            times,
+            segment_eases,
+            repeat,
+        })
     }
 }
 
+fn parse_repeat(raw: &RawTransition) -> Result<Repeat, String> {
+    let count = match &raw.repeat {
+        None => RepeatCount::Finite(0),
+        Some(RawRepeat::Name(name)) if name == "Infinity" => RepeatCount::Infinite,
+        Some(RawRepeat::Name(name)) => {
+            return Err(format!(
+                "motion repeat must be a count or \"Infinity\", not \"{name}\""
+            ))
+        }
+        Some(RawRepeat::Count(count)) => {
+            if !count.is_finite() || *count < 0.0 || count.fract() != 0.0 || *count > f64::from(u32::MAX)
+            {
+                return Err("motion repeat must be a whole number of at least 0, or Infinity".to_string());
+            }
+            RepeatCount::Finite(*count as u32)
+        }
+    };
+    let kind = match raw.repeat_type.as_deref() {
+        None | Some("loop") => RepeatType::Loop,
+        Some("reverse") => RepeatType::Reverse,
+        Some("mirror") => RepeatType::Mirror,
+        Some(other) => {
+            return Err(format!(
+                "unknown motion repeatType: {other} (expected loop, reverse or mirror)"
+            ))
+        }
+    };
+    let delay = raw.repeat_delay.unwrap_or(0.0);
+    validate_seconds(delay, "repeatDelay")?;
+    Ok(Repeat { count, kind, delay })
+}
+
+fn validate_times(times: Vec<f64>) -> Result<Vec<f64>, String> {
+    if times.is_empty()
+        || times.iter().any(|time| !(0.0..=1.0).contains(time))
+        || times.windows(2).any(|pair| pair[1] < pair[0])
+    {
+        return Err("motion times must be numbers from 0 to 1 in ascending order".to_string());
+    }
+    Ok(times)
+}
+
+impl Transition {
+    /// Checks the fields that depend on how many keyframes a track has.
+    pub(super) fn check_keyframes(&self, name: &str, frames: usize) -> Result<(), String> {
+        if matches!(self.curve, Curve::Spring(_)) && frames > 2 {
+            return Err(format!(
+                "motion {name} has {frames} keyframes, but a spring only animates between two: use a tween"
+            ));
+        }
+        if let Some(times) = &self.times {
+            if times.len() != frames {
+                return Err(format!(
+                    "motion {name} has {frames} keyframes but times lists {}",
+                    times.len()
+                ));
+            }
+        }
+        if let Some(eases) = &self.segment_eases {
+            if eases.len() != frames - 1 {
+                return Err(format!(
+                    "motion {name} has {frames} keyframes, so ease needs {} easings, not {}",
+                    frames - 1,
+                    eases.len()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Where the `frames` keyframes sit in an iteration.
+    pub(super) fn keyframe_times(&self, frames: usize) -> Vec<f64> {
+        self.times.clone().unwrap_or_else(|| {
+            (0..frames)
+                .map(|index| index as f64 / (frames - 1) as f64)
+                .collect()
+        })
+    }
+
+    /// The easing of keyframe segment `index`. Only tweens have one.
+    pub(super) fn segment_ease(&self, index: usize) -> &Ease {
+        if let Some(eases) = &self.segment_eases {
+            return &eases[index];
+        }
+        match &self.curve {
+            Curve::Tween { ease, .. } => ease,
+            Curve::Spring(_) => unreachable!("a spring has no easing"),
+        }
+    }
+}
 
 // Spring defaults and limits follow `springDefaults` in motion-dom's
 // `animation/generators/spring.mjs` (motion 12/14, the engine behind Framer
@@ -694,13 +888,7 @@ mod tests {
                     kind: Some("spring".to_string()),
                     duration: Some(duration),
                     bounce: Some(bounce),
-                    delay: None,
-                    ease: None,
-                    stiffness: None,
-                    damping: None,
-                    mass: None,
-                    rest_speed: None,
-                    rest_delta: None,
+                    ..RawTransition::default()
                 };
                 Spring::from_raw(&raw).unwrap();
             }

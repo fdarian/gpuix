@@ -29,7 +29,7 @@ use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
 use svg_attr::SvgAttr;
-use track::Track;
+use track::{Goal, Track};
 use value::AnimValue;
 
 /// The animated properties' current values, ready to lay over a style.
@@ -73,6 +73,13 @@ impl PropKey {
             Self::Svg(attr) => attr.parse(value),
         }
     }
+
+    fn is_list_value(self, items: &[Value]) -> bool {
+        match self {
+            Self::Style(prop) => prop.is_list_value(items),
+            Self::Svg(attr) => attr.is_list_value(items),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,6 +106,7 @@ impl Base<'_> {
 }
 
 type Styles = BTreeMap<PropKey, AnimValue>;
+type Goals = BTreeMap<PropKey, Goal>;
 
 /// Framer's normalised draw keys: how much of the shape's length is stroked
 /// (`length`), where the dash starts (`offset`) and the gap after it
@@ -131,11 +139,15 @@ pub(crate) struct SvgMotion {
 
 /// Fields of a transition object that describe one curve. Every other key is
 /// `default` or the name of the property it applies to.
-const CURVE_KEYS: [&str; 10] = [
+const CURVE_KEYS: [&str; 14] = [
     "type",
     "duration",
     "delay",
     "ease",
+    "times",
+    "repeat",
+    "repeatType",
+    "repeatDelay",
     "stiffness",
     "damping",
     "mass",
@@ -217,7 +229,7 @@ struct Description {
     is_exit: bool,
     /// `None` for `initial: false` or no `initial`: nothing animates on mount.
     initial: Option<Styles>,
-    animate: Styles,
+    animate: Goals,
     transition: Transitions,
 }
 
@@ -239,7 +251,7 @@ pub(crate) struct MotionFrame {
 struct Pending {
     /// `None` starts from layout.
     from: Option<AnimValue>,
-    target: AnimValue,
+    goal: Goal,
     transition: Transition,
     /// The count of painted frames when the animation was set.
     painted: u64,
@@ -402,15 +414,13 @@ impl MotionState {
         let mut tracks = self.tracks.clone();
         let mut pending = self.pending.clone();
         let mut moving = false;
-        for (prop, target) in &description.animate {
+        for (prop, goal) in &description.animate {
             let transition = description.transition.for_prop(*prop);
             let previous = self.tracks.get(prop);
             let waiting = self.pending.get(prop);
             let unchanged = match (previous, waiting) {
-                (Some(track), _) => track.target() == target && track.transition() == transition,
-                (None, Some(waiting)) => {
-                    waiting.target == *target && waiting.transition == *transition
-                }
+                (Some(track), _) => track.goal() == goal && track.transition() == transition,
+                (None, Some(waiting)) => waiting.goal == *goal && waiting.transition == *transition,
                 (None, None) => false,
             };
             if unchanged {
@@ -422,7 +432,7 @@ impl MotionState {
                 (None, Some(waiting)) => waiting.from.clone().map_or(Start::Layout, Start::Value),
                 (None, None) => start_for(*prop, None, base),
             };
-            let begun = begin(*prop, start, target, transition, measurement, painted, now)?;
+            let begun = begin(*prop, start, goal, transition, measurement, painted, now)?;
             tracks.remove(prop);
             pending.remove(prop);
             match begun {
@@ -457,14 +467,14 @@ impl MotionState {
                     self.pending.insert(prop, waiting);
                     continue;
                 }
-                (None, _) => Start::Jump,
+                (None, _) => Start::Rest,
                 (Some(_), Some(from)) => Start::Value(from),
                 (Some(_), None) => Start::Layout,
             };
             match begin(
                 prop,
                 start,
-                &waiting.target,
+                &waiting.goal,
                 &waiting.transition,
                 measurement,
                 painted,
@@ -500,8 +510,13 @@ impl MotionState {
             if !track.is_measured() || !track.sample(now).active {
                 continue;
             }
-            let followed = measured_end(*prop, track.target(), measurement)
-                .and_then(|end| track.follow(prop.name(), end, now));
+            let followed = if track.restarts_on_follow() {
+                measured_end(*prop, track.target(), measurement)
+                    .and_then(|end| track.follow(prop.name(), end, now))
+            } else {
+                resolve_keyframes(*prop, track.literal(), measurement)
+                    .and_then(|resolved| track.follow_keyframes(prop.name(), &resolved))
+            };
             match followed {
                 Ok(Some(next)) => *track = next,
                 Ok(None) => {}
@@ -671,8 +686,11 @@ enum Start {
     /// or `auto` does not state.
     Layout,
     /// No start is known and none can be measured: the property is already at
-    /// its target.
+    /// its target, unless the keyframes name their own first value.
     Jump,
+    /// Nothing animates: the property is at its target, keyframes and all.
+    /// Mounted without an `initial`, or never painted.
+    Rest,
 }
 
 enum Begun {
@@ -735,17 +753,21 @@ fn in_pixels(
 fn begin(
     key: PropKey,
     start: Start,
-    target: &AnimValue,
+    goal: &Goal,
     transition: &Transition,
     measurement: Option<&Measurement>,
     painted: u64,
     now: Instant,
 ) -> Result<Begun, String> {
+    if !goal.is_single() {
+        return begin_keyframes(key, start, goal, transition, measurement, painted, now);
+    }
+    let target = goal.last();
     let name = key.name();
     let wait = |from| {
         Begun::Wait(Pending {
             from,
-            target: target.clone(),
+            goal: goal.clone(),
             transition: transition.clone(),
             painted,
         })
@@ -758,7 +780,7 @@ fn begin(
         let from = match start {
             Start::Value(from) => from,
             // Already `auto`: there is no number to animate from.
-            Start::Layout | Start::Jump => {
+            Start::Layout | Start::Jump | Start::Rest => {
                 return Ok(Begun::Track(Track::resting_at_auto(transition.clone(), now)));
             }
         };
@@ -773,7 +795,7 @@ fn begin(
 
     let from = match start {
         Start::Value(from) => from,
-        Start::Jump => target.clone(),
+        Start::Jump | Start::Rest => target.clone(),
         Start::Layout => {
             let PropKey::Style(prop) = key else {
                 unreachable!("only a style property starts from layout");
@@ -806,6 +828,96 @@ fn begin(
     Track::resolved(name, &from, target.clone(), to, transition.clone(), now).map(Begun::Track)
 }
 
+/// Keyframes: each one that layout has to resolve is measured, and the style
+/// goes back to the literal last one when the track ends.
+fn begin_keyframes(
+    key: PropKey,
+    start: Start,
+    goal: &Goal,
+    transition: &Transition,
+    measurement: Option<&Measurement>,
+    painted: u64,
+    now: Instant,
+) -> Result<Begun, String> {
+    let name = key.name();
+    let wait = |from| {
+        Begun::Wait(Pending {
+            from,
+            goal: goal.clone(),
+            transition: transition.clone(),
+            painted,
+        })
+    };
+    let last = goal.last();
+    let at_end = || {
+        if *last == AnimValue::Auto {
+            return Ok(Begun::Track(Track::resting_at_auto(transition.clone(), now)));
+        }
+        Track::new(name, last, last.clone(), transition.clone(), now).map(Begun::Track)
+    };
+
+    let mut literal: Vec<AnimValue> = Vec::with_capacity(goal.frames().len());
+    for frame in goal.frames() {
+        let value = match (frame, literal.last(), &start) {
+            (_, _, Start::Rest) => return at_end(),
+            (Some(value), _, _) => value.clone(),
+            (None, Some(previous), _) => previous.clone(),
+            (None, None, Start::Value(from)) => from.clone(),
+            (None, None, Start::Jump) => return at_end(),
+            (None, None, Start::Layout) => {
+                let PropKey::Style(prop) = key else {
+                    unreachable!("only a style property starts from layout");
+                };
+                let Some(measurement) = measurement else {
+                    return Ok(wait(None));
+                };
+                match measurement.laid_out(prop) {
+                    Some(size) => AnimValue::Number(size),
+                    None => return at_end(),
+                }
+            }
+        };
+        literal.push(value);
+    }
+
+    let resolved = match (key, needs_layout(&literal), measurement) {
+        (PropKey::Style(prop), true, Some(measurement)) => {
+            resolve_keyframes(prop, &literal, measurement)?
+        }
+        (_, true, None) => return Ok(wait(literal.first().cloned())),
+        _ => literal.clone(),
+    };
+    Track::keyframed(name, goal.clone(), literal, &resolved, transition.clone(), now)
+        .map(Begun::Track)
+}
+
+/// Whether the keyframes have to go through px: `auto` has no number of its
+/// own, and a percentage meeting a px length is a share of the parent's box.
+fn needs_layout(literal: &[AnimValue]) -> bool {
+    let has = |wanted: fn(&AnimValue) -> bool| literal.iter().any(wanted);
+    has(|value| *value == AnimValue::Auto)
+        || (has(|value| matches!(value, AnimValue::Number(_)))
+            && has(|value| matches!(value, AnimValue::Percent(_))))
+}
+
+/// The keyframes in px where they need it, as `needs_layout` decides.
+fn resolve_keyframes(
+    prop: AnimProp,
+    literal: &[AnimValue],
+    measurement: &Measurement,
+) -> Result<Vec<AnimValue>, String> {
+    if !needs_layout(literal) {
+        return Ok(literal.to_vec());
+    }
+    literal
+        .iter()
+        .map(|value| match value {
+            AnimValue::Auto | AnimValue::Percent(_) => measured_end(prop, value, measurement),
+            other => Ok(other.clone()),
+        })
+        .collect()
+}
+
 fn mount_tracks(
     description: &Description,
     base: Base,
@@ -815,13 +927,13 @@ fn mount_tracks(
 ) -> Result<(BTreeMap<PropKey, Track>, BTreeMap<PropKey, Pending>), String> {
     let mut tracks = BTreeMap::new();
     let mut pending = BTreeMap::new();
-    for (prop, target) in &description.animate {
+    for (prop, goal) in &description.animate {
         let start = match &description.initial {
-            None => Start::Jump,
+            None => Start::Rest,
             Some(initial) => start_for(*prop, initial.get(prop), base),
         };
         let transition = description.transition.for_prop(*prop);
-        match begin(*prop, start, target, transition, measurement, painted, now)? {
+        match begin(*prop, start, goal, transition, measurement, painted, now)? {
             Begun::Track(track) => {
                 tracks.insert(*prop, track);
             }
@@ -877,11 +989,11 @@ fn parse_description(source: &Value, target: Target) -> Result<Description, Stri
     };
     let initial = match fields.get("initial") {
         None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Object(style)) => Some(parse_styles("initial", style, target)?),
+        Some(Value::Object(style)) => Some(parse_initial(style, target)?),
         Some(_) => return Err("motion initial only accepts false or a style object".to_string()),
     };
     let animate = match fields.get("animate") {
-        Some(Value::Object(style)) => parse_styles("animate", style, target)?,
+        Some(Value::Object(style)) => parse_goals("animate", style, target)?,
         _ => return Err("motion animate must be a style object".to_string()),
     };
     let reduced = match fields.get("reducedMotion") {
@@ -899,21 +1011,38 @@ fn parse_description(source: &Value, target: Target) -> Result<Description, Stri
     })
 }
 
+/// `initial` holds a value per property, never keyframes.
+fn parse_initial(style: &Map<String, Value>, target: Target) -> Result<Styles, String> {
+    parse_goals("initial", style, target)?
+        .into_iter()
+        .map(|(key, goal)| {
+            if !goal.is_single() {
+                return Err(format!(
+                    "motion initial cannot hold keyframes for {}: it is the value the animation starts from",
+                    key.name()
+                ));
+            }
+            Ok((key, goal.last().clone()))
+        })
+        .collect()
+}
+
 /// Expands shorthands (`padding`, `margin`, `borderRadius`, `borderWidth`,
 /// `gap`) into longhands. Where both are given the longhand wins, as the more
 /// specific one does in CSS.
-fn parse_styles(
+fn parse_goals(
     context: &str,
     style: &Map<String, Value>,
     target: Target,
-) -> Result<Styles, String> {
-    let mut styles = Styles::new();
+) -> Result<Goals, String> {
+    let mut goals = Goals::new();
     let mut longhands = Vec::new();
     for (key, value) in style {
         if let Some(props) = shorthand(target, key) {
-            let parsed = props[0].parse(value).map_err(|error| rename(error, props[0], key))?;
+            let parsed = parse_goal(PropKey::Style(props[0]), value)
+                .map_err(|error| rename(error, props[0], key))?;
             for prop in props {
-                styles.insert(PropKey::Style(*prop), parsed.clone());
+                goals.insert(PropKey::Style(*prop), parsed.clone());
             }
         } else if let Some(prop) = PropKey::from_name(target, key) {
             longhands.push((prop, value));
@@ -929,9 +1058,35 @@ fn parse_styles(
         }
     }
     for (prop, value) in longhands {
-        styles.insert(prop, prop.parse(value)?);
+        goals.insert(prop, parse_goal(prop, value)?);
     }
-    Ok(styles)
+    Ok(goals)
+}
+
+/// One target, or keyframes when `value` is an array that is not itself one
+/// value of a list-valued property. `null` is a wildcard: the value before it,
+/// or the value the animation starts from when it comes first.
+fn parse_goal(key: PropKey, value: &Value) -> Result<Goal, String> {
+    let Value::Array(items) = value else {
+        return key.parse(value).map(Goal::single);
+    };
+    if key.is_list_value(items) {
+        return key.parse(value).map(Goal::single);
+    }
+    let frames = items
+        .iter()
+        .map(|item| match item {
+            Value::Null => Ok(None),
+            item => key.parse(item).map(Some),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if let [only] = frames.as_slice() {
+        return match only {
+            Some(only) => Ok(Goal::single(only.clone())),
+            None => Err(format!("motion {} keyframes need a value besides null", key.name())),
+        };
+    }
+    Goal::keyframes(key.name(), frames)
 }
 
 /// A shorthand is validated through its first longhand, so name the shorthand

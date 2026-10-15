@@ -160,14 +160,21 @@ pub(super) enum Layout {
     /// One entry per layer, giving its `inset`.
     Shadows(Vec<bool>),
     /// Shadow lists whose `inset` flags differ at some index cannot be
-    /// interpolated, so one channel runs 0 to 1 and the value flips at half.
-    DiscreteShadows { from: Vec<Shadow>, to: Vec<Shadow> },
+    /// interpolated: one channel runs from option to option and the value
+    /// flips at the halfway point between them.
+    DiscreteShadows(Vec<Vec<Shadow>>),
     Numbers,
     /// Paths with the same commands: the channels are their numbers, in order.
     Path(PathData),
-    /// Paths with different commands cannot blend, so one channel runs 0 to 1
-    /// and the value flips at half.
-    DiscretePath { from: PathData, to: PathData },
+    /// Paths with different commands cannot blend: one channel runs from
+    /// option to option and the value flips at the halfway point between them.
+    DiscretePath(Vec<PathData>),
+}
+
+/// The option a discrete channel stands on: the nearest whole number, halves
+/// rounding up, kept inside the list because a spring can overshoot.
+fn option_index(channel: f64, options: usize) -> usize {
+    (channel + 0.5).floor().clamp(0.0, (options - 1) as f64) as usize
 }
 
 impl Layout {
@@ -183,13 +190,13 @@ impl Layout {
                     .map(|(inset, layer)| Shadow::from_channels(layer, *inset))
                     .collect(),
             ),
-            Self::DiscreteShadows { from, to } => {
-                AnimValue::Shadows(if channels[0] < 0.5 { from } else { to }.clone())
+            Self::DiscreteShadows(options) => {
+                AnimValue::Shadows(options[option_index(channels[0], options.len())].clone())
             }
             Self::Numbers => AnimValue::Numbers(channels.to_vec()),
             Self::Path(template) => AnimValue::Path(template.with_numbers(channels)),
-            Self::DiscretePath { from, to } => {
-                AnimValue::Path(if channels[0] < 0.5 { from } else { to }.clone())
+            Self::DiscretePath(options) => {
+                AnimValue::Path(options[option_index(channels[0], options.len())].clone())
             }
         }
     }
@@ -234,116 +241,171 @@ impl Pair {
     pub(super) fn is_discrete(&self) -> bool {
         matches!(
             self.layout,
-            Layout::DiscreteShadows { .. } | Layout::DiscretePath { .. }
+            Layout::DiscreteShadows(_) | Layout::DiscretePath(_)
         )
     }
 }
 
 pub(super) fn pair(name: &str, from: &AnimValue, to: &AnimValue) -> Result<Pair, String> {
-    match (from, to) {
-        (AnimValue::Number(from), AnimValue::Number(to)) => Ok(Pair {
-            layout: Layout::Number,
-            from: vec![*from],
-            to: vec![*to],
-        }),
-        (AnimValue::Percent(from), AnimValue::Percent(to)) => Ok(Pair {
-            layout: Layout::Percent,
-            from: vec![*from],
-            to: vec![*to],
-        }),
-        (AnimValue::Color(from), AnimValue::Color(to)) => Ok(Pair {
-            layout: Layout::Color,
-            from: from.channels().to_vec(),
-            to: to.channels().to_vec(),
-        }),
-        (AnimValue::Shadows(from), AnimValue::Shadows(to)) => Ok(pair_shadows(from, to)),
-        (AnimValue::Numbers(from), AnimValue::Numbers(to)) => pair_numbers(name, from, to),
-        (AnimValue::Path(from), AnimValue::Path(to)) => Ok(pair_paths(from, to)),
-        _ => Err(format!(
+    let mut aligned = align(name, &[from, to])?;
+    let to = aligned.frames.pop().expect("two values were aligned");
+    let from = aligned.frames.pop().expect("two values were aligned");
+    Ok(Pair {
+        layout: aligned.layout,
+        from,
+        to,
+    })
+}
+
+/// Several values of one kind as channel vectors in a shared layout.
+#[derive(Clone, Debug)]
+pub(super) struct Aligned {
+    pub(super) layout: Layout,
+    pub(super) frames: Vec<Vec<f64>>,
+}
+
+/// [`pair`] for any number of values, such as the keyframes of one track.
+pub(super) fn align(name: &str, values: &[&AnimValue]) -> Result<Aligned, String> {
+    for window in values.windows(2) {
+        if std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
+            return Err(format!(
+                "motion {name} cannot animate from {} to {}: mixed units are not supported",
+                window[0].describe(),
+                window[1].describe()
+            ));
+        }
+    }
+    match values[0] {
+        AnimValue::Number(_) => Ok(simple(Layout::Number, values, |value| match value {
+            AnimValue::Number(number) => vec![*number],
+            _ => unreachable!("kinds were checked"),
+        })),
+        AnimValue::Percent(_) => Ok(simple(Layout::Percent, values, |value| match value {
+            AnimValue::Percent(fraction) => vec![*fraction],
+            _ => unreachable!("kinds were checked"),
+        })),
+        AnimValue::Color(_) => Ok(simple(Layout::Color, values, |value| match value {
+            AnimValue::Color(color) => color.channels().to_vec(),
+            _ => unreachable!("kinds were checked"),
+        })),
+        AnimValue::Shadows(_) => Ok(align_shadows(&unwrap_each(values, |value| match value {
+            AnimValue::Shadows(shadows) => shadows.as_slice(),
+            _ => unreachable!("kinds were checked"),
+        }))),
+        AnimValue::Numbers(_) => align_numbers(
+            name,
+            &unwrap_each(values, |value| match value {
+                AnimValue::Numbers(numbers) => numbers.as_slice(),
+                _ => unreachable!("kinds were checked"),
+            }),
+        ),
+        AnimValue::Path(_) => Ok(align_paths(&unwrap_each(values, |value| match value {
+            AnimValue::Path(path) => path,
+            _ => unreachable!("kinds were checked"),
+        }))),
+        AnimValue::Auto => Err(format!(
             "motion {name} cannot animate from {} to {}: mixed units are not supported",
-            from.describe(),
-            to.describe()
+            values[0].describe(),
+            values[values.len() - 1].describe()
         )),
+    }
+}
+
+fn unwrap_each<'a, T: ?Sized>(
+    values: &[&'a AnimValue],
+    inner: impl Fn(&'a AnimValue) -> &'a T,
+) -> Vec<&'a T> {
+    values.iter().map(|value| inner(value)).collect()
+}
+
+fn simple(layout: Layout, values: &[&AnimValue], channels: impl Fn(&AnimValue) -> Vec<f64>) -> Aligned {
+    Aligned {
+        layout,
+        frames: values.iter().map(|value| channels(value)).collect(),
     }
 }
 
 /// Lists of different lengths are repeated to their least common multiple, as
 /// CSS interpolates `stroke-dasharray`.
-fn pair_numbers(name: &str, from: &[f64], to: &[f64]) -> Result<Pair, String> {
-    if from.is_empty() || to.is_empty() {
+fn align_numbers(name: &str, lists: &[&[f64]]) -> Result<Aligned, String> {
+    if lists.iter().any(|list| list.is_empty()) {
         return Err(format!("motion {name} cannot animate from or to an empty list"));
     }
-    let divisor = (1..=from.len().min(to.len()))
-        .rev()
-        .find(|candidate| from.len() % candidate == 0 && to.len() % candidate == 0)
-        .unwrap_or(1);
-    let length = from.len() / divisor * to.len();
-    let repeat = |list: &[f64]| list.iter().copied().cycle().take(length).collect();
-    Ok(Pair {
+    let length = lists.iter().fold(1, |length, list| {
+        let (mut a, mut b) = (length, list.len());
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        length / a * list.len()
+    });
+    Ok(Aligned {
         layout: Layout::Numbers,
-        from: repeat(from),
-        to: repeat(to),
+        frames: lists
+            .iter()
+            .map(|list| list.iter().copied().cycle().take(length).collect())
+            .collect(),
     })
 }
 
-fn pair_paths(from: &PathData, to: &PathData) -> Pair {
-    if from.same_structure(to) {
-        return Pair {
-            layout: Layout::Path(from.clone()),
-            from: from.numbers(),
-            to: to.numbers(),
+fn align_paths(paths: &[&PathData]) -> Aligned {
+    if paths.iter().all(|path| path.same_structure(paths[0])) {
+        return Aligned {
+            layout: Layout::Path(paths[0].clone()),
+            frames: paths.iter().map(|path| path.numbers()).collect(),
         };
     }
-    Pair {
-        layout: Layout::DiscretePath {
-            from: from.clone(),
-            to: to.clone(),
-        },
-        from: vec![0.0],
-        to: vec![1.0],
+    Aligned {
+        layout: Layout::DiscretePath(paths.iter().map(|path| (*path).clone()).collect()),
+        frames: (0..paths.len()).map(|index| vec![index as f64]).collect(),
     }
 }
 
-fn pair_shadows(from: &[Shadow], to: &[Shadow]) -> Pair {
-    let layers = from.len().max(to.len());
-    let padded = |list: &[Shadow], other: &[Shadow]| -> Vec<Shadow> {
-        (0..layers)
-            .map(|index| {
-                list.get(index)
-                    .cloned()
-                    .unwrap_or_else(|| Shadow::none(other[index].inset))
-            })
-            .collect()
-    };
-    let from_layers = padded(from, to);
-    let to_layers = padded(to, from);
-
-    if from_layers
+fn align_shadows(lists: &[&[Shadow]]) -> Aligned {
+    let layers = lists.iter().map(|list| list.len()).max().unwrap_or_default();
+    // A layer a list lacks is a transparent one that takes the `inset` of the
+    // first list that has it.
+    let padded: Vec<Vec<Shadow>> = lists
         .iter()
-        .zip(&to_layers)
-        .any(|(from, to)| from.inset != to.inset)
-    {
-        return Pair {
-            layout: Layout::DiscreteShadows {
-                from: from.to_vec(),
-                to: to.to_vec(),
-            },
-            from: vec![0.0],
-            to: vec![1.0],
+        .map(|list| {
+            (0..layers)
+                .map(|index| {
+                    list.get(index).cloned().unwrap_or_else(|| {
+                        let inset = lists
+                            .iter()
+                            .find_map(|other| other.get(index))
+                            .expect("a layer index below the longest list is in some list")
+                            .inset;
+                        Shadow::none(inset)
+                    })
+                })
+                .collect()
+        })
+        .collect();
+
+    let compatible = (0..layers).all(|index| {
+        padded
+            .iter()
+            .all(|list| list[index].inset == padded[0][index].inset)
+    });
+    if !compatible {
+        return Aligned {
+            layout: Layout::DiscreteShadows(lists.iter().map(|list| list.to_vec()).collect()),
+            frames: (0..lists.len()).map(|index| vec![index as f64]).collect(),
         };
     }
 
-    let channels = |layers: &[Shadow]| {
-        let mut channels = Vec::with_capacity(layers.len() * SHADOW_CHANNELS);
-        for layer in layers {
-            layer.push_channels(&mut channels);
-        }
-        channels
-    };
-    Pair {
-        layout: Layout::Shadows(from_layers.iter().map(|layer| layer.inset).collect()),
-        from: channels(&from_layers),
-        to: channels(&to_layers),
+    Aligned {
+        layout: Layout::Shadows(padded[0].iter().map(|layer| layer.inset).collect()),
+        frames: padded
+            .iter()
+            .map(|layers| {
+                let mut channels = Vec::with_capacity(layers.len() * SHADOW_CHANNELS);
+                for layer in layers {
+                    layer.push_channels(&mut channels);
+                }
+                channels
+            })
+            .collect(),
     }
 }
 
