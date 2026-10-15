@@ -180,4 +180,50 @@ describeNative("pointer lock", () => {
       "second:mousemove@60,150",
     ])
   })
+
+  describe("movement", () => {
+    type Moved = { type: string; movementX: number; movementY: number; clientX: number }
+
+    it("reports the platform's motion on pointermove and mousemove, as clientX stands still", () => {
+      const moves: Moved[] = []
+      const track = (event: Moved) => moves.push(event)
+      testRoot.render(
+        <div style={{ width: 200, height: 200 }} onPointerMove={track} onMouseMove={track} />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseMove(30, 40, undefined, undefined, { x: 4, y: -3 })
+      testRoot.renderer.nativeSimulateMouseMove(30, 40)
+
+      expect(moves.map((event) => [event.type, event.movementX, event.movementY])).toEqual([
+        ["pointermove", 4, -3],
+        ["mousemove", 4, -3],
+        ["pointermove", 0, 0],
+        ["mousemove", 0, 0],
+      ])
+    })
+
+    it("keeps reporting motion while the pointer is locked and clientX is frozen", () => {
+      const moves: Moved[] = []
+      testRoot.render(
+        <div
+          ref={(instance) => {
+            if (instance) first = instance as unknown as Lockable
+          }}
+          style={{ width: 200, height: 200 }}
+          onMouseMove={(event: Moved) => moves.push(event)}
+        />,
+      )
+      testRoot.renderer.nativeSimulateMouseMove(30, 40)
+      first.requestPointerLock()
+      moves.length = 0
+
+      testRoot.renderer.nativeSimulateMouseMove(90, 100, undefined, undefined, { x: 12, y: 5 })
+      testRoot.renderer.nativeSimulateMouseMove(150, 160, undefined, undefined, { x: -9, y: 1 })
+
+      expect(moves.map((event) => [event.clientX, event.movementX, event.movementY])).toEqual([
+        [30, 12, 5],
+        [30, -9, 1],
+      ])
+    })
+  })
 })

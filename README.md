@@ -3253,10 +3253,10 @@ text imports no longer need a runtime flag.
 | Double click | `onDoubleClick` | as `onClick`, after the click whose `detail` is 2 |
 | Context menu | `onContextMenu` | as `onClick`, on the secondary button **press** |
 | Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` |
-| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton` |
+| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`, `movementX`, `movementY` |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` fires on the press target when a `draggable` drag starts |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` also has `movementX` and `movementY`. `onPointerCancel` fires on the press target when a `draggable` drag starts |
 | Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
 | Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
@@ -3506,7 +3506,7 @@ const dial = useRef<PublicInstance>(null)
 <div
   ref={dial}
   onMouseDown={() => dial.current?.requestPointerLock?.()}
-  onMouseMove={(e) => turn(e)}
+  onMouseMove={(e) => turn(e.movementX)}
 />
 
 render(<App />, {
@@ -3521,7 +3521,8 @@ render(<App />, {
 
 While the lock is held, pointer and mouse events target the lock element, as
 with capture, wherever the mouse is, and `clientX`/`clientY` stay at the
-position the pointer had when the lock began. `renderer.exitPointerLock()` releases it, and
+position the pointer had when the lock began. The motion is in `movementX` and
+`movementY`. `renderer.exitPointerLock()` releases it, and
 `renderer.pointerLockElement()` returns the locked element's id or `null`.
 `renderer.requestPointerLock(elementId)` is the same call as the ref's.
 
@@ -3546,11 +3547,20 @@ Only macOS can lock the pointer (`CGAssociateMouseAndMouseCursorPosition`), and
 only for the active window. On Windows and Linux every request fails with
 `onPointerLockError`.
 
+`movementX` and `movementY` are on every `pointermove` and `mousemove`, locked or
+not: how far the pointer moved since the previous move, in logical pixels, from
+the platform's own relative motion. Required in the types of `onMouseMove` and
+`onPointerMove` (`HostMouseMoveEvent`, `HostPointerMoveEvent`); other pointer
+events do not carry them. They are `0` where the platform reports no relative
+motion (everything but macOS).
+
 Under test the offscreen window is never active, so a real lock is always
 refused. `TestRenderer` runs a simulated platform instead: `requestPointerLock`
 and `exitPointerLock` draw the frame they ask for and deliver the events,
 `simulatePointerLockGranting(false)` makes the platform refuse, and
-`simulatePointerLockLost()` drops the lock as a deactivation does.
+`simulatePointerLockLost()` drops the lock as a deactivation does. The
+simulated platform reports no motion unless a move says so:
+`nativeSimulateMouseMove(x, y, pressedButton, modifiers, { x: 4, y: -3 })`.
 
 `onClick` fires on primary-button mouse-up. Use **`onAuxClick`** for the others,
 and read `event.isRightClick`. `onMouseDown` and `onMouseUp` see every

@@ -36,11 +36,20 @@ fn sample(
     position: Point<Pixels>,
     modifiers: Modifiers,
 ) -> PointerSample {
+    // GPUI keeps the delta of the latest move, so only a move reads it.
+    let movement = match action {
+        PointerAction::Move { .. } => window.last_mouse_movement(),
+        _ => Point::default(),
+    };
     PointerSample {
         action,
         position: (
             f64::from(f32::from(position.x)),
             f64::from(f32::from(position.y)),
+        ),
+        movement: (
+            f64::from(f32::from(movement.x)),
+            f64::from(f32::from(movement.y)),
         ),
         modifiers: EventModifiers::from(modifiers),
         hits: host_hit_chain(window),

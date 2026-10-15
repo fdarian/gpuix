@@ -450,6 +450,8 @@ impl TestGpuixRenderer {
     /// Simulate a mouse move to the given coordinates.
     /// pressed_button: optional mouse button held during move (0=left, 1=middle, 2=right).
     /// Used to simulate drag events.
+    /// movement_x, movement_y: the motion the platform reports for this move, which
+    /// becomes `movementX`/`movementY`. Zero when not given.
     #[napi]
     pub fn simulate_mouse_move(
         &self,
@@ -457,8 +459,12 @@ impl TestGpuixRenderer {
         y: f64,
         pressed_button: Option<u32>,
         modifiers: Option<String>,
+        movement_x: Option<f64>,
+        movement_y: Option<f64>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        self.platform
+            .set_movement((movement_x.unwrap_or(0.0), movement_y.unwrap_or(0.0)));
         with_test_state(|cx, window, _view| {
             let button: Option<gpui::MouseButton> = pressed_button.map(u32_to_mouse_button);
 
@@ -900,7 +906,7 @@ impl TestGpuixRenderer {
         self.flush()?;
         self.simulate_mouse_down(x1, y1, None, None, None)?;
         self.flush()?;
-        self.simulate_mouse_move(x2, y2, Some(0), None)?;
+        self.simulate_mouse_move(x2, y2, Some(0), None, None, None)?;
         self.flush()?;
         self.simulate_mouse_up(x2, y2, None, None, None)?;
         self.flush()?;

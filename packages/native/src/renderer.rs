@@ -4220,9 +4220,14 @@ impl GpuixView {
     /// produces. Runs deferred, after GPUI is done with the event.
     pub(crate) fn handle_pointer(
         &mut self,
-        sample: crate::events::dispatcher::PointerSample,
+        mut sample: crate::events::dispatcher::PointerSample,
         cx: &mut gpui::Context<Self>,
     ) {
+        if let (Some(platform), crate::events::dispatcher::PointerAction::Move { .. }) =
+            (&self.simulated_platform, &sample.action)
+        {
+            sample.movement = platform.movement();
+        }
         let output = {
             let tree = self.tree.lock().unwrap();
             crate::events::dispatcher::dispatch(&mut self.pointer, &tree, &sample)

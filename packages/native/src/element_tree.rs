@@ -164,6 +164,12 @@ pub struct EventPayload {
     pub offset_x: Option<f64>,
     pub offset_y: Option<f64>,
 
+    /// Pointer motion since the previous move, in logical pixels, the DOM
+    /// `movementX`/`movementY`. Populated for: pointermove, mousemove. Zero where
+    /// the platform reports no relative motion.
+    pub movement_x: Option<f64>,
+    pub movement_y: Option<f64>,
+
     /// Buttons held while the event fires, as the DOM bitmask: 1 primary,
     /// 2 secondary, 4 auxiliary, 8 back, 16 forward.
     pub buttons: Option<u32>,
@@ -221,6 +227,8 @@ impl Default for EventPayload {
             client_y: None,
             offset_x: None,
             offset_y: None,
+            movement_x: None,
+            movement_y: None,
             buttons: None,
             detail: None,
             pointer_id: None,

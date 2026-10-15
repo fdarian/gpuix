@@ -329,8 +329,10 @@ export declare class TestGpuixRenderer {
    * Simulate a mouse move to the given coordinates.
    * pressed_button: optional mouse button held during move (0=left, 1=middle, 2=right).
    * Used to simulate drag events.
+   * movement_x, movement_y: the motion the platform reports for this move, which
+   * becomes `movementX`/`movementY`. Zero when not given.
    */
-  simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null, modifiers?: string | undefined | null): void
+  simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null, modifiers?: string | undefined | null, movementX?: number | undefined | null, movementY?: number | undefined | null): void
   /**
    * Simulate the pointer leaving the window, as the platform reports it when
    * the cursor crosses the window edge: there is no final mouse move.
@@ -780,6 +782,13 @@ export interface EventPayload {
    */
   offsetX?: number
   offsetY?: number
+  /**
+   * Pointer motion since the previous move, in logical pixels, the DOM
+   * `movementX`/`movementY`. Populated for: pointermove, mousemove. Zero where
+   * the platform reports no relative motion.
+   */
+  movementX?: number
+  movementY?: number
   /**
    * Buttons held while the event fires, as the DOM bitmask: 1 primary,
    * 2 secondary, 4 auxiliary, 8 back, 16 forward.

@@ -63,7 +63,9 @@ interface NativeTestRendererApi extends NativeRenderer {
     x: number,
     y: number,
     pressedButton?: number,
-    modifiers?: string
+    modifiers?: string,
+    movementX?: number,
+    movementY?: number
   ): void
   simulateMouseExit(x: number, y: number): void
   simulateMouseDown(
@@ -151,6 +153,12 @@ export interface TestRendererOptions {
   fonts?: string[]
   /** Framework scheduling boundary for events drained from native. */
   dispatchEvent?: (event: EventPayload) => void
+}
+
+/** The motion a simulated mouse move reports, in logical pixels. */
+export interface MouseMovement {
+  x: number
+  y: number
 }
 
 export type TestWindowOptions = TestRendererOptions & WindowKeyEventHandlers
@@ -377,23 +385,28 @@ export class TestRenderer implements NativeRenderer {
     x: number,
     y: number,
     pressedButton?: number,
-    modifiers?: string
+    modifiers?: string,
+    movement?: MouseMovement
   ): void {
-    this.native.simulateMouseMove(x, y, pressedButton, modifiers)
+    this.native.simulateMouseMove(x, y, pressedButton, modifiers, movement?.x, movement?.y)
     this.dispatchNativeEvents()
   }
 
   /** End-to-end: simulate mouse move through GPUI →
    *  dispatch resulting events to the framework.
-   *  @param pressedButton - optional button held during move (0=left, 1=middle, 2=right) for drag simulation */
+   *  @param pressedButton - optional button held during move (0=left, 1=middle, 2=right) for drag simulation
+   *  @param movement - what the platform reports as this move's motion, which becomes
+   *    `movementX`/`movementY`. A real platform reports the delta from the last position;
+   *    the simulation reports `{ x: 0, y: 0 }` unless told otherwise. */
   nativeSimulateMouseMove(
     x: number,
     y: number,
     pressedButton?: number,
-    modifiers?: string
+    modifiers?: string,
+    movement?: MouseMovement
   ): void {
     this.native.flush()
-    this.native.simulateMouseMove(x, y, pressedButton, modifiers)
+    this.native.simulateMouseMove(x, y, pressedButton, modifiers, movement?.x, movement?.y)
     this.dispatchNativeEvents()
     // Flush again after framework state updates so hover styles are applied
     // and the Rust tree is current before any screenshot.

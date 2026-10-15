@@ -78,6 +78,9 @@ pub struct PointerSample {
     pub action: PointerAction,
     /// Window coordinates.
     pub position: (f64, f64),
+    /// How far the pointer moved with this input, in logical pixels. Only a
+    /// move carries any.
+    pub movement: (f64, f64),
     pub modifiers: EventModifiers,
     /// Host elements under the pointer, target first. Empty outside the window.
     pub hits: Vec<Hit>,
@@ -98,6 +101,7 @@ pub struct DomEvent {
     pub detail: Option<u32>,
     /// Pointer position relative to the target's padding edge.
     pub offset: Option<(f64, f64)>,
+    pub movement: Option<(f64, f64)>,
     pub pressed_button: Option<u32>,
     pub hovered: Option<bool>,
     /// `dataTransfer.files`, on the first event of a file drag.
@@ -159,6 +163,8 @@ impl Output {
                 client_y: Some(position.1),
                 offset_x: event.offset.map(|offset| offset.0),
                 offset_y: event.offset.map(|offset| offset.1),
+                movement_x: event.movement.map(|movement| movement.0),
+                movement_y: event.movement.map(|movement| movement.1),
                 button: event.button,
                 is_right_click: event.button.map(|button| button == SECONDARY_BUTTON),
                 buttons: Some(buttons),
@@ -178,6 +184,7 @@ impl Output {
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Fields {
+    pub movement: Option<(f64, f64)>,
     pub related_target: Option<u64>,
     pub button: Option<u32>,
     pub detail: Option<u32>,
@@ -221,6 +228,7 @@ impl<'a> Emitter<'a> {
             button: fields.button,
             detail: fields.detail,
             offset: self.offset(target),
+            movement: fields.movement,
             pressed_button: fields.pressed_button,
             hovered: fields.hovered,
             files: None,
@@ -243,6 +251,7 @@ impl<'a> Emitter<'a> {
             button: None,
             detail: None,
             offset: self.offset(target),
+            movement: None,
             pressed_button: None,
             hovered: None,
             files,
@@ -282,6 +291,7 @@ impl<'a> Emitter<'a> {
                 button: fields.button,
                 detail: fields.detail,
                 offset: self.offset(path[0]),
+                movement: None,
                 pressed_button: fields.pressed_button,
                 hovered: fields.hovered,
                 files: None,
@@ -418,6 +428,7 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
             if let Some(target) = target {
                 let fields = Fields {
                     pressed_button,
+                    movement: Some(sample.movement),
                     ..Default::default()
                 };
                 emitter.emit("pointermove", target, fields);
@@ -804,6 +815,7 @@ mod tests {
         PointerSample {
             action,
             position: (15.0, 30.0),
+            movement: (0.0, 0.0),
             modifiers: EventModifiers::default(),
             hits,
         }
@@ -2108,5 +2120,38 @@ mod tests {
             names(&output),
             ["mouseleave@4", "mouseenter@2", "mouseenter@3"]
         );
+    }
+
+    #[test]
+    fn move_events_carry_the_platform_movement() {
+        let tree = tree(&listening_everywhere(&["pointermove", "mousemove", "pointerdown"]));
+        let mut state = PointerState::default();
+        let moved = PointerSample {
+            movement: (3.0, -2.5),
+            ..mv(chain_of(&[3, 2, 1]))
+        };
+        let output = dispatch(&mut state, &tree, &moved);
+        let payloads = output.into_payloads();
+        assert_eq!(payloads.len(), 2);
+        for payload in &payloads {
+            assert_eq!((payload.movement_x, payload.movement_y), (Some(3.0), Some(-2.5)));
+        }
+
+        let pressed = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let payloads = pressed.into_payloads();
+        assert_eq!((payloads[0].movement_x, payloads[0].movement_y), (None, None));
+    }
+
+    #[test]
+    fn a_locked_pointer_still_reports_its_movement() {
+        let tree = tree(&listening_everywhere(&["mousemove"]));
+        let mut state = PointerState::default();
+        state.begin_lock(4);
+        let moved = PointerSample {
+            movement: (-7.0, 1.0),
+            ..move_to(90.0, 95.0, chain_of(&[3, 2, 1]))
+        };
+        let payloads = dispatch(&mut state, &tree, &moved).into_payloads();
+        assert_eq!((payloads[0].movement_x, payloads[0].movement_y), (Some(-7.0), Some(1.0)));
     }
 }

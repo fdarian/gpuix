@@ -47,14 +47,16 @@ impl LockWindow for GpuiLock<'_> {
     }
 }
 
-/// A platform the test renderer drives by hand. It grants or refuses locks and
-/// drops them when told to, which a real platform does on its own.
+/// A platform the test renderer drives by hand. It grants or refuses locks,
+/// drops them and reports mouse movement when told to, which a real platform
+/// does on its own.
 #[derive(Clone)]
 pub struct SimulatedPlatform(Arc<Mutex<Simulated>>);
 
 struct Simulated {
     locked: bool,
     granting: bool,
+    movement: (f64, f64),
 }
 
 impl Default for SimulatedPlatform {
@@ -62,6 +64,7 @@ impl Default for SimulatedPlatform {
         Self(Arc::new(Mutex::new(Simulated {
             locked: false,
             granting: true,
+            movement: (0.0, 0.0),
         })))
     }
 }
@@ -70,6 +73,16 @@ impl SimulatedPlatform {
     /// Whether requests succeed, as a platform that can lock the pointer does.
     pub fn set_granting(&self, granting: bool) {
         self.0.lock().unwrap().granting = granting;
+    }
+
+    /// The motion of the latest mouse move, which GPUI's `last_mouse_movement`
+    /// reports on a real platform.
+    pub fn set_movement(&self, movement: (f64, f64)) {
+        self.0.lock().unwrap().movement = movement;
+    }
+
+    pub fn movement(&self) -> (f64, f64) {
+        self.0.lock().unwrap().movement
     }
 
     /// The platform drops the lock, as it does when the window deactivates.
