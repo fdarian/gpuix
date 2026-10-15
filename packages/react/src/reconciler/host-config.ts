@@ -53,6 +53,7 @@ import type {
   TextControlInstance,
   TextInstance,
 } from "../types/host.js"
+import { splitStyle, syncMotionBindings } from "./motion-bindings.js"
 import {
   registerEventListener,
   unregisterEventListener,
@@ -237,14 +238,16 @@ function diffEventListeners(
 const NO_STYLE = {}
 
 function sendStyle(renderer: MutationRenderer, id: number, props: Props): void {
-  const style = props.style
+  const style = splitStyle(props.style).style
   if (style == null || Object.keys(style).length === 0) return
   renderer.setStyle(id, style)
 }
 
 /**
  * Whether two `style` props reach Rust as the same payload. An absent style and
- * an empty one are the same, and so are two objects holding the same values:
+ * an empty one are the same, and so are two objects holding the same values
+ * (a motion value counts as the same only when it is the same value, as it is
+ * bound by identity):
  * `style={{ ... }}` is a new object on every render, so reference equality
  * alone would resend every styled element on every commit.
  *
@@ -260,7 +263,7 @@ function hiddenStyle(style: Props["style"]) {
   // Hover and active go, because a hidden element must stay hidden. A hover
   // style that sets `visibility` would otherwise paint an element React
   // asked to hide.
-  const { hover: _hover, active: _active, ...base } = style ?? {}
+  const { hover: _hover, active: _active, ...base } = splitStyle(style).style ?? {}
   return { ...base, visibility: "hidden" }
 }
 
@@ -340,6 +343,7 @@ function materialize(node: HostNode): HostNodeState {
     renderer.createElement(node.id, node.type)
     if (state.hidden) renderer.setStyle(node.id, hiddenStyle(node.props.style))
     else sendStyle(renderer, node.id, node.props)
+    syncMotionBindings(state.container, node.id, node.props.style)
     syncEventListeners(state.container, node.id, node.props)
     syncCustomProps(renderer, node.id, node.type, node.props)
   } else {
@@ -545,8 +549,9 @@ export const hostConfig = {
     if (!sameStyle(oldProps.style, newProps.style)) {
       container.renderer.setStyle(
         instance.id,
-        state.hidden ? hiddenStyle(newProps.style) : (newProps.style ?? {})
+        state.hidden ? hiddenStyle(newProps.style) : (splitStyle(newProps.style).style ?? {})
       )
+      syncMotionBindings(container, instance.id, newProps.style)
     }
     diffEventListeners(container, instance.id, oldProps, newProps)
     // Custom prop diff (for non-div/text elements)
@@ -592,7 +597,7 @@ export const hostConfig = {
 
   unhideInstance(instance: Instance, props: Props): void {
     stateFor(instance).hidden = false
-    rendererFor(instance).setStyle(instance.id, props.style ?? {})
+    rendererFor(instance).setStyle(instance.id, splitStyle(props.style).style ?? {})
   },
 
   hideTextInstance(_textInstance: TextInstance): void {},

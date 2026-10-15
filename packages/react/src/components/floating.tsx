@@ -20,6 +20,7 @@ import type {
   KeyEvent,
   Props,
   PublicInstance,
+  MotionValueStyle,
   StyleDesc,
 } from "../types/host.js"
 import { useGpuix } from "../hooks/use-gpuix.js"
@@ -45,15 +46,15 @@ export function resolveStyle<State>(
 }
 
 export function mergeStyles(
-  base: StyleDesc | undefined,
-  override: StyleDesc | undefined
-): StyleDesc | undefined {
+  base: MotionValueStyle | undefined,
+  override: MotionValueStyle | undefined
+): MotionValueStyle | undefined {
   if (!base) return override
   if (!override) return base
   return { ...base, ...override }
 }
 
-export function floatingRootStyle(style?: StyleDesc): StyleDesc {
+export function floatingRootStyle(style?: MotionValueStyle): MotionValueStyle {
   return {
     display: "flex",
     position: "relative",
@@ -63,10 +64,17 @@ export function floatingRootStyle(style?: StyleDesc): StyleDesc {
 }
 
 type InteractiveStyle = Omit<StyleDesc, "hover" | "active">
+type InteractiveMotionStyle = Omit<MotionValueStyle, "hover" | "active">
 
-function floatingSurfaceStateStyle(style?: InteractiveStyle): InteractiveStyle | undefined {
+function floatingSurfaceStateStyle(style?: InteractiveStyle): InteractiveStyle | undefined
+function floatingSurfaceStateStyle(
+  style?: InteractiveMotionStyle
+): InteractiveMotionStyle | undefined
+function floatingSurfaceStateStyle(
+  style?: InteractiveMotionStyle
+): InteractiveMotionStyle | undefined {
   if (!style) return undefined
-  const surface: InteractiveStyle = {}
+  const surface: InteractiveMotionStyle = {}
   if (style.visibility !== undefined) surface.visibility = style.visibility
   if (style.opacity !== undefined) surface.opacity = style.opacity
   if (style.borderRadius !== undefined) surface.borderRadius = style.borderRadius
@@ -85,8 +93,8 @@ function floatingSurfaceStateStyle(style?: InteractiveStyle): InteractiveStyle |
   return Object.keys(surface).length > 0 ? surface : undefined
 }
 
-function floatingSurfaceStyle(style?: StyleDesc): StyleDesc {
-  const surface: StyleDesc = floatingSurfaceStateStyle(style) ?? {}
+function floatingSurfaceStyle(style?: MotionValueStyle): MotionValueStyle {
+  const surface: MotionValueStyle = floatingSurfaceStateStyle(style) ?? {}
   // The anchored surface is hit where it paints, so a layer that must not take
   // the pointer (a tooltip) has to say so on the surface itself.
   if (style?.pointerEvents !== undefined) surface.pointerEvents = style.pointerEvents
@@ -103,7 +111,7 @@ function withoutOpacity(style?: InteractiveStyle): InteractiveStyle | undefined 
   return rest
 }
 
-function floatingContentStyle(style?: StyleDesc): StyleDesc | undefined {
+function floatingContentStyle(style?: MotionValueStyle): MotionValueStyle | undefined {
   if (!style) return undefined
   const { opacity: _opacity, hover, active, ...rest } = style
   return {

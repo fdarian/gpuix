@@ -17,6 +17,7 @@ import {
   unregisterEventHandlers,
 } from "./event-registry.js"
 import { hostConfig } from "./host-config.js"
+import { releaseMotionBindings } from "./motion-bindings.js"
 
 // Cast to any because @types/react-reconciler is out of date with react-reconciler 0.31.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,12 +71,15 @@ export function createRoot(
     for (const id of destroyedIds) {
       unregisterEventHandlers(gpuixContainer.eventHandlers, id)
     }
+    releaseMotionBindings(gpuixContainer, destroyedIds)
   })
   gpuixContainer = {
     nativeRenderer: renderer,
     renderer: batchedRenderer,
     ids,
     eventHandlers: new Map(),
+    motionBindings: new Map(),
+    motionReleases: [],
     windowKeyEventHandlers: rootEventHandlers,
     windowKeyEventId: 0,
     windowSelectionEventId: 0,

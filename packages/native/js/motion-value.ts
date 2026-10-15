@@ -28,7 +28,7 @@ export type MotionValueRenderer = NativeRenderer & MotionValueHost
 export type MotionData = number | string | number[] | BoxShadow | BoxShadow[]
 
 /** `motionValue(0)` is a `MotionValue<number>`, not a `MotionValue<0>`. */
-type Widen<Data> = Data extends number ? number : Data extends string ? string : Data
+export type Widen<Data> = Data extends number ? number : Data extends string ? string : Data
 
 /** A spring transition without its `type`. */
 export type MotionSpringConfig =

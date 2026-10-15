@@ -28,11 +28,14 @@ import type {
   DiffProps as NativeDiffProps,
   MarkdownProps as NativeMarkdownProps,
   AnchoredProps as NativeAnchoredProps,
+  MotionStyle,
+  MotionValue,
   MutationRenderer,
   NativeRenderer,
   RootEventHandlers,
   TextControlSelection,
   ScrollableElement,
+  StyleDesc,
   WindowKeyEventHandlers,
 } from "@gpuix/native/host"
 
@@ -41,7 +44,16 @@ export * from "@gpuix/native/host"
 /** `onFocusIn` and `onFocusOut` do not exist in React, where `onFocus` and `onBlur` bubble. */
 type ReactHostProps<Props> = Omit<Props, "onFocusIn" | "onFocusOut">
 
-export interface Props extends ReactHostProps<HostProps> {
+/**
+ * `StyleDesc` where each animatable property may hold a motion value instead.
+ * The reconciler binds it to the element rather than sending it as style.
+ */
+export type MotionValueStyle = Omit<StyleDesc, keyof MotionStyle> & {
+  [Property in keyof MotionStyle]?: StyleDesc[Property] | MotionValue
+}
+
+export interface Props extends Omit<ReactHostProps<HostProps>, "style"> {
+  style?: MotionValueStyle
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
@@ -133,6 +145,10 @@ export interface Container {
   renderer: MutationRenderer
   ids: ElementIdAllocator
   eventHandlers: EventHandlerMap
+  /** Element id to the motion values its style binds, released when the element is destroyed. */
+  motionBindings: Map<number, MotionBinding>
+  /** Releases waiting for the mutation batch that stops the elements from reading the value. */
+  motionReleases: Array<() => void>
   windowKeyEventHandlers: WindowKeyEventHandlers
   windowKeyEventId: number
   windowSelectionEventId: number
@@ -145,6 +161,11 @@ export interface Container {
    * one event map.
    */
   portalTarget?: Instance
+}
+
+export type MotionBinding = {
+  values: Record<string, MotionValue>
+  releases: Array<() => void>
 }
 
 /** Host methods are attached when React hands out a ref, not per instance. */

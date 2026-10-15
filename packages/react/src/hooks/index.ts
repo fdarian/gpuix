@@ -1,4 +1,5 @@
 export * from "./use-gpuix.js"
 export * from "./use-media-query.js"
+export * from "./use-motion-value.js"
 export * from "./use-text-search.js"
 export * from "./use-window-size.js"

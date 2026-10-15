@@ -11,7 +11,22 @@ export {
 export { GpuixContext, useGpuix, useGpuixRequired } from "./hooks/use-gpuix.js"
 export { useWindowInsets, useWindowSize } from "./hooks/use-window-size.js"
 export { useMatchMedia, useMediaQuery, useReducedMotion } from "./hooks/use-media-query.js"
+export {
+  useMotionValue,
+  useMotionValueEvent,
+  useSpring,
+  useTransform,
+  useVelocity,
+} from "./hooks/use-motion-value.js"
 export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
+export { animate, motionValue } from "@gpuix/native/host"
+export type {
+  AnimationControls,
+  MotionSpringConfig,
+  MotionTransformOptions,
+  MotionValue,
+  MotionValueEvents,
+} from "@gpuix/native/host"
 export {
   clipboard,
   MediaQueryList,
@@ -178,6 +193,7 @@ export type {
   MotionStyle,
   MotionTransition,
   MotionTweenTransition,
+  MotionValueStyle,
   MutationHost,
   NativeRenderer,
   NativeWindowInsets,
