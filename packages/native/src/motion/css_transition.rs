@@ -453,11 +453,7 @@ pub(crate) fn validate_transitions(style: &StyleDesc) -> Result<(), String> {
     if let Some(text) = style.interpolate_size.as_deref() {
         InterpolateSize::parse(text)?;
     }
-    for (name, state) in [
-        ("hover", &style.hover),
-        ("active", &style.active),
-        ("focusVisible", &style.focus_visible),
-    ] {
+    for (name, state) in super::state_styles(style) {
         if let Some(state) = state {
             TransitionList::parse(state).map_err(|error| format!("{name}.{error}"))?;
             if let Some(text) = state.interpolate_size.as_deref() {
@@ -977,9 +973,9 @@ impl CssTransitions {
     pub(crate) fn wants(&mut self, id: u64, style: Option<&StyleDesc>) -> bool {
         if style.is_some_and(|style| {
             declares_transition(style)
-                || [&style.hover, &style.active, &style.focus_visible]
+                || super::state_styles(style)
                     .into_iter()
-                    .any(|state| state.as_deref().is_some_and(declares_transition))
+                    .any(|(_, state)| state.is_some_and(declares_transition))
         }) {
             return true;
         }
@@ -1182,6 +1178,11 @@ mod tests {
             .unwrap_err();
         assert!(error.starts_with("hover.transitionDelay"), "{error}");
         assert!(validate_transitions(&style(r#"{ "transition": "width bogus" }"#)).is_err());
+        for name in ["groupHover", "groupActive"] {
+            let error = validate_transitions(&style(&format!(r#"{{ "{name}": {{ "transitionDelay": "soon" }} }}"#)))
+                .unwrap_err();
+            assert!(error.starts_with(&format!("{name}.transitionDelay")), "{error}");
+        }
     }
 
     #[test]
@@ -1558,6 +1559,30 @@ mod tests {
         assert!(clock.wants(1, Some(&style(r#"{ "transition": "width 1s" }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "hover": { "transitionDuration": "1s" } }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "focusVisible": { "transition": "all 1s" } }"#))));
+        assert!(clock.wants(1, Some(&style(r#"{ "groupHover": { "transition": "all 1s" } }"#))));
+        assert!(clock.wants(1, Some(&style(r#"{ "groupActive": { "transitionDuration": "1s" } }"#))));
+    }
+
+    #[test]
+    fn a_transition_declared_only_in_group_hover_runs() {
+        use crate::events::state_styles::{resolve_pointer_states, PointerStates};
+        let base = style(
+            r##"{
+                "backgroundColor": "#000000",
+                "groupHover": { "backgroundColor": "#ffffff", "transition": "background-color 1s linear" }
+            }"##,
+        );
+        let mut transitions = CssTransitions::default();
+        assert!(transitions.wants(1, Some(&base)));
+        let mut clock = Clock::new();
+        let rest = resolve_pointer_states(&base, PointerStates::default());
+        let hovered = resolve_pointer_states(&base, PointerStates { group_hovered: true, ..Default::default() });
+        clock.frame(0, &rest);
+        clock.frame(0, &hovered);
+        let halfway = clock.frame(500, &hovered).background_color.unwrap();
+        assert_ne!(halfway, "#ffffff");
+        assert_ne!(halfway, "#000000");
+        assert_eq!(clock.frame(1000, &hovered).background_color.as_deref(), Some("#ffffff"));
     }
 
     #[test]

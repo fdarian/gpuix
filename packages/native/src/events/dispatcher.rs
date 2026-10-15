@@ -768,7 +768,12 @@ pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_
     let restyle = leaving
         .iter()
         .chain(&entering)
-        .any(|id| has_state_style(tree, *id, |style| style.hover.is_some()));
+        .any(|id| {
+            // A group's followers restyle with it.
+            has_state_style(tree, *id, |style| {
+                style.hover.is_some() || style.declared_group().is_some()
+            })
+        });
     state.hovered = new_path;
     restyle
 }
@@ -885,7 +890,11 @@ pub(super) fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path
         .iter()
         .filter(|id| !new_path.contains(id))
         .chain(new_path.iter().filter(|id| !state.active.contains(id)))
-        .any(|id| has_state_style(tree, *id, |style| style.active.is_some()));
+        .any(|id| {
+            has_state_style(tree, *id, |style| {
+                style.active.is_some() || style.declared_group().is_some()
+            })
+        });
     state.active = new_path;
     restyle
 }

@@ -10,27 +10,69 @@ macro_rules! overlay_fields {
             $($field: $over.$field.clone().or_else(|| $base.$field.clone()),)+
             hover: None,
             active: None,
+            group_hover: None,
+            group_active: None,
         }
     };
+}
+
+/// Which pointer states apply to an element: its own, and those of the nearest
+/// ancestor `group` that its `groupHover` / `groupActive` follow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PointerStates {
+    pub hovered: bool,
+    pub active: bool,
+    pub group_hovered: bool,
+    pub group_active: bool,
+}
+
+impl PointerStates {
+    pub fn any(self) -> bool {
+        self.hovered || self.active || self.group_hovered || self.group_active
+    }
 }
 
 /// `style` with the `hover` and then the `active` refinement folded in, for an
 /// element that is `hovered` and/or `active`, and both refinements cleared.
 ///
-/// Matches what GPUI's `.hover()` / `.active()` do: a field the state style sets
-/// replaces the base value, an unset one keeps it, and `active` is applied last
-/// so it wins over `hover`. A state style's own `hover` / `active` are ignored.
+/// A field the state style sets replaces the base value, an unset one keeps
+/// it, and `active` is applied last so it wins over `hover`. A state style's
+/// own `hover` / `active` are ignored.
 pub fn resolve_state_styles(style: &StyleDesc, hovered: bool, active: bool) -> StyleDesc {
+    resolve_pointer_states(
+        style,
+        PointerStates {
+            hovered,
+            active,
+            ..Default::default()
+        },
+    )
+}
+
+/// `style` with the refinements of `states` folded in and every state style
+/// cleared. Later wins: `groupHover`, `hover`, `groupActive`, `active`. A
+/// group refinement is one more variant of the element, so the element's own
+/// `hover` beats a `groupHover` that sets the same field (as in Tailwind).
+pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> StyleDesc {
     let mut resolved = overlay(style, &StyleDesc::default());
-    if hovered {
-        if let Some(hover) = style.hover.as_deref() {
-            resolved = overlay(&resolved, hover);
-        }
-    }
-    if active {
-        if let Some(active) = style.active.as_deref() {
-            resolved = overlay(&resolved, active);
-        }
+    let layers = [
+        (states.group_hovered, style.group_hover.as_deref(), true),
+        (states.hovered, style.hover.as_deref(), false),
+        (states.group_active, style.group_active.as_deref(), true),
+        (states.active, style.active.as_deref(), false),
+    ];
+    for (applies, refinement, names_group) in layers {
+        let Some(refinement) = refinement.filter(|_| applies) else {
+            continue;
+        };
+        resolved = if names_group {
+            // Its `group` names the group to follow, not one this element declares.
+            let mut refinement = refinement.clone();
+            refinement.group = None;
+            overlay(&resolved, &refinement)
+        } else {
+            overlay(&resolved, refinement)
+        };
     }
     resolved
 }
@@ -67,7 +109,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         animation, animation_name, animation_duration, animation_timing_function,
         animation_delay, animation_iteration_count, animation_direction, animation_fill_mode,
         animation_play_state,
-        focus_visible, focus_within, keyboard_focus_dim, group, group_hover, group_active,
+        focus_visible, focus_within, keyboard_focus_dim, group,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
         grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
@@ -662,5 +704,73 @@ mod tests {
         assert_eq!(resolved.mask.as_deref(), Some("none"));
         assert_eq!(resolved.mask_image, None);
         assert_eq!(resolved.mask_size, None);
+    }
+
+    #[test]
+    fn group_styles_fold_in_the_order_group_hover_hover_group_active_active() {
+        let base = style(
+            r##"{
+                "color": "#000000", "opacity": 0.1, "cursor": "default", "width": 1,
+                "group": "own",
+                "groupHover": { "group": "card", "color": "#111111", "opacity": 0.2, "cursor": "text", "width": 2 },
+                "hover": { "opacity": 0.3, "cursor": "pointer", "width": 3 },
+                "groupActive": { "group": "card", "cursor": "grab", "width": 4 },
+                "active": { "width": 5 }
+            }"##,
+        );
+        let states = |hovered, active, group_hovered, group_active| PointerStates {
+            hovered,
+            active,
+            group_hovered,
+            group_active,
+        };
+        let fold = |states| resolve_pointer_states(&base, states);
+
+        let group_hover = fold(states(false, false, true, false));
+        assert_eq!(group_hover.color.as_deref(), Some("#111111"));
+        assert_eq!(group_hover.opacity, Some(0.2));
+        assert_eq!(group_hover.group.as_ref(), base.group.as_ref(), "the followed name is dropped");
+
+        let both = fold(states(true, false, true, false));
+        assert_eq!(both.color.as_deref(), Some("#111111"), "hover leaves what it does not set");
+        assert_eq!(both.opacity, Some(0.3), "hover beats groupHover");
+        assert_eq!(both.cursor.as_deref(), Some("pointer"));
+
+        let group_active = fold(states(true, false, true, true));
+        assert_eq!(group_active.cursor.as_deref(), Some("grab"), "groupActive beats hover");
+        assert_eq!(group_active.width.as_ref(), fold(states(false, false, false, true)).width.as_ref());
+
+        let all = fold(states(true, true, true, true));
+        assert_eq!(all.width, style(r##"{"width":5}"##).width, "active is last");
+        assert_eq!(all.cursor.as_deref(), Some("grab"));
+
+        assert_eq!(fold(states(false, false, false, false)).opacity, Some(0.1));
+        for folded in [group_hover, both, group_active, all] {
+            assert_eq!(
+                (folded.hover, folded.active, folded.group_hover, folded.group_active),
+                (None, None, None, None)
+            );
+        }
+    }
+
+    #[test]
+    fn a_group_refinement_that_is_not_in_play_is_ignored() {
+        let base = style(r##"{"opacity":1,"groupHover":{"opacity":0.5},"groupActive":{"opacity":0.2}}"##);
+        let pressed_only = resolve_pointer_states(
+            &base,
+            PointerStates {
+                group_active: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(pressed_only.opacity, Some(0.2));
+        let hovered_only = resolve_pointer_states(
+            &base,
+            PointerStates {
+                hovered: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(hovered_only.opacity, Some(1.0), "the element's hover is not the group's");
     }
 }

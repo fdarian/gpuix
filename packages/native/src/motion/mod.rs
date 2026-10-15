@@ -626,6 +626,19 @@ impl MotionState {
     }
 }
 
+/// The state styles `fold_state_styles` can lay over `style`, by the name a
+/// validation error gives them. A transition or animation declared in any of
+/// them has to take part, or it never runs.
+pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 5] {
+    [
+        ("hover", style.hover.as_deref()),
+        ("active", style.active.as_deref()),
+        ("focusVisible", style.focus_visible.as_deref()),
+        ("groupHover", style.group_hover.as_deref()),
+        ("groupActive", style.group_active.as_deref()),
+    ]
+}
+
 /// The style `style` has after the state styles that currently apply (focus,
 /// hover, then press, the order GPUI refines them in), with the CSS transitions
 /// running on it laid on top (`transitions` is `None` for an element that
@@ -634,7 +647,7 @@ impl MotionState {
 /// second time, instantly.
 pub(crate) fn resolve_declared_style(
     transitions: Option<&mut CssTransitions>,
-    pointer: (bool, bool),
+    pointer: crate::events::state_styles::PointerStates,
     motion: Option<&MotionState>,
     id: u64,
     style: &StyleDesc,
@@ -655,9 +668,9 @@ pub(crate) fn resolve_declared_style(
 fn fold_state_styles(
     style: &StyleDesc,
     focus_visible: bool,
-    (hovered, pressed): (bool, bool),
+    pointer: crate::events::state_styles::PointerStates,
 ) -> StyleDesc {
-    use crate::events::state_styles::resolve_state_styles;
+    use crate::events::state_styles::resolve_pointer_states;
 
     let focused = match style.focus_visible.as_deref() {
         // `focusVisible` rides through the fold as a `hover` of its own, so the
@@ -667,14 +680,22 @@ fn fold_state_styles(
             let mut carrier = style.clone();
             carrier.hover = Some(Box::new(declared.clone()));
             carrier.active = None;
-            let mut folded = resolve_state_styles(&carrier, true, false);
+            let mut folded = resolve_pointer_states(
+                &carrier,
+                crate::events::state_styles::PointerStates {
+                    hovered: true,
+                    ..Default::default()
+                },
+            );
             folded.hover = style.hover.clone();
             folded.active = style.active.clone();
+            folded.group_hover = style.group_hover.clone();
+            folded.group_active = style.group_active.clone();
             folded
         }
         _ => style.clone(),
     };
-    let mut after = resolve_state_styles(&focused, hovered, pressed);
+    let mut after = resolve_pointer_states(&focused, pointer);
     after.focus_visible = None;
     after
 }
@@ -2134,20 +2155,50 @@ mod tests {
             }"##,
         )
         .unwrap();
-        let rest = fold_state_styles(&style, false, (false, false));
+        let rest = fold_state_styles(&style, false, Default::default());
         assert_eq!(rest.color.as_deref(), Some("#000000"));
 
-        let focused = fold_state_styles(&style, true, (false, false));
+        let focused = fold_state_styles(&style, true, Default::default());
         assert_eq!(focused.color.as_deref(), Some("#111111"));
         assert_eq!(focused.opacity, Some(0.9));
 
-        let both = fold_state_styles(&style, true, (true, true));
+        let both = fold_state_styles(
+            &style,
+            true,
+            crate::events::state_styles::PointerStates {
+                hovered: true,
+                active: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(both.color.as_deref(), Some("#222222"), "hover beats focus-visible");
         assert_eq!(both.opacity, Some(0.5), "active beats focus-visible");
 
         for folded in [rest, focused, both] {
             assert_eq!((folded.hover, folded.active, folded.focus_visible), (None, None, None));
+            assert_eq!((folded.group_hover, folded.group_active), (None, None));
         }
+    }
+
+    #[test]
+    fn group_styles_fold_between_the_element_s_own_states() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{
+                "color": "#000000",
+                "groupHover": { "color": "#111111", "opacity": 0.9, "group": "card" },
+                "hover": { "opacity": 0.8 }
+            }"##,
+        )
+        .unwrap();
+        let states = crate::events::state_styles::PointerStates {
+            hovered: true,
+            group_hovered: true,
+            ..Default::default()
+        };
+        let folded = fold_state_styles(&style, false, states);
+        assert_eq!(folded.color.as_deref(), Some("#111111"));
+        assert_eq!(folded.opacity, Some(0.8), "hover beats groupHover");
+        assert_eq!(folded.group, None, "the followed group is not declared");
     }
 
     mod svg {

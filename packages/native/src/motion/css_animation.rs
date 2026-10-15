@@ -392,11 +392,7 @@ pub(super) fn check_keyframes_name(name: &str) -> Result<(), String> {
 /// not parse.
 pub(crate) fn validate_animations(style: &StyleDesc) -> Result<(), String> {
     AnimationList::parse(style)?;
-    for (name, state) in [
-        ("hover", &style.hover),
-        ("active", &style.active),
-        ("focusVisible", &style.focus_visible),
-    ] {
+    for (name, state) in super::state_styles(style) {
         if let Some(state) = state {
             AnimationList::parse(state).map_err(|error| format!("{name}.{error}"))?;
         }
@@ -1065,9 +1061,9 @@ impl CssAnimations {
         self.states.contains_key(&id)
             || style.is_some_and(|style| {
                 declares_animation(style)
-                    || [&style.hover, &style.active, &style.focus_visible]
+                    || super::state_styles(style)
                         .into_iter()
-                        .any(|state| state.as_deref().is_some_and(declares_animation))
+                        .any(|(_, state)| state.is_some_and(declares_animation))
             })
     }
 
@@ -1322,6 +1318,11 @@ mod tests {
             .unwrap_err();
         assert!(error.starts_with("hover.animationDelay:"), "{error}");
         assert!(validate_animations(&style(r#"{ "focusVisible": { "animation": "a b" } }"#)).is_err());
+        for name in ["groupHover", "groupActive"] {
+            let error = validate_animations(&style(&format!(r#"{{ "{name}": {{ "animationDelay": "soon" }} }}"#)))
+                .unwrap_err();
+            assert!(error.starts_with(&format!("{name}.animationDelay:")), "{error}");
+        }
     }
 
     #[test]
@@ -1442,6 +1443,11 @@ mod tests {
         assert!(frames
             .animations
             .wants(1, Some(&style(r#"{ "hover": { "animation": "fade 1s" } }"#))));
+        for name in ["groupHover", "groupActive"] {
+            assert!(frames
+                .animations
+                .wants(1, Some(&style(&format!(r#"{{ "{name}": {{ "animation": "fade 1s" }} }}"#)))));
+        }
     }
 
     #[test]

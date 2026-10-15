@@ -5122,8 +5122,12 @@ group (`group: 'card'`) and point at it with `groupHover: { group: 'card',
 backgroundColor: '#eee' }` when groups nest: the style follows the nearest
 ancestor with that name. `groupHover` applies while the pointer is over the
 group or anything inside it, `groupActive` while the mouse is down inside it.
-Each element takes one `groupHover` and one `groupActive`. `groupFocusWithin` is
-not available, because GPUI has no group focus state.
+Each element takes one `groupHover` and one `groupActive`. The group's state is
+the pointer dispatcher's, the same that drives `hover` and `active`, and a
+group applies to its descendants, not to its own element. They fold in with the
+element's own states, later winning: base, `groupHover`, `hover`, `groupActive`,
+`active`. So a `color` set by a group state reaches the descendants'
+`currentColor` like one set by `hover`. `groupFocusWithin` is not available.
 
 ### Hover and active
 
