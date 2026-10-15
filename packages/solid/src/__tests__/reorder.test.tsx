@@ -22,10 +22,13 @@ type ListProps = {
   proposals?: string[][]
   accept?: boolean
   onItemMouseDown?: () => void
+  /** Filled with a setter for the order, to change the items from outside. */
+  setItems?: { current: ((names: string[]) => void) | undefined }
 }
 
 function List(props: ListProps) {
   const [order, setOrder] = createSignal(props.initial)
+  if (props.setItems) props.setItems.current = setOrder
   const axis = () => props.axis ?? "y"
   return (
     <Reorder.Group
@@ -52,11 +55,15 @@ function List(props: ListProps) {
   )
 }
 
-function mount(props: ListProps) {
+function mountApp(props: ListProps) {
   const app = createTestRoot()
   app.renderer.clockPause()
   app.render(() => <List {...props} />)
-  return app.renderer
+  return app
+}
+
+function mount(props: ListProps) {
+  return mountApp(props).renderer
 }
 
 describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
@@ -155,5 +162,56 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const renderer = mount({ initial: ["a", "b"], onItemMouseDown: () => (presses += 1) })
     renderer.nativeSimulateMouseDown(10, 10)
     expect(presses).toBe(1)
+  })
+
+  describe("when the items change mid-drag", () => {
+    function setItemsTo(app: ReturnType<typeof mountApp>, setItems: ListProps["setItems"], names: string[]): void {
+      app.flushSync(() => setItems?.current?.(names))
+      frame(app.renderer, 1100)
+    }
+
+    it("keeps dragging when an item is added, and swaps with it once it is measured", () => {
+      const proposals: string[][] = []
+      const setItems: ListProps["setItems"] = { current: undefined }
+      const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
+      const renderer = app.renderer
+      renderer.nativeSimulateMouseDown(10, 10)
+      renderer.nativeSimulateMouseMove(10, 18, 0)
+      setItemsTo(app, setItems, ["a", "b", "c", "d"])
+      renderer.nativeSimulateMouseMove(10, 20, 0)
+      renderer.nativeSimulateMouseMove(10, 20, 0)
+      expect(boundsOf(renderer, "a").y).toBe(10)
+      expect(proposals).toEqual([])
+      renderer.nativeSimulateMouseMove(10, 75, 0)
+      expect(proposals).toEqual([["b", "c", "d", "a"]])
+    })
+
+    it("keeps dragging when an item is removed", () => {
+      const proposals: string[][] = []
+      const setItems: ListProps["setItems"] = { current: undefined }
+      const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
+      const renderer = app.renderer
+      renderer.nativeSimulateMouseDown(10, 10)
+      renderer.nativeSimulateMouseMove(10, 18, 0)
+      setItemsTo(app, setItems, ["a", "c"])
+      renderer.nativeSimulateMouseMove(10, 20, 0)
+      renderer.nativeSimulateMouseMove(10, 20, 0)
+      renderer.nativeSimulateMouseMove(10, 35, 0)
+      expect(proposals).toEqual([["c", "a"]])
+    })
+
+    it("ends the drag without a proposal when the dragged item is removed", () => {
+      const proposals: string[][] = []
+      const setItems: ListProps["setItems"] = { current: undefined }
+      const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
+      const renderer = app.renderer
+      renderer.nativeSimulateMouseDown(10, 10)
+      renderer.nativeSimulateMouseMove(10, 18, 0)
+      setItemsTo(app, setItems, ["b", "c"])
+      renderer.nativeSimulateMouseMove(10, 60, 0)
+      renderer.nativeSimulateMouseUp(10, 60, 0)
+      expect(proposals).toEqual([])
+      expect(boundsOf(renderer, "b").y).toBe(0)
+    })
   })
 })

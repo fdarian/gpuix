@@ -2014,8 +2014,10 @@ Differences from Motion for React:
 
 - Item slots are read from the layout when the press happens, so a drag that
   starts while the items are still gliding from an earlier reorder is judged
-  from where they are drawn, not where they will settle. An item added
-  while another is held ends the drag and throws.
+  from where they are drawn, not where they will settle. After the order
+  changes during a drag, the slots are read again at a move once the boxes
+  hold still, so a reorder or an item added or removed mid-drag does not end
+  the drag. Removing the held item ends it without calling `onReorder`.
 - `dragListener`, `dragControls` and `Reorder.Item`'s `drag` props are not
   supported.
 

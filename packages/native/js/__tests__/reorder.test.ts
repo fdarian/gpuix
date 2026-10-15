@@ -45,13 +45,15 @@ describe("reorderedValues", () => {
   })
 })
 
-/** Items 20 px tall, 4 px apart, from y = 100. */
-function column(elementId: number) {
-  return { x: 0, y: 100 + elementId * 24, width: 50, height: 20 }
-}
-
 function group(order: string[]) {
   const proposals: string[][] = []
+  /** Item boxes 20 px tall and 4 px apart from y = 100, in the order the layout currently has; an element id is the item's index in `order`. */
+  let layout = order
+  const names = [...order, "d"]
+  const column = (elementId: number) => ({ x: 0, y: 100 + layout.indexOf(names[elementId]) * 24, width: 50, height: 20 })
+  const layOut = (next: string[]) => {
+    layout = next
+  }
   const items = new Map(order.map((value) => [value, createReorderDrag()]))
   const reorder = new ReorderController<string>()
   order.forEach((value, index) => {
@@ -68,7 +70,7 @@ function group(order: string[]) {
       ...overrides,
     })
   configure(order)
-  return { reorder, items, proposals, configure }
+  return { reorder, items, proposals, configure, layOut }
 }
 
 const at = (x: number, y: number, pressedButton?: number): EventPayload => ({ x, y, button: 0, pressedButton }) as EventPayload
@@ -98,12 +100,13 @@ describe("ReorderController", () => {
   })
 
   it("does not repeat a proposal the parent has not applied yet", () => {
-    const { reorder, proposals, configure } = group(["a", "b", "c"])
+    const { reorder, proposals, configure, layOut } = group(["a", "b", "c"])
     reorder.pointerDown("a", at(10, 110))
     reorder.pointerMove(at(10, 140, 0))
     reorder.pointerMove(at(10, 141, 0))
     expect(proposals).toHaveLength(1)
     // Applied: the new order is the base, and a further swap is judged against it.
+    layOut(["b", "a", "c"])
     configure(["b", "a", "c"])
     reorder.pointerMove(at(10, 142, 0))
     expect(proposals).toHaveLength(1)
@@ -154,12 +157,101 @@ describe("ReorderController", () => {
     expect(reorder.isDragging("a")).toBe(false)
   })
 
-  it("lets go and throws when an item joins the group mid-drag", () => {
-    const { reorder, items, configure } = group(["a", "b"])
-    reorder.pointerDown("a", at(10, 105))
-    configure(["a", "b", "c"])
-    expect(() => reorder.pointerMove(at(10, 120, 0))).toThrow(/joined the group/)
-    expect(items.get("a")?.active.get()).toBe(0)
+  describe("when the items change mid-drag", () => {
+    // Each look needs the one before it to agree, so a move is made twice.
+    const settle = (reorder: ReorderController<string>, y: number) => {
+      reorder.pointerMove(at(10, y, 0))
+      reorder.pointerMove(at(10, y, 0))
+    }
+
+    it("keeps dragging when an item joins, judging it from its measured slot once it has settled", () => {
+      const { reorder, items, proposals, configure, layOut } = group(["a", "b", "c"])
+      const added = createReorderDrag()
+      reorder.pointerDown("a", at(10, 110))
+      reorder.register("d", { elementId: () => 3, drag: added })
+      layOut(["a", "b", "c", "d"])
+      configure(["a", "b", "c", "d"])
+      // d is not measured yet: the drag follows the pointer and proposes nothing.
+      expect(() => reorder.pointerMove(at(10, 125, 0))).not.toThrow()
+      expect(items.get("a")?.active.get()).toBe(1)
+      expect(items.get("a")?.y.get()).toBe(15)
+      expect(proposals).toEqual([])
+      reorder.pointerMove(at(10, 126, 0))
+      // d's slot centre is 100 + 3 * 24 + 10 = 182.
+      reorder.pointerMove(at(10, 190, 0))
+      expect(proposals).toEqual([["b", "c", "d", "a"]])
+    })
+
+    it("keeps dragging when an item leaves, and measures the slots that are left", () => {
+      const { reorder, items, proposals, configure, layOut } = group(["a", "b", "c"])
+      reorder.pointerDown("a", at(10, 110))
+      layOut(["a", "c"])
+      configure(["a", "c"])
+      settle(reorder, 120)
+      expect(items.get("a")?.active.get()).toBe(1)
+      // c now sits in b's slot, centred at 134.
+      reorder.pointerMove(at(10, 140, 0))
+      expect(proposals).toEqual([["c", "a"]])
+    })
+
+    it("lets go without proposing when the dragged item is removed", () => {
+      const { reorder, proposals, configure } = group(["a", "b", "c"])
+      reorder.pointerDown("a", at(10, 110))
+      configure(["b", "c"])
+      expect(() => reorder.pointerMove(at(10, 300, 0))).not.toThrow()
+      expect(reorder.isDragging("a")).toBe(false)
+      expect(proposals).toEqual([])
+    })
+
+    it("lets go without proposing when the dragged item unmounts", () => {
+      const { reorder, items, proposals, configure } = group(["a", "b", "c"])
+      const stop = reorder.register("a", { elementId: () => 0, drag: items.get("a") ?? createReorderDrag() })
+      reorder.pointerDown("a", at(10, 110))
+      stop()
+      configure(["b", "c"])
+      reorder.pointerMove(at(10, 300, 0))
+      expect(reorder.isDragging("a")).toBe(false)
+      expect(proposals).toEqual([])
+    })
+
+    it("does not judge from glide positions after a reorder", () => {
+      const { reorder, proposals, configure } = group(["a", "b", "c"])
+      reorder.pointerDown("a", at(10, 110))
+      reorder.pointerMove(at(10, 141, 0))
+      expect(proposals).toEqual([["b", "a", "c"]])
+      // b and c are still gliding up into their slots, b faster than c: no two looks agree.
+      let gliding = 124
+      configure(["b", "a", "c"], {
+        renderer: {
+          getElementBounds: (id) => ({ x: 0, y: id === 1 ? (gliding -= 2) : id === 2 ? 130 : 100, width: 50, height: 20 }),
+        },
+      })
+      for (const y of [142, 143, 150]) reorder.pointerMove(at(10, y, 0))
+      // The slots are still the old ones stacked in the new order: c's centre is 158, not its drawn 140.
+      expect(proposals).toHaveLength(1)
+      reorder.pointerMove(at(10, 159, 0))
+      expect(proposals).toEqual([
+        ["b", "a", "c"],
+        ["b", "c", "a"],
+      ])
+    })
+
+    it("measures the slots again once a reorder has settled", () => {
+      const { reorder, items, proposals, configure } = group(["a", "b", "c"])
+      reorder.pointerDown("a", at(10, 110))
+      reorder.pointerMove(at(10, 141, 0))
+      // Settled in b, a, c order, but 30 px tall: centres at 115, 149 and 183.
+      const taller = [1, 0, 2]
+      configure(["b", "a", "c"], {
+        renderer: { getElementBounds: (id) => ({ x: 0, y: 100 + taller.indexOf(id) * 34, width: 50, height: 30 }) },
+      })
+      settle(reorder, 142)
+      reorder.pointerMove(at(10, 170, 0))
+      expect(items.get("a")?.active.get()).toBe(1)
+      expect(proposals).toEqual([["b", "a", "c"]])
+      reorder.pointerMove(at(10, 184, 0))
+      expect(proposals.at(-1)).toEqual(["b", "c", "a"])
+    })
   })
 
   it("says what is missing instead of guessing", () => {
