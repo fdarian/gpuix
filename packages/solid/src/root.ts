@@ -3,6 +3,7 @@ import type { EventPayload } from "@gpuix/native"
 import {
   createMutationQueue,
   createRendererState,
+  runMotionReleases,
   unregisterEventHandlers,
 } from "@gpuix/native/host"
 import { toAppearance } from "@gpuix/native/host"
@@ -51,6 +52,7 @@ export function createRoot(
   const eventHandlers = new Map()
   const mutations = createMutationQueue(renderer, (ids) => {
     for (const id of ids) unregisterEventHandlers(eventHandlers, id)
+    runMotionReleases(container)
   }, (flush) => {
     queueMicrotask(() => {
       try {

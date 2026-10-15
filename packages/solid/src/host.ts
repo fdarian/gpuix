@@ -16,7 +16,10 @@ import {
   HOST_MOUNT,
   readBoundingClientRect,
   toBoundingClientRect,
+  retireMotionBindings,
   serializeCustomProp,
+  splitMotionStyle,
+  syncMotionBindings,
   unregisterEventHandlers,
   unregisterEventListener,
   readTextControlSelection,
@@ -33,6 +36,10 @@ import type {
   HostBinding,
   HostProps,
   ImagePixelsOptions,
+  MotionBinding,
+  MotionBindingHost,
+  MotionValue,
+  MotionValueStyle,
   MutationRenderer,
   NativeRenderer,
   SelectionDirection,
@@ -61,9 +68,11 @@ export function isHostPropertyValue<Value>(
     type === "number" || type === "boolean" || type === "function"
 }
 
-export class HostRoot {
+export class HostRoot implements MotionBindingHost {
   readonly kind = "root" as const
   readonly children: HostNode[] = []
+  readonly motionBindings = new Map<number, MotionBinding>()
+  readonly motionReleases: Array<() => void> = []
 
   readonly mutations: MutationRenderer
   readonly nativeRenderer: NativeRenderer
@@ -97,6 +106,8 @@ export class HostElement {
    * copy of this module, and the copy that mounts the node must see them.
    */
   readonly mountListeners = new Set<() => void>()
+  /** The `style` entries that are motion values, bound while the element is mounted. */
+  motionValues: Record<string, MotionValue> | undefined
 
   constructor(readonly type: ElementType) {}
 
@@ -319,8 +330,13 @@ export function setHostProperty(
     return
   }
   if (name === "style") {
-    node.style = isStyle(value) ? value : {}
-    if (node.root && node.mounted) node.root.mutations.setStyle(node.id, node.style)
+    const split = splitMotionStyle(isStyle(value) ? value : undefined)
+    node.style = split.style ?? {}
+    node.motionValues = split.motionValues
+    if (node.root && node.mounted) {
+      node.root.mutations.setStyle(node.id, node.style)
+      syncMotionBindings(node.root, node.root.mutations, node.id, node.motionValues)
+    }
     return
   }
   const eventType = eventTypeFor(name)
@@ -364,6 +380,7 @@ function mount(root: HostRoot, node: HostNode): void {
     root.mutations.setText(node.id, node.text)
   } else {
     if (Object.keys(node.style).length > 0) root.mutations.setStyle(node.id, node.style)
+    syncMotionBindings(root, root.mutations, node.id, node.motionValues)
     for (const [name, value] of node.props) {
       const eventType = eventTypeFor(name)
       if (eventType && isEventHandler(value)) {
@@ -419,7 +436,12 @@ export function insertHostNode(
 
 function markUnmounted(node: HostNode): void {
   node.mounted = false
-  if (node.root) unregisterEventHandlers(node.root.eventHandlers, node.id)
+  if (node.root) {
+    unregisterEventHandlers(node.root.eventHandlers, node.id)
+    // Retired now, released after the batch: an element mounted again before
+    // the flush binds its values afresh, and a shared value is never freed between.
+    retireMotionBindings(node.root, [node.id])
+  }
   for (const child of node.children) markUnmounted(child)
 }
 
@@ -468,7 +490,8 @@ function isStyle(value: HostPropertyValue): value is StyleDesc {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-export type SolidHostProps = HostProps & {
+export type SolidHostProps = Omit<HostProps, "style"> & {
+  style?: MotionValueStyle
   children?: unknown
   ref?: (element: HostElement) => void
 }

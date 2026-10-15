@@ -10,6 +10,7 @@ import type {
   LabelProps,
   MarkdownProps,
   MotionProps,
+  MotionValueStyle,
   SvgMotionProps,
   SvgCircleProps,
   SvgEllipseProps,
@@ -25,7 +26,8 @@ import type {
 import { createComponent, createElement, spread } from "./universal.js"
 import type { HostElement } from "./host.js"
 
-export type SolidHostProps<Props = HostProps> = Props & {
+export type SolidHostProps<Props = HostProps> = Omit<Props, "style"> & {
+  style?: MotionValueStyle
   children?: SolidJSX.Element
   ref?: ((element: HostElement) => void) | HostElement
 }

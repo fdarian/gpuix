@@ -32,6 +32,13 @@ export {
   createWindowInsets,
   createWindowSize,
 } from "./primitives.js"
+export {
+  createMotionValue,
+  createMotionValueEvent,
+  createSpring,
+  createTransform,
+  createVelocity,
+} from "./motion-value.js"
 export { motion } from "./components/motion.js"
 export {
   AnimatePresence,
