@@ -69,7 +69,9 @@ function liveHosts(shared: KeyframesRegistry): KeyframesHost[] {
  * ```
  *
  * A bad definition throws from here and keeps the earlier one, whether or not a
- * renderer exists yet. The check needs the native addon, so it runs once
+ * renderer exists yet. A renderer that throws for a good definition (its window
+ * closed) does not stop the others: every renderer is tried, the definition is
+ * kept, and the error is thrown afterwards. The check needs the native addon, so it runs once
  * `@gpuix/native/runtime` or `/testing` is loaded, which every renderer package
  * does; the web build has no motion engine and checks nothing.
  */
@@ -83,8 +85,23 @@ export function defineKeyframes(name: string, frames: KeyframesDefinition): void
   const shared = registry()
   const framesJson = JSON.stringify(frames)
   shared.validator?.(name, framesJson)
-  for (const host of liveHosts(shared)) host.defineKeyframes(name, framesJson)
+  // Recorded before any host hears it: the validator accepted it, so a host
+  // that throws is a broken renderer (a closed window), not a bad definition.
+  // Stopping at that host would leave the registry, the hosts before it and
+  // the hosts after it each holding a different definition.
   shared.definitions.set(name, framesJson)
+  const failures: unknown[] = []
+  for (const host of liveHosts(shared)) {
+    try {
+      host.defineKeyframes(name, framesJson)
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) {
+    throw new AggregateError(failures, `${failures.length} renderers rejected the keyframes ${JSON.stringify(name)}`)
+  }
 }
 
 /**

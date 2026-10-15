@@ -52,20 +52,27 @@ describe("keyframes registry", () => {
     ])
   })
 
-  it("keeps the earlier definition when a registered host rejects the new one", () => {
-    defineKeyframes("kf-kept", { to: { opacity: 0 } })
-    let reject = false
-    registerKeyframesHost({
-      defineKeyframes: () => {
-        if (reject) throw new Error("rejected")
-      },
-    })
-    reject = true
-    expect(() => defineKeyframes("kf-kept", { to: { opacity: 0.9 } })).toThrow("rejected")
-    reject = false
-    const { host, calls } = fakeHost()
-    registerKeyframesHost(host)
-    expect(calls.filter(([name]) => name === "kf-kept")).toEqual([["kf-kept", { to: { opacity: 0 } }]])
+  it("keeps the registry and every other host in step when one host throws", () => {
+    let closed = false
+    const broken = {
+      defineKeyframes: vi.fn(() => {
+        if (closed) throw new Error("window closed")
+      }),
+    }
+    const before = fakeHost()
+    const after = fakeHost()
+    registerKeyframesHost(before.host)
+    registerKeyframesHost(broken)
+    registerKeyframesHost(after.host)
+    closed = true
+    expect(() => defineKeyframes("kf-broken-host", { to: { opacity: 0.9 } })).toThrow("window closed")
+    for (const { calls } of [before, after]) {
+      expect(calls.filter(([name]) => name === "kf-broken-host")).toEqual([["kf-broken-host", { to: { opacity: 0.9 } }]])
+    }
+    const later = fakeHost()
+    registerKeyframesHost(later.host)
+    expect(later.calls.filter(([name]) => name === "kf-broken-host")).toEqual([["kf-broken-host", { to: { opacity: 0.9 } }]])
+    unregisterKeyframesHost(broken)
   })
 
   it("rejects a missing name and non-object frames", () => {
