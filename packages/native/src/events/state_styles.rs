@@ -57,6 +57,10 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, user_select, selection_color,
         focus_visible, focus_within, keyboard_focus_dim,
+        order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
+        grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
+        grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
+        overscroll_behavior_x, overscroll_behavior_y, scroll_behavior,
     )
 }
 
