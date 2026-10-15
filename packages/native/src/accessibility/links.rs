@@ -56,11 +56,11 @@ impl A11yLinks {
     }
 }
 
-/// Identifies the tree state a cached result belongs to. The tree address
-/// separates renderers that share a thread (every test renderer does).
+/// Identifies the tree state a cached result belongs to. The tree id separates
+/// renderers that share a thread (every test renderer does).
 #[derive(PartialEq, Eq, Clone, Copy)]
 struct CacheKey {
-    tree: usize,
+    tree: u64,
     root: u64,
     revision: u64,
 }
@@ -78,7 +78,7 @@ pub(crate) fn sync(tree: &RetainedTree) {
         return;
     };
     let key = CacheKey {
-        tree: tree as *const RetainedTree as usize,
+        tree: tree.id(),
         root: root.id,
         revision: root.subtree_revision,
     };
@@ -256,6 +256,25 @@ mod tests {
     fn links_of(tree: &RetainedTree) -> Rc<A11yLinks> {
         sync(tree);
         current()
+    }
+
+    #[test]
+    fn a_new_tree_at_the_address_of_a_dropped_one_does_not_inherit_its_links() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],["setCustomProp",2,"htmlFor","email"],
+                ["createElement",3,"input"],["appendChild",1,3],["setCustomProp",3,"id","email"]]"#,
+        );
+        assert_eq!(links_of(&tree).control_of(2), Some(3));
+
+        // Assigning drops the old tree and builds the new one in the same slot,
+        // with the same root id and the same number of mutations.
+        tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],["setCustomProp",2,"htmlFor","email"],
+                ["createElement",3,"input"],["appendChild",1,3],["setCustomProp",3,"id","other"]]"#,
+        );
+        assert_eq!(links_of(&tree).control_of(2), None);
     }
 
     #[test]

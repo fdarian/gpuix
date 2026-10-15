@@ -252,6 +252,9 @@ impl StyleTable {
 }
 
 pub struct RetainedTree {
+    /// Never shared by two trees of this process, unlike the tree's address,
+    /// which a later tree can reuse. Caches that outlive a tree key on it.
+    id: u64,
     pub elements: ElementMap,
     pub motion_ids: HashSet<u64>,
     /// Elements that `needs_focus`, in id order. Kept as mutations arrive so the
@@ -276,7 +279,9 @@ pub struct RetainedTree {
 
 impl RetainedTree {
     pub fn new() -> Self {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self {
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             elements: ElementMap::default(),
             motion_ids: HashSet::new(),
             focusable_ids: Default::default(),
@@ -287,6 +292,10 @@ impl RetainedTree {
             next_revision: 1,
             dirty: false,
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// Whether a frame drawn now would differ from the last one, clearing the
