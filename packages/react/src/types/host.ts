@@ -28,14 +28,13 @@ import type {
   DiffProps as NativeDiffProps,
   MarkdownProps as NativeMarkdownProps,
   AnchoredProps as NativeAnchoredProps,
-  MotionStyle,
-  MotionValue,
+  MotionBinding,
+  MotionValueStyle,
   MutationRenderer,
   NativeRenderer,
   RootEventHandlers,
   TextControlSelection,
   ScrollableElement,
-  StyleDesc,
   WindowKeyEventHandlers,
 } from "@gpuix/native/host"
 
@@ -43,14 +42,6 @@ export * from "@gpuix/native/host"
 
 /** `onFocusIn` and `onFocusOut` do not exist in React, where `onFocus` and `onBlur` bubble. */
 type ReactHostProps<Props> = Omit<Props, "onFocusIn" | "onFocusOut">
-
-/**
- * `StyleDesc` where each animatable property may hold a motion value instead.
- * The reconciler binds it to the element rather than sending it as style.
- */
-export type MotionValueStyle = Omit<StyleDesc, keyof MotionStyle> & {
-  [Property in keyof MotionStyle]?: StyleDesc[Property] | MotionValue
-}
 
 export interface Props extends Omit<ReactHostProps<HostProps>, "style"> {
   style?: MotionValueStyle
@@ -161,11 +152,6 @@ export interface Container {
    * one event map.
    */
   portalTarget?: Instance
-}
-
-export type MotionBinding = {
-  values: Record<string, MotionValue>
-  releases: Array<() => void>
 }
 
 /** Host methods are attached when React hands out a ref, not per instance. */

@@ -11,6 +11,7 @@ import type {
 } from "../index.js"
 import type { PointerEventProps } from "./events/types.js"
 import type { ScrollEvent, WheelEvent } from "./scroll.js"
+import type { MotionValue } from "./motion-value.js"
 
 export type {
   DebugFrameOverlayStats,
@@ -38,6 +39,7 @@ export * from "./forms.js"
 export * from "./bounds.js"
 export * from "./host-runtime.js"
 export * from "./match-media.js"
+export * from "./motion-bindings.js"
 export * from "./motion-value.js"
 export * from "./mutations.js"
 export * from "./observers.js"
@@ -118,6 +120,14 @@ export type MotionStyle = Pick<
 
 /** Pixels, or a percentage string such as `"50%"`. */
 export type MotionLength = number | `${number}%`
+
+/**
+ * `StyleDesc` where each animatable property may hold a motion value instead.
+ * The adapter binds it to the element rather than sending it as style.
+ */
+export type MotionValueStyle = Omit<StyleDesc, keyof MotionStyle> & {
+  [Property in keyof MotionStyle]?: StyleDesc[Property] | MotionValue
+}
 
 export type MotionEase =
   | "linear"

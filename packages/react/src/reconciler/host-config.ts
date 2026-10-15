@@ -26,6 +26,7 @@ import {
   requestFormSubmit,
   selectTextControl,
   setTextControlSelectionRange,
+  splitMotionStyle,
 } from "@gpuix/native/host"
 
 const NoEventPriority = 0
@@ -53,7 +54,7 @@ import type {
   TextControlInstance,
   TextInstance,
 } from "../types/host.js"
-import { splitStyle, syncMotionBindings } from "./motion-bindings.js"
+import { syncMotionBindings } from "./motion-bindings.js"
 import {
   registerEventListener,
   unregisterEventListener,
@@ -238,7 +239,7 @@ function diffEventListeners(
 const NO_STYLE = {}
 
 function sendStyle(renderer: MutationRenderer, id: number, props: Props): void {
-  const style = splitStyle(props.style).style
+  const style = splitMotionStyle(props.style).style
   if (style == null || Object.keys(style).length === 0) return
   renderer.setStyle(id, style)
 }
@@ -263,7 +264,7 @@ function hiddenStyle(style: Props["style"]) {
   // Hover and active go, because a hidden element must stay hidden. A hover
   // style that sets `visibility` would otherwise paint an element React
   // asked to hide.
-  const { hover: _hover, active: _active, ...base } = splitStyle(style).style ?? {}
+  const { hover: _hover, active: _active, ...base } = splitMotionStyle(style).style ?? {}
   return { ...base, visibility: "hidden" }
 }
 
@@ -549,7 +550,7 @@ export const hostConfig = {
     if (!sameStyle(oldProps.style, newProps.style)) {
       container.renderer.setStyle(
         instance.id,
-        state.hidden ? hiddenStyle(newProps.style) : (splitStyle(newProps.style).style ?? {})
+        state.hidden ? hiddenStyle(newProps.style) : (splitMotionStyle(newProps.style).style ?? {})
       )
       syncMotionBindings(container, instance.id, newProps.style)
     }
@@ -597,7 +598,7 @@ export const hostConfig = {
 
   unhideInstance(instance: Instance, props: Props): void {
     stateFor(instance).hidden = false
-    rendererFor(instance).setStyle(instance.id, splitStyle(props.style).style ?? {})
+    rendererFor(instance).setStyle(instance.id, splitMotionStyle(props.style).style ?? {})
   },
 
   hideTextInstance(_textInstance: TextInstance): void {},
