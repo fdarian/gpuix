@@ -801,7 +801,7 @@ impl CustomElement for SvgElement {
     fn render(
         &mut self,
         ctx: CustomRenderContext,
-        _window: &mut gpui::Window,
+        window: &mut gpui::Window,
         cx: &mut gpui::Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
@@ -834,6 +834,11 @@ impl CustomElement for SvgElement {
                 // In flow, not absolute: an absolute child is sized against the padding box.
                 .size_full(),
             );
+        } else {
+            // Nothing to paint now, so the image of what was there must not stay in the atlas.
+            self.paint.borrow_mut().clear(|stale| {
+                window.drop_image(stale).ok();
+            });
         }
         surface.into_any_element()
     }
@@ -885,10 +890,7 @@ fn paint_svg(
         return;
     };
     let size = image.size(0);
-    let drawn = gpui::size(
-        gpui::px(size.width.0 as f32 / scale),
-        gpui::px(size.height.0 as f32 / scale),
-    );
+    let drawn = drawn_size((size.width.0, size.height.0), bounds.size, scale);
     let image_bounds = gpui::Bounds {
         origin: bounds.origin
             + gpui::point(
@@ -900,4 +902,62 @@ fn paint_svg(
     window
         .paint_image(bounds, image_bounds, gpui::Corners::default(), image, 0, false)
         .ok();
+}
+
+/// The size an SVG bitmap of `image` device pixels is drawn at inside `bounds`.
+///
+/// A bitmap made for this box is drawn at its own size. One that is not (a stale
+/// raster kept through a resize, or one gpui cut down to its 8192 px limit) is
+/// scaled to fit the box, like `object-fit: contain`.
+fn drawn_size(
+    image: (i32, i32),
+    bounds: gpui::Size<gpui::Pixels>,
+    scale_factor: f32,
+) -> gpui::Size<gpui::Pixels> {
+    let (width, height) = (image.0 as f32, image.1 as f32);
+    let box_width = f32::from(bounds.width) * scale_factor;
+    let box_height = f32::from(bounds.height) * scale_factor;
+    let (across, along) = (box_width / width, box_height / height);
+    let fit = across.min(along);
+    let limiting = if across <= along { width } else { height };
+    // The raster was sized from the box rounded to whole pixels, and the
+    // rasteriser cuts its size down to a whole pixel.
+    let made_for_box = (limiting * fit - limiting).abs() <= 1.5;
+    let fit = if made_for_box { 1.0 } else { fit };
+    gpui::size(
+        gpui::px(width * fit / scale_factor),
+        gpui::px(height * fit / scale_factor),
+    )
+}
+
+#[cfg(test)]
+mod drawn_size_tests {
+    use super::drawn_size;
+    use gpui::{px, size};
+
+    fn drawn(image: (i32, i32), bounds: (f32, f32), scale: f32) -> (f32, f32) {
+        let drawn = drawn_size(image, size(px(bounds.0), px(bounds.1)), scale);
+        let round = |value: gpui::Pixels| (f32::from(value) * 100.0).round() / 100.0;
+        (round(drawn.width), round(drawn.height))
+    }
+
+    #[test]
+    fn a_bitmap_made_for_the_box_is_drawn_at_its_own_size() {
+        assert_eq!(drawn((48, 48), (24.0, 24.0), 2.0), (24.0, 24.0));
+        // 10.4 logical px is 21 device px once rounded, and a 20.6 px bitmap is cut to 20.
+        assert_eq!(drawn((20, 10), (10.4, 10.4), 2.0), (10.0, 5.0));
+        assert_eq!(drawn((20, 10), (20.0, 20.0), 1.0), (20.0, 10.0));
+    }
+
+    #[test]
+    fn a_stale_bitmap_is_scaled_to_the_box_keeping_its_ratio() {
+        assert_eq!(drawn((100, 50), (150.0, 150.0), 1.0), (150.0, 75.0));
+        assert_eq!(drawn((100, 50), (60.0, 60.0), 1.0), (60.0, 30.0));
+        assert_eq!(drawn((50, 100), (150.0, 150.0), 2.0), (75.0, 150.0));
+    }
+
+    #[test]
+    fn a_bitmap_cut_down_to_the_texture_limit_fills_the_box() {
+        assert_eq!(drawn((8192, 4096), (5000.0, 5000.0), 2.0), (5000.0, 2500.0));
+    }
 }

@@ -10,14 +10,37 @@
 //! made and, when any input changes, drops that image from the sprite atlas
 //! before making the next one, so an SVG that changes every frame (an animation
 //! feeding serialised children) keeps the atlas at one image.
+//!
+//! A box that changes size every frame (a transition, a window drag) would
+//! rasterise every frame. The first change after a pause rasterises at once, so
+//! a one-off resize is sharp. When the next change comes within [`SETTLE`], the
+//! last raster is drawn stretched until the size has been still for [`SETTLE`],
+//! and then it is rasterised again. A raster more than twice off the target
+//! size is replaced at once, so a stretch never gets that blurry.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gpui::{DevicePixels, Pixels, RenderImage, Rgba, Size, SvgRenderer, SvgSize};
+
+/// How long the box must hold one size before a stretched raster is replaced.
+const SETTLE: Duration = Duration::from_millis(100);
+
+/// Widest request for the first, cheap render that measures the SVG's aspect ratio.
+const PROBE_WIDTH: i32 = 256;
 
 #[derive(Default)]
 pub struct SvgPaint {
     cached: Option<Cached>,
+    resize: Option<Resize>,
+}
+
+/// The box size last asked for, and when it moved there.
+struct Resize {
+    target: (i32, i32),
+    changed_at: Instant,
+    /// The move came within [`SETTLE`] of the one before it.
+    in_burst: bool,
 }
 
 struct Cached {
@@ -36,10 +59,21 @@ struct Key {
 
 impl Key {
     fn same_as(&self, other: &Key) -> bool {
-        self.width == other.width
-            && self.height == other.height
-            && self.color == other.color
+        self.width == other.width && self.height == other.height && self.same_content(other)
+    }
+
+    /// Same document and colour, whatever the size.
+    fn same_content(&self, other: &Key) -> bool {
+        self.color == other.color
             && (Arc::ptr_eq(&self.bytes, &other.bytes) || self.bytes == other.bytes)
+    }
+
+    /// Whether a raster of this key's size is close enough to stretch to `other`'s.
+    fn within_twice(&self, other: &Key) -> bool {
+        let ratio = |a: i32, b: i32| a as f32 / b as f32;
+        [ratio(self.width, other.width), ratio(self.height, other.height)]
+            .iter()
+            .all(|ratio| (0.5..=2.0).contains(ratio))
     }
 }
 
@@ -52,7 +86,9 @@ impl SvgPaint {
     /// image's size divided by `scale_factor`. It is in the BGRA layout
     /// `Window::paint_image` takes as it is.
     ///
-    /// The previous image is dropped from the atlas when the inputs changed.
+    /// The previous image is dropped from the atlas when the inputs changed. While
+    /// the size is changing every frame it is kept instead, and the caller draws
+    /// it stretched (see the module docs); a frame is requested to replace it.
     ///
     /// `None` means the SVG could not be rasterised; that is logged once and
     /// retried only when the bytes, size, scale or colour change.
@@ -77,24 +113,59 @@ impl SvgPaint {
                 current_color.a.to_bits(),
             ],
         };
-        self.resolve(
+        let mut pending = false;
+        let image = self.resolve(
             key,
+            Instant::now(),
+            &mut pending,
             |key| rasterize(renderer, bytes, key.width, key.height, current_color),
             |stale| {
                 window.drop_image(stale).ok();
             },
-        )
+        );
+        if pending {
+            window.request_animation_frame();
+        }
+        image
     }
 
+    /// `pending` is set when the image returned is a stale raster that a later
+    /// frame must replace.
     fn resolve(
         &mut self,
         key: Key,
+        now: Instant,
+        pending: &mut bool,
         rasterize: impl FnOnce(&Key) -> Result<Arc<RenderImage>, String>,
         drop_image: impl FnOnce(Arc<RenderImage>),
     ) -> Option<Arc<RenderImage>> {
         if let Some(cached) = &self.cached {
             if cached.key.same_as(&key) {
                 return cached.image.clone();
+            }
+            if cached.key.same_content(&key) && cached.image.is_some() {
+                let target = (key.width, key.height);
+                match &mut self.resize {
+                    Some(resize) if resize.target == target => {}
+                    resize => {
+                        let in_burst = resize
+                            .as_ref()
+                            .is_some_and(|last| now.duration_since(last.changed_at) < SETTLE);
+                        *resize = Some(Resize {
+                            target,
+                            changed_at: now,
+                            in_burst,
+                        });
+                    }
+                }
+                let resize = self.resize.as_ref().expect("set above");
+                if resize.in_burst
+                    && now.duration_since(resize.changed_at) < SETTLE
+                    && cached.key.within_twice(&key)
+                {
+                    *pending = true;
+                    return cached.image.clone();
+                }
             }
         }
         // Drop first: if rasterising fails the stale image must not linger.
@@ -115,6 +186,14 @@ impl SvgPaint {
         image
     }
 
+    /// Drops the image held, for an `<svg>` that has nothing left to paint.
+    pub fn clear(&mut self, drop_image: impl FnOnce(Arc<RenderImage>)) {
+        self.resize = None;
+        if let Some(stale) = self.cached.take().and_then(|cached| cached.image) {
+            drop_image(stale);
+        }
+    }
+
     /// The image currently held, so the owner can drop it from the atlas on teardown.
     pub fn held(&self) -> Option<Arc<RenderImage>> {
         self.cached.as_ref().and_then(|cached| cached.image.clone())
@@ -130,22 +209,46 @@ fn rasterize(
 ) -> Result<Arc<RenderImage>, String> {
     let bytes = with_current_color(bytes, current_color);
     let svg = renderer.parse_svg(&bytes).map_err(|error| error.to_string())?;
-    let render = |width: i32| {
+    fit(width, height, |width| {
         renderer
             .render_parsed(
                 &svg,
                 SvgSize::Size(gpui::size(DevicePixels(width), DevicePixels(1))),
             )
             .map_err(|error| error.to_string())
+    })
+}
+
+/// The image `render` makes, at the widest width that fits `width` by `height`.
+/// `render` scales by width and keeps the aspect ratio.
+fn fit(
+    width: i32,
+    height: i32,
+    render: impl Fn(i32) -> Result<Arc<RenderImage>, String>,
+) -> Result<Arc<RenderImage>, String> {
+    let refit = |image: Arc<RenderImage>| {
+        let rendered = image.size(0);
+        if rendered.height.0 <= height {
+            return Ok(image);
+        }
+        let fitted = (width as f64 * height as f64 / rendered.height.0 as f64).floor() as i32;
+        render(fitted.max(1))
     };
-    // `SvgSize::Size` scales by width and keeps the aspect ratio. If that is too
-    // tall for the box, scale by the height instead.
-    let image = render(width)?;
-    let rendered = image.size(0);
-    if rendered.height.0 <= height {
-        return Ok(image);
+    if width <= PROBE_WIDTH {
+        return refit(render(width)?);
     }
-    let fitted = (width as f64 * height as f64 / rendered.height.0 as f64).floor() as i32;
+    // A full-width render of an SVG that is too tall would be thrown away, and
+    // gpui has no way to ask a parsed SVG for its size. A cheap render says how
+    // tall it is. Its height is cut down to whole pixels, so the ratio it shows
+    // is a lower bound, and one more pixel of height is an upper bound.
+    let probe = render(PROBE_WIDTH)?.size(0);
+    let (probe_width, probe_height) = (probe.width.0.max(1) as f64, probe.height.0 as f64);
+    if width as f64 * probe_height / probe_width <= height as f64 {
+        return refit(render(width)?);
+    }
+    // Too tall for sure. The upper bound keeps the image inside the box, at the
+    // price of being a pixel or so narrower than the exact fit.
+    let fitted = (height as f64 * probe_width / (probe_height + 1.0)).floor() as i32;
     render(fitted.max(1))
 }
 
@@ -289,6 +392,132 @@ mod tests {
         assert_eq!((image.size(0).width.0, image.size(0).height.0), (20, 10));
     }
 
+    fn widths_rendered(width: i32, height: i32, ratio: f64) -> (Vec<i32>, (i32, i32)) {
+        let widths = std::cell::RefCell::new(Vec::new());
+        let image = fit(width, height, |width| {
+            widths.borrow_mut().push(width);
+            let height = (width as f64 * ratio) as i32;
+            let pixels = vec![0u8; width as usize * height as usize * 4];
+            gpui::RenderImage::from_bgra(width as u32, height as u32, pixels)
+                .map(Arc::new)
+                .ok_or_else(|| "bad image".to_string())
+        })
+        .unwrap();
+        let size = image.size(0);
+        (widths.into_inner(), (size.width.0, size.height.0))
+    }
+
+    #[test]
+    fn a_tall_svg_is_not_rendered_at_full_width_first() {
+        // 1:10 into 1200x600: the width that fits is 60.
+        let (widths, size) = widths_rendered(1200, 600, 10.0);
+        assert_eq!(widths.len(), 2, "{widths:?}");
+        assert_eq!(widths[0], PROBE_WIDTH);
+        assert!(widths.iter().all(|width| *width <= PROBE_WIDTH));
+        assert!(size.1 <= 600 && size.1 >= 590, "{size:?}");
+    }
+
+    #[test]
+    fn an_svg_that_fits_is_rendered_once_at_full_width_after_the_probe() {
+        let (widths, size) = widths_rendered(1200, 600, 0.5);
+        assert_eq!(widths, vec![PROBE_WIDTH, 1200]);
+        assert_eq!(size, (1200, 600));
+    }
+
+    #[test]
+    fn a_small_box_renders_at_its_width_first_as_before() {
+        let (widths, size) = widths_rendered(100, 100, 0.5);
+        assert_eq!(widths, vec![100]);
+        assert_eq!(size, (100, 50));
+        let (widths, size) = widths_rendered(100, 100, 2.0);
+        assert_eq!(widths, vec![100, 50]);
+        assert_eq!(size, (50, 100));
+    }
+
+    #[test]
+    fn an_svg_a_pixel_taller_than_the_probe_shows_is_refitted() {
+        // The probe's height is cut down, so it cannot tell this one is too tall.
+        let (widths, size) = widths_rendered(600, 601, 1.0035);
+        assert_eq!(widths, vec![PROBE_WIDTH, 600, 599]);
+        assert!(size.1 <= 601, "{size:?}");
+    }
+
+    fn resized(paint: &mut SvgPaint, bytes: &Arc<[u8]>, width: i32, at: Instant) -> (bool, i32) {
+        let mut pending = false;
+        let image = paint
+            .resolve(
+                key(bytes, width, RED),
+                at,
+                &mut pending,
+                |key| {
+                    let height = key.height as u32;
+                    gpui::RenderImage::from_bgra(key.width as u32, height, vec![0; key.width as usize * height as usize * 4])
+                        .map(Arc::new)
+                        .ok_or_else(|| "bad".to_string())
+                },
+                |_| {},
+            )
+            .unwrap();
+        (pending, image.size(0).width.0)
+    }
+
+    #[test]
+    fn a_resize_after_a_pause_is_sharp_at_once() {
+        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+        let mut paint = SvgPaint::default();
+        let start = Instant::now();
+        assert_eq!(resized(&mut paint, &bytes, 100, start), (false, 100));
+        let later = start + SETTLE * 5;
+        assert_eq!(resized(&mut paint, &bytes, 120, later), (false, 120));
+    }
+
+    #[test]
+    fn a_size_that_changes_every_frame_reuses_the_raster_until_it_settles() {
+        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+        let mut paint = SvgPaint::default();
+        let start = Instant::now();
+        let frame = Duration::from_millis(16);
+        assert_eq!(resized(&mut paint, &bytes, 100, start), (false, 100));
+        // The first change rasterises, the ones right after it do not.
+        assert_eq!(resized(&mut paint, &bytes, 104, start + frame), (false, 104));
+        for step in 2..6 {
+            let at = start + frame * step;
+            let (pending, width) = resized(&mut paint, &bytes, 100 + 4 * step as i32, at);
+            assert!(pending);
+            assert_eq!(width, 104);
+        }
+        // Still at 120 a frame after the last change: waiting.
+        let last = start + frame * 5;
+        assert_eq!(resized(&mut paint, &bytes, 120, last + frame), (true, 104));
+        // Settled: the next frame rasterises at the final size.
+        assert_eq!(resized(&mut paint, &bytes, 120, last + SETTLE), (false, 120));
+        assert_eq!(resized(&mut paint, &bytes, 120, last + SETTLE * 2), (false, 120));
+    }
+
+    #[test]
+    fn a_raster_more_than_twice_off_is_replaced_during_a_resize() {
+        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+        let mut paint = SvgPaint::default();
+        let start = Instant::now();
+        let frame = Duration::from_millis(16);
+        resized(&mut paint, &bytes, 100, start);
+        resized(&mut paint, &bytes, 110, start + frame);
+        assert_eq!(resized(&mut paint, &bytes, 150, start + frame * 2), (true, 110));
+        assert_eq!(resized(&mut paint, &bytes, 300, start + frame * 3), (false, 300));
+    }
+
+    #[test]
+    fn clear_drops_the_held_image_once() {
+        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+        let mut paint = SvgPaint::default();
+        resized(&mut paint, &bytes, 100, Instant::now());
+        let dropped = std::cell::Cell::new(0);
+        paint.clear(|_| dropped.set(dropped.get() + 1));
+        paint.clear(|_| dropped.set(dropped.get() + 1));
+        assert_eq!(dropped.get(), 1);
+        assert!(paint.held().is_none());
+    }
+
     #[test]
     fn rejects_input_that_is_not_an_svg() {
         assert!(rasterize(&renderer(), b"not svg", 4, 4, RED).is_err());
@@ -311,6 +540,8 @@ mod tests {
         let mut attempt = |paint: &mut SvgPaint, key: Key| {
             let found = paint.resolve(
                 key,
+                Instant::now(),
+                &mut false,
                 |key| {
                     attempts.set(attempts.get() + 1);
                     rasterize(&renderer(), &bad, key.width, key.height, RED)
@@ -343,6 +574,8 @@ mod tests {
         let run = |paint: &mut SvgPaint, bytes: &Arc<[u8]>| {
             paint.resolve(
                 key(bytes, 2, RED),
+                Instant::now(),
+                &mut false,
                 |key| rasterize(&renderer(), bytes, key.width, key.height, RED),
                 |_| dropped.set(dropped.get() + 1),
             )
@@ -368,6 +601,8 @@ mod tests {
             );
             let image = paint.resolve(
                 key(&bytes, 2, RED),
+                Instant::now(),
+                &mut false,
                 |key| rasterize(&renderer(), &bytes, key.width, key.height, RED),
                 |_| dropped.set(dropped.get() + 1),
             );
