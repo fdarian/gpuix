@@ -602,4 +602,83 @@ describeNative("accessibility", () => {
 
     expect(clicks).toHaveLength(1)
   })
+
+  describe("label activation", () => {
+    function renderLabelAndInput(
+      labelProps: { onClick?: (event: { preventDefault(): void }) => void },
+      inputClicks: Array<{ detail: number | undefined; x: number | undefined }>,
+    ) {
+      testRoot.render(
+        <div style={{ width: 300, height: 120, display: "flex", flexDirection: "column" }}>
+          <label htmlFor="name" testId="label" {...labelProps} style={{ width: 200, height: 30 }}>
+            Name
+          </label>
+          <input
+            id="name"
+            testId="name-input"
+            value=""
+            onClick={(event) => inputClicks.push({ detail: event.detail, x: event.x })}
+            style={{ width: 200, height: 32 }}
+          />
+        </div>,
+      )
+      const label = testRoot.renderer.findByTestId("label")!
+      const input = testRoot.renderer.findByTestId("name-input")!
+      return { input, labelBounds: testRoot.renderer.getElementBounds(label.id)! }
+    }
+
+    it("clicks the control with the label click's position and count", () => {
+      const inputClicks: Array<{ detail: number | undefined; x: number | undefined }> = []
+      const { labelBounds } = renderLabelAndInput({}, inputClicks)
+      testRoot.renderer.nativeSimulateClick(labelBounds.x + 10, labelBounds.y + 10)
+      expect(inputClicks).toEqual([{ detail: 1, x: labelBounds.x + 10 }])
+    })
+
+    it("does nothing when a handler cancels the label's click", () => {
+      const inputClicks: Array<{ detail: number | undefined; x: number | undefined }> = []
+      const { input, labelBounds } = renderLabelAndInput(
+        { onClick: (event) => event.preventDefault() },
+        inputClicks,
+      )
+      testRoot.renderer.nativeSimulateClick(labelBounds.x + 10, labelBounds.y + 10)
+      expect(inputClicks).toHaveLength(0)
+      expect(testRoot.renderer.getFocusedElementId()).not.toBe(input.id)
+    })
+
+    it("does not activate when the press was on the label and the release elsewhere", () => {
+      const inputClicks: Array<{ detail: number | undefined; x: number | undefined }> = []
+      const { input, labelBounds } = renderLabelAndInput({}, inputClicks)
+      testRoot.renderer.nativeSimulateMouseDown(labelBounds.x + 10, labelBounds.y + 10)
+      testRoot.renderer.nativeSimulateMouseUp(250, 110)
+      expect(inputClicks).toHaveLength(0)
+      expect(testRoot.renderer.getFocusedElementId()).not.toBe(input.id)
+    })
+
+    it("does not activate a disabled control", () => {
+      const clicks: number[] = []
+      testRoot.render(
+        <div style={{ width: 300, height: 120, display: "flex", flexDirection: "column" }}>
+          <label htmlFor="off" testId="label" style={{ width: 200, height: 30 }}>
+            Off
+          </label>
+          <input
+            id="off"
+            testId="off-input"
+            value=""
+            disabled
+            onClick={() => clicks.push(1)}
+            style={{ width: 200, height: 32 }}
+          />
+        </div>,
+      )
+      const bounds = testRoot.renderer.getElementBounds(
+        testRoot.renderer.findByTestId("label")!.id,
+      )!
+      testRoot.renderer.nativeSimulateClick(bounds.x + 10, bounds.y + 10)
+      expect(clicks).toHaveLength(0)
+      expect(testRoot.renderer.getFocusedElementId()).not.toBe(
+        testRoot.renderer.findByTestId("off-input")!.id,
+      )
+    })
+  })
 })

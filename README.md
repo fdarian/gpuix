@@ -2827,8 +2827,14 @@ gets a hidden `group` node to carry it.
 `<textarea>` inside it. The control's accessible name comes from the label
 (AccessKit `labelled_by`), unless the control has its own `aria-label` or
 `aria-labelledby`. A control can have several labels. Clicking a label focuses
-its control and dispatches a `click` on it, like the DOM, except when the click
-lands on the control itself.
+its control and dispatches a `click` on it (same position and `detail`, bubbling
+along the control's own path), like the DOM. Nothing happens when the click
+lands on the control itself, when a handler cancelled the label's `click` with
+`preventDefault()`, when the press began elsewhere than where the release
+landed (the click then targets a common ancestor, which has no label in its
+path), or when the control is `disabled` or `inert`. `preventDefault()` is known
+on macOS and in the test renderer; on Windows and Linux the event is queued, so
+a label always activates its control there.
 
 ```tsx
 <label htmlFor="email">Email</label>

@@ -486,7 +486,12 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string
   ): void {
     this.native.flush()
-    this.native.simulateClick(x, y, button, modifiers)
+    // Two inputs, not `native.simulateClick`: the press's focus change is queued
+    // while the release is delivered synchronously, so the focus handlers must
+    // run before it, as they do when a person lets go later.
+    this.native.simulateMouseDown(x, y, button ?? 0, modifiers)
+    this.dispatchNativeEvents()
+    this.native.simulateMouseUp(x, y, button ?? 0, modifiers)
     this.dispatchNativeEvents()
     // Flush again after framework state updates so the Rust RetainedTree
     // is fully rebuilt and GPUI has re-laid-out before any screenshot.

@@ -6640,7 +6640,7 @@ impl gpui::Render for GpuixView {
             with_window_menu_actions(root)
                 .child(crate::events::listeners::pointer_frame(
                     cx.weak_entity(),
-                    crate::events::listeners::PressDispatch {
+                    crate::events::listeners::PointerDispatch {
                         pointer: self.pointer.clone(),
                         tree: tree_arc.clone(),
                         callback: callback.clone(),
@@ -7271,13 +7271,7 @@ pub(crate) fn build_host_container(
         }
     }
     if is_label && !inert {
-        el = crate::accessibility::label::describe_and_activate(
-            el,
-            element.id,
-            ctx.tree,
-            ctx.focus_handles,
-            ctx.event_callback,
-        );
+        el = crate::accessibility::label::describe(el, element.id);
     }
 
     // Pointer, mouse and click events are not wired here: the window-level
