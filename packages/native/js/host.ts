@@ -1050,6 +1050,20 @@ export interface HostProps extends AriaProps, PointerEventProps {
    *  transition list, or became owned by `motion`. */
   onTransitionCancel?: (event: EventPayload) => void
 
+  // ── CSS animation events (DOM `AnimationEvent`) ──────────────────
+  // `animationName` is the name given to `defineKeyframes`, `elapsedTime` is in
+  // seconds and `pseudoElement` is always `""`. Fired on the element that
+  // animates; they do not bubble yet.
+  /** An animation's delay ended and it started playing. */
+  onAnimationStart?: (event: EventPayload) => void
+  /** An animation began another iteration. Not fired for the last one. */
+  onAnimationIteration?: (event: EventPayload) => void
+  /** An animation finished its last iteration. */
+  onAnimationEnd?: (event: EventPayload) => void
+  /** An animation was interrupted before it ended: its name left
+   *  `animation-name` or the name changed. */
+  onAnimationCancel?: (event: EventPayload) => void
+
   // ── Highlight ──────────────────────────────────────────────────
   /**
    * Paint a background wash behind matched or explicitly given text ranges.
