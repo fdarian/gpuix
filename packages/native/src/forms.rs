@@ -172,8 +172,9 @@ pub(crate) fn request_submit(window: &mut Window, cx: &mut App, form: u64) -> Re
             if view.is_updating(cx) {
                 return Err(sync_dispatch::VIEW_BUSY.to_string());
             }
-            view.update(cx, |view, cx| view.request_focus(id, window, cx));
-            window.refresh();
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.request_focus(id, window, cx)
+            })?;
         }
         return Ok(());
     }
