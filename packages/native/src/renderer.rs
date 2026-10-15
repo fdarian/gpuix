@@ -5815,6 +5815,7 @@ pub(crate) struct Inherited {
     pub highlight: Option<Arc<crate::text::HighlightContext>>,
     /// True below an element with `pointerEvents: "none"` and above any
     /// descendant that sets `auto` again, as in CSS where it is inherited.
+    /// Always true in an inert subtree: `auto` does not reopen it.
     pub pointer_events_none: bool,
     /// Computed `color` and `colorScheme`, which `currentColor` and
     /// `light-dark()` resolve against.
@@ -5851,6 +5852,7 @@ impl Inherited {
         self.inert |= inert;
         if self.inert {
             self.selectable = false;
+            self.pointer_events_none = true;
         }
         let Some(style) = style else { return self };
         (self.font_state, self.font_features) = self.font_state.descend(
@@ -5872,7 +5874,7 @@ impl Inherited {
         }
         match style.pointer_events.as_deref() {
             Some("none") => self.pointer_events_none = true,
-            Some("auto") => self.pointer_events_none = false,
+            Some("auto") => self.pointer_events_none = self.inert,
             _ => {}
         }
         if let Some(interpolate_size) = crate::motion::InterpolateSize::declared(style) {
@@ -9716,4 +9718,41 @@ fn check_font(bytes: &[u8]) -> std::result::Result<(), String> {
         return Err("font has no glyph for \"m\"".to_string());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod inherited_pointer_events_tests {
+    use super::*;
+
+    fn style(pointer_events: &str) -> StyleDesc {
+        StyleDesc {
+            pointer_events: Some(pointer_events.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn root() -> Inherited {
+        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark)
+    }
+
+    #[test]
+    fn auto_reopens_a_pointer_events_none_subtree() {
+        let below_none = root().descend(Some(&style("none")), false);
+        assert!(below_none.pointer_events_none);
+        assert!(!below_none.descend(Some(&style("auto")), false).pointer_events_none);
+    }
+
+    #[test]
+    fn auto_does_not_reopen_an_inert_subtree() {
+        let below_inert = root().descend(None, true);
+        assert!(below_inert.pointer_events_none);
+        let below_auto = below_inert.descend(Some(&style("auto")), false);
+        assert!(below_auto.pointer_events_none);
+        assert!(below_auto.descend(None, false).pointer_events_none);
+    }
+
+    #[test]
+    fn an_inert_element_with_pointer_events_auto_is_not_hit_itself() {
+        assert!(root().descend(Some(&style("auto")), true).pointer_events_none);
+    }
 }

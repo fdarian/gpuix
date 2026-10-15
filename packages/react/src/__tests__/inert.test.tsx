@@ -162,4 +162,50 @@ describeNative("inert", () => {
     renderer.nativeSimulateMouseMove(50, 30)
     expect(log).toContain("enter")
   })
+  it("lets clicks, presses and hover reach content underneath an inert overlay", () => {
+    const log: string[] = []
+    const { renderer } = setup(
+      <div style={{ width: 200, height: 100, position: "relative" }}>
+        <div
+          testId="content"
+          onMouseEnter={() => log.push("enter")}
+          onMouseDown={() => log.push("down")}
+          onClick={() => log.push("click")}
+          style={{ width: 100, height: 60 }}
+        />
+        <div
+          inert
+          testId="overlay"
+          onMouseEnter={() => log.push("overlay-enter")}
+          onMouseDown={() => log.push("overlay-down")}
+          onClick={() => log.push("overlay-click")}
+          style={{ position: "absolute", left: 0, top: 0, width: 100, height: 60 }}
+        />
+      </div>
+    )
+    renderer.nativeSimulateClick(50, 30)
+    expect(log).toEqual(["enter", "down", "click"])
+  })
+
+  it("keeps pointerEvents auto inside an inert subtree non-interactive", () => {
+    const log: string[] = []
+    const { renderer, idOf } = setup(
+      <div style={{ width: 200, height: 100 }}>
+        <div inert style={{ width: 100, height: 60 }}>
+          <div style={{ width: 100, height: 60, pointerEvents: "none" }}>
+            <div
+              testId="auto"
+              onMouseEnter={() => log.push("enter")}
+              onMouseDown={() => log.push("down")}
+              onClick={() => log.push("click")}
+              style={{ width: 100, height: 60, pointerEvents: "auto" }}
+            />
+          </div>
+        </div>
+      </div>
+    )
+    renderer.nativeSimulateClick(50, 30)
+    expect(log).toEqual([])
+    expect(renderer.getElementsAt(50, 30)).not.toContain(idOf("auto"))
+  })
 })

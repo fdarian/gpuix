@@ -277,3 +277,90 @@ describeNative("scroll latching", () => {
     }
   })
 })
+
+describeNative("scrolling under inert and pointer-events: none", () => {
+  type InnerProps = { inert?: boolean; pointerEvents?: "none" | "auto" }
+
+  function Nested(props: InnerProps) {
+    return (
+      <div testId="outer" style={{ width: 300, height: 200, overflow: "scroll" }}>
+        <div style={{ height: 100, flexShrink: 0 }} />
+        <div
+          testId="inner"
+          inert={props.inert}
+          style={{ width: 200, height: 100, overflow: "scroll", pointerEvents: props.pointerEvents }}
+        >
+          <div style={{ width: 200, height: 400 }} />
+        </div>
+        <div style={{ width: 900, height: 600 }} />
+      </div>
+    )
+  }
+
+  function setup(props: InnerProps) {
+    const root = createTestRoot()
+    root.render(<Nested {...props} />)
+    const renderer = root.renderer
+    const id = (testId: string) => renderer.findByTestId(testId)!.id
+    return {
+      ...root,
+      renderer,
+      offset: (testId: string) => renderer.getScrollOffset(id(testId))!,
+      rerender: (next: InnerProps) => root.render(<Nested {...next} />),
+    }
+  }
+
+  it.each([
+    ["inert", { inert: true }],
+    ["pointerEvents: none", { pointerEvents: "none" as const }],
+  ])("scrolls the ancestor when the wheel is over a scroller with %s", (_name, props) => {
+    const { renderer, offset, unmount } = setup(props)
+    try {
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      expect(offset("inner")).toEqual([0, 0])
+      expect(offset("outer")).toEqual([0, -30])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("keeps a scroller inside an inert subtree out of the wheel, pointerEvents: auto included", () => {
+    const root = createTestRoot()
+    root.render(
+      <div testId="outer" style={{ width: 300, height: 200, overflow: "scroll" }}>
+        <div inert style={{ width: 200, height: 100 }}>
+          <div testId="inner" style={{ width: 200, height: 100, overflow: "scroll", pointerEvents: "auto" }}>
+            <div style={{ width: 200, height: 400 }} />
+          </div>
+        </div>
+        <div style={{ width: 900, height: 600 }} />
+      </div>
+    )
+    const renderer = root.renderer
+    try {
+      renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      expect(renderer.getScrollOffset(renderer.findByTestId("inner")!.id)).toEqual([0, 0])
+      expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, -30])
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it.each([
+    ["inert", { inert: true }],
+    ["pointerEvents: none", { pointerEvents: "none" as const }],
+  ])("does not keep a latched gesture on a scroller that became %s", (_name, props) => {
+    const { renderer, offset, rerender, unmount } = setup({})
+    try {
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -10, undefined, "started")
+      expect(offset("inner")).toEqual([0, -10])
+
+      rerender(props)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -10, undefined, "moved")
+      expect(offset("inner")).toEqual([0, -10])
+      expect(offset("outer")).toEqual([0, -10])
+    } finally {
+      unmount()
+    }
+  })
+})
