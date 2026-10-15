@@ -361,6 +361,25 @@ export interface StyleDesc {
    *  painted behind the element, within its border box. The element's own
    *  background should be translucent for the effect to show. */
   backdropFilter?: string
+  /** CSS `mask-image`: a comma list of `linear-`, `radial-`, `conic-gradient()` and
+   *  `repeating-` forms, `none`, or `url()` (valid but not drawn, so that layer is
+   *  skipped). The element and everything in it is multiplied by the alpha of the
+   *  layers, the first on top. */
+  maskImage?: string
+  /** CSS lists, one entry per layer, repeating to cover the layers. Unlike
+   *  `backgroundOrigin`, `maskOrigin` starts at `border-box`. `fill-box` is
+   *  `content-box` and `stroke-box` and `view-box` are `border-box`. `no-clip`
+   *  and `margin-box` are not supported, so a list using them is ignored. */
+  maskSize?: string
+  maskPosition?: string
+  maskRepeat?: string
+  maskOrigin?: "border-box" | "padding-box" | "content-box" | string
+  maskClip?: "border-box" | "padding-box" | "content-box" | string
+  /** CSS `mask` shorthand: layers, `position / size`, repeat and origin / clip
+   *  boxes. The longhands win over it. `mask-composite` and `mask-mode` have no
+   *  props, so only their initial values (`add`, `alpha`, `match-source`) are
+   *  accepted. An invalid string is ignored. */
+  mask?: string
   /** Applies to every side. */
   borderStyle?: "solid" | "dashed"
   /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in

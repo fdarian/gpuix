@@ -4099,7 +4099,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Borders
 
@@ -4402,6 +4402,28 @@ each other.
 <div style={{ backdropFilter: 'blur(12px)', backgroundColor: 'rgba(255,255,255,0.4)' }} />
 <div style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,.4))' }} />
 ```
+
+`maskImage` multiplies the element and everything in it by the alpha of a comma
+list of gradients (the same forms as `backgroundImage`, first on top), so
+`transparent` hides and any opaque colour shows. `maskSize`, `maskPosition`,
+`maskRepeat`, `maskOrigin` and `maskClip` are comma lists that repeat to cover the
+layers, and `mask` is the shorthand (layers, `position / size`, repeat, and origin
+and clip boxes). The longhands win over it. `maskOrigin` and `maskClip` start at
+`border-box`, not at the `padding-box` a background starts from. A layer that does
+not cover an area leaves it hidden, so a non-repeating mask hides what it does not
+reach. A mask composites the element as a group, like `opacity` and `filter`.
+
+```tsx
+// Fade the top and bottom edge of a scroller.
+<div style={{ overflow: 'scroll', maskImage: 'linear-gradient(to bottom, transparent, black 20px, black 80%, transparent)' }} />
+<div style={{ mask: 'radial-gradient(circle, black 60%, transparent 61%) center / 24px 24px' }} />
+```
+
+Limits: `url(...)` masks are valid but not drawn, so that layer is skipped.
+`maskMode` and `maskComposite` have no props, and only the alpha of a gradient is
+used. `no-clip` and `margin-box` are not supported, so a value using them is
+ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
+`border-box`.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 

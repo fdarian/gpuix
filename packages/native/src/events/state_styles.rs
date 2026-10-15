@@ -49,6 +49,8 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         position, top, right, bottom, left,
         background, background_color, background_image, background_size, background_position,
         background_repeat, background_origin, background_clip, color, color_scheme, opacity,
+        filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
+        mask_clip, mask, font_style,
         border, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,
