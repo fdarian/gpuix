@@ -56,6 +56,7 @@ export function createRoot(
   }, (flush) => {
     queueMicrotask(() => {
       try {
+        container.finishRemovals()
         flush()
       } catch (error) {
         rootHandlers.onUncaughtError?.(
@@ -134,7 +135,10 @@ export function createRoot(
   }
 
   attach()
-  const flush = () => mutations.flushMutations()
+  const flush = () => {
+    container.finishRemovals()
+    mutations.flushMutations()
+  }
   const clear = () => {
     dispose?.()
     dispose = undefined

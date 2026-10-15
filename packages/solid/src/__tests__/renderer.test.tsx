@@ -76,6 +76,40 @@ describe.skipIf(!hasNativeTestRenderer)("Solid renderer", () => {
     expect(app.renderer.getAllText().filter(Boolean)).toEqual(["c", "a"])
   })
 
+  it("swaps two neighbours in the middle of a list", () => {
+    const [items, setItems] = createSignal(["a", "b", "c", "d"])
+    const app = createTestRoot()
+    app.render(() => (
+      <div>
+        <For each={items()}>{(item) => <text>{item}</text>}</For>
+      </div>
+    ))
+    app.flushSync(() => setItems(["a", "c", "b", "d"]))
+    expect(app.renderer.getAllText().filter(Boolean)).toEqual(["a", "c", "b", "d"])
+    app.flushSync(() => setItems(["c", "a", "b", "d"]))
+    expect(app.renderer.getAllText().filter(Boolean)).toEqual(["c", "a", "b", "d"])
+  })
+
+  it("keeps the element of a node Solid moves instead of recreating it", () => {
+    const [items, setItems] = createSignal(["a", "b", "c"])
+    const app = createTestRoot()
+    app.render(() => (
+      <div>
+        <For each={items()}>{(item) => <div testId={item} />}</For>
+      </div>
+    ))
+    const batches: string[] = []
+    const applyBatch = app.renderer.applyBatch.bind(app.renderer)
+    app.renderer.applyBatch = (batch: string) => {
+      batches.push(batch)
+      return applyBatch(batch)
+    }
+    // Moving the first to the end makes Solid replace it, then insert it again.
+    app.flushSync(() => setItems(["b", "c", "a"]))
+    expect(batches.join("")).not.toContain("destroyElement")
+    expect(app.renderer.findByType("div").map((div) => div.testId)).toEqual([undefined, "b", "c", "a"])
+  })
+
   it("forwards custom elements, virtual lists, and motion", () => {
     const app = createTestRoot()
     app.render(() => (

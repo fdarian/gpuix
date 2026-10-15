@@ -17,6 +17,7 @@ function setup() {
     setRoot() {},
     setKeyboardFocusDim() {},
     setCustomProp() {},
+    requestFlush() {},
     flushMutations() {},
   }
   let nextId = 0

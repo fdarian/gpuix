@@ -1602,6 +1602,13 @@ export interface MutationRenderer {
   setRoot(id: number): void
   setKeyboardFocusDim(enabled: boolean): void
   setCustomProp(id: number, key: string, value: object | string | number | boolean | null): void
+  /**
+   * Schedule the flush a queued mutation would have scheduled. An adapter that
+   * defers work to the flush (Solid destroys a removed node there) calls it when
+   * it has something to finish but nothing to enqueue yet. A queue with no
+   * scheduler leaves the flush to the caller.
+   */
+  requestFlush(): void
   flushMutations(): void
 }
 

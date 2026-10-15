@@ -73,6 +73,8 @@ export class HostRoot implements MotionBindingHost {
   readonly children: HostNode[] = []
   readonly motionBindings = new Map<number, MotionBinding>()
   readonly motionReleases: Array<() => void> = []
+  /** Nodes taken out of the tree whose element is destroyed at the next flush, unless they are inserted again first. */
+  readonly removals = new Set<HostNode>()
 
   readonly mutations: MutationRenderer
   readonly nativeRenderer: NativeRenderer
@@ -89,6 +91,17 @@ export class HostRoot implements MotionBindingHost {
     this.nativeRenderer = options.nativeRenderer
     this.eventHandlers = options.eventHandlers
     this.allocateId = options.allocateId
+  }
+
+  /** Destroys the removed nodes that stayed out of the tree. Call before each flush. */
+  finishRemovals(): void {
+    const removed = [...this.removals]
+    this.removals.clear()
+    for (const node of removed) {
+      if (node.parent !== null || !node.mounted) continue
+      markUnmounted(node)
+      this.mutations.destroyElement(node.id)
+    }
   }
 }
 
@@ -414,8 +427,11 @@ function removeFromParent(node: HostNode): void {
 export function insertHostNode(
   parent: HostParent,
   node: HostNode,
-  anchor?: HostNode | null
+  requestedAnchor?: HostNode | null
 ): void {
+  // Like the DOM, inserting a node before itself leaves it where it is. Solid's
+  // list reconcile does it when it swaps two neighbours.
+  const anchor = requestedAnchor === node ? getNextSibling(node) : requestedAnchor
   if (anchor && anchor.parent !== parent) {
     throw new Error("GPUIX Solid anchor is not a child of its parent")
   }
@@ -428,6 +444,7 @@ export function insertHostNode(
   node.parent = parent
   const root = parent.kind === "root" ? parent : parent.root
   if (!root) return
+  root.removals.delete(node)
   mount(root, node)
   if (parent.kind === "root") root.mutations.setRoot(node.id)
   else if (anchor) root.mutations.insertBefore(parent.id, node.id, anchor.id)
@@ -445,13 +462,19 @@ function markUnmounted(node: HostNode): void {
   for (const child of node.children) markUnmounted(child)
 }
 
+/**
+ * Solid moves a node by removing it and inserting it again (`replaceChild`).
+ * Destroying the element on removal would recreate it: its focus, pointer
+ * capture and layout animation would be gone. It is destroyed when the
+ * batch is flushed, unless the node came back.
+ */
 export function removeHostNode(parent: HostParent, node: HostNode): void {
   if (node.parent !== parent) return
   removeFromParent(node)
   const root = parent.kind === "root" ? parent : parent.root
   if (!root || !node.mounted) return
-  markUnmounted(node)
-  root.mutations.destroyElement(node.id)
+  root.removals.add(node)
+  root.mutations.requestFlush()
 }
 
 export function getParentNode(node: HostNode): HostParent | undefined {

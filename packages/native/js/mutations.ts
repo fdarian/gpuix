@@ -30,8 +30,7 @@ export function createMutationQueue(
   let queue: MutationTuple[] = []
   let flushScheduled = false
 
-  const enqueue = (mutation: MutationTuple) => {
-    queue.push(mutation)
+  const requestFlush = () => {
     if (!scheduleFlush || flushScheduled) return
     flushScheduled = true
     scheduleFlush(() => {
@@ -39,6 +38,11 @@ export function createMutationQueue(
       flushScheduled = false
       mutations.flushMutations()
     })
+  }
+
+  const enqueue = (mutation: MutationTuple) => {
+    queue.push(mutation)
+    requestFlush()
   }
 
   const blobImages = createBlobImageLoader(renderer, {
@@ -87,6 +91,7 @@ export function createMutationQueue(
       blobImages.prop(id, key, value)
       enqueue(["setCustomProp", id, key, value])
     },
+    requestFlush,
     flushMutations() {
       flushScheduled = false
       if (queue.length === 0) return
