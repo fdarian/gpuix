@@ -144,7 +144,7 @@ describeNative("getBoundingClientRect", () => {
             initial={{ top: 0 }}
             animate={{ top: 100 }}
             transition={{ duration: 1, ease: "linear" }}
-            style={{ width: 80, height: 80 }}
+            style={{ position: "relative", width: 80, height: 80 }}
           >
             <div
               ref={(instance) => {

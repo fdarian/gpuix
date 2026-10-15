@@ -361,7 +361,7 @@ describeNative("IntersectionObserver", () => {
       const { entries, callback } = collect()
       const app = (top: number) => (
         <div style={{ flexDirection: "column", padding: 20 }}>
-          <div ref={ref("root")} style={{ width: 100, height: 100, overflow: "hidden" }}>
+          <div ref={ref("root")} style={{ position: "relative", width: 100, height: 100, overflow: "hidden" }}>
             <div style={{ position: "absolute", top, left: 0, width: 40, height: 40 }} ref={ref("a")} />
           </div>
         </div>
