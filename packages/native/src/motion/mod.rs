@@ -25,7 +25,7 @@ use web_time::Instant;
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
 pub(crate) use css_animation::validate_animations;
-pub(crate) use keyframes::KeyframesRegistry;
+pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };

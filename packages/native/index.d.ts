@@ -1108,6 +1108,13 @@ export interface UpdaterHeader {
   value: string
 }
 
+/**
+ * Checks a keyframes definition the way `GpuixRenderer.defineKeyframes` does,
+ * without a renderer. `defineKeyframes` from `@gpuix/native/host` runs it
+ * first so a bad definition throws where it is written.
+ */
+export declare function validateKeyframes(name: string, framesJson: string): void
+
 export interface WindowInsets {
   safeArea: EdgeInsets
   ime: EdgeInsets

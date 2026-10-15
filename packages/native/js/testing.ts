@@ -12,6 +12,7 @@
 import {
   hasTestGpuixRenderer,
   TestGpuixRenderer,
+  validateKeyframes,
   type EventPayload,
   type MediaFeatures,
 } from "../index.js"
@@ -30,7 +31,11 @@ import { bindClipboard } from "./clipboard.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations } from "./observers.js"
 import { readFontFiles } from "./fonts.js"
-import { registerKeyframesHost, type KeyframesHost } from "./keyframes.js"
+import {
+  registerKeyframesHost,
+  registerKeyframesValidator,
+  type KeyframesHost,
+} from "./keyframes.js"
 import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
@@ -225,6 +230,8 @@ const NativeTestRenderer: NativeTestRendererConstructor | null =
 
 /** Whether the native TestGpuixRenderer is available (for conditional test registration). */
 export const hasNativeTestRenderer = NativeTestRenderer != null
+
+registerKeyframesValidator(validateKeyframes)
 
 // ── Test element tree ────────────────────────────────────────────────
 

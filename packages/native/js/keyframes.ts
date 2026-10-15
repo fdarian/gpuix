@@ -23,10 +23,14 @@ export interface KeyframesDefinition {
 /** What a renderer needs to receive keyframes. */
 export type KeyframesHost = Pick<GpuixRenderer, "defineKeyframes">
 
+/** Throws when the definition is bad. The native addon's `validateKeyframes`. */
+export type KeyframesValidator = (name: string, framesJson: string) => void
+
 interface KeyframesRegistry {
   /** Name to the frames as JSON, which is what a renderer takes. */
   readonly definitions: Map<string, string>
   readonly hosts: Set<WeakRef<KeyframesHost>>
+  validator?: KeyframesValidator
 }
 
 // `@keyframes` is document-global, so one registry serves every renderer in the
@@ -64,8 +68,10 @@ function liveHosts(shared: KeyframesRegistry): KeyframesHost[] {
  * })
  * ```
  *
- * A bad definition throws and keeps the earlier one. With no renderer yet it
- * cannot be checked, so it throws when the first renderer receives it.
+ * A bad definition throws from here and keeps the earlier one, whether or not a
+ * renderer exists yet. The check needs the native addon, so it runs once
+ * `@gpuix/native/runtime` or `/testing` is loaded, which every renderer package
+ * does; the web build has no motion engine and checks nothing.
  */
 export function defineKeyframes(name: string, frames: KeyframesDefinition): void {
   if (typeof name !== "string" || name === "") {
@@ -76,6 +82,7 @@ export function defineKeyframes(name: string, frames: KeyframesDefinition): void
   }
   const shared = registry()
   const framesJson = JSON.stringify(frames)
+  shared.validator?.(name, framesJson)
   for (const host of liveHosts(shared)) host.defineKeyframes(name, framesJson)
   shared.definitions.set(name, framesJson)
 }
@@ -92,4 +99,24 @@ export function registerKeyframesHost(host: KeyframesHost): void {
     if (reference.deref() === host) return
   }
   shared.hosts.add(new WeakRef(host))
+}
+
+/**
+ * Lets `defineKeyframes` check a definition before any renderer exists. The
+ * native entry points call this; `keyframes.ts` cannot import the addon itself
+ * because `@gpuix/native/host` is also loaded by the browser build.
+ */
+export function registerKeyframesValidator(validator: KeyframesValidator): void {
+  registry().validator = validator
+}
+
+/**
+ * Stops sending definitions to `host`. Call it when the renderer is destroyed
+ * or its window closes, so a dead renderer is not asked to take one.
+ */
+export function unregisterKeyframesHost(host: KeyframesHost): void {
+  const shared = registry()
+  for (const reference of shared.hosts) {
+    if (reference.deref() === host) shared.hosts.delete(reference)
+  }
 }

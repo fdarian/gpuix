@@ -93,6 +93,13 @@ impl Keyframes {
         Ok(Self { frames })
     }
 
+    /// The rule a definition has to pass before any renderer takes it: the
+    /// name and the frames, with errors that say which keyframes they are for.
+    fn parse_named(name: &str, frames_json: &str) -> Result<Self, String> {
+        check_keyframes_name(name)?;
+        Self::parse(frames_json).map_err(|error| format!("keyframes {name}: {error}"))
+    }
+
     /// Every property some keyframe sets, in no particular order.
     pub(super) fn properties(&self) -> Vec<AnimProp> {
         let mut props: Vec<AnimProp> = self
@@ -181,6 +188,12 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
     Ok(keyframe)
 }
 
+/// Checks a definition without a renderer, so a bad one fails where it is
+/// written and not when the first renderer receives it.
+pub(crate) fn validate_keyframes(name: &str, frames_json: &str) -> Result<(), String> {
+    Keyframes::parse_named(name, frames_json).map(drop)
+}
+
 /// The keyframe sets a renderer knows by name.
 #[derive(Default)]
 pub(crate) struct KeyframesRegistry {
@@ -191,9 +204,7 @@ impl KeyframesRegistry {
     /// Defines `name`, replacing an earlier definition. An animation already
     /// running keeps the frames it started with.
     pub(crate) fn define(&mut self, name: &str, frames_json: &str) -> Result<(), String> {
-        check_keyframes_name(name)?;
-        let keyframes =
-            Keyframes::parse(frames_json).map_err(|error| format!("keyframes {name}: {error}"))?;
+        let keyframes = Keyframes::parse_named(name, frames_json)?;
         self.definitions.insert(name.to_string(), Arc::new(keyframes));
         Ok(())
     }
@@ -220,6 +231,16 @@ mod tests {
             (p, AnimValue::Number(n)) if *p == prop => Some(*n),
             _ => None,
         })
+    }
+
+    #[test]
+    fn validation_applies_the_name_rule_and_prefixes_the_frames_error() {
+        assert_eq!(validate_keyframes("fade", r#"{ "to": { "opacity": 1 } }"#), Ok(()));
+        assert!(validate_keyframes("none", r#"{ "to": { "opacity": 1 } }"#)
+            .unwrap_err()
+            .contains("animation name"));
+        let message = validate_keyframes("fade", r#"{ "to": { "opacity": 5 } }"#).unwrap_err();
+        assert!(message.starts_with("keyframes fade: to: opacity"), "{message}");
     }
 
     #[test]

@@ -716,10 +716,11 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { AvailableUpdate, GpuixRenderer, TestGpuixRenderer, checkUpdate, hasTestGpuixRenderer } = nativeBinding
+const { AvailableUpdate, GpuixRenderer, TestGpuixRenderer, checkUpdate, hasTestGpuixRenderer, validateKeyframes } = nativeBinding
 export { AvailableUpdate }
 export { GpuixRenderer }
 export { TestGpuixRenderer }
 export { checkUpdate }
 export { hasTestGpuixRenderer }
+export { validateKeyframes }
 export const __napiBindingTarget = __napiLoadedBindingTarget

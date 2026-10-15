@@ -1,3 +1,4 @@
+import * as native from "@gpuix/native"
 import { GpuixRenderer } from "@gpuix/native"
 import type { EventPayload, WindowOptions } from "@gpuix/native"
 import {
@@ -11,7 +12,11 @@ import {
 import { bindClipboard } from "./clipboard.js"
 import { bindEyeDropper } from "./eyedropper.js"
 import { flushPendingMutations } from "./bounds.js"
-import { registerKeyframesHost } from "./keyframes.js"
+import {
+  registerKeyframesHost,
+  registerKeyframesValidator,
+  unregisterKeyframesHost,
+} from "./keyframes.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 
@@ -19,6 +24,11 @@ export type { WindowFontsOption }
 
 const DEFAULT_FRAME_MS = 8
 const FRAME_WAKE_FALLBACK_MS = 100
+
+// The browser entry has no `validateKeyframes`, so it is read off the namespace.
+if (typeof native.validateKeyframes === "function") {
+  registerKeyframesValidator(native.validateKeyframes)
+}
 
 export interface FrameLoop {
   stop(): void
@@ -69,6 +79,7 @@ export function createNativeRenderer(
   const automated =
     typeof process !== "undefined" && process.stdin && !process.stdin.isTTY
   const init = renderer.init.bind(renderer)
+  const tick = renderer.tick.bind(renderer)
   renderer.init = (windowOptions?: WindowOptions & WindowFontsOption | null) => {
     const fonts = readFontFiles(windowOptions?.fonts)
     init(windowOptions)
@@ -76,6 +87,11 @@ export function createNativeRenderer(
     // The web renderer has no motion engine, so nothing to define keyframes on.
     if (typeof renderer.defineKeyframes === "function") registerKeyframesHost(renderer)
     if (automated) enableAutomation(renderer)
+  }
+  renderer.tick = () => {
+    const running = tick()
+    if (!running) unregisterKeyframesHost(renderer)
+    return running
   }
   return renderer
 }

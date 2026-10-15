@@ -79,6 +79,15 @@ pub fn has_test_gpuix_renderer() -> bool {
     ))
 }
 
+/// Checks a keyframes definition the way `GpuixRenderer.defineKeyframes` does,
+/// without a renderer. `defineKeyframes` from `@gpuix/native/host` runs it
+/// first so a bad definition throws where it is written.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[napi]
+pub fn validate_keyframes(name: String, frames_json: String) -> napi::Result<()> {
+    motion::validate_keyframes(&name, &frames_json).map_err(napi::Error::from_reason)
+}
+
 #[cfg(all(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     not(all(
