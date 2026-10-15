@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
 import { ReorderController, createReorderDrag } from "@gpuix/native/host"
-import type { ReorderAxis } from "@gpuix/native/host"
+import type { HostMouseEvent, HostMouseMoveEvent, ReorderAxis } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import type { SolidHostProps } from "../jsx-runtime.js"
@@ -63,6 +63,9 @@ export type ReorderItemProps<Value> = Omit<MotionDragProps, "layout" | "layoutId
   as?: string
 }
 
+/** Handlers are typed with the DOM surface only; at runtime the event is the native payload under it. */
+const asPayload = <Event extends HostMouseEvent>(event: Event) => event as Event & EventPayload
+
 const itemComponents = new Map<string, Component<MotionDragProps>>()
 
 function itemComponent(tag: string): Component<MotionDragProps> {
@@ -100,15 +103,15 @@ function Item<Value>(props: ReorderItemProps<Value>): JSX.Element {
         element = node
         if (typeof own.ref === "function") own.ref(node)
       },
-      onMouseDown(event: EventPayload) {
+      onMouseDown(event: HostMouseEvent) {
         own.onMouseDown?.(event)
-        controller.pointerDown(own.value, event)
+        controller.pointerDown(own.value, asPayload(event))
       },
-      onMouseMove(event: EventPayload) {
+      onMouseMove(event: HostMouseMoveEvent) {
         own.onMouseMove?.(event)
-        controller.pointerMove(event)
+        controller.pointerMove(asPayload(event))
       },
-      onMouseUp(event: EventPayload) {
+      onMouseUp(event: HostMouseEvent) {
         own.onMouseUp?.(event)
         controller.pointerUp()
       },
