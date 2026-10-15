@@ -7476,8 +7476,15 @@ pub(crate) fn build_host_container(
         (is_text_host || is_label).then_some(gpui::Role::Label)
     };
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
+    // Planned once: the label below and the children further down read the same
+    // paragraphs. A node with no children paints its own `content` instead.
+    let plan = if element.children.is_empty() {
+        Vec::new()
+    } else {
+        crate::text::inline::plan_children(ctx.tree, element)
+    };
     if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
-        if let Some(content) = crate::text::inline::accessible_text(ctx.tree, element) {
+        if let Some(content) = crate::text::inline::accessible_text(&plan) {
             el = el.aria_value(content);
         }
     }
@@ -7514,7 +7521,7 @@ pub(crate) fn build_host_container(
     // Children. Consecutive inline children are one paragraph, see
     // `text::inline`; the rest are elements of their own.
     if !element.children.is_empty() {
-        for child in crate::text::inline::plan_children(ctx.tree, element) {
+        for child in plan {
             match child {
                 crate::text::inline::Child::Block(child_id) => {
                     paint_ranks.push(crate::layout::stacking::paint_rank(

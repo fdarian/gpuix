@@ -465,13 +465,13 @@ pub fn own_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String
     }
 }
 
-/// The text an inline formatting context reads out, as painted: its own content
-/// and that of every inline box inside it, in order.
-pub fn accessible_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
-    let text: String = plan_children(tree, element)
-        .into_iter()
+/// The text an inline formatting context reads out, as painted: that of every
+/// paragraph in `plan`, in order.
+pub fn accessible_text(plan: &[Child]) -> Option<String> {
+    let text: String = plan
+        .iter()
         .filter_map(|child| match child {
-            Child::Paragraph(paragraph) => Some(paragraph.text),
+            Child::Paragraph(paragraph) => Some(paragraph.text.as_str()),
             Child::Block(_) => None,
         })
         .collect();
@@ -1186,7 +1186,7 @@ mod tests {
         f.add(2, 4, "span").text(4, 5, "big ");
         f.add(4, 6, "text").text(6, 7, "world");
         f.add(2, 8, "div").text(8, 9, "block");
-        let text = accessible_text(&f.tree, &f.tree.elements[&2]);
+        let text = accessible_text(&f.plan(2));
         assert_eq!(text.as_deref(), Some("Hello big world"));
     }
 }
