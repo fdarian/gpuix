@@ -38,7 +38,7 @@ use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
 
 use super::activation::Activation;
-use super::app_region::{self, SimulatedWindowActions, WindowActions};
+use super::app_region::{self, PressOutcome, SimulatedWindowActions, WindowActions};
 use super::dispatcher::{button_bit, dispatch, Output, PointerAction, PointerSample, WheelTick};
 use super::ids::host_hit_chain;
 use super::state::{chain_changed, ObservedChain, PointerState};
@@ -116,17 +116,18 @@ pub(crate) struct PointerDispatch {
 }
 
 impl PointerDispatch {
-    /// Keeps a press in a window drag region from the page: the window starts moving, or does
-    /// what a titlebar does on a double click, and no event, focus change or GPUI handler
-    /// below this one hears of it. Returns whether it took the press.
+    /// Keeps a press in a window drag region from the page: no event or focus change comes of
+    /// it. Where gpuix drives the window, it starts moving or does what a titlebar does on a
+    /// double click, and the caller must stop GPUI's propagation; on Windows the press is left
+    /// to the OS (see [`PressOutcome::OsOwned`]). `None` is a press that goes to the page.
     fn take_for_window(
         &self,
         event: &MouseDownEvent,
         button: u32,
         window: &mut Window,
-    ) -> bool {
+    ) -> Option<PressOutcome> {
         if !in_drag_region(window, event.position) {
-            return false;
+            return None;
         }
         let mut pointer = self.pointer.borrow_mut();
         let press = app_region::Press {
@@ -135,16 +136,16 @@ impl PointerDispatch {
             click_count: event.click_count,
             other_button_down: pointer.buttons != 0,
         };
-        let Some(action) = app_region::press_action(app_region::Platform::CURRENT, &press) else {
-            return false;
-        };
+        let outcome = app_region::press_outcome(app_region::Platform::CURRENT, &press)?;
         pointer.window_presses |= button_bit(button);
         drop(pointer);
-        match self.window_actions.clone() {
-            Some(mut simulated) => simulated.perform(action, event.position),
-            None => window.perform(action, event.position),
+        if let PressOutcome::Perform(action) = outcome {
+            match self.window_actions.clone() {
+                Some(mut simulated) => simulated.perform(action, event.position),
+                None => window.perform(action, event.position),
+            }
         }
-        true
+        Some(outcome)
     }
 
     /// Whether `button`'s release belongs to the window because it took the press.
@@ -298,9 +299,13 @@ pub(crate) fn pointer_frame(
                     return;
                 }
                 let button = dom_button(event.button);
-                if press.take_for_window(event, button, window) {
-                    cx.stop_propagation();
-                    return;
+                match press.take_for_window(event, button, window) {
+                    Some(PressOutcome::Perform(_)) => {
+                        cx.stop_propagation();
+                        return;
+                    }
+                    Some(PressOutcome::OsOwned) => return,
+                    None => {}
                 }
                 let action = PointerAction::Down {
                     button,
