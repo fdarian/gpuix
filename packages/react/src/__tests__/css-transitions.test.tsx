@@ -95,6 +95,28 @@ describeNative("CSS transitions", () => {
     expect(widthOf(renderer, "box")).toBe(100)
   })
 
+  it("animates a transition declared only in groupHover", () => {
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    render(
+      <div testId="card" style={{ width: 100, height: 100, group: true }}>
+        <div
+          testId="box"
+          style={{
+            width: 40,
+            height: 20,
+            groupHover: { width: 80, transition: "width 1s linear" },
+          }}
+        />
+      </div>
+    )
+    renderer.nativeSimulateMouseMove(80, 80)
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(60, 0)
+    renderer.clockFastForward(1000)
+    expect(widthOf(renderer, "box")).toBe(80)
+  })
+
   it("cancels a running transition on display none and starts none when shown with a new value", () => {
     const { render, renderer } = createTestRoot()
     const seen: string[] = []
