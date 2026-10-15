@@ -108,6 +108,10 @@ pub struct ImgElement {
     supersampled: bool,
     /// A src was set and its `load` or `error` has not fired yet.
     awaiting_outcome: bool,
+    /// The `src` prop has a value. Without one, the image is whatever
+    /// `setImagePixels` or `setImage` last put there, and `src: null` has
+    /// nothing to take away from it.
+    has_src: bool,
 }
 
 impl ImgElement {
@@ -222,9 +226,11 @@ fn css_size(device: (i32, i32), scale: f32) -> (u32, u32) {
     (css(device.0), css(device.1))
 }
 
-/// `file:///a/b%20c.png` as a path. Accepts an empty or `localhost` host.
+/// `file:///a/b%20c.png` as a path. Accepts an empty or `localhost` host. A query
+/// or fragment is not part of the path.
 fn file_url_path(src: &str) -> Option<std::path::PathBuf> {
     let rest = src.get(7..)?;
+    let rest = &rest[..rest.find(['?', '#']).unwrap_or(rest.len())];
     let path = match rest.find('/') {
         Some(0) => rest,
         Some(index) if rest[..index].eq_ignore_ascii_case("localhost") => &rest[index..],
@@ -269,7 +275,7 @@ pub fn init(cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     use super::{
-        css_size, file_url_path, http_image_uri, render_image_from_pixels, uri_path_is_svg,
+        css_size, decode_image_data_url, file_url_path, http_image_uri, render_image_from_pixels, uri_path_is_svg,
         CustomElement, ImgElement, ImgSource, PixelFormat,
     };
     use serde_json::json;
@@ -324,6 +330,28 @@ mod tests {
         let held = element.take_held_images();
         assert_eq!(held.len(), 1);
         assert!(has(&held, &live));
+    }
+
+    #[test]
+    fn removing_src_drops_the_image_a_blob_src_put_there() {
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!("blob:one"));
+        let blob = image();
+        element.replace_live_image(blob.clone(), false);
+        element.set_prop("src", serde_json::Value::Null);
+        assert!(matches!(element.source, ImgSource::Empty));
+        assert!(has(&element.take_held_images(), &blob));
+    }
+
+    #[test]
+    fn a_live_image_survives_a_null_src_when_src_was_never_set() {
+        let mut element = ImgElement::default();
+        element.replace_live_image(image(), false);
+        element.set_prop("src", serde_json::Value::Null);
+        assert!(matches!(element.source, ImgSource::Render(_)));
+        element.set_prop("src", json!("/tmp/a.png"));
+        element.set_prop("src", serde_json::Value::Null);
+        assert!(matches!(element.source, ImgSource::Empty));
     }
 
     #[test]
@@ -399,6 +427,37 @@ mod tests {
         assert_eq!(file_url_path("file://localhost/tmp/a.png"), Some("/tmp/a.png".into()));
         assert_eq!(file_url_path("file://example.test/tmp/a.png"), None);
         assert_eq!(file_url_path("file://relative.png"), None);
+        assert_eq!(file_url_path("file:///tmp/a.png?v=2#top"), Some("/tmp/a.png".into()));
+        assert_eq!(file_url_path("file:///tmp/a%23b.png#x"), Some("/tmp/a#b.png".into()));
+        assert_eq!(file_url_path("file://localhost/tmp/a.png#x"), Some("/tmp/a.png".into()));
+    }
+
+    #[test]
+    fn a_data_url_decodes_base64_as_browsers_do() {
+        let decode = |src: &str| decode_image_data_url(src).map(|(_, bytes)| bytes);
+        let plain = decode("data:image/svg+xml;base64,PHN2Zy8+");
+        assert_eq!(plain.as_deref(), Some(&b"<svg/>"[..]));
+        for src in [
+            "data:image/svg+xml;base64,PHN2\nZy8+",
+            "data:image/svg+xml;base64, PHN2 Zy8+ ",
+            "data:image/svg+xml;base64,PHN2%0AZy8%2B",
+        ] {
+            assert_eq!(decode(src), plain, "{src}");
+        }
+        // Padding is optional, and the unused bits of the last character are ignored.
+        assert_eq!(decode("data:image/svg+xml;base64,PHN2Zy8").as_deref(), Some(&b"<svg/"[..]));
+        assert_eq!(decode("data:image/svg+xml;base64,PHN2Zy9=").as_deref(), Some(&b"<svg/"[..]));
+        assert_eq!(decode("data:image/svg+xml;base64,PA").as_deref(), Some(&b"<"[..]));
+        // Anything else is an error.
+        for src in [
+            "data:image/svg+xml;base64,P",
+            "data:image/svg+xml;base64,PHN2Zy8*",
+            "data:image/svg+xml;base64,PH=N2Zy8+",
+            "data:image/svg+xml;base64,PA=a",
+            "data:image/svg+xml;base64,PHN2Zy8+====",
+        ] {
+            assert_eq!(decode(src), None, "{src}");
+        }
     }
 
     #[test]
@@ -566,9 +625,10 @@ impl CustomElement for ImgElement {
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
             "src" => {
-                if value.is_null() && matches!(self.source, ImgSource::Render(_)) {
+                if value.is_null() && !self.has_src {
                     return;
                 }
+                self.has_src = !value.is_null();
                 self.load_src(value.as_str().unwrap_or(""));
             }
             "objectFit" => {
@@ -766,14 +826,41 @@ fn decode_image_data_url(src: &str) -> Option<(gpui::ImageFormat, Vec<u8>)> {
     let mime_type = parts.next()?.to_ascii_lowercase();
     let format = gpui::ImageFormat::from_mime_type(&mime_type)?;
     let is_base64 = parts.any(|part| part.eq_ignore_ascii_case("base64"));
+    let body = percent_decode(data);
     let bytes = if is_base64 {
-        base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .ok()?
+        forgiving_base64_decode(&body)?
     } else {
-        percent_decode(data)
+        body
     };
     Some((format, bytes))
+}
+
+/// The forgiving-base64 decode of the Infra standard, which a data URL goes
+/// through: ASCII white space is dropped, padding may be left off, and the bits
+/// after the last whole byte may be anything.
+fn forgiving_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
+    const UNPADDED: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        base64::engine::GeneralPurposeConfig::new()
+            .with_decode_padding_mode(base64::engine::DecodePaddingMode::RequireNone)
+            .with_decode_allow_trailing_bits(true),
+    );
+    let mut data: Vec<u8> = input
+        .iter()
+        .copied()
+        .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | 0x0C | b'\r'))
+        .collect();
+    if data.len() % 4 == 0 {
+        for _ in 0..2 {
+            if data.last() == Some(&b'=') {
+                data.pop();
+            }
+        }
+    }
+    if data.len() % 4 == 1 {
+        return None;
+    }
+    UNPADDED.decode(data).ok()
 }
 
 fn percent_decode(input: &str) -> Vec<u8> {
