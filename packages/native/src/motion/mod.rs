@@ -158,7 +158,9 @@ impl Transitions {
         self.per_prop.get(&prop).unwrap_or(&self.fallback)
     }
 
-    fn parse(source: Option<&Value>, target: Target) -> Result<Self, String> {
+    /// `reduced` replaces the transition of every position and size property
+    /// with a jump, whatever the description names for it.
+    fn parse(source: Option<&Value>, target: Target, reduced: bool) -> Result<Self, String> {
         let mut fields = match source {
             None | Some(Value::Null) => Map::new(),
             Some(Value::Object(fields)) => fields.clone(),
@@ -192,6 +194,11 @@ impl Transitions {
                 per_prop.insert(prop, transition);
             } else {
                 return Err(format!("unknown motion transition key: {key}"));
+            }
+        }
+        if reduced && target == Target::Style {
+            for prop in AnimProp::ALL.iter().filter(|prop| prop.is_layout()) {
+                per_prop.insert(PropKey::Style(*prop), Transition::instant());
             }
         }
         Ok(Self { fallback, per_prop })
@@ -877,12 +884,18 @@ fn parse_description(source: &Value, target: Target) -> Result<Description, Stri
         Some(Value::Object(style)) => parse_styles("animate", style, target)?,
         _ => return Err("motion animate must be a style object".to_string()),
     };
+    let reduced = match fields.get("reducedMotion") {
+        None | Some(Value::Null) => false,
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| "motion reducedMotion must be a boolean".to_string())?,
+    };
     Ok(Description {
         generation,
         is_exit,
         initial,
         animate,
-        transition: Transitions::parse(fields.get("transition"), target)?,
+        transition: Transitions::parse(fields.get("transition"), target, reduced)?,
     })
 }
 
@@ -1050,6 +1063,97 @@ mod tests {
                 .frame(started + Duration::from_millis(201))
                 .just_settled
         );
+    }
+
+    fn reduced_description(reduced: bool) -> serde_json::Value {
+        serde_json::json!({
+            "generation": 1,
+            "reducedMotion": reduced,
+            "initial": { "width": 0.0, "paddingLeft": 0.0, "opacity": 0.0 },
+            "animate": { "width": 100.0, "paddingLeft": 40.0, "opacity": 1.0 },
+            "transition": {
+                "duration": 1.0,
+                "ease": "linear",
+                "width": { "type": "spring", "stiffness": 100.0, "damping": 10.0, "delay": 0.5 }
+            }
+        })
+    }
+
+    #[test]
+    fn reduced_motion_jumps_position_and_size_but_still_animates_the_rest() {
+        let started = Instant::now();
+        let mut state = MotionState::new(&reduced_description(true), None, None, 0, started).unwrap();
+        let mut style = StyleDesc::default();
+        state.visible_style(started).unwrap().apply_to(&mut style);
+        assert_eq!(style.width, Some(DimensionValue::Pixels(100.0)));
+        assert_eq!(style.padding_left, Some(40.0));
+        assert_eq!(style.opacity, Some(0.0));
+
+        let middle = started + Duration::from_millis(500);
+        let frame = state.frame(middle);
+        assert!(frame.active);
+        assert_eq!(state.applied(middle).unwrap().opacity, Some(0.5));
+        assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
+
+        let end = started + Duration::from_secs(1);
+        let frame = state.frame(end);
+        assert!(!frame.active);
+        assert!(frame.just_settled);
+    }
+
+    #[test]
+    fn reduced_motion_on_layout_alone_settles_on_the_first_frame() {
+        let started = Instant::now();
+        let source = serde_json::json!({
+            "generation": 1,
+            "reducedMotion": true,
+            "initial": { "height": 0.0, "marginTop": 0.0, "gap": 0.0 },
+            "animate": { "height": 50.0, "marginTop": 8.0, "gap": 4.0 },
+            "transition": { "type": "spring" }
+        });
+        let mut state = MotionState::new(&source, None, None, 0, started).unwrap();
+        let mut style = StyleDesc::default();
+        state.visible_style(started).unwrap().apply_to(&mut style);
+        assert_eq!(style.height, Some(DimensionValue::Pixels(50.0)));
+        assert_eq!(style.margin_top, Some(8.0));
+        assert_eq!(style.row_gap, Some(4.0));
+        let frame = state.frame(started);
+        assert!(!frame.active);
+        assert!(frame.just_settled);
+        assert_eq!(frame.generation, 1);
+    }
+
+    #[test]
+    fn flipping_reduced_motion_retargets_running_layout_tracks() {
+        let started = Instant::now();
+        let mut state = MotionState::new(&reduced_description(false), None, None, 0, started).unwrap();
+        let middle = started + Duration::from_millis(500);
+        assert_eq!(state.applied(middle).unwrap().width, Some(0.0));
+
+        let mut reduced = reduced_description(true);
+        reduced["generation"] = serde_json::json!(2);
+        reduced["initial"] = serde_json::json!(false);
+        state.sync(&reduced, None, None, 0, middle).unwrap();
+        assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
+        assert_eq!(state.applied(middle).unwrap().opacity, Some(0.5));
+        assert!(state.frame(middle).active);
+
+        let mut full = reduced_description(false);
+        full["generation"] = serde_json::json!(3);
+        full["initial"] = serde_json::json!(false);
+        state.sync(&full, None, None, 0, middle).unwrap();
+        // Already at the target, so the real transition has nowhere to go.
+        assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
+    }
+
+    #[test]
+    fn reduced_motion_must_be_a_boolean() {
+        let now = Instant::now();
+        let source = serde_json::json!({
+            "animate": { "opacity": 1.0 },
+            "reducedMotion": "user"
+        });
+        assert!(MotionState::new(&source, None, None, 0, now).is_err());
     }
 
     #[test]

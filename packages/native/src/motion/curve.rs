@@ -102,6 +102,18 @@ pub(super) fn parse_ease(value: serde_json::Value) -> Result<Ease, String> {
 }
 
 impl Transition {
+    /// A tween that ends on its first frame, so the track still settles and
+    /// reports completion.
+    pub(super) fn instant() -> Self {
+        Self {
+            delay: 0.0,
+            curve: Curve::Tween {
+                duration: 0.0,
+                ease: Ease::Name("linear".to_string()),
+            },
+        }
+    }
+
     pub(super) fn parse(value: serde_json::Value) -> Result<Self, String> {
         let raw: RawTransition =
             serde_json::from_value(value).map_err(|error| format!("motion transition: {error}"))?;
