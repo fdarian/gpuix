@@ -22,7 +22,7 @@ export type ReorderOptions<Value> = {
   /** Called with the order a drag proposes. The group never reorders by itself: pass the result back as `values`. */
   onReorder: (values: Value[]) => void
   /** Where item boxes are read from, when a drag starts. */
-  renderer: { getElementBounds(elementId: number): ElementBounds | null } | undefined
+  renderer: { getElementBounds?: (elementId: number) => ElementBounds | null } | null
 }
 
 export type ReorderItem = {
@@ -102,7 +102,7 @@ export function reorderedValues<Value>(
   return next
 }
 
-export class ReorderGroup<Value> {
+export class ReorderController<Value> {
   readonly #items = new Map<Value, ReorderItem>()
   #options: ReorderOptions<Value> | undefined
   #held: Held<Value> | undefined
@@ -200,12 +200,14 @@ export class ReorderGroup<Value> {
   }
 
   #measure(options: ReorderOptions<Value>, value: Value, pointer: number): Held<Value> {
-    if (options.renderer === undefined) throw new Error("Reorder.Group needs a GPUIX root")
+    if (options.renderer === null) throw new Error("Reorder.Group needs a GPUIX root")
+    const getElementBounds = options.renderer.getElementBounds
+    if (getElementBounds === undefined) throw new Error("Reorder.Group needs a renderer with getElementBounds")
     const sizes = new Map<Value, number>()
     const starts: number[] = []
     for (const key of options.values) {
       const elementId = this.#item(key).elementId()
-      const bounds = elementId === undefined ? null : options.renderer.getElementBounds(elementId)
+      const bounds = elementId === undefined ? null : getElementBounds.call(options.renderer, elementId)
       if (bounds === null) throw new Error("Reorder.Item: an item has not been laid out yet, so it cannot be dragged")
       const span = axisSpan(bounds, options.axis)
       sizes.set(key, span.size)

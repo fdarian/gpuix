@@ -154,6 +154,8 @@ export {
   useReducedMotionConfig,
 } from "./components/index.js"
 export type { AnimatePresenceProps, LayoutGroupProps, MotionConfigProps } from "./components/index.js"
+export { Reorder } from "./components/reorder.js"
+export type { ReorderGroupProps, ReorderItemProps } from "./components/reorder.js"
 export type { Root, FrameLoop, RenderOptions } from "./reconciler/renderer.js"
 export type {
   WindowInsets,

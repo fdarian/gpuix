@@ -12,6 +12,7 @@ import {
 } from "@gpuix/native/host"
 import type {
   ExitTarget,
+  LayoutDrag,
   MotionLayoutProps,
   MotionProps,
   MotionTransition,
@@ -96,12 +97,14 @@ interface MotionSource<Style, Transition> {
   transition?: Transition
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
+  /** The drag values of a `Reorder.Item`; not part of the API. */
+  layoutDrag?: LayoutDrag
   onMotionComplete?: Props["onMotionComplete"]
 }
 
-function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
+export function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
   return forwardRef<PublicInstance, Source>(function Motion(
-    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, onMotionComplete, ...props },
+    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, layoutDrag, onMotionComplete, ...props },
     ref
   ): ReactElement {
     const presence = useContext(PresenceContext)
@@ -151,6 +154,7 @@ function createMotionComponent<Source extends MotionSource<object, MotionTransit
       layoutId: scopeLayoutId(layoutGroupId, layoutId),
       transition: resolvedTransition as MotionTransition | undefined,
       reduced,
+      drag: layoutDrag,
     })
     if (layoutProp !== undefined) hostProps.layout = layoutProp
     if (!isPresent || onMotionComplete) {
@@ -165,6 +169,9 @@ function createMotionComponent<Source extends MotionSource<object, MotionTransit
 }
 
 const MotionDiv = createMotionComponent<MotionDivProps>("div")
+
+/** `motion.div` plus the drag values `Reorder.Item` hands it, for the element type it is `as`. */
+export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
 
 /** Props of a `motion.path`, `motion.circle`, ...: the shape's own plus Framer's animation props. */
 export type MotionShapeProps<Shape> = Omit<Shape, "motion" | "ref" | "key"> &

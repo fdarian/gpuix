@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "../../index.js"
-import { ReorderGroup, createReorderDrag, reorderedValues } from "../reorder.js"
+import { ReorderController, createReorderDrag, reorderedValues } from "../reorder.js"
 import type { ReorderOptions, ReorderSlots } from "../reorder.js"
 
 // Three 20 px slots stacked from 100, with a 4 px gap: centres at 110, 134, 158.
@@ -53,7 +53,7 @@ function column(elementId: number) {
 function group(order: string[]) {
   const proposals: string[][] = []
   const items = new Map(order.map((value) => [value, createReorderDrag()]))
-  const reorder = new ReorderGroup<string>()
+  const reorder = new ReorderController<string>()
   order.forEach((value, index) => {
     const drag = items.get(value)
     if (drag === undefined) throw new Error("missing drag")
@@ -73,7 +73,7 @@ function group(order: string[]) {
 
 const at = (x: number, y: number, pressedButton?: number): EventPayload => ({ x, y, button: 0, pressedButton }) as EventPayload
 
-describe("ReorderGroup", () => {
+describe("ReorderController", () => {
   it("holds the item on press, follows the pointer and lets go on release", () => {
     const { reorder, items } = group(["a", "b", "c"])
     const drag = items.get("a")
@@ -158,7 +158,7 @@ describe("ReorderGroup", () => {
     const { reorder, configure } = group(["a", "b"])
     configure(["a", "b"], { renderer: { getElementBounds: () => null } })
     expect(() => reorder.pointerDown("a", at(10, 105))).toThrow(/not been laid out/)
-    configure(["a", "b"], { renderer: undefined })
+    configure(["a", "b"], { renderer: null })
     expect(() => reorder.pointerDown("a", at(10, 105))).toThrow(/GPUIX root/)
     configure(["a", "z"])
     expect(() => reorder.pointerDown("a", at(10, 105))).toThrow(/no item is registered/)
