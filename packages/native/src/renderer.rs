@@ -5340,7 +5340,6 @@ impl GpuixView {
         &mut self,
         id: u64,
         image: std::sync::Arc<gpui::RenderImage>,
-        supersampled: bool,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> std::result::Result<(), String> {
@@ -5357,7 +5356,7 @@ impl GpuixView {
                 ));
             }
         }
-        let previous = self.custom_registry.set_live_image(id, image, supersampled)?;
+        let previous = self.custom_registry.set_live_image(id, image)?;
         if let Some(previous) = previous {
             window.drop_image(previous).ok();
         }
@@ -5378,7 +5377,7 @@ impl GpuixView {
     ) -> std::result::Result<(), String> {
         let image =
             crate::custom_elements::img::render_image_from_pixels(width, height, bytes, format)?;
-        self.set_live_image(id, image, false, window, cx)
+        self.set_live_image(id, image, window, cx)
     }
 
     pub(crate) fn set_encoded_image(
@@ -5388,12 +5387,11 @@ impl GpuixView {
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> std::result::Result<(), String> {
-        let supersampled = crate::custom_elements::img::encoded_is_svg(&bytes);
         let image = crate::custom_elements::img::render_image_from_encoded(
             bytes,
             cx.svg_renderer(),
         )?;
-        self.set_live_image(id, image, supersampled, window, cx)
+        self.set_live_image(id, image, window, cx)
     }
 
     /// Adds the fonts in `bytes` to the text system and repaints, so text that

@@ -253,11 +253,9 @@ pub trait CustomElement: 'static {
 
     /// Replace the live GPU image on `<img>`. Returns the previous image when
     /// this adapter already had one, so the renderer can upload in place.
-    /// `supersampled` is true when the bitmap is an SVG gpui rasterised at twice its size.
     fn replace_live_image(
         &mut self,
         _image: std::sync::Arc<gpui::RenderImage>,
-        _supersampled: bool,
     ) -> Option<std::sync::Arc<gpui::RenderImage>> {
         None
     }
@@ -456,12 +454,11 @@ impl CustomElementRegistry {
         &mut self,
         id: u64,
         image: std::sync::Arc<gpui::RenderImage>,
-        supersampled: bool,
     ) -> std::result::Result<Option<std::sync::Arc<gpui::RenderImage>>, String> {
         let entry = self
             .get_or_create(id, "img")
             .ok_or_else(|| "img factory is not registered".to_string())?;
-        Ok(entry.element.replace_live_image(image, supersampled))
+        Ok(entry.element.replace_live_image(image))
     }
 
     /// Run `f` on the adapter for `id` after the retained props are synchronized

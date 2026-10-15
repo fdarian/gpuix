@@ -103,9 +103,6 @@ pub struct ImgElement {
     painted: Option<std::sync::Arc<gpui::RenderImage>>,
     /// The decoded `Data` source, decoded once on first paint.
     decoded: Option<Result<std::sync::Arc<gpui::RenderImage>, String>>,
-    /// gpui rasterises an SVG at twice its size, so the bitmap is not the
-    /// intrinsic size.
-    supersampled: bool,
     /// A src was set and its `load` or `error` has not fired yet.
     awaiting_outcome: bool,
     /// The `src` prop has a value. Without one, the image is whatever
@@ -121,7 +118,7 @@ impl ImgElement {
         self.painted = None;
         self.decoded = None;
         self.awaiting_outcome = !src.is_empty();
-        (self.source, self.supersampled) = resolve_src(src);
+        self.source = resolve_src(src);
     }
 
     /// The image this element has in the atlas, if any.
@@ -202,12 +199,13 @@ impl ImgElement {
         Resolved::Done(loaded)
     }
 
-    /// The intrinsic size of a decoded image, in CSS px.
-    fn natural_size(&self, image: &gpui::RenderImage) -> (u32, u32) {
-        let size = image.size(0);
-        let scale = if self.supersampled { gpui::SMOOTH_SVG_SCALE_FACTOR } else { 1.0 };
-        css_size((size.width.0, size.height.0), scale)
-    }
+}
+
+/// The intrinsic size of a decoded image, in CSS px. An SVG's bitmap is rasterised at a multiple of
+/// its size, which the image carries.
+fn natural_size(image: &gpui::RenderImage) -> (u32, u32) {
+    let size = image.render_size(0);
+    (f32::from(size.width).round() as u32, f32::from(size.height).round() as u32)
 }
 
 /// Where an `<img>`'s source stands.
@@ -218,69 +216,33 @@ enum Resolved {
     Done(Result<std::sync::Arc<gpui::RenderImage>, String>),
 }
 
-/// The source `src` names, and whether gpui will rasterise it as an SVG.
-fn resolve_src(src: &str) -> (ImgSource, bool) {
+/// The source `src` names.
+fn resolve_src(src: &str) -> ImgSource {
     if src.is_empty() {
-        (ImgSource::Empty, false)
+        ImgSource::Empty
     } else if src.starts_with("blob:") {
-        (ImgSource::Pending, false)
+        ImgSource::Pending
     } else if src.starts_with("data:") {
         // TODO: Replace JSON data URLs with binary mutations to keep base64 decoding off paint.
         match decode_image_data_url(src) {
-            Some((format, bytes)) => (
-                ImgSource::Data(std::sync::Arc::new(gpui::Image::from_bytes(format, bytes))),
-                format == gpui::ImageFormat::Svg,
-            ),
-            None => (ImgSource::Failed("invalid data URL".to_string()), false),
+            Some((format, bytes)) => {
+                ImgSource::Data(std::sync::Arc::new(gpui::Image::from_bytes(format, bytes)))
+            }
+            None => ImgSource::Failed("invalid data URL".to_string()),
         }
     } else if let Some(uri) = http_image_uri(src) {
-        let svg = uri_path_is_svg(uri.as_ref());
-        (ImgSource::Uri(uri), svg)
+        ImgSource::Uri(uri)
     } else if src
         .get(..7)
         .is_some_and(|scheme| scheme.eq_ignore_ascii_case("file://"))
     {
         match file_url_path(src) {
-            Some(path) => {
-                let svg = file_is_svg(&path);
-                (ImgSource::Path(path), svg)
-            }
-            None => (ImgSource::Failed(format!("invalid file URL {src}")), false),
+            Some(path) => ImgSource::Path(path),
+            None => ImgSource::Failed(format!("invalid file URL {src}")),
         }
     } else {
-        let path = std::path::PathBuf::from(src);
-        let svg = file_is_svg(&path);
-        (ImgSource::Path(path), svg)
+        ImgSource::Path(std::path::PathBuf::from(src))
     }
-}
-
-/// gpui hands any file it does not recognise as a raster format to the SVG
-/// renderer. A file that cannot be read fails to load, and `error` reports why.
-fn file_is_svg(path: &std::path::Path) -> bool {
-    use std::io::Read as _;
-    let mut head = [0u8; 512];
-    let Ok(read) = std::fs::File::open(path).and_then(|mut file| file.read(&mut head)) else {
-        return false;
-    };
-    rasterised_as_svg(&head[..read])
-}
-
-/// gpui fetches an `http(s)` image itself, so its bytes are not here to sniff:
-/// the URL's extension stands in.
-fn uri_path_is_svg(uri: &str) -> bool {
-    let path = uri.split(['?', '#']).next().unwrap_or(uri).as_bytes();
-    path.len() >= 4 && path[path.len() - 4..].eq_ignore_ascii_case(b".svg")
-}
-
-/// What `gpui::Image::to_image_data` and the image asset loader do with `bytes`.
-fn rasterised_as_svg(bytes: &[u8]) -> bool {
-    matches!(sniff_image_format(bytes), None | Some(gpui::ImageFormat::Svg))
-}
-
-/// The intrinsic size in CSS px of a bitmap that is `scale` times its size.
-fn css_size(device: (i32, i32), scale: f32) -> (u32, u32) {
-    let css = |pixels: i32| (pixels.max(0) as f32 / scale).round() as u32;
-    (css(device.0), css(device.1))
 }
 
 /// `file:///a/b%20c.png` as a path. Accepts an empty or `localhost` host. A query
@@ -332,7 +294,7 @@ pub fn init(cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     use super::{
-        css_size, decode_image_data_url, file_url_path, http_image_uri, render_image_from_pixels, uri_path_is_svg,
+        decode_image_data_url, file_url_path, http_image_uri, natural_size, render_image_from_pixels,
         CustomElement, ImgElement, ImgSource, PixelFormat,
     };
     use serde_json::json;
@@ -381,7 +343,7 @@ mod tests {
     fn a_live_image_is_held_once_and_dropped_when_src_replaces_it() {
         let mut element = ImgElement::default();
         let live = image();
-        assert!(element.replace_live_image(live.clone(), false).is_none());
+        assert!(element.replace_live_image(live.clone()).is_none());
         assert_eq!(element.take_held_images().len(), 1);
         element.set_prop("src", json!("/tmp/a.png"));
         let held = element.take_held_images();
@@ -394,7 +356,7 @@ mod tests {
         let mut element = ImgElement::default();
         element.set_prop("src", json!("blob:one"));
         let blob = image();
-        element.replace_live_image(blob.clone(), false);
+        element.replace_live_image(blob.clone());
         element.set_prop("src", serde_json::Value::Null);
         assert!(matches!(element.source, ImgSource::Empty));
         assert!(has(&element.take_held_images(), &blob));
@@ -403,7 +365,7 @@ mod tests {
     #[test]
     fn a_live_image_survives_a_null_src_when_src_was_never_set() {
         let mut element = ImgElement::default();
-        element.replace_live_image(image(), false);
+        element.replace_live_image(image());
         element.set_prop("src", serde_json::Value::Null);
         assert!(matches!(element.source, ImgSource::Render(_)));
         element.set_prop("src", json!("/tmp/a.png"));
@@ -419,50 +381,17 @@ mod tests {
     }
 
     #[test]
-    fn svg_sources_are_flagged_as_supersampled() {
-        let mut element = ImgElement::default();
-        for (src, svg) in [
-            ("data:image/svg+xml,%3Csvg%2F%3E", true),
-            ("data:image/svg+xml;base64,PHN2Zy8+", true),
-            ("data:image/png;base64,iVBORw0K", false),
-            ("https://example.test/a.SVG?v=2#x", true),
-            ("https://example.test/a.png", false),
-            ("/does/not/exist.svg", false),
-        ] {
-            element.set_prop("src", json!(src));
-            assert_eq!(element.supersampled, svg, "{src}");
-        }
-    }
-
-    #[test]
-    fn an_svg_file_is_sniffed_from_its_content() {
-        let dir = std::env::temp_dir().join(format!("gpuix-img-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let svg = dir.join("icon.dat");
-        std::fs::write(&svg, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
-        let png = dir.join("pic.svg");
-        std::fs::write(&png, [0x89, b'P', b'N', b'G', 0, 0, 0, 0]).unwrap();
-        let mut element = ImgElement::default();
-        element.set_prop("src", json!(svg.to_str().unwrap()));
-        assert!(element.supersampled);
-        element.set_prop("src", json!(png.to_str().unwrap()));
-        assert!(!element.supersampled);
-        std::fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn a_supersampled_bitmap_reports_its_css_size() {
-        assert_eq!(css_size((20, 12), 2.0), (10, 6));
-        assert_eq!(css_size((20, 12), 1.0), (20, 12));
-        assert_eq!(css_size((-1, 0), 1.0), (0, 0));
-    }
-
-    #[test]
-    fn uri_extension_ignores_query_and_fragment() {
-        assert!(uri_path_is_svg("https://e.test/a.svg"));
-        assert!(uri_path_is_svg("https://e.test/a.svg?x=.png"));
-        assert!(!uri_path_is_svg("https://e.test/a.svg/b"));
-        assert!(!uri_path_is_svg("https://e.test/é"));
+    fn natural_size_follows_the_scale_the_image_was_rasterised_at() {
+        let svg = gpui::SvgRenderer::new(Arc::new(()))
+            .render_single_frame(
+                br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"/>"#,
+                1.0,
+            )
+            .unwrap();
+        assert_eq!(svg.size(0).width.0, 20);
+        assert_eq!(natural_size(&svg), (10, 6));
+        let raster = render_image_from_pixels(3, 2, vec![0; 24], PixelFormat::Rgba).unwrap();
+        assert_eq!(natural_size(&raster), (3, 2));
     }
 
     #[test]
@@ -588,7 +517,7 @@ impl CustomElement for ImgElement {
             }
             Resolved::Done(Ok(image)) => image,
         };
-        let natural = self.natural_size(&image);
+        let natural = natural_size(&image);
         self.report(ctx.id, ctx.events, ctx.event_callback, cx, Ok(natural));
         if !matches!(self.source, ImgSource::Render(_)) {
             self.painted = Some(image.clone());
@@ -682,7 +611,7 @@ impl CustomElement for ImgElement {
         }
         match self.resolve_image(window, cx) {
             Resolved::Done(Ok(image)) => {
-                let natural = self.natural_size(&image);
+                let natural = natural_size(&image);
                 self.report(id, events, callback, cx, Ok(natural));
             }
             Resolved::Done(Err(message)) => self.report(id, events, callback, cx, Err(message)),
@@ -709,13 +638,11 @@ impl CustomElement for ImgElement {
     fn replace_live_image(
         &mut self,
         image: std::sync::Arc<gpui::RenderImage>,
-        supersampled: bool,
     ) -> Option<std::sync::Arc<gpui::RenderImage>> {
         let previous = self.live_image();
         self.source = ImgSource::Render(image);
         self.painted = None;
         self.decoded = None;
-        self.supersampled = supersampled;
         previous
     }
 }
@@ -773,11 +700,6 @@ pub fn render_image_from_pixels(
     gpui::RenderImage::from_bgra(width, height, bytes)
         .map(std::sync::Arc::new)
         .ok_or_else(|| format!("{name} pixel buffer is not a valid image"))
-}
-
-/// Whether gpui rasterises `bytes` as an SVG, at twice its size.
-pub fn encoded_is_svg(bytes: &[u8]) -> bool {
-    rasterised_as_svg(bytes)
 }
 
 pub fn render_image_from_encoded(
