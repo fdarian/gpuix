@@ -3582,7 +3582,10 @@ every ancestor's `overflow` between it and the root, then by the root.
 past the window edge, which does not clip the target.
 
 Callbacks run once per batch of a frame's reports, after the frame, so state set
-in one paints a frame later. Observing an element that is not mounted yet is
+in one paints a frame later. `observe()` reads no layout: every observation
+started since the last frame is probed together in the next step, so any number
+of observers started by one commit cost one draw. Each observer gets its own
+initial entry for a target, also when another observer already watches it. Observing an element that is not mounted yet is
 allowed, as in the DOM: it reports once it has a box, and an `IntersectionObserver`
 first reports it as not intersecting. An element that is removed behaves like one
 that stopped painting: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`

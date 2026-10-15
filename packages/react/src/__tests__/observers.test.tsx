@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react"
 import { describe, expect, it } from "vitest"
 import type {
   IntersectionObserverEntry,
@@ -101,6 +102,22 @@ describeNative("ResizeObserver", () => {
 
       expect(batches).toHaveLength(1)
       expect(batches[0]!.map((entry) => entry.contentRect.width).sort()).toEqual([10, 20])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("gives a second observer of the same target its own initial entry", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const first: ResizeObserverEntry[] = []
+      const second: ResizeObserverEntry[] = []
+      render(<div ref={ref("a")} style={{ width: 10, height: 10 }} />)
+      new ResizeObserver((entries) => first.push(...entries)).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      new ResizeObserver((entries) => second.push(...entries)).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect([first.length, second.length]).toEqual([1, 1])
     } finally {
       unmount()
     }
@@ -495,6 +512,86 @@ describeNative("IntersectionObserver", () => {
       }
     }
   )
+
+  it("gives a second observer of the same target its own initial entry", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const first = collect()
+      const second = collect()
+      render(<div ref={ref("a")} style={{ width: 10, height: 10 }} />)
+      new IntersectionObserver(first.callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect(first.entries).toHaveLength(1)
+
+      new IntersectionObserver(second.callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect(second.entries).toHaveLength(1)
+      expect(second.entries[0]).toMatchObject({ target: element("a"), isIntersecting: true })
+      expect(first.entries, "the first observer is not told again").toHaveLength(1)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("gives a second observer an initial entry in the same frame as the first", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const first = collect()
+      const second = collect()
+      render(<div ref={ref("a")} style={{ width: 10, height: 10 }} />)
+      new IntersectionObserver(first.callback).observe(element("a"))
+      new IntersectionObserver(second.callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect([first.entries.length, second.entries.length]).toEqual([1, 1])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("delivers the initial entries of observers mounted in one commit with one draw", () => {
+    const { render, renderer, unmount } = setup()
+    try {
+      const count = 8
+      const batches: IntersectionObserverEntry[][] = []
+      let drawsWhileObserving = -1
+      function App() {
+        const refs = useRef<(PublicInstance | null)[]>([])
+        useLayoutEffect(() => {
+          const before = renderer.getPaintedFrameCount()
+          const observers = refs.current.map((target) => {
+            const observer = new IntersectionObserver((entries) => batches.push(entries))
+            observer.observe(target!)
+            return observer
+          })
+          drawsWhileObserving = renderer.getPaintedFrameCount() - before
+          return () => observers.forEach((observer) => observer.disconnect())
+        }, [])
+        return (
+          <div style={{ flexDirection: "column" }}>
+            {Array.from({ length: count }, (_, index) => (
+              <div
+                key={index}
+                ref={(instance) => {
+                  refs.current[index] = instance
+                }}
+                style={{ width: 10, height: 10 }}
+              />
+            ))}
+          </div>
+        )
+      }
+      render(<App />)
+      const before = renderer.getPaintedFrameCount()
+      renderer.dispatchNativeEvents()
+      const drawsAfter = renderer.getPaintedFrameCount() - before
+
+      expect(drawsWhileObserving, "observe() reads no layout").toBe(0)
+      expect(drawsAfter, "the batch is probed with one draw").toBeLessThanOrEqual(1)
+      expect(batches.flat()).toHaveLength(count)
+    } finally {
+      unmount()
+    }
+  })
 
   it("rejects thresholds and margins that are not valid", () => {
     expect(() => new IntersectionObserver(() => {}, { threshold: 2 })).toThrow(RangeError)

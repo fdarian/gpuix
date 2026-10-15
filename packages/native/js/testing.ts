@@ -29,7 +29,7 @@ import type {
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
 import { flushPendingMutations } from "./bounds.js"
-import { flushObservations } from "./observers.js"
+import { flushObservations, settleObservations } from "./observers.js"
 import { readFontFiles } from "./fonts.js"
 import {
   registerKeyframesHost,
@@ -121,6 +121,7 @@ interface NativeTestRendererApi
   getA11yTree(): string
   getAutomationTree(): string
   getRetainedElementCount(): number
+  getPaintedFrameCount(): number
   getElementBounds(elementId: number): ElementBounds | null
   getElementsAt(x: number, y: number): number[]
   clockPause(): number
@@ -408,6 +409,8 @@ export class TestRenderer implements NativeRenderer {
    *  Loops until no more events are produced — handles re-entrant events
    *  that may be generated during framework state updates. */
   dispatchNativeEvents(): void {
+    // The probe draws, and its reports are what the loop below drains.
+    settleObservations(this)
     for (;;) {
       const events = this.native.drainEvents()
       if (events.length === 0) break
@@ -739,6 +742,12 @@ export class TestRenderer implements NativeRenderer {
    *  from the root, so only this can see a node that was detached and leaked. */
   getRetainedElementCount(): number {
     return this.native.getRetainedElementCount()
+  }
+
+  /** Frames the window has painted, a layout-only measure pass included. A
+   *  test compares it before and after to count the draws a read caused. */
+  getPaintedFrameCount(): number {
+    return this.native.getPaintedFrameCount()
   }
 
   getElementBounds(elementId: number): ElementBounds | null {

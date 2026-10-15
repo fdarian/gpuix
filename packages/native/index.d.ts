@@ -405,6 +405,12 @@ export declare class TestGpuixRenderer {
    */
   getRetainedElementCount(): number
   /**
+   * How many frames the window has painted, a layout-only measure pass
+   * included. A test that must prove a read did not draw once per call
+   * compares this before and after.
+   */
+  getPaintedFrameCount(): number
+  /**
    * Apply a batch of mutations in a single FFI call.
    * Same format as GpuixRenderer::apply_batch (string op names).
    * Returns accumulated destroyed IDs from all destroyElement ops.

@@ -178,6 +178,11 @@ fn draw_pending_changes() -> Result<()> {
 }
 
 thread_local! {
+    /// Whether mutations were applied that no bounds read has drawn yet. The live renderer draws
+    /// only a dirty window, and a read that notified every time would draw once per call. The
+    /// first read after a change still notifies, which is what lets an image that finished
+    /// loading since the last frame change its layout.
+    static UNFLUSHED_MUTATIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Whether simulated pointer input holds the root view for its whole dispatch.
     static LEASE_ROOT_VIEW: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
 }
@@ -446,6 +451,14 @@ impl TestGpuixRenderer {
         self.tree.lock().unwrap().elements.len() as u32
     }
 
+    /// How many frames the window has painted, a layout-only measure pass
+    /// included. A test that must prove a read did not draw once per call
+    /// compares this before and after.
+    #[napi]
+    pub fn get_painted_frame_count(&self) -> Result<f64> {
+        with_test_state(|cx, _window, view| Ok(cx.read(|app| view.read(app).painted_frame_count()) as f64))
+    }
+
     /// Apply a batch of mutations in a single FFI call.
     /// Same format as GpuixRenderer::apply_batch (string op names).
     /// Returns accumulated destroyed IDs from all destroyElement ops.
@@ -458,6 +471,9 @@ impl TestGpuixRenderer {
         drop(tree);
         // Like the live renderer, a change made from a handler marks the window dirty at once, so
         // that a read in the same handler draws it. Outside a handler `flush()` does.
+        if dirty {
+            UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.set(true));
+        }
         if dirty && crate::events::sync_dispatch::in_sync_call() {
             crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason)?;
         }
@@ -1535,7 +1551,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
         let id = to_element_id(id)?;
-        self.flush()?;
+        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
+            self.flush()?;
+        }
         draw_pending_changes()?;
         Ok(crate::automation::get_bounds(id).map(crate::renderer::ElementBounds::from_painted))
     }

@@ -5506,6 +5506,12 @@ impl GpuixView {
         }
     }
 
+    /// How many frames have been painted, for a test that counts the draws a read caused.
+    #[cfg(feature = "test-support")]
+    pub(crate) fn painted_frame_count(&self) -> u64 {
+        self.measurements.painted_frames()
+    }
+
     /// Emit `appearanceChange` from GPUI's window appearance observer, not from
     /// render: the platform reports the change, so there is nothing to diff.
     pub(crate) fn observe_appearance(

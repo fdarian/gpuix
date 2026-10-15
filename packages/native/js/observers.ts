@@ -1,5 +1,6 @@
 import type { EventPayload } from "../index.js"
 import {
+  flushPendingMutations,
   HOST_BINDING,
   HOST_MOUNT,
   readBoundingClientRect,
@@ -16,6 +17,10 @@ import {
  * (clipped) rect after each paint where they changed; the rules of the two DOM
  * APIs are applied here. Entries are delivered once per batch of native
  * events, after all of a frame's reports have arrived.
+ *
+ * Observing does not read layout. The first observation of every element
+ * observed since the last frame is probed together, in one step after the
+ * commit, so N observers started by one commit cost one draw, not N.
  */
 
 export const RESIZE_OBSERVE_EVENT = "resizeObserve"
@@ -29,17 +34,33 @@ const EPSILON = 0.01
 
 interface Subscriber {
   receive(event: EventPayload): void
+  /** The element is mounted and the subscriber is listening to it. */
+  bound?(binding: HostBinding): void
   /**
-   * The listener is registered and the window has been laid out and painted
-   * once since, so a first report is already on its way if the element
-   * painted. `painted` says whether it did.
+   * The step after `bound` that probes every new subscription at once: the
+   * listener is registered and the window has been laid out and painted, so a
+   * first report is already on its way if the element painted. `painted` says
+   * whether it did.
    */
-  bound?(binding: HostBinding, painted: boolean): void
+  settled?(binding: HostBinding, painted: boolean): void
 }
 
 interface Listening {
   readonly binding: HostBinding
   readonly subscribers: Set<Subscriber>
+  /**
+   * The newest report of the element. Native reports a change of the element,
+   * not of an observer, so a subscriber that joins later has to be given it.
+   */
+  last: EventPayload | undefined
+}
+
+interface Probe {
+  readonly binding: HostBinding
+  readonly id: number
+  readonly entry: Listening
+  readonly subscriber: Subscriber
+  cancelled: boolean
 }
 
 interface Delivery {
@@ -49,6 +70,7 @@ interface Delivery {
 interface Hub {
   readonly listening: Record<ObserveEvent, Map<number, Listening>>
   readonly queued: Set<Delivery>
+  probes: Probe[]
   scheduled: ReturnType<typeof setTimeout> | ReturnType<typeof setImmediate> | undefined
 }
 
@@ -68,6 +90,7 @@ function hubFor(renderer: object): Hub {
         [INTERSECT_OBSERVE_EVENT]: new Map(),
       },
       queued: new Set(),
+      probes: [],
       scheduled: undefined,
     }
     hubs.set(renderer, hub)
@@ -87,36 +110,32 @@ function setNativeListener(
 }
 
 /**
- * `settle` is for an element that is mounted now: the listener is sent and the
- * window laid out and painted at once, so the first report is already on its
- * way. An element that has only just been mounted is mid-commit, so its
- * listener rides the commit's own batch.
+ * Add a subscriber to the element's reports. The first report, or the
+ * subscriber's own copy of the last one, comes with the next `settleObservations`:
+ * the DOM too delivers an initial observation at the next rendering step.
  */
 function attach(
   binding: HostBinding,
   id: number,
   kind: ObserveEvent,
-  subscriber: Subscriber,
-  settle: boolean
+  subscriber: Subscriber
 ): () => void {
-  const listening = hubFor(binding.renderer).listening[kind]
+  const hub = hubFor(binding.renderer)
+  const listening = hub.listening[kind]
   let entry = listening.get(id)
   if (!entry) {
-    entry = { binding, subscribers: new Set() }
+    entry = { binding, subscribers: new Set(), last: undefined }
     listening.set(id, entry)
-    setNativeListener(binding, id, kind, true, settle)
+    setNativeListener(binding, id, kind, true, false)
   }
   const current = entry
   current.subscribers.add(subscriber)
-  let painted = false
-  if (settle) {
-    if (!binding.renderer.getElementBounds) {
-      throw new Error("This renderer cannot observe elements: it has no getElementBounds")
-    }
-    painted = binding.renderer.getElementBounds(id) !== null
-  }
-  subscriber.bound?.(binding, painted)
+  subscriber.bound?.(binding)
+  const probe: Probe = { binding, id, entry: current, subscriber, cancelled: false }
+  hub.probes.push(probe)
+  ensureScheduled(binding.renderer)
   return () => {
+    probe.cancelled = true
     current.subscribers.delete(subscriber)
     if (current.subscribers.size > 0 || listening.get(id) !== current) return
     listening.delete(id)
@@ -132,7 +151,7 @@ function attach(
  */
 function listen(kind: ObserveEvent, element: ObservableElement, subscriber: Subscriber): () => void {
   let release: (() => void) | undefined
-  const bind = (settle: boolean) => {
+  const bind = () => {
     const binding = element[HOST_BINDING]()
     if (!binding) return
     if (release) {
@@ -140,10 +159,10 @@ function listen(kind: ObserveEvent, element: ObservableElement, subscriber: Subs
       setNativeListener(binding, element.id, kind, true, false)
       return
     }
-    release = attach(binding, element.id, kind, subscriber, settle)
+    release = attach(binding, element.id, kind, subscriber)
   }
-  bind(true)
-  const stopMountWatch = element[HOST_MOUNT]?.(() => bind(false))
+  bind()
+  const stopMountWatch = element[HOST_MOUNT]?.(bind)
   return () => {
     stopMountWatch?.()
     release?.()
@@ -160,10 +179,41 @@ function cancelScheduled(handle: NonNullable<Hub["scheduled"]>): void {
   clearTimeout(handle as ReturnType<typeof setTimeout>)
 }
 
-function queueDelivery(renderer: object, delivery: Delivery): void {
+function ensureScheduled(renderer: object): void {
   const hub = hubFor(renderer)
-  hub.queued.add(delivery)
   if (hub.scheduled === undefined) hub.scheduled = schedule(() => flushObservations(renderer))
+}
+
+function queueDelivery(renderer: object, delivery: Delivery): void {
+  hubFor(renderer).queued.add(delivery)
+  ensureScheduled(renderer)
+}
+
+/**
+ * Probe every subscription made since the last probe, now: the pending
+ * mutations are sent and the window is laid out once for all of them. A
+ * subscriber that joined an element that has reported already is handed that
+ * report instead, with no layout read.
+ */
+export function settleObservations(renderer: object): void {
+  const hub = hubFor(renderer)
+  const probes = hub.probes.filter((probe) => !probe.cancelled)
+  hub.probes = []
+  if (probes.length === 0) return
+  flushPendingMutations(renderer)
+  for (const probe of probes) {
+    if (probe.entry.last) {
+      probe.subscriber.receive(probe.entry.last)
+      continue
+    }
+    if (!probe.binding.renderer.getElementBounds) {
+      throw new Error("This renderer cannot observe elements: it has no getElementBounds")
+    }
+    // Read even for a subscriber that does not care: the read is what draws
+    // the frame whose report it is waiting for.
+    const painted = probe.binding.renderer.getElementBounds(probe.id) !== null
+    probe.subscriber.settled?.(probe.binding, painted)
+  }
 }
 
 function reportCallbackError(error: unknown): void {
@@ -180,6 +230,7 @@ function reportCallbackError(error: unknown): void {
  * after draining native events, since nothing else would run.
  */
 export function flushObservations(renderer: object): void {
+  settleObservations(renderer)
   const hub = hubFor(renderer)
   if (hub.scheduled !== undefined) {
     cancelScheduled(hub.scheduled)
@@ -197,6 +248,7 @@ export function deliverObservation(renderer: object, event: EventPayload): boole
   }
   const entry = hubFor(renderer).listening[event.eventType].get(event.elementId)
   if (!entry || !event.observation) return false
+  entry.last = event
   for (const subscriber of [...entry.subscribers]) subscriber.receive(event)
   return true
 }
@@ -493,8 +545,10 @@ export class IntersectionObserver {
     }
     record.stop = listen(INTERSECT_OBSERVE_EVENT, target, {
       receive: (event) => this.#receive(record, event),
-      bound: (binding, painted) => {
+      bound: (binding) => {
         this.#renderer = binding.renderer
+      },
+      settled: (binding, painted) => {
         // An element that does not paint sends no report, but the DOM still
         // reports it once, as not intersecting.
         if (!painted && record.sample === undefined) {

@@ -118,6 +118,28 @@ describe.skipIf(!hasNativeTestRenderer)("observers on elements that come and go"
     expect(entries.at(-1)).toMatchObject({ isIntersecting: true, intersectionRatio: 1 })
   })
 
+  it("probes observers started from refs in one commit with one draw, and every one reports", async () => {
+    const count = 6
+    const batches: IntersectionObserverEntry[][] = []
+    const app = createTestRoot()
+    const before = app.renderer.getPaintedFrameCount()
+    app.render(() => (
+      <div style={{ flexDirection: "column" }}>
+        {Array.from({ length: count }, () => {
+          const observer = new IntersectionObserver((batch) => batches.push(batch))
+          return <div ref={(host) => observer.observe(host)} style={{ width: 30, height: 20 }} />
+        })}
+      </div>
+    ))
+    await Promise.resolve()
+    app.renderer.dispatchNativeEvents()
+    const draws = app.renderer.getPaintedFrameCount() - before
+
+    expect(batches.flat().map((entry) => entry.isIntersecting)).toEqual(Array(count).fill(true))
+    // One draw for the commit's own flush and one for the batched probe.
+    expect(draws).toBeLessThanOrEqual(2)
+  })
+
   it("reports 0 by 0 when the element is removed", () => {
     const [shown, setShown] = createSignal(true)
     const sizes: number[][] = []
