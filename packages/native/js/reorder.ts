@@ -35,6 +35,8 @@ export type ReorderItem = {
   elementId(): number | undefined
   /** Routes the pointer's events to the item until it is released. Throws while the item is not in the tree. */
   capturePointer(pointerId: number): void
+  /** Ends the capture `capturePointer` asked for. Does nothing once the item is gone or the capture is over. */
+  releasePointerCapture(pointerId: number): void
   drag: LayoutDrag
 }
 
@@ -261,6 +263,9 @@ export class ReorderController<Value> {
     item.drag.active.jump(0)
     item.drag.x.jump(0)
     item.drag.y.jump(0)
+    // The pointer is not up when a chorded button or a removed value ends the drag, and the capture
+    // would otherwise keep sending the pointer's events to this item.
+    item.releasePointerCapture(held.pointerId)
   }
 
   #configured(): ReorderOptions<Value> {
