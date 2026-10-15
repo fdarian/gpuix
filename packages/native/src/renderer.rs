@@ -4897,6 +4897,36 @@ fn sync_motion_values(
     )
 }
 
+/// Samples the values the subtree of a virtual row binds that the root's
+/// sample did not reach: a row mounted after it has none sampled, and would
+/// render unbound for a frame. Says whether one of them is still moving.
+fn sync_row_motion_values(
+    tree: &crate::retained_tree::RetainedTree,
+    store: &mut crate::motion::MotionValueStore,
+    row_id: u64,
+    now: web_time::Instant,
+) -> bool {
+    if tree.motion_value_ids.is_empty() {
+        return false;
+    }
+    let mut bindings = Vec::new();
+    let mut read = Vec::new();
+    let mut pending = vec![row_id];
+    while let Some(id) = pending.pop() {
+        let Some(element) = tree.elements.get(&id) else {
+            continue;
+        };
+        if let Some(binding) = element.custom_props().get("motionValues") {
+            bindings.push(binding);
+        }
+        if let Some(source) = element.custom_props().get("layout") {
+            read.extend(crate::motion::drag_value_ids(source));
+        }
+        pending.extend(element.children.iter().copied());
+    }
+    store.sample_unsampled(bindings, &read, now)
+}
+
 /// The element id of these events is the motion value's, so the JS side tells
 /// them apart by event type.
 fn emit_motion_value_events(
@@ -5532,6 +5562,8 @@ impl GpuixView {
         let now = self.clock.now();
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
+        let motion_values_active =
+            sync_row_motion_values(&tree, &mut self.motion_values, expected_child_id, now);
         let mut highlight_events = Vec::new();
 
         // Re-resolve against the tree as it is NOW. gpui calls this during
@@ -5593,7 +5625,11 @@ impl GpuixView {
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
-        if self.css_transitions.take_active() || self.css_animations.take_active() || motion_active {
+        if self.css_transitions.take_active()
+            || self.css_animations.take_active()
+            || motion_active
+            || motion_values_active
+        {
             window.request_animation_frame();
         }
         let Some(focus_handle) = row_focus_handle else {

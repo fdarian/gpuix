@@ -240,8 +240,27 @@ impl MotionValueStore {
         read: &[f64],
         now: Instant,
     ) -> MotionValueFrame {
-        let mut frame = MotionValueFrame::default();
         self.frame_values.clear();
+        let mut active = self.sample_unsampled(bindings, read, now);
+        active |= self.observe(now);
+        MotionValueFrame {
+            active,
+            events: std::mem::take(&mut self.pending),
+        }
+    }
+
+    /// Samples the values `bindings` and `read` name that this frame has not
+    /// sampled yet, and says whether one is still moving. A virtual row mounts
+    /// after the root's [`Self::frame`], so the values only it binds are read
+    /// here, at the row's own instant. The ones the frame already holds keep
+    /// the frame's instant, so every element still sees one value per frame.
+    pub(crate) fn sample_unsampled<'a>(
+        &mut self,
+        bindings: impl IntoIterator<Item = &'a Value>,
+        read: &[f64],
+        now: Instant,
+    ) -> bool {
+        let mut active = false;
         let mut bound = Vec::new();
         for binding in bindings {
             match parse_binding(binding) {
@@ -253,9 +272,12 @@ impl MotionValueStore {
         bound.dedup();
 
         for id in bound {
+            if self.frame_values.contains_key(&id) {
+                continue;
+            }
             match self.graph.sample(id, now) {
                 Ok(sample) => {
-                    frame.active |= sample.active;
+                    active |= sample.active;
                     self.frame_values.insert(id, sample.value);
                 }
                 Err(error) => self.warn(error),
@@ -265,14 +287,15 @@ impl MotionValueStore {
             let Ok(id) = value_id(*id) else {
                 continue;
             };
+            if self.frame_values.contains_key(&id) {
+                continue;
+            }
             if let Ok(sample) = self.graph.sample(id, now) {
-                frame.active |= sample.active;
+                active |= sample.active;
                 self.frame_values.insert(id, sample.value);
             }
         }
-        frame.active |= self.observe(now);
-        frame.events = std::mem::take(&mut self.pending);
-        frame
+        active
     }
 
     /// The number the last frame sampled for a value passed as `read`.
@@ -997,6 +1020,29 @@ mod tests {
         let mut style = StyleDesc::default();
         store.apply(&mismatch, &mut style);
         assert_eq!(style.opacity, None);
+    }
+
+    #[test]
+    fn a_late_row_samples_only_the_values_the_frame_did_not() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0.25)).unwrap();
+        let root = json!({ "opacity": 1 });
+        store.frame([&root], &[], clock.at(0));
+
+        // Bound after the frame, as a row mounted between two frames binds it.
+        store.create_source(2.0, &json!(0.75)).unwrap();
+        let row = json!({ "opacity": 2 });
+        let mut style = StyleDesc::default();
+        store.apply(&row, &mut style);
+        assert_eq!(style.opacity, None, "the frame never sampled it");
+
+        store.set(1.0, &json!(0.5), clock.at(10)).unwrap();
+        store.sample_unsampled([&root, &row], &[], clock.at(10));
+        store.apply(&row, &mut style);
+        assert_eq!(style.opacity, Some(0.75));
+        store.apply(&root, &mut style);
+        assert_eq!(style.opacity, Some(0.25), "the frame's own sample is kept");
     }
 
     #[test]
