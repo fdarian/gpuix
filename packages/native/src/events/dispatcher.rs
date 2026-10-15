@@ -43,6 +43,9 @@ use super::state::{is_connected, DragOver, PointerState, Press};
 
 const PRIMARY_BUTTON: u32 = 0;
 const SECONDARY_BUTTON: u32 = 2;
+/// Chrome on macOS opens the context menu for ctrl+primary as it does for the
+/// secondary button, and the press stays a primary one.
+const CTRL_CLICK_OPENS_CONTEXT_MENU: bool = cfg!(target_os = "macos");
 const DOUBLE_CLICK: u32 = 2;
 const MOUSE_DOWN_OUTSIDE: &str = "mousedownoutside";
 
@@ -498,7 +501,14 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         } => {
             match target {
                 Some(target) => {
-                    restyle |= press(state, &mut emitter, target, button, click_count);
+                    restyle |= press(
+                        state,
+                        &mut emitter,
+                        target,
+                        button,
+                        click_count,
+                        &sample.modifiers,
+                    );
                 }
                 None => emitter.emit_outside_presses(
                     None,
@@ -789,6 +799,7 @@ fn press(
     target: u64,
     button: u32,
     click_count: u32,
+    modifiers: &EventModifiers,
 ) -> bool {
     let tree = emitter.tree;
     let fields = Fields {
@@ -799,7 +810,9 @@ fn press(
     emitter.emit("pointerdown", target, fields);
     emitter.emit("mousedown", target, fields);
     emitter.emit_outside_presses(Some(target), fields);
-    if button == SECONDARY_BUTTON {
+    if button == SECONDARY_BUTTON
+        || (CTRL_CLICK_OPENS_CONTEXT_MENU && button == PRIMARY_BUTTON && modifiers.ctrl)
+    {
         // Where macOS and Chrome open the context menu: on the press.
         emitter.emit(
             "contextmenu",
@@ -1343,6 +1356,50 @@ mod tests {
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["mousedown@3", "contextmenu@3"]);
+    }
+
+    fn with_ctrl(sample: PointerSample) -> PointerSample {
+        PointerSample {
+            modifiers: EventModifiers {
+                ctrl: true,
+                ..EventModifiers::default()
+            },
+            ..sample
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_ctrl_primary_press_opens_the_context_menu_on_macos() {
+        let tree = tree(&listening_everywhere(&["mousedown", "contextmenu"]));
+        let mut state = PointerState::default();
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &with_ctrl(down(0, 1, chain_of(&[3, 2, 1]))),
+        );
+        assert_eq!(names(&output), ["mousedown@3", "contextmenu@3"]);
+        assert_eq!(output.events[1].button, Some(0));
+    }
+
+    #[test]
+    fn a_primary_press_without_ctrl_opens_no_context_menu() {
+        let tree = tree(&listening_everywhere(&["mousedown", "contextmenu"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousedown@3"]);
+    }
+
+    #[test]
+    fn a_ctrl_press_of_another_button_is_not_a_context_menu() {
+        let tree = tree(&listening_everywhere(&["mousedown", "contextmenu"]));
+        let mut state = PointerState::default();
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &with_ctrl(down(1, 1, chain_of(&[3, 2, 1]))),
+        );
+        assert_eq!(names(&output), ["mousedown@3"]);
     }
 
     fn outside_presses(output: &Output) -> Vec<String> {
