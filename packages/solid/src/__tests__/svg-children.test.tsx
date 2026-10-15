@@ -27,7 +27,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
     const app = createTestRoot()
     app.render(() => (
       <div style={FRAME}>
-        <svg viewBox="0 0 100 100" style={SVG_STYLE}>
+        <svg viewBox="0 0 100 100" fill="currentColor" style={SVG_STYLE}>
           <g strokeWidth={4}>
             <rect x={x()} y={0} width={20} height={100} />
           </g>
@@ -65,7 +65,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
             d="M0 50 L100 50"
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={20}
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
@@ -89,7 +89,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
     still.render(() => (
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
-          <path d="M0 50 L100 50" stroke="black" strokeWidth={20} />
+          <path d="M0 50 L100 50" stroke="currentColor" strokeWidth={20} />
         </svg>
       </div>
     ))
@@ -103,7 +103,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={10}
             initial={{ d: "M0 75 L100 75" }}
             animate={{ d: "M0 25 L100 25" }}

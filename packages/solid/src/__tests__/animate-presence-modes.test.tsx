@@ -113,7 +113,7 @@ describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="wait"', () 
 describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="popLayout"', () => {
   function List(props: { items: string[] }) {
     return (
-      <div style={column}>
+      <div style={{ ...column, position: "relative" }}>
         <AnimatePresence mode="popLayout">
           <For each={props.items}>
             {(item) => (
