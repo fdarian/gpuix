@@ -1,6 +1,8 @@
+import { useLayoutEffect, useRef, useState } from "react"
 import { describe, expect, it } from "vitest"
 import { readScrollMetrics } from "@gpuix/native/host"
 import type { PublicInstance } from "../types/host.js"
+import { flushSync } from "../reconciler/reconciler.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -196,6 +198,103 @@ describeNative("scrollIntoView", () => {
       expect(refs.middle!.scrollTop).toBe(540 + 20 - 150)
       refs.target!.scrollIntoView(true)
       expect(refs.middle!.scrollTop).toBe(540)
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describeNative("scroll reads are never stale", () => {
+  it("reads scrollHeight in the commit that mounts the content", () => {
+    const { render, unmount } = createTestRoot()
+    try {
+      let scrollHeight: number | undefined
+      function App() {
+        const ref = useRef<PublicInstance>(null)
+        useLayoutEffect(() => {
+          scrollHeight = ref.current!.scrollHeight
+        }, [])
+        return (
+          <div ref={ref} style={{ width: 200, height: 100, overflow: "scroll" }}>
+            <div style={{ height: 400, flexShrink: 0 }} />
+          </div>
+        )
+      }
+      render(<App />)
+
+      expect(scrollHeight).toBe(400)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("reads scrollHeight right after content changed in the same turn", () => {
+    const { render, unmount } = createTestRoot()
+    try {
+      let setRows!: (rows: number) => void
+      let scroller: PublicInstance | null = null
+      function App() {
+        const [rows, set] = useState(2)
+        setRows = set
+        return (
+          <div
+            ref={(instance) => {
+              scroller = instance
+            }}
+            style={{ width: 200, height: 100, overflow: "scroll" }}
+          >
+            {Array.from({ length: rows }, (_, row) => (
+              <div key={row} style={{ height: 50, flexShrink: 0 }} />
+            ))}
+          </div>
+        )
+      }
+      render(<App />)
+      expect(scroller!.scrollHeight).toBe(100)
+
+      flushSync(() => setRows(10))
+      expect(scroller!.scrollHeight).toBe(500)
+      flushSync(() => setRows(4))
+      expect(scroller!.scrollHeight).toBe(200)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("aligns scrollIntoView by the layout of content added in the same turn", () => {
+    const { render, unmount } = createTestRoot()
+    try {
+      let setRows!: (rows: number) => void
+      let scroller: PublicInstance | null = null
+      let target: PublicInstance | null = null
+      function App() {
+        const [rows, set] = useState(1)
+        setRows = set
+        return (
+          <div
+            ref={(instance) => {
+              scroller = instance
+            }}
+            style={{ width: 200, height: 100, overflow: "scroll" }}
+          >
+            {Array.from({ length: rows }, (_, row) => (
+              <div key={row} style={{ height: 50, flexShrink: 0 }} />
+            ))}
+            <div
+              ref={(instance) => {
+                target = instance
+              }}
+              style={{ height: 20, flexShrink: 0 }}
+            />
+          </div>
+        )
+      }
+      render(<App />)
+
+      flushSync(() => setRows(10))
+      target!.scrollIntoView({ block: "start" })
+      // The target sits 500 down, but the content ends at 520 in a 100 tall view.
+      expect(scroller!.scrollTop).toBe(420)
     } finally {
       unmount()
     }

@@ -1034,6 +1034,7 @@ impl TestGpuixRenderer {
         let options =
             crate::scroll::IntoView::parse(block.as_deref(), inline.as_deref(), behavior.as_deref())
                 .map_err(Error::from_reason)?;
+        self.flush()?;
         update_view_or_defer(move |view, window, cx| {
             if view.scroll_element_into_view(id, options) {
                 cx.notify();
@@ -1321,6 +1322,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
+        self.flush()?;
         with_test_state(|cx, window, view| {
             let view = view.clone();
             let result = cx

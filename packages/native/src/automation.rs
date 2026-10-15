@@ -116,7 +116,7 @@ where
 }
 
 /// Called with an element's painted box on every paint, from inside paint. It
-/// is how `onLayout`, `onScrollChange` and the observers see what the frame
+/// is how `onLayout`, `onScroll` and the observers see what the frame
 /// produced. The window is the one being painted, so a reporter can read the
 /// content mask the element was painted under.
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;

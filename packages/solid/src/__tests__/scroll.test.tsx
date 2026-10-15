@@ -1,3 +1,4 @@
+import { createSignal, For } from "solid-js"
 import { describe, expect, it } from "bun:test"
 import type { ScrollEvent, WheelEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
@@ -52,5 +53,24 @@ describe.skipIf(!hasNativeTestRenderer)("Solid scrolling", () => {
     expect(wheels[0]).toMatchObject({ deltaY: 40, deltaMode: 0, clientX: 100, clientY: 50 })
     expect(scrolls).toHaveLength(1)
     expect(scrolls[0]).toMatchObject({ scrollTop: 40, scrollLeft: 0 })
+  })
+})
+
+describe.skipIf(!hasNativeTestRenderer)("Solid scroll reads are never stale", () => {
+  it("reads scrollHeight in the turn that changed the content, before Solid flushes", () => {
+    const [rows, setRows] = createSignal(2)
+    let scroller!: HostElement
+    const app = createTestRoot()
+    app.render(() => (
+      <div ref={scroller} style={{ width: 200, height: 100, overflow: "scroll" }}>
+        <For each={Array.from({ length: rows() }, (_, row) => row)}>
+          {() => <div style={{ height: 50, flexShrink: 0 }} />}
+        </For>
+      </div>
+    ))
+    expect(scroller.scrollHeight).toBe(100)
+
+    setRows(10)
+    expect(scroller.scrollHeight).toBe(500)
   })
 })

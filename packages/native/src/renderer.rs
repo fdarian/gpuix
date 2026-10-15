@@ -233,6 +233,9 @@ fn scroll_element_to(id: u64, x: f32, y: f32, behavior: crate::scroll::Behavior)
 }
 
 /// `Element.scrollTop` and friends, from the last layout. See `scroll::metrics`.
+///
+/// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a
+/// window command) so the layout is never older than the tree.
 fn scroll_metrics(id: u64) -> Option<[f64; 6]> {
     let painted = crate::automation::get_bounds(id).map(|b| (b.width as f32, b.height as f32));
     SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
@@ -736,15 +739,22 @@ async fn run_ui_commands(
                 }
                 refresh_ui_window(window, cx)
             }
-            UiCommand::ScrollIntoView { id, options } => window.update(cx, move |view, window, cx| {
-                if view.scroll_element_into_view(id, options) {
-                    cx.notify();
-                    window.refresh();
-                }
-            }),
+            UiCommand::ScrollIntoView { id, options } => {
+                // Align by the tree as it is, not the last frame; see `GetElementBounds`.
+                gpui::AnyWindowHandle::from(window)
+                    .update(cx, |_view, window, cx| window.draw_if_dirty(cx))?;
+                window.update(cx, move |view, window, cx| {
+                    if view.scroll_element_into_view(id, options) {
+                        cx.notify();
+                        window.refresh();
+                    }
+                })
+            }
             UiCommand::GetScrollMetrics { id, response } => {
-                response.send(scroll_metrics(id)).ok();
-                Ok(())
+                gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
+                    window.draw_if_dirty(cx);
+                    response.send(scroll_metrics(id)).ok();
+                })
             }
             UiCommand::ScrollByKey { key, shift, response } => {
                 window.update(cx, move |view, window, cx| {
@@ -2713,6 +2723,8 @@ impl GpuixRenderer {
                 .map_err(Error::from_reason)?;
         #[cfg(target_os = "macos")]
         {
+            // Before `update_window_or_defer`, which leases the view the draw needs.
+            self.draw_pending_changes()?;
             update_window_or_defer(move |view, window, cx| {
                 if view.scroll_element_into_view(id, options) {
                     cx.notify();
@@ -2773,7 +2785,10 @@ impl GpuixRenderer {
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return Ok(scroll_metrics(id).map(|metrics| metrics.to_vec()));
+        {
+            self.draw_pending_changes()?;
+            return Ok(scroll_metrics(id).map(|metrics| metrics.to_vec()));
+        }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {

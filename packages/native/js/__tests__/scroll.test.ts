@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "../../index.js"
 import {
+  createMutationQueue,
   defineScrollMembers,
   isScrollKey,
   readScrollMetrics,
@@ -88,6 +89,44 @@ describe("readScrollMetrics", () => {
   it("answers zero for an element native does not know", () => {
     const renderer = { getScrollMetrics: () => null } as unknown as NativeRenderer
     expect(readScrollMetrics(renderer, 1).scrollHeight).toBe(0)
+  })
+
+  it("sends queued mutations before it asks native", () => {
+    const sent: string[] = []
+    const renderer = {
+      applyBatch: (json: string) => {
+        sent.push(`applyBatch ${JSON.parse(json).length}`)
+        return []
+      },
+      getScrollMetrics: () => {
+        sent.push("metrics")
+        return [0, 0, 200, 900, 200, 100]
+      },
+    }
+    createMutationQueue(renderer).createElement(1, "div")
+
+    expect(readScrollMetrics(renderer as unknown as NativeRenderer, 1).scrollHeight).toBe(900)
+    expect(sent).toEqual(["applyBatch 1", "metrics"])
+  })
+
+  it("sends queued mutations before scrollIntoView aligns", () => {
+    const sent: string[] = []
+    const renderer = {
+      applyBatch: () => {
+        sent.push("applyBatch")
+        return []
+      },
+      scrollIntoView: () => {
+        sent.push("scrollIntoView")
+      },
+    }
+    createMutationQueue(renderer).createElement(1, "div")
+    const target = {}
+    defineScrollMembers(target, () => ({ renderer: renderer as unknown as NativeRenderer, id: 1 }))
+
+    ;(target as ScrollableElement).scrollIntoView()
+
+    expect(sent).toEqual(["applyBatch", "scrollIntoView"])
   })
 
   it("refuses to guess when the renderer cannot read", () => {

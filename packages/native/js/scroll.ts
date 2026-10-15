@@ -1,4 +1,5 @@
 import type { EventPayload } from "../index.js"
+import { flushPendingMutations } from "./bounds.js"
 import type { NativeRenderer } from "./host.js"
 
 export type ScrollBehavior = "auto" | "instant" | "smooth"
@@ -102,6 +103,9 @@ function required(value: number | undefined, field: string): number {
  * The one place that asks native for an element's scroll geometry. Every
  * `scrollTop`-style read goes through here.
  *
+ * It is never stale, like `getBoundingClientRect`: queued mutations are sent first and
+ * native draws any pending change before it measures.
+ *
  * An element native has not painted has none; the DOM answers zero for an element
  * with no layout box, and so does this.
  */
@@ -109,6 +113,7 @@ export function readScrollMetrics(renderer: NativeRenderer, id: number): ScrollM
   if (!renderer.getScrollMetrics) {
     throw new Error("This renderer cannot read scroll geometry")
   }
+  flushPendingMutations(renderer)
   const metrics = renderer.getScrollMetrics(id)
   if (!metrics) {
     return {
@@ -231,6 +236,7 @@ export function defineScrollMembers<This extends object>(
         const bound = resolve(this)
         if (!bound.renderer.scrollIntoView) throw new Error("This renderer cannot scroll")
         const options = intoViewOptions(arg)
+        flushPendingMutations(bound.renderer)
         bound.renderer.scrollIntoView(bound.id, options.block, options.inline, options.behavior)
       },
     },
