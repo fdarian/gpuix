@@ -23,7 +23,7 @@ use std::time::Duration;
 use web_time::Instant;
 
 use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, Transition};
-use super::track::Track;
+use super::track::{Goal, Track};
 use super::value::{pair, AnimValue, Layout, Pair};
 
 const NAME: &str = "motion value";
@@ -260,10 +260,34 @@ impl MotionValues {
         transition: Transition,
         now: Instant,
     ) -> Result<(), String> {
-        validate(&target)?;
+        self.animate_goal(id, Goal::single(target), transition, now)
+    }
+
+    /// [`Self::animate`] through keyframes. A leading `None` is the value the
+    /// source has at `now`; a later one repeats the keyframe before it.
+    pub(super) fn animate_keyframes(
+        &mut self,
+        id: ValueId,
+        frames: Vec<Option<AnimValue>>,
+        transition: Transition,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.animate_goal(id, Goal::keyframes(NAME, frames)?, transition, now)
+    }
+
+    fn animate_goal(
+        &mut self,
+        id: ValueId,
+        goal: Goal,
+        transition: Transition,
+        now: Instant,
+    ) -> Result<(), String> {
+        for frame in goal.frames().iter().flatten() {
+            validate(frame)?;
+        }
         self.catch_up(now);
         match self.node_mut(id)? {
-            Node::Source(source) => source.animate(target, transition, now),
+            Node::Source(source) => source.animate(goal, transition, now),
             Node::Spring(_) => Err(format!(
                 "{NAME} {} is a spring: set it to move its target",
                 id.0
@@ -483,19 +507,31 @@ impl Source {
         Ok(())
     }
 
-    fn animate(
-        &mut self,
-        target: AnimValue,
-        transition: Transition,
-        now: Instant,
-    ) -> Result<(), String> {
+    fn animate(&mut self, goal: Goal, transition: Transition, now: Instant) -> Result<(), String> {
         let from = self.value(now);
-        let mut track = Track::new(NAME, &from, target, transition, now)?;
-        match &self.track {
-            Some(previous) => track.carry_velocity(previous, now),
-            None => {
-                if let Some(rate) = self.rate.as_ref().filter(|rate| fresh(rate.at, now)) {
-                    track.carry_rate(&rate.layout, rate.per_second.clone());
+        let starts_here = goal.is_single() || goal.frames()[0].is_none();
+        let mut track = if goal.is_single() {
+            Track::new(NAME, &from, goal.last().clone(), transition, now)?
+        } else {
+            let mut literal: Vec<AnimValue> = Vec::with_capacity(goal.frames().len());
+            for frame in goal.frames() {
+                literal.push(match (frame, literal.last()) {
+                    (Some(value), _) => value.clone(),
+                    (None, Some(previous)) => previous.clone(),
+                    (None, None) => from.clone(),
+                });
+            }
+            Track::keyframed(NAME, goal, literal.clone(), &literal, transition, now)?
+        };
+        // A track that opens on a keyframe of its own does not start at the
+        // speed the value had.
+        if starts_here {
+            match &self.track {
+                Some(previous) => track.carry_velocity(previous, now),
+                None => {
+                    if let Some(rate) = self.rate.as_ref().filter(|rate| fresh(rate.at, now)) {
+                        track.carry_rate(&rate.layout, rate.per_second.clone());
+                    }
                 }
             }
         }

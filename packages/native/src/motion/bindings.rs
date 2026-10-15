@@ -166,7 +166,10 @@ impl MotionValueStore {
         Ok(())
     }
 
-    /// With no `transition`, the tween every animation defaults to.
+    /// With no `transition`, the tween every animation defaults to. An array
+    /// target is keyframes unless it is one value of the kind the source holds
+    /// (a list of numbers, a list of shadows); `null` in it stands for the
+    /// value before it, or the source's own value when it comes first.
     pub(crate) fn animate(
         &mut self,
         id: f64,
@@ -178,8 +181,12 @@ impl MotionValueStore {
             Some(transition) => Transition::parse(transition.clone())?,
             None => Transition::default(),
         };
-        self.graph
-            .animate(value_id(id)?, parse_value(target)?, transition, now)?;
+        let id = value_id(id)?;
+        let holds = self.graph.get(id, now)?;
+        match parse_keyframes(target, &holds)? {
+            Keyframes::Single(target) => self.graph.animate(id, target, transition, now)?,
+            Keyframes::Many(frames) => self.graph.animate_keyframes(id, frames, transition, now)?,
+        }
         self.observe(now);
         Ok(())
     }
@@ -374,6 +381,41 @@ fn parse_value(value: &Value) -> Result<AnimValue, String> {
     }
 }
 
+enum Keyframes {
+    Single(AnimValue),
+    Many(Vec<Option<AnimValue>>),
+}
+
+/// Whether `target` is one value or a list of keyframes, by what the source
+/// holds: a list of numbers and a list of shadow layers are values, so for
+/// those an array is only keyframes when it is not such a list.
+fn parse_keyframes(target: &Value, holds: &AnimValue) -> Result<Keyframes, String> {
+    let Value::Array(items) = target else {
+        return parse_value(target).map(Keyframes::Single);
+    };
+    let is_value = match holds {
+        AnimValue::Numbers(_) => items.iter().all(Value::is_number),
+        AnimValue::Shadows(_) => items.iter().all(Value::is_object),
+        _ => false,
+    };
+    if is_value {
+        return parse_value(target).map(Keyframes::Single);
+    }
+    let frames = items
+        .iter()
+        .map(|item| match item {
+            Value::Null => Ok(None),
+            item => parse_value(item).map(Some),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    match frames.as_slice() {
+        [] => Err(format!("{NAME} keyframes need at least one value")),
+        [Some(only)] => Ok(Keyframes::Single(only.clone())),
+        [None] => Err(format!("{NAME} keyframes need a value besides null")),
+        _ => Ok(Keyframes::Many(frames)),
+    }
+}
+
 fn to_json(value: &AnimValue) -> Result<Value, String> {
     let number = |number: f64| {
         serde_json::Number::from_f64(number)
@@ -532,6 +574,244 @@ mod tests {
         assert!(store
             .animate(1.0, &json!(1), Some(&json!({ "bogus": 1 })), clock.at(900))
             .is_err());
+    }
+
+    fn number_at(store: &mut MotionValueStore, id: f64, at: Instant) -> f64 {
+        store.get(id, at).unwrap().as_f64().unwrap()
+    }
+
+    fn close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-6, "expected {expected}, got {actual}");
+    }
+
+    fn keyframes_store() -> (Clock, MotionValueStore) {
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        (clock(), store)
+    }
+
+    #[test]
+    fn keyframes_are_spaced_evenly_or_by_times() {
+        let (clock, mut store) = keyframes_store();
+        store.animate(1.0, &json!([0, 100, 40]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(250)), 50.0);
+        close(number_at(&mut store, 1.0, clock.at(500)), 100.0);
+        close(number_at(&mut store, 1.0, clock.at(750)), 70.0);
+        assert_eq!(number_at(&mut store, 1.0, clock.at(1000)), 40.0);
+        assert!(!store.is_animating(1.0, clock.at(1000)).unwrap());
+
+        let timed = json!({ "duration": 1.0, "ease": "linear", "times": [0, 0.25, 1] });
+        store.animate(1.0, &json!([0, 100, 40]), Some(&timed), clock.at(2000)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(2125)), 50.0);
+        close(number_at(&mut store, 1.0, clock.at(2250)), 100.0);
+        close(number_at(&mut store, 1.0, clock.at(2625)), 70.0);
+    }
+
+    #[test]
+    fn a_leading_null_starts_from_the_value_and_a_later_one_repeats_the_one_before() {
+        let (clock, mut store) = keyframes_store();
+        store.set(1.0, &json!(10), clock.at(0)).unwrap();
+        store.animate(1.0, &json!([null, 50, null, 90]), Some(&linear(3.0)), clock.at(100)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(100)), 10.0);
+        close(number_at(&mut store, 1.0, clock.at(600)), 30.0);
+        // The held keyframe: 50 to 50 between 1s and 2s.
+        close(number_at(&mut store, 1.0, clock.at(1600)), 50.0);
+        close(number_at(&mut store, 1.0, clock.at(2600)), 70.0);
+
+        // Without a null the track opens on its own first keyframe.
+        store.animate(1.0, &json!([20, 60]), Some(&linear(1.0)), clock.at(5000)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(5000)), 20.0);
+        close(number_at(&mut store, 1.0, clock.at(5500)), 40.0);
+
+        assert!(store.animate(1.0, &json!([null]), None, clock.at(6000)).is_err());
+        store.animate(1.0, &json!([75]), Some(&linear(1.0)), clock.at(6000)).unwrap();
+        assert_eq!(number_at(&mut store, 1.0, clock.at(7000)), 75.0);
+    }
+
+    #[test]
+    fn an_ease_per_segment_applies_to_its_own_segment() {
+        let (clock, mut store) = keyframes_store();
+        let eases = json!({ "duration": 1.0, "ease": ["linear", "step-end"] });
+        store.animate(1.0, &json!([0, 10, 20]), Some(&eases), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(250)), 5.0);
+        close(number_at(&mut store, 1.0, clock.at(750)), 10.0);
+        assert_eq!(number_at(&mut store, 1.0, clock.at(1000)), 20.0);
+
+        let wrong = json!({ "duration": 1.0, "ease": ["linear"] });
+        assert!(store.animate(1.0, &json!([0, 10, 20]), Some(&wrong), clock.at(2000)).is_err());
+    }
+
+    #[test]
+    fn infinity_repeats_for_ever_and_never_completes() {
+        let (clock, mut store) = keyframes_store();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+        let looping = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" });
+        store.animate(1.0, &json!([0, 100]), Some(&looping), clock.at(0)).unwrap();
+
+        let mut events = Vec::new();
+        for second in 0..60u64 {
+            let frame = store.frame([], clock.at(second * 1000 + 500));
+            assert!(frame.active, "second {second}");
+            events.extend(kinds(&frame));
+        }
+        assert_eq!(events, vec![(1, MotionValueEventKind::AnimationStart)]);
+        close(number_at(&mut store, 1.0, clock.at(3_600_250)), 25.0);
+        assert!(store.is_animating(1.0, clock.at(3_600_250)).unwrap());
+    }
+
+    #[test]
+    fn a_single_target_repeats_too() {
+        let (clock, mut store) = keyframes_store();
+        let looping = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" });
+        store.animate(1.0, &json!(100), Some(&looping), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(2250)), 25.0);
+        assert!(store
+            .animate(1.0, &json!(100), Some(&json!({ "repeat": "forever" })), clock.at(0))
+            .is_err());
+        assert!(store
+            .animate(1.0, &json!(100), Some(&json!({ "repeat": -1 })), clock.at(0))
+            .is_err());
+    }
+
+    #[test]
+    fn a_counted_repeat_ends_on_the_last_iteration() {
+        let (clock, mut store) = keyframes_store();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+        let twice = json!({ "duration": 1.0, "ease": "linear", "repeat": 1, "repeatDelay": 1.0 });
+        store.animate(1.0, &json!([0, 100]), Some(&twice), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(1500)), 100.0);
+        close(number_at(&mut store, 1.0, clock.at(2500)), 50.0);
+        assert!(store.is_animating(1.0, clock.at(2500)).unwrap());
+        let frame = store.frame([], clock.at(4000));
+        assert_eq!(
+            kinds(&frame),
+            vec![
+                (1, MotionValueEventKind::AnimationStart),
+                (1, MotionValueEventKind::AnimationComplete)
+            ]
+        );
+        assert_eq!(number_at(&mut store, 1.0, clock.at(4000)), 100.0);
+    }
+
+    #[test]
+    fn reverse_runs_time_backwards_and_mirror_runs_the_keyframes_backwards() {
+        let looping = |kind: &str| {
+            json!({
+                "duration": 1.0,
+                "ease": "linear",
+                "times": [0, 0.25, 1],
+                "repeat": 1,
+                "repeatType": kind
+            })
+        };
+        let (clock, mut store) = keyframes_store();
+        store.animate(1.0, &json!([0, 100, 40]), Some(&looping("loop")), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(1125)), 50.0);
+
+        // Time runs back: at 0.25 into the second pass the first sits at 0.75.
+        store.animate(1.0, &json!([0, 100, 40]), Some(&looping("reverse")), clock.at(10_000)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(11_250)), 60.0);
+        assert_eq!(number_at(&mut store, 1.0, clock.at(12_000)), 0.0);
+
+        // The keyframes run back with the same times: 40, 100, 0.
+        store.animate(1.0, &json!([0, 100, 40]), Some(&looping("mirror")), clock.at(20_000)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(21_000)), 40.0);
+        close(number_at(&mut store, 1.0, clock.at(21_250)), 100.0);
+        assert_eq!(number_at(&mut store, 1.0, clock.at(22_000)), 0.0);
+    }
+
+    #[test]
+    fn stopping_mid_loop_holds_the_value_and_ends_the_animation() {
+        let (clock, mut store) = keyframes_store();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+        let looping = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity", "repeatType": "mirror" });
+        store.animate(1.0, &json!([0, 100]), Some(&looping), clock.at(0)).unwrap();
+        assert_eq!(kinds(&store.frame([], clock.at(1000))), vec![(1, MotionValueEventKind::AnimationStart)]);
+
+        // Second pass, running back down.
+        close(number_at(&mut store, 1.0, clock.at(1250)), 75.0);
+        store.stop(1.0, clock.at(1250)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(9000)), 75.0);
+        assert!(!store.is_animating(1.0, clock.at(9000)).unwrap());
+        let frame = store.frame([], clock.at(9016));
+        assert_eq!(kinds(&frame), vec![(1, MotionValueEventKind::AnimationComplete)]);
+        assert!(!frame.active);
+
+        // The value is free again: a new animation starts from where it stopped.
+        store.animate(1.0, &json!([null, 0]), Some(&linear(1.0)), clock.at(10_000)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(10_500)), 37.5);
+    }
+
+    #[test]
+    fn an_array_is_keyframes_unless_it_is_a_value_the_source_holds() {
+        let (clock, mut store) = keyframes_store();
+        // A number holds no list, so any array is keyframes.
+        store.animate(1.0, &json!([0, 10, 20]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        close(number_at(&mut store, 1.0, clock.at(500)), 10.0);
+
+        store.create_source(2.0, &json!([0, 0])).unwrap();
+        // A list of numbers is the target of a list-of-numbers source ...
+        store.animate(2.0, &json!([10, 20]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!([5.0, 10.0]));
+        // ... and a list of lists is its keyframes.
+        store.animate(2.0, &json!([[0, 0], [10, 20], null]), Some(&linear(1.0)), clock.at(2000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(2250)).unwrap(), json!([5.0, 10.0]));
+        assert_eq!(store.get(2.0, clock.at(2750)).unwrap(), json!([10.0, 20.0]));
+        assert!(store
+            .animate(2.0, &json!([[0, 0], "#ffffff"]), Some(&linear(1.0)), clock.at(2000))
+            .is_err());
+
+        let layer = |blur: f64| {
+            json!({ "offsetX": 0, "offsetY": 0, "blurRadius": blur, "spreadRadius": 0, "color": "#000000" })
+        };
+        store.create_source(3.0, &json!([layer(0.0)])).unwrap();
+        store.animate(3.0, &json!([layer(10.0)]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        close(store.get(3.0, clock.at(500)).unwrap()[0]["blurRadius"].as_f64().unwrap(), 5.0);
+        store
+            .animate(3.0, &json!([[layer(0.0)], [layer(20.0)], [layer(10.0)]]), Some(&linear(1.0)), clock.at(2000))
+            .unwrap();
+        close(store.get(3.0, clock.at(2500)).unwrap()[0]["blurRadius"].as_f64().unwrap(), 20.0);
+        close(store.get(3.0, clock.at(2750)).unwrap()[0]["blurRadius"].as_f64().unwrap(), 15.0);
+    }
+
+    #[test]
+    fn colours_and_percentages_have_keyframes() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("#000000")).unwrap();
+        store.animate(2.0, &json!(["#000000", "#ff0000", "#000000"]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        let mid = store.get(2.0, clock.at(500)).unwrap();
+        assert!(mid.as_str().unwrap().starts_with("rgba(255.000, 0.000, 0.000"), "{mid}");
+
+        store.create_source(3.0, &json!("0%")).unwrap();
+        store.animate(3.0, &json!(["0%", "50%", "100%"]), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("50%"));
+        assert!(store.animate(3.0, &json!(["0%", 5]), None, clock.at(0)).is_err());
+        // A failed animate leaves the one running.
+        assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("50%"));
+    }
+
+    #[test]
+    fn keyframes_reject_what_the_track_cannot_play() {
+        let (clock, mut store) = keyframes_store();
+        let spring = json!({ "type": "spring" });
+        assert!(store.animate(1.0, &json!([0, 1, 2]), Some(&spring), clock.at(0)).is_err());
+        store.animate(1.0, &json!([0, 1]), Some(&spring), clock.at(0)).unwrap();
+        assert!(store
+            .animate(1.0, &json!([0, 1]), Some(&json!({ "times": [0, 1, 1] })), clock.at(0))
+            .is_err());
+        assert!(store
+            .animate(1.0, &json!([0, 1]), Some(&json!({ "times": [1, 0] })), clock.at(0))
+            .is_err());
+        assert!(store.animate(1.0, &json!([0, "auto"]), None, clock.at(0)).is_err());
+        assert!(store.animate(1.0, &json!([]), None, clock.at(0)).is_err());
+    }
+
+    #[test]
+    fn a_spring_between_two_keyframes_can_repeat() {
+        let (clock, mut store) = keyframes_store();
+        let spring = json!({ "type": "spring", "stiffness": 200, "damping": 10, "repeat": "Infinity", "repeatType": "mirror" });
+        store.animate(1.0, &json!([0, 100]), Some(&spring), clock.at(0)).unwrap();
+        assert!(store.is_animating(1.0, clock.at(600_000)).unwrap());
     }
 
     #[test]
