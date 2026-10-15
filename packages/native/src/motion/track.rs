@@ -16,6 +16,10 @@ pub(super) struct Track {
     from_velocity: Vec<f64>,
     to: Vec<f64>,
     target: AnimValue,
+    /// `to` is a number measured from layout standing in for `target`, which
+    /// the style goes back to once the segment ends: `height: auto`, or a
+    /// percentage that has to run through px against a px start.
+    measured: bool,
     transition: Transition,
     started: Instant,
 }
@@ -38,7 +42,8 @@ impl Track {
     }
 
     /// A segment that runs to `to` while the style asked for `target`: they
-    /// differ for `height: auto`, which runs to the measured height.
+    /// differ for `height: auto` and for a percentage reached from px, which
+    /// run to the measured px.
     pub(super) fn resolved(
         name: &str,
         from: &AnimValue,
@@ -53,6 +58,7 @@ impl Track {
             layout: pair.layout,
             from: pair.from,
             to: pair.to,
+            measured: target != to,
             target,
             transition,
             started: now,
@@ -67,6 +73,7 @@ impl Track {
             from: vec![0.0],
             from_velocity: vec![0.0],
             to: vec![0.0],
+            measured: true,
             target: AnimValue::Auto,
             transition,
             started: now,
@@ -85,10 +92,27 @@ impl Track {
         self.target == AnimValue::Auto
     }
 
+    /// Whether the end follows a measurement: layout's numbers move under it
+    /// as the content and the parent change.
+    pub(super) fn is_measured(&self) -> bool {
+        self.measured
+    }
+
     /// Whether the style has gone back to literal `auto`, which is the layout's
     /// height again and not the number the segment ended on.
     pub(super) fn rests_at_auto(&self, now: Instant) -> bool {
         self.is_auto() && !self.sample(now).active
+    }
+
+    /// The value the style has at `now`. Once a measured segment ends that is
+    /// its literal target, so a later animation starts from the unit the style
+    /// is in.
+    pub(super) fn visible(&self, now: Instant) -> AnimValue {
+        let sample = self.sample(now);
+        if self.measured && !sample.active {
+            return self.target.clone();
+        }
+        self.layout.decode(&sample.position)
     }
 
     /// The value the track shows at `now`.
@@ -108,7 +132,7 @@ impl Track {
         }
     }
 
-    /// Moves a `height: auto` segment to a new measured height. While the
+    /// Moves a measured segment's end to a new measurement. While the
     /// delay still holds the start nothing has moved, so the end changes in
     /// place; after that the segment restarts from where it is, with its speed.
     /// `None` when the end is already `to`.

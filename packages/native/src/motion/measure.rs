@@ -24,8 +24,6 @@ pub(crate) struct Measurement {
     pub natural_height: Pixels,
     /// The content box of the parent, which a percentage length resolves
     /// against. `None` for a root.
-    // Read once percentages resolve against it (slice 4d).
-    #[allow(dead_code)]
     pub parent_content: Option<Size<Pixels>>,
     /// Device pixels per layout pixel.
     pub scale_factor: f32,
@@ -40,6 +38,18 @@ impl Measurement {
         let scale = f64::from(self.scale_factor);
         let device = f64::from(self.natural_height.as_f32()) * scale;
         (device - 1e-3).ceil().max(0.0) / scale
+    }
+
+    /// What a percentage of `prop` is in px: a fraction of the parent's content
+    /// box along the axis `prop` sizes. `None` for a root, which has no parent
+    /// box to take it from.
+    pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
+        let parent = self.parent_content?;
+        let length = match prop.size_axis()? {
+            Axis::Width => parent.width,
+            Axis::Height => parent.height,
+        };
+        Some(f64::from(length.as_f32()) * fraction)
     }
 
     /// The painted border-box size along the axis `prop` sizes.
@@ -184,6 +194,21 @@ mod tests {
         assert_eq!(measurement.laid_out(AnimProp::Height), Some(30.0));
         assert_eq!(measurement.laid_out(AnimProp::MinHeight), Some(30.0));
         assert_eq!(measurement.laid_out(AnimProp::Top), None);
+    }
+
+    #[test]
+    fn a_percentage_resolves_against_the_parent_content_box_on_its_own_axis() {
+        let nested = Measurement {
+            parent_content: Some(gpui::size(gpui::px(200.0), gpui::px(80.0))),
+            ..measurement(50.0, 1.0)
+        };
+        assert_eq!(nested.percent_px(AnimProp::Width, 0.5), Some(100.0));
+        assert_eq!(nested.percent_px(AnimProp::MaxWidth, 0.25), Some(50.0));
+        assert_eq!(nested.percent_px(AnimProp::Height, 0.5), Some(40.0));
+        assert_eq!(nested.percent_px(AnimProp::MinHeight, 1.0), Some(80.0));
+        assert_eq!(nested.percent_px(AnimProp::Top, 0.5), None);
+        let root = measurement(50.0, 1.0);
+        assert_eq!(root.percent_px(AnimProp::Width, 0.5), None);
     }
 
     #[test]

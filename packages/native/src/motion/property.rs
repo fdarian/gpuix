@@ -361,7 +361,8 @@ impl AnimProp {
                     DimensionValue::Auto if self == Self::Height => AnimValue::Auto,
                     DimensionValue::Auto => {
                         return Err(format!(
-                            "motion cannot animate {name} to or from auto: mixed units are not supported"
+                            "motion cannot animate {name} to or from auto: only height can, because auto \
+                             width is the width of the content and measuring that needs a second layout pass"
                         ));
                     }
                 }

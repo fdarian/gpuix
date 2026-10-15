@@ -408,7 +408,7 @@ impl MotionState {
             }
             let start = match (previous, waiting) {
                 (Some(track), _) if track.rests_at_auto(now) => Start::Layout,
-                (Some(track), _) => Start::Value(track.current(now)),
+                (Some(track), _) => Start::Value(track.visible(now)),
                 (None, Some(waiting)) => waiting.from.clone().map_or(Start::Layout, Start::Value),
                 (None, None) => start_for(*prop, None, base),
             };
@@ -473,8 +473,8 @@ impl MotionState {
         Ok(())
     }
 
-    /// Keeps the segments that run to `height: auto` on the content's height
-    /// as it changes under them.
+    /// Keeps the segments that run to a measured number (`height: auto`, a
+    /// percentage reached from px) on the measurement as it changes under them.
     fn follow_layout(
         &mut self,
         measurement: Option<&Measurement>,
@@ -483,12 +483,16 @@ impl MotionState {
         let Some(measurement) = measurement else {
             return Ok(());
         };
-        for (prop, track) in &mut self.tracks {
-            if !track.is_auto() || !track.sample(now).active {
+        for (key, track) in &mut self.tracks {
+            let PropKey::Style(prop) = key else {
+                continue;
+            };
+            if !track.is_measured() || !track.sample(now).active {
                 continue;
             }
-            let natural = AnimValue::Number(measurement.natural_height_px());
-            match track.follow(prop.name(), natural, now) {
+            let followed = measured_end(*prop, track.target(), measurement)
+                .and_then(|end| track.follow(prop.name(), end, now));
+            match followed {
                 Ok(Some(next)) => *track = next,
                 Ok(None) => {}
                 Err(error) => {
@@ -516,9 +520,10 @@ impl MotionState {
                 };
                 let sample = track.sample(now);
                 // The segment ran to a measured number; once it ends the style
-                // goes back to `auto`, which follows the content from then on.
-                let value = if track.is_auto() && !sample.active {
-                    AnimValue::Auto
+                // goes back to the `auto` or percentage it asked for, which
+                // follows layout from then on.
+                let value = if track.is_measured() && !sample.active {
+                    track.target().clone()
                 } else {
                     prop.clamp_value(track.value(&sample.position))
                 };
@@ -680,9 +685,43 @@ fn start_for(key: PropKey, explicit: Option<&AnimValue>, base: Base) -> Start {
     }
 }
 
+/// The px a target that layout has to resolve stands for: `height: auto` is
+/// the natural height, a percentage a share of the parent's content box.
+fn measured_end(
+    prop: AnimProp,
+    target: &AnimValue,
+    measurement: &Measurement,
+) -> Result<AnimValue, String> {
+    match target {
+        AnimValue::Auto => Ok(AnimValue::Number(measurement.natural_height_px())),
+        AnimValue::Percent(fraction) => in_pixels(prop, &AnimValue::Percent(*fraction), measurement),
+        other => unreachable!("{other:?} is not resolved through layout"),
+    }
+}
+
+/// `value` in px: a percentage resolved against the parent's content box.
+fn in_pixels(
+    prop: AnimProp,
+    value: &AnimValue,
+    measurement: &Measurement,
+) -> Result<AnimValue, String> {
+    let AnimValue::Percent(fraction) = value else {
+        return Ok(value.clone());
+    };
+    measurement
+        .percent_px(prop, *fraction)
+        .map(AnimValue::Number)
+        .ok_or_else(|| {
+            format!(
+                "motion cannot resolve {} as a percentage: the element has no parent to measure it against",
+                prop.name()
+            )
+        })
+}
+
 /// Builds the segment from `start` to `target`, or the wait for the
-/// measurement it needs. Percent targets do not start from layout until mixed
-/// units resolve: they jump, as they did before layout was measured.
+/// measurement it needs. A percentage meeting a px length runs through px, and
+/// the style goes back to the percentage when the segment ends.
 fn begin(
     key: PropKey,
     start: Start,
@@ -703,6 +742,9 @@ fn begin(
     };
 
     if *target == AnimValue::Auto {
+        let PropKey::Style(prop) = key else {
+            unreachable!("only a style property is auto");
+        };
         let from = match start {
             Start::Value(from) => from,
             // Already `auto`: there is no number to animate from.
@@ -710,15 +752,11 @@ fn begin(
                 return Ok(Begun::Track(Track::resting_at_auto(transition.clone(), now)));
             }
         };
-        if !matches!(from, AnimValue::Number(_)) {
-            return Err(format!(
-                "motion cannot animate {name} from a percentage to auto: mixed units are not supported"
-            ));
-        }
         let Some(measurement) = measurement else {
             return Ok(wait(Some(from)));
         };
-        let natural = AnimValue::Number(measurement.natural_height_px());
+        let from = in_pixels(prop, &from, measurement)?;
+        let natural = measured_end(prop, target, measurement)?;
         return Track::resolved(name, &from, AnimValue::Auto, natural, transition.clone(), now)
             .map(Begun::Track);
     }
@@ -730,10 +768,6 @@ fn begin(
             let PropKey::Style(prop) = key else {
                 unreachable!("only a style property starts from layout");
             };
-            if !matches!(target, AnimValue::Number(_)) {
-                return Track::new(name, target, target.clone(), transition.clone(), now)
-                    .map(Begun::Track);
-            }
             let Some(measurement) = measurement else {
                 return Ok(wait(None));
             };
@@ -743,7 +777,23 @@ fn begin(
             }
         }
     };
-    Track::new(name, &from, target.clone(), transition.clone(), now).map(Begun::Track)
+    let mixed = matches!(
+        (&from, target),
+        (AnimValue::Number(_), AnimValue::Percent(_))
+            | (AnimValue::Percent(_), AnimValue::Number(_))
+    );
+    if !mixed {
+        return Track::new(name, &from, target.clone(), transition.clone(), now).map(Begun::Track);
+    }
+    let PropKey::Style(prop) = key else {
+        unreachable!("only a style property holds a percentage");
+    };
+    let Some(measurement) = measurement else {
+        return Ok(wait(Some(from)));
+    };
+    let from = in_pixels(prop, &from, measurement)?;
+    let to = in_pixels(prop, target, measurement)?;
+    Track::resolved(name, &from, target.clone(), to, transition.clone(), now).map(Begun::Track)
 }
 
 fn mount_tracks(
@@ -1534,7 +1584,6 @@ mod tests {
             serde_json::json!({ "initial": { "position": "absolute" }, "animate": {} }),
             serde_json::json!({ "animate": { "opacity": 1.0 }, "transition": { "bogus": {} } }),
             serde_json::json!({ "animate": { "opacity": 1.0 }, "transition": { "opacity": { "default": {} } } }),
-            serde_json::json!({ "initial": { "width": 0.0 }, "animate": { "width": "50%" } }),
             serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
         ] {
             assert!(
@@ -2001,6 +2050,15 @@ mod tests {
             }
         }
 
+        /// `measurement` laid out in a parent whose content box is `width` by
+        /// `height`.
+        fn in_parent(measurement: Measurement, width: f32, height: f32) -> Measurement {
+            Measurement {
+                parent_content: Some(gpui::size(gpui::px(width), gpui::px(height))),
+                ..measurement
+            }
+        }
+
         fn height(state: &MotionState, now: Instant) -> Option<DimensionValue> {
             style_at(state, now).height
         }
@@ -2105,20 +2163,20 @@ mod tests {
         }
 
         #[test]
-        fn a_percentage_cannot_run_to_auto_yet() {
-            let error = MotionState::new(
-                &linear(
-                    serde_json::json!({ "height": "auto" }),
-                    serde_json::json!({ "height": "50%" }),
-                ),
-                None,
-                Some(&measurement(100.0, 10.0, 80.0)),
-                0,
-                Instant::now(),
-            )
-            .err()
-            .unwrap();
-            assert!(error.contains("height") && error.contains("mixed units"), "{error}");
+        fn a_percentage_start_runs_to_auto_through_px() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "height": "auto" }),
+                serde_json::json!({ "height": "50%" }),
+            );
+            let measured = in_parent(measurement(100.0, 40.0, 80.0), 300.0, 40.0);
+            let mut state =
+                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(height(&state, started)), 20.0);
+            assert_eq!(pixels(height(&state, at(started, 0.5))), 50.0);
+            let end = at(started, 1.0);
+            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            assert_eq!(height(&state, end), Some(DimensionValue::Auto));
         }
 
         #[test]
@@ -2349,22 +2407,249 @@ mod tests {
             assert_eq!(height(&state, started), Some(DimensionValue::Auto));
         }
 
+        fn width(state: &MotionState, now: Instant) -> Option<DimensionValue> {
+            style_at(state, now).width
+        }
+
+        fn width_track(state: &MotionState) -> &Track {
+            &state.tracks[&PropKey::Style(AnimProp::Width)]
+        }
+
+        fn grow_to_half() -> serde_json::Value {
+            linear(
+                serde_json::json!({ "width": "50%" }),
+                serde_json::json!({ "width": 0.0 }),
+            )
+        }
+
         #[test]
-        fn a_percentage_target_still_jumps_from_an_unset_start() {
+        fn a_px_start_runs_to_a_percentage_through_px_and_settles_to_the_percentage() {
             let started = Instant::now();
-            let state = MotionState::new(
-                &linear(serde_json::json!({ "width": "50%" }), serde_json::json!({ "opacity": 1.0 })),
+            let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+            let mut state =
+                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(width(&state, started)), 0.0);
+            assert_eq!(pixels(width(&state, at(started, 0.5))), 50.0);
+            assert!(state.frame(at(started, 0.5)).active);
+
+            let end = at(started, 1.0);
+            state.sync(&grow_to_half(), None, Some(&measured), 0, end).unwrap();
+            assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
+            let frame = state.frame(end);
+            assert!(!frame.active);
+            assert!(frame.just_settled);
+        }
+
+        #[test]
+        fn a_percentage_start_runs_to_px_and_settles_to_px() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "width": 20.0 }),
+                serde_json::json!({ "width": "50%" }),
+            );
+            let measured = in_parent(measurement(100.0, 10.0, 10.0), 200.0, 80.0);
+            let mut state =
+                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(width(&state, started)), 100.0);
+            assert_eq!(pixels(width(&state, at(started, 0.5))), 60.0);
+            let end = at(started, 1.0);
+            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            assert_eq!(width(&state, end), Some(DimensionValue::Pixels(20.0)));
+        }
+
+        #[test]
+        fn percentages_on_both_ends_blend_as_percentages_without_a_measurement() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "width": "50%" }),
+                serde_json::json!({ "width": "10%" }),
+            );
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert!(state.pending.is_empty());
+            let halfway = width(&state, at(started, 0.5));
+            let Some(DimensionValue::Percentage(fraction)) = halfway else {
+                panic!("expected a percentage, got {halfway:?}");
+            };
+            assert!((fraction - 0.3).abs() < 1e-9, "{fraction}");
+        }
+
+        #[test]
+        fn a_mixed_start_waits_for_a_measurement_showing_the_start() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "width": 40.0 }),
+                serde_json::json!({ "width": "50%" }),
+            );
+            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert_eq!(width(&state, started), Some(DimensionValue::Percentage(0.5)));
+            assert!(state.frame(started).active);
+
+            let measured_at = at(started, 0.3);
+            let measured = in_parent(measurement(100.0, 10.0, 10.0), 200.0, 80.0);
+            state.sync(&description, None, Some(&measured), 0, measured_at).unwrap();
+            assert!(state.pending.is_empty());
+            assert_eq!(pixels(width(&state, measured_at)), 100.0);
+            assert_eq!(pixels(width(&state, at(measured_at, 0.5))), 70.0);
+        }
+
+        #[test]
+        fn a_percentage_target_from_an_unset_start_runs_from_the_laid_out_size() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "width": "50%" }),
+                serde_json::json!({ "opacity": 1.0 }),
+            );
+            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert_eq!(width(&state, started), None, "the element keeps the width it has");
+            assert!(state.frame(started).active);
+
+            let measured = in_parent(measurement(60.0, 10.0, 10.0), 200.0, 80.0);
+            state.sync(&description, None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(width(&state, started)), 60.0);
+            assert_eq!(pixels(width(&state, at(started, 0.5))), 80.0);
+            let end = at(started, 1.0);
+            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
+        }
+
+        #[test]
+        fn the_percentage_end_follows_the_parent_while_it_runs() {
+            let started = Instant::now();
+            let mut state = MotionState::new(
+                &grow_to_half(),
                 None,
-                None,
+                Some(&in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0)),
                 0,
                 started,
             )
             .unwrap();
-            assert_eq!(
-                style_at(&state, started).width,
-                Some(DimensionValue::Percentage(0.5))
+            let now = at(started, 0.5);
+            let resized = in_parent(measurement(50.0, 10.0, 10.0), 400.0, 80.0);
+            state.sync(&grow_to_half(), None, Some(&resized), 0, now).unwrap();
+            assert_eq!(pixels(width(&state, now)), 50.0, "the value showing does not jump");
+            assert_eq!(pixels(width(&state, at(started, 1.0))), 125.0);
+            let end = at(started, 1.5);
+            state.sync(&grow_to_half(), None, Some(&resized), 0, end).unwrap();
+            assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
+        }
+
+        #[test]
+        fn a_spring_to_a_percentage_keeps_its_speed_when_the_parent_resizes() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": { "width": 0.0 },
+                "animate": { "width": "50%" },
+                "transition": { "type": "spring", "stiffness": 200.0, "damping": 30.0 }
+            });
+            let mut state = MotionState::new(
+                &description,
+                None,
+                Some(&in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0)),
+                0,
+                started,
+            )
+            .unwrap();
+            let now = at(started, 0.15);
+            let before = width_track(&state).sample(now);
+            assert!(before.velocity[0] > 0.0);
+            state
+                .sync(
+                    &description,
+                    None,
+                    Some(&in_parent(measurement(30.0, 10.0, 10.0), 400.0, 80.0)),
+                    0,
+                    now,
+                )
+                .unwrap();
+            let after = width_track(&state).sample(now);
+            assert!((after.position[0] - before.position[0]).abs() < 1e-9);
+            assert!((after.velocity[0] - before.velocity[0]).abs() < 1e-9);
+        }
+
+        #[test]
+        fn a_settled_percentage_is_where_the_next_animation_starts() {
+            let started = Instant::now();
+            let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+            let mut state =
+                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+            let settled = at(started, 2.0);
+            state.sync(&grow_to_half(), None, Some(&measured), 0, settled).unwrap();
+
+            // The parent changed since: the percentage is 150px of 300px now,
+            // not the 100px the segment ended on.
+            let wider = in_parent(measurement(150.0, 10.0, 10.0), 300.0, 80.0);
+            let to_px = linear(serde_json::json!({ "width": 30.0 }), serde_json::json!(false));
+            state.sync(&to_px, None, Some(&wider), 0, settled).unwrap();
+            assert_eq!(pixels(width(&state, settled)), 150.0);
+            assert_eq!(pixels(width(&state, at(settled, 0.5))), 90.0);
+
+            // And another percentage stays a percentage.
+            let mut again =
+                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+            again.sync(&grow_to_half(), None, Some(&measured), 0, settled).unwrap();
+            let quarter = linear(serde_json::json!({ "width": "25%" }), serde_json::json!(false));
+            again.sync(&quarter, None, None, 0, settled).unwrap();
+            let Some(DimensionValue::Percentage(fraction)) = width(&again, at(settled, 0.5)) else {
+                panic!("expected a percentage");
+            };
+            assert!((fraction - 0.375).abs() < 1e-9, "{fraction}");
+        }
+
+        #[test]
+        fn retargeting_a_running_percentage_continues_from_where_it_is() {
+            let started = Instant::now();
+            let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+            let mut state =
+                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+            let now = at(started, 0.5);
+            let back = linear(serde_json::json!({ "width": 0.0 }), serde_json::json!(false));
+            state.sync(&back, None, Some(&measured), 0, now).unwrap();
+            assert_eq!(pixels(width(&state, now)), 50.0);
+            assert_eq!(pixels(width(&state, at(now, 0.5))), 25.0);
+        }
+
+        #[test]
+        fn heights_and_widths_resolve_against_their_own_parent_axis() {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ "height": "50%", "maxWidth": "50%" }),
+                serde_json::json!({ "height": 0.0, "maxWidth": 0.0 }),
             );
-            assert!(state.pending.is_empty());
+            let measured = in_parent(measurement(0.0, 0.0, 0.0), 200.0, 80.0);
+            let state =
+                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+            let halfway = style_at(&state, at(started, 0.5));
+            assert_eq!(halfway.height, Some(DimensionValue::Pixels(20.0)));
+            assert_eq!(halfway.max_width, Some(DimensionValue::Pixels(50.0)));
+        }
+
+        #[test]
+        fn a_percentage_without_a_parent_is_an_error() {
+            let error = MotionState::new(
+                &grow_to_half(),
+                None,
+                Some(&measurement(0.0, 10.0, 10.0)),
+                0,
+                Instant::now(),
+            )
+            .err()
+            .unwrap();
+            assert!(error.contains("width") && error.contains("no parent"), "{error}");
+        }
+
+        #[test]
+        fn auto_width_is_an_error_that_names_the_limit() {
+            for description in [
+                serde_json::json!({ "animate": { "width": "auto" } }),
+                serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
+                serde_json::json!({ "animate": { "minHeight": "auto" } }),
+            ] {
+                let error = MotionState::new(&description, None, None, 0, Instant::now())
+                    .err()
+                    .unwrap();
+                assert!(error.contains("auto") && error.contains("only height"), "{error}");
+                assert!(!error.contains("mixed units"), "{error}");
+            }
         }
 
         #[test]
