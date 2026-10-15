@@ -3,7 +3,7 @@ import type { EventPayload } from "../../index.js"
 import {
   createMutationQueue,
   defineScrollMembers,
-  isScrollKey,
+  scrollKeyName,
   readScrollMetrics,
   shapeScrollEvent,
 } from "../host.js"
@@ -185,12 +185,23 @@ describe("scroll members", () => {
   })
 })
 
-describe("isScrollKey", () => {
-  it("names the keys whose default action is to scroll", () => {
-    for (const key of ["up", "down", "left", "right", "pageup", "pagedown", "home", "end", "space"]) {
-      expect(isScrollKey(key)).toBe(true)
+describe("scrollKeyName", () => {
+  it("maps the DOM keys whose default action is to scroll to the names native knows", () => {
+    const names = {
+      ArrowUp: "up",
+      ArrowDown: "down",
+      ArrowLeft: "left",
+      ArrowRight: "right",
+      PageUp: "pageup",
+      PageDown: "pagedown",
+      Home: "home",
+      End: "end",
+      " ": "space",
     }
-    expect(isScrollKey("enter")).toBe(false)
-    expect(isScrollKey(undefined)).toBe(false)
+    for (const [key, name] of Object.entries(names)) {
+      expect(scrollKeyName(key)).toBe(name)
+    }
+    expect(scrollKeyName("Enter")).toBeUndefined()
+    expect(scrollKeyName(undefined)).toBeUndefined()
   })
 })
