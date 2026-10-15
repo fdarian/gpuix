@@ -53,9 +53,11 @@ rendering framework).
 
 Instead of Electron/web rendering, your React components render directly to the GPU via Metal/Vulkan.
 
-## Capture the pointer on the press
+## Mouse capture is armed by the press
 
-Listening for `onMouseDown` and `onMouseMove` on one element captures nothing. To keep move and up after the pointer leaves the hitbox, call `ref.current.setPointerCapture(event.pointerId)` in the `onPointerDown` or `onMouseDown` handler of the element the user grabs, as in the DOM. The capture applies from the next native pointer event and ends after `pointerup`. An overlay mounted during the press cannot replace it, and a release past the window edge is lost. `examples/timeline.tsx` drags clips, trims edges, scrubs, and marquee-selects with no overlay at all.
+A `div` with `onMouseDown`, `onMouseMove`, and `onMouseUp` keeps move and up after the pointer leaves the hitbox. GPUIX arms that automatically when the same node listens for down and move, using GPUI's window-level mouse listeners.
+
+Put all three on the element the user grabs. Capture is armed by the **press**, so an overlay mounted during that press never arms it, and a release past the window edge is lost. `examples/timeline.tsx` drags clips, trims edges, scrubs, and marquee-selects with no overlay at all.
 
 ```
 React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
