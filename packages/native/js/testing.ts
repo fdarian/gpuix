@@ -394,6 +394,9 @@ export class TestRenderer implements NativeRenderer {
   nativeSimulateKeystrokes(elementId: number, keystrokes: string): void {
     this.native.flush()
     this.native.focusElement(elementId)
+    // Focus events are queued but a key is delivered synchronously: let the
+    // focus handlers run first, as in a browser.
+    this.dispatchNativeEvents()
     this.native.simulateKeystrokes(keystrokes)
     this.dispatchNativeEvents()
   }
@@ -408,6 +411,9 @@ export class TestRenderer implements NativeRenderer {
   nativeSimulateKeyDown(elementId: number, keystroke: string, isHeld?: boolean): void {
     this.native.flush()
     this.native.focusElement(elementId)
+    // Focus events are queued but a key is delivered synchronously: let the
+    // focus handlers run first, as in a browser.
+    this.dispatchNativeEvents()
     this.native.simulateKeyDown(keystroke, isHeld)
     this.dispatchNativeEvents()
   }
@@ -420,6 +426,9 @@ export class TestRenderer implements NativeRenderer {
   nativeSimulateKeyUp(elementId: number, keystroke: string): void {
     this.native.flush()
     this.native.focusElement(elementId)
+    // Focus events are queued but a key is delivered synchronously: let the
+    // focus handlers run first, as in a browser.
+    this.dispatchNativeEvents()
     this.native.simulateKeyUp(keystroke)
     this.dispatchNativeEvents()
   }
