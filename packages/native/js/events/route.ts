@@ -1,7 +1,7 @@
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap } from "../host.js"
 import { captureHandlerKey, eventBubbles } from "./dispatch.js"
-import { POINTER_EVENT_TYPES } from "./event-props.js"
+import { DOM_DISPATCHED_EVENT_TYPES } from "./event-props.js"
 
 /** gpuix's own outside-press event: not DOM. Native delivers it to the listening element alone, with the press target in `target`. */
 const MOUSE_DOWN_OUTSIDE = "mousedownoutside"
@@ -18,14 +18,7 @@ export function isOutsidePress(eventType: string): boolean {
  */
 export function handlerEventType(eventType: string): string {
   const lower = eventType.toLowerCase()
-  return POINTER_EVENT_TYPES.has(lower) || lower === MOUSE_DOWN_OUTSIDE ? lower : eventType
-}
-
-/** The payload to hand to `dispatchDomEvent`, or undefined for types that do not propagate. */
-export function toDomEvent(event: EventPayload): EventPayload | undefined {
-  const eventType = handlerEventType(event.eventType)
-  if (!POINTER_EVENT_TYPES.has(eventType)) return undefined
-  return eventType === event.eventType ? event : { ...event, eventType }
+  return DOM_DISPATCHED_EVENT_TYPES.has(lower) || lower === MOUSE_DOWN_OUTSIDE ? lower : eventType
 }
 
 /**

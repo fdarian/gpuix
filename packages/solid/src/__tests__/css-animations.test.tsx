@@ -125,4 +125,24 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS animations", () => {
     app.renderer.clockFastForward(16)
     expect(widthOf(app)).toBe(50)
   })
+
+  it("bubbles a child's animation events to its parent with the child as target", () => {
+    const seen: string[] = []
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    app.render(() => (
+      <div
+        testId="parent"
+        onAnimationEnd={(event) =>
+          seen.push(`parent ${event.animationName} ${event.target === app.renderer.findByTestId("child")!.id}`)
+        }
+      >
+        <div testId="child" style={{ width: 50, height: 20, animation: "solid-grow 1s linear" }} />
+      </div>
+    ))
+    app.renderer.dispatchNativeEvents()
+    app.renderer.clockFastForward(1500)
+    app.renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["parent solid-grow true"])
+  })
 })

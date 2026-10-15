@@ -1,5 +1,5 @@
 import { captureHandlerKey } from "./dispatch.js"
-import type { PointerEventHandlerProps } from "./types.js"
+import type { AnimationEventHandlerProps, PointerEventHandlerProps } from "./types.js"
 
 /**
  * Pointer, mouse, drag and wheel handler props and the DOM event type each one
@@ -45,18 +45,48 @@ type MissingFromTable = Exclude<
 const tableCoversEveryProp: [MissingFromTable] extends [never] ? true : never = true
 void tableCoversEveryProp
 
-/** The DOM event types that run through `dispatchDomEvent`, lowercase. */
+/** CSS transition and animation events. They bubble and cannot be cancelled. */
+const ANIMATION_EVENT_PROPS = [
+  ["onTransitionRun", "transitionrun"],
+  ["onTransitionStart", "transitionstart"],
+  ["onTransitionEnd", "transitionend"],
+  ["onTransitionCancel", "transitioncancel"],
+  ["onAnimationStart", "animationstart"],
+  ["onAnimationIteration", "animationiteration"],
+  ["onAnimationEnd", "animationend"],
+  ["onAnimationCancel", "animationcancel"],
+] as const satisfies readonly (readonly [keyof AnimationEventHandlerProps, string])[]
+
+type MissingFromAnimationTable = Exclude<
+  keyof AnimationEventHandlerProps,
+  (typeof ANIMATION_EVENT_PROPS)[number][0]
+>
+const animationTableCoversEveryProp: [MissingFromAnimationTable] extends [never] ? true : never = true
+void animationTableCoversEveryProp
+
+/** The pointer, mouse, drag and wheel types, lowercase. */
 export const POINTER_EVENT_TYPES: ReadonlySet<string> = new Set(
   POINTER_EVENT_PROPS.map(([, eventType]) => eventType)
 )
+
+/**
+ * The DOM event types that run through `dispatchDomEvent`: native emits them
+ * with a propagation path and they are named by their lowercase DOM type.
+ */
+export const DOM_DISPATCHED_EVENT_TYPES: ReadonlySet<string> = new Set([
+  ...POINTER_EVENT_TYPES,
+  ...ANIMATION_EVENT_PROPS.map(([, eventType]) => eventType),
+])
 
 /**
  * Prop name to handler key, with a capture-phase `on…Capture` entry for each.
  * A capture handler is keyed `captureHandlerKey(type)`; both phases share one
  * native listener on `type`.
  */
-export const POINTER_EVENT_HANDLER_PROPS: readonly (readonly [string, string])[] =
-  POINTER_EVENT_PROPS.flatMap(([propName, eventType]) => [
-    [propName, eventType] as const,
-    [`${propName}Capture`, captureHandlerKey(eventType)] as const,
-  ])
+export const DOM_DISPATCHED_HANDLER_PROPS: readonly (readonly [string, string])[] = [
+  ...POINTER_EVENT_PROPS,
+  ...ANIMATION_EVENT_PROPS,
+].flatMap(([propName, eventType]) => [
+  [propName, eventType] as const,
+  [`${propName}Capture`, captureHandlerKey(eventType)] as const,
+])

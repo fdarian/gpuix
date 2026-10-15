@@ -9,7 +9,7 @@ import type {
   PathPromptOptions,
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
-import type { PointerEventProps } from "./events/types.js"
+import type { AnimationEventProps, PointerEventProps } from "./events/types.js"
 import type { ScrollEvent } from "./scroll.js"
 import type { MotionValue } from "./motion-value.js"
 
@@ -948,7 +948,7 @@ export interface HighlightSpec {
 // Props passed to elements.
 // Element IDs are auto-generated numeric IDs (not user-settable).
 // Framework adapters add their own children, key, and ref fields.
-export interface HostProps extends AriaProps, PointerEventProps {
+export interface HostProps extends AriaProps, PointerEventProps, AnimationEventProps {
   style?: StyleDesc
 
   // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
@@ -1036,33 +1036,9 @@ export interface HostProps extends AriaProps, PointerEventProps {
   /** A native `motion` track reached its current target. */
   onMotionComplete?: (event: EventPayload) => void
 
-  // ── CSS transition events (DOM `TransitionEvent`) ────────────────
-  // `propertyName` is the CSS name (`background-color`), `elapsedTime` is in
-  // seconds and `pseudoElement` is always `""`. Fired on the element that
-  // transitions; they do not bubble yet.
-  /** A transition was created, before its delay. */
-  onTransitionRun?: (event: EventPayload) => void
-  /** A transition's delay ended and it started animating. */
-  onTransitionStart?: (event: EventPayload) => void
-  /** A transition reached its end value. */
-  onTransitionEnd?: (event: EventPayload) => void
-  /** A transition was interrupted: its property changed again, left the
-   *  transition list, or became owned by `motion`. */
-  onTransitionCancel?: (event: EventPayload) => void
-
-  // ── CSS animation events (DOM `AnimationEvent`) ──────────────────
-  // `animationName` is the name given to `defineKeyframes`, `elapsedTime` is in
-  // seconds and `pseudoElement` is always `""`. Fired on the element that
-  // animates; they do not bubble yet.
-  /** An animation's delay ended and it started playing. */
-  onAnimationStart?: (event: EventPayload) => void
-  /** An animation began another iteration. Not fired for the last one. */
-  onAnimationIteration?: (event: EventPayload) => void
-  /** An animation finished its last iteration. */
-  onAnimationEnd?: (event: EventPayload) => void
-  /** An animation was interrupted before it ended: its name left
-   *  `animation-name` or the name changed. */
-  onAnimationCancel?: (event: EventPayload) => void
+  // ── CSS transition and animation events ──────────────────────────
+  // See `AnimationEventProps`: DOM `TransitionEvent` and `AnimationEvent`, which
+  // bubble from the transitioning or animating element and cannot be cancelled.
 
   // ── Layout animation ───────────────────────────────────────────
   /** A `layout` glide began: the box moved, or took over a `layoutId`. */

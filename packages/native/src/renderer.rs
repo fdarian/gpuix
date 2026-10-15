@@ -5023,21 +5023,37 @@ fn sync_motion_states(
     (active, settled)
 }
 
+/// Emits a DOM event that bubbles and cannot be cancelled, aimed at `id`, when
+/// the element or an ancestor listens for it.
+fn emit_bubbling_event(
+    callback: &Option<EventCallback>,
+    tree: &crate::retained_tree::RetainedTree,
+    id: u64,
+    event_type: &str,
+    build: impl FnOnce(&mut EventPayload),
+) {
+    if !crate::events::path::path_listens(tree, id, event_type) {
+        return;
+    }
+    emit_event_full(callback, id, event_type, |payload| {
+        payload.target = Some(id as f64);
+        payload.path = Some(
+            crate::events::path::event_path(tree, id)
+                .into_iter()
+                .map(|id| id as f64)
+                .collect(),
+        );
+        build(payload);
+    });
+}
+
 fn emit_transition_events(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     events: Vec<crate::motion::TransitionEvent>,
 ) {
     for event in events {
-        let event_type = event.kind.event_type();
-        let listens = tree
-            .elements
-            .get(&event.id)
-            .is_some_and(|element| element.events().contains(event_type));
-        if !listens {
-            continue;
-        }
-        emit_event_full(callback, event.id, event_type, |payload| {
+        emit_bubbling_event(callback, tree, event.id, event.kind.event_type(), |payload| {
             payload.property_name = Some(event.property_name());
             payload.elapsed_time = Some(event.elapsed);
             payload.pseudo_element = Some(String::new());
@@ -5068,15 +5084,7 @@ fn emit_animation_events(
     events: Vec<crate::motion::AnimationEvent>,
 ) {
     for event in events {
-        let event_type = event.kind.event_type();
-        let listens = tree
-            .elements
-            .get(&event.id)
-            .is_some_and(|element| element.events().contains(event_type));
-        if !listens {
-            continue;
-        }
-        emit_event_full(callback, event.id, event_type, |payload| {
+        emit_bubbling_event(callback, tree, event.id, event.kind.event_type(), |payload| {
             payload.animation_name = Some(event.name);
             payload.elapsed_time = Some(event.elapsed);
             payload.pseudo_element = Some(String::new());

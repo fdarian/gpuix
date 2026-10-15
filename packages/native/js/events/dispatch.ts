@@ -50,6 +50,14 @@ const NON_CANCELABLE_TYPES: ReadonlySet<string> = new Set([
   "pointercancel",
   "gotpointercapture",
   "lostpointercapture",
+  "transitionrun",
+  "transitionstart",
+  "transitionend",
+  "transitioncancel",
+  "animationstart",
+  "animationiteration",
+  "animationend",
+  "animationcancel",
 ])
 
 export function eventBubbles(eventType: string): boolean {

@@ -180,6 +180,51 @@ export interface PointerEventHandlerProps {
   onWheel?: (event: HostWheelEvent) => void
 }
 
+/**
+ * `transitionrun`, `transitionstart`, `transitionend` and `transitioncancel`.
+ * They bubble from the transitioning element (`target`) and cannot be cancelled.
+ * `propertyName` is the CSS name (`background-color`), `elapsedTime` is in
+ * seconds and `pseudoElement` is always `""`.
+ */
+export interface HostTransitionEvent extends HostDomEvent {
+  propertyName: string
+  elapsedTime: number
+  pseudoElement: ""
+}
+
+/**
+ * `animationstart`, `animationiteration`, `animationend` and `animationcancel`.
+ * They bubble from the animating element (`target`) and cannot be cancelled.
+ * `animationName` is the name given to `defineKeyframes`, `elapsedTime` is in
+ * seconds and `pseudoElement` is always `""`.
+ */
+export interface HostAnimationEvent extends HostDomEvent {
+  animationName: string
+  elapsedTime: number
+  pseudoElement: ""
+}
+
+export interface AnimationEventHandlerProps {
+  /** A transition was created, before its delay. */
+  onTransitionRun?: (event: HostTransitionEvent) => void
+  /** A transition's delay ended and it started animating. */
+  onTransitionStart?: (event: HostTransitionEvent) => void
+  /** A transition reached its end value. */
+  onTransitionEnd?: (event: HostTransitionEvent) => void
+  /** A transition was interrupted: its property changed again, left the
+   *  transition list, or became owned by `motion`. */
+  onTransitionCancel?: (event: HostTransitionEvent) => void
+  /** An animation's delay ended and it started playing. */
+  onAnimationStart?: (event: HostAnimationEvent) => void
+  /** An animation began another iteration. Not fired for the last one. */
+  onAnimationIteration?: (event: HostAnimationEvent) => void
+  /** An animation finished its last iteration. */
+  onAnimationEnd?: (event: HostAnimationEvent) => void
+  /** An animation was interrupted before it ended: its name left
+   *  `animation-name` or the name changed. */
+  onAnimationCancel?: (event: HostAnimationEvent) => void
+}
+
 type CaptureProps<Props> = {
   [Name in keyof Props & string as `${Name}Capture`]: Props[Name]
 }
@@ -187,3 +232,7 @@ type CaptureProps<Props> = {
 /** Each pointer, mouse and drag handler, plus its capture-phase `on…Capture` twin. */
 export type PointerEventProps = PointerEventHandlerProps &
   Partial<CaptureProps<PointerEventHandlerProps>>
+
+/** Each transition and animation handler, plus its capture-phase `on…Capture` twin. */
+export type AnimationEventProps = AnimationEventHandlerProps &
+  Partial<CaptureProps<AnimationEventHandlerProps>>

@@ -5301,7 +5301,9 @@ render per frame.
 - **Events.** `onTransitionRun`, `onTransitionStart` (after the delay),
   `onTransitionEnd` and `onTransitionCancel` carry `propertyName` (`"width"`,
   `"background-color"`), `elapsedTime` in seconds and `pseudoElement: ""`. They
-  fire on the transitioning element only and do not bubble yet
+  bubble like the DOM (`target` is the transitioning element) and cannot be
+  cancelled; `onTransitionEndCapture` and the other `…Capture` props listen in the
+  capture phase
 
 Not supported: `transition-behavior: allow-discrete`, so `display` and other
 discrete properties never transition; and the one transition-start case where an
@@ -5367,7 +5369,8 @@ defineKeyframes('pulse', {
   `onAnimationCancel` carry `animationName`, `elapsedTime` in seconds and
   `pseudoElement: ""`. `onAnimationCancel` fires when the animation is removed or
   its name changes before it ended; one that already ended is not cancelled. They
-  fire on the animating element only and do not bubble yet
+  bubble like the DOM (`target` is the animating element) and cannot be
+  cancelled; each has an `on…Capture` twin
 
 Differences from a browser:
 

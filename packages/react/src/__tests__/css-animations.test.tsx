@@ -221,6 +221,47 @@ describeNative("CSS animations", () => {
     expect(seen).toEqual(["start"])
   })
 
+  it("bubbles a child's animation events to its parent with the child as target, and stopPropagation ends it", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const tree = (stop: boolean) => (
+      <div
+        testId="parent"
+        onAnimationStartCapture={() => seen.push("parent capture")}
+        onAnimationStart={(event) => {
+          seen.push(`parent ${event.animationName} ${event.target === renderer.findByTestId("child").id}`)
+        }}
+        onAnimationEnd={() => seen.push("parent end")}
+      >
+        <div
+          testId="child"
+          onAnimationStart={(event) => {
+            seen.push(`child ${event.bubbles} ${event.cancelable}`)
+            if (stop) event.stopPropagation()
+          }}
+          style={{ width: 50, height: 20, animation: "react-grow 1s linear" }}
+        />
+      </div>
+    )
+    renderer.clockPause()
+    render(tree(false))
+    renderer.dispatchNativeEvents()
+    renderer.clockFastForward(500)
+    renderer.dispatchNativeEvents()
+    renderer.clockFastForward(1000)
+    renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["parent capture", "child true false", "parent react-grow true", "parent end"])
+
+    const stopped = createTestRoot()
+    seen.length = 0
+    stopped.renderer.clockPause()
+    stopped.render(tree(true))
+    stopped.renderer.dispatchNativeEvents()
+    stopped.renderer.clockFastForward(1500)
+    stopped.renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["parent capture", "child true false", "parent end"])
+  })
+
   it("rejects an invalid animation when the style is set", () => {
     const { render } = createTestRoot()
     expect(() =>

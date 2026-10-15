@@ -496,10 +496,10 @@ impl TransitionEventKind {
     /// The event type the host maps to `onTransition*`.
     pub(crate) fn event_type(self) -> &'static str {
         match self {
-            Self::Run => "transitionRun",
-            Self::Start => "transitionStart",
-            Self::End => "transitionEnd",
-            Self::Cancel => "transitionCancel",
+            Self::Run => "transitionrun",
+            Self::Start => "transitionstart",
+            Self::End => "transitionend",
+            Self::Cancel => "transitioncancel",
         }
     }
 }

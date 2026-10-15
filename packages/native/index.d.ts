@@ -1047,14 +1047,14 @@ export interface EventPayload {
   observation?: Observation
   /**
    * CSS name of the property a transition animates, `background-color`.
-   * Populated for: transitionRun, transitionStart, transitionEnd,
-   * transitionCancel.
+   * Populated for: transitionrun, transitionstart, transitionend,
+   * transitioncancel.
    */
   propertyName?: string
   /**
    * The `animation-name` of the animation, as the DOM `animationName`.
-   * Populated for: animationStart, animationIteration, animationEnd,
-   * animationCancel.
+   * Populated for: animationstart, animationiteration, animationend,
+   * animationcancel.
    */
   animationName?: string
   /**

@@ -215,4 +215,43 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS transitions", () => {
       expect(boundsOf(app, "box").height).toBe(120)
     })
   })
+
+  it("bubbles a child's transition to its parent with the child as target, and stopPropagation ends it", () => {
+    const [width, setWidth] = createSignal(100)
+    const [stop, setStop] = createSignal(false)
+    const seen: string[] = []
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    app.render(() => (
+      <div
+        testId="parent"
+        onTransitionEndCapture={() => seen.push("parent capture")}
+        onTransitionEnd={(event) =>
+          seen.push(`parent ${event.propertyName} ${event.target === app.renderer.findByTestId("child")!.id}`)
+        }
+      >
+        <div
+          testId="child"
+          onTransitionEnd={(event) => {
+            seen.push("child")
+            if (stop()) event.stopPropagation()
+          }}
+          style={{ width: width(), height: 20, transition: "width 1s linear" }}
+        />
+      </div>
+    ))
+    app.flushSync(() => setWidth(200))
+    app.renderer.clockFastForward(1500)
+    app.renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["parent capture", "child", "parent width true"])
+
+    seen.length = 0
+    app.flushSync(() => {
+      setStop(true)
+      setWidth(300)
+    })
+    app.renderer.clockFastForward(1500)
+    app.renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["parent capture", "child"])
+  })
 })

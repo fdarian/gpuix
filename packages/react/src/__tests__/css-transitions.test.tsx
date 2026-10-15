@@ -418,4 +418,57 @@ describeNative("CSS transitions", () => {
       expect(boundsOf(root.renderer, "box").height).toBe(120)
     })
   })
+
+  it("bubbles a child's transition events to its parent with the child as target", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const parent = (width: number, stop = false) => (
+      <div
+        testId="parent"
+        onTransitionEndCapture={(event) => seen.push(`capture ${event.target === child() ? "child" : "?"}`)}
+        onTransitionEnd={(event) => {
+          seen.push(`parent ${event.propertyName} ${event.eventPhase} ${event.cancelable}`)
+        }}
+      >
+        <div
+          testId="child"
+          onTransitionEnd={(event) => {
+            seen.push(`child ${event.target === event.currentTarget ? "target" : "?"}`)
+            if (stop) event.stopPropagation()
+          }}
+          style={{ width, height: 20, transition: "width 1s linear" }}
+        />
+      </div>
+    )
+    const child = () => renderer.findByTestId("child").id
+
+    renderer.clockPause()
+    render(parent(100))
+    render(parent(200))
+    renderer.clockFastForward(1500)
+    renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["capture child", "child target", "parent width 3 false"])
+
+    seen.length = 0
+    render(parent(100, true))
+    render(parent(300, true))
+    renderer.clockFastForward(1500)
+    renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["capture child", "child target"])
+  })
+
+  it("reaches a listener on an ancestor only when the child has no listener of its own", () => {
+    const { render, renderer } = createTestRoot()
+    const targets: number[] = []
+    const tree = (width: number) => (
+      <div onTransitionRun={(event) => targets.push(event.target)}>
+        <div testId="child" style={{ width, height: 20, transition: "width 1s linear" }} />
+      </div>
+    )
+    renderer.clockPause()
+    render(tree(100))
+    render(tree(200))
+    renderer.dispatchNativeEvents()
+    expect(targets).toEqual([renderer.findByTestId("child").id])
+  })
 })

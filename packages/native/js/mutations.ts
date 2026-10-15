@@ -1,4 +1,4 @@
-import { POINTER_EVENT_HANDLER_PROPS } from "./events/event-props.js"
+import { DOM_DISPATCHED_HANDLER_PROPS } from "./events/event-props.js"
 import { registerMutationQueue } from "./bounds.js"
 import { createBlobImageLoader, type BlobImageHost } from "./blob-images.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
@@ -107,9 +107,9 @@ export function createMutationQueue(
 
 /**
  * Handler prop to the key its handler is stored under in `EventHandlerMap`.
- * Pointer, mouse, drag and wheel keys are lowercase DOM types, and each has an
- * `on…Capture` twin keyed `captureHandlerKey(type)`. The other keys are native
- * event names. See `nativeEventType` for the type native is asked to emit.
+ * Pointer, mouse, drag, wheel, transition and animation keys are lowercase DOM
+ * types, and each has an `on…Capture` twin keyed `captureHandlerKey(type)`. The
+ * other keys are native event names. See `nativeEventType` for the type native is asked to emit.
  */
 export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onToggleFile", "toggleFile"],
@@ -120,20 +120,12 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onVisibleRange", "visibleRange"],
   ["onHighlight", "highlight"],
   ["onMotionComplete", "motionComplete"],
-  ["onTransitionRun", "transitionRun"],
-  ["onTransitionStart", "transitionStart"],
-  ["onTransitionEnd", "transitionEnd"],
-  ["onTransitionCancel", "transitionCancel"],
-  ["onAnimationStart", "animationStart"],
-  ["onAnimationIteration", "animationIteration"],
-  ["onAnimationEnd", "animationEnd"],
-  ["onAnimationCancel", "animationCancel"],
   ["onLayoutAnimationStart", "layoutAnimationStart"],
   ["onLayoutAnimationComplete", "layoutAnimationComplete"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
   ["onInvalid", "invalid"],
-  ...POINTER_EVENT_HANDLER_PROPS,
+  ...DOM_DISPATCHED_HANDLER_PROPS,
   ["onMouseDownOutside", "mousedownoutside"],
   ["onKeyDown", "keyDown"],
   ["onKeyUp", "keyUp"],

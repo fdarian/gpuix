@@ -414,10 +414,10 @@ impl AnimationEventKind {
     /// The event type the host maps to `onAnimation*`.
     pub(crate) fn event_type(self) -> &'static str {
         match self {
-            Self::Start => "animationStart",
-            Self::Iteration => "animationIteration",
-            Self::End => "animationEnd",
-            Self::Cancel => "animationCancel",
+            Self::Start => "animationstart",
+            Self::Iteration => "animationiteration",
+            Self::End => "animationend",
+            Self::Cancel => "animationcancel",
         }
     }
 }

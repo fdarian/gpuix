@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { captureHandlerKey } from "../events/dispatch.js"
-import { POINTER_EVENT_TYPES } from "../events/event-props.js"
+import { DOM_DISPATCHED_EVENT_TYPES, POINTER_EVENT_TYPES } from "../events/event-props.js"
 import {
   EVENT_PROP_NAMES,
   EVENT_PROPS,
@@ -48,6 +48,17 @@ describe("EVENT_PROPS", () => {
 
   it("lists every pointer type once", () => {
     expect([...POINTER_EVENT_TYPES].sort()).toEqual(POINTER_PROPS.map(([, type]) => type).sort())
+  })
+
+  it.each([
+    ["onTransitionEnd", "transitionend"],
+    ["onTransitionCancel", "transitioncancel"],
+    ["onAnimationIteration", "animationiteration"],
+  ])("%s listens for the DOM type %s and has a capture twin", (prop, type) => {
+    expect(EVENT_TYPE_BY_PROP.get(prop)).toBe(type)
+    expect(EVENT_TYPE_BY_PROP.get(`${prop}Capture`)).toBe(captureHandlerKey(type))
+    expect(DOM_DISPATCHED_EVENT_TYPES.has(type)).toBe(true)
+    expect(POINTER_EVENT_TYPES.has(type)).toBe(false)
   })
 
   it("keeps onMouseDownOutside as the gpuix type, without a capture variant", () => {
