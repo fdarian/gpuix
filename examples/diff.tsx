@@ -186,7 +186,7 @@ function HighlightedTokens({ tokens }: { tokens: ThemedToken[] }) {
           key={i}
           style={{
             color: token.color || "#e6edf3",
-            whiteSpace: "nowrap",
+            whiteSpace: "pre",
           }}
         >
           {token.content}
@@ -223,7 +223,7 @@ function WordDiffTokens({
             key={i}
             style={{
               color: CODE_FG,
-              whiteSpace: "nowrap",
+              whiteSpace: "pre",
               ...(isHighlighted ? { backgroundColor: highlightBg } : {}),
             }}
           >
@@ -269,7 +269,7 @@ function LineNumberGutter({
       <text
         style={{
           color: fg,
-          whiteSpace: "nowrap",
+          whiteSpace: "pre",
           fontSize: 13,
         }}
       >
@@ -404,7 +404,7 @@ function processHunkLines(
         // Too different — just use syntax highlighting
         const tokens = beforeTokens[i]
         result.push({
-          code: tokens ? <HighlightedTokens tokens={tokens} /> : <text style={{ color: CODE_FG, whiteSpace: "nowrap" }}>{removedText}</text>,
+          code: tokens ? <HighlightedTokens tokens={tokens} /> : <text style={{ color: CODE_FG, whiteSpace: "pre" }}>{removedText}</text>,
           type,
           oldLineNumber,
           newLineNumber,
@@ -431,7 +431,7 @@ function processHunkLines(
       if (similarity < 0.5) {
         const tokens = afterTokens[i]
         result.push({
-          code: tokens ? <HighlightedTokens tokens={tokens} /> : <text style={{ color: CODE_FG, whiteSpace: "nowrap" }}>{addedLine.code}</text>,
+          code: tokens ? <HighlightedTokens tokens={tokens} /> : <text style={{ color: CODE_FG, whiteSpace: "pre" }}>{addedLine.code}</text>,
           type,
           oldLineNumber,
           newLineNumber,
@@ -462,7 +462,7 @@ function processHunkLines(
           tokens && tokens.length > 0 ? (
             <HighlightedTokens tokens={tokens} />
           ) : (
-            <text style={{ color: CODE_FG, whiteSpace: "nowrap" }}>{code}</text>
+            <text style={{ color: CODE_FG, whiteSpace: "pre" }}>{code}</text>
           ),
         type,
         oldLineNumber,
@@ -635,7 +635,7 @@ function SplitSideGutter({
         backgroundColor: bg,
       }}
     >
-      <text style={{ color: fg, whiteSpace: "nowrap", fontSize: 13 }}>
+      <text style={{ color: fg, whiteSpace: "pre", fontSize: 13 }}>
         {` ${lineNumber} `}
       </text>
     </div>
@@ -779,7 +779,7 @@ export function DiffViewer({
                 <text
                   style={{
                     color: SEPARATOR_FG,
-                    whiteSpace: "nowrap",
+                    whiteSpace: "pre",
                     fontSize: 13,
                   }}
                 >
