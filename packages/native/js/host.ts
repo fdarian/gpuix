@@ -613,7 +613,10 @@ export interface StyleDesc {
   fontStyle?: "normal" | "italic" | "oblique"
   textAlign?: string
   lineHeight?: number
-  whiteSpace?: "normal" | "nowrap"
+  /** CSS `white-space`, inherited. `normal` and `nowrap` collapse spaces and turn
+   *  a newline into a space, `pre-line` collapses spaces and keeps newlines,
+   *  `pre-wrap` and `pre` keep both. `nowrap` and `pre` do not wrap. */
+  whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line"
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   textDecoration?: "underline" | "line-through" | "none"

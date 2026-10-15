@@ -2592,15 +2592,61 @@ around it, as in CSS.
 - In a `display: flex` or `grid` container each run of raw strings is one item
   and every `<span>` or nested `<text>` is an item of its own, with its content as
   a paragraph.
-- Whitespace-only text (space, tab, newline, CR, form feed; not a no-break space)
-  makes no box, and neither does a child with `display: none`.
-- Text is not collapsed: spaces and newlines inside a string are painted as written.
+- A paragraph that is only collapsible white space (space, tab, newline, CR,
+  form feed; not a no-break space) makes no box, and neither does a child with
+  `display: none`.
+- White space is processed as in CSS, see [White space](#white-space).
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
 size), padding, border and margin on an inline box, `fontStyle` (there is no
 `fontStyle` style yet), and events or hit testing on a `<span>`. A `<span>` with
 a style that needs a box of its own (`position: absolute`, `display: block`,
 `flex` or `grid`) is laid out as a block instead.
+
+### White space
+
+`whiteSpace` (`normal`, `nowrap`, `pre`, `pre-wrap`, `pre-line`) is inherited, so
+it can be set on a container, on a `<span>` or on a `<text>`. It decides what is
+left of the spaces, tabs and newlines of a string before it is painted, and
+`getPaintedText()`, search, selection and copy all see that text.
+
+| | Spaces and tabs | Newline | Wraps |
+|---|---|---|---|
+| `normal` (default) | collapse | a space | yes |
+| `nowrap` | collapse | a space | no |
+| `pre-line` | collapse | line break | yes |
+| `pre-wrap` | kept | line break | yes |
+| `pre` | kept | line break | no |
+
+- A run of collapsible spaces becomes one space, and the collapsing crosses text
+  nodes and span edges: `a{" "}<span>{" "}b</span>` paints `a b`, with the space
+  in the first run.
+- A collapsible space at the start of a paragraph, at the end of one, before a
+  block child and next to a line break is removed.
+- A newline in `pre`, `pre-wrap` and `pre-line` is a forced break. One final
+  newline ends the last line and does not start another, as in a browser.
+- The no-break space (U+00A0) is content and never collapses.
+- Text with nothing but collapsible white space makes no box in a `normal`,
+  `nowrap` or `pre-line` block, and none in a flex or grid container whatever
+  its `whiteSpace`.
+- `getByText` and `findByText` compare text with its white space collapsed and
+  trimmed, as Testing Library does, but they read the string nodes, so a match
+  never crosses a span.
+
+```tsx
+<text style={{ whiteSpace: 'pre', fontFamily: 'Menlo' }}>{source}</text>
+```
+
+Deviations, where GPUI's text layout cannot build the DOM model:
+
+- A tab in `pre` and `pre-wrap` is expanded to spaces, up to the next multiple
+  of 8 columns (`tab-size: 8`). A proportional font does not line up on those
+  stops, and copying gives spaces.
+- A space that wraps with a line stays at the end of that line, where CSS removes
+  it (`normal`, `pre-line`) or hangs it (`pre-wrap`). It paints nothing but it
+  counts in the line's width, so `textAlign: 'center'` and `'right'` can be off
+  by a space.
+- `break-spaces`, `tab-size`, `word-break` and `overflow-wrap` are not supported.
 
 ## Text input
 
@@ -4804,7 +4850,8 @@ draws one: a `dashed` anywhere makes every side dashed.
 - **Text nodes.** An empty text node produces no box, and neither does a
   white-space-only one that sits directly in a `div`, so `{" "}` and the empty
   placeholders Solid creates for `<Show>` and `<For>` no longer add a flex or
-  grid item (and a `gap`). Inside a `<text>` white space is kept.
+  grid item (and a `gap`). White space inside text is processed as in CSS, see
+  [White space](#white-space).
 - **`display: "none"`** builds no box for the element or its descendants, and
   leaves no gap. **`display: "contents"`** also builds no box: its children are
   spliced, recursively, into the parent's child list, so they are the parent's
@@ -5151,7 +5198,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight`, `whiteSpace`, `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight`, `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
@@ -5452,16 +5499,6 @@ Differences from a browser:
 - `animation-duration: auto` is `0s`
 - A size keyframe against `auto` (or an unset size) is discrete unless
   `interpolateSize: 'allow-keywords'` applies, as for transitions
-
-> **Note: `white-space: pre` is not supported.** GPUI's text system only has `normal` (wraps) and `nowrap` (single line). To preserve newlines like HTML `<pre>`, split your text on `\n` in React and render each line as a separate `<text>` element in a flex column:
->
-> ```tsx
-> <div style={{ display: 'flex', flexDirection: 'column', fontFamily: 'Menlo' }}>
->   {code.split('\n').map((line, i) => (
->     <text key={i} style={{ whiteSpace: 'nowrap' }}>{line}</text>
->   ))}
-> </div>
-> ```
 
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
 
