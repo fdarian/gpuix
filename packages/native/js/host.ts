@@ -51,17 +51,16 @@ export type DimensionValue = number | string
  * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
  * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
  * `borderRadius` and `gap` shorthands, which expand to their longhands.
- * Discrete properties (`display`, `position`, ...) are an error. A length
- * cannot move between units (px to `%`) or to `auto`.
+ * Discrete properties (`display`, `position`, ...) are an error.
+ *
+ * `width`, `height` and the min/max sizes move between px and `%` (a share of
+ * the parent's content box, or of the window for a root), and settle on the
+ * unit they were given. `height` also takes `"auto"`, the height the content
+ * wants. `width: "auto"` is an error: the content's width needs a second layout
+ * pass to measure.
  */
 export type MotionStyle = Pick<
   StyleDesc,
-  | "width"
-  | "height"
-  | "minWidth"
-  | "minHeight"
-  | "maxWidth"
-  | "maxHeight"
   | "top"
   | "right"
   | "bottom"
@@ -107,7 +106,17 @@ export type MotionStyle = Pick<
   | "scrollbarColor"
   | "scrollbarWidth"
   | "selectionColor"
->
+> & {
+  width?: MotionLength
+  height?: MotionLength | "auto"
+  minWidth?: MotionLength
+  minHeight?: MotionLength
+  maxWidth?: MotionLength
+  maxHeight?: MotionLength
+}
+
+/** Pixels, or a percentage string such as `"50%"`. */
+export type MotionLength = number | `${number}%`
 
 export type MotionEase =
   | "linear"

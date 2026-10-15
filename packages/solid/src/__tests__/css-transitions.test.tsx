@@ -69,4 +69,150 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS transitions", () => {
     app.flushSync(() => setWidth(200))
     expect(widthOf(app)).toBe(200)
   })
+  describe("lengths layout resolves", () => {
+    const boundsOf = (app: ReturnType<typeof createTestRoot>, testId: string) => {
+      app.renderer.dispatchNativeEvents()
+      return app.renderer.getElementBounds(app.renderer.findByTestId(testId)!.id)!
+    }
+    // Layout is read back a frame after it is painted, so frames run between
+    // mounting and changing the style, as they do in a real window.
+    const mounted = (app: ReturnType<typeof createTestRoot>, code: Parameters<typeof app.render>[0]) => {
+      app.renderer.clockPause()
+      app.render(code)
+      app.renderer.flush()
+    }
+    const update = (app: ReturnType<typeof createTestRoot>, fn: () => void) => {
+      app.flushSync(fn)
+      app.renderer.flush()
+    }
+
+    it("opens and closes an accordion when interpolateSize allows keywords", () => {
+      const [open, setOpen] = createSignal(false)
+      const app = createTestRoot({ width: 400, height: 300 })
+      mounted(app, () => (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: open() ? "auto" : 0,
+              overflow: "hidden",
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 80 }} />
+          </div>
+        </div>
+      ))
+      expect(boundsOf(app, "panel").height).toBe(0)
+
+      update(app, () => setOpen(true))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "panel").height).toBeCloseTo(40, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "panel").height).toBe(80)
+
+      update(app, () => setOpen(false))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "panel").height).toBeCloseTo(40, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "panel").height).toBe(0)
+    })
+
+    it("follows the content while it grows during the transition", () => {
+      const [open, setOpen] = createSignal(false)
+      const [content, setContent] = createSignal(80)
+      const app = createTestRoot({ width: 400, height: 300 })
+      mounted(app, () => (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: open() ? "auto" : 0,
+              overflow: "hidden",
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: content() }} />
+          </div>
+        </div>
+      ))
+      update(app, () => setOpen(true))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "panel").height).toBeCloseTo(40, 0)
+
+      update(app, () => setContent(160))
+      app.renderer.clockFastForward(250)
+      const grown = boundsOf(app, "panel").height
+      expect(grown).toBeGreaterThan(40)
+      expect(grown).toBeLessThan(160)
+
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "panel").height).toBe(160)
+    })
+
+    it("transitions between px and a percentage of the parent", () => {
+      const [width, setWidth] = createSignal<number | `${number}%`>(0)
+      const app = createTestRoot({ width: 400, height: 300 })
+      mounted(app, () => (
+        <div style={{ display: "flex", flexDirection: "column", width: 400 }}>
+          <div
+            testId="bar"
+            style={{ width: width(), height: 10, transition: "width 1s linear" }}
+          />
+        </div>
+      ))
+      update(app, () => setWidth("50%"))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "bar").width).toBeCloseTo(100, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "bar").width).toBe(200)
+
+      update(app, () => setWidth(100))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "bar").width).toBeCloseTo(150, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "bar").width).toBe(100)
+    })
+
+    it("resolves a percentage on a root against the window", () => {
+      const [width, setWidth] = createSignal<number | `${number}%`>(0)
+      const app = createTestRoot({ width: 400, height: 300 })
+      mounted(app, () => (
+        <div testId="bar" style={{ width: width(), height: 10, transition: "width 1s linear" }} />
+      ))
+      update(app, () => setWidth("50%"))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "bar").width).toBeCloseTo(100, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "bar").width).toBe(200)
+    })
+
+    it("starts from the laid-out height when the style leaves it unset", () => {
+      const [height, setHeight] = createSignal<number | undefined>(undefined)
+      const app = createTestRoot({ width: 400, height: 300 })
+      mounted(app, () => (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+          <div
+            testId="box"
+            style={{
+              height: height(),
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 40 }} />
+          </div>
+        </div>
+      ))
+      expect(boundsOf(app, "box").height).toBe(40)
+
+      update(app, () => setHeight(120))
+      app.renderer.clockFastForward(500)
+      expect(boundsOf(app, "box").height).toBeCloseTo(80, 0)
+      app.renderer.clockFastForward(1000)
+      expect(boundsOf(app, "box").height).toBe(120)
+    })
+  })
 })

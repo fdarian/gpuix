@@ -633,8 +633,9 @@ impl Running {
 }
 
 /// The two ends of a transition in one unit. A px length and a percentage meet
-/// in px, the percentage resolved against the parent's last painted box; with
-/// no box to resolve against they cannot, and the change is not transitioned.
+/// in px, the percentage resolved against the parent's last painted box (the
+/// window for a root); until a box is measured they cannot meet, and the change
+/// is not transitioned.
 fn common_unit(
     prop: AnimProp,
     from: &AnimValue,

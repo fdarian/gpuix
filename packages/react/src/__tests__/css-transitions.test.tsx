@@ -1,5 +1,6 @@
 import fs from "fs"
 import path from "path"
+import type { ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "@gpuix/native"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
@@ -216,5 +217,205 @@ describeNative("CSS transitions", () => {
 
     renderer.clockFastForward(1000)
     expect(sample().slice(0, 3)).toEqual([0, 0, 255])
+  })
+  describe("lengths layout resolves", () => {
+    const boundsOf = (
+      renderer: ReturnType<typeof createTestRoot>["renderer"],
+      testId: string
+    ) => {
+      renderer.dispatchNativeEvents()
+      return renderer.getElementBounds(renderer.findByTestId(testId).id)
+    }
+    // A layout read is painted before the next frame can use it, so frames run
+    // between mounting and changing the style, as they do in a real window.
+    const mounted = (
+      root: ReturnType<typeof createTestRoot>,
+      node: ReactNode
+    ) => {
+      root.renderer.clockPause()
+      root.render(node)
+      root.renderer.flush()
+    }
+    const changed = (
+      root: ReturnType<typeof createTestRoot>,
+      node: ReactNode
+    ) => {
+      root.render(node)
+      root.renderer.flush()
+    }
+
+    it("opens and closes an accordion when interpolateSize allows keywords", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const panel = (open: boolean, interpolateSize: "allow-keywords" | "numeric-only") => (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: open ? "auto" : 0,
+              overflow: "hidden",
+              interpolateSize,
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 80 }} />
+          </div>
+        </div>
+      )
+
+      mounted(root, panel(false, "allow-keywords"))
+      expect(boundsOf(root.renderer, "panel").height).toBe(0)
+
+      changed(root, panel(true, "allow-keywords"))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "panel").height).toBeCloseTo(40, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "panel").height).toBe(80)
+
+      changed(root, panel(false, "allow-keywords"))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "panel").height).toBeCloseTo(40, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "panel").height).toBe(0)
+    })
+
+    it("changes to auto at once by default, as in a browser", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const panel = (open: boolean) => (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: open ? "auto" : 0,
+              overflow: "hidden",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 80 }} />
+          </div>
+        </div>
+      )
+
+      mounted(root, panel(false))
+      changed(root, panel(true))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "panel").height).toBe(80)
+    })
+
+    it("follows the content while it grows during the transition", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const panel = (content: number) => (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: "auto",
+              overflow: "hidden",
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: content }} />
+          </div>
+        </div>
+      )
+      const closed = (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            testId="panel"
+            style={{
+              height: 0,
+              overflow: "hidden",
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 80 }} />
+          </div>
+        </div>
+      )
+
+      mounted(root, closed)
+      changed(root, panel(80))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "panel").height).toBeCloseTo(40, 0)
+
+      changed(root, panel(160))
+      root.renderer.clockFastForward(250)
+      const grown = boundsOf(root.renderer, "panel").height
+      expect(grown).toBeGreaterThan(40)
+      expect(grown).toBeLessThan(160)
+
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "panel").height).toBe(160)
+    })
+
+    it("transitions between px and a percentage of the parent", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const bar = (width: number | `${number}%`) => (
+        <div style={{ display: "flex", flexDirection: "column", width: 400 }}>
+          <div
+            testId="bar"
+            style={{ width, height: 10, transition: "width 1s linear" }}
+          />
+        </div>
+      )
+
+      mounted(root, bar(0))
+      changed(root, bar("50%"))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "bar").width).toBeCloseTo(100, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "bar").width).toBe(200)
+
+      changed(root, bar(100))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "bar").width).toBeCloseTo(150, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "bar").width).toBe(100)
+    })
+
+    it("resolves a percentage on a root against the window", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const bar = (width: number | `${number}%`) => (
+        <div
+          testId="bar"
+          style={{ width, height: 10, transition: "width 1s linear" }}
+        />
+      )
+
+      mounted(root, bar(0))
+      changed(root, bar("50%"))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "bar").width).toBeCloseTo(100, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "bar").width).toBe(200)
+    })
+
+    it("starts from the laid-out height when the style leaves it unset", () => {
+      const root = createTestRoot({ width: 400, height: 300 })
+      const box = (height: number | undefined) => (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+          <div
+            testId="box"
+            style={{
+              height,
+              interpolateSize: "allow-keywords",
+              transition: "height 1s linear",
+            }}
+          >
+            <div style={{ width: 40, height: 40 }} />
+          </div>
+        </div>
+      )
+
+      mounted(root, box(undefined))
+      expect(boundsOf(root.renderer, "box").height).toBe(40)
+
+      changed(root, box(120))
+      root.renderer.clockFastForward(500)
+      expect(boundsOf(root.renderer, "box").height).toBeCloseTo(80, 0)
+      root.renderer.clockFastForward(1000)
+      expect(boundsOf(root.renderer, "box").height).toBe(120)
+    })
   })
 })

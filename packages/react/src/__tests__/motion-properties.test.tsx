@@ -1,5 +1,6 @@
 import fs from "fs"
 import path from "path"
+import type { ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 import { motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
@@ -90,5 +91,159 @@ describeNative("motion properties", () => {
 
     renderer.clockFastForward(1000)
     expect(sample().slice(0, 3)).toEqual([0, 0, 255])
+  })
+  describe("lengths layout resolves", () => {
+    const boundsOf = (
+      renderer: ReturnType<typeof createTestRoot>["renderer"],
+      testId: string
+    ) => {
+      renderer.dispatchNativeEvents()
+      return renderer.getElementBounds(renderer.findByTestId(testId).id)
+    }
+    const linear = { duration: 1, ease: "linear" } as const
+    // Layout is read back a frame after it is painted, and the clock of an
+    // animation that needs it starts on the first frame that has it, so one
+    // more frame runs before time moves.
+    const settled = (
+      render: (node: ReactNode) => void,
+      renderer: ReturnType<typeof createTestRoot>["renderer"],
+      node: ReactNode
+    ) => {
+      render(node)
+      renderer.flush()
+    }
+
+    function Accordion(props: { open: boolean; content: number }) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <motion.div
+            testId="panel"
+            initial={{ height: 0 }}
+            animate={{ height: props.open ? "auto" : 0 }}
+            transition={linear}
+            style={{ overflow: "hidden" }}
+          >
+            <div style={{ width: 40, height: props.content }} />
+          </motion.div>
+        </div>
+      )
+    }
+
+    it("opens an accordion to the content height and closes it again", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(<Accordion open content={80} />)
+      expect(boundsOf(renderer, "panel").height).toBe(0)
+
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "panel").height).toBeCloseTo(40, 0)
+
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "panel").height).toBe(80)
+
+      render(<Accordion open={false} content={80} />)
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "panel").height).toBeCloseTo(40, 0)
+
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "panel").height).toBe(0)
+    })
+
+    it("follows the content while it grows during the animation", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(<Accordion open content={80} />)
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "panel").height).toBeCloseTo(40, 0)
+
+      render(<Accordion open content={160} />)
+      renderer.clockFastForward(250)
+      const grown = boundsOf(renderer, "panel").height
+      expect(grown).toBeGreaterThan(40)
+      expect(grown).toBeLessThan(160)
+
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "panel").height).toBe(160)
+    })
+
+    it("moves between px and a percentage of the parent and settles on the target unit", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+      const App = (props: { width: number | `${number}%` }) => (
+        <div style={{ display: "flex", flexDirection: "column", width: 400 }}>
+          <motion.div
+            testId="bar"
+            initial={{ width: 0 }}
+            animate={{ width: props.width }}
+            transition={linear}
+            style={{ height: 10 }}
+          />
+        </div>
+      )
+
+      renderer.clockPause()
+      render(<App width="50%" />)
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "bar").width).toBeCloseTo(100, 0)
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "bar").width).toBe(200)
+
+      render(<App width={100} />)
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "bar").width).toBeCloseTo(150, 0)
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "bar").width).toBe(100)
+    })
+
+    it("resolves a percentage on a root against the window", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(
+        <motion.div
+          testId="root"
+          initial={{ width: 0 }}
+          animate={{ width: "50%" }}
+          transition={linear}
+          style={{ height: 10 }}
+        />
+      )
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "root").width).toBeCloseTo(100, 0)
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "root").width).toBe(200)
+    })
+
+    it("starts from the laid-out size when the style leaves it unset", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+          <motion.div
+            testId="box"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1, width: 200 }}
+            transition={linear}
+            style={{ height: 10 }}
+          >
+            <div style={{ width: 40, height: 10 }} />
+          </motion.div>
+        </div>
+      )
+      expect(boundsOf(renderer, "box").width).toBeCloseTo(40, 0)
+
+      renderer.clockFastForward(500)
+      expect(boundsOf(renderer, "box").width).toBeCloseTo(120, 0)
+
+      renderer.clockFastForward(1000)
+      expect(boundsOf(renderer, "box").width).toBe(200)
+    })
   })
 })

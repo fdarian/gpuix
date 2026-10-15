@@ -1354,9 +1354,11 @@ A property that `initial` does not name starts from the element's own `style`
 value, as Motion for React reads it from the DOM, and otherwise from the CSS
 initial value (`0` for padding, margin and radii, `1` for `opacity`,
 `transparent` for `backgroundColor`, the element's `color` for `borderColor` and
-`outlineColor`). A value CSS leaves to layout or inheritance (`width` and
-`height` unset, `top` unset, `fontSize`, `color`) has no start yet, so that
-property begins at its target.
+`outlineColor`). An unset `width`, `height`, `minWidth`, `minHeight`,
+`maxWidth` or `maxHeight` starts from the size layout gave the element, read
+back from the previous frame, so the clock starts on the first frame that has it.
+Other values CSS leaves to layout or inheritance (`top` unset, `fontSize`,
+`color`) have no start yet, so that property begins at its target.
 
 ### Targets and timing
 
@@ -1380,8 +1382,25 @@ expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
 its longhands, the longhand wins.
 
 Naming a discrete property (`display`, `position`, ...) or an unknown key is an
-error, not a silent no-op. A length cannot animate between units (`px` to `%`) or
-to or from `auto`; that is rejected with an error until layout can resolve it.
+error, not a silent no-op.
+
+**Layout-resolved lengths.** The sizes in the first row move between units, and
+`height` also moves to or from `"auto"`:
+
+- `px` to `%` and back runs in px, with the percentage resolved against the
+  parent's content box (`width`, `minWidth` and `maxWidth` against its width, the
+  height ones against its height). The percentage follows the parent if it
+  resizes mid-flight, and the style settles on the unit you asked for. A root
+  element has no parent, so it resolves against the window's content size, as the
+  initial containing block does in a document.
+- `height: "auto"` is the height the content wants. The target follows the
+  content while it grows (a spring keeps its velocity), the end is rounded up to
+  a whole device pixel so nothing clips, and the style goes back to a literal
+  `auto` when the animation settles. `height: 0` to `"auto"` and back is an
+  accordion. An element that is not painted (inside a `display: none` subtree)
+  has nothing to measure and jumps to its target.
+- `width: "auto"` is an error: the width of the content needs a second layout
+  pass to measure. Name a pixel width instead.
 
 **Colours** interpolate in Oklab with premultiplied alpha, like CSS
 `color-mix(in oklab, ...)`, so a fade to `transparent` keeps its hue and a red
@@ -4842,7 +4861,12 @@ render per frame.
   transition when its duration plus delay is above zero. The first style an
   element mounts with never transitions. A property that is unset starts from its
   CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
-  an unset `width`) and a move between `px` and `%` change instantly
+  an unset `width`) changes instantly
+- **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth` or
+  `maxHeight` that moves between a pixel length and a percentage transitions in
+  px, with the percentage resolved against the parent's content box (the window's
+  content size for a root). It follows the parent while it runs and settles on the
+  literal target unit. Two percentages interpolate as percentages
 - **`auto` heights.** As in a browser, a change between a length and `auto` is
   discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an
   ancestor (it inherits, default `'numeric-only'`). That covers `height` to or from
