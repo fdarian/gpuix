@@ -245,7 +245,7 @@ fn scroll_element_to(id: u64, x: f32, y: f32, behavior: crate::scroll::Behavior)
 ///
 /// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a
 /// window command) so the layout is never older than the tree.
-fn scroll_metrics(id: u64) -> Option<[f64; 6]> {
+pub(crate) fn scroll_metrics(id: u64) -> Option<[f64; 6]> {
     let painted = crate::automation::get_bounds(id).map(|b| (b.width as f32, b.height as f32));
     SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
 }

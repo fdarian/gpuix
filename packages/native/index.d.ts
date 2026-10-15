@@ -474,6 +474,12 @@ export declare class TestGpuixRenderer {
   writeClipboardText(text: string): void
   readClipboardText(): string | null
   getFocusedElementId(): number | null
+  /**
+   * Whether simulated pointer input holds the root view while it is dispatched, which is the
+   * default. Without the lease a handler may read layout, which draws, and so the input is
+   * dispatched the way a window's own input callback does it.
+   */
+  setRootViewLease(lease: boolean): void
   /** Makes the offscreen window key or not, as when the user switches apps. */
   setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void

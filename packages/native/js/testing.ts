@@ -61,6 +61,7 @@ interface NativeTestRendererApi
   focusNext(): void
   focusPrevious(): void
   getFocusedElementId(): number | null
+  setRootViewLease(lease: boolean): void
   setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
@@ -851,6 +852,11 @@ export class TestRenderer implements NativeRenderer {
   getFocusedElementId(): number | null {
     this.native.flush()
     return this.native.getFocusedElementId()
+  }
+
+  /** Dispatch pointer input without holding the root view, so a handler can read layout. */
+  setRootViewLease(lease: boolean): void {
+    this.native.setRootViewLease(lease)
   }
 
   /** Makes the offscreen window key (`true`, the default) or not, as when the user switches apps. */

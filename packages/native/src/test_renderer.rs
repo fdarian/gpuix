@@ -162,6 +162,26 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
     })
 }
 
+/// Lays out and paints a pending change before a bounds or scroll read, as the live renderer does.
+/// From a handler of the input being dispatched that is a measure pass, not a draw.
+fn draw_pending_changes() -> Result<()> {
+    window_call(|window, cx| {
+        // A draw builds the root view, which an input dispatched with the lease holds.
+        let leased = window
+            .root::<GpuixView>()
+            .flatten()
+            .is_some_and(|view| view.is_updating(cx));
+        if !leased {
+            window.draw_if_dirty(cx);
+        }
+    })
+}
+
+thread_local! {
+    /// Whether simulated pointer input holds the root view for its whole dispatch.
+    static LEASE_ROOT_VIEW: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
 /// `update_view` for a change that returns nothing. When it is called from a
 /// handler of an input that holds the root view, it runs after that input.
 fn update_view_or_defer(
@@ -218,6 +238,10 @@ fn simulate_event_with_view_lease(
     window: gpui::AnyWindowHandle,
     event: impl gpui::InputEvent,
 ) {
+    if !LEASE_ROOT_VIEW.with(|lease| lease.get()) {
+        cx.simulate_event(window, event);
+        return;
+    }
     cx.update_window(window, |root_view, window, cx| {
         let view = root_view
             .downcast::<GpuixView>()
@@ -428,7 +452,16 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn apply_batch(&self, json: String) -> Result<Vec<f64>> {
         let mut tree = self.tree.lock().unwrap();
-        apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)
+        let destroyed =
+            apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)?;
+        let dirty = tree.take_dirty();
+        drop(tree);
+        // Like the live renderer, a change made from a handler marks the window dirty at once, so
+        // that a read in the same handler draws it. Outside a handler `flush()` does.
+        if dirty && crate::events::sync_dispatch::in_sync_call() {
+            crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason)?;
+        }
+        Ok(destroyed)
     }
 
     // ── Test-specific methods ────────────────────────────────────────
@@ -656,6 +689,14 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_focused_element_id(&self) -> Result<Option<f64>> {
         update_view(|view, window, _cx| view.focused_element_id(window).map(|id| id as f64))
+    }
+
+    /// Whether simulated pointer input holds the root view while it is dispatched, which is the
+    /// default. Without the lease a handler may read layout, which draws, and so the input is
+    /// dispatched the way a window's own input callback does it.
+    #[napi]
+    pub fn set_root_view_lease(&self, lease: bool) {
+        LEASE_ROOT_VIEW.with(|cell| cell.set(lease));
     }
 
     /// Makes the offscreen window key or not, as when the user switches apps.
@@ -1346,20 +1387,8 @@ impl TestGpuixRenderer {
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         self.flush()?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, _cx| {
-                        let painted = crate::automation::get_bounds(id)
-                            .map(|bounds| (bounds.width as f32, bounds.height as f32));
-                        crate::scroll::metrics(view.scroll_handles.get(&id), painted)
-                            .map(|metrics| metrics.to_vec())
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(result)
-        })
+        draw_pending_changes()?;
+        Ok(crate::renderer::scroll_metrics(id).map(|metrics| metrics.to_vec()))
     }
 
     /// Get the current scroll offset of a scrollable element.
@@ -1507,6 +1536,7 @@ impl TestGpuixRenderer {
     pub fn get_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
         let id = to_element_id(id)?;
         self.flush()?;
+        draw_pending_changes()?;
         Ok(crate::automation::get_bounds(id).map(crate::renderer::ElementBounds::from_painted))
     }
 
