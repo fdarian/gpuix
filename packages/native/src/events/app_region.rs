@@ -9,7 +9,7 @@
 //! The press is native because AppKit's `performWindowDragWithEvent:` needs the mouse-down that
 //! is being dispatched, and Windows moves the window only from `WM_NCHITTEST` answering
 //! `HTCAPTION`, before any page code could run. The page still does not hear of it there, but
-//! gpuix leaves the event unhandled for `DefWindowProc`. So the capture-phase press listener asks GPUI
+//! gpuix only prevents the default and leaves the event unstopped for `DefWindowProc`. So the capture-phase press listener asks GPUI
 //! first (`press_outcome`), and a press in a drag region never reaches the page. With no button
 //! held, the pointer over one is outside the window as far as the page can tell
 //! (`hides_pointer`), which is what Electron does on macOS.
@@ -68,7 +68,8 @@ impl Platform {
 /// What a press in a drag region asks of the window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowAction {
-    /// The platform takes over moving the window until the button is released.
+    /// The platform moves the window. On macOS the call hands the drag to the WindowServer and
+    /// returns at once, and the mouse-up may never reach the page.
     Move,
     /// What the titlebar does on a double click (macOS: zoom, minimise or nothing, as the
     /// user's setting says).
@@ -102,8 +103,8 @@ pub struct Press {
 pub enum PressOutcome {
     /// gpuix asks the window to do this, and nothing below it hears of the press.
     Perform(WindowAction),
-    /// The OS acts on its own after GPUI has seen the press, so gpuix must neither handle it
-    /// nor ask for an action: on Windows GPUI gets the caption's `WM_NC*BUTTONDOWN` as a mouse
+    /// The OS acts on its own after GPUI has seen the press, so gpuix must neither stop it
+    /// nor ask for an action (it only prevents the default): on Windows GPUI gets the caption's `WM_NC*BUTTONDOWN` as a mouse
     /// down, and a handled one makes `DefWindowProc` skip the drag, the double-click maximise
     /// and the system menu.
     OsOwned,

@@ -82,7 +82,7 @@ fn sample(
     }
 }
 
-fn in_drag_region(window: &Window, position: Point<Pixels>) -> bool {
+pub(crate) fn in_drag_region(window: &Window, position: Point<Pixels>) -> bool {
     window.window_control_area_at(position) == Some(WindowControlArea::Drag)
 }
 
@@ -119,7 +119,7 @@ impl PointerDispatch {
     /// Keeps a press in a window drag region from the page: no event or focus change comes of
     /// it. Where gpuix drives the window, it starts moving or does what a titlebar does on a
     /// double click, and the caller must stop GPUI's propagation; on Windows the press is left
-    /// to the OS (see [`PressOutcome::OsOwned`]). `None` is a press that goes to the page.
+    /// to the OS, with its default prevented (see [`PressOutcome::OsOwned`]). `None` is a press that goes to the page.
     fn take_for_window(
         &self,
         event: &MouseDownEvent,
@@ -305,7 +305,14 @@ pub(crate) fn pointer_frame(
                         cx.stop_propagation();
                         return;
                     }
-                    Some(PressOutcome::OsOwned) => return,
+                    // Not `stop_propagation`: on Windows a stopped event makes the platform
+                    // answer 0, and `DefWindowProc` then skips the drag it is about to start.
+                    // The default is what the press must not do on the page's behalf: focus,
+                    // the active state, a text selection, a caret.
+                    Some(PressOutcome::OsOwned) => {
+                        window.prevent_default();
+                        return;
+                    }
                     None => {}
                 }
                 let action = PointerAction::Down {

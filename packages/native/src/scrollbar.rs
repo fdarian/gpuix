@@ -521,6 +521,10 @@ pub(crate) fn paint(
             if phase != gpui::DispatchPhase::Bubble || event.button != gpui::MouseButton::Left {
                 return;
             }
+            // A drag region covers the scrollbar under it, as in Electron.
+            if crate::events::listeners::in_drag_region(window, event.position) {
+                return;
+            }
             let mut st = state.borrow_mut();
             for index in 0..2 {
                 let (Some(hitbox), Some(axis)) = (&hitboxes[index], st.layout[index]) else {

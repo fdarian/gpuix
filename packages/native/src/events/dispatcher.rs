@@ -470,7 +470,7 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         PointerAction::Down { button, .. } => {
             state.buttons |= button_bit(button);
             // A press the window did not take means its earlier press of this button is over,
-            // even when the OS drag loop ate the release.
+            // even when its release never arrived (a window move may not send one).
             state.window_presses &= !button_bit(button);
         }
         PointerAction::Up { button, .. } => state.buttons &= !button_bit(button),

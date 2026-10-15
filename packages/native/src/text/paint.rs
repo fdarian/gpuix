@@ -557,6 +557,10 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
         if phase != DispatchPhase::Bubble || e.button != MouseButton::Left {
             return;
         }
+        // As in the DOM, a prevented mousedown starts no selection.
+        if window.default_prevented() {
+            return;
+        }
         if start_region_at(e.position) == Some(false) {
             let mut sel = selection.lock();
             if !sel.is_active() {

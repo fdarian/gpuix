@@ -126,6 +126,20 @@ describe("text selection", () => {
     expect(renderer.dragSelect(21, 30, 900, 30)).toBeNull()
   })
 
+  it("starts no selection from a mousedown a handler prevented", () => {
+    const { render, renderer } = createTestRoot()
+    render(
+      <div
+        style={{ display: "flex", flexDirection: "column", padding: 20 }}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <text style={{ fontSize: 20 }}>hello world</text>
+      </div>
+    )
+
+    expect(renderer.dragSelect(21, 30, 900, 30)).toBeNull()
+  })
+
   it("inherits userSelect none from an ancestor", () => {
     const { render, renderer } = createTestRoot()
     render(
