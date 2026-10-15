@@ -3275,6 +3275,8 @@ text imports no longer need a runtime flag.
 | Link click | `onLinkClick` | `value` (URL) — `<markdown>` only |
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
 | Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
+| Pointer lock change | `onPointerLockChange` | `target` (the locked element, absent once released) — window-level on `render()` |
+| Pointer lock error | `onPointerLockError` | `target` (the element that was asked) — window-level on `render()` |
 
 Every pointer, mouse and drag handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
@@ -3490,6 +3492,65 @@ for it. `hasPointerCapture` answers for the request, so it is `true` right after
 nothing, as in Chrome. `renderer.setPointerCapture(elementId, pointerId)`,
 `releasePointerCapture` and `hasPointerCapture` are the same calls on the
 renderer.
+
+### Pointer lock
+
+`requestPointerLock()` on a host ref hides the cursor and freezes it, so a
+drag-to-adjust number, a camera or a canvas pan can keep turning however far
+the mouse travels, like HTML
+[`requestPointerLock`](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestPointerLock):
+
+```tsx
+const dial = useRef<PublicInstance>(null)
+
+<div
+  ref={dial}
+  onMouseDown={() => dial.current?.requestPointerLock?.()}
+  onMouseMove={(e) => turn(e)}
+/>
+
+render(<App />, {
+  onPointerLockChange(event) {
+    setLocked(event.target !== undefined) // the locked element's id, absent once released
+  },
+  onPointerLockError(event) {
+    console.warn('could not lock', event.target)
+  },
+})
+```
+
+While the lock is held, pointer and mouse events target the lock element, as
+with capture, wherever the mouse is, and `clientX`/`clientY` stay at the
+position the pointer had when the lock began. `renderer.exitPointerLock()` releases it, and
+`renderer.pointerLockElement()` returns the locked element's id or `null`.
+`renderer.requestPointerLock(elementId)` is the same call as the ref's.
+
+Like the DOM's, the request is asynchronous. It returns at once and the next
+frame applies it, so `pointerLockElement()` is still `null` right after the
+call. The outcome arrives as one of two **window-level** callbacks on
+`render()` / `createRoot()`, the same attachment as `onAppearanceChange`, because
+in the DOM they fire at `document`:
+
+- `onPointerLockChange` fires when the lock element changes: the lock was
+  granted, moved to another element, or ended. The event's `target` is the
+  locked element, absent once the lock is gone. A lock ends by
+  `exitPointerLock()`, when the window loses focus (the platform releases it),
+  and when the locked element leaves the tree.
+- `onPointerLockError` fires when a request fails: the element is not in the
+  tree, or the platform refused. `target` is the element that was asked.
+
+Asking again for the element that already holds the lock does nothing. Asking
+for another one moves the lock without releasing the cursor.
+
+Only macOS can lock the pointer (`CGAssociateMouseAndMouseCursorPosition`), and
+only for the active window. On Windows and Linux every request fails with
+`onPointerLockError`.
+
+Under test the offscreen window is never active, so a real lock is always
+refused. `TestRenderer` runs a simulated platform instead: `requestPointerLock`
+and `exitPointerLock` draw the frame they ask for and deliver the events,
+`simulatePointerLockGranting(false)` makes the platform refuse, and
+`simulatePointerLockLost()` drops the lock as a deactivation does.
 
 `onClick` fires on primary-button mouse-up. Use **`onAuxClick`** for the others,
 and read `event.isRightClick`. `onMouseDown` and `onMouseUp` see every

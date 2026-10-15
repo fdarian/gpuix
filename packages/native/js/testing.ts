@@ -108,6 +108,11 @@ interface NativeTestRendererApi extends NativeRenderer {
   hasPointerCapture(elementId: number, pointerId: number): boolean
   clickElement(elementId: number): void
   cancelDrag(): void
+  requestPointerLock(elementId: number): void
+  exitPointerLock(): void
+  pointerLockElement(): number | null
+  simulatePointerLockGranting(granting: boolean): void
+  simulatePointerLockLost(): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
@@ -690,6 +695,35 @@ export class TestRenderer implements NativeRenderer {
   /** Applies from the next simulated pointer input. */
   cancelDrag(): void {
     this.native.cancelDrag()
+  }
+
+  /** The frame it asks for is drawn here, so `onPointerLockChange` or
+   *  `onPointerLockError` has run when this returns. */
+  requestPointerLock(elementId: number): void {
+    this.native.requestPointerLock(elementId)
+    this.dispatchNativeEvents()
+  }
+
+  exitPointerLock(): void {
+    this.native.exitPointerLock()
+    this.dispatchNativeEvents()
+  }
+
+  pointerLockElement(): number | null {
+    return this.native.pointerLockElement()
+  }
+
+  /** Whether the simulated platform grants lock requests. The offscreen test
+   *  window is never key, so a real GPUI lock would always be refused; this
+   *  stands in for a platform that can lock, and off, for one that refuses. */
+  simulatePointerLockGranting(granting: boolean): void {
+    this.native.simulatePointerLockGranting(granting)
+  }
+
+  /** The platform drops the lock, as when the window deactivates. */
+  simulatePointerLockLost(): void {
+    this.native.simulatePointerLockLost()
+    this.dispatchNativeEvents()
   }
 
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {

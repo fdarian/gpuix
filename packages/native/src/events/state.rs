@@ -18,16 +18,18 @@ use crate::retained_tree::RetainedTree;
 /// The only pointer there is: the mouse.
 pub const MOUSE_POINTER_ID: f64 = 1.0;
 
-/// What JS asks of the pointer dispatcher, shared between the renderer handle
-/// and the view's `PointerState`: explicit pointer capture, and ending an
-/// element drag (`cancelDrag`).
+/// What JS asks of the UI thread, shared between the renderer handle and the
+/// view's `PointerState`: explicit pointer capture, ending an element drag
+/// (`cancelDrag`) and pointer lock.
 ///
 /// Calls come from JS threads while the view lives on the UI thread, so a call
-/// only records the request here and the UI thread applies it later: capture
-/// at the next native pointer input, which is when `gotpointercapture` and
-/// `lostpointercapture` fire. `has` reads the request, as Chrome's
+/// only records the request here and the UI thread applies it later. Capture
+/// applies at the next native pointer input, which is when `gotpointercapture`
+/// and `lostpointercapture` fire; `has` reads the request, as Chrome's
 /// `hasPointerCapture` reads the pending capture, so it is true right after
-/// `set`.
+/// `set`. A pointer lock request applies at the next frame (`pointer_lock::apply`),
+/// and `locked_element` reads what that frame granted, as `pointerLockElement`
+/// is null until the lock is.
 #[derive(Clone, Default)]
 pub struct PointerRequests(Arc<Mutex<Requested>>);
 
@@ -38,6 +40,16 @@ struct Requested {
     /// to capture, so `set` ignores it, as Chrome does for a mouse.
     buttons: u32,
     cancel_drag: bool,
+    lock: Option<LockRequest>,
+    locked: Option<u64>,
+}
+
+/// The last pointer lock call. Only the last one counts: a request followed by
+/// an exit before the next frame is no request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LockRequest {
+    Enter(u64),
+    Exit,
 }
 
 impl PointerRequests {
@@ -49,6 +61,30 @@ impl PointerRequests {
 
     pub(super) fn take_drag_cancel(&self) -> bool {
         std::mem::take(&mut self.0.lock().unwrap().cancel_drag)
+    }
+
+    /// Asks for the pointer lock on `id`. An element that is not connected is
+    /// not an error here: the frame that applies the request fires
+    /// `pointerlockerror`, as the DOM does.
+    pub fn request_lock(&self, id: u64) {
+        self.0.lock().unwrap().lock = Some(LockRequest::Enter(id));
+    }
+
+    pub fn exit_lock(&self) {
+        self.0.lock().unwrap().lock = Some(LockRequest::Exit);
+    }
+
+    /// The element that holds the pointer lock, once a frame granted it.
+    pub fn locked_element(&self) -> Option<u64> {
+        self.0.lock().unwrap().locked
+    }
+
+    pub(super) fn take_lock_request(&self) -> Option<LockRequest> {
+        self.0.lock().unwrap().lock.take()
+    }
+
+    pub(super) fn publish_locked(&self, element: Option<u64>) {
+        self.0.lock().unwrap().locked = element;
     }
 
     /// Throws for an element that is not connected, as the DOM's `InvalidStateError`.
@@ -121,6 +157,15 @@ pub(super) struct DragOver {
     pub target: u64,
 }
 
+/// The element that holds the pointer lock. While it does, it is the target of
+/// every pointer and mouse event, and the pointer reports one position.
+pub(super) struct PointerLock {
+    pub element: u64,
+    /// Where the pointer was when the lock began, and where every event says it
+    /// is until the lock ends. `None` until an input shows where that is.
+    pub position: Option<(f64, f64)>,
+}
+
 /// The target the last pointer input produced. `None` outside: no input yet.
 /// `Some(None)`: the pointer is outside every host element.
 pub type ObservedTarget = Rc<Cell<Option<Option<u64>>>>;
@@ -141,6 +186,9 @@ pub struct PointerState {
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
     pub(super) requests: PointerRequests,
+    pub(super) lock: Option<PointerLock>,
+    /// Where the last input put the pointer, to freeze it there on a lock.
+    pub(super) last_position: Option<(f64, f64)>,
     pub(super) file_drag: Option<DragOver>,
     /// A press on a `draggable` element that has not moved far enough to drag it.
     pub(super) pending_drag: Option<PendingDrag>,
@@ -167,6 +215,40 @@ impl PointerState {
     /// The element that holds explicit pointer capture, once an input applied it.
     pub fn explicit_capture(&self) -> Option<u64> {
         self.explicit
+    }
+
+    /// The element that holds the pointer lock, once a frame applied it.
+    pub fn lock_element(&self) -> Option<u64> {
+        self.lock.as_ref().map(|lock| lock.element)
+    }
+
+    /// The pointer position events report for an input at `position`: the
+    /// frozen one while locked, `position` itself otherwise.
+    pub(super) fn position_for(&mut self, position: (f64, f64)) -> (f64, f64) {
+        match &mut self.lock {
+            Some(lock) => *lock.position.get_or_insert(position),
+            None => {
+                self.last_position = Some(position);
+                position
+            }
+        }
+    }
+
+    /// Locks to `element`, keeping the frozen position when the lock only moves
+    /// to another element.
+    pub(super) fn begin_lock(&mut self, element: u64) {
+        let position = self
+            .lock
+            .as_ref()
+            .and_then(|lock| lock.position)
+            .or(self.last_position);
+        self.lock = Some(PointerLock { element, position });
+        self.requests.publish_locked(Some(element));
+    }
+
+    pub(super) fn end_lock(&mut self) {
+        self.lock = None;
+        self.requests.publish_locked(None);
     }
 
     pub fn with_requests(requests: PointerRequests) -> Self {

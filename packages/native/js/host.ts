@@ -752,6 +752,9 @@ export type NativeRenderer = MutationHost &
       | "hasPointerCapture"
       | "clickElement"
       | "cancelDrag"
+      | "requestPointerLock"
+      | "exitPointerLock"
+      | "pointerLockElement"
       | "setImage"
       | "setImagePixels"
       | "getScrollOffset"
@@ -836,6 +839,22 @@ export interface WindowKeyEventHandlers {
   /** Window-level appearance. Fires when the effective appearance flips
    *  between light and dark. `event.value` is `"light"` or `"dark"`. */
   onAppearanceChange?: WindowEventHandler
+  /**
+   * Window-level, like the DOM's document `pointerlockchange`. Fires when the
+   * pointer lock element changes: after a granted `requestPointerLock()`, after
+   * `exitPointerLock()`, when the platform drops the lock (the window lost
+   * focus) and when the locked element leaves the tree. `event.target` is the
+   * locked element's id, absent once the lock is gone. Read the same thing
+   * from `renderer.pointerLockElement()`.
+   */
+  onPointerLockChange?: WindowEventHandler
+  /**
+   * Window-level, like the DOM's document `pointerlockerror`. Fires when a
+   * `requestPointerLock()` fails: the element is not in the tree, or the
+   * platform refused (the window is not active, or the platform cannot lock the
+   * pointer). `event.target` is the element that was asked.
+   */
+  onPointerLockError?: WindowEventHandler
   /**
    * Tab and Shift+Tab move focus through `tabIndex` elements. Defaults to
    * true. Call `event.preventDefault()` in any `onKeyDown` to keep one Tab.

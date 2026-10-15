@@ -45,6 +45,7 @@ const SECONDARY_BUTTON: u32 = 2;
 const DOUBLE_CLICK: u32 = 2;
 const MOUSE_DOWN_OUTSIDE: &str = "mousedownoutside";
 
+#[derive(Clone)]
 pub enum PointerAction {
     Move {
         pressed_button: Option<u32>,
@@ -72,6 +73,7 @@ pub enum PointerAction {
     CancelDrag,
 }
 
+#[derive(Clone)]
 pub struct PointerSample {
     pub action: PointerAction,
     /// Window coordinates.
@@ -340,6 +342,19 @@ fn button_bit(button: u32) -> u32 {
 }
 
 pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
+    let position = state.position_for(sample.position);
+    if position == sample.position {
+        return dispatch_at(state, tree, sample);
+    }
+    // A locked pointer reports the position it was locked at, whatever the platform says.
+    let frozen = PointerSample {
+        position,
+        ..sample.clone()
+    };
+    dispatch_at(state, tree, &frozen)
+}
+
+fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
     let geometric = sample
         .hits
         .iter()
@@ -393,9 +408,10 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
     end_file_drag(state, &mut emitter);
     apply_capture(state, &mut emitter);
     // A captured element keeps the pointer: it is the hover target and takes
-    // every event until the release, wherever the pointer is.
-    restyle |= update_hover(state, &mut emitter, state.explicit.or(geometric));
-    let target = state.explicit.or(geometric);
+    // every event until the release, wherever the pointer is. So does the
+    // element that holds the pointer lock, and it outranks capture.
+    let target = pinned_target(state, tree).or(geometric);
+    restyle |= update_hover(state, &mut emitter, target);
 
     match sample.action {
         PointerAction::Move { pressed_button } => {
@@ -527,6 +543,15 @@ fn end_file_drag(state: &mut PointerState, emitter: &mut Emitter) {
     if emitter.tree.elements.contains_key(&drag.target) {
         emitter.emit_drag("dragleave", drag.target, None, None);
     }
+}
+
+/// The element that keeps the pointer: the lock element, else the capturing one.
+/// A lock element that left the tree since the frame that granted it is none.
+fn pinned_target(state: &PointerState, tree: &RetainedTree) -> Option<u64> {
+    state
+        .lock_element()
+        .filter(|id| is_connected(tree, *id))
+        .or(state.explicit)
 }
 
 /// Makes the capture JS asked for the one in force, firing `lostpointercapture`
@@ -710,7 +735,7 @@ fn release(
         restyle |= set_active(state, tree, Vec::new());
     }
     if released {
-        restyle |= update_hover(state, emitter, geometric);
+        restyle |= update_hover(state, emitter, pinned_target(state, tree).or(geometric));
     }
     restyle
 }
@@ -1273,7 +1298,7 @@ mod tests {
     ];
 
     /// Pressed on b(3) with capture requested for c(4), before the next input.
-    fn pressed_with_requests_on_c(tree: &RetainedTree) -> PointerState {
+    fn pressed_with_capture_on_c(tree: &RetainedTree) -> PointerState {
         let mut state = PointerState::default();
         dispatch(&mut state, tree, &down(0, 1, chain_of(&[3, 2, 1])));
         state.requests.set(tree, 4, 1.0).unwrap();
@@ -1287,7 +1312,7 @@ mod tests {
             "mousemove",
             "mouseup",
         ]));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["pointermove@4", "mousemove@4"]);
         assert_eq!(output.events[0].path, [4, 1]);
@@ -1298,7 +1323,7 @@ mod tests {
     #[test]
     fn capture_applies_from_the_next_input_with_got_first_and_lost_after_the_up() {
         let tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),
@@ -1333,7 +1358,7 @@ mod tests {
             "mouseup",
             "click",
         ]));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
         assert_eq!(
@@ -1374,7 +1399,7 @@ mod tests {
     #[test]
     fn releasing_from_js_loses_the_capture_at_the_next_input() {
         let tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         state.requests.release(4, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
@@ -1392,7 +1417,7 @@ mod tests {
     #[test]
     fn capture_ends_without_an_event_when_the_element_is_removed() {
         let mut tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         tree.destroy_element(4);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
@@ -1405,7 +1430,7 @@ mod tests {
     #[test]
     fn capture_survives_until_the_last_button_is_up() {
         let tree = tree(&listening_everywhere(&["lostpointercapture"]));
-        let mut state = pressed_with_requests_on_c(&tree);
+        let mut state = pressed_with_capture_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &up(2, 1, chain_of(&[3, 2, 1])));
@@ -2014,5 +2039,74 @@ mod tests {
         tree.destroy_element(2);
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
         assert_eq!(names(&output), ["dragenter@4", "drop@4"]);
+    }
+
+    fn move_to(x: f64, y: f64, hits: Vec<Hit>) -> PointerSample {
+        PointerSample {
+            position: (x, y),
+            ..mv(hits)
+        }
+    }
+
+    #[test]
+    fn the_lock_element_takes_every_pointer_and_mouse_event() {
+        let tree = tree(&listening_everywhere(&["pointermove", "mousemove", "mouseup"]));
+        let mut state = PointerState::default();
+        state.begin_lock(4);
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@4", "mousemove@4"]);
+        assert!(state.is_hovered(4) && !state.is_hovered(3));
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mouseup@4"]);
+    }
+
+    #[test]
+    fn a_locked_pointer_reports_the_position_it_was_locked_at() {
+        let tree = tree(&[(4, "mousemove")]);
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &move_to(15.0, 30.0, chain_of(&[3, 2, 1])));
+        state.begin_lock(4);
+        let output = dispatch(&mut state, &tree, &move_to(90.0, 95.0, chain_of(&[3, 2, 1])));
+        let payload = &output.into_payloads()[0];
+        assert_eq!((payload.client_x, payload.client_y), (Some(15.0), Some(30.0)));
+        assert_eq!((payload.x, payload.y), (Some(15.0), Some(30.0)));
+
+        state.end_lock();
+        let output = dispatch(&mut state, &tree, &move_to(90.0, 95.0, chain_of(&[4, 1])));
+        let payload = &output.into_payloads()[0];
+        assert_eq!((payload.client_x, payload.client_y), (Some(90.0), Some(95.0)));
+    }
+
+    #[test]
+    fn the_lock_outranks_a_capture() {
+        let tree = tree(&listening_everywhere(&["mousemove"]));
+        let mut state = pressed_with_capture_on_c(&tree);
+        state.begin_lock(2);
+        let output = dispatch(&mut state, &tree, &held_move(90.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousemove@2"]);
+    }
+
+    #[test]
+    fn a_lock_element_that_left_the_tree_pins_nothing() {
+        let mut tree = tree(&listening_everywhere(&["mousemove"]));
+        let mut state = PointerState::default();
+        state.begin_lock(4);
+        tree.destroy_element(4);
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousemove@3"]);
+    }
+
+    #[test]
+    fn hover_returns_to_what_is_under_the_pointer_when_the_lock_ends() {
+        let tree = tree(&listening_everywhere(&["mouseenter", "mouseleave"]));
+        let mut state = PointerState::default();
+        state.begin_lock(4);
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        state.end_lock();
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(
+            names(&output),
+            ["mouseleave@4", "mouseenter@2", "mouseenter@3"]
+        );
     }
 }

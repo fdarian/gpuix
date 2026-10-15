@@ -281,6 +281,8 @@ function mountRoot(args: {
     onKeyUp,
     onSelectionChange,
     onAppearanceChange,
+    onPointerLockChange,
+    onPointerLockError,
     tabNavigation,
     keyboardFocusDim,
   } = options
@@ -293,6 +295,8 @@ function mountRoot(args: {
     onKeyUp,
     onSelectionChange,
     onAppearanceChange,
+    onPointerLockChange,
+    onPointerLockError,
     tabNavigation,
     keyboardFocusDim,
     onUncaughtError: (error, errorInfo) => {
@@ -381,6 +385,8 @@ export function render(node: ReactNode, options: RenderOptions = {}): Root {
     onKeyUp,
     onSelectionChange,
     onAppearanceChange,
+    onPointerLockChange,
+    onPointerLockError,
     tabNavigation,
     keyboardFocusDim,
     renderer: injected,
@@ -431,6 +437,8 @@ export function render(node: ReactNode, options: RenderOptions = {}): Root {
     onKeyUp,
     onSelectionChange,
     onAppearanceChange,
+    onPointerLockChange,
+    onPointerLockError,
     tabNavigation,
     keyboardFocusDim,
   }

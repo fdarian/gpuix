@@ -2,7 +2,7 @@ import type { JSX } from "solid-js"
 import {
   TestRenderer,
   hasNativeTestRenderer,
-  type TestRendererOptions,
+  type TestWindowOptions,
 } from "@gpuix/native/testing"
 import { createRoot, type Root } from "./root.js"
 
@@ -16,13 +16,22 @@ export interface TestRoot {
   unmount(): void
 }
 
-export function createTestRoot(options: TestRendererOptions = {}): TestRoot {
+export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
   let root!: Root
   const renderer = new TestRenderer({
     ...options,
     dispatchEvent: (event) => root.dispatch(event),
   })
-  root = createRoot(renderer)
+  root = createRoot(renderer, {
+    onKeyDown: options.onKeyDown,
+    onKeyUp: options.onKeyUp,
+    onSelectionChange: options.onSelectionChange,
+    onAppearanceChange: options.onAppearanceChange,
+    onPointerLockChange: options.onPointerLockChange,
+    onPointerLockError: options.onPointerLockError,
+    tabNavigation: options.tabNavigation,
+    keyboardFocusDim: options.keyboardFocusDim,
+  })
   return {
     root,
     renderer,

@@ -47,6 +47,16 @@ describe("shared host runtime", () => {
     expect(() => createElementMethods({} as NativeRenderer, 5).click()).toThrow("clickElement")
   })
 
+  it("requests the pointer lock for its own element", () => {
+    const locked: number[] = []
+    const renderer = { requestPointerLock: (id: number) => locked.push(id) } as unknown as NativeRenderer
+    createElementMethods(renderer, 5).requestPointerLock()
+    expect(locked).toEqual([5])
+    expect(() => createElementMethods({} as NativeRenderer, 5).requestPointerLock()).toThrow(
+      "requestPointerLock"
+    )
+  })
+
   it("queues mutations from an applyBatch-only host", () => {
     const batches: unknown[][] = []
     const renderer: MutationHost = {
@@ -283,5 +293,23 @@ describe("shared host runtime", () => {
         value: "dark",
       })
     ).toBe(false)
+  })
+
+  it("routes pointer lock events to their root handlers, with no element id", () => {
+    const state = createRendererState(new RecordingRenderer())
+    const seen: string[] = []
+    state.attach({
+      onPointerLockChange: (event) => seen.push(`change:${event.elementId}:${event.target}`),
+      onPointerLockError: (event) => seen.push(`error:${event.elementId}:${event.target}`),
+    })
+    expect(state.dispatch({ elementId: 0, eventType: "pointerlockchange", target: 7 })).toBe(true)
+    expect(state.dispatch({ elementId: 0, eventType: "pointerlockerror", target: 8 })).toBe(true)
+    expect(seen).toEqual(["change:0:7", "error:0:8"])
+  })
+
+  it("drops a pointer lock event nobody handles", () => {
+    const state = createRendererState(new RecordingRenderer())
+    state.attach({ onPointerLockError: () => {} })
+    expect(state.dispatch({ elementId: 0, eventType: "pointerlockchange" })).toBe(false)
   })
 })

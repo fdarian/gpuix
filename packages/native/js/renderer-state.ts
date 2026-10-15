@@ -18,6 +18,8 @@ export interface RendererRootHandlers {
   onWindowKeyUp?: WindowKeyEventHandler
   onSelectionChange?: WindowEventHandler
   onAppearanceChange?: WindowEventHandler
+  onPointerLockChange?: WindowEventHandler
+  onPointerLockError?: WindowEventHandler
   /** See `WindowKeyEventHandlers.tabNavigation`. Defaults to true. */
   tabNavigation?: boolean
   onEvent?: (event: EventPayload) => void
@@ -235,6 +237,17 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (event.eventType === "appearanceChange") {
         if (event.elementId !== root.windowAppearanceEventId) return false
         const handler = root.handlers.onAppearanceChange
+        if (!handler) return false
+        schedule(() => handler({ ...event, elementId: 0 }, renderer))
+        return true
+      }
+      // Document-level in the DOM, so no element id or listener flag: native
+      // fires them only for a lock JS asked for or held.
+      if (event.eventType === "pointerlockchange" || event.eventType === "pointerlockerror") {
+        const handler =
+          event.eventType === "pointerlockchange"
+            ? root.handlers.onPointerLockChange
+            : root.handlers.onPointerLockError
         if (!handler) return false
         schedule(() => handler({ ...event, elementId: 0 }, renderer))
         return true

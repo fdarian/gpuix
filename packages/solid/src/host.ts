@@ -96,6 +96,10 @@ export class HostElement {
     this.methods().click()
   }
 
+  requestPointerLock(): void {
+    this.methods().requestPointerLock()
+  }
+
   private methods(): ElementMethods {
     if (!this.root) throw new Error("The element is not in a root")
     return createElementMethods(this.root.nativeRenderer, this.id)

@@ -110,6 +110,7 @@ export interface Instance {
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean
   click?(): void
+  requestPointerLock?(): void
 }
 
 export interface ImgInstance extends Instance {

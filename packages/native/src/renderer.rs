@@ -2413,6 +2413,31 @@ impl GpuixRenderer {
         self.pointer_requests.cancel_drag();
     }
 
+    /// Lock the pointer to `element_id`: the cursor hides and stops, and
+    /// movement is reported as `movementX`/`movementY`. Applies at the next
+    /// frame, which this asks for; that frame fires `pointerlockchange` or, when
+    /// the element is not connected or the platform refuses, `pointerlockerror`.
+    #[napi]
+    pub fn request_pointer_lock(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        self.pointer_requests.request_lock(id);
+        self.request_invalidate()
+    }
+
+    /// Release the pointer lock, if held, at the next frame.
+    #[napi]
+    pub fn exit_pointer_lock(&self) -> Result<()> {
+        self.pointer_requests.exit_lock();
+        self.request_invalidate()
+    }
+
+    /// The element that holds the pointer lock, or null. Follows the frames: it
+    /// is still null right after `requestPointerLock`.
+    #[napi]
+    pub fn pointer_lock_element(&self) -> Option<f64> {
+        self.pointer_requests.locked_element().map(|id| id as f64)
+    }
+
     /// Deliver the click an activation that is not a pointer press makes on
     /// `element_id`, such as Enter on a button: a `click` with `detail` 0 that
     /// bubbles along the element's path. Arrives through the event callback.
@@ -3496,6 +3521,24 @@ impl WebGpuixRenderer {
         self.pointer_requests.cancel_drag();
     }
 
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = requestPointerLock)]
+    pub fn request_pointer_lock(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        self.pointer_requests.request_lock(id);
+        update_web_window_without_view(|window, _cx| window.refresh())
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = exitPointerLock)]
+    pub fn exit_pointer_lock(&self) -> Result<(), wasm_bindgen::JsValue> {
+        self.pointer_requests.exit_lock();
+        update_web_window_without_view(|window, _cx| window.refresh())
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = pointerLockElement)]
+    pub fn pointer_lock_element(&self) -> Option<f64> {
+        self.pointer_requests.locked_element().map(|id| id as f64)
+    }
+
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = clickElement)]
     pub fn click_element(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
@@ -3824,6 +3867,9 @@ pub(crate) struct GpuixView {
     window_appearance_change: bool,
     window_appearance_event_id: u64,
     appearance_subscription: Option<gpui::Subscription>,
+    /// Stands in for the platform's pointer lock in the test renderer, whose
+    /// offscreen window is never key and so can never take a real one.
+    simulated_platform: Option<crate::events::pointer_lock::SimulatedPlatform>,
     /// Last identity delivered through `selectionChange`. Only written once an
     /// event is really queued, so adding the listener later still reports.
     reported_selection: Option<u64>,
@@ -4150,6 +4196,7 @@ impl GpuixView {
             window_appearance_change: false,
             window_appearance_event_id: 0,
             appearance_subscription: None,
+            simulated_platform: None,
             reported_selection: None,
             focus_handles: HashMap::new(),
             pending_focus_element: None,
@@ -4338,6 +4385,32 @@ impl GpuixView {
                     },
                 );
             }));
+    }
+
+    pub(crate) fn simulate_platform_pointer_lock(
+        &mut self,
+        platform: crate::events::pointer_lock::SimulatedPlatform,
+    ) {
+        self.simulated_platform = Some(platform);
+    }
+
+    /// Applies the pointer lock JS asked for and reports what came of it as
+    /// `pointerlockchange` and `pointerlockerror`. Document-level events: the
+    /// element, when there is one, is the payload's `target`.
+    fn apply_pointer_lock(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) {
+        use crate::events::pointer_lock::{apply, GpuiLock};
+        let events = {
+            let tree = self.tree.lock().unwrap();
+            match self.simulated_platform.clone() {
+                Some(mut platform) => apply(&mut self.pointer, &tree, &mut platform),
+                None => apply(&mut self.pointer, &tree, &mut GpuiLock { window, cx }),
+            }
+        };
+        for event in events {
+            emit_event_full(&self.event_callback, 0, event.event_type(), |payload| {
+                payload.target = event.element().map(|id| id as f64);
+            });
+        }
     }
 
     /// Emit `selectionChange` when the selected range set changed this frame.
@@ -5339,6 +5412,7 @@ impl gpui::Render for GpuixView {
         use gpui::IntoElement;
 
         window.set_window_title(&self.window_title);
+        self.apply_pointer_lock(window, cx);
 
         #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         if let Some(id) = PENDING_FOCUS_ELEMENT.with(|pending| pending.borrow_mut().take()) {

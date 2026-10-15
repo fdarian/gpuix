@@ -186,6 +186,20 @@ export declare class GpuixRenderer {
    */
   cancelDrag(): void
   /**
+   * Lock the pointer to `element_id`: the cursor hides and stops, and
+   * movement is reported as `movementX`/`movementY`. Applies at the next
+   * frame, which this asks for; that frame fires `pointerlockchange` or, when
+   * the element is not connected or the platform refuses, `pointerlockerror`.
+   */
+  requestPointerLock(elementId: number): void
+  /** Release the pointer lock, if held, at the next frame. */
+  exitPointerLock(): void
+  /**
+   * The element that holds the pointer lock, or null. Follows the frames: it
+   * is still null right after `requestPointerLock`.
+   */
+  pointerLockElement(): number | null
+  /**
    * Deliver the click an activation that is not a pointer press makes on
    * `element_id`, such as Enter on a button: a `click` with `detail` 0 that
    * bubbles along the element's path. Arrives through the event callback.
@@ -444,6 +458,24 @@ export declare class TestGpuixRenderer {
    * next simulated pointer input.
    */
   cancelDrag(): void
+  /**
+   * Lock the pointer to `element_id`. The frame it asks for is drawn here,
+   * so the outcome is in `drainEvents` when this returns.
+   */
+  requestPointerLock(elementId: number): void
+  exitPointerLock(): void
+  pointerLockElement(): number | null
+  /**
+   * Whether the simulated platform grants lock requests, as one that can lock
+   * the pointer does. Off, a request fails the way GPUI's does when the
+   * platform refuses.
+   */
+  simulatePointerLockGranting(granting: boolean): void
+  /**
+   * The platform drops the lock, as it does when the window deactivates. The
+   * next frame notices, so this draws one.
+   */
+  simulatePointerLockLost(): void
   /**
    * The click an activation that is not a pointer press makes on `element_id`;
    * collected for `drainEvents` like every other event.

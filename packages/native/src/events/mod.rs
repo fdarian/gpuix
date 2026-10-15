@@ -4,6 +4,7 @@ pub mod file_drag;
 pub mod ids;
 pub mod listeners;
 pub mod path;
+pub mod pointer_lock;
 pub mod state;
 pub mod state_styles;
 pub mod synthetic_click;

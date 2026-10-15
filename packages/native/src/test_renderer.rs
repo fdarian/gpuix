@@ -212,6 +212,9 @@ pub struct TestGpuixRenderer {
     /// selection after simulating a drag.
     selection: crate::text::SharedSelection,
     pointer_requests: crate::events::state::PointerRequests,
+    /// The platform's side of pointer lock, which the offscreen window cannot
+    /// provide: it is never key, so a real request is always refused.
+    platform: crate::events::pointer_lock::SimulatedPlatform,
 }
 
 #[napi]
@@ -239,6 +242,8 @@ impl TestGpuixRenderer {
         let selection_clone = selection.clone();
         let pointer_requests = crate::events::state::PointerRequests::default();
         let pointer_requests_clone = pointer_requests.clone();
+        let simulated_platform = crate::events::pointer_lock::SimulatedPlatform::default();
+        let simulated_platform_clone = simulated_platform.clone();
 
         let platform = gpui_platform::current_platform(false);
         let mut cx = gpui::VisualTestAppContext::new(platform);
@@ -260,6 +265,7 @@ impl TestGpuixRenderer {
                         pointer_requests_clone,
                     );
                     view.observe_appearance(window, cx);
+                    view.simulate_platform_pointer_lock(simulated_platform_clone);
                     crate::events::enable_dom_hit_testing(window);
                     view
                 })
@@ -298,6 +304,7 @@ impl TestGpuixRenderer {
             events,
             selection,
             pointer_requests,
+            platform: simulated_platform,
         })
     }
 
@@ -1009,6 +1016,42 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn cancel_drag(&self) {
         self.pointer_requests.cancel_drag();
+    }
+
+    /// Lock the pointer to `element_id`. The frame it asks for is drawn here,
+    /// so the outcome is in `drainEvents` when this returns.
+    #[napi]
+    pub fn request_pointer_lock(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        self.pointer_requests.request_lock(id);
+        self.flush()
+    }
+
+    #[napi]
+    pub fn exit_pointer_lock(&self) -> Result<()> {
+        self.pointer_requests.exit_lock();
+        self.flush()
+    }
+
+    #[napi]
+    pub fn pointer_lock_element(&self) -> Option<f64> {
+        self.pointer_requests.locked_element().map(|id| id as f64)
+    }
+
+    /// Whether the simulated platform grants lock requests, as one that can lock
+    /// the pointer does. Off, a request fails the way GPUI's does when the
+    /// platform refuses.
+    #[napi]
+    pub fn simulate_pointer_lock_granting(&self, granting: bool) {
+        self.platform.set_granting(granting);
+    }
+
+    /// The platform drops the lock, as it does when the window deactivates. The
+    /// next frame notices, so this draws one.
+    #[napi]
+    pub fn simulate_pointer_lock_lost(&self) -> Result<()> {
+        self.platform.drop_lock();
+        self.flush()
     }
 
     /// The click an activation that is not a pointer press makes on `element_id`;
