@@ -209,14 +209,18 @@ fn apply_longhands_to_slots<K: Kind>(
     colors: &ColorContext,
 ) -> Vec<Slot> {
     if let Some(images) = longhands.image.and_then(|value| parse_images(value, colors)) {
+        // The image list sets how many layers there are; the shorthand's other
+        // lists repeat to cover them, as CSS does for any list shorter than it.
+        let shorthand = std::mem::take(&mut slots);
         slots = images
             .into_iter()
             .enumerate()
             .map(|(index, image)| {
-                let mut slot = slots
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| Slot::new(None, K::ORIGIN));
+                let mut slot = if shorthand.is_empty() {
+                    Slot::new(None, K::ORIGIN)
+                } else {
+                    shorthand[index % shorthand.len()].clone()
+                };
                 slot.image = image;
                 slot
             })
@@ -677,5 +681,30 @@ mod tests {
         assert_eq!(shorthand("linear-gradient(red, blue) 0 0 / 10px -5%"), Resolved::default());
         // Only the size is non-negative: a negative position is fine.
         assert_eq!(shorthand("linear-gradient(red, blue) -10px -5px").layers.len(), 1);
+    }
+
+    #[test]
+    fn an_image_longhand_with_more_layers_repeats_the_shorthands_lists() {
+        let resolved = resolve(
+            &Inputs {
+                shorthand: Some(
+                    "linear-gradient(red, red) no-repeat 5px 5px / 20px, linear-gradient(blue, blue) repeat-x content-box",
+                ),
+                image: Some(
+                    "linear-gradient(red, blue), linear-gradient(blue, red), linear-gradient(red, red), linear-gradient(blue, blue)",
+                ),
+                ..Default::default()
+            },
+            &context(),
+        );
+        assert_eq!(resolved.layers.len(), 4);
+        let no_repeat = BackgroundRepeat { x: RepeatStyle::NoRepeat, y: RepeatStyle::NoRepeat };
+        let repeat_x = BackgroundRepeat { x: RepeatStyle::Repeat, y: RepeatStyle::NoRepeat };
+        let repeats: Vec<_> = resolved.layers.iter().map(|layer| layer.repeat).collect();
+        assert_eq!(repeats, vec![no_repeat, repeat_x, no_repeat, repeat_x]);
+        let sizes: Vec<_> = resolved.layers.iter().map(|layer| layer.size).collect();
+        assert_eq!(sizes[2], sizes[0]);
+        assert_ne!(sizes[2], BackgroundSize::Auto);
+        assert_eq!(resolved.layers[3].origin, BackgroundBox::ContentBox);
     }
 }
