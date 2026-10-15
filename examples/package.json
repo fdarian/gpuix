@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "blurred-window": "bun --hot blurred-window.tsx",
+    "titlebar": "bun --hot titlebar.tsx",
     "counter": "bun --hot counter.tsx",
     "diff": "bun --hot diff.tsx",
     "test": "vitest run --exclude '**/*.perf.test.tsx'",
