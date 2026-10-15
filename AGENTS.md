@@ -74,6 +74,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 | Area | `packages/native/src/` | `packages/native/js/` | `zed/crates/gpui/src/` |
 |---|---|---|---|
 | Pointer events, hover/active, drag | `events/` (`dispatcher`, `listeners`, `state`, `path`, `ids`, `element_drag`, `file_drag`, `pointer_lock`, `synthetic_click`) | `events/` (`dispatch`, `route`, `event-props`, `drag`, `window-target`) | `window.rs` (`Hitbox`, `dom_hit_test`) |
+| Window drag regions (`appRegion`) | `events/app_region.rs`, the press and release listeners in `events/listeners.rs` | `StyleDesc.appRegion` in `host.ts` | `window.rs` (`window_control_area_at`), `elements/div.rs` (`window_client_area`) |
 | Synchronous dispatch | `events/sync_dispatch.rs` | `renderer-state.ts` (`dispatchSync`), `runtime.ts` | |
 | Keyboard, focus, forms, a11y | `events/keyboard.rs`, `focus.rs`, `forms.rs`, `accessibility.rs`, `accessibility/` | `events/keyboard-defaults.ts`, `focus.ts`, `forms.ts`, `aria.ts` | `_accessibility.rs` |
 | Scrolling | `scroll.rs`, `scrollbar.rs` | `scroll.ts` | `scroll_routing.rs`, `elements/div.rs`, `elements/list.rs`, `sticky.rs` |
@@ -139,6 +140,7 @@ Rules that sit in the dispatcher and are easy to miss:
 - A disabled form control gets no `click`, `auxclick` or `dblclick` (`RetainedTree::in_disabled_form_control`, checked in `dispatcher::release`). `element.click()` and the accessibility click skip it as well (`events/synthetic_click.rs`). Pointer and mouse move events still reach it.
 - `mousedownoutside` is gpuix's own event, delivered to each listener whose logical subtree does not contain the press target, and it does not bubble.
 - `contextmenu` fires on mousedown, not mouseup, for the secondary button and, on macOS only, for ctrl+primary.
+- **`appRegion` is not hit testing.** It inherits (`Inherited::descend`) and applies only when the window is `titlebarTransparent` (`app_owns_titlebar_drag` is set from the same option, so AppKit does not drag the top strip itself). Each host element with a value registers its box with GPUI, and `Window::window_control_area_at` picks the last registered box under the pointer in paint order; z-order, `pointerEvents`, clipping and `inert` do not take part. A primary press in a drag region never reaches the page: the capture listener starts `Window::start_window_move` (macOS needs the mouse-down being dispatched) and, on Windows, leaves the press unhandled so `WM_NCHITTEST`'s `HTCAPTION` does the drag. With no button held the pointer over a region is outside the window as far as the dispatcher is concerned (`app_region::hides_pointer`). The test renderer records the window actions (`takeSimulatedWindowActions`) instead of performing them.
 
 Not in the dispatcher: keys (`events/keyboard.rs`), focus events (`GpuixView::observe_focus`), the VoiceOver press (`apply_a11y_click`), `scroll`, `onLayout` and observer reports (paint), and transition and animation events (`emit_bubbling_event` in `renderer.rs`, which gives them `target` and `path` so they bubble).
 
