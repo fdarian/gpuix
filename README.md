@@ -1715,9 +1715,9 @@ function DeferredRemoval() {
 
 `popLayout` reads the box the child last painted, and its parent's, through
 `getElementBounds`, then sets `position: 'absolute'` with `top`, `left`, `width`
-and `height` relative to the parent. Absolute children are placed against their
-parent in GPUIX, so the parent needs no `position: 'relative'`. The parent's
-border is not subtracted. The child must take `style` (a `motion.*` or a host
+and `height` relative to the parent. As in CSS, an absolute child is placed
+against its nearest positioned ancestor, so give the parent `position:
+'relative'`. The parent's border is not subtracted. The child must take `style` (a `motion.*` or a host
 element) and, in React, a `ref`; a custom component that spreads neither is not
 pinned. Add `layout` to the siblings, as above, to glide them into the gap
 instead of jumping. Bring a leaving child back and it returns to flow.

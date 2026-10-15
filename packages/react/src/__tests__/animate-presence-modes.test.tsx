@@ -123,7 +123,7 @@ describeNative('AnimatePresence mode="wait"', () => {
 describeNative('AnimatePresence mode="popLayout"', () => {
   function List(props: { items: string[]; mode?: "popLayout" | "sync" }) {
     return (
-      <div style={column}>
+      <div style={{ ...column, position: "relative" }}>
         <AnimatePresence mode={props.mode ?? "popLayout"}>
           {props.items.map((item) => (
             <motion.div
@@ -184,7 +184,7 @@ describeNative('AnimatePresence mode="popLayout"', () => {
   it("keeps the box inside a parent that has padding", () => {
     const { render, renderer } = createTestRoot()
     const app = (items: string[]) => (
-      <div style={{ ...column, paddingLeft: 30, paddingTop: 10 }}>
+      <div style={{ ...column, position: "relative", paddingLeft: 30, paddingTop: 10 }}>
         <AnimatePresence mode="popLayout">
           {items.map((item) => (
             <motion.div

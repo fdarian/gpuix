@@ -68,7 +68,7 @@ export interface AnimatePresenceProps {
    * `"sync"` (default): enter and exit together. `"wait"`: a new child
    * renders only after every exit is done. `"popLayout"`: a leaving child is
    * taken out of flow at its last box inside its parent, so siblings reflow
-   * at once. The child must take `style` and `ref` (a `motion.*` or a host
+   * at once; the parent must be positioned, as in CSS. The child must take `style` and `ref` (a `motion.*` or a host
    * element); `getElementBounds` supplies the box.
    */
   mode?: PresenceMode
