@@ -207,6 +207,47 @@ describeNative('AnimatePresence mode="popLayout"', () => {
     expect(boundsOf(renderer, "b")).toMatchObject({ x: before.x, y: before.y, width: before.width, height: before.height })
   })
 
+  it("paints a pinned child where it was inside a bordered, padded, scrolled parent with a margin", () => {
+    const { render, renderer } = createTestRoot()
+    const app = (items: string[]) => (
+      <div style={{ paddingLeft: 30, paddingTop: 10 }}>
+        <div
+          testId="scroller"
+          style={{
+            ...column,
+            height: 60,
+            position: "relative",
+            overflow: "scroll",
+            borderWidth: 2,
+            paddingLeft: 6,
+            paddingTop: 4,
+          }}
+        >
+          <AnimatePresence mode="popLayout">
+            {items.map((item) => (
+              <motion.div
+                key={item}
+                testId={item}
+                initial={false}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1, ease: "linear" }}
+                style={{ height: 20, margin: 8, flexShrink: 0 }}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
+    )
+    render(app(["a", "b", "c", "d"]))
+    renderer.scrollTo(renderer.findByTestId("scroller").id, 0, -30)
+    const before = boundsOf(renderer, "b")
+
+    renderer.clockPause()
+    render(app(["a", "c", "d"]))
+    expect(boundsOf(renderer, "b")).toEqual(before)
+  })
+
   it("leaves siblings in the way of the exit in sync mode", () => {
     const { render, renderer } = createTestRoot()
     render(<List items={["a", "b"]} mode="sync" />)

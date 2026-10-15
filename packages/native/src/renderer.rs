@@ -8847,6 +8847,10 @@ pub struct ElementBounds {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// The DOM's `clientLeft` and `clientTop`: the left and top border widths.
+    /// The padding box starts at `(x + clientLeft, y + clientTop)`.
+    pub client_left: f64,
+    pub client_top: f64,
 }
 
 impl ElementBounds {
@@ -8856,6 +8860,8 @@ impl ElementBounds {
             y: bounds.y,
             width: bounds.width,
             height: bounds.height,
+            client_left: bounds.client_left,
+            client_top: bounds.client_top,
         }
     }
 }
@@ -8870,6 +8876,8 @@ fn element_bounds_js(
         ("y", bounds.y),
         ("width", bounds.width),
         ("height", bounds.height),
+        ("clientLeft", bounds.client_left),
+        ("clientTop", bounds.client_top),
     ] {
         js_sys::Reflect::set(
             &object,

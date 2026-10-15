@@ -1399,6 +1399,8 @@ mod tests {
                     y: *y,
                     width: *width,
                     height: *height,
+                    client_left: 0.0,
+                    client_top: 0.0,
                 })
         };
         (tree, lookup)
@@ -1449,6 +1451,8 @@ mod tests {
                     y: *y,
                     width: *width,
                     height: *height,
+                    client_left: 0.0,
+                    client_top: 0.0,
                 })
         }
     }

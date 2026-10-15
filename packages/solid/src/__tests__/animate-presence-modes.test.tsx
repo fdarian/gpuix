@@ -173,6 +173,47 @@ describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="popLayout"'
     expect(boundsOf(app.renderer, "c").y).toBe(before.y)
   })
 
+  it("paints a pinned child where it was inside a bordered, padded, scrolled parent with a margin", () => {
+    const [items, setItems] = createSignal(["a", "b", "c", "d"])
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ paddingLeft: 30, paddingTop: 10 }}>
+        <div
+          testId="scroller"
+          style={{
+            ...column,
+            height: 60,
+            position: "relative",
+            overflow: "scroll",
+            borderWidth: 2,
+            paddingLeft: 6,
+            paddingTop: 4,
+          }}
+        >
+          <AnimatePresence mode="popLayout">
+            <For each={items()}>
+              {(item) => (
+                <motion.div
+                  testId={item}
+                  initial={false}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1, ease: "linear" }}
+                  style={{ height: 20, margin: 8, flexShrink: 0 }}
+                />
+              )}
+            </For>
+          </AnimatePresence>
+        </div>
+      </div>
+    ))
+    app.renderer.scrollTo(app.renderer.findByTestId("scroller")!.id, 0, -30)
+    const before = boundsOf(app.renderer, "b")
+
+    app.renderer.clockPause()
+    app.flushSync(() => setItems(["a", "c", "d"]))
+    expect(boundsOf(app.renderer, "b")).toEqual(before)
+  })
   it("puts the child back in flow when it returns before it leaves", () => {
     const [items, setItems] = createSignal(["a", "b"])
     const app = createTestRoot()

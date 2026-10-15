@@ -64,7 +64,7 @@ export function flushPendingMutations(renderer: object): void {
 }
 
 /** The zero rect a DOM element without a box reports. */
-export function toBoundingClientRect(bounds: ElementBounds | null): BoundingClientRect {
+export function toBoundingClientRect(bounds: Pick<ElementBounds, "x" | "y" | "width" | "height"> | null): BoundingClientRect {
   if (!bounds) return { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }
   return {
     x: bounds.x,

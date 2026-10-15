@@ -828,6 +828,12 @@ export interface ElementBounds {
   y: number
   width: number
   height: number
+  /**
+   * The DOM's `clientLeft` and `clientTop`: the left and top border widths.
+   * The padding box starts at `(x + clientLeft, y + clientTop)`.
+   */
+  clientLeft: number
+  clientTop: number
 }
 
 export interface EventModifiers {

@@ -1180,7 +1180,7 @@ describeNative("floating controls", () => {
       portal: bounds("portal"),
       backdrop: bounds("backdrop"),
       popup: bounds("popup"),
-    }).toEqual({
+    }).toMatchObject({
       portal: viewport,
       backdrop: viewport,
       popup: {

@@ -25,15 +25,39 @@ pub struct ElementBounds {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// The DOM's `clientLeft`: the left border's width, so the padding box starts at `x + client_left`.
+    pub client_left: f64,
+    pub client_top: f64,
+}
+
+/// The left and top border widths an element was laid out with, as written on the element
+/// before paint. A `hover` or `active` override applies at paint and is not in them.
+#[derive(Clone, Copy)]
+pub struct BorderOrigin {
+    left: gpui::AbsoluteLength,
+    top: gpui::AbsoluteLength,
+}
+
+impl BorderOrigin {
+    pub fn of<E: gpui::Styled>(el: &mut E) -> Self {
+        let widths = &el.style().border_widths;
+        let zero = gpui::AbsoluteLength::Pixels(px(0.0));
+        Self {
+            left: widths.left.unwrap_or(zero),
+            top: widths.top.unwrap_or(zero),
+        }
+    }
 }
 
 impl ElementBounds {
-    fn from_gpui(bounds: Bounds<Pixels>) -> Self {
+    fn from_gpui(bounds: Bounds<Pixels>, border: BorderOrigin, rem_size: Pixels) -> Self {
         Self {
             x: f64::from(f32::from(bounds.origin.x)),
             y: f64::from(f32::from(bounds.origin.y)),
             width: f64::from(f32::from(bounds.size.width)),
             height: f64::from(f32::from(bounds.size.height)),
+            client_left: f64::from(f32::from(border.left.to_pixels(rem_size))),
+            client_top: f64::from(f32::from(border.top.to_pixels(rem_size))),
         }
     }
 }
@@ -66,13 +90,14 @@ pub fn bounds_frame_reset() -> impl IntoElement {
 /// Wrapping the leaf in a div instead would move the layout box: the wrapper
 /// would become the flex item and the image would lose intrinsic sizing and
 /// corner clipping.
-pub fn track_own_bounds<E: gpui::InteractiveElement>(
-    el: E,
+pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
+    mut el: E,
     id: u64,
     report: Option<PaintReporter>,
 ) -> E {
+    let border = BorderOrigin::of(&mut el);
     el.on_painted(move |bounds, window, cx| {
-        record_bounds(id, bounds);
+        record_bounds(id, bounds, border, window.rem_size());
         if let Some(report) = &report {
             report(bounds, window, cx);
         }
@@ -96,16 +121,17 @@ pub fn track_own_bounds<E: gpui::InteractiveElement>(
 /// `report` sees the painted box right after it is recorded. `on_painted`
 /// takes one listener, so the paint-driven events share this one.
 pub fn track_host_bounds<E>(
-    el: E,
+    mut el: E,
     id: u64,
     selection_start: Option<bool>,
     report: Option<PaintReporter>,
 ) -> E
 where
-    E: gpui::InteractiveElement,
+    E: gpui::InteractiveElement + gpui::Styled,
 {
+    let border = BorderOrigin::of(&mut el);
     el.on_painted(move |bounds, window, cx| {
-        record_bounds(id, bounds);
+        record_bounds(id, bounds, border, window.rem_size());
         if let Some(selectable) = selection_start {
             crate::text::record_start_region(bounds, selectable);
         }
@@ -121,10 +147,10 @@ where
 /// content mask the element was painted under.
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
 
-pub fn record_bounds(id: u64, bounds: Bounds<Pixels>) {
+pub fn record_bounds(id: u64, bounds: Bounds<Pixels>, border: BorderOrigin, rem_size: Pixels) {
     BOUNDS.with(|cell| {
         cell.borrow_mut()
-            .insert(id, ElementBounds::from_gpui(bounds));
+            .insert(id, ElementBounds::from_gpui(bounds, border, rem_size));
     });
 }
 

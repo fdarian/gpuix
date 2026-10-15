@@ -42,21 +42,48 @@ export type PopLayoutStyle = {
   left: number
   width: number
   height: number
+  margin: 0
+  marginTop: 0
+  marginRight: 0
+  marginBottom: 0
+  marginLeft: 0
 }
 
-/** `parent` is `undefined` for a child of the window root, which sits at the window origin. */
-export function popLayoutStyle(child: ElementBounds, parent: ElementBounds | undefined): PopLayoutStyle {
+/** What `popLayoutStyle` needs to know of the parent: its box and how far its content is scrolled. */
+export type PopLayoutParent = {
+  bounds: ElementBounds
+  scrollLeft: number
+  scrollTop: number
+}
+
+/**
+ * The style that paints `child` exactly where it painted before it left the
+ * flow. An absolute box is placed from the parent's padding box (inside its
+ * border), moves with the parent's scrolled content, and sits `margin` away
+ * from its offsets, so the margin is zeroed rather than counted twice.
+ * `parent` is `undefined` for a child of the window root, which sits at the
+ * window origin.
+ */
+export function popLayoutStyle(child: ElementBounds, parent: PopLayoutParent | undefined): PopLayoutStyle {
+  const originX = parent === undefined ? 0 : parent.bounds.x + parent.bounds.clientLeft - parent.scrollLeft
+  const originY = parent === undefined ? 0 : parent.bounds.y + parent.bounds.clientTop - parent.scrollTop
   return {
     position: "absolute",
-    top: child.y - (parent === undefined ? 0 : parent.y),
-    left: child.x - (parent === undefined ? 0 : parent.x),
+    top: child.y - originY,
+    left: child.x - originX,
     width: child.width,
     height: child.height,
+    margin: 0,
+    marginTop: 0,
+    marginRight: 0,
+    marginBottom: 0,
+    marginLeft: 0,
   }
 }
 
 type BoundsHost = {
   getElementBounds?: (elementId: number) => ElementBounds | null
+  getScrollMetrics?: (elementId: number) => Array<number> | null
 }
 
 /**
@@ -74,7 +101,13 @@ export function measurePopLayout(
   const child = renderer.getElementBounds(childId)
   if (child === null) return undefined
   if (parentId === undefined) return popLayoutStyle(child, undefined)
-  const parent = renderer.getElementBounds(parentId)
-  if (parent === null) throw new Error(`AnimatePresence mode="popLayout": parent element ${parentId} has not painted`)
-  return popLayoutStyle(child, parent)
+  if (!renderer.getScrollMetrics) {
+    throw new Error('AnimatePresence mode="popLayout" needs a renderer with getScrollMetrics')
+  }
+  const bounds = renderer.getElementBounds(parentId)
+  const metrics = renderer.getScrollMetrics(parentId)
+  if (bounds === null || metrics === null) {
+    throw new Error(`AnimatePresence mode="popLayout": parent element ${parentId} has not painted`)
+  }
+  return popLayoutStyle(child, { bounds, scrollLeft: metrics[0], scrollTop: metrics[1] })
 }
