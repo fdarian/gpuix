@@ -24,7 +24,7 @@ pub struct EventPayload {
     pub element_id: f64,
 
     /// Event type string — matches the key used in EVENT_PROPS on the JS side.
-    /// e.g. "click", "mousedown", "mouseenter", "keyDown", "wheel", etc. Pointer,
+    /// e.g. "click", "mousedown", "mouseenter", "keydown", "wheel", etc. Pointer,
     /// mouse and drag types are the lowercase DOM names.
     pub event_type: String,
 
@@ -55,37 +55,37 @@ pub struct EventPayload {
     // ── Keyboard ─────────────────────────────────────────────────────
     /// DOM `KeyboardEvent.key`: "a", "A", "Enter", "Escape", "ArrowDown", " ",
     /// "F1", "Shift". See `events/key_names.rs`.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub key: Option<String>,
 
     /// DOM `KeyboardEvent.code`, the physical key: "KeyA", "Digit1", "Enter",
     /// "ArrowLeft". Empty when it cannot be derived. Assumes a US QWERTY layout
     /// for printable keys.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub code: Option<String>,
 
     /// The character produced by the key press (e.g. "ß" for option-s).
     /// May differ from `key` when modifiers are active.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub key_char: Option<String>,
 
     /// Whether this is a key-repeat event (key held down). Same as `repeat`.
-    /// Populated for: keyDown.
+    /// Populated for: keydown.
     pub is_held: Option<bool>,
 
     /// DOM `KeyboardEvent.repeat`.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub repeat: Option<bool>,
 
     /// DOM `KeyboardEvent.isComposing`. Always false: a key that feeds an
     /// active IME composition is consumed by the platform's text input context
     /// before GPUI sees it.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub is_composing: Option<bool>,
 
     /// DOM `shiftKey`, `ctrlKey`, `altKey`, `metaKey`: the booleans of
     /// `modifiers`, under the DOM names.
-    /// Populated for: keyDown, keyUp.
+    /// Populated for: keydown, keyup.
     pub shift_key: Option<bool>,
     pub ctrl_key: Option<bool>,
     pub alt_key: Option<bool>,
@@ -230,8 +230,8 @@ pub struct EventPayload {
     pub pointer_type: Option<String>,
 
     /// Whether the element matches `:focus-visible`: the new focus for `focus`
-    /// and `focusIn`, the focus being left for `blur` and `focusOut`.
-    /// Populated for: focus, blur, focusIn, focusOut.
+    /// and `focusin`, the focus being left for `blur` and `focusout`.
+    /// Populated for: focus, blur, focusin, focusout.
     pub focus_visible: Option<bool>,
 
     /// Content box, visible rect and viewport for an observer.

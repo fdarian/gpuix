@@ -1591,7 +1591,7 @@ export type HostEventHandler = { handle(event: EventPayload): void }["handle"]
 export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
 
 /**
- * A `keyDown` / `keyUp` event, the same object every handler of one keystroke
+ * A `keydown` / `keyup` event, the same object every handler of one keystroke
  * sees, like one DOM event travelling from the focused element to `window`.
  *
  * `key`, `code`, `repeat`, `isComposing` and the `*Key` booleans follow DOM
@@ -1604,7 +1604,7 @@ export interface KeyEvent extends EventPayload {
   /** True after any handler of this keystroke called `preventDefault()`. */
   readonly defaultPrevented: boolean
   /**
-   * Cancel the default action. On `keyDown` that is native: no editor action
+   * Cancel the default action. On `keydown` that is native: no editor action
    * (caret movement, deletion, Enter, Cmd+C), no text typed, and in JS, Tab
    * moving focus and Escape closing the top overlay. Handlers run before native
    * acts, except on Windows and Linux, where the key is delivered after the

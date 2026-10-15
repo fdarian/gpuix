@@ -41,6 +41,32 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     expect(log).toEqual(["a:blur", "a:focusout", "b:focus", "b:focusin"])
   })
 
+  it("names focus and key events by their lowercase DOM types", () => {
+    const types: string[] = []
+    const record = (event: { type: string }) => types.push(event.type)
+    const { renderer, idOf } = setup(() => (
+      <div style={{ width: 200, height: 100 }}>
+        <div
+          testId="a"
+          tabIndex={0}
+          style={box}
+          onFocus={record}
+          onBlur={record}
+          onFocusIn={record}
+          onFocusOut={record}
+          onKeyDown={record}
+          onKeyUp={record}
+        />
+        <div testId="b" tabIndex={0} style={box} />
+      </div>
+    ))
+    renderer.focusElement(idOf("a"))
+    renderer.nativeSimulateKeystrokes(idOf("a"), "x")
+    renderer.nativeSimulateKeyUp(idOf("a"), "x")
+    renderer.focusElement(idOf("b"))
+    expect(types).toEqual(["focus", "focusin", "keydown", "keyup", "blur", "focusout"])
+  })
+
   it("bubbles focusin and focusout but not focus and blur", () => {
     const log: string[] = []
     const { renderer, idOf } = setup(() => (

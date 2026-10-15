@@ -73,7 +73,7 @@ describe("EVENT_PROPS", () => {
   })
 
   it("leaves non-pointer types as they were", () => {
-    expect(EVENT_TYPE_BY_PROP.get("onKeyDown")).toBe("keyDown")
+    expect(EVENT_TYPE_BY_PROP.get("onKeyDown")).toBe("keydown")
     expect(EVENT_TYPE_BY_PROP.get("onFocus")).toBe("focus")
     expect(EVENT_TYPE_BY_PROP.get("onScroll")).toBe("scroll")
     expect(EVENT_TYPE_BY_PROP.get("onLayout")).toBe("layout")

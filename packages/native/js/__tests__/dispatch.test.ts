@@ -158,7 +158,7 @@ describe("dispatchDomEvent", () => {
   })
 
   it("bubbles mouseover, mouseout, click, focusin and the rest", () => {
-    for (const type of ["mouseOver", "mouseOut", "click", "pointerDown", "focusin", "keyDown"]) {
+    for (const type of ["mouseOver", "mouseOut", "click", "pointerDown", "focusin", "keydown"]) {
       const { root, calls, listen } = setup()
       listen(ROOT, type, undefined, "ancestor")
       dispatchDomEvent(root, payload(type, { path: PATH }))
@@ -233,12 +233,12 @@ describe("dispatchDomEvent", () => {
     listen(MIDDLE, "click")
     listen(ROOT, "clickCapture")
     let target: number | undefined
-    listen(LEAF, "keyDown", (event) => {
+    listen(LEAF, "keydown", (event) => {
       target = event.target
     })
     dispatchDomEvent(root, payload("click"))
-    dispatchDomEvent(root, payload("keyDown"))
-    expect(calls).toEqual(["3:clickCapture", "3:click", "3:keyDown"])
+    dispatchDomEvent(root, payload("keydown"))
+    expect(calls).toEqual(["3:clickCapture", "3:click", "3:keydown"])
     expect(target).toBe(LEAF)
   })
 

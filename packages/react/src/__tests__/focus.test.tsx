@@ -298,6 +298,20 @@ describeNative("focus model", () => {
       expect(log).toEqual(["a:blur", "parent:blur", "b:focus", "parent:focus"])
     })
 
+    it("names onFocus and onBlur events by their lowercase DOM types, focusin and focusout", () => {
+      const types: string[] = []
+      const record = (event) => types.push(event.type)
+      const { renderer, idOf } = setup(
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="a" tabIndex={0} style={box} onFocus={record} onBlur={record} />
+          <div testId="b" tabIndex={0} style={box} />
+        </div>
+      )
+      renderer.focusElement(idOf("a"))
+      renderer.focusElement(idOf("b"))
+      expect(types).toEqual(["focusin", "focusout"])
+    })
+
     it("orders the events by focus change, not by which element was created first", () => {
       // The listener on the later element is created first: a per-element
       // gpui subscription would fire focus(b) before blur(a).

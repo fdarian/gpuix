@@ -195,9 +195,9 @@ impl FocusEventKind {
     fn event_type(self) -> &'static str {
         match self {
             Self::Blur => "blur",
-            Self::FocusOut => "focusOut",
+            Self::FocusOut => "focusout",
             Self::Focus => "focus",
-            Self::FocusIn => "focusIn",
+            Self::FocusIn => "focusin",
         }
     }
 }

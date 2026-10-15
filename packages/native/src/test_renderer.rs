@@ -430,8 +430,8 @@ impl TestGpuixRenderer {
         })
     }
 
-    /// Registers the function native calls synchronously for `keyDown` and
-    /// `keyUp`; see `GpuixRenderer::setSyncEventHandler`. Without one, those
+    /// Registers the function native calls synchronously for `keydown` and
+    /// `keyup`; see `GpuixRenderer::setSyncEventHandler`. Without one, those
     /// events are queued for `drainEvents` like every other.
     #[napi]
     pub fn set_sync_event_handler(
@@ -542,7 +542,7 @@ impl TestGpuixRenderer {
 
     /// Simulate key strokes through GPUI's input pipeline.
     /// Format: space-separated keys, e.g. "a", "enter", "cmd-shift-p".
-    /// The focused element receives keyDown/keyUp events.
+    /// The focused element receives keydown/keyup events.
     #[napi]
     pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
         with_test_state(|cx, window, _view| {

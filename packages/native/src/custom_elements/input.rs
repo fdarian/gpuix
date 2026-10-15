@@ -651,7 +651,7 @@ impl CustomElement for TextEditorElement {
 
     fn supported_events(&self) -> &'static [&'static str] {
         &[
-            "change", "keyDown", "keyUp", "focus", "blur",
+            "change", "keydown", "keyup", "focus", "blur",
         ]
     }
 

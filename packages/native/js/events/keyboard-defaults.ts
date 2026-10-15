@@ -25,7 +25,7 @@ function hasCommandModifier(event: EventPayload): boolean {
   return Boolean(modifiers?.ctrl || modifiers?.alt || modifiers?.cmd)
 }
 
-const KEY_EVENT_TYPES: ReadonlySet<string> = new Set(["keyDown", "keyUp"])
+const KEY_EVENT_TYPES: ReadonlySet<string> = new Set(["keydown", "keyup"])
 
 /**
  * Native may still emit the old camelCase pointer names; handlers are
@@ -102,7 +102,7 @@ export function runRootEvent(
     return dispatchDomEvent(root, event)
   }
   const { event: domEvent, ...result } = dispatchPropagating(root, event, root.scoped)
-  if (event.eventType === "keyDown" && !result.defaultPrevented) {
+  if (event.eventType === "keydown" && !result.defaultPrevented) {
     runKeyDefault(root, domEvent, context)
   }
   return result

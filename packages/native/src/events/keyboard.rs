@@ -1,10 +1,10 @@
 //! Keyboard events.
 //!
-//! One `keyDown` per keystroke, aimed at the focused element, sent from a GPUI
+//! One `keydown` per keystroke, aimed at the focused element, sent from a GPUI
 //! keystroke interceptor. Interceptors run before key bindings and actions, so a
 //! JS handler sees the editor's state before the key acts on it, and
 //! `preventDefault()` stops GPUI from acting on it at all: no editor action, no
-//! text insertion. `keyUp` has no default action worth cancelling and is sent
+//! text insertion. `keyup` has no default action worth cancelling and is sent
 //! from a root key listener.
 //!
 //! Everything here runs inside GPUI's input dispatch, where `GpuixView` may be
@@ -97,7 +97,7 @@ pub(crate) fn path_to_root(tree: &RetainedTree, element: u64) -> Vec<u64> {
     .collect()
 }
 
-/// A `keyDown` or `keyUp`, aimed at the focused element, or at the window when
+/// A `keydown` or `keyup`, aimed at the focused element, or at the window when
 /// nothing listening is focused.
 ///
 /// `None` when nobody would hear it: JS did not ask for window keys and no
@@ -111,7 +111,7 @@ fn key_payload(
     keystroke: &gpui::Keystroke,
     is_held: Option<bool>,
 ) -> Option<EventPayload> {
-    let window_listens = if event_type == "keyDown" {
+    let window_listens = if event_type == "keydown" {
         routing.0.window_key_down.get()
     } else {
         routing.0.window_key_up.get()
@@ -168,7 +168,7 @@ fn key_payload(
     Some(payload)
 }
 
-/// Sends `keyDown` for every keystroke before GPUI binds it to anything.
+/// Sends `keydown` for every keystroke before GPUI binds it to anything.
 ///
 /// Tab never reaches GPUI's bindings or the platform text input when the JS
 /// default will move focus (no ctrl, alt or cmd held, and a JS root attached):
@@ -188,7 +188,7 @@ pub(crate) fn install_key_down(
             &tree,
             window,
             cx,
-            "keyDown",
+            "keydown",
             &event.keystroke,
             Some(event.is_held),
         )
@@ -207,7 +207,7 @@ pub(crate) fn install_key_down(
     })
 }
 
-/// The window-level listeners: `keyUp`. The focus default of a mouse press is
+/// The window-level listeners: `keyup`. The focus default of a mouse press is
 /// queued by the press itself (`focus::defer_mouse_down_default`).
 ///
 /// A zero-size canvas, because listeners are registered during paint.
@@ -233,7 +233,7 @@ pub(crate) fn window_input_listeners(
                     &key_up_tree,
                     window,
                     cx,
-                    "keyUp",
+                    "keyup",
                     &event.keystroke,
                     None,
                 )

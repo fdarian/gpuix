@@ -1888,7 +1888,7 @@ impl GpuixRenderer {
     }
 
     /// Registers the function native calls synchronously for events whose
-    /// default JS can cancel: `keyDown`, `keyUp`. It takes the `EventPayload`
+    /// default JS can cancel: `keydown`, `keyup`. It takes the `EventPayload`
     /// and returns `{ defaultPrevented, propagationStopped }`. Pass `null` to
     /// remove it.
     ///
@@ -5569,7 +5569,7 @@ impl GpuixView {
         }
     }
 
-    /// Send `keyDown` for every keystroke, before GPUI binds it to an action.
+    /// Send `keydown` for every keystroke, before GPUI binds it to an action.
     /// Call once, right after the view is created.
     pub(crate) fn install_key_interception(&mut self, cx: &mut gpui::App) {
         self.key_down_interception = Some(crate::events::keyboard::install_key_down(

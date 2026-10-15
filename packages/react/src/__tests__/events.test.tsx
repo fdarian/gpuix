@@ -433,7 +433,7 @@ describeNative("events", () => {
 
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       testRoot.renderer.nativeSimulateKeystrokes(div.id, "down")
 
@@ -468,7 +468,7 @@ describeNative("events", () => {
       testRoot.render(<ModifierTracker />)
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       testRoot.renderer.nativeSimulateKeystrokes(div.id, "cmd-s")
 
@@ -989,7 +989,7 @@ describeNative("events", () => {
 
       const list = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       // Arrow down through native GPUI pipeline
       testRoot.renderer.nativeSimulateKeystrokes(list.id, "down")
@@ -1464,7 +1464,7 @@ describeNative("events", () => {
       testRoot.render(<KeyTracker />)
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       testRoot.renderer.nativeSimulateKeyDown(div.id, "a")
 
@@ -1492,7 +1492,7 @@ describeNative("events", () => {
       testRoot.render(<KeyUpTracker />)
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown") && d.events.has("keyUp"))!
+        .find((d) => d.events.has("keydown") && d.events.has("keyup"))!
 
       testRoot.renderer.nativeSimulateKeyDown(div.id, "enter")
       testRoot.renderer.nativeSimulateKeyUp(div.id, "enter")
@@ -1524,7 +1524,7 @@ describeNative("events", () => {
 
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyUp"))!
+        .find((d) => d.events.has("keyup"))!
 
       testRoot.renderer.nativeSimulateKeyUp(div.id, "a")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
@@ -2025,7 +2025,7 @@ describeNative("events", () => {
 
       const div = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       // Cmd+S
       testRoot.renderer.nativeSimulateKeystrokes(div.id, "cmd-s")
@@ -2154,7 +2154,7 @@ describeNative("events", () => {
 
       const keyTarget = testRoot.renderer
         .findByType("div")
-        .find((d) => d.events.has("keyDown"))!
+        .find((d) => d.events.has("keydown"))!
 
       const path0 = `${SHOTS_DIR}/gpuix-keydown-0.png`
       const path1 = `${SHOTS_DIR}/gpuix-keydown-1.png`

@@ -2691,7 +2691,7 @@ Select-on-focus works with `onFocus`, for keyboard focus and for a click.
 
 `disabled` works like the DOM. The control is not focusable and not a tab stop,
 a click does not focus it, and focus leaves it when it becomes disabled. It
-shows no caret, takes no editing, and gets no `click` or `keyDown` events. Its
+shows no caret, takes no editing, and gets no `click` or `keydown` events. Its
 text is painted in the theme's muted colour (`theme.textMuted`), and it is
 reported as disabled to assistive technology.
 
@@ -4445,7 +4445,8 @@ target or one of its ancestors listens for it (the drag events below are the exc
 handlers run from the root down to the target, then the target's handlers,
 then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
 `pointerleave` do not bubble. Event types are the lowercase DOM names
-(`event.type === "pointerdown"`).
+(`event.type === "pointerdown"`), and so are the keyboard and focus events
+(`keydown`, `keyup`, `focus`, `blur`, `focusin`, `focusout`).
 
 **`onFileDrop` is removed.** Files dragged in from Finder or the OS are DOM
 drag events, delivered along the path under the pointer:
@@ -5806,7 +5807,7 @@ The test renderer uses `VisualTestAppContext` with a `TestDispatcher` for determ
 - [x] Scroll wheel events with delta and touch phase
 - [x] Scrollable containers (`overflow: "scroll"`) with persistent scroll state
 - [x] Programmatic scroll API (`scrollTo`, `scrollToItem`, `scrollIntoView`, `getScrollOffset`)
-- [x] Keyboard events (keyDown, keyUp) with focus management
+- [x] Keyboard events (keydown, keyup) with focus management
 - [x] Focus/blur events with automatic FocusHandle creation
 - [x] GPU-backed test renderer with screenshot capture
 - [x] Standalone build (pinned GPUI platform dependencies)

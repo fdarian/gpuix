@@ -365,11 +365,11 @@ describeNative("render()", () => {
     })
 
     handleGpuixEvent(
-      { elementId: 1, eventType: "keyDown", key: "Tab" },
+      { elementId: 1, eventType: "keydown", key: "Tab" },
       renderer
     )
     handleGpuixEvent(
-      { elementId: 2, eventType: "keyDown", key: "Tab" },
+      { elementId: 2, eventType: "keydown", key: "Tab" },
       renderer
     )
 
@@ -412,7 +412,7 @@ describeNative("render()", () => {
     renderer.flush()
     const [first, second] = renderer
       .findByType("div")
-      .filter((element) => element.events.has("keyDown"))
+      .filter((element) => element.events.has("keydown"))
       .slice(1)
 
     renderer.simulateKeystrokes("tab")

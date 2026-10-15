@@ -1281,7 +1281,7 @@ mod tests {
         assert_eq!(focusable(&tree), vec![2], "enabled inputs take focus");
 
         // Listeners have nothing to do with focus; a tabIndex does.
-        tree.set_event_listener(3, "keyDown".to_string(), true);
+        tree.set_event_listener(3, "keydown".to_string(), true);
         tree.set_event_listener(3, "focus".to_string(), true);
         tree.set_event_listener(1, "click".to_string(), true);
         assert_eq!(focusable(&tree), vec![2]);

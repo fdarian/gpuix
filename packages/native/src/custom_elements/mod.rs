@@ -33,7 +33,7 @@ pub struct CustomRenderContext<'a> {
     /// Numeric element ID (matches React's instance ID).
     pub id: u64,
     /// Event types registered by React that this element wires itself (e.g.
-    /// "keyDown", "change"). Pointer and mouse events are not among them: the
+    /// "keydown", "change"). Pointer and mouse events are not among them: the
     /// dispatcher in `crate::events` delivers those for every element.
     pub events: &'a HashSet<String>,
     /// Callback for emitting events back to JS.

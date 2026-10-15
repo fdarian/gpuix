@@ -195,7 +195,7 @@ export interface TestRendererOptions {
   /** Framework scheduling boundary for events drained from native. */
   dispatchEvent?: (event: EventPayload) => void
   /**
-   * Framework boundary for the events native waits on: `keyDown` and `keyUp`,
+   * Framework boundary for the events native waits on: `keydown` and `keyup`,
    * which run inside the simulate call. Must return what the handlers decided.
    */
   dispatchSyncEvent?: (event: EventPayload) => SyncDispatchResult

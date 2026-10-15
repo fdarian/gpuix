@@ -1,4 +1,4 @@
-import { DOM_DISPATCHED_HANDLER_PROPS } from "./events/event-props.js"
+import { DOM_DISPATCHED_HANDLER_PROPS, KEYBOARD_FOCUS_EVENT_PROPS } from "./events/event-props.js"
 import { registerMutationQueue } from "./bounds.js"
 import { createBlobImageLoader, type BlobImageHost } from "./blob-images.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
@@ -138,8 +138,9 @@ function rejectedStyleIndex(error: unknown): number | undefined {
 /**
  * Handler prop to the key its handler is stored under in `EventHandlerMap`.
  * Pointer, mouse, drag, wheel, transition and animation keys are lowercase DOM
- * types, and each has an `on…Capture` twin keyed `captureHandlerKey(type)`. The
- * other keys are native event names. See `nativeEventType` for the type native is asked to emit.
+ * types, and each has an `on…Capture` twin keyed `captureHandlerKey(type)`. Key
+ * and focus keys are lowercase DOM types without a twin. The other keys are
+ * native event names. See `nativeEventType` for the type native is asked to emit.
  */
 export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onToggleFile", "toggleFile"],
@@ -157,12 +158,7 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onInvalid", "invalid"],
   ...DOM_DISPATCHED_HANDLER_PROPS,
   ["onMouseDownOutside", "mousedownoutside"],
-  ["onKeyDown", "keyDown"],
-  ["onKeyUp", "keyUp"],
-  ["onFocus", "focus"],
-  ["onBlur", "blur"],
-  ["onFocusIn", "focusIn"],
-  ["onFocusOut", "focusOut"],
+  ...KEYBOARD_FOCUS_EVENT_PROPS,
   ["onScroll", "scroll"],
   ["onLayout", "layout"],
   ["onLoad", "load"],

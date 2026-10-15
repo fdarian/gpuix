@@ -36,8 +36,8 @@ const NoEventPriority = 0
  * they bubble. React has no `onFocusIn` or `onFocusOut`.
  */
 const EVENT_TYPE_BY_PROP = eventTypesWithOverrides({
-  onFocus: "focusIn",
-  onBlur: "focusOut",
+  onFocus: "focusin",
+  onBlur: "focusout",
   onFocusIn: null,
   onFocusOut: null,
 })
