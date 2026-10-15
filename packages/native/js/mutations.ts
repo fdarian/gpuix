@@ -96,13 +96,43 @@ export function createMutationQueue(
       flushScheduled = false
       if (queue.length === 0) return
       appliedBatches++
-      const destroyed = renderer.applyBatch(JSON.stringify(queue))
-      onDestroyed(destroyed)
-      queue = []
+      let rejection: unknown
+      for (;;) {
+        try {
+          const destroyed = renderer.applyBatch(JSON.stringify(queue))
+          onDestroyed(destroyed)
+          queue = []
+          break
+        } catch (error) {
+          // A style native rejects is rejected the same way on every retry, so
+          // keeping it would fail every later batch too. Native is atomic, so
+          // the rest of the batch is intact: resend it without that op. It must
+          // be dropped, not blanked: `set_style` replaces the whole style, so an
+          // empty one would wipe the element's last valid style. Native numbers
+          // ops by position in what it was sent, which is the queue as spliced,
+          // so a second rejection names its index in the shortened batch.
+          const index = rejectedStyleIndex(error)
+          const mutation = index === undefined ? undefined : queue[index]
+          if (index === undefined || mutation === undefined || mutation[0] !== "setStyle") {
+            throw error
+          }
+          rejection ??= error
+          queue.splice(index, 1)
+        }
+      }
+      if (rejection !== undefined) throw rejection
     },
   }
   registerMutationQueue(renderer, mutations)
   return mutations
+}
+
+/** The batch index native names when it rejects a `setStyle` payload. */
+function rejectedStyleIndex(error: unknown): number | undefined {
+  const match = /^Batch op (\d+) setStyle parse error/.exec(
+    error instanceof Error ? error.message : String(error)
+  )
+  return match ? Number(match[1]) : undefined
 }
 
 /**

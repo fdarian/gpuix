@@ -47,6 +47,7 @@ describe("host config hideInstance", () => {
       windowKeyEventHandlers: {},
       windowKeyEventId: 0,
       windowSelectionEventId: 0,
+      onUncaughtError: () => {},
     }
     const props: Props = {
       style: {

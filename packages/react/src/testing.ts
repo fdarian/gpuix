@@ -6,7 +6,11 @@ import {
   type TestWindowOptions,
 } from "@gpuix/native/testing"
 import { createRoot, flushSync, type Root } from "./reconciler/reconciler.js"
-import { createRendererState, type SyncDispatchResult } from "@gpuix/native/host"
+import {
+  createRendererState,
+  type RootEventHandlers,
+  type SyncDispatchResult,
+} from "@gpuix/native/host"
 import { handleGpuixEvent } from "./reconciler/event-registry.js"
 
 export * from "@gpuix/native/testing"
@@ -18,7 +22,9 @@ export interface TestRoot {
   unmount: () => void
 }
 
-export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
+export function createTestRoot(
+  options: TestWindowOptions & Pick<RootEventHandlers, "onUncaughtError"> = {}
+): TestRoot {
   let renderer!: TestRenderer
   renderer = new TestRenderer({
     ...options,
@@ -43,6 +49,7 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
     onPointerLockError: options.onPointerLockError,
     tabNavigation: options.tabNavigation,
     keyboardFocusDim: options.keyboardFocusDim,
+    onUncaughtError: options.onUncaughtError,
   })
   const render = (node: ReactNode): void => {
     flushSync(() => root.render(node))

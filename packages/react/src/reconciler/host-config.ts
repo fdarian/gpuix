@@ -480,8 +480,16 @@ export const hostConfig = {
   // Batch flush point: flushMutations() sends all queued mutations to Rust
   // in a single applyBatch() FFI call. This is the end of React's synchronous
   // commit phase — all mutations from this render are flushed together.
+  // An error thrown here is not caught per fiber like the rest of the commit:
+  // React leaves its `isFlushingWork` flag set, and from then on no root in the
+  // process commits a synchronous update. Report it as the root's uncaught
+  // error instead, like a component's.
   resetAfterCommit(containerInfo: Container): void {
-    containerInfo.renderer.flushMutations()
+    try {
+      containerInfo.renderer.flushMutations()
+    } catch (error) {
+      containerInfo.onUncaughtError(error instanceof Error ? error : new Error(String(error)))
+    }
   },
 
   getRootHostContext(_rootContainerInstance: Container): HostContext {

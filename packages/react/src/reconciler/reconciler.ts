@@ -66,6 +66,11 @@ export function createRoot(
 ): Root {
   let container: OpaqueRoot | null = null
   const ids = idAllocatorFor(renderer)
+  const onUncaughtError =
+    rootEventHandlers.onUncaughtError ??
+    ((error: Error) => {
+      console.error(error)
+    })
   let gpuixContainer!: Container
   const batchedRenderer = createMutationQueue(renderer, (destroyedIds) => {
     for (const id of destroyedIds) {
@@ -85,6 +90,7 @@ export function createRoot(
     windowSelectionEventId: 0,
     windowAppearanceEventId: 0,
     onEvent: rootEventHandlers.onEvent,
+    onUncaughtError,
   }
   attachRoot(renderer, gpuixContainer)
   // Sent on every root, so a remount without the option restores the default.
@@ -127,12 +133,6 @@ export function createRoot(
       renderer.setWindowAppearanceChange?.(false, windowAppearanceEventId)
     }
   }
-
-  const onUncaughtError =
-    rootEventHandlers.onUncaughtError ??
-    ((error: Error) => {
-      console.error(error)
-    })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   container = (reconciler.createContainer as any)(

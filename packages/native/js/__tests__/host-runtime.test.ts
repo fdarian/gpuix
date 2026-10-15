@@ -126,6 +126,68 @@ describe("shared host runtime", () => {
     expect(removed).toEqual([9])
   })
 
+  it("applies the rest of a batch without the style native rejects, and still reports it", () => {
+    const rejecting = {
+      batches: [] as unknown[][],
+      applyBatch(json: string): number[] {
+        const batch: unknown[][] = JSON.parse(json)
+        const index = batch.findIndex(
+          (mutation) => mutation[0] === "setStyle" && JSON.stringify(mutation[2]).includes("banana")
+        )
+        if (index >= 0) throw new Error(`Batch op ${index} setStyle parse error: bad animation`)
+        this.batches.push(batch)
+        return []
+      },
+    }
+    const mutations = createMutationQueue(rejecting)
+
+    mutations.createElement(1, "div")
+    mutations.setStyle(1, { animation: "spin banana", width: 10 })
+    mutations.createElement(2, "div")
+    mutations.setStyle(2, { width: 20 })
+    expect(() => mutations.flushMutations()).toThrow("Batch op 1 setStyle parse error")
+
+    expect(mutations.pending).toBe(0)
+    expect(rejecting.batches).toEqual([
+      [
+        ["createElement", 1, "div"],
+        ["createElement", 2, "div"],
+        ["setStyle", 2, { width: 20 }],
+      ],
+    ])
+  })
+
+  it("drops every rejected style from a batch, whatever the shifted indices", () => {
+    const rejecting = {
+      batches: [] as unknown[][],
+      applyBatch(json: string): number[] {
+        const batch: unknown[][] = JSON.parse(json)
+        const index = batch.findIndex(
+          (mutation) => mutation[0] === "setStyle" && JSON.stringify(mutation[2]).includes("banana")
+        )
+        if (index >= 0) throw new Error(`Batch op ${index} setStyle parse error: bad animation`)
+        this.batches.push(batch)
+        return []
+      },
+    }
+    const mutations = createMutationQueue(rejecting)
+
+    mutations.setStyle(1, { animation: "spin banana" })
+    mutations.setStyle(2, { width: 20 })
+    mutations.setStyle(3, { animation: "banana" })
+    mutations.setStyle(4, { animation: "banana split" })
+    mutations.setStyle(5, { width: 50 })
+    expect(() => mutations.flushMutations()).toThrow("Batch op 0 setStyle parse error")
+
+    expect(mutations.pending).toBe(0)
+    expect(rejecting.batches).toEqual([
+      [
+        ["setStyle", 2, { width: 20 }],
+        ["setStyle", 5, { width: 50 }],
+      ],
+    ])
+  })
+
   it("owns one live root and rejects stale window events", () => {
     const renderer = new RecordingRenderer()
     const state = createRendererState(renderer)

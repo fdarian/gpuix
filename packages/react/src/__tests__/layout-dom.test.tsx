@@ -716,14 +716,29 @@ describeNative("DOM layout: display contents", () => {
 })
 
 describeNative("DOM layout: invalid values", () => {
-  // Last in the file: a render that throws leaves the shared native window in a state the
-  // following tests should not inherit.
-  it("rejects an invalid track list", () => {
-    const { render, unmount } = createTestRoot()
+  it("reports an invalid track list as an uncaught error", () => {
+    const errors: Error[] = []
+    const { render, unmount } = createTestRoot({ onUncaughtError: (error) => errors.push(error) })
     try {
-      expect(() =>
-        render(<div style={{ display: "grid", gridTemplateColumns: "minmax(1fr, 10px)" }} />)
-      ).toThrow(/gridTemplateColumns|minmax/)
+      render(<div style={{ display: "grid", gridTemplateColumns: "minmax(1fr, 10px)" }} />)
+      expect(errors.map((error) => error.message).join()).toMatch(/gridTemplateColumns|minmax/)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("keeps an element's previous valid style when a re-render's style is rejected", () => {
+    const errors: Error[] = []
+    const { render, renderer, unmount } = createTestRoot({
+      onUncaughtError: (error) => errors.push(error),
+    })
+    try {
+      render(<div testId="box" style={{ width: 50, height: 20 }} />)
+      expect(box(renderer, "box").width).toBe(50)
+
+      render(<div testId="box" style={{ width: 80, height: 20, animation: "react-grow banana" }} />)
+      expect(errors.map((error) => error.message).join()).toMatch(/animation/)
+      expect(box(renderer, "box").width).toBe(50)
     } finally {
       unmount()
     }

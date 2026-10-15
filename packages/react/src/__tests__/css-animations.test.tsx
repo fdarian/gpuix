@@ -262,10 +262,47 @@ describeNative("CSS animations", () => {
     expect(seen).toEqual(["parent capture", "child true false", "parent end"])
   })
 
-  it("rejects an invalid animation when the style is set", () => {
-    const { render } = createTestRoot()
-    expect(() =>
-      render(<div testId="box" style={{ width: 50, height: 20, animation: "react-grow banana" }} />)
-    ).toThrow()
+  it("reports an invalid animation as an uncaught error and keeps committing and delivering events", () => {
+    const errors: Error[] = []
+    const rejected = createTestRoot({ onUncaughtError: (error) => errors.push(error) })
+    rejected.render(
+      <div testId="box" style={{ width: 50, height: 20, animation: "react-grow banana" }} />
+    )
+    expect(errors).toHaveLength(1)
+    expect(errors[0]?.message).toMatch(/animation/)
+    // The rest of the batch landed: the element is there, without the style.
+    expect(rejected.renderer.findByTestId("box")).toBeDefined()
+
+    // The same root takes the next update, and animation events arrive.
+    const seen: string[] = []
+    rejected.renderer.clockPause()
+    rejected.render(
+      <div
+        testId="box"
+        onAnimationStart={() => seen.push("start")}
+        style={{ width: 50, height: 20, animation: "react-grow 1s linear" }}
+      />
+    )
+    rejected.renderer.dispatchNativeEvents()
+    rejected.renderer.clockFastForward(500)
+    rejected.renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["start"])
+    expect(errors).toHaveLength(1)
+
+    // And so does a root made afterwards: the failure left no React state behind.
+    const other = createTestRoot()
+    const otherSeen: string[] = []
+    other.renderer.clockPause()
+    other.render(
+      <div
+        testId="box"
+        onAnimationStart={() => otherSeen.push("start")}
+        style={{ width: 50, height: 20, animation: "react-grow 1s linear" }}
+      />
+    )
+    other.renderer.dispatchNativeEvents()
+    other.renderer.clockFastForward(500)
+    other.renderer.dispatchNativeEvents()
+    expect(otherSeen).toEqual(["start"])
   })
 })
