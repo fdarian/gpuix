@@ -3,10 +3,15 @@
 /// through the renderer's layout offset, and swaps it with a neighbour once
 /// its centre passes the neighbour's.
 ///
-/// Pointer events are read from the item the user grabbed, which relies on
-/// the renderer's implicit capture: an element with both `onMouseDown` and
-/// `onMouseMove` keeps receiving moves and the release after the pointer
-/// leaves it.
+/// The adapters wire DOM pointer events on the item the user grabbed:
+/// `pointerdown` calls `pointerDown`, which captures the pointer to the item
+/// (`setPointerCapture`), so `pointermove` keeps reaching it after the pointer
+/// leaves its box; `pointerup`, `pointercancel` and `lostpointercapture` all
+/// call `pointerEnd`. Capture from JS applies from the next native pointer
+/// input, and `pointerdown` runs synchronously on macOS, so the first move
+/// after the press is already delivered to the item. Where the press is
+/// dispatched later (Windows, Linux) a move that came in before the handler
+/// ran goes to whatever is under the pointer, and the drag starts at the next.
 
 import type { ElementBounds, EventPayload } from "../index.js"
 import type { LayoutDrag } from "./layout-animation.js"
@@ -28,8 +33,13 @@ export type ReorderOptions<Value> = {
 export type ReorderItem = {
   /** The element id of the item's box, once it has one. */
   elementId(): number | undefined
+  /** Routes the pointer's events to the item until it is released. Throws while the item is not in the tree. */
+  capturePointer(pointerId: number): void
   drag: LayoutDrag
 }
+
+/** The `pointerdown` that starts a drag. */
+export type ReorderPress = EventPayload & { pointerId: number }
 
 export function createReorderDrag(): LayoutDrag {
   return { x: motionValue(0), y: motionValue(0), active: motionValue(0) }
@@ -51,6 +61,7 @@ type Reading<Value> = {
 
 type Held<Value> = {
   value: Value
+  pointerId: number
   /** The pointer on the group's axis when it pressed. */
   pressed: number
   /** The pointer's distance from the item's centre when it pressed. */
@@ -185,13 +196,14 @@ export class ReorderController<Value> {
   }
 
   /** The pointer went down on the item for `value`. */
-  pointerDown(value: Value, event: EventPayload): void {
+  pointerDown(value: Value, event: ReorderPress): void {
     if (event.button !== undefined && event.button !== 0) return
     this.#release()
     const options = this.#configured()
     const pointer = this.#axisPoint(event)
     const item = this.#item(value)
-    const held = this.#measure(options, value, pointer)
+    const held = this.#measure(options, value, pointer, event.pointerId)
+    item.capturePointer(event.pointerId)
     item.drag.x.jump(0)
     item.drag.y.jump(0)
     item.drag.active.jump(1)
@@ -227,8 +239,15 @@ export class ReorderController<Value> {
     options.onReorder(next)
   }
 
-  /** The pointer went up: the held item glides to its slot. */
-  pointerUp(): void {
+  /**
+   * The press ended (`pointerup`, `pointercancel` or `lostpointercapture`) on
+   * the item for `value`: the held item glides to its slot. An event for another
+   * item or pointer is ignored, because a `lostpointercapture` can arrive after
+   * a later drag has begun and must not end that one.
+   */
+  pointerEnd(value: Value, event: { pointerId: number }): void {
+    const held = this.#held
+    if (held === undefined || held.value !== value || held.pointerId !== event.pointerId) return
     this.#release()
   }
 
@@ -306,7 +325,7 @@ export class ReorderController<Value> {
     return { values: [...options.values], sizes, starts }
   }
 
-  #measure(options: ReorderOptions<Value>, value: Value, pointer: number): Held<Value> {
+  #measure(options: ReorderOptions<Value>, value: Value, pointer: number, pointerId: number): Held<Value> {
     const getBounds = this.#boundsReader(options)
     const sizes = new Map<Value, number>()
     const starts: number[] = []
@@ -324,6 +343,7 @@ export class ReorderController<Value> {
     slots.gaps = starts.slice(1).map((start, at) => start - (starts[at] + sizeOf(slots, options.values[at])))
     return {
       value,
+      pointerId,
       pressed: pointer,
       grab: pointer - (starts[index] + sizeOf(slots, value) / 2),
       slots,

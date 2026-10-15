@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
 import { ReorderController, createReorderDrag } from "@gpuix/native/host"
-import type { HostMouseEvent, HostMouseMoveEvent, ReorderAxis } from "@gpuix/native/host"
+import type { HostPointerEvent, HostPointerMoveEvent, ReorderAxis } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import type { SolidHostProps } from "../jsx-runtime.js"
@@ -64,7 +64,7 @@ export type ReorderItemProps<Value> = Omit<MotionDragProps, "layout" | "layoutId
 }
 
 /** Handlers are typed with the DOM surface only; at runtime the event is the native payload under it. */
-const asPayload = <Event extends HostMouseEvent>(event: Event) => event as Event & EventPayload
+const asPayload = <Event extends HostPointerEvent>(event: Event) => event as Event & EventPayload
 
 const itemComponents = new Map<string, Component<MotionDragProps>>()
 
@@ -88,12 +88,25 @@ function Item<Value>(props: ReorderItemProps<Value>): JSX.Element {
     onCleanup(
       controller.register(props.value, {
         elementId: () => (element?.mounted ? element.id : undefined),
+        capturePointer: (pointerId) => {
+          if (element === undefined) throw new Error("Reorder.Item: the item has no element to capture the pointer on")
+          element.setPointerCapture(pointerId)
+        },
         drag,
       })
     )
   })
 
-  const [own, hostProps] = splitProps(props, ["value", "as", "ref", "onMouseDown", "onMouseMove", "onMouseUp"])
+  const [own, hostProps] = splitProps(props, [
+    "value",
+    "as",
+    "ref",
+    "onPointerDown",
+    "onPointerMove",
+    "onPointerUp",
+    "onPointerCancel",
+    "onLostPointerCapture",
+  ])
   return createComponent(
     itemComponent(own.as ?? "div"),
     mergeProps(hostProps, {
@@ -103,17 +116,25 @@ function Item<Value>(props: ReorderItemProps<Value>): JSX.Element {
         element = node
         if (typeof own.ref === "function") own.ref(node)
       },
-      onMouseDown(event: HostMouseEvent) {
-        own.onMouseDown?.(event)
+      onPointerDown(event: HostPointerEvent) {
+        own.onPointerDown?.(event)
         controller.pointerDown(own.value, asPayload(event))
       },
-      onMouseMove(event: HostMouseMoveEvent) {
-        own.onMouseMove?.(event)
+      onPointerMove(event: HostPointerMoveEvent) {
+        own.onPointerMove?.(event)
         controller.pointerMove(asPayload(event))
       },
-      onMouseUp(event: HostMouseEvent) {
-        own.onMouseUp?.(event)
-        controller.pointerUp()
+      onPointerUp(event: HostPointerEvent) {
+        own.onPointerUp?.(event)
+        controller.pointerEnd(own.value, event)
+      },
+      onPointerCancel(event: HostPointerEvent) {
+        own.onPointerCancel?.(event)
+        controller.pointerEnd(own.value, event)
+      },
+      onLostPointerCapture(event: HostPointerEvent) {
+        own.onLostPointerCapture?.(event)
+        controller.pointerEnd(own.value, event)
       },
     })
   )

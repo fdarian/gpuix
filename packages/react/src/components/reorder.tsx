@@ -94,32 +94,52 @@ function Item<Value>(props: ReorderItemProps<Value>): ReactElement {
   }, [drag, renderer])
   const value = props.value
   useLayoutEffect(
-    () => controller.register(value, { elementId: () => instance.current?.id, drag }),
+    () =>
+      controller.register(value, {
+        elementId: () => instance.current?.id,
+        capturePointer: (pointerId) => {
+          if (instance.current?.setPointerCapture === undefined) {
+            throw new Error("Reorder.Item: the item has no element to capture the pointer on")
+          }
+          instance.current.setPointerCapture(pointerId)
+        },
+        drag,
+      }),
     [controller, value, drag]
   )
 
   const hostProps: Record<string, unknown> = { ...props }
   delete hostProps.value
   delete hostProps.as
-  const onMouseDown = props.onMouseDown
-  const onMouseMove = props.onMouseMove
-  const onMouseUp = props.onMouseUp
+  const onPointerDown = props.onPointerDown
+  const onPointerMove = props.onPointerMove
+  const onPointerUp = props.onPointerUp
+  const onPointerCancel = props.onPointerCancel
+  const onLostPointerCapture = props.onLostPointerCapture
   return createElement(itemComponent(props.as ?? "div"), {
     ...hostProps,
     ref,
     layout: true,
     layoutDrag: drag,
-    onMouseDown: (event) => {
-      onMouseDown?.(event)
+    onPointerDown: (event) => {
+      onPointerDown?.(event)
       controller.pointerDown(value, event)
     },
-    onMouseMove: (event) => {
-      onMouseMove?.(event)
+    onPointerMove: (event) => {
+      onPointerMove?.(event)
       controller.pointerMove(event)
     },
-    onMouseUp: (event) => {
-      onMouseUp?.(event)
-      controller.pointerUp()
+    onPointerUp: (event) => {
+      onPointerUp?.(event)
+      controller.pointerEnd(value, event)
+    },
+    onPointerCancel: (event) => {
+      onPointerCancel?.(event)
+      controller.pointerEnd(value, event)
+    },
+    onLostPointerCapture: (event) => {
+      onLostPointerCapture?.(event)
+      controller.pointerEnd(value, event)
     },
   } as MotionDragProps)
 }

@@ -157,6 +157,24 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     expect(boundsOf(renderer, "a").y).toBe(0)
   })
 
+  it("keeps a drag on b going when a lostpointercapture for a's finished drag arrives late", () => {
+    const app = mountApp({ initial: ["a", "b", "c"] })
+    const renderer = app.renderer
+    renderer.nativeSimulateMouseDown(10, 10)
+    renderer.nativeSimulateMouseUp(10, 10, 0)
+    renderer.nativeSimulateMouseDown(10, 30)
+    renderer.nativeSimulateMouseMove(10, 33, 0)
+    expect(boundsOf(renderer, "b").y).toBe(23)
+
+    app.root.dispatch({ elementId: renderer.findByTestId("a")!.id, eventType: "lostpointercapture", pointerId: 1 })
+    renderer.nativeSimulateMouseMove(10, 35, 0)
+    expect(boundsOf(renderer, "b").y).toBe(25)
+
+    renderer.nativeSimulateMouseUp(10, 35, 0)
+    frame(renderer, 1100)
+    expect(boundsOf(renderer, "b").y).toBe(20)
+  })
+
   it("still calls the item's own mouse handlers", () => {
     let presses = 0
     const renderer = mount({ initial: ["a", "b"], onItemMouseDown: () => (presses += 1) })

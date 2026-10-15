@@ -59,7 +59,7 @@ function group(order: string[]) {
   order.forEach((value, index) => {
     const drag = items.get(value)
     if (drag === undefined) throw new Error("missing drag")
-    reorder.register(value, { elementId: () => index, drag })
+    reorder.register(value, { elementId: () => index, capturePointer: () => {}, drag })
   })
   const configure = (values: string[], overrides: Partial<ReorderOptions<string>> = {}) =>
     reorder.configure({
@@ -73,7 +73,7 @@ function group(order: string[]) {
   return { reorder, items, proposals, configure, layOut }
 }
 
-const at = (x: number, y: number, pressedButton?: number): EventPayload => ({ x, y, button: 0, pressedButton }) as EventPayload
+const at = (x: number, y: number, pressedButton?: number): EventPayload => ({ x, y, button: 0, pointerId: 1, pressedButton }) as EventPayload & { pointerId: number }
 
 describe("ReorderController", () => {
   it("holds the item on press, follows the pointer and lets go on release", () => {
@@ -84,9 +84,24 @@ describe("ReorderController", () => {
     reorder.pointerMove(at(10, 115, 0))
     expect(drag?.y.get()).toBe(10)
     expect(drag?.x.get()).toBe(0)
-    reorder.pointerUp()
+    reorder.pointerEnd("a", { pointerId: 1 })
     expect(drag?.active.get()).toBe(0)
     expect(drag?.y.get()).toBe(0)
+  })
+
+  it("ignores an end for another item or pointer, such as a late lostpointercapture of an earlier drag", () => {
+    const { reorder, items } = group(["a", "b", "c"])
+    reorder.pointerDown("a", at(10, 105))
+    reorder.pointerEnd("a", { pointerId: 1 })
+    reorder.pointerDown("b", at(10, 125))
+    reorder.pointerEnd("a", { pointerId: 1 })
+    expect(reorder.isDragging("b")).toBe(true)
+    expect(items.get("b")?.active.get()).toBe(1)
+    reorder.pointerEnd("b", { pointerId: 2 })
+    expect(reorder.isDragging("b")).toBe(true)
+    reorder.pointerEnd("b", { pointerId: 1 })
+    expect(reorder.isDragging("b")).toBe(false)
+    expect(items.get("b")?.active.get()).toBe(0)
   })
 
   it("proposes the new order once the dragged centre passes the next one", () => {
@@ -140,10 +155,31 @@ describe("ReorderController", () => {
     expect(reorder.isDragging("a")).toBe(false)
   })
 
+  it("captures the pointer to the item that was pressed", () => {
+    const { reorder } = group(["a", "b"])
+    const captured: number[] = []
+    reorder.register("b", { elementId: () => 1, capturePointer: (pointerId) => captured.push(pointerId), drag: createReorderDrag() })
+    reorder.pointerDown("b", at(10, 129))
+    expect(captured).toEqual([1])
+  })
+
+  it("does not hold the item when the pointer cannot be captured", () => {
+    const { reorder } = group(["a", "b"])
+    reorder.register("a", {
+      elementId: () => 0,
+      capturePointer: () => {
+        throw new Error("not in the tree")
+      },
+      drag: createReorderDrag(),
+    })
+    expect(() => reorder.pointerDown("a", at(10, 105))).toThrow("not in the tree")
+    expect(reorder.isDragging("a")).toBe(false)
+  })
+
   it("ignores moves with nothing held and presses of other buttons", () => {
     const { reorder, items, proposals } = group(["a", "b"])
     reorder.pointerMove(at(10, 500, 0))
-    reorder.pointerDown("a", { x: 10, y: 105, button: 2 } as EventPayload)
+    reorder.pointerDown("a", { x: 10, y: 105, button: 2, pointerId: 1 } as EventPayload & { pointerId: number })
     expect(items.get("a")?.active.get()).toBe(0)
     expect(proposals).toEqual([])
   })
@@ -151,7 +187,7 @@ describe("ReorderController", () => {
   it("lets go of an item that unmounts mid-drag", () => {
     const { reorder, items } = group(["a", "b"])
     const drag = items.get("a")
-    const stop = reorder.register("a", { elementId: () => 0, drag: drag ?? createReorderDrag() })
+    const stop = reorder.register("a", { elementId: () => 0, capturePointer: () => {}, drag: drag ?? createReorderDrag() })
     reorder.pointerDown("a", at(10, 105))
     stop()
     expect(reorder.isDragging("a")).toBe(false)
@@ -168,7 +204,7 @@ describe("ReorderController", () => {
       const { reorder, items, proposals, configure, layOut } = group(["a", "b", "c"])
       const added = createReorderDrag()
       reorder.pointerDown("a", at(10, 110))
-      reorder.register("d", { elementId: () => 3, drag: added })
+      reorder.register("d", { elementId: () => 3, capturePointer: () => {}, drag: added })
       layOut(["a", "b", "c", "d"])
       configure(["a", "b", "c", "d"])
       // d is not measured yet: the drag follows the pointer and proposes nothing.
@@ -205,7 +241,7 @@ describe("ReorderController", () => {
 
     it("lets go without proposing when the dragged item unmounts", () => {
       const { reorder, items, proposals, configure } = group(["a", "b", "c"])
-      const stop = reorder.register("a", { elementId: () => 0, drag: items.get("a") ?? createReorderDrag() })
+      const stop = reorder.register("a", { elementId: () => 0, capturePointer: () => {}, drag: items.get("a") ?? createReorderDrag() })
       reorder.pointerDown("a", at(10, 110))
       stop()
       configure(["b", "c"])

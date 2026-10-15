@@ -2,6 +2,7 @@ import { useState } from "react"
 import { flushSync } from "../reconciler/reconciler.js"
 import { describe, expect, it } from "vitest"
 import { Reorder } from "../index.js"
+import { handleGpuixEvent } from "../reconciler/event-registry.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { TestRenderer } from "../testing.js"
 
@@ -155,6 +156,26 @@ describeNative("Reorder", () => {
     renderer.nativeSimulateMouseUp(300, 18, 0)
     frame(renderer, 1100)
     expect(boundsOf(renderer, "a")?.y).toBe(0)
+  })
+
+  it("keeps a drag on b going when a lostpointercapture for a's finished drag arrives late", () => {
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    render(<List initial={["a", "b", "c"]} />)
+    renderer.nativeSimulateMouseDown(10, 10)
+    renderer.nativeSimulateMouseUp(10, 10, 0)
+    renderer.nativeSimulateMouseDown(10, 30)
+    renderer.nativeSimulateMouseMove(10, 33, 0)
+    expect(boundsOf(renderer, "b")?.y).toBe(23)
+
+    const stale = { elementId: renderer.findByTestId("a").id, eventType: "lostpointercapture", pointerId: 1 }
+    flushSync(() => handleGpuixEvent(stale, renderer))
+    renderer.nativeSimulateMouseMove(10, 35, 0)
+    expect(boundsOf(renderer, "b")?.y).toBe(25)
+
+    renderer.nativeSimulateMouseUp(10, 35, 0)
+    frame(renderer, 1100)
+    expect(boundsOf(renderer, "b")?.y).toBe(20)
   })
 
   it("still calls the item's own mouse handlers", () => {
