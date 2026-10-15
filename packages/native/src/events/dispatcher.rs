@@ -355,7 +355,7 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             .collect();
         !chain_follows_path(&chain, &event_path(tree, target))
     });
-    if state.capture.take_drag_cancel() {
+    if state.requests.take_drag_cancel() {
         state.element_drag = None;
     }
     let file_drag_input = match sample.action {
@@ -379,7 +379,7 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
         | PointerAction::FileDrop
         | PointerAction::FileDragLeave => unreachable!("handled above"),
     }
-    state.capture.set_buttons(state.buttons);
+    state.requests.set_buttons(state.buttons);
 
     let previous_hits = std::mem::take(&mut state.hits);
     let mut emitter = Emitter::new(tree, sample, &previous_hits);
@@ -534,9 +534,9 @@ fn end_file_drag(state: &mut PointerState, emitter: &mut Emitter) {
 /// A capture whose element left the tree ends without an event, as in the DOM.
 fn apply_capture(state: &mut PointerState, emitter: &mut Emitter) {
     let tree = emitter.tree;
-    let mut requested = state.capture.target();
+    let mut requested = state.requests.target();
     if requested.is_some_and(|id| !is_connected(tree, id)) {
-        state.capture.clear();
+        state.requests.clear();
         requested = None;
     }
     if state.explicit == requested {
@@ -678,7 +678,7 @@ fn release(
     // element but lostpointercapture comes before it.
     let mut released = false;
     if state.buttons == 0 {
-        state.capture.clear();
+        state.requests.clear();
         if let Some(captured) = state.explicit.take() {
             emitter.emit("lostpointercapture", captured, Fields::default());
             released = true;
@@ -1273,10 +1273,10 @@ mod tests {
     ];
 
     /// Pressed on b(3) with capture requested for c(4), before the next input.
-    fn pressed_with_capture_on_c(tree: &RetainedTree) -> PointerState {
+    fn pressed_with_requests_on_c(tree: &RetainedTree) -> PointerState {
         let mut state = PointerState::default();
         dispatch(&mut state, tree, &down(0, 1, chain_of(&[3, 2, 1])));
-        state.capture.set(tree, 4, 1.0).unwrap();
+        state.requests.set(tree, 4, 1.0).unwrap();
         state
     }
 
@@ -1287,7 +1287,7 @@ mod tests {
             "mousemove",
             "mouseup",
         ]));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["pointermove@4", "mousemove@4"]);
         assert_eq!(output.events[0].path, [4, 1]);
@@ -1298,7 +1298,7 @@ mod tests {
     #[test]
     fn capture_applies_from_the_next_input_with_got_first_and_lost_after_the_up() {
         let tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),
@@ -1322,7 +1322,7 @@ mod tests {
             ]
         );
         assert_eq!(state.explicit_capture(), None);
-        assert_eq!(state.capture.target(), None);
+        assert_eq!(state.requests.target(), None);
     }
 
     #[test]
@@ -1333,7 +1333,7 @@ mod tests {
             "mouseup",
             "click",
         ]));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
         assert_eq!(
@@ -1348,7 +1348,7 @@ mod tests {
         let mut state = PointerState::default();
         dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
         dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
-        state.capture.set(&tree, 4, 1.0).unwrap();
+        state.requests.set(&tree, 4, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),
@@ -1374,9 +1374,9 @@ mod tests {
     #[test]
     fn releasing_from_js_loses_the_capture_at_the_next_input() {
         let tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
-        state.capture.release(4, 1.0).unwrap();
+        state.requests.release(4, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),
@@ -1392,20 +1392,20 @@ mod tests {
     #[test]
     fn capture_ends_without_an_event_when_the_element_is_removed() {
         let mut tree = tree(&listening_everywhere(&CAPTURE_EVENTS));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         tree.destroy_element(4);
         let output = dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         assert!(!names(&output).iter().any(|name| name.starts_with("lost")));
         assert_eq!(names(&output).last().unwrap(), "pointermove@3");
         assert_eq!(state.explicit_capture(), None);
-        assert_eq!(state.capture.target(), None);
+        assert_eq!(state.requests.target(), None);
     }
 
     #[test]
     fn capture_survives_until_the_last_button_is_up() {
         let tree = tree(&listening_everywhere(&["lostpointercapture"]));
-        let mut state = pressed_with_capture_on_c(&tree);
+        let mut state = pressed_with_requests_on_c(&tree);
         dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
         dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &up(2, 1, chain_of(&[3, 2, 1])));
@@ -1902,7 +1902,7 @@ mod tests {
             "click",
         ]));
         let mut state = dragging_from_a(&tree);
-        state.capture.cancel_drag();
+        state.requests.cancel_drag();
 
         let output = dispatch(&mut state, &tree, &held_move(35.0, 30.0, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["pointerover@3", "pointermove@3"]);
@@ -1915,7 +1915,7 @@ mod tests {
     fn a_cancel_that_arrives_with_no_drag_is_dropped() {
         let tree = draggable_tree(&listening_everywhere(&["dragstart"]));
         let mut state = PointerState::default();
-        state.capture.cancel_drag();
+        state.requests.cancel_drag();
         dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
         dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
@@ -1971,7 +1971,7 @@ mod tests {
     fn a_capture_held_by_another_element_keeps_the_press_a_press() {
         let tree = draggable_tree(&listening_everywhere(&["dragstart", "pointermove"]));
         let mut state = pressed_on_b(&tree);
-        state.capture.set(&tree, 4, 1.0).unwrap();
+        state.requests.set(&tree, 4, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &held_move(90.0, 30.0, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["pointermove@4"]);
         assert!(state.element_drag.is_none());
@@ -1986,7 +1986,7 @@ mod tests {
             "lostpointercapture",
         ]));
         let mut state = pressed_on_b(&tree);
-        state.capture.set(&tree, 2, 1.0).unwrap();
+        state.requests.set(&tree, 2, 1.0).unwrap();
         let output = dispatch(&mut state, &tree, &held_move(16.0, 30.0, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["gotpointercapture@2"]);
 

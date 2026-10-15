@@ -211,7 +211,7 @@ pub struct TestGpuixRenderer {
     /// Same handle GpuixView paints against, so tests can assert on the live
     /// selection after simulating a drag.
     selection: crate::text::SharedSelection,
-    pointer_capture: crate::events::state::PointerCapture,
+    pointer_requests: crate::events::state::PointerRequests,
 }
 
 #[napi]
@@ -237,8 +237,8 @@ impl TestGpuixRenderer {
         let callback_clone = event_callback.clone();
         let selection = crate::text::SharedSelection::default();
         let selection_clone = selection.clone();
-        let pointer_capture = crate::events::state::PointerCapture::default();
-        let pointer_capture_clone = pointer_capture.clone();
+        let pointer_requests = crate::events::state::PointerRequests::default();
+        let pointer_requests_clone = pointer_requests.clone();
 
         let platform = gpui_platform::current_platform(false);
         let mut cx = gpui::VisualTestAppContext::new(platform);
@@ -257,7 +257,7 @@ impl TestGpuixRenderer {
                         callback_clone,
                         "GPUIX Test".to_string(),
                         selection_clone,
-                        pointer_capture_clone,
+                        pointer_requests_clone,
                     );
                     view.observe_appearance(window, cx);
                     crate::events::enable_dom_hit_testing(window);
@@ -297,7 +297,7 @@ impl TestGpuixRenderer {
             tree,
             events,
             selection,
-            pointer_capture,
+            pointer_requests,
         })
     }
 
@@ -982,7 +982,7 @@ impl TestGpuixRenderer {
     pub fn set_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         let tree = self.tree.lock().unwrap();
-        self.pointer_capture
+        self.pointer_requests
             .set(&tree, id, pointer_id)
             .map_err(Error::from_reason)
     }
@@ -990,7 +990,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        self.pointer_capture
+        self.pointer_requests
             .release(id, pointer_id)
             .map_err(Error::from_reason)
     }
@@ -999,7 +999,7 @@ impl TestGpuixRenderer {
     pub fn has_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<bool> {
         let id = to_element_id(element_id)?;
         let tree = self.tree.lock().unwrap();
-        self.pointer_capture
+        self.pointer_requests
             .has(&tree, id, pointer_id)
             .map_err(Error::from_reason)
     }
@@ -1008,7 +1008,7 @@ impl TestGpuixRenderer {
     /// next simulated pointer input.
     #[napi]
     pub fn cancel_drag(&self) {
-        self.pointer_capture.cancel_drag();
+        self.pointer_requests.cancel_drag();
     }
 
     /// The click an activation that is not a pointer press makes on `element_id`;

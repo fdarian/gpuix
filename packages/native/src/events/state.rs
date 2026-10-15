@@ -23,13 +23,13 @@ pub const MOUSE_POINTER_ID: f64 = 1.0;
 /// element drag (`cancelDrag`).
 ///
 /// Calls come from JS threads while the view lives on the UI thread, so a call
-/// only records the request here and the dispatcher applies it at the next
-/// native pointer input, which is when `gotpointercapture` and
+/// only records the request here and the UI thread applies it later: capture
+/// at the next native pointer input, which is when `gotpointercapture` and
 /// `lostpointercapture` fire. `has` reads the request, as Chrome's
 /// `hasPointerCapture` reads the pending capture, so it is true right after
 /// `set`.
 #[derive(Clone, Default)]
-pub struct PointerCapture(Arc<Mutex<Requested>>);
+pub struct PointerRequests(Arc<Mutex<Requested>>);
 
 #[derive(Default)]
 struct Requested {
@@ -40,7 +40,7 @@ struct Requested {
     cancel_drag: bool,
 }
 
-impl PointerCapture {
+impl PointerRequests {
     /// Ends the element drag in progress without another event: `dragstart`'s
     /// `preventDefault()` is a drag that never was.
     pub fn cancel_drag(&self) {
@@ -140,7 +140,7 @@ pub struct PointerState {
     pub(super) buttons: u32,
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
-    pub(super) capture: PointerCapture,
+    pub(super) requests: PointerRequests,
     pub(super) file_drag: Option<DragOver>,
     /// A press on a `draggable` element that has not moved far enough to drag it.
     pub(super) pending_drag: Option<PendingDrag>,
@@ -169,9 +169,9 @@ impl PointerState {
         self.explicit
     }
 
-    pub fn with_capture(capture: PointerCapture) -> Self {
+    pub fn with_requests(requests: PointerRequests) -> Self {
         Self {
-            capture,
+            requests,
             ..Default::default()
         }
     }
@@ -213,14 +213,14 @@ mod tests {
         tree
     }
 
-    fn held(capture: &PointerCapture) {
+    fn held(capture: &PointerRequests) {
         capture.set_buttons(1);
     }
 
     #[test]
     fn has_pointer_capture_follows_set_and_release() {
         let tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         held(&capture);
         assert!(!capture.has(&tree, 2, 1.0).unwrap());
         capture.set(&tree, 2, 1.0).unwrap();
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn setting_capture_replaces_the_previous_holder() {
         let tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         held(&capture);
         capture.set(&tree, 2, 1.0).unwrap();
         capture.set(&tree, 1, 1.0).unwrap();
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn a_pointer_with_no_button_down_captures_nothing() {
         let tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         capture.set(&tree, 2, 1.0).unwrap();
         assert!(!capture.has(&tree, 2, 1.0).unwrap());
     }
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn an_unknown_pointer_id_throws() {
         let tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         held(&capture);
         for pointer_id in [0.0, 2.0, -1.0, f64::NAN] {
             assert!(capture
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn only_set_throws_for_an_element_that_is_not_connected() {
         let tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         held(&capture);
         for id in [3, 99] {
             assert!(capture
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn has_is_false_for_a_holder_that_left_the_tree() {
         let mut tree = connected_tree();
-        let capture = PointerCapture::default();
+        let capture = PointerRequests::default();
         held(&capture);
         capture.set(&tree, 2, 1.0).unwrap();
         tree.destroy_element(2);

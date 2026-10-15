@@ -90,7 +90,7 @@ pub(super) fn dispatch(
             }
             let source = pending.source;
             // Another element holds the pointer: its press is not a drag.
-            let holder = state.capture.target().or(state.explicit);
+            let holder = state.requests.target().or(state.explicit);
             if holder.is_some_and(|holder| holder != source) {
                 return None;
             }
@@ -121,7 +121,7 @@ fn begin(
         }
     }
     // The drag takes the pointer, and with it any capture the source held.
-    state.capture.clear();
+    state.requests.clear();
     if let Some(captured) = state.explicit.take() {
         emitter.emit("lostpointercapture", captured, Fields::default());
     }
