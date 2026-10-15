@@ -103,6 +103,7 @@ function Item<Value>(props: ReorderItemProps<Value>): ReactElement {
           }
           instance.current.setPointerCapture(pointerId)
         },
+        releasePointerCapture: (pointerId) => instance.current?.releasePointerCapture?.(pointerId),
         drag,
       }),
     [controller, value, drag]
