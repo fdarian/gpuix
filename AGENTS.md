@@ -1,14 +1,21 @@
 # AGENTS.md - GPUIX Codebase Guide
 
-**Read [README.md](./README.md) first** to understand what GPUIX is, the architecture, mutation API, event flow, supported elements/events/styles, and the test renderer.
+**Read [README.md](./README.md) first** to understand what GPUIX is, the architecture, mutation API, supported elements/events/styles, and the test renderer.
 
-Unless you are **remorses** or **monotykamary**, do not open a pull request. Open an issue. See [External contributors](#external-contributors).
+This checkout is the `fdarian/gpuix` fork. [FORK.md](./FORK.md) says what the fork changes and why, how to sync with upstream, and how to work on the `zed/` submodule; where it disagrees with this file, FORK.md wins. This file orients you to the code as it stands. Upstream's rule that only remorses and monotykamary open pull requests belongs to `remorses/gpuix`; this fork is a proof of concept and nothing in it is a request to merge.
 
 ## README is the public API contract
 
 Document every user-facing feature, element, prop, event, renderer option,
 public method, and behavior change in `README.md` in the same change. A
 changeset does not replace API documentation.
+
+## Behave like the DOM
+
+Events, focus, scrolling, layout, paint and motion follow DOM and CSS semantics. A new prop, event or style gets the browser's behaviour under the browser's name (`onPointerDown`, `tabIndex`, `position: sticky`), not a gpuix-only rule, and not DOM behaviour hidden behind an opt-in. A deviation is acceptable only where GPUI cannot build the DOM model, and it is written down in the README next to the feature. [FORK.md](./FORK.md#the-principle-dom-and-css-semantics) has the rationale and each area's list of deviations.
+
+- New behaviour goes in its own module (`events/`, `layout/`, `css/`, `motion/`, `scroll.rs`, `js/events/`). `renderer.rs`, `style.rs` and `js/host.ts` get wiring only, because they conflict on every upstream sync.
+- macOS is the platform that was exercised. Effects (Metal), pointer lock, synchronous dispatch and the OS reduced-motion read are macOS only. The Windows, Linux and wasm paths exist but were not compiled by the people who wrote them, so do not report them as working.
 
 ## GPUIX is a thin layer on GPUI
 
@@ -21,7 +28,7 @@ do, the order is:
 
 1. Find the GPUI API that already does it. Search `zed/crates/gpui` for the symbol
 2. Search `zed-industries/zed` issues and PRs. Someone may have shipped it already
-3. Fix it in the `remorses/zed` fork as a normal GPUI change, and bump the submodule
+3. Fix it in the `zed/` submodule (`fdarian/zed`, branch `poc`) as a normal GPUI change, and bump the submodule
 4. Only then, add GPUIX code
 
 **Never paper over GPUI in `packages/native`.** A workaround that re-applies state after
@@ -32,6 +39,8 @@ GPUI call makes it safe.
 
 Prefer the smallest translation. Fewer moving parts is more important than matching any
 other framework's behaviour.
+
+The `zed/` submodule is not upstream GPUI. It carries the fork's additions (DOM hit testing, scroll routing, sticky, containing blocks, grid templates, effect groups, `draw_if_dirty`), so GPUI docs and `zed-industries/zed` issues describe something close but not identical. The source in `zed/crates/gpui` is the truth.
 
 ## Built-in components follow Base UI
 
@@ -53,86 +62,30 @@ rendering framework).
 
 Instead of Electron/web rendering, your React components render directly to the GPU via Metal/Vulkan.
 
-## Mouse capture is armed by the press
-
-A `div` with `onMouseDown`, `onMouseMove`, and `onMouseUp` keeps move and up after the pointer leaves the hitbox. GPUIX arms that automatically when the same node listens for down and move, using GPUI's window-level mouse listeners.
-
-Put all three on the element the user grabs. Capture is armed by the **press**, so an overlay mounted during that press never arms it, and a release past the window edge is lost. `examples/timeline.tsx` drags clips, trims edges, scrubs, and marquee-selects with no overlay at all.
-
 ```
 React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
      Your code         Bridge      Native render    Metal/Vulkan
 ```
 
-## Architecture Overview
+## How a change reaches the screen, and where the code is
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  JavaScript / TypeScript                                        │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  Your React App                                          │   │
-│  │                                                          │   │
-│  │  function App() {                                        │   │
-│  │    const [count, setCount] = useState(0)                 │   │
-│  │    return (                                              │   │
-│  │      <div style={{ display: 'flex', bg: '#1e1e2e' }}>    │   │
-│  │        <div onClick={() => setCount(c => c + 1)}>+</div> │   │
-│  │      </div>                                              │   │
-│  │    )                                                     │   │
-│  │  }                                                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              ↓                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  @gpuix/react (packages/react)                           │   │
-│  │                                                          │   │
-│  │  - React Reconciler (react-reconciler)                   │   │
-│  │  - Builds element tree from React components             │   │
-│  │  - Serializes to JSON ElementDesc                        │   │
-│  │  - Manages event handler registry                        │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  @gpuix/solid (packages/solid)                           │   │
-│  │  - Solid 1 universal renderer and reactive components   │   │
-│  │  - Bun preload and production build plugin              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              ↓ JSON                             │
-└─────────────────────────────────────────────────────────────────┘
-                               ↓ napi-rs FFI
-┌─────────────────────────────────────────────────────────────────┐
-│  Rust / Native                                                  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  @gpuix/native (packages/native)                         │   │
-│  │                                                          │   │
-│  │  - GpuixRenderer: receives JSON, triggers re-render      │   │
-│  │  - build_element(): ElementDesc → GPUI elements          │   │
-│  │  - apply_styles(): StyleDesc → GPUI style methods        │   │
-│  │  - Event handlers → ThreadsafeFunction callbacks to JS   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              ↓                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  GPUI (from zed)                                         │   │
-│  │                                                          │   │
-│  │  - Immediate-mode UI framework                           │   │
-│  │  - Flexbox layout via Taffy                              │   │
-│  │  - GPU rendering via Metal (macOS) / Vulkan (Linux)      │   │
-│  │  - Native window management                              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
+[README Architecture](./README.md#architecture) and [Mutation API](./README.md#mutation-api) have the picture. In short: the adapter queues host mutations, `applyBatch` (`BatchOp` in `renderer.rs`) applies them to the Rust `RetainedTree` (`retained_tree.rs`), and every GPUI frame `GpuixView::render` walks that tree through `build_element` (`renderer.rs`) into GPUI elements. There is no element tree serialized from JS. Events go back as `EventPayload` (`element_tree.rs`), the one napi struct for every event type, with optional fields.
 
-## Key Insight: Immediate Mode Alignment
+| Area | `packages/native/src/` | `packages/native/js/` | `zed/crates/gpui/src/` |
+|---|---|---|---|
+| Pointer events, hover/active, drag | `events/` (`dispatcher`, `listeners`, `state`, `path`, `ids`, `element_drag`, `file_drag`, `pointer_lock`, `synthetic_click`) | `events/` (`dispatch`, `route`, `event-props`, `drag`, `window-target`) | `window.rs` (`Hitbox`, `dom_hit_test`) |
+| Synchronous dispatch | `events/sync_dispatch.rs` | `renderer-state.ts` (`dispatchSync`), `runtime.ts` | |
+| Keyboard, focus, forms, a11y | `events/keyboard.rs`, `focus.rs`, `forms.rs`, `accessibility.rs`, `accessibility/` | `events/keyboard-defaults.ts`, `focus.ts`, `forms.ts`, `aria.ts` | `_accessibility.rs` |
+| Scrolling | `scroll.rs`, `scrollbar.rs` | `scroll.ts` | `scroll_routing.rs`, `elements/div.rs`, `elements/list.rs`, `sticky.rs` |
+| Layout | `layout/`, `custom_elements/anchored.rs` | | `taffy/containing_block.rs`, `grid_template.rs`, `elements/anchored.rs` |
+| Paint and style | `style.rs`, `css/`, `color.rs`, `text/inline.rs`, `text/paragraph.rs`, `custom_elements/svg_*.rs` | `svg.ts` | `effects.rs`, `scene.rs`, `style.rs`, `crates/gpui_apple` |
+| Motion | `motion/` | `motion-*.ts`, `keyframes.ts`, `presence.ts`, `layout-animation.ts`, `reorder.ts`, `match-media.ts` | |
+| Text, selection, search | `text/`, `syntax/`, `markdown/`, `diff/` | `text-selection.ts` | |
+| Bounds, observers, automation | `automation.rs`, `observers.rs` | `bounds.ts`, `observers.ts`, `automation/` | `window.rs` (`draw_if_dirty`) |
 
-GPUI is **immediate-mode** - it rebuilds the entire UI tree every frame. This actually aligns perfectly with React's model:
+Adapters: `packages/react/src` (`reconciler/`, `components/`, `hooks/`) and `packages/solid/src` (`host.ts`, `primitives.ts`, `components/`). The rest of the repo: `cli/` (`gpuix new`), `examples/`, `example-app/`, `disktree/`, `docs/`.
 
-| Traditional DOM Renderer | GPUIX |
-|--------------------------|-------|
-| `appendChild(node)` | Rebuild tree each render |
-| `node.style.color = x` | Send full tree description |
-| Mutation-based | Description-based |
-
-We don't fight GPUI's architecture - we embrace it by sending a complete element description on every React render.
+**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` fold from `PointerState`, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations, then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
 
 ## Shared JavaScript runtime
 
@@ -160,56 +113,104 @@ and `@gpuix/solid/preload` in `bunfig.toml`. The preload runs the Solid
 universal compiler and selects Solid's client runtime. Do not add Vite or a
 wrapper CLI.
 
-## Package Structure
+## Events: one hit test, one dispatcher, DOM propagation
 
-```
-gpuix/
-├── cli/                         # `gpuix new` project scaffolder
-│   ├── src/cli.ts               # Goke CLI and example-app extraction
-│   └── package.json
-│
-├── packages/
-│   ├── native/                 # Rust napi-rs bindings
-│   │   ├── js/                 # Shared host runtime, testing, automation
-│   │   ├── src/
-│   │   │   ├── lib.rs          # Module exports
-│   │   │   ├── renderer.rs     # GpuixRenderer, GpuixView, build_element()
-│   │   │   ├── element_tree.rs # ElementDesc, EventPayload types
-│   │   │   ├── style.rs        # StyleDesc, color parsing
-│   │   │   ├── theme.rs        # Comet palette, oklch helpers, JS overrides
-│   │   │   ├── text/           # Selection: state, paint registry, TextRuns
-│   │   │   ├── syntax/         # Syntect highlighting + bounded cache
-│   │   │   ├── markdown/       # pulldown-cmark parser + gpui renderer
-│   │   │   ├── diff/           # Unified-patch parser + row flattening
-│   │   │   └── custom_elements/# input, img, svg, anchored, code, diff, markdown
-│   │   ├── examples/
-│   │   │   └── hello.rs        # Pure GPUI test (no JS)
-│   │   ├── Cargo.toml
-│   │   └── build.rs
-│   │
-│   ├── react/                  # React reconciler
-│       ├── src/
-│       │   ├── index.ts        # Public exports
-│       │   ├── reconciler/
-│       │   │   ├── host-config.ts  # React reconciler implementation
-│       │   │   ├── reconciler.ts   # ReactReconciler instance
-│       │   │   └── renderer.ts     # createRoot(), event bridge
-│       │   ├── hooks/
-│       │   │   ├── use-gpuix.ts    # Context access
-│       │   │   └── use-window-size.ts
-│       │   └── types/
-│       │       └── host.ts     # TypeScript types
-│       └── package.json
-│   └── solid/                  # Solid 1 universal renderer
-│       ├── src/                # Host tree, roots, primitives, controls
-│       └── package.json
-│
-├── examples/
-│   ├── package.json            # Workspace package for examples
-│   └── counter.tsx             # Example React app
-│
-└── AGENTS.md                   # This file
-```
+Pointer, mouse, click, drag and wheel events are not wired per element. They travel in three steps.
+
+1. **Hit test, in zed.** `events::enable_dom_hit_testing` turns on `Window::set_dom_hit_testing` for the window (off by default, so other GPUI users are unaffected). The hit is the topmost hitbox that is not `HitboxBehavior::PassThrough`, plus the chain of its parent hitboxes (`dom_hit_test` in `window.rs`). `PassThrough` is `pointer-events: none` and everything inside an `inert` subtree: never the target, but still in the chain when a descendant is hit. A `clipPath` cuts a hitbox's area (`Hitbox.clip`). A deferred layer (`<anchored>`) is its own hitbox root. Every host element's root is a hitbox under `events::ids::host_element_id`, and `host_hit_chain` maps GPUI's chain back to retained element ids. A text node has no hitbox: the element holding it is the target.
+2. **Dispatcher, in native.** `events/listeners.rs` registers window-level GPUI listeners once per frame from one canvas, not one per element. Each builds a `PointerSample` and `dispatcher::dispatch` turns it into `DomEvent`s in Chrome's order (boundary events, then pointer before mouse, then click). `dispatch` only reads the `RetainedTree` and writes `PointerState`, so its rules are unit-tested without a window. An event's path is the target and then its retained ancestors (`events/path.rs`), so an `<anchored>` popup bubbles to the element it is declared under, not to the window root. **A type is produced only if something on the path listens** (`path_listens`): a new event type needs its prop in `js/events/event-props.ts` (which sets the native listener) or it is never emitted.
+3. **Propagation, in JS.** `dispatchDomEvent` (`js/events/dispatch.ts`) walks `payload.path`: capture from the root down, the target, then bubble. `runRootEvent` (`events/keyboard-defaults.ts`) decides which events take that walk.
+
+`PointerState` (`events/state.rs`) holds the hovered and active chains, press targets, click count and pointer capture. `build_element` reads it for `:hover` / `:active` and the group variants, and a chain change on an element that declares one of them rebuilds the view (`Output::restyle`). Host elements do not use GPUI's `.hover()` or `.group_hover()`: the dispatcher is the only source of hover for them.
+
+**Pointer capture is explicit.** Nothing captures on its own, so an element with `onMouseDown` and `onMouseMove` hears only what happens over it. A gesture that must survive leaving the element, its parent or the window calls `setPointerCapture` on the press. The call is recorded in `PointerRequests` (shared between the renderer handle and the view) and applies at the next native pointer input, so `gotpointercapture` and the first captured move come one event after the handler that asked. `cancelDrag` and `requestPointerLock` work the same way.
+
+**A press, a release, a wheel tick and a keystroke reach JS synchronously on macOS and in the test renderer**, through `sync_dispatch::emit` (`events/sync_dispatch.rs`). The JS handler runs inside GPUI's input dispatch and returns `{ defaultPrevented, propagationStopped }`, which is how `preventDefault` cancels a native default: `mousedown` / `pointerdown` cancel the focus change and the input editor's own focus (`window.prevent_default()`), `wheel` cancels that input's scroll, `keydown` cancels the editor action and the text insertion, and a `click` inside a `<label>` cancels its activation. Every other event (moves, enter/leave, `scroll`, focus, transitions) takes the ordinary queue and reaches JS later. On Windows and Linux GPUI runs off the JS thread, so `emit` queues too and every default proceeds. The test renderer is always synchronous, so a passing test says nothing about those two platforms.
+
+Consequence for anything a handler can call: while a sync call is in flight the dispatching `Window` and `App` are stashed (`with_active_window`) and the root view is usually leased, so a renderer method that reads the view fails with `VIEW_BUSY` (`getFocusedElementId` is one) and a method that only changes state (focus, blur, selection, motion-value writes) is deferred until the input returns (`update_root_view_or_defer`). A new napi method that touches the view must go through `sync_dispatch::route` and the `update_*` helpers, not lease the view itself, or it panics inside GPUI when called from a handler. The test renderer says the same thing with "make it from a microtask".
+
+**A handler that throws does not stop the dispatch.** Errors from `dispatchDomEvent` and from window/document listeners go to the renderer's `onError` option, else to `reportError` (uncaught). Nothing is rethrown into the caller of a simulate method, so a test that expects a throw asserts on `onError`.
+
+Rules that sit in the dispatcher and are easy to miss:
+
+- `inert` is inherited like `pointer-events: none`, and a descendant's `auto` does not undo it (`Inherited::descend` in `renderer.rs`). There is no hover, group state or listener in an inert subtree.
+- A disabled form control gets no `click`, `auxclick` or `dblclick` (`RetainedTree::in_disabled_form_control`, checked in `dispatcher::release`). `element.click()` and the accessibility click skip it as well (`events/synthetic_click.rs`). Pointer and mouse move events still reach it.
+- `mousedownoutside` is gpuix's own event, delivered to each listener whose logical subtree does not contain the press target, and it does not bubble.
+- `contextmenu` fires on mousedown, not mouseup.
+
+Not in the dispatcher: keys (`events/keyboard.rs`), focus events (`GpuixView::observe_focus`), the VoiceOver press (`apply_a11y_click`), `scroll`, `onLayout` and observer reports (paint), and transition and animation events (`emit_bubbling_event` in `renderer.rs`, which gives them `target` and `path` so they bubble).
+
+
+## Focus, keyboard, forms and accessibility
+
+- **Focus.** GPUI owns who has focus; `focus.rs` owns what the DOM says about it: what is focusable (`tabIndex`, never a listener), tab order, `:focus-visible` and the four focus events. All of it is observed from one place, `GpuixView::observe_focus`, because gpui runs per-element focus listeners in creation order, so per-element subscriptions fire `focus(new)` before `blur(old)`. Do not add one.
+- **A press moves focus.** `focus::defer_mouse_down_default` runs after the `mousedown` handlers and uses the dispatcher's press path, not the topmost hit. A `preventDefault` from any handler on the path cancels it. A press with nothing focusable on its path blurs.
+- **Keys.** `events/keyboard.rs` sends one `keyDown` per keystroke, from a GPUI keystroke interceptor that runs before key bindings, to the focused element. JS bubbles it and then reaches the `window` and `document` listeners (`js/events/window-target.ts`). Defaults (Tab, Escape for the top layer, the scrolling keys) run in JS after every handler, in `runKeyDefault`, and a `preventDefault` skips them. `key` and `code` are DOM names (`events/key_names.rs`; `code` assumes a US layout). IME composition keys never arrive: the platform consumes them first.
+- **Forms.** `forms.rs` owns validation and submission (`invalid`, then a bubbling cancelable `submit`), both sent through `sync_dispatch`. A `<label>` (`accessibility/label.rs`) activates its control after a `click` whose path contains it, unless the click was prevented or landed inside the control.
+- **Accessibility.** `aria-*` props map to AccessKit in `accessibility/aria.rs`. A keyboard or VoiceOver activation is a DOM `click` with `detail` 0, `pointerId` -1 and no pointer (`events/synthetic_click.rs`).
+
+
+## Scrolling: native routing, and nested scrollers work
+
+Overflow follows CSS (`scroll.rs`): `scroll` and `auto` scroll, `hidden` scrolls only from code, `clip` does not scroll, and overflow never changes `display` or wraps children. `scroll::apply_container` turns a div into a scroll container and attaches the overlay scrollbar (`scrollbar.rs`).
+
+The wheel is two separate things.
+
+- **Which scroller moves** is zed's `scroll_routing.rs`. Every scroller under the pointer claims its share of the delta in bubble order, innermost first: `div` scrollers and `gpui::list()` alike, so `<virtual-list>` and a scrolling `<diff>` take part. Each axis chains on its own. A gesture latches to the scroller that took its first delta, trackpad momentum included (a mouse wheel latches until 500 ms of silence or until the pointer moves), and `overscroll-behavior` decides what happens to delta a scroller cannot use. This is a delta budget carried through one dispatch, not `stop_propagation`, so `onWheel` listeners above still run. A scroller whose hitbox is `PassThrough` (`pointer-events: none`, inert) is never a candidate, even while something non-pass-through under the pointer is.
+- **The `wheel` DOM event** goes through the dispatcher like any pointer event, to the hit target and along its path, and it runs **before** any scroller claims, through sync dispatch. A `preventDefault` in either phase calls `window.prevent_default()` and the routing skips that event. It cancels that input only, not the rest of the gesture, and only where dispatch is synchronous. `onWheel` fires for every tick; `onScroll` is a different event, fired on the scroller that moved for any offset change (wheel, scrollbar drag, keys, `scrollTo`), non-bubbling, and not fired by `<virtual-list>` (`onVisibleRange`).
+
+`<code>` and `<markdown>` code and table bodies are `overflow_x_scroll().restrict_scroll_to_axis()` divs. They do not set `allow_concurrent_scroll`, so `div.rs` takes its older branch for them: horizontal deltas only, no chaining, no latching. Keep `restrict_scroll_to_axis()` on any x-only scroller that native code builds, or a vertical wheel over it moves it sideways instead of the page.
+
+Keys that scroll are a JS default action (`runKeyDefault`, then `renderer.scrollByKey`, `scroll::scroll_by_key`): the innermost scrollable ancestor of the focused element that can move that way, else the scroller under the pointer. A focused input keeps its keys.
+
+`position: sticky` is placed natively in prepaint (zed `sticky.rs`) against the nearest scroll container's scrollport, so it follows the scroll with no JS in the loop and cannot tear.
+
+A `<diff>` flows with its parent by default, so a parent list can be the only scroller. Pass `scroll` plus a bounded height only for a dedicated viewer. Do not give `<diff>` a bounded height inside a parent scroller just so it can virtualize.
+
+
+## Bounds: every element reports its own box at paint, and reads are never stale
+
+`getByTestId(..).click()`, `getBoundingClientRect`, `onLayout` and the observers all read the border box recorded by `crate::automation::track_host_bounds`. It is the element's own `on_painted`, so it adds nothing to the tree: a canvas child per element would double the nodes gpui lays out, prepaints and paints. `<img>`, `<svg>` and `<anchored>` use `track_own_bounds`, the same hook without the selection-start region. A leaf cannot hold a child, and wrapping it in a div would move the layout box (the wrapper becomes the flex item and the image loses intrinsic sizing and corner clipping). `custom_surface` attaches the right one for a custom element. `on_painted` takes one listener, so paint-driven events (`onLayout`, observers, `onScroll`) share it through a `PaintReporter`.
+
+Both record during **paint**, and `bounds_frame_reset` clears the registry during paint too. Never move any of it to prepaint: `gpui::list()` prepaints a speculative row range, then rolls the window back through `Window::transact` and prepaints a different one, so a prepaint-recorded box can belong to a row that never reached the screen. gpui paints nothing for `visibility: hidden`, so a hidden element has no box.
+
+**A bounds read is never stale.** `readBoundingClientRect` (`js/bounds.ts`) first sends the mutations the adapter has queued (`flushPendingMutations`: Solid flushes in a microtask, React at commit), then native `GetElementBounds` calls `Window::draw_if_dirty` in zed before it answers. Scroll metrics and `scrollIntoView` do the same. The cost is that a read in the same turn as a mutation is a synchronous draw: batch the reads, do not interleave a read after every write. In a real window `draw_if_dirty` is the only thing that draws early; `flush_effects` draws inline only for test-mode apps ([FORK.md](./FORK.md), patch 1).
+
+
+## Layout: CSS rules between the retained tree and GPUI
+
+`layout/` holds the DOM and CSS rules that taffy and GPUI do not give for free; `renderer.rs` only calls into it. `layout::style::apply` is the layout half of `apply_styles`.
+
+- **`position` defaults to `static`** (`build_element` sets it when the style has none). `absolute` resolves against the nearest positioned ancestor: zed's `taffy/containing_block.rs` rewrites those nodes after a layout pass and lays out again. `fixed` resolves against the window. So `top` / `left` without `position` do nothing, and code that needs an absolute child needs a positioned parent (`AnimatePresence mode="popLayout"` is one).
+- **Paint order.** Positioned elements paint above later in-flow siblings, and `zIndex` orders siblings only: every parent is its own stacking context (`layout/stacking.rs`, `paint_rank`). A card cannot reach over a later sibling's subtree by `zIndex`; an overlay goes through `<anchored>` (below).
+- **No box.** `display: none` builds nothing (no box, no hitbox, no a11y node); `display: contents` splices the children into the parent (`layout/contents.rs`, taffy has no such value). An empty or whitespace-only text node generates no box and takes no `gap` slot (`text/inline.rs`).
+- Grid syntax is parsed once when a style is deserialized (`layout/grid.rs`), so the per-frame `apply_styles` only moves built values. `order` and `aspectRatio` live in `layout/` too.
+- `<anchored>` is a floating-ui style popup (zed `elements/anchored.rs`: flip, shift, `onPlacement`). `anchor-size()` takes one frame to settle, and the child is held at opacity 0 until the trigger is measured.
+
+
+## Paint and style
+
+- **Colours resolve through `ColorContext`** (`color.rs`): the element's computed `color` (what `currentColor` means), its `color-scheme`, and the window appearance. `light-dark()`, `currentColor` and `color-mix()` cannot be resolved without it, so `apply_styles` takes `&ColorContext`, a state refinement uses `for_state`, and children get `descend`. `parse_color_rgba` has no context and none of those functions: do not call it on a style value. Motion colours go through it too: `motion::Colors` (`motion/value.rs`) holds an element and a text context, `parent_color_context` (`renderer.rs`) builds the parent's from declared styles (an ancestor's `hover` colour is not in it), and a `MotionState` re-parses its colours when they change.
+- **CSS value strings** (`background`, `boxShadow`, `filter`, `mask`, `clipPath`, colour functions) are parsed in `css/`, one file per concern, and re-parsed every time an element is built. There is no cache, so keep new parsing out of anything that runs per frame per element.
+- **Effect groups** (`filter`, `backdropFilter`, `mask`, `clipPath`, group `opacity`) are offscreen passes in zed `effects.rs` and `gpui_apple`. Only macOS (Metal) renders them; elsewhere the group draws flat and only opacity applies. A subtree that paints one primitive keeps the cheap per-primitive path. Changing `Quad` means changing the shader and the Rust struct together on every backend, or the stride checks fail.
+- **`overflow` clips to the padding box** with rounded inner radii (zed rounded content masks), not to a rectangle.
+- **Inline text.** `text::inline::plan_children` is the CSS inline formatting rule: in a block container each maximal run of inline children (raw text, `<span>`, a nested `<text>` with no behaviour) is one paragraph, and a block child ends the run; in a flex or grid container children are blockified. A `<text>` with a listener, focus or state style stays a block, because inline boxes have no hitbox. `text/paragraph.rs` turns the inline boxes into per-run styles. There is no per-run `fontSize`: gpui's `TextRun` has none.
+- **`<svg>`** rasterizes with resvg at device scale in its own colours (`custom_elements/svg_paint.rs`); `currentColor` is the element's `color`, not black. DOM-style shape children (`<path>`…) never become GPUI elements: `svg_tree.rs` serializes them into one image. `SvgPaint::image` holds one image and drops the previous one from the atlas when an input changes, so keep that single entry point.
+- **`clipPath` clips hit testing** for `div` hitboxes (zed `Hitbox.clip`). A custom element that inserts its own hitbox outside any `div` is not clipped.
+
+
+## Motion
+
+`packages/native/src/motion/` resolves animation during GPUI rendering, outside React. A description (`initial`, `animate`, `transition`) becomes one `Track` per animated property, and a retarget restarts only the properties whose target changed (`mod.rs`). Around it: CSS transitions and animations (`css_transition.rs`, `css_animation.rs`), the keyframes registry, motion values (`bindings.rs`), `layout_flip.rs` and `measure.rs`.
+
+- GPUI has no transforms. `layout` and `layoutId` glide a box by prepainting it inside `Window::with_element_offset`, which shifts bounds, hitboxes and paint, so position animates and size snaps. A transform-shaped feature (a size morph, translating a dragged `Reorder` item) is not available for the same reason.
+- `measure.rs` is what the previous frame's layout produced: `height: "auto"` and `%` targets read it, so they settle one frame late. `width: "auto"` needs a second layout pass: `motion` rejects it with an error and a CSS transition changes at once.
+- Hover and active for an element with a transition come from `PointerState`, folded once in `build_element`, one frame after the pointer moves. Do not add a probe element above a hitbox: it hides the element from the DOM hit test.
+- Transition and animation events are lowercase DOM types (`transitionend`, …) with `target` and `path`; they bubble and are not cancelable. `Reorder` (React and Solid) captures the pointer with `setPointerCapture` on `pointerdown`, so a drag works only because capture is explicit.
+- A motion value is not tied to an element, so its colours resolve as on a root with `colorScheme: "light dark"` and keep what they resolved to.
+- `matchMedia`: JS owns the query language (`js/media-query.ts`); `media.rs` only answers what the OS says, and only macOS has a read.
+
+**Adding a `StyleDesc` field.** `overlay_fields!` in `events/state_styles.rs` must list it: it is a struct literal, so a missing field fails to compile instead of silently never taking part in state styles. If the field is a shorthand, `drop_shadowed_longhands` in the same file must reset the longhands it covers, or a hover shorthand loses to a base longhand. If it animates, it needs an entry in `motion/property.rs`.
 
 ## Text rendering: one funnel, no exceptions
 
@@ -232,15 +233,16 @@ root, or stale entries from the previous frame leak into the next drag.
 ## Text is grouped, because React splits one line into many nodes
 
 `shouldSetTextContent` is false, so `<text>Hello {name}!</text>` becomes **three**
-host text nodes and three `TextLayout`s. Anything that reasons about a line, copy
-and `highlight` both, must merge them first.
+host text nodes. Anything that reasons about a line (paint, copy, `highlight`)
+must merge them first, and all of them must agree on where a line starts and ends.
 
-The rule is structural: **adjacent** primitive text children of the same parent
-form one group. Never derive it from `display`; `apply_styles` only knows `flex`
-and `grid`, and every text node already sits inside a `div`.
-
-Copy and search must agree, so both call `search::group_id`. Using
-`element.parent` for one and adjacency for the other is a silent divergence: a
+`text::inline::plan_children` is that rule, and it is CSS inline formatting, not
+the shape of the tree: in a block container each run of inline children is one
+paragraph, a block child ends the run, and a flex or grid container blockifies
+its children. Paint builds a paragraph as one `selectable_text` (`paragraph_content`),
+and `search::collect_into` walks the same `plan_children`. `search::group_id` is
+the matching identity for a lone adjacent text leaf. Never take the group from
+`element.parent` for one consumer and adjacency or `display` for another: a
 non-text sibling between two leaves ends the run for search but not for copy.
 `None` means a run that never merges, which is every native element line.
 
@@ -393,49 +395,31 @@ the server.
 ## A new element needs a host-derived GPUI id, or it has no state
 
 `.id(..)` is not decoration. gpui keys `InteractiveElementState` off the
-`GlobalElementId`, so an element without one silently loses **hover, active,
-pointer capture, implicit scroll, its accessibility node, and any element state
-gpui itself keeps**. `<img>` had no id, which is why an animated GIF never left
-frame zero: `ImgState` holds the frame index.
+`GlobalElementId`, so an element without one silently loses **hover, its scroll
+offset, its accessibility node, and any element state gpui itself keeps**.
+`<img>` had no id, which is why an animated GIF never left frame zero:
+`ImgState` holds the frame index.
 
-`<div>` and `<text>` use `gpui::ElementId::Integer(host_id)`. Host ids are
-already unique per renderer, and a formatted name cost a `SharedString`
-allocation on every node on every frame. Custom elements use
-`ElementId::Name("__gpuix_<kind>_<host id>")`; that is a different enum variant,
-so the two namespaces cannot collide.
+The root of every host element, built-in or custom, uses
+`events::ids::host_element_id(host_id)`, which is `ElementId::NamedInteger("gpuix", host_id)`.
+That variant is how the dispatcher maps GPUI's hit chain back to retained
+elements (`host_id_of`), so it is reserved for the root. Inner parts (a list
+row, a code block's scroll body, an editor's inner view) use
+`ElementId::Name("__gpuix_<kind>_<…>")`; they are GPUI details and never a
+pointer target. Per-row ids are formatted names too: `__gpuix_diff_line_{ix}`,
+`__gpuix_md_table_{id}_{sub}`.
 
-**Never call `.id(<index>)` in this crate.** `impl From<usize> for ElementId`
-makes the idiomatic gpui row id an `Integer`, which is the same namespace as a
-host id. Every per-row id here is a formatted name for that reason:
-`__gpuix_diff_line_{ix}`, `__gpuix_md_table_{id}_{sub}`, and the rest.
+A custom element builds its root through `custom_surface` in
+`custom_elements/mod.rs`. It inserts the hitbox (`host_hitbox`: always a hitbox,
+`PassThrough` under `pointer-events: none`), applies the style, defaults
+`position` to static, records bounds, and wires the accessibility node. Give the
+root its `host_element_id` first.
 
-**Never call `apply_styles` on a stateful root. Call `apply_interactive_styles`.**
-`StyleDesc` carries `hover` and `active` for every element type, so a builder
-that applies only the base styles type-checks the prop, serializes it, and drops
-it. `custom_surface` in `custom_elements/mod.rs` does this for you.
-
-## Bounds: a container uses a tracker, a leaf uses `on_painted`
-
-`getByTestId(..).click()` needs a recorded box. Two mechanisms, both required:
-
-- **Containers** (`<div>`, `<text>`, `<code>`, `<diff>`, `<markdown>`, `<input>`)
-  add `crate::automation::bounds_tracker(id, selection_start)` as a child. It is
-  `absolute().size_full()`, so the parent must be positioned. Pass
-  `Some(selectable)` when the element also owns a selection-start region; the
-  editor uses `Some(false)` so a drag moves the caret instead of starting a
-  document selection. `custom_surface` attaches it.
-- **Leaves** (`<img>`, `<svg>`) and **`<anchored>`** use
-  `crate::automation::track_own_bounds(el, id)`, which is gpui's `on_painted`.
-  Wrapping a leaf in a div instead would move the layout box: the wrapper
-  becomes the flex item, and the image loses intrinsic sizing and corner
-  clipping. `<anchored>` uses it because only gpui knows where the overlay
-  landed after snapping.
-
-Both record during **paint**, and `bounds_frame_reset` clears the registry
-during paint too. Never move any of them to prepaint: `gpui::list()` prepaints a
-speculative row range, then rolls the window back through `Window::transact` and
-prepaints a different one, so a prepaint-recorded box can belong to a row that
-never reached the screen.
+`hover`, `active`, `groupHover` and `groupActive` are folded into the style in
+`build_element` before any builder runs, so a builder only applies the style it
+is given (`apply_interactive_styles`). `focusVisible` and `focusWithin` need the
+focus state, so `focus::apply_focus_styles` and `apply_focus_within` apply them
+where the element calls `track_focus`.
 
 ## A macOS menu item owns its shortcut, so the window never sees it
 
@@ -479,11 +463,11 @@ not to the window or the canvas. Dispatching a synthetic `KeyboardEvent` at that
 element is therefore the only way automation can type into a browser app.
 
 **Match it by attribute only** (`IME_MIRROR_SELECTOR` in `automation/client.ts`).
-It used to be an `<input>`; [zed-industries/zed#63201](https://github.com/zed-industries/zed/pull/63201)
-replaced it with a `<textarea>` because a single-line input strips newlines from
-an assigned value and desynchronises the mirror from the document. Our
-tag-qualified selector was never updated, so after that submodule bump every
-browser keystroke failed. A tag-qualified selector will do it again.
+The element's tag belongs to `gpui_web`: it is a `<textarea>`
+([zed-industries/zed#63201](https://github.com/zed-industries/zed/pull/63201))
+because a single-line input strips newlines from an assigned value and
+desynchronises the mirror from the document. A tag-qualified selector fails every
+browser keystroke the next time that tag changes.
 
 ## Virtualized React children re-enter through `cx.processor`
 
@@ -495,30 +479,6 @@ only the rows GPUI requests. Never capture the root render's tree guard or
 
 `<diff>` still owns its parsed Rust data because one native diff node is much
 cheaper than retaining one React node per line.
-
-## Nested scrolling is not supported
-
-Never put a scroll container inside another scroll container. That includes
-`overflow: "scroll"`, `<virtual-list>`, and `<diff>` (`gpui::list()` always
-takes the wheel). GPUI delivers the same wheel event to both hitboxes. The
-inner list steals the gesture. Nested scroll looks broken and there is no
-GPUI API to turn list scroll off.
-
-Keep **one** scroll parent. Long inner content must grow with that parent, or
-collapse behind an expandable (file header, first N lines, Show more). `<diff>`
-defaults to flow layout. Pass `scroll` plus a bounded height only for a
-dedicated viewer. Do not give `<diff>` a bounded height inside a parent
-scroller just so it can virtualize.
-
-`overflow-x: scroll` is allowed inside a vertical scroller. GPUI remaps a
-vertical wheel onto overflow-x unless `restrict_scroll_to_axis()` is set.
-Every `overflow_x_scroll()` in native code must call that, or the parent
-scroller jumps sideways when the pointer is over `<code>` or a markdown table.
-
-A **two-axis** `overflow: "scroll"` sets `allow_concurrent_scroll`. GPUI's
-default zeroes the smaller of the two deltas, so one diagonal wheel moved one
-axis. A browser moves both, and a two-axis container is exactly where a user
-expects that.
 
 ## A prepended row is only visible at the top
 
@@ -566,25 +526,15 @@ session each:
   the test means to scroll up. Start from the latest page (no trailing edge) or
   `scrollToItem` onto content first. `infinite-chat.test.tsx` does both
 
-## A frozen header cannot use native scroll
+## A second pane cannot follow native scroll
 
-GPUI moves a scroll container on the wheel frame. The `onScroll` callback that
-would move a sibling pane arrives a frame later, so a ruler synced that way
-tears away from its content during a fast pan.
+GPUI moves a scroll container on the wheel frame. The `onScroll` callback that would move a sibling pane arrives a frame later, so a ruler synced that way tears away from its content during a fast pan. A header inside the **same** scroller needs none of this: use `position: sticky`.
 
-When two panes must stay locked to the pixel, **React owns the offset**: one
-`onScroll` listener on a non-scrolling parent, `scrollX` / `scrollY` in state,
-and one absolutely positioned wrapper per pane carrying the translation. Zed
-does the same; the editor owns its scroll position and paints the gutter and the
-text from it. `examples/timeline.tsx` is the worked example.
+When two panes in different containers must stay locked to the pixel, **React owns the offset**: one `onWheel` listener on a non-scrolling parent, `scrollX` / `scrollY` in state, and one absolutely positioned wrapper per pane carrying the translation. Zed does the same; the editor owns its scroll position and paints the gutter and the text from it. `examples/timeline.tsx` is the worked example.
 
-Those wrappers must set `pointerEvents: "none"`. A positioned box takes hits
-even with no fill, so otherwise it swallows every press meant for the surface
-behind it. Its children keep their own hitboxes.
+Those wrappers must set `pointerEvents: "none"`. A positioned box is a hit target even with no fill, as in a browser, so otherwise it swallows every press meant for the surface behind it. `pointerEvents: "none"` **inherits**, so anything inside a wrapper that must still be clickable sets `pointerEvents: "auto"`.
 
-Keep the moving subtree in a `memo` component whose props do not change during a
-pan. Then a wheel costs a handful of style mutations instead of one per row.
-`examples/timeline.perf.test.tsx` measures both halves.
+Keep the moving subtree in a `memo` component whose props do not change during a pan. Then a wheel costs a handful of style mutations instead of one per row. `examples/timeline.perf.test.tsx` measures both halves.
 
 ## Scroll cost
 
@@ -596,16 +546,13 @@ only skip overdraw items that are off screen.
 wheel  ►  notify GpuixView  ►  render()  ►  Taffy on visible rows  ►  paint
 ```
 
-If scroll is smooth on empty padding and slow or stuck on text, a filled
-child is stealing the wheel. `occlude()` is **BlockMouse**. It stops the
-hit test. The parent list never sees the event. Every painted or positioned
-`div` must use `block_mouse_except_scroll()`. `occlude()` is reserved for
-`pointerEvents: "auto"` and for `<anchored>`, which sets it itself.
-
-The chat "jank" over code and tables was the Y-to-X remap above, not the
-tick loop. After that fix, remaining cost is Taffy on fat visible rows.
-`<code>` is one flex row per line. Safe-mdx is ~100 host nodes. Flatten
-paint before changing the frame loop.
+If scroll is smooth on empty padding and slow or stuck over a child, look at who
+claimed the delta. The wheel goes to scrollers that are ancestors of the hit
+target, so a nested scroller, `<virtual-list>` or `<diff scroll>` under the pointer
+takes its share first, and an `onWheel` handler that calls `preventDefault()`
+cancels the scroll outright. Remaining cost is Taffy on fat visible rows.
+`<code>` is one flex row per line. Safe-mdx is ~100 host nodes. Flatten paint
+before changing the frame loop.
 
 Keep `<virtual-list>` `overdraw` modest. 820px on a short chat kept almost
 every row live. Profile with `debugFrameOverlay: 'full'`. The overlay is
@@ -712,10 +659,6 @@ cd packages/react && bun run build
 Turn on `debugFrameOverlay: 'full'`. The number is **draw time**, not FPS.
 `8.3 MS` is about 120 Hz.
 
-The chat wheel jank was **not** the tick loop. GPUI remaps a vertical wheel
-onto `overflow-x`. `<code>` and markdown tables stole the gesture. Fix is
-`restrict_scroll_to_axis()` on every `overflow_x_scroll()`.
-
 Keep `overdraw` modest. 820px on a short list keeps almost every row live.
 
 Do not flatten the frame loop to hide fat rows. Flatten the rows
@@ -743,15 +686,16 @@ cd packages/native && cargo run --release --example bench_serde
 
 Four results that shaped the current code:
 
-- `StyleDesc` is **1392 bytes**. Putting it in an enum variant makes the whole
-  `Vec<BatchOp>` 1408 bytes wide, so a 221k-op mount reserved 312 MB before
-  parsing anything. Never inline a style in an op
-- **styles are hash-consed in Rust, not in the protocol.** `RetainedTree::intern_style`
-  hashes the raw payload and shares one `Arc<StyleDesc>`. Do not move this into
+- `StyleDesc` is about 1.4 KB (1392 bytes when it was measured, and every field
+  added since only grows it). Putting it in an enum variant makes the whole
+  `Vec<BatchOp>` as wide, so a 221k-op mount reserved 312 MB before parsing
+  anything. Never inline a style in an op: `BatchOp::SetStyle` keeps the raw JSON
+- **styles are hash-consed in Rust, not in the protocol.** `StyleTable::intern`
+  (`retained_tree.rs`) hashes the raw payload and shares one `Arc<StyleDesc>`. Do not move this into
   JS: `commitUpdate` resends the full style every commit, a dragged element
   produces a distinct style every frame, and a JS-owned table would grow forever
   while sending two ops where it sends one today
-- `sweep_styles` runs after every batch and drops entries with
+- `StyleTable::maybe_sweep` runs after batches, and `sweep` drops entries with
   `Arc::strong_count == 1`. That is the only thing keeping the table bounded
 - `RetainedElement.style` is `Option<Arc<StyleDesc>>`. Read it with
   `.as_deref()`. The motion path must copy out before mutating, or one
@@ -766,37 +710,30 @@ new dependency on both sides.
 
 Menus, tooltips, and dialogs go through **`SelectContent` / `ComboboxContent` /
 `<anchored deferred>`**. Never overflow a `position: "absolute"` card out of the
-composer into a `<virtual-list>`. The list paints after the composer, so the
-list shows through the menu and clicks hit the text behind it.
+composer into a `<virtual-list>`. A positioned card paints above later siblings of
+its own parent only, so the list, a later sibling subtree, paints over the menu and
+the clicks hit the text behind it.
 
 Do not paint `#00000000` over a blurred window. A transparent GPUI quad punches
 through Metal to the desktop. Omit the fill, or use the parent color. Overlay
 rows need a **solid** fill too, not a transparent idle state.
 
-Any `div` that paints a fill, or that is positioned, uses
-**BlockMouseExceptScroll**. Clicks and hovers stop, the wheel still reaches the
-scroll hitboxes behind it. Only `pointerEvents: "auto"` uses **BlockMouse** and
-steals the wheel.
+**Pointer rules are the DOM's.** The target is the topmost non-`none` element
+where it is painted, whatever it paints or listens for. A filled or positioned
+`div` hides nothing from its ancestors: they still get the event as bubbling and
+are still hovered. An overlay that must keep clicks from reaching what is behind
+it stops them with `stopPropagation()` (or is an `<anchored>` layer, which is its
+own hitbox root). The wheel reaches only scrollers that are ancestors of the
+target, so a card over an unrelated scroller does not scroll it, and a modal does
+not scroll the page it was declared in.
 
-That is not DOM bubbling. GPUI hitboxes are one flat painted list, so the wheel
-reaches **any** scroller behind the element, not only an ancestor. An absolute
-card over an unrelated scroller scrolls it. Give a real overlay
-`pointerEvents: "auto"`.
-
-`pointerEvents: "none"` means this element inserts **no hitbox**, so nothing
-behind it is blocked. It does not disable the listeners on the element itself,
-and it does not inherit.
-
-Absolute used to steal the wheel too. That made a pannable canvas impossible:
-every absolutely placed item ended the hit test before the ancestor's pan
-listener ran, and HTML does not behave that way either. `<anchored>` has its own
-`occlude` prop, so menus never depended on the old rule.
-
-An absolutely positioned wrapper with **no** fill still takes hits, like an
-empty positioned `div` in a browser. A translating wrapper that only carries a
-scroll offset must set `pointerEvents: "none"`, or it swallows every press meant
-for the surface behind it. Its children keep their own hitboxes:
-`pointerEvents` does not inherit.
+`pointerEvents: "none"` makes the element never the target; it stays in the path
+of its descendants' events, so its own listeners still hear them. It
+**inherits**: a descendant is also not a target until one sets
+`pointerEvents: "auto"`, which is how a clickable control sits inside a `none`
+layer. An absolutely positioned wrapper with no fill still takes hits, like an
+empty positioned `div` in a browser, so a wrapper that only carries a scroll
+offset must set `none`, and its interactive children `auto`.
 
 Text **selection** still uses window mouse events and text bounds, not hitboxes.
 A drag on a menu over markdown can still start a selection. Do not skip
@@ -804,8 +741,8 @@ selection tests to hide that.
 
 If `<svg>` icons are blank in vitest, `src` is probably a `data:image/svg+xml`
 URL from `import … with { type: 'file' }`. Native decodes that URL. Do not write
-a temp-file workaround. Prefer `fill="#000"` / `stroke="#000"` plus
-`style.color`. `currentColor` in the file is not `style.color`.
+a temp-file workaround. `currentColor` in the file is the element's `color`:
+prefer it to a hard-coded `#000` that relied on `style.color` to tint.
 
 macOS traffic-light clearance is **86px**. The test renderer does not draw
 traffic lights, so that gap looks empty in PNGs.
@@ -944,124 +881,19 @@ commit than the one npm was built from. Delete all three tags locally and on the
 recreate them on the commit that published, and push again. The upload step matches
 on the tag *name*, so the release itself keeps its notes and its assets.
 
-## Communication Flow
-
-### Render Flow (JS → Rust)
-
-```
-1. React state changes
-         ↓
-2. React reconciler builds Instance tree
-         ↓
-3. instanceToElementDesc() converts to JSON-serializable format:
-   {
-     type: "div",
-     id: "btn-1", 
-     style: { display: "flex", backgroundColor: "#ff0000" },
-     events: ["click", "mouseEnter"],
-     children: [...]
-   }
-         ↓
-4. renderer.render(JSON.stringify(tree))
-         ↓
-5. Rust parses JSON into ElementDesc structs
-         ↓
-6. build_element() recursively builds GPUI elements:
-   div().id("btn-1").flex().bg(rgba(0xff0000ff)).on_click(...)
-         ↓
-7. GPUI renders to GPU
-```
-
-### Event Flow (Rust → JS)
-
-```
-1. User clicks element with id="btn-1"
-         ↓
-2. GPUI fires click event on element
-         ↓
-3. Rust closure calls emit_event("btn-1", "click", position)
-         ↓
-4. ThreadsafeFunction calls into JS with EventPayload
-         ↓
-5. JS event registry looks up handler:
-   eventHandlers.get("btn-1")?.click?.(event)
-         ↓
-6. React handler runs: onClick={() => setCount(c => c + 1)}
-         ↓
-7. State update triggers re-render → back to Render Flow
-```
-
-## Key Types
-
-### ElementDesc (Rust ↔ JS)
-
-```rust
-pub struct ElementDesc {
-    pub element_type: String,      // "div", "text", "img"
-    pub id: Option<String>,        // For event handling
-    pub style: Option<StyleDesc>,  // CSS-like styles
-    pub content: Option<String>,   // Text content
-    pub events: Option<Vec<String>>, // ["click", "mouseEnter"]
-    pub children: Option<Vec<ElementDesc>>,
-}
-```
-
-### StyleDesc (CSS-like properties)
-
-```rust
-pub struct StyleDesc {
-    // Flexbox
-    pub display: Option<String>,        // "flex"
-    pub flex_direction: Option<String>, // "row", "column"
-    pub align_items: Option<String>,    // "center", "start", "end"
-    pub justify_content: Option<String>,
-    pub gap: Option<f64>,
-    
-    // Sizing
-    pub width: Option<DimensionValue>,
-    pub height: Option<DimensionValue>,
-    
-    // Spacing
-    pub padding: Option<f64>,
-    pub margin: Option<f64>,
-    
-    // Colors (parsed centrally in src/color.rs with csscolorparser 0.8.3;
-    // parser-version changes require running both absolute and relative matrices)
-    pub background_color: Option<String>,
-    pub color: Option<String>,
-    
-    // Border
-    pub border_radius: Option<f64>,
-    pub border_width: Option<f64>,
-    pub border_color: Option<String>,
-}
-```
-
-### EventPayload (Rust → JS)
-
-```rust
-pub struct EventPayload {
-    pub element_id: String,
-    pub event_type: String,  // "click", "mouseEnter", etc.
-    pub x: Option<f64>,
-    pub y: Option<f64>,
-    pub key: Option<String>,
-    pub modifiers: Option<EventModifiers>,
-}
-```
-
 ## Building
 
 ### Standalone Build
 
-The `zed/` submodule tracks the `gpuix` branch of `remorses/zed`. Cargo uses path
+The `zed/` submodule is `fdarian/zed` on `poc` (`.gitmodules`). Cargo uses path
 dependencies from that submodule so the native addon and native platforms always
 compile from the same source:
 
-**Always keep `zed/` checked out on the local `gpuix` branch. Never
-leave the submodule in detached HEAD state**, including after `git submodule update`
-or a pointer update. If Git detaches it, immediately switch back to
-`gpuix` before doing any other work.
+**Keep `zed/` on the local `poc` branch. Never leave the submodule in detached
+HEAD state**, including after `git submodule update` or a pointer update. If Git
+detaches it, switch back to `poc` before doing any other work. A fresh worktree
+gets zed with `git submodule update --init zed`, which clones `fdarian/zed` from
+GitHub.
 
 - macOS uses `MacPlatform::new_embedded()` and pumps AppKit on Node's main thread
 - Windows and Linux run `gpui_platform::application().run()` on a dedicated UI thread
@@ -1087,11 +919,13 @@ xcodebuild -downloadComponent MetalToolchain
 
 ### Bumping the gpui revision
 
-1. Merge upstream Zed into the `gpuix` branch in `remorses/zed`.
-2. Resolve any embedded `gpui_macos` conflicts in a new commit; do not rewrite history.
-3. Fast-forward the `zed/` submodule to the updated `gpuix` branch.
-4. Match `rust-toolchain.toml` to `zed/rust-toolchain.toml`.
-5. Run `cargo check --all-targets`, `bun run build`, and the test suites.
+`scripts/sync-upstream.sh` rebases both repos onto upstream and moves the
+submodule ([FORK.md](./FORK.md#syncing-with-upstream) has the procedure and the
+conflict hot spots). After it:
+
+1. Match `rust-toolchain.toml` to `zed/rust-toolchain.toml`.
+2. Run `cargo check --all-targets`, `bun run build`, and the test suites, including
+   `cargo test -p gpui --lib --features test-support` in `zed/`.
 
 ### Search Zed before you touch GPUI
 
@@ -1141,65 +975,35 @@ next session does not repeat the search.
 
 ### Fixing GPUI for GPUIX
 
-The `remorses/zed` fork is part of GPUIX's implementation boundary. Fix GPUI in
-the fork when a reusable GPUI API or platform correction keeps GPUIX simpler
-and avoids browser, embedded-platform, or event-routing workarounds. Do not keep
-a hack in `packages/native` only because the required API is missing upstream.
+The `zed/` fork is part of GPUIX's implementation boundary. Fix GPUI in it when a
+reusable GPUI API or platform correction keeps GPUIX simpler and avoids browser,
+embedded-platform, or event-routing workarounds. Do not keep a hack in
+`packages/native` only because the required API is missing upstream.
 
-Fork-only fixes must be normal commits on the `gpuix` branch and
-must be pushed to `remorses/zed` before the GPUIX submodule points at them. Never
-pin GPUIX to a detached commit that is not reachable from that remote branch.
-Use a separate Zed worktree for the change; do not develop or commit inside the
-`zed/` build checkout.
+Fork-only fixes are normal commits on zed `poc` (`fdarian/zed`), pushed before the
+GPUIX submodule points at them. Never pin GPUIX to a commit that is not reachable
+from that remote branch, and never reset or detach `zed/` to "undo" work. FORK.md
+([Working on the fork](./FORK.md#working-on-the-fork)) has the branch layout and
+says which gpuix commit may move the `zed` pointer. Test zed changes where they
+live: `cd zed && cargo test -p gpui --lib --features test-support`.
 
-```bash
-# from gpuixlocal/zed
-git fetch origin gpuix
-git worktree add /Users/morse/Documents/GitHub/zed-gpuix-<change> \
-  -b gpuix-<change> origin/gpuix
-
-# from the Zed worktree, after review
-git push origin HEAD:gpuix
-
-# then update this repository to that reachable commit
-git fetch origin gpuix
-git switch gpuix
-git merge --ff-only origin/gpuix
-```
-
-Commit the resulting `zed` submodule pointer in GPUIX with the code that uses
-the new API. The `.gitmodules` branch remains `gpuix`.
+Make a GPUI change that alters behaviour for every user opt-in per window, the way
+DOM hit testing is (`Window::set_dom_hit_testing`, default off). It keeps the
+change small to review and possible to send upstream.
 
 ### PRs to Zed
 
 A "PR to Zed" means **upstream** [`zed-industries/zed`](https://github.com/zed-industries/zed)
-`main`. This is different from a GPUIX fork fix above. Never open an upstream
-PR from this checkout. Never point that PR at `remorses/zed`.
-
-`gpui-macos-embedded` is the head branch for the focused upstream macOS embedding
-PR. Keep it limited to that PR. Never put general GPUIX fork changes there and
-never point this repository's submodule at it.
-
-Do **not** switch `zed/` to another branch, detach HEAD, commit review markers,
-or reset it inside this checkout. That submodule is what GPUIX builds against.
-A dirty or incorrectly switched `zed/` breaks the native addon and the test
-renderer.
-
-```bash
-# from gpuixlocal/zed. leaves this submodule on its current commit
-git remote add upstream https://github.com/zed-industries/zed.git  # once
-git fetch upstream
-git worktree add /Users/morse/Documents/GitHub/zed-<branch-name> -b <branch-name> upstream/main
-```
-
-Commit only in that worktree. Do not add comments to Zed source. Push the branch
-to `remorses/zed`, then open the PR with `--repo zed-industries/zed --base main`.
-After merge, cherry-pick onto `gpuix` and fast-forward the submodule
-here. Never run `git reset` in `zed/` to "undo" PR work.
+`main`, a different thing from a fork fix above. Never open one from this checkout,
+and never switch `zed/` to another branch for it: that submodule is what GPUIX
+builds against, and a dirty or switched `zed/` breaks the native addon and the test
+renderer. Make a separate worktree from `zed-industries/zed` `main` (the zed
+clone's `upstream` remote is `remorses/zed`, so add upstream Zed as its own remote),
+commit there, and cherry-pick back onto `poc` after the PR merges.
 
 ### PRs to GPUIX
 
-When you open a PR with `gh pr create` against **this repo** (`remorses/gpuix`),
+When you open a PR with `gh pr create` against **this repo** (`fdarian/gpuix`, or upstream `remorses/gpuix`),
 the body must name the **harness**, **agent**, and **model** that wrote the
 change. Then put **every user prompt** from the session in a collapsed
 `<details>` block. Reviewers use that to judge prompt quality and how much
@@ -1235,54 +1039,18 @@ it. Do not add this block to Zed PRs.
 
 ## Current Status
 
-Keep this list in sync with the README **Status** section. User-facing APIs
-belong in README. This list is only the remaining engineering work.
-
-### Completed
-
-- [x] React reconciler with mutation-based protocol
-- [x] napi-rs FFI bindings and RetainedTree
-- [x] Style mapping, including native `hover` / `active`
-- [x] Mouse, keyboard, focus, scroll, and click-outside events
-- [x] Atomic `applyBatch()` mutation transport
-- [x] GPU-backed test renderer
-- [x] Native `<input>` and `<textarea>`
-- [x] `<img>` (local, data URL, or http(s) raster/SVG) and `<svg>` (tintable monochrome icons)
-- [x] `<virtual-list>`
-- [x] `<code>`, `<diff>`, `<markdown>` with Syntect
-- [x] Cross-element text selection
-- [x] `highlight` prop: search matches and explicit ranges
-- [x] Headless Select, Combobox, Tooltip
-- [x] `setWindowTitle`
-- [x] Native window controls (`minimizeWindow`, `zoomWindow`, `toggleFullscreen`)
-- [x] Window chrome (`titlebarTransparent`, `windowBackground`, traffic-light position)
-- [x] macOS menu bar (`crate::app_menu`, `appName`)
-- [x] Background launch (`focus`, `show`, `activateWindow`)
-- [x] Last window close quits the process
-- [x] Runtime errors keep the macOS window alive and show a stack overlay
-- [x] Debug frame overlay (`setDebugFrameOverlay`)
-
-### TODO
-
-#### High Priority
+User-facing status is the README **Status** section. This list is only the
+remaining engineering work.
 
 - [ ] **Background highlighting** - move Syntect off the frame thread once
       there is a way to request a repaint from a background task
-
-#### Medium Priority
-
 - [ ] **Canvas** - custom drawing element (`<canvas>` is typed, not implemented)
-
-#### Low Priority
-
 - [ ] **Window resize** - expose GPUI's runtime resize API
 - [ ] **Multiple windows** - Support multiple GPUI windows
-- [x] **JS remount** - `render()` plus `bun --hot` remounts the React tree on the same window
-- [x] **React Refresh in the browser** - `bun run web` keeps `useState` across saves
 - [ ] **React Refresh on desktop** - `bun --hot` is the runtime, not the bundler, so it runs no Fast Refresh transform. Tracked as [oven-sh/bun#40179](https://github.com/oven-sh/bun/issues/40179)
 - [ ] **Native hot reload** - cannot unload a `.node`. `bun run dev` rebuilds and restarts
 - [ ] **DevTools** - React DevTools integration
-- [ ] **Animations** - Interpolated style transitions
+- [ ] **Transforms** - GPUI has no scale or rotate, so size morphs in layout animations, a translating `Reorder` item and rotation in keyframes wait on it
 
 ## Testing
 
@@ -1294,6 +1062,10 @@ cd packages/native && cargo test --lib
 
 # React reconciler + GPU-backed test renderer
 cd packages/react && bun run test
+
+# Solid adapter, and the native JS runtime
+cd packages/solid && bun run test
+cd packages/native && bun run test
 
 # Example app tests
 cd examples && bun run test
@@ -1326,6 +1098,10 @@ skips the default budgets. Those budgets are for an unclamped M-series CPU.
 
 Use `bun run test`, not `bun test`. The suites are vitest, so `bun test` picks the
 wrong runner and fails on the `vitest` imports.
+
+`packages/native` and `packages/solid` have their own `bun run test`. The native one has a single test that bundles both adapters for the browser; it needs `packages/react` built and `bun run build:web` (nightly Rust and `wasm-bindgen`), and fails without them. The zed commits are tested in zed: `cd zed && cargo test -p gpui --lib --features test-support`.
+
+The test renderer draws offscreen and takes the synchronous dispatch path for every call (see [Events](#events-one-hit-test-one-dispatcher-dom-propagation)), so a passing event test proves the macOS behaviour, not Windows or Linux. `nativeSimulate*` call `flush()` first because hit testing needs a laid-out frame; `nativeSimulateClick` sends the press and the release as two inputs and drains JS between them, because the press's focus change is queued while the release is delivered synchronously. A handler that throws does not fail the simulate call: pass `onError` and assert on it.
 
 ### Asserting on native elements
 
@@ -1413,42 +1189,6 @@ you record a sidebar open/close, not a screen recorder.
 - [opentui](https://github.com/anomalyco/opentui) - Terminal UI with React (reconciler reference)
 - [create-gpui-app](https://github.com/zed-industries/create-gpui-app) - Official GPUI starter template
 - [react-reconciler](https://github.com/facebook/react/tree/main/packages/react-reconciler) - React's custom renderer API
-
-## External contributors
-
-This section is for anyone other than [remorses](https://github.com/remorses) (Tommy) or **monotykamary**.
-
-**Do not open a pull request.** Open a GitHub issue. Describe the bug or the idea. Wait.
-
-Open a PR only after remorses says it is OK on that issue. Unsolicited PRs will be closed.
-
-If remorses says OK, follow the rest of this file and these rules.
-
-**How to work**
-
-1. For Rust changes, work in `zed/crates/gpuix` (easier to build)
-2. Copy changes to `packages/native/src/` when ready
-3. TypeScript changes can be made directly in `packages/react/`
-
-**Do not**
-
-- Edit auto-generated files: `packages/native/index.d.ts`, `packages/native/index.js`, `packages/native/*.node`. Change the Rust `#[napi]` source and run `bun run build` in `packages/native`
-- Edit `CHANGELOG.md` or bump `package.json` version by hand
-- Publish from a local machine. CI is the only release path
-- Branch, commit, or reset the `zed/` submodule in this checkout. Do not open a Zed PR from here
-- Ship or start the app on a debug native build. Use `bun run build` in `packages/native` (release)
-- Use `bun test`. The suites are Vitest. Use `bun run test`
-
-**Must**
-
-- Add a `.changeset/*.md` file for every user-facing fix or feature. Put `Fixes #N` on its own line when the work closes an issue
-- Run the package test scripts: `packages/react` then build `@gpuix/react`, then `examples`
-- Keep one scroll parent. Nested scrolling is not supported
-- Send every painted string through `crate::text`. Never `div().child(some_string)`
-- Put layout numbers on `Theme::metrics`, not new Rust constants
-
-If an agent writes the change, the PR body must include **harness**, **agent**, **model**, and every user prompt. See **PRs to GPUIX**.
-
 
 ## Examples using same tech as ours. To unblock on issues and compare to our code
 
