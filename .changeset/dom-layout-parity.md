@@ -6,7 +6,7 @@
 
 Layout follows CSS more closely:
 
-- `position` defaults to `static`. An `absolute` box resolves against its nearest positioned ancestor and `fixed` against the window. Parents of absolutely placed boxes need `position: "relative"`.
+- `position` defaults to `static`. An `absolute` box resolves against its nearest positioned ancestor (`relative`, `absolute`, `fixed` or `sticky`) and `fixed` against the window. Parents of absolutely placed boxes need `position: "relative"`.
 - Empty and white-space-only text nodes, and `display: "none"` elements, build no box, so they no longer add a flex or grid item or a `gap`.
 - `aspectRatio` takes CSS ratio strings, and `<img>` sizes like a replaced element.
 - `flexDirection` accepts `row-reverse` and `column-reverse`; new `order`.
