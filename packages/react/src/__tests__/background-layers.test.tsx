@@ -206,7 +206,7 @@ describeNative("layers: size, position, repeat, origin, clip", () => {
   })
 
   it("backgroundClip text paints nothing where there are no glyphs", () => {
-    near(paint({ backgroundImage: solid("red"), backgroundClip: "text" })(50, 50), WHITE)
+    near(paint({ backgroundImage: solid("red"), backgroundClip: "text" })(50, 50), [0, 0, 0, 255])
   })
 })
 
