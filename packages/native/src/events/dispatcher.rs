@@ -398,6 +398,12 @@ fn button_bit(button: u32) -> u32 {
     }
 }
 
+/// The lowest-numbered button of a `buttons` mask: what GPUI would report as
+/// the one pressed.
+fn lowest_held_button(buttons: u32) -> Option<u32> {
+    (0..5).find(|button| buttons & button_bit(*button) != 0)
+}
+
 pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
     let position = state.position_for(sample.position);
     if position == sample.position {
@@ -793,6 +799,23 @@ pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_
     restyle
 }
 
+/// A button changing while another is held is no new pointer contact: DOM
+/// fires `pointerdown` and `pointerup` only when the first button goes down and
+/// the last comes up, and a `pointermove` for the rest. The mouse events still
+/// fire for every button.
+fn emit_chord_move(state: &PointerState, emitter: &mut Emitter, target: u64, button: u32) {
+    emitter.emit(
+        "pointermove",
+        target,
+        Fields {
+            button: Some(button),
+            pressed_button: lowest_held_button(state.buttons),
+            movement: Some((0.0, 0.0)),
+            ..Default::default()
+        },
+    );
+}
+
 fn press(
     state: &mut PointerState,
     emitter: &mut Emitter,
@@ -807,7 +830,11 @@ fn press(
         detail: Some(click_count),
         ..Default::default()
     };
-    emitter.emit("pointerdown", target, fields);
+    if state.buttons == button_bit(button) {
+        emitter.emit("pointerdown", target, fields);
+    } else {
+        emit_chord_move(state, emitter, target, button);
+    }
     emitter.emit("mousedown", target, fields);
     emitter.emit_outside_presses(Some(target), fields);
     if button == SECONDARY_BUTTON
@@ -850,7 +877,11 @@ fn release(
         ..Default::default()
     };
     if let Some(target) = target {
-        emitter.emit("pointerup", target, fields);
+        if state.buttons == 0 {
+            emitter.emit("pointerup", target, fields);
+        } else {
+            emit_chord_move(state, emitter, target, button);
+        }
     }
 
     // Capture lasts until the last button is up. The Pointer Events spec
@@ -1400,6 +1431,49 @@ mod tests {
             &with_ctrl(down(1, 1, chain_of(&[3, 2, 1]))),
         );
         assert_eq!(names(&output), ["mousedown@3"]);
+    }
+
+    const BUTTON_EVENTS: [&str; 5] = ["pointerdown", "pointerup", "pointermove", "mousedown", "mouseup"];
+
+    #[test]
+    fn a_second_button_down_is_a_pointermove_with_the_new_buttons_and_a_mousedown() {
+        let tree = tree(&listening_everywhere(&BUTTON_EVENTS));
+        let mut state = PointerState::default();
+        let first = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&first), ["pointerdown@3", "mousedown@3"]);
+        let second = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&second), ["pointermove@3", "mousedown@3"]);
+        assert_eq!(second.events[0].button, Some(2));
+        assert_eq!(second.events[0].pressed_button, Some(0));
+        let payloads = second.into_payloads();
+        assert_eq!(payloads[0].buttons, Some(3));
+    }
+
+    #[test]
+    fn releasing_one_of_two_buttons_is_a_pointermove_and_the_last_release_is_the_pointerup() {
+        let tree = tree(&listening_everywhere(&BUTTON_EVENTS));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        let first = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&first), ["pointermove@3", "mouseup@3"]);
+        assert_eq!(first.events[0].button, Some(0));
+        assert_eq!(first.events[0].pressed_button, Some(2));
+        assert_eq!(first.into_payloads()[0].buttons, Some(2));
+        let last = dispatch(&mut state, &tree, &up(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&last), ["pointerup@3", "mouseup@3"]);
+    }
+
+    #[test]
+    fn the_button_that_goes_down_again_after_a_chord_ended_is_a_pointerdown() {
+        let tree = tree(&listening_everywhere(&BUTTON_EVENTS));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &up(2, 1, chain_of(&[3, 2, 1])));
+        let again = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&again), ["pointerdown@3", "mousedown@3"]);
     }
 
     fn outside_presses(output: &Output) -> Vec<String> {
