@@ -2933,4 +2933,541 @@ mod tests {
             assert!(state.pending.is_empty());
         }
     }
+    /// Keyframes, `times`, per-segment `ease` and `repeat`.
+    mod keyframes {
+        use super::*;
+        use serde_json::json;
+
+        fn linear(animate: serde_json::Value, transition: serde_json::Value) -> serde_json::Value {
+            let mut transition = transition;
+            if transition.get("type") != Some(&json!("spring")) && transition.get("ease").is_none() {
+                transition["ease"] = json!("linear");
+            }
+            json!({ "initial": { "width": 0.0 }, "animate": animate, "transition": transition })
+        }
+
+        fn run(width_frames: serde_json::Value, transition: serde_json::Value) -> (MotionState, Instant) {
+            let started = Instant::now();
+            let description = linear(json!({ "width": width_frames }), transition);
+            (MotionState::new(&description, None, None, 0, started).unwrap(), started)
+        }
+
+        fn near(actual: f64, expected: f64) {
+            assert!((actual - expected).abs() < 1e-6, "expected {expected}, got {actual}");
+        }
+
+        #[test]
+        fn keyframes_are_evenly_spaced_and_the_last_one_is_where_it_settles() {
+            let (mut state, started) = run(json!([0.0, 100.0, 50.0]), json!({ "duration": 2.0 }));
+            near(width(&state, at(started, 0.5)), 50.0);
+            near(width(&state, at(started, 1.0)), 100.0);
+            near(width(&state, at(started, 1.5)), 75.0);
+            assert!(state.frame(at(started, 1.5)).active);
+            let end = state.frame(at(started, 2.0));
+            assert!(!end.active);
+            assert!(end.just_settled);
+            near(width(&state, at(started, 2.0)), 50.0);
+        }
+
+        #[test]
+        fn times_place_the_keyframes_and_hold_the_ends() {
+            let (state, started) = run(
+                json!([0.0, 100.0, 0.0]),
+                json!({ "duration": 1.0, "times": [0.0, 0.25, 1.0] }),
+            );
+            near(width(&state, at(started, 0.125)), 50.0);
+            near(width(&state, at(started, 0.25)), 100.0);
+            near(width(&state, at(started, 0.625)), 50.0);
+
+            let (state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 1.0, "times": [0.5, 0.75] }),
+            );
+            near(width(&state, at(started, 0.25)), 0.0);
+            near(width(&state, at(started, 0.625)), 50.0);
+            near(width(&state, at(started, 0.9)), 100.0);
+        }
+
+        #[test]
+        fn ease_may_name_one_easing_per_segment() {
+            let (state, started) = run(
+                json!([0.0, 100.0, 0.0]),
+                json!({ "duration": 1.0, "ease": ["linear", "easeIn"] }),
+            );
+            near(width(&state, at(started, 0.25)), 50.0);
+            // The second segment eases in: it has covered less than half at its middle.
+            let held = width(&state, at(started, 0.75));
+            assert!(held > 60.0 && held < 75.0, "{held}");
+        }
+
+        #[test]
+        fn a_null_first_keyframe_is_the_current_value_and_a_later_one_repeats_the_previous() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": 40.0 },
+                "animate": { "width": [null, 100.0, null, 20.0] },
+                "transition": { "duration": 3.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            near(width(&state, started), 40.0);
+            near(width(&state, at(started, 1.0)), 100.0);
+            near(width(&state, at(started, 1.5)), 100.0);
+            near(width(&state, at(started, 2.0)), 100.0);
+            near(width(&state, at(started, 2.5)), 60.0);
+
+            let explicit = json!({
+                "initial": { "width": 40.0 },
+                "animate": { "width": [0.0, 100.0] },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&explicit, None, None, 0, started).unwrap();
+            near(width(&state, started), 0.0);
+        }
+
+        #[test]
+        fn mounting_without_an_initial_rests_on_the_last_keyframe() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": false,
+                "animate": { "width": [0.0, 100.0, 30.0] },
+                "transition": { "duration": 1.0 }
+            });
+            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert_eq!(state.applied(started).unwrap().width, Some(30.0));
+            assert!(!state.frame(started).active);
+        }
+
+        #[test]
+        fn a_keyframe_list_is_rejected_where_a_value_is_expected() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": [0.0, 10.0] },
+                "animate": { "width": 100.0 }
+            });
+            let error = MotionState::new(&description, None, None, 0, started).err().unwrap();
+            assert!(error.contains("initial cannot hold keyframes for width"), "{error}");
+            let only_null = json!({ "animate": { "width": [null] } });
+            assert!(MotionState::new(&only_null, None, None, 0, started).is_err());
+            let empty = json!({ "animate": { "width": [] } });
+            assert!(MotionState::new(&empty, None, None, 0, started).is_err());
+        }
+
+        #[test]
+        fn a_single_keyframe_is_just_a_target() {
+            let (state, started) = run(json!([100.0]), json!({ "duration": 1.0 }));
+            near(width(&state, at(started, 0.5)), 50.0);
+        }
+
+        #[test]
+        fn times_and_ease_must_match_the_keyframes() {
+            let started = Instant::now();
+            let fails = |transition: serde_json::Value| {
+                let description = linear(json!({ "width": [0.0, 1.0, 2.0] }), transition);
+                MotionState::new(&description, None, None, 0, started).err().unwrap()
+            };
+            assert!(fails(json!({ "times": [0.0, 1.0] })).contains("times lists 2"));
+            assert!(fails(json!({ "ease": ["linear"] })).contains("needs 2 easings"));
+            assert!(fails(json!({ "times": [0.0, 0.8, 0.5] })).contains("ascending"));
+            assert!(fails(json!({ "times": [0.0, 0.5, 1.5] })).contains("0 to 1"));
+            assert!(fails(json!({ "type": "spring", "times": [0.0, 0.5, 1.0] })).contains("times"));
+        }
+
+        #[test]
+        fn a_spring_only_animates_between_two_keyframes() {
+            let started = Instant::now();
+            let three = linear(json!({ "width": [0.0, 1.0, 2.0] }), json!({ "type": "spring" }));
+            let error = MotionState::new(&three, None, None, 0, started).err().unwrap();
+            assert!(error.contains("a spring only animates between two"), "{error}");
+            let two = linear(json!({ "width": [0.0, 100.0] }), json!({ "type": "spring" }));
+            assert!(MotionState::new(&two, None, None, 0, started).is_ok());
+        }
+
+        #[test]
+        fn repeat_loops_and_then_rests_on_the_last_keyframe() {
+            let (mut state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 1.0, "repeat": 2 }),
+            );
+            near(width(&state, at(started, 0.5)), 50.0);
+            near(width(&state, at(started, 1.0)), 0.0);
+            near(width(&state, at(started, 1.5)), 50.0);
+            near(width(&state, at(started, 2.75)), 75.0);
+            assert!(state.frame(at(started, 2.75)).active);
+            let end = state.frame(at(started, 3.0));
+            assert!(!end.active && end.just_settled);
+            near(width(&state, at(started, 3.0)), 100.0);
+            near(width(&state, at(started, 10.0)), 100.0);
+        }
+
+        #[test]
+        fn reverse_plays_back_through_time_and_mirror_through_the_keyframes() {
+            let transition = |kind: &str| {
+                json!({ "duration": 1.0, "ease": "easeIn", "repeat": 1, "repeatType": kind })
+            };
+            let easing = |progress: f64| {
+                curve::ease(progress, &curve::Ease::Name("easeIn".to_string()))
+            };
+            let (reverse, started) = run(json!([0.0, 100.0]), transition("reverse"));
+            near(width(&reverse, at(started, 1.25)), 100.0 * easing(0.75));
+            near(width(&reverse, at(started, 2.0)), 0.0);
+
+            let (mirror, started) = run(json!([0.0, 100.0]), transition("mirror"));
+            near(width(&mirror, at(started, 1.25)), 100.0 - 100.0 * easing(0.25));
+            near(width(&mirror, at(started, 2.0)), 0.0);
+
+            let (looping, started) = run(json!([0.0, 100.0]), transition("loop"));
+            near(width(&looping, at(started, 1.25)), 100.0 * easing(0.25));
+            near(width(&looping, at(started, 2.0)), 100.0);
+        }
+
+        #[test]
+        fn repeat_delay_holds_the_end_of_each_iteration() {
+            let (mut state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 1.0, "repeat": 1, "repeatDelay": 0.5 }),
+            );
+            near(width(&state, at(started, 1.25)), 100.0);
+            near(width(&state, at(started, 1.5)), 0.0);
+            near(width(&state, at(started, 2.0)), 50.0);
+            assert!(state.frame(at(started, 2.4)).active);
+            let end = state.frame(at(started, 2.5));
+            assert!(!end.active && end.just_settled);
+            near(width(&state, at(started, 2.5)), 100.0);
+        }
+
+        #[test]
+        fn the_delay_comes_once_before_the_first_iteration() {
+            let (state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 1.0, "delay": 2.0, "repeat": 1 }),
+            );
+            near(width(&state, at(started, 1.0)), 0.0);
+            near(width(&state, at(started, 2.5)), 50.0);
+            near(width(&state, at(started, 3.5)), 50.0);
+        }
+
+        #[test]
+        fn an_infinite_repeat_never_settles() {
+            let (mut state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 1.0, "repeat": "Infinity", "repeatType": "reverse" }),
+            );
+            for seconds in [0.5, 10.5, 1000.25, 1_000_000.75] {
+                let frame = state.frame(at(started, seconds));
+                assert!(frame.active && !frame.just_settled, "{seconds}");
+            }
+            near(width(&state, at(started, 1000.25)), 25.0);
+            near(width(&state, at(started, 1001.25)), 75.0);
+        }
+
+        #[test]
+        fn repeat_must_be_a_whole_count_or_infinity() {
+            let started = Instant::now();
+            for repeat in [json!(-1), json!(1.5), json!("forever"), json!("infinite")] {
+                let description = linear(json!({ "width": 10.0 }), json!({ "repeat": repeat }));
+                assert!(MotionState::new(&description, None, None, 0, started).is_err(), "{repeat}");
+            }
+            let description = linear(json!({ "width": 10.0 }), json!({ "repeatType": "bounce" }));
+            let error = MotionState::new(&description, None, None, 0, started).err().unwrap();
+            assert!(error.contains("repeatType"), "{error}");
+        }
+
+        #[test]
+        fn a_zero_length_iteration_does_not_loop() {
+            let (mut state, started) = run(
+                json!([0.0, 100.0]),
+                json!({ "duration": 0.0, "repeat": "Infinity" }),
+            );
+            assert!(!state.frame(at(started, 0.1)).active);
+            near(width(&state, at(started, 0.1)), 100.0);
+        }
+
+        #[test]
+        fn a_repeating_spring_replays_after_it_settles() {
+            let spring = json!({ "type": "spring", "stiffness": 200.0, "damping": 20.0 });
+            let mut looping = spring.clone();
+            looping["repeat"] = json!(1);
+            let (state, started) = run(json!([0.0, 100.0]), looping.clone());
+            let settle = state.tracks[&PropKey::Style(AnimProp::Width)].settle;
+            assert!(settle > 0.2 && settle < 2.0, "{settle}");
+            assert!(width(&state, at(started, settle * 0.5)) > 20.0);
+            assert!(width(&state, at(started, settle * 1.05)) < 20.0, "the second iteration starts over");
+            near(width(&state, at(started, settle * 2.0 + 0.1)), 100.0);
+
+            looping["repeatType"] = json!("reverse");
+            let (state, started) = run(json!([0.0, 100.0]), looping);
+            near(width(&state, at(started, settle * 2.0 + 0.1)), 0.0);
+
+            let (mut once, started) = run(json!([0.0, 100.0]), spring);
+            assert!(!once.frame(at(started, 5.0)).active);
+        }
+
+        #[test]
+        fn velocity_at_a_retarget_is_the_slope_of_the_segment_under_way() {
+            let (mut state, started) = run(json!([0.0, 100.0, 0.0]), json!({ "duration": 2.0 }));
+            near(width_velocity(&state, at(started, 0.5)), 100.0);
+            near(width_velocity(&state, at(started, 1.5)), -100.0);
+
+            let retarget_at = at(started, 1.5);
+            let spring = json!({
+                "initial": false,
+                "animate": { "width": 200.0 },
+                "transition": { "type": "spring", "stiffness": 100.0, "damping": 10.0 }
+            });
+            state.sync(&spring, None, None, 0, retarget_at).unwrap();
+            near(width(&state, retarget_at), 50.0);
+            near(width_velocity(&state, retarget_at), -100.0);
+        }
+
+        #[test]
+        fn the_same_keyframes_keep_running_and_a_changed_one_restarts_from_where_it_is() {
+            let (mut state, started) = run(json!([0.0, 100.0, 0.0]), json!({ "duration": 2.0 }));
+            let same = json!({
+                "generation": 1,
+                "initial": false,
+                "animate": { "width": [0.0, 100.0, 0.0] },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            state.sync(&same, None, None, 0, at(started, 0.5)).unwrap();
+            near(width(&state, at(started, 1.5)), 50.0);
+
+            let changed = json!({
+                "initial": false,
+                "animate": { "width": [null, 20.0, 40.0] },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            state.sync(&changed, None, None, 0, at(started, 0.5)).unwrap();
+            near(width(&state, at(started, 0.5)), 50.0);
+            near(width(&state, at(started, 1.0)), 20.0);
+            near(width(&state, at(started, 1.5)), 40.0);
+        }
+
+        #[test]
+        fn reduced_motion_jumps_layout_keyframes_to_the_last_one_and_still_animates_the_rest() {
+            let started = Instant::now();
+            let description = json!({
+                "reducedMotion": true,
+                "initial": { "width": 0.0, "opacity": 0.0 },
+                "animate": { "width": [0.0, 300.0, 100.0], "opacity": [0.0, 1.0, 0.5] },
+                "transition": { "duration": 1.0, "ease": "linear", "repeat": "Infinity" }
+            });
+            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert_eq!(state.applied(started).unwrap().width, Some(100.0));
+            let middle = at(started, 0.25);
+            assert!(state.frame(middle).active);
+            assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
+            near(state.applied(middle).unwrap().opacity.unwrap(), 0.5);
+        }
+
+        fn measurement(parent_width: f32, natural: f32) -> Measurement {
+            Measurement {
+                border_box: gpui::size(gpui::px(100.0), gpui::px(0.0)),
+                natural_height: gpui::px(natural),
+                parent_content: gpui::size(gpui::px(parent_width), gpui::px(600.0)),
+                scale_factor: 1.0,
+            }
+        }
+
+        fn pixels(value: Option<DimensionValue>) -> f64 {
+            match value {
+                Some(DimensionValue::Pixels(pixels)) => pixels,
+                other => panic!("expected px, got {other:?}"),
+            }
+        }
+
+        fn auto_keyframes() -> serde_json::Value {
+            json!({
+                "initial": { "height": 0.0 },
+                "animate": { "height": [0.0, 50.0, "auto"] },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            })
+        }
+
+        #[test]
+        fn auto_as_the_last_keyframe_runs_to_the_content_and_settles_to_auto() {
+            let started = Instant::now();
+            let mut state = MotionState::new(&auto_keyframes(), None, None, 0, started).unwrap();
+            assert!(state.frame(started).active, "waits for a measurement");
+            assert_eq!(pixels(style_at(&state, started).height), 0.0);
+
+            let measured_at = at(started, 0.2);
+            let measured = measurement(800.0, 80.0);
+            state.sync(&auto_keyframes(), None, Some(&measured), 0, measured_at).unwrap();
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).height), 50.0);
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.75)).height), 65.0);
+
+            let end = at(measured_at, 1.0);
+            state.sync(&auto_keyframes(), None, Some(&measured), 0, end).unwrap();
+            let frame = state.frame(end);
+            assert!(!frame.active && frame.just_settled);
+            assert_eq!(style_at(&state, end).height, Some(DimensionValue::Auto));
+        }
+
+        #[test]
+        fn a_measured_keyframe_follows_the_content_without_restarting_the_timing() {
+            let started = Instant::now();
+            let measured = measurement(800.0, 80.0);
+            let mut state =
+                MotionState::new(&auto_keyframes(), None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(style_at(&state, at(started, 0.75)).height), 65.0);
+
+            let grown = measurement(800.0, 120.0);
+            state.sync(&auto_keyframes(), None, Some(&grown), 0, at(started, 0.5)).unwrap();
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).height), 50.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.75)).height), 85.0);
+        }
+
+        #[test]
+        fn percentages_among_px_keyframes_run_through_px_and_settle_to_the_percentage() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": 0.0 },
+                "animate": { "width": [0.0, "50%", 200.0, "25%"] },
+                "transition": { "duration": 3.0, "ease": "linear" }
+            });
+            let measured = measurement(800.0, 0.0);
+            let mut state = MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(style_at(&state, at(started, 1.0)).width), 400.0);
+            assert_eq!(pixels(style_at(&state, at(started, 2.0)).width), 200.0);
+            assert_eq!(pixels(style_at(&state, at(started, 2.5)).width), 200.0);
+            let end = at(started, 3.0);
+            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            assert!(!state.frame(end).active);
+            assert_eq!(style_at(&state, end).width, Some(DimensionValue::Percentage(0.25)));
+        }
+
+        #[test]
+        fn keyframes_of_one_unit_need_no_layout() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": "0%" },
+                "animate": { "width": ["0%", "50%", "100%"] },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            assert!(state.pending.is_empty());
+            assert_eq!(
+                style_at(&state, at(started, 1.0)).width,
+                Some(DimensionValue::Percentage(0.5))
+            );
+        }
+
+        #[test]
+        fn a_mounted_keyframe_animation_that_is_never_painted_jumps_to_the_last_keyframe() {
+            let started = Instant::now();
+            let mut state = MotionState::new(&auto_keyframes(), None, None, 3, started).unwrap();
+            state.sync(&auto_keyframes(), None, None, 4, at(started, 0.1)).unwrap();
+            assert!(!state.frame(at(started, 0.1)).active);
+            assert_eq!(style_at(&state, at(started, 0.1)).height, Some(DimensionValue::Auto));
+        }
+
+        mod svg {
+            use super::*;
+
+            fn svg(animate: serde_json::Value, transition: serde_json::Value) -> (MotionState, Instant) {
+                let started = Instant::now();
+                let description = json!({ "initial": false, "animate": animate, "transition": transition });
+                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                (state, started)
+            }
+
+            fn text(state: &MotionState, started: Instant, seconds: f64, name: &str) -> String {
+                let motion = state.visible_svg(at(started, seconds)).unwrap();
+                motion
+                    .attributes
+                    .iter()
+                    .find(|(attribute, _)| *attribute == name)
+                    .unwrap_or_else(|| panic!("no {name} in {motion:?}"))
+                    .1
+                    .clone()
+            }
+
+            #[test]
+            fn attributes_take_keyframes_and_repeat() {
+                let started = Instant::now();
+                let description = json!({
+                    "initial": { "strokeWidth": 0.0 },
+                    "animate": { "strokeWidth": [null, 10.0, 0.0], "d": ["M0 0 L10 0", "M0 0 L20 0", "M0 0 L10 0"] },
+                    "transition": { "duration": 2.0, "ease": "linear", "repeat": "Infinity" }
+                });
+                let mut state =
+                    MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                assert_eq!(text(&state, started, 0.5, "stroke-width"), "5");
+                assert_eq!(text(&state, started, 1.0, "stroke-width"), "10");
+                assert_eq!(text(&state, started, 5.5, "stroke-width"), "5");
+                assert_eq!(text(&state, started, 1.0, "d"), "M 0 0 L 20 0");
+                assert!(state.frame(at(started, 100.0)).active);
+            }
+
+            #[test]
+            fn a_dash_list_is_still_one_value_and_lists_of_lists_are_keyframes() {
+                let (state, started) = svg(
+                    json!({ "strokeDasharray": [4.0, 2.0] }),
+                    json!({ "duration": 1.0 }),
+                );
+                assert_eq!(text(&state, started, 0.0, "stroke-dasharray"), "4 2");
+
+                let (state, started) = svg(
+                    json!({ "strokeDasharray": [[0.0, 10.0], [10.0, 0.0], "5 5"] }),
+                    json!({ "duration": 1.0, "ease": "linear" }),
+                );
+                assert_eq!(text(&state, started, 0.0, "stroke-dasharray"), "5 5");
+                let started = Instant::now();
+                let description = json!({
+                    "initial": { "strokeDasharray": [0.0, 10.0] },
+                    "animate": { "strokeDasharray": [null, [10.0, 0.0], "5 5"] },
+                    "transition": { "duration": 2.0, "ease": "linear" }
+                });
+                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                assert_eq!(text(&state, started, 0.5, "stroke-dasharray"), "5 5");
+                assert_eq!(text(&state, started, 1.5, "stroke-dasharray"), "7.5 2.5");
+            }
+
+            #[test]
+            fn paths_that_cannot_blend_flip_between_the_keyframes() {
+                let (state, started) = svg(
+                    json!({ "d": ["M0 0 L10 0", "M0 0 H20", "M0 0 L30 0"] }),
+                    json!({ "duration": 0.0 }),
+                );
+                assert_eq!(text(&state, started, 1.0, "d"), "M 0 0 L 30 0");
+                let started = Instant::now();
+                let description = json!({
+                    "initial": { "d": "M0 0 L10 0" },
+                    "animate": { "d": [null, "M0 0 H20", "M0 0 L30 0"] },
+                    "transition": { "duration": 4.0, "ease": "linear" }
+                });
+                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                assert_eq!(text(&state, started, 0.9, "d"), "M 0 0 L 10 0");
+                assert_eq!(text(&state, started, 1.1, "d"), "M 0 0 H 20");
+                assert_eq!(text(&state, started, 3.1, "d"), "M 0 0 L 30 0");
+            }
+        }
+
+        #[test]
+        fn a_shadow_list_is_one_value_and_keyframes_wrap_each_list() {
+            let started = Instant::now();
+            let layer = |blur: f64| json!({
+                "offsetX": 0.0, "offsetY": 0.0, "blurRadius": blur, "spreadRadius": 0.0,
+                "color": "#000000"
+            });
+            let description = json!({
+                "initial": { "boxShadow": [layer(0.0)] },
+                "animate": { "boxShadow": [null, [layer(10.0)], [layer(0.0), layer(4.0)]] },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let shadows = |seconds: f64| match style_at(&state, at(started, seconds)).box_shadow {
+                Some(crate::style::BoxShadowValues::Many(layers)) => layers,
+                other => panic!("expected a list, got {other:?}"),
+            };
+            near(shadows(0.5)[0].blur_radius, 5.0);
+            assert_eq!(shadows(1.5).len(), 2);
+            near(shadows(1.5)[0].blur_radius, 5.0);
+
+            let list = json!({ "animate": { "boxShadow": [layer(1.0), layer(2.0)] } });
+            let state = MotionState::new(&list, None, None, 0, started).unwrap();
+            assert_eq!(state.tracks.len(), 1);
+            assert!(state.tracks[&PropKey::Style(AnimProp::BoxShadow)].goal().is_single());
+        }
+    }
 }

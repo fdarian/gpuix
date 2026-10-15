@@ -75,7 +75,7 @@ pub(super) struct Track {
     started: Instant,
     /// Seconds a repeating spring takes to settle, which is the length of one
     /// of its iterations. Zero for everything else.
-    settle: f64,
+    pub(super) settle: f64,
 }
 
 pub(super) struct Sample {

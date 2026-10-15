@@ -609,4 +609,57 @@ mod tests {
         );
         assert!(pair("strokeDasharray", &from, &AnimValue::Numbers(Vec::new())).is_err());
     }
+    fn decoded(values: &[AnimValue], channel: impl Fn(&[Vec<f64>]) -> Vec<f64>) -> AnimValue {
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let aligned = align("test", &refs).unwrap();
+        aligned.layout.decode(&channel(&aligned.frames))
+    }
+
+    #[test]
+    fn many_values_share_one_layout() {
+        let lists = [
+            AnimValue::Numbers(vec![1.0]),
+            AnimValue::Numbers(vec![2.0, 4.0]),
+            AnimValue::Numbers(vec![3.0, 6.0, 9.0]),
+        ];
+        let refs: Vec<&AnimValue> = lists.iter().collect();
+        let aligned = align("strokeDasharray", &refs).unwrap();
+        assert!(aligned.frames.iter().all(|frame| frame.len() == 6));
+        assert_eq!(aligned.frames[1], vec![2.0, 4.0, 2.0, 4.0, 2.0, 4.0]);
+
+        let shadows = [
+            AnimValue::Shadows(vec![shadow(1.0, 2.0, "#000000", false)]),
+            AnimValue::Shadows(Vec::new()),
+            AnimValue::Shadows(vec![
+                shadow(1.0, 2.0, "#000000", false),
+                shadow(3.0, 4.0, "#000000", true),
+            ]),
+        ];
+        let AnimValue::Shadows(layers) = decoded(&shadows, |frames| frames[1].clone()) else {
+            panic!("shadows decode to shadows");
+        };
+        assert_eq!(layers.len(), 2);
+        assert!(layers[1].inset, "a padded layer takes the inset of the list that has it");
+        assert_eq!(layers[0].blur, 0.0);
+    }
+
+    #[test]
+    fn incompatible_values_are_discrete_across_every_option() {
+        let paths = [path("M0 0 L1 1"), path("M0 0 H5"), path("M2 2 L3 3")]
+            .map(AnimValue::Path);
+        let refs: Vec<&AnimValue> = paths.iter().collect();
+        let aligned = align("d", &refs).unwrap();
+        assert!(matches!(aligned.layout, Layout::DiscretePath(_)));
+        for (channel, expected) in [(0.0, 0), (0.49, 0), (0.5, 1), (1.4, 1), (1.6, 2), (3.0, 2), (-1.0, 0)] {
+            assert_eq!(aligned.layout.decode(&[channel]), paths[expected], "{channel}");
+        }
+    }
+
+    #[test]
+    fn the_first_mismatched_neighbours_are_named() {
+        let values = [AnimValue::Number(1.0), AnimValue::Number(2.0), AnimValue::Percent(0.5)];
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let error = align("width", &refs).unwrap_err();
+        assert!(error.contains("from a number or px length to a percentage"), "{error}");
+    }
 }
