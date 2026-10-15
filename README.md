@@ -1639,6 +1639,94 @@ function DeferredRemoval() {
 target settles. If React changes the target before an older completion reaches
 JavaScript, the stale completion is ignored.
 
+### Motion values
+
+A **motion value** holds a number, a colour string, a list of numbers or
+box shadows that changes over time. Put one in `style` where a property
+`motion` can animate takes a plain value, and the element follows it every
+frame in Rust, with no render and no N-API call per frame. `motion.div` accepts
+them too. A bound value is applied after `animate` and `transition`.
+
+```tsx
+import { animate, useMotionValue, useTransform } from '@gpuix/react'
+
+function Meter() {
+  const x = useMotionValue(0)
+  const width = useTransform(x, [0, 1], [40, 240])
+  const opacity = useTransform(x, [0, 1], [0.3, 1])
+  return (
+    <div
+      style={{ width, opacity, height: 12, backgroundColor: '#4ade80' }}
+      onClick={() => animate(x, 1, { duration: 0.4, ease: 'ease-out' })}
+    />
+  )
+}
+```
+
+```tsx
+import { animate, createMotionValue, createTransform } from '@gpuix/solid'
+
+function Meter() {
+  const x = createMotionValue(0)
+  const width = createTransform(x, [0, 1], [40, 240])
+  const opacity = createTransform(x, [0, 1], [0.3, 1])
+  return (
+    <div
+      style={{ width, opacity, height: 12, backgroundColor: '#4ade80' }}
+      onClick={() => animate(x, 1, { duration: 0.4, ease: 'ease-out' })}
+    />
+  )
+}
+```
+
+| | React | Solid |
+|---|---|---|
+| A value you write | `useMotionValue(initial)` | `createMotionValue(initial)` |
+| Mapped through ranges | `useTransform(value, inputRange, outputRange, options?)` | `createTransform(value, inputRange, outputRange, options?)` |
+| Computed in JS | `useTransform(value, fn)`, `useTransform(values, fn)`, `useTransform(() => ...)` | `createTransform(value, fn)`, `createTransform(values, fn)`, `createTransform(() => ...)` |
+| Spring that follows a value, or has its own target | `useSpring(valueOrNumber, config?)` | `createSpring(valueOrNumber, config?)` |
+| Speed in units per second | `useVelocity(value)` | `createVelocity(value)` |
+| Listen to a value | `useMotionValueEvent(value, event, callback)` | `createMotionValueEvent(value, event, callback)` |
+| Outside a component | `motionValue(initial)`, `animate(value, target, transition?)`, `isMotionValue(value)` | the same |
+
+A value made with a hook or primitive lives as long as the component (React) or
+the owner (Solid). `motionValue(initial)` has no owner: it keeps its state in
+JavaScript and gets a native node while an element, a listener or a derived value
+needs it, then gives it back. A value drives one window at a time.
+
+- **Reading and writing.** `get()` reads the value at the current frame, so it
+  is right even in the frame an animation started. `set(v)` writes it and leaves
+  a running animation alone, as in Motion; `stop()` ends the animation, and
+  `jump(v)` writes the value and ends it. To take over mid-flight, call `stop()`
+  and then `set(v)`: the next animation starts from where the value is.
+  `isAnimating()` and `getVelocity()` (numbers only) read the current state.
+- **`animate(value, target, transition?)`** takes the same `transition` as
+  `motion` (tweens and springs, in seconds) and a single `target`. The returned
+  controls have `stop()`, `cancel()` (back to where it started), `complete()` (to
+  the target), `finished` and `then`; the promise never rejects. Keyframes and
+  `animate(element, ...)` are not supported.
+- **Transforms.** The output range holds numbers, colours or shadows, and the
+  input range may descend or repeat a value, which makes a step. `clamp: false`
+  extrapolates, and `ease` is one easing or one per segment. A bad range is an
+  error when the value is first bound.
+- **Springs.** `useSpring(source)` chases another value and carries its speed;
+  given a number it has its own target, which `set` moves. The config is
+  `stiffness`, `damping` and `mass`, or `duration` and `bounce`, as for a
+  `motion` spring.
+- **Events.** `change` arrives with the frame that sampled it, `animationStart`
+  and `animationComplete` when an animation begins and ends. Only values with a
+  listener report to JavaScript. React runs the callback in a batch; Solid runs
+  it inside `batch`.
+
+**Not native-linked.** A function-form transform (`useTransform(value, fn)`,
+`createTransform(() => ...)`) and `useVelocity`/`createVelocity` are computed in
+JavaScript: they listen to `change` events, so they trail their inputs by a
+frame and only update while they are bound. A range-form transform and a spring
+that follows a value are evaluated in Rust at the same instant as their input, so
+two elements driven by transforms of one value never drift apart. A function-form
+transform tracks the motion values it reads with `get()`, not React state or
+Solid signals.
+
 ### Capture exact frames
 
 The [automation API](#automation) can freeze the native motion clock and render
