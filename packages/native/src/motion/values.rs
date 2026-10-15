@@ -61,56 +61,64 @@ impl Default for TransformOptions {
     }
 }
 
+/// Ids are chosen by the caller, so a value can exist on the JS side before it
+/// is registered here, and the two sides agree on it without a round trip.
 #[derive(Default)]
 pub(super) struct MotionValues {
     nodes: HashMap<ValueId, Node>,
-    next: u32,
 }
 
 impl MotionValues {
-    pub(super) fn source(&mut self, initial: AnimValue) -> Result<ValueId, String> {
+    pub(super) fn source(&mut self, id: ValueId, initial: AnimValue) -> Result<(), String> {
+        self.vacant(id)?;
         validate(&initial)?;
-        Ok(self.insert(Node::Source(Source::new(initial))))
+        self.insert(id, Node::Source(Source::new(initial)))
     }
 
     /// A value computed from a number-valued `input`. `input_range` is
     /// ascending, or descending as a whole, as Framer accepts.
     pub(super) fn transform(
         &mut self,
+        id: ValueId,
         input: ValueId,
         input_range: Vec<f64>,
         output_range: Vec<AnimValue>,
         options: TransformOptions,
-    ) -> Result<ValueId, String> {
+    ) -> Result<(), String> {
+        self.vacant(id)?;
         self.node(input)?;
         let transform = Transform::new(input, input_range, output_range, options)?;
-        Ok(self.insert(Node::Transform(transform)))
+        self.insert(id, Node::Transform(transform))
     }
 
     /// A spring that chases `source`, starting at its value at `now`.
     pub(super) fn follow(
         &mut self,
+        id: ValueId,
         source: ValueId,
         spring: Transition,
         now: Instant,
-    ) -> Result<ValueId, String> {
+    ) -> Result<(), String> {
+        self.vacant(id)?;
         require_spring(&spring)?;
         let start = self.sample(source, now)?.value;
         let follower = Follower::new(Some(source), start, spring, now)?;
-        Ok(self.insert(Node::Spring(follower)))
+        self.insert(id, Node::Spring(follower))
     }
 
     /// A spring with no source: `set` gives it a target and it springs there.
     pub(super) fn spring(
         &mut self,
+        id: ValueId,
         initial: AnimValue,
         spring: Transition,
         now: Instant,
-    ) -> Result<ValueId, String> {
+    ) -> Result<(), String> {
+        self.vacant(id)?;
         require_spring(&spring)?;
         validate(&initial)?;
         let follower = Follower::new(None, initial, spring, now)?;
-        Ok(self.insert(Node::Spring(follower)))
+        self.insert(id, Node::Spring(follower))
     }
 
     /// Removes a node. A node that reads it fails to sample from then on.
@@ -208,11 +216,17 @@ impl MotionValues {
         }
     }
 
-    fn insert(&mut self, node: Node) -> ValueId {
-        let id = ValueId(self.next);
-        self.next += 1;
+    fn vacant(&self, id: ValueId) -> Result<(), String> {
+        if self.nodes.contains_key(&id) {
+            return Err(format!("{NAME} {} already exists", id.0));
+        }
+        Ok(())
+    }
+
+    fn insert(&mut self, id: ValueId, node: Node) -> Result<(), String> {
+        self.vacant(id)?;
         self.nodes.insert(id, node);
-        id
+        Ok(())
     }
 
     fn node(&self, id: ValueId) -> Result<&Node, String> {
@@ -506,8 +520,9 @@ impl Transform {
             input_range.reverse();
             output_range.reverse();
         }
-        if input_range.windows(2).any(|window| window[0] >= window[1]) {
-            return Err("a motion transform's input range must be strictly ascending".to_string());
+        // A tie is a step, as in Framer: the later output wins from the tie on.
+        if input_range.windows(2).any(|window| window[0] > window[1]) {
+            return Err("a motion transform's input range must be ascending or descending".to_string());
         }
 
         let count = input_range.len() - 1;
@@ -556,10 +571,16 @@ impl Transform {
             .unwrap_or(last_segment);
         let segment = &self.segments[index];
         let span = self.input_range[index + 1] - self.input_range[index];
-        let progress = (x - self.input_range[index]) / span;
+        // Only a tie at an end can be reached with no span: anywhere else the
+        // segment search steps over it.
+        let (progress, step) = if span == 0.0 {
+            (f64::from(u8::from(x >= self.input_range[index])), true)
+        } else {
+            ((x - self.input_range[index]) / span, false)
+        };
         let (eased, slope) = apply_ease(progress, &segment.ease);
 
-        let input_rate = if self.clamp && outside {
+        let input_rate = if (self.clamp && outside) || step {
             0.0
         } else {
             input.velocity[0]
@@ -569,7 +590,7 @@ impl Transform {
             .from
             .iter()
             .zip(&segment.pair.to)
-            .map(|(from, to)| (to - from) * slope / span * input_rate)
+            .map(|(from, to)| (to - from) * slope / if step { 1.0 } else { span } * input_rate)
             .collect();
         Ok(Sample {
             value: segment.pair.at(eased),
@@ -723,9 +744,52 @@ mod tests {
         );
     }
 
+    impl MotionValues {
+        fn fresh(&self) -> ValueId {
+            ValueId(self.nodes.keys().map(|id| id.0 + 1).max().unwrap_or(0))
+        }
+
+        fn new_source(&mut self, initial: AnimValue) -> Result<ValueId, String> {
+            let id = self.fresh();
+            self.source(id, initial).map(|()| id)
+        }
+
+        fn new_transform(
+            &mut self,
+            input: ValueId,
+            input_range: Vec<f64>,
+            output_range: Vec<AnimValue>,
+            options: TransformOptions,
+        ) -> Result<ValueId, String> {
+            let id = self.fresh();
+            self.transform(id, input, input_range, output_range, options)
+                .map(|()| id)
+        }
+
+        fn new_follow(
+            &mut self,
+            source: ValueId,
+            spring: Transition,
+            now: Instant,
+        ) -> Result<ValueId, String> {
+            let id = self.fresh();
+            self.follow(id, source, spring, now).map(|()| id)
+        }
+
+        fn new_spring(
+            &mut self,
+            initial: AnimValue,
+            spring: Transition,
+            now: Instant,
+        ) -> Result<ValueId, String> {
+            let id = self.fresh();
+            self.spring(id, initial, spring, now).map(|()| id)
+        }
+    }
+
     fn map(values: &mut MotionValues, input: ValueId) -> ValueId {
         values
-            .transform(
+            .new_transform(
                 input,
                 vec![0.0, 100.0],
                 vec![number(10.0), number(30.0)],
@@ -738,7 +802,7 @@ mod tests {
     fn a_source_holds_what_it_was_given() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(3.0)).unwrap();
+        let id = values.new_source(number(3.0)).unwrap();
         assert_eq!(read(&mut values, id, clock.at(0)), 3.0);
         values.set(id, number(8.0), clock.at(10)).unwrap();
         assert_eq!(read(&mut values, id, clock.at(10)), 8.0);
@@ -751,7 +815,7 @@ mod tests {
     fn animate_runs_a_tween_from_the_current_value() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(10.0)).unwrap();
+        let id = values.new_source(number(10.0)).unwrap();
         values
             .animate(id, number(110.0), tween(1.0), clock.at(0))
             .unwrap();
@@ -767,7 +831,7 @@ mod tests {
     fn animate_works_on_colours() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(color("#000000")).unwrap();
+        let id = values.new_source(color("#000000")).unwrap();
         values
             .animate(id, color("#ffffff"), tween(1.0), clock.at(0))
             .unwrap();
@@ -779,7 +843,7 @@ mod tests {
     fn set_does_not_stop_an_animation_but_stop_does() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values
             .animate(id, number(100.0), tween(1.0), clock.at(0))
             .unwrap();
@@ -799,7 +863,7 @@ mod tests {
     fn stop_keeps_the_value_and_hands_its_speed_on() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values
             .animate(id, number(100.0), tween(1.0), clock.at(0))
             .unwrap();
@@ -814,7 +878,7 @@ mod tests {
     fn a_dragged_value_has_the_speed_of_its_last_writes() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values.set(id, number(0.0), clock.at(0)).unwrap();
         values.set(id, number(10.0), clock.at(10)).unwrap();
         close(rate(&mut values, id, clock.at(10)), 1000.0);
@@ -830,7 +894,7 @@ mod tests {
     fn a_second_write_at_the_same_instant_keeps_the_first_one_as_the_reference() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values.set(id, number(0.0), clock.at(0)).unwrap();
         values.set(id, number(5.0), clock.at(10)).unwrap();
         values.set(id, number(10.0), clock.at(10)).unwrap();
@@ -841,7 +905,7 @@ mod tests {
     fn jump_drops_the_velocity() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values.set(id, number(0.0), clock.at(0)).unwrap();
         values.set(id, number(10.0), clock.at(10)).unwrap();
         values.jump(id, number(10.0), clock.at(11)).unwrap();
@@ -853,7 +917,7 @@ mod tests {
         let clock = Clock::new();
         let carried = {
             let mut values = MotionValues::default();
-            let id = values.source(number(0.0)).unwrap();
+            let id = values.new_source(number(0.0)).unwrap();
             values.set(id, number(0.0), clock.at(0)).unwrap();
             values.set(id, number(10.0), clock.at(10)).unwrap();
             values
@@ -863,7 +927,7 @@ mod tests {
         };
         let at_rest = {
             let mut values = MotionValues::default();
-            let id = values.source(number(10.0)).unwrap();
+            let id = values.new_source(number(10.0)).unwrap();
             values
                 .animate(id, number(10.0), spring(), clock.at(10))
                 .unwrap();
@@ -877,7 +941,7 @@ mod tests {
     fn retargeting_a_spring_keeps_its_position_and_speed() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         values
             .animate(id, number(100.0), spring(), clock.at(0))
             .unwrap();
@@ -895,7 +959,7 @@ mod tests {
     fn a_transform_maps_its_input_and_clamps_by_default() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(50.0)).unwrap();
+        let input = values.new_source(number(50.0)).unwrap();
         let output = map(&mut values, input);
         close(read(&mut values, output, clock.at(0)), 20.0);
         values.set(input, number(250.0), clock.at(1)).unwrap();
@@ -908,9 +972,9 @@ mod tests {
     fn a_transform_without_clamp_extends_its_end_segments() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(200.0)).unwrap();
+        let input = values.new_source(number(200.0)).unwrap();
         let output = values
-            .transform(
+            .new_transform(
                 input,
                 vec![0.0, 100.0],
                 vec![number(10.0), number(30.0)],
@@ -929,9 +993,9 @@ mod tests {
     fn a_transform_has_one_segment_per_gap_with_its_own_easing() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = values
-            .transform(
+            .new_transform(
                 input,
                 vec![0.0, 1.0, 3.0],
                 vec![number(0.0), number(10.0), number(20.0)],
@@ -960,9 +1024,9 @@ mod tests {
     fn a_transform_accepts_a_descending_input_range() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(25.0)).unwrap();
+        let input = values.new_source(number(25.0)).unwrap();
         let output = values
-            .transform(
+            .new_transform(
                 input,
                 vec![100.0, 0.0],
                 vec![number(0.0), number(1.0)],
@@ -976,9 +1040,9 @@ mod tests {
     fn a_transform_blends_colours() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = values
-            .transform(
+            .new_transform(
                 input,
                 vec![0.0, 100.0],
                 vec![color("#000000"), color("#ffffff")],
@@ -997,7 +1061,7 @@ mod tests {
     fn a_transform_is_computed_from_its_input_at_the_same_instant() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = map(&mut values, input);
         values
             .animate(input, number(100.0), tween(1.0), clock.at(0))
@@ -1013,7 +1077,7 @@ mod tests {
     fn a_transform_scales_the_speed_of_its_input() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = map(&mut values, input);
         values
             .animate(input, number(100.0), tween(1.0), clock.at(0))
@@ -1022,9 +1086,9 @@ mod tests {
         close(rate(&mut values, output, clock.at(500)), 20.0);
 
         let mut eased = MotionValues::default();
-        let input = eased.source(number(0.0)).unwrap();
+        let input = eased.new_source(number(0.0)).unwrap();
         let output = eased
-            .transform(
+            .new_transform(
                 input,
                 vec![0.0, 100.0],
                 vec![number(0.0), number(100.0)],
@@ -1074,7 +1138,7 @@ mod tests {
     fn a_clamped_transform_has_no_speed_outside_its_range() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = map(&mut values, input);
         values.set(input, number(-50.0), clock.at(0)).unwrap();
         values.set(input, number(-40.0), clock.at(10)).unwrap();
@@ -1082,14 +1146,55 @@ mod tests {
     }
 
     #[test]
+    fn a_tie_in_the_input_range_is_a_step() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let input = values.new_source(number(0.0)).unwrap();
+        let output = values
+            .new_transform(
+                input,
+                vec![0.0, 10.0, 10.0, 20.0],
+                vec![number(0.0), number(1.0), number(5.0), number(6.0)],
+                TransformOptions::default(),
+            )
+            .unwrap();
+        for (x, expected) in [(0.0, 0.0), (5.0, 0.5), (9.999, 0.9999), (10.0, 5.0), (15.0, 5.5), (30.0, 6.0)] {
+            values.set(input, number(x), clock.at(0)).unwrap();
+            close(read(&mut values, output, clock.at(0)), expected);
+        }
+
+        let at_the_start = values
+            .new_transform(
+                input,
+                vec![0.0, 0.0, 10.0],
+                vec![number(2.0), number(3.0), number(4.0)],
+                TransformOptions { clamp: false, ease: Vec::new() },
+            )
+            .unwrap();
+        for (x, expected) in [(-5.0, 2.0), (0.0, 3.0), (5.0, 3.5), (20.0, 5.0)] {
+            values.set(input, number(x), clock.at(1)).unwrap();
+            close(read(&mut values, at_the_start, clock.at(1)), expected);
+        }
+    }
+
+    #[test]
+    fn an_id_can_only_be_used_once() {
+        let mut values = MotionValues::default();
+        values.source(ValueId(7), number(0.0)).unwrap();
+        assert!(values.source(ValueId(7), number(1.0)).is_err());
+        assert!(values.remove(ValueId(7)));
+        values.source(ValueId(7), number(1.0)).unwrap();
+    }
+
+    #[test]
     fn a_transform_rejects_ranges_that_cannot_work() {
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let build = |values: &mut MotionValues,
                      inputs: Vec<f64>,
                      outputs: Vec<AnimValue>,
                      ease: Vec<Ease>| {
-            values.transform(
+            values.new_transform(
                 input,
                 inputs,
                 outputs,
@@ -1100,7 +1205,7 @@ mod tests {
         assert!(build(&mut values, vec![0.0, 1.0], vec![number(0.0)], vec![]).is_err());
         assert!(build(
             &mut values,
-            vec![0.0, 1.0, 1.0],
+            vec![0.0, 2.0, 1.0],
             vec![number(0.0), number(1.0), number(2.0)],
             vec![]
         )
@@ -1127,7 +1232,7 @@ mod tests {
         )
         .is_err());
         assert!(values
-            .transform(
+            .new_transform(
                 ValueId(99),
                 vec![0.0, 1.0],
                 vec![number(0.0), number(1.0)],
@@ -1140,7 +1245,7 @@ mod tests {
     fn a_transform_of_a_colour_fails_when_sampled() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(color("red")).unwrap();
+        let input = values.new_source(color("red")).unwrap();
         let output = map(&mut values, input);
         assert!(values.get(output, clock.at(0)).is_err());
     }
@@ -1149,7 +1254,7 @@ mod tests {
     fn derived_values_cannot_be_written() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = map(&mut values, input);
         assert!(values.set(output, number(1.0), clock.at(0)).is_err());
         assert!(values.jump(output, number(1.0), clock.at(0)).is_err());
@@ -1163,10 +1268,10 @@ mod tests {
     fn a_source_refuses_another_kind_and_auto() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.source(number(0.0)).unwrap();
+        let id = values.new_source(number(0.0)).unwrap();
         assert!(values.set(id, color("red"), clock.at(0)).is_err());
         assert!(values.jump(id, AnimValue::Auto, clock.at(0)).is_err());
-        assert!(values.source(AnimValue::Auto).is_err());
+        assert!(values.new_source(AnimValue::Auto).is_err());
         assert!(values
             .animate(id, color("red"), tween(1.0), clock.at(0))
             .is_err());
@@ -1177,7 +1282,7 @@ mod tests {
     fn a_removed_value_fails_everything_that_reads_it() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let input = values.source(number(0.0)).unwrap();
+        let input = values.new_source(number(0.0)).unwrap();
         let output = map(&mut values, input);
         assert!(values.remove(input));
         assert!(!values.remove(input));
@@ -1189,8 +1294,8 @@ mod tests {
     fn a_follower_springs_after_its_source() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         assert_eq!(read(&mut values, follower, clock.at(0)), 0.0);
         assert!(!values.is_animating(follower, clock.at(0)).unwrap());
 
@@ -1209,8 +1314,8 @@ mod tests {
     fn a_follower_that_is_retargeted_carries_its_velocity() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         values.set(source, number(100.0), clock.at(0)).unwrap();
         read(&mut values, follower, clock.at(16));
         let position = read(&mut values, follower, clock.at(150));
@@ -1227,8 +1332,8 @@ mod tests {
     fn sampling_an_instant_twice_changes_nothing() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         values.set(source, number(100.0), clock.at(0)).unwrap();
         let once = read(&mut values, follower, clock.at(100));
         let twice = read(&mut values, follower, clock.at(100));
@@ -1243,8 +1348,8 @@ mod tests {
     fn a_transform_of_a_follower_reads_the_same_instant_as_the_follower() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         let output = map(&mut values, follower);
         values.set(source, number(100.0), clock.at(0)).unwrap();
         read(&mut values, output, clock.at(16));
@@ -1259,8 +1364,8 @@ mod tests {
     fn a_follower_follows_a_tweened_source_one_frame_behind() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         values
             .animate(source, number(100.0), tween(1.0), clock.at(0))
             .unwrap();
@@ -1280,7 +1385,7 @@ mod tests {
     fn a_spring_with_its_own_target_springs_when_set() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.spring(number(0.0), spring(), clock.at(0)).unwrap();
+        let id = values.new_spring(number(0.0), spring(), clock.at(0)).unwrap();
         values.set(id, number(100.0), clock.at(0)).unwrap();
         assert!(values.is_animating(id, clock.at(100)).unwrap());
         let moving = read(&mut values, id, clock.at(100));
@@ -1296,7 +1401,7 @@ mod tests {
     fn stopping_a_spring_holds_it_where_it_is() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let id = values.spring(number(0.0), spring(), clock.at(0)).unwrap();
+        let id = values.new_spring(number(0.0), spring(), clock.at(0)).unwrap();
         values.set(id, number(100.0), clock.at(0)).unwrap();
         let here = read(&mut values, id, clock.at(100));
         values.stop(id, clock.at(100)).unwrap();
@@ -1308,23 +1413,23 @@ mod tests {
     fn a_following_spring_takes_its_target_from_its_source() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(number(0.0)).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         assert!(values.set(follower, number(1.0), clock.at(0)).is_err());
         assert!(values.jump(follower, number(1.0), clock.at(0)).is_err());
         assert!(values
             .animate(follower, number(1.0), spring(), clock.at(0))
             .is_err());
-        assert!(values.follow(source, tween(1.0), clock.at(0)).is_err());
-        assert!(values.spring(number(0.0), tween(1.0), clock.at(0)).is_err());
+        assert!(values.new_follow(source, tween(1.0), clock.at(0)).is_err());
+        assert!(values.new_spring(number(0.0), tween(1.0), clock.at(0)).is_err());
     }
 
     #[test]
     fn a_follower_follows_a_colour() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
-        let source = values.source(color("#000000")).unwrap();
-        let follower = values.follow(source, spring(), clock.at(0)).unwrap();
+        let source = values.new_source(color("#000000")).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
         values.set(source, color("#ffffff"), clock.at(0)).unwrap();
         values.get(follower, clock.at(16)).unwrap();
         assert_ne!(
