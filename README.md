@@ -741,7 +741,7 @@ terminal.
 
 | Option | Values | Purpose |
 |---|---|---|
-| `titlebarTransparent` | boolean | Hide the native titlebar so the app draws chrome under the traffic lights |
+| `titlebarTransparent` | boolean | Hide the native titlebar so the app draws chrome under the traffic lights. The window then drags only from the boxes that set [`appRegion: "drag"`](#window-drag-regions) |
 | `windowBackground` | `"opaque"` (default), `"transparent"`, `"blurred"` | Window fill. `"blurred"` is the macOS vibrancy backdrop |
 | `trafficLightX` / `trafficLightY` | pixels | Traffic-light origin. The chat example uses `(16, 17)` |
 | `appearance` | `"system"` (default), `"light"`, `"dark"` | Force the app light or dark, or follow the OS. See [Appearance](#appearance) |
@@ -846,6 +846,65 @@ function WindowControls() {
 `minimizeWindow()`, `zoomWindow()`, and `toggleFullscreen()` work on macOS,
 Windows, Linux, and FreeBSD. `zoomWindow()` uses the platform's native zoom or
 maximize operation. These methods are not available in the browser renderer.
+
+### Window drag regions
+
+With `titlebarTransparent` there is no titlebar to grab, so the page says which
+boxes move the window. `appRegion: "drag"` on the bar, `"no-drag"` on the
+controls inside it:
+
+```tsx
+<div
+  style={{
+    appRegion: 'drag',
+    height: 40,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 80, // clears the traffic lights
+  }}
+>
+  <text>Inbox</text>
+  <div style={{ flexGrow: 1 }} />
+  <div style={{ appRegion: 'no-drag' }} onClick={compose}>Compose</div>
+</div>
+```
+
+The value **inherits**, like `pointerEvents`, so the text and the spacer above
+drag too, and a `"drag"` inside a `"no-drag"` inside a `"drag"` works. It does
+nothing without `titlebarTransparent`: a window with its native titlebar drags
+from that.
+
+Regions follow Electron's `-webkit-app-region`, not hit testing. Every element
+with a value contributes its layout box, in tree order, and the **last box that
+holds the point wins**: `"drag"` adds, `"no-drag"` cuts. Z-order,
+`pointerEvents`, `opacity`, `overflow` and `borderRadius` are ignored, so an
+overlay without a value that covers part of the bar does not stop it dragging
+there, and a rounded or clipped child still drags over its full box.
+
+What the page sees inside a drag region:
+
+- **A press never arrives.** No `pointerdown`, `mousedown`, `mouseup` or
+  `click`, no focus change, no `onMouseDownOutside` elsewhere. It moves the
+  window, and a press that starts in a `"no-drag"` box is the page's as usual.
+- **The pointer is outside the window.** Over a region with no button held,
+  hover leaves and no move events fire; leaving it brings hover back. The
+  cursor is the arrow whatever `cursor` says. The wheel still passes.
+- **Right click reaches the page on macOS**, and so does ctrl-click, so a bar can
+  have its own context menu. Only the left button moves the window.
+- **A double click does what the titlebar does.** On macOS that is the user's
+  "Double-click a window's title bar" setting (zoom, minimise or nothing); on
+  Linux it toggles maximize.
+
+| Platform | Support |
+|---|---|
+| macOS | Native. The move starts on the press, with no threshold |
+| Windows | Native, and the OS owns the whole region: it drags, maximizes on double click and shows the system menu on right click, none of which the page sees |
+| Linux | Implemented the same way, right click opens the window menu. Not exercised on a real Linux window yet |
+
+[`examples/titlebar.tsx`](https://github.com/remorses/gpuix/blob/main/examples/titlebar.tsx)
+is the whole pattern: a drag bar with a button and an input cut out of it.
+To test a press in a region, see [Window actions in tests](#window-actions-in-tests).
 
 ### Appearance
 
@@ -4844,7 +4903,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Borders
 
@@ -5813,6 +5872,24 @@ const [hit] = renderer.getPaintedHighlights()
 expect(hit.text.slice(hit.start, hit.end)).toBe('quick')
 expect(hit.rects).toHaveLength(1)
 ```
+
+### Window actions in tests
+
+The test window is offscreen and cannot move, so a press in an
+[`appRegion: "drag"`](#window-drag-regions) box is recorded instead. Every test
+window counts as frameless, so `appRegion` always applies.
+`takeSimulatedWindowActions()` returns what the window was asked to do since the
+last call, oldest first: `"move"`, `"titlebarDoubleClick"` (macOS), `"zoom"` or
+`"showMenu"` (Linux):
+
+```ts
+renderer.nativeSimulateMouseDown(300, 20)
+renderer.nativeSimulateMouseUp(300, 20)
+expect(renderer.takeSimulatedWindowActions()).toEqual(['move'])
+```
+
+The page got no event from that press. Windows hands the region to the OS, so
+nothing is recorded there.
 
 ### Assert numbers, not pixels
 
