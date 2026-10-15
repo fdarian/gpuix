@@ -627,6 +627,11 @@ enum UiCommand {
         control: ClockControl,
         response: SyncSender<f64>,
     },
+    MotionValues {
+        run: Box<
+            dyn FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + Send,
+        >,
+    },
     DispatchMouse {
         input: MouseInput,
         response: SyncSender<std::result::Result<(), String>>,
@@ -972,6 +977,9 @@ async fn run_ui_commands(
                     cx.notify();
                     response.send(now_ms).ok();
                 })
+            }
+            UiCommand::MotionValues { run } => {
+                window.update(cx, move |view, window, cx| run(view, window, cx))
             }
             UiCommand::DispatchMouse { input, response } => {
                 let result =
@@ -1360,6 +1368,56 @@ impl GpuixRenderer {
         let (response, receiver) = sync_channel(1);
         self.send_ui_command(UiCommand::ControlClock { control, response })?;
         recv_ui_response(receiver, "the automation clock command")
+    }
+
+    /// Runs `run` on the UI thread against the window's motion values at the
+    /// window clock's instant. A write repaints, so the frame samples it.
+    fn with_motion_values<R: Send + 'static>(
+        &self,
+        repaint: bool,
+        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<R, String>
+            + Send
+            + 'static,
+    ) -> Result<R> {
+        let apply = move |view: &mut GpuixView,
+                          window: &mut gpui::Window,
+                          cx: &mut gpui::Context<GpuixView>| {
+            let now = view.clock.now();
+            let result = run(&mut view.motion_values, now);
+            if repaint {
+                cx.notify();
+                window.refresh();
+            }
+            result
+        };
+
+        #[cfg(target_os = "macos")]
+        return update_window(apply)?.map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::MotionValues {
+                run: Box::new(move |view, window, cx| {
+                    response.send(apply(view, window, cx)).ok();
+                }),
+            })?;
+            return recv_ui_response(receiver, "the motion value command")?
+                .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = apply;
+            Err(Error::from_reason(
+                "The production GPUIX renderer does not support this operating system",
+            ))
+        }
     }
 
     fn request_invalidate(&self) -> Result<()> {
@@ -2558,6 +2616,129 @@ impl GpuixRenderer {
         Err(Error::from_reason(
             "The production GPUIX renderer does not support this operating system",
         ))
+    }
+
+    // ── Motion values ────────────────────────────────────────────────
+    //
+    // JS chooses the ids (one counter per process), so a value can exist there
+    // before it is bound to a renderer. Values and transitions travel as JSON:
+    // a number, a colour or percentage string, a list of numbers, or a
+    // `boxShadow` layer or list. Reads sample at the window clock, so they
+    // follow `clockSet` and `clockFastForward`. A value that something binds
+    // through the `motionValues` prop, or that has a listener, is sampled on
+    // every frame; `motionValueChange`, `motionValueAnimationStart` and
+    // `motionValueAnimationComplete` events carry the value id as `elementId`.
+
+    /// A value that is written with `set` and `jump` or animated.
+    #[napi]
+    pub fn create_motion_value(&self, id: f64, initial: serde_json::Value) -> Result<()> {
+        self.with_motion_values(false, move |values, _now| values.create_source(id, &initial))
+    }
+
+    /// A value mapped from the number value `input` through `inputRange` and
+    /// `outputRange`. `options` is `{ clamp?: boolean, ease?: ease | ease[] }`.
+    #[napi]
+    pub fn create_motion_transform(
+        &self,
+        id: f64,
+        input: f64,
+        input_range: Vec<f64>,
+        output_range: serde_json::Value,
+        options: Option<serde_json::Value>,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, _now| {
+            values.create_transform(id, input, input_range, &output_range, options.as_ref())
+        })
+    }
+
+    /// A spring that chases another value. `config` is a spring transition
+    /// without the `type`.
+    #[napi]
+    pub fn create_motion_follower(
+        &self,
+        id: f64,
+        source: f64,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.create_follower(id, source, &config, now)
+        })
+    }
+
+    /// A spring with a target of its own, which `setMotionValue` moves.
+    #[napi]
+    pub fn create_motion_spring(
+        &self,
+        id: f64,
+        initial: serde_json::Value,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.create_spring(id, &initial, &config, now)
+        })
+    }
+
+    /// Whether the value existed. Values that read it fail from then on.
+    #[napi]
+    pub fn dispose_motion_value(&self, id: f64) -> Result<bool> {
+        self.with_motion_values(false, move |values, _now| values.dispose(id))
+    }
+
+    #[napi]
+    pub fn get_motion_value(&self, id: f64) -> Result<serde_json::Value> {
+        self.with_motion_values(false, move |values, now| values.get(id, now))
+    }
+
+    /// Units per second. Errors for a value that is not a number.
+    #[napi]
+    pub fn get_motion_value_velocity(&self, id: f64) -> Result<f64> {
+        self.with_motion_values(false, move |values, now| values.velocity(id, now))
+    }
+
+    #[napi]
+    pub fn is_motion_value_animating(&self, id: f64) -> Result<bool> {
+        self.with_motion_values(false, move |values, now| values.is_animating(id, now))
+    }
+
+    /// Writes the value. Over a running animation this does not stop it:
+    /// call `stopMotionValue` first to take the value from the animation.
+    #[napi]
+    pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
+    }
+
+    /// Writes the value, ending any animation and dropping its velocity.
+    #[napi]
+    pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
+    }
+
+    /// Animates a value from where it is, with the speed it has. `transition`
+    /// is the same description `motion` takes, tween by default.
+    #[napi]
+    pub fn animate_motion_value(
+        &self,
+        id: f64,
+        target: serde_json::Value,
+        transition: Option<serde_json::Value>,
+    ) -> Result<()> {
+        self.with_motion_values(true, move |values, now| {
+            values.animate(id, &target, transition.as_ref(), now)
+        })
+    }
+
+    /// Ends an animation where it is, keeping the speed for the next one.
+    #[napi]
+    pub fn stop_motion_value(&self, id: f64) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.stop(id, now))
+    }
+
+    /// Chooses which events the value delivers. Neither removes the listener.
+    #[napi]
+    pub fn set_motion_value_listener(&self, id: f64, change: bool, animation: bool) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.listen(id, change, animation, now)
+        })
     }
 
     // ── Selection API ────────────────────────────────────────────────
@@ -4577,6 +4758,8 @@ pub(crate) struct GpuixView {
     pub(crate) scroll_handles: HashMap<u64, gpui::ScrollHandle>,
     /// Native animation clocks keyed by retained element ID.
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
+    /// The motion value graph JS creates through `createMotionValue` and friends.
+    pub(crate) motion_values: crate::motion::MotionValueStore,
     /// CSS transition state of the elements that declare `transition*`.
     css_transitions: crate::motion::CssTransitions,
     /// What the last paint measured for the elements that animate.
@@ -4656,6 +4839,34 @@ fn emit_motion_settled(
         }
         emit_event_full(callback, id, "motionComplete", |payload| {
             payload.motion_generation = Some(generation as f64);
+        });
+    }
+}
+
+/// Samples the motion values the tree binds and the ones JS listens to. A
+/// virtual row rebuilt between two root frames reads what this sampled.
+fn sync_motion_values(
+    tree: &crate::retained_tree::RetainedTree,
+    store: &mut crate::motion::MotionValueStore,
+    now: web_time::Instant,
+) -> crate::motion::MotionValueFrame {
+    store.frame(
+        tree.motion_value_ids
+            .iter()
+            .filter_map(|id| tree.elements.get(id)?.custom_props().get("motionValues")),
+        now,
+    )
+}
+
+/// The element id of these events is the motion value's, so the JS side tells
+/// them apart by event type.
+fn emit_motion_value_events(
+    callback: &Option<EventCallback>,
+    events: &[crate::motion::MotionValueEvent],
+) {
+    for event in events {
+        emit_event_full(callback, u64::from(event.id), event.kind.event_type(), |payload| {
+            payload.value = event.value.clone();
         });
     }
 }
@@ -4853,6 +5064,7 @@ impl GpuixView {
             custom_registry: CustomElementRegistry::with_defaults(),
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
+            motion_values: Default::default(),
             css_transitions: Default::default(),
             measurements: Default::default(),
             state_source: Default::default(),
@@ -5275,6 +5487,7 @@ impl GpuixView {
             custom_registry: &mut self.custom_registry,
             virtual_lists: &mut self.virtual_lists,
             motion_states: &mut self.motion_states,
+            motion_values: &self.motion_values,
             css_transitions: &mut self.css_transitions,
             measurements: &self.measurements,
             state_source: &self.state_source,
@@ -5405,6 +5618,7 @@ pub(crate) struct BuildCtx<'a> {
     pub custom_registry: &'a mut CustomElementRegistry,
     virtual_lists: &'a mut HashMap<u64, VirtualListEntry>,
     pub motion_states: &'a mut HashMap<u64, crate::motion::MotionState>,
+    motion_values: &'a crate::motion::MotionValueStore,
     css_transitions: &'a mut crate::motion::CssTransitions,
     measurements: &'a crate::motion::measure::Measurements,
     state_source: &'a crate::motion::state_source::StateSource,
@@ -6196,6 +6410,7 @@ impl gpui::Render for GpuixView {
         let scroll_animating = crate::scroll::advance_animations(now);
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
+        let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
         self.measurements
@@ -6224,6 +6439,7 @@ impl gpui::Render for GpuixView {
                     custom_registry: &mut self.custom_registry,
                     virtual_lists: &mut self.virtual_lists,
                     motion_states: &mut self.motion_states,
+                    motion_values: &self.motion_values,
                     css_transitions: &mut self.css_transitions,
                     measurements: &self.measurements,
                     state_source: &self.state_source,
@@ -6247,6 +6463,7 @@ impl gpui::Render for GpuixView {
         // re-enter this build.
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
+        emit_motion_value_events(&callback, &motion_value_frame.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         let transitions_active = self.css_transitions.take_active();
         self.emit_selection_change(&callback);
@@ -6323,7 +6540,7 @@ impl gpui::Render for GpuixView {
         // no longer match what JS meant.
         PENDING_VIRTUAL_LIST_SCROLLS.with(|cell| cell.borrow_mut().clear());
 
-        if motion_active || transitions_active || scroll_animating {
+        if motion_active || transitions_active || motion_value_frame.active || scroll_animating {
             window.request_animation_frame();
         }
 
@@ -6402,18 +6619,27 @@ pub(crate) fn build_element(
     } else {
         None
     };
-    let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
-        animated_style
+    // Motion values are inline style as well, and come after `motion`.
+    let bound_style = element.custom_props().get("motionValues").map(|binding| {
+        let mut resolved = animated_style
             .as_ref()
             .or(declared_style)
+            .cloned()
+            .unwrap_or_default();
+        ctx.motion_values.apply(binding, &mut resolved);
+        resolved
+    });
+    let current_style = bound_style
+        .as_ref()
+        .or(animated_style.as_ref())
+        .or(declared_style);
+    let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
+        current_style
             .cloned()
             .unwrap_or_default()
             .with_inherited_overlay(&overlay)
     });
-    let style = overlaid_style
-        .as_ref()
-        .or(animated_style.as_ref())
-        .or(declared_style);
+    let style = overlaid_style.as_ref().or(current_style);
     let anchored_style = ctx.anchor_scope.take().and_then(|anchored_id| {
         style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
     });

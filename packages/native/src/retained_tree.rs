@@ -271,6 +271,8 @@ pub struct RetainedTree {
     id: u64,
     pub elements: ElementMap,
     pub motion_ids: HashSet<u64>,
+    /// Elements that bind motion values to style properties.
+    pub motion_value_ids: HashSet<u64>,
     /// Elements that `needs_focus`, in id order. Kept as mutations arrive so the
     /// per-frame focus sync visits these few instead of every retained element:
     /// a large tree retains thousands, and nearly none are focusable.
@@ -301,6 +303,7 @@ impl RetainedTree {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             elements: ElementMap::default(),
             motion_ids: HashSet::new(),
+            motion_value_ids: HashSet::new(),
             focusable_ids: Default::default(),
             inert_count: 0,
             anchored_count: 0,
@@ -476,6 +479,7 @@ impl RetainedTree {
     fn destroy_element_recursive(&mut self, id: u64, destroyed: &mut Vec<u64>) {
         if let Some(element) = self.elements.remove(&id) {
             self.motion_ids.remove(&id);
+            self.motion_value_ids.remove(&id);
             self.focusable_ids.remove(&id);
             self.inert_count -= usize::from(element.has_inert_prop());
             self.anchored_count -= usize::from(element.element_type == "anchored");
@@ -620,6 +624,7 @@ impl RetainedTree {
         let mut changed = false;
         let is_highlight = key == "highlight";
         let is_motion = key == "motion";
+        let is_motion_values = key == "motionValues";
         let affects_focusability = key == "tabIndex" || key == "disabled";
         let is_inert = key == "inert";
         let was_inert = self
@@ -687,6 +692,17 @@ impl RetainedTree {
                 self.motion_ids.insert(id);
             } else {
                 self.motion_ids.remove(&id);
+            }
+        }
+        if is_motion_values {
+            if self
+                .elements
+                .get(&id)
+                .is_some_and(|element| element.custom_props().contains_key("motionValues"))
+            {
+                self.motion_value_ids.insert(id);
+            } else {
+                self.motion_value_ids.remove(&id);
             }
         }
         self.mark_render_changed(id);

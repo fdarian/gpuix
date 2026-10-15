@@ -144,10 +144,6 @@ impl MotionValues {
         Ok(self.sample(id, now)?.value)
     }
 
-    pub(super) fn velocity(&mut self, id: ValueId, now: Instant) -> Result<Vec<f64>, String> {
-        Ok(self.sample(id, now)?.velocity)
-    }
-
     pub(super) fn is_animating(&mut self, id: ValueId, now: Instant) -> Result<bool, String> {
         Ok(self.sample(id, now)?.active)
     }
@@ -745,6 +741,10 @@ mod tests {
     }
 
     impl MotionValues {
+        fn velocity(&mut self, id: ValueId, now: Instant) -> Result<Vec<f64>, String> {
+            Ok(self.sample(id, now)?.velocity)
+        }
+
         fn fresh(&self) -> ValueId {
             ValueId(self.nodes.keys().map(|id| id.0 + 1).max().unwrap_or(0))
         }

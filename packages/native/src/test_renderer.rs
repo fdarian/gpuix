@@ -1597,6 +1597,155 @@ impl TestGpuixRenderer {
         })
     }
 
+    // ── Motion values ────────────────────────────────────────────────
+    //
+    // JS chooses the ids (one counter per process), so a value can exist there
+    // before it is bound to a renderer. Values and transitions travel as JSON:
+    // a number, a colour or percentage string, a list of numbers, or a
+    // `boxShadow` layer or list. Reads sample at the window clock, so they
+    // follow `clockSet` and `clockFastForward`. A value that something binds
+    // through the `motionValues` prop, or that has a listener, is sampled on
+    // every frame; `motionValueChange`, `motionValueAnimationStart` and
+    // `motionValueAnimationComplete` events carry the value id as `elementId`.
+
+    /// A value that is written with `set` and `jump` or animated.
+    #[napi]
+    pub fn create_motion_value(&self, id: f64, initial: serde_json::Value) -> Result<()> {
+        self.with_motion_values(false, move |values, _now| values.create_source(id, &initial))
+    }
+
+    /// A value mapped from the number value `input` through `inputRange` and
+    /// `outputRange`. `options` is `{ clamp?: boolean, ease?: ease | ease[] }`.
+    #[napi]
+    pub fn create_motion_transform(
+        &self,
+        id: f64,
+        input: f64,
+        input_range: Vec<f64>,
+        output_range: serde_json::Value,
+        options: Option<serde_json::Value>,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, _now| {
+            values.create_transform(id, input, input_range, &output_range, options.as_ref())
+        })
+    }
+
+    /// A spring that chases another value. `config` is a spring transition
+    /// without the `type`.
+    #[napi]
+    pub fn create_motion_follower(
+        &self,
+        id: f64,
+        source: f64,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.create_follower(id, source, &config, now)
+        })
+    }
+
+    /// A spring with a target of its own, which `setMotionValue` moves.
+    #[napi]
+    pub fn create_motion_spring(
+        &self,
+        id: f64,
+        initial: serde_json::Value,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.create_spring(id, &initial, &config, now)
+        })
+    }
+
+    /// Whether the value existed. Values that read it fail from then on.
+    #[napi]
+    pub fn dispose_motion_value(&self, id: f64) -> Result<bool> {
+        self.with_motion_values(false, move |values, _now| values.dispose(id))
+    }
+
+    #[napi]
+    pub fn get_motion_value(&self, id: f64) -> Result<serde_json::Value> {
+        self.with_motion_values(false, move |values, now| values.get(id, now))
+    }
+
+    /// Units per second. Errors for a value that is not a number.
+    #[napi]
+    pub fn get_motion_value_velocity(&self, id: f64) -> Result<f64> {
+        self.with_motion_values(false, move |values, now| values.velocity(id, now))
+    }
+
+    #[napi]
+    pub fn is_motion_value_animating(&self, id: f64) -> Result<bool> {
+        self.with_motion_values(false, move |values, now| values.is_animating(id, now))
+    }
+
+    /// Writes the value. Over a running animation this does not stop it:
+    /// call `stopMotionValue` first to take the value from the animation.
+    #[napi]
+    pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
+    }
+
+    /// Writes the value, ending any animation and dropping its velocity.
+    #[napi]
+    pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
+    }
+
+    /// Animates a value from where it is, with the speed it has. `transition`
+    /// is the same description `motion` takes, tween by default.
+    #[napi]
+    pub fn animate_motion_value(
+        &self,
+        id: f64,
+        target: serde_json::Value,
+        transition: Option<serde_json::Value>,
+    ) -> Result<()> {
+        self.with_motion_values(true, move |values, now| {
+            values.animate(id, &target, transition.as_ref(), now)
+        })
+    }
+
+    /// Ends an animation where it is, keeping the speed for the next one.
+    #[napi]
+    pub fn stop_motion_value(&self, id: f64) -> Result<()> {
+        self.with_motion_values(true, move |values, now| values.stop(id, now))
+    }
+
+    /// Chooses which events the value delivers. Neither removes the listener.
+    #[napi]
+    pub fn set_motion_value_listener(&self, id: f64, change: bool, animation: bool) -> Result<()> {
+        self.with_motion_values(false, move |values, now| {
+            values.listen(id, change, animation, now)
+        })
+    }
+
+    /// Runs `run` against the window's motion values at the window clock's
+    /// instant. A write repaints, which samples it and delivers its events.
+    fn with_motion_values<R>(
+        &self,
+        repaint: bool,
+        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<R, String>,
+    ) -> Result<R> {
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            let result = cx
+                .update_window(window, |_, _window, app| {
+                    view.update(app, |view, cx| {
+                        let now = view.clock.now();
+                        let result = run(&mut view.motion_values, now);
+                        if repaint {
+                            cx.notify();
+                        }
+                        result
+                    })
+                })
+                .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            result.map_err(Error::from_reason)
+        })
+    }
+
     /// Advance GPUI's deterministic test executor and run due timers.
     #[napi]
     pub fn advance_time(&self, milliseconds: f64) -> Result<()> {

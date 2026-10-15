@@ -24,7 +24,7 @@ pub(crate) use curve::cubic_bezier;
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };
-pub(crate) use bindings::{MotionValueEvent, MotionValueStore};
+pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
 use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
