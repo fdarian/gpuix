@@ -101,6 +101,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   setPointerCapture(elementId: number, pointerId: number): void
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
+  clickElement(elementId: number): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
@@ -634,6 +635,10 @@ export class TestRenderer implements NativeRenderer {
 
   hasPointerCapture(elementId: number, pointerId: number): boolean {
     return this.native.hasPointerCapture(elementId, pointerId)
+  }
+
+  clickElement(elementId: number): void {
+    this.native.clickElement(elementId)
   }
 
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {

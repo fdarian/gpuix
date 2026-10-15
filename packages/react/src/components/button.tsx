@@ -20,18 +20,10 @@ export interface ButtonBehavior {
 }
 
 /**
- * Enter and Space activate a button through `onClick` with the key event, which
- * has no `target` or `path`. It is not a DOM click, and handlers that read
- * those fields see them missing on keyboard activation.
- */
-function asClickEvent(event: KeyEvent): HostPointerEvent {
-  return event as unknown as HostPointerEvent
-}
-
-/**
  * Props that make any element act like a `<button>`: a tab stop, `role`, and
- * `onClick` from a press, Enter (on key down) or Space
- * (on key up), like a browser. Primitives such as `Dialog.Trigger` build on it.
+ * `onClick` from a press, Enter (on key down) or Space (on key up), like a
+ * browser: a key `click()`s the element, so the handler gets a DOM click that
+ * bubbles. Primitives such as `Dialog.Trigger` build on it.
  */
 export function buttonProps({
   disabled = false,
@@ -51,13 +43,13 @@ export function buttonProps({
     onKeyDown: (event: KeyEvent) => {
       onKeyDown?.(event)
       if (disabled || event.defaultPrevented) return
-      if (event.key === "enter" && !event.isHeld) onClick?.(asClickEvent(event))
+      if (event.key === "enter" && !event.isHeld) event.click()
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === "space") event.preventDefault()
     },
     onKeyUp: (event: KeyEvent) => {
       onKeyUp?.(event)
-      if (!disabled && !event.defaultPrevented && event.key === "space") onClick?.(asClickEvent(event))
+      if (!disabled && !event.defaultPrevented && event.key === "space") event.click()
     },
   }
 }

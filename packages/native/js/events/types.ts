@@ -45,7 +45,9 @@ export interface HostDomEvent extends EventPayload {
 /**
  * Coordinates and buttons of a mouse event. `clientX`/`clientY` are window
  * coordinates; `offsetX`/`offsetY` are relative to the target's padding edge.
- * Native fills these in as the pointer model lands, so each can be absent.
+ * Native fills in the coordinates as the pointer model lands, so each can be
+ * absent. `pointerId` and `pointerType` are always there, mouse event or not,
+ * as on a DOM `PointerEvent`.
  */
 export interface HostMouseEvent extends HostDomEvent {
   clientX?: number
@@ -58,13 +60,13 @@ export interface HostMouseEvent extends HostDomEvent {
   detail?: number
   movementX?: number
   movementY?: number
+  /** 1 for the mouse, -1 for a click no pointer made (VoiceOver, Enter or Space on a button). */
+  pointerId: number
+  /** `""` for a click no pointer made. */
+  pointerType: "mouse" | "pen" | "touch" | ""
 }
 
-export interface HostPointerEvent extends HostMouseEvent {
-  /** 1 for the mouse. */
-  pointerId?: number
-  pointerType?: "mouse" | "pen" | "touch"
-}
+export interface HostPointerEvent extends HostMouseEvent {}
 
 export interface HostDragEvent extends HostMouseEvent {
   dataTransfer?: HostDataTransfer

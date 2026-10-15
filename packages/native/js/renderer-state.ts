@@ -116,9 +116,13 @@ function allStates(): WeakMap<NativeRenderer, RendererState> {
   return states
 }
 
-function toKeyEvent(event: EventPayload, flags: KeystrokeFlags): KeyEvent {
+function toKeyEvent(event: EventPayload, flags: KeystrokeFlags, renderer: NativeRenderer): KeyEvent {
   return {
     ...event,
+    click() {
+      if (!renderer.clickElement) throw new Error("This renderer does not support clickElement")
+      renderer.clickElement(event.elementId)
+    },
     get defaultPrevented() {
       return flags.prevented
     },
@@ -201,7 +205,8 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         const flags = flagsFor(event)
         const keyEvent = toKeyEvent(
           { ...event, elementId: 0, eventType: keyDown ? "keyDown" : "keyUp" },
-          flags
+          flags,
+          renderer
         )
         // Default actions run last, after every element handler and the window
         // handler of this keystroke had the chance to call preventDefault().
@@ -247,7 +252,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (!handler) return false
       if (event.eventType === "keyDown" || event.eventType === "keyUp") {
         const flags = flagsFor(event)
-        const keyEvent = toKeyEvent(event, flags)
+        const keyEvent = toKeyEvent(event, flags, renderer)
         schedule(() => {
           if (!flags.stopped) handler(keyEvent)
         })

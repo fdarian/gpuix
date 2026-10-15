@@ -2047,7 +2047,8 @@ Native defaults, so common elements are not silent:
 
 An explicit `role` wins over those defaults. A clickable `div` is **not** a
 button until you set `role="button"`. `onClick` registers AccessKit `Click`,
-so VoiceOver Press fires the same JS `click` handler.
+so VoiceOver Press fires the same JS `click` handler, as a DOM click no pointer
+made: see [Click without a pointer](#click-without-a-pointer).
 
 The browser / wasm renderer has no AccessKit adapter. These props are
 no-ops there.
@@ -2566,7 +2567,7 @@ import { Button } from '@gpuix/react/button'
 | Behavior | Detail |
 |---|---|
 | Tab stop | `tabIndex` 0, `role="button"` |
-| `onClick` | Press, **Enter** on key down (not on repeat), **Space** on key up |
+| `onClick` | Press, **Enter** on key down (not on repeat), **Space** on key up. A key calls `event.click()`, so the handler gets a [click without a pointer](#click-without-a-pointer) |
 | `disabled` | No `onClick`, leaves the Tab order |
 | `focusableWhenDisabled` | Stays in the Tab order while disabled, for a busy "Saving…" button |
 | `asChild` | Merges the behavior into your own element |
@@ -3278,7 +3279,8 @@ Every pointer, mouse and drag handler also has a capture-phase twin:
 `onMouseDownOutside` is gpuix's own event and has none.
 
 `onMouseDownOutside` fires after `pointerdown` and `mousedown` of a press, for any button, on every element
-that listens for it and does not contain the pressed element. "Contain" follows the logical tree, so a press
+that listens for it and does not contain the pressed element. A press that hits no element at all is outside
+every listener, the root's included, and its `target` is the root. "Contain" follows the logical tree, so a press
 inside an `<anchored>` popup declared under an element is inside that element, and a press on an overlay that
 only paints above it is outside. The handler runs at the listening element alone: it does not bubble, and
 `target` is the element that was pressed. A press the dispatcher retargets, such as one on a pointer-captured
@@ -3343,6 +3345,17 @@ automatically. A listener alone does not put a `div` in the Tab order; add
 
 `onMouseLeave` also fires when the pointer leaves the **window** without a final
 move over the element, and the element's `hover` style ends with it.
+
+### Click without a pointer
+
+The VoiceOver Press and Enter or Space on a `Button` (`buttonProps`) deliver a
+`click` like `HTMLElement.click()` does: `detail` 0, `pointerId` -1, `pointerType`
+`""`, `buttons` 0, no position, and a `target` and `path`, so it bubbles to the
+ancestors' `onClick`. In your own `onKeyDown` or `onKeyUp`, `event.click()` does
+the same for the element whose handler is running, and the click arrives after the
+handler returns. `renderer.clickElement(elementId)` is the same call on the renderer.
+Every mouse and pointer event type has `pointerId` and `pointerType` as required
+fields: `1` and `"mouse"` for the mouse.
 
 ### Pointer capture
 

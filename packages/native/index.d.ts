@@ -180,6 +180,12 @@ export declare class GpuixRenderer {
   /** Whether `element_id` holds, or has been asked to hold, the mouse capture. */
   hasPointerCapture(elementId: number, pointerId: number): boolean
   /**
+   * Deliver the click an activation that is not a pointer press makes on
+   * `element_id`, such as Enter on a button: a `click` with `detail` 0 that
+   * bubbles along the element's path. Arrives through the event callback.
+   */
+  clickElement(elementId: number): void
+  /**
    * Paint packed pixels onto an `<img>` host node. `format` is `"rgba"`
    * (default) or `"bgra"`; BGRA skips the per-pixel swizzle.
    */
@@ -417,6 +423,11 @@ export declare class TestGpuixRenderer {
   setPointerCapture(elementId: number, pointerId: number): void
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
+  /**
+   * The click an activation that is not a pointer press makes on `element_id`;
+   * collected for `drainEvents` like every other event.
+   */
+  clickElement(elementId: number): void
   /** Packed `"rgba"` (default) or `"bgra"` pixels onto an `<img>` host node. */
   setImagePixels(elementId: number, width: number, height: number, pixels: Buffer, format?: string | undefined | null): void
   /** Encoded image bytes onto an `<img>` host node. */
@@ -712,9 +723,9 @@ export interface EventPayload {
    * down/up events.
    */
   detail?: number
-  /** The DOM `pointerId`. 1 for the mouse. */
+  /** The DOM `pointerId`. 1 for the mouse, -1 for a click no pointer made. */
   pointerId?: number
-  /** The DOM `pointerType`. "mouse" for every event native produces. */
+  /** The DOM `pointerType`. "mouse" for the mouse, empty for a click no pointer made. */
   pointerType?: string
   modifiers?: EventModifiers
 }

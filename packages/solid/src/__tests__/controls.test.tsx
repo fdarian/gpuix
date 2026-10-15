@@ -288,4 +288,32 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     log.push(`focus ${focused()}`)
     expect(log).toEqual(["focus save", "save", "space down", "save", "focus end"])
   })
+
+  it("delivers Enter and Space on a Button as a DOM click that bubbles", () => {
+    const seen: Array<{ at: string; detail?: number; pointerId?: number; pointerType?: string; target?: number; currentTarget?: number | null }> = []
+    const app = createTestRoot()
+    app.render(() => (
+      <div
+        testId="wrapper"
+        style={{ display: "flex" }}
+        onClick={(event) => seen.push({ at: "wrapper", detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target, currentTarget: event.currentTarget })}
+      >
+        <Button
+          testId="save"
+          autoFocus
+          onClick={(event) => seen.push({ at: "button", detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target, currentTarget: event.currentTarget })}
+          style={{ width: 60, height: 24 }}
+        >
+          <text>Save</text>
+        </Button>
+      </div>
+    ))
+    const button = app.renderer.findByTestId("save")!.id
+    const wrapper = app.renderer.findByTestId("wrapper")!.id
+    app.renderer.nativeSimulateKeyDown(button, "enter")
+    expect(seen).toEqual([
+      { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
+      { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
+    ])
+  })
 })

@@ -1432,4 +1432,35 @@ describeNative("floating controls", () => {
       ]
     `)
   })
+
+  it("delivers Enter and Space on a Button as a DOM click that bubbles", () => {
+    const seen = []
+    const record = (at) => (event) =>
+      seen.push({
+        at,
+        detail: event.detail,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        target: event.target,
+        currentTarget: event.currentTarget,
+      })
+    testRoot.render(
+      <div testId="wrapper" style={{ display: "flex" }} onClick={record("wrapper")}>
+        <Button testId="save" autoFocus onClick={record("button")} style={{ width: 60, height: 24 }}>Save</Button>
+      </div>
+    )
+    const renderer = testRoot.renderer
+    const button = renderer.findByTestId("save").id
+    const wrapper = renderer.findByTestId("wrapper").id
+    renderer.nativeSimulateKeyDown(button, "enter")
+    expect(seen).toEqual([
+      { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
+      { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
+    ])
+    seen.length = 0
+    renderer.nativeSimulateKeyDown(button, "space")
+    expect(seen).toEqual([])
+    renderer.nativeSimulateKeyUp(button, "space")
+    expect(seen.map((entry) => entry.at)).toEqual(["button", "wrapper"])
+  })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "../../index.js"
-import type { EventHandlerMap, NativeRenderer } from "../host.js"
+import type { EventHandlerMap, KeyEvent, NativeRenderer } from "../host.js"
 import { captureHandlerKey } from "../events/dispatch.js"
 import { createRendererState } from "../renderer-state.js"
 
@@ -105,5 +105,32 @@ describe("renderer dispatch of pointer, mouse and drag events", () => {
     expect(state.dispatch(event("scrollChange"))).toBe(true)
     flush()
     expect(calls).toEqual(["3:scrollChange:scrollChange"])
+  })
+
+  it("gives a key event click(), which asks the renderer to click the handler's element", () => {
+    const clicked: number[] = []
+    const renderer = { clickElement: (id: number) => clicked.push(id) } as unknown as NativeRenderer
+    const state = createRendererState(renderer)
+    const eventHandlers: EventHandlerMap = new Map()
+    state.attach({ eventHandlers })
+    eventHandlers.set(5, new Map([["keyDown", (event: EventPayload) => (event as KeyEvent).click()]]))
+    state.dispatch({ elementId: 5, eventType: "keyDown", key: "enter" } as EventPayload)
+    expect(clicked).toEqual([5])
+  })
+
+  it("throws from click() when the renderer cannot click an element", () => {
+    const { state, scheduled } = setup()
+    const errors: unknown[] = []
+    const { eventHandlers } = state.current()!
+    eventHandlers.set(5, new Map([["keyDown", (event: EventPayload) => {
+      try {
+        ;(event as KeyEvent).click()
+      } catch (error) {
+        errors.push(error)
+      }
+    }]]))
+    state.dispatch({ elementId: 5, eventType: "keyDown" } as EventPayload)
+    scheduled.splice(0).forEach((run) => run())
+    expect(String(errors[0])).toContain("clickElement")
   })
 })

@@ -51,6 +51,7 @@ import {
   render,
   useWindowSize,
   type EventPayload,
+  type HostMouseEvent,
   type PublicInstance,
   type StyleDesc,
 } from '@gpuix/react'
@@ -151,7 +152,7 @@ interface DragState {
 }
 
 /** A mouse down. It bubbles, so a clip stops it before the grid starts a marquee. */
-type PressEvent = EventPayload & { stopPropagation(): void }
+type PressEvent = HostMouseEvent
 
 /**
  * The three listeners every draggable surface installs. `begin` runs on the
@@ -172,7 +173,6 @@ interface GestureHandlers {
 function usePointerGrab(press: (event: PressEvent) => void) {
   const ref = useRef<PublicInstance>(null)
   const onMouseDown = (event: PressEvent) => {
-    if (event.pointerId === undefined) throw new Error('A mousedown carries no pointerId')
     ref.current?.setPointerCapture?.(event.pointerId)
     press(event)
   }
@@ -984,7 +984,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
   }, [])
 
   const onRulerMouseDown = useCallback(
-    (event: EventPayload) => {
+    (event: HostMouseEvent) => {
       setPlayhead(secondsAtWindowX(event.x ?? 0))
       beginDrag('scrub', null, event)
     },
@@ -992,7 +992,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
   )
 
   const onGridMouseDown = useCallback(
-    (event: EventPayload) => {
+    (event: HostMouseEvent) => {
       if (!event.modifiers?.shift && !event.modifiers?.cmd) setSelection(new Set())
       beginDrag('marquee', null, event)
     },
