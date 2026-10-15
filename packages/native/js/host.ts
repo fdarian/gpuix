@@ -62,8 +62,25 @@ export type DimensionValue = number | string
  * unit they were given. `height` also takes `"auto"`, the height the content
  * wants. `width: "auto"` is an error: the content's width needs a second layout
  * pass to measure.
+ *
+ * Each property takes a target or keyframes (`opacity: [0, 1, 0.5]`); see
+ * `MotionKeyframes`.
  */
-export type MotionStyle = Pick<
+export type MotionStyle = {
+  [Property in keyof MotionStyleTargets]?: MotionKeyframes<NonNullable<MotionStyleTargets[Property]>>
+}
+
+/**
+ * One target, or keyframes: a list the property animates through, over one
+ * `duration` (spread by `times`). A `null` stands for the keyframe before it, or
+ * for the value the property starts from when it comes first. A list is
+ * keyframes unless it is itself one value of the property (`BoxShadow[]`, a
+ * `strokeDasharray` list of numbers), in which case keyframes are a list of
+ * those. Springs animate between two keyframes.
+ */
+export type MotionKeyframes<Value> = Value | Array<Value | null>
+
+type MotionStyleTargets = Pick<
   StyleDesc,
   | "top"
   | "right"
@@ -261,7 +278,11 @@ export interface MotionProps {
  * made absolute; otherwise it switches halfway. `strokeDasharray` lists of
  * different lengths are repeated to a common length.
  */
-export interface SvgMotionStyle {
+export type SvgMotionStyle = {
+  [Attribute in keyof SvgMotionTargets]?: MotionKeyframes<NonNullable<SvgMotionTargets[Attribute]>>
+}
+
+interface SvgMotionTargets {
   pathLength?: number
   pathOffset?: number
   pathSpacing?: number

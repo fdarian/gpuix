@@ -2,9 +2,10 @@
 
 import { createElement, forwardRef, useContext, useEffect, useLayoutEffect, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { reduceMotionValues } from "@gpuix/native/host"
+import { reduceMotionValues, wireMotionTransition } from "@gpuix/native/host"
 import type {
   MotionProps,
+  MotionTransition,
   MotionValueStyle,
   Props,
   PublicInstance,
@@ -13,6 +14,7 @@ import type {
   SvgGroupProps,
   SvgLineProps,
   SvgMotionProps,
+  SvgMotionTransition,
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
@@ -79,7 +81,7 @@ interface MotionSource<Style, Transition> {
   onMotionComplete?: Props["onMotionComplete"]
 }
 
-function createMotionComponent<Source extends MotionSource<object, object>>(tag: string) {
+function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
   return forwardRef<PublicInstance, Source>(function Motion(
     { initial, animate, exit, transition, onMotionComplete, ...props },
     ref
@@ -87,7 +89,7 @@ function createMotionComponent<Source extends MotionSource<object, object>>(tag:
     const presence = useContext(PresenceContext)
     const config = useContext(MotionConfigContext)
     const reduced = config !== undefined && config.reduced
-    const resolvedTransition = transition ?? config?.transition
+    const resolvedTransition = wireMotionTransition(transition ?? config?.transition)
     const [isPresent, safeToRemove] = usePresence()
     const resolvedInitial = presence?.initial === false ? false : initial
     const resolvedAnimate = !isPresent && exit ? exit : animate

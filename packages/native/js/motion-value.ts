@@ -13,8 +13,11 @@ import type {
   BoxShadow,
   MotionCurve,
   MotionEase,
+  MotionKeyframes,
   MotionSpringDurationTransition,
   MotionSpringPhysicsTransition,
+  MotionTransition,
+  SvgMotionTransition,
   MotionValueHost,
   NativeRenderer,
 } from "./host.js"
@@ -71,7 +74,7 @@ export interface AnimationControls extends PromiseLike<void> {
  * `BoxShadow[]` target of a shadow value. Keyframes of those kinds are lists of
  * lists.
  */
-export type MotionTarget<Data extends MotionData> = Data | Array<Data | null>
+export type MotionTarget<Data extends MotionData> = MotionKeyframes<Data>
 
 export type NumberAnimationOptions = {
   /** The renderer that samples the animation. */
@@ -106,6 +109,24 @@ export function wireTransition(transition: MotionCurve | undefined): MotionCurve
 export function wireTransition(transition: MotionCurve | undefined): MotionCurve | undefined {
   if (transition?.repeat !== Infinity) return transition
   return { ...transition, repeat: "Infinity" } as unknown as MotionCurve
+}
+
+/**
+ * `wireTransition` for what a `motion.*` component takes: the repeat of the
+ * curve at the top, of `default`, and of each property's own.
+ */
+export function wireMotionTransition<Transition extends MotionTransition | SvgMotionTransition>(
+  transition: Transition | undefined
+): Transition | undefined {
+  if (transition === undefined) return undefined
+  const wired: Record<string, unknown> = { ...wireTransition(transition) }
+  for (const key of Object.keys(wired)) {
+    const value = wired[key]
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      wired[key] = wireTransition(value as MotionCurve)
+    }
+  }
+  return wired as Transition
 }
 
 function isShadowLayer(item: unknown): boolean {

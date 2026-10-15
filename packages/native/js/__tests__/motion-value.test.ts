@@ -9,6 +9,7 @@ import {
   springValue,
   transformValue,
   velocityValue,
+  wireMotionTransition,
 } from "../host.js"
 import type { MotionValueRenderer } from "../host.js"
 import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
@@ -909,5 +910,26 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
       expect(() => x.animate([0, 1], { repeat: 1.5 })).toThrow(/repeat/)
       expect(x.isAnimating()).toBe(false)
     })
+  })
+})
+
+describe("wireMotionTransition", () => {
+  it("sends Infinity as a string at the top, in default and in each property, without rewriting the input", () => {
+    const transition = {
+      duration: 1,
+      repeat: Infinity,
+      default: { repeat: Infinity, ease: [0.4, 0, 0.2, 1] },
+      opacity: { repeat: 3 },
+      width: { repeat: Infinity, times: [0, 1] },
+    } as const
+    expect(wireMotionTransition(transition)).toEqual({
+      duration: 1,
+      repeat: "Infinity",
+      default: { repeat: "Infinity", ease: [0.4, 0, 0.2, 1] },
+      opacity: { repeat: 3 },
+      width: { repeat: "Infinity", times: [0, 1] },
+    })
+    expect(transition.repeat).toBe(Infinity)
+    expect(wireMotionTransition(undefined)).toBeUndefined()
   })
 })

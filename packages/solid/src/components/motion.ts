@@ -1,8 +1,10 @@
 import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import { reduceMotionValues } from "@gpuix/native/host"
+import { reduceMotionValues, wireMotionTransition } from "@gpuix/native/host"
 import type {
   MotionProps,
+  MotionTransition,
+  SvgMotionTransition,
   SvgCircleProps,
   SvgEllipseProps,
   SvgGroupProps,
@@ -27,7 +29,7 @@ interface MotionSource {
   initial?: object | false
   animate?: object
   exit?: object
-  transition?: object
+  transition?: MotionTransition | SvgMotionTransition
 }
 
 function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
@@ -59,7 +61,9 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
         const isExit = Boolean(presence && !presence.isPresent() && motionProps.exit)
         const initial = presence?.initial === false ? false : motionProps.initial
         const animate = isExit ? motionProps.exit! : motionProps.animate
-        const transition = motionProps.transition !== undefined ? motionProps.transition : config?.transition()
+        const transition = wireMotionTransition(
+          motionProps.transition !== undefined ? motionProps.transition : config?.transition()
+        )
         const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
         if (nextKey !== targetKey) {
           targetKey = nextKey
