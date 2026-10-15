@@ -281,6 +281,9 @@ pub struct RetainedTree {
     id: u64,
     pub elements: ElementMap,
     pub motion_ids: HashSet<u64>,
+    /// Every `<img>`, so a frame can find the ones that `display: none` kept out
+    /// of the build without walking the tree.
+    pub image_ids: HashSet<u64>,
     /// Elements that bind motion values to style properties.
     pub motion_value_ids: HashSet<u64>,
     /// Elements that `needs_focus`, in id order. Kept as mutations arrive so the
@@ -313,6 +316,7 @@ impl RetainedTree {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             elements: ElementMap::default(),
             motion_ids: HashSet::new(),
+            image_ids: HashSet::new(),
             motion_value_ids: HashSet::new(),
             focusable_ids: Default::default(),
             inert_count: 0,
@@ -355,6 +359,9 @@ impl RetainedTree {
 
     pub fn create_element(&mut self, id: u64, element_type: String) {
         self.anchored_count += usize::from(element_type == "anchored");
+        if element_type == "img" {
+            self.image_ids.insert(id);
+        }
         self.dirty = true;
         let revision = self.take_revision();
         self.elements
@@ -524,6 +531,7 @@ impl RetainedTree {
     fn destroy_element_recursive(&mut self, id: u64, destroyed: &mut Vec<u64>) {
         if let Some(element) = self.elements.remove(&id) {
             self.motion_ids.remove(&id);
+            self.image_ids.remove(&id);
             self.motion_value_ids.remove(&id);
             self.focusable_ids.remove(&id);
             self.inert_count -= usize::from(element.has_inert_prop());

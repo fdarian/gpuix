@@ -220,6 +220,19 @@ pub trait CustomElement: 'static {
         cx: &mut gpui::Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement;
 
+    /// Called every frame for an element a `display: none` ancestor keeps out of
+    /// the build. A browser still loads an `<img>` there and fires `load` and
+    /// `error`, so it needs to run what `render` would, short of building elements.
+    fn load_hidden(
+        &mut self,
+        _id: u64,
+        _events: &HashSet<String>,
+        _callback: &Option<EventCallback>,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::App,
+    ) {
+    }
+
     /// Apply a changed prop from the retained tree. Removed props arrive as null.
     fn set_prop(&mut self, key: &str, value: serde_json::Value);
 
@@ -410,6 +423,32 @@ impl CustomElementRegistry {
             ..ctx
         };
         entry.element.render(ctx, window, cx)
+    }
+
+    /// Lets every `<img>` that `display: none` keeps out of the build load, so its
+    /// `load` and `error` still fire. Call once per frame, after the build.
+    pub fn load_hidden_images(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        callback: &Option<EventCallback>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        for id in &tree.image_ids {
+            let Some(element) = tree.elements.get(id) else {
+                continue;
+            };
+            if !crate::layout::box_generation::is_hidden(tree, element) {
+                continue;
+            }
+            let Some(entry) = self.get_or_create(*id, "img") else {
+                continue;
+            };
+            entry.sync(element.custom_props());
+            entry
+                .element
+                .load_hidden(*id, element.events(), callback, window, cx);
+        }
     }
 
     /// Store a decoded image on an `<img>` host node, creating the adapter if needed.

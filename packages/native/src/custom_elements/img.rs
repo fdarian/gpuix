@@ -136,7 +136,9 @@ impl ImgElement {
     /// so a handler that sets state never re-enters the build in progress.
     fn report(
         &mut self,
-        ctx: &CustomRenderContext,
+        id: u64,
+        events: &std::collections::HashSet<String>,
+        callback: &Option<crate::renderer::EventCallback>,
         cx: &mut gpui::App,
         outcome: Result<(u32, u32), String>,
     ) {
@@ -144,11 +146,10 @@ impl ImgElement {
             return;
         }
         let event = if outcome.is_ok() { "load" } else { "error" };
-        if !ctx.events.contains(event) {
+        if !events.contains(event) {
             return;
         }
-        let callback = ctx.event_callback.clone();
-        let id = ctx.id;
+        let callback = callback.clone();
         cx.defer(move |_| {
             crate::renderer::emit_event_full(&callback, id, event, |payload| match outcome {
                 Ok((width, height)) => {
@@ -159,6 +160,62 @@ impl ImgElement {
             });
         });
     }
+
+    /// Turns the source into a decoded image, so the outcome and the natural size
+    /// are known for `load` and `error`. Frees the images `src` replaced.
+    fn resolve_image(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> Resolved {
+        for image in self.dropped.drain(..) {
+            window.drop_image(image).ok();
+        }
+        let loaded = match &self.source {
+            ImgSource::Empty => return Resolved::NoSrc,
+            ImgSource::Pending => return Resolved::Loading,
+            ImgSource::Failed(message) => Err(message.clone()),
+            ImgSource::Render(image) => Ok(image.clone()),
+            ImgSource::Path(path) => {
+                let resource = gpui::Resource::Path(path.as_path().into());
+                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
+                    Some(result) => result.map_err(|error| error.to_string()),
+                    None => return Resolved::Loading,
+                }
+            }
+            ImgSource::Uri(uri) => {
+                let resource = gpui::Resource::Uri(uri.clone());
+                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
+                    Some(result) => result.map_err(|error| error.to_string()),
+                    None => return Resolved::Loading,
+                }
+            }
+            ImgSource::Data(image) => {
+                let renderer = cx.svg_renderer();
+                self.decoded
+                    .get_or_insert_with(|| {
+                        image.to_image_data(renderer).map_err(|error| error.to_string())
+                    })
+                    .clone()
+            }
+        };
+        Resolved::Done(loaded)
+    }
+
+    /// The intrinsic size of a decoded image, in CSS px.
+    fn natural_size(&self, image: &gpui::RenderImage) -> (u32, u32) {
+        let size = image.size(0);
+        let scale = if self.supersampled { gpui::SMOOTH_SVG_SCALE_FACTOR } else { 1.0 };
+        css_size((size.width.0, size.height.0), scale)
+    }
+}
+
+/// Where an `<img>`'s source stands.
+enum Resolved {
+    NoSrc,
+    /// A fetch or a `blob:` read is still going.
+    Loading,
+    Done(Result<std::sync::Arc<gpui::RenderImage>, String>),
 }
 
 /// The source `src` names, and whether gpui will rasterise it as an SVG.
@@ -522,54 +579,17 @@ impl CustomElement for ImgElement {
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
-        for image in self.dropped.drain(..) {
-            window.drop_image(image).ok();
-        }
-
-        // Resolve every source to a decoded image here, so the outcome and the
-        // natural size are known for `load` and `error`.
-        let loaded = match &self.source {
-            ImgSource::Empty => return img_fallback(&ctx, &self.alt, "img: no src"),
-            ImgSource::Pending => return img_blank(&ctx),
-            ImgSource::Failed(message) => {
-                let message = message.clone();
-                self.report(&ctx, cx, Err(message));
+        let image = match self.resolve_image(window, cx) {
+            Resolved::NoSrc => return img_fallback(&ctx, &self.alt, "img: no src"),
+            Resolved::Loading => return img_blank(&ctx),
+            Resolved::Done(Err(message)) => {
+                self.report(ctx.id, ctx.events, ctx.event_callback, cx, Err(message));
                 return img_fallback(&ctx, &self.alt, "img: load failed");
             }
-            ImgSource::Render(image) => Ok(image.clone()),
-            ImgSource::Path(path) => {
-                let resource = gpui::Resource::Path(path.as_path().into());
-                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
-                    Some(result) => result.map_err(|error| error.to_string()),
-                    None => return img_blank(&ctx),
-                }
-            }
-            ImgSource::Uri(uri) => {
-                let resource = gpui::Resource::Uri(uri.clone());
-                match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
-                    Some(result) => result.map_err(|error| error.to_string()),
-                    None => return img_blank(&ctx),
-                }
-            }
-            ImgSource::Data(image) => {
-                let renderer = cx.svg_renderer();
-                self.decoded
-                    .get_or_insert_with(|| {
-                        image.to_image_data(renderer).map_err(|error| error.to_string())
-                    })
-                    .clone()
-            }
+            Resolved::Done(Ok(image)) => image,
         };
-        let image = match loaded {
-            Ok(image) => image,
-            Err(message) => {
-                self.report(&ctx, cx, Err(message));
-                return img_fallback(&ctx, &self.alt, "img: load failed");
-            }
-        };
-        let size = image.size(0);
-        let scale = if self.supersampled { gpui::SMOOTH_SVG_SCALE_FACTOR } else { 1.0 };
-        self.report(&ctx, cx, Ok(css_size((size.width.0, size.height.0), scale)));
+        let natural = self.natural_size(&image);
+        self.report(ctx.id, ctx.events, ctx.event_callback, cx, Ok(natural));
         if !matches!(self.source, ImgSource::Render(_)) {
             self.painted = Some(image.clone());
         }
@@ -646,6 +666,27 @@ impl CustomElement for ImgElement {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn load_hidden(
+        &mut self,
+        id: u64,
+        events: &std::collections::HashSet<String>,
+        callback: &Option<crate::renderer::EventCallback>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        if !self.awaiting_outcome {
+            return;
+        }
+        match self.resolve_image(window, cx) {
+            Resolved::Done(Ok(image)) => {
+                let natural = self.natural_size(&image);
+                self.report(id, events, callback, cx, Ok(natural));
+            }
+            Resolved::Done(Err(message)) => self.report(id, events, callback, cx, Err(message)),
+            Resolved::NoSrc | Resolved::Loading => {}
         }
     }
 

@@ -165,6 +165,65 @@ describeNative("img onLoad and onError", () => {
     }
   })
 
+  it("ignores a query and a fragment on a file:// URL", async () => {
+    const { testRoot, record } = await mount(`${pathToFileURL(redPath).href}?v=2#frame`)
+    try {
+      await settle(testRoot, () => record.events.length > 0)
+      expect(record.events).toEqual([{ type: "load", width: 6, height: 3 }])
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
+  it("reads a data URL with white space and no padding, as browsers do", async () => {
+    const bytes = bmp(2, 2, [255, 0, 0])
+    expect(bytes.length % 3).toBe(1)
+    const payload = bytes.toString("base64").replace(/=+$/, "").replace(/(.{20})/g, "$1\n")
+    const { testRoot, record } = await mount(`data:image/bmp;base64,${payload}`)
+    try {
+      await settle(testRoot, () => record.events.length > 0)
+      expect(record.events).toEqual([{ type: "load", width: 2, height: 2 }])
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
+  it("loads an img that display none keeps out of the layout, and fires once", async () => {
+    const testRoot = createTestRoot()
+    const record = recorder()
+    const tree = (display: "none" | "flex", src: string) => (
+      <div style={{ display }}>
+        <img src={src} onLoad={record.onLoad} onError={record.onError} style={{ width: 60, height: 30 }} />
+      </div>
+    )
+    try {
+      testRoot.render(tree("none", redPath))
+      await settle(testRoot, () => record.events.length > 0)
+      expect(record.events).toEqual([{ type: "load", width: 6, height: 3 }])
+
+      testRoot.render(tree("none", `${SHOTS_DIR}/nope-hidden.bmp`))
+      await settle(testRoot, () => record.events.length > 1)
+      expect(record.events.map((event) => event.type)).toEqual(["load", "error"])
+
+      // Showing it does not load it again.
+      testRoot.render(tree("flex", `${SHOTS_DIR}/nope-hidden.bmp`))
+      await settle(testRoot, () => false, 150)
+      expect(record.events).toHaveLength(2)
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
+  it("fires load for an img that is display none itself", async () => {
+    const { testRoot, record } = await mount(redPath, { style: { display: "none" } })
+    try {
+      await settle(testRoot, () => record.events.length > 0)
+      expect(record.events).toEqual([{ type: "load", width: 6, height: 3 }])
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
   it("works with only onLoad or only onError attached", async () => {
     const testRoot = createTestRoot()
     const seen: string[] = []
@@ -188,6 +247,20 @@ describeNative("img blob: URLs", () => {
       const file = `${SHOTS_DIR}/img-load-blob.png`
       testRoot.renderer.captureScreenshot(file)
       expect(readLogicalPixels(file, testRoot.renderer).at(30, 15)).toEqual([255, 0, 0, 255])
+    } finally {
+      testRoot.unmount()
+      URL.revokeObjectURL(url)
+    }
+  })
+
+  it("clears a blob image when src is removed", async () => {
+    const url = URL.createObjectURL(new Blob([RED_6x3]))
+    const { testRoot, record, element } = await mount(url, { objectFit: "fill" })
+    try {
+      await settle(testRoot, () => record.events.length > 0)
+      testRoot.render(element(undefined))
+      testRoot.renderer.flush()
+      expect(testRoot.renderer.getPaintedText()).toContain("img: no src")
     } finally {
       testRoot.unmount()
       URL.revokeObjectURL(url)

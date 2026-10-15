@@ -6801,6 +6801,8 @@ impl gpui::Render for GpuixView {
             None => gpui::Empty.into_any_element(),
         };
         drop(pointer);
+        self.custom_registry
+            .load_hidden_images(&tree, &callback, window, cx);
         // Flushed after the root build so a `setState` in the handler cannot
         // re-enter this build.
         emit_highlight_events(&callback, &highlight_events);
