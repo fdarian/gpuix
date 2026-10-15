@@ -85,6 +85,8 @@ const HOST_METHODS = [
   "setMotionValueListener",
 ] as const satisfies readonly (keyof MotionValueHost)[]
 
+const INSTANT: MotionCurve = { duration: 0 }
+
 type ComputedTrigger = "change" | "animationComplete"
 
 type Definition =
@@ -178,6 +180,8 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #state: MotionData | undefined
   #attachment: Attachment | undefined
   #bindings = 0
+  /** Elements that bind this value to a position or size property under reduced motion. */
+  #reducers = 0
   #destroyed = false
   #animation: Animation | undefined
   readonly #counts: Record<ListenerKind, number> = {
@@ -284,7 +288,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
     const animation: Animation = {
       target,
       from: this.get(),
-      transition,
+      transition: this.#reducers > 0 ? INSTANT : transition,
       resolve: waiting.resolve,
       started: false,
     }
@@ -310,6 +314,22 @@ export class MotionValue<Data extends MotionData = MotionData> {
       complete: () => {
         if (current()) this.jump(animation.target as Data)
       },
+    }
+  }
+
+  /**
+   * Makes `animate()` jump to its target, finishing on the next frame as a
+   * zero-length animation does, for as long as the returned release is not
+   * called. The adapters call it for a value that a reduced-motion
+   * `motion.*` element binds to a position or size property.
+   */
+  reduceMotion(): () => void {
+    this.#reducers += 1
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.#reducers -= 1
     }
   }
 

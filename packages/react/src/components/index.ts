@@ -1,7 +1,8 @@
 // GPUIX component definitions and native motion wrappers.
 
-import { createElement, forwardRef, useContext, useEffect, useMemo } from "react"
+import { createElement, forwardRef, useContext, useEffect, useLayoutEffect, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
+import { reduceMotionValues } from "@gpuix/native/host"
 import type {
   MotionProps,
   MotionValueStyle,
@@ -17,6 +18,7 @@ import type {
   SvgRectProps,
 } from "../types/host.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
+import { MotionConfigContext } from "./motion-config.js"
 
 let nextMotionGeneration = 0
 
@@ -27,6 +29,8 @@ export {
   usePresence,
 } from "./animate-presence.js"
 export type { AnimatePresenceProps } from "./animate-presence.js"
+export { MotionConfig, useReducedMotionConfig } from "./motion-config.js"
+export type { MotionConfigProps } from "./motion-config.js"
 
 export const gpuixComponents = {
   div: "div",
@@ -81,6 +85,9 @@ function createMotionComponent<Source extends MotionSource<object, object>>(tag:
     ref
   ): ReactElement {
     const presence = useContext(PresenceContext)
+    const config = useContext(MotionConfigContext)
+    const reduced = config !== undefined && config.reduced
+    const resolvedTransition = transition ?? config?.transition
     const [isPresent, safeToRemove] = usePresence()
     const resolvedInitial = presence?.initial === false ? false : initial
     const resolvedAnimate = !isPresent && exit ? exit : animate
@@ -93,16 +100,21 @@ function createMotionComponent<Source extends MotionSource<object, object>>(tag:
       isPresent,
       resolvedInitial,
       resolvedAnimate,
-      transition,
+      resolvedTransition,
+      reduced,
     ])
     const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
+
+    const style: unknown = Reflect.get(props, "style")
+    useLayoutEffect(() => (reduced ? reduceMotionValues(style) : undefined), [reduced, style])
 
     const motionDescription = {
       generation,
       isExit: !isPresent && exit !== undefined,
       initial: resolvedInitial,
       animate: resolvedAnimate,
-      transition,
+      transition: resolvedTransition,
+      ...(reduced ? { reducedMotion: true } : {}),
     }
     const hostProps: Record<string, unknown> = {
       ...props,

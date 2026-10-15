@@ -144,11 +144,13 @@ export type {
 } from "./components/tooltip.js"
 export {
   AnimatePresence,
+  MotionConfig,
   motion,
   useIsPresent,
   usePresence,
+  useReducedMotionConfig,
 } from "./components/index.js"
-export type { AnimatePresenceProps } from "./components/index.js"
+export type { AnimatePresenceProps, MotionConfigProps } from "./components/index.js"
 export type { Root, FrameLoop, RenderOptions } from "./reconciler/renderer.js"
 export type {
   WindowInsets,
