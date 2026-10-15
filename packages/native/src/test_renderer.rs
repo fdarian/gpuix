@@ -1157,7 +1157,9 @@ impl TestGpuixRenderer {
             let tree = self.tree.lock().unwrap();
             crate::events::synthetic_click::click_element(&tree, id).map_err(Error::from_reason)?
         };
-        self.events.lock().unwrap().push(payload);
+        if let Some(payload) = payload {
+            self.events.lock().unwrap().push(payload);
+        }
         Ok(())
     }
 

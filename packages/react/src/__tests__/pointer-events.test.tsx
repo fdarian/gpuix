@@ -376,6 +376,56 @@ describeNative("pointer events", () => {
       ])
     })
 
+    it("does nothing from click() on a disabled form control, and clicks it again once enabled", () => {
+      const seen: string[] = []
+      let field: { id: number; click(): void } | undefined
+      const render = (disabled: boolean) =>
+        testRoot.render(
+          <div style={{ width: 400, height: 200 }} onClick={() => seen.push("parent")}>
+            <input
+              ref={(instance) => {
+                if (instance) field = instance as unknown as { id: number; click(): void }
+              }}
+              value=""
+              disabled={disabled}
+              onClick={() => seen.push("field")}
+              style={{ width: 200, height: 30 }}
+            />
+          </div>,
+        )
+
+      render(true)
+      testRoot.renderer.flush()
+      field!.click()
+      testRoot.renderer.dispatchNativeEvents()
+      expect(seen).toEqual([])
+
+      render(false)
+      testRoot.renderer.flush()
+      field!.click()
+      testRoot.renderer.dispatchNativeEvents()
+      expect(seen).toEqual(["field", "parent"])
+    })
+
+    it("clicks from click() on an element inside a disabled ancestor that is not a form control", () => {
+      const seen: string[] = []
+      let row: { click(): void } | undefined
+      testRoot.render(
+        <div aria-disabled style={{ width: 400, height: 200 }} onClick={() => seen.push("parent")}>
+          <div
+            ref={(instance) => {
+              if (instance) row = instance as unknown as { click(): void }
+            }}
+            style={{ width: 400, height: 100 }}
+          />
+        </div>,
+      )
+      testRoot.renderer.flush()
+      row!.click()
+      testRoot.renderer.dispatchNativeEvents()
+      expect(seen).toEqual(["parent"])
+    })
+
     it("clicks the common ancestor when the press and the release are on different rows", () => {
       testRoot.render(<Rows />)
 

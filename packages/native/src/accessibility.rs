@@ -109,7 +109,8 @@ where
 /// VoiceOver Press. GPUI auto-adds Click only for `.on_click()`. GPUIX
 /// click is dispatched by `crate::events`, so register the action by hand and
 /// emit the click a non-pointer activation makes. `path` is the element and its
-/// retained ancestors, as built.
+/// retained ancestors, as built; it is empty for an element whose click nothing
+/// can receive (see `click_path`), which gets no action.
 pub(crate) fn apply_a11y_click<E>(
     el: E,
     events: &std::collections::HashSet<String>,
@@ -119,7 +120,7 @@ pub(crate) fn apply_a11y_click<E>(
 where
     E: StatefulInteractiveElement,
 {
-    if !events.contains("click") {
+    if !events.contains("click") || path.is_empty() {
         return el;
     }
     let callback = callback.clone();

@@ -3151,6 +3151,7 @@ impl GpuixRenderer {
     /// Deliver the click an activation that is not a pointer press makes on
     /// `element_id`, such as Enter on a button: a `click` with `detail` 0 that
     /// bubbles along the element's path. Arrives through the event callback.
+    /// A disabled form control gets none, like `HTMLElement.click()`.
     #[napi]
     pub fn click_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
@@ -3158,7 +3159,7 @@ impl GpuixRenderer {
             let tree = self.tree.lock().unwrap();
             crate::events::synthetic_click::click_element(&tree, id).map_err(Error::from_reason)?
         };
-        if let Some(callback) = self.event_callback_for_view() {
+        if let (Some(payload), Some(callback)) = (payload, self.event_callback_for_view()) {
             callback(payload);
         }
         Ok(())
@@ -4403,7 +4404,9 @@ impl WebGpuixRenderer {
             crate::events::synthetic_click::click_element(&tree, id)
                 .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?
         };
-        (self.event_callback)(payload);
+        if let Some(payload) = payload {
+            (self.event_callback)(payload);
+        }
         Ok(())
     }
 
@@ -8060,9 +8063,10 @@ fn report_scroll(
 }
 
 /// The retained path a non-pointer click on `element` bubbles along. Empty when
-/// nothing listens for a click, which is also when it is never read.
+/// nothing listens for a click, which is also when it is never read, and when the
+/// element is in a disabled form control, which an accessibility click does nothing on.
 pub(crate) fn click_path(tree: &RetainedTree, element: &crate::retained_tree::RetainedElement) -> Vec<u64> {
-    if element.events().contains("click") {
+    if element.events().contains("click") && !tree.in_disabled_form_control(element.id) {
         crate::events::path::event_path(tree, element.id)
     } else {
         Vec::new()

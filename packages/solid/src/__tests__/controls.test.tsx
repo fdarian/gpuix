@@ -334,6 +334,27 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     expect(seen).toEqual([{ detail: 0, pointerId: -1, target: row.id }])
   })
 
+  it("does nothing from click() on a disabled form control", () => {
+    const seen: string[] = []
+    let field!: HostElement
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ width: 200, height: 60 }} onClick={() => seen.push("parent")}>
+        <input
+          ref={field}
+          value=""
+          disabled
+          onClick={() => seen.push("field")}
+          style={{ width: 100, height: 24 }}
+        />
+      </div>
+    ))
+    app.renderer.flush()
+    field.click()
+    app.renderer.dispatchNativeEvents()
+    expect(seen).toEqual([])
+  })
+
   it("builds DialogPortal children once", () => {
     let built = 0
     const Probe = () => {

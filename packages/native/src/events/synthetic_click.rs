@@ -3,7 +3,8 @@
 //!
 //! It is a DOM click like `HTMLElement.click()` makes: `detail` 0, `pointerId`
 //! -1 and an empty `pointerType`, because no pointer is involved, and a
-//! `target` and `path`, so it bubbles to the ancestors' `onClick`.
+//! `target` and `path`, so it bubbles to the ancestors' `onClick`. A disabled
+//! form control gets none, the same rule a pointer click follows.
 
 use crate::element_tree::EventPayload;
 use crate::retained_tree::RetainedTree;
@@ -31,13 +32,14 @@ pub fn click_payload(path: Vec<u64>) -> EventPayload {
     }
 }
 
-/// The click for the element `id` as the tree has it now.
-pub fn click_element(tree: &RetainedTree, id: u64) -> Result<EventPayload, String> {
+/// The click for the element `id` as the tree has it now. `None` for a disabled
+/// form control, where `HTMLElement.click()` does nothing.
+pub fn click_element(tree: &RetainedTree, id: u64) -> Result<Option<EventPayload>, String> {
     let path = event_path(tree, id);
     if path.is_empty() {
         return Err(format!("Unknown element id {id}"));
     }
-    Ok(click_payload(path))
+    Ok((!tree.in_disabled_form_control(id)).then(|| click_payload(path)))
 }
 
 #[cfg(test)]
@@ -56,6 +58,45 @@ mod tests {
         assert_eq!(payload.pointer_type.as_deref(), Some(""));
         assert_eq!(payload.button, Some(0));
         assert_eq!(payload.buttons, Some(0));
+    }
+
+    fn control_tree(control_type: &str, disabled: bool) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        let batch = format!(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"{control_type}"],["appendChild",1,2],["setCustomProp",2,"disabled",{disabled}],
+                ["createElement",3,"div"],["appendChild",2,3]]"#
+        );
+        crate::renderer::apply_batch_to_tree(&mut tree, batch.as_bytes()).unwrap();
+        for id in [1, 2, 3] {
+            tree.set_event_listener(id, "click".to_string(), true);
+        }
+        tree
+    }
+
+    #[test]
+    fn a_disabled_form_control_and_what_is_inside_it_get_no_click() {
+        for control_type in ["button", "input", "textarea", "select"] {
+            let tree = control_tree(control_type, true);
+            for id in [2, 3] {
+                assert!(click_element(&tree, id).unwrap().is_none(), "{control_type} {id}");
+                let element = &tree.elements[&id];
+                assert!(crate::renderer::click_path(&tree, element).is_empty());
+            }
+            assert!(click_element(&tree, 1).unwrap().is_some());
+        }
+    }
+
+    #[test]
+    fn enabled_controls_and_disabled_non_controls_still_click() {
+        for (control_type, disabled) in [("button", false), ("input", false), ("div", true)] {
+            let tree = control_tree(control_type, disabled);
+            for id in [2, 3] {
+                assert!(click_element(&tree, id).unwrap().is_some(), "{control_type} {id}");
+                let element = &tree.elements[&id];
+                assert!(!crate::renderer::click_path(&tree, element).is_empty());
+            }
+        }
     }
 
     #[test]

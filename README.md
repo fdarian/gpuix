@@ -4537,6 +4537,8 @@ fields: `1` and `"mouse"` for the mouse.
 
 Nothing captures the pointer on its own. Listening for `onMouseDown` and
 `onMouseMove` on one element does not keep the moves coming once the pointer
+`click()` and the VoiceOver Press do nothing on a `button`, `input`, `textarea` or
+`select` that is `disabled`, or on an element inside one, as in HTML.
 leaves it: that element hears only what happens over it, as in the DOM. To keep
 a gesture alive past the element's edge, past its parent, and past the window,
 capture the pointer on the press with `setPointerCapture`, like HTML
