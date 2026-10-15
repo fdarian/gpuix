@@ -11,6 +11,7 @@ import {
 import { bindClipboard } from "./clipboard.js"
 import { bindEyeDropper } from "./eyedropper.js"
 import { flushPendingMutations } from "./bounds.js"
+import { registerKeyframesHost } from "./keyframes.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 
@@ -72,6 +73,8 @@ export function createNativeRenderer(
     const fonts = readFontFiles(windowOptions?.fonts)
     init(windowOptions)
     for (const font of fonts) renderer.registerFont(font)
+    // The web renderer has no motion engine, so nothing to define keyframes on.
+    if (typeof renderer.defineKeyframes === "function") registerKeyframesHost(renderer)
     if (automated) enableAutomation(renderer)
   }
   return renderer

@@ -1720,6 +1720,15 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// Defines the keyframes `animation-name: name` plays. See
+    /// `GpuixRenderer.defineKeyframes`.
+    #[napi]
+    pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
+        self.with_motion_state(false, move |view, _now| {
+            view.keyframes.define(&name, &frames_json)
+        })
+    }
+
     /// Runs `run` against the window's motion values at the window clock's
     /// instant. A write repaints, which samples it and delivers its events.
     fn with_motion_values<R>(
@@ -1727,13 +1736,23 @@ impl TestGpuixRenderer {
         repaint: bool,
         run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<R, String>,
     ) -> Result<R> {
+        self.with_motion_state(repaint, move |view, now| run(&mut view.motion_values, now))
+    }
+
+    /// Runs `run` against the window's view at the window clock's instant.
+    /// Only the motion state of the view is for it to touch.
+    fn with_motion_state<R>(
+        &self,
+        repaint: bool,
+        run: impl FnOnce(&mut GpuixView, web_time::Instant) -> std::result::Result<R, String>,
+    ) -> Result<R> {
         with_test_state(|cx, window, view| {
             let view = view.clone();
             let result = cx
                 .update_window(window, |_, _window, app| {
                     view.update(app, |view, cx| {
                         let now = view.clock.now();
-                        let result = run(&mut view.motion_values, now);
+                        let result = run(view, now);
                         if repaint {
                             cx.notify();
                         }

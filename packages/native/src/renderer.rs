@@ -1379,11 +1379,23 @@ impl GpuixRenderer {
             + Send
             + 'static,
     ) -> Result<R> {
+        self.with_motion_state(repaint, move |view, now| run(&mut view.motion_values, now))
+    }
+
+    /// Runs `run` on the UI thread against the window's view at the window
+    /// clock's instant. Only the motion state of the view is for it to touch.
+    fn with_motion_state<R: Send + 'static>(
+        &self,
+        repaint: bool,
+        run: impl FnOnce(&mut GpuixView, web_time::Instant) -> std::result::Result<R, String>
+            + Send
+            + 'static,
+    ) -> Result<R> {
         let apply = move |view: &mut GpuixView,
                           window: &mut gpui::Window,
                           cx: &mut gpui::Context<GpuixView>| {
             let now = view.clock.now();
-            let result = run(&mut view.motion_values, now);
+            let result = run(view, now);
             if repaint {
                 cx.notify();
                 window.refresh();
@@ -2738,6 +2750,19 @@ impl GpuixRenderer {
     pub fn set_motion_value_listener(&self, id: f64, change: bool, animation: bool) -> Result<()> {
         self.with_motion_values(false, move |values, now| {
             values.listen(id, change, animation, now)
+        })
+    }
+
+    /// Defines the keyframes `animation-name: name` plays, as the `@keyframes`
+    /// rule does. `framesJson` is a JSON object of `from`, `to`, `N%` or comma
+    /// list keys to the animatable style properties plus `animationTimingFunction`.
+    /// Redefining a name replaces it for animations that start afterwards. A bad
+    /// definition throws and leaves the earlier one. Use `defineKeyframes` from
+    /// `@gpuix/native/host`, which defines it on every renderer.
+    #[napi]
+    pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
+        self.with_motion_state(false, move |view, _now| {
+            view.keyframes.define(&name, &frames_json)
         })
     }
 
@@ -4760,6 +4785,9 @@ pub(crate) struct GpuixView {
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
     /// The motion value graph JS creates through `createMotionValue` and friends.
     pub(crate) motion_values: crate::motion::MotionValueStore,
+    /// The `@keyframes` analogue: the sets `animation-name` refers to, pushed
+    /// here by JS through `defineKeyframes`.
+    pub(crate) keyframes: crate::motion::KeyframesRegistry,
     /// CSS transition state of the elements that declare `transition*`.
     css_transitions: crate::motion::CssTransitions,
     /// What the last paint measured for the elements that animate.
@@ -5065,6 +5093,7 @@ impl GpuixView {
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
             motion_values: Default::default(),
+            keyframes: Default::default(),
             css_transitions: Default::default(),
             measurements: Default::default(),
             state_source: Default::default(),

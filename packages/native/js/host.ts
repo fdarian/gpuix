@@ -38,6 +38,7 @@ export * from "./focus.js"
 export * from "./forms.js"
 export * from "./bounds.js"
 export * from "./host-runtime.js"
+export * from "./keyframes.js"
 export * from "./match-media.js"
 export * from "./motion-bindings.js"
 export * from "./motion-config.js"
@@ -80,7 +81,7 @@ export type MotionStyle = {
  */
 export type MotionKeyframes<Value> = Value | Array<Value | null>
 
-type MotionStyleTargets = Pick<
+export type MotionStyleTargets = Pick<
   StyleDesc,
   | "top"
   | "right"

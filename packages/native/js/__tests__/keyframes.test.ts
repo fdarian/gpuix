@@ -1,0 +1,99 @@
+import { describe, expect, it, vi } from "vitest"
+import { defineKeyframes, registerKeyframesHost, type KeyframesHost } from "../keyframes.js"
+import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
+
+const fakeHost = () => {
+  const calls: Array<[string, unknown]> = []
+  const host: KeyframesHost = {
+    defineKeyframes: vi.fn((name: string, framesJson: string) => {
+      calls.push([name, JSON.parse(framesJson)])
+    }),
+  }
+  return { host, calls }
+}
+
+describe("keyframes registry", () => {
+  it("sends earlier definitions to a host that registers later, and later ones to every host", () => {
+    defineKeyframes("kf-early", { from: { opacity: 0 }, to: { opacity: 1 } })
+    const first = fakeHost()
+    registerKeyframesHost(first.host)
+    expect(first.calls).toContainEqual(["kf-early", { from: { opacity: 0 }, to: { opacity: 1 } }])
+
+    const second = fakeHost()
+    registerKeyframesHost(second.host)
+    defineKeyframes("kf-late", { "0%, 100%": { width: 10 } })
+    expect(first.calls).toContainEqual(["kf-late", { "0%, 100%": { width: 10 } }])
+    expect(second.calls).toContainEqual(["kf-late", { "0%, 100%": { width: 10 } }])
+  })
+
+  it("registers a host once", () => {
+    const { host, calls } = fakeHost()
+    registerKeyframesHost(host)
+    registerKeyframesHost(host)
+    const before = calls.length
+    defineKeyframes("kf-once", { to: { opacity: 0 } })
+    expect(calls.length - before).toBe(1)
+  })
+
+  it("redefining a name replaces it for hosts that register afterwards", () => {
+    defineKeyframes("kf-replaced", { to: { opacity: 0 } })
+    defineKeyframes("kf-replaced", { to: { opacity: 0.5 } })
+    const { host, calls } = fakeHost()
+    registerKeyframesHost(host)
+    expect(calls.filter(([name]) => name === "kf-replaced")).toEqual([
+      ["kf-replaced", { to: { opacity: 0.5 } }],
+    ])
+  })
+
+  it("keeps the earlier definition when a registered host rejects the new one", () => {
+    defineKeyframes("kf-kept", { to: { opacity: 0 } })
+    let reject = false
+    registerKeyframesHost({
+      defineKeyframes: () => {
+        if (reject) throw new Error("rejected")
+      },
+    })
+    reject = true
+    expect(() => defineKeyframes("kf-kept", { to: { opacity: 0.9 } })).toThrow("rejected")
+    reject = false
+    const { host, calls } = fakeHost()
+    registerKeyframesHost(host)
+    expect(calls.filter(([name]) => name === "kf-kept")).toEqual([["kf-kept", { to: { opacity: 0 } }]])
+  })
+
+  it("rejects a missing name and non-object frames", () => {
+    expect(() => defineKeyframes("", {})).toThrow(/needs a keyframes name/)
+    expect(() => defineKeyframes("kf-bad", [] as never)).toThrow(/needs an object/)
+    expect(() => defineKeyframes("kf-bad", null as never)).toThrow(/needs an object/)
+  })
+})
+
+describe.skipIf(!hasNativeTestRenderer)("keyframes on the native test renderer", () => {
+  it("validates a definition natively and keeps the earlier one when it is bad", () => {
+    const renderer = new TestRenderer({ width: 100, height: 100 })
+    defineKeyframes("kf-native", { from: { opacity: 0 }, to: { opacity: 1, animationTimingFunction: "ease-in" } })
+    expect(() => defineKeyframes("kf-native", { to: { opacity: 5 } })).toThrow(/keyframes kf-native: to: opacity/)
+    expect(() => defineKeyframes("kf-native", { middle: {} })).toThrow(/not a keyframe selector/)
+    expect(() => defineKeyframes("kf-native", { to: { display: "none" } })).toThrow(/cannot be animated/)
+    expect(() => defineKeyframes("none", { to: { opacity: 1 } })).toThrow(/animation name/)
+    renderer.flush()
+  })
+
+  it("accepts the animation shorthand and longhands in a style and rejects a bad one", () => {
+    const renderer = new TestRenderer({ width: 100, height: 100 })
+    renderer.applyBatch(
+      JSON.stringify([
+        ["createElement", 1, "div"],
+        ["setRoot", 1],
+        ["setStyle", 1, { animation: "spin 1s linear infinite alternate", hover: { animationPlayState: "paused" } }],
+      ])
+    )
+    expect(() =>
+      renderer.applyBatch(JSON.stringify([["setStyle", 1, { animationDuration: "fast" }]]))
+    ).toThrow(/animationDuration/)
+    expect(() =>
+      renderer.applyBatch(JSON.stringify([["setStyle", 1, { hover: { animation: "a b 1s" } }]]))
+    ).toThrow(/hover\.animation/)
+    renderer.flush()
+  })
+})

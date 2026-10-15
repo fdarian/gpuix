@@ -30,6 +30,7 @@ import { bindClipboard } from "./clipboard.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations } from "./observers.js"
 import { readFontFiles } from "./fonts.js"
+import { registerKeyframesHost, type KeyframesHost } from "./keyframes.js"
 import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
@@ -40,7 +41,8 @@ export type { MacCpuThrottle } from "./cpu-throttle.js"
 
 interface NativeTestRendererApi
   extends Omit<NativeRenderer, keyof MotionValueHost>,
-    MotionValueHost {
+    MotionValueHost,
+    KeyframesHost {
   promptForPaths(options?: PathPromptOptions): Promise<string[] | null>
   writeClipboardText(text: string): void
   readClipboardText(): string | null
@@ -337,6 +339,7 @@ export class TestRenderer implements NativeRenderer {
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options.width, options.height)
     for (const font of fonts) this.native.registerFont(font)
+    registerKeyframesHost(this.native)
     this.applyBatch = this.native.applyBatch.bind(this.native)
     this.focusNext = this.native.focusNext.bind(this.native)
     this.focusPrevious = this.native.focusPrevious.bind(this.native)
