@@ -1440,7 +1440,8 @@ property is an error. Changing the target or transition of one property
 restarts only that property, from where it is now; the others keep running.
 A property left out of a later `animate` keeps running toward its old target.
 
-Keyframes, variants, and shared layout animations are not available yet.
+Variants and shared layout animations are not available yet. See
+[Keyframes](#keyframes) for lists of values.
 **Exit** uses `AnimatePresence`, like Motion for React.
 
 ### Springs
@@ -1496,6 +1497,53 @@ every animated value is within `restDelta` and `restSpeed` of its target.
 `AnimatePresence` exit works with springs: the child leaves after the spring
 settles. Transform properties such as scale and translate are not animatable
 yet, so an enter that scales an element cannot be expressed.
+
+### Keyframes
+
+A property in `animate` or `exit` takes a list of values instead of one. It
+moves through them in order over one `duration`, spread evenly.
+
+```tsx
+<motion.div
+  animate={{ width: [0, 120, 80], opacity: [0, 1, 0.6] }}
+  transition={{ duration: 1, ease: 'linear' }}
+/>
+```
+
+A `null` stands for the keyframe before it, or for the value the property
+starts from when it comes first: `width: [null, 100, 60]` leaves from wherever
+the element is. A list of one value is that value. The same list works in
+`exit`, which leaves `AnimatePresence` once the last keyframe plays, and on
+`motion.path`, `motion.circle` and the other SVG shapes
+(`strokeDasharray: ['4', '2']` is two keyframes).
+
+| Option | Default | Values |
+|---|---:|---|
+| `times` | evenly spaced | One number per keyframe, from `0` to `1` and ascending. Keyframes before the first or after the last time hold their value |
+| `ease` | `"easeOut"` | One easing for every segment, or a list with one per segment (one fewer than the keyframes) |
+| `repeat` | `0` | Extra iterations after the first. `Infinity` loops for ever and `onMotionComplete` never fires |
+| `repeatType` | `"loop"` | `"loop"` plays every iteration from the first keyframe, `"reverse"` plays odd iterations backwards in time (their easing runs backwards too), `"mirror"` plays them through the keyframes in reverse order with the same timing and easing |
+| `repeatDelay` | `0` | Seconds held on the last value between iterations |
+
+`duration` is the length of one iteration. `times` and an `ease` list apply to
+every property that uses the transition, and each needs the right count for the
+list it meets, so give a property with a different number of keyframes its own
+entry: `transition={{ duration: 1, width: { times: [0, 0.2, 1] } }}`. A spring
+animates between two keyframes only and takes `repeat` but not `times` or an
+`ease` list. A `times` or `ease` list of the wrong length makes the description invalid:
+the element does not animate and the renderer logs a warning.
+
+```tsx
+<motion.div
+  animate={{ opacity: [0.4, 1] }}
+  transition={{ duration: 0.8, ease: 'easeInOut', repeat: Infinity, repeatType: 'mirror' }}
+/>
+```
+
+A list is keyframes unless it is itself one value of the property: a shadow
+list, or a list of numbers for `strokeDasharray`. Keyframes of those are a list
+of lists. `animate(value, [..], transition)` on a [motion value](#motion-values)
+takes the same lists and transition fields.
 
 ### Animate SVG shapes
 
@@ -1701,10 +1749,13 @@ needs it, then gives it back. A value drives one window at a time.
   and then `set(v)`: the next animation starts from where the value is.
   `isAnimating()` and `getVelocity()` (numbers only) read the current state.
 - **`animate(value, target, transition?)`** takes the same `transition` as
-  `motion` (tweens and springs, in seconds) and a single `target`. The returned
+  `motion` (tweens and springs, in seconds) and a `target`. The returned
   controls have `stop()`, `cancel()` (back to where it started), `complete()` (to
-  the target), `finished` and `then`; the promise never rejects. Keyframes and
-  `animate(element, ...)` are not supported.
+  the target), `finished` and `then`; the promise never rejects. The target may
+  be a list of keyframes (`animate(x, [null, 100, 0], { repeat: Infinity })`, see
+  [Keyframes](#keyframes)); `complete()` goes to the last one. A repeating
+  animation never finishes on its own. `animate(element, ...)` is not
+  supported.
 - **Transforms.** The output range holds numbers, colours or shadows, and the
   input range may descend or repeat a value, which makes a step. `clamp: false`
   extrapolates, and `ease` is one easing or one per segment. A bad range is an
