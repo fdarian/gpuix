@@ -181,6 +181,32 @@ describeNative('AnimatePresence mode="popLayout"', () => {
     expect(boundsOf(renderer, "c").y).toBe(before.y)
   })
 
+  it("keeps the box inside a parent that has padding", () => {
+    const { render, renderer } = createTestRoot()
+    const app = (items: string[]) => (
+      <div style={{ ...column, paddingLeft: 30, paddingTop: 10 }}>
+        <AnimatePresence mode="popLayout">
+          {items.map((item) => (
+            <motion.div
+              key={item}
+              testId={item}
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1, ease: "linear" }}
+              style={{ height: 20 }}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+    )
+    render(app(["a", "b"]))
+    const before = boundsOf(renderer, "b")
+    renderer.clockPause()
+    render(app(["a"]))
+    expect(boundsOf(renderer, "b")).toMatchObject({ x: before.x, y: before.y, width: before.width, height: before.height })
+  })
+
   it("leaves siblings in the way of the exit in sync mode", () => {
     const { render, renderer } = createTestRoot()
     render(<List items={["a", "b"]} mode="sync" />)
