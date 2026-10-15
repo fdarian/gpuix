@@ -543,6 +543,7 @@ impl CustomElement for ImgElement {
             })
             .id(crate::events::ids::host_element_id(ctx.id));
         el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
+        el = crate::events::app_region::mark(el, ctx.app_region);
 
         if let Some(style) = ctx.style {
             el = crate::renderer::apply_interactive_styles(el, style, &ctx.colors);

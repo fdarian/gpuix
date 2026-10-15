@@ -36,6 +36,7 @@ use wasm_bindgen::JsCast as _;
 
 use crate::accessibility::{apply_a11y_click, apply_accessibility};
 use crate::custom_elements::{CustomElementRegistry, CustomRenderContext};
+use crate::events::app_region::AppRegion;
 use crate::element_tree::EventPayload;
 use crate::retained_tree::{RetainedTree, StyleTable};
 use crate::style::StyleDesc;
@@ -1595,6 +1596,7 @@ impl GpuixRenderer {
                             pointer_requests.clone(),
                         );
                         view.observe_appearance(window, cx);
+                        view.set_frameless(window_options.frameless());
                         crate::events::enable_dom_hit_testing(window);
                         view.install_key_interception(window, cx);
                         view
@@ -1744,6 +1746,7 @@ impl GpuixRenderer {
                                             pointer_requests,
                                         );
                                         view.observe_appearance(window, cx);
+                                        view.set_frameless(window_options.frameless());
                                         crate::events::enable_dom_hit_testing(window);
                                         view.install_key_interception(window, cx);
                                         view
@@ -4832,6 +4835,11 @@ pub(crate) struct GpuixView {
     /// Stands in for the platform's pointer lock in the test renderer, whose
     /// offscreen window is never key and so can never take a real one.
     simulated_platform: Option<crate::events::pointer_lock::SimulatedPlatform>,
+    /// Stands in for the window when a press in a drag region asks it to move or zoom: the
+    /// test renderer's offscreen window has no current mouse event to start a drag from.
+    simulated_window_actions: Option<crate::events::app_region::SimulatedWindowActions>,
+    /// The window draws its own titlebar (`titlebarTransparent`), so `appRegion` applies.
+    frameless: bool,
     window_media_change: bool,
     #[cfg(target_os = "macos")]
     media_observer: Option<crate::media::MediaChangeObserver>,
@@ -5280,6 +5288,8 @@ impl GpuixView {
             window_appearance_event_id: 0,
             appearance_subscription: None,
             simulated_platform: None,
+            simulated_window_actions: None,
+            frameless: false,
             window_media_change: false,
             #[cfg(target_os = "macos")]
             media_observer: None,
@@ -5559,6 +5569,17 @@ impl GpuixView {
                     },
                 );
             }));
+    }
+
+    pub(crate) fn set_frameless(&mut self, frameless: bool) {
+        self.frameless = frameless;
+    }
+
+    pub(crate) fn simulate_window_actions(
+        &mut self,
+        actions: crate::events::app_region::SimulatedWindowActions,
+    ) {
+        self.simulated_window_actions = Some(actions);
     }
 
     pub(crate) fn simulate_platform_pointer_lock(
@@ -5954,6 +5975,11 @@ pub(crate) struct Inherited {
     /// descendant that sets `auto` again, as in CSS where it is inherited.
     /// Always true in an inert subtree: `auto` does not reopen it.
     pub pointer_events_none: bool,
+    /// The nearest `appRegion` above, itself included. Always `None` unless the window is
+    /// frameless: a window with a titlebar of its own has nothing to drag.
+    pub app_region: Option<AppRegion>,
+    /// Whether this window has regions at all (`titlebarTransparent`).
+    frameless: bool,
     /// Computed `color` and `colorScheme`, which `currentColor` and
     /// `light-dark()` resolve against.
     pub colors: crate::color::ColorContext,
@@ -5998,7 +6024,7 @@ impl Inherited {
         GroupState::default()
     }
 
-    fn root(theme: &Theme, appearance: gpui::WindowAppearance) -> Self {
+    fn root(theme: &Theme, appearance: gpui::WindowAppearance, frameless: bool) -> Self {
         let mut wash = theme.accent;
         wash.a = 0.35;
         Self {
@@ -6007,6 +6033,8 @@ impl Inherited {
             selection_wash: wash,
             highlight: None,
             pointer_events_none: false,
+            app_region: None,
+            frameless,
             colors: crate::color::ColorContext::root(color_scheme_of(appearance)),
             font_state: Default::default(),
             font_features: None,
@@ -6045,6 +6073,13 @@ impl Inherited {
             Some("none") => self.pointer_events_none = true,
             Some("auto") => self.pointer_events_none = self.inert,
             _ => {}
+        }
+        if self.frameless {
+            self.app_region = style
+                .app_region
+                .as_deref()
+                .and_then(AppRegion::parse)
+                .or(self.app_region);
         }
         if let Some(interpolate_size) = crate::motion::InterpolateSize::declared(style) {
             self.interpolate_size = interpolate_size;
@@ -6792,7 +6827,7 @@ impl gpui::Render for GpuixView {
                     svg_trees: &mut self.svg_trees,
                     now,
                     selection: self.selection.clone(),
-                    inherited: Inherited::root(&theme, window.appearance()),
+                    inherited: Inherited::root(&theme, window.appearance(), self.frameless),
                     highlights: &mut self.highlights,
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
@@ -6837,6 +6872,7 @@ impl gpui::Render for GpuixView {
                     crate::events::listeners::PointerDispatch {
                         pointer: self.pointer.clone(),
                         activation: activation.clone(),
+                        window_actions: self.simulated_window_actions.clone(),
                     },
                     self.pointer.borrow().observed(),
                 ))
@@ -7152,6 +7188,7 @@ pub(crate) fn build_element(
                 highlight_set: inherited.highlight.clone(),
                 props: element.custom_props(),
                 pointer_events_none: inherited.pointer_events_none,
+                app_region: inherited.app_region,
                 // Built from every listener: the registry hands the element only
                 // the events it declares support for.
                 observe: crate::observers::reporter(
@@ -7407,6 +7444,7 @@ pub(crate) fn build_host_container(
     let mut el = gpui::div().id(crate::events::ids::host_element_id(element.id));
     if !is_text_node(element) {
         el = crate::events::ids::host_hitbox(el, ctx.inherited.pointer_events_none);
+        el = crate::events::app_region::mark(el, ctx.inherited.app_region);
     }
 
     // An inert subtree takes no pointer input at all: no listener, no hover
@@ -9024,6 +9062,13 @@ pub struct WindowOptions {
     pub layer_shell: Option<LayerShellOptions>,
 }
 
+impl WindowOptions {
+    /// The window has no titlebar of its own, so the app marks what drags it (`appRegion`).
+    pub(crate) fn frameless(&self) -> bool {
+        self.titlebar_transparent.unwrap_or(false)
+    }
+}
+
 impl Default for WindowOptions {
     fn default() -> Self {
         Self {
@@ -9155,7 +9200,7 @@ fn to_gpui_window_options(
     bounds: gpui::Bounds<gpui::Pixels>,
 ) -> gpui::WindowOptions {
     let title = options.title.clone().unwrap_or_else(|| "GPUIX".to_string());
-    let titlebar_transparent = options.titlebar_transparent.unwrap_or(false);
+    let titlebar_transparent = options.frameless();
     let traffic_light_position = match (options.traffic_light_x, options.traffic_light_y) {
         (Some(x), Some(y)) => Some(gpui::point(gpui::px(x as f32), gpui::px(y as f32))),
         _ => None,
@@ -9186,6 +9231,9 @@ fn to_gpui_window_options(
             appears_transparent: titlebar_transparent,
             traffic_light_position,
         }),
+        // AppKit would otherwise drag the window from the top strip itself and hold back clicks
+        // there to tell a double click apart, and Electron only drags `appRegion` boxes.
+        app_owns_titlebar_drag: titlebar_transparent,
         is_resizable: options.resizable.unwrap_or(true),
         window_background,
         window_min_size,
@@ -9940,7 +9988,7 @@ mod inherited_pointer_events_tests {
     }
 
     fn root() -> Inherited {
-        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark)
+        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true)
     }
 
     #[test]
@@ -9964,3 +10012,62 @@ mod inherited_pointer_events_tests {
         assert!(root().descend(Some(&style("auto")), true).pointer_events_none);
     }
 }
+
+#[cfg(test)]
+mod inherited_app_region_tests {
+    use super::*;
+
+    fn style(app_region: &str) -> StyleDesc {
+        StyleDesc {
+            app_region: Some(app_region.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn frameless() -> Inherited {
+        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true)
+    }
+
+    #[test]
+    fn a_region_reaches_every_descendant_and_the_nearest_one_wins() {
+        let drag = frameless().descend(Some(&style("drag")), false);
+        assert_eq!(drag.app_region, Some(AppRegion::Drag));
+        let no_drag = drag.descend(Some(&style("no-drag")), false);
+        assert_eq!(no_drag.app_region, Some(AppRegion::NoDrag));
+        assert_eq!(
+            no_drag.clone().descend(None, false).app_region,
+            Some(AppRegion::NoDrag)
+        );
+        assert_eq!(
+            no_drag.descend(Some(&style("drag")), false).app_region,
+            Some(AppRegion::Drag)
+        );
+    }
+
+    #[test]
+    fn an_invalid_value_leaves_the_inherited_one() {
+        let drag = frameless().descend(Some(&style("drag")), false);
+        assert_eq!(
+            drag.descend(Some(&style("none")), false).app_region,
+            Some(AppRegion::Drag)
+        );
+        assert_eq!(
+            frameless().descend(Some(&style("grab")), false).app_region,
+            None
+        );
+    }
+
+    #[test]
+    fn a_window_with_a_titlebar_has_no_regions() {
+        let framed = Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, false);
+        assert_eq!(framed.descend(Some(&style("drag")), false).app_region, None);
+    }
+
+    #[test]
+    fn an_inert_subtree_keeps_its_region() {
+        // `inert` is about input to the page; the window still moves from it, as in Electron.
+        let inert = frameless().descend(Some(&style("drag")), true);
+        assert_eq!(inert.app_region, Some(AppRegion::Drag));
+    }
+}
+

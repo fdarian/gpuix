@@ -80,6 +80,8 @@ pub struct CustomRenderContext<'a> {
     pub props: &'a HashMap<String, serde_json::Value>,
     /// `pointerEvents: "none"` here or on an ancestor, with no `auto` between.
     pub pointer_events_none: bool,
+    /// The `appRegion` in effect for this element, which registers its box with the window.
+    pub app_region: Option<crate::events::app_region::AppRegion>,
     /// Reports this element's painted box to the observers that watch it. Pass it
     /// to whichever of `track_host_bounds` or `track_own_bounds` records the box.
     pub observe: Option<crate::automation::PaintReporter>,
@@ -144,6 +146,7 @@ pub(crate) fn custom_surface(
     use gpui::prelude::*;
 
     el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
+    el = crate::events::app_region::mark(el, ctx.app_region);
     if let Some(style) = ctx.style {
         el = if ctx.inert {
             crate::renderer::apply_interactive_styles(

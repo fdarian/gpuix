@@ -317,6 +317,9 @@ pub struct TestGpuixRenderer {
     /// The platform's side of pointer lock, which the offscreen window cannot
     /// provide: it is never key, so a real request is always refused.
     platform: crate::events::pointer_lock::SimulatedPlatform,
+    /// The window moves and zooms a press in a drag region asks for. The offscreen window has
+    /// no current mouse event to start a real move from, so they are recorded.
+    window_actions: crate::events::app_region::SimulatedWindowActions,
     /// What `getMediaFeatures` reports. The test window never receives OS
     /// notifications, so `setMediaFeatures` is the only way it changes.
     media: Arc<Mutex<crate::media::TestMedia>>,
@@ -360,6 +363,8 @@ impl TestGpuixRenderer {
         let pointer_requests_clone = pointer_requests.clone();
         let simulated_platform = crate::events::pointer_lock::SimulatedPlatform::default();
         let simulated_platform_clone = simulated_platform.clone();
+        let window_actions = crate::events::app_region::SimulatedWindowActions::default();
+        let window_actions_clone = window_actions.clone();
 
         let platform = gpui_platform::current_platform(false);
         let mut cx = gpui::VisualTestAppContext::new(platform);
@@ -382,6 +387,8 @@ impl TestGpuixRenderer {
                     );
                     view.observe_appearance(window, cx);
                     view.simulate_platform_pointer_lock(simulated_platform_clone);
+                    view.simulate_window_actions(window_actions_clone);
+                    view.set_frameless(true);
                     crate::events::enable_dom_hit_testing(window);
                     view.install_key_interception(window, cx);
                     view
@@ -426,6 +433,7 @@ impl TestGpuixRenderer {
             selection,
             pointer_requests,
             platform: simulated_platform,
+            window_actions,
             media: Arc::new(Mutex::new(crate::media::TestMedia::default())),
         })
     }
@@ -1229,6 +1237,18 @@ impl TestGpuixRenderer {
     pub fn simulate_pointer_lock_lost(&self) -> Result<()> {
         self.platform.drop_lock();
         self.flush()
+    }
+
+    /// The window actions a press in an `appRegion: "drag"` box asked for since the last call,
+    /// oldest first: `move`, `titlebarDoubleClick`, `zoom` or `showMenu`. The offscreen window
+    /// cannot start a real move, so the test renderer records them instead.
+    #[napi]
+    pub fn take_simulated_window_actions(&self) -> Vec<String> {
+        self.window_actions
+            .take()
+            .into_iter()
+            .map(|action| action.name().to_string())
+            .collect()
     }
 
     /// The click an activation that is not a pointer press makes on `element_id`,

@@ -129,7 +129,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
         text_decoration_color,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
-        cursor, pointer_events, user_select, selection_color,
+        cursor, pointer_events, app_region, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
         transition_delay, interpolate_size,
         animation, animation_name, animation_duration, animation_timing_function,

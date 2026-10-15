@@ -399,6 +399,8 @@ pub struct StyleDesc {
     /// `"none"` makes the element never a pointer target; it inherits and a
     /// descendant's `"auto"` restores it, as in CSS.
     pub pointer_events: Option<String>,
+    /// `"drag"` or `"no-drag"`: a window drag region of a frameless window. Inherited.
+    pub app_region: Option<String>,
 
     // Text selection. "none" opts an element and its subtree out of the
     // selection registry, so buttons and toolbars never start a drag.

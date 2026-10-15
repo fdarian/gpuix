@@ -633,6 +633,12 @@ export declare class TestGpuixRenderer {
    */
   simulatePointerLockLost(): void
   /**
+   * The window actions a press in an `appRegion: "drag"` box asked for since the last call,
+   * oldest first: `move`, `titlebarDoubleClick`, `zoom` or `showMenu`. The offscreen window
+   * cannot start a real move, so the test renderer records them instead.
+   */
+  takeSimulatedWindowActions(): Array<string>
+  /**
    * The click an activation that is not a pointer press makes on `element_id`,
    * and the activation behaviour that follows it; collected for
    * `drainEvents` like every other event.

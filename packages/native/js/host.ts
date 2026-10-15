@@ -673,6 +673,22 @@ export interface StyleDesc {
    *  restores it, like CSS. Every other element is a target where it paints,
    *  whatever its fill or position. */
   pointerEvents?: "auto" | "none"
+  /**
+   * Window drag regions of a frameless window (`titlebarTransparent`), as Electron's
+   * `-webkit-app-region`. `"drag"` makes the element's box drag the window; `"no-drag"` cuts a hole in
+   * it, for the buttons on a draggable bar. It inherits, so `"no-drag"` inside a `"drag"` box and
+   * `"drag"` inside that again work.
+   *
+   * Regions are layout rectangles, not hit testing: the last box in tree order that holds the
+   * point wins, whatever overlaps it, its `pointerEvents`, `overflow` or `borderRadius`. A press in
+   * a drag region starts the window move and reaches the page not at all: no `pointerdown`,
+   * `mousedown` or `click`, and a double click does what the titlebar does (zoom, minimise). A
+   * pointer over one with no button held is outside the window to the page: hover leaves, no moves
+   * fire, and wheel is untouched. The cursor is the arrow. A right click and, on macOS, a ctrl
+   * click reach the page; on Linux a right click opens the window menu. On Windows the OS owns the
+   * whole region, double click and right click included. Ignored without `titlebarTransparent`.
+   */
+  appRegion?: "drag" | "no-drag"
 
   /** "none" opts this element and its subtree out of text selection.
    *  Inherited like the CSS property, so a toolbar can disable it once. */

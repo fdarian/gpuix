@@ -194,6 +194,10 @@ pub struct PointerState {
     pub(super) pressed: FxHashMap<u32, Press>,
     /// Held buttons as the DOM `buttons` bitmask.
     pub(super) buttons: u32,
+    /// Buttons whose press went to the window (a drag region) and not to the page, as the
+    /// `buttons` bitmask. The release is the window's too, and until it comes the pointer is
+    /// the window's: a move is not the page's.
+    pub(super) window_presses: u32,
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
     pub(super) requests: PointerRequests,

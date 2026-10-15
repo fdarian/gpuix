@@ -151,6 +151,7 @@ interface NativeTestRendererApi
   pointerLockElement(): number | null
   simulatePointerLockGranting(granting: boolean): void
   simulatePointerLockLost(): void
+  takeSimulatedWindowActions(): string[]
   getScrollMetrics(elementId: number): number[] | null
   scrollByKey(key: string, shift: boolean): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
@@ -1008,6 +1009,14 @@ export class TestRenderer implements NativeRenderer {
   simulatePointerLockLost(): void {
     this.native.simulatePointerLockLost()
     this.dispatchNativeEvents()
+  }
+
+  /** What the window was asked to do by presses in `appRegion: "drag"` boxes since the last
+   *  call, oldest first: `"move"`, `"titlebarDoubleClick"` (macOS), `"zoom"` or `"showMenu"`
+   *  (Linux). The offscreen window cannot start a real move, so the test window records
+   *  instead. Every test window is frameless, so `appRegion` always applies. */
+  takeSimulatedWindowActions(): string[] {
+    return this.native.takeSimulatedWindowActions()
   }
 
   /** The default action of a scrolling key. See `scrollByKey` on the native renderer. */

@@ -35,6 +35,7 @@ use crate::element_tree::{DroppedFile, EventModifiers, EventPayload};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
+use super::app_region;
 use super::element_drag;
 use super::file_drag;
 use super::ids::Hit;
@@ -103,6 +104,9 @@ pub struct PointerSample {
     pub modifiers: EventModifiers,
     /// Host elements under the pointer, target first. Empty outside the window.
     pub hits: Vec<Hit>,
+    /// The pointer is over a window drag region (`appRegion: "drag"`). The dispatcher decides
+    /// whether that hides it from the page; see `app_region::hides_pointer`.
+    pub over_drag_region: bool,
 }
 
 /// One event to deliver. The pointer position, modifiers and held buttons are
@@ -388,7 +392,7 @@ fn border_insets(style: Option<&StyleDesc>) -> (f64, f64) {
     (left.unwrap_or(0.0).max(0.0), top.unwrap_or(0.0).max(0.0))
 }
 
-fn button_bit(button: u32) -> u32 {
+pub(super) fn button_bit(button: u32) -> u32 {
     match button {
         0 => 1,
         1 => 4,
@@ -405,6 +409,18 @@ fn lowest_held_button(buttons: u32) -> Option<u32> {
 }
 
 pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
+    // Over a drag region the page sees the pointer outside the window: nothing is under it, so
+    // hover leaves and no move is delivered.
+    let hidden;
+    let sample = if app_region::hides_pointer(state, sample) {
+        hidden = PointerSample {
+            hits: Vec::new(),
+            ..sample.clone()
+        };
+        &hidden
+    } else {
+        sample
+    };
     let position = state.position_for(sample.position);
     if position == sample.position {
         return dispatch_at(state, tree, sample);
@@ -457,7 +473,10 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         // of several are held. It can say that none is: the release was lost.
         PointerAction::Move {
             pressed_button: None,
-        } => lost_release = std::mem::take(&mut state.buttons) != 0,
+        } => {
+            lost_release = std::mem::take(&mut state.buttons) != 0;
+            state.window_presses = 0;
+        }
         PointerAction::Move { .. }
         | PointerAction::Exit
         | PointerAction::Resync
@@ -1001,6 +1020,7 @@ mod tests {
             movement: (0.0, 0.0),
             modifiers: EventModifiers::default(),
             hits,
+            over_drag_region: false,
         }
     }
 
@@ -2762,5 +2782,102 @@ mod tests {
         state.begin_lock(4);
         let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["wheel@4"]);
+    }
+
+    fn in_drag_region(sample: PointerSample) -> PointerSample {
+        PointerSample {
+            over_drag_region: true,
+            ..sample
+        }
+    }
+
+    #[test]
+    fn a_pointer_over_a_drag_region_leaves_the_page_and_comes_back_on_leaving_it() {
+        let tree = tree(&listening_everywhere(&[
+            "mouseleave",
+            "mouseout",
+            "mouseenter",
+            "mouseover",
+            "mousemove",
+        ]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &in_drag_region(mv(chain_of(&[4, 1]))));
+        assert_eq!(
+            names(&output),
+            ["mouseout@3", "mouseleave@3", "mouseleave@2", "mouseleave@1"]
+        );
+        assert!(!state.is_hovered(1));
+        // Moving about inside the region says nothing.
+        let output = dispatch(&mut state, &tree, &in_drag_region(mv(chain_of(&[3, 2, 1]))));
+        assert!(output.events.is_empty());
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert_eq!(
+            names(&output),
+            ["mouseover@4", "mouseenter@1", "mouseenter@4", "mousemove@4"]
+        );
+    }
+
+    #[test]
+    fn a_resync_under_a_drag_region_keeps_the_pointer_outside() {
+        let tree = tree(&listening_everywhere(&["mouseleave", "mouseenter"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &in_drag_region(mv(chain_of(&[3, 2, 1]))));
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &in_drag_region(at(PointerAction::Resync, chain_of(&[4, 1]))),
+        );
+        assert!(output.events.is_empty());
+        assert!(!state.is_hovered(1));
+        // The chain the next paint compares against is the empty one the page saw.
+        assert_eq!(*state.observed().borrow(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn a_button_held_from_outside_keeps_its_moves_through_a_drag_region() {
+        let tree = tree(&listening_everywhere(&["mousemove", "mouseleave"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &in_drag_region(held_move(15.0, 30.0, chain_of(&[4, 1]))),
+        );
+        assert_eq!(names(&output), ["mouseleave@3", "mouseleave@2", "mousemove@4"]);
+        assert!(state.is_hovered(4));
+    }
+
+    #[test]
+    fn a_secondary_press_in_a_drag_region_reaches_its_target() {
+        let tree = tree(&listening_everywhere(&["mousedown", "contextmenu"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &in_drag_region(down(2, 1, chain_of(&[4, 1]))));
+        assert_eq!(
+            names(&output),
+            ["mousedown@4", "contextmenu@4"]
+        );
+    }
+
+    #[test]
+    fn a_wheel_over_a_drag_region_still_reaches_what_is_under_it() {
+        let tree = tree(&listening_everywhere(&["wheel"]));
+        let mut state = PointerState::default();
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &in_drag_region(wheel((0.0, 40.0), chain_of(&[3, 2, 1]))),
+        );
+        assert_eq!(names(&output), ["wheel@3"]);
+    }
+
+    #[test]
+    fn a_lost_release_over_a_drag_region_still_cancels_the_press() {
+        let tree = tree(&listening_everywhere(&["pointercancel"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &in_drag_region(mv(chain_of(&[4, 1]))));
+        assert_eq!(names(&output), ["pointercancel@3"]);
     }
 }

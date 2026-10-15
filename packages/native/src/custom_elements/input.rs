@@ -529,6 +529,7 @@ impl CustomElement for TextEditorElement {
             editor = editor.items_center();
         }
         editor = crate::events::ids::host_hitbox(editor, ctx.pointer_events_none);
+        editor = crate::events::app_region::mark(editor, ctx.app_region);
         if let Some(style) = ctx.style {
             editor = crate::renderer::apply_interactive_styles(editor, style, &ctx.colors);
             // Clip text to rounded corners, matching HTML input behavior.
