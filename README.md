@@ -4602,9 +4602,10 @@ more than 4px (logical pixels, from the press) starts a drag:
 `setData`, `getData`, `clearData`, `types`, `effectAllowed` and `dropEffect`.
 `setData` and `effectAllowed` work in `dragstart` only. `getData` works in
 `dragstart` and `drop` and returns `""` in every other event, `dragover` included.
-`setDragImage` is accepted and does nothing: GPUI has no OS drag, so there is no
-drag image and nothing follows the pointer. The drag stays inside the window: it
-cannot drop on another app, and a drag from another app is a file drag.
+`setDragImage` is accepted and does nothing: gpuix does not draw a drag image, so
+nothing follows the pointer. The drag stays inside the window: it cannot drop on
+another app, and a drag from another app is a file drag. See FORK.md for what a
+drag image would take.
 
 **`onWheel`** reports wheel input: the delta, before any scroller has applied it,
 signed like the DOM (`deltaY` is positive for down). **`onScroll`** reports the
@@ -5147,6 +5148,11 @@ The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadi
   }}
 />
 ```
+
+`filter`, `backdropFilter`, `mask`, `clipPath` and an `opacity` below 1 on an element
+with more than one painted part are drawn as an offscreen group, which only the
+macOS (Metal) renderer has. On Windows and Linux the subtree paints flat and only
+`opacity` applies.
 
 `filter` and `backdropFilter` take the CSS function list: `blur()`, `brightness()`,
 `contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`,
