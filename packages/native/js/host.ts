@@ -380,6 +380,13 @@ export interface StyleDesc {
    *  props, so only their initial values (`add`, `alpha`, `match-source`) are
    *  accepted. An invalid string is ignored. */
   mask?: string
+  /** CSS `clip-path`: `inset()`, `circle()`, `ellipse()` or `polygon()`, or `none`,
+   *  with an optional `border-box` (default), `padding-box` or `content-box` before
+   *  or after the shape. The element and everything in it is clipped to the shape.
+   *  `margin-box`, `stroke-box` and `view-box` are `border-box` and `fill-box` is
+   *  `content-box`. `url()`, `path()` and a box with no shape are invalid, so the
+   *  value is ignored. Hit testing is not clipped yet. */
+  clipPath?: string
   /** Applies to every side. */
   borderStyle?: "solid" | "dashed"
   /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in

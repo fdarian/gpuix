@@ -4099,7 +4099,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Borders
 
@@ -4424,6 +4424,27 @@ Limits: `url(...)` masks are valid but not drawn, so that layer is skipped.
 used. `no-clip` and `margin-box` are not supported, so a value using them is
 ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
 `border-box`.
+
+`clipPath` clips the element and everything in it to a basic shape: `inset()`
+(one to four insets and `round` radii), `circle()` and `ellipse()` (a radius,
+`closest-side` or `farthest-side`, and `at <position>`), `polygon()` (an optional
+`nonzero` or `evenodd`, then points), or `none`. Lengths are `px` or `%`. Write a
+`border-box` (the default), `padding-box` or `content-box` before or after the
+shape to choose what the lengths are relative to. An invalid value is ignored, as
+in CSS. A clip path composites the element as a group, like `opacity` and `mask`.
+
+```tsx
+<div style={{ clipPath: 'circle(50% at 50% 50%)' }} />
+<div style={{ clipPath: 'polygon(50% 0, 100% 100%, 0 100%)' }} />
+<div style={{ clipPath: 'inset(8px round 12px)' }} />
+```
+
+Limits: `url()`, `path()`, `rect()` and `xywh()` are not supported, and neither is a
+box with no shape, so a value using them is ignored. `margin-box` and `stroke-box`
+and `view-box` are `border-box`, and `fill-box` is `content-box`. `inset()` rounds
+its corners with circles, so the vertical radii after `/` in `round` are dropped.
+Clip path does not clip hit testing yet: a click on the clipped-away part of the
+element still reaches it.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
