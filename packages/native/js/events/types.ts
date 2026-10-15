@@ -68,6 +68,12 @@ export interface HostMouseEvent extends HostDomEvent {
 
 export interface HostPointerEvent extends HostMouseEvent {}
 
+/**
+ * A drag of files from the OS fires `dragenter`, `dragover`, `dragleave` and
+ * `drop`, which all carry the drag's one `dataTransfer`. `drop` is delivered only
+ * after a `dragover` whose handler called `preventDefault()`. Dragging an element
+ * (`dragstart`, `drag`, `dragend`) is not emitted yet.
+ */
 export interface HostDragEvent extends HostMouseEvent {
   dataTransfer?: HostDataTransfer
 }

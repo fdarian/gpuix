@@ -461,6 +461,9 @@ export interface HostProps extends PointerEventProps {
   style?: StyleDesc
 
   // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
+  // `onDragEnter`, `onDragOver`, `onDragLeave` and `onDrop` report files dragged in
+  // from the OS, with `event.dataTransfer.files`. A drop is delivered only after a
+  // `dragover` whose handler called `preventDefault()`; otherwise `dragleave` fires.
   /**
    * A button went down on an element outside this one's logical subtree, for any
    * button. Anchored descendants are inside; an overlay that merely paints above is

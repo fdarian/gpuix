@@ -3257,7 +3257,8 @@ text imports no longer need a runtime flag.
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
 | Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` is not emitted yet |
-| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | `onDrop` carries `paths` for a file dropped from the OS. The rest are not emitted yet |
+| File drag | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS; `relatedTarget` on enter and leave. All bubble |
+| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd` | not emitted yet: `draggable` elements are not implemented |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
@@ -3295,18 +3296,50 @@ Events are DOM-shaped and propagate like the DOM. A handler receives
 `pointerId`, `pointerType` and `modifiers` where the event has them.
 `x`/`y` are the same as `clientX`/`clientY`. `offsetX`/`offsetY` are relative
 to the target's padding edge. Native only produces an event type when the
-target or one of its ancestors listens for it. Capture
+target or one of its ancestors listens for it (the file drag events below are the exception). Capture
 handlers run from the root down to the target, then the target's handlers,
 then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
 `pointerleave` do not bubble. Event types are the lowercase DOM names
 (`event.type === "pointerdown"`).
 
-**`onFileDrop` is removed.** A Finder or OS file drop is a `drop` event: use
-**`onDrop`** and read `event.dataTransfer.files`, whose entries carry `path`,
-`name`, `size`, `type` and `lastModified`. Native emits `drop` along with the
-rest of the pointer event model; until then `onDrop` reports an OS file drop
-with `paths` and `x`/`y`, delivered to the innermost element that listens,
-and `dataTransfer` is not filled in.
+**`onFileDrop` is removed.** Files dragged in from Finder or the OS are DOM
+drag events, delivered along the path under the pointer:
+
+- `dragenter` goes to the element the files moved onto, then `dragleave` to the
+  one they left (`relatedTarget` is the other element). `dragover` follows on
+  every move. When the files leave the window, `dragleave` goes to the last
+  target with no `relatedTarget`.
+- A drop on the window outside every element targets the root.
+- A drag fires no pointer or mouse event, as in a browser: no `pointermove`,
+  `mouseover`, `mouseup` or `click`, and nothing is hovered.
+- `drop` is delivered only if the last `dragover` was cancelled with
+  `event.preventDefault()` and left `dataTransfer.dropEffect` other than
+  `"none"`. Otherwise the target gets `dragleave` instead, as in the DOM.
+  Every `dragover` handler on the path decides, so accept the drop where the
+  files should land:
+
+```tsx
+<div
+  onDragOver={(event) => event.preventDefault()}
+  onDrop={(event) => {
+    for (const file of event.dataTransfer?.files ?? []) {
+      console.log(file.path, file.name, file.size, file.type, file.lastModified)
+    }
+  }}
+/>
+```
+
+`event.dataTransfer` is one object for the whole drag. `files` entries carry
+`path` (absolute), `name`, `size` in bytes, `type` and `lastModified` in
+milliseconds since the epoch. `type` is a MIME type guessed from the extension,
+or `""`. A file that is not valid UTF-8 or cannot be read is left out, and a
+drag with no readable file fires no event. `types` is `["Files"]`; `getData`
+returns `""` and `setData` does nothing, as in a browser while a drag is
+protected. `dropEffect` starts as `"copy"` on each `dragenter` and `dragover`
+and can be set to `"none"`. The cursor badge the OS draws cannot reflect whether
+the drop will be accepted. Unlike other pointer events, these four are sent to
+JS whether or not something listens, since JS needs every `dragover` to know
+whether the drop was accepted.
 
 **`onScroll`** reports wheel input: the delta, before GPUI has applied it.
 **`onScrollChange`** reports the result, after any cause: the wheel, a
@@ -3930,6 +3963,14 @@ const text = renderer.getAllText()
 ```
 
 `createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
+
+A file drag is simulated in steps, each a native event that reaches your
+handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,
+`nativeSimulateFileDragMove(x, y)` moves it, and it ends with
+`nativeSimulateFileDragSubmit(x, y)` (a drop), `nativeSimulateFileDragExit()`
+(the files left) or both, then `nativeSimulateFileDragEnd()`.
+`nativeSimulateFileDrop(x, y, paths)` is the whole sequence of a drop: enter,
+submit, exit, end. The paths must exist, since native reads their metadata.
 
 ### Testing native elements
 
