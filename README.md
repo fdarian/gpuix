@@ -5087,8 +5087,10 @@ Limits: `url()`, `path()`, `rect()` and `xywh()` are not supported, and neither 
 box with no shape, so a value using them is ignored. `margin-box` and `stroke-box`
 and `view-box` are `border-box`, and `fill-box` is `content-box`. `inset()` rounds
 its corners with circles, so the vertical radii after `/` in `round` are dropped.
-Clip path does not clip hit testing yet: a click on the clipped-away part of the
-element still reaches it.
+
+The shape also clips hit testing, as in CSS: a pointer over the clipped-away part
+hits what is underneath instead, and the element's descendants are cut the same
+way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 

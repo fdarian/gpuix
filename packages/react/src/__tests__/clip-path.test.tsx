@@ -162,3 +162,121 @@ describeNative("clip-path", () => {
     }
   })
 })
+
+describeNative("clipPath clips the pointer", () => {
+  /** Clicks (x, y) and returns the names of the elements that got the click, target first. */
+  function clickAt(tree: (record: (name: string) => () => void) => ReactNode, x: number, y: number) {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(tree((name) => () => log.push(name)))
+      renderer.dispatchNativeEvents()
+      renderer.nativeSimulateClick(x, y)
+      return log
+    } finally {
+      unmount()
+    }
+  }
+
+  /** A clicked 200x200 stage with a clicked, circle-clipped 100x100 box at (50, 50) above a
+   *  clicked 200x200 sibling. A child fills the box's top-left corner, outside the circle. */
+  const scene = (record: (name: string) => () => void) => (
+    <div style={{ position: "relative", width: 200, height: 200 }} onClick={record("stage")}>
+      <div style={{ position: "absolute", width: 200, height: 200 }} onClick={record("under")} />
+      <div
+        style={{
+          position: "absolute",
+          left: 50,
+          top: 50,
+          width: 100,
+          height: 100,
+          backgroundColor: "#ff0000",
+          clipPath: "circle()",
+        }}
+        onClick={record("clipped")}
+      >
+        <div style={{ width: 30, height: 30, backgroundColor: "#00ff00" }} onClick={record("corner")} />
+        <div
+          style={{ position: "absolute", left: 40, top: 40, width: 20, height: 20 }}
+          onClick={record("centre")}
+        />
+      </div>
+    </div>
+  )
+
+  it("an element is hit inside its shape and not outside it", () => {
+    expect(clickAt(scene, 100, 100)).toContain("clipped")
+    // The corner of the box is outside the circle: the sibling beneath is hit.
+    expect(clickAt(scene, 52, 52)).toEqual(["under", "stage"])
+  })
+
+  it("the whole subtree is clipped with it", () => {
+    expect(clickAt(scene, 100, 100)).toEqual(["centre", "clipped", "stage"])
+    // The filled child sits in the corner the circle cuts off.
+    expect(clickAt(scene, 60, 60)).toEqual(["under", "stage"])
+  })
+
+  it("clipPath: none in a hover state restores the hit area", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(
+        clipped(
+          { clipPath: "circle()", hover: { clipPath: "none" } },
+          <div style={{ width: 100, height: 100 }} onClick={() => log.push("child")} />
+        )
+      )
+      renderer.dispatchNativeEvents()
+      // Outside the circle, so no hover and no hit on the box or its child.
+      renderer.nativeSimulateClick(52, 52)
+      expect(log).toEqual([])
+      renderer.nativeSimulateMouseMove(100, 100)
+      renderer.nativeSimulateClick(52, 52)
+      expect(log).toEqual(["child"])
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describeNative("a rounded overflow clip clips the pointer", () => {
+  function clickAt(x: number, y: number) {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <div style={{ position: "absolute", width: 200, height: 200 }} onClick={() => log.push("under")} />
+          <div
+            style={{
+              position: "absolute",
+              left: 50,
+              top: 50,
+              width: 100,
+              height: 100,
+              overflow: "hidden",
+              borderRadius: 40,
+            }}
+          >
+            <div style={{ width: 100, height: 100 }} onClick={() => log.push("child")} />
+          </div>
+        </div>
+      )
+      renderer.dispatchNativeEvents()
+      renderer.nativeSimulateClick(x, y)
+      return log
+    } finally {
+      unmount()
+    }
+  }
+
+  it("a press in the rounded-away corner falls through to what is underneath", () => {
+    expect(clickAt(52, 52)).toEqual(["under"])
+    expect(clickAt(148, 148)).toEqual(["under"])
+  })
+
+  it("a press inside the arc and along the straight edges reaches the child", () => {
+    expect(clickAt(70, 70)).toEqual(["child"])
+    expect(clickAt(100, 52)).toEqual(["child"])
+  })
+})
