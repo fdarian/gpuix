@@ -793,7 +793,11 @@ fn release(
         let release_path = target
             .map(|target| event_path(tree, target))
             .unwrap_or_default();
-        if let Some(clicked) = common_ancestor(&press.path, &release_path) {
+        // Only the click family: a disabled control still gets the pointer and
+        // mouse events around it, as in the DOM.
+        if let Some(clicked) = common_ancestor(&press.path, &release_path)
+            .filter(|clicked| !tree.in_disabled_form_control(*clicked))
+        {
             if button == PRIMARY_BUTTON {
                 emitter.emit_click(clicked, fields);
                 if click_count == DOUBLE_CLICK {
@@ -1197,6 +1201,68 @@ mod tests {
         let output = dispatch(&mut state, &tree, &up(1, 1, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["auxclick@3"]);
         assert_eq!(output.events[0].button, Some(1));
+    }
+
+    fn controls_tree(control_type: &str, disabled: bool) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        let batch = format!(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"{control_type}"],["appendChild",1,2],["setCustomProp",2,"disabled",{disabled}],
+                ["createElement",3,"div"],["appendChild",2,3]]"#
+        );
+        crate::renderer::apply_batch_to_tree(&mut tree, batch.as_bytes()).unwrap();
+        for id in [1, 2, 3] {
+            for event_type in [
+                "pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "auxclick",
+            ] {
+                tree.set_event_listener(id, event_type.to_string(), true);
+            }
+        }
+        tree
+    }
+
+    #[test]
+    fn a_disabled_form_control_gets_pointer_and_mouse_events_but_no_click_family() {
+        for control_type in ["button", "input", "textarea", "select"] {
+            let tree = controls_tree(control_type, true);
+            let mut state = PointerState::default();
+            let press = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+            assert_eq!(names(&press), ["pointerdown@3", "mousedown@3"], "{control_type}");
+            let release = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+            assert_eq!(names(&release), ["pointerup@3", "mouseup@3"], "{control_type}");
+
+            dispatch(&mut state, &tree, &down(0, 2, chain_of(&[2, 1])));
+            let release = dispatch(&mut state, &tree, &up(0, 2, chain_of(&[2, 1])));
+            assert_eq!(names(&release), ["pointerup@2", "mouseup@2"], "{control_type}");
+
+            dispatch(&mut state, &tree, &down(1, 1, chain_of(&[2, 1])));
+            let release = dispatch(&mut state, &tree, &up(1, 1, chain_of(&[2, 1])));
+            assert_eq!(names(&release), ["pointerup@2", "mouseup@2"], "{control_type}");
+        }
+    }
+
+    #[test]
+    fn a_click_landing_above_a_disabled_form_control_is_dispatched() {
+        let tree = controls_tree("input", true);
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[1])));
+        assert_eq!(names(&output), ["pointerup@1", "mouseup@1", "click@1"]);
+    }
+
+    #[test]
+    fn enabled_controls_and_disabled_non_controls_still_click() {
+        for (control_type, disabled) in [("input", false), ("button", false), ("div", true)] {
+            let tree = controls_tree(control_type, disabled);
+            let mut state = PointerState::default();
+            dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+            let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+            assert_eq!(
+                names(&output),
+                ["pointerup@3", "mouseup@3", "click@3"],
+                "{control_type} disabled={disabled}"
+            );
+        }
     }
 
     #[test]

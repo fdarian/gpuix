@@ -380,6 +380,25 @@ impl RetainedTree {
         false
     }
 
+    /// Whether the nearest form control at or above `id` is disabled. HTML
+    /// dispatches no `click`, `auxclick` or `dblclick` for such a target.
+    pub fn in_disabled_form_control(&self, id: u64) -> bool {
+        let mut current = Some(id);
+        while let Some(current_id) = current {
+            let Some(element) = self.elements.get(&current_id) else {
+                return false;
+            };
+            if matches!(
+                element.element_type.as_str(),
+                "button" | "input" | "textarea" | "select"
+            ) {
+                return element.is_disabled();
+            }
+            current = element.parent;
+        }
+        false
+    }
+
     /// Bring `focusable_ids` in line with `id` after anything `needs_focus`
     /// reads has changed.
     fn track_focusable(&mut self, id: u64) {
