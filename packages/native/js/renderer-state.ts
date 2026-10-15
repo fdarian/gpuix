@@ -115,6 +115,13 @@ export function reportSyncErrors(
   }
 }
 
+/** What a motion value hears from the renderer's per-frame sampling. */
+export interface MotionValueSink {
+  change(value: unknown): void
+  animationStart(): void
+  animationComplete(): void
+}
+
 export interface RendererState {
   readonly ids: ElementIdAllocator
   attach(handlers?: RendererRootHandlers): RendererRootBinding
@@ -138,6 +145,11 @@ export interface RendererState {
    * root. The renderer sends `mediaChange` only while a listener exists.
    */
   subscribeMedia(listener: () => void): () => void
+  /**
+   * Receive the `motionValue*` events of one value. Independent of any mounted
+   * root. A renderer holds one sink per value id.
+   */
+  subscribeMotionValue(id: number, sink: MotionValueSink): () => void
 }
 
 export type ActiveRoot = RendererRootBinding & {
@@ -207,6 +219,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     })
 
   const mediaListeners = new Set<() => void>()
+  const motionValueSinks = new Map<number, MotionValueSink>()
 
   const state: RendererState = {
     ids,
@@ -251,6 +264,24 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (received.eventType === "mediaChange") {
         for (const listener of [...mediaListeners]) listener()
         return mediaListeners.size > 0
+      }
+      if (received.eventType.startsWith("motionValue")) {
+        const sink = motionValueSinks.get(received.elementId)
+        if (!sink) return false
+        switch (received.eventType) {
+          case "motionValueChange":
+            if (received.value === undefined) {
+              throw new Error("A motionValueChange event arrived without its value")
+            }
+            sink.change(JSON.parse(received.value))
+            return true
+          case "motionValueAnimationStart":
+            sink.animationStart()
+            return true
+          case "motionValueAnimationComplete":
+            sink.animationComplete()
+            return true
+        }
       }
       const root = active
       if (!root) return false
@@ -299,6 +330,15 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       return () => {
         if (!mediaListeners.delete(listener)) return
         if (mediaListeners.size === 0) renderer.setWindowMediaChange?.(false)
+      }
+    },
+    subscribeMotionValue(id, sink) {
+      if (motionValueSinks.has(id)) {
+        throw new Error(`Motion value ${id} already has a sink on this renderer`)
+      }
+      motionValueSinks.set(id, sink)
+      return () => {
+        if (motionValueSinks.get(id) === sink) motionValueSinks.delete(id)
       }
     },
     pushLayer(layer, options = {}) {
