@@ -283,4 +283,73 @@ describeNative("background layers in states", () => {
       testRoot.unmount()
     }
   })
+  it("backgroundImage: none in a hover state clears the base gradient", () => {
+    const testRoot = createTestRoot()
+    try {
+      testRoot.render(
+        <div
+          style={{
+            width: 100,
+            height: 100,
+            backgroundImage: "linear-gradient(red, red)",
+            hover: { backgroundImage: "none" },
+          }}
+        />
+      )
+      const before = `${SHOTS_DIR}/background-layers-hover-none-before.png`
+      testRoot.renderer.nativeSimulateMouseMove(500, 500)
+      testRoot.renderer.captureScreenshot(before)
+      near(readLogicalPixels(before, testRoot.renderer).at(50, 50), RED)
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      const after = `${SHOTS_DIR}/background-layers-hover-none-after.png`
+      testRoot.renderer.captureScreenshot(after)
+      expect(readLogicalPixels(after, testRoot.renderer).at(50, 50)).not.toEqual(RED)
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
+  it("a background shorthand in a hover state resets the base layers", () => {
+    const testRoot = createTestRoot()
+    try {
+      testRoot.render(
+        <div
+          style={{
+            width: 100,
+            height: 100,
+            backgroundImage: "linear-gradient(red, red)",
+            hover: { background: "blue" },
+          }}
+        />
+      )
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      const after = `${SHOTS_DIR}/background-layers-hover-shorthand-after.png`
+      testRoot.renderer.captureScreenshot(after)
+      near(readLogicalPixels(after, testRoot.renderer).at(50, 50), BLUE)
+    } finally {
+      testRoot.unmount()
+    }
+  })
+
+  it("a hover backgroundColor leaves the base gradient layer on top", () => {
+    const testRoot = createTestRoot()
+    try {
+      testRoot.render(
+        <div
+          style={{
+            width: 100,
+            height: 100,
+            backgroundImage: "linear-gradient(red, red)",
+            hover: { backgroundColor: "blue" },
+          }}
+        />
+      )
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      const after = `${SHOTS_DIR}/background-layers-hover-color-after.png`
+      testRoot.renderer.captureScreenshot(after)
+      near(readLogicalPixels(after, testRoot.renderer).at(50, 50), RED)
+    } finally {
+      testRoot.unmount()
+    }
+  })
 })

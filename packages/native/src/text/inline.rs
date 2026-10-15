@@ -3,8 +3,9 @@
 //!
 //! The rules follow CSS, not the shape of the retained tree:
 //! - A raw text node is inline. So is a `<span>`, and so is a `<text>` whose
-//!   parent is a `<text>` or `<span>`. A `<text>` anywhere else is a block that
-//!   starts its own inline formatting context.
+//!   parent is a `<text>` or `<span>`, unless it has behaviour of its own (see
+//!   [`has_behaviour`]). A `<text>` anywhere else is a block that starts its own
+//!   inline formatting context.
 //! - In a block container, each maximal run of consecutive inline-level children
 //!   is ONE anonymous paragraph. A block child ends the run.
 //! - In a flex or grid container, children are blockified: each contiguous run
@@ -76,17 +77,39 @@ pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
 /// Whether swapping `old` for `new` leaves every paragraph where it was: none
 /// of the properties [`plan_children`] reads changed.
 pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
-    fn read(style: Option<&StyleDesc>) -> [Option<&str>; 5] {
+    fn read(style: Option<&StyleDesc>) -> ([Option<&str>; 5], bool) {
         let field = |get: fn(&StyleDesc) -> Option<&str>| style.and_then(get);
-        [
-            field(|style| style.display.as_deref()),
-            field(|style| style.position.as_deref()),
-            field(|style| style.overflow.as_deref()),
-            field(|style| style.overflow_x.as_deref()),
-            field(|style| style.overflow_y.as_deref()),
-        ]
+        (
+            [
+                field(|style| style.display.as_deref()),
+                field(|style| style.position.as_deref()),
+                field(|style| style.overflow.as_deref()),
+                field(|style| style.overflow_x.as_deref()),
+                field(|style| style.overflow_y.as_deref()),
+            ],
+            style.is_some_and(has_state_styles),
+        )
     }
     read(old) == read(Some(new))
+}
+
+fn has_state_styles(style: &StyleDesc) -> bool {
+    style.hover.is_some()
+        || style.active.is_some()
+        || style.focus_visible.is_some()
+        || style.group_hover.is_some()
+        || style.group_active.is_some()
+        || style.declared_group().is_some()
+}
+
+/// Whether `element` reacts to the pointer or the keyboard: it listens for an
+/// event, takes focus, or has a state style or a `group`. Inline boxes cannot
+/// take events or hit-test yet, so a `<text>` like this stays a block to keep
+/// working. A `<span>` is still always inline.
+pub fn has_behaviour(element: &RetainedElement) -> bool {
+    !element.events().is_empty()
+        || element.needs_focus()
+        || element.style.as_deref().is_some_and(has_state_styles)
 }
 
 /// Whether `element`, a child of `parent` in a block container, is inline-level
@@ -100,6 +123,9 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
         return false;
     }
     if element.custom_props().contains_key("highlight") {
+        return false;
+    }
+    if element.element_type == "text" && has_behaviour(element) {
         return false;
     }
     if let Some(style) = element.style.as_deref() {
@@ -635,6 +661,68 @@ mod tests {
         assert!(!same_paragraphs(
             Some(&flex),
             &style(serde_json::json!({"display": "none"}))
+        ));
+    }
+
+    /// `<text>one <text>two</text> three</text>` with `configure` applied to the
+    /// nested text (id 3), and the plan of the outer one.
+    fn nested_text_plan(configure: impl FnOnce(&mut Fixture)) -> Vec<Child> {
+        let mut f = Fixture::new();
+        f.add(1, 2, "text").text(2, 4, "one ");
+        f.add(2, 3, "text").text(3, 5, "two");
+        f.text(2, 6, " three");
+        configure(&mut f);
+        f.plan(2)
+    }
+
+    #[test]
+    fn a_nested_text_with_behaviour_stays_a_block() {
+        let plain = nested_text_plan(|f| {
+            f.styled(3, serde_json::json!({"color": "red"}));
+        });
+        assert_eq!(plain.len(), 1, "style alone keeps it inline");
+        assert_eq!(paragraphs(&plain)[0].text, "one two three");
+
+        let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 8] = [
+            ("listener", Box::new(|f| f.tree.set_event_listener(3, "click".into(), true))),
+            ("tabIndex", Box::new(|f| f.tree.set_custom_prop(3, "tabIndex".into(), serde_json::json!(0)))),
+            ("hover", Box::new(|f| { f.styled(3, serde_json::json!({"hover": {"color": "red"}})); })),
+            ("active", Box::new(|f| { f.styled(3, serde_json::json!({"active": {"color": "red"}})); })),
+            ("focusVisible", Box::new(|f| { f.styled(3, serde_json::json!({"focusVisible": {"color": "red"}})); })),
+            ("groupHover", Box::new(|f| { f.styled(3, serde_json::json!({"groupHover": {"color": "red"}})); })),
+            ("groupActive", Box::new(|f| { f.styled(3, serde_json::json!({"groupActive": {"color": "red"}})); })),
+            ("group", Box::new(|f| { f.styled(3, serde_json::json!({"group": true})); })),
+        ];
+        for (name, configure) in behaviours {
+            let plan = nested_text_plan(|f| configure(f));
+            assert_eq!(plan.len(), 3, "{name}: paragraph, block, paragraph");
+            assert_eq!(plan[1], Child::Block(3), "{name}");
+            assert_eq!(paragraphs(&plan)[0].text, "one ", "{name}");
+            assert_eq!(paragraphs(&plan)[1].text, " three", "{name}");
+        }
+    }
+
+    #[test]
+    fn a_span_with_behaviour_is_still_inline() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "text").text(2, 4, "one ");
+        f.add(2, 3, "span").text(3, 5, "two");
+        f.tree.set_event_listener(3, "click".into(), true);
+        f.styled(3, serde_json::json!({"hover": {"color": "red"}}));
+        let plan = f.plan(2);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(paragraphs(&plan)[0].text, "one two");
+    }
+
+    #[test]
+    fn state_styles_regroup() {
+        let plain = style(serde_json::json!({"color": "red"}));
+        let hover = style(serde_json::json!({"color": "red", "hover": {"color": "blue"}}));
+        assert!(!same_paragraphs(Some(&plain), &hover));
+        assert!(!same_paragraphs(Some(&hover), &plain));
+        assert!(same_paragraphs(
+            Some(&hover),
+            &style(serde_json::json!({"hover": {"color": "green"}}))
         ));
     }
 

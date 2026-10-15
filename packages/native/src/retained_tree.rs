@@ -594,9 +594,18 @@ impl RetainedTree {
             } else {
                 false
             };
-            // Which listeners exist decides how the element is built, though it
-            // does not touch any cached text.
+            // Which listeners exist decides how the element is built. For a
+            // `<text>` it also decides whether it is an inline box, which moves
+            // text between paragraphs.
             self.dirty |= changed;
+            if changed
+                && self
+                    .elements
+                    .get(&id)
+                    .is_some_and(|element| element.element_type == "text")
+            {
+                self.mark_changed(id);
+            }
         }
     }
 
@@ -651,6 +660,14 @@ impl RetainedTree {
         }
         if affects_focusability {
             self.track_focusable(id);
+            // A focusable `<text>` is a block rather than an inline box.
+            if self
+                .elements
+                .get(&id)
+                .is_some_and(|element| element.element_type == "text")
+            {
+                self.mark_changed(id);
+            }
         }
         if is_inert {
             let now_inert = self

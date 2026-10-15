@@ -6986,9 +6986,20 @@ pub(crate) fn apply_state_styles<E: gpui::Styled>(
 /// `colors` is the context of the element `style` belongs to: its own computed
 /// `color`, so `currentColor` in a border or shadow means what CSS says.
 pub(crate) fn apply_styles<E: gpui::Styled>(
+    el: E,
+    style: &StyleDesc,
+    colors: &crate::color::ColorContext,
+) -> E {
+    let fill = style.resolved_fill(colors);
+    apply_styles_with_fill(el, style, colors, fill)
+}
+
+/// `fill` must be `style.resolved_fill(colors)`.
+pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
+    fill: crate::style::Fill,
 ) -> E {
     el = crate::layout::style::apply(el, style);
     match style.flex_wrap.as_deref() {
@@ -7115,11 +7126,12 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(ratio) = style.aspect_ratio.and_then(|ratio| ratio.ratio()) {
         el = el.aspect_ratio(ratio as f32);
     }
-    let fill = style.resolved_fill(colors);
     if let Some(background) = fill.color {
         el = el.bg(background);
     }
-    if !fill.layers.is_empty() {
+    // An empty list is `background-image: none`, which a state style needs in
+    // order to clear the base layers.
+    if !fill.layers.is_empty() || style.declares_background_layers() {
         el.style().background_layers = Some(fill.layers);
     }
     if let Some(color) = colors.declared {

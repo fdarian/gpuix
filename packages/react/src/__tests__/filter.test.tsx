@@ -197,4 +197,24 @@ describeNative("opacity as a group", () => {
     expect(Math.abs(red[0]! - 255)).toBeLessThanOrEqual(1)
     expect(Math.abs(red[1]! - 128)).toBeLessThanOrEqual(3)
   })
+  it("filter: none in a hover state clears the base filter", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      render(box({ backgroundColor: "#ff0000", filter: "grayscale(1)", hover: { filter: "none" } }))
+      renderer.dispatchNativeEvents()
+      const before = path.join(SHOTS_DIR, "filter-hover-before.png")
+      renderer.nativeSimulateMouseMove(5, 5)
+      renderer.captureScreenshot(before)
+      const grey = channels(readLogicalPixels(before, renderer), 80, 80)
+      expect(Math.abs(grey[0]! - grey[1]!)).toBeLessThanOrEqual(2)
+      const after = path.join(SHOTS_DIR, "filter-hover-after.png")
+      renderer.nativeSimulateMouseMove(80, 80)
+      renderer.captureScreenshot(after)
+      const red = channels(readLogicalPixels(after, renderer), 80, 80)
+      expect(red[0]).toBe(255)
+      expect(red[1]).toBeLessThanOrEqual(4)
+    } finally {
+      unmount()
+    }
+  })
 })

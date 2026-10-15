@@ -507,6 +507,13 @@ impl StyleDesc {
             || self.background_image.is_some()
     }
 
+    /// Whether this style sets the background layers, even to none. The
+    /// `background` shorthand resets every layer in CSS, so a state style that
+    /// declares it must replace the base layers rather than leave them.
+    pub(crate) fn declares_background_layers(&self) -> bool {
+        self.background.is_some() || self.background_image.is_some()
+    }
+
     /// The colour declarations of this style that mention `currentColor` and
     /// that `state` does not set itself. A state that changes `color` repaints
     /// them, because in CSS the keyword follows the element's colour.
@@ -703,6 +710,10 @@ pub fn parse_cursor(name: &str) -> Option<gpui::CursorStyle> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn light() -> ColorContext {
+        ColorContext::root(crate::color::Scheme::Light)
+    }
 
     #[test]
     fn box_shadow_takes_a_css_string() {

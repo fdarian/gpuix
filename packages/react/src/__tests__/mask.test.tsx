@@ -126,4 +126,21 @@ describeNative("mask", () => {
     expectScreenshotsEqual(plain.file, shoot("invalid-shorthand", masked({ mask: "red linear-gradient(black, transparent)" })).file)
     expectScreenshotsEqual(plain.file, shoot("url", masked({ maskImage: "url(a.svg)" })).file)
   })
+  it("maskImage: none in a hover state clears the base mask", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      render(masked({ maskImage: FADE, hover: { maskImage: "none" } }))
+      renderer.dispatchNativeEvents()
+      const before = path.join(SHOTS_DIR, "mask-hover-before.png")
+      renderer.nativeSimulateMouseMove(5, 100)
+      renderer.captureScreenshot(before)
+      expect(readLogicalPixels(before, renderer).at(100, 0)[1]).toBeGreaterThan(235)
+      const after = path.join(SHOTS_DIR, "mask-hover-after.png")
+      renderer.nativeSimulateMouseMove(100, 100)
+      renderer.captureScreenshot(after)
+      expectRed(readLogicalPixels(after, renderer), 100, 0)
+    } finally {
+      unmount()
+    }
+  })
 })

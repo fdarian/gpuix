@@ -144,4 +144,21 @@ describeNative("clip-path", () => {
       expectScreenshotsEqual(plain.file, shoot(`invalid-${name}`, clipped({ clipPath: value })).file)
     }
   })
+  it("clipPath: none in a hover state clears the base clip", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      render(clipped({ clipPath: "circle()", hover: { clipPath: "none" } }))
+      renderer.dispatchNativeEvents()
+      const before = path.join(SHOTS_DIR, "clip-path-hover-before.png")
+      renderer.nativeSimulateMouseMove(5, 5)
+      renderer.captureScreenshot(before)
+      expectWhite(readLogicalPixels(before, renderer), 53, 53)
+      const after = path.join(SHOTS_DIR, "clip-path-hover-after.png")
+      renderer.nativeSimulateMouseMove(100, 100)
+      renderer.captureScreenshot(after)
+      expectRed(readLogicalPixels(after, renderer), 53, 53)
+    } finally {
+      unmount()
+    }
+  })
 })

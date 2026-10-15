@@ -1986,6 +1986,11 @@ An inline box can set `color`, `backgroundColor` (a `<mark>`-style wash),
 around it, as in CSS.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
+- A nested `<text>` that needs to react is a block too, because an inline box
+  cannot take events yet: one with an event listener, a `tabIndex`, a `hover`,
+  `active`, `focusVisible`, `groupHover` or `groupActive` style, or a `group`.
+  It splits the paragraph around it. A `<span>` is always inline, so give it
+  none of these; use a `<text>` when the run needs to be clickable.
 - In a `display: flex` or `grid` container each run of raw strings is one item
   and every `<span>` or nested `<text>` is an item of its own, with its content as
   a paragraph.
