@@ -2,6 +2,9 @@
 
 import { forwardRef } from "react"
 import type { ReactElement, ReactNode } from "react"
+import { createElementMethods } from "@gpuix/native/host"
+import type { NativeRenderer } from "@gpuix/native/host"
+import { useGpuixRequired } from "../hooks/use-gpuix.js"
 import type { HostPointerEvent, KeyEvent, Props, PublicInstance, StyleDesc } from "../types/host.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 
@@ -23,16 +26,21 @@ export interface ButtonBehavior {
  * Props that make any element act like a `<button>`: a tab stop, `role`, and
  * `onClick` from a press, Enter (on key down) or Space (on key up), like a
  * browser: a key `click()`s the element, so the handler gets a DOM click that
- * bubbles. Primitives such as `Dialog.Trigger` build on it.
+ * bubbles. Primitives such as `Dialog.Trigger` build on it. `renderer` delivers
+ * that click.
  */
-export function buttonProps({
-  disabled = false,
-  focusableWhenDisabled = false,
-  onClick,
-  onKeyDown,
-  onKeyUp,
-  tabIndex,
-}: ButtonBehavior): Props {
+export function buttonProps(
+  {
+    disabled = false,
+    focusableWhenDisabled = false,
+    onClick,
+    onKeyDown,
+    onKeyUp,
+    tabIndex,
+  }: ButtonBehavior,
+  renderer: NativeRenderer
+): Props {
+  const click = (event: KeyEvent) => createElementMethods(renderer, event.elementId).click()
   return {
     role: "button",
     // Unset keeps an `asChild` child's own tabIndex; renderSlot defaults to 0.
@@ -43,13 +51,13 @@ export function buttonProps({
     onKeyDown: (event: KeyEvent) => {
       onKeyDown?.(event)
       if (disabled || event.defaultPrevented) return
-      if (event.key === "enter" && !event.isHeld) event.click()
+      if (event.key === "enter" && !event.isHeld) click(event)
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === "space") event.preventDefault()
     },
     onKeyUp: (event: KeyEvent) => {
       onKeyUp?.(event)
-      if (!disabled && !event.defaultPrevented && event.key === "space") event.click()
+      if (!disabled && !event.defaultPrevented && event.key === "space") click(event)
     },
   }
 }
@@ -75,13 +83,14 @@ export const Button = forwardRef<PublicInstance, ButtonProps>(function Button(
   },
   ref
 ): ReactElement {
+  const renderer = useGpuixRequired()
   const state: ButtonState = { disabled }
   return renderSlot({
     asChild,
     children,
     props: {
       ...props,
-      ...buttonProps({ disabled, focusableWhenDisabled, onClick, onKeyDown, onKeyUp, tabIndex }),
+      ...buttonProps({ disabled, focusableWhenDisabled, onClick, onKeyDown, onKeyUp, tabIndex }, renderer),
       style: resolveStyle(style, state) as StyleDesc | undefined,
     },
     ref,

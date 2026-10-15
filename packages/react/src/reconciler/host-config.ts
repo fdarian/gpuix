@@ -9,7 +9,7 @@ import { DefaultEventPriority } from "react-reconciler/constants.js"
 import type { HostEventHandler } from "@gpuix/native/host"
 import {
   BUILT_IN_TYPES,
-  createPointerCaptureMethods,
+  createElementMethods,
   EVENT_TYPE_BY_PROP,
   isReservedProp,
   sameMutationValue,
@@ -60,7 +60,7 @@ function attachHostMethods(instance: Instance): void {
   instance.scrollIntoView = () => {
     container.nativeRenderer.scrollIntoView?.(instance.id)
   }
-  Object.assign(instance, createPointerCaptureMethods(container.nativeRenderer, instance.id))
+  Object.assign(instance, createElementMethods(container.nativeRenderer, instance.id))
   if (instance.type !== "img") return
   const img = instance as ImgInstance
   img.setImage = (bytes) => {

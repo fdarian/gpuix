@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  createElementMethods,
   createMutationQueue,
   createRendererState,
   findRanges,
@@ -10,7 +11,7 @@ import {
   readWindowInsets,
   readWindowSize,
 } from "../host.js"
-import type { MutationHost, WindowInsetsHost, WindowSizeHost } from "../host.js"
+import type { MutationHost, NativeRenderer, WindowInsetsHost, WindowSizeHost } from "../host.js"
 
 class RecordingRenderer implements MutationHost, WindowSizeHost, WindowInsetsHost {
   batches: unknown[][] = []
@@ -38,6 +39,14 @@ class RecordingRenderer implements MutationHost, WindowSizeHost, WindowInsetsHos
 }
 
 describe("shared host runtime", () => {
+  it("clicks the element through the renderer, and throws where the renderer cannot", () => {
+    const clicked: number[] = []
+    const renderer = { clickElement: (id: number) => clicked.push(id) } as unknown as NativeRenderer
+    createElementMethods(renderer, 5).click()
+    expect(clicked).toEqual([5])
+    expect(() => createElementMethods({} as NativeRenderer, 5).click()).toThrow("clickElement")
+  })
+
   it("queues mutations from an applyBatch-only host", () => {
     const batches: unknown[][] = []
     const renderer: MutationHost = {

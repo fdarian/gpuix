@@ -10,7 +10,7 @@ import React, {
 import type { ReactElement, ReactNode } from "react"
 import { resolveFocusTarget } from "@gpuix/native/host"
 import type { FocusTarget, HostMouseEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
-import { useGpuix } from "../hooks/use-gpuix.js"
+import { useGpuix, useGpuixRequired } from "../hooks/use-gpuix.js"
 import { buttonProps } from "./button.js"
 import {
   renderSlot,
@@ -77,6 +77,7 @@ export interface DialogTriggerProps extends Props {
 export const DialogTrigger = forwardRef<PublicInstance, DialogTriggerProps>(
   function DialogTrigger({ asChild, children, onClick, onKeyDown, onKeyUp, ...props }, forwardedRef) {
     const context = useDialogContext("DialogTrigger")
+    const renderer = useGpuixRequired()
     const { triggerRef } = context
     // Stable, so React does not detach it (set null) in the commit that
     // unmounts the popup, which is exactly when the popup reads it.
@@ -98,7 +99,7 @@ export const DialogTrigger = forwardRef<PublicInstance, DialogTriggerProps>(
             onClick?.(event)
             context.setOpen(true)
           },
-        }),
+        }, renderer),
       },
       ref,
       defaultTabIndex: 0,
@@ -233,6 +234,7 @@ export interface DialogCloseProps extends Props {
 export const DialogClose = forwardRef<PublicInstance, DialogCloseProps>(
   function DialogClose({ asChild, children, onClick, onKeyDown, onKeyUp, ...props }, ref) {
     const context = useDialogContext("DialogClose")
+    const renderer = useGpuixRequired()
     return renderSlot({
       asChild,
       children,
@@ -246,7 +248,7 @@ export const DialogClose = forwardRef<PublicInstance, DialogCloseProps>(
             onClick?.(event)
             context.setOpen(false)
           },
-        }),
+        }, renderer),
       },
       ref,
       defaultTabIndex: 0,

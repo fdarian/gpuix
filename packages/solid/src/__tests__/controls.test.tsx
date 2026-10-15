@@ -316,4 +316,21 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
     ])
   })
+
+  it("clicks from a host ref like HTMLElement.click()", () => {
+    const seen: Array<{ detail?: number; pointerId?: number; target?: number }> = []
+    let row!: HostElement
+    const app = createTestRoot()
+    app.render(() => (
+      <div
+        ref={row}
+        style={{ width: 60, height: 24 }}
+        onClick={(event) => seen.push({ detail: event.detail, pointerId: event.pointerId, target: event.target })}
+      />
+    ))
+    app.renderer.flush()
+    row.click()
+    app.renderer.dispatchNativeEvents()
+    expect(seen).toEqual([{ detail: 0, pointerId: -1, target: row.id }])
+  })
 })

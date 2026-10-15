@@ -2,7 +2,7 @@
 // native elements and event contract.
 import {
   BUILT_IN_TYPES,
-  createPointerCaptureMethods,
+  createElementMethods,
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
   UNIVERSAL_PROPS,
@@ -12,13 +12,13 @@ import {
   unregisterEventListener,
 } from "@gpuix/native/host"
 import type {
+  ElementMethods,
   ElementType,
   EventHandlerMap,
   HostProps,
   ImagePixelsOptions,
   MutationRenderer,
   NativeRenderer,
-  PointerCaptureMethods,
   StyleDesc,
 } from "@gpuix/native/host"
 import type { EventPayload } from "@gpuix/native"
@@ -81,20 +81,24 @@ export class HostElement {
   }
 
   setPointerCapture(pointerId: number): void {
-    this.pointerCapture().setPointerCapture(pointerId)
+    this.methods().setPointerCapture(pointerId)
   }
 
   releasePointerCapture(pointerId: number): void {
-    this.pointerCapture().releasePointerCapture(pointerId)
+    this.methods().releasePointerCapture(pointerId)
   }
 
   hasPointerCapture(pointerId: number): boolean {
-    return this.pointerCapture().hasPointerCapture(pointerId)
+    return this.methods().hasPointerCapture(pointerId)
   }
 
-  private pointerCapture(): PointerCaptureMethods {
+  click(): void {
+    this.methods().click()
+  }
+
+  private methods(): ElementMethods {
     if (!this.root) throw new Error("The element is not in a root")
-    return createPointerCaptureMethods(this.root.nativeRenderer, this.id)
+    return createElementMethods(this.root.nativeRenderer, this.id)
   }
 
   setImage(bytes: Buffer | Uint8Array): void {

@@ -799,13 +799,6 @@ export interface KeyEvent extends EventPayload {
   /** Skip ancestor `onKeyDown` handlers and the window handler. The default
    *  action still runs, like the DOM. */
   stopPropagation(): void
-  /**
-   * Activate the element whose handler is running with a DOM `click`, like
-   * `HTMLElement.click()`: `detail` 0, `pointerId` -1, `pointerType` `""`, and
-   * it bubbles. The click is delivered after the handler returns. Throws for a
-   * window handler, which has no element.
-   */
-  click(): void
 }
 
 export type WindowKeyEventHandler = (

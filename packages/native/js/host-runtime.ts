@@ -31,11 +31,21 @@ export interface PointerCaptureMethods {
   hasPointerCapture(pointerId: number): boolean
 }
 
-export function createPointerCaptureMethods(
+/**
+ * What a host ref has beyond props: the pointer capture methods and `click()`,
+ * like `HTMLElement.click()`. It delivers a `click` that no pointer made:
+ * `detail` 0, `pointerId` -1, `pointerType` `""`, no position, and it bubbles
+ * along the element's path. Throws for an element that is not in the tree.
+ */
+export interface ElementMethods extends PointerCaptureMethods {
+  click(): void
+}
+
+export function createElementMethods(
   renderer: NativeRenderer,
   elementId: number
-): PointerCaptureMethods {
-  const supported = <Name extends "setPointerCapture" | "releasePointerCapture" | "hasPointerCapture">(
+): ElementMethods {
+  const supported = <Name extends "setPointerCapture" | "releasePointerCapture" | "hasPointerCapture" | "clickElement">(
     name: Name
   ): NonNullable<NativeRenderer[Name]> => {
     const method = renderer[name]
@@ -46,6 +56,7 @@ export function createPointerCaptureMethods(
     setPointerCapture: (pointerId) => supported("setPointerCapture")(elementId, pointerId),
     releasePointerCapture: (pointerId) => supported("releasePointerCapture")(elementId, pointerId),
     hasPointerCapture: (pointerId) => supported("hasPointerCapture")(elementId, pointerId),
+    click: () => supported("clickElement")(elementId),
   }
 }
 

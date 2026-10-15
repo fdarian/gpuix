@@ -72,6 +72,7 @@ export interface DialogTriggerProps extends HostProps {
 
 export function DialogTrigger(props: DialogTriggerProps): JSX.Element {
   const state = context("DialogTrigger")
+  const renderer = useGpuixRequired()
   return renderSlot({
     asChild: props.asChild,
     children: props.children,
@@ -92,7 +93,7 @@ export function DialogTrigger(props: DialogTriggerProps): JSX.Element {
           props.onClick?.(event)
           state.setOpen(true)
         },
-      }))
+      }, renderer))
     ),
     defaultTabIndex: 0,
   })
@@ -223,6 +224,7 @@ export interface DialogCloseProps extends HostProps {
 
 export function DialogClose(props: DialogCloseProps): JSX.Element {
   const state = context("DialogClose")
+  const renderer = useGpuixRequired()
   return renderSlot({
     asChild: props.asChild,
     children: props.children,
@@ -236,7 +238,7 @@ export function DialogClose(props: DialogCloseProps): JSX.Element {
           props.onClick?.(event)
           state.setOpen(false)
         },
-      }))
+      }, renderer))
     ),
     defaultTabIndex: 0,
   })

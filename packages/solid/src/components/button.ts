@@ -1,7 +1,9 @@
 /** Headless Base UI-shaped Button: a focusable `div` that acts like `<button>`. */
 
 import { splitProps, type JSX } from "solid-js"
-import type { HostPointerEvent, HostProps, KeyEvent } from "@gpuix/native/host"
+import { createElementMethods } from "@gpuix/native/host"
+import type { HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
+import { useGpuixRequired } from "../root.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 
 export interface ButtonState {
@@ -23,9 +25,13 @@ export interface ButtonBehavior {
  * `onClick` from a press, Enter (on key down) or Space (on key up), like a
  * browser: a key `click()`s the element, so the handler gets a DOM click that
  * bubbles. Reads `behavior` lazily, so a reactive `disabled` stays live.
- * Primitives such as `DialogTrigger` build on it.
+ * Primitives such as `DialogTrigger` build on it. `renderer` delivers that click.
  */
-export function buttonProps(behavior: ButtonBehavior): Record<string, unknown> {
+export function buttonProps(
+  behavior: ButtonBehavior,
+  renderer: NativeRenderer
+): Record<string, unknown> {
+  const click = (event: KeyEvent) => createElementMethods(renderer, event.elementId).click()
   const disabled = () => behavior.disabled ?? false
   return {
     role: "button",
@@ -39,14 +45,14 @@ export function buttonProps(behavior: ButtonBehavior): Record<string, unknown> {
     onKeyDown(event: KeyEvent) {
       behavior.onKeyDown?.(event)
       if (disabled() || event.defaultPrevented) return
-      if (event.key === "enter" && !event.isHeld) event.click()
+      if (event.key === "enter" && !event.isHeld) click(event)
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === "space") event.preventDefault()
     },
     onKeyUp(event: KeyEvent) {
       behavior.onKeyUp?.(event)
       if (!disabled() && !event.defaultPrevented && event.key === "space") {
-        event.click()
+        click(event)
       }
     },
   }
@@ -65,7 +71,7 @@ export function Button(allProps: ButtonProps): JSX.Element {
     ["disabled", "focusableWhenDisabled", "onClick", "onKeyDown", "onKeyUp", "tabIndex"],
     ["asChild", "children", "style"]
   )
-  const button = buttonProps(behavior)
+  const button = buttonProps(behavior, useGpuixRequired())
   return renderSlot({
     asChild: local.asChild,
     children: local.children,

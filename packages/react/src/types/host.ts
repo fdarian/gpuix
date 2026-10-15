@@ -109,6 +109,7 @@ export interface Instance {
   setPointerCapture?(pointerId: number): void
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean
+  click?(): void
 }
 
 export interface ImgInstance extends Instance {

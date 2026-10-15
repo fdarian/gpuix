@@ -326,6 +326,33 @@ describeNative("pointer events", () => {
       )
     }
 
+    it("clicks from a host ref like HTMLElement.click(): detail 0, no pointer, bubbles", () => {
+      const seen: Array<{ at: string; detail: number; pointerId: number; pointerType: string; target: number }> = []
+      const record = (at: string) => (event: { detail: number; pointerId: number; pointerType: string; target: number }) =>
+        seen.push({ at, detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target })
+      let row: { id: number; click(): void } | undefined
+      testRoot.render(
+        <div style={{ width: 400, height: 200 }} onClick={record("list")}>
+          <div
+            ref={(instance) => {
+              if (instance) row = instance as unknown as { id: number; click(): void }
+            }}
+            style={{ width: 400, height: 100 }}
+            onClick={record("row")}
+          />
+        </div>,
+      )
+
+      testRoot.renderer.flush()
+      row!.click()
+      testRoot.renderer.dispatchNativeEvents()
+
+      expect(seen).toEqual([
+        { at: "row", detail: 0, pointerId: -1, pointerType: "", target: row!.id },
+        { at: "list", detail: 0, pointerId: -1, pointerType: "", target: row!.id },
+      ])
+    })
+
     it("clicks the common ancestor when the press and the release are on different rows", () => {
       testRoot.render(<Rows />)
 

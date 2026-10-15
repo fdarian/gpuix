@@ -2567,13 +2567,14 @@ import { Button } from '@gpuix/react/button'
 | Behavior | Detail |
 |---|---|
 | Tab stop | `tabIndex` 0, `role="button"` |
-| `onClick` | Press, **Enter** on key down (not on repeat), **Space** on key up. A key calls `event.click()`, so the handler gets a [click without a pointer](#click-without-a-pointer) |
+| `onClick` | Press, **Enter** on key down (not on repeat), **Space** on key up. A key clicks the element, so the handler gets a [click without a pointer](#click-without-a-pointer) |
 | `disabled` | No `onClick`, leaves the Tab order |
 | `focusableWhenDisabled` | Stays in the Tab order while disabled, for a busy "Saving…" button |
 | `asChild` | Merges the behavior into your own element |
 | `style` | Object, or a function of `{ disabled }` |
 
-`buttonProps(behavior)` returns the same props for your own parts.
+`buttonProps(behavior, renderer)` returns the same props for your own parts; `renderer` is
+`useGpuixRequired()`, and it delivers the key's click.
 `Dialog.Trigger` and `Dialog.Close` are built on it.
 
 ### Dialog
@@ -3351,9 +3352,9 @@ move over the element, and the element's `hover` style ends with it.
 The VoiceOver Press and Enter or Space on a `Button` (`buttonProps`) deliver a
 `click` like `HTMLElement.click()` does: `detail` 0, `pointerId` -1, `pointerType`
 `""`, `buttons` 0, no position, and a `target` and `path`, so it bubbles to the
-ancestors' `onClick`. In your own `onKeyDown` or `onKeyUp`, `event.click()` does
-the same for the element whose handler is running, and the click arrives after the
-handler returns. `renderer.clickElement(elementId)` is the same call on the renderer.
+ancestors' `onClick`. A host ref has the same `click()`, and
+`renderer.clickElement(elementId)` is the same call on the renderer. In your own
+`onKeyDown` or `onKeyUp`, call `click()` on the ref of the element that listens.
 Every mouse and pointer event type has `pointerId` and `pointerType` as required
 fields: `1` and `"mouse"` for the mouse.
 
