@@ -70,9 +70,18 @@ export interface FrameLoopOptions {
   onError?: (error: unknown) => void
 }
 
+type FrameLoopRenderer = Pick<GpuixRenderer, "requiresTick" | "tick"> &
+  Partial<Pick<GpuixRenderer, "setFrameWakeCallback" | "setSyncEventHandler">>
+
+/** The last window closed: the sync handler captures the renderer, so it has to be
+ *  released for the renderer to be collectable. */
+function windowClosed(renderer: FrameLoopRenderer, options: FrameLoopOptions): void {
+  renderer.setSyncEventHandler?.(null)
+  options.onTerminated?.()
+}
+
 export function startFrameLoop(
-  renderer: Pick<GpuixRenderer, "requiresTick" | "tick"> &
-    Partial<Pick<GpuixRenderer, "setFrameWakeCallback">>,
+  renderer: FrameLoopRenderer,
   options: FrameLoopOptions = {}
 ): FrameLoop {
   if (!renderer.requiresTick()) return { stop() {} }
@@ -98,7 +107,7 @@ export function startFrameLoop(
     }
     if (running === false) {
       stop()
-      options.onTerminated?.()
+      windowClosed(renderer, options)
       return
     }
     if (stopped) return

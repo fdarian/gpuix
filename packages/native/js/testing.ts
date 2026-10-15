@@ -331,6 +331,12 @@ export class TestRenderer implements NativeRenderer {
     bindClipboard(this)
   }
 
+  /** Releases the sync event handler, which captures this renderer. Call it after the
+   *  root is unmounted; other test renderers are not affected. */
+  dispose(): void {
+    this.native.setSyncEventHandler(null)
+  }
+
   // ── GPUI pipeline methods ───────────────────────────────────────
 
   /** Trigger the real GPUI rendering pipeline (GpuixView::render() →

@@ -278,6 +278,7 @@ fn install_test_image_http_client(cx: &mut gpui::App) {
 ///   r.captureScreenshot("/tmp/test.png")  // saves rendered UI as PNG
 #[napi]
 pub struct TestGpuixRenderer {
+    sync_handler: crate::events::sync_dispatch::SyncHandlerOwner,
     tree: Arc<Mutex<RetainedTree>>,
     events: Arc<Mutex<Vec<EventPayload>>>,
     /// Same handle GpuixView paints against, so tests can assert on the live
@@ -383,7 +384,11 @@ impl TestGpuixRenderer {
             *cell.borrow_mut() = Some(VisualTestState { cx, window, view });
         });
 
+        let sync_handler = crate::events::sync_dispatch::SyncHandlerOwner::new();
+        sync_handler.bind_window(window.window_id());
+
         Ok(Self {
+            sync_handler,
             tree,
             events,
             selection,
@@ -401,7 +406,7 @@ impl TestGpuixRenderer {
         env: &Env,
         handler: Option<Function<EventPayload, crate::events::sync_dispatch::SyncDispatchResult>>,
     ) -> Result<()> {
-        crate::events::sync_dispatch::register(env, handler)
+        crate::events::sync_dispatch::register(&self.sync_handler, env, handler)
     }
 
     /// How many elements the retained tree holds, reachable from the root or

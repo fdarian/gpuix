@@ -72,6 +72,26 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     expect(renderer.wake).toBeNull()
   })
 
+  it("releases the sync event handler when the window closes", () => {
+    const cleared: unknown[] = []
+    const renderer = {
+      ...wakeableRenderer(() => false),
+      setSyncEventHandler: (handler: unknown) => cleared.push(handler),
+    }
+    startFrameLoop(renderer)
+    expect(cleared).toEqual([null])
+  })
+
+  it("keeps the sync event handler while the loop is only stopped", () => {
+    const cleared: unknown[] = []
+    const renderer = {
+      ...wakeableRenderer(() => true),
+      setSyncEventHandler: (handler: unknown) => cleared.push(handler),
+    }
+    startFrameLoop(renderer).stop()
+    expect(cleared).toEqual([])
+  })
+
   it("reports tick errors and keeps running", () => {
     const errors: unknown[] = []
     const renderer = wakeableRenderer(() => {

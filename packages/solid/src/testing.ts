@@ -48,6 +48,7 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
     unmount() {
       root.unmount()
       renderer.flush()
+      renderer.dispose()
     },
   }
 }

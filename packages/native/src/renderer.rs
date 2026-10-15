@@ -1056,6 +1056,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 #[napi]
 pub struct GpuixRenderer {
     event_callback: Mutex<Option<Arc<ThreadsafeFunction<EventPayload>>>>,
+    sync_handler: crate::events::sync_dispatch::SyncHandlerOwner,
     tree: Arc<Mutex<RetainedTree>>,
     initialized: Arc<Mutex<bool>>,
     /// Shared with GpuixView so napi methods can read the live selection
@@ -1299,6 +1300,7 @@ impl GpuixRenderer {
         let _ = env_logger::try_init();
         Self {
             event_callback: Mutex::new(event_callback.map(Arc::new)),
+            sync_handler: crate::events::sync_dispatch::SyncHandlerOwner::new(),
             tree: Arc::new(Mutex::new(RetainedTree::new())),
             initialized: Arc::new(Mutex::new(false)),
             selection: SharedSelection::default(),
@@ -1448,6 +1450,7 @@ impl GpuixRenderer {
         GPUI_WINDOW.with(|w| {
             *w.borrow_mut() = Some(window_handle);
         });
+        self.sync_handler.bind_window(window_handle.window_id());
 
         *self.initialized.lock().unwrap() = true;
         self.event_callback.lock().unwrap().take();
@@ -1704,7 +1707,7 @@ impl GpuixRenderer {
         env: &Env,
         handler: Option<Function<EventPayload, crate::events::sync_dispatch::SyncDispatchResult>>,
     ) -> Result<()> {
-        crate::events::sync_dispatch::register(env, handler)
+        crate::events::sync_dispatch::register(&self.sync_handler, env, handler)
     }
 
     /// Wake JavaScript after the display link queues a frame. Returns true on macOS,

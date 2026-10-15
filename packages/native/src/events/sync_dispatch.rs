@@ -6,8 +6,9 @@
 //! input. That cannot give `preventDefault()` its meaning. A keydown handler has
 //! to run before the editor acts on the key, and has to be able to cancel it.
 //!
-//! A sync handler is a JS function registered with `setSyncEventHandler`. It
-//! takes one `EventPayload` and returns `{ defaultPrevented, propagationStopped }`.
+//! A sync handler is a JS function registered with `setSyncEventHandler`. Each
+//! renderer owns its own (`SyncHandlerOwner`), and the window the input
+//! arrived on picks which one runs. It takes one `EventPayload` and returns `{ defaultPrevented, propagationStopped }`.
 //! It is only called when this thread is inside a call from JS: `tick()` on
 //! macOS, where GPUI runs on the JS thread, every method of the test renderer,
 //! and any browser event handler on the web. On Windows and Linux GPUI runs on
@@ -120,9 +121,10 @@ pub(crate) fn emit(
     callback: &Option<EventCallback>,
     payload: EventPayload,
 ) -> DispatchOutcome {
-    if backend::available() {
+    let window_id = window.window_handle().window_id();
+    if backend::available(window_id) {
         let _scope = ScopeGuard::enter(window, app);
-        return backend::call(payload);
+        return backend::call(window_id, payload);
     }
     if let Some(callback) = callback {
         callback(payload);
@@ -233,13 +235,15 @@ pub(crate) fn invalidate_root_view() -> Result<(), String> {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub(crate) use backend::{native_call, register, SyncDispatchResult};
+pub(crate) use backend::{native_call, register, SyncDispatchResult, SyncHandlerOwner};
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod backend {
     use super::*;
     use napi::bindgen_prelude::*;
     use napi_derive::napi;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     /// What the sync handler returns.
     #[napi(object)]
@@ -254,46 +258,99 @@ mod backend {
     }
 
     thread_local! {
-        static HANDLER: RefCell<Option<Registered>> = const { RefCell::new(None) };
+        /// Handlers by owner. Only the JS thread reads them: `available`
+        /// needs `NATIVE_DEPTH`, which is zero on GPUI's own thread.
+        static HANDLERS: RefCell<HashMap<u64, Registered>> = RefCell::new(HashMap::new());
+        /// Which owner's handler an input on a window goes to.
+        static WINDOWS: RefCell<HashMap<gpui::WindowId, u64>> = RefCell::new(HashMap::new());
         /// How many calls from JS are on this thread's stack.
         static NATIVE_DEPTH: Cell<usize> = const { Cell::new(0) };
         /// The first error a sync handler threw during the outermost native call.
         static PENDING_ERROR: RefCell<Option<Error>> = const { RefCell::new(None) };
     }
 
-    /// Installs the sync handler, or clears it with `None`.
+    static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
+
+    /// A renderer's claim on the sync handler registry. Dropping it releases
+    /// the handler and its window, so a destroyed renderer neither keeps its
+    /// `FunctionRef` alive nor receives input.
+    pub(crate) struct SyncHandlerOwner {
+        id: u64,
+    }
+
+    impl SyncHandlerOwner {
+        pub(crate) fn new() -> Self {
+            Self {
+                id: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
+            }
+        }
+
+        /// Routes input on `window` to this owner's handler.
+        pub(crate) fn bind_window(&self, window: gpui::WindowId) {
+            WINDOWS.with(|windows| windows.borrow_mut().insert(window, self.id));
+        }
+    }
+
+    impl Drop for SyncHandlerOwner {
+        fn drop(&mut self) {
+            // `try_with`: this can run while the thread's locals are being torn down.
+            let removed = HANDLERS.try_with(|handlers| handlers.borrow_mut().remove(&self.id));
+            let _ = WINDOWS.try_with(|windows| windows.borrow_mut().retain(|_, id| *id != self.id));
+            // The `FunctionRef` is dropped outside the borrow it was removed under.
+            drop(removed);
+        }
+    }
+
+    /// Installs `owner`'s sync handler, or clears it with `None`.
     pub(crate) fn register(
+        owner: &SyncHandlerOwner,
         env: &Env,
         handler: Option<Function<EventPayload, SyncDispatchResult>>,
     ) -> Result<()> {
-        let registered = match handler {
-            Some(handler) => Some(Registered {
-                handler: handler.create_ref()?,
-                env: *env,
-            }),
-            None => None,
+        let previous = match handler {
+            Some(handler) => {
+                let registered = Registered {
+                    handler: handler.create_ref()?,
+                    env: *env,
+                };
+                HANDLERS.with(|handlers| handlers.borrow_mut().insert(owner.id, registered))
+            }
+            None => HANDLERS.with(|handlers| handlers.borrow_mut().remove(&owner.id)),
         };
-        HANDLER.with(|slot| *slot.borrow_mut() = registered);
+        drop(previous);
         Ok(())
     }
 
-    pub(super) fn available() -> bool {
-        NATIVE_DEPTH.with(|depth| depth.get() > 0) && HANDLER.with(|slot| slot.borrow().is_some())
+    pub(super) fn available(window: gpui::WindowId) -> bool {
+        NATIVE_DEPTH.with(|depth| depth.get() > 0)
+            && WINDOWS.with(|windows| {
+                windows.borrow().get(&window).is_some_and(|owner| {
+                    HANDLERS.with(|handlers| handlers.borrow().contains_key(owner))
+                })
+            })
     }
 
-    pub(super) fn call(payload: EventPayload) -> DispatchOutcome {
+    pub(super) fn call(window: gpui::WindowId, payload: EventPayload) -> DispatchOutcome {
         let outcome = (|| {
-            let env = HANDLER.with(|slot| {
-                slot.borrow()
-                    .as_ref()
+            let owner = WINDOWS.with(|windows| {
+                *windows
+                    .borrow()
+                    .get(&window)
+                    .expect("available() checked that the window has an owner")
+            });
+            let env = HANDLERS.with(|handlers| {
+                handlers
+                    .borrow()
+                    .get(&owner)
                     .expect("available() checked that a sync handler is registered")
                     .env
             });
             // The registry is not borrowed while JS runs, so the handler can
             // replace itself.
-            let function = HANDLER.with(|slot| {
-                slot.borrow()
-                    .as_ref()
+            let function = HANDLERS.with(|handlers| {
+                handlers
+                    .borrow()
+                    .get(&owner)
                     .expect("available() checked that a sync handler is registered")
                     .handler
                     .borrow_back(&env)
@@ -353,11 +410,11 @@ mod backend {
 
     /// Browser input arrives through wasm callbacks from JS, so JS can always
     /// be called back.
-    pub(super) fn available() -> bool {
+    pub(super) fn available(_window: gpui::WindowId) -> bool {
         HANDLER.with(|slot| slot.borrow().is_some())
     }
 
-    pub(super) fn call(payload: EventPayload) -> DispatchOutcome {
+    pub(super) fn call(_window: gpui::WindowId, payload: EventPayload) -> DispatchOutcome {
         let handler = HANDLER.with(|slot| slot.borrow().clone());
         let Some(handler) = handler else {
             return DispatchOutcome::default();

@@ -48,7 +48,11 @@ export function createTestRoot(options: TestWindowOptions = {}): TestRoot {
     flushSync(() => root.render(node))
     renderer.flush()
   }
-  return { root, renderer, render, unmount: root.unmount }
+  const unmount = (): void => {
+    root.unmount()
+    renderer.dispose()
+  }
+  return { root, renderer, render, unmount }
 }
 
 export { TestRenderer, hasNativeTestRenderer }
