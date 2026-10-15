@@ -507,4 +507,51 @@ describeNative("maxLength", () => {
     testRoot.renderer.nativeSimulateKeystrokes(input.id, "cmd-a x y z")
     expect(testRoot.renderer.getAllText()).toContain("Value: xyz")
   })
+  describe("over the limit", () => {
+    function Over(props: { onRef: (element: any) => void }) {
+      const [text, setText] = useState("abcdef")
+      return (
+        <div>
+          <input
+            ref={props.onRef}
+            maxLength={3}
+            value={text}
+            style={{ width: 300, height: 40 }}
+            onChange={(event: EventPayload) => setText(event.value ?? "")}
+          />
+          <text>{`Value: ${text}`}</text>
+        </div>
+      )
+    }
+
+    function mount() {
+      let control: any
+      testRoot.render(<Over onRef={(element) => (control = element)} />)
+      const id = testRoot.renderer.findByType("input")[0].id
+      return { control: () => control, id }
+    }
+
+    it("rejects typing over a selection that leaves no room, and keeps the selection", () => {
+      const field = mount()
+      field.control().setSelectionRange(0, 2)
+      testRoot.renderer.nativeSimulateKeystrokes(field.id, "x")
+      expect(testRoot.renderer.getAllText()).toContain("Value: abcdef")
+      expect(field.control().selectionStart).toBe(0)
+      expect(field.control().selectionEnd).toBe(2)
+    })
+
+    it("lets a selection be deleted", () => {
+      const field = mount()
+      field.control().setSelectionRange(0, 2)
+      testRoot.renderer.nativeSimulateKeystrokes(field.id, "backspace")
+      expect(testRoot.renderer.getAllText()).toContain("Value: cdef")
+    })
+
+    it("inserts only what fits once the selection leaves room", () => {
+      const field = mount()
+      field.control().setSelectionRange(0, 5)
+      testRoot.renderer.nativeSimulateKeystrokes(field.id, "x y z")
+      expect(testRoot.renderer.getAllText()).toContain("Value: xyf")
+    })
+  })
 })

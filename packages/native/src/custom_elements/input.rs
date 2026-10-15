@@ -1337,7 +1337,10 @@ impl TextEditorState {
     fn edit(&mut self, range: Range<usize>, new_text: &str, user_input: bool, cx: &mut Context<Self>) {
         let replacement = self.single_line_if_needed(new_text);
         let replacement = if user_input {
-            self.fit_max_length(&range, replacement)
+            let Some(replacement) = self.fit_max_length(&range, replacement) else {
+                return;
+            };
+            replacement
         } else {
             replacement
         };
@@ -1368,13 +1371,20 @@ impl TextEditorState {
     }
 
     /// Cut `replacement` so the content stays within `maxLength` UTF-16 units.
-    /// Content a program set beyond the limit is kept; it only blocks insertion.
-    fn fit_max_length(&self, range: &Range<usize>, replacement: String) -> String {
+    /// `None` rejects the edit: there is no room for any of a non-empty
+    /// `replacement`, so even the selection it would have replaced stays, as in
+    /// browsers. Content a program set beyond the limit is kept; it only blocks
+    /// insertion.
+    fn fit_max_length(&self, range: &Range<usize>, replacement: String) -> Option<String> {
         let Some(max_length) = self.max_length else {
-            return replacement;
+            return Some(replacement);
         };
         let kept = utf16_len(&self.content[..range.start]) + utf16_len(&self.content[range.end..]);
-        truncate_to_utf16(&replacement, max_length.saturating_sub(kept)).to_string()
+        let room = max_length.saturating_sub(kept);
+        if room == 0 && !replacement.is_empty() {
+            return None;
+        }
+        Some(truncate_to_utf16(&replacement, room).to_string())
     }
 
     fn step_up(&mut self, _: &StepUp, _: &mut Window, cx: &mut Context<Self>) {
@@ -1832,14 +1842,16 @@ impl EntityInputHandler for TextEditorState {
             .map(|range| self.range_from_utf16(range))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
+        let replacement = self.single_line_if_needed(new_text);
+        let Some(replacement) = self.fit_max_length(&range, replacement) else {
+            return;
+        };
         if self.marked_range.is_none() {
             let snapshot = self.snapshot();
             push_undo_snapshot(&mut self.undo_stack, snapshot);
             self.redo_stack.clear();
             self.last_edit = None;
         }
-        let replacement = self.single_line_if_needed(new_text);
-        let replacement = self.fit_max_length(&range, replacement);
         self.content =
             self.content[..range.start].to_owned() + &replacement + &self.content[range.end..];
         self.marked_range =
