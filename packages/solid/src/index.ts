@@ -42,6 +42,8 @@ export {
 export { motion } from "./components/motion.js"
 export { LayoutGroup } from "./components/layout-group.js"
 export type { LayoutGroupProps } from "./components/layout-group.js"
+export { Reorder } from "./components/reorder.js"
+export type { ReorderGroupProps, ReorderItemProps } from "./components/reorder.js"
 export { MotionConfig, createReducedMotionConfig } from "./components/motion-config.js"
 export type { MotionConfigProps } from "./components/motion-config.js"
 export {

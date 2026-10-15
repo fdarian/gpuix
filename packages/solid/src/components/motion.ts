@@ -10,6 +10,7 @@ import {
 } from "@gpuix/native/host"
 import type {
   ExitTarget,
+  LayoutDrag,
   MotionLayoutProps,
   MotionProps,
   MotionTransition,
@@ -44,9 +45,14 @@ interface MotionSource {
   transition?: MotionTransition | SvgMotionTransition
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
+  /** The drag values of a `Reorder.Item`; not part of the API. */
+  layoutDrag?: LayoutDrag
 }
 
-function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
+/** `motion.div` plus the drag values `Reorder.Item` hands it, for the element type it is `as`. */
+export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
+
+export function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
   return function Motion(props: Props): JSX.Element {
     const [motionProps, hostProps] = splitProps(props as MotionSource & Record<string, unknown>, [
       "initial",
@@ -56,6 +62,7 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
       "transition",
       "layout",
       "layoutId",
+      "layoutDrag",
     ])
     const presence = useContext(PresenceContext)
     const group = useContext(PresenceGroupContext)
@@ -89,6 +96,7 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
           layoutId: scopeLayoutId(layoutGroupId?.(), motionProps.layoutId as string | undefined),
           transition: resolvedTransition() as MotionTransition | undefined,
           reduced: reduced(),
+          drag: motionProps.layoutDrag,
         })
       },
       get motion() {
