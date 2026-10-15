@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
 
-fn is_display_contents(element: &RetainedElement) -> bool {
+pub(crate) fn is_display_contents(element: &RetainedElement) -> bool {
     element
         .style
         .as_deref()

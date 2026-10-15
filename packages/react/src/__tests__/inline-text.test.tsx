@@ -294,6 +294,42 @@ describeNative("inline text", () => {
       expect(hits[0].text.slice(hits[0].start, hits[0].end)).toBe("o bi")
     })
 
+    it("matches a search across the runs of a label and a form as one wash", () => {
+      for (const node of [
+        <label>
+          Hello <span style={{ fontWeight: 700 }}>big</span> world
+        </label>,
+        <form>
+          Hello <span style={{ fontWeight: 700 }}>big</span> world
+        </form>,
+      ]) {
+        const testRoot = createTestRoot()
+        testRoot.render(
+          <div highlight={{ query: "o bi" }} style={{ fontSize: 20 }}>
+            {node}
+          </div>
+        )
+
+        const hits = testRoot.renderer.getPaintedHighlights()
+        expect(hits).toHaveLength(1)
+        expect(hits[0].text).toBe("Hello big world")
+        expect(hits[0].text.slice(hits[0].start, hits[0].end)).toBe("o bi")
+      }
+    })
+
+    it("counts the matches of a label's paragraph once", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <div highlight={{ query: "b" }} style={{ fontSize: 20 }}>
+          <label>
+            a<span>b</span>c b
+          </label>
+        </div>
+      )
+
+      expect(testRoot.renderer.getPaintedHighlights().map((hit) => hit.start)).toEqual([1, 4])
+    })
+
     it("reads nested inline text in the accessibility value", () => {
       const testRoot = createTestRoot()
       testRoot.render(
@@ -306,6 +342,93 @@ describeNative("inline text", () => {
         .map((node) => node.aria)
         .filter((aria) => aria?.role === "Label")
       expect(labels.map((aria) => aria?.value)).toContain("Hello big wide world")
+    })
+  })
+
+  describe("display contents inside a span", () => {
+    it("joins the children of a display contents child to the paragraph", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={{ ...TEXT, width: 600 }}>
+          a <span testId="s"><span style={{ display: "contents" }}>b</span></span> c
+        </text>
+      )
+
+      expect(testRoot.renderer.getPaintedText()).toEqual(["a b c"])
+      expect(bounds(testRoot, "p").height).toBeLessThanOrEqual(LINE + 2)
+    })
+
+    it("flattens a display contents chain and still lets a block inside split the span out", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={{ ...TEXT, width: 600 }}>
+          a<span><span style={{ display: "contents" }}><span style={{ display: "contents" }}>b</span>c</span></span>d
+        </text>
+      )
+      expect(testRoot.renderer.getPaintedText()).toEqual(["abcd"])
+
+      const block = createTestRoot()
+      block.render(
+        <text testId="p" style={{ ...TEXT, width: 600 }}>
+          a<span><span style={{ display: "contents" }}><div style={{ height: 30 }} /></span></span>d
+        </text>
+      )
+      expect(block.renderer.getPaintedText()).toEqual(["a", "d"])
+    })
+
+    it("lets the text inside inherit what the display contents element declares", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <div style={{ width: 600, backgroundColor: "#ffffff" }}>
+          <text testId="p" style={{ ...TEXT, color: "#000000" }}>
+            <span><span style={{ display: "contents", color: "#ff0000" }}>redred</span></span>
+          </text>
+        </div>
+      )
+
+      const area = bounds(testRoot, "p")
+      const pixels = shoot(testRoot, "contents-color")
+      expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(20)
+      expect(count(pixels, area, [0, 0, 0])).toBe(0)
+    })
+
+    it("does not paint the background of a display contents element", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <div style={{ width: 600, backgroundColor: "#ffffff" }}>
+          <text testId="p" style={{ ...TEXT, color: "#000000" }}>
+            <span><span style={{ display: "contents", backgroundColor: "#ffff00" }}>text</span></span>
+          </text>
+        </div>
+      )
+
+      expect(count(shoot(testRoot, "contents-background"), bounds(testRoot, "p"), [255, 255, 0])).toBe(0)
+    })
+  })
+
+  describe("the selection key of a paragraph", () => {
+    const WASH: Rgb = [0, 255, 0]
+
+    function Line({ first }: { first: boolean }) {
+      return (
+        <div style={{ padding: 20, backgroundColor: "#ffffff", width: 400, selectionColor: "#00ff00" }}>
+          <text testId="p" style={{ fontSize: 20, color: "#000000" }}>
+            {first ? "Hello " : null}
+            <span>big</span> world
+          </text>
+        </div>
+      )
+    }
+
+    it("keeps the selection painted when the first text node is removed", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(<Line first />)
+      expect(testRoot.renderer.dragSelect(21, 30, 900, 30)).toBe("Hello big world")
+      expect(count(shoot(testRoot, "selection-key-before"), bounds(testRoot, "p"), WASH)).toBeGreaterThan(200)
+
+      testRoot.render(<Line first={false} />)
+      // The paragraph is the same one, now without its first words.
+      expect(count(shoot(testRoot, "selection-key-after"), bounds(testRoot, "p"), WASH)).toBeGreaterThan(200)
     })
   })
 

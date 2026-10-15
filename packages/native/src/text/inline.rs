@@ -19,6 +19,7 @@
 
 use std::ops::Range;
 
+use crate::layout::contents::is_display_contents;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
 
@@ -35,9 +36,15 @@ pub fn is_blank(text: &str) -> bool {
     text.chars().all(is_collapsible_whitespace)
 }
 
-/// Types that lay out children with the retained tree's own `div` rules.
+/// Whether `element_type` is built by `build_host_container`, the retained
+/// tree's own `div` rules. Paint dispatches on this and search collects by it, so
+/// the two cannot disagree about which elements lay out a paragraph.
+pub fn is_host_type(element_type: &str) -> bool {
+    matches!(element_type, "div" | "text" | "label" | "form" | "span")
+}
+
 pub fn is_host_container(element: &RetainedElement) -> bool {
-    matches!(element.element_type.as_str(), "div" | "text" | "span")
+    is_host_type(&element.element_type)
 }
 
 fn display_of(element: &RetainedElement) -> Option<&str> {
@@ -122,11 +129,17 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     if is_raw_text(element) {
         return true;
     }
-    if !matches!(element.element_type.as_str(), "div" | "text" | "span") {
+    // A label or a form has behaviour of its own, so it is a block.
+    if !is_host_container(element) || matches!(element.element_type.as_str(), "label" | "form") {
         return false;
     }
     if element.custom_props().contains_key("highlight") {
         return false;
+    }
+    // It generates no box, so its children are inline when they would be
+    // children of `parent`.
+    if is_display_contents(element) {
+        return children_are_inline(tree, element, parent);
     }
     if element.element_type == "text" && has_behaviour(element) {
         return false;
@@ -146,14 +159,16 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
         Some(_) => false,
         None => inline_by_default,
     };
-    inline
-        && !lays_out_items(element.style.as_deref())
-        && element
-            .children
-            .iter()
-            .filter_map(|id| tree.elements.get(id))
-            .filter(|child| !is_display_none(child))
-            .all(|child| is_inline_box(tree, child, element))
+    inline && !lays_out_items(element.style.as_deref()) && children_are_inline(tree, element, element)
+}
+
+fn children_are_inline(tree: &RetainedTree, element: &RetainedElement, parent: &RetainedElement) -> bool {
+    element
+        .children
+        .iter()
+        .filter_map(|id| tree.elements.get(id))
+        .filter(|child| !is_display_none(child))
+        .all(|child| is_inline_box(tree, child, parent))
 }
 
 /// One text node of a paragraph.
@@ -161,16 +176,21 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
 pub struct Piece {
     pub range: Range<usize>,
     /// The inline boxes around the text, outermost first. The container is not
-    /// one of them: its own style reaches the paragraph through gpui.
+    /// one of them: its own style reaches the paragraph through gpui. A
+    /// `display: contents` element is in the list, because its descendants
+    /// inherit from it, although it has no box of its own.
     pub boxes: Vec<u64>,
 }
 
 /// A run of inline content, painted as one string.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paragraph {
-    /// The element of the first piece. It names the paragraph in the selection
-    /// and search registries.
-    pub owner: u64,
+    /// The container the paragraph is in, and how many blocks come before it
+    /// there. Together they name the paragraph in the selection and search
+    /// registries, so they must outlive the text nodes: a selection stays when
+    /// the first node of the paragraph is removed.
+    pub container: u64,
+    pub index: usize,
     pub text: String,
     pub pieces: Vec<Piece>,
     /// Every inline box that holds text, with the bytes it covers, outermost
@@ -180,6 +200,10 @@ pub struct Paragraph {
 }
 
 impl Paragraph {
+    pub fn key(&self) -> std::sync::Arc<str> {
+        super::selection_key(self.container, self.index)
+    }
+
     /// Innermost inline box at `byte`, if any. Nothing hit-tests a span yet;
     /// this is the lookup that will map a character index back to one.
     #[cfg_attr(not(test), allow(dead_code))]
@@ -203,7 +227,10 @@ pub enum Child {
 /// is the text that is painted, searched and copied, and every range is a byte
 /// range of that text.
 struct Builder {
-    owner: Option<u64>,
+    container: u64,
+    /// Blocks seen so far in the container.
+    index: usize,
+    has_text: bool,
     text: String,
     pieces: Vec<Piece>,
     boxes: Vec<(u64, Range<usize>)>,
@@ -220,9 +247,11 @@ struct Builder {
 }
 
 impl Builder {
-    fn new(base: WhiteSpace, blockified: bool) -> Self {
+    fn new(container: u64, base: WhiteSpace, blockified: bool) -> Self {
         Self {
-            owner: None,
+            container,
+            index: 0,
+            has_text: false,
             text: String::new(),
             pieces: Vec::new(),
             boxes: Vec::new(),
@@ -254,11 +283,11 @@ impl Builder {
         }
     }
 
-    fn push_text(&mut self, leaf: u64, content: &str, boxes: &[u64]) {
+    fn push_text(&mut self, content: &str, boxes: &[u64]) {
         if content.is_empty() {
             return;
         }
-        self.owner.get_or_insert(leaf);
+        self.has_text = true;
         self.only_whitespace &= is_blank(content);
         let mode = self.mode();
         let mut start = self.text.len();
@@ -306,16 +335,20 @@ impl Builder {
     ) {
         if is_raw_text(element) {
             if let Some(content) = element.content.as_deref() {
-                self.push_text(element.id, content, chain);
+                self.push_text(content, chain);
             }
             return;
         }
-        let slot = self.boxes.len();
-        self.boxes.push((element.id, self.text.len()..self.text.len()));
+        // A `display: contents` element passes its inherited style and its
+        // white-space on, but has no box to cover bytes.
+        let slot = (!is_display_contents(element)).then(|| {
+            self.boxes.push((element.id, self.text.len()..self.text.len()));
+            self.boxes.len() - 1
+        });
         chain.push(element.id);
         self.modes.push(white_space::of_box(element, self.mode()));
         if let Some(content) = element.content.as_deref() {
-            self.push_text(element.id, content, chain);
+            self.push_text(content, chain);
         }
         for child in element
             .children
@@ -329,15 +362,21 @@ impl Builder {
         chain.pop();
         // The start may have moved back when a line feed trimmed the space
         // before it, so it is read from the slot.
-        self.boxes[slot].1.end = self.text.len();
+        if let Some(slot) = slot {
+            self.boxes[slot].1.end = self.text.len();
+        }
     }
 
     /// Ends the paragraph. A collapsible space at its end is removed, and so is
     /// a single final line feed, which ends the last line and starts no new
     /// one. A paragraph with nothing left generates no box.
     fn finish(&mut self, out: &mut Vec<Child>) {
-        let mut builder = std::mem::replace(self, Self::new(self.modes[0], self.blockified));
-        let Some(owner) = builder.owner else { return };
+        let mut next = Self::new(self.container, self.modes[0], self.blockified);
+        next.index = self.index;
+        let mut builder = std::mem::replace(self, next);
+        if !builder.has_text {
+            return;
+        }
         if builder.tail == Tail::Space {
             builder.pop();
         } else if builder.text.ends_with('\n') {
@@ -348,7 +387,8 @@ impl Builder {
         }
         builder.boxes.retain(|(_, range)| !range.is_empty());
         out.push(Child::Paragraph(Paragraph {
-            owner,
+            container: builder.container,
+            index: builder.index,
             text: builder.text,
             pieces: builder.pieces,
             boxes: builder.boxes,
@@ -363,9 +403,9 @@ impl Builder {
 pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Child> {
     let items = lays_out_items(container.style.as_deref());
     let mut out = Vec::new();
-    let mut paragraph = Builder::new(white_space::computed(tree, container), items);
+    let mut paragraph = Builder::new(container.id, white_space::computed(tree, container), items);
     if let Some(content) = container.content.as_deref() {
-        paragraph.push_text(container.id, content, &[]);
+        paragraph.push_text(content, &[]);
     }
     let children = crate::layout::order::children_in_order(tree, container, container.style.as_deref());
     for child in children
@@ -375,13 +415,14 @@ pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Ch
     {
         if is_raw_text(child) {
             if let Some(content) = child.content.as_deref() {
-                paragraph.push_text(child.id, content, &[]);
+                paragraph.push_text(content, &[]);
             }
         } else if !items && is_inline_box(tree, child, container) {
             paragraph.push_element(tree, child, &mut Vec::new());
         } else {
             paragraph.finish(&mut out);
             out.push(Child::Block(child.id));
+            paragraph.index += 1;
         }
     }
     paragraph.finish(&mut out);
@@ -393,8 +434,8 @@ pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Ch
 /// nothing is left of it.
 pub fn own_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
     let content = element.content.as_deref()?;
-    let mut paragraph = Builder::new(white_space::computed(tree, element), false);
-    paragraph.push_text(element.id, content, &[]);
+    let mut paragraph = Builder::new(element.id, white_space::computed(tree, element), false);
+    paragraph.push_text(content, &[]);
     let mut out = Vec::new();
     paragraph.finish(&mut out);
     match out.pop() {
@@ -488,7 +529,7 @@ mod tests {
         assert_eq!(plan.len(), 1);
         let paragraph = paragraphs(&plan)[0];
         assert_eq!(paragraph.text, "Hello Tommy!");
-        assert_eq!(paragraph.owner, 2);
+        assert_eq!((paragraph.container, paragraph.index), (1, 0));
         assert_eq!(paragraph.pieces.len(), 3);
         assert_eq!(paragraph.pieces[1].range, 6..11);
         assert!(paragraph.pieces.iter().all(|piece| piece.boxes.is_empty()));
@@ -542,7 +583,8 @@ mod tests {
         assert_eq!(paragraphs(&plan)[0].text, "one two");
         assert_eq!(plan[1], Child::Block(5));
         assert_eq!(paragraphs(&plan)[1].text, "three");
-        assert_eq!(paragraphs(&plan)[1].owner, 6);
+        assert_eq!(paragraphs(&plan)[0].key().as_ref(), "1:0");
+        assert_eq!(paragraphs(&plan)[1].key().as_ref(), "1:1");
     }
 
     #[test]
@@ -703,7 +745,73 @@ mod tests {
         let plan = f.plan(1);
         let paragraph = paragraphs(&plan)[0];
         assert_eq!(paragraph.text, "lead x");
-        assert_eq!(paragraph.owner, 1);
+        assert_eq!(paragraph.container, 1);
+    }
+
+    #[test]
+    fn a_paragraph_is_named_by_its_container_so_its_first_node_can_go() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "Hello ");
+        f.add(1, 3, "span").text(3, 4, "big");
+        let before = paragraphs(&f.plan(1))[0].key();
+        f.tree.destroy_element(2);
+        let plan = f.plan(1);
+        assert_eq!(paragraphs(&plan)[0].text, "big");
+        assert_eq!(paragraphs(&plan)[0].key(), before);
+    }
+
+    #[test]
+    fn a_paragraph_keeps_its_name_when_a_blank_one_comes_and_goes_before_it() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "div");
+        f.text(1, 3, "after");
+        let key = paragraphs(&f.plan(1))[0].key();
+        f.text(1, 4, " ");
+        f.add(1, 5, "div");
+        assert_eq!(paragraphs(&f.plan(1))[0].key(), key, "the same paragraph, one block before it");
+    }
+
+    #[test]
+    fn label_and_form_are_host_containers_and_never_inline_boxes() {
+        for kind in ["div", "text", "span", "label", "form"] {
+            assert!(is_host_type(kind), "{kind}");
+        }
+        for kind in ["img", "svg", "input", "virtual-list", "markdown"] {
+            assert!(!is_host_type(kind), "{kind}");
+        }
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "label").styled(3, serde_json::json!({"display": "inline"}));
+        f.text(3, 4, "b");
+        let plan = f.plan(1);
+        assert_eq!(plan[1], Child::Block(3));
+    }
+
+    #[test]
+    fn a_display_contents_child_of_a_span_joins_the_paragraph() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "span");
+        f.add(3, 4, "span").styled(4, serde_json::json!({"display": "contents"}));
+        f.text(4, 5, "b");
+        f.add(4, 6, "span").text(6, 7, "c");
+        f.text(1, 8, " d");
+        let plan = f.plan(1);
+        assert_eq!(plan.len(), 1, "no block: {plan:?}");
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a bc d");
+        let boxes: Vec<_> = paragraph.pieces.iter().map(|p| p.boxes.clone()).collect();
+        assert_eq!(boxes, vec![vec![], vec![3, 4], vec![3, 4, 6], vec![]]);
+    }
+
+    #[test]
+    fn a_block_inside_display_contents_inside_a_span_makes_the_span_a_block() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "span");
+        f.add(3, 4, "span").styled(4, serde_json::json!({"display": "contents"}));
+        f.add(4, 5, "div");
+        assert_eq!(f.plan(1)[1], Child::Block(3));
     }
 
     #[test]

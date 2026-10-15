@@ -584,10 +584,7 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
             match child {
                 super::inline::Child::Block(child_id) => collect_into(tree, child_id, false, out),
                 super::inline::Child::Paragraph(paragraph) => out.push(Group::new(
-                    vec![(
-                        crate::text::selection_key(paragraph.owner, 0),
-                        0..paragraph.text.len(),
-                    )],
+                    vec![(paragraph.key(), 0..paragraph.text.len())],
                     paragraph.text,
                 )),
             }
@@ -939,7 +936,7 @@ mod tests {
     }
 
     /// Text nodes of a `<text>` are one paragraph, painted as one string under
-    /// the key of the first node.
+    /// the key of their container.
     #[test]
     fn interpolated_children_form_one_group() {
         let groups = GroupList::collect(&interpolated_tree(), 1);
@@ -957,7 +954,7 @@ mod tests {
         let ctx = context(&groups, set);
         assert_eq!(ctx.matches.total, 1);
         let painted = paint(&ctx, &groups);
-        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..11);
+        assert_eq!(painted[&Arc::from("2:0")][0].range, 0..11);
         assert!(!painted.contains_key(&Arc::<str>::from("4:0")));
     }
 
@@ -980,7 +977,7 @@ mod tests {
         };
         let ctx = context(&groups, set);
         assert_eq!(ctx.matches.total, 1);
-        assert_eq!(paint(&ctx, &groups)[&Arc::from("2:0")][0].range, 4..7);
+        assert_eq!(paint(&ctx, &groups)[&Arc::from("1:0")][0].range, 4..7);
     }
 
     /// Text children of an element the renderer does not lay out itself still
@@ -1055,7 +1052,7 @@ mod tests {
         s.ranges = vec![(6, 11)];
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
         assert_eq!(ctx.matches.total, 1);
-        assert_eq!(paint(&ctx, &groups)[&Arc::from("3:0")][0].range, 6..11);
+        assert_eq!(paint(&ctx, &groups)[&Arc::from("2:0")][0].range, 6..11);
     }
 
     #[test]
@@ -1066,7 +1063,7 @@ mod tests {
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
         assert_eq!(ctx.matches.total, 2);
         let painted = paint(&ctx, &groups);
-        let washes = &painted[&Arc::<str>::from("3:0")];
+        let washes = &painted[&Arc::<str>::from("2:0")];
         assert_eq!(washes.len(), 2);
         assert!(!washes[0].active);
         assert!(washes[1].active);
@@ -1192,7 +1189,7 @@ mod tests {
         let native: Arc<str> = "9:0".into();
         // The native element paints first, so it must own ordinal 0.
         let painted_native = washes_for_native_run(&ctx, &native, "l");
-        let painted_text = washes_for_retained_run(&ctx, &"3:0".into());
+        let painted_text = washes_for_retained_run(&ctx, &"2:0".into());
         assert!(
             painted_native[0].active,
             "the first painted match is active"
@@ -1201,7 +1198,7 @@ mod tests {
 
         // Reverse the paint order and the ownership moves with it.
         ordinal_frame_reset();
-        let painted_text = washes_for_retained_run(&ctx, &"3:0".into());
+        let painted_text = washes_for_retained_run(&ctx, &"2:0".into());
         let painted_native = washes_for_native_run(&ctx, &native, "l");
         assert!(painted_text[0].active);
         assert!(painted_native.iter().all(|wash| !wash.active));
@@ -1247,7 +1244,7 @@ mod tests {
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
 
         let painted = paint(&ctx, &groups);
-        let washes = &painted[&Arc::<str>::from("3:0")];
+        let washes = &painted[&Arc::<str>::from("2:0")];
         assert_eq!(washes.len(), 2);
         assert!(!washes[0].active, "ordinal 50");
         assert!(washes[1].active, "ordinal 51");

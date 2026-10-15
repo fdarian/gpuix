@@ -81,15 +81,20 @@ pub fn run_styles(
                 continue;
             };
             colors = colors.descend(declared);
+            // It has no box, so what it declares reaches the text only as far as
+            // it is inherited.
+            let has_box = declared.display.as_deref() != Some("contents");
             if let Some(color) = colors.declared {
                 style.color = Some(color.into());
             }
-            if let Some(background) = declared
-                .background_color
-                .as_deref()
-                .and_then(|value| colors.resolve(value))
-            {
-                style.background = Some(background.into());
+            if has_box {
+                if let Some(background) = declared
+                    .background_color
+                    .as_deref()
+                    .and_then(|value| colors.resolve(value))
+                {
+                    style.background = Some(background.into());
+                }
             }
             if let Some(weight) = declared.font_weight.as_ref() {
                 style.weight = Some(crate::renderer::parse_font_weight(weight));
@@ -114,10 +119,12 @@ pub fn run_styles(
             }
             // CSS draws a decoration over the whole box and a descendant cannot
             // take it off, so `none` on a box adds nothing and removes nothing.
-            match declared.text_decoration.as_deref() {
-                Some("underline") => style.underline = true,
-                Some("line-through") => style.strikethrough = true,
-                _ => {}
+            if has_box {
+                match declared.text_decoration.as_deref() {
+                    Some("underline") => style.underline = true,
+                    Some("line-through") => style.strikethrough = true,
+                    _ => {}
+                }
             }
         }
         match runs.last_mut() {
@@ -391,6 +398,25 @@ mod tests {
         assert_eq!(lens, vec![2, 7, 4], "the nested none keeps the parent's underline");
         assert!(runs[1].underline);
         assert!(!runs[2].underline);
+    }
+
+    #[test]
+    fn a_display_contents_box_passes_inherited_style_on_and_paints_nothing_of_its_own() {
+        let tree = tree_with(&[(
+            5,
+            serde_json::json!({
+                "display": "contents",
+                "color": "#ff0000",
+                "fontWeight": 700,
+                "backgroundColor": "#ffff00",
+                "textDecoration": "underline"
+            }),
+        )]);
+        let runs = runs_of(&tree);
+        assert_eq!(runs[1].weight, Some(FontWeight(700.0)));
+        assert!(runs[1].color.is_some());
+        assert_eq!(runs[1].background, None);
+        assert!(!runs[1].underline);
     }
 
     #[test]

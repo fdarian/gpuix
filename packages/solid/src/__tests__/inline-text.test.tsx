@@ -55,6 +55,27 @@ describe.skipIf(!hasNativeTestRenderer)("Solid inline text", () => {
     expect(app.renderer.dragSelect(21, 30, 900, 30)).toBe("Hello big world")
   })
 
+  it("matches a search across the runs of a label and a form as one wash", () => {
+    const app = createTestRoot()
+    app.render(() => (
+      <div highlight={{ query: "o bi" }} style={{ fontSize: 20 }}>
+        <label>
+          Hello <span style={{ fontWeight: 700 }}>big</span> world
+        </label>
+        <form>
+          Hello <span style={{ fontWeight: 700 }}>big</span> world
+        </form>
+      </div>
+    ))
+
+    const hits = app.renderer.getPaintedHighlights()
+    expect(hits).toHaveLength(2)
+    for (const hit of hits) {
+      expect(hit.text).toBe("Hello big world")
+      expect(hit.text.slice(hit.start, hit.end)).toBe("o bi")
+    }
+  })
+
   // Solid makes an empty text node for every dynamic hole. In a flex row with a
   // gap, it must not become an item of its own.
   it("adds no gap slot for a Show hole between gapped flex siblings", () => {

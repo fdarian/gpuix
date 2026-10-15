@@ -7076,7 +7076,7 @@ pub(crate) fn build_element(
         // (onClick, hover, focus, tabIndex) type-checked, registered a JS
         // listener, and then silently did nothing. `<span>` is the same box;
         // it only differs in being inline inside a paragraph.
-        "div" | "text" | "label" | "form" | "span" => {
+        host if crate::text::inline::is_host_type(host) => {
             ctx.custom_registry.destroy(id);
             build_host_container(element, style, ctx, window, cx)
         }
@@ -7644,14 +7644,14 @@ fn text_content(
 }
 
 /// One paragraph of inline content: a single string with a run per text node,
-/// selected, searched and copied as one line of text. Its group is its own
-/// owner, so two paragraphs never join into one copied line.
+/// selected, searched and copied as one line of text. It has no group, so two
+/// paragraphs never join into one copied line.
 fn paragraph_content(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &BuildCtx,
 ) -> gpui::AnyElement {
     selectable_text(crate::text::SelectableText {
-        group: Some(paragraph.owner),
+        group: None,
         selectable: ctx.inherited.selectable,
         highlight: ctx
             .inherited
@@ -7665,8 +7665,8 @@ fn paragraph_content(
             &ctx.inherited.font_state,
         ),
         ..crate::text::SelectableText::new(
-            paragraph.owner,
-            0,
+            paragraph.container,
+            paragraph.index,
             gpui::SharedString::from(paragraph.text.clone()),
             None,
             ctx.selection.clone(),
