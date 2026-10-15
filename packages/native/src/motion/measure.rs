@@ -10,7 +10,10 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::{App, Bounds, LayoutId, Pixels, Size, Window};
+use gpui::{
+    AnyElement, App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, Size, Window,
+};
 
 use super::property::{AnimProp, Axis};
 use crate::style::StyleDesc;
@@ -94,26 +97,108 @@ impl Measurements {
         move |_, _, _| painted_frames.set(painted_frames.get() + 1)
     }
 
-    /// The `on_painted_layout` listener that keeps `id` measured. `border` is
-    /// the vertical border of the style the element is built with.
-    pub(crate) fn recorder(
+    /// `child` wrapped so each paint of it keeps `id` measured. `border` is the
+    /// vertical border of the style the element is built with.
+    ///
+    /// A wrapper rather than `on_painted_layout` on the element: that listener
+    /// lives on GPUI's `Interactivity`, which `<img>`, `<svg>`, `<input>` and
+    /// the other custom elements build behind an `AnyElement`.
+    pub(crate) fn wrap(&self, id: u64, border: VerticalBorder, child: AnyElement) -> AnyElement {
+        Measured {
+            id,
+            border,
+            measurements: self.clone(),
+            child,
+        }
+        .into_any_element()
+    }
+
+    fn record(
         &self,
         id: u64,
         border: VerticalBorder,
-    ) -> impl Fn(Bounds<Pixels>, LayoutId, &mut Window, &mut App) + 'static {
-        let measurements = self.by_element.clone();
-        move |bounds, layout_id, window, _| {
-            let content = window.layout_content_size(layout_id);
-            let measurement = Measurement {
-                border_box: bounds.size,
-                natural_height: natural_height(content.height, border),
-                parent_content: window
-                    .layout_parent_content_size(layout_id)
-                    .unwrap_or_else(|| window.viewport_size()),
-                scale_factor: window.scale_factor(),
-            };
-            measurements.borrow_mut().insert(id, measurement);
-        }
+        bounds: Bounds<Pixels>,
+        layout_id: LayoutId,
+        window: &mut Window,
+    ) {
+        let content = window.layout_content_size(layout_id);
+        let measurement = Measurement {
+            border_box: bounds.size,
+            natural_height: natural_height(content.height, border),
+            parent_content: window
+                .layout_parent_content_size(layout_id)
+                .unwrap_or_else(|| window.viewport_size()),
+            scale_factor: window.scale_factor(),
+        };
+        self.by_element.borrow_mut().insert(id, measurement);
+    }
+}
+
+struct Measured {
+    id: u64,
+    border: VerticalBorder,
+    measurements: Measurements,
+    child: AnyElement,
+}
+
+impl IntoElement for Measured {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for Measured {
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<gpui::ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, LayoutId) {
+        // The child's own node, so the content and parent sizes read here are
+        // the child's and the bounds painted below are its bounds.
+        let layout_id = self.child.request_layout(window, cx);
+        (layout_id, layout_id)
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut LayoutId,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout_id: &mut LayoutId,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.paint(window, cx);
+        self.measurements
+            .record(self.id, self.border, bounds, *layout_id, window);
     }
 }
 

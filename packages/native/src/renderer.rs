@@ -6881,6 +6881,20 @@ pub(crate) fn build_element(
     };
 
     ctx.inherited = parent_inherited;
+    // Motion and CSS transitions read layout back one frame later, so only the
+    // elements they drive pay for the measurement. It wraps every kind of
+    // element here, because the custom ones and `virtual-list` build their
+    // GPUI element out of reach of `build_host_container`.
+    let built = if element.custom_props().contains_key("motion")
+        || transitions_wanted
+        || animations_wanted
+    {
+        ctx.measurements
+            .wrap(id, crate::motion::measure::VerticalBorder::of(style), built)
+    } else {
+        ctx.measurements.remove(id);
+        built
+    };
     // The probe goes inside the glide, so its hitbox follows the box.
     let built = if transitioned.is_some() {
         ctx.state_source.probe(id, built)
@@ -7161,20 +7175,6 @@ pub(crate) fn build_host_container(
         selection_start,
         paint_reporter(element.id, element.events(), style, ctx),
     );
-    // Motion and CSS transitions read layout back one frame later, so only the
-    // elements they drive pay for the measurement.
-    if element.custom_props().contains_key("motion")
-        || ctx.css_transitions.wants(element.id, element.style.as_deref())
-        || ctx.css_animations.wants(element.id, element.style.as_deref())
-    {
-        el = el.on_painted_layout(
-            ctx.measurements
-                .recorder(element.id, crate::motion::measure::VerticalBorder::of(style)),
-        );
-    } else {
-        ctx.measurements.remove(element.id);
-    }
-
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
         el = crate::focus::apply_focus_styles(
