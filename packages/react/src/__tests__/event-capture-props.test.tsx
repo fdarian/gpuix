@@ -28,6 +28,8 @@ function setup() {
     windowKeyEventHandlers: {},
     windowKeyEventId: 0,
     windowSelectionEventId: 0,
+    motionBindings: new Map(),
+    motionReleases: [],
   }
   const create = (props: Props) => {
     const instance = hostConfig.createInstance(
