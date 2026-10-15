@@ -1286,7 +1286,7 @@ mod tests {
         let mut style = StyleDesc::default();
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.height, Some(DimensionValue::Pixels(50.0)));
-        assert_eq!(style.margin_top, Some(8.0));
+        assert_eq!(style.margin_top, Some(DimensionValue::Pixels(8.0)));
         assert_eq!(style.row_gap, Some(4.0));
         let frame = state.frame(started);
         assert!(!frame.active);
@@ -2945,7 +2945,7 @@ mod tests {
                 started,
             )
             .unwrap();
-            assert_eq!(style_at(&state, started).top, Some(12.0));
+            assert_eq!(style_at(&state, started).top, Some(DimensionValue::Pixels(12.0)));
             assert!(state.pending.is_empty());
         }
     }

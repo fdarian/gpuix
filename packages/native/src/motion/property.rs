@@ -7,6 +7,7 @@
 use serde_json::Value;
 
 use super::value::{AnimValue, Color, Shadow};
+use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -78,6 +79,20 @@ impl Field for Option<DimensionValue> {
             AnimValue::Auto => DimensionValue::Auto,
             other => unreachable!("a dimension field was given {other:?}"),
         });
+    }
+}
+
+impl Field for Option<AspectRatio> {
+    fn read(&self) -> Option<AnimValue> {
+        self.and_then(AspectRatio::ratio).map(AnimValue::Number)
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Number(ratio) if ratio > 0.0 => *self = Some(AspectRatio::Ratio(ratio)),
+            AnimValue::Number(_) => *self = Some(AspectRatio::Auto),
+            other => unreachable!("an aspect ratio field was given {other:?}"),
+        }
     }
 }
 
@@ -380,6 +395,9 @@ impl AnimProp {
                     }
                     DimensionValue::Percentage(value) => {
                         AnimValue::Percent(check_finite(name, value)?)
+                    }
+                    DimensionValue::AnchorSize(_) => {
+                        return Err(format!("motion cannot animate {name} to or from anchor-size()"));
                     }
                     DimensionValue::Auto if self == Self::Height => AnimValue::Auto,
                     DimensionValue::Auto => {
