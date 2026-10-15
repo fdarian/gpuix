@@ -415,6 +415,7 @@ function IconButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        appRegion: 'no-drag',
         cursor: 'pointer',
         opacity: dimmed ? 0.35 : 1,
         hover: dimmed ? undefined : { backgroundColor: C.overlay },
@@ -585,6 +586,7 @@ function Sidebar({
     >
       <div
         style={{
+          appRegion: 'drag',
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
@@ -1109,6 +1111,7 @@ function Header({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
+        appRegion: 'drag',
         gap: 8,
         height: TITLEBAR_HEIGHT,
         flexShrink: 0,

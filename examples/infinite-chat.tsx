@@ -581,6 +581,7 @@ export function InfiniteChatApp({
     >
       <div
         style={{
+          appRegion: 'drag',
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',

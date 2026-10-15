@@ -349,7 +349,8 @@ describeNative('chat example', () => {
       expect(renderer.getPaintedText()).toContain('Search threads')
       expect(renderer.getFocusedElementId()).toBe(renderer.findByTestId('search-input')?.id)
 
-      renderer.nativeSimulateClick(900, 40)
+      // Below the header: a press in its drag region goes to the window, not the page.
+      renderer.nativeSimulateClick(900, 300)
       expect(renderer.getPaintedText()).not.toContain('Search threads')
 
       // Keyboard: Escape closes it and focus returns to the button that opened it.

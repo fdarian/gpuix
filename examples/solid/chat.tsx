@@ -350,6 +350,7 @@ function IconButton(props: {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        appRegion: "no-drag",
         cursor: "pointer",
         opacity: props.dimmed ? 0.35 : 1,
         hover: props.dimmed ? undefined : { backgroundColor: C.overlay },
@@ -492,6 +493,7 @@ function Sidebar(props: {
     >
       <div
         style={{
+          appRegion: "drag",
           display: "flex",
           flexDirection: "row",
           alignItems: "center",
@@ -942,6 +944,7 @@ function Header(props: {
         display: "flex",
         flexDirection: "row",
         alignItems: "center",
+        appRegion: "drag",
         gap: 8,
         height: TITLEBAR_HEIGHT,
         flexShrink: 0,

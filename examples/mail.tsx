@@ -116,6 +116,7 @@ function IconButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        appRegion: 'no-drag',
         cursor: 'pointer',
         opacity: dimmed ? 0.35 : 1,
         hover: dimmed ? undefined : { backgroundColor: C.overlay },
@@ -138,6 +139,7 @@ function Pill({ children }: { children: ReactNode }) {
         paddingLeft: 2,
         paddingRight: 2,
         flexShrink: 0,
+        appRegion: 'no-drag',
         borderRadius: 14,
         backgroundColor: C.pill,
         borderWidth: 1,
@@ -817,6 +819,7 @@ function SearchField({
         height: 28,
         flexGrow: 1,
         minWidth: 0,
+        appRegion: 'no-drag',
         paddingLeft: 10,
         paddingRight: 8,
         borderRadius: 14,
@@ -899,6 +902,7 @@ export function MailApp() {
     >
       <div
         style={{
+          appRegion: 'drag',
           display: 'flex',
           flexDirection: 'row',
           height: TITLEBAR_HEIGHT,
