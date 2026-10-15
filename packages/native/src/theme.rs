@@ -327,9 +327,8 @@ impl Metrics {
         }
     }
 
-    /// Hash the metrics so an element can tell when its layout inputs changed.
-    /// `f32` is not `Hash`, so the bit patterns stand in.
-    /// Hash only the metrics that decide `<diff>` ROW HEIGHTS.
+    /// Hash only the metrics that decide `<diff>` ROW HEIGHTS. `f32` is not `Hash`, so the bit
+    /// patterns stand in.
     ///
     /// The virtualized list caches measured heights per index, so it must be
     /// reset when a row height moves. It must NOT be reset for a markdown or
@@ -344,47 +343,6 @@ impl Metrics {
             self.diff_notice_height,
             self.diff_body_bottom_pad,
         ] {
-            feed(value);
-        }
-    }
-
-    pub fn hash_into(&self, hasher: &mut impl std::hash::Hasher) {
-        let mut feed = |value: f32| hasher.write_u32(value.to_bits());
-        for value in [
-            self.code_text_size,
-            self.code_line_height,
-            self.md_code_padding_x,
-            self.md_code_padding_y,
-            self.md_code_radius,
-            self.md_code_header_padding_y,
-            self.md_code_header_text_size,
-            self.code_gutter_digit_width,
-            self.code_gutter_padding_right,
-            self.code_gutter_min_width,
-            self.diff_text_size,
-            self.diff_line_height,
-            self.diff_file_header_height,
-            self.diff_hunk_header_height,
-            self.diff_notice_height,
-            self.diff_body_bottom_pad,
-            self.diff_gutter_width,
-            self.diff_marker_width,
-            self.diff_accent_bar_width,
-            self.diff_row_padding_x,
-            self.md_text_size,
-            self.md_line_height,
-            self.md_block_gap,
-            self.md_table_cell_padding,
-            self.md_table_min_column_width,
-            self.md_table_min_column_content,
-            self.md_inline_code_radius,
-        ] {
-            feed(value);
-        }
-        for value in self.md_heading_sizes {
-            feed(value);
-        }
-        for value in self.md_heading_line_heights {
             feed(value);
         }
     }
@@ -821,22 +779,21 @@ mod tests {
     }
 
     #[test]
-    fn metrics_hash_changes_with_any_number() {
+    fn diff_layout_hash_follows_row_heights_only() {
         let hash = |m: &Metrics| {
             use std::hash::Hasher;
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            m.hash_into(&mut h);
+            m.hash_diff_layout_into(&mut h);
             h.finish()
         };
         let base = Metrics::default();
-        let mut changed = base;
-        changed.diff_line_height += 1.0;
-        assert_ne!(hash(&base), hash(&changed));
+        let mut taller = base;
+        taller.diff_line_height += 1.0;
+        assert_ne!(hash(&base), hash(&taller));
 
         let mut heading = base;
         heading.md_heading_sizes[2] += 1.0;
-        assert_ne!(hash(&base), hash(&heading));
-        assert_eq!(hash(&base), hash(&Metrics::default()));
+        assert_eq!(hash(&base), hash(&heading));
     }
 
     #[test]

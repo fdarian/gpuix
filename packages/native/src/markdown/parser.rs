@@ -77,12 +77,6 @@ pub struct BlockTree {
     pub blocks: Vec<Block>,
 }
 
-impl BlockTree {
-    pub fn is_empty(&self) -> bool {
-        self.blocks.is_empty()
-    }
-}
-
 fn options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
 }
@@ -715,8 +709,8 @@ mod tests {
 
     #[test]
     fn an_empty_document_has_no_blocks() {
-        assert!(parse("").is_empty());
-        assert!(parse("   \n\n  ").is_empty());
+        assert!(parse("").blocks.is_empty());
+        assert!(parse("   \n\n  ").blocks.is_empty());
     }
 
     #[test]
