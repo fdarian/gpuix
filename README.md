@@ -2865,11 +2865,15 @@ gets a hidden `group` node to carry it.
 (AccessKit `labelled_by`), unless the control has its own `aria-label` or
 `aria-labelledby`. A control can have several labels. Clicking a label focuses
 its control and dispatches a `click` on it (same position and `detail`, bubbling
-along the control's own path), like the DOM. Nothing happens when the click
-lands on the control itself, when a handler cancelled the label's `click` with
+along the control's own path), like the DOM. The nearest label on the click's
+path is the one that activates, so a click inside a nested label reaches only
+the inner label's control. Nothing happens when the click lands on the control
+itself or inside it, on other interactive content inside the label (`input`,
+`textarea`, `select`, `button`), when a handler cancelled the label's `click` with
 `preventDefault()`, when the press began elsewhere than where the release
 landed (the click then targets a common ancestor, which has no label in its
-path), or when the control is `disabled` or `inert`. `preventDefault()` is known
+path), or when the control is `disabled` or `inert`. `label.click()` on a ref and
+the VoiceOver Press on a label activate its control the same way. `preventDefault()` is known
 on macOS and in the test renderer; on Windows and Linux the event is queued, so
 a label always activates its control there.
 

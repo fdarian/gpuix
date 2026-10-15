@@ -1,6 +1,7 @@
 //! Native-to-JS event plumbing that is not one element's own listener:
 //! synchronous dispatch and the window-level keyboard path.
 
+pub(crate) mod activation;
 pub mod dispatcher;
 pub mod element_drag;
 pub mod file_drag;

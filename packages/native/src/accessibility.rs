@@ -15,7 +15,6 @@ use gpui::prelude::*;
 use gpui::{AccessibleAction, Role};
 
 use crate::events::synthetic_click::click_payload;
-use crate::renderer::EventCallback;
 
 /// Apply `role`, `id` and `aria-*` from React, plus a default role when the
 /// app did not set one. `none` / `presentation` produce no node.
@@ -108,26 +107,24 @@ where
 
 /// VoiceOver Press. GPUI auto-adds Click only for `.on_click()`. GPUIX
 /// click is dispatched by `crate::events`, so register the action by hand and
-/// emit the click a non-pointer activation makes. `path` is the element and its
-/// retained ancestors, as built; it is empty for an element whose click nothing
-/// can receive (see `click_path`), which gets no action.
+/// make the click a non-pointer activation makes, with the activation behaviour
+/// that follows it. `path` is the element and its retained ancestors, as built;
+/// it is empty for an element nothing can receive a click on (see
+/// `click_path`), which gets no action.
 pub(crate) fn apply_a11y_click<E>(
     el: E,
-    events: &std::collections::HashSet<String>,
     path: Vec<u64>,
-    callback: &Option<EventCallback>,
+    activation: &crate::events::activation::Activation,
 ) -> E
 where
     E: StatefulInteractiveElement,
 {
-    if !events.contains("click") || path.is_empty() {
+    if path.is_empty() {
         return el;
     }
-    let callback = callback.clone();
-    el.on_a11y_action(AccessibleAction::Click, move |_data, _window, _cx| {
-        if let Some(callback) = &callback {
-            callback(click_payload(path.clone()));
-        }
+    let activation = activation.clone();
+    el.on_a11y_action(AccessibleAction::Click, move |_data, window, cx| {
+        activation.click(click_payload(path.clone()), window, cx);
     })
 }
 

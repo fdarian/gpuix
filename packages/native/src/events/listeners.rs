@@ -25,7 +25,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use gpui::{
     canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
@@ -33,14 +33,13 @@ use gpui::{
     Pixels, Point, ScrollWheelEvent, Styled, TouchPhase, WeakEntity, Window,
 };
 
-use crate::accessibility::label;
-use crate::element_tree::{EventModifiers, EventPayload};
-use crate::renderer::{EventCallback, GpuixView};
+use crate::element_tree::EventModifiers;
+use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
 
+use super::activation::Activation;
 use super::dispatcher::{dispatch, Output, PointerAction, PointerSample, WheelTick};
 use super::ids::host_hit_chain;
-use super::keyboard::InputRouting;
 use super::state::{chain_changed, ObservedChain, PointerState};
 use super::sync_dispatch;
 
@@ -104,9 +103,7 @@ pub(crate) fn dispatch_sample(
 #[derive(Clone)]
 pub(crate) struct PointerDispatch {
     pub pointer: Rc<RefCell<PointerState>>,
-    pub tree: Arc<Mutex<RetainedTree>>,
-    pub callback: Option<EventCallback>,
-    pub routing: InputRouting,
+    pub activation: Activation,
 }
 
 impl PointerDispatch {
@@ -122,7 +119,7 @@ impl PointerDispatch {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let output = dispatch_sample(&self.pointer, &self.tree, &sample);
+        let output = dispatch_sample(&self.pointer, &self.activation.tree, &sample);
         if output.restyle {
             // The view may be leased by the input being dispatched.
             if let Some(view) = view.upgrade() {
@@ -136,11 +133,11 @@ impl PointerDispatch {
             .press_path(button)
             .map(<[u64]>::to_vec)
             .unwrap_or_default();
-        crate::focus::defer_mouse_down_default(window, cx, &self.routing, target_path);
+        crate::focus::defer_mouse_down_default(window, cx, &self.activation.routing, target_path);
         let mut mouse_down_prevented = false;
         for payload in output.into_payloads() {
             let is_mouse_down = payload.event_type == "mousedown";
-            let outcome = sync_dispatch::emit(window, cx, &self.callback, payload);
+            let outcome = sync_dispatch::emit(window, cx, &self.activation.callback, payload);
             mouse_down_prevented |= is_mouse_down && outcome.default_prevented;
         }
         if mouse_down_prevented {
@@ -176,10 +173,10 @@ impl PointerDispatch {
     /// Dispatches a wheel tick, then cancels the scroll it would cause if a
     /// handler prevented its default.
     fn wheel(&self, sample: PointerSample, window: &mut Window, cx: &mut App) {
-        let output = dispatch_sample(&self.pointer, &self.tree, &sample);
+        let output = dispatch_sample(&self.pointer, &self.activation.tree, &sample);
         let mut prevented = false;
         for payload in output.into_payloads() {
-            let outcome = sync_dispatch::emit(window, cx, &self.callback, payload);
+            let outcome = sync_dispatch::emit(window, cx, &self.activation.callback, payload);
             prevented |= outcome.default_prevented;
         }
         if prevented {
@@ -200,7 +197,7 @@ impl PointerDispatch {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let output = dispatch_sample(&self.pointer, &self.tree, &sample);
+        let output = dispatch_sample(&self.pointer, &self.activation.tree, &sample);
         if output.restyle {
             if let Some(view) = view.upgrade() {
                 cx.notify(view.entity_id());
@@ -208,27 +205,11 @@ impl PointerDispatch {
         }
         for payload in output.into_payloads() {
             let click = (payload.event_type == "click").then(|| payload.clone());
-            let outcome = sync_dispatch::emit(window, cx, &self.callback, payload);
+            let outcome = sync_dispatch::emit(window, cx, &self.activation.callback, payload);
             if let Some(click) = click.filter(|_| !outcome.default_prevented) {
-                self.activate_label(&click, window, cx);
+                self.activation.activate_label(&click, window, cx);
             }
         }
-    }
-
-    fn activate_label(&self, click: &EventPayload, window: &mut Window, cx: &mut App) {
-        let path: Vec<u64> = click.path.iter().flatten().map(|id| *id as u64).collect();
-        let activation = {
-            let tree = self.tree.lock().unwrap();
-            label::activated_control(&tree, &path)
-                .map(|control| (control, label::activation_click(&tree, click, control)))
-        };
-        let Some((control, payload)) = activation else {
-            return;
-        };
-        if let Some(handle) = self.routing.first_focusable(&[control]) {
-            window.focus(&handle, cx);
-        }
-        sync_dispatch::emit(window, cx, &self.callback, payload);
     }
 }
 

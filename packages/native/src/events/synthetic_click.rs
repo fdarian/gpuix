@@ -4,7 +4,9 @@
 //! It is a DOM click like `HTMLElement.click()` makes: `detail` 0, `pointerId`
 //! -1 and an empty `pointerType`, because no pointer is involved, and a
 //! `target` and `path`, so it bubbles to the ancestors' `onClick`. A disabled
-//! form control gets none, the same rule a pointer click follows.
+//! form control gets none, the same rule a pointer click follows. A click on a
+//! label goes on to activate its control, as `events::activation` does for a
+//! pointer click.
 
 use crate::element_tree::EventPayload;
 use crate::retained_tree::RetainedTree;

@@ -43,6 +43,8 @@ pub struct CustomRenderContext<'a> {
     /// The element and its retained ancestors, for the click a VoiceOver press
     /// makes. Empty unless the element listens for `click`.
     pub click_path: Vec<u64>,
+    /// Delivers that click and runs the activation behaviour after it.
+    pub activation: &'a crate::events::activation::Activation,
     /// The DOM focus state for styling. See `focus::apply_focus_styles`.
     pub focus_styles: crate::focus::FocusStyles,
     /// Style object from the retained element for layout and appearance.
@@ -180,7 +182,7 @@ pub(crate) fn wire_host_events<E: gpui::StatefulInteractiveElement>(
     if ctx.inert {
         return el;
     }
-    crate::accessibility::apply_a11y_click(el, ctx.events, ctx.click_path.clone(), ctx.event_callback)
+    crate::accessibility::apply_a11y_click(el, ctx.click_path.clone(), ctx.activation)
 }
 
 // ── Traits ───────────────────────────────────────────────────────────

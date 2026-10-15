@@ -590,6 +590,10 @@ enum UiCommand {
         response: SyncSender<Option<crate::automation::ElementBounds>>,
     },
     FocusElement(u64),
+    ClickElement {
+        id: u64,
+        response: SyncSender<std::result::Result<(), String>>,
+    },
     BlurElement(u64),
     MatchesFocus {
         id: u64,
@@ -897,6 +901,14 @@ async fn run_ui_commands(
                 view.request_focus(id, window, cx);
                 window.refresh();
             }),
+            // Not `window.update`: the click's handlers may update the root view.
+            UiCommand::ClickElement { id, response } => {
+                gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
+                    response
+                        .send(crate::events::activation::click_element(id, window, cx))
+                        .ok();
+                })
+            }
             UiCommand::BlurElement(id) => window.update(cx, move |view, window, cx| {
                 view.blur_element(id, window, cx);
                 window.refresh();
@@ -3154,19 +3166,32 @@ impl GpuixRenderer {
 
     /// Deliver the click an activation that is not a pointer press makes on
     /// `element_id`, such as Enter on a button: a `click` with `detail` 0 that
-    /// bubbles along the element's path. Arrives through the event callback.
-    /// A disabled form control gets none, like `HTMLElement.click()`.
+    /// bubbles along the element's path, followed by the activation behaviour
+    /// a label has. A disabled form control gets none, like
+    /// `HTMLElement.click()`.
     #[napi]
     pub fn click_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        let payload = {
-            let tree = self.tree.lock().unwrap();
-            crate::events::synthetic_click::click_element(&tree, id).map_err(Error::from_reason)?
-        };
-        if let (Some(payload), Some(callback)) = (payload, self.event_callback_for_view()) {
-            callback(payload);
+        #[cfg(target_os = "macos")]
+        return update_window_without_view(move |window, cx| {
+            crate::events::activation::click_element(id, window, cx)
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::ClickElement { id, response })?;
+            return recv_ui_response(receiver, "the click")?.map_err(Error::from_reason);
         }
-        Ok(())
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
     }
 
     /// Paint packed pixels onto an `<img>` host node. `format` is `"rgba"`
@@ -4403,15 +4428,10 @@ impl WebGpuixRenderer {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = clickElement)]
     pub fn click_element(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
-        let payload = {
-            let tree = self.tree.lock().unwrap();
-            crate::events::synthetic_click::click_element(&tree, id)
-                .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?
-        };
-        if let Some(payload) = payload {
-            (self.event_callback)(payload);
-        }
-        Ok(())
+        update_web_window_without_view(move |window, cx| {
+            crate::events::activation::click_element(id, window, cx)
+        })?
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = setImagePixels)]
@@ -5671,9 +5691,11 @@ impl GpuixView {
         crate::accessibility::links::sync(&tree);
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
+        let activation = self.activation();
         let mut build_ctx = BuildCtx {
             tree: &tree,
             event_callback: &callback,
+            activation: &activation,
             focus_handles: &self.focus_handles,
             scroll_handles: &mut self.scroll_handles,
             custom_registry: &mut self.custom_registry,
@@ -5814,6 +5836,7 @@ impl GpuixView {
 pub(crate) struct BuildCtx<'a> {
     pub tree: &'a RetainedTree,
     pub event_callback: &'a Option<EventCallback>,
+    pub activation: &'a crate::events::activation::Activation,
     pub focus_handles: &'a HashMap<u64, gpui::FocusHandle>,
     pub scroll_handles: &'a mut HashMap<u64, gpui::ScrollHandle>,
     pub custom_registry: &'a mut CustomElementRegistry,
@@ -6597,6 +6620,16 @@ impl PendingFocus {
     }
 }
 
+impl GpuixView {
+    pub(crate) fn activation(&self) -> crate::events::activation::Activation {
+        crate::events::activation::Activation {
+            tree: self.tree.clone(),
+            callback: self.event_callback.clone(),
+            routing: self.routing.clone(),
+        }
+    }
+}
+
 impl gpui::Render for GpuixView {
     fn render(
         &mut self,
@@ -6705,11 +6738,13 @@ impl gpui::Render for GpuixView {
         crate::accessibility::links::sync(&tree);
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
+        let activation = self.activation();
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
                     tree: &tree,
                     event_callback: &callback,
+                    activation: &activation,
                     focus_handles: &self.focus_handles,
                     scroll_handles: &mut self.scroll_handles,
                     custom_registry: &mut self.custom_registry,
@@ -6766,9 +6801,7 @@ impl gpui::Render for GpuixView {
                     cx.weak_entity(),
                     crate::events::listeners::PointerDispatch {
                         pointer: self.pointer.clone(),
-                        tree: tree_arc.clone(),
-                        callback: callback.clone(),
-                        routing: self.routing.clone(),
+                        activation: activation.clone(),
                     },
                     self.pointer.borrow().observed(),
                 ))
@@ -7064,6 +7097,7 @@ pub(crate) fn build_element(
                 focus_handle: ctx.focus_handles.get(&id),
                 focus_styles: ctx.focus_styles.clone(),
                 click_path: click_path(ctx.tree, element),
+                activation: ctx.activation,
                 style,
                 colors: inherited.colors,
                 font_features: inherited.font_features.clone(),
@@ -7421,12 +7455,7 @@ pub(crate) fn build_host_container(
     // dispatcher (`crate::events`) finds the target and runs them along the
     // retained tree. What is left are the events GPUI still owns.
     if !inert {
-        el = apply_a11y_click(
-            el,
-            element.events(),
-            click_path(ctx.tree, element),
-            ctx.event_callback,
-        );
+        el = apply_a11y_click(el, click_path(ctx.tree, element), ctx.activation);
     }
 
     // Key and focus events are not wired per element either: one event per keystroke
@@ -8139,11 +8168,18 @@ fn report_scroll(
 }
 
 /// The retained path a non-pointer click on `element` bubbles along. Empty when
-/// nothing listens for a click, which is also when it is never read, and when the
-/// element is in a disabled form control, which an accessibility click does nothing on.
+/// nothing would receive it, which is also when it is never read: nothing
+/// listens for a click and the element is not a label that activates a control,
+/// or the element is in a disabled form control, which an accessibility click
+/// does nothing on.
 pub(crate) fn click_path(tree: &RetainedTree, element: &crate::retained_tree::RetainedElement) -> Vec<u64> {
-    if element.events().contains("click") && !tree.in_disabled_form_control(element.id) {
-        crate::events::path::event_path(tree, element.id)
+    let listens = element.events().contains("click");
+    if (!listens && element.element_type != "label") || tree.in_disabled_form_control(element.id) {
+        return Vec::new();
+    }
+    let path = crate::events::path::event_path(tree, element.id);
+    if listens || crate::accessibility::label::activated_control(tree, &path).is_some() {
+        path
     } else {
         Vec::new()
     }

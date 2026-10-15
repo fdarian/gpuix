@@ -298,8 +298,9 @@ export declare class GpuixRenderer {
   /**
    * Deliver the click an activation that is not a pointer press makes on
    * `element_id`, such as Enter on a button: a `click` with `detail` 0 that
-   * bubbles along the element's path. Arrives through the event callback.
-   * A disabled form control gets none, like `HTMLElement.click()`.
+   * bubbles along the element's path, followed by the activation behaviour
+   * a label has. A disabled form control gets none, like
+   * `HTMLElement.click()`.
    */
   clickElement(elementId: number): void
   /**
@@ -620,8 +621,9 @@ export declare class TestGpuixRenderer {
    */
   simulatePointerLockLost(): void
   /**
-   * The click an activation that is not a pointer press makes on `element_id`;
-   * collected for `drainEvents` like every other event.
+   * The click an activation that is not a pointer press makes on `element_id`,
+   * and the activation behaviour that follows it; collected for
+   * `drainEvents` like every other event.
    */
   clickElement(elementId: number): void
   /** Packed `"rgba"` (default) or `"bgra"` pixels onto an `<img>` host node. */

@@ -149,4 +149,60 @@ describe.skipIf(!hasNativeTestRenderer)("Solid accessibility", () => {
     expect(labelled).toHaveLength(1)
     expect(tree.nodes?.[labelled[0] ?? ""]?.aria?.value).toBe("Notes")
   })
+
+  it("does nothing when the click lands on another control inside the label", () => {
+    const clicks: string[] = []
+    const app = createTestRoot()
+    app.render(() => (
+      <label style={{ width: 300, height: 80, display: "flex", flexDirection: "column" }}>
+        <input testId="a" value="" onClick={() => clicks.push("a")} style={{ width: 200, height: 30 }} />
+        <input testId="b" value="" onClick={() => clicks.push("b")} style={{ width: 200, height: 30 }} />
+      </label>
+    ))
+    const b = app.renderer.findByTestId("b")!
+    const bounds = app.renderer.getElementBounds(b.id)!
+    app.renderer.nativeSimulateClick(bounds.x + 10, bounds.y + 10)
+    expect(clicks).toEqual(["b"])
+    expect(app.renderer.getFocusedElementId()).toBe(b.id)
+  })
+
+  it("label.click() focuses and clicks the control unless the label's click is cancelled", () => {
+    for (const cancel of [false, true]) {
+      const clicks: Array<{ detail?: number; pointerId?: number }> = []
+      let label!: { id: number; click(): void }
+      const app = createTestRoot()
+      app.render(() => (
+        <div style={{ width: 300, height: 120 }}>
+          <label
+            htmlFor="name"
+            ref={label}
+            onClick={(event) => {
+              if (cancel) event.preventDefault()
+            }}
+            style={{ width: 200, height: 30 }}
+          >
+            Name
+          </label>
+          <input
+            id="name"
+            testId="name-input"
+            value=""
+            onClick={(event) => clicks.push({ detail: event.detail, pointerId: event.pointerId })}
+            style={{ width: 200, height: 32 }}
+          />
+        </div>
+      ))
+      app.renderer.flush()
+      label.click()
+      app.renderer.dispatchNativeEvents()
+      const input = app.renderer.findByTestId("name-input")!
+      if (cancel) {
+        expect(clicks).toEqual([])
+        expect(app.renderer.getFocusedElementId()).not.toBe(input.id)
+      } else {
+        expect(clicks).toEqual([{ detail: 0, pointerId: -1 }])
+        expect(app.renderer.getFocusedElementId()).toBe(input.id)
+      }
+    }
+  })
 })

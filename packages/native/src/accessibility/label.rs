@@ -18,21 +18,37 @@ where
     el
 }
 
-/// The control a `click` activates, if it does: the click's path holds a
-/// `<label>` whose control the target is not inside, and that control is
-/// neither disabled nor inert. `path` starts at the click's target.
+/// Interactive content that exists as a gpuix element type. A click on one
+/// inside a label belongs to it, not to the label.
+fn is_interactive_content(element_type: &str) -> bool {
+    matches!(element_type, "input" | "textarea" | "select" | "button")
+}
+
+/// The control a `click` activates, if it does. The nearest `<label>` on the
+/// click's path is the activation target, as in the DOM, and it does nothing
+/// when the click landed on interactive content inside it, on its control, or
+/// inside its control, or when the control is disabled or inert. `path` starts
+/// at the click's target.
 pub(crate) fn activated_control(tree: &RetainedTree, path: &[u64]) -> Option<u64> {
-    let label = *path.iter().find(|id| {
+    let label_index = path.iter().position(|id| {
         tree.elements
             .get(id)
             .is_some_and(|element| element.element_type == "label")
     })?;
+    let label = path[label_index];
     if tree.is_inert(label) {
+        return None;
+    }
+    let inside_label = &path[..label_index];
+    if inside_label.iter().any(|id| {
+        tree.elements
+            .get(id)
+            .is_some_and(|element| is_interactive_content(&element.element_type))
+    }) {
         return None;
     }
     super::links::sync(tree);
     let control = super::links::current().control_of(label)?;
-    // A click on the control (or inside it) already acted on it.
     if path.contains(&control) {
         return None;
     }

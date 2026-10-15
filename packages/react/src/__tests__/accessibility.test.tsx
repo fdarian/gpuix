@@ -654,6 +654,104 @@ describeNative("accessibility", () => {
       expect(testRoot.renderer.getFocusedElementId()).not.toBe(input.id)
     })
 
+    it("does nothing when the click lands on another control inside the label", () => {
+      const clicks: string[] = []
+      testRoot.render(
+        <label testId="label" style={{ width: 300, height: 80, display: "flex", flexDirection: "column" }}>
+          <input testId="a" value="" onClick={() => clicks.push("a")} style={{ width: 200, height: 30 }} />
+          <input testId="b" value="" onClick={() => clicks.push("b")} style={{ width: 200, height: 30 }} />
+        </label>,
+      )
+      const b = testRoot.renderer.findByTestId("b")!
+      const bounds = testRoot.renderer.getElementBounds(b.id)!
+      testRoot.renderer.nativeSimulateClick(bounds.x + 10, bounds.y + 10)
+      expect(clicks).toEqual(["b"])
+      expect(testRoot.renderer.getFocusedElementId()).toBe(b.id)
+    })
+
+    it("activates the control when the click lands on plain content inside the label", () => {
+      const clicks: string[] = []
+      testRoot.render(
+        <label testId="label" style={{ width: 300, height: 80, display: "flex", flexDirection: "column" }}>
+          <div testId="text" style={{ width: 200, height: 30 }}>
+            Name
+          </div>
+          <input testId="a" value="" onClick={() => clicks.push("a")} style={{ width: 200, height: 30 }} />
+        </label>,
+      )
+      const bounds = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("text")!.id)!
+      testRoot.renderer.nativeSimulateClick(bounds.x + 10, bounds.y + 10)
+      expect(clicks).toEqual(["a"])
+      expect(testRoot.renderer.getFocusedElementId()).toBe(testRoot.renderer.findByTestId("a")!.id)
+    })
+
+    it("activates only the inner label's control for a click inside a nested label", () => {
+      const clicks: string[] = []
+      testRoot.render(
+        <label testId="outer" style={{ width: 300, height: 120, display: "flex", flexDirection: "column" }}>
+          <input testId="first" value="" onClick={() => clicks.push("first")} style={{ width: 200, height: 30 }} />
+          <label testId="inner" style={{ width: 200, height: 60, display: "flex", flexDirection: "column" }}>
+            <div testId="inner-text" style={{ width: 200, height: 20 }}>
+              Inner
+            </div>
+            <input testId="second" value="" onClick={() => clicks.push("second")} style={{ width: 200, height: 30 }} />
+          </label>
+        </label>,
+      )
+      const bounds = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("inner-text")!.id)!
+      testRoot.renderer.nativeSimulateClick(bounds.x + 10, bounds.y + 5)
+      expect(clicks).toEqual(["second"])
+      expect(testRoot.renderer.getFocusedElementId()).toBe(testRoot.renderer.findByTestId("second")!.id)
+    })
+
+    describe("click() on a label", () => {
+      type HostRef = { id: number; click(): void }
+
+      function renderRefLabel(onClick?: (event: { preventDefault(): void }) => void) {
+        const inputClicks: Array<{ detail: number | undefined; pointerId: number | undefined }> = []
+        let label: HostRef | undefined
+        testRoot.render(
+          <div style={{ width: 300, height: 120, display: "flex", flexDirection: "column" }}>
+            <label
+              htmlFor="name"
+              ref={(instance) => {
+                if (instance) label = instance as unknown as HostRef
+              }}
+              onClick={onClick}
+              style={{ width: 200, height: 30 }}
+            >
+              Name
+            </label>
+            <input
+              id="name"
+              testId="name-input"
+              value=""
+              onClick={(event) => inputClicks.push({ detail: event.detail, pointerId: event.pointerId })}
+              style={{ width: 200, height: 32 }}
+            />
+          </div>,
+        )
+        testRoot.renderer.flush()
+        return { label: label!, input: testRoot.renderer.findByTestId("name-input")!, inputClicks }
+      }
+
+      it("focuses the control and clicks it", () => {
+        const { label, input, inputClicks } = renderRefLabel()
+        label.click()
+        testRoot.renderer.dispatchNativeEvents()
+        expect(inputClicks).toEqual([{ detail: 0, pointerId: -1 }])
+        expect(testRoot.renderer.getFocusedElementId()).toBe(input.id)
+      })
+
+      it("does nothing when a handler cancels the label's click", () => {
+        const { label, input, inputClicks } = renderRefLabel((event) => event.preventDefault())
+        label.click()
+        testRoot.renderer.dispatchNativeEvents()
+        expect(inputClicks).toHaveLength(0)
+        expect(testRoot.renderer.getFocusedElementId()).not.toBe(input.id)
+      })
+    })
+
     it("does not activate a disabled control", () => {
       const clicks: number[] = []
       testRoot.render(
