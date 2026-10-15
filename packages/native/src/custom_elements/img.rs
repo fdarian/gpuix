@@ -804,15 +804,11 @@ fn paint_svg(
     if bounds.size.width <= gpui::px(0.0) || bounds.size.height <= gpui::px(0.0) {
         return;
     }
-    let image = match paint
+    let Some(image) = paint
         .borrow_mut()
         .image(window, renderer, bytes, bounds.size, scale, color)
-    {
-        Ok(image) => image,
-        Err(error) => {
-            log::warn!("<svg> could not be rasterised: {error}");
-            return;
-        }
+    else {
+        return;
     };
     let size = image.size(0);
     let drawn = gpui::size(

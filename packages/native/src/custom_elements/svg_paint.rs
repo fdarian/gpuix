@@ -22,7 +22,9 @@ pub struct SvgPaint {
 
 struct Cached {
     key: Key,
-    image: Arc<RenderImage>,
+    /// `None` when rasterising these inputs failed. The failure is cached under
+    /// the same key so bad markup is parsed and reported once, not per repaint.
+    image: Option<Arc<RenderImage>>,
 }
 
 struct Key {
@@ -51,6 +53,9 @@ impl SvgPaint {
     /// `Window::paint_image` takes as it is.
     ///
     /// The previous image is dropped from the atlas when the inputs changed.
+    ///
+    /// `None` means the SVG could not be rasterised; that is logged once and
+    /// retried only when the bytes, size, scale or colour change.
     pub fn image(
         &mut self,
         window: &mut gpui::Window,
@@ -59,7 +64,7 @@ impl SvgPaint {
         size: Size<Pixels>,
         scale_factor: f32,
         current_color: Rgba,
-    ) -> Result<Arc<RenderImage>, String> {
+    ) -> Option<Arc<RenderImage>> {
         let device = |value: Pixels| (f32::from(value) * scale_factor).round().max(1.0) as i32;
         let key = Key {
             bytes: bytes.clone(),
@@ -72,26 +77,47 @@ impl SvgPaint {
                 current_color.a.to_bits(),
             ],
         };
+        self.resolve(
+            key,
+            |key| rasterize(renderer, bytes, key.width, key.height, current_color),
+            |stale| {
+                window.drop_image(stale).ok();
+            },
+        )
+    }
+
+    fn resolve(
+        &mut self,
+        key: Key,
+        rasterize: impl FnOnce(&Key) -> Result<Arc<RenderImage>, String>,
+        drop_image: impl FnOnce(Arc<RenderImage>),
+    ) -> Option<Arc<RenderImage>> {
         if let Some(cached) = &self.cached {
             if cached.key.same_as(&key) {
-                return Ok(cached.image.clone());
+                return cached.image.clone();
             }
         }
         // Drop first: if rasterising fails the stale image must not linger.
-        if let Some(stale) = self.cached.take() {
-            window.drop_image(stale.image).ok();
+        if let Some(stale) = self.cached.take().and_then(|cached| cached.image) {
+            drop_image(stale);
         }
-        let image = rasterize(renderer, bytes, key.width, key.height, current_color)?;
+        let image = match rasterize(&key) {
+            Ok(image) => Some(image),
+            Err(error) => {
+                log::warn!("<svg> could not be rasterised: {error}");
+                None
+            }
+        };
         self.cached = Some(Cached {
             key,
             image: image.clone(),
         });
-        Ok(image)
+        image
     }
 
     /// The image currently held, so the owner can drop it from the atlas on teardown.
     pub fn held(&self) -> Option<Arc<RenderImage>> {
-        self.cached.as_ref().map(|cached| cached.image.clone())
+        self.cached.as_ref().and_then(|cached| cached.image.clone())
     }
 }
 
@@ -266,6 +292,66 @@ mod tests {
     #[test]
     fn rejects_input_that_is_not_an_svg() {
         assert!(rasterize(&renderer(), b"not svg", 4, 4, RED).is_err());
+    }
+
+    fn key(bytes: &Arc<[u8]>, width: i32, color: Rgba) -> Key {
+        Key {
+            bytes: bytes.clone(),
+            width,
+            height: 4,
+            color: [color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits()],
+        }
+    }
+
+    #[test]
+    fn a_failed_rasterisation_is_cached_until_an_input_changes() {
+        let bad: Arc<[u8]> = Arc::from(&b"not svg"[..]);
+        let mut paint = SvgPaint::default();
+        let attempts = std::cell::Cell::new(0);
+        let mut attempt = |paint: &mut SvgPaint, key: Key| {
+            let found = paint.resolve(
+                key,
+                |key| {
+                    attempts.set(attempts.get() + 1);
+                    rasterize(&renderer(), &bad, key.width, key.height, RED)
+                },
+                |_| {},
+            );
+            assert!(found.is_none());
+        };
+        attempt(&mut paint, key(&bad, 4, RED));
+        attempt(&mut paint, key(&bad, 4, RED));
+        // The same bytes in a new allocation are the same input.
+        let copy: Arc<[u8]> = Arc::from(&b"not svg"[..]);
+        attempt(&mut paint, key(&copy, 4, RED));
+        assert_eq!(attempts.get(), 1);
+        assert!(paint.held().is_none());
+
+        attempt(&mut paint, key(&bad, 8, RED));
+        assert_eq!(attempts.get(), 2, "a new size retries");
+        attempt(&mut paint, key(&bad, 8, Rgba { r: 0.0, ..RED }));
+        assert_eq!(attempts.get(), 3, "a new colour retries");
+    }
+
+    #[test]
+    fn a_failure_after_success_drops_the_stale_image_once() {
+        let good: Arc<[u8]> =
+            Arc::from(&br##"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2"/></svg>"##[..]);
+        let bad: Arc<[u8]> = Arc::from(&b"not svg"[..]);
+        let mut paint = SvgPaint::default();
+        let dropped = std::cell::Cell::new(0);
+        let run = |paint: &mut SvgPaint, bytes: &Arc<[u8]>| {
+            paint.resolve(
+                key(bytes, 2, RED),
+                |key| rasterize(&renderer(), bytes, key.width, key.height, RED),
+                |_| dropped.set(dropped.get() + 1),
+            )
+        };
+        assert!(run(&mut paint, &good).is_some());
+        assert!(run(&mut paint, &bad).is_none());
+        assert!(run(&mut paint, &bad).is_none());
+        assert_eq!(dropped.get(), 1);
+        assert!(paint.held().is_none());
     }
 
     #[test]
