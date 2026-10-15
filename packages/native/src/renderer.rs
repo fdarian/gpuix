@@ -7980,9 +7980,11 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(ref shadows) = style.box_shadow {
         // A shadow whose colour does not parse is dropped on its own, so one
         // bad entry does not take the rest of a list with it.
+        // CSS paints the first layer on top; gpui paints later ones on top.
         let shadows: Vec<gpui::BoxShadow> = shadows
             .as_slice()
             .iter()
+            .rev()
             .filter_map(|shadow| {
                 let color = colors.resolve(&shadow.color)?;
                 let built = gpui::BoxShadow::new(
