@@ -533,6 +533,9 @@ struct Running {
     timing: Ease,
     segment: Pair,
     end: AnimValue,
+    /// The segment runs to a number measured from layout standing in for
+    /// `end` (`auto`, or a percentage met from px), and follows it.
+    measured: bool,
     /// CSS "reversing-adjusted start value": where an interrupting change
     /// back to it counts as a reversal.
     reversing_start: AnimValue,
@@ -542,7 +545,8 @@ struct Running {
 
 impl Running {
     /// `None` when the two values cannot be interpolated, which in CSS means
-    /// the change is simply not transitioned.
+    /// the change is simply not transitioned. A percentage meeting a px length
+    /// has no px value until the parent has been measured.
     #[allow(clippy::too_many_arguments)]
     fn new(
         prop: AnimProp,
@@ -552,10 +556,13 @@ impl Running {
         entry: &Entry,
         reversing_start: AnimValue,
         shortening: f64,
+        measurement: Option<&Measurement>,
         now: Instant,
     ) -> Option<Self> {
-        let segment = pair(prop.name(), from, to).ok().filter(|pair| !pair.is_discrete())?;
+        let (from, to) = common_unit(prop, from, to, measurement)?;
+        let segment = pair(prop.name(), &from, &to).ok().filter(|pair| !pair.is_discrete())?;
         Some(Self {
+            measured: end != to,
             started: now,
             delay: if entry.delay >= 0.0 {
                 entry.delay
@@ -593,27 +600,57 @@ impl Running {
         self.segment.at(self.progress(self.elapsed(now)))
     }
 
-    /// Moves the end of a transition running to `height: auto` onto the
-    /// content's current height, without moving the value showing now: the
+    /// Moves the end of a transition running to a measured number onto the
+    /// measurement as it changes, without moving the value showing now: the
     /// start is solved so the same eased progress still lands on the old value.
     /// The schedule and the events are untouched.
-    fn follow(&mut self, natural: f64, now: Instant) {
+    fn follow(&mut self, prop: AnimProp, measurement: &Measurement, now: Instant) {
         // Too near the end the start would be solved from almost nothing, and
-        // the transition is about to hand over to the literal `auto` anyway.
+        // the transition is about to hand over to the literal style anyway.
         const NEAR_END: f64 = 0.999;
-        let progress = self.progress(self.elapsed(now));
-        if self.end != AnimValue::Auto || self.segment.to == [natural] || progress >= NEAR_END {
+        if !self.measured {
             return;
         }
+        let end = match &self.end {
+            AnimValue::Auto => Some(measurement.natural_height_px()),
+            AnimValue::Percent(fraction) => measurement.percent_px(prop, *fraction),
+            _ => None,
+        };
+        let progress = self.progress(self.elapsed(now));
+        let Some(end) = end.filter(|end| self.segment.to != [*end] && progress < NEAR_END) else {
+            return;
+        };
         let from = self.segment.from[0];
         let current = from + (self.segment.to[0] - from) * progress;
-        self.segment.from[0] = (current - natural * progress) / (1.0 - progress);
-        self.segment.to[0] = natural;
+        self.segment.from[0] = (current - end * progress) / (1.0 - progress);
+        self.segment.to[0] = end;
     }
 
     /// `elapsedTime` of `transitionrun` and `transitionstart`.
     fn initial_elapsed(&self) -> f64 {
         (-self.delay).min(self.duration).max(0.0)
+    }
+}
+
+/// The two ends of a transition in one unit. A px length and a percentage meet
+/// in px, the percentage resolved against the parent's last painted box; with
+/// no box to resolve against they cannot, and the change is not transitioned.
+fn common_unit(
+    prop: AnimProp,
+    from: &AnimValue,
+    to: &AnimValue,
+    measurement: Option<&Measurement>,
+) -> Option<(AnimValue, AnimValue)> {
+    let in_pixels = |value: &AnimValue| match value {
+        AnimValue::Percent(fraction) => measurement?
+            .percent_px(prop, *fraction)
+            .map(AnimValue::Number),
+        other => Some(other.clone()),
+    };
+    match (from, to) {
+        (AnimValue::Number(_), AnimValue::Percent(_))
+        | (AnimValue::Percent(_), AnimValue::Number(_)) => Some((in_pixels(from)?, in_pixels(to)?)),
+        _ => Some((from.clone(), to.clone())),
     }
 }
 
@@ -735,9 +772,8 @@ impl ElementState {
         }
         self.advance(id, now, events);
         if let Some(measurement) = measurement {
-            let natural = measurement.natural_height_px();
-            for running in self.running.values_mut() {
-                running.follow(natural, now);
+            for (prop, running) in &mut self.running {
+                running.follow(*prop, measurement, now);
             }
         }
     }
@@ -856,7 +892,7 @@ impl ElementState {
             if let (Some(from), Some(to), Some(end)) = (from, to, after_value) {
                 let reversing_start = before.unwrap_or_else(|| from.clone());
                 if let Some(running) =
-                    Running::new(prop, &from, &to, end, &entry, reversing_start, 1.0, now)
+                    Running::new(prop, &from, &to, end, &entry, reversing_start, 1.0, measurement, now)
                 {
                     self.begin(id, prop, running, events);
                 }
@@ -891,7 +927,7 @@ impl ElementState {
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
         if let Some(running) =
-            Running::new(prop, &current, &to, end, &entry, reversing_start, shortening, now)
+            Running::new(prop, &current, &to, end, &entry, reversing_start, shortening, measurement, now)
         {
             self.begin(id, prop, running, events);
         }
@@ -1439,7 +1475,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_units_and_auto_change_without_transitioning() {
+    fn px_percent_and_auto_changes_are_instant_until_layout_can_resolve_them() {
         let mut clock = Clock::new();
         clock.frame(0, &style(r#"{ "width": 10, "transition": "all 1s" }"#));
         let percent = style(r#"{ "width": "50%", "transition": "all 1s" }"#);
@@ -1768,6 +1804,128 @@ mod tests {
             let error = validate_transitions(&style(r#"{ "hover": { "interpolateSize": "x" } }"#))
                 .unwrap_err();
             assert!(error.starts_with("hover."), "{error}");
+        }
+
+        fn in_parent(width: f32, height: f32) -> Measurement {
+            Measurement {
+                parent_content: Some(gpui::size(gpui::px(width), gpui::px(height))),
+                ..measurement(30.0, 30.0)
+            }
+        }
+
+        fn width_of(style: &StyleDesc) -> f64 {
+            match style.width {
+                Some(DimensionValue::Pixels(width)) => width,
+                ref other => panic!("expected px, got {other:?}"),
+            }
+        }
+
+        fn sized(width: &str) -> StyleDesc {
+            style(&format!(r#"{{ "width": {width}, "transition": "width 1s linear" }}"#))
+        }
+
+        #[test]
+        fn px_to_a_percentage_runs_through_px_and_ends_on_the_percentage() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            clock.frame_measured(0, &sized("0"), None, Some(&parent));
+
+            let started = clock.frame_measured(100, &sized(r#""50%""#), None, Some(&parent));
+            assert_eq!(width_of(&started), 0.0);
+            assert_eq!(width_of(&clock.frame_measured(600, &sized(r#""50%""#), None, Some(&parent))), 50.0);
+            assert!(clock.transitions.take_active());
+
+            let ended = clock.frame_measured(1100, &sized(r#""50%""#), None, Some(&parent));
+            assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
+            assert_eq!(
+                clock.events(),
+                [
+                    (Run, "width".to_string(), 0.0),
+                    (Start, "width".to_string(), 0.0),
+                    (End, "width".to_string(), 1.0),
+                ]
+            );
+            // The style keeps the percentage, so nothing starts again.
+            let after = clock.frame_measured(1200, &sized(r#""50%""#), None, Some(&parent));
+            assert_eq!(after.width, Some(DimensionValue::Percentage(0.5)));
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn a_percentage_to_px_starts_from_the_percentage_in_px() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&parent));
+            let started = clock.frame_measured(100, &sized("20"), None, Some(&parent));
+            assert_eq!(width_of(&started), 100.0);
+            assert_eq!(width_of(&clock.frame_measured(600, &sized("20"), None, Some(&parent))), 60.0);
+            let ended = clock.frame_measured(1100, &sized("20"), None, Some(&parent));
+            assert_eq!(ended.width, Some(DimensionValue::Pixels(20.0)));
+        }
+
+        #[test]
+        fn two_percentages_still_blend_as_percentages() {
+            let mut clock = Clock::new();
+            clock.frame(0, &sized(r#""10%""#));
+            clock.frame(100, &sized(r#""50%""#));
+            let middle = clock.frame(600, &sized(r#""50%""#));
+            let Some(DimensionValue::Percentage(fraction)) = middle.width else {
+                panic!("expected a percentage, got {:?}", middle.width);
+            };
+            assert!((fraction - 0.3).abs() < 1e-9, "{fraction}");
+        }
+
+        #[test]
+        fn a_root_has_no_parent_box_to_resolve_a_percentage_against() {
+            let mut clock = Clock::new();
+            let root = measurement(30.0, 30.0);
+            clock.frame_measured(0, &sized("0"), None, Some(&root));
+            let changed = clock.frame_measured(100, &sized(r#""50%""#), None, Some(&root));
+            assert_eq!(changed.width, Some(DimensionValue::Percentage(0.5)));
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn the_percentage_end_follows_the_parent_while_it_runs() {
+            let mut clock = Clock::new();
+            clock.frame_measured(0, &sized("0"), None, Some(&in_parent(200.0, 80.0)));
+            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&in_parent(200.0, 80.0)));
+            let wider = in_parent(400.0, 80.0);
+            let mid = clock.frame_measured(500, &sized(r#""50%""#), None, Some(&wider));
+            assert_eq!(width_of(&mid), 50.0, "the value showing does not jump");
+            let later = clock.frame_measured(750, &sized(r#""50%""#), None, Some(&wider));
+            assert_eq!(width_of(&later), 125.0);
+            let ended = clock.frame_measured(1000, &sized(r#""50%""#), None, Some(&wider));
+            assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
+        }
+
+        #[test]
+        fn reversing_a_px_to_percentage_transition_shortens_the_return() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            clock.frame_measured(0, &sized("0"), None, Some(&parent));
+            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&parent));
+            assert_eq!(width_of(&clock.frame_measured(500, &sized(r#""50%""#), None, Some(&parent))), 50.0);
+            clock.events();
+
+            // Back to the start value after half the time: the return takes half
+            // as long, from 50px to 0.
+            clock.frame_measured(500, &sized("0"), None, Some(&parent));
+            assert_eq!(width_of(&clock.frame_measured(750, &sized("0"), None, Some(&parent))), 25.0);
+            let ended = clock.frame_measured(1000, &sized("0"), None, Some(&parent));
+            assert_eq!(ended.width, Some(DimensionValue::Pixels(0.0)));
+        }
+
+        #[test]
+        fn a_percentage_height_resolves_against_the_parent_height() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            let tall = |height: &str| {
+                style(&format!(r#"{{ "height": {height}, "transition": "height 1s linear" }}"#))
+            };
+            clock.frame_measured(0, &tall("0"), None, Some(&parent));
+            clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
+            assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 20.0);
         }
     }
 }
