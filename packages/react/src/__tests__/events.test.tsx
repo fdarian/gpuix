@@ -612,7 +612,7 @@ describeNative("events", () => {
         ]
       `)
 
-      // Click outside the dropdown — GPUI fires on_mouse_down_out
+      // Click outside the dropdown — the dispatcher fires mousedownoutside
       testRoot.renderer.nativeSimulateClick(350, 350)
 
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
@@ -620,6 +620,60 @@ describeNative("events", () => {
           "trigger",
         ]
       `)
+    })
+  })
+
+  describe("mouseDownOutside and the logical tree", () => {
+    function Probe({ log, overlay }: { log: Array<[number, number | undefined]>; overlay?: boolean }) {
+      return (
+        <div style={{ width: 600, height: 400, position: "relative" }}>
+          <div
+            testId="x"
+            style={{ width: 100, height: 40 }}
+            onMouseDownOutside={(event) => log.push([event.button ?? -1, event.target])}
+          >
+            <text>x</text>
+            <anchored position={{ x: 300, y: 200 }} style={{ width: 120, height: 80 }}>
+              <div testId="popup" style={{ width: 120, height: 80 }}>
+                <text>popup</text>
+              </div>
+            </anchored>
+          </div>
+          {overlay && (
+            <div
+              testId="overlay"
+              style={{ position: "absolute", top: 0, left: 0, width: 200, height: 100, backgroundColor: "#222" }}
+            />
+          )}
+        </div>
+      )
+    }
+
+    it("does not fire for a press inside an anchored popup declared under the element", () => {
+      const log: Array<[number, number | undefined]> = []
+      testRoot.render(<Probe log={log} />)
+      testRoot.renderer.nativeSimulateClick(10, 10)
+      expect(log).toEqual([])
+      testRoot.renderer.nativeSimulateClick(340, 240)
+      expect(log).toEqual([])
+      testRoot.renderer.nativeSimulateClick(500, 350)
+      expect(log).toHaveLength(1)
+    })
+
+    it("fires for a press on an overlay above the element, with the overlay as target", () => {
+      const log: Array<[number, number | undefined]> = []
+      testRoot.render(<Probe log={log} overlay />)
+      testRoot.renderer.nativeSimulateClick(10, 10)
+      const overlay = testRoot.renderer.findByTestId("overlay")
+      expect(overlay).toBeDefined()
+      expect(log).toEqual([[0, overlay!.id]])
+    })
+
+    it("fires for a non-primary button press", () => {
+      const log: Array<[number, number | undefined]> = []
+      testRoot.render(<Probe log={log} />)
+      testRoot.renderer.nativeSimulateMouseDown(500, 350, 2)
+      expect(log).toEqual([[2, expect.any(Number)]])
     })
   })
 

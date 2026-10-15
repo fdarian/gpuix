@@ -51,6 +51,25 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     expect(value()).toBe("b")
   })
 
+  it("closes a Select from its trigger without reopening on the same press", () => {
+    const app = createTestRoot()
+    app.render(() => (
+      <Select defaultValue="a">
+        <SelectTrigger testId="trigger" style={{ width: 120, height: 32, backgroundColor: "#333333" }}>
+          <text>open</text>
+        </SelectTrigger>
+        <SelectContent style={{ width: 120, backgroundColor: "#222222" }}>
+          <SelectItem value="a"><text>A</text></SelectItem>
+          <SelectItem value="b"><text>B</text></SelectItem>
+        </SelectContent>
+      </Select>
+    ))
+    app.renderer.nativeSimulateClick(60, 16)
+    expect(app.renderer.getAllText()).toContain("B")
+    app.renderer.nativeSimulateClick(60, 16)
+    expect(app.renderer.getAllText()).toEqual(["open"])
+  })
+
   it("filters and submits a combobox item", () => {
     const [value, setValue] = createSignal<string | string[] | null>(null)
     const app = createTestRoot()

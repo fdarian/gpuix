@@ -36,6 +36,10 @@ interface SelectContextValue {
   disabled: boolean
   labels: Map<string, JSX.Element>
   trigger: { current: HostElement | null }
+  /** The trigger was pressed while the popup was open: its click closes, not toggles. */
+  triggerPressedWhileOpen: { current: boolean }
+  /** An outside press just closed the popup, so a click on the trigger must not reopen it. */
+  dismissedByOutsidePress: { current: boolean }
   /** `restoreFocus: false` when the user pressed elsewhere, so the press keeps
    *  the focus it just gave. */
   setOpen(value: boolean, restoreFocus?: boolean): void
@@ -71,6 +75,8 @@ export function Select(props: SelectProps): JSX.Element {
   const [active, setActive] = createSignal<string | null>(null)
   const items: ItemRecord[] = []
   const trigger: { current: HostElement | null } = { current: null }
+  const triggerPressedWhileOpen = { current: false }
+  const dismissedByOutsidePress = { current: false }
   const value = () => props.value === undefined ? internalValue() : props.value
   const open = () => props.open === undefined ? internalOpen() : props.open
   const setValue = (next: string) => {
@@ -106,6 +112,8 @@ export function Select(props: SelectProps): JSX.Element {
     disabled: props.disabled ?? false,
     labels,
     trigger,
+    triggerPressedWhileOpen,
+    dismissedByOutsidePress,
     setOpen,
     setActive,
     move,
@@ -159,9 +167,23 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
           placeholder: state.value() === undefined,
         })
       },
+      onMouseDown(event: HostMouseEvent) {
+        props.onMouseDown?.(event)
+        state.triggerPressedWhileOpen.current = state.open()
+      },
       onClick(event: HostPointerEvent) {
         props.onClick?.(event)
-        if (!disabled()) state.setOpen(!state.open())
+        if (disabled()) return
+        if (state.dismissedByOutsidePress.current) {
+          state.dismissedByOutsidePress.current = false
+          return
+        }
+        if (state.triggerPressedWhileOpen.current) {
+          state.triggerPressedWhileOpen.current = false
+          state.setOpen(false)
+          return
+        }
+        state.setOpen(!state.open())
       },
       onKeyDown(event: KeyEvent) {
         props.onKeyDown?.(event)
@@ -211,6 +233,10 @@ export function SelectContent(props: SelectContentProps): JSX.Element {
             tabIndex: props.tabIndex ?? -1,
             onMouseDownOutside(event) {
               props.onMouseDownOutside?.(event)
+              state.dismissedByOutsidePress.current = true
+              queueMicrotask(() => {
+                state.dismissedByOutsidePress.current = false
+              })
               state.setOpen(false, false)
             },
             onKeyDown(event) {

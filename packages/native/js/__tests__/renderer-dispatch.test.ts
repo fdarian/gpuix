@@ -88,12 +88,15 @@ describe("renderer dispatch of pointer, mouse and drag events", () => {
   })
 
   it("keeps the gpuix outside-press event off the DOM path", () => {
-    const { state, listen, calls, flush } = setup()
+    const { state, listen, calls, flush, seen } = setup()
     listen(3, "mousedownoutside")
     listen(1, "mousedownoutside")
-    expect(state.dispatch(event("mouseDownOutside", { path: [3, 2, 1] }))).toBe(true)
+    // Native delivers it to the listener (1), with the press target (3) in the payload.
+    const outside = event("mouseDownOutside", { elementId: 1, target: 3, path: [3, 2, 1] })
+    expect(state.dispatch(outside)).toBe(true)
     flush()
-    expect(calls).toEqual(["3:mousedownoutside:mouseDownOutside"])
+    expect(calls).toEqual(["1:mousedownoutside:mouseDownOutside"])
+    expect(seen).toEqual([outside])
   })
 
   it("leaves other event types alone", () => {

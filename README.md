@@ -3256,7 +3256,7 @@ text imports no longer need a runtime flag.
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
 | Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` is not emitted yet |
 | Drag and drop | `onDragStart`, `onDrag`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | `onDrop` carries `paths` for a file dropped from the OS. The rest are not emitted yet |
-| Click outside | `onMouseDownOutside` | `x`, `y`, `button`, `modifiers` |
+| Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
 | Focus | `onFocus` | — |
@@ -3276,6 +3276,13 @@ text imports no longer need a runtime flag.
 Every pointer, mouse and drag handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
 `onMouseDownOutside` is gpuix's own event and has none.
+
+`onMouseDownOutside` fires after `pointerdown` and `mousedown` of a press, for any button, on every element
+that listens for it and does not contain the pressed element. "Contain" follows the logical tree, so a press
+inside an `<anchored>` popup declared under an element is inside that element, and a press on an overlay that
+only paints above it is outside. The handler runs at the listening element alone: it does not bubble, and
+`target` is the element that was pressed. A press the dispatcher retargets, such as one on a pointer-captured
+element, reports the captured element.
 
 Events are DOM-shaped and propagate like the DOM. A handler receives
 `target` and `currentTarget` (element ids), `eventPhase`, `bubbles`,

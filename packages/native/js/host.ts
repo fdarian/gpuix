@@ -461,7 +461,12 @@ export interface HostProps extends PointerEventProps {
   style?: StyleDesc
 
   // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
-  /** Fires when user clicks OUTSIDE this element. Use for "click outside to close". */
+  /**
+   * A button went down on an element outside this one's logical subtree, for any
+   * button. Anchored descendants are inside; an overlay that merely paints above is
+   * outside. Runs at this element only, after `pointerdown` and `mousedown`, with
+   * `event.target` set to the pressed element. Use for "click outside to close".
+   */
   onMouseDownOutside?: (event: EventPayload) => void
 
   // ── Keyboard events (need focus: autoFocus, or a click on the element) ──

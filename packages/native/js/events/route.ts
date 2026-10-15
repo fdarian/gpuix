@@ -3,7 +3,7 @@ import type { EventHandlerMap } from "../host.js"
 import { captureHandlerKey } from "./dispatch.js"
 import { POINTER_EVENT_TYPES } from "./event-props.js"
 
-/** gpuix's own outside-press event: not DOM, no capture phase, no propagation path. */
+/** gpuix's own outside-press event: not DOM. Native delivers it to the listening element alone, with the press target in `target`. */
 const MOUSE_DOWN_OUTSIDE = "mousedownoutside"
 
 /**
