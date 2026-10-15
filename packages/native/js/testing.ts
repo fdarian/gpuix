@@ -28,6 +28,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
+import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
 import { readFontFiles } from "./fonts.js"
@@ -714,8 +715,9 @@ export class TestRenderer implements NativeRenderer {
 
   /** Find the first text element containing the given string. */
   findByText(text: string): TestElement | undefined {
+    const wanted = matchableText(text)
     return [...this.buildElementMap().values()].find(
-      (el) => el.text != null && el.text.includes(text)
+      (el) => el.text != null && matchableText(el.text).includes(wanted)
     )
   }
 

@@ -20,6 +20,7 @@ import {
   type ResultOf,
   type TreeNode,
 } from "./protocol.js"
+import { matchableText } from "../text-match.js"
 
 function importNodeModule<T>(specifier: string): Promise<T> {
   return import(specifier)
@@ -356,7 +357,10 @@ interface Selector {
 function matches(node: TreeNode, selector: Selector): boolean {
   if (selector.testId != null && node.testId !== selector.testId) return false
   if (selector.type != null && node.type !== selector.type) return false
-  if (selector.text != null && !(node.text ?? "").includes(selector.text)) {
+  if (
+    selector.text != null &&
+    !matchableText(node.text ?? "").includes(matchableText(selector.text))
+  ) {
     return false
   }
   return true

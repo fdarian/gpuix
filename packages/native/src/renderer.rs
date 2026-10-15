@@ -7503,8 +7503,8 @@ pub(crate) fn build_host_container(
     // conditional row. React never sends empty text, so this is a no-op there.
     let mut paint_ranks = Vec::new();
     if element.children.is_empty() {
-        if let Some(content) = element.content.as_deref().filter(|value| !value.is_empty()) {
-            el = el.child(text_content(element, content, ctx));
+        if let Some(content) = crate::text::inline::own_text(ctx.tree, element) {
+            el = el.child(text_content(element, &content, ctx));
             paint_ranks.push(0);
         }
     }
@@ -7909,10 +7909,17 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
         Some("left") | Some("start") => el = el.text_left(),
         _ => {}
     }
-    match style.white_space.as_deref() {
-        Some("nowrap") => el = el.whitespace_nowrap(),
-        Some("normal") => el = el.whitespace_normal(),
-        _ => {}
+    // Collapsing is the paragraph builder's (`text::inline`); gpui only wraps.
+    if let Some(white_space) = style
+        .white_space
+        .as_deref()
+        .and_then(crate::text::white_space::WhiteSpace::parse)
+    {
+        el = if white_space.wraps() {
+            el.whitespace_normal()
+        } else {
+            el.whitespace_nowrap()
+        };
     }
     match style.text_overflow.as_deref() {
         Some("ellipsis") => el = el.text_ellipsis(),

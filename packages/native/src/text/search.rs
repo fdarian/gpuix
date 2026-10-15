@@ -570,10 +570,10 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
     if super::inline::is_host_container(element) {
         if element.children.is_empty() {
             // Own content is a line of its own.
-            if let Some(content) = element.content.as_ref().filter(|text| !text.is_empty()) {
+            if let Some(content) = super::inline::own_text(tree, element) {
                 out.push(Group::new(
                     vec![(crate::text::selection_key(id, 0), 0..content.len())],
-                    content.clone(),
+                    content,
                 ));
             }
             return;
@@ -606,11 +606,11 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
             collect_into(tree, child_id, false, out);
             continue;
         }
-        let Some(content) = child.content.as_ref().filter(|text| !text.is_empty()) else {
+        let Some(content) = super::inline::own_text(tree, child) else {
             continue;
         };
         let start = pending_text.len();
-        pending_text.push_str(content);
+        pending_text.push_str(&content);
         pending.push((
             crate::text::selection_key(child_id, 0),
             start..pending_text.len(),
@@ -988,7 +988,9 @@ mod tests {
     fn custom_parent_tree() -> RetainedTree {
         let mut tree = RetainedTree::new();
         tree.create_element(1, "anchored".to_string());
-        for (id, text) in [(3, "Hello "), (4, "Tommy"), (5, "!")] {
+        // A no-break space, because each string is a block of its own for white
+        // space, and a plain space at the end of one is removed.
+        for (id, text) in [(3, "Hello\u{00A0}"), (4, "Tommy"), (5, "!")] {
             tree.create_element(id, "text".to_string());
             tree.append_child(1, id);
             tree.set_text(id, text.to_string());
@@ -1001,12 +1003,12 @@ mod tests {
         let groups = GroupList::collect(&custom_parent_tree(), 1);
         assert_eq!(groups.groups[0].parts.len(), 3);
         let set = HighlightSet {
-            specs: vec![spec("Hello Tommy")],
+            specs: vec![spec("Hello\u{00A0}Tommy")],
         };
         let ctx = context(&groups, set);
         assert_eq!(ctx.matches.total, 1);
         let painted = paint(&ctx, &groups);
-        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..6);
+        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..7);
         assert_eq!(painted[&Arc::from("4:0")][0].range, 0..5);
         assert!(!painted.contains_key(&Arc::<str>::from("5:0")));
     }

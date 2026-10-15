@@ -464,6 +464,22 @@ impl RetainedTree {
         self.mark_changed_detail(id, false);
     }
 
+    /// Invalidate `id`, its ancestors and everything below it, including their
+    /// searchable text.
+    fn mark_subtree_changed(&mut self, id: u64) {
+        self.mark_changed(id);
+        let revision = self.take_revision();
+        let mut pending = vec![id];
+        while let Some(current) = pending.pop() {
+            let Some(element) = self.elements.get_mut(&current) else {
+                continue;
+            };
+            element.subtree_revision = revision;
+            element.search_revision = revision;
+            pending.extend(element.children.iter().copied());
+        }
+    }
+
     fn mark_changed_detail(&mut self, id: u64, search: bool) {
         let revision = self.take_revision();
         let mut current = Some(id);
@@ -583,6 +599,7 @@ impl RetainedTree {
     pub fn set_style(&mut self, id: u64, style: Arc<StyleDesc>) {
         let mut changed = false;
         let mut regrouped = false;
+        let mut text_reprocessed = false;
         if let Some(element) = self.elements.get_mut(&id) {
             let same = element
                 .style
@@ -591,11 +608,17 @@ impl RetainedTree {
             if !same {
                 regrouped =
                     !crate::text::inline::same_paragraphs(element.style.as_deref(), &style);
+                text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
+                    != style.white_space.as_deref();
                 element.style = Some(style);
                 changed = true;
             }
         }
-        if regrouped {
+        if text_reprocessed {
+            // `white-space` is inherited and decides what text is left of a
+            // string, so the searchable text of every descendant changes.
+            self.mark_subtree_changed(id);
+        } else if regrouped {
             // `display` decides which text nodes form one paragraph, and a
             // paragraph is what search matches.
             self.mark_changed(id);

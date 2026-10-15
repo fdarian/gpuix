@@ -14,6 +14,7 @@ pub mod paragraph;
 pub mod runs;
 pub mod search;
 pub mod selection;
+pub mod white_space;
 
 pub use paint::{
     chrome_text, log_painted_text, painted_highlights, painted_text, range_rects,

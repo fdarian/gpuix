@@ -22,6 +22,8 @@ use std::ops::Range;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
 
+use super::white_space::{self, Emit, Tail, WhiteSpace};
+
 /// CSS white space: space, tab, line feed, carriage return, form feed. A
 /// no-break space is content.
 pub fn is_collapsible_whitespace(c: char) -> bool {
@@ -77,7 +79,7 @@ pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
 /// Whether swapping `old` for `new` leaves every paragraph where it was: none
 /// of the properties [`plan_children`] reads changed.
 pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
-    fn read(style: Option<&StyleDesc>) -> ([Option<&str>; 5], bool) {
+    fn read(style: Option<&StyleDesc>) -> ([Option<&str>; 6], bool) {
         let field = |get: fn(&StyleDesc) -> Option<&str>| style.and_then(get);
         (
             [
@@ -86,6 +88,7 @@ pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
                 field(|style| style.overflow.as_deref()),
                 field(|style| style.overflow_x.as_deref()),
                 field(|style| style.overflow_y.as_deref()),
+                field(|style| style.white_space.as_deref()),
             ],
             style.is_some_and(has_state_styles),
         )
@@ -196,26 +199,103 @@ pub enum Child {
     Paragraph(Paragraph),
 }
 
-#[derive(Default)]
+/// Collects one paragraph and applies `white-space` as it goes: what is pushed
+/// is the text that is painted, searched and copied, and every range is a byte
+/// range of that text.
 struct Builder {
     owner: Option<u64>,
     text: String,
     pieces: Vec<Piece>,
     boxes: Vec<(u64, Range<usize>)>,
+    tail: Tail,
+    /// Characters since the last forced break, which is what a tab stop counts.
+    column: usize,
+    /// The container's `white-space`, then that of each open box.
+    modes: Vec<WhiteSpace>,
+    /// Every character that came in was collapsible whitespace.
+    only_whitespace: bool,
+    /// A flex or grid item of whitespace alone is not rendered, whatever its
+    /// `white-space`.
+    blockified: bool,
 }
 
 impl Builder {
+    fn new(base: WhiteSpace, blockified: bool) -> Self {
+        Self {
+            owner: None,
+            text: String::new(),
+            pieces: Vec::new(),
+            boxes: Vec::new(),
+            tail: Tail::LineStart,
+            column: 0,
+            modes: vec![base],
+            only_whitespace: true,
+            blockified,
+        }
+    }
+
+    fn mode(&self) -> WhiteSpace {
+        *self.modes.last().expect("the container's mode is always there")
+    }
+
+    /// Removes the last character, a space or a line feed, from the text and
+    /// from every range that reached it.
+    fn pop(&mut self) {
+        self.text.pop();
+        self.column = self.column.saturating_sub(1);
+        let len = self.text.len();
+        for piece in &mut self.pieces {
+            piece.range.end = piece.range.end.min(len);
+        }
+        self.pieces.retain(|piece| !piece.range.is_empty());
+        for (_, range) in &mut self.boxes {
+            range.start = range.start.min(len);
+            range.end = range.end.min(len);
+        }
+    }
+
     fn push_text(&mut self, leaf: u64, content: &str, boxes: &[u64]) {
         if content.is_empty() {
             return;
         }
         self.owner.get_or_insert(leaf);
-        let start = self.text.len();
-        self.text.push_str(content);
-        self.pieces.push(Piece {
-            range: start..self.text.len(),
-            boxes: boxes.to_vec(),
-        });
+        self.only_whitespace &= is_blank(content);
+        let mode = self.mode();
+        let mut start = self.text.len();
+        let mut chars = content.chars().peekable();
+        while let Some(c) = chars.next() {
+            let c = match c {
+                '\r' if chars.peek() == Some(&'\n') => continue,
+                '\r' => '\n',
+                c => c,
+            };
+            match white_space::step(&mut self.tail, c, mode) {
+                Emit::Nothing => {}
+                Emit::Char('\t') if mode.keeps_tabs() => {
+                    let width = white_space::tab_width(self.column);
+                    self.text.extend(std::iter::repeat_n(' ', width));
+                    self.column += width;
+                }
+                Emit::Char(c) => {
+                    self.text.push(c);
+                    self.column += 1;
+                }
+                Emit::Break { trim } => {
+                    if trim {
+                        self.pop();
+                        start = start.min(self.text.len());
+                    }
+                    self.text.push('\n');
+                    self.column = 0;
+                }
+            }
+        }
+        if self.text.len() > start {
+            self.pieces.push(Piece {
+                range: start..self.text.len(),
+                boxes: boxes.to_vec(),
+            });
+        }
     }
 
     fn push_element(
@@ -230,10 +310,10 @@ impl Builder {
             }
             return;
         }
-        let start = self.text.len();
         let slot = self.boxes.len();
-        self.boxes.push((element.id, start..start));
+        self.boxes.push((element.id, self.text.len()..self.text.len()));
         chain.push(element.id);
+        self.modes.push(white_space::of_box(element, self.mode()));
         if let Some(content) = element.content.as_deref() {
             self.push_text(element.id, content, chain);
         }
@@ -245,23 +325,28 @@ impl Builder {
         {
             self.push_element(tree, child, chain);
         }
+        self.modes.pop();
         chain.pop();
-        let end = self.text.len();
-        if end > start {
-            self.boxes[slot].1 = start..end;
-        } else {
-            self.boxes.remove(slot);
-        }
+        // The start may have moved back when a line feed trimmed the space
+        // before it, so it is read from the slot.
+        self.boxes[slot].1.end = self.text.len();
     }
 
-    /// Ends the paragraph. One with no content, or only collapsible whitespace,
-    /// generates no box.
+    /// Ends the paragraph. A collapsible space at its end is removed, and so is
+    /// a single final line feed, which ends the last line and starts no new
+    /// one. A paragraph with nothing left generates no box.
     fn finish(&mut self, out: &mut Vec<Child>) {
-        let builder = std::mem::take(self);
+        let mut builder = std::mem::replace(self, Self::new(self.modes[0], self.blockified));
         let Some(owner) = builder.owner else { return };
-        if is_blank(&builder.text) {
+        if builder.tail == Tail::Space {
+            builder.pop();
+        } else if builder.text.ends_with('\n') {
+            builder.pop();
+        }
+        if builder.text.is_empty() || (builder.blockified && builder.only_whitespace) {
             return;
         }
+        builder.boxes.retain(|(_, range)| !range.is_empty());
         out.push(Child::Paragraph(Paragraph {
             owner,
             text: builder.text,
@@ -278,7 +363,7 @@ impl Builder {
 pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Child> {
     let items = lays_out_items(container.style.as_deref());
     let mut out = Vec::new();
-    let mut paragraph = Builder::default();
+    let mut paragraph = Builder::new(white_space::computed(tree, container), items);
     if let Some(content) = container.content.as_deref() {
         paragraph.push_text(container.id, content, &[]);
     }
@@ -303,26 +388,31 @@ pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Ch
     out
 }
 
-/// The text an inline formatting context reads out: its own content and that of
-/// every inline box inside it, in order.
-pub fn accessible_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
-    fn collect(tree: &RetainedTree, element: &RetainedElement, out: &mut String) {
-        if let Some(content) = element.content.as_deref() {
-            out.push_str(content);
-        }
-        for child in element
-            .children
-            .iter()
-            .filter_map(|id| tree.elements.get(id))
-            .filter(|child| !is_display_none(child))
-        {
-            if is_raw_text(child) || is_inline_box(tree, child, element) {
-                collect(tree, child, out);
-            }
-        }
+/// The text a node with no children paints, after `white-space`: `content` of
+/// `element`, which is a text node or a host that carries a string. `None` when
+/// nothing is left of it.
+pub fn own_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
+    let content = element.content.as_deref()?;
+    let mut paragraph = Builder::new(white_space::computed(tree, element), false);
+    paragraph.push_text(element.id, content, &[]);
+    let mut out = Vec::new();
+    paragraph.finish(&mut out);
+    match out.pop() {
+        Some(Child::Paragraph(paragraph)) => Some(paragraph.text),
+        _ => None,
     }
-    let mut text = String::new();
-    collect(tree, element, &mut text);
+}
+
+/// The text an inline formatting context reads out, as painted: its own content
+/// and that of every inline box inside it, in order.
+pub fn accessible_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
+    let text: String = plan_children(tree, element)
+        .into_iter()
+        .filter_map(|child| match child {
+            Child::Paragraph(paragraph) => Some(paragraph.text),
+            Child::Block(_) => None,
+        })
+        .collect();
     (!text.is_empty()).then_some(text)
 }
 
@@ -697,8 +787,10 @@ mod tests {
             let plan = nested_text_plan(|f| configure(f));
             assert_eq!(plan.len(), 3, "{name}: paragraph, block, paragraph");
             assert_eq!(plan[1], Child::Block(3), "{name}");
-            assert_eq!(paragraphs(&plan)[0].text, "one ", "{name}");
-            assert_eq!(paragraphs(&plan)[1].text, " three", "{name}");
+            // The space at the end of a line, and the one at the start of the
+            // next, are removed.
+            assert_eq!(paragraphs(&plan)[0].text, "one", "{name}");
+            assert_eq!(paragraphs(&plan)[1].text, "three", "{name}");
         }
     }
 
@@ -724,6 +816,222 @@ mod tests {
             Some(&hover),
             &style(serde_json::json!({"hover": {"color": "green"}}))
         ));
+    }
+
+    fn text_of(f: &Fixture, id: u64) -> String {
+        let plan = f.plan(id);
+        assert_eq!(plan.len(), 1, "{plan:?}");
+        paragraphs(&plan)[0].text.clone()
+    }
+
+    #[test]
+    fn spaces_collapse_inside_a_text_node() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a  \t b\n\n  c");
+        assert_eq!(text_of(&f, 1), "a b c");
+    }
+
+    #[test]
+    fn spaces_collapse_across_span_edges_and_the_first_run_keeps_the_space() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "span").text(3, 4, " b ");
+        f.add(1, 5, "span").text(5, 6, " c");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a b c");
+        assert_eq!(paragraph.pieces[0].range, 0..2, "the space stays in the first run");
+        assert_eq!(paragraph.pieces[1].range, 2..4);
+        assert_eq!(paragraph.pieces[2].range, 4..5);
+        assert_eq!(paragraph.boxes, vec![(3, 2..4), (5, 4..5)]);
+    }
+
+    #[test]
+    fn a_space_only_span_between_words_keeps_one_space() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "span").text(3, 4, "  ");
+        f.text(1, 5, "b");
+        assert_eq!(text_of(&f, 1), "a b");
+    }
+
+    #[test]
+    fn a_span_that_collapses_to_nothing_has_no_box() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "span").text(3, 4, " ");
+        f.text(1, 5, "b");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a b");
+        assert!(paragraph.boxes.is_empty());
+        assert_eq!(paragraph.pieces.len(), 2);
+    }
+
+    #[test]
+    fn the_start_and_end_of_a_paragraph_are_stripped() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "  \n a ");
+        f.add(1, 3, "span").text(3, 4, "b \n ");
+        f.text(1, 5, "  ");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a b");
+        assert_eq!(paragraph.boxes, vec![(3, 2..3)]);
+        let covered: usize = paragraph.pieces.iter().map(|piece| piece.range.len()).sum();
+        assert_eq!(covered, paragraph.text.len());
+    }
+
+    #[test]
+    fn a_block_child_ends_a_line_so_the_space_before_it_goes() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "one ");
+        f.add(1, 3, "div");
+        f.text(1, 4, " two");
+        let plan = f.plan(1);
+        assert_eq!(paragraphs(&plan)[0].text, "one");
+        assert_eq!(paragraphs(&plan)[1].text, "two");
+    }
+
+    #[test]
+    fn ranges_are_bytes_of_the_collapsed_text() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "héllo   ");
+        f.add(1, 3, "span").text(3, 4, "  wörld");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "héllo wörld");
+        assert_eq!(paragraph.pieces[0].range, 0..7);
+        assert_eq!(paragraph.pieces[1].range, 7..paragraph.text.len());
+        assert_eq!(paragraph.box_at(8), Some(3));
+    }
+
+    #[test]
+    fn nowrap_collapses_like_normal() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "nowrap"}));
+        f.text(1, 2, " a \n  b ");
+        assert_eq!(text_of(&f, 1), "a b");
+    }
+
+    #[test]
+    fn pre_keeps_spaces_tabs_and_line_feeds() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "  a  b\n   c  ");
+        assert_eq!(text_of(&f, 1), "  a  b\n   c  ");
+    }
+
+    #[test]
+    fn a_tab_in_pre_expands_to_the_next_multiple_of_eight_columns() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre-wrap"}));
+        f.text(1, 2, "ab\tc\n\td");
+        assert_eq!(text_of(&f, 1), "ab      c\n        d");
+    }
+
+    #[test]
+    fn pre_ends_at_one_final_line_feed_not_two_lines() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "a\n");
+        assert_eq!(text_of(&f, 1), "a");
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "a\n\n");
+        assert_eq!(text_of(&f, 1), "a\n");
+    }
+
+    #[test]
+    fn crlf_and_a_lone_cr_are_one_line_feed() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "a\r\nb\rc");
+        assert_eq!(text_of(&f, 1), "a\nb\nc");
+    }
+
+    #[test]
+    fn pre_wrap_keeps_trailing_spaces() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre-wrap"}));
+        f.text(1, 2, "a  ");
+        assert_eq!(text_of(&f, 1), "a  ");
+    }
+
+    #[test]
+    fn pre_line_collapses_spaces_and_keeps_line_feeds() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre-line"}));
+        f.text(1, 2, "  a   b \n   c\n\nd ");
+        assert_eq!(text_of(&f, 1), "a b\nc\n\nd");
+    }
+
+    #[test]
+    fn white_space_is_inherited_by_text_below_the_declaring_element() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.add(1, 2, "div");
+        f.text(2, 3, "a  b");
+        assert_eq!(text_of(&f, 2), "a  b");
+        f.add(2, 4, "div");
+        f.styled(4, serde_json::json!({"whiteSpace": "normal"}));
+        f.text(4, 5, "a  b");
+        assert_eq!(text_of(&f, 4), "a b");
+    }
+
+    #[test]
+    fn a_span_can_declare_its_own_white_space() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a  ");
+        f.add(1, 3, "span").text(3, 4, "b  c");
+        f.styled(3, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 5, "  d");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a b  c d");
+        assert_eq!(paragraph.boxes, vec![(3, 2..6)]);
+    }
+
+    #[test]
+    fn a_collapsible_space_before_a_forced_break_is_removed() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "span").text(3, 4, "\nb");
+        f.styled(3, serde_json::json!({"whiteSpace": "pre"}));
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a\nb");
+        assert_eq!(paragraph.boxes, vec![(3, 1..3)]);
+    }
+
+    #[test]
+    fn whitespace_alone_in_a_pre_block_is_content_but_not_in_a_flex_item() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "  ");
+        assert_eq!(text_of(&f, 1), "  ");
+
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "pre", "display": "flex"}));
+        f.text(1, 2, "  ");
+        f.add(1, 3, "div");
+        assert_eq!(f.plan(1), vec![Child::Block(3)]);
+    }
+
+    #[test]
+    fn a_text_with_content_of_its_own_collapses_too() {
+        let mut f = Fixture::new();
+        f.tree.set_text(1, "  a \n b ".to_string());
+        assert_eq!(own_text(&f.tree, &f.tree.elements[&1]).as_deref(), Some("a b"));
+        f.tree.set_text(1, " \n".to_string());
+        assert_eq!(own_text(&f.tree, &f.tree.elements[&1]), None);
+    }
+
+    #[test]
+    fn a_white_space_change_regroups() {
+        let normal = style(serde_json::json!({"color": "red"}));
+        let pre = style(serde_json::json!({"color": "red", "whiteSpace": "pre"}));
+        assert!(!same_paragraphs(Some(&normal), &pre));
     }
 
     #[test]
