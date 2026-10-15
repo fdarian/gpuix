@@ -368,7 +368,7 @@ pub(super) fn validate_seconds(value: f64, name: &str) -> Result<(), String> {
 
 const FRAMER_EASES: [&str; 5] = ["linear", "ease", "easeIn", "easeOut", "easeInOut"];
 
-fn validate_ease(ease: &Ease) -> Result<(), String> {
+pub(super) fn validate_ease(ease: &Ease) -> Result<(), String> {
     match ease {
         Ease::Name(name) if FRAMER_EASES.contains(&name.as_str()) => {}
         Ease::Name(name) => return Err(format!("unknown motion easing: {name}")),

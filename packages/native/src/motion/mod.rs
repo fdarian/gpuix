@@ -12,6 +12,9 @@ pub(crate) mod state_source;
 mod svg_attr;
 mod track;
 mod value;
+// Nothing outside its tests reads the graph until the renderer binds it.
+#[allow(dead_code)]
+mod values;
 
 use std::collections::{BTreeMap, HashMap};
 use serde_json::{Map, Value};

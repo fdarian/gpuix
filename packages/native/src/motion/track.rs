@@ -126,10 +126,20 @@ impl Track {
     /// too, so a tween-to-spring switch does not stall; a spring-to-tween
     /// switch drops it, as the tween has no notion of it.
     pub(super) fn carry_velocity(&mut self, previous: &Self, now: Instant) {
+        self.carry_rate(&previous.layout, previous.sample(now).velocity);
+    }
+
+    /// [`Self::carry_velocity`] for a speed that did not come from a track,
+    /// such as a value being dragged by `set`, given in the channels of `layout`.
+    pub(super) fn carry_rate(&mut self, layout: &Layout, rate: Vec<f64>) {
         let is_spring = matches!(self.transition.curve, Curve::Spring(_));
-        if is_spring && previous.layout.carries_velocity_to(&self.layout) {
-            self.from_velocity = previous.sample(now).velocity;
+        if is_spring && layout.carries_velocity_to(&self.layout) {
+            self.from_velocity = rate;
         }
+    }
+
+    pub(super) fn layout(&self) -> &Layout {
+        &self.layout
     }
 
     /// Moves a measured segment's end to a new measurement. While the
