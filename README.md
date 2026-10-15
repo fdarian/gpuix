@@ -3256,9 +3256,9 @@ text imports no longer need a runtime flag.
 | Mouse move | `onMouseMove` | the mouse fields below, `pressedButton` |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` is not emitted yet |
-| File drag | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS; `relatedTarget` on enter and leave. All bubble |
-| Drag and drop | `onDragStart`, `onDrag`, `onDragEnd` | not emitted yet: `draggable` elements are not implemented |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`). `onPointerCancel` fires on the press target when a `draggable` drag starts |
+| Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
+| Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
 | Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
@@ -3296,7 +3296,7 @@ Events are DOM-shaped and propagate like the DOM. A handler receives
 `pointerId`, `pointerType` and `modifiers` where the event has them.
 `x`/`y` are the same as `clientX`/`clientY`. `offsetX`/`offsetY` are relative
 to the target's padding edge. Native only produces an event type when the
-target or one of its ancestors listens for it (the file drag events below are the exception). Capture
+target or one of its ancestors listens for it (the drag events below are the exception, except `drag`). Capture
 handlers run from the root down to the target, then the target's handlers,
 then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
 `pointerleave` do not bubble. Event types are the lowercase DOM names
@@ -3340,6 +3340,54 @@ and can be set to `"none"`. The cursor badge the OS draws cannot reflect whether
 the drop will be accepted. Unlike other pointer events, these four are sent to
 JS whether or not something listens, since JS needs every `dragover` to know
 whether the drop was accepted.
+
+**Dragging an element.** `draggable` makes an element a drag source, like the DOM attribute. A primary press
+on it, or on anything inside it that is not itself `draggable`, followed by a move of
+more than 4px (logical pixels, from the press) starts a drag:
+
+```tsx
+<div
+  draggable
+  onDragStart={(event) => {
+    event.dataTransfer?.setData('text/plain', 'clip-7')
+    event.dataTransfer!.effectAllowed = 'move'
+  }}
+  onDragEnd={(event) => console.log(event.dataTransfer?.dropEffect)}
+/>
+<div
+  onDragOver={(event) => event.preventDefault()}
+  onDrop={(event) => move(event.dataTransfer?.getData('text/plain'))}
+/>
+```
+
+- The press target gets `pointercancel` and the pointer leaves it
+  (`pointerout`, `pointerleave`, `mouseout`, `mouseleave`). `dragstart` follows
+  at the source, the nearest `draggable` element from the press target up. From then
+  until the drag ends no pointer or mouse event fires, nothing is hovered, and
+  the release is not a click.
+- Each move sends `drag` to the source, then the target events of a file drag
+  to what is under the pointer: `dragenter`, `dragleave` (`relatedTarget`
+  is the other element) and `dragover`. Dropping on the window outside every element targets the root.
+- The release sends `drop` to the target, then `dragend` to the source. `drop`
+  is delivered under the rules of a file drag: only if the last `dragover` was
+  cancelled with `preventDefault()` and `dropEffect` is not `"none"` and is allowed by
+  `effectAllowed`; otherwise the target gets `dragleave` instead. `dragend` reports
+  `dropEffect`: the effect the drop took, or `"none"` if nothing was dropped.
+- Escape cancels the drag: `dragleave` at the target, then `dragend` at the source with
+  `dropEffect` `"none"`. Escape still reaches the window's key handlers and layers.
+- `event.preventDefault()` in `onDragStart` cancels the drag. The drag has
+  already started when JS runs, so a move or two may already have been
+  sent; JS drops them, and pointer events carry on from the next input.
+- A drag does not start while another element holds pointer capture. If the source itself
+  holds it, it is released (`lostpointercapture`) as the drag starts.
+
+`event.dataTransfer` is one object for the whole drag, in DOM protected mode:
+`setData`, `getData`, `clearData`, `types`, `effectAllowed` and `dropEffect`.
+`setData` and `effectAllowed` work in `dragstart` only. `getData` works in
+`dragstart` and `drop` and returns `""` in every other event, `dragover` included.
+`setDragImage` is accepted and does nothing: GPUI has no OS drag, so there is no
+drag image and nothing follows the pointer. The drag stays inside the window: it
+cannot drop on another app, and a drag from another app is a file drag.
 
 **`onScroll`** reports wheel input: the delta, before GPUI has applied it.
 **`onScrollChange`** reports the result, after any cause: the wheel, a
