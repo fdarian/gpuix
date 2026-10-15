@@ -16,7 +16,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gpui::{App, InteractiveElement, MouseButton, Pixels, Point, WindowControlArea};
+use gpui::{App, InteractiveElement, MouseButton, Pixels, Point, Window, WindowControlArea};
 
 use super::dispatcher::{PointerAction, PointerSample};
 use super::state::PointerState;
@@ -36,6 +36,10 @@ impl AppRegion {
             _ => None,
         }
     }
+}
+
+pub(crate) fn in_drag_region(window: &Window, position: Point<Pixels>) -> bool {
+    window.window_control_area_at(position) == Some(WindowControlArea::Drag)
 }
 
 /// Registers `el`'s box with the window as `region` says. The element needs its host hitbox

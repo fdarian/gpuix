@@ -30,7 +30,7 @@ use std::sync::Mutex;
 use gpui::{
     canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
     MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
-    Pixels, Point, ScrollWheelEvent, Styled, TouchPhase, WeakEntity, Window, WindowControlArea,
+    Pixels, Point, ScrollWheelEvent, Styled, TouchPhase, WeakEntity, Window,
 };
 
 use crate::element_tree::EventModifiers;
@@ -78,12 +78,8 @@ fn sample(
         ),
         modifiers: EventModifiers::from(modifiers),
         hits: host_hit_chain(window),
-        over_drag_region: in_drag_region(window, position),
+        over_drag_region: app_region::in_drag_region(window, position),
     }
-}
-
-pub(crate) fn in_drag_region(window: &Window, position: Point<Pixels>) -> bool {
-    window.window_control_area_at(position) == Some(WindowControlArea::Drag)
 }
 
 /// Runs one input through the dispatcher.
@@ -127,7 +123,7 @@ impl PointerDispatch {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<PressOutcome> {
-        if !in_drag_region(window, event.position) {
+        if !app_region::in_drag_region(window, event.position) {
             return None;
         }
         let mut pointer = self.pointer.borrow_mut();

@@ -522,7 +522,7 @@ pub(crate) fn paint(
                 return;
             }
             // A drag region covers the scrollbar under it, as in Electron.
-            if crate::events::listeners::in_drag_region(window, event.position) {
+            if crate::events::app_region::in_drag_region(window, event.position) {
                 return;
             }
             let mut st = state.borrow_mut();
