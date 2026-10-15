@@ -713,7 +713,7 @@ fn in_pixels(
         .map(AnimValue::Number)
         .ok_or_else(|| {
             format!(
-                "motion cannot resolve {} as a percentage: the element has no parent to measure it against",
+                "motion cannot resolve {} as a percentage: only sizes are measured against the parent",
                 prop.name()
             )
         })
@@ -2045,7 +2045,7 @@ mod tests {
             Measurement {
                 border_box: gpui::size(gpui::px(width), gpui::px(height)),
                 natural_height: gpui::px(natural),
-                parent_content: None,
+                parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
             }
         }
@@ -2054,7 +2054,7 @@ mod tests {
         /// `height`.
         fn in_parent(measurement: Measurement, width: f32, height: f32) -> Measurement {
             Measurement {
-                parent_content: Some(gpui::size(gpui::px(width), gpui::px(height))),
+                parent_content: gpui::size(gpui::px(width), gpui::px(height)),
                 ..measurement
             }
         }
@@ -2624,17 +2624,17 @@ mod tests {
         }
 
         #[test]
-        fn a_percentage_without_a_parent_is_an_error() {
-            let error = MotionState::new(
+        fn a_root_resolves_a_percentage_against_the_window() {
+            let started = Instant::now();
+            let state = MotionState::new(
                 &grow_to_half(),
                 None,
                 Some(&measurement(0.0, 10.0, 10.0)),
                 0,
-                Instant::now(),
+                started,
             )
-            .err()
             .unwrap();
-            assert!(error.contains("width") && error.contains("no parent"), "{error}");
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).width), 200.0);
         }
 
         #[test]

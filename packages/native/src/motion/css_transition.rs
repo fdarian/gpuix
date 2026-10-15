@@ -1564,7 +1564,7 @@ mod tests {
             Measurement {
                 border_box: gpui::size(gpui::px(100.0), gpui::px(height)),
                 natural_height: gpui::px(natural),
-                parent_content: None,
+                parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
             }
         }
@@ -1808,7 +1808,7 @@ mod tests {
 
         fn in_parent(width: f32, height: f32) -> Measurement {
             Measurement {
-                parent_content: Some(gpui::size(gpui::px(width), gpui::px(height))),
+                parent_content: gpui::size(gpui::px(width), gpui::px(height)),
                 ..measurement(30.0, 30.0)
             }
         }
@@ -1876,13 +1876,14 @@ mod tests {
         }
 
         #[test]
-        fn a_root_has_no_parent_box_to_resolve_a_percentage_against() {
+        fn a_root_resolves_a_percentage_against_the_window() {
             let mut clock = Clock::new();
             let root = measurement(30.0, 30.0);
             clock.frame_measured(0, &sized("0"), None, Some(&root));
-            let changed = clock.frame_measured(100, &sized(r#""50%""#), None, Some(&root));
-            assert_eq!(changed.width, Some(DimensionValue::Percentage(0.5)));
-            assert!(clock.events().is_empty());
+            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&root));
+            assert_eq!(width_of(&clock.frame_measured(500, &sized(r#""50%""#), None, Some(&root))), 200.0);
+            let ended = clock.frame_measured(1000, &sized(r#""50%""#), None, Some(&root));
+            assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
         }
 
         #[test]

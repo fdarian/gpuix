@@ -23,8 +23,9 @@ pub(crate) struct Measurement {
     /// whatever height it was actually laid out at.
     pub natural_height: Pixels,
     /// The content box of the parent, which a percentage length resolves
-    /// against. `None` for a root.
-    pub parent_content: Option<Size<Pixels>>,
+    /// against. A root has no parent, so it is the window's content size, as
+    /// the initial containing block is in a document.
+    pub parent_content: Size<Pixels>,
     /// Device pixels per layout pixel.
     pub scale_factor: f32,
 }
@@ -41,13 +42,11 @@ impl Measurement {
     }
 
     /// What a percentage of `prop` is in px: a fraction of the parent's content
-    /// box along the axis `prop` sizes. `None` for a root, which has no parent
-    /// box to take it from.
+    /// box along the axis `prop` sizes. `None` for a property that is not a size.
     pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
-        let parent = self.parent_content?;
         let length = match prop.size_axis()? {
-            Axis::Width => parent.width,
-            Axis::Height => parent.height,
+            Axis::Width => self.parent_content.width,
+            Axis::Height => self.parent_content.height,
         };
         Some(f64::from(length.as_f32()) * fraction)
     }
@@ -108,7 +107,9 @@ impl Measurements {
             let measurement = Measurement {
                 border_box: bounds.size,
                 natural_height: natural_height(content.height, border),
-                parent_content: window.layout_parent_content_size(layout_id),
+                parent_content: window
+                    .layout_parent_content_size(layout_id)
+                    .unwrap_or_else(|| window.viewport_size()),
                 scale_factor: window.scale_factor(),
             };
             measurements.borrow_mut().insert(id, measurement);
@@ -171,7 +172,7 @@ mod tests {
         Measurement {
             border_box: gpui::size(gpui::px(40.0), gpui::px(30.0)),
             natural_height: gpui::px(natural_height),
-            parent_content: None,
+            parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor,
         }
     }
@@ -199,7 +200,7 @@ mod tests {
     #[test]
     fn a_percentage_resolves_against_the_parent_content_box_on_its_own_axis() {
         let nested = Measurement {
-            parent_content: Some(gpui::size(gpui::px(200.0), gpui::px(80.0))),
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
             ..measurement(50.0, 1.0)
         };
         assert_eq!(nested.percent_px(AnimProp::Width, 0.5), Some(100.0));
@@ -207,8 +208,7 @@ mod tests {
         assert_eq!(nested.percent_px(AnimProp::Height, 0.5), Some(40.0));
         assert_eq!(nested.percent_px(AnimProp::MinHeight, 1.0), Some(80.0));
         assert_eq!(nested.percent_px(AnimProp::Top, 0.5), None);
-        let root = measurement(50.0, 1.0);
-        assert_eq!(root.percent_px(AnimProp::Width, 0.5), None);
+        assert_eq!(nested.percent_px(AnimProp::Opacity, 0.5), None);
     }
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
         let measurement = Measurement {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
             natural_height: gpui::px(2.0),
-            parent_content: None,
+            parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
         };
         measurements.by_element.borrow_mut().insert(1, measurement);
