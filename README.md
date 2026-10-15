@@ -1960,6 +1960,67 @@ Differences from Motion for React:
 - Layout animations start automatically; `LayoutGroup` does not need to
   re-render siblings to notice a change.
 
+### Reorder
+
+`Reorder.Group` and `Reorder.Item` make a list the user reorders by dragging,
+like Motion's `Reorder`. The group holds the order; the items follow the pointer
+and glide into place with [`layout`](#layout-animations).
+
+```tsx
+import { useState } from 'react'
+import { Reorder } from '@gpuix/react'
+
+function Tasks() {
+  const [tasks, setTasks] = useState(['Write', 'Review', 'Ship'])
+  return (
+    <Reorder.Group axis="y" values={tasks} onReorder={setTasks}>
+      {tasks.map((task) => (
+        <Reorder.Item key={task} value={task} style={{ height: 32, bg: '#27272a' }}>
+          <text>{task}</text>
+        </Reorder.Item>
+      ))}
+    </Reorder.Group>
+  )
+}
+```
+
+`@gpuix/solid` takes the same props; render the items with `<For>` inside the
+group.
+
+- **`Reorder.Group`** takes `values` (the current order), `onReorder(values)`
+  and `axis` (`"y"` by default, or `"x"`). `as` sets the host element type
+  (`"div"` by default). It lays its children out like any `div`, so give it
+  `display: 'flex'` and a `flexDirection` that matches `axis`.
+- **`Reorder.Item`** takes a `value` from the group's `values`, `as`, and the
+  props of a `motion.div` (`transition`, `animate`, `style`, mouse handlers).
+  Its `layout` is always on. Its own `onMouseDown`, `onMouseMove` and
+  `onMouseUp` still run.
+- While an item is held it follows the pointer along `axis`. When its centre
+  passes a neighbour's centre, `onReorder` gets the new order. The group does
+  not reorder by itself: pass the order back as `values`, and the other items
+  glide to their slots. Skipping several neighbours at once proposes the final
+  order once.
+- On release the item glides from where it was to its slot with the item's
+  layout transition (`transition.layout`, then `transition`, then the 0.45 s
+  default). Under `reducedMotion` it jumps.
+- A drag follows the pointer past the item and past the window edge: the item
+  captures the pointer when pressed, as any element listening for both
+  `onMouseDown` and `onMouseMove` does. A move that arrives with no button down
+  ends the drag.
+
+Differences from Motion for React:
+
+- The held item is drawn in tree order, so on a vertical list it can sit
+  under the items after it. GPUIX has no `zIndex`; give the items opaque
+  backgrounds and keep them from overlapping while dragging, or lift the held
+  item yourself with a style change.
+- Item slots are read from the layout when the press happens, so a drag that
+  starts while the items are still gliding from an earlier reorder is judged
+  from where they are drawn, not where they will settle. Adding or removing an
+  item while another is held ends the drag with an error.
+- `dragListener`, `dragControls` and `Reorder.Item`'s `drag` props are not
+  supported.
+
 ### Capture exact frames
 
 The [automation API](#automation) can freeze the native motion clock and render
