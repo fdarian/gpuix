@@ -110,6 +110,15 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.background = None;
         base.background_color = None;
     }
+    // The `background` shorthand also resets every layer longhand.
+    if over.background.is_some() {
+        base.background_image = None;
+        base.background_size = None;
+        base.background_position = None;
+        base.background_repeat = None;
+        base.background_origin = None;
+        base.background_clip = None;
+    }
 }
 
 #[cfg(test)]
@@ -261,5 +270,23 @@ mod tests {
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!(pressed.background, None);
         assert_eq!(pressed.background_color.as_deref(), Some("#333333"));
+    }
+
+    #[test]
+    fn a_background_shorthand_state_resets_the_base_layers() {
+        let base = style(
+            r##"{"backgroundImage":"linear-gradient(red, red)","backgroundSize":"10px",
+                "hover":{"background":"blue"}}"##,
+        );
+        let resolved = resolve_state_styles(&base, true, false);
+        assert_eq!(resolved.background_image, None);
+        assert_eq!(resolved.background_size, None);
+
+        let longhand = style(
+            r##"{"backgroundImage":"linear-gradient(red, red)",
+                "hover":{"backgroundColor":"blue"}}"##,
+        );
+        let resolved = resolve_state_styles(&longhand, true, false);
+        assert!(resolved.background_image.is_some(), "a colour leaves the layers");
     }
 }
