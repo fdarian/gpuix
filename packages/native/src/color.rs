@@ -205,7 +205,7 @@ pub(crate) fn resolve_color(value: &str, context: &ColorContext) -> Option<gpui:
 }
 
 /// True for the forms `parse_color_rgba` cannot resolve alone.
-fn is_contextual(value: &str) -> bool {
+pub(crate) fn is_contextual(value: &str) -> bool {
     let value = value.trim();
     let starts = |prefix: &str| {
         value

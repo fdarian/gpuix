@@ -8,6 +8,10 @@
 //!
 //! resvg ignores the `pathLength` attribute, so every dash that depends on it
 //! is turned into absolute user units against the shape's measured length.
+//!
+//! resvg knows only SVG's own colours, so a `fill` or `stroke` that needs the
+//! element's context (`light-dark()`, `color-mix()`, `color()`) is resolved here,
+//! with the `<svg>`'s, and written as `rgba()`.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -20,6 +24,7 @@ use super::svg_path::{
     circle_length, ellipse_length, format_number, line_length, polyline_length, rect_length,
     PathData,
 };
+use crate::color::ColorContext;
 use crate::motion::{MotionState, SvgMotion};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
@@ -107,6 +112,8 @@ pub(crate) struct SvgTrees {
 struct Cached {
     revision: u64,
     animation: u64,
+    /// What the colours in `markup` resolved in.
+    colors: ColorContext,
     markup: Arc<str>,
 }
 
@@ -118,6 +125,7 @@ impl SvgTrees {
         tree: &RetainedTree,
         svg_id: u64,
         motion_states: &HashMap<u64, MotionState>,
+        colors: &ColorContext,
         now: Instant,
     ) -> Option<Arc<str>> {
         let element = tree.elements.get(&svg_id)?;
@@ -128,7 +136,10 @@ impl SvgTrees {
         }
         let animation = animation_key(&children);
         if let Some(cached) = self.cache.get(&svg_id) {
-            if cached.revision == element.subtree_revision && cached.animation == animation {
+            if cached.revision == element.subtree_revision
+                && cached.animation == animation
+                && cached.colors == *colors
+            {
                 return Some(cached.markup.clone());
             }
         }
@@ -138,12 +149,13 @@ impl SvgTrees {
             motion: None,
             children,
         };
-        let markup: Arc<str> = serialize(&root).into();
+        let markup: Arc<str> = serialize(&root, colors).into();
         self.cache.insert(
             svg_id,
             Cached {
                 revision: element.subtree_revision,
                 animation,
+                colors: *colors,
                 markup: markup.clone(),
             },
         );
@@ -202,19 +214,19 @@ fn animation_key(nodes: &[Node]) -> u64 {
     hasher.finish()
 }
 
-fn serialize(root: &Node) -> String {
+fn serialize(root: &Node, colors: &ColorContext) -> String {
     let mut xml = String::new();
-    write_node(root, &mut xml);
+    write_node(root, colors, &mut xml);
     xml
 }
 
-fn write_node(node: &Node, xml: &mut String) {
+fn write_node(node: &Node, colors: &ColorContext, xml: &mut String) {
     xml.push('<');
     xml.push_str(node.tag);
     if node.tag == "svg" {
         xml.push_str(" xmlns=\"http://www.w3.org/2000/svg\"");
     }
-    for (name, value) in attributes(node) {
+    for (name, value) in attributes(node, colors) {
         xml.push(' ');
         xml.push_str(name);
         xml.push_str("=\"");
@@ -227,7 +239,7 @@ fn write_node(node: &Node, xml: &mut String) {
     }
     xml.push('>');
     for child in &node.children {
-        write_node(child, xml);
+        write_node(child, colors, xml);
     }
     xml.push_str("</");
     xml.push_str(node.tag);
@@ -250,10 +262,14 @@ fn escape_into(value: &str, xml: &mut String) {
 /// The attributes a node is written with, in a fixed order: its own props,
 /// then the animated ones replacing them, then the dashes a draw or a DOM
 /// `pathLength` turns into absolute units.
-fn attributes(node: &Node) -> Vec<(&'static str, String)> {
+fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)> {
     let mut written: Vec<(&'static str, String)> = Vec::new();
     for (prop, attribute) in ATTRIBUTES {
         if let Some(text) = node.props.get(*prop).and_then(attribute_text) {
+            let text = match *attribute {
+                "fill" | "stroke" => resolve_paint(text, colors),
+                _ => text,
+            };
             written.push((attribute, text));
         }
     }
@@ -309,6 +325,24 @@ fn attributes(node: &Node) -> Vec<(&'static str, String)> {
         }
     }
     written
+}
+
+/// A paint that is a colour needing the element's context, as `rgba()`. Anything
+/// else (`none`, `url(#gradient)`, a plain colour) is the rasteriser's to read.
+fn resolve_paint(text: String, colors: &ColorContext) -> String {
+    if !crate::color::is_contextual(&text) {
+        return text;
+    }
+    match colors.resolve(&text) {
+        Some(color) => format!(
+            "rgba({}, {}, {}, {})",
+            (color.r * 255.0).round(),
+            (color.g * 255.0).round(),
+            (color.b * 255.0).round(),
+            color.a
+        ),
+        None => text,
+    }
 }
 
 fn set(written: &mut Vec<(&'static str, String)>, name: &'static str, text: String) {
@@ -424,7 +458,24 @@ pub(crate) fn sized_style(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::Scheme;
     use crate::motion::PathDraw;
+
+    fn context(color: &str, scheme: &str) -> ColorContext {
+        ColorContext::root(Scheme::Light).descend(&StyleDesc {
+            color: Some(color.to_string()),
+            color_scheme: Some(scheme.to_string()),
+            ..Default::default()
+        })
+    }
+
+    fn serialize(root: &Node) -> String {
+        serialize_in(root, &ColorContext::root(Scheme::Light))
+    }
+
+    fn serialize_in(root: &Node, colors: &ColorContext) -> String {
+        super::serialize(root, colors)
+    }
 
     fn props(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
         pairs
@@ -495,6 +546,34 @@ mod tests {
             xml.contains("fill=\"url(&quot;#a&amp;b&quot;)&lt;&apos;&gt;\""),
             "{xml}"
         );
+    }
+
+    #[test]
+    fn fill_and_stroke_that_need_the_context_are_written_as_rgba() {
+        let svg = props(&[("fill", "light-dark(#ff0000, #0000ff)".into())]);
+        let shape = props(&[
+            ("fill", "light-dark(#ff0000, #0000ff)".into()),
+            ("stroke", "currentColor".into()),
+            ("strokeWidth", 2.into()),
+        ]);
+        let tree = node("svg", &svg, vec![node("path", &shape, vec![])]);
+        let xml = serialize_in(&tree, &context("#00ff00", "dark"));
+        assert!(xml.contains("fill=\"rgba(0, 0, 255, 1)\""), "{xml}");
+        assert!(xml.contains("stroke=\"rgba(0, 255, 0, 1)\""), "{xml}");
+        // The root takes the same colours as its children.
+        assert!(xml.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"rgba(0, 0, 255, 1)\""), "{xml}");
+
+        let mixed = props(&[("fill", "color-mix(in srgb, red, blue)".into())]);
+        let xml = serialize(&node("svg", &props(&[]), vec![node("rect", &mixed, vec![])]));
+        assert!(xml.contains("fill=\"rgba(128, 0, 128, 1)\""), "{xml}");
+    }
+
+    #[test]
+    fn a_paint_the_rasteriser_reads_itself_is_left_alone() {
+        let shape = props(&[("fill", "url(#gradient)".into()), ("stroke", "none".into())]);
+        let xml = serialize(&node("svg", &props(&[]), vec![node("rect", &shape, vec![])]));
+        assert!(xml.contains("fill=\"url(#gradient)\""), "{xml}");
+        assert!(xml.contains("stroke=\"none\""), "{xml}");
     }
 
     #[test]

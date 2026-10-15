@@ -266,6 +266,19 @@ describeNative("an animated svg changes hue", () => {
     expectNear(pixel(75, 50), GREEN)
   })
 
+  it("resolves a static fill that needs the context", () => {
+    const { render, renderer } = createTestRoot()
+    const pixel = sampler("svg-static", renderer)
+    render(
+      <svg viewBox="0 0 100 100" style={{ ...SVG, colorScheme: "dark" }}>
+        <rect x={0} y={0} width={50} height={100} fill="light-dark(#ff0000, #0000ff)" />
+        <rect x={50} y={0} width={50} height={100} fill="color-mix(in srgb, red 50%, blue)" />
+      </svg>
+    )
+    expectNear(pixel(25, 50), BLUE)
+    expectNear(pixel(75, 50), [128, 0, 128, 255])
+  })
+
   it("repaints the same svg every frame of a long animation", () => {
     const { render, renderer } = createTestRoot()
     const pixel = sampler("svg-frames", renderer)

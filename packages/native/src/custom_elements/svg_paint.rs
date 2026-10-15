@@ -355,6 +355,30 @@ mod tests {
     }
 
     #[test]
+    fn an_svg_that_changes_every_frame_holds_one_image_in_the_atlas() {
+        let mut paint = SvgPaint::default();
+        let dropped = std::cell::Cell::new(0);
+        for frame in 0..30 {
+            let bytes: Arc<[u8]> = Arc::from(
+                format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="rgb({}, 0, 0)"/></svg>"##,
+                    frame * 8
+                )
+                .into_bytes(),
+            );
+            let image = paint.resolve(
+                key(&bytes, 2, RED),
+                |key| rasterize(&renderer(), &bytes, key.width, key.height, RED),
+                |_| dropped.set(dropped.get() + 1),
+            );
+            assert!(image.is_some());
+        }
+        // Each new image replaced the one before it, which went out of the atlas.
+        assert_eq!(dropped.get(), 29);
+        assert!(paint.held().is_some());
+    }
+
+    #[test]
     fn finds_the_root_tag_past_a_prolog_and_comments() {
         let svg = b"<?xml version=\"1.0\"?><!-- <svgfoo> --><svg a=\">\" b='>'>";
         let (start, end) = root_tag(svg).unwrap();

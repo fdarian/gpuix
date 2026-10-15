@@ -7026,7 +7026,8 @@ pub(crate) fn build_element(
             // serialised instead of built.
             let is_svg = custom_type == "svg";
             let svg_markup = is_svg
-                .then(|| ctx.svg_trees.markup(ctx.tree, id, ctx.motion_states, ctx.now))
+                .then(|| ctx.svg_trees
+                    .markup(ctx.tree, id, ctx.motion_states, &ctx.inherited.colors, ctx.now))
                 .flatten();
             let sized_style = is_svg
                 .then(|| crate::custom_elements::svg_tree::sized_style(style, element.custom_props()))

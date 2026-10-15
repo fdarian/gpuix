@@ -1608,8 +1608,9 @@ one that the element does not declare jumps to its target. Naming a key that is
 not in the table, or a style such as `backgroundColor`, is an error.
 
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
-image every frame. The cost is one atlas entry per frame until the rasteriser
-replaces the image in place.
+image every frame. The `<svg>` keeps the image it last painted and drops it from
+the texture atlas when it makes the next one, so an animation holds one atlas
+entry per `<svg>`, not one per frame. The cost is one rasterisation per frame.
 
 ### Animate a sidebar
 
@@ -4310,9 +4311,10 @@ that `strokeDasharray` and `strokeDashoffset` are measured in, so
 GPUIX measures the shape itself and writes absolute dash values, because the
 rasteriser does not support the attribute.
 
-The rasteriser still keeps only each pixel's coverage and tints it with
-`style.color`, so `fill` and `stroke` colours change opacity, not hue. Animate
-them with [`motion.path`](#animate-svg-shapes).
+`fill` and `stroke` keep their own colours, so animating them with
+[`motion.path`](#animate-svg-shapes) changes hue. They take any colour a style
+does: `light-dark()`, `color-mix()` and `color()` resolve in the `<svg>`'s colour
+context and reach the rasteriser as `rgba()`.
 
 #### Bun
 
