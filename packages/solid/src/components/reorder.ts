@@ -92,6 +92,7 @@ function Item<Value>(props: ReorderItemProps<Value>): JSX.Element {
           if (element === undefined) throw new Error("Reorder.Item: the item has no element to capture the pointer on")
           element.setPointerCapture(pointerId)
         },
+        releasePointerCapture: (pointerId) => element?.releasePointerCapture(pointerId),
         drag,
       })
     )
