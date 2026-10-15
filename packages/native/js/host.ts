@@ -289,8 +289,9 @@ export interface StyleDesc {
   backgroundPosition?: string
   backgroundRepeat?: string
   backgroundOrigin?: "border-box" | "padding-box" | "content-box" | string
-  /** `text` is accepted and ignored. Clips the gradient layers only, not
-   *  `backgroundColor`. */
+  /** `text` paints the layer through the glyphs of the element and its
+   *  descendants. The box values clip the gradient layers only; `backgroundColor`
+   *  is clipped to the glyphs when the last layer's clip is `text`. */
   backgroundClip?: "border-box" | "padding-box" | "content-box" | "text" | string
   /** Text colour, inherited. Every colour prop accepts CSS colours: hex, named,
    *  `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, relative

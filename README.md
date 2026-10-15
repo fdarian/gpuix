@@ -4252,10 +4252,33 @@ Longhands win over the shorthand. Limits:
 - `url(...)` images are valid but not drawn: that layer is skipped and the others
   still paint.
 - Interpolation spaces other than `srgb` and `oklab` skip the layer.
-- `backgroundClip: 'text'` is accepted and ignored for now.
 - `backgroundOrigin` and `backgroundClip` move the gradient layers only. The
-  background *colour* always fills the border box.
+  background *colour* fills the border box, or the glyphs under `text` (below).
 - `backgroundAttachment` has no meaning here and is ignored in the shorthand.
+
+#### Gradient text
+
+`backgroundClip: 'text'` (or `text` in the `background` shorthand) paints a layer
+only through the glyphs of the element and its descendants, nested inline spans
+included. The gradient is laid out on the element's box, as in CSS, so it spans
+the whole block even when the text is shorter. The background colour follows the
+last layer's clip, so with `text` there it is confined to the glyphs too. Set
+`color: 'transparent'` to hide the text's own fill.
+
+```tsx
+<div
+  style={{
+    backgroundImage: 'linear-gradient(to right, #f43f5e, #6366f1)',
+    backgroundClip: 'text',
+    color: 'transparent',
+  }}
+>
+  <text style={{ fontSize: 48, fontWeight: 800 }}>Gradient text</text>
+</div>
+```
+
+A box with no text paints nothing for a `text`-clipped layer. A `background`
+given as the object-form gradient is not clipped.
 
 #### The object form
 

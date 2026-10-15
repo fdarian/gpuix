@@ -650,10 +650,17 @@ impl StyleDesc {
         } else {
             None
         };
-        Fill {
-            color,
-            layers: parsed.layers,
-        }
+        let mut layers = parsed.layers;
+        // GPUI clips the colour with the last layer's clip, so a colour that
+        // `background-clip: text` confines becomes the bottom layer.
+        let color = match color.as_ref().and_then(gpui::Background::as_solid) {
+            Some(solid) if parsed.color_clip == gpui::BackgroundBox::Text => {
+                layers.push(crate::css::background::solid_layer(solid, parsed.color_clip));
+                None
+            }
+            _ => color,
+        };
+        Fill { color, layers }
     }
 }
 

@@ -38,9 +38,9 @@ pub(crate) trait Kind {
         Self::parse_box(token).is_some()
     }
 
-    /// One item of the `*-clip` list. `Some(None)` is valid and changes nothing.
-    fn parse_clip(item: &str) -> Option<Option<BackgroundBox>> {
-        Self::parse_box(item).map(Some)
+    /// One item of the `*-clip` list.
+    fn parse_clip(item: &str) -> Option<BackgroundBox> {
+        Self::parse_box(item)
     }
 }
 
@@ -63,13 +63,11 @@ impl Kind for Background {
         parse_box(token).is_some() || token.eq_ignore_ascii_case("text")
     }
 
-    fn parse_clip(item: &str) -> Option<Option<BackgroundBox>> {
-        // `text` clips the background to the glyphs. That needs an offscreen
-        // pass, so for now the layer keeps its box.
+    fn parse_clip(item: &str) -> Option<BackgroundBox> {
         if item.eq_ignore_ascii_case("text") {
-            return Some(None);
+            return Some(BackgroundBox::Text);
         }
-        parse_box(item).map(Some)
+        parse_box(item)
     }
 }
 
@@ -91,6 +89,9 @@ pub(crate) struct Resolved {
     pub color: Option<gpui::Rgba>,
     /// First is on top, like CSS.
     pub layers: Vec<BackgroundLayer>,
+    /// The `background-clip` of the last layer, which is also the colour's. A
+    /// layer that paints nothing (`none`, `url()`) still counts.
+    pub color_clip: BackgroundBox,
 }
 
 /// One entry of the layer lists. `image` is `None` for `none`, a `url()` and a
@@ -171,16 +172,42 @@ pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext) -> Resolved {
         origin: inputs.origin,
         clip: inputs.clip,
     };
-    Resolved { color, layers: apply_longhands::<Background>(slots, &longhands, colors) }
+    if slots.is_empty() && longhands.image.is_none() {
+        // CSS has one image-less layer, which `background-clip` still applies to.
+        slots.push(Slot::new(None, Background::ORIGIN));
+    }
+    let slots = apply_longhands_to_slots::<Background>(slots, &longhands, colors);
+    let color_clip = slots.last().map_or(BackgroundBox::BorderBox, |slot| slot.clip);
+    Resolved { color, layers: into_layers(slots), color_clip }
+}
+
+/// A layer that paints one colour.
+pub(crate) fn solid_layer(color: gpui::Hsla, clip: BackgroundBox) -> BackgroundLayer {
+    let stop = gpui::GradientItem::Stop(gpui::GradientStop { color, position: None });
+    let mut placeholder = placeholder();
+    placeholder.items = vec![stop, stop];
+    BackgroundLayer { clip, ..BackgroundLayer::new(BackgroundImage::Gradient(placeholder)) }
 }
 
 /// Replaces the parts of the shorthand's slots with the longhands, and drops the
 /// slots that have nothing to paint.
 pub(crate) fn apply_longhands<K: Kind>(
-    mut slots: Vec<Slot>,
+    slots: Vec<Slot>,
     longhands: &Longhands,
     colors: &ColorContext,
 ) -> Vec<BackgroundLayer> {
+    into_layers(apply_longhands_to_slots::<K>(slots, longhands, colors))
+}
+
+fn into_layers(slots: Vec<Slot>) -> Vec<BackgroundLayer> {
+    slots.into_iter().filter_map(Slot::into_layer).collect()
+}
+
+fn apply_longhands_to_slots<K: Kind>(
+    mut slots: Vec<Slot>,
+    longhands: &Longhands,
+    colors: &ColorContext,
+) -> Vec<Slot> {
     if let Some(images) = longhands.image.and_then(|value| parse_images(value, colors)) {
         slots = images
             .into_iter()
@@ -213,13 +240,11 @@ pub(crate) fn apply_longhands<K: Kind>(
         Some(())
     });
     apply_list(&mut slots, longhands.clip, |slot, text| {
-        if let Some(clip) = K::parse_clip(text)? {
-            slot.clip = clip;
-        }
+        slot.clip = K::parse_clip(text)?;
         Some(())
     });
 
-    slots.into_iter().filter_map(Slot::into_layer).collect()
+    slots
 }
 
 /// Applies a comma list to the slots, repeating it to cover them as CSS does. A
@@ -392,11 +417,14 @@ fn parse_shorthand_layer<K: Kind>(
             if let Some(parsed) = K::parse_box(one) {
                 slot.origin = parsed;
                 slot.clip = parsed;
+            } else if let Some(clip) = K::parse_clip(one) {
+                // `text` is only a clip: the origin keeps its initial value.
+                slot.clip = clip;
             }
         }
         [origin, clip] => {
             slot.origin = K::parse_box(origin)?;
-            if let Some(parsed) = K::parse_box(clip) {
+            if let Some(parsed) = K::parse_clip(clip) {
                 slot.clip = parsed;
             }
         }
@@ -461,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn one_box_sets_origin_and_clip_and_text_is_ignored() {
+    fn one_box_sets_origin_and_clip_and_text_only_clips() {
         let resolved = shorthand("linear-gradient(red, blue) content-box");
         assert_eq!(
             (resolved.layers[0].origin, resolved.layers[0].clip),
@@ -470,8 +498,47 @@ mod tests {
         let text = shorthand("linear-gradient(red, blue) padding-box text");
         assert_eq!(
             (text.layers[0].origin, text.layers[0].clip),
-            (BackgroundBox::PaddingBox, BackgroundBox::BorderBox)
+            (BackgroundBox::PaddingBox, BackgroundBox::Text)
         );
+        let alone = shorthand("linear-gradient(red, blue) TEXT");
+        assert_eq!(
+            (alone.layers[0].origin, alone.layers[0].clip),
+            (BackgroundBox::PaddingBox, BackgroundBox::Text)
+        );
+        let boxed = shorthand("linear-gradient(red, blue) content-box text");
+        assert_eq!(
+            (boxed.layers[0].origin, boxed.layers[0].clip),
+            (BackgroundBox::ContentBox, BackgroundBox::Text)
+        );
+    }
+
+    #[test]
+    fn the_colour_follows_the_last_layers_clip() {
+        let clip_only = resolve(&Inputs { clip: Some("text"), ..Default::default() }, &context());
+        assert!(clip_only.layers.is_empty());
+        assert_eq!(clip_only.color_clip, BackgroundBox::Text);
+
+        let colour_only = shorthand("red text");
+        assert!(colour_only.layers.is_empty());
+        assert_eq!(colour_only.color_clip, BackgroundBox::Text);
+
+        let first_only = shorthand("linear-gradient(red, blue) text, linear-gradient(blue, red)");
+        assert_eq!(first_only.layers[0].clip, BackgroundBox::Text);
+        assert_eq!(first_only.color_clip, BackgroundBox::BorderBox);
+
+        let skipped_last = shorthand("linear-gradient(red, blue), none text");
+        assert_eq!(skipped_last.layers.len(), 1);
+        assert_eq!(skipped_last.color_clip, BackgroundBox::Text);
+
+        assert_eq!(shorthand("red").color_clip, BackgroundBox::BorderBox);
+    }
+
+    #[test]
+    fn a_text_clipped_colour_becomes_the_bottom_layer() {
+        let layer = solid_layer(gpui::red(), BackgroundBox::Text);
+        let BackgroundImage::Gradient(gradient) = &layer.image;
+        assert_eq!(gradient.items.len(), 2);
+        assert_eq!(layer.clip, BackgroundBox::Text);
     }
 
     #[test]
@@ -517,7 +584,8 @@ mod tests {
         assert!(resolved.layers.iter().all(|layer| layer.repeat.x == RepeatStyle::NoRepeat));
         assert!(resolved.layers.iter().all(|layer| layer.origin == BackgroundBox::ContentBox));
         assert_eq!(resolved.layers[0].clip, BackgroundBox::PaddingBox);
-        assert_eq!(resolved.layers[1].clip, BackgroundBox::BorderBox);
+        assert_eq!(resolved.layers[1].clip, BackgroundBox::Text);
+        assert_eq!(resolved.layers[2].clip, BackgroundBox::PaddingBox);
     }
 
     #[test]
