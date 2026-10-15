@@ -1951,13 +1951,18 @@ grapheme-safe deletion and mouse positioning.
 <textarea
   value={draft}
   onChange={(event) => setDraft(event.value ?? '')}
-  onSubmit={send}
+  onKeyDown={(event) => {
+    if (event.key !== 'enter' || event.modifiers?.shift) return
+    event.preventDefault() // no newline
+    send(draft)
+  }}
 />
 ```
 
-`Enter` inserts a newline in a `<textarea>`. Pass **`onSubmit`** to emit that
-event on Enter instead; `Shift+Enter` still inserts a newline. An `<input>`
-always emits `onSubmit` on Enter. The editor updates natively first, then
+`Enter` inserts a newline in a `<textarea>`; to send on Enter instead, handle it
+in `onKeyDown` and call `preventDefault()`, as above. Enter in an `<input>`
+submits its [form](#forms), if it has one. There is no `onSubmit` on `<input>`
+or `<textarea>`. The editor updates natively first, then
 reports the complete value to React.
 `value` changes can replace the native content, but keeping the same prop value
 does not reject an edit like a browser-controlled input.
@@ -2225,8 +2230,7 @@ submission while the control is empty.
 
 - **Implicit submission.** Enter in an `<input>` submits its form. A `keydown`
   handler that calls `preventDefault()` stops it. Enter in a `<textarea>` always
-  inserts a newline. The gpuix-only `onSubmit` on `<input>` and `<textarea>` is
-  unchanged and fires first.
+  inserts a newline.
 - **Validation.** Each `required` control with an empty value gets a
   non-bubbling, cancelable `invalid` event (`onInvalid`). The first one whose
   handlers did not call `preventDefault()` takes focus, and the form is not
@@ -2308,36 +2312,72 @@ React DOM listens to `focusin` and `focusout` for `onFocus` and `onBlur`, so in
 `@gpuix/react` those props bubble and there is no `onFocusIn` or `onFocusOut`.
 `@gpuix/solid` is plain DOM.
 
-### Element keyboard callbacks
+### Keyboard events
 
-`onKeyDown` fires for the focused element and then for ancestors that declare
-`onKeyDown`, following GPUI's focus dispatch path. `onKeyUp` follows the same
-path when the key is released. The element must be focusable for its own
-`onKeyDown` to fire; a listener does not make it so.
+Each keystroke is **one** `keydown`, and one `keyup` on release, like the DOM.
+It targets the focused element, runs capture, target and bubble through its
+ancestors, then reaches `document` and `window`. With nothing focused it goes to
+`window` alone and `event.target` is `undefined`.
+
+Handlers run synchronously, before the editor acts on the key, so
+`preventDefault()` has its DOM meaning:
 
 ```tsx
-<div
-  autoFocus
-  tabIndex={0}
+<input
   onKeyDown={(event) => {
     console.log(event.key, event.keyChar, event.modifiers, event.isHeld)
+    if (event.key === 'enter') event.preventDefault() // no submit
   }}
-  onKeyUp={(event) => {
-    console.log(`${event.key} released`)
-  }}
->
-  Focused target
-</div>
+/>
 ```
 
-GPUI dispatches matching key actions before raw keyboard callbacks. If an
-action consumes the key, `onKeyDown` does not fire.
+An element still needs a `tabIndex` to be focused, so a bare `div` with
+`onKeyDown` only hears keys that bubble up from a focused descendant.
 
-### Tab moves focus by default
+| Call | Effect |
+|---|---|
+| `event.preventDefault()` | Cancels the key's default: the editor action (caret move, delete, Enter), the text it would insert, Tab's focus move, Escape closing a layer |
+| `event.stopPropagation()` | Skips the rest of the path, `document` and `window`. The default still runs |
+| `event.stopImmediatePropagation()` | Also skips the remaining handlers on the current target |
+| `event.defaultPrevented` | True after any earlier handler of this keystroke prevented it |
+
+How far `preventDefault()` reaches depends on the platform:
+
+| | Cancels editor actions and typed text |
+|---|---|
+| macOS, test renderer | Yes. Handlers run inside the native key dispatch |
+| Windows, Linux | No. Events reach JavaScript through a queue after native acted on the key. `preventDefault()` still cancels the Tab and Escape defaults |
+
+On macOS, a key sent to an active input method (IME composition) reaches it
+before GPUI, so `preventDefault()` cannot cancel composed text.
+
+### `window` and `document`
+
+Listen above the element tree with the `window` and `document` objects the
+adapters export. They are `EventTarget`-shaped and are not installed as
+globals, so libraries do not mistake the app for a browser:
+
+```tsx
+import { document, window } from '@gpuix/react' // or '@gpuix/solid'
+
+function onKey(event) {
+  if (event.key === 'k' && event.modifiers?.cmd) openPalette()
+}
+window.addEventListener('keydown', onKey, { capture: true })
+window.removeEventListener('keydown', onKey, { capture: true })
+```
+
+Types are the DOM's lowercase names: `keydown`, `keyup`, `focusin`, `focusout`,
+and `focus` and `blur` (which do not bubble, so only capture listeners hear
+them). One event runs window capture, document capture, the element path,
+document bubble, window bubble. The `onKeyDown` and `onKeyUp` options of
+`render()` are window bubble listeners that also receive the renderer.
+
+### Tab and Escape are defaults
 
 **Tab** and **Shift+Tab** move focus through the tab order, like a browser. The
-default runs after every `onKeyDown` handler of that keystroke, so any handler
-can cancel it:
+default runs after every handler of that keystroke, so any handler can cancel
+it:
 
 ```tsx
 <div
@@ -2350,45 +2390,27 @@ can cancel it:
 />
 ```
 
-Key events work like one DOM event bubbling to `window`:
-
-| Call | Effect |
-|---|---|
-| `event.preventDefault()` | Cancels the default. Tab does not move focus |
-| `event.stopPropagation()` | Skips ancestor `onKeyDown` and the window `onKeyDown`. The default still runs |
-| `event.defaultPrevented` | True after any earlier handler of this keystroke prevented it |
-
 Tab never types a tab character into `<input>` or `<textarea>`, also like a
-browser. An editor that wants one calls `preventDefault()` and inserts it.
+browser. An editor that wants one calls `preventDefault()` and inserts it. Turn
+the default off for the whole window with `render(<App />, { tabNavigation: false })`.
 
-Turn the default off for the whole window with `tabNavigation: false`:
+Escape closes the top layer, see
+[Escape closes the top layer](#escape-closes-the-top-layer). Neither default
+runs for a key held with Ctrl, Alt or Cmd.
 
-```tsx
-render(<App />, { tabNavigation: false })
-```
+### A press moves focus
 
-```
-keystroke ► GPUI actions ► element onKeyDown (focused → ancestors) ► render({ onKeyDown }) ► default
-                                   preventDefault() anywhere here cancels ─────────────────────┘
-```
+A mouse press on something that is not focusable blurs the focused element, as
+in a browser. `preventDefault()` in an `onMouseDown` keeps focus where it is,
+which is how a Combobox item can be pressed while its input stays focused.
 
-GPUI finishes the native dispatch before JavaScript runs, so these calls change
-what GPUIX does next. They cannot stop a GPUI action that already consumed the
-key.
+### Calling the renderer from a handler
 
-### Renderer keyboard callbacks
-
-Pass `onKeyDown` or `onKeyUp` to `render()` for a window-level listener. It
-fires after element callbacks for raw keys that no GPUI action consumed, and
-before the Tab default. It receives the renderer as its second argument:
-
-```tsx
-render(<App />, {
-  onKeyDown(event, renderer) {
-    if (event.key === 'k' && event.modifiers?.cmd) openPalette()
-  },
-})
-```
+Key and focus handlers run in the middle of a native call, and may still use the
+renderer: `focusElement`, `scrollTo`, `getScrollOffset`, the clipboard,
+`promptForPaths`, `getWindowSize`, `getA11yTree` and the `setWindow*` calls all
+run against the window being dispatched. A handler that throws is reported like
+any other event error and the next handler still runs.
 
 ### Imperative focus
 
@@ -3495,7 +3517,7 @@ text imports no longer need a runtime flag.
 | Scroll change | `onScrollChange` | `scrollX`, `scrollY` — `overflow: "scroll"` containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only |
 | Change | `onChange` | `value` — `<input>` and `<textarea>` only |
-| Submit | `onSubmit` | `value` — `<input>` always, `<textarea>` when `onSubmit` is set |
+| Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
 | Show more | `onShowMore` | `value` (hidden line count) — `<diff>` only |
 | Line click | `onLineClick` | `value`, `oldLine`, `newLine` — `<diff>` only |
