@@ -36,6 +36,9 @@ use super::track::Track;
 use super::value::AnimValue;
 use super::{MotionValueStore, Transitions};
 
+/// Draw order among deferred elements: above the default of `deferred()`.
+const LIFTED_PRIORITY: usize = 1;
+
 /// Layout moves smaller than this, in px, are rounding noise.
 const MOVED: f64 = 0.01;
 
@@ -198,6 +201,9 @@ struct Step {
     /// The glide reached layout on this frame. Not set for one that was
     /// replaced or dropped.
     completed: bool,
+    /// The pointer holds the box, or it is still gliding home after the
+    /// release: it is drawn above everything else.
+    lifted: bool,
 }
 
 /// Where a box was last shown, for another box to start from.
@@ -229,6 +235,8 @@ struct Flip {
     dragged: Option<Vec2>,
     /// While dragged, how far layout moved the box under the pointer.
     drag_shift: Vec2,
+    /// Held, or gliding home after being held.
+    lifted: bool,
 }
 
 impl Flip {
@@ -247,6 +255,7 @@ impl Flip {
             started: false,
             dragged: None,
             drag_shift: [0.0; 2],
+            lifted: false,
         }
     }
 
@@ -304,6 +313,7 @@ impl Flip {
                 moved: [0.0; 2],
                 started: false,
                 completed: false,
+                lifted: false,
             };
         };
         let reduced = config.reduced;
@@ -315,6 +325,9 @@ impl Flip {
             return self.drag_step(moved, own, drag.offset, now);
         }
         let released = self.dragged.take();
+        if released.is_some() {
+            self.lifted = true;
+        }
         if reduced {
             self.track = None;
         } else if let Some(shown) = released {
@@ -346,6 +359,7 @@ impl Flip {
         };
         if !active {
             self.track = None;
+            self.lifted = false;
         }
         Step {
             offset: if active { offset } else { [0.0; 2] },
@@ -353,6 +367,7 @@ impl Flip {
             moved,
             started: std::mem::take(&mut self.started),
             completed,
+            lifted: active && self.lifted,
         }
     }
 
@@ -369,12 +384,14 @@ impl Flip {
         self.drag_shift = sub(self.drag_shift, own);
         let shown = add(offset, self.drag_shift);
         self.dragged = Some(shown);
+        self.lifted = true;
         Step {
             offset: shown,
             active: false,
             moved,
             started: false,
             completed: false,
+            lifted: true,
         }
     }
 }
@@ -525,6 +542,7 @@ impl LayoutFlips {
             changed.held = flip.held.take();
             changed.dragged = flip.dragged;
             changed.drag_shift = flip.drag_shift;
+            changed.lifted = flip.lifted;
             *flip = changed;
         }
         if flip.config.is_none() {
@@ -537,6 +555,7 @@ impl LayoutFlips {
             now,
             drag: read_drag(source, values),
             child,
+            deferred: false,
         }
         .into_any_element()
     }
@@ -589,6 +608,8 @@ struct FlipOffset {
     now: Instant,
     drag: Drag,
     child: gpui::AnyElement,
+    /// The child was handed to `defer_draw`, which paints it.
+    deferred: bool,
 }
 
 impl gpui::IntoElement for FlipOffset {
@@ -640,9 +661,27 @@ impl gpui::Element for FlipOffset {
             return;
         };
         let offset = gpui::point(gpui::px(step.offset[0] as f32), gpui::px(step.offset[1] as f32));
-        let outer = std::mem::replace(&mut self.flips.0.borrow_mut().enclosing, step.moved);
-        window.with_element_offset(offset, |window| self.child.prepaint(window, cx));
-        self.flips.0.borrow_mut().enclosing = outer;
+        if step.lifted {
+            use gpui::IntoElement;
+
+            // GPUI has no z-index. `defer_draw` is what `deferred()` does: the
+            // child is prepainted and painted after the rest of the window,
+            // at the offset it has here, so it covers its siblings. Its
+            // content mask is the one it has here, so a clipping ancestor
+            // still clips it. Boxes inside it read no enclosing move: the
+            // only ones are another `layout` box held at the same time.
+            self.deferred = true;
+            let child = std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
+            window.with_element_offset(offset, |window| {
+                let at = window.element_offset();
+                let mask = window.content_mask();
+                window.defer_draw(child, at, LIFTED_PRIORITY, Some(mask));
+            });
+        } else {
+            let outer = std::mem::replace(&mut self.flips.0.borrow_mut().enclosing, step.moved);
+            window.with_element_offset(offset, |window| self.child.prepaint(window, cx));
+            self.flips.0.borrow_mut().enclosing = outer;
+        }
         // The events leave with the next render, which a settled box would not ask for.
         if step.active || step.started || step.completed {
             window.request_animation_frame();
@@ -659,7 +698,9 @@ impl gpui::Element for FlipOffset {
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) {
-        self.child.paint(window, cx);
+        if !self.deferred {
+            self.child.paint(window, cx);
+        }
     }
 }
 
@@ -1105,6 +1146,7 @@ mod tests {
         let step = flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
         assert_eq!(step.offset, [0.0, 30.0]);
         assert!(!step.active, "the pointer moves it, not a clock");
+        assert!(step.lifted);
         let later = flip.step([0.0, 0.0], [0.0; 2], held([5.0, 42.0]), at(start, 20));
         assert_eq!(later.offset, [5.0, 42.0]);
     }
@@ -1140,11 +1182,12 @@ mod tests {
         let first = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 20));
         assert_eq!(first.offset, [0.0, 10.0]);
         assert!(first.active && first.started);
+        assert!(first.lifted, "it stays above its neighbours on the way home");
         let half = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 520));
         assert!((half.offset[1] - 5.0).abs() < 1e-6, "{:?}", half.offset);
         let done = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 1100));
         assert_eq!(done.offset, [0.0, 0.0]);
-        assert!(done.completed);
+        assert!(done.completed && !done.lifted);
     }
 
     #[test]

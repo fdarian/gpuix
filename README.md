@@ -2002,22 +2002,20 @@ group.
   order once.
 - On release the item glides from where it was to its slot with the item's
   layout transition (`transition.layout`, then `transition`, then the 0.45 s
-  default). Under `reducedMotion` it jumps.
-- A drag follows the pointer past the item and past the window edge: the item
-  captures the pointer when pressed, as any element listening for both
-  `onMouseDown` and `onMouseMove` does. A move that arrives with no button down
-  ends the drag.
+  default). Under `reducedMotion` it jumps. The item is drawn above the others
+  while it is held and until it arrives; GPUIX has no `zIndex`, so this is done
+  by drawing it last.
+- A drag follows the pointer after it leaves the item: the item captures the
+  pointer when pressed, as any element listening for both `onMouseDown` and
+  `onMouseMove` does. A release outside the window is not seen; the next move
+  with no button down ends the drag.
 
 Differences from Motion for React:
 
-- The held item is drawn in tree order, so on a vertical list it can sit
-  under the items after it. GPUIX has no `zIndex`; give the items opaque
-  backgrounds and keep them from overlapping while dragging, or lift the held
-  item yourself with a style change.
 - Item slots are read from the layout when the press happens, so a drag that
   starts while the items are still gliding from an earlier reorder is judged
-  from where they are drawn, not where they will settle. Adding or removing an
-  item while another is held ends the drag with an error.
+  from where they are drawn, not where they will settle. An item added
+  while another is held ends the drag and throws.
 - `dragListener`, `dragControls` and `Reorder.Item`'s `drag` props are not
   supported.
 

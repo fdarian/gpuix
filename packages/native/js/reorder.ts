@@ -158,6 +158,10 @@ export class ReorderController<Value> {
     const drag = this.#item(held.value).drag
     ;(options.axis === "y" ? drag.y : drag.x).set(pointer - held.pressed)
 
+    if (options.values.some((value) => !held.sizes.has(value))) {
+      this.#release()
+      throw new Error("Reorder.Group: an item joined the group while another was being dragged")
+    }
     const next = reorderedValues(held, options.values, held.value, pointer - held.grab)
     if (sameOrder(next, options.values)) return
     if (this.#proposed !== undefined && sameOrder(next, this.#proposed)) return

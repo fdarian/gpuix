@@ -154,6 +154,14 @@ describe("ReorderController", () => {
     expect(reorder.isDragging("a")).toBe(false)
   })
 
+  it("lets go and throws when an item joins the group mid-drag", () => {
+    const { reorder, items, configure } = group(["a", "b"])
+    reorder.pointerDown("a", at(10, 105))
+    configure(["a", "b", "c"])
+    expect(() => reorder.pointerMove(at(10, 120, 0))).toThrow(/joined the group/)
+    expect(items.get("a")?.active.get()).toBe(0)
+  })
+
   it("says what is missing instead of guessing", () => {
     const { reorder, configure } = group(["a", "b"])
     configure(["a", "b"], { renderer: { getElementBounds: () => null } })

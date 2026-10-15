@@ -1,5 +1,50 @@
 import { describe, expect, it } from "vitest"
+import { mkdtempSync, readFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { inflateSync } from "node:zlib"
 import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
+
+/** The colour, as hex, of the window pixel (x, y) in a screenshot. Reads 8-bit RGB or RGBA PNGs without interlacing. */
+function colourAt(renderer: TestRenderer, x: number, y: number): string {
+  const path = join(mkdtempSync(join(tmpdir(), "gpuix-shot-")), "shot.png")
+  renderer.captureScreenshot(path)
+  const png = readFileSync(path)
+  const width = png.readUInt32BE(16)
+  const channels = png[25] === 6 ? 4 : 3
+  const idat: Buffer[] = []
+  for (let at = 8; at < png.length; ) {
+    const length = png.readUInt32BE(at)
+    if (png.toString("latin1", at + 4, at + 8) === "IDAT") idat.push(png.subarray(at + 8, at + 8 + length))
+    at += 12 + length
+  }
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * channels
+  const rows: Buffer[] = []
+  for (let row = 0; row * (stride + 1) < raw.length; row++) {
+    const line = Buffer.from(raw.subarray(row * (stride + 1) + 1, (row + 1) * (stride + 1)))
+    const filter = raw[row * (stride + 1)]
+    const above = rows[row - 1] ?? Buffer.alloc(stride)
+    for (let i = 0; i < stride; i++) {
+      const left = i >= channels ? line[i - channels] : 0
+      const up = above[i]
+      const upLeft = i >= channels ? above[i - channels] : 0
+      const predicted = [0, left, up, (left + up) >> 1, paeth(left, up, upLeft)][filter]
+      line[i] = (line[i] + predicted) & 255
+    }
+    rows.push(line)
+  }
+  const scale = width / 400
+  const pixel = rows[Math.round(y * scale)].subarray(Math.round(x * scale) * channels).subarray(0, 3)
+  return pixel.toString("hex")
+}
+
+function paeth(left: number, up: number, upLeft: number): number {
+  const estimate = left + up - upLeft
+  const distances = [Math.abs(estimate - left), Math.abs(estimate - up), Math.abs(estimate - upLeft)]
+  const nearest = Math.min(...distances)
+  return [left, up, upLeft][distances.indexOf(nearest)]
+}
 
 const linear = { duration: 1, ease: "linear" }
 
@@ -114,6 +159,38 @@ describe.skipIf(!hasNativeTestRenderer)("native layout drag", () => {
     expect(renderer.getElementsAt(10, 55)).toContain(3)
     held(renderer, 41)
     expect(topOf(renderer, 3)).toBe(61)
+  })
+
+  it("paints a held box above the siblings after it, and keeps it there on the way home", () => {
+    const renderer = mount(null)
+    renderer.applyBatch(
+      JSON.stringify([
+        ["setCustomProp", 2, "layout", { mode: true, transition: linear, dragOffset: drag }],
+        ["setStyle", 2, { height: 20, width: 50, backgroundColor: "#ff0000" }],
+        ["setStyle", 3, { height: 20, width: 50, backgroundColor: "#0000ff" }],
+      ])
+    )
+    renderer.createMotionValue(11, 0)
+    renderer.createMotionValue(12, 0)
+    renderer.createMotionValue(13, 0)
+    renderer.flush()
+    // Box 2 covers y 10..30 while held, box 3 sits at y 20..40.
+    const colourOver = () => colourAt(renderer, 10, 25)
+
+    expect(colourOver()).toBe("0000ff")
+    renderer.jumpMotionValue(13, 1)
+    held(renderer, 10)
+    expect(colourOver()).toBe("ff0000")
+
+    renderer.jumpMotionValue(13, 0)
+    renderer.jumpMotionValue(12, 0)
+    renderer.flush()
+    renderer.clockFastForward(200)
+    renderer.flush()
+    expect(colourOver()).toBe("ff0000")
+    renderer.clockFastForward(900)
+    renderer.flush()
+    expect(colourOver()).toBe("0000ff")
   })
 
   it("ignores the offset until the drag is active", () => {
