@@ -117,7 +117,7 @@ describe("renderer dispatch of pointer, mouse and drag events", () => {
     const outside = event("mouseDownOutside", { elementId: 1, target: 3, path: [3, 2, 1] })
     expect(state.dispatch(outside)).toBe(true)
     flush()
-    expect(calls).toEqual(["1:mousedownoutside:mouseDownOutside"])
+    expect(calls).toEqual(["1:mousedownoutside:mousedownoutside"])
     expect(seen).toEqual([outside])
   })
 

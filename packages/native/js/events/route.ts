@@ -6,6 +6,11 @@ import { POINTER_EVENT_TYPES } from "./event-props.js"
 /** gpuix's own outside-press event: not DOM. Native delivers it to the listening element alone, with the press target in `target`. */
 const MOUSE_DOWN_OUTSIDE = "mousedownoutside"
 
+/** The outside press carries the DOM path of its press target, but is not walked along it. */
+export function isOutsidePress(eventType: string): boolean {
+  return eventType === MOUSE_DOWN_OUTSIDE
+}
+
 /**
  * Handler-map type for an event from native. Native may still emit the old
  * camelCase names (`mouseDown`); handlers are registered under lowercase DOM

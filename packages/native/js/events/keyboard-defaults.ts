@@ -7,7 +7,7 @@ import {
   type DomEvent,
 } from "./dispatch.js"
 import { isDragEvent } from "./drag.js"
-import { handlerEventType, hasDomListener } from "./route.js"
+import { handlerEventType, hasDomListener, isOutsidePress } from "./route.js"
 import { dispatchPropagating, document, window } from "./window-target.js"
 
 export interface RootEventContext {
@@ -52,7 +52,7 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
     return event.path != null || event.elementId === root.windowKeyEventId
   }
   if (isDragEvent(event)) return true
-  if (event.path == null) {
+  if (event.path == null || isOutsidePress(event.eventType)) {
     return root.eventHandlers.get(event.elementId)?.has(event.eventType) === true
   }
   return (
@@ -85,6 +85,10 @@ export function runRootEvent(
   }
   if (isDragEvent(event)) {
     context.dispatchDrag(root, event)
+    return notHandled
+  }
+  if (isOutsidePress(event.eventType)) {
+    root.eventHandlers.get(event.elementId)?.get(event.eventType)?.(event)
     return notHandled
   }
   if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType)) {
