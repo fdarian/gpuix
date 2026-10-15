@@ -4882,10 +4882,17 @@ fn sync_motion_values(
     store: &mut crate::motion::MotionValueStore,
     now: web_time::Instant,
 ) -> crate::motion::MotionValueFrame {
-    store.frame(
+    let elements = || {
         tree.motion_value_ids
             .iter()
-            .filter_map(|id| tree.elements.get(id)?.custom_props().get("motionValues")),
+            .filter_map(|id| tree.elements.get(id))
+    };
+    store.frame(
+        elements().filter_map(|element| element.custom_props().get("motionValues")),
+        &elements()
+            .filter_map(|element| element.custom_props().get("layout"))
+            .flat_map(crate::motion::drag_value_ids)
+            .collect::<Vec<_>>(),
         now,
     )
 }
@@ -6881,7 +6888,7 @@ pub(crate) fn build_element(
         built
     };
     match element.custom_props().get("layout") {
-        Some(source) => ctx.layout_flips.wrap(id, source, built, ctx.now),
+        Some(source) => ctx.layout_flips.wrap(id, source, built, ctx.now, ctx.motion_values),
         None => built,
     }
 }

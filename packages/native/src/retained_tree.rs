@@ -266,6 +266,15 @@ impl StyleTable {
     }
 }
 
+/// Whether the frame must sample motion values for this element: the ones its
+/// style binds, and the drag values of its `layout`.
+fn reads_motion_values(props: &HashMap<String, serde_json::Value>) -> bool {
+    props.contains_key("motionValues")
+        || props
+            .get("layout")
+            .is_some_and(|layout| layout.get("dragOffset").is_some_and(|drag| !drag.is_null()))
+}
+
 pub struct RetainedTree {
     /// Never shared by two trees of this process, unlike the tree's address,
     /// which a later tree can reuse. Caches that outlive a tree key on it.
@@ -625,7 +634,7 @@ impl RetainedTree {
         let mut changed = false;
         let is_highlight = key == "highlight";
         let is_motion = key == "motion";
-        let is_motion_values = key == "motionValues";
+        let is_motion_values = key == "motionValues" || key == "layout";
         let affects_focusability = key == "tabIndex" || key == "disabled";
         let is_inert = key == "inert";
         let was_inert = self
@@ -699,7 +708,7 @@ impl RetainedTree {
             if self
                 .elements
                 .get(&id)
-                .is_some_and(|element| element.custom_props().contains_key("motionValues"))
+                .is_some_and(|element| reads_motion_values(element.custom_props()))
             {
                 self.motion_value_ids.insert(id);
             } else {

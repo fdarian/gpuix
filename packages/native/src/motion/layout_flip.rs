@@ -11,6 +11,14 @@
 //! The origin it compares is the layout origin with the ancestors' offsets
 //! taken back out, so scrolling and an ancestor's own FLIP do not read as a move.
 //!
+//! `dragOffset` lets a pointer drag move the box through the same offset: three
+//! motion values (`x`, `y`, and `active`) that JS writes. While `active`, the
+//! box is shown at `x, y` from where layout puts it, and if layout moves it
+//! meanwhile (a reorder swapped its slot) the box stays under the pointer
+//! instead of gliding. When `active` goes off, it glides from where it was
+//! shown to its slot like any other layout move; `x` and `y` are ignored from
+//! then on, so JS may reset them in any order.
+//!
 //! `layoutId` shares a glide between elements: an element that appears with an
 //! id some other element held starts from where that one was last shown, with
 //! the speed it had. The holder is either gone for at most a frame, or still
@@ -26,7 +34,7 @@ use web_time::Instant;
 use super::curve::{Curve, Ease, Transition};
 use super::track::Track;
 use super::value::AnimValue;
-use super::Transitions;
+use super::{MotionValueStore, Transitions};
 
 /// Layout moves smaller than this, in px, are rounding noise.
 const MOVED: f64 = 0.01;
@@ -37,8 +45,54 @@ fn sub(a: Vec2, b: Vec2) -> Vec2 {
     [a[0] - b[0], a[1] - b[1]]
 }
 
+fn add(a: Vec2, b: Vec2) -> Vec2 {
+    [a[0] + b[0], a[1] + b[1]]
+}
+
 fn is_zero(a: Vec2) -> bool {
     a[0].abs() < MOVED && a[1].abs() < MOVED
+}
+
+/// What the drag values read on one frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Drag {
+    active: bool,
+    offset: Vec2,
+}
+
+/// The motion value ids of `dragOffset`, in `x`, `y`, `active` order.
+fn drag_ids(source: &Value) -> Result<Option<[f64; 3]>, String> {
+    let Some(drag) = source.get("dragOffset").filter(|drag| !drag.is_null()) else {
+        return Ok(None);
+    };
+    let id = |name: &str| {
+        drag.get(name)
+            .and_then(Value::as_f64)
+            .ok_or_else(|| format!("layout dragOffset.{name} must be a motion value id"))
+    };
+    Ok(Some([id("x")?, id("y")?, id("active")?]))
+}
+
+/// The motion values a `layout` prop wants sampled every frame.
+pub(crate) fn drag_value_ids(source: &Value) -> Vec<f64> {
+    drag_ids(source).ok().flatten().map_or_else(Vec::new, |ids| ids.to_vec())
+}
+
+/// A drag value that is not bound yet reads as no drag: JS binds the values
+/// in an effect, a beat after the prop that names them.
+fn read_drag(source: &Value, values: &MotionValueStore) -> Drag {
+    let Ok(Some([x, y, active])) = drag_ids(source) else {
+        return Drag::default();
+    };
+    let (Some(x), Some(y), Some(active)) =
+        (values.sampled(x), values.sampled(y), values.sampled(active))
+    else {
+        return Drag::default();
+    };
+    Drag {
+        active: active > 0.5,
+        offset: [x, y],
+    }
 }
 
 /// What a `layout` prop asks for.
@@ -78,6 +132,7 @@ fn parse(source: &Value) -> Result<Option<Config>, String> {
         Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
         Some(_) => return Err("layoutId must be a non-empty string".to_string()),
     };
+    drag_ids(source)?;
     let animates_position = match mode {
         Value::Bool(on) => *on,
         Value::Null if source.is_object() => true,
@@ -170,6 +225,10 @@ struct Flip {
     born: u64,
     /// A glide began since the last step, which reports it.
     started: bool,
+    /// While dragged, the offset the box was last shown with.
+    dragged: Option<Vec2>,
+    /// While dragged, how far layout moved the box under the pointer.
+    drag_shift: Vec2,
 }
 
 impl Flip {
@@ -186,6 +245,8 @@ impl Flip {
             held: None,
             born,
             started: false,
+            dragged: None,
+            drag_shift: [0.0; 2],
         }
     }
 
@@ -235,7 +296,7 @@ impl Flip {
 
     /// `inherited` is how far the nearest enclosing flipping box's layout
     /// moved this frame: it carries this one with it and animates for both.
-    fn step(&mut self, origin: Vec2, inherited: Vec2, now: Instant) -> Step {
+    fn step(&mut self, origin: Vec2, inherited: Vec2, drag: Drag, now: Instant) -> Step {
         let Some(config) = &self.config else {
             return Step {
                 offset: [0.0; 2],
@@ -250,8 +311,20 @@ impl Flip {
         self.origin = Some(origin);
         let own = sub(moved, inherited);
 
+        if drag.active {
+            return self.drag_step(moved, own, drag.offset, now);
+        }
+        let released = self.dragged.take();
         if reduced {
             self.track = None;
+        } else if let Some(shown) = released {
+            // The box was shown `shown` away from its old place, and its place
+            // just moved by `own`: glide from the same spot on screen.
+            let from = sub(shown, own);
+            self.track = None;
+            if !is_zero(from) {
+                self.begin(from, None, now);
+            }
         } else if !is_zero(own) {
             let shown = self
                 .track
@@ -280,6 +353,28 @@ impl Flip {
             moved,
             started: std::mem::take(&mut self.started),
             completed,
+        }
+    }
+
+    /// A frame of a box the pointer holds. Its own glide gives way to the
+    /// pointer, and keeps where it was shown as the place the drag starts from.
+    fn drag_step(&mut self, moved: Vec2, own: Vec2, offset: Vec2, now: Instant) -> Step {
+        if self.dragged.is_none() {
+            self.drag_shift = self
+                .track
+                .take()
+                .map_or([0.0; 2], |track| to_vec2(&track.sample(now).position));
+            self.started = false;
+        }
+        self.drag_shift = sub(self.drag_shift, own);
+        let shown = add(offset, self.drag_shift);
+        self.dragged = Some(shown);
+        Step {
+            offset: shown,
+            active: false,
+            moved,
+            started: false,
+            completed: false,
         }
     }
 }
@@ -413,6 +508,7 @@ impl LayoutFlips {
         source: &Value,
         child: gpui::AnyElement,
         now: Instant,
+        values: &MotionValueStore,
     ) -> gpui::AnyElement {
         use gpui::IntoElement;
 
@@ -427,6 +523,8 @@ impl LayoutFlips {
             changed.origin = flip.origin;
             changed.track = flip.track.take();
             changed.held = flip.held.take();
+            changed.dragged = flip.dragged;
+            changed.drag_shift = flip.drag_shift;
             *flip = changed;
         }
         if flip.config.is_none() {
@@ -437,12 +535,13 @@ impl LayoutFlips {
             id,
             flips: self.clone(),
             now,
+            drag: read_drag(source, values),
             child,
         }
         .into_any_element()
     }
 
-    fn step(&self, id: u64, origin: Vec2, now: Instant) -> Option<Step> {
+    fn step(&self, id: u64, origin: Vec2, drag: Drag, now: Instant) -> Option<Step> {
         let mut store = self.0.borrow_mut();
         let inherited = store.enclosing;
         let frame = store.frame;
@@ -458,7 +557,7 @@ impl LayoutFlips {
         if let Some(holder) = holder {
             flip.take_over(origin, &holder, now);
         }
-        let step = flip.step(origin, inherited, now);
+        let step = flip.step(origin, inherited, drag, now);
         flip.held = Some(Held {
             visual: [origin[0] + step.offset[0], origin[1] + step.offset[1]],
             track: flip.track.clone(),
@@ -488,6 +587,7 @@ struct FlipOffset {
     id: u64,
     flips: LayoutFlips,
     now: Instant,
+    drag: Drag,
     child: gpui::AnyElement,
 }
 
@@ -535,7 +635,7 @@ impl gpui::Element for FlipOffset {
         let origin = bounds.origin - inherited_offset;
         let origin = [f64::from(f32::from(origin.x)), f64::from(f32::from(origin.y))];
 
-        let Some(step) = self.flips.step(self.id, origin, self.now) else {
+        let Some(step) = self.flips.step(self.id, origin, self.drag, self.now) else {
             self.child.prepaint(window, cx);
             return;
         };
@@ -587,7 +687,7 @@ mod tests {
     fn the_first_frame_has_nowhere_to_glide_from() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        let step = flip.step([10.0, 20.0], [0.0; 2], start);
+        let step = flip.step([10.0, 20.0], [0.0; 2], Drag::default(), start);
         assert_eq!(step.offset, [0.0, 0.0]);
         assert!(!step.active);
     }
@@ -596,20 +696,20 @@ mod tests {
     fn a_move_starts_where_the_box_was_shown_and_ends_on_layout() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
 
         // Layout puts the box 100 px right and 40 px down.
-        let first = flip.step([100.0, 40.0], [0.0; 2], at(start, 10));
+        let first = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 10));
         assert_eq!(first.offset, [-100.0, -40.0]);
         assert!(first.active);
         assert_eq!(first.moved, [100.0, 40.0]);
 
-        let half = flip.step([100.0, 40.0], [0.0; 2], at(start, 510));
+        let half = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 510));
         assert!((half.offset[0] + 50.0).abs() < 1e-6, "{:?}", half.offset);
         assert!((half.offset[1] + 20.0).abs() < 1e-6);
         assert_eq!(half.moved, [0.0, 0.0]);
 
-        let done = flip.step([100.0, 40.0], [0.0; 2], at(start, 1100));
+        let done = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 1100));
         assert_eq!(done.offset, [0.0, 0.0]);
         assert!(!done.active);
         assert!(flip.track.is_none());
@@ -619,10 +719,10 @@ mod tests {
     fn a_move_in_flight_continues_from_where_the_box_is_shown() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        flip.step([100.0, 0.0], [0.0; 2], start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
         // Half way: shown 50 px left of layout. Layout moves another 20 px.
-        let retarget = flip.step([120.0, 0.0], [0.0; 2], at(start, 500));
+        let retarget = flip.step([120.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
         // Shown spot stays at layout(100) - 50 = 50, new layout 120.
         assert!((retarget.offset[0] + 70.0).abs() < 1e-6, "{:?}", retarget.offset);
         assert!(retarget.active);
@@ -636,14 +736,14 @@ mod tests {
             "transition": { "type": "spring", "stiffness": 200.0, "damping": 20.0 }
         });
         let mut flip = flip(spring);
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        flip.step([100.0, 0.0], [0.0; 2], start);
-        let moving = flip.step([100.0, 0.0], [0.0; 2], at(start, 100));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
+        let moving = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 100));
         assert!(moving.active);
         let speed = flip.track.as_ref().unwrap().sample(at(start, 100)).velocity[0];
         assert!(speed > 0.0, "the offset is closing on zero from below");
 
-        flip.step([100.0, 50.0], [0.0; 2], at(start, 100));
+        flip.step([100.0, 50.0], [0.0; 2], Drag::default(), at(start, 100));
         let carried = flip.track.as_ref().unwrap().sample(at(start, 100)).velocity[0];
         assert!((carried - speed).abs() < 1e-6, "{carried} vs {speed}");
     }
@@ -652,13 +752,13 @@ mod tests {
     fn a_box_carried_by_an_enclosing_one_glides_only_by_the_rest() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
         // The parent's layout moved 100 and so did this box: nothing of its own.
-        let carried = flip.step([100.0, 0.0], [100.0, 0.0], at(start, 10));
+        let carried = flip.step([100.0, 0.0], [100.0, 0.0], Drag::default(), at(start, 10));
         assert_eq!(carried.offset, [0.0, 0.0]);
         assert!(!carried.active);
         // 30 px further than the parent.
-        let extra = flip.step([230.0, 0.0], [100.0, 0.0], at(start, 20));
+        let extra = flip.step([230.0, 0.0], [100.0, 0.0], Drag::default(), at(start, 20));
         assert_eq!(extra.offset, [-30.0, 0.0]);
     }
 
@@ -666,8 +766,8 @@ mod tests {
     fn reduced_motion_jumps() {
         let start = Instant::now();
         let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        let moved = flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
         assert_eq!(moved.offset, [0.0, 0.0]);
         assert!(!moved.active);
         assert_eq!(moved.moved, [100.0, 0.0], "boxes inside still read the move");
@@ -677,13 +777,13 @@ mod tests {
     fn turning_on_reduced_motion_mid_flight_drops_the_glide() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        flip.step([100.0, 0.0], [0.0; 2], start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
         assert!(flip.track.is_some());
         let mut reduced = Flip::new(&json!({ "mode": true, "reducedMotion": true }), 0);
         reduced.origin = flip.origin;
         reduced.track = flip.track.take();
-        let step = reduced.step([100.0, 0.0], [0.0; 2], at(start, 100));
+        let step = reduced.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 100));
         assert_eq!(step.offset, [0.0, 0.0]);
         assert!(!step.active);
     }
@@ -692,8 +792,8 @@ mod tests {
     fn rounding_noise_is_not_a_move() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([10.0, 10.0], [0.0; 2], start);
-        let step = flip.step([10.004, 9.996], [0.0; 2], at(start, 16));
+        flip.step([10.0, 10.0], [0.0; 2], Drag::default(), start);
+        let step = flip.step([10.004, 9.996], [0.0; 2], Drag::default(), at(start, 16));
         assert!(!step.active);
     }
 
@@ -704,9 +804,9 @@ mod tests {
             "mode": true,
             "transition": { "duration": 1.0, "ease": "linear", "delay": 0.5 }
         }));
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        flip.step([100.0, 0.0], [0.0; 2], start);
-        let held = flip.step([100.0, 0.0], [0.0; 2], at(start, 400));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
+        let held = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 400));
         assert_eq!(held.offset, [-100.0, 0.0]);
         assert!(held.active);
     }
@@ -758,8 +858,8 @@ mod tests {
     fn an_invalid_prop_never_animates() {
         let start = Instant::now();
         let mut flip = flip(json!("nonsense"));
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        let step = flip.step([50.0, 0.0], [0.0; 2], at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        let step = flip.step([50.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
         assert!(!step.active);
     }
 
@@ -785,17 +885,17 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
 
         // Unmounted and replaced on the same frame, 100 px to the right.
         render(&flips, &[2]);
         mount(&flips, 2, &shared("tab"));
-        let step = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        let step = flips.step(2, [100.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         assert_eq!(step.offset, [-100.0, 0.0]);
         assert!(step.started && step.active);
         assert_eq!(flips.take_events(), vec![LayoutEvent { id: 2, kind: LayoutEventKind::Start }]);
 
-        let half = flips.step(2, [100.0, 0.0], at(start, 516)).unwrap();
+        let half = flips.step(2, [100.0, 0.0], Drag::default(), at(start, 516)).unwrap();
         assert!((half.offset[0] + 50.0).abs() < 1e-6, "{:?}", half.offset);
     }
 
@@ -805,23 +905,23 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
 
         render(&flips, &[]);
         render(&flips, &[2]);
         mount(&flips, 2, &shared("tab"));
-        let next_frame = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        let next_frame = flips.step(2, [100.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         assert!(next_frame.active, "one frame later it is still there");
 
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
         render(&flips, &[]);
         render(&flips, &[]);
         render(&flips, &[2]);
         mount(&flips, 2, &shared("tab"));
-        let late = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        let late = flips.step(2, [100.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         assert!(!late.active, "two frames later it is forgotten");
     }
 
@@ -831,14 +931,14 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [20.0, 0.0], start).unwrap();
+        flips.step(1, [20.0, 0.0], Drag::default(), start).unwrap();
 
         render(&flips, &[1, 2]);
         mount(&flips, 2, &shared("tab"));
-        let step = flips.step(2, [120.0, 0.0], at(start, 16)).unwrap();
+        let step = flips.step(2, [120.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         assert_eq!(step.offset, [-100.0, 0.0]);
         // The old one is untouched: hiding it is up to the app.
-        let old = flips.step(1, [20.0, 0.0], at(start, 16)).unwrap();
+        let old = flips.step(1, [20.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         assert!(!old.active);
     }
 
@@ -848,14 +948,14 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
-        flips.step(1, [100.0, 0.0], at(start, 16)).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
+        flips.step(1, [100.0, 0.0], Drag::default(), at(start, 16)).unwrap();
         // Half way: drawn at 50.
-        flips.step(1, [100.0, 0.0], at(start, 516)).unwrap();
+        flips.step(1, [100.0, 0.0], Drag::default(), at(start, 516)).unwrap();
 
         render(&flips, &[1, 2]);
         mount(&flips, 2, &shared("tab"));
-        let step = flips.step(2, [300.0, 0.0], at(start, 516)).unwrap();
+        let step = flips.step(2, [300.0, 0.0], Drag::default(), at(start, 516)).unwrap();
         assert!((step.offset[0] + 250.0).abs() < 1e-3, "{:?}", step.offset);
     }
 
@@ -866,8 +966,8 @@ mod tests {
         render(&flips, &[1, 2]);
         mount(&flips, 1, &shared("tab"));
         mount(&flips, 2, &shared("tab"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
-        let second = flips.step(2, [100.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
+        let second = flips.step(2, [100.0, 0.0], Drag::default(), start).unwrap();
         assert!(!second.active);
     }
 
@@ -877,12 +977,12 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("a"));
-        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
         render(&flips, &[2, 3]);
         mount(&flips, 2, &shared("b"));
         mount(&flips, 3, &linear());
-        assert!(!flips.step(2, [100.0, 0.0], start).unwrap().active);
-        assert!(!flips.step(3, [100.0, 0.0], start).unwrap().active);
+        assert!(!flips.step(2, [100.0, 0.0], Drag::default(), start).unwrap().active);
+        assert!(!flips.step(3, [100.0, 0.0], Drag::default(), start).unwrap().active);
     }
 
     #[test]
@@ -896,9 +996,9 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &spring);
-        flips.step(1, [0.0, 0.0], start).unwrap();
-        flips.step(1, [100.0, 0.0], at(start, 16)).unwrap();
-        flips.step(1, [100.0, 0.0], at(start, 116)).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
+        flips.step(1, [100.0, 0.0], Drag::default(), at(start, 16)).unwrap();
+        flips.step(1, [100.0, 0.0], Drag::default(), at(start, 116)).unwrap();
         let speed = {
             let store = flips.0.borrow();
             let track = store.flips[&1].track.as_ref().unwrap();
@@ -908,7 +1008,7 @@ mod tests {
 
         render(&flips, &[2]);
         mount(&flips, 2, &spring);
-        flips.step(2, [100.0, 0.0], at(start, 116)).unwrap();
+        flips.step(2, [100.0, 0.0], Drag::default(), at(start, 116)).unwrap();
         let carried = {
             let store = flips.0.borrow();
             let track = store.flips[&2].track.as_ref().unwrap();
@@ -923,10 +1023,10 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &shared("tab"));
-        flips.step(1, [30.0, 30.0], start).unwrap();
+        flips.step(1, [30.0, 30.0], Drag::default(), start).unwrap();
         render(&flips, &[2]);
         mount(&flips, 2, &shared("tab"));
-        let step = flips.step(2, [30.0, 30.0], start).unwrap();
+        let step = flips.step(2, [30.0, 30.0], Drag::default(), start).unwrap();
         assert!(!step.active && !step.started);
     }
 
@@ -937,10 +1037,10 @@ mod tests {
         let flips = LayoutFlips::default();
         render(&flips, &[1]);
         mount(&flips, 1, &reduced);
-        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [0.0, 0.0], Drag::default(), start).unwrap();
         render(&flips, &[2]);
         mount(&flips, 2, &reduced);
-        let step = flips.step(2, [100.0, 0.0], start).unwrap();
+        let step = flips.step(2, [100.0, 0.0], Drag::default(), start).unwrap();
         assert!(!step.active);
         assert!(flips.take_events().is_empty());
     }
@@ -949,14 +1049,14 @@ mod tests {
     fn a_glide_reports_its_start_and_its_end_once() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        assert!(!flip.step([0.0, 0.0], [0.0; 2], start).started);
-        let first = flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        assert!(!flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start).started);
+        let first = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
         assert!(first.started && !first.completed);
-        let middle = flip.step([100.0, 0.0], [0.0; 2], at(start, 500));
+        let middle = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
         assert!(!middle.started && !middle.completed);
-        let done = flip.step([100.0, 0.0], [0.0; 2], at(start, 1100));
+        let done = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 1100));
         assert!(done.completed && !done.started);
-        let after = flip.step([100.0, 0.0], [0.0; 2], at(start, 1200));
+        let after = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 1200));
         assert!(!after.completed);
     }
 
@@ -964,9 +1064,9 @@ mod tests {
     fn a_retarget_starts_again_without_completing_the_one_it_replaced() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
-        let retarget = flip.step([200.0, 0.0], [0.0; 2], at(start, 500));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
+        let retarget = flip.step([200.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
         assert!(retarget.started && !retarget.completed);
     }
 
@@ -974,8 +1074,8 @@ mod tests {
     fn reduced_motion_raises_no_events() {
         let start = Instant::now();
         let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
-        flip.step([0.0, 0.0], [0.0; 2], start);
-        let moved = flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
         assert!(!moved.started && !moved.completed);
     }
 
@@ -988,5 +1088,111 @@ mod tests {
         assert_eq!(parse(&json!({ "layoutId": null })).unwrap().unwrap().layout_id, None);
         assert!(parse(&json!({ "mode": "size", "layoutId": "a" })).unwrap().is_some());
         assert!(parse(&json!({ "mode": false, "layoutId": "a" })).unwrap().is_none());
+    }
+
+    fn held(offset: Vec2) -> Drag {
+        Drag {
+            active: true,
+            offset,
+        }
+    }
+
+    #[test]
+    fn a_held_box_is_shown_where_the_pointer_took_it() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        let step = flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        assert_eq!(step.offset, [0.0, 30.0]);
+        assert!(!step.active, "the pointer moves it, not a clock");
+        let later = flip.step([0.0, 0.0], [0.0; 2], held([5.0, 42.0]), at(start, 20));
+        assert_eq!(later.offset, [5.0, 42.0]);
+    }
+
+    #[test]
+    fn a_held_box_stays_under_the_pointer_when_layout_moves_its_slot() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        // A swap moved its slot 20 px down; the pointer has not moved.
+        let swapped = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), at(start, 20));
+        assert_eq!(swapped.offset, [0.0, 10.0]);
+        assert!(!swapped.active && !swapped.started, "no glide for a held box");
+        assert_eq!(swapped.moved, [0.0, 20.0], "boxes inside still read the move");
+        // The pointer then moves 5 px further.
+        let after = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 35.0]), at(start, 30));
+        assert_eq!(after.offset, [0.0, 15.0]);
+    }
+
+    #[test]
+    fn a_released_box_glides_from_where_it_was_shown_to_its_slot() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        // Released: the drag values are read as whatever they are now.
+        let release = Drag {
+            active: false,
+            offset: [0.0, 0.0],
+        };
+        // Layout put the slot 20 px down while it was held, so it is 10 px from it.
+        let first = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 20));
+        assert_eq!(first.offset, [0.0, 10.0]);
+        assert!(first.active && first.started);
+        let half = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 520));
+        assert!((half.offset[1] - 5.0).abs() < 1e-6, "{:?}", half.offset);
+        let done = flip.step([0.0, 20.0], [0.0; 2], release, at(start, 1100));
+        assert_eq!(done.offset, [0.0, 0.0]);
+        assert!(done.completed);
+    }
+
+    #[test]
+    fn releasing_where_the_box_belongs_has_nothing_to_glide() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 0.0]), at(start, 10));
+        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), at(start, 20));
+        assert!(!step.active && !step.started && !step.completed);
+    }
+
+    #[test]
+    fn a_box_picked_up_mid_glide_starts_from_where_it_is_shown() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 100.0], [0.0; 2], Drag::default(), at(start, 10));
+        // Half way: shown 50 px above its slot.
+        let held = flip.step([0.0, 100.0], [0.0; 2], held([0.0, 8.0]), at(start, 510));
+        assert!((held.offset[1] + 42.0).abs() < 1e-6, "{:?}", held.offset);
+    }
+
+    #[test]
+    fn a_release_under_reduced_motion_jumps() {
+        let start = Instant::now();
+        let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), at(start, 20));
+        assert_eq!(step.offset, [0.0, 0.0]);
+        assert!(!step.active);
+    }
+
+    #[test]
+    fn drag_offset_names_three_motion_values() {
+        let source = json!({ "mode": true, "dragOffset": { "x": 4, "y": 5, "active": 6 } });
+        assert!(parse(&source).unwrap().is_some());
+        assert_eq!(drag_value_ids(&source), vec![4.0, 5.0, 6.0]);
+        assert!(drag_value_ids(&json!(true)).is_empty());
+        assert!(parse(&json!({ "dragOffset": { "x": 4, "y": 5 } })).is_err());
+        assert!(parse(&json!({ "dragOffset": null })).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_drag_value_that_is_not_bound_reads_as_no_drag() {
+        let source = json!({ "mode": true, "dragOffset": { "x": 4, "y": 5, "active": 6 } });
+        let values = MotionValueStore::default();
+        assert_eq!(read_drag(&source, &values), Drag::default());
     }
 }

@@ -230,9 +230,14 @@ impl MotionValueStore {
 
     /// Samples everything something depends on at `now`: the values the
     /// elements' `motionValues` bind and the values with a listener.
+    ///
+    /// `read` names values to sample for the renderer's own use, not bound to
+    /// a style property (see [`Self::sampled`]). One that has no node yet is
+    /// skipped without a word.
     pub(crate) fn frame<'a>(
         &mut self,
         bindings: impl IntoIterator<Item = &'a Value>,
+        read: &[f64],
         now: Instant,
     ) -> MotionValueFrame {
         let mut frame = MotionValueFrame::default();
@@ -256,9 +261,26 @@ impl MotionValueStore {
                 Err(error) => self.warn(error),
             }
         }
+        for id in read {
+            let Ok(id) = value_id(*id) else {
+                continue;
+            };
+            if let Ok(sample) = self.graph.sample(id, now) {
+                frame.active |= sample.active;
+                self.frame_values.insert(id, sample.value);
+            }
+        }
         frame.active |= self.observe(now);
         frame.events = std::mem::take(&mut self.pending);
         frame
+    }
+
+    /// The number the last frame sampled for a value passed as `read`.
+    pub(crate) fn sampled(&self, id: f64) -> Option<f64> {
+        match self.frame_values.get(&value_id(id).ok()?)? {
+            AnimValue::Number(number) => Some(*number),
+            _ => None,
+        }
     }
 
     /// Lays the bound values the last frame sampled over `style`.
@@ -650,7 +672,7 @@ mod tests {
 
         let mut events = Vec::new();
         for second in 0..60u64 {
-            let frame = store.frame([], clock.at(second * 1000 + 500));
+            let frame = store.frame([], &[], clock.at(second * 1000 + 500));
             assert!(frame.active, "second {second}");
             events.extend(kinds(&frame));
         }
@@ -682,7 +704,7 @@ mod tests {
         close(number_at(&mut store, 1.0, clock.at(1500)), 100.0);
         close(number_at(&mut store, 1.0, clock.at(2500)), 50.0);
         assert!(store.is_animating(1.0, clock.at(2500)).unwrap());
-        let frame = store.frame([], clock.at(4000));
+        let frame = store.frame([], &[], clock.at(4000));
         assert_eq!(
             kinds(&frame),
             vec![
@@ -726,14 +748,14 @@ mod tests {
         store.listen(1.0, false, true, clock.at(0)).unwrap();
         let looping = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity", "repeatType": "mirror" });
         store.animate(1.0, &json!([0, 100]), Some(&looping), clock.at(0)).unwrap();
-        assert_eq!(kinds(&store.frame([], clock.at(1000))), vec![(1, MotionValueEventKind::AnimationStart)]);
+        assert_eq!(kinds(&store.frame([], &[], clock.at(1000))), vec![(1, MotionValueEventKind::AnimationStart)]);
 
         // Second pass, running back down.
         close(number_at(&mut store, 1.0, clock.at(1250)), 75.0);
         store.stop(1.0, clock.at(1250)).unwrap();
         close(number_at(&mut store, 1.0, clock.at(9000)), 75.0);
         assert!(!store.is_animating(1.0, clock.at(9000)).unwrap());
-        let frame = store.frame([], clock.at(9016));
+        let frame = store.frame([], &[], clock.at(9016));
         assert_eq!(kinds(&frame), vec![(1, MotionValueEventKind::AnimationComplete)]);
         assert!(!frame.active);
 
@@ -871,7 +893,7 @@ mod tests {
         }
         framed.listen(2.0, true, false, clock.at(0)).unwrap();
         for ms in (16..=160).step_by(16) {
-            framed.frame([], clock.at(ms));
+            framed.frame([], &[], clock.at(ms));
         }
 
         let mid = read.get(2.0, clock.at(160)).unwrap().as_f64().unwrap();
@@ -890,16 +912,16 @@ mod tests {
         store.create_source(1.0, &json!(0)).unwrap();
         store.listen(1.0, true, false, clock.at(0)).unwrap();
 
-        assert!(kinds(&store.frame([], clock.at(0))).is_empty());
+        assert!(kinds(&store.frame([], &[], clock.at(0))).is_empty());
         store.set(1.0, &json!(5), clock.at(10)).unwrap();
-        let frame = store.frame([], clock.at(10));
+        let frame = store.frame([], &[], clock.at(10));
         assert_eq!(frame.events.len(), 1);
         assert_eq!(frame.events[0].value.as_deref(), Some("5.0"));
-        assert!(store.frame([], clock.at(20)).events.is_empty());
+        assert!(store.frame([], &[], clock.at(20)).events.is_empty());
 
         store.listen(1.0, false, false, clock.at(20)).unwrap();
         store.set(1.0, &json!(6), clock.at(30)).unwrap();
-        assert!(store.frame([], clock.at(30)).events.is_empty());
+        assert!(store.frame([], &[], clock.at(30)).events.is_empty());
     }
 
     #[test]
@@ -911,7 +933,7 @@ mod tests {
 
         store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
         // The clock jumps past the end before the next frame: both are still delivered.
-        let frame = store.frame([], clock.at(5000));
+        let frame = store.frame([], &[], clock.at(5000));
         assert_eq!(
             kinds(&frame),
             vec![
@@ -920,7 +942,7 @@ mod tests {
             ]
         );
         assert!(!frame.active);
-        assert!(store.frame([], clock.at(5016)).events.is_empty());
+        assert!(store.frame([], &[], clock.at(5016)).events.is_empty());
     }
 
     #[test]
@@ -932,12 +954,12 @@ mod tests {
         store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
         store.animate(2.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
 
-        assert!(!store.frame([], clock.at(100)).active);
+        assert!(!store.frame([], &[], clock.at(100)).active);
         let binding = json!({ "opacity": 1 });
-        assert!(store.frame([&binding], clock.at(100)).active);
-        assert!(!store.frame([&binding], clock.at(1000)).active);
+        assert!(store.frame([&binding], &[], clock.at(100)).active);
+        assert!(!store.frame([&binding], &[], clock.at(1000)).active);
         store.listen(2.0, true, false, clock.at(500)).unwrap();
-        assert!(store.frame([], clock.at(600)).active);
+        assert!(store.frame([], &[], clock.at(600)).active);
     }
 
     #[test]
@@ -948,7 +970,7 @@ mod tests {
         store.create_source(2.0, &json!("#ff0000")).unwrap();
         store.create_source(3.0, &json!(8)).unwrap();
         let binding = json!({ "opacity": 1, "backgroundColor": 2, "padding": 3 });
-        store.frame([&binding], clock.at(0));
+        store.frame([&binding], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
         store.apply(&binding, &mut style);
@@ -966,7 +988,7 @@ mod tests {
         store.create_source(2.0, &json!("#ff0000")).unwrap();
         let binding = json!({ "opacity": 1 });
         let mismatch = json!({ "opacity": 2 });
-        store.frame([&binding, &mismatch], clock.at(0));
+        store.frame([&binding, &mismatch], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
         store.apply(&binding, &mut style);
@@ -994,6 +1016,6 @@ mod tests {
         assert!(store.dispose(1.0).unwrap());
         assert!(!store.dispose(1.0).unwrap());
         assert!(store.get(1.0, clock.at(0)).is_err());
-        assert!(store.frame([&json!({ "opacity": 1 })], clock.at(0)).events.is_empty());
+        assert!(store.frame([&json!({ "opacity": 1 })], &[], clock.at(0)).events.is_empty());
     }
 }

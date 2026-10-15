@@ -27,7 +27,7 @@ use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
 pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimations};
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
-pub(crate) use layout_flip::{LayoutEvent, LayoutFlips};
+pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };
