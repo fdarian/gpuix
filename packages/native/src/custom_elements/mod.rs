@@ -166,6 +166,22 @@ pub(crate) fn custom_surface(
         el.style().position = Some(gpui::Position::Static);
     }
     el = crate::automation::track_host_bounds(el, ctx.id, None, ctx.observe.clone());
+    el = match ctx.focus_handle {
+        Some(handle) => crate::focus::apply_focus_styles(
+            el.track_focus(handle),
+            ctx.id,
+            ctx.style,
+            &ctx.colors,
+            &ctx.focus_styles,
+        ),
+        None => crate::focus::apply_focus_within(
+            el,
+            ctx.id,
+            ctx.style,
+            &ctx.colors,
+            &ctx.focus_styles,
+        ),
+    };
     el = crate::accessibility::apply_accessibility(el, ctx.id, ctx.props, None);
     wire_host_events(el, ctx)
 }

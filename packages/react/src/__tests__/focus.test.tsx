@@ -224,6 +224,25 @@ describeNative("focus model", () => {
       ])
     })
 
+    it("visits a custom element that has a tabIndex, like any other host", () => {
+      const { renderer, focused, idOf } = setup(
+        <div style={{ width: 280, height: 100 }}>
+          <div testId="before" tabIndex={0} style={box} />
+          <img testId="image" tabIndex={0} style={box} />
+          <div testId="after" tabIndex={0} style={box} />
+        </div>
+      )
+      renderer.focusElement(idOf("image"))
+      expect(focused()).toBe("image")
+      renderer.focusElement(idOf("before"))
+      renderer.simulateKeystrokes("tab")
+      expect(focused()).toBe("image")
+      renderer.simulateKeystrokes("tab")
+      expect(focused()).toBe("after")
+      renderer.simulateKeystrokes("shift-tab")
+      expect(focused()).toBe("image")
+    })
+
     it("follows a changed tabIndex", () => {
       function App({ index }) {
         return (
@@ -452,6 +471,31 @@ describeNative("focus model", () => {
         expect(fieldPng.equals(idlePng)).toBe(false)
         expect(tabPng.equals(idlePng)).toBe(false)
       }
+    })
+  })
+
+  describe("custom element focus styles", () => {
+    it("paints focusVisible on an img with a tabIndex", () => {
+      const file = (name: string) => `${SHOTS_DIR}/focus-img-${name}.png`
+      const capture = (renderer, name: string) => {
+        renderer.captureScreenshot(file(name))
+        return fs.readFileSync(file(name))
+      }
+      const frame = (
+        <div style={{ width: 280, height: 100, backgroundColor: "#101010" }}>
+          <img
+            testId="image"
+            tabIndex={0}
+            style={{ width: 60, height: 40, backgroundColor: "#303030", focusVisible: { backgroundColor: "#ff0000" } }}
+          />
+        </div>
+      )
+      const { renderer } = setup(frame)
+      const idle = capture(renderer, "idle")
+      renderer.simulateKeystrokes("tab")
+      const tabbed = capture(renderer, "tabbed")
+      if (!isCI) expect(tabbed.equals(idle)).toBe(false)
+      expect(renderer.matchesFocus(renderer.findByTestId("image").id, ":focus-visible")).toBe(true)
     })
   })
 
