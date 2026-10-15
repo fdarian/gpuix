@@ -488,7 +488,7 @@ export const hostConfig = {
     try {
       containerInfo.renderer.flushMutations()
     } catch (error) {
-      containerInfo.onUncaughtError(error instanceof Error ? error : new Error(String(error)))
+      containerInfo.onUncaughtError(error instanceof Error ? error : new Error(String(error)), {})
     }
   },
 

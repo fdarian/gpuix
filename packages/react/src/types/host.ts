@@ -146,7 +146,7 @@ export interface Container {
   windowAppearanceEventId: number
   onEvent?: (event: EventPayload) => void
   /** Where an error native raises while applying a commit's mutations goes. */
-  onUncaughtError: (error: Error) => void
+  onUncaughtError: (error: Error, errorInfo: { componentStack?: string }) => void
   /**
    * Set on a portal's container. Its children mount under this element instead
    * of becoming the window's root. The container inherits everything else from
