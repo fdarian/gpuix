@@ -1,7 +1,14 @@
 import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import { reduceMotionValues, wireMotionTransition } from "@gpuix/native/host"
+import {
+  layoutDescription,
+  reduceMotionValues,
+  scopeLayoutId,
+  withoutLayoutTransition,
+  wireMotionTransition,
+} from "@gpuix/native/host"
 import type {
+  MotionLayoutProps,
   MotionProps,
   MotionTransition,
   SvgMotionTransition,
@@ -18,9 +25,10 @@ import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
 import { useContext } from "solid-js"
 import { PresenceContext } from "./animate-presence.js"
+import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
 
-export interface MotionDivProps extends SolidHostProps, MotionProps {}
+export interface MotionDivProps extends SolidHostProps, MotionProps, MotionLayoutProps {}
 
 /** A `motion.path`, `motion.circle`, ...: the shape's own props plus the animation. */
 export type MotionShapeProps<Shape> = SolidHostProps<Shape> & SvgMotionProps
@@ -30,6 +38,8 @@ interface MotionSource {
   animate?: object
   exit?: object
   transition?: MotionTransition | SvgMotionTransition
+  layout?: MotionLayoutProps["layout"]
+  layoutId?: string
 }
 
 function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
@@ -39,9 +49,12 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
       "animate",
       "exit",
       "transition",
+      "layout",
+      "layoutId",
     ])
     const presence = useContext(PresenceContext)
     const config = useContext(MotionConfigContext)
+    const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = () => config !== undefined && config.reduced()
     createRenderEffect(() => {
       if (!reduced()) return
@@ -56,14 +69,23 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
     const element = createElement(tag)
     let generation = 0
     let targetKey: string | undefined
+    const resolvedTransition = () =>
+      wireMotionTransition(motionProps.transition !== undefined ? motionProps.transition : config?.transition())
     spread(element, mergeProps(hostProps, {
+      get layout() {
+        return layoutDescription({
+          layout: motionProps.layout as MotionLayoutProps["layout"],
+          layoutId: scopeLayoutId(layoutGroupId?.(), motionProps.layoutId as string | undefined),
+          transition: resolvedTransition() as MotionTransition | undefined,
+          reduced: reduced(),
+        })
+      },
       get motion() {
         const isExit = Boolean(presence && !presence.isPresent() && motionProps.exit)
         const initial = presence?.initial === false ? false : motionProps.initial
         const animate = isExit ? motionProps.exit! : motionProps.animate
-        const transition = wireMotionTransition(
-          motionProps.transition !== undefined ? motionProps.transition : config?.transition()
-        )
+        if (animate === undefined) return undefined
+        const transition = withoutLayoutTransition(resolvedTransition())
         const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
         if (nextKey !== targetKey) {
           targetKey = nextKey

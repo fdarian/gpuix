@@ -2,8 +2,15 @@
 
 import { createElement, forwardRef, useContext, useEffect, useLayoutEffect, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { reduceMotionValues, wireMotionTransition } from "@gpuix/native/host"
+import {
+  layoutDescription,
+  reduceMotionValues,
+  scopeLayoutId,
+  withoutLayoutTransition,
+  wireMotionTransition,
+} from "@gpuix/native/host"
 import type {
+  MotionLayoutProps,
   MotionProps,
   MotionTransition,
   MotionValueStyle,
@@ -20,6 +27,7 @@ import type {
   SvgRectProps,
 } from "../types/host.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
+import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
 
 let nextMotionGeneration = 0
@@ -31,6 +39,8 @@ export {
   usePresence,
 } from "./animate-presence.js"
 export type { AnimatePresenceProps } from "./animate-presence.js"
+export { LayoutGroup } from "./layout-group.js"
+export type { LayoutGroupProps } from "./layout-group.js"
 export { MotionConfig, useReducedMotionConfig } from "./motion-config.js"
 export type { MotionConfigProps } from "./motion-config.js"
 
@@ -51,7 +61,7 @@ export const gpuixComponents = {
 
 export type GpuixComponentType = keyof typeof gpuixComponents
 
-export interface MotionDivProps extends MotionProps {
+export interface MotionDivProps extends MotionProps, MotionLayoutProps {
   children?: ReactNode
   style?: MotionValueStyle
   onClick?: Props["onClick"]
@@ -69,27 +79,33 @@ export interface MotionDivProps extends MotionProps {
   onScroll?: Props["onScroll"]
   onDrop?: Props["onDrop"]
   onMotionComplete?: Props["onMotionComplete"]
+  onLayoutAnimationStart?: Props["onLayoutAnimationStart"]
+  onLayoutAnimationComplete?: Props["onLayoutAnimationComplete"]
   autoFocus?: boolean
 }
 
 /** What every `motion.*` component takes, whatever it animates. */
 interface MotionSource<Style, Transition> {
   initial?: Style | false
-  animate: Style
+  animate?: Style
   exit?: Style
   transition?: Transition
+  layout?: MotionLayoutProps["layout"]
+  layoutId?: string
   onMotionComplete?: Props["onMotionComplete"]
 }
 
 function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
   return forwardRef<PublicInstance, Source>(function Motion(
-    { initial, animate, exit, transition, onMotionComplete, ...props },
+    { initial, animate, exit, transition, layout, layoutId, onMotionComplete, ...props },
     ref
   ): ReactElement {
     const presence = useContext(PresenceContext)
     const config = useContext(MotionConfigContext)
+    const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = config !== undefined && config.reduced
     const resolvedTransition = wireMotionTransition(transition ?? config?.transition)
+    const motionTransition = withoutLayoutTransition(resolvedTransition)
     const [isPresent, safeToRemove] = usePresence()
     const resolvedInitial = presence?.initial === false ? false : initial
     const resolvedAnimate = !isPresent && exit ? exit : animate
@@ -102,7 +118,7 @@ function createMotionComponent<Source extends MotionSource<object, MotionTransit
       isPresent,
       resolvedInitial,
       resolvedAnimate,
-      resolvedTransition,
+      motionTransition,
       reduced,
     ])
     const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
@@ -110,19 +126,24 @@ function createMotionComponent<Source extends MotionSource<object, MotionTransit
     const style: unknown = Reflect.get(props, "style")
     useLayoutEffect(() => (reduced ? reduceMotionValues(style) : undefined), [reduced, style])
 
-    const motionDescription = {
-      generation,
-      isExit: !isPresent && exit !== undefined,
-      initial: resolvedInitial,
-      animate: resolvedAnimate,
-      transition: resolvedTransition,
-      ...(reduced ? { reducedMotion: true } : {}),
+    const hostProps: Record<string, unknown> = { ...props, ref }
+    if (resolvedAnimate !== undefined) {
+      hostProps.motion = {
+        generation,
+        isExit: !isPresent && exit !== undefined,
+        initial: resolvedInitial,
+        animate: resolvedAnimate,
+        transition: motionTransition,
+        ...(reduced ? { reducedMotion: true } : {}),
+      }
     }
-    const hostProps: Record<string, unknown> = {
-      ...props,
-      ref,
-      motion: motionDescription,
-    }
+    const layoutProp = layoutDescription({
+      layout,
+      layoutId: scopeLayoutId(layoutGroupId, layoutId),
+      transition: resolvedTransition as MotionTransition | undefined,
+      reduced,
+    })
+    if (layoutProp !== undefined) hostProps.layout = layoutProp
     if (!isPresent || onMotionComplete) {
       hostProps.onMotionComplete = (event: Parameters<NonNullable<Props["onMotionComplete"]>>[0]) => {
         if (event.motionGeneration !== generation) return

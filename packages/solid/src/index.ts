@@ -40,6 +40,8 @@ export {
   createVelocity,
 } from "./motion-value.js"
 export { motion } from "./components/motion.js"
+export { LayoutGroup } from "./components/layout-group.js"
+export type { LayoutGroupProps } from "./components/layout-group.js"
 export { MotionConfig, createReducedMotionConfig } from "./components/motion-config.js"
 export type { MotionConfigProps } from "./components/motion-config.js"
 export {

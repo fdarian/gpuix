@@ -187,6 +187,7 @@ const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "draggable",
   "inert",
   "motion",
+  "layout",
   "testId",
   "highlight",
   "role",

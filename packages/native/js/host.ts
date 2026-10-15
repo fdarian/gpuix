@@ -39,6 +39,7 @@ export * from "./forms.js"
 export * from "./bounds.js"
 export * from "./host-runtime.js"
 export * from "./keyframes.js"
+export * from "./layout-animation.js"
 export * from "./match-media.js"
 export * from "./motion-bindings.js"
 export * from "./motion-config.js"
@@ -252,11 +253,14 @@ export type MotionCurve = MotionTweenTransition | MotionSpringTransition
  */
 export type MotionTransition = MotionCurve & {
   default?: MotionCurve
+  /** The glide of the `layout` and `layoutId` props. Falls back to the rest of this transition, then to a 0.45 s tween. */
+  layout?: MotionCurve
 } & { [Property in keyof MotionStyle]?: MotionCurve }
 
 export interface MotionProps {
   initial?: MotionStyle | false
-  animate: MotionStyle
+  /** Left out by an element that only has `layout`. */
+  animate?: MotionStyle
   /** Target applied while this node is leaving `AnimatePresence`. */
   exit?: MotionStyle
   transition?: MotionTransition
