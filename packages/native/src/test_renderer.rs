@@ -1299,20 +1299,12 @@ impl TestGpuixRenderer {
 
     /// The default action of a scrolling key. See `GpuixRenderer::scroll_by_key`.
     #[napi]
-    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<bool> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    let scrolled = view.scroll_by_key(&key, shift, window);
-                    if scrolled {
-                        cx.notify();
-                        window.refresh();
-                    }
-                    scrolled
-                })
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
+    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<()> {
+        update_view_or_defer(move |view, window, cx| {
+            if view.scroll_by_key(&key, shift, window) {
+                cx.notify();
+                window.refresh();
+            }
         })
     }
 

@@ -2749,24 +2749,26 @@ impl GpuixRenderer {
     /// The default action of a scrolling key (`"up"`, `"down"`, `"left"`, `"right"`,
     /// `"pageup"`, `"pagedown"`, `"home"`, `"end"`, `"space"`): scrolls the innermost scrollable
     /// ancestor of the focused element, or the scroller under the pointer if nothing is focused.
-    /// Returns whether anything scrolled. A focused text input or control keeps its keys.
+    /// A focused text input or control keeps its keys.
+    ///
+    /// Called from a key handler it runs once the input has returned the root view. That is why
+    /// it reports nothing: whether anything scrolled is not known yet at that point.
     #[napi]
-    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<bool> {
+    pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, cx| {
-            let scrolled = view.scroll_by_key(&key, shift, window);
-            if scrolled {
+        return update_window_or_defer(move |view, window, cx| {
+            if view.scroll_by_key(&key, shift, window) {
                 cx.notify();
                 window.refresh();
             }
-            scrolled
         });
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
             let (response, receiver) = sync_channel(1);
             self.send_ui_command(UiCommand::ScrollByKey { key, shift, response })?;
-            return recv_ui_response(receiver, "the scroll key command");
+            recv_ui_response(receiver, "the scroll key command")?;
+            return Ok(());
         }
 
         #[cfg(not(any(

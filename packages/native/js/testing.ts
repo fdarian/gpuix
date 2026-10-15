@@ -131,7 +131,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   simulatePointerLockGranting(granting: boolean): void
   simulatePointerLockLost(): void
   getScrollMetrics(elementId: number): number[] | null
-  scrollByKey(key: string, shift: boolean): boolean
+  scrollByKey(key: string, shift: boolean): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
   selectText(elementId: number): void
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
@@ -888,12 +888,11 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** The default action of a scrolling key. See `scrollByKey` on the native renderer. */
-  scrollByKey(key: string, shift: boolean): boolean {
+  scrollByKey(key: string, shift: boolean): void {
     this.native.flush()
-    const scrolled = this.native.scrollByKey(key, shift)
+    this.native.scrollByKey(key, shift)
     this.dispatchNativeEvents()
     this.native.flush()
-    return scrolled
   }
 
   /** `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or

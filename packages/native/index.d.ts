@@ -198,9 +198,12 @@ export declare class GpuixRenderer {
    * The default action of a scrolling key (`"up"`, `"down"`, `"left"`, `"right"`,
    * `"pageup"`, `"pagedown"`, `"home"`, `"end"`, `"space"`): scrolls the innermost scrollable
    * ancestor of the focused element, or the scroller under the pointer if nothing is focused.
-   * Returns whether anything scrolled. A focused text input or control keeps its keys.
+   * A focused text input or control keeps its keys.
+   *
+   * Called from a key handler it runs once the input has returned the root view. That is why
+   * it reports nothing: whether anything scrolled is not known yet at that point.
    */
-  scrollByKey(key: string, shift: boolean): boolean
+  scrollByKey(key: string, shift: boolean): void
   /**
    * The DOM scroll geometry of an element:
    * `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null
@@ -587,7 +590,7 @@ export declare class TestGpuixRenderer {
   /** Same numbers as the on-screen overlay: current, p90, p99, max, frames. */
   getDebugFrameOverlayStats(): DebugFrameOverlayStats
   /** The default action of a scrolling key. See `GpuixRenderer::scroll_by_key`. */
-  scrollByKey(key: string, shift: boolean): boolean
+  scrollByKey(key: string, shift: boolean): void
   /**
    * The DOM scroll geometry of an element:
    * `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or null

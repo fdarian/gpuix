@@ -149,7 +149,7 @@ describeNative("keyboard scrolling", () => {
     )
     try {
       press("scroller", "down")
-      expect(keys).toEqual(["down"])
+      expect(keys).toEqual(["ArrowDown"])
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
       unmount()

@@ -336,6 +336,8 @@ describeNative("floating controls", () => {
           </div>
           <div
             style={{
+              // Positioned, so it paints (and is hit) above the absolute box before it.
+              position: "relative",
               marginTop: 40,
               marginLeft: 20,
               width: 200,

@@ -2521,7 +2521,8 @@ describeNative("events", () => {
       testRoot.render(<ModalOverCanvas />)
       testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, -80)
 
-      expect(deltas).toEqual([-80])
+      // The DOM sign: content moving up is a positive deltaY.
+      expect(deltas).toEqual([80])
     })
 
     it("reports the modifiers held during a simulated wheel", () => {
