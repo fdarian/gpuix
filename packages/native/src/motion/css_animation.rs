@@ -11,7 +11,7 @@
 //! [`CssAnimations::update`], which returns the values to lay over it. Those
 //! win over everything else the element declares, as animations do in CSS.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,6 +29,7 @@ use super::track::{Goal, Track};
 use super::value::{AnimValue, Colors};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
 use crate::color::ColorContext;
+use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1060,6 +1061,8 @@ pub(crate) struct CssAnimations {
     states: HashMap<u64, ElementState>,
     events: Vec<Scheduled>,
     active: bool,
+    /// The roots `display: none` has cancelled for, until they render again.
+    hidden: HashSet<u64>,
 }
 
 impl CssAnimations {
@@ -1126,8 +1129,34 @@ impl CssAnimations {
         (!values.is_empty()).then_some(AnimationStyle(values))
     }
 
+    /// `id` is `display: none`, which takes it and everything below it out of
+    /// rendering: its animations are cancelled and its state dropped, so they
+    /// start over when it renders again. Cheap to call every frame the element
+    /// stays hidden.
+    pub(crate) fn hide(&mut self, tree: &RetainedTree, id: u64, now: Instant) {
+        if !self.hidden.insert(id) || self.states.is_empty() {
+            return;
+        }
+        for hidden in super::subtree_ids(tree, id) {
+            let Some(state) = self.states.remove(&hidden) else {
+                continue;
+            };
+            for run in &state.runs {
+                run.cancel(hidden, now, &mut self.events);
+            }
+        }
+    }
+
+    /// `id` renders: it is no longer hidden.
+    pub(crate) fn show(&mut self, id: u64) {
+        if !self.hidden.is_empty() {
+            self.hidden.remove(&id);
+        }
+    }
+
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
         self.states.retain(|id, _| keep(*id));
+        self.hidden.retain(|id| keep(*id));
     }
 
     /// Events queued since the last call, in the order they happened.
@@ -1449,6 +1478,28 @@ mod tests {
 
     fn fading(animation: &str) -> StyleDesc {
         style(&format!(r#"{{ "animation": "{animation}" }}"#))
+    }
+
+    #[test]
+    fn display_none_cancels_the_animation_and_it_starts_over_when_shown() {
+        let mut tree = crate::retained_tree::RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        frames.frame(400, &animated);
+        frames.events();
+
+        frames.animations.hide(&tree, 1, frames.at(400));
+        assert_eq!(frames.events(), [named(Cancel, "fade", 0.4)]);
+        frames.animations.hide(&tree, 1, frames.at(416));
+        assert!(frames.events().is_empty());
+
+        frames.animations.show(1);
+        near(opacity(&frames.frame(2000, &animated)), 0.0);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+        near(opacity(&frames.frame(2500, &animated)), 0.5);
     }
 
     #[test]

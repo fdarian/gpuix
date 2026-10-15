@@ -95,6 +95,36 @@ describeNative("CSS transitions", () => {
     expect(widthOf(renderer, "box")).toBe(100)
   })
 
+  it("cancels a running transition on display none and starts none when shown with a new value", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const box = (width: number, display?: "none") => (
+      <div
+        testId="box"
+        onTransitionRun={() => seen.push("run")}
+        onTransitionCancel={(event) => seen.push(`cancel ${event.elapsedTime}`)}
+        style={{ width, height: 20, display, transition: "width 1s linear" }}
+      />
+    )
+    renderer.clockPause()
+    render(box(100))
+    render(box(200))
+    renderer.clockFastForward(500)
+    render(box(200, "none"))
+    renderer.clockFastForward(16)
+    renderer.dispatchNativeEvents()
+    expect(seen).toEqual(["run", "cancel 0.5"])
+
+    // Changed while hidden, then shown: no transition starts.
+    render(box(300, "none"))
+    renderer.clockFastForward(16)
+    render(box(300))
+    expect(widthOf(renderer, "box")).toBe(300)
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBe(300)
+    expect(seen).toEqual(["run", "cancel 0.5"])
+  })
+
   it("animates the focusVisible style on keyboard focus only", () => {
     const { render, renderer } = createTestRoot()
     renderer.clockPause()

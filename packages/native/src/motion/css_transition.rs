@@ -6,7 +6,7 @@
 //! showed to the new one; the returned [`TransitionStyle`] holds the values of
 //! the transitions still running, to lay over that style.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use web_time::Instant;
 
@@ -16,6 +16,7 @@ use super::property::{expand_shorthand, AnimProp};
 use super::value::{pair, AnimValue, Colors, Pair};
 use super::MotionState;
 use crate::color::ColorContext;
+use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
 // ── Parsing ──────────────────────────────────────────────────────────
@@ -1006,6 +1007,8 @@ pub(crate) struct CssTransitions {
     states: HashMap<u64, ElementState>,
     events: Vec<TransitionEvent>,
     active: bool,
+    /// The roots `display: none` has cancelled for, until they render again.
+    hidden: HashSet<u64>,
 }
 
 impl CssTransitions {
@@ -1068,8 +1071,36 @@ impl CssTransitions {
         (!values.is_empty()).then_some(TransitionStyle(values))
     }
 
+    /// `id` is `display: none`, which takes it and everything below it out of
+    /// rendering: its transitions are cancelled and its state dropped. The
+    /// next style it renders with is the first it is seen with, so a change
+    /// made while it was hidden does not transition when it shows again.
+    /// Cheap to call every frame the element stays hidden.
+    pub(crate) fn hide(&mut self, tree: &RetainedTree, id: u64, now: Instant) {
+        if !self.hidden.insert(id) || self.states.is_empty() {
+            return;
+        }
+        for hidden in super::subtree_ids(tree, id) {
+            let Some(mut state) = self.states.remove(&hidden) else {
+                continue;
+            };
+            let running: Vec<AnimProp> = state.running.keys().copied().collect();
+            for prop in running {
+                state.cancel(hidden, prop, now, &mut self.events);
+            }
+        }
+    }
+
+    /// `id` renders: it is no longer hidden.
+    pub(crate) fn show(&mut self, id: u64) {
+        if !self.hidden.is_empty() {
+            self.hidden.remove(&id);
+        }
+    }
+
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
         self.states.retain(|id, _| keep(*id));
+        self.hidden.retain(|id| keep(*id));
     }
 
     /// Events queued since the last call, in the order they happened.
@@ -1312,11 +1343,22 @@ mod tests {
             motion: Option<&MotionState>,
             measurement: Option<&Measurement>,
         ) -> StyleDesc {
+            self.frame_of(1, millis, after, motion, measurement)
+        }
+
+        fn frame_of(
+            &mut self,
+            id: u64,
+            millis: u64,
+            after: &StyleDesc,
+            motion: Option<&MotionState>,
+            measurement: Option<&Measurement>,
+        ) -> StyleDesc {
             let mut resolved = after.clone();
             if let Some(values) =
                 self.transitions
                     .update(
-                        1,
+                        id,
                         after,
                         &self.parent_colors,
                         motion,
@@ -1814,6 +1856,66 @@ mod tests {
         assert_ne!(halfway, "#ffffff");
         assert_ne!(halfway, "#000000");
         assert_eq!(clock.frame(1000, &hovered).background_color.as_deref(), Some("#ffffff"));
+    }
+
+    fn hidden_pair() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.append_child(1, 2);
+        tree
+    }
+
+    #[test]
+    fn display_none_cancels_the_transitions_of_the_element_and_its_descendants() {
+        let tree = hidden_pair();
+        let mut clock = Clock::new();
+        let (start, target) = (sized(0.0, "width 1s linear"), sized(100.0, "width 1s linear"));
+        for id in [1, 2] {
+            clock.frame_of(id, 0, &start, None, None);
+            clock.frame_of(id, 100, &target, None, None);
+        }
+        clock.events();
+        assert_eq!(width_of(&clock.frame_of(2, 600, &target, None, None)), 50.0);
+        clock.events();
+
+        clock.transitions.hide(&tree, 1, clock.at(600));
+        assert_eq!(clock.events(), [(Cancel, "width".to_string(), 0.5), (Cancel, "width".to_string(), 0.5)]);
+        // Hidden frames after the first change nothing.
+        clock.transitions.hide(&tree, 1, clock.at(616));
+        assert!(clock.events().is_empty());
+        assert!(!clock.transitions.wants(1, None), "no state is left to settle");
+        assert!(!clock.transitions.wants(2, None));
+    }
+
+    #[test]
+    fn a_style_changed_while_hidden_does_not_transition_when_it_shows_again() {
+        let tree = hidden_pair();
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.transitions.hide(&tree, 1, clock.at(100));
+        // Changed while `display: none`, then shown with the new value.
+        clock.transitions.show(1);
+        let target = sized(100.0, "width 1s linear");
+        assert_eq!(width_of(&clock.frame(500, &target)), 100.0);
+        assert!(clock.events().is_empty());
+        // It transitions normally from then on.
+        assert_eq!(width_of(&clock.frame(600, &sized(0.0, "width 1s linear"))), 100.0);
+        assert_eq!(width_of(&clock.frame(1100, &sized(0.0, "width 1s linear"))), 50.0);
+    }
+
+    #[test]
+    fn an_element_that_hides_again_after_showing_is_cancelled_again() {
+        let tree = hidden_pair();
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.transitions.hide(&tree, 1, clock.at(0));
+        clock.transitions.show(1);
+        clock.frame(100, &sized(0.0, "width 1s linear"));
+        clock.frame(200, &sized(100.0, "width 1s linear"));
+        clock.events();
+        clock.transitions.hide(&tree, 1, clock.at(700));
+        assert_eq!(clock.events(), [(Cancel, "width".to_string(), 0.5)]);
     }
 
     #[test]

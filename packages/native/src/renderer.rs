@@ -6916,8 +6916,12 @@ pub(crate) fn build_element(
         return gpui::Empty.into_any_element();
     };
     if crate::layout::box_generation::is_display_none(element) {
+        ctx.css_transitions.hide(tree, id, ctx.now);
+        ctx.css_animations.hide(tree, id, ctx.now);
         return gpui::Empty.into_any_element();
     }
+    ctx.css_transitions.show(id);
+    ctx.css_animations.show(id);
 
     // `hover`, `active`, `groupHover` and `groupActive` are folded into the base
     // here, before motion, so the GPUI element never sees them: the dispatcher

@@ -644,6 +644,20 @@ impl MotionState {
     }
 }
 
+/// `id` and everything below it in the tree. What `display: none` takes out of
+/// rendering: transitions and animations on all of it end.
+pub(super) fn subtree_ids(tree: &crate::retained_tree::RetainedTree, id: u64) -> Vec<u64> {
+    let mut ids = Vec::new();
+    let mut pending = vec![id];
+    while let Some(next) = pending.pop() {
+        ids.push(next);
+        if let Some(element) = tree.elements.get(&next) {
+            pending.extend(&element.children);
+        }
+    }
+    ids
+}
+
 /// The state styles `fold_state_styles` can lay over `style`, by the name a
 /// validation error gives them. A transition or animation declared in any of
 /// them has to take part, or it never runs.
