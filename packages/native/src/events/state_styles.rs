@@ -63,6 +63,9 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         cursor, pointer_events, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
         transition_delay, interpolate_size,
+        animation, animation_name, animation_duration, animation_timing_function,
+        animation_delay, animation_iteration_count, animation_direction, animation_fill_mode,
+        animation_play_state,
         focus_visible, focus_within, keyboard_focus_dim, group, group_hover, group_active,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
@@ -108,6 +111,16 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.transition_duration = None;
         base.transition_timing_function = None;
         base.transition_delay = None;
+    }
+    if over.animation.is_some() {
+        base.animation_name = None;
+        base.animation_duration = None;
+        base.animation_timing_function = None;
+        base.animation_delay = None;
+        base.animation_iteration_count = None;
+        base.animation_direction = None;
+        base.animation_fill_mode = None;
+        base.animation_play_state = None;
     }
     if over.overflow.is_some() {
         base.overflow_x = None;
@@ -284,6 +297,27 @@ mod tests {
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!(pressed.transition.as_deref(), Some("color 150ms"));
         assert_eq!(pressed.transition_delay.as_deref(), Some("50ms"));
+    }
+
+    #[test]
+    fn a_state_animation_replaces_the_base_animation_and_its_longhands() {
+        let base = style(
+            r##"{
+                "animation": "spin 1s", "animationDuration": "2s",
+                "hover": { "animation": "pulse 150ms" },
+                "active": { "animationPlayState": "paused" }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.animation_duration.as_deref(), Some("2s"));
+
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.animation.as_deref(), Some("pulse 150ms"));
+        assert_eq!(hovered.animation_duration, None);
+
+        let pressed = resolve_state_styles(&base, true, true);
+        assert_eq!(pressed.animation.as_deref(), Some("pulse 150ms"));
+        assert_eq!(pressed.animation_play_state.as_deref(), Some("paused"));
     }
 
     #[test]

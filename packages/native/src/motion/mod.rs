@@ -5,6 +5,7 @@
 //! transition changed, so the rest keep running undisturbed.
 
 mod bindings;
+mod css_animation;
 mod css_transition;
 mod curve;
 pub(crate) mod measure;
@@ -22,6 +23,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
+pub(crate) use css_animation::validate_animations;
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };

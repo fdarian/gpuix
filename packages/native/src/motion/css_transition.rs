@@ -211,7 +211,7 @@ fn default_timing() -> Ease {
 
 /// Splits on `separator`, ignoring any inside parentheses. Empty items are an
 /// error, as `a,,b` is in CSS.
-fn split_outside_parens(text: &str, separator: char) -> Result<Vec<&str>, String> {
+pub(super) fn split_outside_parens(text: &str, separator: char) -> Result<Vec<&str>, String> {
     let mut items = Vec::new();
     let mut depth = 0usize;
     let mut start = 0;
@@ -233,7 +233,7 @@ fn split_outside_parens(text: &str, separator: char) -> Result<Vec<&str>, String
     Ok(items)
 }
 
-fn split_whitespace_outside_parens(text: &str) -> Vec<&str> {
+pub(super) fn split_whitespace_outside_parens(text: &str) -> Vec<&str> {
     let mut tokens = Vec::new();
     let mut depth = 0usize;
     let mut start = None;
@@ -257,7 +257,7 @@ fn split_whitespace_outside_parens(text: &str) -> Vec<&str> {
     tokens
 }
 
-fn parse_list<T>(text: &str, parse: impl Fn(&str) -> Result<T, String>) -> Result<Vec<T>, String> {
+pub(super) fn parse_list<T>(text: &str, parse: impl Fn(&str) -> Result<T, String>) -> Result<Vec<T>, String> {
     split_outside_parens(text, ',')?
         .into_iter()
         .map(|item| parse(item))
@@ -265,7 +265,7 @@ fn parse_list<T>(text: &str, parse: impl Fn(&str) -> Result<T, String>) -> Resul
 }
 
 /// `<time>`: a number with `s` or `ms`. A bare `0` is not a time in CSS.
-fn parse_time(text: &str) -> Option<f64> {
+pub(super) fn parse_time(text: &str) -> Option<f64> {
     let lowered = text.to_ascii_lowercase();
     let (number, scale) = match lowered.strip_suffix("ms") {
         Some(number) => (number, 0.001),
@@ -278,14 +278,14 @@ fn parse_time(text: &str) -> Option<f64> {
         .map(|number| number * scale)
 }
 
-fn check_seconds(seconds: f64, text: &str) -> Result<f64, String> {
+pub(super) fn check_seconds(seconds: f64, text: &str) -> Result<f64, String> {
     if seconds.abs() > 1e9 {
         return Err(format!("{text} is out of range"));
     }
     Ok(seconds)
 }
 
-fn parse_duration(text: &str) -> Result<f64, String> {
+pub(super) fn parse_duration(text: &str) -> Result<f64, String> {
     let seconds = parse_time(text).ok_or_else(|| format!("not a time: {text}"))?;
     if seconds < 0.0 {
         return Err(format!("a duration cannot be negative: {text}"));
@@ -293,12 +293,12 @@ fn parse_duration(text: &str) -> Result<f64, String> {
     check_seconds(seconds, text)
 }
 
-fn parse_delay(text: &str) -> Result<f64, String> {
+pub(super) fn parse_delay(text: &str) -> Result<f64, String> {
     let seconds = parse_time(text).ok_or_else(|| format!("not a time: {text}"))?;
     check_seconds(seconds, text)
 }
 
-fn is_timing_function(token: &str) -> bool {
+pub(super) fn is_timing_function(token: &str) -> bool {
     token.ends_with(')')
         || matches!(
             token.to_ascii_lowercase().as_str(),

@@ -397,6 +397,18 @@ pub struct StyleDesc {
     /// `numeric-only` or `allow-keywords`. Inherited, like the CSS property.
     pub interpolate_size: Option<String>,
 
+    // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
+    // over the `animation` shorthand. Names refer to `defineKeyframes`.
+    pub animation: Option<String>,
+    pub animation_name: Option<String>,
+    pub animation_duration: Option<String>,
+    pub animation_timing_function: Option<String>,
+    pub animation_delay: Option<String>,
+    pub animation_iteration_count: Option<String>,
+    pub animation_direction: Option<String>,
+    pub animation_fill_mode: Option<String>,
+    pub animation_play_state: Option<String>,
+
     // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
     // Uses Box to avoid infinite-size struct (StyleDesc contains StyleDesc).
     pub hover: Option<Box<StyleDesc>>,
