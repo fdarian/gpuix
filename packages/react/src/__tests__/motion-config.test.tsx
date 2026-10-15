@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  AnimatePresence,
   MotionConfig,
   animate,
   motion,
@@ -88,6 +89,24 @@ describeNative("MotionConfig", () => {
     expect(completions).toEqual([])
     frame(renderer, 600)
     expect(completions).toEqual(["done"])
+  })
+
+  it("lets AnimatePresence finish an exit that only moves or resizes", () => {
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    const app = (show: boolean) => (
+      <MotionConfig reducedMotion="always">
+        <AnimatePresence>
+          {show ? (
+            <motion.div key="card" testId="card" animate={{ width: 100 }} exit={{ width: 0 }} transition={linear} />
+          ) : null}
+        </AnimatePresence>
+      </MotionConfig>
+    )
+    render(app(true))
+    render(app(false))
+    frame(renderer, 16)
+    expect(renderer.findByTestId("card")).toBeUndefined()
   })
 
   it("never ignores the OS setting", () => {

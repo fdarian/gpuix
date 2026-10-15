@@ -1727,6 +1727,45 @@ two elements driven by transforms of one value never drift apart. A function-for
 transform tracks the motion values it reads with `get()`, not React state or
 Solid signals.
 
+### MotionConfig and reduced motion
+
+`MotionConfig` sets defaults for every `motion.*` component below it. A nested
+`MotionConfig` overrides only the props it sets.
+
+```tsx
+import { MotionConfig, motion } from '@gpuix/react'
+
+<MotionConfig transition={{ type: 'spring', duration: 0.4 }} reducedMotion="user">
+  <motion.div animate={{ width: open ? 240 : 40, opacity: open ? 1 : 0.5 }} />
+</MotionConfig>
+```
+
+- **`transition`** is used by a `motion.*` component that has no `transition` of
+  its own. A component's own `transition` replaces it whole, it is not merged.
+- **`reducedMotion`** is `"never"` (the default, as in Motion for React),
+  `"always"`, or `"user"`, which follows `prefers-reduced-motion` and changes
+  with the OS setting (see [`matchMedia`](#matchmedia)).
+
+Reduced, the position and size properties jump to their target instead of
+animating: `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`,
+`top`, `right`, `bottom`, `left`, the margins, the paddings, `gap`, `rowGap`,
+`columnGap` and `flexBasis`. Opacity, colours, shadows, radii, borders and the
+rest still animate with their transition. The jump still counts as the
+animation settling: `onMotionComplete` fires, and `AnimatePresence` exits
+complete. Flipping the setting while an animation runs finishes the reduced
+properties at once.
+
+`animate()` on a motion value follows the same rule when the value is bound,
+through `style` of a `motion.*` component under the config, to one of those
+properties: the value jumps and `finished` resolves. A value bound to opacity,
+bound to a plain `div`, or not bound to any element animates normally.
+
+CSS `transition` is not affected, as in the DOM. `useReducedMotionConfig()`
+(`createReducedMotionConfig()` in Solid, returning an accessor) reports whether
+the nearest `MotionConfig` is reduced right now, for animation you drive
+yourself. The `layout` FLIP animation is not part of `motion` yet; it will
+follow this setting when it lands.
+
 ### Capture exact frames
 
 The [automation API](#automation) can freeze the native motion clock and render
