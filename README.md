@@ -2579,9 +2579,20 @@ and copies as one line, and is searched by `highlight` as one piece of text.
 ```
 
 An inline box can set `color`, `backgroundColor` (a `<mark>`-style wash),
-`fontWeight`, `fontStyle`, `fontFamily`, `textDecoration` (`underline` or `line-through`),
+`fontWeight`, `fontStyle`, `fontFamily`, `textDecoration` (see below),
 `fontVariantNumeric` and `fontFeatureSettings`. A box inherits from the box
-around it, as in CSS.
+around it, as in CSS. A `display: contents` span inside a span adds no box: its
+children join the paragraph and inherit from it.
+
+`textDecoration` is the CSS shorthand (`"underline line-through"`,
+`"underline wavy red"`), and `textDecorationLine`, `textDecorationStyle` and
+`textDecorationColor` are its longhands, which win over it. A line is drawn
+over the whole box in the colour its own box had, so a descendant that changes
+`color` does not recolour it, and a descendant cannot take it off. gpui draws one
+underline and one strikethrough per run, so a nested box that declares the same
+line again replaces the outer one's style and colour. `overline` is accepted
+and not drawn; `double`, `dotted` and `dashed` draw solid, a wavy
+line-through draws solid, and a thickness is accepted and the line stays 1px.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` that needs to react is a block too, because an inline box
@@ -5198,7 +5209,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight`, `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline"` | `"line-through"` | `"none"`)
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight`, `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 

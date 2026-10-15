@@ -349,7 +349,12 @@ pub struct StyleDesc {
     pub white_space: Option<String>,
     pub text_overflow: Option<String>,
     pub line_clamp: Option<f64>,
+    /// CSS `text-decoration` and its longhands. `css::text_decoration` says what
+    /// is drawn.
     pub text_decoration: Option<String>,
+    pub text_decoration_line: Option<String>,
+    pub text_decoration_style: Option<String>,
+    pub text_decoration_color: Option<String>,
     /// CSS `font-variant-numeric` keywords, e.g. `"tabular-nums slashed-zero"`.
     /// Inherited. Not supported inside `hover`/`active`/`focusVisible`.
     pub font_variant_numeric: Option<String>,

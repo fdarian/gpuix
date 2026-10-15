@@ -7705,6 +7705,32 @@ pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::Dimension
     }
 }
 
+/// The lines of `decoration` on the text style `el` passes down. A line that
+/// is not declared leaves the inherited one alone, as in CSS, where `none` on a
+/// descendant takes nothing off.
+fn apply_text_decoration<E: gpui::Styled>(
+    mut el: E,
+    decoration: &crate::css::text_decoration::TextDecoration,
+    colors: &crate::color::ColorContext,
+) -> E {
+    let color = decoration.resolve_color(colors);
+    let text_style = el.text_style();
+    if decoration.underline {
+        text_style.underline = Some(gpui::UnderlineStyle {
+            thickness: gpui::px(1.0),
+            color: Some(color),
+            wavy: decoration.wavy(),
+        });
+    }
+    if decoration.line_through {
+        text_style.strikethrough = Some(gpui::StrikethroughStyle {
+            thickness: gpui::px(1.0),
+            color: Some(color),
+        });
+    }
+    el
+}
+
 /// The base styles of a stateful GPUI root.
 ///
 /// `hover`, `active`, `groupHover` and `groupActive` are not applied here:
@@ -7931,11 +7957,8 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
             el = el.line_clamp(clamp as usize);
         }
     }
-    match style.text_decoration.as_deref() {
-        Some("underline") => el = el.underline(),
-        Some("line-through") => el = el.line_through(),
-        Some("none") => el = el.text_decoration_none(),
-        _ => {}
+    if let Some(decoration) = crate::css::text_decoration::of(style) {
+        el = apply_text_decoration(el, &decoration, colors);
     }
     // `line_height` was accepted by the style type but never applied, so
     // multi-line text always used gpui's default leading.

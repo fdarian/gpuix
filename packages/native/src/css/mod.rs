@@ -14,3 +14,4 @@ pub(crate) mod gradient;
 pub(crate) mod mask;
 pub(crate) mod position;
 pub(crate) mod syntax;
+pub(crate) mod text_decoration;

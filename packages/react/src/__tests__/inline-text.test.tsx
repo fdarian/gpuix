@@ -3,6 +3,7 @@
 /// A paragraph is one painted string, so `getPaintedText()` shows it whole and
 /// a line count is a height check.
 
+import { createHash } from "node:crypto"
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
@@ -429,6 +430,131 @@ describeNative("inline text", () => {
       testRoot.render(<Line first={false} />)
       // The paragraph is the same one, now without its first words.
       expect(count(shoot(testRoot, "selection-key-after"), bounds(testRoot, "p"), WASH)).toBeGreaterThan(200)
+    })
+  })
+
+  describe("textDecoration", () => {
+    const WHITE = { width: 120, backgroundColor: "#ffffff", color: "#000000", ...TEXT } as const
+
+    function signature(name: string, decoration: React.CSSProperties) {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text style={WHITE}>
+          <span style={decoration as never}>xx</span>
+        </text>
+      )
+      return digest(shoot(testRoot, `decoration-${name}`))
+    }
+
+    function digest(pixels: Pixels) {
+      const hash = createHash("sha1")
+      for (let y = 0; y < LINE + 4; y++) {
+        for (let x = 0; x < WHITE.width; x++) hash.update(pixels.at(x, y).join(",") + ";")
+      }
+      return hash.digest("hex").slice(0, 10)
+    }
+
+    function colored(name: string, decoration: object, color: Rgb) {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={WHITE}>
+          <span style={decoration as never}>xx</span>
+        </text>
+      )
+      return count(shoot(testRoot, `decoration-${name}`), bounds(testRoot, "p"), color)
+    }
+
+    it("draws every line of a shorthand that names several", () => {
+      const underline = signature("u", { textDecoration: "underline" })
+      const lineThrough = signature("l", { textDecoration: "line-through" })
+      const both = signature("ul", { textDecoration: "underline line-through" })
+      expect(both).not.toBe(underline)
+      expect(both).not.toBe(lineThrough)
+      expect(both).not.toBe(signature("none", { textDecoration: "none" }))
+      expect(signature("ul-reversed", { textDecoration: "line-through underline" })).toBe(both)
+    })
+
+    it("draws the same as the lines set one box at a time", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text style={WHITE}>
+          <span style={{ textDecoration: "underline" }}>
+            <span style={{ textDecoration: "line-through" }}>xx</span>
+          </span>
+        </text>
+      )
+      expect(signature("ul-both", { textDecoration: "underline line-through" })).toBe(
+        digest(shoot(testRoot, "decoration-nested"))
+      )
+    })
+
+    it("takes the colour of the shorthand for the line only", () => {
+      expect(colored("red", { textDecoration: "underline #ff0000" }, [255, 0, 0])).toBeGreaterThan(4)
+      expect(colored("red-first", { textDecoration: "#ff0000 line-through" }, [255, 0, 0])).toBeGreaterThan(4)
+      expect(colored("red-fn", { textDecoration: "underline rgb(255, 0, 0)" }, [255, 0, 0])).toBeGreaterThan(4)
+      expect(colored("plain", { textDecoration: "underline" }, [255, 0, 0])).toBe(0)
+    })
+
+    it("draws a wavy underline differently from a solid one", () => {
+      const solid = signature("solid", { textDecoration: "underline solid" })
+      expect(solid).toBe(signature("solid-default", { textDecoration: "underline" }))
+      expect(signature("wavy", { textDecoration: "underline wavy" })).not.toBe(solid)
+    })
+
+    it("draws a double, dotted or dashed line as a solid one", () => {
+      const solid = signature("fallback-solid", { textDecoration: "underline" })
+      for (const style of ["double", "dotted", "dashed"]) {
+        expect(signature(`fallback-${style}`, { textDecoration: `underline ${style}` })).toBe(solid)
+      }
+    })
+
+    it("reads the longhands like the shorthand", () => {
+      expect(signature("long-line", { textDecorationLine: "underline line-through" })).toBe(
+        signature("short-line", { textDecoration: "underline line-through" })
+      )
+      expect(signature("long-style", { textDecorationLine: "underline", textDecorationStyle: "wavy" })).toBe(
+        signature("short-style", { textDecoration: "underline wavy" })
+      )
+      expect(colored("long-color", { textDecorationLine: "underline", textDecorationColor: "#ff0000" }, [255, 0, 0])).toBeGreaterThan(4)
+    })
+
+    it("lets a longhand override the shorthand", () => {
+      expect(signature("override", { textDecoration: "underline", textDecorationLine: "line-through" })).toBe(
+        signature("override-want", { textDecoration: "line-through" })
+      )
+      expect(colored("override-color", { textDecoration: "underline #ff0000", textDecorationColor: "#0000ff" }, [255, 0, 0])).toBe(0)
+    })
+
+    it("ignores a shorthand that is not valid", () => {
+      expect(signature("invalid", { textDecoration: "underline fancy" })).toBe(signature("invalid-none", {}))
+    })
+
+    it("draws the line of a block's shorthand in its colour", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={{ ...WHITE, textDecoration: "underline line-through #ff0000" }}>
+          xx
+        </text>
+      )
+      const area = bounds(testRoot, "p")
+      const pixels = shoot(testRoot, "decoration-block")
+      expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(20)
+    })
+
+    it("keeps the colour of the box that declared the line when a descendant changes the text colour", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={WHITE}>
+          <span style={{ textDecoration: "underline" }}>
+            <span style={{ color: "#ff0000" }}>xx</span>
+          </span>
+        </text>
+      )
+      const area = bounds(testRoot, "p")
+      const pixels = shoot(testRoot, "decoration-owner-color")
+      // The glyphs are red and the line under them stays black.
+      expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(4)
+      expect(count(pixels, { ...area, y: area.y + 16, height: 4 }, [0, 0, 0])).toBeGreaterThan(4)
     })
   })
 
