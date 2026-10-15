@@ -905,8 +905,11 @@ impl Run {
         evaluation
     }
 
-    /// Reports an animation that stops before it ended.
-    fn cancel(&self, id: u64, now: Instant, events: &mut Vec<Scheduled>) {
+    /// Reports an animation that stops before it ended. It is brought up to
+    /// `now` first: one that ran out since the last frame ended, and its
+    /// `animationend` is what is owed, not a cancel.
+    fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) {
+        self.advance(id, now, events);
         if self.phase == Phase::After {
             return;
         }
@@ -1029,7 +1032,7 @@ impl ElementState {
                 }
             }
         }
-        for run in unclaimed.into_iter().flatten() {
+        for mut run in unclaimed.into_iter().flatten() {
             run.cancel(id, now, events);
         }
         self.runs = runs;
@@ -1138,10 +1141,10 @@ impl CssAnimations {
             return;
         }
         for hidden in super::subtree_ids(tree, id) {
-            let Some(state) = self.states.remove(&hidden) else {
+            let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
-            for run in &state.runs {
+            for run in &mut state.runs {
                 run.cancel(hidden, now, &mut self.events);
             }
         }
@@ -1754,6 +1757,38 @@ mod tests {
         frames.frame(3000, &fading("none"));
         assert!(frames.events().is_empty(), "an animation that ended is not cancelled");
         assert!(frames.animations.states.is_empty());
+    }
+
+    #[test]
+    fn an_animation_that_ran_out_between_frames_ends_instead_of_being_cancelled() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear 2"));
+        frames.frame(500, &fading("fade 1s linear 2"));
+        frames.events();
+        // The two iterations were over at 2000 ms, and the next frame is 2400 ms.
+        frames.frame(2400, &fading("none"));
+        assert_eq!(frames.events(), [named(End, "fade", 2.0)]);
+
+        // The same when a new name replaces it, and when the element is hidden.
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.define("dim", r#"{ "from": { "opacity": 0.5 }, "to": { "opacity": 1 } }"#);
+        frames.frame(0, &fading("fade 1s linear"));
+        frames.events();
+        frames.frame(1500, &fading("dim 1s linear"));
+        assert_eq!(
+            frames.events(),
+            [named(End, "fade", 1.0), named(Start, "dim", 0.0)]
+        );
+
+        let tree = crate::retained_tree::RetainedTree::new();
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        frames.events();
+        frames.animations.hide(&tree, 1, frames.at(1500));
+        assert_eq!(frames.events(), [named(End, "fade", 1.0)]);
     }
 
     #[test]
