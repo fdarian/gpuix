@@ -2043,7 +2043,9 @@ reported as disabled to assistive technology.
 
 `maxLength` cuts what the user types or pastes so the text stays within that
 many UTF-16 code units. A `value` set from code is kept whole even when it is
-longer; the user can then only delete.
+longer; the user can then only delete. An edit with no room for what it inserts
+is rejected whole, so typing over a selection in a value that is already too
+long leaves the text and the selection as they were.
 
 ### Scrollbars
 

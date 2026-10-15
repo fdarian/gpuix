@@ -28,6 +28,7 @@ pub(crate) fn open(deferred: EyeDropperDeferred) {
     use objc2::MainThreadMarker;
     use objc2_app_kit::{NSColor, NSColorSampler, NSColorSpace};
     use std::cell::RefCell;
+    use std::rc::Rc;
 
     if MainThreadMarker::new().is_none() {
         deferred.reject(Error::from_reason(
@@ -37,7 +38,13 @@ pub(crate) fn open(deferred: EyeDropperDeferred) {
     }
 
     let deferred = RefCell::new(Some(deferred));
+    // AppKit does not retain a sampler it is running, so the session has to:
+    // a sampler released early ends without ever calling the handler. The
+    // handler lets it go, which also breaks the cycle through the block.
+    let session: Rc<RefCell<Option<Retained<NSColorSampler>>>> = Rc::new(RefCell::new(None));
+    let handler_session = session.clone();
     let handler = RcBlock::new(move |color: *mut NSColor| {
+        drop(handler_session.borrow_mut().take());
         let Some(deferred) = deferred.borrow_mut().take() else {
             return;
         };
@@ -56,8 +63,9 @@ pub(crate) fn open(deferred: EyeDropperDeferred) {
         deferred.resolve(Box::new(move |_env| Ok(Some(hex))));
     });
     let sampler: Retained<NSColorSampler> = NSColorSampler::new();
-    // SAFETY: called on the main thread (checked above), and AppKit retains
-    // the sampler and copies the block until the session ends.
+    *session.borrow_mut() = Some(sampler.clone());
+    // SAFETY: called on the main thread (checked above), and AppKit copies the
+    // block, which holds `session`, until the session ends.
     unsafe { sampler.showSamplerWithSelectionHandler(&handler) };
 }
 
