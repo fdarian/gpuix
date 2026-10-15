@@ -1740,8 +1740,10 @@ impl TestGpuixRenderer {
         if !crate::events::sync_dispatch::in_sync_call() {
             return self.with_motion_values(true, run);
         }
-        update_view_or_defer(move |view, _window, cx| {
+        update_view_or_defer(move |view, window, cx| {
             let now = view.clock.now();
+            view.motion_values
+                .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
             if let Err(message) = run(&mut view.motion_values, now) {
                 crate::events::sync_dispatch::report_deferred_error(message);
             }
@@ -1769,9 +1771,11 @@ impl TestGpuixRenderer {
         with_test_state(|cx, window, view| {
             let view = view.clone();
             let result = cx
-                .update_window(window, |_, _window, app| {
+                .update_window(window, |_, window, app| {
+                    let appearance = crate::renderer::color_scheme_of(window.appearance());
                     view.update(app, |view, cx| {
                         let now = view.clock.now();
+                        view.motion_values.set_appearance(appearance);
                         let result = run(view, now);
                         if repaint {
                             cx.notify();

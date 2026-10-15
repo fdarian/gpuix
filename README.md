@@ -1411,6 +1411,23 @@ error, not a silent no-op.
 **Colours** interpolate in Oklab with premultiplied alpha, like CSS
 `color-mix(in oklab, ...)`, so a fade to `transparent` keeps its hue and a red
 to blue move does not pass through a dull purple. Overshoot is clamped to sRGB.
+Targets and keyframes take any colour a style does, and they resolve in the
+element's colour context: `currentColor` is the element's own `color` (the
+parent's for `color` itself), `light-dark()` follows its `colorScheme`, and
+`color-mix()` and `color()` work too. A new `color`, `colorScheme` or window
+appearance resolves them again and the track runs to the new colour. CSS
+animation keyframes and `<svg>` `fill` and `stroke` do the same. A CSS transition
+judges a change by computed values, as browsers do: `light-dark()` computes to
+the colour its scheme picks, so a flip of `colorScheme` or of the window
+appearance starts a transition on a property that has one (or restarts a running
+one whose end it changes, from the value showing); a running transition whose end
+colour is the same after the flip is left alone. `currentColor` computes to
+itself, so a new `color` starts no transition of its own on a `currentColor`
+property: it follows the colour showing each frame, including a `color`
+transition.
+`hover` and `active` colours of an ancestor are not part of that context. A
+motion value is not tied to one element, so its colours resolve as on a root with
+`colorScheme: "light dark"` and keep what they resolved to.
 
 **Box shadows** animate per layer (offset, blur, spread and colour). When the
 lists differ in length, the shorter one is padded with `0 0 0 0 transparent`

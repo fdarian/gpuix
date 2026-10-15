@@ -36,6 +36,7 @@ use measure::Measurement;
 use property::AnimProp;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
+pub(crate) use value::Colors;
 use value::AnimValue;
 
 /// The animated properties' current values, ready to lay over a style.
@@ -73,10 +74,10 @@ impl PropKey {
         }
     }
 
-    fn parse(self, value: &Value) -> Result<AnimValue, String> {
+    fn parse(self, value: &Value, colors: &Colors) -> Result<AnimValue, String> {
         match self {
-            Self::Style(prop) => prop.parse(value),
-            Self::Svg(attr) => attr.parse(value),
+            Self::Style(prop) => prop.parse(value, colors),
+            Self::Svg(attr) => attr.parse(value, &colors.element),
         }
     }
 
@@ -98,15 +99,21 @@ enum Target {
 /// the element's own style, or its own attributes.
 #[derive(Clone, Copy)]
 enum Base<'a> {
-    Style(Option<&'a StyleDesc>),
-    Svg(&'a HashMap<String, Value>),
+    Style(Option<&'a StyleDesc>, &'a Colors),
+    Svg(&'a HashMap<String, Value>, &'a Colors),
 }
 
-impl Base<'_> {
+impl<'a> Base<'a> {
     fn target(self) -> Target {
         match self {
-            Self::Style(_) => Target::Style,
-            Self::Svg(_) => Target::Svg,
+            Self::Style(..) => Target::Style,
+            Self::Svg(..) => Target::Svg,
+        }
+    }
+
+    fn colors(self) -> &'a Colors {
+        match self {
+            Self::Style(_, colors) | Self::Svg(_, colors) => colors,
         }
     }
 }
@@ -271,6 +278,10 @@ struct Pending {
 
 pub(crate) struct MotionState {
     source: Value,
+    /// What the targets were resolved in. A new one resolves them again, so an
+    /// appearance change or a new `color` on a parent moves a `currentColor` or
+    /// `light-dark()` target.
+    colors: Colors,
     tracks: BTreeMap<PropKey, Track>,
     pending: BTreeMap<PropKey, Pending>,
     valid: bool,
@@ -284,11 +295,12 @@ impl MotionState {
     pub(crate) fn new(
         source: &Value,
         base: Option<&StyleDesc>,
+        colors: Colors,
         measurement: Option<&Measurement>,
         painted: u64,
         now: Instant,
     ) -> Result<Self, String> {
-        Self::mount(source, Base::Style(base), measurement, painted, now)
+        Self::mount(source, Base::Style(base, &colors), measurement, painted, now)
     }
 
     /// The state of an SVG shape, whose animated keys are attributes.
@@ -297,9 +309,10 @@ impl MotionState {
     pub(crate) fn new_svg(
         source: &Value,
         attributes: &HashMap<String, Value>,
+        colors: Colors,
         now: Instant,
     ) -> Result<Self, String> {
-        Self::mount(source, Base::Svg(attributes), None, 0, now)
+        Self::mount(source, Base::Svg(attributes, &colors), None, 0, now)
     }
 
     fn mount(
@@ -309,10 +322,11 @@ impl MotionState {
         painted: u64,
         now: Instant,
     ) -> Result<Self, String> {
-        let description = parse_description(source, base.target())?;
+        let description = parse_description(source, base.target(), base.colors())?;
         let (tracks, pending) = mount_tracks(&description, base, measurement, painted, now)?;
         Ok(Self {
             source: source.clone(),
+            colors: *base.colors(),
             needs_settle: description.is_exit
                 || !pending.is_empty()
                 || tracks.values().any(Track::has_motion),
@@ -323,9 +337,10 @@ impl MotionState {
         })
     }
 
-    pub(crate) fn invalid(source: &Value, _now: Instant) -> Self {
+    pub(crate) fn invalid(source: &Value, colors: Colors, _now: Instant) -> Self {
         Self {
             source: source.clone(),
+            colors,
             tracks: BTreeMap::new(),
             pending: BTreeMap::new(),
             valid: false,
@@ -338,20 +353,22 @@ impl MotionState {
         &mut self,
         source: &Value,
         base: Option<&StyleDesc>,
+        colors: Colors,
         measurement: Option<&Measurement>,
         painted: u64,
         now: Instant,
     ) -> Result<(), String> {
-        self.retarget(source, Base::Style(base), measurement, painted, now)
+        self.retarget(source, Base::Style(base, &colors), measurement, painted, now)
     }
 
     pub(crate) fn sync_svg(
         &mut self,
         source: &Value,
         attributes: &HashMap<String, Value>,
+        colors: Colors,
         now: Instant,
     ) -> Result<(), String> {
-        self.retarget(source, Base::Svg(attributes), None, 0, now)
+        self.retarget(source, Base::Svg(attributes, &colors), None, 0, now)
     }
 
     fn retarget(
@@ -363,12 +380,13 @@ impl MotionState {
         now: Instant,
     ) -> Result<(), String> {
         self.resolve_pending(measurement, painted, now)?;
-        if self.source == *source {
+        if self.source == *source && self.colors == *base.colors() {
             return self.follow_layout(measurement, now);
         }
 
         let previous_generation = self.generation;
-        let description = match parse_description(source, base.target()) {
+        self.colors = *base.colors();
+        let description = match parse_description(source, base.target(), base.colors()) {
             Ok(description) => description,
             Err(error) => {
                 self.source = source.clone();
@@ -647,6 +665,7 @@ pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDe
 /// second time, instantly.
 pub(crate) fn resolve_declared_style(
     transitions: Option<&mut CssTransitions>,
+    parent_colors: &crate::color::ColorContext,
     pointer: crate::events::state_styles::PointerStates,
     motion: Option<&MotionState>,
     id: u64,
@@ -658,7 +677,9 @@ pub(crate) fn resolve_declared_style(
 ) -> StyleDesc {
     let mut after = fold_state_styles(style, focus_visible, pointer);
     if let Some(running) = transitions
-        .and_then(|transitions| transitions.update(id, &after, motion, measurement, interpolate_size, now))
+        .and_then(|transitions| {
+            transitions.update(id, &after, parent_colors, motion, measurement, interpolate_size, now)
+        })
     {
         running.apply_to(&mut after);
     }
@@ -705,11 +726,11 @@ fn fold_state_styles(
 /// `auto` or inherited, which only layout can resolve.
 fn resolve_start(key: PropKey, base: Base) -> Option<AnimValue> {
     match (key, base) {
-        (PropKey::Style(prop), Base::Style(style)) => style
-            .and_then(|style| prop.read(style))
-            .or_else(|| prop.initial(style)),
-        (PropKey::Svg(attr), Base::Svg(attributes)) => {
-            attr.read(attributes).or_else(|| attr.initial())
+        (PropKey::Style(prop), Base::Style(style, colors)) => style
+            .and_then(|style| prop.read(style, colors))
+            .or_else(|| prop.initial(colors)),
+        (PropKey::Svg(attr), Base::Svg(attributes, colors)) => {
+            attr.read(attributes, &colors.element).or_else(|| attr.initial())
         }
         _ => unreachable!("a description only holds keys of its own target"),
     }
@@ -1006,7 +1027,11 @@ fn source_is_exit(source: &Value) -> bool {
         .unwrap_or_default()
 }
 
-fn parse_description(source: &Value, target: Target) -> Result<Description, String> {
+fn parse_description(
+    source: &Value,
+    target: Target,
+    colors: &Colors,
+) -> Result<Description, String> {
     let fields = source
         .as_object()
         .ok_or_else(|| "motion description must be an object".to_string())?;
@@ -1025,11 +1050,11 @@ fn parse_description(source: &Value, target: Target) -> Result<Description, Stri
     };
     let initial = match fields.get("initial") {
         None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Object(style)) => Some(parse_initial(style, target)?),
+        Some(Value::Object(style)) => Some(parse_initial(style, target, colors)?),
         Some(_) => return Err("motion initial only accepts false or a style object".to_string()),
     };
     let animate = match fields.get("animate") {
-        Some(Value::Object(style)) => parse_goals("animate", style, target)?,
+        Some(Value::Object(style)) => parse_goals("animate", style, target, colors)?,
         _ => return Err("motion animate must be a style object".to_string()),
     };
     let reduced = match fields.get("reducedMotion") {
@@ -1048,8 +1073,12 @@ fn parse_description(source: &Value, target: Target) -> Result<Description, Stri
 }
 
 /// `initial` holds a value per property, never keyframes.
-fn parse_initial(style: &Map<String, Value>, target: Target) -> Result<Styles, String> {
-    parse_goals("initial", style, target)?
+fn parse_initial(
+    style: &Map<String, Value>,
+    target: Target,
+    colors: &Colors,
+) -> Result<Styles, String> {
+    parse_goals("initial", style, target, colors)?
         .into_iter()
         .map(|(key, goal)| {
             if !goal.is_single() {
@@ -1070,12 +1099,13 @@ fn parse_goals(
     context: &str,
     style: &Map<String, Value>,
     target: Target,
+    colors: &Colors,
 ) -> Result<Goals, String> {
     let mut goals = Goals::new();
     let mut longhands = Vec::new();
     for (key, value) in style {
         if let Some(props) = shorthand(target, key) {
-            let parsed = parse_goal(PropKey::Style(props[0]), value)
+            let parsed = parse_goal(PropKey::Style(props[0]), value, colors)
                 .map_err(|error| rename(error, props[0], key))?;
             for prop in props {
                 goals.insert(PropKey::Style(*prop), parsed.clone());
@@ -1094,7 +1124,7 @@ fn parse_goals(
         }
     }
     for (prop, value) in longhands {
-        goals.insert(prop, parse_goal(prop, value)?);
+        goals.insert(prop, parse_goal(prop, value, colors)?);
     }
     Ok(goals)
 }
@@ -1102,18 +1132,18 @@ fn parse_goals(
 /// One target, or keyframes when `value` is an array that is not itself one
 /// value of a list-valued property. `null` is a wildcard: the value before it,
 /// or the value the animation starts from when it comes first.
-fn parse_goal(key: PropKey, value: &Value) -> Result<Goal, String> {
+fn parse_goal(key: PropKey, value: &Value, colors: &Colors) -> Result<Goal, String> {
     let Value::Array(items) = value else {
-        return key.parse(value).map(Goal::single);
+        return key.parse(value, colors).map(Goal::single);
     };
     if key.is_list_value(items) {
-        return key.parse(value).map(Goal::single);
+        return key.parse(value, colors).map(Goal::single);
     }
     let frames = items
         .iter()
         .map(|item| match item {
             Value::Null => Ok(None),
-            item => key.parse(item).map(Some),
+            item => key.parse(item, colors).map(Some),
         })
         .collect::<Result<Vec<_>, _>>()?;
     if let [only] = frames.as_slice() {
@@ -1170,7 +1200,7 @@ mod tests {
             "animate": { "width": 100.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&initial, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&initial, None, Colors::root(), None, 0, started).unwrap();
 
         let middle = state.frame(started + Duration::from_millis(500));
         assert_eq!(
@@ -1189,7 +1219,7 @@ mod tests {
             "transition": { "duration": 1.0, "ease": "linear" }
         });
         let reversed_at = started + Duration::from_millis(500);
-        state.sync(&reversed, None, None, 0, reversed_at).unwrap();
+        state.sync(&reversed, None, Colors::root(), None, 0, reversed_at).unwrap();
         assert_eq!(state.applied(reversed_at).unwrap().width, Some(50.0));
         assert_eq!(
             state
@@ -1208,7 +1238,7 @@ mod tests {
             "animate": { "width": 260.0 },
             "transition": { "duration": 0.2 }
         });
-        let mut state = MotionState::new(&description, None, None, 0, now).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
         let frame = state.frame(now);
 
         assert_eq!(state.applied(now).unwrap().width, Some(260.0));
@@ -1225,7 +1255,7 @@ mod tests {
             serde_json::json!({ "animate": {}, "transition": { "duration": 1e300 } }),
             serde_json::json!({ "initial": true, "animate": {}, "transition": {} }),
         ] {
-            assert!(MotionState::new(&description, None, None, 0, now).is_err());
+            assert!(MotionState::new(&description, None, Colors::root(), None, 0, now).is_err());
         }
     }
 
@@ -1237,7 +1267,7 @@ mod tests {
             "animate": { "width": 100.0 },
             "transition": { "duration": 0.2, "ease": "linear" }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let frame = state.frame(started + Duration::from_millis(200));
 
         assert_eq!(
@@ -1273,7 +1303,7 @@ mod tests {
     #[test]
     fn reduced_motion_jumps_position_and_size_but_still_animates_the_rest() {
         let started = Instant::now();
-        let mut state = MotionState::new(&reduced_description(true), None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&reduced_description(true), None, Colors::root(), None, 0, started).unwrap();
         let mut style = StyleDesc::default();
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.width, Some(DimensionValue::Pixels(100.0)));
@@ -1302,7 +1332,7 @@ mod tests {
             "animate": { "height": 50.0, "marginTop": 8.0, "gap": 4.0 },
             "transition": { "type": "spring" }
         });
-        let mut state = MotionState::new(&source, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&source, None, Colors::root(), None, 0, started).unwrap();
         let mut style = StyleDesc::default();
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.height, Some(DimensionValue::Pixels(50.0)));
@@ -1317,14 +1347,14 @@ mod tests {
     #[test]
     fn flipping_reduced_motion_retargets_running_layout_tracks() {
         let started = Instant::now();
-        let mut state = MotionState::new(&reduced_description(false), None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&reduced_description(false), None, Colors::root(), None, 0, started).unwrap();
         let middle = started + Duration::from_millis(500);
         assert_eq!(state.applied(middle).unwrap().width, Some(0.0));
 
         let mut reduced = reduced_description(true);
         reduced["generation"] = serde_json::json!(2);
         reduced["initial"] = serde_json::json!(false);
-        state.sync(&reduced, None, None, 0, middle).unwrap();
+        state.sync(&reduced, None, Colors::root(), None, 0, middle).unwrap();
         assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
         assert_eq!(state.applied(middle).unwrap().opacity, Some(0.5));
         assert!(state.frame(middle).active);
@@ -1332,7 +1362,7 @@ mod tests {
         let mut full = reduced_description(false);
         full["generation"] = serde_json::json!(3);
         full["initial"] = serde_json::json!(false);
-        state.sync(&full, None, None, 0, middle).unwrap();
+        state.sync(&full, None, Colors::root(), None, 0, middle).unwrap();
         // Already at the target, so the real transition has nowhere to go.
         assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
     }
@@ -1344,7 +1374,7 @@ mod tests {
             "animate": { "opacity": 1.0 },
             "reducedMotion": "user"
         });
-        assert!(MotionState::new(&source, None, None, 0, now).is_err());
+        assert!(MotionState::new(&source, None, Colors::root(), None, 0, now).is_err());
     }
 
     #[test]
@@ -1355,7 +1385,7 @@ mod tests {
             "animate": { "opacity": 1.0 },
             "transition": { "duration": 0.2, "ease": "linear" }
         });
-        let mut state = MotionState::new(&initial, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&initial, None, Colors::root(), None, 0, started).unwrap();
         assert!(!state.frame(started).just_settled);
 
         let exit = serde_json::json!({
@@ -1363,7 +1393,7 @@ mod tests {
             "animate": { "opacity": 0.0 },
             "transition": { "duration": 0.0, "ease": "linear" }
         });
-        state.sync(&exit, None, None, 0, started).unwrap();
+        state.sync(&exit, None, Colors::root(), None, 0, started).unwrap();
         let frame = state.frame(started);
         assert_eq!(state.applied(started).unwrap().opacity, Some(0.0));
         assert!(!frame.active);
@@ -1378,14 +1408,14 @@ mod tests {
             "initial": false,
             "animate": { "opacity": 1.0 }
         });
-        let mut state = MotionState::new(&initial, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&initial, None, Colors::root(), None, 0, started).unwrap();
 
         let exit = serde_json::json!({
             "generation": 2,
             "initial": false,
             "animate": { "opacity": 1.0 }
         });
-        state.sync(&exit, None, None, 0, started).unwrap();
+        state.sync(&exit, None, Colors::root(), None, 0, started).unwrap();
 
         assert!(state.frame(started).just_settled);
         assert!(!state.frame(started).just_settled);
@@ -1400,7 +1430,7 @@ mod tests {
             "animate": { "width": 100.0, "opacity": 1.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&initial, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&initial, None, Colors::root(), None, 0, started).unwrap();
 
         let exit = serde_json::json!({
             "generation": 2,
@@ -1408,7 +1438,7 @@ mod tests {
             "animate": { "opacity": 0.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        state.sync(&exit, None, None, 0, started).unwrap();
+        state.sync(&exit, None, Colors::root(), None, 0, started).unwrap();
 
         state.frame(started + Duration::from_millis(500));
         let style = state
@@ -1446,7 +1476,7 @@ mod tests {
             100.0,
             serde_json::json!({ "type": "spring", "stiffness": 100.0, "damping": 20.0 }),
         );
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let mut previous = 0.0;
         for step in 1..=300 {
@@ -1468,7 +1498,7 @@ mod tests {
     fn underdamped_spring_overshoots_then_settles() {
         let started = Instant::now();
         let description = spring_description(0.0, 100.0, serde_json::json!({ "type": "spring" }));
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let peak = (1..=200)
             .map(|step| width(&state, at(started, step as f64 * 0.005)))
@@ -1491,7 +1521,7 @@ mod tests {
             100.0,
             serde_json::json!({ "type": "spring", "stiffness": 100.0, "damping": 60.0 }),
         );
-        let state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let mut previous = 0.0;
         for step in 1..=1000 {
@@ -1512,7 +1542,7 @@ mod tests {
                 90.0,
                 serde_json::json!({ "type": "spring", "stiffness": 100.0, "damping": damping }),
             );
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             let t = 0.15;
             let h = 1e-6;
             let numeric =
@@ -1530,7 +1560,7 @@ mod tests {
         let started = Instant::now();
         let spring = serde_json::json!({ "type": "spring", "stiffness": 170.0, "damping": 8.0 });
         let mut state =
-            MotionState::new(&spring_description(0.0, 100.0, spring.clone()), None, None, 0, started).unwrap();
+            MotionState::new(&spring_description(0.0, 100.0, spring.clone()), None, Colors::root(), None, 0, started).unwrap();
 
         let retarget_at = at(started, 0.12);
         let position = width(&state, retarget_at);
@@ -1545,7 +1575,7 @@ mod tests {
             "animate": { "width": 0.0 },
             "transition": spring
         });
-        state.sync(&reversed, None, None, 0, retarget_at).unwrap();
+        state.sync(&reversed, None, Colors::root(), None, 0, retarget_at).unwrap();
 
         assert!((width(&state, retarget_at) - position).abs() < 1e-9);
         assert!((width_velocity(&state, retarget_at) - velocity).abs() < 1e-9);
@@ -1565,7 +1595,7 @@ mod tests {
         let started = Instant::now();
         let spring = serde_json::json!({ "type": "spring", "stiffness": 170.0, "damping": 26.0 });
         let mut state =
-            MotionState::new(&spring_description(0.0, 100.0, spring.clone()), None, None, 0, started).unwrap();
+            MotionState::new(&spring_description(0.0, 100.0, spring.clone()), None, Colors::root(), None, 0, started).unwrap();
         let retarget_at = at(started, 0.05);
         let velocity = width_velocity(&state, retarget_at);
 
@@ -1576,7 +1606,7 @@ mod tests {
             "animate": { "width": 100.0 },
             "transition": { "type": "spring", "stiffness": 171.0, "damping": 26.0 }
         });
-        state.sync(&again, None, None, 0, retarget_at).unwrap();
+        state.sync(&again, None, Colors::root(), None, 0, retarget_at).unwrap();
         assert!((width_velocity(&state, retarget_at) - velocity).abs() < 1e-9);
         assert!(state.frame(retarget_at).active);
         assert!(state.frame(at(retarget_at, 5.0)).just_settled);
@@ -1632,7 +1662,7 @@ mod tests {
                 1.0,
                 serde_json::json!({ "type": "spring", "duration": duration, "bounce": bounce }),
             );
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             for (time, position, velocity) in samples {
                 let now = at(started, time);
                 assert!(
@@ -1658,7 +1688,7 @@ mod tests {
             100.0,
             serde_json::json!({ "type": "spring", "duration": 0.2, "bounce": 0.0 }),
         );
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let mut settled_frames = 0;
         let mut last_active = 0;
@@ -1687,7 +1717,7 @@ mod tests {
             100.0,
             serde_json::json!({ "type": "spring", "delay": 0.5 }),
         );
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         assert_eq!(width(&state, at(started, 0.4)), 0.0);
         assert!(state.frame(at(started, 0.4)).active);
@@ -1704,7 +1734,7 @@ mod tests {
             "animate": { "opacity": 1.0 },
             "transition": bouncy
         });
-        let state = MotionState::new(&fade_in, None, None, 0, started).unwrap();
+        let state = MotionState::new(&fade_in, None, Colors::root(), None, 0, started).unwrap();
         let mut overshot = false;
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
@@ -1715,7 +1745,7 @@ mod tests {
         assert!(overshot);
 
         let collapse = spring_description(100.0, 0.0, bouncy);
-        let state = MotionState::new(&collapse, None, None, 0, started).unwrap();
+        let state = MotionState::new(&collapse, None, Colors::root(), None, 0, started).unwrap();
         let mut undershot = false;
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
@@ -1733,7 +1763,7 @@ mod tests {
             100.0,
             serde_json::json!({ "duration": 1.0, "ease": "linear" }),
         );
-        let mut state = MotionState::new(&tween, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&tween, None, Colors::root(), None, 0, started).unwrap();
         let switch_at = at(started, 0.5);
         assert!((width_velocity(&state, switch_at) - 100.0).abs() < 1e-9);
 
@@ -1742,7 +1772,7 @@ mod tests {
             "animate": { "width": 200.0 },
             "transition": { "type": "spring", "stiffness": 100.0, "damping": 20.0 }
         });
-        state.sync(&spring, None, None, 0, switch_at).unwrap();
+        state.sync(&spring, None, Colors::root(), None, 0, switch_at).unwrap();
         assert_eq!(width(&state, switch_at), 50.0);
         assert!((width_velocity(&state, switch_at) - 100.0).abs() < 1e-9);
     }
@@ -1755,7 +1785,7 @@ mod tests {
             100.0,
             serde_json::json!({ "type": "spring", "stiffness": 170.0, "damping": 8.0 }),
         );
-        let mut state = MotionState::new(&spring, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&spring, None, Colors::root(), None, 0, started).unwrap();
         let switch_at = at(started, 0.1);
         let position = width(&state, switch_at);
 
@@ -1764,7 +1794,7 @@ mod tests {
             "animate": { "width": 0.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        state.sync(&tween, None, None, 0, switch_at).unwrap();
+        state.sync(&tween, None, Colors::root(), None, 0, switch_at).unwrap();
         assert_eq!(width(&state, switch_at), position);
         assert_eq!(width(&state, at(switch_at, 0.5)), position / 2.0);
     }
@@ -1794,7 +1824,7 @@ mod tests {
         ] {
             let description = spring_description(0.0, 1.0, transition.clone());
             assert!(
-                MotionState::new(&description, None, None, 0, now).is_err(),
+                MotionState::new(&description, None, Colors::root(), None, 0, now).is_err(),
                 "{transition} should be rejected"
             );
         }
@@ -1824,7 +1854,7 @@ mod tests {
                 "paddingTop": { "type": "spring", "stiffness": 100.0, "damping": 20.0 }
             }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let style = style_at(&state, at(started, 0.2));
         assert_eq!(style.opacity, Some(1.0));
@@ -1849,7 +1879,7 @@ mod tests {
                 "paddingBottom": { "duration": 2.0, "ease": "linear" }
             }
         });
-        let state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
         assert_eq!(style.padding_top, Some(50.0));
         assert_eq!(style.padding_bottom, Some(25.0));
@@ -1867,7 +1897,7 @@ mod tests {
                 "paddingTop": { "duration": 1.0, "ease": "linear", "delay": 0.5 }
             }
         });
-        let state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
         assert_eq!(style.opacity, Some(0.5));
         assert_eq!(style.padding_top, Some(0.0));
@@ -1885,7 +1915,7 @@ mod tests {
             serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
         ] {
             assert!(
-                MotionState::new(&description, None, None, 0, now).is_err(),
+                MotionState::new(&description, None, Colors::root(), None, 0, now).is_err(),
                 "{description} should be rejected"
             );
         }
@@ -1903,7 +1933,7 @@ mod tests {
             "animate": { "borderRadius": 10.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let state = MotionState::new(&description, Some(&base), None, 0, started).unwrap();
+        let state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
 
         let mut style = base.clone();
         state
@@ -1921,7 +1951,7 @@ mod tests {
             "initial": false,
             "animate": { "paddingLeft": 3.0, "padding": 9.0 }
         });
-        let state = MotionState::new(&description, None, None, 0, now).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
         let style = style_at(&state, now);
         assert_eq!(style.padding_left, Some(3.0));
         assert_eq!(style.padding_top, Some(9.0));
@@ -1940,7 +1970,7 @@ mod tests {
             "animate": { "opacity": 1.0, "paddingTop": 0.0, "width": 100.0, "marginTop": 10.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let state = MotionState::new(&description, Some(&base), None, 0, started).unwrap();
+        let state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
         // From the shorthand in the base style, the base width, and CSS's
         // initial margin of 0.
@@ -1957,10 +1987,11 @@ mod tests {
             "animate": { "opacity": 1.0, "top": 12.0, "borderColor": "#ff0000" },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, started);
         assert_eq!(style.top, Some(DimensionValue::Pixels(12.0)));
-        assert_eq!(rgba(style.border_color.as_deref().unwrap()), rgba("#ff0000"));
+        // A colour has a start without layout: `currentColor`, inherited black.
+        assert_eq!(rgba(style.border_color.as_deref().unwrap()), rgba("#000000"));
     }
 
     #[test]
@@ -1975,7 +2006,8 @@ mod tests {
             "animate": { "borderColor": "#ff0000" },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let state = MotionState::new(&description, Some(&base), None, 0, started).unwrap();
+        let colors = Colors::of(&crate::color::ColorContext::root(crate::color::Scheme::Light), Some(&base));
+        let state = MotionState::new(&description, Some(&base), colors, None, 0, started).unwrap();
         let style = style_at(&state, started);
         assert_eq!(rgba(style.border_color.as_deref().unwrap()), rgba("#0000ff"));
     }
@@ -1988,7 +2020,7 @@ mod tests {
             "animate": { "backgroundColor": "#0000ff" },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let middle = style_at(&state, at(started, 0.5));
         let middle = rgba(middle.background_color.as_deref().unwrap());
@@ -2015,7 +2047,7 @@ mod tests {
             "animate": { "backgroundColor": "#0000ff" },
             "transition": spring
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let track = |state: &MotionState| state.tracks[&PropKey::Style(AnimProp::BackgroundColor)].clone();
 
         let retarget_at = at(started, 0.1);
@@ -2027,7 +2059,7 @@ mod tests {
             "animate": { "backgroundColor": "#00ff00" },
             "transition": spring
         });
-        state.sync(&retargeted, None, None, 0, retarget_at).unwrap();
+        state.sync(&retargeted, None, Colors::root(), None, 0, retarget_at).unwrap();
         let after = track(&state).sample(retarget_at);
         for channel in 0..4 {
             assert!((after.position[channel] - before.position[channel]).abs() < 1e-9);
@@ -2045,7 +2077,7 @@ mod tests {
             "animate": { "width": 100.0, "opacity": 1.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let retarget_at = at(started, 0.5);
         let retargeted = serde_json::json!({
@@ -2053,7 +2085,7 @@ mod tests {
             "animate": { "width": 100.0, "opacity": 0.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        state.sync(&retargeted, None, None, 0, retarget_at).unwrap();
+        state.sync(&retargeted, None, Colors::root(), None, 0, retarget_at).unwrap();
 
         // Width was not retargeted, so it keeps its original timeline.
         assert_eq!(width(&state, at(started, 0.75)), 75.0);
@@ -2070,13 +2102,13 @@ mod tests {
             "animate": { "width": 100.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let exit = serde_json::json!({
             "initial": false,
             "animate": { "opacity": 0.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        state.sync(&exit, None, None, 0, at(started, 0.5)).unwrap();
+        state.sync(&exit, None, Colors::root(), None, 0, at(started, 0.5)).unwrap();
         assert_eq!(width(&state, at(started, 0.75)), 75.0);
     }
 
@@ -2089,7 +2121,7 @@ mod tests {
         };
         let mut state = MotionState::new(
             &serde_json::json!({ "initial": false, "animate": { "opacity": 1.0 } }),
-            Some(&base),
+            Some(&base), Colors::root(),
             None,
             0,
             started,
@@ -2100,7 +2132,7 @@ mod tests {
             "animate": { "opacity": 1.0, "paddingTop": 30.0 },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        state.sync(&next, Some(&base), None, 0, started).unwrap();
+        state.sync(&next, Some(&base), Colors::root(), None, 0, started).unwrap();
         assert_eq!(
             style_at(&state, at(started, 0.5)).padding_top,
             Some(20.0)
@@ -2115,7 +2147,7 @@ mod tests {
             "animate": { "paddingTop": 0.0 },
             "transition": { "type": "spring", "stiffness": 200.0, "damping": 4.0 }
         });
-        let state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let mut undershot = false;
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
@@ -2135,7 +2167,7 @@ mod tests {
             ] },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
-        let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
         let shadows = style.box_shadow.unwrap();
         assert_eq!(shadows.as_slice().len(), 1);
@@ -2234,7 +2266,7 @@ mod tests {
                 "animate": { "pathLength": 1.0 },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
-            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let state = MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap();
 
             let draw = at(&state, started, 250).draw.unwrap();
             assert!((draw.length - 0.25).abs() < 1e-9);
@@ -2251,7 +2283,7 @@ mod tests {
                 "animate": { "pathOffset": 0.25, "pathSpacing": 0.5 },
                 "transition": {}
             });
-            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let state = MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap();
             let draw = at(&state, started, 0).draw.unwrap();
             assert_eq!(
                 draw,
@@ -2272,7 +2304,7 @@ mod tests {
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
             let own = attributes(&[("r", serde_json::json!(10)), ("fill", serde_json::json!("#ff0000"))]);
-            let state = MotionState::new_svg(&description, &own, started).unwrap();
+            let state = MotionState::new_svg(&description, &own, Colors::root(), started).unwrap();
             assert_eq!(attribute(&at(&state, started, 0), "r"), "10");
             assert_eq!(attribute(&at(&state, started, 500), "r"), "15");
             assert_eq!(attribute(&at(&state, started, 1000), "r"), "20");
@@ -2291,7 +2323,7 @@ mod tests {
                     "animate": { "d": to },
                     "transition": { "duration": 1.0, "ease": "linear" }
                 });
-                MotionState::new_svg(&description, &attributes(&[]), started).unwrap()
+                MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap()
             };
             let same = morph("M10 10 L30 10");
             assert_eq!(attribute(&at(&same, started, 500), "d"), "M 5 5 L 20 5");
@@ -2308,7 +2340,7 @@ mod tests {
                 "animate": { "cx": 100.0, "cy": 100.0 },
                 "transition": { "duration": 1.0, "ease": "linear", "cx": { "duration": 0.1, "ease": "linear" } }
             });
-            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let state = MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap();
             let motion = at(&state, started, 500);
             assert_eq!(attribute(&motion, "cx"), "100");
             assert_eq!(attribute(&motion, "cy"), "50");
@@ -2322,14 +2354,14 @@ mod tests {
                 "animate": { "strokeWidth": 10.0 },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
-            let mut state = MotionState::new_svg(&first, &attributes(&[]), started).unwrap();
+            let mut state = MotionState::new_svg(&first, &attributes(&[]), Colors::root(), started).unwrap();
             let second = serde_json::json!({
                 "initial": false,
                 "animate": { "strokeWidth": 0.0 },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
             state
-                .sync_svg(&second, &attributes(&[]), started + Duration::from_millis(500))
+                .sync_svg(&second, &attributes(&[]), Colors::root(), started + Duration::from_millis(500))
                 .unwrap();
             assert_eq!(attribute(&at(&state, started, 500), "stroke-width"), "5");
             assert_eq!(attribute(&at(&state, started, 1000), "stroke-width"), "2.5");
@@ -2339,14 +2371,14 @@ mod tests {
         fn style_keys_are_not_svg_attributes_and_the_other_way_round() {
             let now = Instant::now();
             let svg_with_style_key = serde_json::json!({ "animate": { "backgroundColor": "#fff" }, "transition": {} });
-            let error = MotionState::new_svg(&svg_with_style_key, &attributes(&[]), now)
+            let error = MotionState::new_svg(&svg_with_style_key, &attributes(&[]), Colors::root(), now)
                 .err()
                 .unwrap();
             assert!(error.contains("animatable SVG attribute"), "{error}");
             let style_with_svg_key = serde_json::json!({ "animate": { "pathLength": 1.0 }, "transition": {} });
-            assert!(MotionState::new(&style_with_svg_key, None, None, 0, now).is_err());
+            assert!(MotionState::new(&style_with_svg_key, None, Colors::root(), None, 0, now).is_err());
             let unknown_transition = serde_json::json!({ "animate": {}, "transition": { "backgroundColor": { "duration": 1 } } });
-            assert!(MotionState::new_svg(&unknown_transition, &attributes(&[]), now).is_err());
+            assert!(MotionState::new_svg(&unknown_transition, &attributes(&[]), Colors::root(), now).is_err());
         }
 
         #[test]
@@ -2357,7 +2389,7 @@ mod tests {
                 "animate": { "opacity": 1.0 },
                 "transition": { "type": "spring", "stiffness": 400, "damping": 5 }
             });
-            let state = MotionState::new_svg(&description, &attributes(&[]), started).unwrap();
+            let state = MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap();
             for millis in (0..600).step_by(10) {
                 let opacity: f64 = attribute(&at(&state, started, millis), "opacity").parse().unwrap();
                 assert!((0.0..=1.0).contains(&opacity), "{opacity}");
@@ -2420,7 +2452,7 @@ mod tests {
         #[test]
         fn opening_waits_for_a_measurement_then_runs_to_the_content_and_settles_to_auto() {
             let started = Instant::now();
-            let mut state = MotionState::new(&open(), None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&open(), None, Colors::root(), None, 0, started).unwrap();
 
             // Nothing is measured on the first frame: it holds the start and
             // keeps the frames coming.
@@ -2433,13 +2465,13 @@ mod tests {
             // The clock starts at the first frame that has a measurement.
             let measured_at = at(started, 0.3);
             let measured = measurement(100.0, 0.0, 80.0);
-            state.sync(&open(), None, Some(&measured), 0, measured_at).unwrap();
+            state.sync(&open(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             assert!(state.frame(measured_at).active);
             assert_eq!(pixels(height(&state, measured_at)), 0.0);
             assert_eq!(pixels(height(&state, at(measured_at, 0.5))), 40.0);
 
             let end = at(measured_at, 1.0);
-            state.sync(&open(), None, Some(&measured), 0, end).unwrap();
+            state.sync(&open(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             let frame = state.frame(end);
             assert!(!frame.active);
             assert!(frame.just_settled);
@@ -2453,9 +2485,9 @@ mod tests {
                 scale_factor: 2.0,
                 ..measurement(100.0, 0.0, 80.2)
             };
-            let state = MotionState::new(&open(), None, Some(&measured), 0, started).unwrap();
+            let state = MotionState::new(&open(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(height(&state, at(started, 0.5))), 40.25);
-            let state = MotionState::new(&open(), None, Some(&measurement(100.0, 0.0, 80.2)), 0, started)
+            let state = MotionState::new(&open(), None, Colors::root(), Some(&measurement(100.0, 0.0, 80.2)), 0, started)
                 .unwrap();
             assert_eq!(pixels(height(&state, at(started, 0.5))), 40.5);
         }
@@ -2473,7 +2505,7 @@ mod tests {
             );
             let measured = measurement(100.0, 20.0, 60.0);
             let state =
-                MotionState::new(&description, Some(&base), Some(&measured), 0, started).unwrap();
+                MotionState::new(&description, Some(&base), Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(height(&state, started)), 20.0);
             assert_eq!(pixels(height(&state, at(started, 0.5))), 40.0);
         }
@@ -2485,7 +2517,7 @@ mod tests {
                 serde_json::json!({ "height": "auto" }),
                 serde_json::json!(false),
             );
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(height(&state, started), Some(DimensionValue::Auto));
             assert!(!state.frame(started).active);
         }
@@ -2499,27 +2531,27 @@ mod tests {
             );
             let measured = in_parent(measurement(100.0, 40.0, 80.0), 300.0, 40.0);
             let mut state =
-                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(height(&state, started)), 20.0);
             assert_eq!(pixels(height(&state, at(started, 0.5))), 50.0);
             let end = at(started, 1.0);
-            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert_eq!(height(&state, end), Some(DimensionValue::Auto));
         }
 
         #[test]
         fn the_target_follows_the_content_while_a_tween_runs() {
             let started = Instant::now();
-            let mut state = MotionState::new(&open(), None, Some(&measurement(100.0, 0.0, 80.0)), 0, started)
+            let mut state = MotionState::new(&open(), None, Colors::root(), Some(&measurement(100.0, 0.0, 80.0)), 0, started)
                 .unwrap();
             let grown = measurement(100.0, 40.0, 120.0);
             let now = at(started, 0.5);
-            state.sync(&open(), None, Some(&grown), 0, now).unwrap();
+            state.sync(&open(), None, Colors::root(), Some(&grown), 0, now).unwrap();
 
             assert_eq!(pixels(height(&state, now)), 40.0, "the value showing does not jump");
             assert_eq!(pixels(height(&state, at(started, 1.0))), 80.0);
             let end = at(started, 1.5);
-            state.sync(&open(), None, Some(&grown), 0, end).unwrap();
+            state.sync(&open(), None, Colors::root(), Some(&grown), 0, end).unwrap();
             assert_eq!(height(&state, end), Some(DimensionValue::Auto));
             assert!(state.frame(end).just_settled);
         }
@@ -2534,7 +2566,7 @@ mod tests {
             });
             let mut state = MotionState::new(
                 &description,
-                None,
+                None, Colors::root(),
                 Some(&measurement(100.0, 0.0, 80.0)),
                 0,
                 started,
@@ -2545,7 +2577,7 @@ mod tests {
             assert!(before.velocity[0] > 0.0);
 
             state
-                .sync(&description, None, Some(&measurement(100.0, 30.0, 120.0)), 0, now)
+                .sync(&description, None, Colors::root(), Some(&measurement(100.0, 30.0, 120.0)), 0, now)
                 .unwrap();
             let after = height_track(&state).sample(now);
             assert_eq!(after.position, before.position);
@@ -2553,7 +2585,7 @@ mod tests {
 
             let end = at(started, 5.0);
             state
-                .sync(&description, None, Some(&measurement(100.0, 120.0, 120.0)), 0, end)
+                .sync(&description, None, Colors::root(), Some(&measurement(100.0, 120.0, 120.0)), 0, end)
                 .unwrap();
             assert_eq!(height(&state, end), Some(DimensionValue::Auto));
         }
@@ -2568,14 +2600,14 @@ mod tests {
             });
             let mut state = MotionState::new(
                 &description,
-                None,
+                None, Colors::root(),
                 Some(&measurement(100.0, 0.0, 80.0)),
                 0,
                 started,
             )
             .unwrap();
             let grown = measurement(100.0, 0.0, 120.0);
-            state.sync(&description, None, Some(&grown), 0, at(started, 0.2)).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&grown), 0, at(started, 0.2)).unwrap();
             assert_eq!(pixels(height(&state, at(started, 0.2))), 0.0);
             // The clock was not restarted: the delay still ends at 0.5s.
             assert_eq!(pixels(height(&state, at(started, 1.0))), 60.0);
@@ -2586,7 +2618,7 @@ mod tests {
             let started = Instant::now();
             let mut state = MotionState::new(
                 &linear(serde_json::json!({ "height": "auto" }), serde_json::json!(false)),
-                None,
+                None, Colors::root(),
                 None,
                 0,
                 started,
@@ -2596,11 +2628,11 @@ mod tests {
             // segment ended on is stale.
             let grown = measurement(100.0, 100.0, 100.0);
             let closed = linear(serde_json::json!({ "height": 0.0 }), serde_json::json!(false));
-            state.sync(&closed, None, Some(&grown), 0, started).unwrap();
+            state.sync(&closed, None, Colors::root(), Some(&grown), 0, started).unwrap();
             assert_eq!(pixels(height(&state, started)), 100.0);
             assert_eq!(pixels(height(&state, at(started, 0.5))), 50.0);
             let end = at(started, 1.0);
-            state.sync(&closed, None, Some(&grown), 0, end).unwrap();
+            state.sync(&closed, None, Colors::root(), Some(&grown), 0, end).unwrap();
             assert_eq!(pixels(height(&state, end)), 0.0);
         }
 
@@ -2608,10 +2640,10 @@ mod tests {
         fn retargeting_from_a_running_auto_segment_continues_from_where_it_is() {
             let started = Instant::now();
             let measured = measurement(100.0, 0.0, 80.0);
-            let mut state = MotionState::new(&open(), None, Some(&measured), 0, started).unwrap();
+            let mut state = MotionState::new(&open(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             let closed = linear(serde_json::json!({ "height": 0.0 }), serde_json::json!(false));
             let now = at(started, 0.5);
-            state.sync(&closed, None, Some(&measured), 0, now).unwrap();
+            state.sync(&closed, None, Colors::root(), Some(&measured), 0, now).unwrap();
             assert_eq!(pixels(height(&state, now)), 40.0);
             assert_eq!(pixels(height(&state, at(now, 0.5))), 20.0);
         }
@@ -2619,9 +2651,9 @@ mod tests {
         #[test]
         fn a_new_description_while_waiting_replaces_the_wait() {
             let started = Instant::now();
-            let mut state = MotionState::new(&open(), None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&open(), None, Colors::root(), None, 0, started).unwrap();
             let fixed = linear(serde_json::json!({ "height": 50.0 }), serde_json::json!(false));
-            state.sync(&fixed, None, None, 0, started).unwrap();
+            state.sync(&fixed, None, Colors::root(), None, 0, started).unwrap();
             assert!(state.pending.is_empty());
             assert_eq!(pixels(height(&state, started)), 0.0);
             assert_eq!(pixels(height(&state, at(started, 0.5))), 25.0);
@@ -2630,25 +2662,25 @@ mod tests {
         #[test]
         fn an_element_missing_from_a_painted_frame_jumps_to_the_target() {
             let started = Instant::now();
-            let mut state = MotionState::new(&open(), None, None, 3, started).unwrap();
+            let mut state = MotionState::new(&open(), None, Colors::root(), None, 3, started).unwrap();
             let unset_width =
                 linear(serde_json::json!({ "width": 100.0 }), serde_json::json!({ "opacity": 1.0 }));
-            let mut width = MotionState::new(&unset_width, None, None, 3, started).unwrap();
+            let mut width = MotionState::new(&unset_width, None, Colors::root(), None, 3, started).unwrap();
             assert!(width.frame(started).active);
 
             // No frame was painted since: however long it takes, it still waits.
             let late = at(started, 60.0);
-            state.sync(&open(), None, None, 3, late).unwrap();
+            state.sync(&open(), None, Colors::root(), None, 3, late).unwrap();
             assert!(state.frame(late).active);
             assert_eq!(pixels(height(&state, late)), 0.0);
 
             // A frame was painted and the element was not in it.
-            state.sync(&open(), None, None, 4, late).unwrap();
+            state.sync(&open(), None, Colors::root(), None, 4, late).unwrap();
             assert_eq!(height(&state, late), Some(DimensionValue::Auto));
             let frame = state.frame(late);
             assert!(!frame.active);
             assert!(frame.just_settled);
-            width.sync(&unset_width, None, None, 4, late).unwrap();
+            width.sync(&unset_width, None, Colors::root(), None, 4, late).unwrap();
             assert_eq!(style_at(&width, late).width, Some(DimensionValue::Pixels(100.0)));
             assert!(!width.frame(late).active);
         }
@@ -2656,10 +2688,10 @@ mod tests {
         #[test]
         fn a_measurement_after_painted_frames_still_starts_the_animation() {
             let started = Instant::now();
-            let mut state = MotionState::new(&open(), None, None, 3, started).unwrap();
+            let mut state = MotionState::new(&open(), None, Colors::root(), None, 3, started).unwrap();
             let measured_at = at(started, 0.3);
             state
-                .sync(&open(), None, Some(&measurement(100.0, 0.0, 80.0)), 4, measured_at)
+                .sync(&open(), None, Colors::root(), Some(&measurement(100.0, 0.0, 80.0)), 4, measured_at)
                 .unwrap();
             assert!(state.pending.is_empty());
             assert_eq!(pixels(height(&state, at(measured_at, 0.5))), 40.0);
@@ -2672,7 +2704,7 @@ mod tests {
                 serde_json::json!({ "width": 100.0, "maxHeight": 0.0, "minHeight": 90.0 }),
                 serde_json::json!({ "opacity": 1.0 }),
             );
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             // Waiting: nothing is applied, so the element keeps the size it has.
             let waiting = style_at(&state, started);
             assert_eq!((waiting.width, waiting.max_height, waiting.min_height), (None, None, None));
@@ -2680,7 +2712,7 @@ mod tests {
 
             let measured_at = at(started, 0.2);
             let measured = measurement(60.0, 40.0, 40.0);
-            state.sync(&description, None, Some(&measured), 0, measured_at).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             let halfway = style_at(&state, at(measured_at, 0.5));
             assert_eq!(halfway.width, Some(DimensionValue::Pixels(80.0)));
             assert_eq!(halfway.max_height, Some(DimensionValue::Pixels(20.0)));
@@ -2700,7 +2732,7 @@ mod tests {
             );
             let state = MotionState::new(
                 &description,
-                Some(&base),
+                Some(&base), Colors::root(),
                 Some(&measurement(10.0, 60.0, 60.0)),
                 0,
                 started,
@@ -2718,7 +2750,7 @@ mod tests {
                     serde_json::json!({ "height": 0.0 }),
                     serde_json::json!({ "height": "auto" }),
                 ),
-                None,
+                None, Colors::root(),
                 Some(&measurement(10.0, 60.0, 60.0)),
                 0,
                 started,
@@ -2731,7 +2763,7 @@ mod tests {
                 "animate": { "opacity": 1.0 },
                 "transition": {}
             });
-            let state = MotionState::new(&only, None, None, 0, started).unwrap();
+            let state = MotionState::new(&only, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(height(&state, started), Some(DimensionValue::Auto));
         }
 
@@ -2755,13 +2787,13 @@ mod tests {
             let started = Instant::now();
             let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
             let mut state =
-                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&grow_to_half(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(width(&state, started)), 0.0);
             assert_eq!(pixels(width(&state, at(started, 0.5))), 50.0);
             assert!(state.frame(at(started, 0.5)).active);
 
             let end = at(started, 1.0);
-            state.sync(&grow_to_half(), None, Some(&measured), 0, end).unwrap();
+            state.sync(&grow_to_half(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
             let frame = state.frame(end);
             assert!(!frame.active);
@@ -2777,11 +2809,11 @@ mod tests {
             );
             let measured = in_parent(measurement(100.0, 10.0, 10.0), 200.0, 80.0);
             let mut state =
-                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(width(&state, started)), 100.0);
             assert_eq!(pixels(width(&state, at(started, 0.5))), 60.0);
             let end = at(started, 1.0);
-            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Pixels(20.0)));
         }
 
@@ -2792,7 +2824,7 @@ mod tests {
                 serde_json::json!({ "width": "50%" }),
                 serde_json::json!({ "width": "10%" }),
             );
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert!(state.pending.is_empty());
             let halfway = width(&state, at(started, 0.5));
             let Some(DimensionValue::Percentage(fraction)) = halfway else {
@@ -2808,13 +2840,13 @@ mod tests {
                 serde_json::json!({ "width": 40.0 }),
                 serde_json::json!({ "width": "50%" }),
             );
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(width(&state, started), Some(DimensionValue::Percentage(0.5)));
             assert!(state.frame(started).active);
 
             let measured_at = at(started, 0.3);
             let measured = in_parent(measurement(100.0, 10.0, 10.0), 200.0, 80.0);
-            state.sync(&description, None, Some(&measured), 0, measured_at).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             assert!(state.pending.is_empty());
             assert_eq!(pixels(width(&state, measured_at)), 100.0);
             assert_eq!(pixels(width(&state, at(measured_at, 0.5))), 70.0);
@@ -2827,16 +2859,16 @@ mod tests {
                 serde_json::json!({ "width": "50%" }),
                 serde_json::json!({ "opacity": 1.0 }),
             );
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(width(&state, started), None, "the element keeps the width it has");
             assert!(state.frame(started).active);
 
             let measured = in_parent(measurement(60.0, 10.0, 10.0), 200.0, 80.0);
-            state.sync(&description, None, Some(&measured), 0, started).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(width(&state, started)), 60.0);
             assert_eq!(pixels(width(&state, at(started, 0.5))), 80.0);
             let end = at(started, 1.0);
-            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
         }
 
@@ -2845,7 +2877,7 @@ mod tests {
             let started = Instant::now();
             let mut state = MotionState::new(
                 &grow_to_half(),
-                None,
+                None, Colors::root(),
                 Some(&in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0)),
                 0,
                 started,
@@ -2853,11 +2885,11 @@ mod tests {
             .unwrap();
             let now = at(started, 0.5);
             let resized = in_parent(measurement(50.0, 10.0, 10.0), 400.0, 80.0);
-            state.sync(&grow_to_half(), None, Some(&resized), 0, now).unwrap();
+            state.sync(&grow_to_half(), None, Colors::root(), Some(&resized), 0, now).unwrap();
             assert_eq!(pixels(width(&state, now)), 50.0, "the value showing does not jump");
             assert_eq!(pixels(width(&state, at(started, 1.0))), 125.0);
             let end = at(started, 1.5);
-            state.sync(&grow_to_half(), None, Some(&resized), 0, end).unwrap();
+            state.sync(&grow_to_half(), None, Colors::root(), Some(&resized), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
         }
 
@@ -2871,7 +2903,7 @@ mod tests {
             });
             let mut state = MotionState::new(
                 &description,
-                None,
+                None, Colors::root(),
                 Some(&in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0)),
                 0,
                 started,
@@ -2883,7 +2915,7 @@ mod tests {
             state
                 .sync(
                     &description,
-                    None,
+                    None, Colors::root(),
                     Some(&in_parent(measurement(30.0, 10.0, 10.0), 400.0, 80.0)),
                     0,
                     now,
@@ -2899,24 +2931,24 @@ mod tests {
             let started = Instant::now();
             let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
             let mut state =
-                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&grow_to_half(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             let settled = at(started, 2.0);
-            state.sync(&grow_to_half(), None, Some(&measured), 0, settled).unwrap();
+            state.sync(&grow_to_half(), None, Colors::root(), Some(&measured), 0, settled).unwrap();
 
             // The parent changed since: the percentage is 150px of 300px now,
             // not the 100px the segment ended on.
             let wider = in_parent(measurement(150.0, 10.0, 10.0), 300.0, 80.0);
             let to_px = linear(serde_json::json!({ "width": 30.0 }), serde_json::json!(false));
-            state.sync(&to_px, None, Some(&wider), 0, settled).unwrap();
+            state.sync(&to_px, None, Colors::root(), Some(&wider), 0, settled).unwrap();
             assert_eq!(pixels(width(&state, settled)), 150.0);
             assert_eq!(pixels(width(&state, at(settled, 0.5))), 90.0);
 
             // And another percentage stays a percentage.
             let mut again =
-                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
-            again.sync(&grow_to_half(), None, Some(&measured), 0, settled).unwrap();
+                MotionState::new(&grow_to_half(), None, Colors::root(), Some(&measured), 0, started).unwrap();
+            again.sync(&grow_to_half(), None, Colors::root(), Some(&measured), 0, settled).unwrap();
             let quarter = linear(serde_json::json!({ "width": "25%" }), serde_json::json!(false));
-            again.sync(&quarter, None, None, 0, settled).unwrap();
+            again.sync(&quarter, None, Colors::root(), None, 0, settled).unwrap();
             let Some(DimensionValue::Percentage(fraction)) = width(&again, at(settled, 0.5)) else {
                 panic!("expected a percentage");
             };
@@ -2928,10 +2960,10 @@ mod tests {
             let started = Instant::now();
             let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
             let mut state =
-                MotionState::new(&grow_to_half(), None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&grow_to_half(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             let now = at(started, 0.5);
             let back = linear(serde_json::json!({ "width": 0.0 }), serde_json::json!(false));
-            state.sync(&back, None, Some(&measured), 0, now).unwrap();
+            state.sync(&back, None, Colors::root(), Some(&measured), 0, now).unwrap();
             assert_eq!(pixels(width(&state, now)), 50.0);
             assert_eq!(pixels(width(&state, at(now, 0.5))), 25.0);
         }
@@ -2945,7 +2977,7 @@ mod tests {
             );
             let measured = in_parent(measurement(0.0, 0.0, 0.0), 200.0, 80.0);
             let state =
-                MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
             let halfway = style_at(&state, at(started, 0.5));
             assert_eq!(halfway.height, Some(DimensionValue::Pixels(20.0)));
             assert_eq!(halfway.max_width, Some(DimensionValue::Pixels(50.0)));
@@ -2956,7 +2988,7 @@ mod tests {
             let started = Instant::now();
             let state = MotionState::new(
                 &grow_to_half(),
-                None,
+                None, Colors::root(),
                 Some(&measurement(0.0, 10.0, 10.0)),
                 0,
                 started,
@@ -2972,7 +3004,7 @@ mod tests {
                 serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
                 serde_json::json!({ "animate": { "minHeight": "auto" } }),
             ] {
-                let error = MotionState::new(&description, None, None, 0, Instant::now())
+                let error = MotionState::new(&description, None, Colors::root(), None, 0, Instant::now())
                     .err()
                     .unwrap();
                 assert!(error.contains("auto") && error.contains("only height"), "{error}");
@@ -2989,7 +3021,7 @@ mod tests {
                     "animate": { "top": 12.0 },
                     "transition": { "duration": 1.0 }
                 }),
-                None,
+                None, Colors::root(),
                 None,
                 0,
                 started,
@@ -3015,7 +3047,7 @@ mod tests {
         fn run(width_frames: serde_json::Value, transition: serde_json::Value) -> (MotionState, Instant) {
             let started = Instant::now();
             let description = linear(json!({ "width": width_frames }), transition);
-            (MotionState::new(&description, None, None, 0, started).unwrap(), started)
+            (MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap(), started)
         }
 
         fn near(actual: f64, expected: f64) {
@@ -3074,7 +3106,7 @@ mod tests {
                 "animate": { "width": [null, 100.0, null, 20.0] },
                 "transition": { "duration": 3.0, "ease": "linear" }
             });
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             near(width(&state, started), 40.0);
             near(width(&state, at(started, 1.0)), 100.0);
             near(width(&state, at(started, 1.5)), 100.0);
@@ -3086,7 +3118,7 @@ mod tests {
                 "animate": { "width": [0.0, 100.0] },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
-            let state = MotionState::new(&explicit, None, None, 0, started).unwrap();
+            let state = MotionState::new(&explicit, None, Colors::root(), None, 0, started).unwrap();
             near(width(&state, started), 0.0);
         }
 
@@ -3098,7 +3130,7 @@ mod tests {
                 "animate": { "width": [0.0, 100.0, 30.0] },
                 "transition": { "duration": 1.0 }
             });
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(state.applied(started).unwrap().width, Some(30.0));
             assert!(!state.frame(started).active);
         }
@@ -3110,12 +3142,12 @@ mod tests {
                 "initial": { "width": [0.0, 10.0] },
                 "animate": { "width": 100.0 }
             });
-            let error = MotionState::new(&description, None, None, 0, started).err().unwrap();
+            let error = MotionState::new(&description, None, Colors::root(), None, 0, started).err().unwrap();
             assert!(error.contains("initial cannot hold keyframes for width"), "{error}");
             let only_null = json!({ "animate": { "width": [null] } });
-            assert!(MotionState::new(&only_null, None, None, 0, started).is_err());
+            assert!(MotionState::new(&only_null, None, Colors::root(), None, 0, started).is_err());
             let empty = json!({ "animate": { "width": [] } });
-            assert!(MotionState::new(&empty, None, None, 0, started).is_err());
+            assert!(MotionState::new(&empty, None, Colors::root(), None, 0, started).is_err());
         }
 
         #[test]
@@ -3132,7 +3164,7 @@ mod tests {
                     json!({ "width": [0.0, 1.0, 2.0] }),
                     json!({ "duration": 1.0, "width": transition }),
                 );
-                MotionState::new(&description, None, None, 0, started).err().unwrap()
+                MotionState::new(&description, None, Colors::root(), None, 0, started).err().unwrap()
             };
             assert!(fails(json!({ "times": [0.0, 1.0] })).contains("times lists 2"));
             assert!(fails(json!({ "ease": ["linear"] })).contains("needs 2 easings"));
@@ -3144,7 +3176,7 @@ mod tests {
                 json!({ "width": [0.0, 1.0, 2.0] }),
                 json!({ "default": { "duration": 1.0, "times": [0.0, 1.0] } }),
             );
-            assert!(MotionState::new(&shared, None, None, 0, started).is_ok());
+            assert!(MotionState::new(&shared, None, Colors::root(), None, 0, started).is_ok());
         }
 
         fn opacity(state: &MotionState, now: Instant) -> f64 {
@@ -3163,7 +3195,7 @@ mod tests {
                     "animate": { "width": [0.0, 50.0, 100.0], "opacity": 1.0 },
                     "transition": transition
                 });
-                let state = MotionState::new(&description, None, None, 0, started).unwrap();
+                let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
                 near(width(&state, at(started, 0.1)), 25.0);
                 near(width(&state, at(started, 0.2)), 50.0);
                 near(opacity(&state, at(started, 0.2)), 0.2);
@@ -3179,7 +3211,7 @@ mod tests {
                 "animate": { "width": [0.0, 100.0, 0.0], "opacity": 1.0 },
                 "transition": { "duration": 1.0, "ease": ["linear", "easeIn"] }
             });
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             near(width(&state, at(started, 0.25)), 50.0);
             // Opacity has one segment, so it takes the default ease, not "linear".
             let expected = curve::ease(0.5, &curve::Ease::Name("easeOut".to_string()));
@@ -3197,7 +3229,7 @@ mod tests {
                     "width": { "duration": 1.0, "ease": "linear" }
                 }
             });
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             near(width(&state, at(started, 0.5)), 50.0);
         }
 
@@ -3205,10 +3237,10 @@ mod tests {
         fn a_spring_only_animates_between_two_keyframes() {
             let started = Instant::now();
             let three = linear(json!({ "width": [0.0, 1.0, 2.0] }), json!({ "type": "spring" }));
-            let error = MotionState::new(&three, None, None, 0, started).err().unwrap();
+            let error = MotionState::new(&three, None, Colors::root(), None, 0, started).err().unwrap();
             assert!(error.contains("a spring only animates between two"), "{error}");
             let two = linear(json!({ "width": [0.0, 100.0] }), json!({ "type": "spring" }));
-            assert!(MotionState::new(&two, None, None, 0, started).is_ok());
+            assert!(MotionState::new(&two, None, Colors::root(), None, 0, started).is_ok());
         }
 
         #[test]
@@ -3294,10 +3326,10 @@ mod tests {
             let started = Instant::now();
             for repeat in [json!(-1), json!(1.5), json!("forever"), json!("infinite")] {
                 let description = linear(json!({ "width": 10.0 }), json!({ "repeat": repeat }));
-                assert!(MotionState::new(&description, None, None, 0, started).is_err(), "{repeat}");
+                assert!(MotionState::new(&description, None, Colors::root(), None, 0, started).is_err(), "{repeat}");
             }
             let description = linear(json!({ "width": 10.0 }), json!({ "repeatType": "bounce" }));
-            let error = MotionState::new(&description, None, None, 0, started).err().unwrap();
+            let error = MotionState::new(&description, None, Colors::root(), None, 0, started).err().unwrap();
             assert!(error.contains("repeatType"), "{error}");
         }
 
@@ -3343,7 +3375,7 @@ mod tests {
                 "animate": { "width": 200.0 },
                 "transition": { "type": "spring", "stiffness": 100.0, "damping": 10.0 }
             });
-            state.sync(&spring, None, None, 0, retarget_at).unwrap();
+            state.sync(&spring, None, Colors::root(), None, 0, retarget_at).unwrap();
             near(width(&state, retarget_at), 50.0);
             near(width_velocity(&state, retarget_at), -100.0);
         }
@@ -3357,7 +3389,7 @@ mod tests {
                 "animate": { "width": [0.0, 100.0, 0.0] },
                 "transition": { "duration": 2.0, "ease": "linear" }
             });
-            state.sync(&same, None, None, 0, at(started, 0.5)).unwrap();
+            state.sync(&same, None, Colors::root(), None, 0, at(started, 0.5)).unwrap();
             near(width(&state, at(started, 1.5)), 50.0);
 
             let changed = json!({
@@ -3365,7 +3397,7 @@ mod tests {
                 "animate": { "width": [null, 20.0, 40.0] },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
-            state.sync(&changed, None, None, 0, at(started, 0.5)).unwrap();
+            state.sync(&changed, None, Colors::root(), None, 0, at(started, 0.5)).unwrap();
             near(width(&state, at(started, 0.5)), 50.0);
             near(width(&state, at(started, 1.0)), 20.0);
             near(width(&state, at(started, 1.5)), 40.0);
@@ -3380,7 +3412,7 @@ mod tests {
                 "animate": { "width": [0.0, 300.0, 100.0], "opacity": [0.0, 1.0, 0.5] },
                 "transition": { "duration": 1.0, "ease": "linear", "repeat": "Infinity" }
             });
-            let mut state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(state.applied(started).unwrap().width, Some(100.0));
             let middle = at(started, 0.25);
             assert!(state.frame(middle).active);
@@ -3415,18 +3447,18 @@ mod tests {
         #[test]
         fn auto_as_the_last_keyframe_runs_to_the_content_and_settles_to_auto() {
             let started = Instant::now();
-            let mut state = MotionState::new(&auto_keyframes(), None, None, 0, started).unwrap();
+            let mut state = MotionState::new(&auto_keyframes(), None, Colors::root(), None, 0, started).unwrap();
             assert!(state.frame(started).active, "waits for a measurement");
             assert_eq!(pixels(style_at(&state, started).height), 0.0);
 
             let measured_at = at(started, 0.2);
             let measured = measurement(800.0, 80.0);
-            state.sync(&auto_keyframes(), None, Some(&measured), 0, measured_at).unwrap();
+            state.sync(&auto_keyframes(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).height), 50.0);
             assert_eq!(pixels(style_at(&state, at(measured_at, 0.75)).height), 65.0);
 
             let end = at(measured_at, 1.0);
-            state.sync(&auto_keyframes(), None, Some(&measured), 0, end).unwrap();
+            state.sync(&auto_keyframes(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             let frame = state.frame(end);
             assert!(!frame.active && frame.just_settled);
             assert_eq!(style_at(&state, end).height, Some(DimensionValue::Auto));
@@ -3437,11 +3469,11 @@ mod tests {
             let started = Instant::now();
             let measured = measurement(800.0, 80.0);
             let mut state =
-                MotionState::new(&auto_keyframes(), None, Some(&measured), 0, started).unwrap();
+                MotionState::new(&auto_keyframes(), None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(style_at(&state, at(started, 0.75)).height), 65.0);
 
             let grown = measurement(800.0, 120.0);
-            state.sync(&auto_keyframes(), None, Some(&grown), 0, at(started, 0.5)).unwrap();
+            state.sync(&auto_keyframes(), None, Colors::root(), Some(&grown), 0, at(started, 0.5)).unwrap();
             assert_eq!(pixels(style_at(&state, at(started, 0.5)).height), 50.0);
             assert_eq!(pixels(style_at(&state, at(started, 0.75)).height), 85.0);
         }
@@ -3455,12 +3487,12 @@ mod tests {
                 "transition": { "duration": 3.0, "ease": "linear" }
             });
             let measured = measurement(800.0, 0.0);
-            let mut state = MotionState::new(&description, None, Some(&measured), 0, started).unwrap();
+            let mut state = MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(style_at(&state, at(started, 1.0)).width), 400.0);
             assert_eq!(pixels(style_at(&state, at(started, 2.0)).width), 200.0);
             assert_eq!(pixels(style_at(&state, at(started, 2.5)).width), 200.0);
             let end = at(started, 3.0);
-            state.sync(&description, None, Some(&measured), 0, end).unwrap();
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert!(!state.frame(end).active);
             assert_eq!(style_at(&state, end).width, Some(DimensionValue::Percentage(0.25)));
         }
@@ -3473,7 +3505,7 @@ mod tests {
                 "animate": { "width": ["0%", "50%", "100%"] },
                 "transition": { "duration": 2.0, "ease": "linear" }
             });
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             assert!(state.pending.is_empty());
             assert_eq!(
                 style_at(&state, at(started, 1.0)).width,
@@ -3484,8 +3516,8 @@ mod tests {
         #[test]
         fn a_mounted_keyframe_animation_that_is_never_painted_jumps_to_the_last_keyframe() {
             let started = Instant::now();
-            let mut state = MotionState::new(&auto_keyframes(), None, None, 3, started).unwrap();
-            state.sync(&auto_keyframes(), None, None, 4, at(started, 0.1)).unwrap();
+            let mut state = MotionState::new(&auto_keyframes(), None, Colors::root(), None, 3, started).unwrap();
+            state.sync(&auto_keyframes(), None, Colors::root(), None, 4, at(started, 0.1)).unwrap();
             assert!(!state.frame(at(started, 0.1)).active);
             assert_eq!(style_at(&state, at(started, 0.1)).height, Some(DimensionValue::Auto));
         }
@@ -3496,7 +3528,7 @@ mod tests {
             fn svg(animate: serde_json::Value, transition: serde_json::Value) -> (MotionState, Instant) {
                 let started = Instant::now();
                 let description = json!({ "initial": false, "animate": animate, "transition": transition });
-                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                let state = MotionState::new_svg(&description, &HashMap::new(), Colors::root(), started).unwrap();
                 (state, started)
             }
 
@@ -3520,7 +3552,7 @@ mod tests {
                     "transition": { "duration": 2.0, "ease": "linear", "repeat": "Infinity" }
                 });
                 let mut state =
-                    MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                    MotionState::new_svg(&description, &HashMap::new(), Colors::root(), started).unwrap();
                 assert_eq!(text(&state, started, 0.5, "stroke-width"), "5");
                 assert_eq!(text(&state, started, 1.0, "stroke-width"), "10");
                 assert_eq!(text(&state, started, 5.5, "stroke-width"), "5");
@@ -3547,7 +3579,7 @@ mod tests {
                     "animate": { "strokeDasharray": [null, [10.0, 0.0], "5 5"] },
                     "transition": { "duration": 2.0, "ease": "linear" }
                 });
-                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                let state = MotionState::new_svg(&description, &HashMap::new(), Colors::root(), started).unwrap();
                 assert_eq!(text(&state, started, 0.5, "stroke-dasharray"), "5 5");
                 assert_eq!(text(&state, started, 1.5, "stroke-dasharray"), "7.5 2.5");
             }
@@ -3565,7 +3597,7 @@ mod tests {
                     "animate": { "d": [null, "M0 0 H20", "M0 0 L30 0"] },
                     "transition": { "duration": 4.0, "ease": "linear" }
                 });
-                let state = MotionState::new_svg(&description, &HashMap::new(), started).unwrap();
+                let state = MotionState::new_svg(&description, &HashMap::new(), Colors::root(), started).unwrap();
                 assert_eq!(text(&state, started, 0.9, "d"), "M 0 0 L 10 0");
                 assert_eq!(text(&state, started, 1.1, "d"), "M 0 0 H 20");
                 assert_eq!(text(&state, started, 3.1, "d"), "M 0 0 L 30 0");
@@ -3584,7 +3616,7 @@ mod tests {
                 "animate": { "boxShadow": [null, [layer(10.0)], [layer(0.0), layer(4.0)]] },
                 "transition": { "duration": 2.0, "ease": "linear" }
             });
-            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             let shadows = |seconds: f64| match style_at(&state, at(started, seconds)).box_shadow {
                 Some(crate::style::BoxShadowValues::Many(layers)) => layers,
                 other => panic!("expected a list, got {other:?}"),
@@ -3594,9 +3626,147 @@ mod tests {
             near(shadows(1.5)[0].blur_radius, 5.0);
 
             let list = json!({ "animate": { "boxShadow": [layer(1.0), layer(2.0)] } });
-            let state = MotionState::new(&list, None, None, 0, started).unwrap();
+            let state = MotionState::new(&list, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(state.tracks.len(), 1);
             assert!(state.tracks[&PropKey::Style(AnimProp::BoxShadow)].goal().is_single());
+        }
+    }
+
+    mod colour_context {
+        use serde_json::json;
+
+        use super::*;
+        use crate::color::{ColorContext, Scheme};
+
+        fn parent(scheme: Scheme, color: &str) -> ColorContext {
+            ColorContext::root(scheme).descend(&StyleDesc {
+                color: Some(color.to_string()),
+                color_scheme: Some(match scheme {
+                    Scheme::Light => "light",
+                    Scheme::Dark => "dark",
+                }
+                .to_string()),
+                ..Default::default()
+            })
+        }
+
+        fn near(actual: [f64; 4], expected: &str) {
+            let expected = rgba(expected);
+            for (actual, expected) in actual.iter().zip(expected) {
+                assert!((actual - expected).abs() < 0.01, "{actual:?} vs {expected:?}");
+            }
+        }
+
+        fn description() -> serde_json::Value {
+            json!({
+                "initial": { "backgroundColor": "#000000", "borderColor": "#000000", "color": "#000000" },
+                "animate": {
+                    "backgroundColor": "light-dark(#ff0000, #0000ff)",
+                    "borderColor": "currentColor",
+                    "color": "currentColor"
+                },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            })
+        }
+
+        fn end_of(state: &MotionState, started: Instant) -> StyleDesc {
+            style_at(state, at(started, 1.0))
+        }
+
+        fn channels(style: &StyleDesc) -> ([f64; 4], [f64; 4], [f64; 4]) {
+            (
+                rgba(style.background_color.as_deref().unwrap()),
+                rgba(style.border_color.as_deref().unwrap()),
+                rgba(style.color.as_deref().unwrap()),
+            )
+        }
+
+        #[test]
+        fn targets_resolve_in_the_context_of_the_element() {
+            let started = Instant::now();
+            let base = StyleDesc { color: Some("#00ff00".to_string()), ..Default::default() };
+            let above = parent(Scheme::Dark, "#808080");
+            let colors = Colors::of(&above, Some(&base));
+            let state = MotionState::new(&description(), Some(&base), colors, None, 0, started).unwrap();
+            let (background, border, color) = channels(&end_of(&state, started));
+            // `light-dark()` takes the dark side; a border's `currentColor` is the
+            // element's own colour; `color: currentColor` is the parent's.
+            near(background, "#0000ff");
+            near(border, "#00ff00");
+            near(color, "#808080");
+        }
+
+        #[test]
+        fn color_mix_and_color_function_targets_animate() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "backgroundColor": "#000000", "borderColor": "#000000" },
+                "animate": {
+                    "backgroundColor": "color-mix(in srgb, red 50%, blue)",
+                    "borderColor": "color(srgb 0 1 0)"
+                },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            let style = end_of(&state, started);
+            near(rgba(style.background_color.as_deref().unwrap()), "#800080");
+            near(rgba(style.border_color.as_deref().unwrap()), "#00ff00");
+        }
+
+        #[test]
+        fn an_appearance_change_resolves_the_targets_again() {
+            let started = Instant::now();
+            let light = Colors::of(&parent(Scheme::Light, "#000000"), None);
+            let dark = Colors::of(&parent(Scheme::Dark, "#000000"), None);
+            let mut state = MotionState::new(&description(), None, light, None, 0, started).unwrap();
+            near(channels(&end_of(&state, started)).0, "#ff0000");
+
+            // Same description, other appearance: the track runs to the new side.
+            let flipped = at(started, 2.0);
+            state.sync(&description(), None, dark, None, 0, flipped).unwrap();
+            near(channels(&style_at(&state, flipped)).0, "#ff0000");
+            near(channels(&style_at(&state, at(started, 3.0))).0, "#0000ff");
+        }
+
+        #[test]
+        fn an_unchanged_context_keeps_the_running_tracks() {
+            let started = Instant::now();
+            let colors = Colors::of(&parent(Scheme::Light, "#000000"), None);
+            let mut state = MotionState::new(&description(), None, colors, None, 0, started).unwrap();
+            let middle = at(started, 0.5);
+            let before = channels(&style_at(&state, middle)).0;
+            state.sync(&description(), None, colors, None, 0, middle).unwrap();
+            assert_eq!(channels(&style_at(&state, middle)).0, before);
+            near(channels(&end_of(&state, started)).0, "#ff0000");
+        }
+
+        #[test]
+        fn svg_fill_and_stroke_resolve_in_the_context() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "fill": "#000000", "stroke": "#000000" },
+                "animate": { "fill": "light-dark(#ff0000, #0000ff)", "stroke": "currentColor" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let above = parent(Scheme::Dark, "#00ff00");
+            let colors = Colors::of(&above, None);
+            let state = MotionState::new_svg(&description, &HashMap::new(), colors, started).unwrap();
+            let motion = state.visible_svg(at(started, 1.0)).unwrap();
+            let attribute = |name: &str| {
+                rgba(&motion.attributes.iter().find(|(attribute, _)| *attribute == name).unwrap().1)
+            };
+            near(attribute("fill"), "#0000ff");
+            near(attribute("stroke"), "#00ff00");
+        }
+
+        #[test]
+        fn motion_values_resolve_against_the_window_appearance() {
+            let now = Instant::now();
+            let mut store = MotionValueStore::default();
+            store.set_appearance(Scheme::Dark);
+            store.create_source(1.0, &json!("light-dark(#ffffff, #0000ff)")).unwrap();
+            let value = store.get(1.0, now).unwrap();
+            near(rgba(value.as_str().unwrap()), "#0000ff");
         }
     }
 }

@@ -17,6 +17,7 @@ use super::curve::{parse_ease, Curve, Transition};
 use super::property::{check_finite, expand_shorthand, parse_shadow_list, shadow_layers, AnimProp};
 use super::value::{AnimValue, Color};
 use super::values::{MotionValues, TransformOptions, ValueId};
+use crate::color::{ColorContext, Scheme};
 use crate::style::StyleDesc;
 
 const NAME: &str = "motion value";
@@ -62,6 +63,11 @@ struct Watch {
 
 #[derive(Default)]
 pub(crate) struct MotionValueStore {
+    /// The window's appearance. A value is not tied to one element, so its colours
+    /// resolve as on a root that declares `colorScheme: "light dark"`:
+    /// `light-dark()` follows this and `currentColor` is the initial black. A
+    /// colour keeps what it resolved to when it was written.
+    appearance: Scheme,
     graph: MotionValues,
     watches: HashMap<ValueId, Watch>,
     /// What the last frame sampled for the values elements bind.
@@ -79,8 +85,19 @@ struct RawTransformOptions {
 }
 
 impl MotionValueStore {
+    pub(crate) fn set_appearance(&mut self, appearance: Scheme) {
+        self.appearance = appearance;
+    }
+
+    fn colors(&self) -> ColorContext {
+        ColorContext::root(self.appearance).descend(&StyleDesc {
+            color_scheme: Some("light dark".to_string()),
+            ..Default::default()
+        })
+    }
+
     pub(crate) fn create_source(&mut self, id: f64, initial: &Value) -> Result<(), String> {
-        self.graph.source(value_id(id)?, parse_value(initial)?)
+        self.graph.source(value_id(id)?, parse_value(initial, &self.colors())?)
     }
 
     pub(crate) fn create_transform(
@@ -91,11 +108,12 @@ impl MotionValueStore {
         output_range: &Value,
         options: Option<&Value>,
     ) -> Result<(), String> {
+        let colors = self.colors();
         let outputs = output_range
             .as_array()
             .ok_or_else(|| format!("a {NAME} transform's output range must be an array"))?
             .iter()
-            .map(parse_value)
+            .map(|output| parse_value(output, &colors))
             .collect::<Result<Vec<_>, _>>()?;
         self.graph.transform(
             value_id(id)?,
@@ -127,7 +145,7 @@ impl MotionValueStore {
         now: Instant,
     ) -> Result<(), String> {
         self.graph
-            .spring(value_id(id)?, parse_value(initial)?, parse_spring(config)?, now)
+            .spring(value_id(id)?, parse_value(initial, &self.colors())?, parse_spring(config)?, now)
     }
 
     pub(crate) fn dispose(&mut self, id: f64) -> Result<bool, String> {
@@ -155,13 +173,13 @@ impl MotionValueStore {
     }
 
     pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.set(value_id(id)?, parse_value(value)?, now)?;
+        self.graph.set(value_id(id)?, parse_value(value, &self.colors())?, now)?;
         self.observe(now);
         Ok(())
     }
 
     pub(crate) fn jump(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.jump(value_id(id)?, parse_value(value)?, now)?;
+        self.graph.jump(value_id(id)?, parse_value(value, &self.colors())?, now)?;
         self.observe(now);
         Ok(())
     }
@@ -183,7 +201,7 @@ impl MotionValueStore {
         };
         let id = value_id(id)?;
         let holds = self.graph.get(id, now)?;
-        match parse_keyframes(target, &holds)? {
+        match parse_keyframes(target, &holds, &self.colors())? {
             Keyframes::Single(target) => self.graph.animate(id, target, transition, now)?,
             Keyframes::Many(frames) => self.graph.animate_keyframes(id, frames, transition, now)?,
         }
@@ -389,7 +407,7 @@ fn value_id(id: f64) -> Result<ValueId, String> {
 
 /// A number, a percentage or colour string, a list of numbers, or a
 /// `boxShadow` layer or list.
-fn parse_value(value: &Value) -> Result<AnimValue, String> {
+fn parse_value(value: &Value, colors: &ColorContext) -> Result<AnimValue, String> {
     match value {
         Value::Number(number) => {
             let number = number
@@ -405,7 +423,7 @@ fn parse_value(value: &Value) -> Result<AnimValue, String> {
                     .map_err(|_| format!("a {NAME} is not a valid percentage: {text}"))?;
                 Ok(AnimValue::Percent(check_finite(NAME, percent / 100.0)?))
             }
-            None => Color::parse(text)
+            None => Color::parse(text, colors)
                 .map(AnimValue::Color)
                 .ok_or_else(|| format!("a {NAME} string must be a colour or a percentage: {text}")),
         },
@@ -420,7 +438,7 @@ fn parse_value(value: &Value) -> Result<AnimValue, String> {
                 .map(AnimValue::Numbers)
         }
         Value::Array(_) | Value::Object(_) => {
-            parse_shadow_list(NAME, value).map(AnimValue::Shadows)
+            parse_shadow_list(NAME, value, colors).map(AnimValue::Shadows)
         }
         other => Err(format!("a {NAME} cannot hold {other}")),
     }
@@ -434,9 +452,13 @@ enum Keyframes {
 /// Whether `target` is one value or a list of keyframes, by what the source
 /// holds: a list of numbers and a list of shadow layers are values, so for
 /// those an array is only keyframes when it is not such a list.
-fn parse_keyframes(target: &Value, holds: &AnimValue) -> Result<Keyframes, String> {
+fn parse_keyframes(
+    target: &Value,
+    holds: &AnimValue,
+    colors: &ColorContext,
+) -> Result<Keyframes, String> {
     let Value::Array(items) = target else {
-        return parse_value(target).map(Keyframes::Single);
+        return parse_value(target, colors).map(Keyframes::Single);
     };
     let is_value = match holds {
         AnimValue::Numbers(_) => items.iter().all(Value::is_number),
@@ -444,13 +466,13 @@ fn parse_keyframes(target: &Value, holds: &AnimValue) -> Result<Keyframes, Strin
         _ => false,
     };
     if is_value {
-        return parse_value(target).map(Keyframes::Single);
+        return parse_value(target, colors).map(Keyframes::Single);
     }
     let frames = items
         .iter()
         .map(|item| match item {
             Value::Null => Ok(None),
-            item => parse_value(item).map(Some),
+            item => parse_value(item, colors).map(Some),
         })
         .collect::<Result<Vec<_>, _>>()?;
     match frames.as_slice() {

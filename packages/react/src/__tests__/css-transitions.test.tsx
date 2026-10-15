@@ -471,4 +471,83 @@ describeNative("CSS transitions", () => {
     renderer.dispatchNativeEvents()
     expect(targets).toEqual([renderer.findByTestId("child").id])
   })
+
+  it("treats a colour scheme flip as a change of light-dark(), and a new color as none of currentColor", () => {
+    const record = (seen: string[]) => (type: string) => () => seen.push(type)
+    // The parent sets the scheme and the colour the child's colours resolve in.
+    const setup = () => {
+      const { render, renderer } = createTestRoot()
+      const seen: string[] = []
+      const on = record(seen)
+      const tree = (
+        parentStyle: Record<string, unknown>,
+        childStyle: Record<string, unknown>
+      ) => (
+        <div style={{ width: 40, height: 40, ...parentStyle }}>
+          <div
+            testId="child"
+            onTransitionRun={on("run")}
+            onTransitionStart={on("start")}
+            onTransitionEnd={on("end")}
+            onTransitionCancel={on("cancel")}
+            style={{ width: 40, height: 40, transition: "all 1s linear", ...childStyle }}
+          />
+        </div>
+      )
+      const settle = (millis: number) => {
+        renderer.clockFastForward(millis)
+        renderer.dispatchNativeEvents()
+        return seen.splice(0)
+      }
+      renderer.clockPause()
+      return { render, tree, settle }
+    }
+
+    // An idle element starts one when the scheme flips.
+    {
+      const { render, tree, settle } = setup()
+      const flipping = { backgroundColor: "light-dark(#ff0000, #0000ff)" }
+      render(tree({ colorScheme: "light" }, flipping))
+      settle(16)
+      render(tree({ colorScheme: "dark" }, flipping))
+      expect(settle(16)).toEqual(["run", "start"])
+      expect(settle(1500)).toEqual(["end"])
+    }
+
+    // A running one whose end the flip changes starts again from where it is.
+    {
+      const { render, tree, settle } = setup()
+      render(tree({ colorScheme: "light" }, { backgroundColor: "#ff0000" }))
+      settle(16)
+      const toGreenOrBlue = { backgroundColor: "light-dark(#00ff00, #0000ff)" }
+      render(tree({ colorScheme: "light" }, toGreenOrBlue))
+      expect(settle(500)).toEqual(["run", "start"])
+      render(tree({ colorScheme: "dark" }, toGreenOrBlue))
+      expect(settle(16)).toEqual(["cancel", "run", "start"])
+      expect(settle(1500)).toEqual(["end"])
+    }
+
+    // One whose end the flip leaves as it is runs on untouched.
+    {
+      const { render, tree, settle } = setup()
+      render(tree({ colorScheme: "light" }, { backgroundColor: "light-dark(#ff0000, #0000ff)" }))
+      settle(16)
+      const toGreen = { backgroundColor: "#00ff00" }
+      render(tree({ colorScheme: "light" }, toGreen))
+      expect(settle(500)).toEqual(["run", "start"])
+      render(tree({ colorScheme: "dark" }, toGreen))
+      expect(settle(16)).toEqual([])
+      expect(settle(1500)).toEqual(["end"])
+    }
+
+    // currentColor follows a new color without a transition of its own.
+    {
+      const { render, tree, settle } = setup()
+      const following = { borderColor: "currentColor", borderWidth: 2 }
+      render(tree({ color: "#ff0000" }, following))
+      settle(16)
+      render(tree({ color: "#0000ff" }, following))
+      expect(settle(1500)).toEqual([])
+    }
+  })
 })

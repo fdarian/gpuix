@@ -6,7 +6,8 @@
 
 use serde_json::Value;
 
-use super::value::{AnimValue, Color, Shadow};
+use super::value::{AnimValue, Color, Colors, Shadow};
+use crate::color::ColorContext;
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
 
@@ -46,12 +47,12 @@ enum Initial {
 
 /// How a `StyleDesc` field converts to and from an animated value.
 trait Field {
-    fn read(&self) -> Option<AnimValue>;
+    fn read(&self, colors: &ColorContext) -> Option<AnimValue>;
     fn write(&mut self, value: AnimValue);
 }
 
 impl Field for Option<f64> {
-    fn read(&self) -> Option<AnimValue> {
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
         self.map(AnimValue::Number)
     }
 
@@ -64,7 +65,7 @@ impl Field for Option<f64> {
 }
 
 impl Field for Option<DimensionValue> {
-    fn read(&self) -> Option<AnimValue> {
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
         match self.as_ref()? {
             DimensionValue::Pixels(value) => Some(AnimValue::Number(*value)),
             DimensionValue::Percentage(value) => Some(AnimValue::Percent(*value)),
@@ -83,7 +84,7 @@ impl Field for Option<DimensionValue> {
 }
 
 impl Field for Option<AspectRatio> {
-    fn read(&self) -> Option<AnimValue> {
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
         self.and_then(AspectRatio::ratio).map(AnimValue::Number)
     }
 
@@ -98,8 +99,8 @@ impl Field for Option<AspectRatio> {
 
 impl Field for Option<String> {
     /// A colour GPUI would drop as unparsable is no value at all.
-    fn read(&self) -> Option<AnimValue> {
-        Color::parse(self.as_deref()?).map(AnimValue::Color)
+    fn read(&self, colors: &ColorContext) -> Option<AnimValue> {
+        Color::parse(self.as_deref()?, colors).map(AnimValue::Color)
     }
 
     fn write(&mut self, value: AnimValue) {
@@ -111,7 +112,7 @@ impl Field for Option<String> {
 }
 
 impl Field for Option<FontWeightValue> {
-    fn read(&self) -> Option<AnimValue> {
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
         Some(AnimValue::Number(font_weight(self.as_ref()?)))
     }
 
@@ -124,8 +125,10 @@ impl Field for Option<FontWeightValue> {
 }
 
 impl Field for Option<BoxShadowValues> {
-    fn read(&self) -> Option<AnimValue> {
-        shadows_from(self.as_ref()?.as_slice()).ok().map(AnimValue::Shadows)
+    fn read(&self, colors: &ColorContext) -> Option<AnimValue> {
+        shadows_from(self.as_ref()?.as_slice(), colors)
+            .ok()
+            .map(AnimValue::Shadows)
     }
 
     fn write(&mut self, value: AnimValue) {
@@ -142,11 +145,11 @@ fn font_weight(value: &FontWeightValue) -> f64 {
 
 /// Reads the parsed per-layer structs, so every spelling `boxShadow` accepts
 /// (single, list, and whatever string forms are added) animates the same way.
-fn shadows_from(layers: &[BoxShadowValue]) -> Result<Vec<Shadow>, String> {
+fn shadows_from(layers: &[BoxShadowValue], colors: &ColorContext) -> Result<Vec<Shadow>, String> {
     layers
         .iter()
         .map(|layer| {
-            let color = Color::parse(&layer.color)
+            let color = Color::parse(&layer.color, colors)
                 .ok_or_else(|| format!("motion boxShadow has an invalid colour: {}", layer.color))?;
             Ok(Shadow {
                 offset_x: layer.offset_x,
@@ -206,11 +209,12 @@ macro_rules! properties {
 
             /// The value the style declares, resolving a longhand through the
             /// shorthand the renderer would apply beneath it.
-            pub(super) fn read(self, style: &StyleDesc) -> Option<AnimValue> {
+            pub(super) fn read(self, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
+                let colors = self.colors(colors);
                 match self {
                     $(Self::$variant => {
-                        let value = style.$field.read();
-                        $(let value = value.or_else(|| style.$fallback.read());)?
+                        let value = style.$field.read(colors);
+                        $(let value = value.or_else(|| style.$fallback.read(colors));)?
                         value
                     }),*
                 }
@@ -357,14 +361,23 @@ impl AnimProp {
         )
     }
 
+    /// The context a value of this property resolves its colours in. `color`
+    /// is the one that differs: `currentColor` there is the parent's colour.
+    fn colors(self, colors: &Colors) -> &ColorContext {
+        match self {
+            Self::Color => &colors.text,
+            _ => &colors.element,
+        }
+    }
+
     /// The value before the style sets it. `None` means CSS leaves it to layout
     /// or inheritance, which a track cannot start from yet.
-    pub(super) fn initial(self, base: Option<&StyleDesc>) -> Option<AnimValue> {
+    pub(super) fn initial(self, colors: &Colors) -> Option<AnimValue> {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
-            Initial::CurrentColor => Self::Color.read(base?),
+            Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current))),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
         }
     }
@@ -377,8 +390,9 @@ impl AnimProp {
     }
 
     /// Parses and validates one value from a description.
-    pub(super) fn parse(self, value: &Value) -> Result<AnimValue, String> {
+    pub(super) fn parse(self, value: &Value, colors: &Colors) -> Result<AnimValue, String> {
         let name = self.name();
+        let colors = self.colors(colors);
         let parsed = match self.kind() {
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
             Kind::FontWeight => {
@@ -413,11 +427,11 @@ impl AnimProp {
                     .as_str()
                     .ok_or_else(|| format!("motion {name} must be a colour string"))?;
                 AnimValue::Color(
-                    Color::parse(text)
+                    Color::parse(text, colors)
                         .ok_or_else(|| format!("motion {name} is not a valid colour: {text}"))?,
                 )
             }
-            Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value)?),
+            Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value, colors)?),
         };
         self.validate(&parsed)?;
         Ok(parsed)
@@ -475,7 +489,11 @@ impl AnimProp {
 }
 
 /// A `boxShadow` value: one layer or a list of them.
-pub(super) fn parse_shadow_list(name: &str, value: &Value) -> Result<Vec<Shadow>, String> {
+pub(super) fn parse_shadow_list(
+    name: &str,
+    value: &Value,
+    colors: &ColorContext,
+) -> Result<Vec<Shadow>, String> {
     let shadows: BoxShadowValues = serde_json::from_value(value.clone())
         .map_err(|error| format!("motion {name}: {error}"))?;
     for layer in shadows.as_slice() {
@@ -491,7 +509,7 @@ pub(super) fn parse_shadow_list(name: &str, value: &Value) -> Result<Vec<Shadow>
             return Err(format!("motion {name} blur must be non-negative"));
         }
     }
-    shadows_from(shadows.as_slice())
+    shadows_from(shadows.as_slice(), colors)
 }
 
 pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
@@ -527,6 +545,7 @@ fn parse_number(name: &str, value: &Value) -> Result<f64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::Scheme;
 
     #[test]
     fn every_property_round_trips_its_name() {
@@ -540,6 +559,7 @@ mod tests {
 
     #[test]
     fn a_longhand_reads_through_its_shorthand() {
+        let colors = Colors::root();
         let style = StyleDesc {
             padding: Some(8.0),
             padding_left: Some(20.0),
@@ -547,18 +567,18 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            AnimProp::PaddingTop.read(&style),
+            AnimProp::PaddingTop.read(&style, &colors),
             Some(AnimValue::Number(8.0))
         );
         assert_eq!(
-            AnimProp::PaddingLeft.read(&style),
+            AnimProp::PaddingLeft.read(&style, &colors),
             Some(AnimValue::Number(20.0))
         );
         assert_eq!(
-            AnimProp::BorderTopLeftRadius.read(&style),
+            AnimProp::BorderTopLeftRadius.read(&style, &colors),
             Some(AnimValue::Number(6.0))
         );
-        assert_eq!(AnimProp::MarginTop.read(&style), None);
+        assert_eq!(AnimProp::MarginTop.read(&style, &colors), None);
     }
 
     #[test]
@@ -587,11 +607,17 @@ mod tests {
             color: Some("#ff0000".to_string()),
             ..Default::default()
         };
+        let colors = Colors::of(&ColorContext::root(Scheme::Light), Some(&style));
         assert_eq!(
-            AnimProp::BorderColor.initial(Some(&style)),
-            AnimProp::Color.read(&style)
+            AnimProp::BorderColor.initial(&colors),
+            AnimProp::Color.read(&style, &colors)
         );
-        assert_eq!(AnimProp::BorderColor.initial(None), None);
+        // With no `color` of its own it is the inherited one.
+        let inherited = Colors::of(&ColorContext::root(Scheme::Light), None);
+        assert_eq!(
+            AnimProp::BorderColor.initial(&inherited),
+            Some(AnimValue::Color(Color::from_rgba(gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 })))
+        );
     }
 
     #[test]
@@ -609,7 +635,7 @@ mod tests {
                 serde_json::json!({ "offsetX": 0, "offsetY": 0, "blurRadius": -2, "spreadRadius": 0, "color": "#000" }),
             ),
         ] {
-            assert!(prop.parse(&value).is_err(), "{prop:?} {value}");
+            assert!(prop.parse(&value, &Colors::root()).is_err(), "{prop:?} {value}");
         }
     }
 }

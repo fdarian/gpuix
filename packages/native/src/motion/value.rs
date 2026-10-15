@@ -6,10 +6,50 @@
 
 use crate::custom_elements::svg_path::PathData;
 
-/// The one place a colour string is parsed, so the context-aware resolver
-/// (`currentColor`, `light-dark()`, `color-mix()`) can replace it in one edit.
-fn resolve_color(value: &str) -> Option<gpui::Rgba> {
-    crate::color::parse_color_rgba(value)
+use crate::color::ColorContext;
+use crate::style::StyleDesc;
+
+/// The colour contexts an element's animated colours resolve in, so
+/// `currentColor`, `light-dark()` and `color-mix()` mean what they mean in CSS
+/// at that element. Resolved colours do not keep the context: a holder
+/// compares `Colors` to know when to resolve again.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Colors {
+    /// What every colour property but `color` resolves in: the element's own.
+    pub(super) element: ColorContext,
+    /// What `color` resolves in: `currentColor` is the parent's colour.
+    pub(super) text: ColorContext,
+}
+
+static NO_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(StyleDesc::default);
+
+impl Colors {
+    /// Stands for any element where a value is checked without one: a keyframe
+    /// definition is shared, so it is checked here and resolved at each element.
+    pub(super) fn root() -> Self {
+        Self::of(&ColorContext::root(crate::color::Scheme::Light), None)
+    }
+
+    /// `parent` is the context the element inherits, `style` what it declares.
+    pub(crate) fn of(parent: &ColorContext, style: Option<&StyleDesc>) -> Self {
+        let style = style.unwrap_or(&NO_STYLE);
+        Self {
+            element: parent.descend(style),
+            text: parent.for_color_property(style),
+        }
+    }
+
+    /// These contexts with `currentColor` pinned to one colour. Two values
+    /// resolved in them differ only where their CSS computed values differ:
+    /// computed, `currentColor` stays the keyword, so a new `color` is no change,
+    /// while a `light-dark()` that picks another branch is.
+    pub(super) fn with_current_color_pinned(&self) -> Self {
+        const PINNED: gpui::Rgba = gpui::Rgba { r: 0.2, g: 0.4, b: 0.6, a: 1.0 };
+        let mut pinned = *self;
+        pinned.element.current = PINNED;
+        pinned.text.current = PINNED;
+        pinned
+    }
 }
 
 /// A colour in Oklab with straight (not premultiplied) alpha. Channels are
@@ -27,14 +67,17 @@ impl Color {
         alpha: 0.0,
     };
 
-    pub(super) fn parse(value: &str) -> Option<Self> {
-        let rgba = resolve_color(value)?;
+    pub(super) fn parse(value: &str, colors: &ColorContext) -> Option<Self> {
+        colors.resolve(value).map(Self::from_rgba)
+    }
+
+    pub(super) fn from_rgba(rgba: gpui::Rgba) -> Self {
         let [l, a, b, alpha] =
             csscolorparser::Color::new(rgba.r, rgba.g, rgba.b, rgba.a).to_oklaba();
-        Some(Self {
+        Self {
             lab: [l as f64, a as f64, b as f64],
             alpha: alpha as f64,
-        })
+        }
     }
 
     fn channels(self) -> [f64; 4] {
@@ -414,7 +457,7 @@ mod tests {
     use super::*;
 
     fn color(value: &str) -> Color {
-        Color::parse(value).unwrap()
+        Color::parse(value, &Colors::root().element).unwrap()
     }
 
     fn mix(from: &str, to: &str, progress: f64) -> Color {

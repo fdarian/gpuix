@@ -13,8 +13,9 @@ use web_time::Instant;
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp};
-use super::value::{pair, AnimValue, Pair};
+use super::value::{pair, AnimValue, Colors, Pair};
 use super::MotionState;
+use crate::color::ColorContext;
 use crate::style::StyleDesc;
 
 // ── Parsing ──────────────────────────────────────────────────────────
@@ -529,11 +530,14 @@ struct Running {
     timing: Ease,
     segment: Pair,
     end: AnimValue,
+    /// The computed value of `end`: a style that still has it leaves the
+    /// transition alone.
+    end_computed: AnimValue,
     /// The segment runs to a number measured from layout standing in for
     /// `end` (`auto`, or a percentage met from px), and follows it.
     measured: bool,
-    /// CSS "reversing-adjusted start value": where an interrupting change
-    /// back to it counts as a reversal.
+    /// CSS "reversing-adjusted start value", as a computed value: where an
+    /// interrupting change back to it counts as a reversal.
     reversing_start: AnimValue,
     shortening: f64,
     began: bool,
@@ -548,7 +552,7 @@ impl Running {
         prop: AnimProp,
         from: &AnimValue,
         to: &AnimValue,
-        end: AnimValue,
+        (end, end_computed): (AnimValue, AnimValue),
         entry: &Entry,
         reversing_start: AnimValue,
         shortening: f64,
@@ -569,6 +573,7 @@ impl Running {
             timing: entry.timing.clone(),
             segment,
             end,
+            end_computed,
             reversing_start,
             shortening,
             began: false,
@@ -653,12 +658,23 @@ fn common_unit(
 
 /// What a style declares for `prop`: `Auto` for a height that is unset or
 /// `auto`, which a transition runs to or from the laid-out height.
-fn declared_value(prop: AnimProp, style: &StyleDesc) -> Option<AnimValue> {
-    let value = super::resolve_start(super::PropKey::Style(prop), super::Base::Style(Some(style)));
+fn declared_value(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
+    let value = super::resolve_start(
+        super::PropKey::Style(prop),
+        super::Base::Style(Some(style), colors),
+    );
     match (value, prop) {
         (None, AnimProp::Height) => Some(AnimValue::Auto),
         (value, _) => value,
     }
+}
+
+/// The CSS computed value of `prop`, which is what decides whether a style
+/// changed it. Unlike [`declared_value`] a colour keeps `currentColor`, so it is
+/// the same after a new `color`, and resolves `light-dark()` in the scheme the
+/// element is in, so it differs after a flip.
+fn computed_value(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
+    declared_value(prop, style, &colors.with_current_color_pinned())
 }
 
 /// The number a transition leaves from. A value the style leaves unset or
@@ -705,11 +721,13 @@ struct ElementState {
     /// The previous frame's after-change style: the before-change style of the
     /// next style change.
     previous: StyleDesc,
+    /// What the last frame's after-change style resolved its colours in.
+    colors: Colors,
     config: ConfigKey,
     list: TransitionList,
     running: BTreeMap<AnimProp, Running>,
-    /// End values of finished transitions, so a style that still has the end
-    /// value does not start the transition again.
+    /// Computed end values of finished transitions, so a style that still has
+    /// the end value does not start the transition again.
     completed: BTreeMap<AnimProp, AnimValue>,
 }
 
@@ -721,9 +739,10 @@ fn parse_config(id: u64, style: &StyleDesc) -> TransitionList {
 }
 
 impl ElementState {
-    fn new(id: u64, after: &StyleDesc) -> Self {
+    fn new(id: u64, after: &StyleDesc, colors: Colors) -> Self {
         Self {
             previous: after.clone(),
+            colors,
             config: config_key(after),
             list: parse_config(id, after),
             running: BTreeMap::new(),
@@ -740,6 +759,7 @@ impl ElementState {
         &mut self,
         id: u64,
         after: &StyleDesc,
+        parent_colors: &ColorContext,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
@@ -754,9 +774,19 @@ impl ElementState {
         }
         self.advance(id, now, events);
 
+        // A new `color` or appearance (`colorScheme`, or the window's) resolves
+        // `currentColor` and `light-dark()` to another colour in a style that did
+        // not change. CSS judges that by computed values: `currentColor` computes
+        // to itself, so it follows the colour without a transition of its own,
+        // while `light-dark()` computes to the colour its scheme picks, so a flip
+        // is a change like any other. The before-change style is the last
+        // frame's, in the colours of the last frame.
+        let colors = Colors::of(parent_colors, Some(after));
+        let previous_colors = std::mem::replace(&mut self.colors, colors);
+        let colors_changed = colors != previous_colors;
         let style_changed = self.previous != *after;
-        if style_changed || config_changed {
-            let props: Vec<AnimProp> = if style_changed {
+        if style_changed || config_changed || colors_changed {
+            let props: Vec<AnimProp> = if style_changed || colors_changed {
                 AnimProp::ALL.to_vec()
             } else {
                 self.running
@@ -766,7 +796,17 @@ impl ElementState {
                     .collect()
             };
             for prop in props {
-                self.restyle(id, prop, after, motion, measurement, interpolate_size, now, events);
+                self.restyle(
+                    id,
+                    prop,
+                    (after, &colors),
+                    &previous_colors,
+                    motion,
+                    measurement,
+                    interpolate_size,
+                    now,
+                    events,
+                );
             }
             if style_changed {
                 self.previous = after.clone();
@@ -806,7 +846,7 @@ impl ElementState {
                     prop,
                     elapsed: running.duration,
                 });
-                self.completed.insert(prop, running.end);
+                self.completed.insert(prop, running.end_computed);
             }
         }
     }
@@ -852,7 +892,8 @@ impl ElementState {
         &mut self,
         id: u64,
         prop: AnimProp,
-        after: &StyleDesc,
+        (after, colors): (&StyleDesc, &Colors),
+        previous_colors: &Colors,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
@@ -870,9 +911,10 @@ impl ElementState {
             return;
         };
 
-        let after_value = declared_value(prop, after);
+        let after_value = declared_value(prop, after, colors);
+        let after_computed = computed_value(prop, after, colors);
         if let Some(end) = self.completed.get(&prop) {
-            if after_value.as_ref() != Some(end) {
+            if after_computed.as_ref() != Some(end) {
                 self.completed.remove(&prop);
             }
         }
@@ -882,8 +924,9 @@ impl ElementState {
             if self.completed.contains_key(&prop) || !has_duration {
                 return;
             }
-            let before = declared_value(prop, &self.previous);
-            if before == after_value
+            let before = declared_value(prop, &self.previous, previous_colors);
+            let before_computed = computed_value(prop, &self.previous, previous_colors);
+            if before_computed == after_computed
                 || (!interpolate_size.allows_keywords()
                     && is_keyword_change(prop, before.as_ref(), after_value.as_ref()))
             {
@@ -891,30 +934,32 @@ impl ElementState {
             }
             let from = laid_out_start(prop, before.as_ref(), measurement);
             let to = after_value.as_ref().and_then(|end| laid_out_end(end, measurement));
-            if let (Some(from), Some(to), Some(end)) = (from, to, after_value) {
-                let reversing_start = before.unwrap_or_else(|| from.clone());
-                if let Some(running) =
-                    Running::new(prop, &from, &to, end, &entry, reversing_start, 1.0, measurement, now)
-                {
+            if let (Some(from), Some(to), Some(end), Some(end_computed)) =
+                (from, to, after_value, after_computed)
+            {
+                let reversing_start = before_computed.unwrap_or_else(|| from.clone());
+                if let Some(running) = Running::new(
+                    prop, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, measurement, now,
+                ) {
                     self.begin(id, prop, running, events);
                 }
             }
             return;
         };
-        if after_value.as_ref() == Some(&old.end) {
+        if after_computed.as_ref() == Some(&old.end_computed) {
             return;
         }
 
         let current = old.value(now);
-        let reversal = (after_value.as_ref() == Some(&old.reversing_start)).then(|| {
+        let reversal = (after_computed.as_ref() == Some(&old.reversing_start)).then(|| {
             let shortening = (old.progress(old.elapsed(now)) * old.shortening
                 + (1.0 - old.shortening))
                 .abs()
                 .clamp(0.0, 1.0);
-            (old.end.clone(), shortening)
+            (old.end_computed.clone(), shortening)
         });
         self.cancel(id, prop, now, events);
-        let Some(end) = after_value else {
+        let (Some(end), Some(end_computed)) = (after_value, after_computed) else {
             return;
         };
         if !interpolate_size.allows_keywords() && is_keyword_change(prop, Some(&current), Some(&end))
@@ -928,9 +973,9 @@ impl ElementState {
             return;
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
-        if let Some(running) =
-            Running::new(prop, &current, &to, end, &entry, reversing_start, shortening, measurement, now)
-        {
+        if let Some(running) = Running::new(
+            prop, &current, &to, (end, end_computed), &entry, reversing_start, shortening, measurement, now,
+        ) {
             self.begin(id, prop, running, events);
         }
     }
@@ -996,17 +1041,28 @@ impl CssTransitions {
         &mut self,
         id: u64,
         after: &StyleDesc,
+        parent_colors: &ColorContext,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
-            self.states.insert(id, ElementState::new(id, after));
+            let colors = Colors::of(parent_colors, Some(after));
+            self.states.insert(id, ElementState::new(id, after, colors));
             return None;
         };
         let interpolate_size = InterpolateSize::declared(after).unwrap_or(inherited);
-        state.step(id, after, motion, measurement, interpolate_size, now, &mut self.events);
+        state.step(
+            id,
+            after,
+            parent_colors,
+            motion,
+            measurement,
+            interpolate_size,
+            now,
+            &mut self.events,
+        );
         self.active |= !state.running.is_empty();
         let values = state.values(now);
         (!values.is_empty()).then_some(TransitionStyle(values))
@@ -1218,6 +1274,7 @@ mod tests {
         transitions: CssTransitions,
         /// The `interpolateSize` an ancestor gives the element.
         inherited: InterpolateSize,
+        parent_colors: ColorContext,
     }
 
     impl Clock {
@@ -1226,6 +1283,7 @@ mod tests {
                 origin: Instant::now(),
                 transitions: CssTransitions::default(),
                 inherited: InterpolateSize::default(),
+                parent_colors: ColorContext::root(crate::color::Scheme::Light),
             }
         }
 
@@ -1257,7 +1315,15 @@ mod tests {
             let mut resolved = after.clone();
             if let Some(values) =
                 self.transitions
-                    .update(1, after, motion, measurement, self.inherited, self.at(millis))
+                    .update(
+                        1,
+                        after,
+                        &self.parent_colors,
+                        motion,
+                        measurement,
+                        self.inherited,
+                        self.at(millis),
+                    )
             {
                 values.apply_to(&mut resolved);
             }
@@ -1457,7 +1523,7 @@ mod tests {
         let now = Instant::now();
         let motion = MotionState::new(
             &serde_json::json!({ "animate": { "width": 100.0 }, "transition": { "duration": 1.0 } }),
-            None,
+            None, Colors::root(),
             None,
             0,
             now,
@@ -1483,8 +1549,8 @@ mod tests {
         assert_ne!(middle, "#0000ff");
         let blend = pair(
             "backgroundColor",
-            &AnimValue::Color(Color::parse("#ff0000").unwrap()),
-            &AnimValue::Color(Color::parse("#0000ff").unwrap()),
+            &AnimValue::Color(Color::parse("#ff0000", &Colors::root().element).unwrap()),
+            &AnimValue::Color(Color::parse("#0000ff", &Colors::root().element).unwrap()),
         )
         .unwrap();
         let AnimValue::Color(expected) = blend.at(0.5) else {
@@ -1492,6 +1558,171 @@ mod tests {
         };
         assert_eq!(middle, expected.to_css());
         assert_eq!(clock.frame(1000, &blue).background_color.as_deref(), Some("#0000ff"));
+    }
+
+    fn near(text: &str, expected: &str) {
+        let rgba = |value: &str| crate::color::parse_color_rgba(value).unwrap();
+        let (actual, expected) = (rgba(text), rgba(expected));
+        for (actual, expected) in [actual.r, actual.g, actual.b].into_iter().zip([expected.r, expected.g, expected.b]) {
+            assert!((actual - expected).abs() < 0.01, "{text} vs {expected}");
+        }
+    }
+
+    /// `backgroundColor` over one second, in a scheme that follows the window.
+    fn tinted_by_appearance(background: &str) -> StyleDesc {
+        style(&format!(
+            r#"{{ "colorScheme": "light dark", "backgroundColor": "{background}", "transition": "background-color 1s linear" }}"#
+        ))
+    }
+
+    fn dark_window() -> ColorContext {
+        ColorContext::root(crate::color::Scheme::Dark)
+    }
+
+    #[test]
+    fn a_new_color_moves_current_colour_without_a_transition_of_its_own() {
+        let tinted = |color: &str| {
+            style(&format!(
+                r#"{{ "color": "{color}", "backgroundColor": "currentColor", "borderColor": "currentColor", "transition": "background-color 1s linear, border-color 1s linear" }}"#
+            ))
+        };
+        let mut clock = Clock::new();
+        clock.frame(0, &tinted("#ff0000"));
+        // `currentColor` computes to itself, so its computed value did not change.
+        let after = clock.frame(0, &tinted("#0000ff"));
+        assert_eq!(after.background_color.as_deref(), Some("currentColor"));
+        assert_eq!(after.border_color.as_deref(), Some("currentColor"));
+        assert!(clock.events().is_empty());
+        assert!(clock.transitions.states.get(&1).unwrap().running.is_empty());
+
+        // Nor does the parent's colour, which an element with no `color` of its own inherits.
+        let mut clock = Clock::new();
+        let bordered = style(r#"{ "backgroundColor": "currentColor", "borderColor": "currentColor", "transition": "all 1s linear" }"#);
+        let parent = |color: &str| ColorContext::root(crate::color::Scheme::Light).descend(&style(&format!(r#"{{ "color": "{color}" }}"#)));
+        clock.parent_colors = parent("#ff0000");
+        clock.frame(0, &bordered);
+        clock.parent_colors = parent("#0000ff");
+        clock.frame(0, &bordered);
+        assert!(clock.events().is_empty());
+        assert!(clock.transitions.states.get(&1).unwrap().running.is_empty());
+    }
+
+    #[test]
+    fn a_colour_that_replaces_current_colour_still_transitions() {
+        let rgba = |value: &str| crate::color::parse_color_rgba(value).unwrap();
+        let mut clock = Clock::new();
+        let to = |background: &str| {
+            style(&format!(
+                r##"{{ "color": "#0000ff", "backgroundColor": "{background}", "transition": "background-color 1s linear" }}"##
+            ))
+        };
+        clock.frame(0, &to("#ff0000"));
+        clock.frame(0, &to("currentColor"));
+        assert_eq!(clock.events(), [(Run, "background-color".to_string(), 0.0), (Start, "background-color".to_string(), 0.0)]);
+        let middle = clock.frame(500, &to("currentColor")).background_color.unwrap();
+        assert!(rgba(&middle).r > 0.2 && rgba(&middle).b > 0.2, "{middle}");
+    }
+
+    #[test]
+    fn light_dark_follows_a_parents_scheme_through_a_transition() {
+        let rgba = |value: &str| crate::color::parse_color_rgba(value).unwrap();
+        let mut clock = Clock::new();
+        let themed = |scheme: &str| {
+            style(&format!(
+                r#"{{ "colorScheme": "{scheme}", "backgroundColor": "light-dark(#ff0000, #0000ff)", "transition": "background-color 1s linear" }}"#
+            ))
+        };
+        clock.frame(0, &themed("light"));
+        clock.frame(0, &themed("dark"));
+        let middle = clock.frame(500, &themed("dark")).background_color.unwrap();
+        assert!(rgba(&middle).r > 0.2 && rgba(&middle).b > 0.2, "{middle}");
+    }
+
+    #[test]
+    fn a_scheme_flip_starts_a_transition_on_an_idle_element() {
+        let rgba = |value: &str| crate::color::parse_color_rgba(value).unwrap();
+        let mut clock = Clock::new();
+        let following = tinted_by_appearance("light-dark(#ff0000, #0000ff)");
+        clock.frame(0, &following);
+        clock.parent_colors = dark_window();
+        let start = clock.frame(0, &following).background_color.unwrap();
+        near(&start, "#ff0000");
+        let name = || "background-color".to_string();
+        assert_eq!(clock.events(), [(Run, name(), 0.0), (Start, name(), 0.0)]);
+        let middle = clock.frame(500, &following).background_color.unwrap();
+        assert!(rgba(&middle).r > 0.2 && rgba(&middle).b > 0.2, "{middle}");
+        assert_eq!(clock.frame(1000, &following).background_color.as_deref(), Some("light-dark(#ff0000, #0000ff)"));
+        assert_eq!(clock.events(), [(End, name(), 1.0)]);
+
+        // And back: the finished transition does not hold the flip.
+        clock.parent_colors = ColorContext::root(crate::color::Scheme::Light);
+        clock.frame(1000, &following);
+        assert_eq!(clock.events(), [(Run, name(), 0.0), (Start, name(), 0.0)]);
+    }
+
+    #[test]
+    fn a_flip_that_changes_the_end_of_a_running_transition_restarts_it_from_the_current_value() {
+        let rgba = |value: &str| crate::color::parse_color_rgba(value).unwrap();
+        let name = || "background-color".to_string();
+        let mut clock = Clock::new();
+        // Red runs to green in a light window; dark makes the end blue.
+        clock.frame(0, &tinted_by_appearance("#ff0000"));
+        let target = tinted_by_appearance("light-dark(#00ff00, #0000ff)");
+        clock.frame(0, &target);
+        clock.events();
+        clock.frame(500, &target);
+        clock.parent_colors = dark_window();
+        let restarted = clock.frame(500, &target).background_color.unwrap();
+        let (green, red) = (rgba("#00ff00"), rgba("#ff0000"));
+        assert!(rgba(&restarted).g < green.g && rgba(&restarted).r < red.r, "{restarted}");
+        assert_eq!(clock.events(), [(Cancel, name(), 0.5), (Run, name(), 0.0), (Start, name(), 0.0)]);
+        let state = clock.transitions.states.get(&1).unwrap();
+        assert_eq!(state.running.len(), 1);
+        clock.frame(1500, &target);
+        assert_eq!(clock.events(), [(End, name(), 1.0)]);
+    }
+
+    #[test]
+    fn a_flip_back_to_the_reversing_start_shortens_the_new_transition() {
+        let name = || "background-color".to_string();
+        let mut clock = Clock::new();
+        // Red runs to green; in a dark window the end is red again.
+        clock.frame(0, &tinted_by_appearance("#ff0000"));
+        let target = tinted_by_appearance("light-dark(#00ff00, #ff0000)");
+        clock.frame(0, &target);
+        clock.events();
+        clock.parent_colors = dark_window();
+        clock.frame(500, &target);
+        assert_eq!(clock.events(), [(Cancel, name(), 0.5), (Run, name(), 0.0), (Start, name(), 0.0)]);
+        // Half way out, so half the duration back.
+        clock.frame(1000, &target);
+        assert_eq!(clock.events(), [(End, name(), 0.5)]);
+    }
+
+    #[test]
+    fn a_flip_that_leaves_the_end_alone_does_not_touch_a_running_transition() {
+        let name = || "background-color".to_string();
+        let run = |flip: bool| {
+            let mut clock = Clock::new();
+            clock.frame(0, &tinted_by_appearance("light-dark(#ff0000, #0000ff)"));
+            let target = tinted_by_appearance("#00ff00");
+            clock.frame(0, &target);
+            clock.events();
+            clock.frame(500, &target);
+            if flip {
+                clock.parent_colors = dark_window();
+            }
+            let middle = clock.frame(500, &target).background_color;
+            let events = clock.events();
+            let later = clock.frame(750, &target).background_color;
+            (middle, events, later, clock)
+        };
+        let (middle, events, later, mut clock) = run(true);
+        let (control_middle, _, control_later, _) = run(false);
+        assert!(events.is_empty(), "{events:?}");
+        assert_eq!((middle, later), (control_middle, control_later));
+        clock.frame(1000, &tinted_by_appearance("#00ff00"));
+        assert_eq!(clock.events(), [(End, name(), 1.0)]);
     }
 
     #[test]

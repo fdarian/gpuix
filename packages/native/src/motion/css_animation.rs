@@ -26,8 +26,9 @@ use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::AnimProp;
 use super::track::{Goal, Track};
-use super::value::AnimValue;
+use super::value::{AnimValue, Colors};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
+use crate::color::ColorContext;
 use crate::style::StyleDesc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -548,8 +549,8 @@ enum Underlying {
     Unknown,
 }
 
-fn underlying_of(prop: AnimProp, style: &StyleDesc) -> Underlying {
-    match prop.read(style).or_else(|| prop.initial(Some(style))) {
+fn underlying_of(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Underlying {
+    match prop.read(style, colors).or_else(|| prop.initial(colors)) {
         Some(value) => Underlying::Value(value),
         None if prop.size_axis().is_some() => Underlying::Keyword,
         None => Underlying::Unknown,
@@ -619,6 +620,8 @@ impl PropPlan {
 #[derive(Clone, Debug, PartialEq)]
 struct PlanKey {
     timing: Ease,
+    /// What the keyframes' colours resolved in.
+    colors: Colors,
     allow_keywords: bool,
     underlying: Vec<Underlying>,
     measurement: Option<Measurement>,
@@ -642,6 +645,7 @@ enum Endpoint {
 
 struct Planner<'a> {
     keyframes: &'a Keyframes,
+    colors: &'a Colors,
     timing: &'a Ease,
     measurement: Option<&'a Measurement>,
     allow_keywords: bool,
@@ -684,10 +688,10 @@ impl Planner<'_> {
             .frames
             .iter()
             .filter_map(|frame| {
-                let (_, value) = frame.values.iter().find(|(p, _)| *p == prop)?;
+                let value = frame.value(prop, self.colors)?;
                 Some(Stop {
                     offset: frame.offset,
-                    value: Some(value.clone()),
+                    value: Some(value),
                     timing: frame.timing.clone().unwrap_or_else(|| self.timing.clone()),
                 })
             })
@@ -913,24 +917,28 @@ impl Run {
         &mut self,
         progress: f64,
         underlying: &StyleDesc,
+        parent_colors: &ColorContext,
         measurement: Option<&Measurement>,
         allow_keywords: bool,
         now: Instant,
     ) -> Vec<(AnimProp, Option<AnimValue>)> {
         let reads_layout = self.plan.as_ref().is_none_or(|plan| plan.reads_layout);
+        let colors = Colors::of(parent_colors, Some(underlying));
         let key = PlanKey {
             timing: self.params.timing.clone(),
+            colors,
             allow_keywords,
             underlying: self
                 .properties
                 .iter()
-                .map(|prop| underlying_of(*prop, underlying))
+                .map(|prop| underlying_of(*prop, underlying, &colors))
                 .collect(),
             measurement: measurement.copied().filter(|_| reads_layout),
         };
         if self.plan.as_ref().is_none_or(|plan| plan.key != key) {
             let mut planner = Planner {
                 keyframes: &self.keyframes,
+                colors: &colors,
                 timing: &self.params.timing,
                 measurement,
                 allow_keywords,
@@ -1078,6 +1086,7 @@ impl CssAnimations {
         id: u64,
         declared: &StyleDesc,
         underlying: &StyleDesc,
+        parent_colors: &ColorContext,
         registry: &KeyframesRegistry,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
@@ -1095,7 +1104,14 @@ impl CssAnimations {
             let evaluation = run.advance(id, now, &mut self.events);
             if let Some(progress) = evaluation.progress {
                 // Later in the list is higher in the cascade.
-                values.extend(run.values(progress, underlying, measurement, allow_keywords, now));
+                values.extend(run.values(
+                    progress,
+                    underlying,
+                    parent_colors,
+                    measurement,
+                    allow_keywords,
+                    now,
+                ));
             }
             self.active |= run.wants_frame();
         }
@@ -1345,6 +1361,7 @@ mod tests {
         animations: CssAnimations,
         registry: KeyframesRegistry,
         inherited: InterpolateSize,
+        parent_colors: ColorContext,
     }
 
     type Seen = Vec<(AnimationEventKind, String, f64)>;
@@ -1356,6 +1373,7 @@ mod tests {
                 animations: CssAnimations::default(),
                 registry: KeyframesRegistry::default(),
                 inherited: InterpolateSize::default(),
+                parent_colors: ColorContext::root(crate::color::Scheme::Light),
             }
         }
 
@@ -1395,6 +1413,7 @@ mod tests {
                 1,
                 declared,
                 underlying,
+                &self.parent_colors,
                 &self.registry,
                 measurement,
                 self.inherited,
@@ -2005,6 +2024,45 @@ mod tests {
         let sample = frames.frame(500, &animated);
         assert!(sample.background_color.is_some());
         assert_ne!(sample.background_color.as_deref(), Some("#000000"));
+    }
+
+    #[test]
+    fn keyframe_colours_resolve_per_element_and_again_when_the_context_changes() {
+        use crate::color::Scheme;
+        let channels = |style: &StyleDesc| {
+            let color = crate::color::parse_color_rgba(style.background_color.as_deref().unwrap()).unwrap();
+            [color.r, color.g, color.b]
+        };
+        let close = |actual: [f32; 3], expected: [f32; 3]| {
+            for (actual, expected) in actual.into_iter().zip(expected) {
+                assert!((actual - expected).abs() < 0.01, "{actual:?} vs {expected:?}");
+            }
+        };
+        let mut frames = Frames::new();
+        frames.define(
+            "tint",
+            r##"{ "from": { "backgroundColor": "currentColor" }, "to": { "backgroundColor": "light-dark(#ff0000, #0000ff)" } }"##,
+        );
+        let animated = style(
+            r##"{ "color": "#00ff00", "colorScheme": "light dark", "animation": "tint 1s linear forwards" }"##,
+        );
+        // From the element's own `color` to the light side.
+        close(channels(&frames.frame(0, &animated)), [0.0, 1.0, 0.0]);
+        close(channels(&frames.frame(1000, &animated)), [1.0, 0.0, 0.0]);
+
+        // The window turned dark: the keyframes resolve again, to the dark side.
+        frames.parent_colors = ColorContext::root(Scheme::Dark);
+        close(channels(&frames.frame(1500, &animated)), [0.0, 0.0, 1.0]);
+
+        // A second element with another `color` does not share the first's colours.
+        let mut other = Frames::new();
+        other.define(
+            "tint",
+            r##"{ "from": { "backgroundColor": "currentColor" }, "to": { "backgroundColor": "light-dark(#ff0000, #0000ff)" } }"##,
+        );
+        let purple = style(r##"{ "color": "#800080", "animation": "tint 1s linear forwards" }"##);
+        let start = channels(&other.frame(0, &purple));
+        close(start, [128.0 / 255.0, 0.0, 128.0 / 255.0]);
     }
 
     #[test]

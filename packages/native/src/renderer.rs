@@ -1383,6 +1383,8 @@ impl GpuixRenderer {
         if crate::events::sync_dispatch::in_sync_call() {
             return update_window_or_defer(move |view, window, cx| {
                 let now = view.clock.now();
+                view.motion_values
+                    .set_appearance(color_scheme_of(window.appearance()));
                 if let Err(message) = run(&mut view.motion_values, now) {
                     crate::events::sync_dispatch::report_deferred_error(message);
                 }
@@ -1418,6 +1420,8 @@ impl GpuixRenderer {
                           window: &mut gpui::Window,
                           cx: &mut gpui::Context<GpuixView>| {
             let now = view.clock.now();
+            view.motion_values
+                .set_appearance(color_scheme_of(window.appearance()));
             let result = run(view, now);
             if repaint {
                 cx.notify();
@@ -4967,13 +4971,41 @@ fn emit_motion_value_events(
     }
 }
 
+/// The colour context `id`'s parent hands it, from the styles the tree
+/// declares. Motion resolves its colours before the build, which is where a
+/// context is otherwise made, so a state style (`hover`) that sets an ancestor's
+/// `color` is not in it. `known` holds the contexts already made this frame.
+fn parent_color_context(
+    tree: &crate::retained_tree::RetainedTree,
+    id: u64,
+    root: &crate::color::ColorContext,
+    known: &mut HashMap<u64, crate::color::ColorContext>,
+) -> crate::color::ColorContext {
+    let Some(parent) = tree.elements.get(&id).and_then(|element| element.parent) else {
+        return *root;
+    };
+    if let Some(context) = known.get(&parent) {
+        return *context;
+    }
+    let above = parent_color_context(tree, parent, root, known);
+    let context = match tree.elements.get(&parent).and_then(|element| element.style.as_deref()) {
+        Some(style) => above.descend(style),
+        None => above,
+    };
+    known.insert(parent, context);
+    context
+}
+
 fn sync_motion_states(
     tree: &crate::retained_tree::RetainedTree,
     states: &mut HashMap<u64, crate::motion::MotionState>,
     measurements: &crate::motion::measure::Measurements,
+    appearance: gpui::WindowAppearance,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
+    let root = crate::color::ColorContext::root(color_scheme_of(appearance));
+    let mut known_colors = HashMap::new();
     states.retain(|id, _| tree.motion_ids.contains(id));
     let mut active = false;
     let mut settled = Vec::new();
@@ -4986,6 +5018,8 @@ fn sync_motion_states(
             continue;
         };
         let base = element.style.as_deref();
+        let parent_colors = parent_color_context(tree, id, &root, &mut known_colors);
+        let colors = crate::motion::Colors::of(&parent_colors, base);
         let measurement = measurements.get(id);
         // An SVG shape animates its attributes, not a style.
         let svg_attributes = crate::custom_elements::svg_tree::is_svg_child_type(&element.element_type)
@@ -4994,21 +5028,30 @@ fn sync_motion_states(
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let created = match svg_attributes {
-                    Some(attributes) => crate::motion::MotionState::new_svg(source, attributes, now),
-                    None => crate::motion::MotionState::new(source, base, measurement.as_ref(), painted, now),
+                    Some(attributes) => {
+                        crate::motion::MotionState::new_svg(source, attributes, colors, now)
+                    }
+                    None => crate::motion::MotionState::new(
+                        source,
+                        base,
+                        colors,
+                        measurement.as_ref(),
+                        painted,
+                        now,
+                    ),
                 };
                 match created {
                     Ok(state) => entry.insert(state),
                     Err(error) => {
                         log::warn!("Invalid motion description for element {id}: {error}");
-                        entry.insert(crate::motion::MotionState::invalid(source, now))
+                        entry.insert(crate::motion::MotionState::invalid(source, colors, now))
                     }
                 }
             }
         };
         let synced = match svg_attributes {
-            Some(attributes) => state.sync_svg(source, attributes, now),
-            None => state.sync(source, base, measurement.as_ref(), painted, now),
+            Some(attributes) => state.sync_svg(source, attributes, colors, now),
+            None => state.sync(source, base, colors, measurement.as_ref(), painted, now),
         };
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
@@ -5589,7 +5632,13 @@ impl GpuixView {
         let callback = self.event_callback.clone();
         let now = self.clock.now();
         let (motion_active, motion_settled) =
-            sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
+            sync_motion_states(
+                &tree,
+                &mut self.motion_states,
+                &self.measurements,
+                window.appearance(),
+                now,
+            );
         let motion_values_active =
             sync_row_motion_values(&tree, &mut self.motion_values, expected_child_id, now);
         let mut highlight_events = Vec::new();
@@ -6623,7 +6672,15 @@ impl gpui::Render for GpuixView {
         self.measurements
             .prune(|id| tree.elements.contains_key(&id));
         let (motion_active, motion_settled) =
-            sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
+            sync_motion_states(
+                &tree,
+                &mut self.motion_states,
+                &self.measurements,
+                window.appearance(),
+                now,
+            );
+        self.motion_values
+            .set_appearance(color_scheme_of(window.appearance()));
         let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
@@ -6837,6 +6894,7 @@ pub(crate) fn build_element(
             && window.last_input_was_keyboard();
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
+            &ctx.inherited.colors,
             pointer_states,
             ctx.motion_states.get(&id),
             id,
@@ -6885,6 +6943,7 @@ pub(crate) fn build_element(
                     id,
                     declared,
                     underlying_style.unwrap_or(&EMPTY_STYLE),
+                    &ctx.inherited.colors,
                     ctx.keyframes,
                     measurement.as_ref(),
                     ctx.inherited.interpolate_size,

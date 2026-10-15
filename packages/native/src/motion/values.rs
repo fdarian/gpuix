@@ -819,7 +819,7 @@ mod tests {
     }
 
     fn color(value: &str) -> AnimValue {
-        AnimValue::Color(Color::parse(value).unwrap())
+        AnimValue::Color(Color::parse(value, &crate::motion::Colors::root().element).unwrap())
     }
 
     fn tween(duration: f64) -> Transition {

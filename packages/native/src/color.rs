@@ -40,8 +40,9 @@ impl From<gpui::Rgba> for Srgba {
 }
 
 /// The light or dark side a `light-dark()` picks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum Scheme {
+    #[default]
     Light,
     Dark,
 }
@@ -134,10 +135,15 @@ impl ColorContext {
         Self::resolve_style(*self, self.inherited, self.current, style)
     }
 
-    fn resolve_style(
+    /// The context an element's own `color` resolves in: its `colorScheme`, with
+    /// `currentColor` meaning the parent's colour. Motion animates `color` in it.
+    pub(crate) fn for_color_property(&self, style: &crate::style::StyleDesc) -> Self {
+        Self::color_property_context(*self, self.current, style)
+    }
+
+    fn color_property_context(
         base: Self,
         parent_color: gpui::Rgba,
-        kept_color: gpui::Rgba,
         style: &crate::style::StyleDesc,
     ) -> Self {
         let scheme = style
@@ -145,13 +151,23 @@ impl ColorContext {
             .as_deref()
             .and_then(|value| Scheme::parse(value, base.appearance))
             .unwrap_or(base.scheme);
-        let mut context = Self {
+        Self {
             scheme,
             inherited: parent_color,
             declared: None,
             current: parent_color,
             ..base
-        };
+        }
+    }
+
+    fn resolve_style(
+        base: Self,
+        parent_color: gpui::Rgba,
+        kept_color: gpui::Rgba,
+        style: &crate::style::StyleDesc,
+    ) -> Self {
+        let mut context = Self::color_property_context(base, parent_color, style);
+        let scheme = context.scheme;
         context.declared = style
             .color
             .as_deref()

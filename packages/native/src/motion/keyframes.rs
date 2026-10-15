@@ -7,6 +7,10 @@
 //! to the next, as it does in CSS. Blocks at the same offset merge, later keys
 //! winning property by property. The endpoints a definition leaves out are the
 //! element's underlying values, which only the runtime knows.
+//!
+//! A definition is shared by every element that names it, so its values stay as
+//! written: a colour means something only at an element (`currentColor`,
+//! `light-dark()`), which resolves it when its animation plans.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -20,7 +24,7 @@ use super::css_animation::check_keyframes_name;
 use super::css_transition::parse_list;
 use super::curve::{parse_timing_function, Ease};
 use super::property::{expand_shorthand, AnimProp};
-use super::value::AnimValue;
+use super::value::{AnimValue, Colors};
 
 const TIMING_FUNCTION: &str = "animationTimingFunction";
 
@@ -28,8 +32,9 @@ const TIMING_FUNCTION: &str = "animationTimingFunction";
 pub(super) struct Keyframe {
     /// 0 to 1.
     pub offset: f64,
-    /// Longhands only, each at most once.
-    pub values: Vec<(AnimProp, AnimValue)>,
+    /// Longhands only, each at most once, as written. They were parsed once when
+    /// the keyframes were defined, to reject a bad one where it is written.
+    pub values: Vec<(AnimProp, Value)>,
     /// Eases from this keyframe to the next. `None` uses the animation's.
     pub timing: Option<Ease>,
 }
@@ -111,6 +116,15 @@ impl Keyframes {
 }
 
 impl Keyframe {
+    /// What `prop` is at this keyframe for an element with `colors`.
+    pub(super) fn value(&self, prop: AnimProp, colors: &Colors) -> Option<AnimValue> {
+        let (_, written) = self.values.iter().find(|(p, _)| *p == prop)?;
+        Some(
+            prop.parse(written, colors)
+                .expect("a keyframe value was parsed when the keyframes were defined, and no colour is valid in only some contexts"),
+        )
+    }
+
     fn merge(&mut self, later: &Keyframe) {
         for (prop, value) in &later.values {
             match self.values.iter_mut().find(|(existing, _)| existing == prop) {
@@ -174,11 +188,12 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
             }
         };
         for prop in props {
-            let parsed = prop.parse(value).map_err(|error| format!("{name}: {error}"))?;
+            prop.parse(value, &Colors::root())
+                .map_err(|error| format!("{name}: {error}"))?;
             // A shorthand sets longhands in order, so a later key wins.
             match keyframe.values.iter_mut().find(|(existing, _)| *existing == prop) {
-                Some(slot) => slot.1 = parsed,
-                None => keyframe.values.push((prop, parsed)),
+                Some(slot) => slot.1 = value.clone(),
+                None => keyframe.values.push((prop, value.clone())),
             }
         }
     }
@@ -224,10 +239,10 @@ mod tests {
     }
 
     fn number(frame: &Keyframe, prop: AnimProp) -> Option<f64> {
-        frame.values.iter().find_map(|(p, v)| match (p, v) {
-            (p, AnimValue::Number(n)) if *p == prop => Some(*n),
+        match frame.value(prop, &Colors::root())? {
+            AnimValue::Number(number) => Some(number),
             _ => None,
-        })
+        }
     }
 
     #[test]
@@ -297,9 +312,11 @@ mod tests {
                 "to": { "boxShadow": { "offsetX": 0, "offsetY": 2, "blurRadius": 4, "spreadRadius": 0, "color": "#000000" } }
             }"##,
         );
-        assert!(matches!(keyframes.frames[0].values[0].1, AnimValue::Color(_)));
-        assert!(matches!(keyframes.frames[0].values[1].1, AnimValue::Percent(_)));
-        assert!(matches!(keyframes.frames[1].values[0].1, AnimValue::Shadows(_)));
+        let colors = Colors::root();
+        let value = |frame: usize, prop| keyframes.frames[frame].value(prop, &colors);
+        assert!(matches!(value(0, AnimProp::BackgroundColor), Some(AnimValue::Color(_))));
+        assert!(matches!(value(0, AnimProp::Width), Some(AnimValue::Percent(_))));
+        assert!(matches!(value(1, AnimProp::BoxShadow), Some(AnimValue::Shadows(_))));
     }
 
     #[test]

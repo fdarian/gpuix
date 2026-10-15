@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use super::value::{AnimValue, Color};
+use crate::color::ColorContext;
 use crate::custom_elements::svg_path::{format_number, PathData};
 
 #[derive(Clone, Copy)]
@@ -121,16 +122,25 @@ impl SvgAttr {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
-            Initial::Black => Color::parse("#000000").map(AnimValue::Color),
+            Initial::Black => Some(AnimValue::Color(Color::from_rgba(gpui::Rgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            }))),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
         }
     }
 
     /// The value the element's own attribute declares, if it declares a usable
     /// one. A draw key is never an attribute.
-    pub(super) fn read(self, attributes: &HashMap<String, Value>) -> Option<AnimValue> {
+    pub(super) fn read(
+        self,
+        attributes: &HashMap<String, Value>,
+        colors: &ColorContext,
+    ) -> Option<AnimValue> {
         self.attribute()?;
-        self.parse(attributes.get(self.name())?).ok()
+        self.parse(attributes.get(self.name())?, colors).ok()
     }
 
     /// Whether `items` is one value of a list-valued attribute (a dash list)
@@ -140,7 +150,7 @@ impl SvgAttr {
         matches!(self.kind(), Kind::Dashes) && items.iter().all(Value::is_number)
     }
 
-    pub(super) fn parse(self, value: &Value) -> Result<AnimValue, String> {
+    pub(super) fn parse(self, value: &Value, colors: &ColorContext) -> Result<AnimValue, String> {
         let name = self.name();
         let parsed = match self.kind() {
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
@@ -153,7 +163,7 @@ impl SvgAttr {
                 let color = if text.trim() == "none" {
                     Some(Color::TRANSPARENT)
                 } else {
-                    Color::parse(text)
+                    Color::parse(text, colors)
                 };
                 AnimValue::Color(
                     color.ok_or_else(|| format!("motion {name} is not a valid colour: {text}"))?,
@@ -258,6 +268,10 @@ fn parse_dashes(name: &str, value: &Value) -> Result<Vec<f64>, String> {
 mod tests {
     use super::*;
 
+    fn colors() -> ColorContext {
+        super::super::value::Colors::root().element
+    }
+
     #[test]
     fn names_round_trip_and_draw_keys_are_not_attributes() {
         for name in ["pathLength", "strokeDashoffset", "x2", "d", "fillOpacity"] {
@@ -276,18 +290,18 @@ mod tests {
             ("fill".to_string(), serde_json::json!("not a colour")),
             ("pathLength".to_string(), serde_json::json!(5)),
         ]);
-        assert_eq!(SvgAttr::R.read(&attributes), Some(AnimValue::Number(12.0)));
-        assert_eq!(SvgAttr::Fill.read(&attributes), None);
-        assert_eq!(SvgAttr::Cx.read(&attributes), None);
+        assert_eq!(SvgAttr::R.read(&attributes, &colors()), Some(AnimValue::Number(12.0)));
+        assert_eq!(SvgAttr::Fill.read(&attributes, &colors()), None);
+        assert_eq!(SvgAttr::Cx.read(&attributes, &colors()), None);
         // The DOM `pathLength` attribute is not the motion key.
-        assert_eq!(SvgAttr::PathLength.read(&attributes), None);
+        assert_eq!(SvgAttr::PathLength.read(&attributes, &colors()), None);
         assert_eq!(SvgAttr::PathLength.initial(), Some(AnimValue::Number(1.0)));
         assert_eq!(SvgAttr::R.initial(), None);
     }
 
     #[test]
     fn parses_dashes_in_every_spelling() {
-        let dashes = |value: Value| SvgAttr::StrokeDasharray.parse(&value);
+        let dashes = |value: Value| SvgAttr::StrokeDasharray.parse(&value, &colors());
         assert_eq!(dashes(serde_json::json!(4)).unwrap(), AnimValue::Numbers(vec![4.0]));
         assert_eq!(
             dashes(serde_json::json!([4, 2])).unwrap(),
@@ -312,10 +326,10 @@ mod tests {
             (SvgAttr::D, serde_json::json!("L0 0")),
             (SvgAttr::Cx, serde_json::json!(1e300)),
         ] {
-            assert!(attr.parse(&value).is_err(), "{attr:?} {value}");
+            assert!(attr.parse(&value, &colors()).is_err(), "{attr:?} {value}");
         }
         assert_eq!(
-            SvgAttr::Stroke.parse(&serde_json::json!("none")).unwrap(),
+            SvgAttr::Stroke.parse(&serde_json::json!("none"), &colors()).unwrap(),
             AnimValue::Color(Color::TRANSPARENT)
         );
     }
@@ -325,10 +339,10 @@ mod tests {
         assert_eq!(attribute_text(&AnimValue::Number(0.33333333)), "0.3333");
         assert_eq!(attribute_text(&AnimValue::Numbers(vec![4.0, 2.5])), "4 2.5");
         assert_eq!(
-            attribute_text(&SvgAttr::D.parse(&serde_json::json!("m1 1 l2 2")).unwrap()),
+            attribute_text(&SvgAttr::D.parse(&serde_json::json!("m1 1 l2 2"), &colors()).unwrap()),
             "M 1 1 L 3 3"
         );
-        let colour = SvgAttr::Fill.parse(&serde_json::json!("#ff0000")).unwrap();
+        let colour = SvgAttr::Fill.parse(&serde_json::json!("#ff0000"), &colors()).unwrap();
         assert!(attribute_text(&colour).starts_with("rgba(255"), "{}", attribute_text(&colour));
     }
 
