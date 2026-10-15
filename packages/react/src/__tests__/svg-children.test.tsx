@@ -15,7 +15,7 @@ const FRAME = {
 
 const SVG_STYLE = { width: 100, height: 100, color: "#ffffff" } as const
 
-/** Brightness of the logical pixel: the svg paints a white mask over black. */
+/** Brightness of the logical pixel: the svg paints `currentColor` (white) over black. */
 function sampler(file: string, renderer: ReturnType<typeof createTestRoot>["renderer"]) {
   fs.mkdirSync(SHOTS_DIR, { recursive: true })
   return (x: number, y: number): number => {
@@ -36,9 +36,9 @@ describeNative("svg children", () => {
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" width={100} height={100} style={{ color: "#ffffff" }}>
           <g strokeWidth={10}>
-            <path d="M0 25 L100 25" stroke="black" />
-            <rect x={0} y={60} width={50} height={20} fill="black" />
-            <circle cx={75} cy={75} r={10} fill="black" />
+            <path d="M0 25 L100 25" stroke="currentColor" />
+            <rect x={0} y={60} width={50} height={20} fill="currentColor" />
+            <circle cx={75} cy={75} r={10} fill="currentColor" />
           </g>
         </svg>
       </div>
@@ -76,7 +76,7 @@ describeNative("svg children", () => {
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><rect width="100" height="100"/></svg>'
     render(
       <div style={FRAME}>
-        <svg viewBox="0 0 100 100" style={SVG_STYLE} source={everything}>
+        <svg viewBox="0 0 100 100" fill="currentColor" style={SVG_STYLE} source={everything}>
           <rect x={0} y={0} width={30} height={100} />
         </svg>
       </div>
@@ -91,7 +91,7 @@ describeNative("svg children", () => {
     render(
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
-          <path d="M0 50 L100 50" stroke="black" strokeWidth={20} strokeDasharray={[20, 20]} />
+          <path d="M0 50 L100 50" stroke="currentColor" strokeWidth={20} strokeDasharray={[20, 20]} />
         </svg>
       </div>
     )
@@ -106,7 +106,7 @@ describeNative("svg children", () => {
     render(
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
-          <path d="M0 50 L100 50" stroke="black" strokeWidth={20} pathLength={1} strokeDasharray="0.5 1" />
+          <path d="M0 50 L100 50" stroke="currentColor" strokeWidth={20} pathLength={1} strokeDasharray="0.5 1" />
         </svg>
       </div>
     )
@@ -119,7 +119,7 @@ describeNative("svg children", () => {
     const brightness = sampler(path.join(SHOTS_DIR, "svg-children-update.png"), renderer)
     const App = ({ x }: { x: number }) => (
       <div style={FRAME}>
-        <svg viewBox="0 0 100 100" style={SVG_STYLE}>
+        <svg viewBox="0 0 100 100" fill="currentColor" style={SVG_STYLE}>
           <rect x={x} y={0} width={20} height={100} />
         </svg>
       </div>
@@ -157,7 +157,7 @@ describeNative("svg motion", () => {
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
             d="M0 50 L100 50"
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={20}
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
@@ -187,7 +187,7 @@ describeNative("svg motion", () => {
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
             d="M0 50 L100 50"
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={20}
             initial={{ pathLength: 0.2, pathOffset: 0 }}
             animate={{ pathLength: 0.2, pathOffset: 0.5 }}
@@ -212,7 +212,7 @@ describeNative("svg motion", () => {
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={10}
             initial={{ d: "M0 75 L100 75" }}
             animate={{ d: "M0 25 L100 25" }}
@@ -241,7 +241,7 @@ describeNative("svg motion", () => {
       <div style={FRAME}>
         <svg viewBox="0 0 100 100" style={SVG_STYLE}>
           <motion.path
-            stroke="black"
+            stroke="currentColor"
             strokeWidth={10}
             initial={{ d: "M0 75 L100 75" }}
             animate={{ d: "M0 25 H100" }}
@@ -259,7 +259,7 @@ describeNative("svg motion", () => {
     expect(brightness(50, 75)).toBeLessThan(EMPTY)
   })
 
-  it("animates fill through the colour engine, here as coverage", () => {
+  it("animates fill through the colour engine", () => {
     const { render, renderer } = createTestRoot()
     const brightness = sampler(path.join(SHOTS_DIR, "svg-motion-fill.png"), renderer)
     renderer.clockPause()
@@ -271,8 +271,8 @@ describeNative("svg motion", () => {
             y={0}
             width={100}
             height={100}
-            initial={{ fill: "#000000" }}
-            animate={{ fill: "rgba(0, 0, 0, 0)" }}
+            initial={{ fill: "#ffffff" }}
+            animate={{ fill: "rgba(255, 255, 255, 0)" }}
             transition={{ duration: 1, ease: "linear" }}
           />
         </svg>
@@ -295,7 +295,7 @@ describeNative("svg motion", () => {
     renderer.clockPause()
     render(
       <div style={FRAME}>
-        <svg viewBox="0 0 100 100" style={SVG_STYLE}>
+        <svg viewBox="0 0 100 100" fill="currentColor" style={SVG_STYLE}>
           <motion.circle
             cx={50}
             cy={50}
