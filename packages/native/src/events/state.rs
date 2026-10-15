@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use rustc_hash::FxHashMap;
 
+use super::element_drag::{ElementDrag, PendingDrag};
 use super::ids::Hit;
 use super::path::event_path;
 use crate::retained_tree::RetainedTree;
@@ -17,8 +18,9 @@ use crate::retained_tree::RetainedTree;
 /// The only pointer there is: the mouse.
 pub const MOUSE_POINTER_ID: f64 = 1.0;
 
-/// Explicit pointer capture as JS asks for it, shared between the renderer
-/// handle and the view's `PointerState`.
+/// What JS asks of the pointer dispatcher, shared between the renderer handle
+/// and the view's `PointerState`: explicit pointer capture, and ending an
+/// element drag (`cancelDrag`).
 ///
 /// Calls come from JS threads while the view lives on the UI thread, so a call
 /// only records the request here and the dispatcher applies it at the next
@@ -35,9 +37,20 @@ struct Requested {
     /// Held buttons as of the last input. A pointer with none down has nothing
     /// to capture, so `set` ignores it, as Chrome does for a mouse.
     buttons: u32,
+    cancel_drag: bool,
 }
 
 impl PointerCapture {
+    /// Ends the element drag in progress without another event: `dragstart`'s
+    /// `preventDefault()` is a drag that never was.
+    pub fn cancel_drag(&self) {
+        self.0.lock().unwrap().cancel_drag = true;
+    }
+
+    pub(super) fn take_drag_cancel(&self) -> bool {
+        std::mem::take(&mut self.0.lock().unwrap().cancel_drag)
+    }
+
     /// Throws for an element that is not connected, as the DOM's `InvalidStateError`.
     pub fn set(&self, tree: &RetainedTree, id: u64, pointer_id: f64) -> Result<(), String> {
         validate_pointer_id(pointer_id)?;
@@ -101,10 +114,10 @@ pub(super) struct Press {
     pub path: Vec<u64>,
 }
 
-/// An OS file drag over the window. It replaces the pointer for its duration:
-/// the dispatcher emits drag events and no pointer or mouse events.
-pub(super) struct FileDrag {
-    /// The element `dragenter` last went to.
+/// Where a drag is: the element `dragenter` last went to. Files from the OS
+/// and a dragged element share it, and either replaces the pointer for its
+/// duration: the dispatcher emits drag events and no pointer or mouse events.
+pub(super) struct DragOver {
     pub target: u64,
 }
 
@@ -128,7 +141,10 @@ pub struct PointerState {
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
     pub(super) capture: PointerCapture,
-    pub(super) file_drag: Option<FileDrag>,
+    pub(super) file_drag: Option<DragOver>,
+    /// A press on a `draggable` element that has not moved far enough to drag it.
+    pub(super) pending_drag: Option<PendingDrag>,
+    pub(super) element_drag: Option<ElementDrag>,
     observed: ObservedTarget,
 }
 

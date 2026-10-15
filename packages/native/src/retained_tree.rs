@@ -75,6 +75,15 @@ impl RetainedElement {
             .and_then(|index| isize::try_from(index).ok())
     }
 
+    /// The DOM `draggable` attribute: whether a press that moves starts a drag
+    /// of this element.
+    pub fn draggable(&self) -> bool {
+        self.custom_props()
+            .get("draggable")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    }
+
     /// Whether the element must own a gpui focus handle: it takes text, is in the
     /// tab order, or listens for a key or focus event.
     pub fn needs_focus(&self) -> bool {

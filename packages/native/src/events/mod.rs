@@ -1,4 +1,5 @@
 pub mod dispatcher;
+pub mod element_drag;
 pub mod file_drag;
 pub mod ids;
 pub mod listeners;

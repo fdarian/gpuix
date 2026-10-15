@@ -1004,6 +1004,13 @@ impl TestGpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    /// Ends the element drag in progress without a `dragend`; applies at the
+    /// next simulated pointer input.
+    #[napi]
+    pub fn cancel_drag(&self) {
+        self.pointer_capture.cancel_drag();
+    }
+
     /// The click an activation that is not a pointer press makes on `element_id`;
     /// collected for `drainEvents` like every other event.
     #[napi]

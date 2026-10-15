@@ -7,9 +7,9 @@
 //! here would panic.
 
 use gpui::{
-    canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, Modifiers, MouseButton,
-    MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels,
-    Point, Styled, WeakEntity, Window,
+    canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
+    MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
+    Pixels, Point, Styled, WeakEntity, Window,
 };
 
 use crate::element_tree::EventModifiers;
@@ -96,7 +96,12 @@ pub(crate) fn pointer_frame(
                 if cx.active_drag_value::<ExternalPaths>().is_some() {
                     submit(
                         &up_view,
-                        sample(window, PointerAction::FileDrop, event.position, event.modifiers),
+                        sample(
+                            window,
+                            PointerAction::FileDrop,
+                            event.position,
+                            event.modifiers,
+                        ),
                         cx,
                     );
                     return;
@@ -150,6 +155,22 @@ pub(crate) fn pointer_frame(
                         cx,
                     );
                 }
+            });
+            let cancel_view = view.clone();
+            window.on_root_key_event(move |event: &KeyDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Capture || event.keystroke.key != "escape" {
+                    return;
+                }
+                submit(
+                    &cancel_view,
+                    sample(
+                        window,
+                        PointerAction::CancelDrag,
+                        window.mouse_position(),
+                        window.modifiers(),
+                    ),
+                    cx,
+                );
             });
             let exit_view = view.clone();
             window.on_mouse_event(move |event: &MouseExitEvent, phase, window, cx| {

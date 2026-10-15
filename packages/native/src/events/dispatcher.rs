@@ -23,7 +23,8 @@
 //! (`dispatch_file_drag`). No pointer or mouse event fires, as in a browser;
 //! `dragenter`, `dragover`, `dragleave` and `drop` do instead. Those are not
 //! gated on listeners: JS needs every `dragover` to know whether the last one
-//! was cancelled, which decides if the drop is delivered.
+//! was cancelled, which decides if the drop is delivered. A dragged element
+//! (`element_drag`) replaces the pointer the same way and shares that code.
 
 use std::path::PathBuf;
 
@@ -33,10 +34,11 @@ use crate::element_tree::{DroppedFile, EventModifiers, EventPayload};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
+use super::element_drag;
 use super::file_drag;
 use super::ids::Hit;
 use super::path::{chain_follows_path, common_ancestor, event_path, path_listens};
-use super::state::{is_connected, FileDrag, PointerState, Press};
+use super::state::{is_connected, DragOver, PointerState, Press};
 
 const PRIMARY_BUTTON: u32 = 0;
 const SECONDARY_BUTTON: u32 = 2;
@@ -66,6 +68,8 @@ pub enum PointerAction {
     FileDrop,
     /// The files left the window or the drag ended (`FileDropEvent::Exited`, `Ended`).
     FileDragLeave,
+    /// The key that cancels a drag of an element went down.
+    CancelDrag,
 }
 
 pub struct PointerSample {
@@ -118,6 +122,23 @@ pub struct Output {
 }
 
 impl Output {
+    pub(super) fn new(
+        events: Vec<DomEvent>,
+        restyle: bool,
+        chain_mismatch: bool,
+        sample: &PointerSample,
+        buttons: u32,
+    ) -> Self {
+        Self {
+            events,
+            restyle,
+            chain_mismatch,
+            position: sample.position,
+            modifiers: sample.modifiers.clone(),
+            buttons,
+        }
+    }
+
     pub fn into_payloads(self) -> Vec<EventPayload> {
         let position = self.position;
         let buttons = self.buttons;
@@ -154,25 +175,39 @@ impl Output {
 }
 
 #[derive(Clone, Copy, Default)]
-struct Fields {
-    related_target: Option<u64>,
-    button: Option<u32>,
-    detail: Option<u32>,
-    pressed_button: Option<u32>,
-    hovered: Option<bool>,
+pub(super) struct Fields {
+    pub related_target: Option<u64>,
+    pub button: Option<u32>,
+    pub detail: Option<u32>,
+    pub pressed_button: Option<u32>,
+    pub hovered: Option<bool>,
 }
 
-struct Emitter<'a> {
-    tree: &'a RetainedTree,
-    position: (f64, f64),
+pub(super) struct Emitter<'a> {
+    pub tree: &'a RetainedTree,
+    pub(super) position: (f64, f64),
     /// Boxes of the chain under the pointer now, and of the chain it left.
     hits: &'a [Hit],
     previous_hits: &'a [Hit],
-    events: Vec<DomEvent>,
+    pub events: Vec<DomEvent>,
 }
 
-impl Emitter<'_> {
-    fn emit(&mut self, event_type: &'static str, target: u64, fields: Fields) {
+impl<'a> Emitter<'a> {
+    pub(super) fn new(
+        tree: &'a RetainedTree,
+        sample: &'a PointerSample,
+        previous_hits: &'a [Hit],
+    ) -> Self {
+        Self {
+            tree,
+            position: sample.position,
+            hits: &sample.hits,
+            previous_hits,
+            events: Vec::new(),
+        }
+    }
+
+    pub(super) fn emit(&mut self, event_type: &'static str, target: u64, fields: Fields) {
         if !path_listens(self.tree, target, event_type) {
             return;
         }
@@ -190,8 +225,8 @@ impl Emitter<'_> {
         });
     }
 
-    /// A file drag event at `target`, whoever listens.
-    fn emit_drag(
+    /// A drag event at `target`, whoever listens.
+    pub(super) fn emit_drag(
         &mut self,
         event_type: &'static str,
         target: u64,
@@ -320,6 +355,9 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             .collect();
         !chain_follows_path(&chain, &event_path(tree, target))
     });
+    if state.capture.take_drag_cancel() {
+        state.element_drag = None;
+    }
     let file_drag_input = match sample.action {
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
@@ -336,7 +374,7 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
         PointerAction::Move { pressed_button } => {
             state.buttons = pressed_button.map_or(0, button_bit);
         }
-        PointerAction::Exit | PointerAction::Resync => {}
+        PointerAction::Exit | PointerAction::Resync | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
         | PointerAction::FileDragLeave => unreachable!("handled above"),
@@ -344,13 +382,11 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
     state.capture.set_buttons(state.buttons);
 
     let previous_hits = std::mem::take(&mut state.hits);
-    let mut emitter = Emitter {
-        tree,
-        position: sample.position,
-        hits: &sample.hits,
-        previous_hits: &previous_hits,
-        events: Vec::new(),
-    };
+    let mut emitter = Emitter::new(tree, sample, &previous_hits);
+    if let Some(restyle) = element_drag::dispatch(state, &mut emitter, sample, geometric) {
+        state.hits = sample.hits.clone();
+        return Output::new(emitter.events, restyle, chain_mismatch, sample, state.buttons);
+    }
     let mut restyle = false;
 
     // A real pointer input means the drag ended without a leave reaching us.
@@ -396,21 +432,14 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
         } => {
             restyle |= release(state, &mut emitter, target, geometric, button, click_count);
         }
-        PointerAction::Exit | PointerAction::Resync => {}
+        PointerAction::Exit | PointerAction::Resync | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
         | PointerAction::FileDragLeave => unreachable!("handled above"),
     }
 
     state.hits = sample.hits.clone();
-    Output {
-        events: emitter.events,
-        restyle,
-        chain_mismatch,
-        position: sample.position,
-        modifiers: sample.modifiers.clone(),
-        buttons: state.buttons,
-    }
+    Output::new(emitter.events, restyle, chain_mismatch, sample, state.buttons)
 }
 
 /// Dispatches one input of an OS file drag.
@@ -427,13 +456,7 @@ fn dispatch_file_drag(
     chain_mismatch: bool,
 ) -> Output {
     let previous_hits = std::mem::take(&mut state.hits);
-    let mut emitter = Emitter {
-        tree,
-        position: sample.position,
-        hits: &sample.hits,
-        previous_hits: &previous_hits,
-        events: Vec::new(),
-    };
+    let mut emitter = Emitter::new(tree, sample, &previous_hits);
     let target = geometric.or(tree.root_id);
     match &sample.action {
         PointerAction::FileDragMove { paths } => {
@@ -446,19 +469,19 @@ fn dispatch_file_drag(
                 };
                 // A drag with nothing readable has no session and no events.
                 if files.is_some() || state.file_drag.is_some() {
-                    enter_drag_target(state, &mut emitter, target, files);
+                    enter_drag_target(&mut state.file_drag, &mut emitter, target, files);
                     emitter.emit_drag("dragover", target, None, None);
                 }
             }
         }
         PointerAction::Resync => {
             if let Some(target) = target {
-                enter_drag_target(state, &mut emitter, target, None);
+                enter_drag_target(&mut state.file_drag, &mut emitter, target, None);
             }
         }
         PointerAction::FileDrop => {
             if let (Some(target), true) = (target, state.file_drag.is_some()) {
-                enter_drag_target(state, &mut emitter, target, None);
+                enter_drag_target(&mut state.file_drag, &mut emitter, target, None);
                 emitter.emit_drag("drop", target, None, None);
                 state.file_drag = None;
             }
@@ -473,25 +496,18 @@ fn dispatch_file_drag(
     } else {
         sample.hits.clone()
     };
-    Output {
-        events,
-        restyle: false,
-        chain_mismatch,
-        position: sample.position,
-        modifiers: sample.modifiers.clone(),
-        buttons: state.buttons,
-    }
+    Output::new(events, false, chain_mismatch, sample, state.buttons)
 }
 
 /// Moves the drag to `target`: `dragenter` there, then `dragleave` at the
-/// element it left. `files` start the session.
-fn enter_drag_target(
-    state: &mut PointerState,
+/// element it left. `files` start a drag of files.
+pub(super) fn enter_drag_target(
+    over: &mut Option<DragOver>,
     emitter: &mut Emitter,
     target: u64,
     files: Option<Vec<DroppedFile>>,
 ) {
-    let previous = state.file_drag.as_ref().map(|drag| drag.target);
+    let previous = over.as_ref().map(|drag| drag.target);
     if previous == Some(target) {
         return;
     }
@@ -499,7 +515,7 @@ fn enter_drag_target(
     if let Some(previous) = previous.filter(|id| emitter.tree.elements.contains_key(id)) {
         emitter.emit_drag("dragleave", previous, Some(target), None);
     }
-    state.file_drag = Some(FileDrag { target });
+    *over = Some(DragOver { target });
 }
 
 /// Ends the drag with a `dragleave` at the element it was over, which had no
@@ -537,7 +553,7 @@ fn apply_capture(state: &mut PointerState, emitter: &mut Emitter) {
 
 /// Moves the hover chain to `new_target` and emits the boundary events. Returns
 /// whether an element that changed state has a `hover` style.
-fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_target: Option<u64>) -> bool {
+pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_target: Option<u64>) -> bool {
     let tree = emitter.tree;
     let new_path = new_target
         .map(|target| event_path(tree, target))
@@ -634,6 +650,7 @@ fn press(
         return false;
     }
     let restyle = set_active(state, tree, path.clone());
+    state.pending_drag = element_drag::pending(tree, &path, emitter.position);
     state.pressed.insert(button, Press { path });
     restyle
 }
@@ -698,7 +715,7 @@ fn release(
     restyle
 }
 
-fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path: Vec<u64>) -> bool {
+pub(super) fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path: Vec<u64>) -> bool {
     if state.active == new_path {
         return false;
     }
@@ -1599,5 +1616,403 @@ mod tests {
         );
         let output = dispatch(&mut state, &tree, &at(PointerAction::Resync, chain_of(&[4, 1])));
         assert_eq!(names(&output), ["dragenter@4", "dragleave@3"]);
+    }
+
+    /// `tree` with a(2) draggable: b(3) is inside it, c(4) is not.
+    fn draggable_tree(listening: &[(u64, &str)]) -> RetainedTree {
+        let mut tree = tree(listening);
+        tree.set_custom_prop(2, "draggable".to_string(), serde_json::json!(true));
+        tree
+    }
+
+    fn pointer_at(action: PointerAction, hits: Vec<Hit>, x: f64, y: f64) -> PointerSample {
+        PointerSample {
+            position: (x, y),
+            ..at(action, hits)
+        }
+    }
+
+    fn held_move(x: f64, y: f64, hits: Vec<Hit>) -> PointerSample {
+        pointer_at(
+            PointerAction::Move {
+                pressed_button: Some(0),
+            },
+            hits,
+            x,
+            y,
+        )
+    }
+
+    /// Pressed on b(3), inside the draggable a(2), at (15, 30).
+    fn pressed_on_b(tree: &RetainedTree) -> PointerState {
+        let mut state = PointerState::default();
+        dispatch(&mut state, tree, &mv(chain_of(&[3, 2, 1])));
+        dispatch(&mut state, tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        state
+    }
+
+    /// Pressed on b(3) and dragged to (30, 30): the session is running over b.
+    fn dragging_from_a(tree: &RetainedTree) -> PointerState {
+        let mut state = pressed_on_b(tree);
+        dispatch(&mut state, tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert!(state.element_drag.is_some());
+        state
+    }
+
+    const DRAG_EVENTS: [&str; 7] = [
+        "dragstart",
+        "drag",
+        "dragend",
+        "dragenter",
+        "dragover",
+        "dragleave",
+        "drop",
+    ];
+
+    #[test]
+    fn a_press_that_moves_no_more_than_four_pixels_is_not_a_drag() {
+        let tree = draggable_tree(&listening_everywhere(&["pointermove", "dragstart"]));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(19.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+        let output = dispatch(&mut state, &tree, &held_move(18.0, 32.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+    }
+
+    #[test]
+    fn moving_further_than_four_pixels_starts_the_drag() {
+        let tree = draggable_tree(&listening_everywhere(&["pointermove", "dragstart"]));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(19.1, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragstart@2", "dragenter@3", "dragover@3"]);
+        assert!(state.element_drag.is_some());
+    }
+
+    #[test]
+    fn the_threshold_is_the_distance_from_the_press_not_from_the_last_move() {
+        let tree = draggable_tree(&listening_everywhere(&["pointermove", "dragstart"]));
+        let mut state = pressed_on_b(&tree);
+        for x in [17.0, 19.0] {
+            let output = dispatch(&mut state, &tree, &held_move(x, 30.0, chain_of(&[3, 2, 1])));
+            assert_eq!(names(&output), ["pointermove@3"]);
+        }
+        let output = dispatch(&mut state, &tree, &held_move(20.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragstart@2", "dragenter@3", "dragover@3"]);
+    }
+
+    #[test]
+    fn the_source_is_the_nearest_draggable_ancestor_of_the_press_target() {
+        let mut tree = draggable_tree(&listening_everywhere(&["dragstart"]));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragstart@2", "dragenter@3", "dragover@3"]);
+        assert_eq!(output.events[0].path, [2, 1]);
+
+        // A draggable press target is its own source, ahead of its ancestor.
+        tree.set_custom_prop(3, "draggable".to_string(), serde_json::json!(true));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragstart@3", "dragenter@3", "dragover@3"]);
+    }
+
+    #[test]
+    fn a_press_outside_every_draggable_never_drags() {
+        let tree = draggable_tree(&listening_everywhere(&["pointermove", "dragstart"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1])));
+        let output = dispatch(&mut state, &tree, &held_move(90.0, 90.0, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["pointermove@4"]);
+    }
+
+    #[test]
+    fn draggable_false_is_not_a_source() {
+        let mut tree = draggable_tree(&listening_everywhere(&["dragstart", "pointermove"]));
+        tree.set_custom_prop(2, "draggable".to_string(), serde_json::json!(false));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(90.0, 90.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+    }
+
+    #[test]
+    fn only_the_primary_button_drags() {
+        let tree = draggable_tree(&listening_everywhere(&["dragstart", "pointermove"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        let held = PointerAction::Move {
+            pressed_button: Some(2),
+        };
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &pointer_at(held, chain_of(&[3, 2, 1]), 90.0, 90.0),
+        );
+        assert_eq!(names(&output), ["pointermove@3"]);
+    }
+
+    #[test]
+    fn the_start_cancels_the_pointer_then_drags_in_dom_order() {
+        let mut listening = listening_everywhere(&DRAG_EVENTS);
+        listening.extend(listening_everywhere(&POINTER_BOUNDARIES));
+        listening.extend(listening_everywhere(&["pointercancel"]));
+        let tree = draggable_tree(&listening);
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(
+            names(&output),
+            [
+                "pointercancel@3",
+                "pointerout@3",
+                "pointerleave@3",
+                "pointerleave@2",
+                "pointerleave@1",
+                "mouseout@3",
+                "mouseleave@3",
+                "mouseleave@2",
+                "mouseleave@1",
+                "dragstart@2",
+                "drag@2",
+                "dragenter@3",
+                "dragover@3",
+            ]
+        );
+        assert!(!state.is_hovered(3), "the pointer left every element");
+        assert!(!state.is_active(2));
+    }
+
+    #[test]
+    fn each_move_sends_drag_to_the_source_then_the_boundary_and_dragover_events() {
+        let tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+
+        let output = dispatch(&mut state, &tree, &held_move(31.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["drag@2", "dragover@3"]);
+
+        let output = dispatch(&mut state, &tree, &held_move(60.0, 30.0, chain_of(&[4, 1])));
+        assert_eq!(
+            names(&output),
+            ["drag@2", "dragenter@4", "dragleave@3", "dragover@4"]
+        );
+        assert_eq!(output.events[1].related_target, Some(3));
+        assert_eq!(output.events[2].related_target, Some(4));
+    }
+
+    #[test]
+    fn drag_is_only_produced_when_something_listens_for_it() {
+        let tree = draggable_tree(&listening_everywhere(&["dragstart"]));
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &held_move(31.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragover@3"]);
+    }
+
+    #[test]
+    fn the_release_drops_on_the_target_then_ends_the_drag_at_the_source() {
+        let mut listening = listening_everywhere(&DRAG_EVENTS);
+        listening.extend(listening_everywhere(&["click", "mouseup", "pointerup"]));
+        let tree = draggable_tree(&listening);
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
+        assert_eq!(
+            names(&output),
+            ["dragenter@4", "dragleave@3", "drop@4", "dragend@2"]
+        );
+        assert!(state.element_drag.is_none());
+        assert!(state.pressed.is_empty(), "a drag is not a click");
+        assert_eq!(state.buttons, 0);
+    }
+
+    #[test]
+    fn a_drop_on_nothing_targets_the_root() {
+        let tree = draggable_tree(&[]);
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &up(0, 1, Vec::new()));
+        assert_eq!(names(&output), ["dragenter@1", "dragleave@3", "drop@1", "dragend@2"]);
+    }
+
+    #[test]
+    fn escape_leaves_the_target_and_ends_the_drag_without_a_drop() {
+        let tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &at(PointerAction::CancelDrag, chain_of(&[3, 2, 1])),
+        );
+        assert_eq!(names(&output), ["dragleave@3", "dragend@2"]);
+        assert_eq!(output.events[0].related_target, None);
+        assert!(state.element_drag.is_none());
+
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert!(output.events.is_empty(), "the release after a cancel drops nothing");
+    }
+
+    #[test]
+    fn the_pointer_leaving_the_window_during_a_drag_leaves_the_target_and_keeps_the_drag() {
+        let tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &at(PointerAction::Exit, Vec::new()));
+        assert_eq!(names(&output), ["dragleave@3"]);
+        assert_eq!(output.events[0].related_target, None);
+        assert!(state.element_drag.is_some(), "the drag outlives the exit");
+
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["drag@2", "dragenter@4", "dragover@4"]);
+        assert_eq!(output.events[1].related_target, None);
+
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["drop@4", "dragend@2"]);
+    }
+
+    #[test]
+    fn exiting_twice_during_a_drag_leaves_once() {
+        let tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+        dispatch(&mut state, &tree, &at(PointerAction::Exit, Vec::new()));
+        let output = dispatch(&mut state, &tree, &at(PointerAction::Exit, Vec::new()));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn escape_with_no_drag_does_nothing() {
+        let tree = draggable_tree(&listening_everywhere(&["pointermove", "dragend"]));
+        let mut state = pressed_on_b(&tree);
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &at(PointerAction::CancelDrag, chain_of(&[3, 2, 1])),
+        );
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn a_move_with_no_button_down_means_the_release_was_lost() {
+        let tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragleave@3", "dragend@2"]);
+    }
+
+    #[test]
+    fn cancel_drag_ends_the_session_and_the_pointer_comes_back() {
+        let tree = draggable_tree(&listening_everywhere(&[
+            "dragend",
+            "dragover",
+            "pointermove",
+            "pointerover",
+            "pointerup",
+            "click",
+        ]));
+        let mut state = dragging_from_a(&tree);
+        state.capture.cancel_drag();
+
+        let output = dispatch(&mut state, &tree, &held_move(35.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointerover@3", "pointermove@3"]);
+        assert!(state.element_drag.is_none());
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointerup@3"], "the cancelled press is no click");
+    }
+
+    #[test]
+    fn a_cancel_that_arrives_with_no_drag_is_dropped() {
+        let tree = draggable_tree(&listening_everywhere(&["dragstart"]));
+        let mut state = PointerState::default();
+        state.capture.cancel_drag();
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragstart@2", "dragenter@3", "dragover@3"]);
+    }
+
+    #[test]
+    fn no_pointer_or_mouse_event_fires_during_an_element_drag() {
+        let mut listening = listening_everywhere(&POINTER_BOUNDARIES);
+        listening.extend(listening_everywhere(&[
+            "pointermove",
+            "mousemove",
+            "pointerup",
+            "mouseup",
+            "pointerdown",
+            "mousedown",
+            "click",
+            "mousedownoutside",
+            "contextmenu",
+            "dragover",
+        ]));
+        let tree = draggable_tree(&listening);
+        let mut state = dragging_from_a(&tree);
+        let mut log = Vec::new();
+        for sample in [
+            held_move(60.0, 30.0, chain_of(&[4, 1])),
+            held_move(61.0, 30.0, chain_of(&[4, 1])),
+            at(PointerAction::Resync, chain_of(&[3, 2, 1])),
+            at(PointerAction::Exit, Vec::new()),
+            down(2, 1, chain_of(&[3, 2, 1])),
+            up(2, 1, chain_of(&[3, 2, 1])),
+            up(0, 1, chain_of(&[4, 1])),
+        ] {
+            log.extend(names(&dispatch(&mut state, &tree, &sample)));
+        }
+        assert!(
+            log.iter()
+                .all(|event| event.starts_with("drag") || event.starts_with("drop")),
+            "{log:?}"
+        );
+        assert!(log.contains(&"drop@4".to_string()));
+    }
+
+    #[test]
+    fn a_resync_during_an_element_drag_moves_the_drag_target() {
+        let tree = draggable_tree(&[]);
+        let mut state = dragging_from_a(&tree);
+        let output = dispatch(&mut state, &tree, &at(PointerAction::Resync, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["dragenter@4", "dragleave@3"]);
+    }
+
+    #[test]
+    fn a_capture_held_by_another_element_keeps_the_press_a_press() {
+        let tree = draggable_tree(&listening_everywhere(&["dragstart", "pointermove"]));
+        let mut state = pressed_on_b(&tree);
+        state.capture.set(&tree, 4, 1.0).unwrap();
+        let output = dispatch(&mut state, &tree, &held_move(90.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@4"]);
+        assert!(state.element_drag.is_none());
+    }
+
+    #[test]
+    fn a_capture_held_by_the_source_is_lost_when_the_drag_starts() {
+        let tree = draggable_tree(&listening_everywhere(&[
+            "dragstart",
+            "pointercancel",
+            "gotpointercapture",
+            "lostpointercapture",
+        ]));
+        let mut state = pressed_on_b(&tree);
+        state.capture.set(&tree, 2, 1.0).unwrap();
+        let output = dispatch(&mut state, &tree, &held_move(16.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["gotpointercapture@2"]);
+
+        let output = dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(
+            names(&output),
+            ["pointercancel@3", "lostpointercapture@2", "dragstart@2", "dragenter@3", "dragover@3"]
+        );
+        assert_eq!(state.explicit_capture(), None);
+    }
+
+    #[test]
+    fn a_release_before_the_threshold_clears_the_press() {
+        let tree = draggable_tree(&listening_everywhere(&["dragstart", "pointermove"]));
+        let mut state = pressed_on_b(&tree);
+        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &held_move(90.0, 30.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+    }
+
+    #[test]
+    fn a_drag_whose_source_left_the_tree_ends_without_a_dragend() {
+        let mut tree = draggable_tree(&listening_everywhere(&DRAG_EVENTS));
+        let mut state = dragging_from_a(&tree);
+        tree.destroy_element(2);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["dragenter@4", "drop@4"]);
     }
 }

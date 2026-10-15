@@ -2405,6 +2405,14 @@ impl GpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    /// End the element drag in progress, without a `dragend`: JS calls it when
+    /// `dragstart` was cancelled. Applies at the next pointer input, so a move
+    /// or two may already have been delivered.
+    #[napi]
+    pub fn cancel_drag(&self) {
+        self.pointer_capture.cancel_drag();
+    }
+
     /// Deliver the click an activation that is not a pointer press makes on
     /// `element_id`, such as Enter on a button: a `click` with `detail` 0 that
     /// bubbles along the element's path. Arrives through the event callback.
@@ -3481,6 +3489,11 @@ impl WebGpuixRenderer {
         self.pointer_capture
             .has(&tree, id, pointer_id)
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = cancelDrag)]
+    pub fn cancel_drag(&self) {
+        self.pointer_capture.cancel_drag();
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = clickElement)]
