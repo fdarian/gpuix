@@ -13,13 +13,20 @@ import type {
   MotionValueStyle,
   SvgMotionProps,
   SvgCircleProps,
+  SvgClipPathProps,
+  SvgDefsProps,
   SvgEllipseProps,
+  SvgGradientProps,
   SvgGroupProps,
   SvgLineProps,
   SvgPathProps,
   SvgPolyProps,
   SvgProps,
+  SvgMaskProps,
   SvgRectProps,
+  SvgStopProps,
+  SvgSymbolProps,
+  SvgUseProps,
   TextareaProps,
   VirtualListProps,
 } from "@gpuix/native/host"
@@ -76,6 +83,14 @@ export namespace JSX {
     polyline: SolidHostProps<SvgPolyProps>
     polygon: SolidHostProps<SvgPolyProps>
     g: SolidHostProps<SvgGroupProps>
+    defs: SolidHostProps<SvgDefsProps>
+    linearGradient: SolidHostProps<SvgGradientProps>
+    radialGradient: SolidHostProps<SvgGradientProps>
+    stop: SolidHostProps<SvgStopProps>
+    clipPath: SolidHostProps<SvgClipPathProps>
+    mask: SolidHostProps<SvgMaskProps>
+    use: SolidHostProps<SvgUseProps>
+    symbol: SolidHostProps<SvgSymbolProps>
     canvas: SolidHostProps
     input: SolidHostProps<InputProps>
     textarea: SolidHostProps<TextareaProps>

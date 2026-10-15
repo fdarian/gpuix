@@ -18,12 +18,19 @@ import type {
   ImgProps as NativeImgProps,
   SvgProps as NativeSvgProps,
   SvgCircleProps as NativeSvgCircleProps,
+  SvgClipPathProps as NativeSvgClipPathProps,
+  SvgDefsProps as NativeSvgDefsProps,
   SvgEllipseProps as NativeSvgEllipseProps,
+  SvgGradientProps as NativeSvgGradientProps,
   SvgGroupProps as NativeSvgGroupProps,
   SvgLineProps as NativeSvgLineProps,
   SvgPathProps as NativeSvgPathProps,
   SvgPolyProps as NativeSvgPolyProps,
+  SvgMaskProps as NativeSvgMaskProps,
   SvgRectProps as NativeSvgRectProps,
+  SvgStopProps as NativeSvgStopProps,
+  SvgSymbolProps as NativeSvgSymbolProps,
+  SvgUseProps as NativeSvgUseProps,
   CodeProps as NativeCodeProps,
   DiffProps as NativeDiffProps,
   MarkdownProps as NativeMarkdownProps,
@@ -100,6 +107,13 @@ export type SvgRectProps = SvgShapeElementProps<NativeSvgRectProps>
 export type SvgLineProps = SvgShapeElementProps<NativeSvgLineProps>
 export type SvgPolyProps = SvgShapeElementProps<NativeSvgPolyProps>
 export type SvgGroupProps = SvgShapeElementProps<NativeSvgGroupProps>
+export type SvgDefsProps = SvgShapeElementProps<NativeSvgDefsProps>
+export type SvgGradientProps = SvgShapeElementProps<NativeSvgGradientProps>
+export type SvgStopProps = SvgShapeElementProps<NativeSvgStopProps>
+export type SvgClipPathProps = SvgShapeElementProps<NativeSvgClipPathProps>
+export type SvgMaskProps = SvgShapeElementProps<NativeSvgMaskProps>
+export type SvgUseProps = SvgShapeElementProps<NativeSvgUseProps>
+export type SvgSymbolProps = SvgShapeElementProps<NativeSvgSymbolProps>
 
 export interface CodeProps extends ReactHostProps<NativeCodeProps> {
   key?: Key | null

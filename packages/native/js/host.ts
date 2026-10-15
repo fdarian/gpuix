@@ -1270,6 +1270,14 @@ export type SvgChildType =
   | "polyline"
   | "polygon"
   | "g"
+  | "defs"
+  | "linearGradient"
+  | "radialGradient"
+  | "stop"
+  | "clipPath"
+  | "mask"
+  | "use"
+  | "symbol"
 
 /**
  * SVG presentation attributes, camelCase as in React DOM: `strokeWidth`
@@ -1295,6 +1303,10 @@ export interface SvgPresentationProps {
   display?: string
   visibility?: string
   shapeRendering?: "auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision"
+  /** `url(#id)` of a `<clipPath>` in the same `<svg>`. */
+  clipPath?: string
+  /** `url(#id)` of a `<mask>` in the same `<svg>`. */
+  mask?: string
 }
 
 /**
@@ -1304,6 +1316,8 @@ export interface SvgPresentationProps {
  */
 export interface SvgShapeProps extends SvgPresentationProps {
   testId?: string
+  /** What `fill="url(#id)"`, `clipPath`, `mask` and `<use href="#id">` refer to. */
+  id?: string
   /** Internal native animation description used by `motion.*` shapes. */
   motion?: SvgMotionProps
   /**
@@ -1355,12 +1369,70 @@ export interface SvgPolyProps extends SvgShapeProps {
 
 export type SvgGroupProps = SvgShapeProps
 
+/** `<defs>`: what its children define is drawn only where something refers to it. */
+export type SvgDefsProps = SvgShapeProps
+
+/** `<linearGradient>` and `<radialGradient>`: `<stop>` children, referred to by `fill="url(#id)"`. */
+export interface SvgGradientProps extends SvgShapeProps {
+  x1?: number | string
+  y1?: number | string
+  x2?: number | string
+  y2?: number | string
+  cx?: number | string
+  cy?: number | string
+  r?: number | string
+  fx?: number | string
+  fy?: number | string
+  gradientUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  gradientTransform?: string
+  spreadMethod?: "pad" | "reflect" | "repeat"
+  /** Another gradient whose stops and attributes this one inherits: `"#id"`. */
+  href?: string
+}
+
+export interface SvgStopProps extends SvgShapeProps {
+  /** A number from 0 to 1, or a percentage. */
+  offset?: number | string
+  stopColor?: string
+  stopOpacity?: number | string
+}
+
+export interface SvgClipPathProps extends SvgShapeProps {
+  clipPathUnits?: "userSpaceOnUse" | "objectBoundingBox"
+}
+
+export interface SvgMaskProps extends SvgShapeProps {
+  x?: number | string
+  y?: number | string
+  width?: number | string
+  height?: number | string
+  maskUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  maskContentUnits?: "userSpaceOnUse" | "objectBoundingBox"
+}
+
+/** `<use>`: draws the element `href` names, here. */
+export interface SvgUseProps extends SvgShapeProps {
+  /** `"#id"` of an element in the same `<svg>`. */
+  href?: string
+  x?: number | string
+  y?: number | string
+  width?: number | string
+  height?: number | string
+}
+
+/** `<symbol>`: a drawing that is shown only through a `<use>`. */
+export interface SvgSymbolProps extends SvgShapeProps {
+  viewBox?: string
+  preserveAspectRatio?: string
+}
+
 /**
  * Props for `<svg>`, a vector graphic rasterised in full colour at device
  * resolution as one image. `currentColor` is the element's computed `color`.
  *
  * Give it DOM-style children (`path circle ellipse rect line polyline polygon
- * g`) and a `viewBox`, or raw markup through `source` / `src`. Children win
+ * g`, and `defs linearGradient radialGradient stop clipPath mask use symbol` for
+ * what shapes refer to by `id`) and a `viewBox`, or raw markup through `source` / `src`. Children win
  * when both are given. `width` and `height` size the element unless `style`
  * does; without either it has no size to paint into.
  */

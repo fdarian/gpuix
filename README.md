@@ -4379,7 +4379,11 @@ on `style.color` to tint them need `fill="currentColor"`.
 
 `<svg>` also takes DOM-style children, so an icon or a chart can be written as
 JSX instead of a markup string: `path`, `circle`, `ellipse`, `rect`, `line`,
-`polyline`, `polygon` and `g`. They are valid only inside `<svg>` (anywhere else
+`polyline`, `polygon` and `g`, and what they refer to by `id`: `defs`,
+`linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`, `symbol` and
+`use` (`<rect fill="url(#fade)" />`, `clipPath="url(#left)"`,
+`<use href="#bar" />`). `pattern`, filters and markers are not elements here;
+put them in `source` markup. They are valid only inside `<svg>` (anywhere else
 is an error), and they are not layout boxes: the `<svg>` paints them all as one
 image, so they take no `style` and no events.
 

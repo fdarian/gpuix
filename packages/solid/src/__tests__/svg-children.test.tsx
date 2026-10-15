@@ -43,6 +43,31 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
     expect(shot(app, "back").equals(first)).toBe(true)
   })
 
+  it("draws what shapes refer to by id", () => {
+    const [shown, setShown] = createSignal(false)
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={FRAME}>
+        <svg viewBox="0 0 100 100" width={100} height={100}>
+          <defs>
+            <linearGradient id="fade">
+              <stop offset={0} stopColor="#ffffff" />
+              <stop offset={1} stopColor="#ff0000" />
+            </linearGradient>
+            <clipPath id="top">
+              <rect width={100} height={50} />
+            </clipPath>
+            <rect id="bar" width={100} height={100} fill="url(#fade)" />
+          </defs>
+          {shown() ? <use href="#bar" clipPath="url(#top)" /> : null}
+        </svg>
+      </div>
+    ))
+    const hidden = shot(app, "defs-hidden")
+    app.flushSync(() => setShown(true))
+    expect(shot(app, "defs-shown").equals(hidden)).toBe(false)
+  })
+
   it("sizes the box from width and height", () => {
     const app = createTestRoot()
     app.render(() => (

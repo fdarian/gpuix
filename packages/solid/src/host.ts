@@ -308,6 +308,14 @@ function isElementType(type: string): type is ElementType {
     case "polyline":
     case "polygon":
     case "g":
+    case "defs":
+    case "linearGradient":
+    case "radialGradient":
+    case "stop":
+    case "clipPath":
+    case "mask":
+    case "use":
+    case "symbol":
       return true
     default:
       return false

@@ -15,13 +15,20 @@ import type {
   MarkdownProps,
   Props,
   SvgCircleProps,
+  SvgClipPathProps,
+  SvgDefsProps,
   SvgEllipseProps,
+  SvgGradientProps,
   SvgGroupProps,
   SvgLineProps,
+  SvgMaskProps,
   SvgPathProps,
   SvgPolyProps,
   SvgProps,
   SvgRectProps,
+  SvgStopProps,
+  SvgSymbolProps,
+  SvgUseProps,
   TextareaProps,
   VirtualListProps,
 } from "./dist/types/host"
@@ -50,6 +57,14 @@ export namespace JSX {
     polyline: SvgPolyProps
     polygon: SvgPolyProps
     g: SvgGroupProps
+    defs: SvgDefsProps
+    linearGradient: SvgGradientProps
+    radialGradient: SvgGradientProps
+    stop: SvgStopProps
+    clipPath: SvgClipPathProps
+    mask: SvgMaskProps
+    use: SvgUseProps
+    symbol: SvgSymbolProps
     canvas: Props
     input: InputProps
     textarea: TextareaProps

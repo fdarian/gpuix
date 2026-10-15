@@ -132,6 +132,36 @@ describeNative("svg children", () => {
     expect(brightness(70, 50)).toBeGreaterThan(DRAWN)
   })
 
+  it("draws what shapes refer to by id: gradients, clip paths and use", () => {
+    const { render, renderer } = createTestRoot()
+    const brightness = sampler(path.join(SHOTS_DIR, "svg-children-defs.png"), renderer)
+    render(
+      <div style={FRAME}>
+        <svg viewBox="0 0 100 100" width={100} height={100}>
+          <defs>
+            <linearGradient id="fade" x1={0} y1={0} x2={1} y2={0}>
+              <stop offset={0} stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#000000" />
+            </linearGradient>
+            <clipPath id="left">
+              <rect width={50} height={100} />
+            </clipPath>
+            <rect id="bar" width={100} height={100} fill="url(#fade)" />
+          </defs>
+          <use href="#bar" clipPath="url(#left)" />
+        </svg>
+      </div>
+    )
+
+    expect(brightness(3, 50)).toBeGreaterThan(DRAWN)
+    // White fading to black across the 100 wide bar: about 190 at 25 and 130 at 48.
+    expect(brightness(25, 50)).toBeGreaterThan(160)
+    expect(brightness(25, 50)).toBeLessThan(220)
+    expect(brightness(48, 50)).toBeGreaterThan(100)
+    expect(brightness(48, 50)).toBeLessThan(160)
+    expect(brightness(75, 50)).toBeLessThan(EMPTY)
+  })
+
   it("rejects a shape outside an svg", () => {
     // React reports a commit error to its root's uncaught-error handler.
     const errors = vi.spyOn(console, "error").mockImplementation(() => {})

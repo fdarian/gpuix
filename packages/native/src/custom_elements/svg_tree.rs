@@ -6,6 +6,10 @@
 //! Solid, and become kebab-case attributes here. Animated attributes arrive
 //! from the motion engine and replace the element's own.
 //!
+//! Besides shapes, the tree takes what a shape refers to by `id`: `defs`,
+//! `linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`, `symbol` and
+//! `use`. resvg resolves those references itself, so they are written as they come.
+//!
 //! resvg ignores the `pathLength` attribute, so every dash that depends on it
 //! is turned into absolute user units against the shape's measured length.
 //!
@@ -29,8 +33,23 @@ use crate::motion::{MotionState, SvgMotion};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
 
-const SHAPE_TAGS: [&str; 8] = [
-    "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "g",
+const SHAPE_TAGS: [&str; 16] = [
+    "path",
+    "circle",
+    "ellipse",
+    "rect",
+    "line",
+    "polyline",
+    "polygon",
+    "g",
+    "defs",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "clipPath",
+    "mask",
+    "use",
+    "symbol",
 ];
 
 /// Whether `tag` is an element only valid inside an `<svg>`.
@@ -41,6 +60,8 @@ pub(crate) fn is_svg_child_type(tag: &str) -> bool {
 /// Prop name and the attribute it becomes. SVG's own camelCase attributes
 /// (`viewBox`, `pathLength`) keep their case.
 const ATTRIBUTES: &[(&str, &str)] = &[
+    ("id", "id"),
+    ("href", "href"),
     ("viewBox", "viewBox"),
     ("preserveAspectRatio", "preserveAspectRatio"),
     ("d", "d"),
@@ -59,6 +80,19 @@ const ATTRIBUTES: &[(&str, &str)] = &[
     ("x2", "x2"),
     ("y2", "y2"),
     ("pathLength", "pathLength"),
+    ("fx", "fx"),
+    ("fy", "fy"),
+    ("offset", "offset"),
+    ("stopColor", "stop-color"),
+    ("stopOpacity", "stop-opacity"),
+    ("gradientUnits", "gradientUnits"),
+    ("gradientTransform", "gradientTransform"),
+    ("spreadMethod", "spreadMethod"),
+    ("clipPathUnits", "clipPathUnits"),
+    ("maskUnits", "maskUnits"),
+    ("maskContentUnits", "maskContentUnits"),
+    ("clipPath", "clip-path"),
+    ("mask", "mask"),
     ("fill", "fill"),
     ("fillOpacity", "fill-opacity"),
     ("fillRule", "fill-rule"),
@@ -267,7 +301,7 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
     for (prop, attribute) in ATTRIBUTES {
         if let Some(text) = node.props.get(*prop).and_then(attribute_text) {
             let text = match *attribute {
-                "fill" | "stroke" => resolve_paint(text, colors),
+                "fill" | "stroke" | "stop-color" => resolve_paint(text, colors),
                 _ => text,
             };
             written.push((attribute, text));
@@ -515,6 +549,70 @@ mod tests {
              <path d=\"M0 0L10 10\" fill-opacity=\"0.5\" stroke-width=\"2\" stroke-linecap=\"round\" \
              stroke-dasharray=\"4 2\" transform=\"rotate(45 12 12)\"/></svg>"
         );
+    }
+
+    #[test]
+    fn gradients_clips_and_use_are_written_and_the_rasteriser_resolves_them() {
+        let svg = props(&[("viewBox", "0 0 20 10".into()), ("width", 20.into()), ("height", 10.into())]);
+        let gradient = props(&[("id", "fade".into()), ("x1", 0.into()), ("x2", 1.into())]);
+        let red = props(&[("offset", 0.into()), ("stopColor", "#ff0000".into())]);
+        let blue = props(&[("offset", "100%".into()), ("stopColor", "#0000ff".into()), ("stopOpacity", 1.into())]);
+        let clip = props(&[("id", "left".into())]);
+        let half = props(&[("width", 10.into()), ("height", 10.into())]);
+        let bar = props(&[
+            ("id", "bar".into()),
+            ("width", 20.into()),
+            ("height", 10.into()),
+            ("fill", "url(#fade)".into()),
+        ]);
+        let clipped = props(&[("href", "#bar".into()), ("clipPath", "url(#left)".into())]);
+        let xml = serialize(&node(
+            "svg",
+            &svg,
+            vec![
+                node(
+                    "defs",
+                    &HashMap::new(),
+                    vec![
+                        node(
+                            "linearGradient",
+                            &gradient,
+                            vec![node("stop", &red, vec![]), node("stop", &blue, vec![])],
+                        ),
+                        node("clipPath", &clip, vec![node("rect", &half, vec![])]),
+                        node("rect", &bar, vec![]),
+                    ],
+                ),
+                node("use", &clipped, vec![]),
+            ],
+        ));
+        assert!(xml.contains("<linearGradient id=\"fade\" x1=\"0\" x2=\"1\">"), "{xml}");
+        assert!(xml.contains("<stop offset=\"0\" stop-color=\"#ff0000\"/>"), "{xml}");
+        assert!(xml.contains("<use href=\"#bar\" clip-path=\"url(#left)\"/>"), "{xml}");
+
+        let renderer = gpui::SvgRenderer::new(Arc::new(()));
+        let image = renderer.render_single_frame(xml.as_bytes(), 1.0).unwrap();
+        let size = image.size(0);
+        let bytes = image.as_bytes(0).unwrap();
+        let pixel = |x: f32| {
+            let column = (x / 20.0 * size.width.0 as f32) as usize;
+            let row = size.height.0 as usize / 2;
+            let at = (row * size.width.0 as usize + column) * 4;
+            // BGRA, premultiplied.
+            [bytes[at + 2], bytes[at], bytes[at + 3]]
+        };
+        let near_left = pixel(0.5);
+        assert!(near_left[0] > 220 && near_left[1] < 40 && near_left[2] == 255, "gradient start {near_left:?}");
+        let middle = pixel(8.0);
+        assert!(middle[0] > 40 && middle[1] > 40, "gradient middle {middle:?}");
+        assert_eq!(pixel(15.0)[2], 0, "the clip cuts the right half");
+    }
+
+    #[test]
+    fn a_stop_colour_that_needs_the_context_is_written_as_rgba() {
+        let stop = props(&[("stopColor", "light-dark(#ff0000, #0000ff)".into())]);
+        let xml = serialize_in(&node("stop", &stop, vec![]), &context("black", "dark"));
+        assert!(xml.contains("stop-color=\"rgba(0, 0, 255, 1)\""), "{xml}");
     }
 
     #[test]
