@@ -123,6 +123,8 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onAnimationIteration", "animationIteration"],
   ["onAnimationEnd", "animationEnd"],
   ["onAnimationCancel", "animationCancel"],
+  ["onLayoutAnimationStart", "layoutAnimationStart"],
+  ["onLayoutAnimationComplete", "layoutAnimationComplete"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
   ["onInvalid", "invalid"],

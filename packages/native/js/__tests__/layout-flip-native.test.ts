@@ -89,3 +89,134 @@ describe.skipIf(!hasNativeTestRenderer)("native layout flip", () => {
     expect(topOf(renderer, 3)).toBe(120)
   })
 })
+
+describe.skipIf(!hasNativeTestRenderer)("native layoutId", () => {
+  const shared = { mode: true, layoutId: "highlight", transition: linear }
+
+  // A row holding one box at x = 0.
+  const mountRow = (layout: unknown = shared) => {
+    const renderer = new TestRenderer({ width: 400, height: 100 })
+    renderer.clockPause()
+    renderer.applyBatch(
+      JSON.stringify([
+        ["createElement", 1, "div"],
+        ["setRoot", 1],
+        ["setStyle", 1, { display: "flex", flexDirection: "row", width: 400 }],
+        ["createElement", 2, "div"],
+        ["appendChild", 1, 2],
+        ["setStyle", 2, { height: 20, width: 50 }],
+        ["setCustomProp", 2, "layout", layout],
+      ])
+    )
+    renderer.flush()
+    return renderer
+  }
+
+  // A spacer pushes the new box to x = 200.
+  const addBox = (layout: unknown = shared) => [
+    ["createElement", 3, "div"],
+    ["appendChild", 1, 3],
+    ["setStyle", 3, { height: 20, width: 200 }],
+    ["createElement", 4, "div"],
+    ["appendChild", 1, 4],
+    ["setStyle", 4, { height: 20, width: 50 }],
+    ["setCustomProp", 4, "layout", layout],
+  ]
+
+  const leftOf = (renderer: TestRenderer, id: number) => renderer.getElementBounds(id)?.x
+
+  it("starts a box that replaces another from where the old one was shown", () => {
+    const renderer = mountRow()
+    renderer.applyBatch(JSON.stringify([["destroyElement", 2], ...addBox()]))
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBeCloseTo(0, 1)
+    renderer.clockFastForward(500)
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBeCloseTo(100, 1)
+    renderer.clockFastForward(600)
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBe(200)
+  })
+
+  it("starts from the old box one frame later too, but not after that", () => {
+    const renderer = mountRow()
+    renderer.applyBatch(JSON.stringify([["destroyElement", 2]]))
+    renderer.flush()
+    renderer.applyBatch(JSON.stringify(addBox()))
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBeCloseTo(0, 1)
+
+    const late = mountRow()
+    late.applyBatch(JSON.stringify([["destroyElement", 2]]))
+    late.flush()
+    late.flush()
+    late.flush()
+    late.applyBatch(JSON.stringify(addBox()))
+    late.flush()
+    expect(leftOf(late, 4)).toBe(200)
+  })
+
+  it("lets a box take over from one that is still mounted", () => {
+    const renderer = mountRow()
+    renderer.applyBatch(JSON.stringify(addBox()))
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBeCloseTo(0, 1)
+    expect(leftOf(renderer, 2)).toBe(0)
+    renderer.clockFastForward(500)
+    renderer.flush()
+    // The box that stayed pushes the spacer and the newcomer 50 px further.
+    expect(leftOf(renderer, 4)).toBeCloseTo(125, 1)
+    expect(leftOf(renderer, 2)).toBe(0)
+  })
+
+  it("does not share between different ids or when the id is left out", () => {
+    for (const other of [{ ...shared, layoutId: "other" }, { mode: true, transition: linear }]) {
+      const renderer = mountRow()
+      renderer.applyBatch(JSON.stringify([["destroyElement", 2], ...addBox(other)]))
+      renderer.flush()
+      expect(leftOf(renderer, 4)).toBe(200)
+    }
+  })
+
+  it("jumps under reduced motion", () => {
+    const reduced = { ...shared, reducedMotion: true }
+    const renderer = mountRow(reduced)
+    renderer.applyBatch(JSON.stringify([["destroyElement", 2], ...addBox(reduced)]))
+    renderer.flush()
+    expect(leftOf(renderer, 4)).toBe(200)
+  })
+
+  it("reports when a glide starts and when it completes, to those who listen", () => {
+    const renderer = mountRow()
+    renderer.applyBatch(
+      JSON.stringify([
+        ["destroyElement", 2],
+        ...addBox(),
+        ["setEventListener", 4, "layoutAnimationStart", true],
+        ["setEventListener", 4, "layoutAnimationComplete", true],
+      ])
+    )
+    renderer.flush()
+    renderer.flush()
+    const types = () => renderer.drainEvents().map((event) => `${event.elementId} ${event.eventType}`)
+    expect(types()).toEqual(["4 layoutAnimationStart"])
+
+    renderer.clockFastForward(500)
+    renderer.flush()
+    expect(types()).toEqual([])
+    renderer.clockFastForward(600)
+    renderer.flush()
+    renderer.flush()
+    expect(types()).toEqual(["4 layoutAnimationComplete"])
+  })
+
+  it("stays silent without a listener", () => {
+    const renderer = mountRow()
+    renderer.applyBatch(JSON.stringify([["destroyElement", 2], ...addBox()]))
+    renderer.flush()
+    renderer.clockFastForward(1100)
+    renderer.flush()
+    renderer.flush()
+    expect(renderer.drainEvents()).toEqual([])
+  })
+})

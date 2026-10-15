@@ -10,6 +10,11 @@
 //!
 //! The origin it compares is the layout origin with the ancestors' offsets
 //! taken back out, so scrolling and an ancestor's own FLIP do not read as a move.
+//!
+//! `layoutId` shares a glide between elements: an element that appears with an
+//! id some other element held starts from where that one was last shown, with
+//! the speed it had. The holder is either gone for at most a frame, or still
+//! around (the newcomer takes over; hiding the old one is up to the app).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -41,6 +46,8 @@ fn is_zero(a: Vec2) -> bool {
 struct Config {
     transition: Transition,
     reduced: bool,
+    /// Elements with the same id hand their glide to each other.
+    layout_id: Option<String>,
 }
 
 /// Framer's default for a layout animation.
@@ -58,19 +65,25 @@ fn default_transition() -> Transition {
 /// to the `transition` and `reducedMotion` of the motion description.
 ///
 /// `None` when nothing animates natively: `false`, and `"size"`, as a size
-/// change snaps (there is no transform to scale by).
+/// change snaps (there is no transform to scale by). A `layoutId` still moves
+/// the box with `"size"`, as the point of sharing an id is the move.
 fn parse(source: &Value) -> Result<Option<Config>, String> {
     let empty = serde_json::Map::new();
     let (mode, fields) = match source {
         Value::Object(fields) => (fields.get("mode").unwrap_or(&Value::Null), fields),
         other => (other, &empty),
     };
+    let layout_id = match fields.get("layoutId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
+        Some(_) => return Err("layoutId must be a non-empty string".to_string()),
+    };
     let animates_position = match mode {
         Value::Bool(on) => *on,
         Value::Null if source.is_object() => true,
         Value::String(name) => match name.as_str() {
             "position" => true,
-            "size" => false,
+            "size" => layout_id.is_some(),
             other => return Err(format!("layout must be true, \"position\" or \"size\", not \"{other}\"")),
         },
         _ => return Err("layout must be true, \"position\" or \"size\"".to_string()),
@@ -92,7 +105,11 @@ fn parse(source: &Value) -> Result<Option<Config>, String> {
     if transition.repeat.repeats() {
         return Err("a layout transition cannot repeat".to_string());
     }
-    Ok(Some(Config { transition, reduced }))
+    Ok(Some(Config {
+        transition,
+        reduced,
+        layout_id,
+    }))
 }
 
 /// `transition.layout` when there is one, else the transition the description
@@ -121,6 +138,22 @@ struct Step {
     /// How far layout itself moved since the last frame. Boxes inside this
     /// one moved with it, and their own glide is what is left over.
     moved: Vec2,
+    /// A glide began on this frame, including a retarget or a takeover.
+    started: bool,
+    /// The glide reached layout on this frame. Not set for one that was
+    /// replaced or dropped.
+    completed: bool,
+}
+
+/// Where a box was last shown, for another box to start from.
+#[derive(Clone, Debug)]
+struct Held {
+    /// The un-offset layout origin plus the offset it was drawn with.
+    visual: Vec2,
+    /// The glide it was in, whose speed the next box continues.
+    track: Option<Track>,
+    /// The frame it was shown on.
+    frame: u64,
 }
 
 #[derive(Debug)]
@@ -132,10 +165,15 @@ struct Flip {
     /// with every ancestor's offset taken back out.
     origin: Option<Vec2>,
     track: Option<Track>,
+    held: Option<Held>,
+    /// The frame it was first built on.
+    born: u64,
+    /// A glide began since the last step, which reports it.
+    started: bool,
 }
 
 impl Flip {
-    fn new(source: &Value) -> Self {
+    fn new(source: &Value, born: u64) -> Self {
         let config = parse(source).unwrap_or_else(|error| {
             log::warn!("Invalid layout description: {error}");
             None
@@ -145,7 +183,54 @@ impl Flip {
             config,
             origin: None,
             track: None,
+            held: None,
+            born,
+            started: false,
         }
+    }
+
+    fn layout_id(&self) -> Option<&str> {
+        self.config.as_ref()?.layout_id.as_deref()
+    }
+
+    /// Runs the glide from `from`, an offset from where layout puts the box,
+    /// at the speed `previous` had.
+    fn begin(&mut self, from: Vec2, previous: Option<&Track>, now: Instant) {
+        let Some(config) = &self.config else {
+            return;
+        };
+        let started = Track::new(
+            "layout",
+            &AnimValue::Numbers(from.to_vec()),
+            AnimValue::Numbers(vec![0.0, 0.0]),
+            config.transition.clone(),
+            now,
+        );
+        match started {
+            Ok(mut next) => {
+                if let Some(previous) = previous {
+                    next.carry_velocity(previous, now);
+                }
+                self.track = Some(next);
+                self.started = true;
+            }
+            Err(error) => {
+                log::warn!("Invalid layout transition: {error}");
+                self.track = None;
+            }
+        }
+    }
+
+    /// Starts a box that is new to the layout where `holder` was shown.
+    fn take_over(&mut self, origin: Vec2, holder: &Held, now: Instant) {
+        let Some(config) = &self.config else {
+            return;
+        };
+        let from = sub(holder.visual, origin);
+        if config.reduced || is_zero(from) {
+            return;
+        }
+        self.begin(from, holder.track.as_ref(), now);
     }
 
     /// `inherited` is how far the nearest enclosing flipping box's layout
@@ -156,13 +241,16 @@ impl Flip {
                 offset: [0.0; 2],
                 active: false,
                 moved: [0.0; 2],
+                started: false,
+                completed: false,
             };
         };
+        let reduced = config.reduced;
         let moved = self.origin.map_or([0.0; 2], |last| sub(origin, last));
         self.origin = Some(origin);
         let own = sub(moved, inherited);
 
-        if config.reduced {
+        if reduced {
             self.track = None;
         } else if !is_zero(own) {
             let shown = self
@@ -172,33 +260,16 @@ impl Flip {
             // The box was drawn `shown` away from its old place, and its place
             // just moved by `own`: start from the same spot on screen.
             let from = sub(shown, own);
-            let started = Track::new(
-                "layout",
-                &AnimValue::Numbers(from.to_vec()),
-                AnimValue::Numbers(vec![0.0, 0.0]),
-                config.transition.clone(),
-                now,
-            );
-            match started {
-                Ok(mut next) => {
-                    if let Some(previous) = &self.track {
-                        next.carry_velocity(previous, now);
-                    }
-                    self.track = Some(next);
-                }
-                Err(error) => {
-                    log::warn!("Invalid layout transition: {error}");
-                    self.track = None;
-                }
-            }
+            let previous = self.track.take();
+            self.begin(from, previous.as_ref(), now);
         }
 
-        let (offset, active) = match &self.track {
+        let (offset, active, completed) = match &self.track {
             Some(track) => {
                 let sample = track.sample(now);
-                (to_vec2(&sample.position), sample.active)
+                (to_vec2(&sample.position), sample.active, !sample.active)
             }
-            None => ([0.0; 2], false),
+            None => ([0.0; 2], false, false),
         };
         if !active {
             self.track = None;
@@ -207,6 +278,8 @@ impl Flip {
             offset: if active { offset } else { [0.0; 2] },
             active,
             moved,
+            started: std::mem::take(&mut self.started),
+            completed,
         }
     }
 }
@@ -215,11 +288,75 @@ fn to_vec2(channels: &[f64]) -> Vec2 {
     [channels[0], channels[1]]
 }
 
+/// Frames a departed box stays available to a newcomer with its id.
+const DEPARTED_FRAMES: u64 = 1;
+
+#[derive(Debug)]
+struct Departed {
+    held: Held,
+    /// The frame its element left the tree on.
+    gone: u64,
+}
+
+/// What the glides tell JS.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum LayoutEventKind {
+    Start,
+    Complete,
+}
+
+impl LayoutEventKind {
+    /// The event type the host maps to `onLayoutAnimation*`.
+    pub(crate) fn event_type(self) -> &'static str {
+        match self {
+            Self::Start => "layoutAnimationStart",
+            Self::Complete => "layoutAnimationComplete",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LayoutEvent {
+    pub(crate) id: u64,
+    pub(crate) kind: LayoutEventKind,
+}
+
 #[derive(Default)]
 struct Store {
     flips: HashMap<u64, Flip>,
     /// The layout move of the flipping box being prepainted, for the boxes inside.
     enclosing: Vec2,
+    /// Counts the renders that pruned `flips`.
+    frame: u64,
+    departed: HashMap<String, Departed>,
+    events: Vec<LayoutEvent>,
+}
+
+impl Store {
+    /// The last shown state of the box that held `layout_id` before the box
+    /// `id`, which is new. A box built on this very frame is not a holder:
+    /// two newcomers with one id are neither's predecessor.
+    fn holder(&mut self, id: u64, layout_id: &str) -> Option<Held> {
+        let frame = self.frame;
+        let live = self
+            .flips
+            .iter()
+            .filter(|(other, flip)| {
+                **other != id && flip.born < frame && flip.layout_id() == Some(layout_id)
+            })
+            .filter_map(|(other, flip)| flip.held.as_ref().map(|held| (held, *other)))
+            .max_by_key(|(held, other)| (held.frame, *other))
+            .map(|(held, _)| held.clone());
+        let departed = self
+            .departed
+            .remove(layout_id)
+            .filter(|departed| frame - departed.gone <= DEPARTED_FRAMES)
+            .map(|departed| departed.held);
+        match (live, departed) {
+            (Some(live), Some(departed)) if live.frame > departed.frame => Some(live),
+            (live, departed) => departed.or(live),
+        }
+    }
 }
 
 /// The glide of every element with a `layout` prop, shared with the wrappers
@@ -228,8 +365,44 @@ struct Store {
 pub(crate) struct LayoutFlips(Rc<RefCell<Store>>);
 
 impl LayoutFlips {
+    /// Forgets the boxes `keep` refuses. Called once per render, which is what
+    /// a frame is here: a box that left keeps its last place for the next
+    /// frame, for a newcomer with its `layoutId` to start from.
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
-        self.0.borrow_mut().flips.retain(|id, _| keep(*id));
+        let mut store = self.0.borrow_mut();
+        store.frame += 1;
+        let frame = store.frame;
+        let gone: Vec<u64> = store
+            .flips
+            .keys()
+            .copied()
+            .filter(|id| !keep(*id))
+            .collect();
+        for id in gone {
+            let Some(flip) = store.flips.remove(&id) else {
+                continue;
+            };
+            let (Some(layout_id), Some(held)) = (flip.layout_id(), flip.held.clone()) else {
+                continue;
+            };
+            let newer = store
+                .departed
+                .get(layout_id)
+                .is_none_or(|other| other.held.frame <= held.frame);
+            if newer {
+                store
+                    .departed
+                    .insert(layout_id.to_string(), Departed { held, gone: frame });
+            }
+        }
+        store
+            .departed
+            .retain(|_, departed| frame - departed.gone <= DEPARTED_FRAMES);
+    }
+
+    /// The events the glides raised since the last call.
+    pub(crate) fn take_events(&self) -> Vec<LayoutEvent> {
+        std::mem::take(&mut self.0.borrow_mut().events)
     }
 
     /// `child` wrapped to glide, or `child` itself when `source` asks for
@@ -244,13 +417,17 @@ impl LayoutFlips {
         use gpui::IntoElement;
 
         let mut store = self.0.borrow_mut();
-        let flip = store.flips.entry(id).or_insert_with(|| Flip::new(source));
+        let frame = store.frame;
+        let flip = store
+            .flips
+            .entry(id)
+            .or_insert_with(|| Flip::new(source, frame));
         if flip.source != *source {
-            let origin = flip.origin;
-            let track = flip.track.take();
-            *flip = Flip::new(source);
-            flip.origin = origin;
-            flip.track = track;
+            let mut changed = Flip::new(source, flip.born);
+            changed.origin = flip.origin;
+            changed.track = flip.track.take();
+            changed.held = flip.held.take();
+            *flip = changed;
         }
         if flip.config.is_none() {
             return child;
@@ -268,7 +445,38 @@ impl LayoutFlips {
     fn step(&self, id: u64, origin: Vec2, now: Instant) -> Option<Step> {
         let mut store = self.0.borrow_mut();
         let inherited = store.enclosing;
-        Some(store.flips.get_mut(&id)?.step(origin, inherited, now))
+        let frame = store.frame;
+        let flip = store.flips.get(&id)?;
+        let handoff = match flip.layout_id() {
+            Some(layout_id) if flip.origin.is_none() && flip.held.is_none() => {
+                Some(layout_id.to_string())
+            }
+            _ => None,
+        };
+        let holder = handoff.and_then(|layout_id| store.holder(id, &layout_id));
+        let flip = store.flips.get_mut(&id)?;
+        if let Some(holder) = holder {
+            flip.take_over(origin, &holder, now);
+        }
+        let step = flip.step(origin, inherited, now);
+        flip.held = Some(Held {
+            visual: [origin[0] + step.offset[0], origin[1] + step.offset[1]],
+            track: flip.track.clone(),
+            frame,
+        });
+        if step.started {
+            store.events.push(LayoutEvent {
+                id,
+                kind: LayoutEventKind::Start,
+            });
+        }
+        if step.completed {
+            store.events.push(LayoutEvent {
+                id,
+                kind: LayoutEventKind::Complete,
+            });
+        }
+        Some(step)
     }
 }
 
@@ -335,7 +543,8 @@ impl gpui::Element for FlipOffset {
         let outer = std::mem::replace(&mut self.flips.0.borrow_mut().enclosing, step.moved);
         window.with_element_offset(offset, |window| self.child.prepaint(window, cx));
         self.flips.0.borrow_mut().enclosing = outer;
-        if step.active {
+        // The events leave with the next render, which a settled box would not ask for.
+        if step.active || step.started || step.completed {
             window.request_animation_frame();
         }
     }
@@ -367,7 +576,7 @@ mod tests {
     }
 
     fn flip(source: Value) -> Flip {
-        Flip::new(&source)
+        Flip::new(&source, 0)
     }
 
     fn linear() -> Value {
@@ -471,7 +680,7 @@ mod tests {
         flip.step([0.0, 0.0], [0.0; 2], start);
         flip.step([100.0, 0.0], [0.0; 2], start);
         assert!(flip.track.is_some());
-        let mut reduced = Flip::new(&json!({ "mode": true, "reducedMotion": true }));
+        let mut reduced = Flip::new(&json!({ "mode": true, "reducedMotion": true }), 0);
         reduced.origin = flip.origin;
         reduced.track = flip.track.take();
         let step = reduced.step([100.0, 0.0], [0.0; 2], at(start, 100));
@@ -552,5 +761,232 @@ mod tests {
         flip.step([0.0, 0.0], [0.0; 2], start);
         let step = flip.step([50.0, 0.0], [0.0; 2], at(start, 10));
         assert!(!step.active);
+    }
+
+    fn shared(id: &str) -> Value {
+        json!({ "mode": true, "layoutId": id, "transition": { "duration": 1.0, "ease": "linear" } })
+    }
+
+    /// What the build does for an element: a flip, born on the current frame.
+    fn mount(flips: &LayoutFlips, id: u64, source: &Value) {
+        let mut store = flips.0.borrow_mut();
+        let frame = store.frame;
+        store.flips.insert(id, Flip::new(source, frame));
+    }
+
+    /// What a render does before the build: forget what left.
+    fn render(flips: &LayoutFlips, alive: &[u64]) {
+        flips.retain(|id| alive.contains(&id));
+    }
+
+    #[test]
+    fn a_newcomer_starts_where_the_box_that_just_left_was_shown() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+
+        // Unmounted and replaced on the same frame, 100 px to the right.
+        render(&flips, &[2]);
+        mount(&flips, 2, &shared("tab"));
+        let step = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        assert_eq!(step.offset, [-100.0, 0.0]);
+        assert!(step.started && step.active);
+        assert_eq!(flips.take_events(), vec![LayoutEvent { id: 2, kind: LayoutEventKind::Start }]);
+
+        let half = flips.step(2, [100.0, 0.0], at(start, 516)).unwrap();
+        assert!((half.offset[0] + 50.0).abs() < 1e-6, "{:?}", half.offset);
+    }
+
+    #[test]
+    fn the_holder_is_remembered_for_one_frame_after_it_left() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+
+        render(&flips, &[]);
+        render(&flips, &[2]);
+        mount(&flips, 2, &shared("tab"));
+        let next_frame = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        assert!(next_frame.active, "one frame later it is still there");
+
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        render(&flips, &[]);
+        render(&flips, &[]);
+        render(&flips, &[2]);
+        mount(&flips, 2, &shared("tab"));
+        let late = flips.step(2, [100.0, 0.0], at(start, 16)).unwrap();
+        assert!(!late.active, "two frames later it is forgotten");
+    }
+
+    #[test]
+    fn a_holder_that_is_still_mounted_hands_over_its_place() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [20.0, 0.0], start).unwrap();
+
+        render(&flips, &[1, 2]);
+        mount(&flips, 2, &shared("tab"));
+        let step = flips.step(2, [120.0, 0.0], at(start, 16)).unwrap();
+        assert_eq!(step.offset, [-100.0, 0.0]);
+        // The old one is untouched: hiding it is up to the app.
+        let old = flips.step(1, [20.0, 0.0], at(start, 16)).unwrap();
+        assert!(!old.active);
+    }
+
+    #[test]
+    fn a_live_holder_is_where_it_is_drawn_not_where_layout_put_it() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [100.0, 0.0], at(start, 16)).unwrap();
+        // Half way: drawn at 50.
+        flips.step(1, [100.0, 0.0], at(start, 516)).unwrap();
+
+        render(&flips, &[1, 2]);
+        mount(&flips, 2, &shared("tab"));
+        let step = flips.step(2, [300.0, 0.0], at(start, 516)).unwrap();
+        assert!((step.offset[0] + 250.0).abs() < 1e-3, "{:?}", step.offset);
+    }
+
+    #[test]
+    fn two_newcomers_with_one_id_do_not_start_from_each_other() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1, 2]);
+        mount(&flips, 1, &shared("tab"));
+        mount(&flips, 2, &shared("tab"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        let second = flips.step(2, [100.0, 0.0], start).unwrap();
+        assert!(!second.active);
+    }
+
+    #[test]
+    fn other_ids_and_boxes_without_an_id_take_nothing() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("a"));
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        render(&flips, &[2, 3]);
+        mount(&flips, 2, &shared("b"));
+        mount(&flips, 3, &linear());
+        assert!(!flips.step(2, [100.0, 0.0], start).unwrap().active);
+        assert!(!flips.step(3, [100.0, 0.0], start).unwrap().active);
+    }
+
+    #[test]
+    fn a_spring_continues_at_the_speed_of_the_box_that_left() {
+        let start = Instant::now();
+        let spring = json!({
+            "mode": true,
+            "layoutId": "tab",
+            "transition": { "type": "spring", "stiffness": 200.0, "damping": 20.0 }
+        });
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &spring);
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        flips.step(1, [100.0, 0.0], at(start, 16)).unwrap();
+        flips.step(1, [100.0, 0.0], at(start, 116)).unwrap();
+        let speed = {
+            let store = flips.0.borrow();
+            let track = store.flips[&1].track.as_ref().unwrap();
+            track.sample(at(start, 116)).velocity[0]
+        };
+        assert!(speed > 0.0);
+
+        render(&flips, &[2]);
+        mount(&flips, 2, &spring);
+        flips.step(2, [100.0, 0.0], at(start, 116)).unwrap();
+        let carried = {
+            let store = flips.0.borrow();
+            let track = store.flips[&2].track.as_ref().unwrap();
+            track.sample(at(start, 116)).velocity[0]
+        };
+        assert!((carried - speed).abs() < 1e-6, "{carried} vs {speed}");
+    }
+
+    #[test]
+    fn a_box_that_arrives_where_the_holder_was_does_not_glide() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &shared("tab"));
+        flips.step(1, [30.0, 30.0], start).unwrap();
+        render(&flips, &[2]);
+        mount(&flips, 2, &shared("tab"));
+        let step = flips.step(2, [30.0, 30.0], start).unwrap();
+        assert!(!step.active && !step.started);
+    }
+
+    #[test]
+    fn reduced_motion_takes_nothing_over() {
+        let start = Instant::now();
+        let reduced = json!({ "mode": true, "layoutId": "tab", "reducedMotion": true });
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &reduced);
+        flips.step(1, [0.0, 0.0], start).unwrap();
+        render(&flips, &[2]);
+        mount(&flips, 2, &reduced);
+        let step = flips.step(2, [100.0, 0.0], start).unwrap();
+        assert!(!step.active);
+        assert!(flips.take_events().is_empty());
+    }
+
+    #[test]
+    fn a_glide_reports_its_start_and_its_end_once() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        assert!(!flip.step([0.0, 0.0], [0.0; 2], start).started);
+        let first = flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        assert!(first.started && !first.completed);
+        let middle = flip.step([100.0, 0.0], [0.0; 2], at(start, 500));
+        assert!(!middle.started && !middle.completed);
+        let done = flip.step([100.0, 0.0], [0.0; 2], at(start, 1100));
+        assert!(done.completed && !done.started);
+        let after = flip.step([100.0, 0.0], [0.0; 2], at(start, 1200));
+        assert!(!after.completed);
+    }
+
+    #[test]
+    fn a_retarget_starts_again_without_completing_the_one_it_replaced() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], start);
+        flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        let retarget = flip.step([200.0, 0.0], [0.0; 2], at(start, 500));
+        assert!(retarget.started && !retarget.completed);
+    }
+
+    #[test]
+    fn reduced_motion_raises_no_events() {
+        let start = Instant::now();
+        let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
+        flip.step([0.0, 0.0], [0.0; 2], start);
+        let moved = flip.step([100.0, 0.0], [0.0; 2], at(start, 10));
+        assert!(!moved.started && !moved.completed);
+    }
+
+    #[test]
+    fn layout_id_is_an_opaque_non_empty_string() {
+        let config = parse(&json!({ "layoutId": "group:tab" })).unwrap().unwrap();
+        assert_eq!(config.layout_id.as_deref(), Some("group:tab"));
+        assert!(parse(&json!({ "layoutId": "" })).is_err());
+        assert!(parse(&json!({ "layoutId": 3 })).is_err());
+        assert_eq!(parse(&json!({ "layoutId": null })).unwrap().unwrap().layout_id, None);
+        assert!(parse(&json!({ "mode": "size", "layoutId": "a" })).unwrap().is_some());
+        assert!(parse(&json!({ "mode": false, "layoutId": "a" })).unwrap().is_none());
     }
 }

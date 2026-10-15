@@ -4981,6 +4981,23 @@ fn emit_transition_events(
     }
 }
 
+fn emit_layout_events(
+    callback: &Option<EventCallback>,
+    tree: &crate::retained_tree::RetainedTree,
+    events: Vec<crate::motion::LayoutEvent>,
+) {
+    for event in events {
+        let event_type = event.kind.event_type();
+        let listens = tree
+            .elements
+            .get(&event.id)
+            .is_some_and(|element| element.events().contains(event_type));
+        if listens {
+            emit_event_full(callback, event.id, event_type, |_| {});
+        }
+    }
+}
+
 fn emit_animation_events(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
@@ -5568,6 +5585,7 @@ impl GpuixView {
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active() || self.css_animations.take_active() || motion_active {
             window.request_animation_frame();
         }
@@ -6540,6 +6558,7 @@ impl gpui::Render for GpuixView {
         emit_motion_value_events(&callback, &motion_value_frame.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
         self.emit_selection_change(&callback);

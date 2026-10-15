@@ -1064,6 +1064,13 @@ export interface HostProps extends AriaProps, PointerEventProps {
    *  `animation-name` or the name changed. */
   onAnimationCancel?: (event: EventPayload) => void
 
+  // ── Layout animation ───────────────────────────────────────────
+  /** A `layout` glide began: the box moved, or took over a `layoutId`. */
+  onLayoutAnimationStart?: (event: EventPayload) => void
+  /** A `layout` glide reached the box's layout position. Not fired for one a
+   *  newer glide replaced. */
+  onLayoutAnimationComplete?: (event: EventPayload) => void
+
   // ── Highlight ──────────────────────────────────────────────────
   /**
    * Paint a background wash behind matched or explicitly given text ranges.
