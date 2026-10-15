@@ -390,6 +390,8 @@ export declare class TestGpuixRenderer {
   writeClipboardText(text: string): void
   readClipboardText(): string | null
   getFocusedElementId(): number | null
+  /** Makes the offscreen window key or not, as when the user switches apps. */
+  setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void

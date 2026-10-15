@@ -193,4 +193,58 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     far.focus()
     expect(scrollY()).toBeLessThan(0)
   })
+
+  it("does not focus a disabled input that has a tabIndex", () => {
+    const { renderer, focused, idOf, center } = setup(() => (
+      <div style={{ width: 200, height: 100 }}>
+        <input testId="field" disabled tabIndex={0} style={{ width: 100, height: 30 }} />
+        <div testId="stop" tabIndex={0} style={box} />
+      </div>
+    ))
+    renderer.focusElement(idOf("field"))
+    expect(focused()).toBe(null)
+    renderer.nativeSimulateClick(...center("field"))
+    expect(focused()).toBe(null)
+    renderer.simulateKeystrokes("tab")
+    expect(focused()).toBe("stop")
+  })
+
+  it("ignores focus() on an element that is not focusable", () => {
+    const { renderer, focused, idOf } = setup(() => (
+      <div style={{ width: 200, height: 100 }}>
+        <div testId="plain" style={box} />
+      </div>
+    ))
+    renderer.focusElement(idOf("plain"))
+    expect(focused()).toBe(null)
+  })
+
+  it("targets the topmost element of a press, so a backdrop does not focus the input under it", () => {
+    const { renderer, focused, idOf, center } = setup(() => (
+      <div style={{ width: 300, height: 200 }}>
+        <input testId="field" style={{ width: 120, height: 40 }} />
+        <div
+          testId="backdrop"
+          style={{ position: "absolute", top: 0, left: 0, width: 300, height: 200, backgroundColor: "#00000080" }}
+        />
+      </div>
+    ))
+    renderer.focusElement(idOf("field"))
+    expect(focused()).toBe("field")
+    renderer.nativeSimulateClick(...center("field"))
+    expect(focused()).toBe(null)
+  })
+
+  it("keeps focus-visible across the window going inactive and back", () => {
+    const { renderer, focused, idOf } = setup(() => (
+      <div style={{ width: 280, height: 100 }}>
+        <div testId="a" tabIndex={0} style={box} />
+      </div>
+    ))
+    renderer.simulateKeystrokes("tab")
+    expect(focused()).toBe("a")
+    renderer.setWindowActive(false)
+    renderer.setWindowActive(true)
+    expect(renderer.matchesFocus(idOf("a"), ":focus-visible")).toBe(true)
+  })
 })

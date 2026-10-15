@@ -5463,10 +5463,18 @@ impl GpuixView {
             self.focus.note_programmatic();
             handle.focus(window, cx);
             self.observe_focus(window);
-        } else {
+        } else if self.focus_can_still_arrive(id) {
             self.pending_focus_element = Some(PendingFocus::new(id, window, cx));
         }
         cx.notify();
+    }
+
+    /// Whether `id` will get a focus handle on a coming frame: it is not in the
+    /// tree yet, or it is focusable and has not been rendered. An element that
+    /// exists and is not focusable ignores `focus()`, like the DOM.
+    fn focus_can_still_arrive(&self, id: u64) -> bool {
+        let tree = self.tree.lock().unwrap();
+        !tree.elements.contains_key(&id) || tree.focusable_ids.contains(&id)
     }
 
     pub(crate) fn focused_element_id(&self, window: &gpui::Window) -> Option<u64> {

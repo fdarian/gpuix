@@ -64,6 +64,9 @@ pub(crate) struct FocusState {
     /// The next focus change is a script call (`focus()`, `autoFocus`), which
     /// inherits `:focus-visible` from the element it leaves.
     programmatic: bool,
+    /// The element that held focus when the window went inactive, and whether it
+    /// matched `:focus-visible`. Window focus comes back to it as it was.
+    suspended: Option<(u64, bool)>,
 }
 
 impl FocusState {
@@ -82,22 +85,47 @@ impl FocusState {
     /// script moved it off an element that matched, or before the user has
     /// pressed any key or mouse button at all. A key pressed while an element is
     /// focused makes it match, whatever moved focus there.
+    ///
+    /// While the window is inactive nothing is focused, but the element that was
+    /// keeps its `:focus-visible` for when the window comes back, and a script
+    /// focus issued meanwhile stays a script focus until it is seen.
     pub fn observe(
         &mut self,
         current: Option<u64>,
         tree: &RetainedTree,
         keyboard_modality: bool,
         user_input_seen: bool,
+        window_active: bool,
     ) -> Option<FocusChange> {
-        let programmatic = std::mem::take(&mut self.programmatic);
+        let programmatic = if window_active {
+            std::mem::take(&mut self.programmatic)
+        } else {
+            self.programmatic
+        };
         if current == self.focused {
             if current.is_some() && keyboard_modality {
                 self.visible = true;
+            }
+            if window_active {
+                self.suspended = None;
             }
             return None;
         }
         let from = self.focused;
         let from_visible = self.visible;
+        if !window_active {
+            self.suspended = from.map(|id| (id, from_visible)).or(self.suspended);
+        }
+        let resumed_visible = match (current, self.suspended) {
+            (Some(now), Some((before, visible))) if window_active && now == before => visible,
+            _ => false,
+        };
+        // What a script focus inherits from: the element it left, or the one the
+        // window left when it went inactive.
+        let left_visible = from_visible || self.suspended.is_some_and(|(_, visible)| visible);
+        if window_active {
+            self.suspended = None;
+        }
         let to_is_text_control = current
             .and_then(|id| tree.elements.get(&id))
             .is_some_and(|element| is_text_control(&element.element_type));
@@ -105,7 +133,8 @@ impl FocusState {
         self.visible = current.is_some()
             && (to_is_text_control
                 || keyboard_modality
-                || (programmatic && (from_visible || !user_input_seen)));
+                || resumed_visible
+                || (programmatic && (left_visible || !user_input_seen)));
         // A removed element loses focus without an event, like a removed DOM node.
         let from_alive = from.is_some_and(|id| tree.elements.contains_key(&id));
         Some(FocusChange {
@@ -217,8 +246,8 @@ fn emit(
     });
 }
 
-/// The DOM default of a mouse press: focus the nearest focusable element under
-/// it, or nothing.
+/// The DOM default of a mouse press: focus the nearest focusable element at or
+/// above the topmost element under it, or nothing.
 ///
 /// A focusable element under a bare pointer does that itself and calls
 /// `prevent_default`, which is also what a JS `preventDefault()` on `mousedown`
@@ -244,12 +273,20 @@ pub(crate) fn register_mouse_down_default(
             if window.default_prevented() {
                 return;
             }
-            let under_pointer = tree.lock().unwrap().elements_at(
-                f32::from(position.x) as f64,
-                f32::from(position.y) as f64,
-                &crate::automation::get_bounds,
-            );
-            match routing.first_focusable(&under_pointer) {
+            // Only the topmost element is the target. What it covers is not
+            // pressed: a click on a modal backdrop must not focus an input under it.
+            let target_path = {
+                let tree = tree.lock().unwrap();
+                tree.elements_at(
+                    f32::from(position.x) as f64,
+                    f32::from(position.y) as f64,
+                    &crate::automation::get_bounds,
+                )
+                .first()
+                .map(|target| path_to_root(&tree, *target))
+                .unwrap_or_default()
+            };
+            match routing.first_focusable(&target_path) {
                 Some(handle) => window.focus(&handle, cx),
                 None => window.blur(),
             }
@@ -357,6 +394,7 @@ impl GpuixView {
             tree,
             window.last_input_was_keyboard(),
             self.routing.user_input_seen(),
+            window.is_window_active(),
         ) {
             crate::focus::emit_change(&self.event_callback, tree, &change);
         }
@@ -397,9 +435,9 @@ mod tests {
     fn keyboard_focus_is_visible_and_mouse_focus_is_not() {
         let tree = tree_with(&[(1, "div"), (2, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false, true);
+        state.observe(Some(1), &tree, false, true, true);
         assert!(!state.matches(&tree, 1, ":focus-visible").unwrap());
-        state.observe(Some(2), &tree, true, true);
+        state.observe(Some(2), &tree, true, true, true);
         assert!(state.matches(&tree, 2, ":focus-visible").unwrap());
     }
 
@@ -407,9 +445,9 @@ mod tests {
     fn a_key_while_focused_makes_focus_visible() {
         let tree = tree_with(&[(1, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false, true);
+        state.observe(Some(1), &tree, false, true, true);
         assert!(!state.matches(&tree, 1, ":focus-visible").unwrap());
-        assert!(state.observe(Some(1), &tree, true, true).is_none());
+        assert!(state.observe(Some(1), &tree, true, true, true).is_none());
         assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
@@ -417,7 +455,7 @@ mod tests {
     fn text_controls_are_always_focus_visible() {
         let tree = tree_with(&[(1, "input")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false, true);
+        state.observe(Some(1), &tree, false, true, true);
         assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
@@ -425,16 +463,57 @@ mod tests {
     fn script_focus_inherits_visibility_from_the_element_it_leaves() {
         let tree = tree_with(&[(1, "div"), (2, "div"), (3, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, true, true);
+        state.observe(Some(1), &tree, true, true, true);
         state.note_programmatic();
-        state.observe(Some(2), &tree, false, true);
+        state.observe(Some(2), &tree, false, true, true);
         assert!(state.matches(&tree, 2, ":focus-visible").unwrap());
 
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false, true);
+        state.observe(Some(1), &tree, false, true, true);
         state.note_programmatic();
-        state.observe(Some(3), &tree, false, true);
+        state.observe(Some(3), &tree, false, true, true);
         assert!(!state.matches(&tree, 3, ":focus-visible").unwrap());
+    }
+
+    #[test]
+    fn focus_visible_survives_the_window_going_inactive() {
+        let tree = tree_with(&[(1, "div")]);
+        let mut state = FocusState::default();
+        state.observe(Some(1), &tree, true, true, true);
+        let blurred = state.observe(None, &tree, false, true, false).unwrap();
+        assert_eq!((blurred.from, blurred.to), (Some(1), None));
+        let back = state.observe(Some(1), &tree, false, true, true).unwrap();
+        assert!(back.to_visible);
+        assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
+    }
+
+    #[test]
+    fn mouse_focus_stays_not_visible_across_inactivity() {
+        let tree = tree_with(&[(1, "div")]);
+        let mut state = FocusState::default();
+        state.observe(Some(1), &tree, false, true, true);
+        state.observe(None, &tree, false, true, false);
+        state.observe(Some(1), &tree, false, true, true);
+        assert!(!state.matches(&tree, 1, ":focus-visible").unwrap());
+    }
+
+    #[test]
+    fn script_focus_requested_while_inactive_is_still_one_when_seen() {
+        let tree = tree_with(&[(1, "div"), (2, "div")]);
+        let mut state = FocusState::default();
+        state.observe(Some(1), &tree, true, true, true);
+        state.observe(None, &tree, false, true, false);
+        state.note_programmatic();
+        // The request is observed while the window is still inactive.
+        assert!(state.observe(None, &tree, false, true, false).is_none());
+        state.observe(Some(2), &tree, false, true, true);
+        assert!(state.matches(&tree, 2, ":focus-visible").unwrap());
+
+        let mut state = FocusState::default();
+        state.note_programmatic();
+        assert!(state.observe(None, &tree, false, false, false).is_none());
+        state.observe(Some(1), &tree, false, false, true);
+        assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
     #[test]
@@ -442,7 +521,7 @@ mod tests {
         let tree = tree_with(&[(1, "div")]);
         let mut state = FocusState::default();
         state.note_programmatic();
-        state.observe(Some(1), &tree, false, false);
+        state.observe(Some(1), &tree, false, false, true);
         assert!(state.matches(&tree, 1, ":focus-visible").unwrap());
     }
 
@@ -450,12 +529,12 @@ mod tests {
     fn a_change_reports_both_ends_and_a_removed_element_is_silent() {
         let mut tree = tree_with(&[(1, "div"), (2, "div")]);
         let mut state = FocusState::default();
-        state.observe(Some(1), &tree, false, true);
-        let change = state.observe(Some(2), &tree, false, true).unwrap();
+        state.observe(Some(1), &tree, false, true, true);
+        let change = state.observe(Some(2), &tree, false, true, true).unwrap();
         assert_eq!((change.from, change.to), (Some(1), Some(2)));
 
         tree.destroy_element(2);
-        let change = state.observe(None, &tree, false, true).unwrap();
+        let change = state.observe(None, &tree, false, true, true).unwrap();
         assert_eq!((change.from, change.to), (None, None));
     }
 

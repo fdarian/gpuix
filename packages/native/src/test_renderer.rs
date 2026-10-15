@@ -654,6 +654,12 @@ impl TestGpuixRenderer {
         update_view(|view, window, _cx| view.focused_element_id(window).map(|id| id as f64))
     }
 
+    /// Makes the offscreen window key or not, as when the user switches apps.
+    #[napi]
+    pub fn set_window_active(&self, active: bool) -> Result<()> {
+        window_call(move |window, cx| window.set_active_for_tests(active, cx))
+    }
+
     #[napi]
     pub fn focus_next_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;

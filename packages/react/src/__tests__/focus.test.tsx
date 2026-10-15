@@ -21,7 +21,7 @@ function setup(element: React.ReactElement, options = {}) {
     const bounds = renderer.getElementBounds(idOf(testId))
     return [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2]
   }
-  return { renderer, focused, idOf, center }
+  return { root, renderer, focused, idOf, center }
 }
 
 describeNative("focus model", () => {
@@ -88,6 +88,109 @@ describeNative("focus model", () => {
       expect(focused()).toBe(null)
       renderer.simulateKeystrokes("tab")
       expect(focused()).toBe("stop")
+    })
+
+    it("does not focus a disabled input that has a tabIndex", () => {
+      const { renderer, focused, idOf, center } = setup(
+        <div style={{ width: 200, height: 100 }}>
+          <input testId="field" disabled tabIndex={0} style={{ width: 100, height: 30 }} />
+          <textarea testId="area" disabled tabIndex={-1} style={{ width: 100, height: 30 }} />
+          <div testId="stop" tabIndex={0} style={box} />
+        </div>
+      )
+      renderer.focusElement(idOf("field"))
+      renderer.focusElement(idOf("area"))
+      expect(focused()).toBe(null)
+      renderer.nativeSimulateClick(...center("field"))
+      expect(focused()).toBe(null)
+      renderer.simulateKeystrokes("tab")
+      expect(focused()).toBe("stop")
+    })
+
+    it("ignores focus() on an element that is not focusable, now and later", () => {
+      const scene = (tabIndex?: number) => (
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="plain" tabIndex={tabIndex} style={box} />
+        </div>
+      )
+      const { root, renderer, focused, idOf } = setup(scene())
+      renderer.focusElement(idOf("plain"))
+      expect(focused()).toBe(null)
+      // It becoming focusable afterwards is not a reason to honor the old call.
+      root.render(scene(0))
+      renderer.flush()
+      expect(focused()).toBe(null)
+    })
+
+    it("keeps a focus() on an element that has just been created", () => {
+      const { root, renderer, focused } = setup(<div style={{ width: 200, height: 100 }} />)
+      let node
+      root.render(
+        <div style={{ width: 200, height: 100 }}>
+          <div ref={(value) => (node = value)} testId="late" tabIndex={0} style={box} />
+        </div>
+      )
+      node.focus()
+      renderer.flush()
+      expect(focused()).toBe("late")
+    })
+
+    it("ignores a Tab with ctrl, alt or cmd held", () => {
+      const { renderer, focused, idOf } = setup(
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="a" tabIndex={0} style={box} />
+          <div testId="b" tabIndex={0} style={box} />
+        </div>
+      )
+      renderer.focusElement(idOf("a"))
+      for (const stroke of ["ctrl-tab", "alt-tab", "cmd-tab"]) {
+        renderer.simulateKeystrokes(stroke)
+        expect(focused()).toBe("a")
+      }
+      renderer.simulateKeystrokes("tab")
+      expect(focused()).toBe("b")
+    })
+
+    it("hands a modified Tab to the page's keydown listeners", () => {
+      const keys: string[] = []
+      const { renderer, idOf } = setup(
+        <div style={{ width: 200, height: 100 }} onKeyDown={(event) => keys.push(`${event.ctrlKey}:${event.key}`)}>
+          <div testId="a" tabIndex={0} style={box} />
+        </div>
+      )
+      renderer.focusElement(idOf("a"))
+      renderer.simulateKeystrokes("ctrl-tab")
+      expect(keys).toEqual(["true:Tab"])
+    })
+  })
+
+  describe("mouse press", () => {
+    it("targets the topmost element, so a backdrop does not focus the input under it", () => {
+      const { renderer, focused, idOf, center } = setup(
+        <div style={{ width: 300, height: 200 }}>
+          <input testId="field" style={{ width: 120, height: 40 }} />
+          <div
+            testId="backdrop"
+            style={{ position: "absolute", top: 0, left: 0, width: 300, height: 200, backgroundColor: "#00000080" }}
+          />
+        </div>
+      )
+      renderer.focusElement(idOf("field"))
+      expect(focused()).toBe("field")
+      renderer.nativeSimulateClick(...center("field"))
+      expect(focused()).toBe(null)
+    })
+
+    it("still focuses the focusable ancestor of the topmost element", () => {
+      const { renderer, focused, center } = setup(
+        <div style={{ width: 300, height: 200 }}>
+          <div testId="holder" tabIndex={0} style={{ width: 120, height: 60 }}>
+            <div testId="inner" style={{ width: 120, height: 60, backgroundColor: "#334155" }} />
+          </div>
+        </div>
+      )
+      renderer.nativeSimulateClick(...center("inner"))
+      expect(focused()).toBe("holder")
     })
   })
 
@@ -263,6 +366,57 @@ describeNative("focus model", () => {
       renderer.simulateKeystrokes("tab")
       renderer.focusElement(idOf("button"))
       expect(renderer.matchesFocus(idOf("button"), ":focus-visible")).toBe(true)
+    })
+
+    it("keeps focus-visible across the window going inactive and back", () => {
+      const { renderer, idOf, focused, center } = setup(scene)
+      renderer.simulateKeystrokes("tab")
+      const target = focused()
+      // A press on the focused element leaves its focus-visible, but the last
+      // input is the mouse's, so only the remembered state can bring it back.
+      renderer.nativeSimulateClick(...center(target))
+      expect(renderer.matchesFocus(idOf(target), ":focus-visible")).toBe(true)
+      renderer.setWindowActive(false)
+      expect(renderer.matchesFocus(idOf(target), ":focus")).toBe(false)
+      renderer.setWindowActive(true)
+      expect(focused()).toBe(target)
+      expect(renderer.matchesFocus(idOf(target), ":focus-visible")).toBe(true)
+    })
+
+    it("does not make a mouse focus visible by going inactive and back", () => {
+      const { renderer, idOf, center } = setup(scene)
+      renderer.nativeSimulateClick(...center("button"))
+      renderer.setWindowActive(false)
+      renderer.setWindowActive(true)
+      expect(renderer.matchesFocus(idOf("button"), ":focus")).toBe(true)
+      expect(renderer.matchesFocus(idOf("button"), ":focus-visible")).toBe(false)
+    })
+
+    it("keeps autoFocus programmatic when it was issued while the window was inactive", () => {
+      const root = createTestRoot({ width: 300, height: 200 })
+      const { renderer } = root
+      renderer.setWindowActive(false)
+      root.render(
+        <div style={{ width: 280, height: 100 }}>
+          <div testId="auto" tabIndex={0} autoFocus style={box} />
+        </div>
+      )
+      renderer.flush()
+      renderer.setWindowActive(true)
+      const id = renderer.findByTestId("auto").id
+      // No key or mouse yet, so a script focus is visible (Chrome).
+      expect(renderer.matchesFocus(id, ":focus")).toBe(true)
+      expect(renderer.matchesFocus(id, ":focus-visible")).toBe(true)
+    })
+
+    it("keeps a focus() made while inactive programmatic until the window returns", () => {
+      const { renderer, idOf } = setup(scene)
+      renderer.simulateKeystrokes("tab")
+      renderer.setWindowActive(false)
+      renderer.focusElement(idOf("other"))
+      renderer.setWindowActive(true)
+      expect(renderer.matchesFocus(idOf("other"), ":focus")).toBe(true)
+      expect(renderer.matchesFocus(idOf("other"), ":focus-visible")).toBe(true)
     })
 
     it("styles focusVisible from that state, not from the last input", () => {

@@ -85,12 +85,16 @@ impl RetainedElement {
     }
 
     /// Whether the element must own a gpui focus handle, which is what DOM calls
-    /// focusable: an enabled text control, or any element with a `tabIndex`.
+    /// focusable: an enabled text control, or any other element with a `tabIndex`.
     /// A key or focus listener does not make an element focusable; an ancestor's
     /// key listener still hears the keys of a focused descendant.
     pub fn needs_focus(&self) -> bool {
-        crate::focus::is_text_control(&self.element_type) && !self.is_disabled()
-            || self.tab_index().is_some()
+        if crate::focus::is_text_control(&self.element_type) {
+            // `disabled` outranks `tabIndex`: a disabled control cannot be focused at all.
+            !self.is_disabled()
+        } else {
+            self.tab_index().is_some()
+        }
     }
 
     pub fn is_disabled(&self) -> bool {

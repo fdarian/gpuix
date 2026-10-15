@@ -1468,7 +1468,8 @@ impl TextEditorState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        // A prevented mousedown moves neither focus nor the caret, as in the DOM.
+        if self.disabled || window.default_prevented() {
             return;
         }
         if !self.read_only {

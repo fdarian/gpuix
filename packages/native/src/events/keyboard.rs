@@ -51,6 +51,11 @@ impl InputRouting {
         self.0.window_key_event_id.set(event_id);
     }
 
+    /// Whether a JS root is attached, which is what runs the Tab default.
+    fn js_root_attached(&self) -> bool {
+        self.0.window_key_down.get()
+    }
+
     pub fn set_focusables(&self, handles: impl Iterator<Item = (u64, WeakFocusHandle)>) {
         let mut focusables = self.0.focusables.borrow_mut();
         focusables.clear();
@@ -74,7 +79,8 @@ impl InputRouting {
             .find_map(|(id, handle)| (*handle == focused).then_some(*id))
     }
 
-    /// The focus handle of the first of `ids` that is focusable.
+    /// The focus handle of the first of `ids` that is focusable. `ids` is a
+    /// path, innermost first.
     pub(crate) fn first_focusable(&self, ids: &[u64]) -> Option<gpui::FocusHandle> {
         let focusables = self.0.focusables.borrow();
         ids.iter()
@@ -164,10 +170,11 @@ fn key_payload(
 
 /// Sends `keyDown` for every keystroke before GPUI binds it to anything.
 ///
-/// Tab never reaches GPUI's bindings or the platform text input even when JS
-/// lets it through: it is a navigation key, never text, as in a browser field.
-/// Focus moves in the JS default action, which already ran by the time the
-/// outcome is back. The subscription ends the interception when dropped.
+/// Tab never reaches GPUI's bindings or the platform text input when the JS
+/// default will move focus (no ctrl, alt or cmd held, and a JS root attached):
+/// it is a navigation key, never text, as in a browser field. That default
+/// already ran by the time the outcome is back. The subscription ends the
+/// interception when dropped.
 pub(crate) fn install_key_down(
     cx: &mut App,
     tree: Arc<Mutex<RetainedTree>>,
@@ -187,7 +194,14 @@ pub(crate) fn install_key_down(
         )
         .map(|payload| sync_dispatch::emit(window, cx, &callback, payload))
         .is_some_and(|outcome| outcome.default_prevented);
-        if prevented || event.keystroke.key == "tab" {
+        // The JS Tab default replaces gpui's focus move, so gpui must only be
+        // kept from it when that default is going to run. Otherwise Ctrl+Tab and
+        // a Tab with nobody attached would do nothing at all.
+        let modifiers = event.keystroke.modifiers;
+        let tab_default_runs = event.keystroke.key == "tab"
+            && !(modifiers.control || modifiers.alt || modifiers.platform)
+            && routing.js_root_attached();
+        if prevented || tab_default_runs {
             cx.stop_propagation();
         }
     })

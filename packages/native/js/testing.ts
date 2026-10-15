@@ -48,6 +48,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   focusNext(): void
   focusPrevious(): void
   getFocusedElementId(): number | null
+  setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
@@ -729,6 +730,13 @@ export class TestRenderer implements NativeRenderer {
   getFocusedElementId(): number | null {
     this.native.flush()
     return this.native.getFocusedElementId()
+  }
+
+  /** Makes the offscreen window key (`true`, the default) or not, as when the user switches apps. */
+  setWindowActive(active: boolean): void {
+    this.native.setWindowActive(active)
+    this.native.flush()
+    this.dispatchNativeEvents()
   }
 
   focusNextWithin(elementId: number): void {
