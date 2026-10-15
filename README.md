@@ -1817,8 +1817,85 @@ bound to a plain `div`, or not bound to any element animates normally.
 CSS `transition` is not affected, as in the DOM. `useReducedMotionConfig()`
 (`createReducedMotionConfig()` in Solid, returning an accessor) reports whether
 the nearest `MotionConfig` is reduced right now, for animation you drive
-yourself. The `layout` FLIP animation is not part of `motion` yet; it will
-follow this setting when it lands.
+yourself. [Layout animations](#layout-animations) follow the setting: a reduced
+`layout` or `layoutId` box jumps to its new position.
+
+### Layout animations
+
+`layout` on a `motion.div` makes the box glide to its new position when layout
+moves it, instead of jumping: a sibling pushed down by a growing accordion, a
+list that reorders. `layoutId` shares a glide between elements.
+
+```tsx
+import { LayoutGroup, motion } from '@gpuix/react'
+
+function Tabs({ tabs, active, onSelect }) {
+  return (
+    <LayoutGroup id="tabs">
+      <div style={{ display: 'flex' }}>
+        {tabs.map((tab) => (
+          <div key={tab} onClick={() => onSelect(tab)} style={{ width: 100, height: 28 }}>
+            {tab === active && (
+              <motion.div
+                layoutId="highlight"
+                transition={{ type: 'spring', duration: 0.4 }}
+                style={{ width: 100, height: 28, bg: '#3b82f6' }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </LayoutGroup>
+  )
+}
+
+<div style={{ display: 'flex', flexDirection: 'column' }}>
+  {order.map((item) => (
+    <motion.div key={item} layout />   // glides when `order` changes
+  ))}
+</div>
+```
+
+`@gpuix/solid` takes the same props.
+
+- **`layout`** is `true`, `"position"`, `"size"` or `false`. Where the box
+  would land, it starts from where it was last drawn, with the speed it had,
+  and eases to the layout position. Hit testing follows what is drawn. A box
+  inside another `layout` box is not moved twice, and scrolling is not read as
+  a move.
+- **`layoutId`** hands the glide to the next element with the same id: an
+  element that appears with an id some other element held starts from where
+  that one was last shown. It implies `layout`; `layout={false}` turns both
+  off. An element that unmounts is remembered for one frame, so the newcomer
+  has to mount in the same commit or the next one.
+- **`transition`** is `transition.layout` if set, else the `transition` of the
+  component or of the nearest [`MotionConfig`](#motionconfig-and-reduced-motion),
+  else a 0.45 s cubic-bezier tween. `transition.layout` does not affect
+  `animate`, and the rest of `transition` does not need to apply to it:
+  `transition={{ duration: 0.2, layout: { type: 'spring' } }}`. A layout
+  transition cannot repeat.
+- **`onLayoutAnimationStart`** and **`onLayoutAnimationComplete`** fire when a
+  glide begins and when it reaches the layout position. A glide replaced by a
+  newer one does not complete. Both are reported one frame after the glide
+  starts or ends.
+- **`LayoutGroup`** with an `id` prefixes the `layoutId` of every `motion.*`
+  below it as `${id}-${layoutId}`, so two groups can reuse an id without
+  sharing a glide. Nested groups join their ids with `-`: group `a` inside group
+  `b` scopes `h` as `b-a-h`. A `LayoutGroup` without an `id` changes nothing.
+- **`MotionConfig`** with `reducedMotion` that is reduced makes the box jump.
+
+Differences from Motion for React:
+
+- Only position glides. A size change snaps, because GPUIX has no transform to
+  scale a box with and re-laying out every frame would flash. `layout="size"`
+  therefore does nothing on its own; with a `layoutId` it still moves the box.
+  `"preserve-aspect"` is not supported.
+- The element that held a `layoutId` is not hidden when another takes the id.
+  If both stay mounted the newcomer glides from the old one, and the old one
+  stays where it is. Unmount it or set its `opacity` yourself, as in the tabs
+  example above.
+- Layout animations start automatically; `LayoutGroup` does not need to
+  re-render siblings to notice a change.
 
 ### Capture exact frames
 
