@@ -7276,7 +7276,7 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
         .as_deref()
         .and_then(crate::css::clip_path::parse)
     {
-        el.style().clip_path = clip_path;
+        el.style().clip_path = Some(clip_path.into());
     }
     if let Some(cursor) = style.cursor.as_deref().and_then(crate::style::parse_cursor) {
         el = el.cursor(cursor);
