@@ -694,6 +694,34 @@ export interface StyleDesc {
    */
   interpolateSize?: "numeric-only" | "allow-keywords"
 
+  /**
+   * CSS animations, in CSS syntax as in a DOM inline style: `"fade-in 300ms
+   * ease-out 100ms 2 alternate both"`, `"spin 1s linear infinite"`, `"none"`.
+   * `name` is a set of keyframes made with `defineKeyframes`. The parts come in
+   * any order; the first time is the duration and the second the delay. A comma
+   * list runs several animations. An invalid value is an error. A name with no
+   * keyframes animates nothing, as in a browser. The longhands below win over
+   * this shorthand. `animation-composition`, `animation-timeline` and
+   * `animation-range` are not supported.
+   */
+  animation?: string
+  /** `none` or a list of names given to `defineKeyframes`. */
+  animationName?: string
+  /** A list of `<time>`s, or `auto` (`0s`). */
+  animationDuration?: string
+  /** A list of the same easing functions as `transitionTimingFunction`. */
+  animationTimingFunction?: string
+  /** A list of `<time>`s. Negative starts the animation part-way through. */
+  animationDelay?: string
+  /** A list of `infinite` or non-negative numbers. */
+  animationIterationCount?: string
+  /** A list of `normal`, `reverse`, `alternate` or `alternate-reverse`. */
+  animationDirection?: string
+  /** A list of `none`, `forwards`, `backwards` or `both`. */
+  animationFillMode?: string
+  /** A list of `running` or `paused`. */
+  animationPlayState?: string
+
   // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
   // Nesting is one level deep: a state style cannot contain another.
   hover?: StateStyleDesc
