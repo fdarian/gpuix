@@ -159,6 +159,8 @@ export interface Instance extends Partial<FocusableElement> {
   id: number
   type: ElementType
   props: Props
+  /** The element this one is placed in; absent at the root of a window. */
+  parentId?: number
   setPointerCapture?(pointerId: number): void
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean

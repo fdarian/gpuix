@@ -152,6 +152,12 @@ function attachTextControlMethods(control: TextControlInstance, container: Conta
   })
 }
 
+function adopt(parent: Instance | undefined, child: Instance | TextInstance): void {
+  if (!("type" in child)) return
+  if (parent) child.parentId = parent.id
+  else delete child.parentId
+}
+
 function stateFor(node: HostNode): HostNodeState {
   const state = hostNodeStates.get(node)
   if (!state) {
@@ -416,6 +422,7 @@ export const hostConfig = {
     assertPlacement(parent, child)
     const parentState = materialize(parent)
     materialize(child)
+    adopt(parent, child)
     parentState.container.renderer.appendChild(parent.id, child.id)
   },
 
@@ -439,6 +446,7 @@ export const hostConfig = {
     assertPlacement(parent, child)
     const parentState = materialize(parent)
     materialize(child)
+    adopt(parent, child)
     parentState.container.renderer.insertBefore(parent.id, child.id, beforeChild.id)
   },
 
@@ -454,6 +462,7 @@ export const hostConfig = {
     if (!target) return
     assertPlacement(target, child)
     materialize(child)
+    adopt(target, child)
     container.renderer.insertBefore(target.id, child.id, beforeChild.id)
   },
 
@@ -573,6 +582,7 @@ export const hostConfig = {
     const target = container.portalTarget
     assertPlacement(target, child)
     materialize(child)
+    adopt(target, child)
     if (target) {
       materialize(target)
       container.renderer.appendChild(target.id, child.id)
@@ -583,6 +593,7 @@ export const hostConfig = {
 
   appendInitialChild(parent: Instance, child: Instance | TextInstance): void {
     assertPlacement(parent, child)
+    adopt(parent, child)
     const state = stateFor(parent)
     state.initialChildren ??= []
     state.initialChildren.push(child)

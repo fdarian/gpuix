@@ -3,11 +3,13 @@ import type { EventPayload } from "@gpuix/native"
 import {
   layoutDescription,
   reduceMotionValues,
+  resolveExit,
   scopeLayoutId,
   withoutLayoutTransition,
   wireMotionTransition,
 } from "@gpuix/native/host"
 import type {
+  ExitTarget,
   MotionLayoutProps,
   MotionProps,
   MotionTransition,
@@ -20,6 +22,7 @@ import type {
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
+  WithExitFunction,
 } from "@gpuix/native/host"
 import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
@@ -28,15 +31,16 @@ import { PresenceContext } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
 
-export interface MotionDivProps extends SolidHostProps, MotionProps, MotionLayoutProps {}
+export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionProps>, MotionLayoutProps {}
 
 /** A `motion.path`, `motion.circle`, ...: the shape's own props plus the animation. */
-export type MotionShapeProps<Shape> = SolidHostProps<Shape> & SvgMotionProps
+export type MotionShapeProps<Shape> = SolidHostProps<Shape> & WithExitFunction<SvgMotionProps>
 
 interface MotionSource {
   initial?: object | false
   animate?: object
-  exit?: object
+  exit?: ExitTarget<object>
+  custom?: unknown
   transition?: MotionTransition | SvgMotionTransition
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
@@ -48,6 +52,7 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
       "initial",
       "animate",
       "exit",
+      "custom",
       "transition",
       "layout",
       "layoutId",
@@ -56,13 +61,18 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = () => config !== undefined && config.reduced()
+    // An `exit` function has nothing to leave from outside an `AnimatePresence`.
+    const exit = () =>
+      typeof motionProps.exit === "function" && !presence
+        ? undefined
+        : resolveExit(motionProps.exit, presence?.custom() ?? motionProps.custom)
     createRenderEffect(() => {
       if (!reduced()) return
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
       onCleanup(release)
     })
     createRenderEffect(() => {
-      if (presence && !presence.isPresent() && !motionProps.exit) {
+      if (presence && !presence.isPresent() && !exit()) {
         presence.safeToRemove()
       }
     })
@@ -81,9 +91,9 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
         })
       },
       get motion() {
-        const isExit = Boolean(presence && !presence.isPresent() && motionProps.exit)
+        const isExit = Boolean(presence && !presence.isPresent() && exit())
         const initial = presence?.initial === false ? false : motionProps.initial
-        const animate = isExit ? motionProps.exit! : motionProps.animate
+        const animate = isExit ? exit()! : motionProps.animate
         if (animate === undefined) return undefined
         const transition = withoutLayoutTransition(resolvedTransition())
         const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
@@ -96,7 +106,7 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
           isExit,
           initial,
           animate,
-          exit: motionProps.exit,
+          exit: exit(),
           transition,
           ...(reduced() ? { reducedMotion: true } : {}),
         }

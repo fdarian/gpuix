@@ -1,5 +1,6 @@
 import {
   Children,
+  cloneElement,
   createContext,
   createElement,
   Fragment,
@@ -13,13 +14,19 @@ import {
   useRef,
   useState,
 } from "react"
-import type { ReactElement, ReactNode } from "react"
+import type { ReactElement, ReactNode, Ref } from "react"
+import { measurePopLayout } from "@gpuix/native/host"
+import type { PopLayoutStyle, PresenceMode } from "@gpuix/native/host"
+import { useGpuix } from "../hooks/use-gpuix.js"
+import type { Instance } from "../types/host.js"
 export type ComponentKey = string | number
 
 export interface PresenceContextValue {
   id: string
   isPresent: boolean
   initial: false | undefined
+  /** The `custom` of the `AnimatePresence` the child is in, for an `exit` function. */
+  custom: unknown
   onExitComplete: (childId: string) => void
   register: (childId: string) => () => void
 }
@@ -57,6 +64,16 @@ export interface AnimatePresenceProps {
   initial?: boolean
   /** Fires when every exiting child has finished. */
   onExitComplete?: () => void
+  /**
+   * `"sync"` (default): enter and exit together. `"wait"`: a new child
+   * renders only after every exit is done. `"popLayout"`: a leaving child is
+   * taken out of flow at its last box inside its parent, so siblings reflow
+   * at once. The child must take `style` and `ref` (a `motion.*` or a host
+   * element); `getElementBounds` supplies the box.
+   */
+  mode?: PresenceMode
+  /** Passed to the `exit` function of every child that leaves, in place of the `custom` it last rendered with. */
+  custom?: unknown
 }
 
 function getChildKey(child: ReactElement): ComponentKey {
@@ -71,17 +88,57 @@ function onlyElements(children: ReactNode): ReactElement[] {
   return filtered
 }
 
-function PresenceChild({
-  children,
-  isPresent,
-  initial,
-  onExitComplete,
-}: {
+function setRef<Value>(ref: Ref<Value> | undefined, value: Value | null): void {
+  if (typeof ref === "function") ref(value)
+  else if (ref) ref.current = value
+}
+
+type PoppableProps = { ref?: Ref<Instance>; style?: object }
+
+type PresenceChildProps = {
   children: ReactElement
   isPresent: boolean
   initial: false | undefined
+  custom: unknown
+  popLayout: boolean
   onExitComplete?: () => void
-}) {
+}
+
+/** The child with its box pinned while it leaves; the box is read before the commit that takes it out of flow. */
+function usePoppedChild(props: PresenceChildProps): ReactElement {
+  const child = props.children as ReactElement<PoppableProps>
+  const gpuix = useGpuix()
+  const instance = useRef<Instance | null>(null)
+  const box = useRef<PopLayoutStyle | undefined>(undefined)
+  const ownRef = child.props.ref
+  const ref = useCallback(
+    (node: Instance | null) => {
+      instance.current = node
+      setRef(ownRef, node)
+    },
+    [ownRef]
+  )
+
+  if (!props.popLayout) return child
+  if (props.isPresent) {
+    box.current = undefined
+  } else if (box.current === undefined && instance.current !== null) {
+    if (!gpuix.renderer) throw new Error('AnimatePresence mode="popLayout" needs a GPUIX root')
+    box.current = measurePopLayout(gpuix.renderer, instance.current.id, instance.current.parentId)
+  }
+  const style = child.props.style
+  return cloneElement(
+    child,
+    box.current === undefined ? { ref } : { ref, style: { ...style, ...box.current } }
+  )
+}
+
+function PresenceChild(props: PresenceChildProps) {
+  const children = usePoppedChild(props)
+  const isPresent = props.isPresent
+  const initial = props.initial
+  const custom = props.custom
+  const onExitComplete = props.onExitComplete
   const presenceChildren = useRef(
     new Map<string, PresenceContextValue["onExitComplete"] | null>()
   ).current
@@ -122,11 +179,12 @@ function PresenceChild({
     (): PresenceContextValue => ({
       id,
       initial,
+      custom,
       isPresent,
       onExitComplete: completeCycle,
       register,
     }),
-    [completeCycle, id, initial, isPresent, register]
+    [completeCycle, custom, id, initial, isPresent, register]
   )
 
   useEffect(() => {
@@ -140,6 +198,8 @@ export function AnimatePresence({
   children,
   initial = true,
   onExitComplete,
+  mode = "sync",
+  custom,
 }: AnimatePresenceProps): ReactElement {
   const presentChildren = useMemo(() => onlyElements(children), [children])
   const presentKeys = new Set(presentChildren.map(getChildKey))
@@ -159,7 +219,11 @@ export function AnimatePresence({
     }
   }, [exitComplete, presentChildren, renderedChildren])
 
-  const nextChildren = [...presentChildren]
+  const renderedKeys = new Set(renderedChildren.map(getChildKey))
+  const isWaiting = mode === "wait" && renderedChildren.some((child) => !presentKeys.has(getChildKey(child)))
+  const nextChildren = isWaiting
+    ? presentChildren.filter((child) => renderedKeys.has(getChildKey(child)))
+    : [...presentChildren]
   for (let i = 0; i < renderedChildren.length; i++) {
     const child = renderedChildren[i]
     const key = getChildKey(child)
@@ -196,6 +260,8 @@ export function AnimatePresence({
       return createElement(PresenceChild, {
         key,
         isPresent,
+        custom,
+        popLayout: mode === "popLayout",
         initial: isInitialRender.current && initial === false ? false : undefined,
         onExitComplete: isPresent ? undefined : onExit,
         children: child,

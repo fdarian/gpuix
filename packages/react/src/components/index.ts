@@ -5,11 +5,13 @@ import type { ReactElement, ReactNode } from "react"
 import {
   layoutDescription,
   reduceMotionValues,
+  resolveExit,
   scopeLayoutId,
   withoutLayoutTransition,
   wireMotionTransition,
 } from "@gpuix/native/host"
 import type {
+  ExitTarget,
   MotionLayoutProps,
   MotionProps,
   MotionTransition,
@@ -25,6 +27,7 @@ import type {
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
+  WithExitFunction,
 } from "../types/host.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
@@ -61,7 +64,7 @@ export const gpuixComponents = {
 
 export type GpuixComponentType = keyof typeof gpuixComponents
 
-export interface MotionDivProps extends MotionProps, MotionLayoutProps {
+export interface MotionDivProps extends WithExitFunction<MotionProps>, MotionLayoutProps {
   children?: ReactNode
   style?: MotionValueStyle
   onClick?: Props["onClick"]
@@ -88,7 +91,8 @@ export interface MotionDivProps extends MotionProps, MotionLayoutProps {
 interface MotionSource<Style, Transition> {
   initial?: Style | false
   animate?: Style
-  exit?: Style
+  exit?: ExitTarget<NonNullable<Style>>
+  custom?: unknown
   transition?: Transition
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
@@ -97,7 +101,7 @@ interface MotionSource<Style, Transition> {
 
 function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
   return forwardRef<PublicInstance, Source>(function Motion(
-    { initial, animate, exit, transition, layout, layoutId, onMotionComplete, ...props },
+    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, onMotionComplete, ...props },
     ref
   ): ReactElement {
     const presence = useContext(PresenceContext)
@@ -107,6 +111,11 @@ function createMotionComponent<Source extends MotionSource<object, MotionTransit
     const resolvedTransition = wireMotionTransition(transition ?? config?.transition)
     const motionTransition = withoutLayoutTransition(resolvedTransition)
     const [isPresent, safeToRemove] = usePresence()
+    // An `exit` function has nothing to leave from outside an `AnimatePresence`.
+    const exit =
+      typeof exitTarget === "function" && presence === null
+        ? undefined
+        : resolveExit(exitTarget, presence?.custom ?? custom)
     const resolvedInitial = presence?.initial === false ? false : initial
     const resolvedAnimate = !isPresent && exit ? exit : animate
 
@@ -159,7 +168,7 @@ const MotionDiv = createMotionComponent<MotionDivProps>("div")
 
 /** Props of a `motion.path`, `motion.circle`, ...: the shape's own plus Framer's animation props. */
 export type MotionShapeProps<Shape> = Omit<Shape, "motion" | "ref" | "key"> &
-  SvgMotionProps & {
+  WithExitFunction<SvgMotionProps> & {
     onMotionComplete?: Props["onMotionComplete"]
   }
 

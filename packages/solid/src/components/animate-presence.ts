@@ -12,12 +12,15 @@ import {
   type Signal,
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
-import type { MotionProps } from "@gpuix/native/host"
+import { measurePopLayout } from "@gpuix/native/host"
+import type { MotionProps, PresenceMode, StyleDesc } from "@gpuix/native/host"
 import { HostElement, setHostProperty } from "../host.js"
 
 export interface PresenceContextValue {
   isPresent: Accessor<boolean>
   initial: false | undefined
+  /** The `custom` of the `AnimatePresence` the child is in, for an `exit` function. */
+  custom: Accessor<unknown>
   safeToRemove(): void
 }
 
@@ -38,6 +41,15 @@ export interface AnimatePresenceProps {
   children?: JSX.Element
   initial?: boolean
   onExitComplete?: () => void
+  /**
+   * `"sync"` (default): enter and exit together. `"wait"`: a new child
+   * renders only after every exit is done. `"popLayout"`: a leaving child is
+   * taken out of flow at its last box inside its parent, so siblings reflow
+   * at once. The child must resolve to a single host element.
+   */
+  mode?: PresenceMode
+  /** Passed to the `exit` function of every child that leaves. */
+  custom?: unknown
 }
 
 type NativeMotionProps = MotionProps & {
@@ -54,13 +66,38 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   const resolved = children(() => props.children)
   const [rendered, setRendered] = createSignal(normalize(resolved()))
   const presence = new Map<JSX.Element, Signal<boolean>>()
+  const unpopped = new Map<HostElement, StyleDesc>()
   let initial = true
+
+  const pop = (item: HostElement) => {
+    if (!item.root || !item.mounted || unpopped.has(item)) return
+    const parent = item.parent
+    const box = measurePopLayout(
+      item.root.nativeRenderer,
+      item.id,
+      parent?.kind === "element" ? parent.id : undefined
+    )
+    if (box === undefined) return
+    unpopped.set(item, item.style)
+    item.style = { ...item.style, ...box }
+    item.root.mutations.setStyle(item.id, item.style)
+  }
+
+  const unpop = (item: HostElement) => {
+    const style = unpopped.get(item)
+    if (style === undefined) return
+    unpopped.delete(item)
+    item.style = style
+    if (item.root && item.mounted) item.root.mutations.setStyle(item.id, style)
+  }
 
   const remove = (item: JSX.Element, entry: Signal<boolean>) => {
     if (entry[0]() || !presence.has(item)) return
     presence.delete(item)
+    if (item instanceof HostElement) unpopped.delete(item)
     setRendered(rendered().filter((candidate) => candidate !== item))
     if (![...presence.values()].some(([present]) => !present())) {
+      if (props.mode === "wait") setRendered(normalize(untrack(resolved)))
       props.onExitComplete?.()
     }
   }
@@ -73,6 +110,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       const entry = presence.get(item)
       if (entry) entry[1](true)
       else presence.set(item, createSignal(true))
+      if (item instanceof HostElement) unpop(item)
       if (initial && props.initial === false && item instanceof HostElement) {
         const motion = item.props.get("motion") as MotionProps | undefined
         if (motion) setHostProperty(item, "motion", { ...motion, initial: false }, motion)
@@ -80,8 +118,9 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
     }
     for (const item of exiting) {
       const entry = presence.get(item)
-      if (!entry) continue
+      if (!entry || !entry[0]()) continue
       entry[1](false)
+      if (item instanceof HostElement && props.mode === "popLayout") pop(item)
       if (!(item instanceof HostElement)) {
         remove(item, entry)
         continue
@@ -115,7 +154,9 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
         previous
       )
     }
-    const next = [...current, ...exiting]
+    const waiting = props.mode === "wait" && exiting.length > 0
+    const visible = waiting ? current.filter((item) => previous.includes(item)) : current
+    const next = [...visible, ...exiting]
     if (
       next.length !== previous.length ||
       next.some((item, index) => item !== previous[index])
@@ -134,6 +175,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
         value: {
           isPresent: entry[0],
           initial: initial && props.initial === false ? false : undefined,
+          custom: () => props.custom,
           safeToRemove: () => remove(item, entry),
         },
         get children() { return item },
