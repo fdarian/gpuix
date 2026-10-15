@@ -63,6 +63,16 @@ export interface AnimationControls extends PromiseLike<void> {
   complete(): void
 }
 
+/**
+ * What `animate` takes for a value: one target, or keyframes. A `null` stands
+ * for the keyframe before it, or for the value's own value when it comes
+ * first. An array is keyframes unless it is itself a value of the kind the
+ * source holds: a `number[]` target of a list-of-numbers value, or a
+ * `BoxShadow[]` target of a shadow value. Keyframes of those kinds are lists of
+ * lists.
+ */
+export type MotionTarget<Data extends MotionData> = Data | Array<Data | null>
+
 export type NumberAnimationOptions = {
   /** The renderer that samples the animation. */
   host: MotionValueRenderer
@@ -86,6 +96,42 @@ const HOST_METHODS = [
 ] as const satisfies readonly (keyof MotionValueHost)[]
 
 const INSTANT: MotionCurve = { duration: 0 }
+
+/**
+ * JSON has no `Infinity`, so an infinite repeat goes to the renderer as the
+ * string it accepts. The motion components send their transitions the same way.
+ */
+export function wireTransition(transition: MotionCurve): MotionCurve
+export function wireTransition(transition: MotionCurve | undefined): MotionCurve | undefined
+export function wireTransition(transition: MotionCurve | undefined): MotionCurve | undefined {
+  if (transition?.repeat !== Infinity) return transition
+  return { ...transition, repeat: "Infinity" } as unknown as MotionCurve
+}
+
+function isShadowLayer(item: unknown): boolean {
+  return typeof item === "object" && item !== null && !Array.isArray(item)
+}
+
+/**
+ * Where an animation of `target` ends. The renderer reads an array as keyframes
+ * unless it is a list of the kind `from` holds, and this reads it the same way.
+ */
+function endOf(target: MotionTarget<MotionData>, from: MotionData): MotionData {
+  if (!Array.isArray(target)) return target
+  const items: unknown[] = target
+  const holdsNumbers = Array.isArray(from) && typeof from[0] === "number"
+  const holdsShadows = !holdsNumbers && typeof from === "object"
+  if (
+    (holdsNumbers && items.every((item) => typeof item === "number")) ||
+    (holdsShadows && items.every(isShadowLayer))
+  ) {
+    return target as MotionData
+  }
+  for (let index = items.length - 1; index >= 0; index--) {
+    if (items[index] !== null) return items[index] as MotionData
+  }
+  return from
+}
 
 type ComputedTrigger = "change" | "animationComplete"
 
@@ -119,7 +165,7 @@ type Attachment = {
 }
 
 type Animation = {
-  readonly target: MotionData
+  readonly target: MotionTarget<MotionData>
   readonly from: MotionData
   readonly transition: MotionCurve | undefined
   readonly resolve: () => void
@@ -274,7 +320,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
    * is bound the animation waits, and starts from the value at that point.
    * Only a `motionValue()` animates: a spring is moved with `set()`.
    */
-  animate(target: Data, transition?: MotionCurve): AnimationControls {
+  animate(target: MotionTarget<Data>, transition?: MotionCurve): AnimationControls {
     this.#assertAlive()
     if (this.#definition.kind !== "source") {
       throw new Error(
@@ -286,7 +332,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
     const waiting = deferred()
     const finished = waiting.promise
     const animation: Animation = {
-      target,
+      target: target as MotionTarget<MotionData>,
       from: this.get(),
       transition: this.#reducers > 0 ? INSTANT : transition,
       resolve: waiting.resolve,
@@ -312,7 +358,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
         this.jump(animation.from as Data)
       },
       complete: () => {
-        if (current()) this.jump(animation.target as Data)
+        if (current()) this.jump(endOf(animation.target, animation.from) as Data)
       },
     }
   }
@@ -587,7 +633,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
     // Listened before the animation starts, so its start and end are seen.
     animation.unwatch = this.#watch("animationComplete")
     try {
-      attachment.renderer.animateMotionValue(this.id, animation.target, animation.transition)
+      attachment.renderer.animateMotionValue(this.id, animation.target, wireTransition(animation.transition))
     } catch (error) {
       this.#settle(animation)
       throw error
@@ -690,7 +736,7 @@ export function velocityValue(source: MotionValue<number>): MotionValue<number> 
 /** Animates `value`. Returns controls whose `finished` resolves when it ends. */
 export function animate<Data extends MotionData>(
   value: MotionValue<Data>,
-  target: Data,
+  target: MotionTarget<Data>,
   transition?: MotionCurve
 ): AnimationControls
 /**
@@ -699,12 +745,12 @@ export function animate<Data extends MotionData>(
  */
 export function animate(
   from: number,
-  to: number,
+  to: MotionTarget<number>,
   options: MotionCurve & NumberAnimationOptions
 ): AnimationControls
 export function animate(
   first: MotionValue<MotionData> | number,
-  second: MotionData,
+  second: MotionTarget<MotionData>,
   third?: (MotionCurve & Partial<NumberAnimationOptions>) | MotionCurve
 ): AnimationControls {
   if (first instanceof MotionValue) return first.animate(second, third as MotionCurve | undefined)
@@ -717,7 +763,7 @@ export function animate(
   const release = temporary.bind(options.host)
   const onUpdate = options.onUpdate
   const stopUpdates = onUpdate ? temporary.on("change", onUpdate) : () => {}
-  const controls = temporary.animate(second as number, curve as MotionCurve)
+  const controls = temporary.animate(second as MotionTarget<number>, curve as MotionCurve)
   void controls.finished.then(() => {
     stopUpdates()
     release()

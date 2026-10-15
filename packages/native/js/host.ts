@@ -147,13 +147,37 @@ export type MotionEase =
   | `steps(${string})`
   | `linear(${string})`
 
-export interface MotionTweenTransition {
+/** How a transition plays again once it reaches its last keyframe. */
+export interface MotionRepeatOptions {
+  /**
+   * Extra iterations after the first. `Infinity` loops for ever, and the
+   * animation never completes.
+   */
+  repeat?: number
+  /**
+   * `"loop"` plays every iteration from the first keyframe; `"reverse"` plays
+   * odd iterations backwards in time, so their easing runs backwards too;
+   * `"mirror"` plays them through the keyframes in reverse order, with the same
+   * timing and easing as the first.
+   */
+  repeatType?: "loop" | "reverse" | "mirror"
+  /** Seconds held at the end of each iteration before the next. */
+  repeatDelay?: number
+}
+
+export interface MotionTweenTransition extends MotionRepeatOptions {
   type?: "tween"
-  /** Duration in seconds. */
+  /** Duration in seconds, of one iteration. */
   duration?: number
   /** Delay in seconds. */
   delay?: number
-  ease?: MotionEase
+  /** One easing, or one per keyframe segment. */
+  ease?: MotionEase | MotionEase[]
+  /**
+   * Where each keyframe sits in an iteration, from 0 to 1 and ascending: one
+   * per keyframe. Evenly spaced when omitted.
+   */
+  times?: number[]
   stiffness?: never
   damping?: never
   mass?: never
@@ -162,11 +186,13 @@ export interface MotionTweenTransition {
   restDelta?: never
 }
 
-interface MotionSpringBase {
+interface MotionSpringBase extends MotionRepeatOptions {
   type: "spring"
   /** Delay in seconds. The spring holds its start until the delay passes. */
   delay?: number
   ease?: never
+  /** A spring only animates between two keyframes. */
+  times?: never
   /** Speed, in units per second, below which the spring may settle. */
   restSpeed?: number
   /** Distance from the target, in units, within which the spring may settle. */

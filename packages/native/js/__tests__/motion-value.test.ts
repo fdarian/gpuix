@@ -445,6 +445,74 @@ describe("animate", () => {
   })
 })
 
+describe("animate with keyframes", () => {
+  it("sends keyframes through as they are and Infinity as the string the renderer accepts", () => {
+    const renderer = fake()
+    const x = motionValue(0)
+    x.bind(host(renderer))
+    const transition = { duration: 2, repeat: Infinity, repeatType: "mirror", times: [0, 0.5, 1] } as const
+    x.animate([null, 10, 4], transition)
+    const node = renderer.nodes.get(x.id)
+    expect(node?.target).toEqual([null, 10, 4])
+    expect(node?.transition).toEqual({ duration: 2, repeat: "Infinity", repeatType: "mirror", times: [0, 0.5, 1] })
+    // The caller's object is not rewritten.
+    expect(transition.repeat).toBe(Infinity)
+    expect(JSON.parse(JSON.stringify(node?.transition)).repeat).toBe("Infinity")
+
+    x.animate(5, { duration: 1, repeat: 2 })
+    expect(renderer.nodes.get(x.id)?.transition).toEqual({ duration: 1, repeat: 2 })
+  })
+
+  it("sends Infinity from a value that waits for a renderer, and from the bare number form", () => {
+    const renderer = fake()
+    const x = motionValue(0)
+    x.animate([0, 1], { repeat: Infinity })
+    x.bind(host(renderer))
+    expect(renderer.nodes.get(x.id)?.transition).toEqual({ repeat: "Infinity" })
+
+    animate(0, [null, 10], { host: host(renderer), repeat: Infinity })
+    const id = [...renderer.nodes.keys()].at(-1) ?? 0
+    expect(renderer.nodes.get(id)?.target).toEqual([null, 10])
+    expect(renderer.nodes.get(id)?.transition).toEqual({ repeat: "Infinity" })
+  })
+
+  it("completes at the last keyframe, and cancels back to where it started", async () => {
+    const renderer = fake()
+    const x = motionValue(3)
+    x.bind(host(renderer))
+
+    const completed = x.animate([null, 10, 7, null])
+    completed.complete()
+    await completed.finished
+    expect(x.get()).toBe(7)
+
+    const cancelled = x.animate([20, 30])
+    cancelled.cancel()
+    await cancelled.finished
+    expect(x.get()).toBe(7)
+  })
+
+  it("completes a list-valued animation at its target, whichever way the array is read", () => {
+    const renderer = fake()
+    const list = motionValue([0, 0])
+    list.bind(host(renderer))
+    list.animate([5, 6]).complete()
+    expect(list.get()).toEqual([5, 6])
+    list.animate([[1, 1], null, [2, 2]]).complete()
+    expect(list.get()).toEqual([2, 2])
+  })
+
+  it("jumps straight to the end under reduced motion, keyframes or not", () => {
+    const renderer = fake()
+    const x = motionValue(0)
+    x.bind(host(renderer))
+    const release = x.reduceMotion()
+    x.animate([0, 50, 100], { duration: 1, repeat: Infinity })
+    expect(renderer.nodes.get(x.id)?.transition).toEqual({ duration: 0 })
+    release()
+  })
+})
+
 describe("derived values", () => {
   it("binds a transform's input first and releases it last", () => {
     const renderer = fake()
@@ -697,5 +765,149 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
     expect(follower.get()).toBeCloseTo(100, 5)
     expect(follower.isAnimating()).toBe(false)
     release()
+  })
+
+  describe("keyframes", () => {
+    const run = (renderer: TestRenderer, ms: number) => renderer.clockFastForward(ms)
+
+    it("plays keyframes spaced by times and ends on the last one", async () => {
+      const renderer = mount()
+      const x = motionValue(0)
+      const release = x.bind(renderer)
+      const controls = x.animate([null, 100, 40], { duration: 1, ease: "linear", times: [0, 0.25, 1] })
+      run(renderer, 125)
+      expect(x.get()).toBeCloseTo(50, 5)
+      run(renderer, 125)
+      expect(x.get()).toBeCloseTo(100, 5)
+      run(renderer, 375)
+      expect(x.get()).toBeCloseTo(70, 5)
+      expect(x.isAnimating()).toBe(true)
+      frame(renderer, 1000)
+      frame(renderer, 16)
+      expect(x.get()).toBe(40)
+      expect(x.isAnimating()).toBe(false)
+      await controls.finished
+      release()
+    })
+
+    it("takes a leading null from where the value is, and a first keyframe as its own start", () => {
+      const renderer = mount()
+      const x = motionValue(10)
+      x.bind(renderer)
+      x.animate([null, 50], linear)
+      run(renderer, 500)
+      expect(x.get()).toBeCloseTo(30, 5)
+      x.stop()
+      x.animate([200, 100], linear)
+      run(renderer, 500)
+      expect(x.get()).toBeCloseTo(150, 5)
+    })
+
+    it("loops with repeat Infinity, never completes, and a stop mid-loop ends it where it is", async () => {
+      const renderer = mount()
+      const x = motionValue(0)
+      x.bind(renderer)
+      const log: string[] = []
+      x.on("animationStart", () => log.push("start"))
+      x.on("animationComplete", () => log.push("complete"))
+
+      const controls = x.animate([0, 100], { ...linear, repeat: Infinity })
+      let finished = false
+      void controls.finished.then(() => {
+        finished = true
+      })
+      for (let second = 0; second < 30; second++) frame(renderer, 1000)
+      expect(x.isAnimating()).toBe(true)
+      expect(x.get()).toBeCloseTo(0, 5)
+      frame(renderer, 250)
+      expect(x.get()).toBeCloseTo(25, 5)
+      expect(log).toEqual(["start"])
+      expect(finished).toBe(false)
+
+      x.stop()
+      frame(renderer, 16)
+      const held = x.get()
+      expect(held).toBeCloseTo(25, 0)
+      frame(renderer, 10_000)
+      expect(x.get()).toBe(held)
+      expect(x.isAnimating()).toBe(false)
+      await controls.finished
+      expect(finished).toBe(true)
+      expect(log).toEqual(["start", "complete"])
+    })
+
+    it("mirrors and reverses a repeating animation", () => {
+      const renderer = mount()
+      const x = motionValue(0)
+      x.bind(renderer)
+      const timed = { ...linear, times: [0, 0.25, 1], repeat: 1 }
+
+      x.animate([0, 100, 40], { ...timed, repeatType: "reverse" })
+      run(renderer, 1250)
+      expect(x.get()).toBeCloseTo(60, 5)
+      x.jump(0)
+
+      x.animate([0, 100, 40], { ...timed, repeatType: "mirror" })
+      run(renderer, 1250)
+      expect(x.get()).toBeCloseTo(100, 5)
+      // Keyframes 40, 100, 0 at the same times: three quarters through, back down.
+      run(renderer, 500)
+      expect(x.get()).toBeCloseTo(100 / 3, 5)
+    })
+
+    it("holds the end for repeatDelay before the next iteration", () => {
+      const renderer = mount()
+      const x = motionValue(0)
+      x.bind(renderer)
+      x.animate([0, 100], { ...linear, repeat: 1, repeatDelay: 1 })
+      run(renderer, 1500)
+      expect(x.get()).toBeCloseTo(100, 5)
+      run(renderer, 1000)
+      expect(x.get()).toBeCloseTo(50, 5)
+    })
+
+    it("drives a bound property while it loops", () => {
+      const renderer = mount()
+      const x = motionValue(10)
+      x.bind(renderer)
+      renderer.applyBatch(JSON.stringify([["setCustomProp", 2, "motionValues", { width: x.id }]]))
+      renderer.flush()
+      x.animate([10, 110], { ...linear, repeat: Infinity, repeatType: "mirror" })
+      frame(renderer, 500)
+      expect(widthOf(renderer)).toBeCloseTo(60, 0)
+      frame(renderer, 1000)
+      expect(widthOf(renderer)).toBeCloseTo(60, 0)
+      frame(renderer, 250)
+      expect(widthOf(renderer)).toBeCloseTo(35, 0)
+    })
+
+    it("keyframes colours, and a list of numbers is one target unless it holds lists", () => {
+      const renderer = mount()
+      const colour = motionValue("#000000")
+      colour.bind(renderer)
+      colour.animate(["#000000", "#ff0000", "#000000"], linear)
+      run(renderer, 500)
+      expect(colour.get()).toContain("rgba(255")
+
+      const point = motionValue([0, 0])
+      point.bind(renderer)
+      point.animate([10, 20], linear)
+      run(renderer, 500)
+      expect(point.get()).toEqual([5, 10])
+      point.animate([[0, 0], [10, 20], null], linear)
+      run(renderer, 1000)
+      expect(point.get()).toEqual([10, 20])
+    })
+
+    it("rejects keyframes the renderer cannot play", () => {
+      const renderer = mount()
+      const x = motionValue(0)
+      x.bind(renderer)
+      expect(() => x.animate([0, 1, 2], { type: "spring" })).toThrow(/spring/)
+      expect(() => x.animate([0, 1, 2], { times: [0, 1] })).toThrow(/times/)
+      expect(() => x.animate([null])).toThrow(/null/)
+      expect(() => x.animate([0, 1], { repeat: 1.5 })).toThrow(/repeat/)
+      expect(x.isAnimating()).toBe(false)
+    })
   })
 })
