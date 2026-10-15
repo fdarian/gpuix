@@ -10,8 +10,9 @@
 //! Order of one input, as in Chrome:
 //!   lostpointercapture, gotpointercapture for a capture JS changed since the last input
 //!   boundary events for a changed target
-//!     pointerout, pointerleave (innermost first), mouseout, mouseleave,
-//!     pointerover, pointerenter (outermost first), mouseover, mouseenter
+//!     pointerout, pointerleave (innermost first), pointerover, pointerenter
+//!     (outermost first), then the same four as mouseout, mouseleave, mouseover,
+//!     mouseenter
 //!   then the event itself, pointer before mouse
 //!     pointermove/mousemove, pointerdown/mousedown, mousedownoutside, contextmenu,
 //!     pointerup, lostpointercapture, mouseup, then click, dblclick or auxclick
@@ -748,16 +749,20 @@ pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_
         hovered: Some(true),
         ..Default::default()
     };
-    if let Some(old_target) = old_target.filter(|old| Some(*old) != new_target) {
-        for (out, leave) in [("pointerout", "pointerleave"), ("mouseout", "mouseleave")] {
+    let left_target = old_target.filter(|old| Some(*old) != new_target);
+    let entered_target = new_target.filter(|new| Some(*new) != old_target);
+    // Chrome sends the four pointer boundary events, then the four mouse ones.
+    for (out, leave, over, enter) in [
+        ("pointerout", "pointerleave", "pointerover", "pointerenter"),
+        ("mouseout", "mouseleave", "mouseover", "mouseenter"),
+    ] {
+        if let Some(old_target) = left_target {
             emitter.emit(out, old_target, left);
             for id in &leaving {
                 emitter.emit(leave, *id, left);
             }
         }
-    }
-    if let Some(new_target) = new_target.filter(|new| Some(*new) != old_target) {
-        for (over, enter) in [("pointerover", "pointerenter"), ("mouseover", "mouseenter")] {
+        if let Some(new_target) = entered_target {
             emitter.emit(over, new_target, entered);
             for id in &entering {
                 emitter.emit(enter, *id, entered);
@@ -1091,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn moving_to_a_sibling_leaves_innermost_first_and_keeps_the_shared_ancestor() {
+    fn moving_to_a_sibling_fires_all_pointer_boundary_events_then_all_mouse_ones() {
         let tree = tree(&listening_everywhere(&POINTER_BOUNDARIES));
         let mut state = PointerState::default();
         dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
@@ -1102,19 +1107,20 @@ mod tests {
                 "pointerout@3",
                 "pointerleave@3",
                 "pointerleave@2",
+                "pointerover@4",
+                "pointerenter@4",
                 "mouseout@3",
                 "mouseleave@3",
                 "mouseleave@2",
-                "pointerover@4",
-                "pointerenter@4",
                 "mouseover@4",
                 "mouseenter@4",
             ]
         );
         let out = &output.events[0];
         assert_eq!(out.related_target, Some(4));
-        let over = &output.events[6];
+        let over = &output.events[3];
         assert_eq!(over.related_target, Some(3));
+        assert_eq!(output.events[8].related_target, Some(3));
         assert!(!state.is_hovered(3) && state.is_hovered(4) && state.is_hovered(1));
     }
 
@@ -1652,11 +1658,11 @@ mod tests {
                 "pointerout@3",
                 "pointerleave@3",
                 "pointerleave@2",
+                "pointerover@4",
+                "pointerenter@4",
                 "mouseout@3",
                 "mouseleave@3",
                 "mouseleave@2",
-                "pointerover@4",
-                "pointerenter@4",
                 "mouseover@4",
                 "mouseenter@4",
             ]
