@@ -5945,13 +5945,6 @@ pub(crate) fn build_host_container(
         let id = element.id;
         let callback = ctx.event_callback.clone();
         match event_type.as_str() {
-            // ── File drop (Finder / OS paths) ────────────────────
-            "drop" => {
-                el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
-                    emit_file_drop(&callback, id, dropped, window.mouse_position());
-                });
-            }
-
             // ── Scroll wheel ─────────────────────────────────────
             "scroll" => {
                 el = el.on_scroll_wheel(move |scroll_event, _window, _cx| {
@@ -6740,37 +6733,6 @@ pub(crate) fn apply_styles<E: gpui::Styled>(mut el: E, style: &StyleDesc) -> E {
 /// Helper to convert a GPUI Point<Pixels> to (f64, f64).
 pub(crate) fn point_to_xy(p: gpui::Point<gpui::Pixels>) -> (f64, f64) {
     (f64::from(f32::from(p.x)), f64::from(f32::from(p.y)))
-}
-
-/// Paths that are valid UTF-8, or None when the drop is empty or not Unicode.
-/// `to_string_lossy` would invent a path that does not exist on disk.
-fn file_drop_paths(dropped: &gpui::ExternalPaths) -> Option<Vec<String>> {
-    let paths = dropped.paths();
-    if paths.is_empty() {
-        return None;
-    }
-    let mut out = Vec::with_capacity(paths.len());
-    for path in paths {
-        out.push(path.to_str()?.to_string());
-    }
-    Some(out)
-}
-
-pub(crate) fn emit_file_drop(
-    callback: &Option<EventCallback>,
-    element_id: u64,
-    dropped: &gpui::ExternalPaths,
-    position: gpui::Point<gpui::Pixels>,
-) {
-    let Some(paths) = file_drop_paths(dropped) else {
-        return;
-    };
-    emit_event_full(callback, element_id, "drop", |payload| {
-        let (x, y) = point_to_xy(position);
-        payload.x = Some(x);
-        payload.y = Some(y);
-        payload.paths = Some(paths);
-    });
 }
 
 /// Convert GPUI MouseButton to our u32 encoding: 0=left, 1=middle, 2=right.

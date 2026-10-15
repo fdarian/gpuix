@@ -18,16 +18,25 @@
 //!
 //! A type is only produced when the target or an ancestor listens for it, so a
 //! window with no `mousemove` handler pays nothing for the traffic.
+//!
+//! A file dragged in from the OS replaces the pointer until it leaves or drops
+//! (`dispatch_file_drag`). No pointer or mouse event fires, as in a browser;
+//! `dragenter`, `dragover`, `dragleave` and `drop` do instead. Those are not
+//! gated on listeners: JS needs every `dragover` to know whether the last one
+//! was cancelled, which decides if the drop is delivered.
+
+use std::path::PathBuf;
 
 use gpui::{Bounds, Pixels};
 
-use crate::element_tree::{EventModifiers, EventPayload};
+use crate::element_tree::{DroppedFile, EventModifiers, EventPayload};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
+use super::file_drag;
 use super::ids::Hit;
 use super::path::{chain_follows_path, common_ancestor, event_path, path_listens};
-use super::state::{is_connected, PointerState, Press};
+use super::state::{is_connected, FileDrag, PointerState, Press};
 
 const PRIMARY_BUTTON: u32 = 0;
 const SECONDARY_BUTTON: u32 = 2;
@@ -50,6 +59,13 @@ pub enum PointerAction {
     Exit,
     /// Layout moved under a pointer that did not: boundary events and nothing else.
     Resync,
+    /// Files from the OS are over the window (GPUI's `FileDropEvent::Entered`
+    /// and `Pending`, which it turns into a move with the paths as the active drag).
+    FileDragMove { paths: Vec<PathBuf> },
+    /// The files were dropped on the window (`FileDropEvent::Submit`).
+    FileDrop,
+    /// The files left the window or the drag ended (`FileDropEvent::Exited`, `Ended`).
+    FileDragLeave,
 }
 
 pub struct PointerSample {
@@ -78,6 +94,8 @@ pub struct DomEvent {
     pub offset: Option<(f64, f64)>,
     pub pressed_button: Option<u32>,
     pub hovered: Option<bool>,
+    /// `dataTransfer.files`, on the first event of a file drag.
+    pub files: Option<Vec<DroppedFile>>,
 }
 
 impl DomEvent {
@@ -125,6 +143,7 @@ impl Output {
                 click_count: event.detail,
                 pressed_button: event.pressed_button,
                 hovered: event.hovered,
+                files: event.files,
                 pointer_id: Some(1),
                 pointer_type: Some("mouse".to_string()),
                 modifiers: Some(modifiers.clone()),
@@ -167,6 +186,29 @@ impl Emitter<'_> {
             offset: self.offset(target),
             pressed_button: fields.pressed_button,
             hovered: fields.hovered,
+            files: None,
+        });
+    }
+
+    /// A file drag event at `target`, whoever listens.
+    fn emit_drag(
+        &mut self,
+        event_type: &'static str,
+        target: u64,
+        related_target: Option<u64>,
+        files: Option<Vec<DroppedFile>>,
+    ) {
+        self.events.push(DomEvent {
+            event_type,
+            path: event_path(self.tree, target),
+            listener: None,
+            related_target,
+            button: None,
+            detail: None,
+            offset: self.offset(target),
+            pressed_button: None,
+            hovered: None,
+            files,
         });
     }
 
@@ -205,6 +247,7 @@ impl Emitter<'_> {
                 offset: self.offset(path[0]),
                 pressed_button: fields.pressed_button,
                 hovered: fields.hovered,
+                files: None,
             });
         }
     }
@@ -277,6 +320,16 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             .collect();
         !chain_follows_path(&chain, &event_path(tree, target))
     });
+    let file_drag_input = match sample.action {
+        PointerAction::FileDragMove { .. }
+        | PointerAction::FileDrop
+        | PointerAction::FileDragLeave => true,
+        PointerAction::Resync | PointerAction::Exit => state.file_drag.is_some(),
+        _ => false,
+    };
+    if file_drag_input {
+        return dispatch_file_drag(state, tree, sample, geometric, chain_mismatch);
+    }
     match sample.action {
         PointerAction::Down { button, .. } => state.buttons |= button_bit(button),
         PointerAction::Up { button, .. } => state.buttons &= !button_bit(button),
@@ -284,6 +337,9 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             state.buttons = pressed_button.map_or(0, button_bit);
         }
         PointerAction::Exit | PointerAction::Resync => {}
+        PointerAction::FileDragMove { .. }
+        | PointerAction::FileDrop
+        | PointerAction::FileDragLeave => unreachable!("handled above"),
     }
     state.capture.set_buttons(state.buttons);
 
@@ -297,6 +353,8 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
     };
     let mut restyle = false;
 
+    // A real pointer input means the drag ended without a leave reaching us.
+    end_file_drag(state, &mut emitter);
     apply_capture(state, &mut emitter);
     // A captured element keeps the pointer: it is the hover target and takes
     // every event until the release, wherever the pointer is.
@@ -339,6 +397,9 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             restyle |= release(state, &mut emitter, target, geometric, button, click_count);
         }
         PointerAction::Exit | PointerAction::Resync => {}
+        PointerAction::FileDragMove { .. }
+        | PointerAction::FileDrop
+        | PointerAction::FileDragLeave => unreachable!("handled above"),
     }
 
     state.hits = sample.hits.clone();
@@ -349,6 +410,106 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
         position: sample.position,
         modifiers: sample.modifiers.clone(),
         buttons: state.buttons,
+    }
+}
+
+/// Dispatches one input of an OS file drag.
+///
+/// The target is what is under the pointer, or the root when nothing is: a
+/// drop on the window outside every element is a drop on the document.
+/// `dragenter` goes to the new target before `dragleave` goes to the old one,
+/// then `dragover` to the target, on every move.
+fn dispatch_file_drag(
+    state: &mut PointerState,
+    tree: &RetainedTree,
+    sample: &PointerSample,
+    geometric: Option<u64>,
+    chain_mismatch: bool,
+) -> Output {
+    let previous_hits = std::mem::take(&mut state.hits);
+    let mut emitter = Emitter {
+        tree,
+        position: sample.position,
+        hits: &sample.hits,
+        previous_hits: &previous_hits,
+        events: Vec::new(),
+    };
+    let target = geometric.or(tree.root_id);
+    match &sample.action {
+        PointerAction::FileDragMove { paths } => {
+            if let Some(target) = target {
+                let files = if state.file_drag.is_none() {
+                    let files = file_drag::describe(paths);
+                    (!files.is_empty()).then_some(files)
+                } else {
+                    None
+                };
+                // A drag with nothing readable has no session and no events.
+                if files.is_some() || state.file_drag.is_some() {
+                    enter_drag_target(state, &mut emitter, target, files);
+                    emitter.emit_drag("dragover", target, None, None);
+                }
+            }
+        }
+        PointerAction::Resync => {
+            if let Some(target) = target {
+                enter_drag_target(state, &mut emitter, target, None);
+            }
+        }
+        PointerAction::FileDrop => {
+            if let (Some(target), true) = (target, state.file_drag.is_some()) {
+                enter_drag_target(state, &mut emitter, target, None);
+                emitter.emit_drag("drop", target, None, None);
+                state.file_drag = None;
+            }
+        }
+        PointerAction::FileDragLeave => end_file_drag(state, &mut emitter),
+        _ => {}
+    }
+
+    let events = emitter.events;
+    state.hits = if matches!(sample.action, PointerAction::FileDragLeave) {
+        previous_hits
+    } else {
+        sample.hits.clone()
+    };
+    Output {
+        events,
+        restyle: false,
+        chain_mismatch,
+        position: sample.position,
+        modifiers: sample.modifiers.clone(),
+        buttons: state.buttons,
+    }
+}
+
+/// Moves the drag to `target`: `dragenter` there, then `dragleave` at the
+/// element it left. `files` start the session.
+fn enter_drag_target(
+    state: &mut PointerState,
+    emitter: &mut Emitter,
+    target: u64,
+    files: Option<Vec<DroppedFile>>,
+) {
+    let previous = state.file_drag.as_ref().map(|drag| drag.target);
+    if previous == Some(target) {
+        return;
+    }
+    emitter.emit_drag("dragenter", target, previous, files);
+    if let Some(previous) = previous.filter(|id| emitter.tree.elements.contains_key(id)) {
+        emitter.emit_drag("dragleave", previous, Some(target), None);
+    }
+    state.file_drag = Some(FileDrag { target });
+}
+
+/// Ends the drag with a `dragleave` at the element it was over, which had no
+/// related target: the files left the window.
+fn end_file_drag(state: &mut PointerState, emitter: &mut Emitter) {
+    let Some(drag) = state.file_drag.take() else {
+        return;
+    };
+    if emitter.tree.elements.contains_key(&drag.target) {
+        emitter.emit_drag("dragleave", drag.target, None, None);
     }
 }
 
@@ -1247,5 +1408,196 @@ mod tests {
             &at(PointerAction::Resync, chain_of(&[4, 1])),
         );
         assert_eq!(names(&output), ["mouseover@4"]);
+    }
+
+    /// A file only this call writes, so tests running in parallel do not share it.
+    fn dragged_file() -> PathBuf {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "gpuix-dispatcher-drag-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("drag.txt");
+        std::fs::write(&path, b"abc").unwrap();
+        path
+    }
+
+    fn file_drag_move(paths: Vec<PathBuf>, hits: Vec<Hit>) -> PointerSample {
+        at(PointerAction::FileDragMove { paths }, hits)
+    }
+
+    #[test]
+    fn a_file_drag_enters_then_hovers_the_target_whoever_listens() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        assert_eq!(names(&output), ["dragenter@3", "dragover@3"]);
+        let files = output.events[0].files.as_ref().expect("the first event carries the files");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "drag.txt");
+        assert_eq!(files[0].size, 3.0);
+        assert_eq!(files[0].mime_type, "text/plain");
+        assert!(output.events[1].files.is_none());
+        assert_eq!(output.events[0].related_target, None);
+    }
+
+    #[test]
+    fn a_move_inside_the_target_is_a_dragover_alone() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let paths = vec![dragged_file()];
+        dispatch(&mut state, &tree, &file_drag_move(paths.clone(), chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &file_drag_move(paths, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragover@3"]);
+    }
+
+    #[test]
+    fn a_move_to_another_element_enters_it_before_leaving_the_old_one() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let paths = vec![dragged_file()];
+        dispatch(&mut state, &tree, &file_drag_move(paths.clone(), chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &file_drag_move(paths, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["dragenter@4", "dragleave@3", "dragover@4"]);
+        assert_eq!(output.events[0].related_target, Some(3));
+        assert_eq!(output.events[1].related_target, Some(4));
+        assert!(output.events[0].files.is_none());
+    }
+
+    #[test]
+    fn exiting_leaves_the_target_with_no_related_target() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDragLeave, vec![]));
+        assert_eq!(names(&output), ["dragleave@3"]);
+        assert_eq!(output.events[0].related_target, None);
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDragLeave, vec![]));
+        assert!(output.events.is_empty(), "a second leave has nothing to leave");
+    }
+
+    #[test]
+    fn a_drop_is_delivered_at_the_target_and_ends_the_drag() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDrop, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["drop@3"]);
+        assert_eq!(output.events[0].path, [3, 2, 1]);
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDragLeave, vec![]));
+        assert!(output.events.is_empty(), "the Exited after a drop is not a leave");
+    }
+
+    #[test]
+    fn a_drop_on_another_element_enters_it_first() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDrop, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["dragenter@4", "dragleave@3", "drop@4"]);
+    }
+
+    #[test]
+    fn a_file_drag_over_nothing_targets_the_root() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], vec![]),
+        );
+        assert_eq!(names(&output), ["dragenter@1", "dragover@1"]);
+    }
+
+    #[test]
+    fn no_pointer_or_mouse_event_fires_during_a_file_drag() {
+        let tree = tree(&listening_everywhere(&[
+            "pointermove",
+            "mousemove",
+            "pointerover",
+            "mouseover",
+            "pointerenter",
+            "mouseenter",
+            "pointerout",
+            "mouseout",
+            "mouseup",
+            "pointerup",
+            "click",
+        ]));
+        let mut state = PointerState::default();
+        let paths = vec![dragged_file()];
+        let mut all = Vec::new();
+        for sample in [
+            file_drag_move(paths.clone(), chain_of(&[3, 2, 1])),
+            file_drag_move(paths, chain_of(&[4, 1])),
+            at(PointerAction::Resync, chain_of(&[3, 2, 1])),
+            at(PointerAction::Exit, vec![]),
+            at(PointerAction::FileDrop, chain_of(&[3, 2, 1])),
+        ] {
+            all.extend(names(&dispatch(&mut state, &tree, &sample)));
+        }
+        assert!(
+            all.iter().all(|name| name.starts_with("drag") || name.starts_with("drop")),
+            "{all:?}"
+        );
+        assert_eq!(state.hover_target(), None, "the drag did not hover anything");
+    }
+
+    #[test]
+    fn a_drag_with_nothing_readable_has_no_events() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let missing = std::env::temp_dir().join("gpuix-dispatcher-missing.txt");
+        std::fs::remove_file(&missing).ok();
+        for paths in [vec![], vec![missing]] {
+            let output = dispatch(&mut state, &tree, &file_drag_move(paths, chain_of(&[3, 2, 1])));
+            assert!(output.events.is_empty());
+        }
+        let output = dispatch(&mut state, &tree, &at(PointerAction::FileDrop, chain_of(&[3, 2, 1])));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn a_real_pointer_input_ends_a_drag_that_never_left() {
+        let tree = tree(&listening_everywhere(&["mousemove"]));
+        let mut state = PointerState::default();
+        dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["dragleave@3", "mousemove@3"]);
+    }
+
+    #[test]
+    fn a_resync_during_a_file_drag_moves_the_drag_target() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![dragged_file()], chain_of(&[3, 2, 1])),
+        );
+        let output = dispatch(&mut state, &tree, &at(PointerAction::Resync, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["dragenter@4", "dragleave@3"]);
     }
 }

@@ -101,6 +101,13 @@ pub(super) struct Press {
     pub path: Vec<u64>,
 }
 
+/// An OS file drag over the window. It replaces the pointer for its duration:
+/// the dispatcher emits drag events and no pointer or mouse events.
+pub(super) struct FileDrag {
+    /// The element `dragenter` last went to.
+    pub target: u64,
+}
+
 /// The target the last pointer input produced. `None` outside: no input yet.
 /// `Some(None)`: the pointer is outside every host element.
 pub type ObservedTarget = Rc<Cell<Option<Option<u64>>>>;
@@ -121,6 +128,7 @@ pub struct PointerState {
     /// The element holding `setPointerCapture`, as applied by the last input.
     pub(super) explicit: Option<u64>,
     pub(super) capture: PointerCapture,
+    pub(super) file_drag: Option<FileDrag>,
     observed: ObservedTarget,
 }
 

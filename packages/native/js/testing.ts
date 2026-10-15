@@ -80,6 +80,11 @@ interface NativeTestRendererApi extends NativeRenderer {
     modifiers?: string,
     clickCount?: number
   ): void
+  simulateFileDragEnter(x: number, y: number, paths: string[]): void
+  simulateFileDragMove(x: number, y: number): void
+  simulateFileDragSubmit(x: number, y: number): void
+  simulateFileDragExit(): void
+  simulateFileDragEnd(): void
   simulateFileDrop(x: number, y: number, paths: string[]): void
   getTreeJson(): string
   getA11yTree(): string
@@ -432,7 +437,47 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
-  /** End-to-end: Finder-style file drop through GPUI to `onDrop`. */
+  /** End-to-end: files from the OS enter the window at `x`, `y`. */
+  nativeSimulateFileDragEnter(x: number, y: number, paths: string[]): void {
+    this.native.flush()
+    this.native.simulateFileDragEnter(x, y, paths)
+    this.dispatchNativeEvents()
+    this.native.flush()
+  }
+
+  /** End-to-end: the dragged files move to `x`, `y`. */
+  nativeSimulateFileDragMove(x: number, y: number): void {
+    this.native.flush()
+    this.native.simulateFileDragMove(x, y)
+    this.dispatchNativeEvents()
+    this.native.flush()
+  }
+
+  /** End-to-end: the dragged files are released at `x`, `y`. */
+  nativeSimulateFileDragSubmit(x: number, y: number): void {
+    this.native.flush()
+    this.native.simulateFileDragSubmit(x, y)
+    this.dispatchNativeEvents()
+    this.native.flush()
+  }
+
+  /** End-to-end: the dragged files leave the window. */
+  nativeSimulateFileDragExit(): void {
+    this.native.flush()
+    this.native.simulateFileDragExit()
+    this.dispatchNativeEvents()
+    this.native.flush()
+  }
+
+  /** End-to-end: the platform's drag session ends. */
+  nativeSimulateFileDragEnd(): void {
+    this.native.flush()
+    this.native.simulateFileDragEnd()
+    this.dispatchNativeEvents()
+    this.native.flush()
+  }
+
+  /** End-to-end: a whole Finder-style drop at `x`, `y`, as the platform sends it: enter, submit, exit, end. */
   nativeSimulateFileDrop(x: number, y: number, paths: string[]): void {
     this.native.flush()
     this.native.simulateFileDrop(x, y, paths)

@@ -143,21 +143,14 @@ pub(crate) fn custom_surface(
 }
 
 /// Wires the events of a custom element's root that the pointer dispatcher does
-/// not deliver: the VoiceOver press, and a file drop from the OS.
+/// not deliver: the VoiceOver press.
 ///
 /// Generic over the element, not just `Stateful<Div>`, because `<img>` and
 /// `<svg>` are gpui leaves and cannot hold a child.
 pub(crate) fn wire_host_events<E: gpui::StatefulInteractiveElement>(
-    mut el: E,
+    el: E,
     ctx: &CustomRenderContext,
 ) -> E {
-    if ctx.events.contains("drop") {
-        let id = ctx.id;
-        let callback = ctx.event_callback.clone();
-        el = el.on_drop(move |dropped: &gpui::ExternalPaths, window, _cx| {
-            crate::renderer::emit_file_drop(&callback, id, dropped, window.mouse_position());
-        });
-    }
     crate::accessibility::apply_a11y_click(el, ctx.events, ctx.click_path.clone(), ctx.event_callback)
 }
 

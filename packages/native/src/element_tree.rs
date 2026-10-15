@@ -134,9 +134,9 @@ pub struct EventPayload {
     /// Populated for: motionComplete.
     pub motion_generation: Option<f64>,
 
-    /// Absolute filesystem paths from a Finder / OS file drop.
-    /// Populated for: drop (an OS file drop).
-    pub paths: Option<Vec<String>>,
+    /// The files of an OS file drag (`dataTransfer.files`). Sent once per drag,
+    /// with its first event, a `dragenter`.
+    pub files: Option<Vec<DroppedFile>>,
 
     // ── DOM event propagation ────────────────────────────────────────
     /// Element the event was aimed at (the DOM `event.target`). Absent means
@@ -213,7 +213,7 @@ impl Default for EventPayload {
             scroll_y: None,
             match_count: None,
             motion_generation: None,
-            paths: None,
+            files: None,
             target: None,
             path: None,
             related_target: None,
@@ -228,6 +228,36 @@ impl Default for EventPayload {
             modifiers: None,
         }
     }
+}
+
+/// One file of an OS file drag, as the DOM `File` plus the path the browser
+/// would hide.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    all(target_arch = "wasm32", target_os = "unknown"),
+    derive(serde::Serialize)
+)]
+#[cfg_attr(
+    all(target_arch = "wasm32", target_os = "unknown"),
+    serde(rename_all = "camelCase")
+)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct DroppedFile {
+    pub path: String,
+    pub name: String,
+    pub size: f64,
+    /// MIME type guessed from the extension, empty when unknown.
+    #[cfg_attr(
+        all(target_arch = "wasm32", target_os = "unknown"),
+        serde(rename = "type")
+    )]
+    #[cfg_attr(
+        not(all(target_arch = "wasm32", target_os = "unknown")),
+        napi(js_name = "type")
+    )]
+    pub mime_type: String,
+    /// Milliseconds since the Unix epoch.
+    pub last_modified: f64,
 }
 
 #[derive(Debug, Clone)]

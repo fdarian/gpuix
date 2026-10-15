@@ -7,9 +7,9 @@
 //! here would panic.
 
 use gpui::{
-    canvas, App, DispatchPhase, IntoElement, Modifiers, MouseButton, MouseDownEvent,
-    MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, Point, Styled,
-    WeakEntity, Window,
+    canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, Modifiers, MouseButton,
+    MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels,
+    Point, Styled, WeakEntity, Window,
 };
 
 use crate::element_tree::EventModifiers;
@@ -91,6 +91,16 @@ pub(crate) fn pointer_frame(
                 if phase != DispatchPhase::Capture {
                     return;
                 }
+                // GPUI turns `FileDropEvent::Submit` into this release, and clears
+                // the drag only after the listeners have run.
+                if cx.active_drag_value::<ExternalPaths>().is_some() {
+                    submit(
+                        &up_view,
+                        sample(window, PointerAction::FileDrop, event.position, event.modifiers),
+                        cx,
+                    );
+                    return;
+                }
                 let action = PointerAction::Up {
                     button: dom_button(event.button),
                     click_count: event.click_count as u32,
@@ -106,14 +116,40 @@ pub(crate) fn pointer_frame(
                 if phase != DispatchPhase::Capture {
                     return;
                 }
-                let action = PointerAction::Move {
-                    pressed_button: event.pressed_button.map(dom_button),
+                // GPUI turns `FileDropEvent::Entered` and `Pending` into a move with
+                // the dragged paths as the active drag.
+                let action = match cx.active_drag_value::<ExternalPaths>() {
+                    Some(dragged) => PointerAction::FileDragMove {
+                        paths: dragged.paths().to_vec(),
+                    },
+                    None => PointerAction::Move {
+                        pressed_button: event.pressed_button.map(dom_button),
+                    },
                 };
                 submit(
                     &move_view,
                     sample(window, action, event.position, event.modifiers),
                     cx,
                 );
+            });
+            let leave_view = view.clone();
+            window.on_mouse_event(move |event: &FileDropEvent, phase, window, cx| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                // `Entered`, `Pending` and `Submit` never get here: GPUI rewrote them.
+                if matches!(event, FileDropEvent::Exited | FileDropEvent::Ended) {
+                    submit(
+                        &leave_view,
+                        sample(
+                            window,
+                            PointerAction::FileDragLeave,
+                            window.mouse_position(),
+                            window.modifiers(),
+                        ),
+                        cx,
+                    );
+                }
             });
             let exit_view = view.clone();
             window.on_mouse_event(move |event: &MouseExitEvent, phase, window, cx| {

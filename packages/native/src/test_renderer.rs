@@ -158,6 +158,10 @@ fn simulate_event_with_view_lease(
     cx.run_until_parked();
 }
 
+fn file_drag_position(x: f64, y: f64) -> gpui::Point<gpui::Pixels> {
+    gpui::point(gpui::px(x as f32), gpui::px(y as f32))
+}
+
 /// Same SVG the JS img tests write to disk. VisualTestAppContext starts with
 /// a 404 FakeHttpClient, and a real ReqwestClient would leave the GPUI
 /// test dispatcher parked while Tokio fetches. This answers every request
@@ -748,18 +752,80 @@ impl TestGpuixRenderer {
         })
     }
 
-    /// Simulate a Finder-style file drop at the given window coordinates.
-    /// Dispatches FileDrop Entered then Submit, matching GPUI's OS drop path.
+    /// Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`).
     #[napi]
-    pub fn simulate_file_drop(&self, x: f64, y: f64, paths: Vec<String>) -> Result<()> {
+    pub fn simulate_file_drag_enter(&self, x: f64, y: f64, paths: Vec<String>) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            let position = gpui::point(gpui::px(x as f32), gpui::px(y as f32));
             let paths =
                 gpui::ExternalPaths(paths.into_iter().map(std::path::PathBuf::from).collect());
-            cx.simulate_event(window, gpui::FileDropEvent::Entered { position, paths });
-            cx.simulate_event(window, gpui::FileDropEvent::Submit { position });
+            simulate_event_with_view_lease(
+                cx,
+                window,
+                gpui::FileDropEvent::Entered {
+                    position: file_drag_position(x, y),
+                    paths,
+                },
+            );
             Ok(())
         })
+    }
+
+    /// The dragged files move to `x`, `y` (`FileDropEvent::Pending`).
+    #[napi]
+    pub fn simulate_file_drag_move(&self, x: f64, y: f64) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            simulate_event_with_view_lease(
+                cx,
+                window,
+                gpui::FileDropEvent::Pending {
+                    position: file_drag_position(x, y),
+                },
+            );
+            Ok(())
+        })
+    }
+
+    /// The dragged files are released at `x`, `y` (`FileDropEvent::Submit`).
+    #[napi]
+    pub fn simulate_file_drag_submit(&self, x: f64, y: f64) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            simulate_event_with_view_lease(
+                cx,
+                window,
+                gpui::FileDropEvent::Submit {
+                    position: file_drag_position(x, y),
+                },
+            );
+            Ok(())
+        })
+    }
+
+    /// The dragged files leave the window (`FileDropEvent::Exited`).
+    #[napi]
+    pub fn simulate_file_drag_exit(&self) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            simulate_event_with_view_lease(cx, window, gpui::FileDropEvent::Exited);
+            Ok(())
+        })
+    }
+
+    /// The platform's drag session ends (`FileDropEvent::Ended`).
+    #[napi]
+    pub fn simulate_file_drag_end(&self) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            simulate_event_with_view_lease(cx, window, gpui::FileDropEvent::Ended);
+            Ok(())
+        })
+    }
+
+    /// A whole Finder-style drop at `x`, `y`, in the order the platform sends
+    /// it: Entered, Submit, then Exited and Ended.
+    #[napi]
+    pub fn simulate_file_drop(&self, x: f64, y: f64, paths: Vec<String>) -> Result<()> {
+        self.simulate_file_drag_enter(x, y, paths)?;
+        self.simulate_file_drag_submit(x, y)?;
+        self.simulate_file_drag_exit()?;
+        self.simulate_file_drag_end()
     }
 
     // ── Selection API ──────────────────────────────────────────────────

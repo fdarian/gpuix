@@ -1,5 +1,6 @@
 import type { EventPayload } from "../index.js"
 import { dispatchDomEvent } from "./events/dispatch.js"
+import { createFileDragDispatcher, isFileDragEvent } from "./events/file-drag.js"
 import { handlerEventType, hasDomListener, toDomEvent } from "./events/route.js"
 import type {
   ElementIdAllocator,
@@ -144,6 +145,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
   let generation = 0
   let active: ActiveRoot | undefined
   const layers: LayerEntry[] = []
+  const dispatchFileDrag = createFileDragDispatcher()
   // Native emits one keystroke's events back to back, in GPUI bubble order,
   // and the window event last. So only the latest keystroke needs flags.
   let keystroke: KeystrokeFlags = { id: undefined, prevented: false, stopped: false }
@@ -236,6 +238,10 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       }
       const domEvent = toDomEvent(event)
       if (domEvent) {
+        if (isFileDragEvent(domEvent)) {
+          schedule(() => dispatchFileDrag(root, domEvent))
+          return true
+        }
         if (!hasDomListener(root.eventHandlers, domEvent)) return false
         schedule(() => {
           dispatchDomEvent(root, domEvent)
