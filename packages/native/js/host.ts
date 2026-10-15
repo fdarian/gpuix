@@ -50,6 +50,7 @@ export * from "./presence.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
 export * from "./scroll.js"
+export * from "./reorder.js"
 export * from "./svg.js"
 
 export type DimensionValue = number | string

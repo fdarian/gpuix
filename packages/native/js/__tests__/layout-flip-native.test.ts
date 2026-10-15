@@ -90,6 +90,58 @@ describe.skipIf(!hasNativeTestRenderer)("native layout flip", () => {
   })
 })
 
+describe.skipIf(!hasNativeTestRenderer)("native layout drag", () => {
+  const drag = { x: 11, y: 12, active: 13 }
+  const held = (renderer: TestRenderer, offset: number) => {
+    renderer.jumpMotionValue(12, offset)
+    renderer.flush()
+  }
+
+  const mountDraggable = () => {
+    const renderer = mount({ mode: true, transition: linear, dragOffset: drag })
+    renderer.createMotionValue(11, 0)
+    renderer.createMotionValue(12, 0)
+    renderer.createMotionValue(13, 0)
+    renderer.flush()
+    return renderer
+  }
+
+  it("shows a held box where the drag values put it, and hit-tests there", () => {
+    const renderer = mountDraggable()
+    renderer.jumpMotionValue(13, 1)
+    held(renderer, 30)
+    expect(topOf(renderer, 3)).toBe(50)
+    expect(renderer.getElementsAt(10, 55)).toContain(3)
+    held(renderer, 41)
+    expect(topOf(renderer, 3)).toBe(61)
+  })
+
+  it("ignores the offset until the drag is active", () => {
+    const renderer = mountDraggable()
+    held(renderer, 30)
+    expect(topOf(renderer, 3)).toBe(20)
+  })
+
+  it("keeps a held box under the pointer when layout moves its slot, then glides home on release", () => {
+    const renderer = mountDraggable()
+    renderer.jumpMotionValue(13, 1)
+    held(renderer, 30)
+    expect(topOf(renderer, 3)).toBe(50)
+    pushDown(renderer)
+    expect(topOf(renderer, 3)).toBe(50)
+    renderer.jumpMotionValue(13, 0)
+    renderer.jumpMotionValue(12, 0)
+    renderer.flush()
+    expect(topOf(renderer, 3)).toBeCloseTo(50, 1)
+    renderer.clockFastForward(500)
+    renderer.flush()
+    expect(topOf(renderer, 3)).toBeCloseTo(85, 1)
+    renderer.clockFastForward(600)
+    renderer.flush()
+    expect(topOf(renderer, 3)).toBe(120)
+  })
+})
+
 describe.skipIf(!hasNativeTestRenderer)("native layoutId", () => {
   const shared = { mode: true, layoutId: "highlight", transition: linear }
 

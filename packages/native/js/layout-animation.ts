@@ -3,6 +3,7 @@
 /// `layoutId`, and the `layout` custom prop the renderer reads.
 
 import type { MotionTransition } from "./host.js"
+import type { MotionValue } from "./motion-value.js"
 
 /** `true` and `"position"` glide the box to its new position. `"size"` snaps, as nothing can scale a box; it still moves a box that holds a `layoutId`. */
 export type LayoutMode = boolean | "position" | "size"
@@ -33,6 +34,18 @@ export function withoutLayoutTransition<Transition extends object>(
   return Object.fromEntries(Object.entries(transition).filter(([key]) => key !== "layout")) as Transition
 }
 
+/**
+ * The motion values a pointer drag moves a box with, for `Reorder.Item`: while
+ * `active` is above zero the box is shown `x` and `y` px from where layout puts
+ * it, and when it drops back the box glides to its slot. Values stay bound to
+ * the renderer for as long as the element holds them.
+ */
+export type LayoutDrag = {
+  x: MotionValue<number>
+  y: MotionValue<number>
+  active: MotionValue<number>
+}
+
 export type LayoutDescriptionOptions = {
   layout: LayoutMode | undefined
   /** Already scoped by the enclosing `LayoutGroup`. */
@@ -40,6 +53,7 @@ export type LayoutDescriptionOptions = {
   /** Wired, with its `layout` entry still in. */
   transition: MotionTransition | undefined
   reduced: boolean
+  drag?: LayoutDrag
 }
 
 /** The value of the renderer's `layout` custom prop, or `undefined` when the element does not glide. */
@@ -52,5 +66,8 @@ export function layoutDescription(options: LayoutDescriptionOptions): Record<str
   if (options.layoutId !== undefined) description.layoutId = options.layoutId
   if (options.transition !== undefined) description.transition = options.transition
   if (options.reduced) description.reducedMotion = true
+  if (options.drag !== undefined) {
+    description.dragOffset = { x: options.drag.x.id, y: options.drag.y.id, active: options.drag.active.id }
+  }
   return description
 }

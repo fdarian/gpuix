@@ -5,6 +5,7 @@ import {
   scopeLayoutId,
   withoutLayoutTransition,
 } from "../layout-animation.js"
+import { createReorderDrag } from "../reorder.js"
 
 describe("layout group ids", () => {
   it("joins nested groups and skips a group without an id", () => {
@@ -40,6 +41,20 @@ describe("layoutDescription", () => {
       transition,
       reducedMotion: true,
     })
+  })
+})
+
+describe("layoutDescription drag", () => {
+  it("names the three motion values that drag the box", () => {
+    const drag = createReorderDrag()
+    const description = layoutDescription({
+      layout: true,
+      layoutId: undefined,
+      transition: undefined,
+      reduced: false,
+      drag,
+    })
+    expect(description?.dragOffset).toEqual({ x: drag.x.id, y: drag.y.id, active: drag.active.id })
   })
 })
 
