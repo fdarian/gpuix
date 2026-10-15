@@ -7,11 +7,15 @@
 //! subscription order, so per-element listeners fired in whatever order the
 //! elements were created rather than blur(old) before focus(new).
 
+use std::collections::VecDeque;
 use std::sync::Arc;
+
+use gpui::{App, Window};
 
 use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
-use crate::renderer::{emit_event_full, EventCallback, GpuixView};
+use crate::events::sync_dispatch;
+use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
 
 pub(crate) fn is_text_control(element_type: &str) -> bool {
@@ -67,6 +71,8 @@ pub(crate) struct FocusState {
     /// The element that held focus when the window went inactive, and whether it
     /// matched `:focus-visible`. Window focus comes back to it as it was.
     suspended: Option<(u64, bool)>,
+    /// Focus events noticed but not yet sent. See `settle_focus`.
+    outbox: VecDeque<EventPayload>,
 }
 
 impl FocusState {
@@ -76,6 +82,14 @@ impl FocusState {
 
     pub fn note_programmatic(&mut self) {
         self.programmatic = true;
+    }
+
+    fn push_change(&mut self, tree: &RetainedTree, change: &FocusChange) {
+        self.outbox.extend(change_events(tree, change));
+    }
+
+    fn pop_event(&mut self) -> Option<EventPayload> {
+        self.outbox.pop_front()
     }
 
     /// Record where window focus is now, and report the move if there was one.
@@ -202,48 +216,104 @@ impl FocusEventKind {
     }
 }
 
-/// Emit blur(old), focusout(old), focus(new), focusin(new), in that order.
+/// blur(old), focusout(old), focus(new), focusin(new), in that order.
 ///
 /// Each carries its `target`, the propagation `path` from it to the root, and
 /// the element on the other side of the move as `relatedTarget`. JS decides
 /// which of them bubble.
-pub(crate) fn emit_change(
-    callback: &Option<EventCallback>,
-    tree: &RetainedTree,
-    change: &FocusChange,
-) {
+fn change_events(tree: &RetainedTree, change: &FocusChange) -> Vec<EventPayload> {
+    let mut events = Vec::new();
     if let Some(from) = change.from {
         for kind in [FocusEventKind::Blur, FocusEventKind::FocusOut] {
-            emit(callback, tree, kind, from, change.to, change.from_visible);
+            events.push(event_payload(tree, kind, from, change.to, change.from_visible));
         }
     }
     if let Some(to) = change.to {
         for kind in [FocusEventKind::Focus, FocusEventKind::FocusIn] {
-            emit(callback, tree, kind, to, change.from, change.to_visible);
+            events.push(event_payload(tree, kind, to, change.from, change.to_visible));
         }
     }
+    events
 }
 
 /// The one place a focus event payload is built.
-fn emit(
-    callback: &Option<EventCallback>,
+fn event_payload(
     tree: &RetainedTree,
     kind: FocusEventKind,
     target: u64,
     related: Option<u64>,
     visible: bool,
-) {
-    emit_event_full(callback, target, kind.event_type(), |payload: &mut EventPayload| {
-        payload.focus_visible = Some(visible);
-        payload.target = Some(target as f64);
-        payload.path = Some(
+) -> EventPayload {
+    EventPayload {
+        element_id: target as f64,
+        event_type: kind.event_type().to_string(),
+        focus_visible: Some(visible),
+        target: Some(target as f64),
+        path: Some(
             path_to_root(tree, target)
                 .into_iter()
                 .map(|id| id as f64)
                 .collect(),
-        );
-        payload.related_target = related.map(|id| id as f64);
-    });
+        ),
+        related_target: related.map(|id| id as f64),
+        ..Default::default()
+    }
+}
+
+/// Runs a focus change a script asked for (`focus()`, `blur()`, the `within`
+/// moves), then tells JS about it before returning. Waits for the input being
+/// dispatched when it holds the root view, like every state change a handler
+/// makes.
+pub(crate) fn change_focus(
+    window: &mut Window,
+    cx: &mut App,
+    change: impl FnOnce(&mut GpuixView, &mut Window, &mut gpui::Context<GpuixView>) + 'static,
+) -> Result<(), String> {
+    let view = sync_dispatch::root_view(window)?;
+    if view.is_updating(cx) {
+        window.defer(cx, move |window, cx| {
+            if let Err(error) = change_focus(window, cx, change) {
+                sync_dispatch::report_deferred_error(error);
+            }
+        });
+        return Ok(());
+    }
+    view.update(cx, |view, cx| change(view, window, cx));
+    window.refresh();
+    settle_focus(window, cx)
+}
+
+/// Notices where focus is and sends the events of every move not yet sent.
+///
+/// The events go through `sync_dispatch::emit`, so a handler of `focus` or
+/// `blur` runs before the call that moved focus returns, as in the DOM, and a
+/// handler of the keystroke that moved it sees them before it ends. They are
+/// sent with the root view released, so a handler may read it.
+///
+/// A move nobody here asked for (a press, Tab in a window's own bindings,
+/// `autoFocus`) is noticed by the next frame, which queues its events instead
+/// (`GpuixView::sync_focus_handles`).
+pub(crate) fn settle_focus(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    let view = sync_dispatch::root_view(window)?;
+    if view.is_updating(cx) {
+        window.defer(cx, |window, cx| {
+            if let Err(error) = settle_focus(window, cx) {
+                sync_dispatch::report_deferred_error(error);
+            }
+        });
+        return Ok(());
+    }
+    view.update(cx, |view, _| view.observe_focus(window));
+    // A handler may move focus again, and its own settle sends what it finds
+    // from this queue, so this loop re-reads it every time.
+    while let Some((payload, callback)) = view.update(cx, |view, _| {
+        view.focus
+            .pop_event()
+            .map(|payload| (payload, view.event_callback.clone()))
+    }) {
+        sync_dispatch::emit(window, cx, &callback, payload);
+    }
+    Ok(())
 }
 
 /// The DOM default of a mouse press: focus the nearest focusable element at or
@@ -392,7 +462,18 @@ impl GpuixView {
             self.routing.user_input_seen(),
             window.is_window_active(),
         ) {
-            crate::focus::emit_change(&self.event_callback, tree, &change);
+            self.focus.push_change(tree, &change);
+        }
+    }
+
+    /// Sends the focus events noticed so far through the ordinary queue. What a
+    /// frame notices has no call of JS's to answer to, so it cannot be sent
+    /// synchronously.
+    pub(crate) fn queue_focus_events(&mut self) {
+        while let Some(payload) = self.focus.pop_event() {
+            if let Some(callback) = &self.event_callback {
+                callback(payload);
+            }
         }
     }
 }

@@ -298,6 +298,144 @@ describeNative("focus model", () => {
       expect(log).toEqual(["a:blur", "parent:blur", "b:focus", "parent:focus"])
     })
 
+    describe("synchronously", () => {
+      // The test wrapper drains the queue after each call, which hides whether
+      // native sent an event synchronously or queued it, so go below it. On a
+      // live window the queue is only read on a later turn of the event loop.
+      function watch(renderer) {
+        const sync: string[] = []
+        const handler = renderer.dispatchSyncEvent
+        renderer.native.setSyncEventHandler((event) => {
+          sync.push(`${event.eventType}:${renderer.getElement(event.target)?.testId}`)
+          return handler(event)
+        })
+        const queued = () =>
+          renderer.native
+            .drainEvents()
+            .filter((event) => ["focus", "blur", "focusin", "focusout"].includes(event.eventType))
+            .map((event) => event.eventType)
+        return { sync, queued }
+      }
+      const scene = (
+        <div testId="scope" style={{ width: 200, height: 100 }}>
+          <div testId="a" tabIndex={0} style={box} onFocus={() => {}} />
+          <div testId="b" tabIndex={0} style={box} onFocus={() => {}} onBlur={() => {}} />
+        </div>
+      )
+
+      it("sends the events of focus() and blur() through the sync handler, not the queue", () => {
+        const { renderer, idOf } = setup(scene)
+        renderer.native.flush()
+        const { sync, queued } = watch(renderer)
+        renderer.native.focusElement(idOf("a"))
+        expect(sync).toEqual(["focus:a", "focusin:a"])
+        renderer.native.focusElement(idOf("b"))
+        expect(sync.slice(2)).toEqual(["blur:a", "focusout:a", "focus:b", "focusin:b"])
+        renderer.native.blurElement(idOf("b"))
+        expect(sync.slice(6)).toEqual(["blur:b", "focusout:b"])
+        expect(queued()).toEqual([])
+      })
+
+      it("sends the events of focusNext(), focusPrevious() and focusNextWithin() through the sync handler", () => {
+        const { renderer, idOf } = setup(scene)
+        renderer.native.flush()
+        const { sync, queued } = watch(renderer)
+        renderer.native.focusNext()
+        expect(sync).toEqual(["focus:a", "focusin:a"])
+        renderer.native.focusNext()
+        expect(sync.slice(2)).toEqual(["blur:a", "focusout:a", "focus:b", "focusin:b"])
+        renderer.native.focusPrevious()
+        expect(sync.slice(6)).toEqual(["blur:b", "focusout:b", "focus:a", "focusin:a"])
+        renderer.native.focusNextWithin(idOf("scope"))
+        expect(sync.slice(10)).toEqual(["blur:a", "focusout:a", "focus:b", "focusin:b"])
+        expect(queued()).toEqual([])
+      })
+    })
+
+    describe("from a handler", () => {
+      // The events fire inside focus(), so the handler that called it hears
+      // them before its next line, as in the DOM.
+      it("delivers focus events before focus() returns", () => {
+        const log: string[] = []
+        let target
+        const { renderer, idOf } = setup(
+          <div style={{ width: 200, height: 100 }}>
+            <div
+              testId="a"
+              tabIndex={0}
+              style={box}
+              onBlur={() => log.push("a:blur")}
+              onKeyDown={() => {
+                log.push("keydown")
+                target.focus()
+                log.push("focus() returned")
+              }}
+            />
+            <div
+              ref={(value) => (target = value)}
+              testId="b"
+              tabIndex={0}
+              style={box}
+              onFocus={() => log.push("b:focus")}
+            />
+          </div>
+        )
+        renderer.focusElement(idOf("a"))
+        log.length = 0
+        renderer.nativeSimulateKeystrokes(idOf("a"), "x")
+        expect(log).toEqual(["keydown", "a:blur", "b:focus", "focus() returned"])
+      })
+
+      it("delivers focus events before focusNext() returns", () => {
+        const log: string[] = []
+        const { renderer, idOf } = setup(
+          <div style={{ width: 200, height: 100 }}>
+            <div
+              testId="a"
+              tabIndex={0}
+              style={box}
+              onBlur={() => log.push("a:blur")}
+              onKeyDown={(event) => {
+                if (event.key !== "x") return
+                renderer.focusNext()
+                log.push("focusNext() returned")
+              }}
+            />
+            <div testId="b" tabIndex={0} style={box} onFocus={() => log.push("b:focus")} />
+          </div>
+        )
+        renderer.focusElement(idOf("a"))
+        log.length = 0
+        renderer.nativeSimulateKeystrokes(idOf("a"), "x")
+        expect(log).toEqual(["a:blur", "b:focus", "focusNext() returned"])
+      })
+
+      it("lets a focus handler move focus again", () => {
+        const log: string[] = []
+        let other
+        const { renderer, focused, idOf } = setup(
+          <div style={{ width: 200, height: 100 }}>
+            <div testId="a" tabIndex={0} style={box} onKeyDown={() => renderer.focusElement(idOf("b"))} />
+            <div
+              testId="b"
+              tabIndex={0}
+              style={box}
+              onFocus={() => {
+                log.push("b:focus")
+                other.focus()
+              }}
+              onBlur={() => log.push("b:blur")}
+            />
+            <div ref={(value) => (other = value)} testId="c" tabIndex={0} style={box} onFocus={() => log.push("c:focus")} />
+          </div>
+        )
+        renderer.focusElement(idOf("a"))
+        renderer.nativeSimulateKeystrokes(idOf("a"), "x")
+        expect(focused()).toBe("c")
+        expect(log).toEqual(["b:focus", "b:blur", "c:focus"])
+      })
+    })
+
     it("names onFocus and onBlur events by their lowercase DOM types, focusin and focusout", () => {
       const types: string[] = []
       const record = (event) => types.push(event.type)

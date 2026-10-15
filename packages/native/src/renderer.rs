@@ -2322,10 +2322,12 @@ impl GpuixRenderer {
     pub fn focus_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window_or_defer(move |view, window, cx| {
-            view.request_focus(id, window, cx);
-            window.refresh();
-        });
+        return update_window_without_view(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.request_focus(id, window, cx)
+            })
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusElement(id));
@@ -2344,10 +2346,12 @@ impl GpuixRenderer {
     pub fn blur_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window_or_defer(move |view, window, cx| {
-            view.blur_element(id, window, cx);
-            window.refresh();
-        });
+        return update_window_without_view(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.blur_element(id, window, cx)
+            })
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::BlurElement(id));
@@ -2367,10 +2371,14 @@ impl GpuixRenderer {
     pub fn matches_focus(&self, element_id: f64, selector: String) -> Result<bool> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window(move |view, window, _cx| {
-            view.matches_focus(id, &selector, window)
-        })?
-        .map_err(Error::from_reason);
+        {
+            let matches = update_window(move |view, window, _cx| {
+                view.matches_focus(id, &selector, window)
+            })?
+            .map_err(Error::from_reason)?;
+            update_window_without_view(crate::focus::settle_focus)?.map_err(Error::from_reason)?;
+            return Ok(matches);
+        }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
@@ -2397,7 +2405,11 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window_without_view(|window, cx| window.focus_next(cx));
+        return update_window_without_view(|window, cx| {
+            window.focus_next(cx);
+            crate::focus::settle_focus(window, cx)
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusNext);
@@ -2415,7 +2427,11 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window_without_view(|window, cx| window.focus_prev(cx));
+        return update_window_without_view(|window, cx| {
+            window.focus_prev(cx);
+            crate::focus::settle_focus(window, cx)
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusPrevious);
@@ -2459,11 +2475,13 @@ impl GpuixRenderer {
     pub fn focus_next_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window_or_defer(move |view, window, cx| {
-            view.focus_next_within(id, window, cx);
-            cx.notify();
-            window.refresh();
-        });
+        return update_window_without_view(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.focus_next_within(id, window, cx);
+                cx.notify();
+            })
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusNextWithin(id));
@@ -2482,11 +2500,13 @@ impl GpuixRenderer {
     pub fn focus_previous_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return update_window_or_defer(move |view, window, cx| {
-            view.focus_previous_within(id, window, cx);
-            cx.notify();
-            window.refresh();
-        });
+        return update_window_without_view(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.focus_previous_within(id, window, cx);
+                cx.notify();
+            })
+        })?
+        .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::FocusPreviousWithin(id));
@@ -6596,6 +6616,7 @@ impl GpuixView {
         }
 
         self.observe_focus_in(tree, window);
+        self.queue_focus_events();
 
         // Clean up handles for elements that no longer exist.
         self.focus_handles

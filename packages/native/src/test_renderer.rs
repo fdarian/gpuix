@@ -655,30 +655,50 @@ impl TestGpuixRenderer {
         // Same path as the live renderer: an element whose focus handle does
         // not exist yet (Solid applies its mutations in a microtask) takes
         // focus when its handle is created.
-        update_view_or_defer(move |view, window, cx| view.request_focus(id, window, cx))
+        window_call(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.request_focus(id, window, cx)
+            })
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]
     pub fn blur_element(&self, id: f64) -> Result<()> {
         let id = to_element_id(id)?;
-        update_view_or_defer(move |view, window, cx| view.blur_element(id, window, cx))
+        window_call(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.blur_element(id, window, cx)
+            })
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]
     pub fn matches_focus(&self, id: f64, selector: String) -> Result<bool> {
         let id = to_element_id(id)?;
-        update_view(|view, window, _cx| view.matches_focus(id, &selector, window))?
-            .map_err(Error::from_reason)
+        let matches = update_view(|view, window, _cx| view.matches_focus(id, &selector, window))?
+            .map_err(Error::from_reason)?;
+        window_call(crate::focus::settle_focus)?.map_err(Error::from_reason)?;
+        Ok(matches)
     }
 
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
-        window_call(|window, cx| window.focus_next(cx))
+        window_call(|window, cx| {
+            window.focus_next(cx);
+            crate::focus::settle_focus(window, cx)
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
-        window_call(|window, cx| window.focus_prev(cx))
+        window_call(|window, cx| {
+            window.focus_prev(cx);
+            crate::focus::settle_focus(window, cx)
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]
@@ -724,19 +744,25 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn focus_next_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        update_view_or_defer(move |view, window, cx| {
-            view.focus_next_within(id, window, cx);
-            cx.notify();
-        })
+        window_call(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.focus_next_within(id, window, cx);
+                cx.notify();
+            })
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]
     pub fn focus_previous_within(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        update_view_or_defer(move |view, window, cx| {
-            view.focus_previous_within(id, window, cx);
-            cx.notify();
-        })
+        window_call(move |window, cx| {
+            crate::focus::change_focus(window, cx, move |view, window, cx| {
+                view.focus_previous_within(id, window, cx);
+                cx.notify();
+            })
+        })?
+        .map_err(Error::from_reason)
     }
 
     #[napi]

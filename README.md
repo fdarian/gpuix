@@ -3151,6 +3151,13 @@ view, such as `getFocusedElementId`, throws; read it from a microtask instead.
 
 ### Imperative focus
 
+`focus()`, `blur()`, `focusNext()`, `focusPrevious()` and the `within` variants fire
+their `blur`, `focusout`, `focus` and `focusin` events before they return, on
+macOS and in the test renderer, so a handler that moves focus hears them before
+its next line (a focus handler may move focus again). The focus a mouse press or
+`autoFocus` causes reaches handlers a frame later, and on Windows and Linux all of
+them are queued.
+
 `focusNext()` and `focusPrevious()` map directly to GPUI's
 `window.focus_next()` and `window.focus_prev()`.
 `focusNextWithin(id)` / `focusPreviousWithin(id)` wrap inside that subtree.

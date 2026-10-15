@@ -155,7 +155,7 @@ pub(crate) const VIEW_BUSY: &str = "The root view is being updated by the input 
 pub(crate) const NESTED: &str =
     "A renderer call cannot be nested inside another one made from an event handler";
 
-fn root_view(window: &Window) -> Result<gpui::Entity<GpuixView>, String> {
+pub(crate) fn root_view(window: &Window) -> Result<gpui::Entity<GpuixView>, String> {
     window
         .root::<GpuixView>()
         .flatten()
