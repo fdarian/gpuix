@@ -53,4 +53,34 @@ describeNative("boxShadow painting", () => {
     expect(pixels.at(EDGE - 5, 120)).toEqual([0, 255, 0, 255])
     expect(pixels.at(EDGE - 15, 120)).toEqual([255, 0, 0, 255])
   })
+
+  // CSS: the blur radius B is a gaussian with sigma = B / 2, so a straight edge
+  // is 50% at the edge and falls to 1 - Phi(2) = 2.3% at B outside it.
+  it("blurs a drop shadow over its radius, with a standard deviation of half of it", () => {
+    const pixels = capture("blur", boxed("0 0 40px #000000"))
+    expect(coverageAt(pixels, 0)).toBeGreaterThan(0.42)
+    expect(coverageAt(pixels, 0)).toBeLessThan(0.58)
+    // 1 - Phi(1) = 15.9%
+    expect(coverageAt(pixels, 20)).toBeGreaterThan(0.1)
+    expect(coverageAt(pixels, 20)).toBeLessThan(0.22)
+    // 1 - Phi(2) = 2.3%
+    expect(coverageAt(pixels, 40)).toBeLessThan(0.05)
+    expect(coverageAt(pixels, 40)).toBeGreaterThan(0.005)
+    expect(coverageAt(pixels, 50)).toBeLessThan(0.02)
+  })
+
+  it("moves the blurred edge by the spread", () => {
+    const pixels = capture("blur-spread", boxed("0 0 40px 10px #000000"))
+    expect(coverageAt(pixels, 10)).toBeGreaterThan(0.42)
+    expect(coverageAt(pixels, 10)).toBeLessThan(0.58)
+    expect(coverageAt(pixels, 50)).toBeLessThan(0.05)
+  })
+
+  it("blurs an inset shadow over its radius as well", () => {
+    const pixels = capture("blur-inset", boxed("inset 0 0 40px #000000"))
+    expect(coverageAt(pixels, -20)).toBeGreaterThan(0.1)
+    expect(coverageAt(pixels, -20)).toBeLessThan(0.22)
+    expect(coverageAt(pixels, -40)).toBeLessThan(0.05)
+    expect(coverageAt(pixels, -40)).toBeGreaterThan(0.005)
+  })
 })

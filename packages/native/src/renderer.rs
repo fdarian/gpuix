@@ -7987,12 +7987,14 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
             .rev()
             .filter_map(|shadow| {
                 let color = colors.resolve(&shadow.color)?;
+                // The CSS blur radius is two standard deviations; gpui's shadow
+                // shaders take the standard deviation itself.
                 let built = gpui::BoxShadow::new(
                     gpui::px(shadow.offset_x as f32),
                     gpui::px(shadow.offset_y as f32),
                     color.into(),
                 )
-                .blur_radius(gpui::px(shadow.blur_radius.max(0.0) as f32))
+                .blur_radius(gpui::px((shadow.blur_radius.max(0.0) / 2.0) as f32))
                 .spread_radius(gpui::px(shadow.spread_radius as f32));
                 Some(if shadow.inset { built.inset() } else { built })
             })
