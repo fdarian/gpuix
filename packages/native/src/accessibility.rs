@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use gpui::prelude::*;
 use gpui::{AccessibleAction, Role};
 
-use crate::element_tree::EventPayload;
-use crate::renderer::{emit_event_full, EventCallback};
+use crate::events::synthetic_click::click_payload;
+use crate::renderer::EventCallback;
 
 /// Apply `role` and `aria-*` from React, plus a default role when the app
 /// did not set one. `none` / `presentation` produce no node.
@@ -76,12 +76,13 @@ where
 }
 
 /// VoiceOver Press. GPUI auto-adds Click only for `.on_click()`. GPUIX
-/// click is `on_mouse_up`, so register the action by hand and emit the
-/// same JS `click` event.
+/// click is dispatched by `crate::events`, so register the action by hand and
+/// emit the click a non-pointer activation makes. `path` is the element and its
+/// retained ancestors, as built.
 pub(crate) fn apply_a11y_click<E>(
     el: E,
     events: &std::collections::HashSet<String>,
-    element_id: u64,
+    path: Vec<u64>,
     callback: &Option<EventCallback>,
 ) -> E
 where
@@ -92,16 +93,9 @@ where
     }
     let callback = callback.clone();
     el.on_a11y_action(AccessibleAction::Click, move |_data, _window, _cx| {
-        emit_event_full(
-            &callback,
-            element_id,
-            "click",
-            |payload: &mut EventPayload| {
-                payload.button = Some(0);
-                payload.click_count = Some(1);
-                payload.is_right_click = Some(false);
-            },
-        );
+        if let Some(callback) = &callback {
+            callback(click_payload(path.clone()));
+        }
     })
 }
 

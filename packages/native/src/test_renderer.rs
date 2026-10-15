@@ -938,6 +938,19 @@ impl TestGpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    /// The click an activation that is not a pointer press makes on `element_id`;
+    /// collected for `drainEvents` like every other event.
+    #[napi]
+    pub fn click_element(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let payload = {
+            let tree = self.tree.lock().unwrap();
+            crate::events::synthetic_click::click_element(&tree, id).map_err(Error::from_reason)?
+        };
+        self.events.lock().unwrap().push(payload);
+        Ok(())
+    }
+
     /// Packed `"rgba"` (default) or `"bgra"` pixels onto an `<img>` host node.
     #[napi]
     pub fn set_image_pixels(

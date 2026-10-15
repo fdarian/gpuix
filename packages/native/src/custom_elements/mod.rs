@@ -38,6 +38,9 @@ pub struct CustomRenderContext<'a> {
     /// The control holding keyboard focus and its ancestors. See
     /// `renderer::apply_focus_visible`.
     pub keyboard_focus: Option<std::sync::Arc<[u64]>>,
+    /// The element and its retained ancestors, for the click a VoiceOver press
+    /// makes. Empty unless the element listens for `click`.
+    pub click_path: Vec<u64>,
     /// Style object from the retained element for layout and appearance.
     pub style: Option<&'a crate::style::StyleDesc>,
     /// Built child elements from the retained tree for this custom node.
@@ -155,7 +158,7 @@ pub(crate) fn wire_host_events<E: gpui::StatefulInteractiveElement>(
             crate::renderer::emit_file_drop(&callback, id, dropped, window.mouse_position());
         });
     }
-    crate::accessibility::apply_a11y_click(el, ctx.events, ctx.id, ctx.event_callback)
+    crate::accessibility::apply_a11y_click(el, ctx.events, ctx.click_path.clone(), ctx.event_callback)
 }
 
 // ── Traits ───────────────────────────────────────────────────────────

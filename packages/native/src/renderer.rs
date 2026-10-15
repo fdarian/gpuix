@@ -2405,6 +2405,22 @@ impl GpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    /// Deliver the click an activation that is not a pointer press makes on
+    /// `element_id`, such as Enter on a button: a `click` with `detail` 0 that
+    /// bubbles along the element's path. Arrives through the event callback.
+    #[napi]
+    pub fn click_element(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let payload = {
+            let tree = self.tree.lock().unwrap();
+            crate::events::synthetic_click::click_element(&tree, id).map_err(Error::from_reason)?
+        };
+        if let Some(callback) = self.event_callback_for_view() {
+            callback(payload);
+        }
+        Ok(())
+    }
+
     /// Paint packed pixels onto an `<img>` host node. `format` is `"rgba"`
     /// (default) or `"bgra"`; BGRA skips the per-pixel swizzle.
     #[napi]
@@ -3465,6 +3481,18 @@ impl WebGpuixRenderer {
         self.pointer_capture
             .has(&tree, id, pointer_id)
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = clickElement)]
+    pub fn click_element(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let payload = {
+            let tree = self.tree.lock().unwrap();
+            crate::events::synthetic_click::click_element(&tree, id)
+                .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?
+        };
+        (self.event_callback)(payload);
+        Ok(())
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = setImagePixels)]
@@ -5559,6 +5587,7 @@ pub(crate) fn build_element(
                 event_callback: ctx.event_callback,
                 focus_handle: ctx.focus_handles.get(&id),
                 keyboard_focus: ctx.keyboard_focus.clone(),
+                click_path: click_path(ctx.tree, element),
                 style,
                 children: custom_children,
                 selection: ctx.selection.clone(),
@@ -5905,7 +5934,12 @@ pub(crate) fn build_host_container(
     // Pointer, mouse and click events are not wired here: the window-level
     // dispatcher (`crate::events`) finds the target and runs them along the
     // retained tree. What is left are the events GPUI still owns.
-    el = apply_a11y_click(el, element.events(), element.id, ctx.event_callback);
+    el = apply_a11y_click(
+        el,
+        element.events(),
+        click_path(ctx.tree, element),
+        ctx.event_callback,
+    );
 
     for event_type in element.events() {
         let id = element.id;
@@ -6854,6 +6888,16 @@ fn report_scroll(
             payload.scroll_y = Some(f64::from(offset.1));
         });
     });
+}
+
+/// The retained path a non-pointer click on `element` bubbles along. Empty when
+/// nothing listens for a click, which is also when it is never read.
+pub(crate) fn click_path(tree: &RetainedTree, element: &crate::retained_tree::RetainedElement) -> Vec<u64> {
+    if element.events().contains("click") {
+        crate::events::path::event_path(tree, element.id)
+    } else {
+        Vec::new()
+    }
 }
 
 /// Values closer than this are the same value. Layout is deterministic, so this

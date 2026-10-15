@@ -675,6 +675,22 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateMouseDown(500, 350, 2)
       expect(log).toEqual([[2, expect.any(Number)]])
     })
+
+    it("fires for every listener, the root's included, when the press hits no element", () => {
+      const log: string[] = []
+      testRoot.render(
+        <div testId="root" style={{ width: 200, height: 100 }} onMouseDownOutside={() => log.push("root")}>
+          <div testId="inner" style={{ width: 100, height: 40 }} onMouseDownOutside={() => log.push("inner")} />
+        </div>
+      )
+      testRoot.renderer.nativeSimulateClick(10, 10)
+      expect(log).toEqual([])
+      testRoot.renderer.nativeSimulateClick(150, 50)
+      expect(log).toEqual(["inner"])
+      log.length = 0
+      testRoot.renderer.nativeSimulateClick(500, 350)
+      expect(log.sort()).toEqual(["inner", "root"])
+    })
   })
 
   describe("dialog overlay", () => {

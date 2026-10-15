@@ -172,15 +172,24 @@ impl Emitter<'_> {
 
     /// `mousedownoutside` for every element that listens for it and does not
     /// contain `target` in its logical subtree: the target's retained path is
-    /// the elements it is inside, anchored layers included.
-    fn emit_outside_presses(&mut self, target: u64, fields: Fields) {
-        let path = event_path(self.tree, target);
+    /// the elements it is inside, anchored layers included. A press that hit no
+    /// element (`None`) is a press on the document, as in the DOM: it targets
+    /// the root and is outside every listener, the root's own included.
+    fn emit_outside_presses(&mut self, target: Option<u64>, fields: Fields) {
+        let Some(path) = target
+            .or(self.tree.root_id)
+            .map(|target| event_path(self.tree, target))
+            .filter(|path| !path.is_empty())
+        else {
+            return;
+        };
+        let inside: &[u64] = if target.is_some() { &path } else { &[] };
         let mut listeners: Vec<u64> = self
             .tree
             .elements
             .iter()
             .filter(|(id, element)| {
-                element.events().contains(MOUSE_DOWN_OUTSIDE) && !path.contains(id)
+                element.events().contains(MOUSE_DOWN_OUTSIDE) && !inside.contains(id)
             })
             .map(|(id, _)| *id)
             .collect();
@@ -193,7 +202,7 @@ impl Emitter<'_> {
                 related_target: fields.related_target,
                 button: fields.button,
                 detail: fields.detail,
-                offset: self.offset(target),
+                offset: self.offset(path[0]),
                 pressed_button: fields.pressed_button,
                 hovered: fields.hovered,
             });
@@ -309,8 +318,18 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
             button,
             click_count,
         } => {
-            if let Some(target) = target {
-                restyle |= press(state, &mut emitter, target, button, click_count);
+            match target {
+                Some(target) => {
+                    restyle |= press(state, &mut emitter, target, button, click_count);
+                }
+                None => emitter.emit_outside_presses(
+                    None,
+                    Fields {
+                        button: Some(button),
+                        detail: Some(click_count),
+                        ..Default::default()
+                    },
+                ),
             }
         }
         PointerAction::Up {
@@ -435,7 +454,7 @@ fn press(
     };
     emitter.emit("pointerdown", target, fields);
     emitter.emit("mousedown", target, fields);
-    emitter.emit_outside_presses(target, fields);
+    emitter.emit_outside_presses(Some(target), fields);
     if button == SECONDARY_BUTTON {
         // Where macOS and Chrome open the context menu: on the press.
         emitter.emit(
@@ -909,6 +928,36 @@ mod tests {
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[6, 5, 3, 2, 1])));
         assert_eq!(outside_presses(&output), ["4<-6"]);
+    }
+
+    #[test]
+    fn a_press_that_hits_no_element_is_outside_every_listener_and_targets_the_root() {
+        let tree = tree(&[
+            (1, "mousedownoutside"),
+            (3, "mousedownoutside"),
+            (4, "mousedownoutside"),
+            (3, "mousedown"),
+        ]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, Vec::new()));
+        assert_eq!(outside_presses(&output), ["1<-1", "3<-1", "4<-1"]);
+        assert_eq!(
+            names(&output),
+            ["mousedownoutside@1", "mousedownoutside@1", "mousedownoutside@1"],
+            "no element was pressed, so nothing else fires"
+        );
+        let payloads = output.into_payloads();
+        assert_eq!(payloads[1].element_id, 3.0);
+        assert_eq!(payloads[1].target, Some(1.0));
+        assert_eq!(payloads[1].path, Some(vec![1.0]));
+    }
+
+    #[test]
+    fn a_press_on_nothing_with_no_outside_listener_emits_nothing() {
+        let tree = tree(&[(3, "mousedown")]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, Vec::new()));
+        assert!(output.events.is_empty());
     }
 
     #[test]

@@ -172,10 +172,10 @@ pub struct EventPayload {
     /// down/up events.
     pub detail: Option<u32>,
 
-    /// The DOM `pointerId`. 1 for the mouse.
-    pub pointer_id: Option<u32>,
+    /// The DOM `pointerId`. 1 for the mouse, -1 for a click no pointer made.
+    pub pointer_id: Option<i32>,
 
-    /// The DOM `pointerType`. "mouse" for every event native produces.
+    /// The DOM `pointerType`. "mouse" for the mouse, empty for a click no pointer made.
     pub pointer_type: Option<String>,
 
     // ── Modifiers ────────────────────────────────────────────────────

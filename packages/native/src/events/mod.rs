@@ -4,6 +4,7 @@ pub mod listeners;
 pub mod path;
 pub mod state;
 pub mod state_styles;
+pub mod synthetic_click;
 
 /// Every GPUIX window hit-tests like the DOM: the pointer hits the topmost
 /// element that is not `pointer-events: none` and the elements enclosing it,
