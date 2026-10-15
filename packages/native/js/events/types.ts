@@ -131,10 +131,14 @@ export interface PointerEventHandlerProps {
   onPointerCancel?: (event: HostPointerEvent) => void
   onGotPointerCapture?: (event: HostPointerEvent) => void
   onLostPointerCapture?: (event: HostPointerEvent) => void
+  /** On a `draggable` source. `preventDefault()` cancels the drag. */
   onDragStart?: (event: HostDragEvent) => void
+  /** On the source, on each move. Only fires when something listens. */
   onDrag?: (event: HostDragEvent) => void
+  /** On the source. `dataTransfer.dropEffect` is `"none"` if nothing was dropped. */
   onDragEnd?: (event: HostDragEvent) => void
   onDragEnter?: (event: HostDragEvent) => void
+  /** `preventDefault()` makes the element a drop target. */
   onDragOver?: (event: HostDragEvent) => void
   onDragLeave?: (event: HostDragEvent) => void
   onDrop?: (event: HostDragEvent) => void
