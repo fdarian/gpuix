@@ -1596,7 +1596,7 @@ impl GpuixRenderer {
                         );
                         view.observe_appearance(window, cx);
                         crate::events::enable_dom_hit_testing(window);
-                        view.install_key_interception(cx);
+                        view.install_key_interception(window, cx);
                         view
                     })
                 },
@@ -1745,7 +1745,7 @@ impl GpuixRenderer {
                                         );
                                         view.observe_appearance(window, cx);
                                         crate::events::enable_dom_hit_testing(window);
-                                        view.install_key_interception(cx);
+                                        view.install_key_interception(window, cx);
                                         view
                                     })
                                 },
@@ -3911,7 +3911,7 @@ fn start_web_app(
                 );
                 view.observe_appearance(window, cx);
                 crate::events::enable_dom_hit_testing(window);
-                view.install_key_interception(cx);
+                view.install_key_interception(window, cx);
                 if let Some((key_down, key_up, event_id)) =
                     PENDING_WINDOW_KEY_EVENTS.with(|pending| pending.borrow_mut().take())
                 {
@@ -5591,9 +5591,10 @@ impl GpuixView {
 
     /// Send `keydown` for every keystroke, before GPUI binds it to an action.
     /// Call once, right after the view is created.
-    pub(crate) fn install_key_interception(&mut self, cx: &mut gpui::App) {
+    pub(crate) fn install_key_interception(&mut self, window: &gpui::Window, cx: &mut gpui::App) {
         self.key_down_interception = Some(crate::events::keyboard::install_key_down(
             cx,
+            window.window_handle().window_id(),
             self.tree.clone(),
             self.event_callback.clone(),
             self.routing.clone(),

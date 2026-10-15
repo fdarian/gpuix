@@ -383,7 +383,7 @@ impl TestGpuixRenderer {
                     view.observe_appearance(window, cx);
                     view.simulate_platform_pointer_lock(simulated_platform_clone);
                     crate::events::enable_dom_hit_testing(window);
-                    view.install_key_interception(cx);
+                    view.install_key_interception(window, cx);
                     view
                 })
             })

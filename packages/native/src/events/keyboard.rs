@@ -175,13 +175,21 @@ fn key_payload(
 /// it is a navigation key, never text, as in a browser field. That default
 /// already ran by the time the outcome is back. The subscription ends the
 /// interception when dropped.
+///
+/// Interceptors belong to the `App`, not to a window, so with two views on one
+/// app each would see the other's keys and send them again. This one answers
+/// to `window_id` only.
 pub(crate) fn install_key_down(
     cx: &mut App,
+    window_id: gpui::WindowId,
     tree: Arc<Mutex<RetainedTree>>,
     callback: Option<EventCallback>,
     routing: InputRouting,
 ) -> gpui::Subscription {
     cx.intercept_keystrokes(move |event, window, cx| {
+        if window.window_handle().window_id() != window_id {
+            return;
+        }
         routing.note_user_input();
         let prevented = key_payload(
             &routing,
@@ -248,4 +256,40 @@ pub(crate) fn window_input_listeners(
     .absolute()
     .w(gpui::px(0.0))
     .h(gpui::px(0.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Blank;
+
+    impl gpui::Render for Blank {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+            gpui::div()
+        }
+    }
+
+    #[gpui::test]
+    fn a_keystroke_in_one_window_is_sent_once_when_two_views_share_the_app(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let sent = Arc::new(Mutex::new(Vec::<f64>::new()));
+        let mut subscriptions = Vec::new();
+        let mut windows = Vec::new();
+        for event_id in [1u64, 2] {
+            let sent = sent.clone();
+            let callback: Option<EventCallback> = Some(Arc::new(move |payload: EventPayload| {
+                sent.lock().unwrap().push(payload.element_id);
+            }));
+            let routing = InputRouting::default();
+            routing.set_window_keys(true, false, event_id);
+            let tree = Arc::new(Mutex::new(RetainedTree::new()));
+            let window = cx.add_window(|_, _| Blank);
+            cx.update(|cx| subscriptions.push(install_key_down(cx, window.window_id(), tree, callback, routing)));
+            windows.push(window);
+        }
+        cx.simulate_keystrokes(windows[0].into(), "x");
+        assert_eq!(*sent.lock().unwrap(), vec![1.0]);
+    }
 }
