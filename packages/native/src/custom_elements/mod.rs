@@ -232,14 +232,10 @@ pub trait CustomElement: 'static {
     /// Clean up resources (GPUI entities, subscriptions, etc.)
     fn destroy(&mut self);
 
-    /// Current live GPU image on `<img>`, if any.
-    fn live_image(&self) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        None
-    }
-
-    /// A live image that `src` replaced, waiting for `drop_image`.
-    fn take_dropped_image(&mut self) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        None
+    /// Every image this element put in the sprite atlas and still holds, so the
+    /// registry can drop them when the element goes away.
+    fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
+        Vec::new()
     }
 
     /// Replace the live GPU image on `<img>`. Returns the previous image when
@@ -470,11 +466,7 @@ impl CustomElementRegistry {
 
     fn destroy_live_image(&mut self, id: u64, window: &mut gpui::Window) {
         if let Some(mut entry) = self.instances.remove(&id) {
-            if let Some(image) = entry
-                .element
-                .live_image()
-                .or_else(|| entry.element.take_dropped_image())
-            {
+            for image in entry.element.take_held_images() {
                 window.drop_image(image).ok();
             }
             entry.element.destroy();

@@ -11,6 +11,10 @@
 /// `RenderImage` here, in `render`, so the element knows the outcome and the
 /// natural size. A `blob:` src is fetched by the JS layer (`js/blob-images.ts`),
 /// which hands the bytes to `setImage`, or reports failure through `srcError`.
+///
+/// Every image the element paints goes into the sprite atlas. The element
+/// remembers it (`painted`, or the `Render` source) and hands it back to be
+/// dropped when `src` replaces it or the element goes away.
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 use base64::Engine as _;
 
@@ -93,22 +97,35 @@ pub struct ImgElement {
     source: ImgSource,
     object_fit: ImgObjectFit,
     alt: String,
-    dropped: Option<std::sync::Arc<gpui::RenderImage>>,
+    /// Images `src` replaced, waiting for `drop_image` at the next render.
+    dropped: Vec<std::sync::Arc<gpui::RenderImage>>,
+    /// The image last handed to paint for a `Path`, `Uri` or `Data` source.
+    painted: Option<std::sync::Arc<gpui::RenderImage>>,
     /// The decoded `Data` source, decoded once on first paint.
     decoded: Option<Result<std::sync::Arc<gpui::RenderImage>, String>>,
-    /// A src was set and its `load` or `error` has not fired yet.
-    awaiting_outcome: bool,
     /// gpui rasterises an SVG at twice its size, so the bitmap is not the
     /// intrinsic size.
     supersampled: bool,
+    /// A src was set and its `load` or `error` has not fired yet.
+    awaiting_outcome: bool,
 }
 
 impl ImgElement {
     fn load_src(&mut self, src: &str) {
         let src = src.trim();
+        self.dropped.extend(self.live_image());
+        self.painted = None;
         self.decoded = None;
         self.awaiting_outcome = !src.is_empty();
         (self.source, self.supersampled) = resolve_src(src);
+    }
+
+    /// The image this element has in the atlas, if any.
+    fn live_image(&self) -> Option<std::sync::Arc<gpui::RenderImage>> {
+        match &self.source {
+            ImgSource::Render(image) => Some(image.clone()),
+            _ => self.painted.clone(),
+        }
     }
 
     /// Fires `load` or `error` once per src, after the outcome is known. Deferred
@@ -252,10 +269,69 @@ pub fn init(cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     use super::{
-        css_size, file_url_path, http_image_uri, uri_path_is_svg, CustomElement, ImgElement,
-        ImgSource,
+        css_size, file_url_path, http_image_uri, render_image_from_pixels, uri_path_is_svg,
+        CustomElement, ImgElement, ImgSource, PixelFormat,
     };
     use serde_json::json;
+    use std::sync::Arc;
+
+    fn image() -> Arc<gpui::RenderImage> {
+        render_image_from_pixels(1, 1, vec![0; 4], PixelFormat::Rgba).unwrap()
+    }
+
+    fn has(images: &[Arc<gpui::RenderImage>], image: &Arc<gpui::RenderImage>) -> bool {
+        images.iter().any(|held| Arc::ptr_eq(held, image))
+    }
+
+    #[test]
+    fn a_painted_image_is_dropped_when_src_changes() {
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!("data:image/svg+xml,%3Csvg%2F%3E"));
+        let first = image();
+        element.painted = Some(first.clone());
+        element.set_prop("src", json!("/tmp/other.png"));
+        assert!(element.painted.is_none());
+        let held = element.take_held_images();
+        assert_eq!(held.len(), 1);
+        assert!(has(&held, &first));
+        assert!(element.take_held_images().is_empty());
+    }
+
+    #[test]
+    fn every_image_replaced_before_a_render_is_kept_for_dropping() {
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!("/tmp/a.png"));
+        let first = image();
+        element.painted = Some(first.clone());
+        element.set_prop("src", json!("/tmp/b.png"));
+        let second = image();
+        element.painted = Some(second.clone());
+        element.set_prop("src", json!("/tmp/c.png"));
+        let third = image();
+        element.painted = Some(third.clone());
+        let held = element.take_held_images();
+        assert_eq!(held.len(), 3);
+        assert!(has(&held, &first) && has(&held, &second) && has(&held, &third));
+    }
+
+    #[test]
+    fn a_live_image_is_held_once_and_dropped_when_src_replaces_it() {
+        let mut element = ImgElement::default();
+        let live = image();
+        assert!(element.replace_live_image(live.clone(), false).is_none());
+        assert_eq!(element.take_held_images().len(), 1);
+        element.set_prop("src", json!("/tmp/a.png"));
+        let held = element.take_held_images();
+        assert_eq!(held.len(), 1);
+        assert!(has(&held, &live));
+    }
+
+    #[test]
+    fn nothing_is_held_before_an_image_is_painted() {
+        let mut element = ImgElement::default();
+        element.set_prop("src", json!("https://example.test/a.png"));
+        assert!(element.take_held_images().is_empty());
+    }
 
     #[test]
     fn svg_sources_are_flagged_as_supersampled() {
@@ -387,7 +463,7 @@ impl CustomElement for ImgElement {
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
-        if let Some(image) = self.dropped.take() {
+        for image in self.dropped.drain(..) {
             window.drop_image(image).ok();
         }
 
@@ -435,6 +511,9 @@ impl CustomElement for ImgElement {
         let size = image.size(0);
         let scale = if self.supersampled { gpui::SMOOTH_SVG_SCALE_FACTOR } else { 1.0 };
         self.report(&ctx, cx, Ok(css_size((size.width.0, size.height.0), scale)));
+        if !matches!(self.source, ImgSource::Render(_)) {
+            self.painted = Some(image.clone());
+        }
         let el = gpui::img(image);
         // The id is what makes gpui's `ImgState` persist. Without it `Img` has no
         // `GlobalElementId`, so the animated-GIF frame index and the delayed
@@ -490,9 +569,6 @@ impl CustomElement for ImgElement {
                 if value.is_null() && matches!(self.source, ImgSource::Render(_)) {
                     return;
                 }
-                if let ImgSource::Render(image) = &self.source {
-                    self.dropped = Some(image.clone());
-                }
                 self.load_src(value.as_str().unwrap_or(""));
             }
             "objectFit" => {
@@ -523,15 +599,10 @@ impl CustomElement for ImgElement {
 
     fn destroy(&mut self) {}
 
-    fn live_image(&self) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        match &self.source {
-            ImgSource::Render(image) => Some(image.clone()),
-            _ => None,
-        }
-    }
-
-    fn take_dropped_image(&mut self) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        self.dropped.take()
+    fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
+        let mut held = std::mem::take(&mut self.dropped);
+        held.extend(self.live_image());
+        held
     }
 
     fn replace_live_image(
@@ -541,6 +612,7 @@ impl CustomElement for ImgElement {
     ) -> Option<std::sync::Arc<gpui::RenderImage>> {
         let previous = self.live_image();
         self.source = ImgSource::Render(image);
+        self.painted = None;
         self.decoded = None;
         self.supersampled = supersampled;
         previous
@@ -789,9 +861,8 @@ impl CustomElement for SvgElement {
 
     fn destroy(&mut self) {}
 
-    /// The held raster, so the registry drops it from the atlas with the element.
-    fn live_image(&self) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        self.paint.borrow().held()
+    fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
+        self.paint.borrow().held().into_iter().collect()
     }
 }
 
