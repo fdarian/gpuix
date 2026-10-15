@@ -4796,6 +4796,8 @@ pub(crate) struct GpuixView {
     measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
     state_source: crate::motion::state_source::StateSource,
+    /// The glide of the elements that declare `layout`.
+    layout_flips: crate::motion::LayoutFlips,
     /// Serialised markup of the `<svg>` elements that have shape children.
     svg_trees: crate::custom_elements::svg_tree::SvgTrees,
     /// Live text selection, shared with the paint closures and the napi methods.
@@ -5122,6 +5124,7 @@ impl GpuixView {
             css_animations: Default::default(),
             measurements: Default::default(),
             state_source: Default::default(),
+            layout_flips: Default::default(),
             svg_trees: Default::default(),
             selection,
             virtual_lists: HashMap::new(),
@@ -5547,6 +5550,7 @@ impl GpuixView {
             keyframes: &self.keyframes,
             measurements: &self.measurements,
             state_source: &self.state_source,
+            layout_flips: &self.layout_flips,
             svg_trees: &mut self.svg_trees,
             now,
             selection: self.selection.clone(),
@@ -5681,6 +5685,7 @@ pub(crate) struct BuildCtx<'a> {
     keyframes: &'a crate::motion::KeyframesRegistry,
     measurements: &'a crate::motion::measure::Measurements,
     state_source: &'a crate::motion::state_source::StateSource,
+    layout_flips: &'a crate::motion::LayoutFlips,
     svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
     pub now: web_time::Instant,
     pub selection: SharedSelection,
@@ -6479,6 +6484,11 @@ impl gpui::Render for GpuixView {
         self.state_source
             .retain(|id| tree.elements.contains_key(&id));
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
+        self.layout_flips.retain(|id| {
+            tree.elements
+                .get(&id)
+                .is_some_and(|element| element.custom_props().contains_key("layout"))
+        });
         // Pruned by DECLARATION, not existence: an element that drops its
         // `highlight` prop keeps living, and its cached group list holds a copy
         // of every string in its subtree.
@@ -6506,6 +6516,7 @@ impl gpui::Render for GpuixView {
                     keyframes: &self.keyframes,
                     measurements: &self.measurements,
                     state_source: &self.state_source,
+                    layout_flips: &self.layout_flips,
                     svg_trees: &mut self.svg_trees,
                     now,
                     selection: self.selection.clone(),
@@ -6844,10 +6855,16 @@ pub(crate) fn build_element(
     };
 
     ctx.inherited = parent_inherited;
-    if transitioned.is_some() {
-        return ctx.state_source.probe(id, built);
+    // The probe goes inside the glide, so its hitbox follows the box.
+    let built = if transitioned.is_some() {
+        ctx.state_source.probe(id, built)
+    } else {
+        built
+    };
+    match element.custom_props().get("layout") {
+        Some(source) => ctx.layout_flips.wrap(id, source, built, ctx.now),
+        None => built,
     }
-    built
 }
 
 fn build_virtual_list(
