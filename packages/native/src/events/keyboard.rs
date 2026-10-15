@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use gpui::{App, WeakFocusHandle, Window};
 
 use crate::element_tree::{EventModifiers, EventPayload};
-use crate::events::sync_dispatch;
+use crate::events::{key_names, sync_dispatch};
 use crate::renderer::EventCallback;
 use crate::retained_tree::RetainedTree;
 
@@ -131,11 +131,23 @@ fn key_payload(
     if path.is_none() && !window_listens {
         return None;
     }
+    let dom_key = key_names::dom_key(
+        &keystroke.key,
+        keystroke.key_char.as_deref(),
+        keystroke.modifiers.shift,
+    );
     let mut payload = EventPayload {
         event_type: event_type.to_string(),
-        key: Some(keystroke.key.clone()),
+        key: Some(dom_key.key),
+        code: Some(dom_key.code),
         key_char: keystroke.key_char.clone(),
         is_held,
+        repeat: Some(is_held.unwrap_or(false)),
+        is_composing: Some(false),
+        shift_key: Some(keystroke.modifiers.shift),
+        ctrl_key: Some(keystroke.modifiers.control),
+        alt_key: Some(keystroke.modifiers.alt),
+        meta_key: Some(keystroke.modifiers.platform),
         modifiers: Some(EventModifiers::from(keystroke.modifiers)),
         ..Default::default()
     };

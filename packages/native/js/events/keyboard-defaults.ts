@@ -102,9 +102,9 @@ export function runRootEvent(
 // call preventDefault().
 function runKeyDefault(root: ActiveRoot, event: DomEvent, context: RootEventContext) {
   if (hasCommandModifier(event)) return
-  if (event.key === "escape") {
+  if (event.key === "Escape") {
     context.topLayer()?.onEscapeKeyDown(event)
-  } else if (event.key === "tab" && root.handlers.tabNavigation !== false) {
+  } else if (event.key === "Tab" && root.handlers.tabNavigation !== false) {
     if (event.modifiers?.shift) context.renderer.focusPrevious?.()
     else context.renderer.focusNext?.()
   }

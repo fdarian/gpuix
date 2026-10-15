@@ -435,12 +435,11 @@ describeNative("events", () => {
         .findByType("div")
         .find((d) => d.events.has("keyDown"))!
 
-      // GPUI uses "down" not "arrowDown"
       testRoot.renderer.nativeSimulateKeystrokes(div.id, "down")
 
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
-          "Key: down",
+          "Key: ArrowDown",
         ]
       `)
 
@@ -448,7 +447,7 @@ describeNative("events", () => {
 
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
-          "Key: escape",
+          "Key: Escape",
         ]
       `)
     })
@@ -963,9 +962,9 @@ describeNative("events", () => {
             style={{ width: 200, height: 200 }}
             tabIndex={0}
             onKeyDown={(e: EventPayload) => {
-              if (e.key === "down") {
+              if (e.key === "ArrowDown") {
                 setSelected((s) => Math.min(s + 1, items.length - 1))
-              } else if (e.key === "up") {
+              } else if (e.key === "ArrowUp") {
                 setSelected((s) => Math.max(s - 1, 0))
               }
             }}
@@ -1495,8 +1494,8 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateKeyDown(div.id, "enter")
       testRoot.renderer.nativeSimulateKeyUp(div.id, "enter")
 
-      expect(events).toContain("down:enter")
-      expect(events).toContain("up:enter")
+      expect(events).toContain("down:Enter")
+      expect(events).toContain("up:Enter")
     })
 
     it("should handle onKeyUp state update", () => {
@@ -2002,9 +2001,9 @@ describeNative("events", () => {
               const mods = e.modifiers
               if (mods?.cmd && e.key === "s") {
                 setAction("save")
-              } else if (mods?.cmd && mods?.shift && e.key === "p") {
+              } else if (mods?.cmd && mods?.shift && e.key === "P") {
                 setAction("command-palette")
-              } else if (e.key === "escape") {
+              } else if (e.key === "Escape") {
                 setAction("cancel")
               }
             }}
@@ -2138,7 +2137,7 @@ describeNative("events", () => {
               }}
               tabIndex={0}
               onKeyDown={(e: EventPayload) => {
-                if (e.key === "enter") setState("enter")
+                if (e.key === "Enter") setState("enter")
               }}
             >
               <text style={{ color: "#e8edff", fontSize: 18 }}>{`State: ${state}`}</text>

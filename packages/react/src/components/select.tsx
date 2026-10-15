@@ -247,13 +247,13 @@ export const SelectTrigger = forwardRef<PublicInstance, SelectTriggerProps>(
       onKeyDown: (event: KeyEvent) => {
         onKeyDown?.(event)
         if (disabled) return
-        if (event.key === "down" || (event.key === "n" && event.modifiers?.ctrl)) {
+        if (event.key === "ArrowDown" || (event.key === "n" && event.modifiers?.ctrl)) {
           if (!context.open) context.setOpen(true)
           else context.moveActive(1)
-        } else if (event.key === "up" || (event.key === "p" && event.modifiers?.ctrl)) {
+        } else if (event.key === "ArrowUp" || (event.key === "p" && event.modifiers?.ctrl)) {
           if (!context.open) context.setOpen(true)
           else context.moveActive(-1)
-        } else if (event.key === "enter" || event.key === "space") {
+        } else if (event.key === "Enter" || event.key === " ") {
           context.setOpen(!context.open)
         }
       },
@@ -311,16 +311,16 @@ export const SelectContent = forwardRef<PublicInstance, SelectContentProps>(
           onKeyDown={(event: KeyEvent) => {
             onKeyDown?.(event)
             // The popup is modal, like Base UI: Tab stays inside until it closes.
-            if (event.key === "tab") {
+            if (event.key === "Tab") {
               event.preventDefault()
               return
             }
             if (context.disabled) return
-            if (event.key === "down" || (event.key === "n" && event.modifiers?.ctrl)) {
+            if (event.key === "ArrowDown" || (event.key === "n" && event.modifiers?.ctrl)) {
               context.moveActive(1)
-            } else if (event.key === "up" || (event.key === "p" && event.modifiers?.ctrl)) {
+            } else if (event.key === "ArrowUp" || (event.key === "p" && event.modifiers?.ctrl)) {
               context.moveActive(-1)
-            } else if ((event.key === "enter" || event.key === "space") && context.activeValue) {
+            } else if ((event.key === "Enter" || event.key === " ") && context.activeValue) {
               context.selectValue(context.activeValue)
             }
           }}

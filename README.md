@@ -1952,7 +1952,7 @@ grapheme-safe deletion and mouse positioning.
   value={draft}
   onChange={(event) => setDraft(event.value ?? '')}
   onKeyDown={(event) => {
-    if (event.key !== 'enter' || event.modifiers?.shift) return
+    if (event.key !== 'Enter' || event.modifiers?.shift) return
     event.preventDefault() // no newline
     send(draft)
   }}
@@ -2277,7 +2277,7 @@ bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it 
   onFocus={() => setActive(true)}
   onBlur={() => setActive(false)}
   onKeyDown={(event) => {
-    if (event.key === 'enter') submit()
+    if (event.key === 'Enter') submit()
   }}
 >
   Submit
@@ -2325,11 +2325,26 @@ Handlers run synchronously, before the editor acts on the key, so
 ```tsx
 <input
   onKeyDown={(event) => {
-    console.log(event.key, event.keyChar, event.modifiers, event.isHeld)
-    if (event.key === 'enter') event.preventDefault() // no submit
+    console.log(event.key, event.code, event.shiftKey, event.repeat)
+    if (event.key === 'Enter') event.preventDefault() // no submit
   }}
 />
 ```
+
+Key events are DOM-shaped. `event.key` holds `KeyboardEvent.key` values:
+`"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"`, `"Delete"`, `"ArrowUp"`...,
+`"Home"`, `"End"`, `"PageUp"`, `"PageDown"`, `" "` for space, `"F1"`...`"F35"`,
+`"Shift"`/`"Control"`/`"Alt"`/`"Meta"`, and the character produced for
+printable keys, with shift case (`"A"`, `"!"`). Anything else is
+`"Unidentified"`. `event.code` is the physical key (`"KeyA"`, `"Digit1"`,
+`"ArrowLeft"`), derived from GPUI's key name with a US QWERTY layout, so on
+other layouts a printable key's `code` follows the US position of the
+character GPUI reports, and it is `""` when nothing maps. `repeat` is true for
+auto-repeat, `isComposing` is always `false` (a key that feeds an IME
+composition is consumed by the platform before GPUI sees it), and `shiftKey`,
+`ctrlKey`, `altKey` and `metaKey` mirror `modifiers`. The `simulateKeystrokes`
+and `press()` test helpers still take GPUI keystroke syntax (`enter`,
+`cmd-shift-p`).
 
 An element still needs a `tabIndex` to be focused, so a bare `div` with
 `onKeyDown` only hears keys that bubble up from a focused descendant.
@@ -2383,7 +2398,7 @@ it:
 <div
   tabIndex={0}
   onKeyDown={(event) => {
-    if (event.key !== 'tab') return
+    if (event.key !== 'Tab') return
     event.preventDefault() // this Tab stays here
     insertIndent()
   }}
@@ -2892,7 +2907,7 @@ open:
 ```tsx
 <Dialog.Popup
   onKeyDown={(event) => {
-    if (event.key === 'escape' && dirty) event.preventDefault()
+    if (event.key === 'Escape' && dirty) event.preventDefault()
   }}
 />
 ```
@@ -2925,7 +2940,7 @@ then wrap inside it with `focusNextWithin` / `focusPreviousWithin`.
 
 ```tsx
 function onKeyDown(event: KeyEvent) {
-  if (event.key !== 'tab' || !panel) return
+  if (event.key !== 'Tab' || !panel) return
   event.preventDefault()
   if (event.modifiers?.shift) renderer.focusPreviousWithin?.(panel.id)
   else renderer.focusNextWithin?.(panel.id)
@@ -3507,8 +3522,8 @@ text imports no longer need a runtime flag.
 | Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
 | Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
-| Key down | `onKeyDown` | `key`, `keyChar`, `isHeld`, `modifiers` |
-| Key up | `onKeyUp` | `key`, `keyChar`, `modifiers` |
+| Key down | `onKeyDown` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
+| Key up | `onKeyUp` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
 | Focus | `onFocus` | `focusVisible`. See [Focus events](#focus-events) |
 | Blur | `onBlur` | `focusVisible` |
 | Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`. Bubbles |

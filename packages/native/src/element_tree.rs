@@ -53,18 +53,43 @@ pub struct EventPayload {
     pub pressed_button: Option<u32>,
 
     // ── Keyboard ─────────────────────────────────────────────────────
-    /// Key name, e.g. "a", "enter", "escape", "down", "left", "f1".
+    /// DOM `KeyboardEvent.key`: "a", "A", "Enter", "Escape", "ArrowDown", " ",
+    /// "F1", "Shift". See `events/key_names.rs`.
     /// Populated for: keyDown, keyUp.
     pub key: Option<String>,
+
+    /// DOM `KeyboardEvent.code`, the physical key: "KeyA", "Digit1", "Enter",
+    /// "ArrowLeft". Empty when it cannot be derived. Assumes a US QWERTY layout
+    /// for printable keys.
+    /// Populated for: keyDown, keyUp.
+    pub code: Option<String>,
 
     /// The character produced by the key press (e.g. "ß" for option-s).
     /// May differ from `key` when modifiers are active.
     /// Populated for: keyDown, keyUp.
     pub key_char: Option<String>,
 
-    /// Whether this is a key-repeat event (key held down).
+    /// Whether this is a key-repeat event (key held down). Same as `repeat`.
     /// Populated for: keyDown.
     pub is_held: Option<bool>,
+
+    /// DOM `KeyboardEvent.repeat`.
+    /// Populated for: keyDown, keyUp.
+    pub repeat: Option<bool>,
+
+    /// DOM `KeyboardEvent.isComposing`. Always false: a key that feeds an
+    /// active IME composition is consumed by the platform's text input context
+    /// before GPUI sees it.
+    /// Populated for: keyDown, keyUp.
+    pub is_composing: Option<bool>,
+
+    /// DOM `shiftKey`, `ctrlKey`, `altKey`, `metaKey`: the booleans of
+    /// `modifiers`, under the DOM names.
+    /// Populated for: keyDown, keyUp.
+    pub shift_key: Option<bool>,
+    pub ctrl_key: Option<bool>,
+    pub alt_key: Option<bool>,
+    pub meta_key: Option<bool>,
 
     // ── Scroll ───────────────────────────────────────────────────────
     /// Scroll delta on the X axis (pixels or lines, see `precise`).
@@ -203,8 +228,15 @@ impl Default for EventPayload {
             is_right_click: None,
             pressed_button: None,
             key: None,
+            code: None,
             key_char: None,
             is_held: None,
+            repeat: None,
+            is_composing: None,
+            shift_key: None,
+            ctrl_key: None,
+            alt_key: None,
+            meta_key: None,
             delta_x: None,
             delta_y: None,
             precise: None,

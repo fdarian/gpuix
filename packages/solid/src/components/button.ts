@@ -45,13 +45,13 @@ export function buttonProps(
     onKeyDown(event: KeyEvent) {
       behavior.onKeyDown?.(event)
       if (disabled() || event.defaultPrevented) return
-      if (event.key === "enter" && !event.isHeld) click(event)
+      if (event.key === "Enter" && !event.repeat) click(event)
       // Space would otherwise scroll or type; it fires on release.
-      if (event.key === "space") event.preventDefault()
+      if (event.key === " ") event.preventDefault()
     },
     onKeyUp(event: KeyEvent) {
       behavior.onKeyUp?.(event)
-      if (!disabled() && !event.defaultPrevented && event.key === "space") {
+      if (!disabled() && !event.defaultPrevented && event.key === " ") {
         click(event)
       }
     },

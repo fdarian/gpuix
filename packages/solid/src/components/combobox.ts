@@ -200,9 +200,9 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
     },
     onKeyDown(event: KeyEvent) {
       props.onKeyDown?.(event)
-      if (event.key === "down") state.move(1)
-      else if (event.key === "up") state.move(-1)
-      else if (event.key === "enter") {
+      if (event.key === "ArrowDown") state.move(1)
+      else if (event.key === "ArrowUp") state.move(-1)
+      else if (event.key === "Enter") {
         const index = state.active()
         if (index !== null) {
           const item = state.filtered().at(index)

@@ -165,7 +165,7 @@ describeNative("form", () => {
         testId="a"
         name="n"
         onKeyDown={(event) => {
-          if (event.key === "enter") own.push("input")
+          if (event.key === "Enter") own.push("input")
         }}
         style={field}
       />,

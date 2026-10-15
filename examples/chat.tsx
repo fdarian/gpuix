@@ -1648,7 +1648,7 @@ function Composer({
           }}
           onChange={(event) => onChange(event.value ?? '')}
           onKeyDown={(event) => {
-            if (event.key !== 'enter' || event.modifiers?.shift) return
+            if (event.key !== 'Enter' || event.modifiers?.shift) return
             event.preventDefault()
             send(value)
           }}

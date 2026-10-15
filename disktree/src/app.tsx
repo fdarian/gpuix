@@ -882,10 +882,10 @@ export function DisktreeApp({ store, width, height }: DisktreeAppProps) {
   }
   const onKeyDown = (event: EventPayload) => {
     switch (event.key) {
-      case 'backspace':
-      case 'escape':
+      case 'Backspace':
+      case 'Escape':
         return up()
-      case 'enter':
+      case 'Enter':
         if (nav.selected) open(nav.selected)
         return
       case '[':

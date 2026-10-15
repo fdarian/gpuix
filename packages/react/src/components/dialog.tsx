@@ -204,7 +204,7 @@ export const DialogPopup = forwardRef<PublicInstance, DialogPopupProps>(
           style={{ pointerEvents: "auto", keyboardFocusDim: false, ...style }}
           onKeyDown={(event: KeyEvent) => {
             onKeyDown?.(event)
-            if (!context.modal || event.key !== "tab" || event.defaultPrevented) return
+            if (!context.modal || event.key !== "Tab" || event.defaultPrevented) return
             const popup = popupRef.current
             if (!popup) return
             event.preventDefault()

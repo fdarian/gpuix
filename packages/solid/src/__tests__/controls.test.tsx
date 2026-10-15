@@ -167,7 +167,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       "click outside: focus=outside text=open|tip",
     ])
     // The child's own onKeyDown still runs after asChild merges the trigger's.
-    expect(keys).toEqual(["child:enter", "child:tab"])
+    expect(keys).toEqual(["child:Enter", "child:Tab"])
   })
 
   it("runs a modal Dialog: trap Tab, Escape closes the nested Select first", () => {
@@ -239,7 +239,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
           tabIndex={0}
           testId="launcher"
           onKeyDown={(event) => {
-            if (event.key === "enter") setOpen(true)
+            if (event.key === "Enter") setOpen(true)
           }}
           style={{ width: 80, height: 24 }}
         />

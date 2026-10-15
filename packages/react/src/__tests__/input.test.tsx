@@ -131,7 +131,7 @@ describeNative("native text editors", () => {
             style={{ width: 300 }}
             onChange={(event: EventPayload) => setText(event.value ?? "")}
             onKeyDown={(event: KeyEvent) => {
-              if (event.key !== "enter" || event.modifiers?.shift) return
+              if (event.key !== "Enter" || event.modifiers?.shift) return
               event.preventDefault()
               setSubmits((count) => count + 1)
             }}
@@ -171,7 +171,7 @@ describeNative("native text editors", () => {
             onKeyDown={
               submit
                 ? (event: KeyEvent) => {
-                    if (event.key !== "enter") return
+                    if (event.key !== "Enter") return
                     event.preventDefault()
                     setSubmits((count) => count + 1)
                   }
@@ -463,7 +463,7 @@ describeNative("native text editors", () => {
             style={{ width: 300, height: 40 }}
             onChange={(event: EventPayload) => setText(event.value ?? "")}
             onKeyDown={(event: KeyEvent) => {
-              if (event.key === "enter") setText("")
+              if (event.key === "Enter") setText("")
             }}
           />
           <text>{`Value: ${text}`}</text>

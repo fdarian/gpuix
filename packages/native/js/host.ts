@@ -936,6 +936,12 @@ export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
 /**
  * A `keyDown` / `keyUp` event, the same object every handler of one keystroke
  * sees, like one DOM event travelling from the focused element to `window`.
+ *
+ * `key`, `code`, `repeat`, `isComposing` and the `*Key` booleans follow DOM
+ * `KeyboardEvent`: `key` is `"Enter"`, `"ArrowDown"`, `" "`, `"F1"`, or the
+ * character produced (`"A"` for shift-a); `code` is the physical key (`"KeyA"`,
+ * `"Digit1"`), assuming a US QWERTY layout for printable keys. The mapping from
+ * GPUI key names lives in `events/key_names.rs`.
  */
 export interface KeyEvent extends EventPayload {
   /** True after any handler of this keystroke called `preventDefault()`. */

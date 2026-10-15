@@ -195,7 +195,7 @@ export function DialogPopup(allProps: DialogPopupProps): JSX.Element {
             get style() { return { pointerEvents: "auto", keyboardFocusDim: false, ...props.style } },
             onKeyDown(event: KeyEvent) {
               props.onKeyDown?.(event)
-              if (!state.modal() || event.key !== "tab" || event.defaultPrevented || !popup) return
+              if (!state.modal() || event.key !== "Tab" || event.defaultPrevented || !popup) return
               event.preventDefault()
               if (event.modifiers?.shift) renderer.focusPreviousWithin?.(popup.id)
               else renderer.focusNextWithin?.(popup.id)

@@ -1199,7 +1199,7 @@ describeNative("floating controls", () => {
           <DialogPrimitive.Popup
             style={{ width: 200, height: 100, backgroundColor: "#1e293b" }}
             onKeyDown={(event) => {
-              if (event.key === "escape") event.preventDefault()
+              if (event.key === "Escape") event.preventDefault()
             }}
           >
             <text>Unsaved</text>
@@ -1248,7 +1248,7 @@ describeNative("floating controls", () => {
       <div
         style={{ display: "flex", flexDirection: "column", width: 400, height: 300, padding: 12, gap: 8 }}
         onKeyDown={(event) => {
-          if (event.key === "tab") event.preventDefault()
+          if (event.key === "Tab") event.preventDefault()
         }}
       >
         <Combobox items={["alpha", "beta"]} defaultOpen>
@@ -1286,7 +1286,7 @@ describeNative("floating controls", () => {
             tabIndex={0}
             testId="launcher"
             onKeyDown={(event) => {
-              if (event.key === "enter") setOpen(true)
+              if (event.key === "Enter") setOpen(true)
             }}
             style={{ width: 80, height: 24 }}
           />

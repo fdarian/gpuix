@@ -1,7 +1,11 @@
+//! Native-to-JS event plumbing that is not one element's own listener:
+//! synchronous dispatch and the window-level keyboard path.
+
 pub mod dispatcher;
 pub mod element_drag;
 pub mod file_drag;
 pub mod ids;
+pub(crate) mod key_names;
 pub(crate) mod keyboard;
 pub mod listeners;
 pub mod path;

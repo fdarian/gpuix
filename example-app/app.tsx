@@ -320,7 +320,7 @@ function Composer({ onAdd }: { onAdd: (title: string) => void }) {
         autoFocus
         onChange={(event) => setDraft(event.value ?? '')}
         onKeyDown={(event) => {
-          if (event.key === 'enter') submit()
+          if (event.key === 'Enter') submit()
         }}
         theme={{ caret: C.accent }}
         style={{ flexGrow: 1, fontSize: 14, fontFamily: FONT, color: C.text }}

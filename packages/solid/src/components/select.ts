@@ -187,9 +187,9 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
       onKeyDown(event: KeyEvent) {
         props.onKeyDown?.(event)
         if (disabled()) return
-        if (event.key === "down") state.open() ? state.move(1) : state.setOpen(true)
-        else if (event.key === "up") state.open() ? state.move(-1) : state.setOpen(true)
-        else if (event.key === "enter" || event.key === "space") state.setOpen(!state.open())
+        if (event.key === "ArrowDown") state.open() ? state.move(1) : state.setOpen(true)
+        else if (event.key === "ArrowUp") state.open() ? state.move(-1) : state.setOpen(true)
+        else if (event.key === "Enter" || event.key === " ") state.setOpen(!state.open())
       },
     }, ["children"]),
     defaultTabIndex: 0,
@@ -240,10 +240,10 @@ export function SelectContent(props: SelectContentProps): JSX.Element {
             onKeyDown(event) {
               props.onKeyDown?.(event)
               // The popup is modal, like Base UI: Tab stays inside until it closes.
-              if (event.key === "tab") event.preventDefault()
-              else if (event.key === "down") state.move(1)
-              else if (event.key === "up") state.move(-1)
-              else if ((event.key === "enter" || event.key === "space") && state.active()) {
+              if (event.key === "Tab") event.preventDefault()
+              else if (event.key === "ArrowDown") state.move(1)
+              else if (event.key === "ArrowUp") state.move(-1)
+              else if ((event.key === "Enter" || event.key === " ") && state.active()) {
                 state.select(state.active()!)
               }
             },

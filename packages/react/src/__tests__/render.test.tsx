@@ -365,11 +365,11 @@ describeNative("render()", () => {
     })
 
     handleGpuixEvent(
-      { elementId: 1, eventType: "keyDown", key: "tab" },
+      { elementId: 1, eventType: "keyDown", key: "Tab" },
       renderer
     )
     handleGpuixEvent(
-      { elementId: 2, eventType: "keyDown", key: "tab" },
+      { elementId: 2, eventType: "keyDown", key: "Tab" },
       renderer
     )
 
@@ -397,7 +397,7 @@ describeNative("render()", () => {
           onKeyDown={(event) => {
             log.push(`second:${label(event)}`)
             // An editor takes Tab. Shift+Tab stays the default.
-            if (event.key === "tab" && !event.modifiers?.shift) event.preventDefault()
+            if (event.key === "Tab" && !event.modifiers?.shift) event.preventDefault()
             if (event.key === "x") event.stopPropagation()
           }}
         />
@@ -428,16 +428,16 @@ describeNative("render()", () => {
       .replaceAll(`focus=${second.id}`, "focus=SECOND")
     expect("\n" + trace).toMatchInlineSnapshot(`
       "
-      first:tab
-      parent:tab
-      window:tab prevented=false focus=FIRST
-      second:tab
-      parent:tab
-      window:tab prevented=true focus=SECOND
+      first:Tab
+      parent:Tab
+      window:Tab prevented=false focus=FIRST
+      second:Tab
+      parent:Tab
+      window:Tab prevented=true focus=SECOND
       second:x
-      second:shift-tab
-      parent:shift-tab
-      window:shift-tab prevented=false focus=SECOND"
+      second:shift-Tab
+      parent:shift-Tab
+      window:shift-Tab prevented=false focus=SECOND"
     `)
   })
 
