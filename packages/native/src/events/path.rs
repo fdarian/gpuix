@@ -20,16 +20,43 @@ pub fn event_path(tree: &RetainedTree, id: u64) -> Vec<u64> {
     path
 }
 
-/// Whether `id` or an ancestor listens for `event_type`, in either phase.
-/// JS tells native about a type once while either phase has a handler.
+/// The capture-phase twin of a type that does not bubble, as JS registers it.
+/// These types reach an ancestor in the capture phase only, so native has to
+/// tell a capture listener from a bubble one to know whether anyone above hears
+/// the event.
+fn capture_twin(event_type: &str) -> Option<&'static str> {
+    match event_type {
+        "mouseenter" => Some("mouseenterCapture"),
+        "mouseleave" => Some("mouseleaveCapture"),
+        "pointerenter" => Some("pointerenterCapture"),
+        "pointerleave" => Some("pointerleaveCapture"),
+        _ => None,
+    }
+}
+
+/// Whether `id` or an ancestor listens for `event_type`, in either phase. JS
+/// tells native about a type once while either phase has a handler. A type that
+/// does not bubble is heard by the element itself, in either phase, and by an
+/// ancestor's capture listener alone.
 pub fn path_listens(tree: &RetainedTree, id: u64, event_type: &str) -> bool {
+    let capture_type = capture_twin(event_type);
     let mut next = Some(id);
     while let Some(current) = next {
         let Some(element) = tree.elements.get(&current) else {
             return false;
         };
-        if element.events().contains(event_type) {
-            return true;
+        let events = element.events();
+        match capture_type {
+            Some(capture_type) => {
+                if events.contains(capture_type) || (current == id && events.contains(event_type)) {
+                    return true;
+                }
+            }
+            None => {
+                if events.contains(event_type) {
+                    return true;
+                }
+            }
         }
         next = element.parent;
     }

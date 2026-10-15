@@ -86,6 +86,12 @@ export function createDragDispatcher(
           (event.eventType === "dragleave" && event.relatedTarget == null)
 
     let eventType = event.eventType
+    // What the last target accepted says nothing of the one entered now: it
+    // must cancel a dragover of its own before a drop reaches it.
+    if (eventType === "dragenter") {
+      current.accepted = false
+      current.effect = "none"
+    }
     if (eventType === "drop" && !current.accepted) eventType = "dragleave"
     if (eventType === "dragenter" || eventType === "dragover") {
       data.dropEffect = defaultDropEffect(data.effectAllowed)

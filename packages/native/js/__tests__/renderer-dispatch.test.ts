@@ -78,6 +78,28 @@ describe("renderer dispatch of pointer, mouse and drag events", () => {
     expect(calls).toEqual(["1:pointerdownCapture:pointerdown"])
   })
 
+  it("ignores an enter below an ancestor that only listens in the bubble phase", () => {
+    const { state, listen, scheduled } = setup()
+    listen(1, "mouseenter")
+    expect(state.dispatch(event("mouseenter", { path: [3, 2, 1] }))).toBe(false)
+    expect(scheduled).toHaveLength(0)
+  })
+
+  it("hears an enter below an ancestor that captures it, and at the element itself", () => {
+    const { state, listen, calls, flush } = setup()
+    listen(1, captureHandlerKey("mouseenter"))
+    expect(state.dispatch(event("mouseenter", { path: [3, 2, 1] }))).toBe(true)
+    flush()
+    expect(calls).toEqual(["1:mouseenterCapture:mouseenter"])
+    listen(3, "mouseenter")
+    expect(state.dispatch(event("mouseenter", { path: [3, 2, 1] }))).toBe(true)
+    flush()
+    expect(calls.slice(1)).toEqual([
+      "1:mouseenterCapture:mouseenter",
+      "3:mouseenter:mouseenter",
+    ])
+  })
+
   it("hands the original payload to onEvent", () => {
     const { state, listen, flush, seen } = setup()
     listen(3, "click")

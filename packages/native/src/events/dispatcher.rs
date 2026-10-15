@@ -499,8 +499,9 @@ fn dispatch_file_drag(
     match &sample.action {
         PointerAction::FileDragMove { paths } => {
             if let Some(target) = target {
-                let files = if state.file_drag.is_none() {
+                let files = if state.file_drag.is_none() && !state.file_drag_unreadable {
                     let files = file_drag::describe(paths);
+                    state.file_drag_unreadable = files.is_empty();
                     (!files.is_empty()).then_some(files)
                 } else {
                     None
@@ -523,6 +524,7 @@ fn dispatch_file_drag(
                 emitter.emit_drag("drop", target, None, None);
                 state.file_drag = None;
             }
+            state.file_drag_unreadable = false;
         }
         PointerAction::FileDragLeave => end_file_drag(state, &mut emitter),
         _ => {}
@@ -559,6 +561,7 @@ pub(super) fn enter_drag_target(
 /// Ends the drag with a `dragleave` at the element it was over, which had no
 /// related target: the files left the window.
 fn end_file_drag(state: &mut PointerState, emitter: &mut Emitter) {
+    state.file_drag_unreadable = false;
     let Some(drag) = state.file_drag.take() else {
         return;
     };
@@ -1031,24 +1034,56 @@ mod tests {
 
     #[test]
     fn enter_is_dispatched_once_per_entered_element_with_its_own_path() {
-        // An ancestor's listener makes native produce the event, because it cannot
-        // tell a capture handler from a bubble one. JS then runs it at the target
-        // only, so a non-capturing root hears `mouseenter` only for itself.
-        let tree = tree(&[(1, "mouseover"), (1, "mouseenter")]);
+        let tree = tree(&[(1, "mouseover"), (1, "mouseenter"), (3, "mouseenter")]);
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
         assert_eq!(
             names(&output),
-            [
-                "mouseover@3",
-                "mouseenter@1",
-                "mouseenter@2",
-                "mouseenter@3"
-            ]
+            ["mouseover@3", "mouseenter@1", "mouseenter@3"]
         );
         assert_eq!(output.events[0].path, [3, 2, 1]);
         assert_eq!(output.events[1].path, [1]);
-        assert_eq!(output.events[3].path, [3, 2, 1]);
+        assert_eq!(output.events[2].path, [3, 2, 1]);
+    }
+
+    #[test]
+    fn a_bubble_listener_above_does_not_make_native_produce_enter_and_leave_below() {
+        let tree = tree(&[(1, "mouseenter"), (1, "mouseleave"), (1, "pointerenter")]);
+        let mut state = PointerState::default();
+        let entered = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&entered), ["pointerenter@1", "mouseenter@1"]);
+        let left = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert!(left.events.is_empty());
+        let exited = dispatch(&mut state, &tree, &at(PointerAction::Exit, Vec::new()));
+        assert_eq!(names(&exited), ["mouseleave@1"]);
+    }
+
+    #[test]
+    fn a_capture_listener_above_hears_enter_and_leave_below() {
+        let tree = tree(&[
+            (1, "mouseenterCapture"),
+            (1, "pointerleaveCapture"),
+            (3, "mouseleaveCapture"),
+        ]);
+        let mut state = PointerState::default();
+        let entered = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(
+            names(&entered),
+            ["mouseenter@1", "mouseenter@2", "mouseenter@3"]
+        );
+        let left = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert_eq!(
+            names(&left),
+            ["pointerleave@3", "pointerleave@2", "mouseleave@3", "mouseenter@4"]
+        );
+    }
+
+    #[test]
+    fn an_elements_own_capture_listener_hears_its_enter() {
+        let tree = tree(&[(3, "mouseenterCapture")]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mouseenter@3"]);
     }
 
     #[test]
@@ -1645,6 +1680,35 @@ mod tests {
         assert_eq!(files[0].mime_type, "text/plain");
         assert!(output.events[1].files.is_none());
         assert_eq!(output.events[0].related_target, None);
+    }
+
+    #[test]
+    fn a_drag_of_unreadable_files_is_not_read_again_on_every_move() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        let missing = std::env::temp_dir().join("gpuix-no-such-drag-file.txt");
+        let first = dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![missing.clone()], chain_of(&[3, 2, 1])),
+        );
+        assert!(first.events.is_empty());
+        // The file appearing mid-drag does not start a session: the drag was
+        // judged once, when it entered.
+        let readable = dragged_file();
+        let second = dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![readable.clone()], chain_of(&[3, 2, 1])),
+        );
+        assert!(second.events.is_empty());
+        dispatch(&mut state, &tree, &at(PointerAction::FileDragLeave, Vec::new()));
+        let next_drag = dispatch(
+            &mut state,
+            &tree,
+            &file_drag_move(vec![readable], chain_of(&[3, 2, 1])),
+        );
+        assert_eq!(names(&next_drag), ["dragenter@3", "dragover@3"]);
     }
 
     #[test]

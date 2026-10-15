@@ -93,6 +93,20 @@ describe("file drag dispatcher", () => {
     expect(() => dispatch(root, drag("dragover"))).toThrow(/before the drag started/)
   })
 
+  it("makes the next target cancel a dragover of its own before a drop reaches it", () => {
+    const calls: string[] = []
+    const { root, dispatch } = setup(
+      { dragover: (event) => event.preventDefault() },
+      { drop: (event) => calls.push(`drop ${event.type}`), dragleave: () => calls.push("dragleave") }
+    )
+    dispatch(root, drag("dragenter", { files: [FILE] }))
+    dispatch(root, drag("dragover"))
+    dispatch(root, fromSource("dragenter", { relatedTarget: TARGET }))
+    dispatch(root, drag("dragleave", { relatedTarget: SOURCE }))
+    dispatch(root, fromSource("drop"))
+    expect(calls).toEqual(["dragleave"])
+  })
+
   it("gives a read-only dataTransfer", () => {
     let seen: HostDataTransfer | undefined
     const { root, dispatch } = setup({

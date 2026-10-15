@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap } from "../host.js"
 import { captureHandlerKey, dispatchDomEvent, type DomEvent } from "../events/dispatch.js"
@@ -221,5 +221,66 @@ describe("dispatchDomEvent", () => {
     const { root } = setup()
     expect(() => dispatchDomEvent(root, payload("click", { path: PATH, target: ROOT }))).toThrow(/targets element 1/)
     expect(() => dispatchDomEvent(root, payload("click", { path: [] }))).toThrow(/empty propagation path/)
+  })
+})
+
+describe("a handler that throws", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("does not stop the dispatch, and reports its error with reportError once the dispatch is over", () => {
+    const reported: unknown[] = []
+    vi.stubGlobal("reportError", (error: unknown) => reported.push(error))
+    const { root, calls, listen } = setup()
+    const failure = new Error("boom")
+    let phaseAfter: number | undefined
+    listen(ROOT, captureHandlerKey("click"), () => {
+      throw failure
+    })
+    listen(LEAF, "click", (event) => {
+      expect(reported).toEqual([])
+      phaseAfter = event.eventPhase
+    })
+    listen(ROOT, "click")
+    const event = payload("click", { path: PATH })
+    expect(() => dispatchDomEvent(root, event)).not.toThrow()
+    expect(calls).toEqual(["1:clickCapture", "3:click", "1:click"])
+    expect(phaseAfter).toBe(2)
+    expect(reported).toEqual([failure])
+  })
+
+  it("reports every error, and still resets currentTarget and eventPhase", () => {
+    const reported: unknown[] = []
+    vi.stubGlobal("reportError", (error: unknown) => reported.push(error))
+    const { root, listen } = setup()
+    const seen: DomEvent[] = []
+    listen(LEAF, "click", (event) => {
+      seen.push(event)
+      throw new Error("first")
+    })
+    listen(ROOT, "click", () => {
+      throw new Error("second")
+    })
+    dispatchDomEvent(root, payload("click", { path: PATH }))
+    expect(reported.map((error) => (error as Error).message)).toEqual(["first", "second"])
+    expect(seen[0].currentTarget).toBeNull()
+    expect(seen[0].eventPhase).toBe(0)
+  })
+
+  it("rethrows asynchronously when there is no reportError", () => {
+    vi.stubGlobal("reportError", undefined)
+    const queued: Array<() => void> = []
+    vi.stubGlobal("queueMicrotask", (task: () => void) => queued.push(task))
+    const { root, calls, listen } = setup()
+    const failure = new Error("boom")
+    listen(LEAF, "click", () => {
+      throw failure
+    })
+    listen(ROOT, "click")
+    expect(() => dispatchDomEvent(root, payload("click", { path: PATH }))).not.toThrow()
+    expect(calls).toEqual(["3:click", "1:click"])
+    expect(queued).toHaveLength(1)
+    expect(queued[0]).toThrow(failure)
   })
 })

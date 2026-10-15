@@ -1,6 +1,6 @@
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap } from "../host.js"
-import { captureHandlerKey } from "./dispatch.js"
+import { captureHandlerKey, eventBubbles } from "./dispatch.js"
 import { POINTER_EVENT_TYPES } from "./event-props.js"
 
 /** gpuix's own outside-press event: not DOM. Native delivers it to the listening element alone, with the press target in `target`. */
@@ -23,11 +23,19 @@ export function toDomEvent(event: EventPayload): EventPayload | undefined {
   return eventType === event.eventType ? event : { ...event, eventType }
 }
 
-/** Whether any element on the event's path has a handler in either phase. */
+/**
+ * Whether anything on the event's path has a handler it would run: a handler of
+ * either phase anywhere, except for the types that do not bubble, where an
+ * ancestor counts only for a capture handler.
+ */
 export function hasDomListener(eventHandlers: EventHandlerMap, event: EventPayload): boolean {
   const captureKey = captureHandlerKey(event.eventType)
-  return (event.path ?? [event.elementId]).some((id) => {
+  const path = event.path ?? [event.elementId]
+  const bubbles = eventBubbles(event.eventType)
+  return path.some((id, index) => {
     const handlers = eventHandlers.get(id)
-    return Boolean(handlers?.has(event.eventType) || handlers?.has(captureKey))
+    if (!handlers) return false
+    if (handlers.has(captureKey)) return true
+    return (bubbles || index === 0) && handlers.has(event.eventType)
   })
 }

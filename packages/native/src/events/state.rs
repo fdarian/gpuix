@@ -201,6 +201,9 @@ pub struct PointerState {
     /// Where the last input put the pointer, to freeze it there on a lock.
     pub(super) last_position: Option<(f64, f64)>,
     pub(super) file_drag: Option<DragOver>,
+    /// The OS drag in progress carries no readable file, so it has no session.
+    /// Marked once so the paths are not stat'ed and logged again on every move.
+    pub(super) file_drag_unreadable: bool,
     /// A press on a `draggable` element that has not moved far enough to drag it.
     pub(super) pending_drag: Option<PendingDrag>,
     pub(super) element_drag: Option<ElementDrag>,

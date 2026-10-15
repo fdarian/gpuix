@@ -23,6 +23,22 @@ const NON_BUBBLING_TYPES: ReadonlySet<string> = new Set([
   "scroll",
 ])
 
+/**
+ * Non-bubbling types an ancestor hears in the capture phase only. Native is told
+ * about their capture listeners apart from the bubble ones (see
+ * `nativeEventType`), so it can skip the event where no one above is capturing.
+ */
+const ENTER_LEAVE_TYPES: ReadonlySet<string> = new Set([
+  "mouseenter",
+  "mouseleave",
+  "pointerenter",
+  "pointerleave",
+])
+
+export function isEnterLeaveType(eventType: string): boolean {
+  return ENTER_LEAVE_TYPES.has(eventType)
+}
+
 /** `preventDefault()` is a no-op on these, as in the DOM. */
 const NON_CANCELABLE_TYPES: ReadonlySet<string> = new Set([
   ...NON_BUBBLING_TYPES,
@@ -74,11 +90,26 @@ export interface DomEventRoot {
 }
 
 /**
+ * What the DOM does with an exception a listener leaves uncaught: report it to
+ * the global error handler without disturbing the dispatch or its caller.
+ */
+function reportHandlerError(error: unknown): void {
+  if (typeof reportError === "function") {
+    reportError(error)
+    return
+  }
+  queueMicrotask(() => {
+    throw error
+  })
+}
+
+/**
  * Runs `payload` through the handlers registered on `root`: capture handlers
  * from the root down to the target, then the target's, then bubble handlers
  * from the target back up, along `payload.path` (target first). Handlers run
  * synchronously. A payload without `path` is handled at `payload.elementId`
- * only. A handler that throws propagates the error and ends the dispatch.
+ * only. A handler that throws does not end the dispatch: the error is reported
+ * after the dispatch, as the DOM reports it, and the rest of the handlers run.
  */
 export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): DomDispatchResult {
   const path = payload.path ?? [payload.elementId]
@@ -117,6 +148,7 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
     },
   }
 
+  const errors: unknown[] = []
   const captureKey = captureHandlerKey(payload.eventType)
   const visit = (elementId: number, phase: number, keys: string[]) => {
     event.currentTarget = elementId
@@ -125,7 +157,11 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
     if (!handlers) return
     for (const key of keys) {
       if (immediatePropagationStopped) return
-      handlers.get(key)?.(event)
+      try {
+        handlers.get(key)?.(event)
+      } catch (error) {
+        errors.push(error)
+      }
     }
   }
 
@@ -143,5 +179,6 @@ export function dispatchDomEvent(root: DomEventRoot, payload: EventPayload): Dom
 
   event.currentTarget = null
   event.eventPhase = EVENT_PHASE_NONE
+  errors.forEach(reportHandlerError)
   return { defaultPrevented: event.defaultPrevented, propagationStopped }
 }

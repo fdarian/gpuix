@@ -33,6 +33,13 @@ describe("nativeEventType", () => {
     expect(nativeEventType("gotpointercapture")).toBe("gotpointercapture")
     expect(nativeEventType("gotpointercaptureCapture")).toBe("gotpointercapture")
   })
+
+  it("keeps the capture suffix on the types an ancestor hears in the capture phase only", () => {
+    for (const type of ["mouseenter", "mouseleave", "pointerenter", "pointerleave"]) {
+      expect(nativeEventType(captureHandlerKey(type))).toBe(`${type}Capture`)
+      expect(nativeEventType(type)).toBe(type)
+    }
+  })
 })
 
 describe("native listener registration", () => {
@@ -114,5 +121,19 @@ describe("native listener registration", () => {
     registerEventListener(eventHandlers, renderer, 1, "click", second)
     expect(eventHandlers.get(1)?.get("click")).toBe(second)
     expect(calls).toHaveLength(1)
+  })
+
+  it("tells native of the capture and the bubble listener of an enter or leave apart", () => {
+    const { add, remove, calls } = setup()
+    add(1, "mouseenter")
+    add(1, captureHandlerKey("mouseenter"))
+    remove(1, "mouseenter")
+    remove(1, captureHandlerKey("mouseenter"))
+    expect(calls).toEqual([
+      [1, "mouseenter", true],
+      [1, "mouseenterCapture", true],
+      [1, "mouseenter", false],
+      [1, "mouseenterCapture", false],
+    ])
   })
 })
