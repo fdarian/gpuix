@@ -1,32 +1,18 @@
 //! The value types shared by `background-*` longhands and gradients: lengths,
 //! angles, `<position>`, `background-size`, `background-repeat`, boxes.
 
+use super::dimension;
 use gpui::{
     px, BackgroundBox, BackgroundPosition, BackgroundPositionAxis, BackgroundRepeat, BackgroundSize,
     LengthPercentage, RepeatStyle,
 };
 
-/// `12px`, `50%` or the unitless `0`.
+/// `12px`, `50%`, a `calc()` of one kind, or the unitless `0`.
 pub(crate) fn parse_length_percentage(token: &str) -> Option<LengthPercentage> {
-    if let Some(percent) = token.strip_suffix('%') {
-        let value = percent.parse::<f32>().ok().filter(|value| value.is_finite())?;
-        return Some(LengthPercentage::Percent(value / 100.0));
-    }
-    parse_length(token).map(|length| LengthPercentage::Length(px(length)))
-}
-
-/// `12px` or the unitless `0`, in px.
-pub(crate) fn parse_length(token: &str) -> Option<f32> {
-    let number = token
-        .strip_suffix("px")
-        .or_else(|| token.strip_suffix("PX"))
-        .unwrap_or(token);
-    let first = number.chars().next()?;
-    if !(first.is_ascii_digit() || matches!(first, '-' | '+' | '.')) {
-        return None;
-    }
-    let value = number.parse::<f32>().ok().filter(|value| value.is_finite())?;
-    (number.len() != token.len() || value == 0.0).then_some(value)
+    Some(match dimension::parse_length_percentage(token)? {
+        dimension::LengthPercentage::Length(length) => LengthPercentage::Length(px(length as f32)),
+        dimension::LengthPercentage::Percent(fraction) => LengthPercentage::Percent(fraction as f32),
+    })
 }
 
 /// A length or percentage that may not be negative: a radius or a size.
@@ -291,5 +277,19 @@ mod tests {
         assert_eq!(parse_repeat(&tokens("repeat-x repeat")), None);
         assert_eq!(parse_box("Content-Box"), Some(BackgroundBox::ContentBox));
         assert_eq!(parse_box("text"), None);
+    }
+
+    #[test]
+    fn lengths_are_case_insensitive_signed_and_may_be_calc() {
+        assert_eq!(parse_length_percentage("12PX"), Some(LengthPercentage::Length(px(12.0))));
+        assert_eq!(parse_length_percentage("+12Px"), Some(LengthPercentage::Length(px(12.0))));
+        assert_eq!(parse_length_percentage("-0.5in"), Some(LengthPercentage::Length(px(-48.0))));
+        assert_eq!(parse_length_percentage("+50%"), Some(LengthPercentage::Percent(0.5)));
+        assert_eq!(parse_length_percentage("calc(10px + 5px)"), Some(LengthPercentage::Length(px(15.0))));
+        assert_eq!(parse_length_percentage("calc(50% + 25%)"), Some(LengthPercentage::Percent(0.75)));
+        assert_eq!(parse_length_percentage("calc(2 * 10%)"), Some(LengthPercentage::Percent(0.2)));
+        // gpui has no length-plus-percentage value.
+        assert_eq!(parse_length_percentage("calc(50% - 10px)"), None);
+        assert_eq!(parse_length_percentage("12vw"), None);
     }
 }

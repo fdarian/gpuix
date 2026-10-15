@@ -1,6 +1,7 @@
 //! The CSS `filter` and `backdrop-filter` strings: a list of filter functions,
 //! parsed into a typed list and resolved into gpui's `FilterFunction`s.
 
+use super::dimension::{parse_length, parse_number_or_percentage, split_dimension};
 use super::syntax::{function_args, split_whitespace};
 use crate::color::ColorContext;
 
@@ -172,22 +173,7 @@ fn parse_drop_shadow(args: &str) -> Option<Filter> {
 
 /// A non-negative number or percentage, `0.5` or `50%`.
 fn parse_amount(token: &str) -> Option<f64> {
-    let value = match token.strip_suffix('%') {
-        Some(number) => parse_number(number)? / 100.0,
-        None => parse_number(token)?,
-    };
-    (value >= 0.0).then_some(value)
-}
-
-/// `12px`, `-2.5px`, or the unitless `0`. Other units cannot be resolved here
-/// and other unitless numbers are invalid CSS.
-fn parse_length(token: &str) -> Option<f64> {
-    let (value, unit) = split_dimension(token)?;
-    match unit.as_str() {
-        "px" => Some(value),
-        "" => (value == 0.0).then_some(0.0),
-        _ => None,
-    }
+    parse_number_or_percentage(token).filter(|value| *value >= 0.0)
 }
 
 /// An angle in degrees. Unitless is only valid for zero.
@@ -201,43 +187,6 @@ fn parse_angle(token: &str) -> Option<f64> {
         "" => (value == 0.0).then_some(0.0),
         _ => None,
     }
-}
-
-/// A number and its lowercased unit, which is empty for a bare number.
-fn split_dimension(token: &str) -> Option<(f64, String)> {
-    let bytes = token.as_bytes();
-    let digits = |from: usize| bytes[from..].iter().take_while(|byte| byte.is_ascii_digit()).count();
-    let mut end = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
-    let integer = digits(end);
-    end += integer;
-    let mut fraction = 0;
-    if bytes.get(end) == Some(&b'.') {
-        fraction = digits(end + 1);
-        if fraction > 0 {
-            end += 1 + fraction;
-        }
-    }
-    if integer + fraction == 0 {
-        return None;
-    }
-    // An exponent needs digits, or the `e` starts a unit such as `em`.
-    if matches!(bytes.get(end), Some(b'e' | b'E')) {
-        let sign = usize::from(matches!(bytes.get(end + 1), Some(b'+' | b'-')));
-        let exponent = digits(end + 1 + sign);
-        if exponent > 0 {
-            end += 1 + sign + exponent;
-        }
-    }
-    let value = token[..end].parse::<f64>().ok().filter(|value| value.is_finite())?;
-    let unit = &token[end..];
-    unit.chars()
-        .all(|character| character.is_ascii_alphabetic())
-        .then(|| (value, unit.to_ascii_lowercase()))
-}
-
-fn parse_number(token: &str) -> Option<f64> {
-    let (value, unit) = split_dimension(token)?;
-    unit.is_empty().then_some(value)
 }
 
 #[cfg(test)]
@@ -401,5 +350,16 @@ mod tests {
         assert_eq!(resolved[1], gpui::FilterFunction::Contrast(2.0));
         let bad = parse("drop-shadow(1px 2px notacolour)").unwrap();
         assert_eq!(resolve(&bad, &colors), None);
+    }
+
+    #[test]
+    fn calc_and_absolute_units_in_lengths_and_amounts() {
+        assert_eq!(
+            parse("blur(calc(1px + 1in)) brightness(calc(1 + 0.5)) opacity(calc(2 * 25%))"),
+            Some(vec![Filter::Blur(97.0), Filter::Brightness(1.5), Filter::Opacity(0.5)])
+        );
+        assert_eq!(parse("drop-shadow(calc(1px * 2) 2PT red)"), Some(vec![shadow(2.0, 2.0 * 96.0 / 72.0, 0.0, "red")]));
+        assert_eq!(parse("blur(calc(1px - 2px))"), None);
+        assert_eq!(parse("brightness(calc(1px))"), None);
     }
 }

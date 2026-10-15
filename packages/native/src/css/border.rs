@@ -1,5 +1,6 @@
 //! The CSS `border` shorthands and the one-to-four value `border-color`.
 
+use super::dimension;
 use super::syntax::split_whitespace;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +40,8 @@ pub(crate) fn parse_border(value: &str) -> Option<BorderSide<'_>> {
             if style.replace(parsed).is_some() {
                 return None;
             }
-        } else if color.replace(token).is_some() {
+        } else if dimension::is_numeric(token) || color.replace(token).is_some() {
+            // A number that is not a valid width, such as `-1px`, is not a colour either.
             return None;
         }
     }
@@ -67,17 +69,7 @@ fn parse_width(token: &str) -> Option<f64> {
         "thick" => return Some(5.0),
         _ => {}
     }
-    let number = token
-        .strip_suffix("px")
-        .or_else(|| token.strip_suffix("PX"))
-        .unwrap_or(token);
-    let first = number.chars().next()?;
-    if !(first.is_ascii_digit() || first == '.') {
-        return None;
-    }
-    let value = number.parse::<f64>().ok().filter(|value| value.is_finite())?;
-    // A bare number is only a length when it is zero.
-    (number.len() != token.len() || value == 0.0).then_some(value)
+    dimension::parse_length(token).filter(|width| *width >= 0.0)
 }
 
 fn parse_style(token: &str) -> Option<LineStyle> {
@@ -277,5 +269,14 @@ mod tests {
         );
         assert_eq!(parse_color_sides(""), None);
         assert_eq!(parse_color_sides("a b c d e"), None);
+    }
+
+    #[test]
+    fn widths_take_any_case_sign_and_calc() {
+        assert_eq!(side("+2PX solid").width, 2.0);
+        assert_eq!(side("calc(1px + 1px) solid").width, 2.0);
+        assert_eq!(side("1in solid").width, 96.0);
+        assert_eq!(parse_border("-1px solid"), None);
+        assert_eq!(parse_border("calc(1px - 2px) solid"), None);
     }
 }

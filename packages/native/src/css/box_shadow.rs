@@ -1,6 +1,7 @@
 //! The CSS `box-shadow` string, parsed into the per-layer struct the object
 //! form already uses.
 
+use super::dimension;
 use super::syntax::{split_commas, split_whitespace};
 use crate::style::BoxShadowValue;
 
@@ -35,7 +36,7 @@ fn parse_layer(layer: &str) -> Option<BoxShadowValue> {
     let mut run = Run::NotStarted;
 
     for token in split_whitespace(layer) {
-        if let Some(length) = parse_length(token) {
+        if let Some(length) = dimension::parse_length(token) {
             if run == Run::Closed {
                 return None;
             }
@@ -75,22 +76,6 @@ fn parse_layer(layer: &str) -> Option<BoxShadowValue> {
         color: color.unwrap_or(DEFAULT_COLOR).to_owned(),
         inset,
     })
-}
-
-/// `12px`, `-2.5px`, or the unitless `0`. Other units cannot be resolved here
-/// and other unitless numbers are invalid CSS.
-fn parse_length(token: &str) -> Option<f64> {
-    let number = token
-        .strip_suffix("px")
-        .or_else(|| token.strip_suffix("PX"))
-        .unwrap_or(token);
-    let first = number.chars().next()?;
-    if !(first.is_ascii_digit() || matches!(first, '-' | '+' | '.')) {
-        return None;
-    }
-    let value = number.parse::<f64>().ok().filter(|value| value.is_finite())?;
-    // Without the unit only zero is a length: `4` is not valid CSS.
-    (number.len() != token.len() || value == 0.0).then_some(value)
 }
 
 #[cfg(test)]
@@ -186,5 +171,54 @@ mod tests {
         ] {
             assert_eq!(parse(input), None, "{input}");
         }
+    }
+
+    #[test]
+    fn units_are_case_insensitive_and_absolute_units_convert_to_px() {
+        assert_eq!(
+            parse("1PX +2Px 3pX red"),
+            Some(vec![layer(1.0, 2.0, 3.0, 0.0, "red", false)])
+        );
+        assert_eq!(
+            parse("1in 0 0 0 red"),
+            Some(vec![layer(96.0, 0.0, 0.0, 0.0, "red", false)])
+        );
+        let parsed = parse("1pt 25.4MM 2.54cm 4q red").unwrap();
+        assert!((parsed[0].offset_x - 96.0 / 72.0).abs() < 1e-9);
+        assert!((parsed[0].offset_y - 96.0).abs() < 1e-9);
+        assert!((parsed[0].blur_radius - 96.0).abs() < 1e-9);
+        assert!((parsed[0].spread_radius - 4.0 * 96.0 / 101.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn calc_takes_lengths() {
+        assert_eq!(
+            parse("calc(1px + 2px) CALC(2 * 3px) 0 0 red"),
+            Some(vec![layer(3.0, 6.0, 0.0, 0.0, "red", false)])
+        );
+        assert_eq!(
+            parse("calc((10px - 4px) / 2) 0 red"),
+            Some(vec![layer(3.0, 0.0, 0.0, 0.0, "red", false)])
+        );
+        // A length and a percentage cannot be added in a box-shadow, which has no percentage.
+        assert_eq!(parse("calc(1px + 50%) 0 red"), None);
+        assert_eq!(parse("calc(1px * 2px) 0 red"), None);
+        assert_eq!(parse("calc(1px+2px) 0 red"), None);
+        assert_eq!(parse("calc(1px / 0) 0 red"), None);
+    }
+
+    #[test]
+    fn units_without_a_context_are_invalid() {
+        for input in ["1em 1em red", "1rem 0 red", "1vw 0 red", "1vh 0 red"] {
+            assert_eq!(parse(input), None, "{input}");
+        }
+    }
+
+    #[test]
+    fn a_huge_length_clamps_like_a_browser_instead_of_overflowing_f32() {
+        let parsed = parse("1e300px -1e999px 1e300px 0 red").unwrap();
+        assert_eq!(parsed[0].offset_x, dimension::MAX_LENGTH);
+        assert_eq!(parsed[0].offset_y, -dimension::MAX_LENGTH);
+        assert!((parsed[0].blur_radius as f32).is_finite());
     }
 }
