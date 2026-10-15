@@ -726,9 +726,11 @@ fn fold_state_styles(
             folded.active = style.active.clone();
             folded.group_hover = style.group_hover.clone();
             folded.group_active = style.group_active.clone();
-            folded
+            std::borrow::Cow::Owned(folded)
         }
-        _ => style.clone(),
+        // Borrowed: `resolve_pointer_states` copies the style itself, so cloning
+        // it here too paid for a second copy of a ~3.5 kB struct on every frame.
+        _ => std::borrow::Cow::Borrowed(style),
     };
     let mut after = resolve_pointer_states(&focused, pointer);
     after.focus_visible = None;
