@@ -1384,7 +1384,11 @@ function Composer(props: {
             paddingRight: 10,
           }}
           onChange={(event) => props.onChange(event.value ?? "")}
-          onSubmit={(event) => send(event.value ?? props.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "enter" || event.modifiers?.shift) return
+            event.preventDefault()
+            send(props.value)
+          }}
         />
         <div
           style={{

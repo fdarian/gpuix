@@ -147,22 +147,29 @@ describeNative("form", () => {
     expect(testRoot.renderer.getAllText()).toContain(JSON.stringify("ab\n"))
   })
 
-  it("does nothing for an input outside a form, and keeps the input's own onSubmit", () => {
-    const own: string[] = []
+  it("does nothing for an input outside a form", () => {
     testRoot.render(
       <div style={{ width: 400, height: 200 }} onSubmit={() => submits.push({})}>
         <form onSubmit={() => submits.push({})} />
-        <input testId="a" onSubmit={() => own.push("input")} style={field} />
+        <input testId="a" style={field} />
       </div>,
     )
     type("a", "enter")
-    expect(own).toEqual(["input"])
     expect(submits).toEqual([])
   })
 
-  it("submits both the input's onSubmit and the form's", () => {
+  it("runs the input's Enter keydown handler, then submits the form", () => {
     const own: string[] = []
-    mountForm(<input testId="a" name="n" onSubmit={() => own.push("input")} style={field} />)
+    mountForm(
+      <input
+        testId="a"
+        name="n"
+        onKeyDown={(event) => {
+          if (event.key === "enter") own.push("input")
+        }}
+        style={field}
+      />,
+    )
     type("a", "enter")
     expect(own).toEqual(["input"])
     expect(submits).toHaveLength(1)

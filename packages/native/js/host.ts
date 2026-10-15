@@ -543,8 +543,10 @@ export interface HostProps extends AriaProps, PointerEventProps {
 
   // ── Text editor events ─────────────────────────────────────────
   onChange?: (event: EventPayload) => void
-  /** Enter on `<input>`, or Enter on `<textarea>` when this listener is set.
-   *  On a `<form>`, the DOM `submit` event instead: see `FormProps.onSubmit`. */
+  /** The DOM `submit` event of a descendant `<form>`, bubbling: see
+   *  `FormProps.onSubmit`. Not available on `<input>` or `<textarea>`: handle
+   *  Enter in `onKeyDown` and call `preventDefault()` to keep it from submitting
+   *  the form (`<input>`) or inserting a newline (`<textarea>`). */
   onSubmit?: (event: EventPayload) => void
   /** A `required` control is empty when its form is submitted. Does not bubble. */
   onInvalid?: (event: EventPayload) => void
@@ -611,7 +613,7 @@ export interface HostProps extends AriaProps, PointerEventProps {
 }
 
 // Props shared by the native text editor elements.
-export interface TextControlProps extends HostProps {
+export interface TextControlProps extends Omit<HostProps, "onSubmit"> {
   /** External editor value. Native edits apply immediately and report through onChange. */
   value?: string
   placeholder?: string

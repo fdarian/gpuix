@@ -81,7 +81,6 @@ const INPUT_KEY_CONTEXT: &str = "GpuixInput";
 const NUMBER_KEY_CONTEXT: &str = "GpuixNumberInput";
 const NUMBER_INPUT_KEY_CONTEXT: &str = "GpuixInput GpuixNumberInput";
 const TEXTAREA_KEY_CONTEXT: &str = "GpuixTextarea";
-const TEXTAREA_SUBMIT_KEY_CONTEXT: &str = "GpuixTextareaSubmit";
 const CARET_BLINK_MS: u64 = 500;
 const CARET_WIDTH: Pixels = px(2.0);
 const DRAG_SCROLL_FRAME_MS: u64 = 16;
@@ -171,20 +170,11 @@ pub fn init(cx: &mut App) {
     let mut bindings = text_editor_bindings(
         INPUT_KEY_CONTEXT,
         false,
-        true,
         word_navigation_uses_alt,
         bind_paste_shortcut,
     );
     bindings.extend(text_editor_bindings(
         TEXTAREA_KEY_CONTEXT,
-        true,
-        false,
-        word_navigation_uses_alt,
-        bind_paste_shortcut,
-    ));
-    bindings.extend(text_editor_bindings(
-        TEXTAREA_SUBMIT_KEY_CONTEXT,
-        true,
         true,
         word_navigation_uses_alt,
         bind_paste_shortcut,
@@ -199,16 +189,15 @@ pub fn init(cx: &mut App) {
 fn text_editor_bindings(
     context: &'static str,
     multiline: bool,
-    enter_submits: bool,
     word_navigation_uses_alt: bool,
     bind_paste_shortcut: bool,
 ) -> Vec<KeyBinding> {
     let context = Some(context);
     let mut bindings = vec![
-        if enter_submits {
-            KeyBinding::new("enter", Submit, context)
-        } else {
+        if multiline {
             KeyBinding::new("enter", Newline, context)
+        } else {
+            KeyBinding::new("enter", Submit, context)
         },
         KeyBinding::new("shift-enter", Newline, context),
         KeyBinding::new("backspace", Backspace, context),
@@ -421,7 +410,6 @@ impl CustomElement for TextEditorElement {
                 .unwrap_or_else(|| cx.focus_handle())
         };
         let emits_change = ctx.events.contains("change");
-        let emits_submit = ctx.events.contains("submit");
         let callback = ctx.event_callback.clone();
         let view = cx.weak_entity();
 
@@ -461,7 +449,6 @@ impl CustomElement for TextEditorElement {
                     view,
                     callback,
                     emits_change,
-                    emits_submit,
                     focus_handle: state_focus_handle,
                     content: value,
                     placeholder: placeholder.into(),
@@ -521,10 +508,6 @@ impl CustomElement for TextEditorElement {
             state.muted_color = self.theme.text_muted;
             state.callback = callback;
             state.emits_change = emits_change;
-            if state.emits_submit != emits_submit {
-                state.emits_submit = emits_submit;
-                cx.notify();
-            }
             state.placeholder = self.placeholder.clone().into();
             state.read_only = self.read_only;
             state.min_rows = self.min_rows.max(1);
@@ -661,7 +644,7 @@ impl CustomElement for TextEditorElement {
 
     fn supported_events(&self) -> &'static [&'static str] {
         &[
-            "change", "submit", "keyDown", "keyUp", "focus", "blur",
+            "change", "keyDown", "keyUp", "focus", "blur",
         ]
     }
 
@@ -795,7 +778,6 @@ struct TextEditorState {
     view: gpui::WeakEntity<GpuixView>,
     callback: Option<EventCallback>,
     emits_change: bool,
-    emits_submit: bool,
     focus_handle: FocusHandle,
     content: String,
     placeholder: SharedString,
@@ -960,14 +942,6 @@ impl TextEditorState {
                 self.pending_values.pop_front();
             }
             emit_event_full(&self.callback, self.element_id, "change", |payload| {
-                payload.value = Some(self.content.clone());
-            });
-        }
-    }
-
-    fn emit_submit(&self) {
-        if self.emits_submit {
-            emit_event_full(&self.callback, self.element_id, "submit", |payload| {
                 payload.value = Some(self.content.clone());
             });
         }
@@ -1355,12 +1329,7 @@ impl TextEditorState {
     }
 
     fn submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
-        self.emit_submit();
-        // A `<textarea>` with `onSubmit` is a composer, not a form field: Enter
-        // never submits the form around it.
-        if !self.multiline {
-            crate::forms::implicit_submission(self.view.clone(), self.element_id, window, cx);
-        }
+        crate::forms::implicit_submission(self.view.clone(), self.element_id, window, cx);
     }
 
     /// Replace `range` and put the caret after the new text. `user_input`
@@ -1943,8 +1912,6 @@ impl gpui::Render for TextEditorState {
                 NUMBER_INPUT_KEY_CONTEXT
             } else if !self.multiline {
                 INPUT_KEY_CONTEXT
-            } else if self.emits_submit {
-                TEXTAREA_SUBMIT_KEY_CONTEXT
             } else {
                 TEXTAREA_KEY_CONTEXT
             })
@@ -2220,7 +2187,7 @@ mod tests {
 
     #[test]
     fn macos_word_navigation_uses_alt() {
-        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true, true);
+        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true);
 
         assert!(has_binding(&bindings, "alt-left", &WordLeft));
         assert!(has_binding(&bindings, "alt-right", &WordRight));
@@ -2230,7 +2197,7 @@ mod tests {
 
     #[test]
     fn non_macos_word_navigation_uses_control() {
-        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, false, true);
+        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, false, true);
 
         assert!(has_binding(&bindings, "ctrl-left", &WordLeft));
         assert!(has_binding(&bindings, "ctrl-right", &WordRight));
@@ -2240,7 +2207,7 @@ mod tests {
 
     #[test]
     fn browser_paste_stays_with_the_dom_event() {
-        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true, false);
+        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, false);
 
         assert!(!has_binding(&bindings, "cmd-v", &Paste));
         assert!(!has_binding(&bindings, "ctrl-v", &Paste));
@@ -2248,25 +2215,20 @@ mod tests {
 
     #[test]
     fn desktop_paste_uses_the_platform_clipboard_action() {
-        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true, true);
+        let bindings = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true);
 
         assert!(has_binding(&bindings, "cmd-v", &Paste));
         assert!(has_binding(&bindings, "ctrl-v", &Paste));
     }
 
     #[test]
-    fn textarea_enter_inserts_a_newline_unless_on_submit_is_set() {
-        let textarea = text_editor_bindings(TEXTAREA_KEY_CONTEXT, true, false, true, true);
+    fn textarea_enter_inserts_a_newline_and_input_enter_submits() {
+        let textarea = text_editor_bindings(TEXTAREA_KEY_CONTEXT, true, true, true);
         assert!(has_binding(&textarea, "enter", &Newline));
         assert!(has_binding(&textarea, "shift-enter", &Newline));
         assert!(!has_binding(&textarea, "enter", &Submit));
 
-        let composer = text_editor_bindings(TEXTAREA_SUBMIT_KEY_CONTEXT, true, true, true, true);
-        assert!(has_binding(&composer, "enter", &Submit));
-        assert!(has_binding(&composer, "shift-enter", &Newline));
-        assert!(!has_binding(&composer, "enter", &Newline));
-
-        let input = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true, true);
+        let input = text_editor_bindings(INPUT_KEY_CONTEXT, false, true, true);
         assert!(has_binding(&input, "enter", &Submit));
         assert!(!has_binding(&input, "enter", &Newline));
     }

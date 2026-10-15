@@ -202,13 +202,12 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
       props.onKeyDown?.(event)
       if (event.key === "down") state.move(1)
       else if (event.key === "up") state.move(-1)
-    },
-    onSubmit(event: EventPayload) {
-      props.onSubmit?.(event)
-      const index = state.active()
-      if (index !== null) {
-        const item = state.filtered().at(index)
-        if (item !== undefined) state.select(item)
+      else if (event.key === "enter") {
+        const index = state.active()
+        if (index !== null) {
+          const item = state.filtered().at(index)
+          if (item !== undefined) state.select(item)
+        }
       }
     },
   })

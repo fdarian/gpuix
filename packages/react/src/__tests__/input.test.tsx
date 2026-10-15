@@ -3,7 +3,7 @@
 
 import React, { useState } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload, KeyEvent } from "@gpuix/native"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -118,7 +118,7 @@ describeNative("native text editors", () => {
     expect(testRoot.renderer.getAllText()).toContain('Value: "abc"')
   })
 
-  it("submits a textarea when onSubmit is set", () => {
+  it("submits a textarea from an Enter keydown that prevents the newline", () => {
     function Textarea() {
       const [text, setText] = useState("")
       const [submits, setSubmits] = useState(0)
@@ -130,7 +130,11 @@ describeNative("native text editors", () => {
             maxRows={4}
             style={{ width: 300 }}
             onChange={(event: EventPayload) => setText(event.value ?? "")}
-            onSubmit={() => setSubmits((count) => count + 1)}
+            onKeyDown={(event: KeyEvent) => {
+              if (event.key !== "enter" || event.modifiers?.shift) return
+              event.preventDefault()
+              setSubmits((count) => count + 1)
+            }}
           />
           <text>{`Value: ${JSON.stringify(text)}`}</text>
           <text>{`Submits: ${submits}`}</text>
@@ -151,9 +155,10 @@ describeNative("native text editors", () => {
 
     testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "enter")
     expect(testRoot.renderer.getAllText()).toContain("Submits: 1")
+    expect(testRoot.renderer.getAllText()).toContain('Value: "hi\\nthere"')
   })
 
-  it("switches enter between newline and submit when onSubmit is added", () => {
+  it("switches enter between newline and submit as the keydown handler changes", () => {
     function Textarea({ submit }: { submit?: boolean }) {
       const [text, setText] = useState("ab")
       const [submits, setSubmits] = useState(0)
@@ -163,7 +168,15 @@ describeNative("native text editors", () => {
             value={text}
             style={{ width: 300 }}
             onChange={(event: EventPayload) => setText(event.value ?? "")}
-            onSubmit={submit ? () => setSubmits((count) => count + 1) : undefined}
+            onKeyDown={
+              submit
+                ? (event: KeyEvent) => {
+                    if (event.key !== "enter") return
+                    event.preventDefault()
+                    setSubmits((count) => count + 1)
+                  }
+                : undefined
+            }
           />
           <text>{`Value: ${JSON.stringify(text)}`}</text>
           <text>{`Submits: ${submits}`}</text>
@@ -449,7 +462,9 @@ describeNative("native text editors", () => {
             placeholder="Empty"
             style={{ width: 300, height: 40 }}
             onChange={(event: EventPayload) => setText(event.value ?? "")}
-            onSubmit={() => setText("")}
+            onKeyDown={(event: KeyEvent) => {
+              if (event.key === "enter") setText("")
+            }}
           />
           <text>{`Value: ${text}`}</text>
         </div>
