@@ -145,14 +145,6 @@ export declare class GpuixRenderer {
   /** Enable the window appearanceChange event requested by the React renderer. */
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
   /**
-   * `"system"` follows the OS light/dark setting, `"light"` and `"dark"`
-   * force it for the whole app. Only macOS applies it; elsewhere GPUI has no
-   * override and the call is accepted and ignored.
-   */
-  setAppearance(appearance: string): void
-  /** The effective appearance of the window, `"light"` or `"dark"`. */
-  getAppearance(): string
-  /**
    * Enable the `mediaChange` event behind `matchMedia`. It fires when the OS
    * accessibility preferences or the window appearance change.
    */
@@ -162,6 +154,59 @@ export declare class GpuixRenderer {
    * where the OS has no read (everything but macOS).
    */
   getMediaFeatures(): MediaFeatures
+  /**
+   * `"system"` follows the OS light/dark setting, `"light"` and `"dark"`
+   * force it for the whole app. Only macOS applies it; elsewhere GPUI has no
+   * override and the call is accepted and ignored.
+   */
+  setAppearance(appearance: string): void
+  /** The effective appearance of the window, `"light"` or `"dark"`. */
+  getAppearance(): string
+  /** A value that is written with `set` and `jump` or animated. */
+  createMotionValue(id: number, initial: any): void
+  /**
+   * A value mapped from the number value `input` through `inputRange` and
+   * `outputRange`. `options` is `{ clamp?: boolean, ease?: ease | ease[] }`.
+   */
+  createMotionTransform(id: number, input: number, inputRange: Array<number>, outputRange: any, options?: any | undefined | null): void
+  /**
+   * A spring that chases another value. `config` is a spring transition
+   * without the `type`.
+   */
+  createMotionFollower(id: number, source: number, config: any): void
+  /** A spring with a target of its own, which `setMotionValue` moves. */
+  createMotionSpring(id: number, initial: any, config: any): void
+  /** Whether the value existed. Values that read it fail from then on. */
+  disposeMotionValue(id: number): boolean
+  getMotionValue(id: number): any
+  /** Units per second. Errors for a value that is not a number. */
+  getMotionValueVelocity(id: number): number
+  isMotionValueAnimating(id: number): boolean
+  /**
+   * Writes the value. Over a running animation this does not stop it:
+   * call `stopMotionValue` first to take the value from the animation.
+   */
+  setMotionValue(id: number, value: any): void
+  /** Writes the value, ending any animation and dropping its velocity. */
+  jumpMotionValue(id: number, value: any): void
+  /**
+   * Animates a value from where it is, with the speed it has. `transition`
+   * is the same description `motion` takes, tween by default.
+   */
+  animateMotionValue(id: number, target: any, transition?: any | undefined | null): void
+  /** Ends an animation where it is, keeping the speed for the next one. */
+  stopMotionValue(id: number): void
+  /** Chooses which events the value delivers. Neither removes the listener. */
+  setMotionValueListener(id: number, change: boolean, animation: boolean): void
+  /**
+   * Defines the keyframes `animation-name: name` plays, as the `@keyframes`
+   * rule does. `framesJson` is a JSON object of `from`, `to`, `N%` or comma
+   * list keys to the animatable style properties plus `animationTimingFunction`.
+   * Redefining a name replaces it for animations that start afterwards. A bad
+   * definition throws and leaves the earlier one. Use `defineKeyframes` from
+   * `@gpuix/native/host`, which defines it on every renderer.
+   */
+  defineKeyframes(name: string, framesJson: string): void
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -655,6 +700,47 @@ export declare class TestGpuixRenderer {
   clockSet(nowMs: number): number
   clockFastForward(deltaMs: number): number
   clockResume(): number
+  /** A value that is written with `set` and `jump` or animated. */
+  createMotionValue(id: number, initial: any): void
+  /**
+   * A value mapped from the number value `input` through `inputRange` and
+   * `outputRange`. `options` is `{ clamp?: boolean, ease?: ease | ease[] }`.
+   */
+  createMotionTransform(id: number, input: number, inputRange: Array<number>, outputRange: any, options?: any | undefined | null): void
+  /**
+   * A spring that chases another value. `config` is a spring transition
+   * without the `type`.
+   */
+  createMotionFollower(id: number, source: number, config: any): void
+  /** A spring with a target of its own, which `setMotionValue` moves. */
+  createMotionSpring(id: number, initial: any, config: any): void
+  /** Whether the value existed. Values that read it fail from then on. */
+  disposeMotionValue(id: number): boolean
+  getMotionValue(id: number): any
+  /** Units per second. Errors for a value that is not a number. */
+  getMotionValueVelocity(id: number): number
+  isMotionValueAnimating(id: number): boolean
+  /**
+   * Writes the value. Over a running animation this does not stop it:
+   * call `stopMotionValue` first to take the value from the animation.
+   */
+  setMotionValue(id: number, value: any): void
+  /** Writes the value, ending any animation and dropping its velocity. */
+  jumpMotionValue(id: number, value: any): void
+  /**
+   * Animates a value from where it is, with the speed it has. `transition`
+   * is the same description `motion` takes, tween by default.
+   */
+  animateMotionValue(id: number, target: any, transition?: any | undefined | null): void
+  /** Ends an animation where it is, keeping the speed for the next one. */
+  stopMotionValue(id: number): void
+  /** Chooses which events the value delivers. Neither removes the listener. */
+  setMotionValueListener(id: number, change: boolean, animation: boolean): void
+  /**
+   * Defines the keyframes `animation-name: name` plays. See
+   * `GpuixRenderer.defineKeyframes`.
+   */
+  defineKeyframes(name: string, framesJson: string): void
   /** Advance GPUI's deterministic test executor and run due timers. */
   advanceTime(milliseconds: number): void
   /** Get the root element ID, or null if no root is set. */
@@ -952,6 +1038,28 @@ export interface EventPayload {
    * and `height` as the border box.
    */
   observation?: Observation
+  /**
+   * CSS name of the property a transition animates, `background-color`.
+   * Populated for: transitionRun, transitionStart, transitionEnd,
+   * transitionCancel.
+   */
+  propertyName?: string
+  /**
+   * The `animation-name` of the animation, as the DOM `animationName`.
+   * Populated for: animationStart, animationIteration, animationEnd,
+   * animationCancel.
+   */
+  animationName?: string
+  /**
+   * Seconds of the transition's or animation's active time, as the DOM
+   * `elapsedTime`. Populated for: the transition and animation events.
+   */
+  elapsedTime?: number
+  /**
+   * Always `""`: gpuix has no pseudo-elements. Populated for: the transition
+   * and animation events.
+   */
+  pseudoElement?: string
   modifiers?: EventModifiers
 }
 
@@ -1030,6 +1138,16 @@ export interface LayerShellOptions {
    * overlay that never takes keyboard focus.
    */
   keyboardInteractivity?: string
+}
+
+/** The OS accessibility preferences that media queries expose. */
+export interface MediaFeatures {
+  /** `prefers-reduced-motion: reduce`. */
+  reducedMotion: boolean
+  /** `prefers-contrast: more`. */
+  increasedContrast: boolean
+  /** `forced-colors: active`. macOS has no forced colors mode. */
+  forcedColors: boolean
 }
 
 /**
@@ -1172,16 +1290,6 @@ export interface WindowOptions {
    * normal window. Linux/Wayland only; ignored elsewhere.
    */
   layerShell?: LayerShellOptions
-}
-
-/** The OS accessibility preferences that media queries expose. */
-export interface MediaFeatures {
-  /** `prefers-reduced-motion: reduce`. */
-  reducedMotion: boolean
-  /** `prefers-contrast: more`. */
-  increasedContrast: boolean
-  /** `forced-colors: active`. macOS has no forced colors mode. */
-  forcedColors: boolean
 }
 
 export interface WindowSize {
