@@ -467,7 +467,12 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
     }
     let mut lost_release = false;
     match sample.action {
-        PointerAction::Down { button, .. } => state.buttons |= button_bit(button),
+        PointerAction::Down { button, .. } => {
+            state.buttons |= button_bit(button);
+            // A press the window did not take means its earlier press of this button is over,
+            // even when the OS drag loop ate the release.
+            state.window_presses &= !button_bit(button);
+        }
         PointerAction::Up { button, .. } => state.buttons &= !button_bit(button),
         // GPUI reports one pressed button on a move, so a move cannot say which
         // of several are held. It can say that none is: the release was lost.
@@ -477,10 +482,9 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
             lost_release = std::mem::take(&mut state.buttons) != 0;
             state.window_presses = 0;
         }
-        PointerAction::Move { .. }
-        | PointerAction::Exit
-        | PointerAction::Resync
-        | PointerAction::CancelDrag => {}
+        // The window cannot hold a press for a pointer that left it.
+        PointerAction::Exit => state.window_presses = 0,
+        PointerAction::Move { .. } | PointerAction::Resync | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
         | PointerAction::FileDragLeave
@@ -2833,6 +2837,38 @@ mod tests {
         assert!(!state.is_hovered(1));
         // The chain the next paint compares against is the empty one the page saw.
         assert_eq!(*state.observed().borrow(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn a_press_that_reaches_the_page_ends_the_windows_earlier_press_of_that_button() {
+        let tree = tree(&listening_everywhere(&["mousedown", "mousemove"]));
+        let mut state = PointerState::default();
+        // The window took the left press and the drag loop ate its release.
+        state.window_presses = button_bit(0);
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(state.window_presses, 0);
+        // Nothing hides the pointer from the page any more.
+        let output = dispatch(&mut state, &tree, &held_move(5.0, 5.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousemove@3"]);
+    }
+
+    #[test]
+    fn a_press_of_another_button_leaves_the_windows_press_alone() {
+        let tree = tree(&listening_everywhere(&["mousedown"]));
+        let mut state = PointerState::default();
+        state.window_presses = button_bit(0);
+        dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(state.window_presses, button_bit(0));
+    }
+
+    #[test]
+    fn the_pointer_leaving_the_window_ends_the_windows_press() {
+        let tree = tree(&listening_everywhere(&["mouseleave"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        state.window_presses = button_bit(0);
+        dispatch(&mut state, &tree, &at(PointerAction::Exit, Vec::new()));
+        assert_eq!(state.window_presses, 0);
     }
 
     #[test]

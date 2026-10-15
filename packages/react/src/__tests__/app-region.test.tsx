@@ -147,6 +147,25 @@ describeRegions("appRegion", () => {
       expect(windowActions()).toEqual(["move"])
     })
 
+    it("outside every region is the page's, even when the window's earlier press never got its release", () => {
+      testRoot.render(<Page />)
+
+      // The OS drag loop can eat the release of the press the window took.
+      testRoot.renderer.nativeSimulateMouseDown(350, 20)
+      expect(windowActions()).toEqual(["move"])
+
+      testRoot.renderer.nativeSimulateMouseDown(200, 100)
+      testRoot.renderer.nativeSimulateMouseUp(200, 100)
+
+      expect(log.filter((entry) => entry.startsWith("body:"))).toEqual([
+        "body:mouseenter",
+        "body:pointerdown",
+        "body:mousedown",
+        "body:mouseup",
+        "body:click",
+      ])
+    })
+
     it("outside every region goes to the page", () => {
       testRoot.render(<Page />)
 
@@ -263,6 +282,34 @@ describeRegions("appRegion", () => {
       testRoot.renderer.nativeSimulateMouseMove(200, 100, 0)
 
       expect(log).toEqual([])
+    })
+
+    it("does not see a drag region that appears under it a frame late", () => {
+      testRoot.render(
+        <div style={{ width: 400, height: 300 }}>
+          <div key="body" style={{ width: 400, height: 100 }} {...listeners("body")} />
+        </div>,
+      )
+      testRoot.renderer.nativeSimulateMouseMove(350, 20)
+      expect(log).toContain("body:mouseenter")
+      log.length = 0
+
+      // The bar is laid out over the still pointer, and is a region from the frame it first paints.
+      testRoot.render(
+        <div style={{ width: 400, height: 300 }}>
+          <div
+            key="bar"
+            style={{ appRegion: "drag", width: 400, height: 40 }}
+            {...listeners("bar")}
+          />
+          <div key="body" style={{ width: 400, height: 100 }} {...listeners("body")} />
+        </div>,
+      )
+      // The test window delivers what a frame resynced with the next input. A wheel away from the
+      // bar and the page changes nothing itself.
+      testRoot.renderer.nativeSimulateScrollWheel(390, 250, 0, -10)
+
+      expect(log).toEqual(["body:mouseleave"])
     })
 
     it("still sends the wheel to what is under it", () => {

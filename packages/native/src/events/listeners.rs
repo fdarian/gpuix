@@ -427,22 +427,27 @@ pub(crate) fn pointer_frame(
                 );
             });
 
-            let resync = sample(
-                window,
-                PointerAction::Resync,
-                window.mouse_position(),
-                window.modifiers(),
-            );
-            // What the page would see: a pointer the dispatcher hides has no chain, or this
-            // would resync on every frame.
-            let seen = if app_region::hides_pointer(&hover.borrow(), &resync) {
-                &[]
-            } else {
-                resync.hits.as_slice()
-            };
-            if chain_changed(&observed, seen) {
-                submit(&view, resync, cx);
-            }
+            // After the draw: GPUI swaps frames only when it ends, and the control areas of the
+            // frame being painted are readable only from then on, so a drag region that appeared
+            // under a still pointer is seen by this resync and not a frame late.
+            window.defer(cx, move |window, cx| {
+                let resync = sample(
+                    window,
+                    PointerAction::Resync,
+                    window.mouse_position(),
+                    window.modifiers(),
+                );
+                // What the page would see: a pointer the dispatcher hides has no chain, or this
+                // would resync on every frame.
+                let seen = if app_region::hides_pointer(&hover.borrow(), &resync) {
+                    &[]
+                } else {
+                    resync.hits.as_slice()
+                };
+                if chain_changed(&observed, seen) {
+                    submit(&view, resync, cx);
+                }
+            });
         },
     )
     .absolute()
