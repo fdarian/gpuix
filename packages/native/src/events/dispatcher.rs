@@ -277,7 +277,9 @@ impl<'a> Emitter<'a> {
             .elements
             .iter()
             .filter(|(id, element)| {
-                element.events().contains(MOUSE_DOWN_OUTSIDE) && !inside.contains(id)
+                element.events().contains(MOUSE_DOWN_OUTSIDE)
+                    && !inside.contains(id)
+                    && is_connected(self.tree, **id)
             })
             .map(|(id, _)| *id)
             .collect();
@@ -370,7 +372,7 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         .iter()
         .map(|hit| hit.id)
         .find(|id| tree.elements.contains_key(id));
-    state.observe(geometric);
+    state.observe(&sample.hits);
     let chain_mismatch = geometric.is_some_and(|target| {
         let chain: Vec<u64> = sample
             .hits
@@ -393,13 +395,19 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
     if file_drag_input {
         return dispatch_file_drag(state, tree, sample, geometric, chain_mismatch);
     }
+    let mut lost_release = false;
     match sample.action {
         PointerAction::Down { button, .. } => state.buttons |= button_bit(button),
         PointerAction::Up { button, .. } => state.buttons &= !button_bit(button),
-        PointerAction::Move { pressed_button } => {
-            state.buttons = pressed_button.map_or(0, button_bit);
-        }
-        PointerAction::Exit | PointerAction::Resync | PointerAction::CancelDrag => {}
+        // GPUI reports one pressed button on a move, so a move cannot say which
+        // of several are held. It can say that none is: the release was lost.
+        PointerAction::Move {
+            pressed_button: None,
+        } => lost_release = std::mem::take(&mut state.buttons) != 0,
+        PointerAction::Move { .. }
+        | PointerAction::Exit
+        | PointerAction::Resync
+        | PointerAction::CancelDrag => {}
         PointerAction::FileDragMove { .. }
         | PointerAction::FileDrop
         | PointerAction::FileDragLeave => unreachable!("handled above"),
@@ -412,10 +420,13 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
         state.hits = sample.hits.clone();
         return Output::new(emitter.events, restyle, chain_mismatch, sample, state.buttons);
     }
-    let mut restyle = false;
 
     // A real pointer input means the drag ended without a leave reaching us.
     end_file_drag(state, &mut emitter);
+    let mut restyle = false;
+    if lost_release {
+        restyle |= cancel_press(state, &mut emitter);
+    }
     apply_capture(state, &mut emitter);
     // A captured element keeps the pointer: it is the hover target and takes
     // every event until the release, wherever the pointer is. So does the
@@ -563,6 +574,40 @@ fn pinned_target(state: &PointerState, tree: &RetainedTree) -> Option<u64> {
         .lock_element()
         .filter(|id| is_connected(tree, *id))
         .or(state.explicit)
+}
+
+/// A move that shows no button down while one was: the release happened where
+/// no event reached us (outside the window, over another app). The press is
+/// cancelled as a browser cancels a pointer it lost: `pointercancel` at the
+/// element that has or has been asked to have the pointer, else the one
+/// pressed, then `lostpointercapture`, then the press and `:active` end, with
+/// no click.
+fn cancel_press(state: &mut PointerState, emitter: &mut Emitter) -> bool {
+    let tree = emitter.tree;
+    let pressed = state
+        .pressed
+        .iter()
+        .min_by_key(|(button, _)| **button)
+        .and_then(|(_, press)| press.path.first().copied());
+    // The target is the pending capture, not the applied one: a capture JS
+    // asked for since the last input already redirects the pointer. It never
+    // took hold, so it fires neither `gotpointercapture` nor `lostpointercapture`.
+    let capturer = state
+        .lock_element()
+        .or(state.requests.target())
+        .filter(|id| is_connected(tree, *id));
+    if let Some(target) = capturer.or(pressed) {
+        emitter.emit("pointercancel", target, Fields::default());
+    }
+    state.requests.clear();
+    if let Some(captured) = state.explicit.take() {
+        if is_connected(tree, captured) {
+            emitter.emit("lostpointercapture", captured, Fields::default());
+        }
+    }
+    state.pressed.clear();
+    state.pending_drag = None;
+    set_active(state, tree, Vec::new())
 }
 
 /// Makes the capture JS asked for the one in force, firing `lostpointercapture`
@@ -1106,6 +1151,16 @@ mod tests {
     }
 
     #[test]
+    fn an_element_that_left_the_tree_hears_no_outside_press() {
+        let mut tree = tree(&[(3, "mousedownoutside")]);
+        tree.create_element(7, "div".to_string());
+        tree.set_event_listener(7, "mousedownoutside".to_string(), true);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1])));
+        assert_eq!(outside_presses(&output), ["3<-4"]);
+    }
+
+    #[test]
     fn a_press_outside_the_subtree_reaches_the_listener_only_with_the_press_as_target() {
         let tree = tree(&[(3, "mousedownoutside")]);
         let mut state = PointerState::default();
@@ -1450,6 +1505,97 @@ mod tests {
         assert_eq!(state.explicit_capture(), Some(4));
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["lostpointercapture@4"]);
+    }
+
+    #[test]
+    fn a_move_with_no_button_after_a_press_cancels_it_then_loses_the_capture() {
+        let mut listening = listening_everywhere(&[
+            "pointercancel",
+            "lostpointercapture",
+            "pointerup",
+            "mouseup",
+            "click",
+        ]);
+        listening.extend(listening_everywhere(&["pointermove"]));
+        let tree = tree(&listening);
+        let mut state = pressed_with_capture_on_c(&tree);
+        dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1])));
+        assert_eq!(state.explicit_capture(), Some(4));
+
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+
+        assert_eq!(
+            names(&output),
+            ["pointercancel@4", "lostpointercapture@4", "pointermove@3"]
+        );
+        assert_eq!(state.explicit_capture(), None);
+        assert_eq!(state.requests.target(), None);
+        assert!(state.pressed.is_empty());
+        assert!(!state.is_active(3));
+        assert_eq!(state.buttons, 0);
+
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointerup@3", "mouseup@3"], "no click");
+    }
+
+    #[test]
+    fn a_lost_release_cancels_at_the_element_a_pending_capture_names() {
+        let mut listening = listening_everywhere(&["pointercancel"]);
+        listening.extend(listening_everywhere(&CAPTURE_EVENTS));
+        let tree = tree(&listening);
+        let mut state = pressed_with_capture_on_c(&tree);
+        assert_eq!(state.explicit_capture(), None, "the capture is pending");
+
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+
+        // The capture never took hold, so there is nothing to lose or gain.
+        assert_eq!(
+            names(&output),
+            ["pointercancel@4", "pointermove@3"],
+            "pointercancel goes to the effective target, the pending capture"
+        );
+        assert_eq!(state.explicit_capture(), None);
+        assert_eq!(state.requests.target(), None);
+    }
+
+    #[test]
+    fn a_lost_release_without_capture_cancels_at_the_pressed_element() {
+        let tree = tree(&listening_everywhere(&["pointercancel", "lostpointercapture"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert!(state.is_active(3));
+
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+
+        assert_eq!(names(&output), ["pointercancel@3"]);
+        assert!(!state.is_active(3));
+    }
+
+    #[test]
+    fn a_move_with_no_button_while_none_is_down_cancels_nothing() {
+        let tree = tree(&listening_everywhere(&["pointercancel"]));
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
+    fn a_move_does_not_decide_which_buttons_are_held() {
+        let tree = tree(&listening_everywhere(&["mousedown", "mousemove", "mouseup"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3])));
+        dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3])));
+
+        // GPUI names one pressed button on a move: the other is still down.
+        let output = dispatch(
+            &mut state,
+            &tree,
+            &at(PointerAction::Move { pressed_button: Some(0) }, chain_of(&[3])),
+        );
+        assert_eq!(output.into_payloads()[0].buttons, Some(3));
+
+        let released = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3])));
+        assert_eq!(released.into_payloads()[0].buttons, Some(2));
     }
 
     #[test]

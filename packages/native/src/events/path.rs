@@ -68,6 +68,13 @@ mod tests {
     }
 
     #[test]
+    fn a_chain_that_ends_at_an_anchored_layer_follows_the_path_through_its_declaring_ancestors() {
+        // The layer is a hitbox root in GPUI: its chain stops at the layer, while
+        // the retained path continues to the elements it was declared under.
+        assert!(chain_follows_path(&[6, 5], &[6, 5, 3, 2, 1]));
+    }
+
+    #[test]
     fn the_innermost_shared_element_is_the_common_ancestor() {
         assert_eq!(common_ancestor(&[5, 3, 1], &[6, 3, 1]), Some(3));
         assert_eq!(common_ancestor(&[5, 3, 1], &[3, 1]), Some(3));

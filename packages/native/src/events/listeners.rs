@@ -16,8 +16,8 @@ use crate::element_tree::EventModifiers;
 use crate::renderer::GpuixView;
 
 use super::dispatcher::{PointerAction, PointerSample};
-use super::ids::{host_hit_chain, host_hit_target};
-use super::state::ObservedTarget;
+use super::ids::host_hit_chain;
+use super::state::{chain_changed, ObservedChain};
 
 /// The DOM `MouseEvent.button` for a GPUI button.
 pub fn dom_button(button: MouseButton) -> u32 {
@@ -70,12 +70,12 @@ fn submit(view: &WeakEntity<GpuixView>, sample: PointerSample, cx: &mut App) {
 /// Capture phase, so it sees every event whatever the elements below do with
 /// it, and before them, as a DOM handler runs before the default action.
 ///
-/// `observed` is the target the dispatcher last saw. When a frame paints a
-/// different one without any input, hover must follow: a wheel scroll moves
+/// `observed` is the chain of elements the dispatcher last saw under the pointer.
+/// When a frame paints a different one without any input, hover must follow: a wheel scroll moves
 /// content under the pointer, and a popover can open beneath it.
 pub(crate) fn pointer_frame(
     view: WeakEntity<GpuixView>,
-    observed: ObservedTarget,
+    observed: ObservedChain,
 ) -> impl IntoElement {
     canvas(
         |_, _, _| (),
@@ -193,8 +193,7 @@ pub(crate) fn pointer_frame(
                 );
             });
 
-            let target = host_hit_target(window);
-            if observed.get().is_some_and(|seen| seen != target) {
+            if chain_changed(&observed, &host_hit_chain(window)) {
                 submit(
                     &view,
                     sample(

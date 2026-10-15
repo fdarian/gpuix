@@ -4,7 +4,7 @@
 //! updates it; `build_element` and the key-event code read it through
 //! `is_hovered` and `is_active`.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -166,9 +166,20 @@ pub(super) struct PointerLock {
     pub position: Option<(f64, f64)>,
 }
 
-/// The target the last pointer input produced. `None` outside: no input yet.
-/// `Some(None)`: the pointer is outside every host element.
-pub type ObservedTarget = Rc<Cell<Option<Option<u64>>>>;
+/// The host elements under the pointer at the last pointer input, target first.
+/// `None`: no input yet. `Some` of nothing: the pointer is outside every host
+/// element.
+pub type ObservedChain = Rc<RefCell<Option<Vec<u64>>>>;
+
+/// Whether `hits`, the chain painted now, differs from what the last input saw.
+/// The whole chain counts, not only its target: hover follows every element of
+/// it, so an ancestor that stopped covering the pointer changes hover even when
+/// the innermost element did not change.
+pub fn chain_changed(observed: &ObservedChain, hits: &[Hit]) -> bool {
+    observed.borrow().as_ref().is_some_and(|seen| {
+        seen.len() != hits.len() || seen.iter().zip(hits).any(|(seen, hit)| *seen != hit.id)
+    })
+}
 
 #[derive(Default)]
 pub struct PointerState {
@@ -193,7 +204,7 @@ pub struct PointerState {
     /// A press on a `draggable` element that has not moved far enough to drag it.
     pub(super) pending_drag: Option<PendingDrag>,
     pub(super) element_drag: Option<ElementDrag>,
-    observed: ObservedTarget,
+    observed: ObservedChain,
 }
 
 impl PointerState {
@@ -258,14 +269,14 @@ impl PointerState {
         }
     }
 
-    /// A handle for the paint pass: the target the last input saw, so a frame
+    /// A handle for the paint pass: the chain the last input saw, so a frame
     /// whose layout moved under a still pointer can tell the dispatcher.
-    pub fn observed(&self) -> ObservedTarget {
+    pub fn observed(&self) -> ObservedChain {
         self.observed.clone()
     }
 
-    pub(super) fn observe(&self, target: Option<u64>) {
-        self.observed.set(Some(target));
+    pub(super) fn observe(&self, hits: &[Hit]) {
+        *self.observed.borrow_mut() = Some(hits.iter().map(|hit| hit.id).collect());
     }
 }
 
@@ -376,11 +387,32 @@ mod tests {
         assert!(!capture.has(&tree, 2, 1.0).unwrap());
     }
 
+    fn hit(id: u64) -> Hit {
+        use gpui::{point, px, size, Bounds};
+        Hit {
+            id,
+            bounds: Bounds::new(point(px(0.0), px(0.0)), size(px(10.0), px(10.0))),
+        }
+    }
+
     #[test]
     fn nothing_is_observed_before_the_first_input() {
         let state = PointerState::default();
-        assert_eq!(state.observed().get(), None);
-        state.observe(None);
-        assert_eq!(state.observed().get(), Some(None));
+        assert!(state.observed().borrow().is_none());
+        assert!(!chain_changed(&state.observed(), &[hit(3)]));
+        state.observe(&[]);
+        assert_eq!(*state.observed().borrow(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn a_changed_ancestor_under_the_same_target_is_a_change() {
+        let state = PointerState::default();
+        state.observe(&[hit(3), hit(2), hit(1)]);
+        let observed = state.observed();
+        assert!(!chain_changed(&observed, &[hit(3), hit(2), hit(1)]));
+        assert!(chain_changed(&observed, &[hit(3), hit(1)]));
+        assert!(chain_changed(&observed, &[hit(3), hit(4), hit(1)]));
+        assert!(chain_changed(&observed, &[hit(3), hit(2), hit(1), hit(0)]));
+        assert!(chain_changed(&observed, &[]));
     }
 }
