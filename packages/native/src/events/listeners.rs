@@ -125,6 +125,7 @@ impl PointerDispatch {
         event: &MouseDownEvent,
         button: u32,
         window: &mut Window,
+        cx: &mut App,
     ) -> Option<PressOutcome> {
         if !in_drag_region(window, event.position) {
             return None;
@@ -141,8 +142,8 @@ impl PointerDispatch {
         drop(pointer);
         if let PressOutcome::Perform(action) = outcome {
             match self.window_actions.clone() {
-                Some(mut simulated) => simulated.perform(action, event.position),
-                None => window.perform(action, event.position),
+                Some(mut simulated) => simulated.perform(action, event.position, cx),
+                None => window.perform(action, event.position, cx),
             }
         }
         Some(outcome)
@@ -299,7 +300,7 @@ pub(crate) fn pointer_frame(
                     return;
                 }
                 let button = dom_button(event.button);
-                match press.take_for_window(event, button, window) {
+                match press.take_for_window(event, button, window, cx) {
                     Some(PressOutcome::Perform(_)) => {
                         cx.stop_propagation();
                         return;

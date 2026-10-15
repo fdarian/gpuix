@@ -882,6 +882,12 @@ holds the point wins**: `"drag"` adds, `"no-drag"` cuts. Z-order,
 overlay without a value that covers part of the bar does not stop it dragging
 there, and a rounded or clipped child still drags over its full box.
 
+Two cases have no region. A `<virtual-list>`'s own box registers none, so
+a `"drag"` on it marks nothing itself: its rows do, by inheritance, so the
+region is the rows' boxes and not the list's. And a fullscreen window
+has no drag regions at all, as in Electron: nothing drags, and the cursor and
+hover are the page's.
+
 What the page sees inside a drag region:
 
 - **A press never arrives.** No `pointerdown`, `mousedown`, `mouseup` or

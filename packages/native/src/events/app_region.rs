@@ -16,7 +16,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gpui::{InteractiveElement, MouseButton, Pixels, Point, WindowControlArea};
+use gpui::{App, InteractiveElement, MouseButton, Pixels, Point, WindowControlArea};
 
 use super::dispatcher::{PointerAction, PointerSample};
 use super::state::PointerState;
@@ -138,13 +138,13 @@ pub fn press_outcome(platform: Platform, press: &Press) -> Option<PressOutcome> 
 /// renderer's offscreen window has no current mouse event to hand to AppKit's drag, so it
 /// records instead.
 pub trait WindowActions {
-    fn perform(&mut self, action: WindowAction, position: Point<Pixels>);
+    fn perform(&mut self, action: WindowAction, position: Point<Pixels>, cx: &mut App);
 }
 
 impl WindowActions for gpui::Window {
-    fn perform(&mut self, action: WindowAction, position: Point<Pixels>) {
+    fn perform(&mut self, action: WindowAction, position: Point<Pixels>, cx: &mut App) {
         match action {
-            WindowAction::Move => self.start_window_move(),
+            WindowAction::Move => self.start_window_move(cx),
             WindowAction::TitlebarDoubleClick => self.titlebar_double_click(),
             WindowAction::Zoom => self.zoom_window(),
             WindowAction::ShowMenu => self.show_window_menu(position),
@@ -164,7 +164,7 @@ impl SimulatedWindowActions {
 }
 
 impl WindowActions for SimulatedWindowActions {
-    fn perform(&mut self, action: WindowAction, _position: Point<Pixels>) {
+    fn perform(&mut self, action: WindowAction, _position: Point<Pixels>, _cx: &mut App) {
         self.0.lock().unwrap().push(action);
     }
 }
