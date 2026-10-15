@@ -662,8 +662,6 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
     const x = motionValue(0)
     const follower = springValue(x, { stiffness: 400, damping: 40 })
     const release = follower.bind(renderer)
-    // A spring only sees its source on the frames that sample it, and a read
-    // is not a frame: an element binding or a listener makes it tick.
     const off = follower.on("change", () => {})
     x.set(100)
     for (let i = 0; i < 10; i++) frame(renderer, 16)
@@ -677,5 +675,27 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
     const again = x.bind(renderer)
     expect(x.get()).toBe(100)
     again()
+  })
+
+  it("reads a follower that is neither bound to an element nor listened to at the clock", () => {
+    const renderer = mount()
+    const x = motionValue(0)
+    const follower = springValue(x, { stiffness: 400, damping: 40 })
+    const release = follower.bind(renderer)
+    x.set(100)
+    expect(follower.get()).toBe(0)
+
+    renderer.clockFastForward(160)
+    const mid = follower.get()
+    expect(mid).toBeGreaterThan(1)
+    expect(mid).toBeLessThan(100)
+    expect(follower.getVelocity()).toBeGreaterThan(0)
+    expect(follower.isAnimating()).toBe(true)
+    expect(follower.get()).toBe(mid)
+
+    renderer.clockFastForward(20_000)
+    expect(follower.get()).toBeCloseTo(100, 5)
+    expect(follower.isAnimating()).toBe(false)
+    release()
   })
 })

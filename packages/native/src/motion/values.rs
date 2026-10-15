@@ -11,6 +11,11 @@
 //! its input changed, as Framer's `useSpring` retargets on a frame, so its path
 //! depends on the instants it is sampled at. Sample it at the frame clock
 //! rather than at wall time, and sampling an instant twice changes nothing.
+//!
+//! A follower nobody samples would read its start value and retarget only at
+//! the instant of the read. So every read and write first replays the frames
+//! the followers missed, one per [`FRAME`], which gives the path a frame loop
+//! would have taken.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -28,6 +33,13 @@ const NAME: &str = "motion value";
 /// over is capped to the same length, as motion-dom's `getVelocity` does, so a
 /// pause between two writes does not read as a slow drag.
 const MAX_VELOCITY_WINDOW: Duration = Duration::from_millis(30);
+
+/// The step a follower that was not sampled catches up in.
+const FRAME: Duration = Duration::from_millis(16);
+
+/// Longest stretch replayed. A follower idle for longer retargets at the start
+/// of this window, by when a spring has long settled.
+const MAX_CATCH_UP_FRAMES: u32 = 1000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct ValueId(pub(super) u32);
@@ -66,6 +78,11 @@ impl Default for TransformOptions {
 #[derive(Default)]
 pub(super) struct MotionValues {
     nodes: HashMap<ValueId, Node>,
+    /// The latest instant `catch_up` ran to. Every sample of a frame asks again
+    /// for the same instant, and finding that there is nothing to do costs a
+    /// scan of every node, so without this a frame costs values times nodes.
+    /// Adding or removing a node forgets it.
+    caught_up: Option<Instant>,
 }
 
 impl MotionValues {
@@ -123,13 +140,63 @@ impl MotionValues {
 
     /// Removes a node. A node that reads it fails to sample from then on.
     pub(super) fn remove(&mut self, id: ValueId) -> bool {
+        self.caught_up = None;
         self.nodes.remove(&id).is_some()
     }
 
     pub(super) fn sample(&mut self, id: ValueId, now: Instant) -> Result<Sample, String> {
+        self.catch_up(now);
+        self.sample_now(id, now)
+    }
+
+    /// Samples the frames in `(synced_at, now)` that no one sampled, so a
+    /// follower sees its source change at the frame after the change and not
+    /// at the read. A follower that cannot be sampled is skipped: it reports
+    /// its own error when it is read.
+    fn catch_up(&mut self, now: Instant) {
+        if self.caught_up.is_some_and(|done| now <= done) {
+            return;
+        }
+        self.caught_up = Some(now);
+        let mut followers: Vec<ValueId> = self
+            .nodes
+            .iter()
+            .filter_map(|(id, node)| match node {
+                Node::Spring(follower) if follower.source.is_some() => Some(*id),
+                _ => None,
+            })
+            .collect();
+        followers.sort_unstable_by_key(|id| id.0);
+        let Some(start) = followers
+            .iter()
+            .filter_map(|id| match self.nodes.get(id) {
+                Some(Node::Spring(follower)) => Some(follower.synced_at),
+                _ => None,
+            })
+            .min()
+        else {
+            return;
+        };
+        let start = start.max(now.checked_sub(FRAME * MAX_CATCH_UP_FRAMES).unwrap_or(start));
+        let mut at = start + FRAME;
+        while at < now {
+            for id in &followers {
+                let behind = matches!(
+                    self.nodes.get(id),
+                    Some(Node::Spring(follower)) if follower.synced_at < at
+                );
+                if behind {
+                    self.sample_now(*id, at).ok();
+                }
+            }
+            at += FRAME;
+        }
+    }
+
+    fn sample_now(&mut self, id: ValueId, now: Instant) -> Result<Sample, String> {
         let input = self.node(id)?.input();
         let upstream = match input {
-            Some(input) => Some(self.sample(input, now)?),
+            Some(input) => Some(self.sample_now(input, now)?),
             None => None,
         };
         match (self.node_mut(id)?, upstream) {
@@ -159,6 +226,7 @@ impl MotionValues {
         now: Instant,
     ) -> Result<(), String> {
         validate(&value)?;
+        self.catch_up(now);
         match self.writable(id)? {
             Node::Source(source) => source.set(value, now),
             Node::Spring(follower) => follower.set(value, now),
@@ -174,6 +242,7 @@ impl MotionValues {
         now: Instant,
     ) -> Result<(), String> {
         validate(&value)?;
+        self.catch_up(now);
         match self.writable(id)? {
             Node::Source(source) => source.jump(value, now),
             Node::Spring(follower) => follower.jump(value, now),
@@ -192,6 +261,7 @@ impl MotionValues {
         now: Instant,
     ) -> Result<(), String> {
         validate(&target)?;
+        self.catch_up(now);
         match self.node_mut(id)? {
             Node::Source(source) => source.animate(target, transition, now),
             Node::Spring(_) => Err(format!(
@@ -205,6 +275,7 @@ impl MotionValues {
     /// Ends an animation where it is. A transform has none of its own, so this
     /// does nothing for it; a spring stops where it is until its source moves.
     pub(super) fn stop(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
+        self.catch_up(now);
         match self.node_mut(id)? {
             Node::Source(source) => source.stop(now),
             Node::Spring(follower) => follower.stop(now),
@@ -221,6 +292,7 @@ impl MotionValues {
 
     fn insert(&mut self, id: ValueId, node: Node) -> Result<(), String> {
         self.vacant(id)?;
+        self.caught_up = None;
         self.nodes.insert(id, node);
         Ok(())
     }
@@ -1308,6 +1380,64 @@ mod tests {
 
         close(read(&mut values, follower, clock.at(20_000)), 100.0);
         assert!(!values.is_animating(follower, clock.at(20_000)).unwrap());
+    }
+
+    #[test]
+    fn a_follower_nobody_sampled_catches_up_on_the_frames_it_missed() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
+        values.set(source, number(100.0), clock.at(0)).unwrap();
+
+        let mut frames = MotionValues::default();
+        let framed_source = frames.new_source(number(0.0)).unwrap();
+        let framed = frames.new_follow(framed_source, spring(), clock.at(0)).unwrap();
+        frames.set(framed_source, number(100.0), clock.at(0)).unwrap();
+        for ms in (16..=160).step_by(16) {
+            read(&mut frames, framed, clock.at(ms));
+        }
+
+        let late = read(&mut values, follower, clock.at(160));
+        assert!(late > 0.0 && late < 100.0 + 50.0, "{late}");
+        close(late, read(&mut frames, framed, clock.at(160)));
+    }
+
+    #[test]
+    fn reading_other_values_at_the_same_instant_first_does_not_change_what_a_follower_reads() {
+        let clock = Clock::new();
+        let build = || {
+            let mut values = MotionValues::default();
+            let source = values.new_source(number(0.0)).unwrap();
+            let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
+            values.set(source, number(100.0), clock.at(0)).unwrap();
+            (values, source, follower)
+        };
+        let (mut direct, _, direct_follower) = build();
+        let (mut crowded, source, follower) = build();
+        // The first sample at an instant does the catch-up for every follower; the ones after it find it done.
+        read(&mut crowded, source, clock.at(160));
+        let extra = crowded.new_source(number(1.0)).unwrap();
+        read(&mut crowded, extra, clock.at(160));
+        close(read(&mut crowded, follower, clock.at(160)), read(&mut direct, direct_follower, clock.at(160)));
+
+        // A follower added once the instant was caught up is caught up too when the clock moves on.
+        let late = crowded.new_follow(source, spring(), clock.at(160)).unwrap();
+        read(&mut crowded, late, clock.at(320));
+        assert!(read(&mut crowded, late, clock.at(480)) > 0.0);
+    }
+
+    #[test]
+    fn a_write_after_a_long_gap_does_not_move_the_follower_back_in_time() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let source = values.new_source(number(0.0)).unwrap();
+        let follower = values.new_follow(source, spring(), clock.at(0)).unwrap();
+        values.set(source, number(100.0), clock.at(1_000)).unwrap();
+        // The source was still 0 for the first second.
+        assert_eq!(read(&mut values, follower, clock.at(1_000)), 0.0);
+        let after = read(&mut values, follower, clock.at(1_160));
+        assert!(after > 0.0 && after < 150.0, "{after}");
     }
 
     #[test]

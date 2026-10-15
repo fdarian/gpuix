@@ -579,6 +579,31 @@ mod tests {
     }
 
     #[test]
+    fn an_unbound_unlistened_follower_reads_where_frames_would_have_taken_it() {
+        let clock = clock();
+        let spring = json!({ "stiffness": 400, "damping": 40 });
+        let mut read = MotionValueStore::default();
+        let mut framed = MotionValueStore::default();
+        for store in [&mut read, &mut framed] {
+            store.create_source(1.0, &json!(0)).unwrap();
+            store.create_follower(2.0, 1.0, &spring, clock.at(0)).unwrap();
+            store.set(1.0, &json!(100), clock.at(0)).unwrap();
+        }
+        framed.listen(2.0, true, false, clock.at(0)).unwrap();
+        for ms in (16..=160).step_by(16) {
+            framed.frame([], clock.at(ms));
+        }
+
+        let mid = read.get(2.0, clock.at(160)).unwrap().as_f64().unwrap();
+        assert!(mid > 1.0 && mid < 100.0, "{mid}");
+        assert_eq!(read.get(2.0, clock.at(160)).unwrap(), framed.get(2.0, clock.at(160)).unwrap());
+        assert!(read.velocity(2.0, clock.at(160)).unwrap() > 0.0);
+        assert!(read.is_animating(2.0, clock.at(160)).unwrap());
+        assert_eq!(read.get(2.0, clock.at(60_000)).unwrap(), json!(100.0));
+        assert!(!read.is_animating(2.0, clock.at(60_000)).unwrap());
+    }
+
+    #[test]
     fn a_listener_hears_changes_once_each() {
         let clock = clock();
         let mut store = MotionValueStore::default();
