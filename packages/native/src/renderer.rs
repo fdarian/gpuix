@@ -7270,6 +7270,14 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     if let Some(layers) = style.resolved_mask(colors) {
         el.style().mask_layers = Some(layers);
     }
+    // `Some(None)` is `none`, which a state style needs in order to clear the base clip path.
+    if let Some(clip_path) = style
+        .clip_path
+        .as_deref()
+        .and_then(crate::css::clip_path::parse)
+    {
+        el.style().clip_path = clip_path;
+    }
     if let Some(cursor) = style.cursor.as_deref().and_then(crate::style::parse_cursor) {
         el = el.cursor(cursor);
     }

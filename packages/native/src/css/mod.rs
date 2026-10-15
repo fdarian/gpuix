@@ -4,6 +4,7 @@
 pub(crate) mod background;
 pub(crate) mod border;
 pub(crate) mod box_shadow;
+pub(crate) mod clip_path;
 pub(crate) mod color_function;
 pub(crate) mod color_mix;
 pub(crate) mod color_space;

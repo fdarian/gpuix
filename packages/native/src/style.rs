@@ -324,6 +324,9 @@ pub struct StyleDesc {
     pub mask_clip: Option<String>,
     /// CSS `mask` shorthand. The longhands above replace its parts.
     pub mask: Option<String>,
+    /// CSS `clip-path`: `inset()`, `circle()`, `ellipse()` or `polygon()` and an
+    /// optional reference box, or `none`. An invalid string is ignored.
+    pub clip_path: Option<String>,
     /// `"solid"` or `"dashed"`, for every side.
     pub border_style: Option<String>,
     /// Width divided by height, applied to whichever axis is not definite.
