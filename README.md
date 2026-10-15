@@ -2194,6 +2194,7 @@ Native defaults, so common elements are not silent:
 | `<textarea>`  | `MultilineTextInput`    | `value` and `placeholder`            |
 | `<img>`       | `Image`                 | `alt` as `aria-label`                |
 | `<label>`     | `Label`                 | its text as `aria-valuetext`         |
+| `<form>`      | `Form`                  |                                      |
 
 An explicit `role` wins over those defaults. A clickable `div` is **not** a
 button until you set `role="button"`. `onClick` registers AccessKit `Click`,
@@ -2202,6 +2203,43 @@ made: see [Click without a pointer](#click-without-a-pointer).
 
 The browser / wasm renderer has no AccessKit adapter. These props are
 no-ops there.
+
+## Forms
+
+`<form>` groups `<input>` and `<textarea>` controls and submits them together.
+A control belongs to its nearest `form` ancestor, wherever it sits below it.
+`name` is the key a control is submitted under, and `required` stops the
+submission while the control is empty.
+
+```tsx
+<form
+  onSubmit={(event) => {
+    // A real FormData: [["email", "a@b.c"], ["notes", "hi"]]
+    save(Object.fromEntries(event.formData))
+  }}
+>
+  <input name="email" required />
+  <textarea name="notes" />
+</form>
+```
+
+- **Implicit submission.** Enter in an `<input>` submits its form. A `keydown`
+  handler that calls `preventDefault()` stops it. Enter in a `<textarea>` always
+  inserts a newline. The gpuix-only `onSubmit` on `<input>` and `<textarea>` is
+  unchanged and fires first.
+- **Validation.** Each `required` control with an empty value gets a
+  non-bubbling, cancelable `invalid` event (`onInvalid`). The first one whose
+  handlers did not call `preventDefault()` takes focus, and the form is not
+  submitted. A `disabled` or `readOnly` control is not validated.
+- **`submit`.** Cancelable and bubbling, aimed at the form. `event.formData`
+  holds the `name` and `value` of every named, enabled control in document
+  order. `event.submitter` is `null`: there is no submit button. Nothing
+  navigates, so `preventDefault()` has no default to stop.
+- **`requestSubmit()`** on the form ref (a React ref or the Solid element)
+  validates, then submits, and delivers the events before it returns.
+
+Both events are sent synchronously on macOS, so a handler can call back into the
+renderer. On Windows and Linux they are queued like other events.
 
 ## Focus and keyboard navigation
 

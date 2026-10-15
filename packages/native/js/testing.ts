@@ -125,6 +125,7 @@ interface NativeTestRendererApi extends NativeRenderer {
   selectText(elementId: number): void
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
   getTextSelection(elementId: number): { start: number; end: number; direction: string }
+  requestSubmit(elementId: number): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
   setImagePixels(
@@ -860,6 +861,13 @@ export class TestRenderer implements NativeRenderer {
   getTextSelection(elementId: number): { start: number; end: number; direction: string } {
     this.native.flush()
     return this.native.getTextSelection(elementId)
+  }
+
+  requestSubmit(elementId: number): void {
+    this.native.flush()
+    this.native.requestSubmit(elementId)
+    this.dispatchNativeEvents()
+    this.native.flush()
   }
 
   registerFont(bytes: Buffer | Uint8Array): void {

@@ -102,6 +102,7 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onMotionComplete", "motionComplete"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
+  ["onInvalid", "invalid"],
   ...POINTER_EVENT_HANDLER_PROPS,
   ["onMouseDownOutside", "mousedownoutside"],
   ["onKeyDown", "keyDown"],
@@ -151,7 +152,7 @@ export const RESERVED_PROPS: ReadonlySet<string> = new Set([
   "ref",
 ])
 
-export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text", "label"])
+export const BUILT_IN_TYPES: ReadonlySet<string> = new Set(["div", "text", "label", "form"])
 
 const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "autoFocus",
@@ -165,7 +166,7 @@ const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "htmlFor",
 ])
 
-/** Props a `div`, `text` or `label` forwards to native; every other prop is dropped. */
+/** Props a `div`, `text`, `label` or `form` forwards to native; every other prop is dropped. */
 export function isUniversalProp(name: string): boolean {
   return UNIVERSAL_PROPS.has(name) || name.startsWith("aria-")
 }

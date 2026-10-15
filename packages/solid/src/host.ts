@@ -14,6 +14,7 @@ import {
   unregisterEventHandlers,
   unregisterEventListener,
   readTextControlSelection,
+  requestFormSubmit,
   selectTextControl,
   setTextControlSelectionRange,
 } from "@gpuix/native/host"
@@ -158,6 +159,20 @@ export class HostElement {
     return readTextControlSelection(this.textControl("selectionDirection")).direction
   }
 
+  /** `<form>` only: validate the controls, then submit. */
+  requestSubmit(): void {
+    const root = this.root
+    if (!root || !this.mounted) throw new Error("requestSubmit() needs a mounted element")
+    if (this.type !== "form") {
+      throw new Error(`requestSubmit() is only valid on <form>, got <${this.type}>`)
+    }
+    requestFormSubmit({
+      id: this.id,
+      nativeRenderer: root.nativeRenderer,
+      flushMutations: () => root.mutations.flushMutations(),
+    })
+  }
+
   private textControl(member: string): TextControlHost {
     const root = this.root
     if (!root || !this.mounted) throw new Error(`${member} needs a mounted element`)
@@ -217,6 +232,7 @@ function isElementType(type: string): type is ElementType {
     case "input":
     case "textarea":
     case "label":
+    case "form":
     case "anchored":
     case "code":
     case "diff":

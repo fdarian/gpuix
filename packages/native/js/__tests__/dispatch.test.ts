@@ -190,6 +190,41 @@ describe("dispatchDomEvent", () => {
     expect(dispatchDomEvent(root, payload("mouseEnter", { path: PATH })).defaultPrevented).toBe(false)
   })
 
+  it("does not bubble invalid, but lets a handler cancel it", () => {
+    const { root, calls, listen } = setup()
+    listen(MIDDLE, "invalid")
+    listen(LEAF, "invalid", (event) => event.preventDefault())
+    const result = dispatchDomEvent(root, payload("invalid", { path: PATH }))
+    expect(calls).toEqual(["3:invalid"])
+    expect(result.defaultPrevented).toBe(true)
+  })
+
+  it("gives a submit event its FormData and no submitter", () => {
+    const { root, listen } = setup()
+    let seen: { formData: FormData; submitter: unknown } | undefined
+    listen(ROOT, "submit", (event) => {
+      seen = event as unknown as { formData: FormData; submitter: unknown }
+    })
+    dispatchDomEvent(
+      root,
+      payload("submit", {
+        path: PATH,
+        formEntries: [
+          ["a", "1"],
+          ["a", "2"],
+          ["b", ""],
+        ],
+      })
+    )
+    expect(Array.from(seen!.formData.entries())).toEqual([
+      ["a", "1"],
+      ["a", "2"],
+      ["b", ""],
+    ])
+    expect(seen!.formData.getAll("a")).toEqual(["1", "2"])
+    expect(seen!.submitter).toBeNull()
+  })
+
   it("handles an event without a path at its element only", () => {
     const { root, calls, listen } = setup()
     listen(LEAF, "clickCapture")

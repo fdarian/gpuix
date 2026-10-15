@@ -513,6 +513,10 @@ enum UiCommand {
             std::result::Result<crate::custom_elements::text_selection::TextSelection, String>,
         >,
     },
+    RequestSubmit {
+        id: u64,
+        response: SyncSender<std::result::Result<(), String>>,
+    },
     RegisterFont {
         bytes: Vec<u8>,
         response: SyncSender<std::result::Result<(), String>>,
@@ -748,6 +752,12 @@ async fn run_ui_commands(
                     response.send(view.text_selection(id, cx)).ok();
                 })
             }
+            UiCommand::RequestSubmit { id, response } => gpui::AnyWindowHandle::from(window)
+                .update(cx, move |_view, window, cx| {
+                    response
+                        .send(crate::forms::request_submit(window, cx, id))
+                        .ok();
+                }),
             UiCommand::RegisterFont { bytes, response } => {
                 window.update(cx, move |view, window, cx| {
                     response.send(view.register_font(bytes, window, cx)).ok();
@@ -2876,6 +2886,33 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// `form.requestSubmit()`: validate the form's controls, then emit `submit`.
+    /// The events are delivered before this returns.
+    #[napi]
+    pub fn request_submit(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window_without_view(move |window, cx| {
+            crate::forms::request_submit(window, cx, id)
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::RequestSubmit { id, response })?;
+            return recv_ui_response(receiver, "the form submission")?.map_err(Error::from_reason);
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
     /// Make the fonts in a TrueType or OpenType file (or a collection) usable by
     /// `fontFamily`, under the family names the file declares. Call it before
     /// the text that names the family is first laid out: a family that did not
@@ -4013,6 +4050,15 @@ impl WebGpuixRenderer {
             js_sys::Reflect::set(&object, &wasm_bindgen::JsValue::from_str(key), &value)?;
         }
         Ok(object.into())
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = requestSubmit)]
+    pub fn request_submit(&self, element_id: f64) -> Result<(), wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        update_web_window_without_view(move |window, cx| {
+            crate::forms::request_submit(window, cx, id)
+        })?
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getListScrollTop)]
@@ -5921,7 +5967,7 @@ pub(crate) fn build_element(
         // own builder meant every interaction prop on the shared `Props` type
         // (onClick, hover, focus, tabIndex) type-checked, registered a JS
         // listener, and then silently did nothing.
-        "div" | "text" | "label" => {
+        "div" | "text" | "label" | "form" => {
             ctx.custom_registry.destroy(id);
             build_host_container(element, style, ctx, window, cx)
         }
@@ -6285,7 +6331,11 @@ pub(crate) fn build_host_container(
     // hear the same string twice.
     let is_text_host = element.element_type == "text" && element.content.is_none();
     let is_label = element.element_type == "label";
-    let default_role = (is_text_host || is_label).then_some(gpui::Role::Label);
+    let default_role = if element.element_type == "form" {
+        Some(gpui::Role::Form)
+    } else {
+        (is_text_host || is_label).then_some(gpui::Role::Label)
+    };
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
         if let Some(content) = joined_text_content(ctx.tree, element) {

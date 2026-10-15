@@ -1156,6 +1156,14 @@ impl TestGpuixRenderer {
         )
     }
 
+    /// `form.requestSubmit()`: validate, then emit `submit`.
+    #[napi]
+    pub fn request_submit(&self, id: f64) -> Result<()> {
+        let id = to_element_id(id)?;
+        window_call(move |window, cx| crate::forms::request_submit(window, cx, id))?
+            .map_err(Error::from_reason)
+    }
+
     /// `selectionStart`, `selectionEnd` and `selectionDirection`.
     #[napi]
     pub fn get_text_selection(

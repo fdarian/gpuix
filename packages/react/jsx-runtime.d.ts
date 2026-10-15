@@ -9,6 +9,7 @@ import type {
   AnchoredProps,
   CodeProps,
   DiffProps,
+  FormProps,
   ImgProps,
   InputProps,
   LabelProps,
@@ -39,6 +40,7 @@ export namespace JSX {
     input: InputProps
     textarea: TextareaProps
     label: LabelProps
+    form: FormProps
     anchored: AnchoredProps
     code: CodeProps
     diff: DiffProps

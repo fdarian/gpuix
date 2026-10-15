@@ -7,11 +7,11 @@ export const EVENT_PHASE_AT_TARGET = 2
 export const EVENT_PHASE_BUBBLING = 3
 
 /**
- * Types that do not bubble, compared case-insensitively because native types
- * are camelCase (`mouseEnter`) and DOM names are lowercase (`mouseenter`).
- * Everything else bubbles.
+ * Types that neither bubble nor can be cancelled. Types are compared
+ * case-insensitively because native types are camelCase (`mouseEnter`) and DOM
+ * names are lowercase (`mouseenter`).
  */
-const NON_BUBBLING_TYPES: ReadonlySet<string> = new Set([
+const PLAIN_NOTIFICATIONS: ReadonlySet<string> = new Set([
   "mouseenter",
   "mouseleave",
   "pointerenter",
@@ -39,9 +39,12 @@ export function isEnterLeaveType(eventType: string): boolean {
   return ENTER_LEAVE_TYPES.has(eventType)
 }
 
+/** Types that do not bubble. Everything else bubbles. `invalid` is cancelable. */
+const NON_BUBBLING_TYPES: ReadonlySet<string> = new Set([...PLAIN_NOTIFICATIONS, "invalid"])
+
 /** `preventDefault()` is a no-op on these, as in the DOM. */
 const NON_CANCELABLE_TYPES: ReadonlySet<string> = new Set([
-  ...NON_BUBBLING_TYPES,
+  ...PLAIN_NOTIFICATIONS,
   "focusin",
   "focusout",
   "pointercancel",
@@ -109,6 +112,13 @@ export interface DomDispatchHooks {
   afterBubble?(event: DomEvent, state: DomEventState): void
 }
 
+/** What a form's `submit` event adds: the `FormData` and no submitter button. */
+function formSubmission(entries: string[][]): { formData: FormData; submitter: null } {
+  const formData = new FormData()
+  for (const [name, value] of entries) formData.append(name, value)
+  return { formData, submitter: null }
+}
+
 /**
  * Creates the event object and the state behind its stop methods. `target` is
  * undefined for an event with no element to aim at.
@@ -121,6 +131,7 @@ export function createDomEvent(
   const cancelable = eventIsCancelable(payload.eventType)
   const event: DomEvent = {
     ...payload,
+    ...(payload.formEntries && formSubmission(payload.formEntries)),
     type: payload.eventType,
     target,
     currentTarget: null,

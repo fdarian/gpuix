@@ -132,6 +132,10 @@ pub struct EventPayload {
     /// with its first event, a `dragenter`.
     pub files: Option<Vec<DroppedFile>>,
 
+    /// `[name, value]` of every named, enabled control in the form, in document
+    /// order. Populated for: `<form>` submit.
+    pub form_entries: Option<Vec<Vec<String>>>,
+
     // ── DOM event propagation ────────────────────────────────────────
     /// Element the event was aimed at (the DOM `event.target`). Absent means
     /// `element_id` is the target. Ids are `f64` like `element_id`: `u64` would
@@ -218,6 +222,7 @@ impl Default for EventPayload {
             match_count: None,
             motion_generation: None,
             files: None,
+            form_entries: None,
             target: None,
             path: None,
             related_target: None,

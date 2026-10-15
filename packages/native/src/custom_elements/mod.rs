@@ -210,6 +210,11 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// The text of `<input>` and `<textarea>`, as a form submits it.
+    fn text_value(&mut self, _cx: &mut gpui::App) -> Option<String> {
+        None
+    }
+
     /// Select a range of `<input>` and `<textarea>` text. False when this
     /// element has no text selection.
     fn set_text_selection(

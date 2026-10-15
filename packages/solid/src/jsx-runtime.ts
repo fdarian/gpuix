@@ -3,6 +3,7 @@ import type {
   AnchoredProps,
   CodeProps,
   DiffProps,
+  FormProps,
   HostProps,
   ImgProps,
   InputProps,
@@ -60,6 +61,7 @@ export namespace JSX {
     input: SolidHostProps<InputProps>
     textarea: SolidHostProps<TextareaProps>
     label: SolidHostProps<LabelProps>
+    form: SolidHostProps<FormProps>
     anchored: SolidHostProps<AnchoredProps>
     code: SolidHostProps<CodeProps>
     diff: SolidHostProps<DiffProps>

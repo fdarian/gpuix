@@ -31,7 +31,7 @@ use super::text_selection::{
     describe, resolve, utf16_len, SelectionRequest, TextSelection,
 };
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
-use crate::renderer::{emit_event_full, EventCallback};
+use crate::renderer::{emit_event_full, EventCallback, GpuixView};
 use crate::theme::Theme;
 
 actions!(
@@ -423,6 +423,7 @@ impl CustomElement for TextEditorElement {
         let emits_change = ctx.events.contains("change");
         let emits_submit = ctx.events.contains("submit");
         let callback = ctx.event_callback.clone();
+        let view = cx.weak_entity();
 
         let state = self
             .state
@@ -442,6 +443,7 @@ impl CustomElement for TextEditorElement {
                 let max_rows = self.max_rows;
                 let caret_color = self.theme.caret;
                 let callback = callback.clone();
+                let view = view.clone();
                 let id = ctx.id;
                 let cursor = value.len();
                 let (selected_range, selection_reversed, directionless_range) =
@@ -456,6 +458,7 @@ impl CustomElement for TextEditorElement {
                 let state_focus_handle = focus_handle.clone();
                 cx.new(move |cx| TextEditorState {
                     element_id: id,
+                    view,
                     callback,
                     emits_change,
                     emits_submit,
@@ -689,6 +692,14 @@ impl CustomElement for TextEditorElement {
         })
     }
 
+    fn text_value(&mut self, cx: &mut App) -> Option<String> {
+        self.apply_value(cx);
+        Some(match &self.state {
+            Some(state) => state.read(cx).content.clone(),
+            None => self.value.clone(),
+        })
+    }
+
     fn set_text_selection(&mut self, request: SelectionRequest, cx: &mut App) -> bool {
         self.apply_value(cx);
         match self.state.clone() {
@@ -781,6 +792,7 @@ fn push_undo_snapshot(history: &mut VecDeque<EditSnapshot>, snapshot: EditSnapsh
 
 struct TextEditorState {
     element_id: u64,
+    view: gpui::WeakEntity<GpuixView>,
     callback: Option<EventCallback>,
     emits_change: bool,
     emits_submit: bool,
@@ -1342,8 +1354,13 @@ impl TextEditorState {
         }
     }
 
-    fn submit(&mut self, _: &Submit, _: &mut Window, _: &mut Context<Self>) {
+    fn submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
         self.emit_submit();
+        // A `<textarea>` with `onSubmit` is a composer, not a form field: Enter
+        // never submits the form around it.
+        if !self.multiline {
+            crate::forms::implicit_submission(self.view.clone(), self.element_id, window, cx);
+        }
     }
 
     /// Replace `range` and put the caret after the new text. `user_input`

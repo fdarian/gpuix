@@ -19,6 +19,7 @@ import {
   serializeCustomProp,
   isUniversalProp,
   readTextControlSelection,
+  requestFormSubmit,
   selectTextControl,
   setTextControlSelectionRange,
 } from "@gpuix/native/host"
@@ -38,6 +39,7 @@ const EVENT_TYPE_BY_PROP = eventTypesWithOverrides({
 import type {
   Container,
   ElementType,
+  FormInstance,
   HostContext,
   ImgInstance,
   Instance,
@@ -91,6 +93,14 @@ function attachHostMethods(instance: Instance): PublicInstance {
     hostElementMatches(container.nativeRenderer, instance.id, selector)
   if (instance.type === "input" || instance.type === "textarea") {
     attachTextControlMethods(instance as TextControlInstance, container)
+  } else if (instance.type === "form") {
+    const form = instance as FormInstance
+    form.requestSubmit = () =>
+      requestFormSubmit({
+        id: form.id,
+        nativeRenderer: container.nativeRenderer,
+        flushMutations: () => container.renderer.flushMutations(),
+      })
   } else if (instance.type === "img") {
     const img = instance as ImgInstance
     img.setImage = (bytes) => {

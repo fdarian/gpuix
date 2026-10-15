@@ -33,6 +33,7 @@ export {
 } from "./events/window-target.js"
 export { preventEventDefault, type DomEvent } from "./events/dispatch.js"
 export * from "./focus.js"
+export * from "./forms.js"
 export * from "./host-runtime.js"
 export * from "./mutations.js"
 export * from "./renderer-state.js"
@@ -318,6 +319,7 @@ export type ElementType =
   | "input"
   | "textarea"
   | "label"
+  | "form"
   | "anchored"
   | "code"
   | "diff"
@@ -541,8 +543,11 @@ export interface HostProps extends AriaProps, PointerEventProps {
 
   // ── Text editor events ─────────────────────────────────────────
   onChange?: (event: EventPayload) => void
-  /** Enter on `<input>`, or Enter on `<textarea>` when this listener is set. */
+  /** Enter on `<input>`, or Enter on `<textarea>` when this listener is set.
+   *  On a `<form>`, the DOM `submit` event instead: see `FormProps.onSubmit`. */
   onSubmit?: (event: EventPayload) => void
+  /** A `required` control is empty when its form is submitted. Does not bubble. */
+  onInvalid?: (event: EventPayload) => void
 
   // ── Native component events ─────────────────────────────────────
   onToggleFile?: (event: EventPayload) => void
@@ -623,6 +628,12 @@ export interface TextControlProps extends HostProps {
    * cut to fit. A `value` set from code is kept whole, even when it is longer.
    */
   maxLength?: number
+  /** The key this control's value is submitted under. A control without a
+   *  name is not part of its form's `FormData`. */
+  name?: string
+  /** An empty control blocks its form's submission and gets `onInvalid`.
+   *  Not enforced while `disabled` or `readOnly`. */
+  required?: boolean
   theme?: GpuixTheme
 }
 
@@ -653,6 +664,37 @@ export interface InputProps extends TextControlProps {
 export interface TextareaProps extends TextControlProps {
   minRows?: number
   maxRows?: number
+}
+
+/** The `submit` event of a `<form>`. */
+export type SubmitEvent = EventPayload & {
+  /** The `name` and `value` of every named, enabled `<input>` and `<textarea>`
+   *  in the form, in document order. */
+  formData: FormData
+  /** The button that submitted the form. Always null: there is no submit button. */
+  submitter: null
+}
+
+/** `<form>`: groups `<input>` and `<textarea>` controls and submits them together. */
+export interface FormProps extends Omit<HostProps, "onSubmit"> {
+  /**
+   * Enter in an `<input>` of this form, or `requestSubmit()`, once every
+   * `required` control has a value. Cancelable and bubbling, like the DOM; there
+   * is no navigation, so there is nothing to cancel. Enter in a `<textarea>`
+   * inserts a newline and never submits.
+   */
+  onSubmit?: (event: SubmitEvent) => void
+}
+
+/** What a ref to a `<form>` carries. */
+export interface FormMethods {
+  /**
+   * Validate the form's controls, then submit it. Each empty `required` control
+   * gets `invalid`, and the first whose handlers did not call `preventDefault()`
+   * takes focus; the form is not submitted. Otherwise `submit` fires. The events
+   * are delivered before this returns.
+   */
+  requestSubmit(): void
 }
 
 /** `<label>`: names a control and forwards a click to it. */
@@ -837,6 +879,7 @@ export type NativeRenderer = MutationHost &
       | "selectText"
       | "setSelectionRange"
       | "getTextSelection"
+      | "requestSubmit"
       | "getScrollOffset"
       | "getListScrollTop"
       | "getSelectedText"

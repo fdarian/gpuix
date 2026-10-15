@@ -5,6 +5,8 @@ import type {
   ElementType,
   EventHandlerMap,
   FocusableElement,
+  FormMethods,
+  FormProps as NativeFormProps,
   HostProps,
   ImagePixelsOptions,
   InputProps as NativeInputProps,
@@ -44,6 +46,12 @@ export interface LabelProps extends ReactHostProps<NativeLabelProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>
+}
+
+export interface FormProps extends ReactHostProps<NativeFormProps> {
+  key?: Key | null
+  children?: ReactNode
+  ref?: Ref<FormInstance>
 }
 
 export interface TextareaProps extends ReactHostProps<NativeTextareaProps> {
@@ -140,6 +148,11 @@ export interface ImgInstance extends PublicInstance {
 /** The ref of an `<input>` or `<textarea>`: the DOM selection API. */
 export interface TextControlInstance extends PublicInstance, TextControlSelection {
   type: "input" | "textarea"
+}
+
+/** The ref of a `<form>`. */
+export interface FormInstance extends PublicInstance, FormMethods {
+  type: "form"
 }
 
 export interface TextInstance {

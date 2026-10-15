@@ -247,6 +247,11 @@ export declare class GpuixRenderer {
    */
   getTextSelection(elementId: number): TextSelection
   /**
+   * `form.requestSubmit()`: validate the form's controls, then emit `submit`.
+   * The events are delivered before this returns.
+   */
+  requestSubmit(elementId: number): void
+  /**
    * Make the fonts in a TrueType or OpenType file (or a collection) usable by
    * `fontFamily`, under the family names the file declares. Call it before
    * the text that names the family is first laid out: a family that did not
@@ -527,6 +532,8 @@ export declare class TestGpuixRenderer {
   selectText(elementId: number): void
   /** `setSelectionRange(start, end, direction)`; offsets are UTF-16 units. */
   setSelectionRange(elementId: number, start: number, end: number, direction?: string | undefined | null): void
+  /** `form.requestSubmit()`: validate, then emit `submit`. */
+  requestSubmit(id: number): void
   /** `selectionStart`, `selectionEnd` and `selectionDirection`. */
   getTextSelection(elementId: number): TextSelection
   /** Make the fonts in a TrueType or OpenType file usable by `fontFamily`. */
@@ -795,6 +802,11 @@ export interface EventPayload {
    * with its first event, a `dragenter`.
    */
   files?: Array<DroppedFile>
+  /**
+   * `[name, value]` of every named, enabled control in the form, in document
+   * order. Populated for: `<form>` submit.
+   */
+  formEntries?: Array<Array<string>>
   /**
    * Element the event was aimed at (the DOM `event.target`). Absent means
    * `element_id` is the target. Ids are `f64` like `element_id`: `u64` would

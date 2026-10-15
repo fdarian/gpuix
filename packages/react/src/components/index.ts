@@ -38,6 +38,7 @@ export const gpuixComponents = {
   input: "input",
   textarea: "textarea",
   label: "label",
+  form: "form",
   anchored: "anchored",
   "virtual-list": "virtual-list",
 } as const
