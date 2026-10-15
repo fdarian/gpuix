@@ -199,8 +199,10 @@ export interface TestRendererOptions {
   dispatchSyncEvent?: (event: EventPayload) => SyncDispatchResult
   /**
    * Receives an error thrown by an event handler, as `onError` does for a live
-   * renderer. Without it the error is thrown from the simulate call that
-   * delivered the event.
+   * renderer, and the dispatch carries on with the remaining handlers. Without
+   * it the error is reported as uncaught (`reportError`), never thrown from the
+   * simulate call that delivered the event. A test that expects the error
+   * passes `onError`.
    */
   onError?: (error: unknown) => void
 }
@@ -366,9 +368,11 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchEvent = options.dispatchEvent ?? ((event) => {
       createRendererState(this).dispatch(event)
     })
+    const state = createRendererState(this)
+    state.setErrorHandler(options.onError)
     this.dispatchSyncEvent = reportSyncErrors(
-      options.dispatchSyncEvent ?? ((event) => createRendererState(this).dispatchSync(event)),
-      options.onError
+      options.dispatchSyncEvent ?? ((event) => state.dispatchSync(event)),
+      (error) => state.reportError(error)
     )
     this.native.setSyncEventHandler((event) => this.dispatchSyncEvent(event))
     bindClipboard(this)

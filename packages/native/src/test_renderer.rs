@@ -103,7 +103,7 @@ fn with_test_state<R>(
         TEST_STATE.with(|cell| {
             let mut borrow = cell.try_borrow_mut().map_err(|_| {
                 Error::from_reason(
-                    "This renderer call cannot run inside an event handler that native called synchronously (keyDown, keyUp). Make it from a microtask instead.",
+                    "This renderer call cannot run inside an event handler that native called synchronously (a key, a mouse press or release). Make it from a microtask instead.",
                 )
             })?;
             let state = borrow

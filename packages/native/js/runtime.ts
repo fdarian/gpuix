@@ -56,13 +56,12 @@ export function createNativeRenderer(
   })
   bindClipboard(renderer)
   bindEyeDropper(renderer)
-  // Keys reach JS here, inside the native call, so preventDefault() can still
-  // stop the editor. A throw becomes the error of the call on the stack.
+  const state = createRendererState(renderer)
+  state.setErrorHandler(options.onError)
+  // Input reaches JS here, inside the native call, so preventDefault() can
+  // still stop the editor or the focus change.
   renderer.setSyncEventHandler(
-    reportSyncErrors(
-      (event) => createRendererState(renderer).dispatchSync(event),
-      options.onError
-    )
+    reportSyncErrors((event) => state.dispatchSync(event), (error) => state.reportError(error))
   )
   // A read must see mutations a framework has queued but not sent yet (Solid
   // sends in a microtask), and native draws pending changes before answering.

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import { clipboard } from "@gpuix/native/host"
+import { window } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { TestRendererOptions } from "../testing.js"
 
@@ -41,25 +42,64 @@ describe.skipIf(!hasNativeTestRenderer)("renderer calls from a keydown handler",
     expect(app.renderer.getScrollOffset(app.renderer.findByTestId("scroller")!.id)).toEqual([0, -40])
   })
 
-  it("sends an error the handler throws to onError and keeps dispatching", () => {
-    const errors: unknown[] = []
-    let calls = 0
-    const { press } = mount(
-      () => {
-        calls += 1
-        throw new Error(`boom ${calls}`)
-      },
-      { onError: (error) => errors.push(error) }
-    )
-    press()
-    press()
-    expect(errors.map((error) => (error as Error).message)).toEqual(["boom 1", "boom 2"])
-  })
-
-  it("throws from the simulate call when there is no onError", () => {
-    const { press } = mount(() => {
-      throw new Error("boom")
+  describe("an error a handler throws", () => {
+    let reported: ReturnType<typeof spyOn>
+    beforeEach(() => {
+      reported = spyOn(globalThis, "reportError").mockImplementation(() => {})
     })
-    expect(press).toThrow("boom")
+    afterEach(() => {
+      reported.mockRestore()
+    })
+
+    it("goes to onError and the dispatch keeps going", () => {
+      const errors: unknown[] = []
+      let calls = 0
+      const { press } = mount(
+        () => {
+          calls += 1
+          throw new Error(`boom ${calls}`)
+        },
+        { onError: (error) => errors.push(error) }
+      )
+      press()
+      press()
+      expect(errors.map((error) => (error as Error).message)).toEqual(["boom 1", "boom 2"])
+      expect(reported).not.toHaveBeenCalled()
+    })
+
+    it("is reported as uncaught when there is no onError, without throwing from the simulate call", () => {
+      const { press } = mount(() => {
+        throw new Error("boom")
+      })
+      expect(press).not.toThrow()
+      expect(reported.mock.calls.map(([error]) => (error as Error).message)).toEqual(["boom"])
+    })
+
+    it("does not stop the remaining handlers and window listeners", () => {
+      const errors: unknown[] = []
+      const seen: string[] = []
+      const capture = () => {
+        seen.push("window capture")
+        throw new Error("window capture")
+      }
+      const bubble = () => seen.push("window bubble")
+      window.addEventListener("keydown", capture, { capture: true })
+      window.addEventListener("keydown", bubble)
+      try {
+        const { press } = mount(
+          () => {
+            seen.push("element")
+            throw new Error("element")
+          },
+          { onError: (error) => errors.push(error) }
+        )
+        press()
+      } finally {
+        window.removeEventListener("keydown", capture, { capture: true })
+        window.removeEventListener("keydown", bubble)
+      }
+      expect(seen).toEqual(["window capture", "element", "window bubble"])
+      expect(errors.map((error) => (error as Error).message)).toEqual(["window capture", "element"])
+    })
   })
 })

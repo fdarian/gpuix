@@ -92,6 +92,11 @@ export interface DomDispatchResult {
 
 export interface DomEventRoot {
   eventHandlers: EventHandlerMap
+  /**
+   * Where an error a handler throws goes: the renderer's `onError`. Without it
+   * the error is reported to the global handler, as the DOM does.
+   */
+  reportError?: (error: unknown) => void
 }
 
 /** What `stopPropagation()` and `stopImmediatePropagation()` have done so far. */
@@ -106,10 +111,16 @@ export interface DomEventState {
  * `stopPropagation()` on either side is seen by the other.
  */
 export interface DomDispatchHooks {
-  /** Before the first capture handler. Skipped phases follow `state`. */
-  beforeCapture?(event: DomEvent, state: DomEventState): void
-  /** After the last bubble handler, for an event that bubbles and was not stopped. */
-  afterBubble?(event: DomEvent, state: DomEventState): void
+  /**
+   * Before the first capture handler. Skipped phases follow `state`. A throw
+   * of a listener goes to `fail` so the dispatch goes on.
+   */
+  beforeCapture?(event: DomEvent, state: DomEventState, fail: (error: unknown) => void): void
+  /**
+   * After the last bubble handler, for an event that bubbles and was not stopped.
+   * A throw of a listener goes to `fail`.
+   */
+  afterBubble?(event: DomEvent, state: DomEventState, fail: (error: unknown) => void): void
 }
 
 /** What a form's `submit` event adds: the `FormData` and no submitter button. */
@@ -158,7 +169,7 @@ export function createDomEvent(
  * What the DOM does with an exception a listener leaves uncaught: report it to
  * the global error handler without disturbing the dispatch or its caller.
  */
-function reportHandlerError(error: unknown): void {
+export function reportUncaught(error: unknown): void {
   if (typeof reportError === "function") {
     reportError(error)
     return
@@ -168,13 +179,19 @@ function reportHandlerError(error: unknown): void {
   })
 }
 
+/** Reports the errors a dispatch collected, once it is over. */
+export function reportHandlerErrors(root: DomEventRoot, errors: readonly unknown[]): void {
+  errors.forEach(root.reportError ?? reportUncaught)
+}
+
 /**
  * Runs `payload` through the handlers registered on `root`: capture handlers
  * from the root down to the target, then the target's, then bubble handlers
  * from the target back up, along `payload.path` (target first). Handlers run
  * synchronously. A payload without `path` is handled at `payload.elementId`
- * only. A handler that throws does not end the dispatch: the error is reported
- * after the dispatch, as the DOM reports it, and the rest of the handlers run.
+ * only. A handler that throws does not end the dispatch: the error goes to
+ * `root.reportError` (or the global handler) after the dispatch, and the rest
+ * of the handlers run.
  */
 export function dispatchDomEvent(
   root: DomEventRoot,
@@ -210,7 +227,8 @@ export function dispatchDomEvent(
     }
   }
 
-  hooks?.beforeCapture?.(event, state)
+  const fail = (error: unknown) => errors.push(error)
+  hooks?.beforeCapture?.(event, state, fail)
   for (let index = path.length - 1; index > 0 && !state.propagationStopped; index--) {
     visit(path[index], EVENT_PHASE_CAPTURING, [captureKey])
   }
@@ -222,11 +240,11 @@ export function dispatchDomEvent(
       visit(path[index], EVENT_PHASE_BUBBLING, [payload.eventType])
     }
   }
-  if (event.bubbles && !state.propagationStopped) hooks?.afterBubble?.(event, state)
+  if (event.bubbles && !state.propagationStopped) hooks?.afterBubble?.(event, state, fail)
 
   event.currentTarget = null
   event.eventPhase = EVENT_PHASE_NONE
-  errors.forEach(reportHandlerError)
+  reportHandlerErrors(root, errors)
   return {
     defaultPrevented: event.defaultPrevented,
     propagationStopped: state.propagationStopped,

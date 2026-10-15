@@ -1,5 +1,5 @@
 import type { EventPayload } from "../index.js"
-import type { DomDispatchResult } from "./events/dispatch.js"
+import { reportUncaught, type DomDispatchResult } from "./events/dispatch.js"
 import { createDragDispatcher } from "./events/drag.js"
 import { handlesEvent, normalizeEventType, runRootEvent } from "./events/keyboard-defaults.js"
 import { GpuixEventTarget } from "./events/window-target.js"
@@ -95,21 +95,19 @@ function isAncestor(ancestor: DismissLayer, layer: DismissLayer): boolean {
 }
 
 /**
- * Sends an error thrown by a synchronous handler to `onError`, as queued events
- * do, and tells native the event was not handled. Without `onError` the error
- * is rethrown into the native call on the stack, which is the only place left
- * to report it.
+ * Sends an error thrown while a synchronous handler ran to `report`, and tells
+ * native the event was not handled. Errors a DOM handler throws never get this
+ * far: the dispatch reports them itself and carries on.
  */
 export function reportSyncErrors(
   dispatch: (event: EventPayload) => SyncDispatchResult,
-  onError: ((error: unknown) => void) | undefined
+  report: (error: unknown) => void
 ): (event: EventPayload) => SyncDispatchResult {
-  if (!onError) return dispatch
   return (event) => {
     try {
       return dispatch(event)
     } catch (error) {
-      onError(error)
+      report(error)
       return { defaultPrevented: false, propagationStopped: false }
     }
   }
@@ -136,6 +134,12 @@ export interface RendererState {
    * but now: native acts on the outcome as soon as this returns.
    */
   dispatchSync(event: EventPayload): SyncDispatchResult
+  /**
+   * Where an error thrown by an event handler goes: the renderer's `onError`.
+   * Without one it is reported as uncaught, like a DOM listener's.
+   */
+  reportError(error: unknown): void
+  setErrorHandler(onError: ((error: unknown) => void) | undefined): void
   current(): RendererRootBinding | undefined
   /** Open a layer. Call the returned function when it closes. */
   pushLayer(layer: DismissLayer, options?: PushLayerOptions): () => void
@@ -154,6 +158,8 @@ export interface RendererState {
 
 export type ActiveRoot = RendererRootBinding & {
   handlers: RendererRootHandlers
+  /** Where an error a handler of this root throws goes. See `RendererState.reportError`. */
+  reportError(error: unknown): void
   /** Listens at the window level for this root only: the `onKeyDown` / `onKeyUp` options. */
   scoped: GpuixEventTarget
 }
@@ -218,6 +224,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       dispatchDrag,
     })
 
+  let onError: ((error: unknown) => void) | undefined
   const mediaListeners = new Set<() => void>()
   const motionValueSinks = new Map<number, MotionValueSink>()
 
@@ -244,6 +251,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         ids,
         handlers,
         eventHandlers,
+        reportError: (error) => state.reportError(error),
         scoped,
         windowKeyEventId: generation,
         windowSelectionEventId: generation,
@@ -315,6 +323,10 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         )
       }
       return result
+    },
+    reportError: (error) => (onError ?? reportUncaught)(error),
+    setErrorHandler(handler) {
+      onError = handler
     },
     current: () => active,
     subscribeMedia(listener) {

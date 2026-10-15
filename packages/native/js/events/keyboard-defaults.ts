@@ -3,6 +3,7 @@ import type { NativeRenderer } from "../host.js"
 import type { ActiveRoot, DismissLayer } from "../renderer-state.js"
 import {
   dispatchDomEvent,
+  reportHandlerErrors,
   type DomDispatchResult,
   type DomEvent,
 } from "./dispatch.js"
@@ -89,7 +90,11 @@ export function runRootEvent(
     return notHandled
   }
   if (isOutsidePress(event.eventType)) {
-    root.eventHandlers.get(event.elementId)?.get(event.eventType)?.(event)
+    try {
+      root.eventHandlers.get(event.elementId)?.get(event.eventType)?.(event)
+    } catch (error) {
+      reportHandlerErrors(root, [error])
+    }
     return notHandled
   }
   if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType)) {

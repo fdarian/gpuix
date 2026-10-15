@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap } from "../host.js"
 import { captureHandlerKey, dispatchDomEvent, type DomEvent } from "../events/dispatch.js"
+import { dispatchPropagating, document, window } from "../events/window-target.js"
 
 const ROOT = 1
 const MIDDLE = 2
@@ -317,5 +318,76 @@ describe("a handler that throws", () => {
     expect(calls).toEqual(["3:click", "1:click"])
     expect(queued).toHaveLength(1)
     expect(queued[0]).toThrow(failure)
+  })
+
+  it("goes to the root's reportError instead of the global handler, in handler order", () => {
+    const global = vi.fn()
+    vi.stubGlobal("reportError", global)
+    const reported: unknown[] = []
+    const { root, listen } = setup()
+    listen(LEAF, "click", () => {
+      throw new Error("first")
+    })
+    listen(ROOT, "click", () => {
+      throw new Error("second")
+    })
+    dispatchDomEvent({ ...root, reportError: (error) => reported.push(error) }, payload("click", { path: PATH }))
+    expect(reported.map((error) => (error as Error).message)).toEqual(["first", "second"])
+    expect(global).not.toHaveBeenCalled()
+  })
+
+  it("does not end the dispatch when a window or document listener throws", () => {
+    const reported: unknown[] = []
+    const { root, calls, listen } = setup()
+    const seen: string[] = []
+    const windowCapture = () => {
+      seen.push("window capture")
+      throw new Error("window capture")
+    }
+    const documentBubble = () => {
+      seen.push("document bubble")
+      throw new Error("document bubble")
+    }
+    const windowBubble = () => seen.push("window bubble")
+    window.addEventListener("click", windowCapture, { capture: true })
+    document.addEventListener("click", documentBubble)
+    window.addEventListener("click", windowBubble)
+    listen(LEAF, "click")
+    try {
+      dispatchPropagating(
+        { ...root, reportError: (error) => reported.push(error) },
+        payload("click", { path: PATH })
+      )
+    } finally {
+      window.removeEventListener("click", windowCapture, { capture: true })
+      document.removeEventListener("click", documentBubble)
+      window.removeEventListener("click", windowBubble)
+    }
+    expect(seen).toEqual(["window capture", "document bubble", "window bubble"])
+    expect(calls).toEqual(["3:click"])
+    expect(reported.map((error) => (error as Error).message)).toEqual(["window capture", "document bubble"])
+  })
+
+  it("keeps going past a throwing listener of an event aimed at the window", () => {
+    const reported: unknown[] = []
+    const seen: string[] = []
+    const first = () => {
+      seen.push("first")
+      throw new Error("first")
+    }
+    const second = () => seen.push("second")
+    window.addEventListener("keydown", first)
+    window.addEventListener("keydown", second)
+    try {
+      dispatchPropagating(
+        { eventHandlers: new Map(), reportError: (error) => reported.push(error) },
+        payload("keydown")
+      )
+    } finally {
+      window.removeEventListener("keydown", first)
+      window.removeEventListener("keydown", second)
+    }
+    expect(seen).toEqual(["first", "second"])
+    expect(reported).toHaveLength(1)
   })
 })

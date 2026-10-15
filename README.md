@@ -1305,6 +1305,12 @@ The window shows the stack and a **Reload** button that remounts the last
 `render()` tree. Save under `bun --hot` also remounts. The process does not
 exit.
 
+An error thrown by an **event handler** (an element's, or a `window` or `document`
+listener's) does not stop the dispatch: the remaining handlers still run. The error
+goes to the renderer's `onError` option when there is one, and otherwise is reported
+as uncaught (`reportError`), like a DOM listener's. A simulate call in the test
+renderer never rethrows it, so a test that expects the error passes `onError`.
+
 On **Windows and Linux**, GPUI runs its normal blocking native event loop on one
 dedicated Rust UI thread. `tick()` does not pump that loop. It only reports
 whether the UI thread is still inside `Platform::run`. `startFrameLoop` still

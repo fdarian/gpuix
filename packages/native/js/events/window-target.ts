@@ -9,6 +9,7 @@ import {
   type DomEvent,
   type DomEventRoot,
   type DomEventState,
+  reportHandlerErrors,
 } from "./dispatch.js"
 
 export type WindowEventListener = (event: DomEvent) => void
@@ -75,8 +76,17 @@ export class GpuixEventTarget {
     return this.registrations.has(type.toLowerCase())
   }
 
-  /** @internal Calls the listeners of one phase. */
-  run(event: DomEvent, state: DomEventState, capture: boolean, phase: number): void {
+  /**
+   * @internal Calls the listeners of one phase. A listener that throws does not
+   * end the phase: its error goes to `fail`.
+   */
+  run(
+    event: DomEvent,
+    state: DomEventState,
+    capture: boolean,
+    phase: number,
+    fail: (error: unknown) => void
+  ): void {
     const registrations = this.registrations.get(event.type.toLowerCase())
     if (!registrations) return
     event.currentTarget = this
@@ -87,7 +97,11 @@ export class GpuixEventTarget {
       if (state.immediatePropagationStopped) return
       if (entry.capture !== capture) continue
       if (entry.once) this.removeEventListener(event.type, entry.listener, entry.capture)
-      entry.listener(event)
+      try {
+        entry.listener(event)
+      } catch (error) {
+        fail(error)
+      }
     }
   }
 }
@@ -113,22 +127,22 @@ export function dispatchPropagating(
   payload: EventPayload,
   scoped?: GpuixEventTarget
 ): PropagationResult {
-  const bubble = (event: DomEvent, state: DomEventState) => {
-    document.run(event, state, false, EVENT_PHASE_BUBBLING)
-    if (!state.propagationStopped) window.run(event, state, false, EVENT_PHASE_BUBBLING)
-    if (!state.propagationStopped) scoped?.run(event, state, false, EVENT_PHASE_BUBBLING)
+  const bubble = (event: DomEvent, state: DomEventState, fail: (error: unknown) => void) => {
+    document.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
+    if (!state.propagationStopped) window.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
+    if (!state.propagationStopped) scoped?.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
   }
-  const capture = (event: DomEvent, state: DomEventState) => {
-    window.run(event, state, true, EVENT_PHASE_CAPTURING)
-    if (!state.propagationStopped) document.run(event, state, true, EVENT_PHASE_CAPTURING)
+  const capture = (event: DomEvent, state: DomEventState, fail: (error: unknown) => void) => {
+    window.run(event, state, true, EVENT_PHASE_CAPTURING, fail)
+    if (!state.propagationStopped) document.run(event, state, true, EVENT_PHASE_CAPTURING, fail)
   }
 
   if (payload.path && payload.path.length > 0) {
     let seen: DomEvent | undefined
     const result = dispatchDomEvent(root, payload, {
-      beforeCapture(event, state) {
+      beforeCapture(event, state, fail) {
         seen = event
-        capture(event, state)
+        capture(event, state, fail)
       },
       afterBubble: bubble,
     })
@@ -137,10 +151,13 @@ export function dispatchPropagating(
   }
 
   const { event, state } = createDomEvent(payload, undefined)
-  capture(event, state)
-  if (event.bubbles && !state.propagationStopped) bubble(event, state)
+  const errors: unknown[] = []
+  const fail = (error: unknown) => errors.push(error)
+  capture(event, state, fail)
+  if (event.bubbles && !state.propagationStopped) bubble(event, state, fail)
   event.currentTarget = null
   event.eventPhase = EVENT_PHASE_NONE
+  reportHandlerErrors(root, errors)
   return {
     defaultPrevented: event.defaultPrevented,
     propagationStopped: state.propagationStopped,

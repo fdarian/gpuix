@@ -1,12 +1,13 @@
 /**
  * Renderer calls a keydown handler makes while native is still dispatching the
- * key, and what happens to an error it throws.
+ * key, and where an error it throws goes: to `onError`, else reported as
+ * uncaught, never thrown from the simulate call.
  */
 // @ts-nocheck
 
 import React from "react"
-import { describe, expect, it } from "vitest"
-import { clipboard } from "../index"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { clipboard, window } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -65,25 +66,65 @@ describeNative("renderer calls from a keydown handler", () => {
     expect(seen).toEqual([testRoot.renderer.getAppearance()])
   })
 
-  it("sends an error the handler throws to onError and keeps dispatching", () => {
-    const errors: unknown[] = []
-    let calls = 0
-    const { press } = mount(
-      () => {
-        calls += 1
-        throw new Error(`boom ${calls}`)
-      },
-      { onError: (error) => errors.push(error) }
-    )
-    press()
-    press()
-    expect(errors.map((error) => error.message)).toEqual(["boom 1", "boom 2"])
-  })
-
-  it("throws from the simulate call when there is no onError", () => {
-    const { press } = mount(() => {
-      throw new Error("boom")
+  describe("an error a handler throws", () => {
+    const reported = vi.fn()
+    beforeEach(() => {
+      reported.mockClear()
+      vi.stubGlobal("reportError", reported)
     })
-    expect(press).toThrow("boom")
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it("goes to onError and the dispatch keeps going", () => {
+      const errors: unknown[] = []
+      let calls = 0
+      const { press } = mount(
+        () => {
+          calls += 1
+          throw new Error(`boom ${calls}`)
+        },
+        { onError: (error) => errors.push(error) }
+      )
+      press()
+      press()
+      expect(errors.map((error) => error.message)).toEqual(["boom 1", "boom 2"])
+      expect(reported).not.toHaveBeenCalled()
+    })
+
+    it("is reported as uncaught when there is no onError, without throwing from the simulate call", () => {
+      const { press } = mount(() => {
+        throw new Error("boom")
+      })
+      expect(press).not.toThrow()
+      expect(reported.mock.calls.map(([error]) => error.message)).toEqual(["boom"])
+    })
+
+    it("does not stop the remaining handlers and window listeners", () => {
+      const errors: unknown[] = []
+      const seen: string[] = []
+      const capture = () => {
+        seen.push("window capture")
+        throw new Error("window capture")
+      }
+      const bubble = () => seen.push("window bubble")
+      window.addEventListener("keydown", capture, { capture: true })
+      window.addEventListener("keydown", bubble)
+      try {
+        const { press } = mount(
+          () => {
+            seen.push("element")
+            throw new Error("element")
+          },
+          { onError: (error) => errors.push(error) }
+        )
+        press()
+      } finally {
+        window.removeEventListener("keydown", capture, { capture: true })
+        window.removeEventListener("keydown", bubble)
+      }
+      expect(seen).toEqual(["window capture", "element", "window bubble"])
+      expect(errors.map((error) => error.message)).toEqual(["window capture", "element"])
+    })
   })
 })
