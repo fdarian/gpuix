@@ -126,10 +126,28 @@ describeNative("mask", () => {
     expectScreenshotsEqual(plain.file, shoot("invalid-shorthand", masked({ mask: "red linear-gradient(black, transparent)" })).file)
     expectScreenshotsEqual(plain.file, shoot("url", masked({ maskImage: "url(a.svg)" })).file)
   })
+
   it("maskImage: none in a hover state clears the base mask", () => {
     const { render, renderer, unmount } = createTestRoot()
     try {
-      render(masked({ maskImage: FADE, hover: { maskImage: "none" } }))
+      // The red fill is on the hovered box itself: a filled child would take the
+      // hover from it.
+      render(
+        <div style={{ position: "relative", width: 200, height: 200, backgroundColor: "#ffffff" }}>
+          <div
+            style={{
+              position: "absolute",
+              left: 50,
+              top: 0,
+              width: 100,
+              height: 200,
+              backgroundColor: "#ff0000",
+              maskImage: FADE,
+              hover: { maskImage: "none" },
+            }}
+          />
+        </div>
+      )
       renderer.dispatchNativeEvents()
       const before = path.join(SHOTS_DIR, "mask-hover-before.png")
       renderer.nativeSimulateMouseMove(5, 100)
