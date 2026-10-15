@@ -12,7 +12,6 @@ mod keyframes;
 mod layout_flip;
 pub(crate) mod measure;
 mod property;
-pub(crate) mod state_source;
 mod svg_attr;
 mod track;
 mod value;

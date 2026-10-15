@@ -4795,7 +4795,6 @@ pub(crate) struct GpuixView {
     /// What the last paint measured for the elements that animate.
     measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
-    state_source: crate::motion::state_source::StateSource,
     /// The glide of the elements that declare `layout`.
     layout_flips: crate::motion::LayoutFlips,
     /// Serialised markup of the `<svg>` elements that have shape children.
@@ -5177,7 +5176,6 @@ impl GpuixView {
             css_transitions: Default::default(),
             css_animations: Default::default(),
             measurements: Default::default(),
-            state_source: Default::default(),
             layout_flips: Default::default(),
             svg_trees: Default::default(),
             selection,
@@ -5605,7 +5603,6 @@ impl GpuixView {
             css_animations: &mut self.css_animations,
             keyframes: &self.keyframes,
             measurements: &self.measurements,
-            state_source: &self.state_source,
             layout_flips: &self.layout_flips,
             svg_trees: &mut self.svg_trees,
             now,
@@ -5745,7 +5742,6 @@ pub(crate) struct BuildCtx<'a> {
     css_animations: &'a mut crate::motion::CssAnimations,
     keyframes: &'a crate::motion::KeyframesRegistry,
     measurements: &'a crate::motion::measure::Measurements,
-    state_source: &'a crate::motion::state_source::StateSource,
     layout_flips: &'a crate::motion::LayoutFlips,
     svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
     pub now: web_time::Instant,
@@ -6544,8 +6540,6 @@ impl gpui::Render for GpuixView {
             .retain(|id| tree.elements.contains_key(&id));
         self.css_animations
             .retain(|id| tree.elements.contains_key(&id));
-        self.state_source
-            .retain(|id| tree.elements.contains_key(&id));
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
         self.layout_flips.retain(|id| {
             tree.elements
@@ -6578,7 +6572,6 @@ impl gpui::Render for GpuixView {
                     css_animations: &mut self.css_animations,
                     keyframes: &self.keyframes,
                     measurements: &self.measurements,
-                    state_source: &self.state_source,
                     layout_flips: &self.layout_flips,
                     svg_trees: &mut self.svg_trees,
                     now,
@@ -6933,12 +6926,6 @@ pub(crate) fn build_element(
     let built = if measured {
         ctx.measurements
             .wrap(id, crate::motion::measure::VerticalBorder::of(style), built)
-    } else {
-        built
-    };
-    // The probe goes inside the glide, so its hitbox follows the box.
-    let built = if transitioned.is_some() {
-        ctx.state_source.probe(id, built)
     } else {
         built
     };
