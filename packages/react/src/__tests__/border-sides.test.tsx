@@ -172,4 +172,40 @@ describeNative("border shorthands", () => {
       testRoot.unmount()
     }
   })
+
+  it("a hover side shorthand resets that side of borderWidth and borderColor, not the others", () => {
+    const testRoot = createTestRoot()
+    try {
+      testRoot.render(
+        <div
+          style={{
+            width: 100,
+            height: 100,
+            backgroundColor: "#ffffff",
+            borderWidth: 10,
+            borderStyle: "solid",
+            borderColor: "#ff0000",
+            hover: { borderTop: "4px solid #0000ff" },
+          }}
+        />
+      )
+      const paint = (name: string) => {
+        const file = `${SHOTS_DIR}/border-sides-${name}.png`
+        testRoot.renderer.captureScreenshot(file)
+        return readLogicalPixels(file, testRoot.renderer)
+      }
+      const rest = paint("hover-side-rest")
+      expect([rest.at(50, 8), rest.at(96, 50), rest.at(3, 50)]).toEqual([RED, RED, RED])
+
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      const hovered = paint("hover-side")
+      expect(hovered.at(50, 2)).toEqual(BLUE)
+      expect(hovered.at(50, 8)).toEqual(WHITE)
+      expect(hovered.at(96, 50)).toEqual(RED)
+      expect(hovered.at(50, 96)).toEqual(RED)
+      expect(hovered.at(3, 50)).toEqual(RED)
+    } finally {
+      testRoot.unmount()
+    }
+  })
 })
