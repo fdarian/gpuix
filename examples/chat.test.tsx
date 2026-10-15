@@ -75,8 +75,7 @@ describeNative('chat example', () => {
         "styled spans",
         ", ",
         "deleted text",
-        ", an
-      ",
+        ", an",
         "inline code value",
         ", and ",
         "a link",

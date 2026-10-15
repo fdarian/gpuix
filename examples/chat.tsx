@@ -1956,6 +1956,10 @@ function MdxParagraph({ children }: MdxChildren) {
         fontSize: 15,
         lineHeight: 26,
         color: C.text,
+        // Each piece is a flex item, so the space between two pieces lives at
+        // the edge of one. Collapsing would strip it as it does at the edge of
+        // a block.
+        whiteSpace: 'pre-wrap',
       }}
     >
       {React.Children.map(children, (child) =>
