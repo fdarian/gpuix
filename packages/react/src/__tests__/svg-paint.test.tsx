@@ -132,6 +132,8 @@ describeNative("svg paints its own colours", () => {
     near(paint(<svg src={file} style={{ width: 40, height: 40, color: "#ff0000" }} />).at(10, 20), RED)
   })
 
+  // One screenshot per step, 12 in all: under 1 s on an idle machine, but a screenshot is a GPU
+  // readback and the default 5 s is not enough on a busy one.
   it("repaints in place when the source changes, several times over", () => {
     const testRoot = createTestRoot()
     try {
@@ -154,7 +156,7 @@ describeNative("svg paints its own colours", () => {
     } finally {
       testRoot.unmount()
     }
-  })
+  }, 30_000)
 
   it("paints nothing for markup that is not an svg, without throwing", () => {
     const at = paint(<svg source="not svg" style={{ width: 40, height: 40 }} />).at

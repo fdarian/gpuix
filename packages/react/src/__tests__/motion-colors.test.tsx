@@ -279,6 +279,8 @@ describeNative("an animated svg changes hue", () => {
     expectNear(pixel(75, 50), [128, 0, 128, 255])
   })
 
+  // One screenshot per frame, 21 in all: about 1.2 s on an idle machine, but a screenshot is a GPU
+  // readback and the default 5 s is not enough on a busy one.
   it("repaints the same svg every frame of a long animation", () => {
     const { render, renderer } = createTestRoot()
     const pixel = sampler("svg-frames", renderer)
@@ -306,5 +308,5 @@ describeNative("an animated svg changes hue", () => {
     }
     expect(changes).toBeGreaterThan(15)
     expectNear(previous, GREEN)
-  })
+  }, 30_000)
 })
