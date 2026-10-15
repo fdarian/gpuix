@@ -3,6 +3,9 @@
 //!
 //! Only gradients can be painted. `url(...)` images are valid CSS, so their layer
 //! is skipped and the rest still paints; `none` skips its layer too.
+//!
+//! `mask` and the `mask-*` longhands have the same layer grammar, so the parsing
+//! here is generic over [`Kind`] and `mask.rs` supplies the differences.
 
 use gpui::{
     BackgroundBox, BackgroundImage, BackgroundLayer, BackgroundPosition, BackgroundRepeat,
@@ -15,6 +18,60 @@ use super::position::{
 };
 use super::syntax::{split_commas, split_whitespace};
 use crate::color::ColorContext;
+
+/// What differs between the `background` and `mask` layer grammars.
+pub(crate) trait Kind {
+    /// The `*-origin` initial value.
+    const ORIGIN: BackgroundBox;
+    /// Whether the shorthand ends in a colour.
+    const ALLOWS_COLOR: bool;
+
+    /// A `<box>` keyword gpui can paint with.
+    fn parse_box(token: &str) -> Option<BackgroundBox>;
+
+    /// A keyword the shorthand takes that has no effect here, lowercased.
+    fn is_ignored_keyword(token: &str) -> bool;
+
+    /// Whether the shorthand reads this token as a box, even if gpui has no
+    /// equivalent for it.
+    fn is_box_token(token: &str) -> bool {
+        Self::parse_box(token).is_some()
+    }
+
+    /// One item of the `*-clip` list. `Some(None)` is valid and changes nothing.
+    fn parse_clip(item: &str) -> Option<Option<BackgroundBox>> {
+        Self::parse_box(item).map(Some)
+    }
+}
+
+pub(crate) struct Background;
+
+impl Kind for Background {
+    const ORIGIN: BackgroundBox = BackgroundBox::PaddingBox;
+    const ALLOWS_COLOR: bool = true;
+
+    fn parse_box(token: &str) -> Option<BackgroundBox> {
+        parse_box(token)
+    }
+
+    fn is_ignored_keyword(token: &str) -> bool {
+        // Attachment has no meaning without a scrolling document.
+        matches!(token, "scroll" | "fixed" | "local")
+    }
+
+    fn is_box_token(token: &str) -> bool {
+        parse_box(token).is_some() || token.eq_ignore_ascii_case("text")
+    }
+
+    fn parse_clip(item: &str) -> Option<Option<BackgroundBox>> {
+        // `text` clips the background to the glyphs. That needs an offscreen
+        // pass, so for now the layer keeps its box.
+        if item.eq_ignore_ascii_case("text") {
+            return Some(None);
+        }
+        parse_box(item).map(Some)
+    }
+}
 
 /// The `background` props of one style, as written.
 #[derive(Default, Clone, Copy)]
@@ -40,7 +97,7 @@ pub(crate) struct Resolved {
 /// gradient gpui cannot paint: the slot keeps its index so the other lists line
 /// up with the right layer.
 #[derive(Clone)]
-struct Slot {
+pub(crate) struct Slot {
     image: Option<BackgroundImage>,
     size: BackgroundSize,
     position: BackgroundPosition,
@@ -50,16 +107,27 @@ struct Slot {
 }
 
 impl Slot {
-    fn new(image: Option<BackgroundImage>) -> Self {
+    fn new(image: Option<BackgroundImage>, origin: BackgroundBox) -> Self {
         let defaults = BackgroundLayer::new(BackgroundImage::Gradient(placeholder()));
         Self {
             image,
             size: defaults.size,
             position: defaults.position,
             repeat: defaults.repeat,
-            origin: defaults.origin,
+            origin,
             clip: defaults.clip,
         }
+    }
+
+    fn into_layer(self) -> Option<BackgroundLayer> {
+        Some(BackgroundLayer {
+            image: self.image?,
+            size: self.size,
+            position: self.position,
+            repeat: self.repeat,
+            origin: self.origin,
+            clip: self.clip,
+        })
     }
 }
 
@@ -72,6 +140,17 @@ fn placeholder() -> gpui::Gradient {
     }
 }
 
+/// The longhands of one layer grammar, as written.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Longhands<'a> {
+    pub image: Option<&'a str>,
+    pub size: Option<&'a str>,
+    pub position: Option<&'a str>,
+    pub repeat: Option<&'a str>,
+    pub origin: Option<&'a str>,
+    pub clip: Option<&'a str>,
+}
+
 /// Combines the shorthand and longhands: the shorthand first, then each longhand
 /// replaces its part. A longhand that is invalid is ignored on its own.
 pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext) -> Resolved {
@@ -79,63 +158,68 @@ pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext) -> Resolved {
     let mut slots: Vec<Slot> = Vec::new();
     if let Some((shorthand_slots, shorthand_color)) = inputs
         .shorthand
-        .and_then(|value| parse_shorthand(value, colors))
+        .and_then(|value| parse_shorthand::<Background>(value, colors))
     {
         slots = shorthand_slots;
         color = shorthand_color;
     }
+    let longhands = Longhands {
+        image: inputs.image,
+        size: inputs.size,
+        position: inputs.position,
+        repeat: inputs.repeat,
+        origin: inputs.origin,
+        clip: inputs.clip,
+    };
+    Resolved { color, layers: apply_longhands::<Background>(slots, &longhands, colors) }
+}
 
-    if let Some(images) = inputs.image.and_then(|value| parse_images(value, colors)) {
+/// Replaces the parts of the shorthand's slots with the longhands, and drops the
+/// slots that have nothing to paint.
+pub(crate) fn apply_longhands<K: Kind>(
+    mut slots: Vec<Slot>,
+    longhands: &Longhands,
+    colors: &ColorContext,
+) -> Vec<BackgroundLayer> {
+    if let Some(images) = longhands.image.and_then(|value| parse_images(value, colors)) {
         slots = images
             .into_iter()
             .enumerate()
             .map(|(index, image)| {
-                let mut slot = slots.get(index).cloned().unwrap_or_else(|| Slot::new(None));
+                let mut slot = slots
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| Slot::new(None, K::ORIGIN));
                 slot.image = image;
                 slot
             })
             .collect();
     }
 
-    apply_list(&mut slots, inputs.size, |slot, text| {
+    apply_list(&mut slots, longhands.size, |slot, text| {
         slot.size = parse_size(&split_whitespace(text))?;
         Some(())
     });
-    apply_list(&mut slots, inputs.position, |slot, text| {
+    apply_list(&mut slots, longhands.position, |slot, text| {
         slot.position = parse_position(&split_whitespace(text))?;
         Some(())
     });
-    apply_list(&mut slots, inputs.repeat, |slot, text| {
+    apply_list(&mut slots, longhands.repeat, |slot, text| {
         slot.repeat = parse_repeat(&split_whitespace(text))?;
         Some(())
     });
-    apply_list(&mut slots, inputs.origin, |slot, text| {
-        slot.origin = parse_box(text)?;
+    apply_list(&mut slots, longhands.origin, |slot, text| {
+        slot.origin = K::parse_box(text)?;
         Some(())
     });
-    apply_list(&mut slots, inputs.clip, |slot, text| {
-        // `text` clips the background to the glyphs. That needs an offscreen
-        // pass, so for now the layer keeps its box.
-        if !text.eq_ignore_ascii_case("text") {
-            slot.clip = parse_box(text)?;
+    apply_list(&mut slots, longhands.clip, |slot, text| {
+        if let Some(clip) = K::parse_clip(text)? {
+            slot.clip = clip;
         }
         Some(())
     });
 
-    let layers = slots
-        .into_iter()
-        .filter_map(|slot| {
-            Some(BackgroundLayer {
-                image: slot.image?,
-                size: slot.size,
-                position: slot.position,
-                repeat: slot.repeat,
-                origin: slot.origin,
-                clip: slot.clip,
-            })
-        })
-        .collect();
-    Resolved { color, layers }
+    slots.into_iter().filter_map(Slot::into_layer).collect()
 }
 
 /// Applies a comma list to the slots, repeating it to cover them as CSS does. A
@@ -148,7 +232,7 @@ fn apply_list(
     let Some(value) = value else { return };
     let items = split_commas(value);
     // An item past the last slot is still checked, so a bad one is not skipped.
-    let mut probe = Slot::new(None);
+    let mut probe = Slot::new(None, BackgroundBox::default());
     if items.iter().any(|item| set(&mut probe, item).is_none()) {
         return;
     }
@@ -159,7 +243,7 @@ fn apply_list(
 }
 
 /// `background-image`: `None` for an invalid list, else one entry per layer.
-fn parse_images(value: &str, colors: &ColorContext) -> Option<Vec<Option<BackgroundImage>>> {
+pub(crate) fn parse_images(value: &str, colors: &ColorContext) -> Option<Vec<Option<BackgroundImage>>> {
     split_commas(value)
         .into_iter()
         .map(|item| parse_image(item, colors))
@@ -221,20 +305,24 @@ fn is_repeat_token(token: &str) -> bool {
     )
 }
 
-fn parse_shorthand(value: &str, colors: &ColorContext) -> Option<(Vec<Slot>, Option<gpui::Rgba>)> {
+/// The layers of a shorthand and, for a grammar that has one, its final colour.
+pub(crate) fn parse_shorthand<K: Kind>(
+    value: &str,
+    colors: &ColorContext,
+) -> Option<(Vec<Slot>, Option<gpui::Rgba>)> {
     let layers = split_commas(value);
     let last = layers.len() - 1;
     let mut slots = Vec::new();
     let mut color = None;
     for (index, layer) in layers.into_iter().enumerate() {
-        let (slot, layer_color) = parse_shorthand_layer(layer, colors, index == last)?;
+        let (slot, layer_color) = parse_shorthand_layer::<K>(layer, colors, index == last)?;
         slots.push(slot);
         color = layer_color;
     }
     Some((slots, color))
 }
 
-fn parse_shorthand_layer(
+fn parse_shorthand_layer<K: Kind>(
     layer: &str,
     colors: &ColorContext,
     is_last: bool,
@@ -272,13 +360,13 @@ fn parse_shorthand_layer(
             }
         } else if is_repeat_token(token) {
             repeat.push(token);
-        } else if matches!(lower.as_str(), "scroll" | "fixed" | "local") {
-            // Attachment has no meaning without a scrolling document.
-        } else if parse_box(token).is_some() || lower == "text" {
+        } else if K::is_ignored_keyword(&lower) {
+            // Valid in the grammar, but nothing to set.
+        } else if K::is_box_token(token) {
             boxes.push(token);
         } else if is_position_token(token) {
             position.push(token);
-        } else if is_last && color.is_none() {
+        } else if K::ALLOWS_COLOR && is_last && color.is_none() {
             color = Some(colors.resolve(token)?);
         } else {
             return None;
@@ -288,7 +376,7 @@ fn parse_shorthand_layer(
         return None;
     }
 
-    let mut slot = Slot::new(image.flatten());
+    let mut slot = Slot::new(image.flatten(), K::ORIGIN);
     if !position.is_empty() {
         slot.position = parse_position(&position)?;
     }
@@ -301,14 +389,14 @@ fn parse_shorthand_layer(
     match boxes.as_slice() {
         [] => {}
         [one] => {
-            if let Some(parsed) = parse_box(one) {
+            if let Some(parsed) = K::parse_box(one) {
                 slot.origin = parsed;
                 slot.clip = parsed;
             }
         }
         [origin, clip] => {
-            slot.origin = parse_box(origin)?;
-            if let Some(parsed) = parse_box(clip) {
+            slot.origin = K::parse_box(origin)?;
+            if let Some(parsed) = K::parse_box(clip) {
                 slot.clip = parsed;
             }
         }

@@ -7267,6 +7267,9 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     {
         el.style().backdrop_filter = Some(filters);
     }
+    if let Some(layers) = style.resolved_mask(colors) {
+        el.style().mask_layers = Some(layers);
+    }
     if let Some(cursor) = style.cursor.as_deref().and_then(crate::style::parse_cursor) {
         el = el.cursor(cursor);
     }

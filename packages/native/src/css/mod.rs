@@ -10,5 +10,6 @@ pub(crate) mod color_space;
 pub(crate) mod filter;
 pub(crate) mod font_features;
 pub(crate) mod gradient;
+pub(crate) mod mask;
 pub(crate) mod position;
 pub(crate) mod syntax;

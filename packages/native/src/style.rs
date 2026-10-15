@@ -312,6 +312,18 @@ pub struct StyleDesc {
     pub filter: Option<String>,
     /// CSS `backdrop-filter`: the same functions, applied to what is behind the element.
     pub backdrop_filter: Option<String>,
+    /// CSS `mask-image`: a comma list of gradients (and `repeating-` forms), `none`
+    /// or `url()`. Only the alpha of each layer is used. First is on top.
+    pub mask_image: Option<String>,
+    /// CSS `mask-size`, `-position`, `-repeat`, `-origin` and `-clip`. Each is a
+    /// comma list that repeats to cover the layers.
+    pub mask_size: Option<String>,
+    pub mask_position: Option<String>,
+    pub mask_repeat: Option<String>,
+    pub mask_origin: Option<String>,
+    pub mask_clip: Option<String>,
+    /// CSS `mask` shorthand. The longhands above replace its parts.
+    pub mask: Option<String>,
     /// `"solid"` or `"dashed"`, for every side.
     pub border_style: Option<String>,
     /// Width divided by height, applied to whichever axis is not definite.
@@ -529,6 +541,8 @@ impl StyleDesc {
             };
         }
         follow!(background_image, follows);
+        follow!(mask_image, follows);
+        follow!(mask, follows);
         if state.background.is_none() {
             if let Some(BackgroundValue::Color(value)) = &self.background {
                 if value.to_ascii_lowercase().contains("currentcolor") {
@@ -579,6 +593,23 @@ impl StyleDesc {
             followers.backdrop_filter = self.backdrop_filter.clone();
         }
         (followers != StyleDesc::default()).then_some(followers)
+    }
+
+    /// The mask layers, or `None` when the style sets no valid mask. `Some(empty)`
+    /// is `mask: none`.
+    pub(crate) fn resolved_mask(&self, colors: &ColorContext) -> Option<Vec<gpui::BackgroundLayer>> {
+        crate::css::mask::resolve(
+            &crate::css::mask::Inputs {
+                shorthand: self.mask.as_deref(),
+                image: self.mask_image.as_deref(),
+                size: self.mask_size.as_deref(),
+                position: self.mask_position.as_deref(),
+                repeat: self.mask_repeat.as_deref(),
+                origin: self.mask_origin.as_deref(),
+                clip: self.mask_clip.as_deref(),
+            },
+            colors,
+        )
     }
 
     /// The background colour (or object gradient) and the gradient layers.
