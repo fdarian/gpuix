@@ -161,6 +161,24 @@ describeNative("svg paints its own colours", () => {
     expect(at(20, 20)).toEqual(paint(<div style={{ width: 40, height: 40 }} />).at(20, 20))
   })
 
+  it("clips the drawing to the border radius, as an svg's default overflow does", () => {
+    const full = svg('<rect width="20" height="20" fill="#ff0000"/>')
+    const clear = paint(<div style={{ width: 100, height: 100 }} />).at(1, 1)
+    const at = paint(<svg source={full} style={{ width: 100, height: 100, borderRadius: 40 }} />).at
+    expect(at(1, 1)).toEqual(clear)
+    expect(at(98, 98)).toEqual(clear)
+    near(at(50, 50), RED)
+    near(at(50, 2), RED)
+  })
+
+  it("lets the drawing spill past the radius under overflow: visible", () => {
+    const full = svg('<rect width="20" height="20" fill="#ff0000"/>')
+    const at = paint(
+      <svg source={full} style={{ width: 100, height: 100, borderRadius: 40, overflow: "visible" }} />
+    ).at
+    near(at(1, 1), RED)
+  })
+
   it("still takes clicks and styles", () => {
     const testRoot = createTestRoot()
     try {

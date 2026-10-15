@@ -736,6 +736,14 @@ impl CustomElement for SvgElement {
 
         let element_id = crate::events::ids::host_element_id(ctx.id);
         let mut surface = super::custom_surface(gpui::div().id(element_id).flex_none(), &ctx);
+        // An inline `<svg>` is `overflow: hidden` unless the page says otherwise, which is
+        // what rounds the drawing to the box's border radii.
+        let overflow_declared = ctx.style.is_some_and(|style| {
+            style.overflow.is_some() || style.overflow_x.is_some() || style.overflow_y.is_some()
+        });
+        if !overflow_declared {
+            surface = surface.overflow_hidden();
+        }
         let bytes = self.source.clone().or_else(|| self.bytes.clone());
         if let Some(bytes) = bytes {
             let paint = self.paint.clone();
