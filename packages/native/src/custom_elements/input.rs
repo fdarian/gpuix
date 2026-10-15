@@ -397,7 +397,8 @@ impl CustomElement for TextEditorElement {
         _window: &mut Window,
         cx: &mut Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
-        let disabled = self.disabled;
+        // Inert takes the same path as disabled: no focus handle, no mouse.
+        let disabled = self.disabled || ctx.inert;
         let input_type = self.effective_type();
         let number_rules = self.number_rules();
         let focus_handle = if disabled {

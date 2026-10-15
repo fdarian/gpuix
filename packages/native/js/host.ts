@@ -594,6 +594,16 @@ export interface HostProps extends AriaProps, PointerEventProps {
    */
   draggable?: boolean
   /**
+   * Like the DOM `inert`: the element and everything below it cannot be
+   * focused (no tab stop, `focus()` is a no-op, a focused descendant is
+   * blurred), is left out of the accessibility tree, cannot be selected, and
+   * takes no pointer input: no click, hover or wheel listener fires and
+   * clicks reach whatever lies behind it. A descendant cannot opt back in
+   * with `pointerEvents: "auto"`, `userSelect: "text"` or `tabIndex`.
+   * Inside an inert subtree `<input>` and `<textarea>` behave as `disabled`.
+   */
+  inert?: boolean
+  /**
    * AccessKit role, as an ARIA token (`"button"`, `"heading"`).
    * A node is in the accessibility tree only with both an id (always set)
    * and a role. `"none"` / `"presentation"` produce no node.

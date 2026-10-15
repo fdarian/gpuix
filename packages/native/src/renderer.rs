@@ -5084,6 +5084,9 @@ pub(crate) struct BuildCtx<'a> {
 pub(crate) struct Inherited {
     /// False once an ancestor sets `userSelect: "none"`.
     pub selectable: bool,
+    /// True below an element with the `inert` prop, which wins over any
+    /// `pointerEvents` or `userSelect` of its descendants.
+    pub inert: bool,
     /// Selection wash colour for this subtree.
     pub selection_wash: gpui::Hsla,
     /// The nearest ancestor's `highlight`, resolved. `None` in every app that
@@ -5103,6 +5106,7 @@ impl Inherited {
         wash.a = 0.35;
         Self {
             selectable: true,
+            inert: false,
             selection_wash: wash,
             highlight: None,
             pointer_events_none: false,
@@ -5110,11 +5114,15 @@ impl Inherited {
     }
 
     /// Apply the inheritable parts of `style` for the subtree below it.
-    fn descend(mut self, style: Option<&StyleDesc>) -> Self {
+    fn descend(mut self, style: Option<&StyleDesc>, inert: bool) -> Self {
+        self.inert |= inert;
+        if self.inert {
+            self.selectable = false;
+        }
         let Some(style) = style else { return self };
         match style.user_select.as_deref() {
             Some("none") => self.selectable = false,
-            Some("text") | Some("auto") => self.selectable = true,
+            Some("text") | Some("auto") if !self.inert => self.selectable = true,
             _ => {}
         }
         if let Some(color) = style
@@ -5952,7 +5960,9 @@ pub(crate) fn build_element(
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
     let parent_inherited = ctx.inherited.clone();
-    ctx.inherited = parent_inherited.clone().descend(style);
+    ctx.inherited = parent_inherited
+        .clone()
+        .descend(style, element.has_inert_prop());
 
     // A `highlight` here replaces any ancestor's: the nearest declaration wins,
     // and `GroupList::collect` skips nested declarations so an ancestor never
@@ -6008,6 +6018,7 @@ pub(crate) fn build_element(
                 children: custom_children,
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
+                inert: inherited.inert,
                 selection_wash: inherited.selection_wash,
                 highlight_set: inherited.highlight.clone(),
                 props: element.custom_props(),
@@ -6257,6 +6268,18 @@ pub(crate) fn build_host_container(
         el = crate::events::ids::host_hitbox(el, ctx.inherited.pointer_events_none);
     }
 
+    // An inert subtree takes no pointer input at all: no listener, no hover
+    // or active style (both need a hitbox), no occluding hitbox.
+    let inert = ctx.inherited.inert;
+    let inert_style;
+    let style = match style {
+        Some(style) if inert => {
+            inert_style = style.without_pointer_states();
+            Some(&inert_style)
+        }
+        style => style,
+    };
+
     if let Some(style) = style {
         el = apply_interactive_styles(el, style);
     }
@@ -6322,10 +6345,19 @@ pub(crate) fn build_host_container(
     if style.and_then(|style| style.position.as_deref()).is_none() {
         el = el.relative();
     }
+    // The inert root claims its box as a non-selectable start region; below it,
+    // a descendant's `userSelect: "text"` must not reopen one.
+    let selection_start = if element.has_inert_prop() {
+        Some(false)
+    } else if inert {
+        selection_start_flag(style).map(|_| false)
+    } else {
+        selection_start_flag(style)
+    };
     el = crate::automation::track_host_bounds(
         el,
         element.id,
-        selection_start_flag(style),
+        selection_start,
         paint_reporter(element.id, element.events(), ctx),
     );
 
@@ -6353,7 +6385,7 @@ pub(crate) fn build_host_container(
             el = el.aria_value(content);
         }
     }
-    if is_label {
+    if is_label && !inert {
         el = crate::accessibility::label::describe_and_activate(
             el,
             element.id,
@@ -6366,14 +6398,16 @@ pub(crate) fn build_host_container(
     // Pointer, mouse and click events are not wired here: the window-level
     // dispatcher (`crate::events`) finds the target and runs them along the
     // retained tree. What is left are the events GPUI still owns.
-    el = apply_a11y_click(
-        el,
-        element.events(),
-        click_path(ctx.tree, element),
-        ctx.event_callback,
-    );
+    if !inert {
+        el = apply_a11y_click(
+            el,
+            element.events(),
+            click_path(ctx.tree, element),
+            ctx.event_callback,
+        );
+    }
 
-    for event_type in element.events() {
+    for event_type in element.events().iter().filter(|_| !inert) {
         let id = element.id;
         let callback = ctx.event_callback.clone();
         match event_type.as_str() {

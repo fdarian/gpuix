@@ -273,9 +273,9 @@ impl CustomElement for DiffElement {
         let wash = ctx.selection_wash;
         let highlight_set = ctx.highlight_set.clone();
         let callback = ctx.event_callback.clone();
-        let wants_toggle = ctx.events.contains("toggleFile");
-        let wants_line_click = ctx.events.contains("lineClick");
-        let wants_show_more = ctx.events.contains("showMore");
+        let wants_toggle = ctx.events.contains("toggleFile") && !ctx.inert;
+        let wants_line_click = ctx.events.contains("lineClick") && !ctx.inert;
+        let wants_show_more = ctx.events.contains("showMore") && !ctx.inert;
         let radius = ctx
             .style
             .and_then(|style| style.border_radius)

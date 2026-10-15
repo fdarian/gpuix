@@ -52,6 +52,9 @@ pub struct CustomRenderContext<'a> {
     pub selection: crate::text::SharedSelection,
     /// False when an ancestor set `userSelect: "none"`.
     pub selectable: bool,
+    /// An ancestor, or the element itself, has `inert`: it takes no pointer
+    /// input and no focus.
+    pub inert: bool,
     /// Inherited selection wash colour.
     pub selection_wash: gpui::Hsla,
     /// `highlight` declared by the nearest ancestor, unresolved.
@@ -127,7 +130,11 @@ pub(crate) fn custom_surface(
 
     el = crate::events::ids::host_hitbox(el, ctx.pointer_events_none);
     if let Some(style) = ctx.style {
-        el = crate::renderer::apply_interactive_styles(el, style);
+        el = if ctx.inert {
+            crate::renderer::apply_interactive_styles(el, &style.without_pointer_states())
+        } else {
+            crate::renderer::apply_interactive_styles(el, style)
+        };
     }
     // `bounds_tracker` is `absolute().size_full()`, so it needs a positioned
     // parent to measure.
@@ -152,6 +159,9 @@ pub(crate) fn wire_host_events<E: gpui::StatefulInteractiveElement>(
     el: E,
     ctx: &CustomRenderContext,
 ) -> E {
+    if ctx.inert {
+        return el;
+    }
     crate::accessibility::apply_a11y_click(el, ctx.events, ctx.click_path.clone(), ctx.event_callback)
 }
 

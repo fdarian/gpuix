@@ -97,6 +97,15 @@ impl RetainedElement {
         }
     }
 
+    /// Whether this element itself carries `inert`. Its subtree is inert too;
+    /// `RetainedTree::is_inert` answers for an element and its ancestors.
+    pub fn has_inert_prop(&self) -> bool {
+        self.custom_props()
+            .get("inert")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    }
+
     pub fn is_disabled(&self) -> bool {
         self.custom_props()
             .get("disabled")
@@ -265,6 +274,9 @@ pub struct RetainedTree {
     /// per-frame focus sync visits these few instead of every retained element:
     /// a large tree retains thousands, and nearly none are focusable.
     pub focusable_ids: std::collections::BTreeSet<u64>,
+    /// How many elements carry `inert`. While it is zero, no mutation has to
+    /// look at ancestors to decide what is focusable.
+    inert_count: usize,
     /// How many `anchored` elements exist. Without any, an `elements_at` walk
     /// can drop a clipped subtree whole.
     anchored_count: usize,
@@ -289,6 +301,7 @@ impl RetainedTree {
             elements: ElementMap::default(),
             motion_ids: HashSet::new(),
             focusable_ids: Default::default(),
+            inert_count: 0,
             anchored_count: 0,
             styles: StyleTable::default(),
             root_id: None,
@@ -335,17 +348,65 @@ impl RetainedTree {
         self.track_focusable(id);
     }
 
+    /// Whether `id` or any ancestor has `inert`.
+    pub fn is_inert(&self, id: u64) -> bool {
+        if self.inert_count == 0 {
+            return false;
+        }
+        let mut current = Some(id);
+        while let Some(current_id) = current {
+            let Some(element) = self.elements.get(&current_id) else {
+                return false;
+            };
+            if element.has_inert_prop() {
+                return true;
+            }
+            current = element.parent;
+        }
+        false
+    }
+
     /// Bring `focusable_ids` in line with `id` after anything `needs_focus`
     /// reads has changed.
     fn track_focusable(&mut self, id: u64) {
-        if self
-            .elements
-            .get(&id)
-            .is_some_and(RetainedElement::needs_focus)
+        if !self.is_inert(id)
+            && self
+                .elements
+                .get(&id)
+                .is_some_and(RetainedElement::needs_focus)
         {
             self.focusable_ids.insert(id);
         } else {
             self.focusable_ids.remove(&id);
+        }
+    }
+
+    /// Redo `track_focusable` for `id` and everything below it. Needed when an
+    /// `inert` ancestor appears, goes away, or the subtree is moved under or
+    /// out from under one.
+    fn track_focusable_subtree(&mut self, id: u64) {
+        let inherited = self
+            .elements
+            .get(&id)
+            .and_then(|element| element.parent)
+            .is_some_and(|parent| self.is_inert(parent));
+        self.track_focusable_below(id, inherited);
+    }
+
+    fn track_focusable_below(&mut self, id: u64, inherited_inert: bool) {
+        let Some(element) = self.elements.get(&id) else {
+            return;
+        };
+        let inert = inherited_inert || element.has_inert_prop();
+        let focusable = !inert && element.needs_focus();
+        let children = element.children.clone();
+        if focusable {
+            self.focusable_ids.insert(id);
+        } else {
+            self.focusable_ids.remove(&id);
+        }
+        for child in children {
+            self.track_focusable_below(child, inert);
         }
     }
 
@@ -415,6 +476,7 @@ impl RetainedTree {
         if let Some(element) = self.elements.remove(&id) {
             self.motion_ids.remove(&id);
             self.focusable_ids.remove(&id);
+            self.inert_count -= usize::from(element.has_inert_prop());
             self.anchored_count -= usize::from(element.element_type == "anchored");
             destroyed.push(id);
             for child_id in element.children {
@@ -438,6 +500,9 @@ impl RetainedTree {
         // Add to new parent's children
         if let Some(parent) = self.elements.get_mut(&parent_id) {
             parent.children.push(child_id);
+        }
+        if self.inert_count > 0 {
+            self.track_focusable_subtree(child_id);
         }
         if let Some(old_parent_id) = old_parent_id {
             self.mark_changed(old_parent_id);
@@ -465,6 +530,9 @@ impl RetainedTree {
                 .position(|c| *c == before_id)
                 .unwrap_or(parent.children.len());
             parent.children.insert(pos, child_id);
+        }
+        if self.inert_count > 0 {
+            self.track_focusable_subtree(child_id);
         }
         if let Some(old_parent_id) = old_parent_id {
             self.mark_changed(old_parent_id);
@@ -536,6 +604,11 @@ impl RetainedTree {
         let is_highlight = key == "highlight";
         let is_motion = key == "motion";
         let affects_focusability = key == "tabIndex" || key == "disabled";
+        let is_inert = key == "inert";
+        let was_inert = self
+            .elements
+            .get(&id)
+            .is_some_and(RetainedElement::has_inert_prop);
         let was_declaration = self
             .elements
             .get(&id)
@@ -571,6 +644,14 @@ impl RetainedTree {
         }
         if affects_focusability {
             self.track_focusable(id);
+        }
+        if is_inert {
+            let now_inert = self
+                .elements
+                .get(&id)
+                .is_some_and(RetainedElement::has_inert_prop);
+            self.inert_count = self.inert_count + usize::from(now_inert) - usize::from(was_inert);
+            self.track_focusable_subtree(id);
         }
         if is_motion {
             if self
@@ -647,7 +728,7 @@ impl RetainedTree {
         };
         let mut hits = Vec::new();
         if let Some(root_id) = self.root_id {
-            self.collect_hits(root_id, false, false, &mut walk, &mut hits);
+            self.collect_hits(root_id, false, false, false, &mut walk, &mut hits);
         }
         // Stable, so layers of one priority stay topmost first.
         walk.layers.sort_by(|a, b| b.0.cmp(&a.0));
@@ -656,13 +737,15 @@ impl RetainedTree {
         ordered
     }
 
-    /// `none` is the inherited `pointer-events: none`. `clipped` means an
-    /// ancestor's clip excludes the point, so only deferred layers below can
-    /// still be hit.
+    /// `none` is the inherited `pointer-events: none`. `inert` is stronger: no
+    /// `pointer-events: auto` below an `inert` element restores hits. `clipped`
+    /// means an ancestor's clip excludes the point, so only deferred layers
+    /// below can still be hit.
     fn collect_hits(
         &self,
         id: u64,
         none: bool,
+        inert: bool,
         clipped: bool,
         walk: &mut HitWalk,
         hits: &mut Vec<u64>,
@@ -696,6 +779,8 @@ impl RetainedTree {
             Some("auto") => false,
             _ => none,
         };
+        let inert = inert || element.has_inert_prop();
+        let none = none || inert;
 
         if element.element_type == "anchored" {
             let deferred = element
@@ -711,7 +796,7 @@ impl RetainedTree {
                     .unwrap_or(1);
                 let mut layer = Vec::new();
                 for &child in element.children.iter().rev() {
-                    self.collect_hits(child, none, false, walk, &mut layer);
+                    self.collect_hits(child, none, inert, false, walk, &mut layer);
                 }
                 walk.layers.push((priority, layer));
                 return;
@@ -719,7 +804,7 @@ impl RetainedTree {
         }
 
         for &child in element.children.iter().rev() {
-            self.collect_hits(child, none, clipped, walk, hits);
+            self.collect_hits(child, none, inert, clipped, walk, hits);
         }
         if !clipped && !none && own_box.is_some_and(|bounds| inside(&bounds, true, true)) {
             hits.push(id);
@@ -1148,6 +1233,54 @@ mod tests {
             tree.focusable_ids.is_empty(),
             "destroying a subtree forgets its ids"
         );
+    }
+
+    #[test]
+    fn an_inert_ancestor_takes_its_subtree_out_of_focusable_ids() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=5 {
+            tree.create_element(id, if id == 3 { "input" } else { "div" }.to_string());
+        }
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        tree.append_child(2, 4);
+        tree.append_child(1, 5);
+        for id in [2, 4, 5] {
+            tree.set_custom_prop(id, "tabIndex".to_string(), serde_json::json!(0));
+        }
+        let focusable =
+            |tree: &RetainedTree| tree.focusable_ids.iter().copied().collect::<Vec<_>>();
+        assert_eq!(focusable(&tree), vec![2, 3, 4, 5]);
+
+        tree.set_custom_prop(2, "inert".to_string(), serde_json::json!(true));
+        assert_eq!(focusable(&tree), vec![5], "the element and its descendants");
+        assert!(tree.is_inert(3) && !tree.is_inert(5));
+
+        // A prop set below an inert ancestor does not bring the element back.
+        tree.set_custom_prop(4, "tabIndex".to_string(), serde_json::json!(-1));
+        tree.set_custom_prop(4, "inert".to_string(), serde_json::json!(false));
+        assert_eq!(focusable(&tree), vec![5]);
+
+        // Moving a subtree out, or in, follows the new ancestors.
+        tree.append_child(1, 4);
+        assert_eq!(focusable(&tree), vec![4, 5]);
+        tree.append_child(2, 5);
+        assert_eq!(focusable(&tree), vec![4]);
+
+        tree.set_custom_prop(2, "inert".to_string(), serde_json::json!(false));
+        assert_eq!(focusable(&tree), vec![2, 3, 4, 5]);
+        tree.set_custom_prop(2, "inert".to_string(), serde_json::Value::Null);
+        assert!(!tree.is_inert(3));
+    }
+
+    #[test]
+    fn an_inert_subtree_is_not_hit_even_below_pointer_events_auto() {
+        let (mut tree, painted) = hit_test_tree();
+        assert!(tree.elements_at(70.0, 70.0, &painted).contains(&6));
+        tree.set_custom_prop(5, "inert".to_string(), serde_json::json!(true));
+        assert!(!tree.elements_at(70.0, 70.0, &painted).contains(&6));
+        tree.set_custom_prop(5, "inert".to_string(), serde_json::json!(false));
+        assert!(tree.elements_at(70.0, 70.0, &painted).contains(&6));
     }
 
     /// A page with a clipping scroller, overlapping siblings, and an overlay that

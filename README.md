@@ -2156,7 +2156,7 @@ a value the attribute does not allow is ignored. These map to AccessKit:
 | `aria-checked`, `aria-pressed` | toggled (`true`, `false`, `"mixed"`) |
 | `aria-expanded`, `aria-selected` | expanded, selected |
 | `aria-disabled`, `aria-required`, `aria-readonly`, `aria-multiselectable`, `aria-busy`, `aria-atomic`, `aria-modal` | the matching flag |
-| `aria-hidden` | hidden: the element and its subtree leave the tree |
+| `aria-hidden` | hidden: the element and its subtree leave the tree; `inert` does the same |
 | `aria-invalid`, `aria-live`, `aria-current`, `aria-haspopup`, `aria-orientation`, `aria-sort`, `aria-autocomplete` | the matching enum |
 | `aria-multiline` | `role="textbox"` becomes a multiline text input |
 | `aria-level`, `aria-posinset`, `aria-setsize` | level, position in set, size of set |
@@ -2293,6 +2293,22 @@ bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it 
 | `tabIndex={-1}` | Focusable by click, `focus()` or `focusElement`, but never a Tab stop |
 | `autoFocus` | Takes focus once, when its native focus handle is created |
 | `disabled` (`<input>`, `<textarea>`) | Not focusable. Focus leaves it when it becomes disabled |
+| `inert` | Nothing in the subtree is focusable; focus leaves it when an ancestor becomes inert. See below |
+
+### `inert`
+
+`<div inert>` takes its whole subtree out of interaction, like the DOM attribute:
+
+- nothing inside is focusable (no Tab stop, `focus()` does nothing), and focus
+  leaves a descendant when an ancestor becomes inert;
+- the subtree has no accessibility nodes and its text cannot be selected;
+- it takes no pointer input: no click, hover, mouse or wheel listener fires, and
+  clicks reach whatever is behind it;
+- `<input>` and `<textarea>` inside behave as `disabled`.
+
+A descendant cannot opt back in with `tabIndex`, `pointerEvents: "auto"` or
+`userSelect: "text"`. An `overflow: "scroll"` container inside still scrolls
+under the wheel.
 
 ### Focus events
 

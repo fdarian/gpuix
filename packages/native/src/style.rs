@@ -278,6 +278,19 @@ pub struct StyleDesc {
 
 pub use crate::color::{parse_color, parse_color_hex};
 
+impl StyleDesc {
+    /// The style with everything that needs a mouse hitbox removed: `hover`,
+    /// `active` and `cursor`. What an `inert` subtree paints.
+    pub fn without_pointer_states(&self) -> Self {
+        Self {
+            hover: None,
+            active: None,
+            cursor: None,
+            ..self.clone()
+        }
+    }
+}
+
 impl BackgroundValue {
     fn resolve(&self) -> Option<gpui::Background> {
         match self {

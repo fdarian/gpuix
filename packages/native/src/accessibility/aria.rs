@@ -14,9 +14,11 @@ use serde_json::Value;
 
 type Props = HashMap<String, Value>;
 
-/// Whether any `aria-*` prop, or `disabled`, is present.
+/// Whether any `aria-*` prop, `disabled` or `inert` is present.
 pub(super) fn has_node_props(props: &Props) -> bool {
-    props.contains_key("disabled") || props.keys().any(|key| key.starts_with("aria-"))
+    props.contains_key("disabled")
+        || props.contains_key("inert")
+        || props.keys().any(|key| key.starts_with("aria-"))
 }
 
 /// The attribute text of a prop: strings as they are, booleans and numbers as
@@ -133,7 +135,8 @@ impl AriaNode {
             selected: boolean(props, "aria-selected"),
             toggled: toggled(props, "aria-pressed").or_else(|| toggled(props, "aria-checked")),
             disabled: is_true(props, "disabled") || is_true(props, "aria-disabled"),
-            hidden: is_true(props, "aria-hidden"),
+            // An inert subtree is out of the accessibility tree, like aria-hidden.
+            hidden: is_true(props, "aria-hidden") || is_true(props, "inert"),
             required: is_true(props, "aria-required"),
             read_only: is_true(props, "aria-readonly"),
             multiselectable: is_true(props, "aria-multiselectable"),
@@ -482,6 +485,13 @@ mod tests {
     #[test]
     fn the_disabled_prop_disables_the_node() {
         assert!(written(json!({ "disabled": true })).is_disabled());
+    }
+
+    #[test]
+    fn an_inert_element_hides_its_subtree_from_the_tree() {
+        assert!(written(json!({ "inert": true })).is_hidden());
+        assert!(!written(json!({ "inert": false })).is_hidden());
+        assert!(has_node_props(&props(json!({ "inert": true }))));
     }
 
     #[test]

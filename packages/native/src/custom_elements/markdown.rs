@@ -76,7 +76,7 @@ impl CustomElement for MarkdownElement {
         // Link clicks are hit-tested per byte range inside the painted text, so
         // clicking prose emits nothing and clicking the second link emits the
         // second URL.
-        let on_link: Option<Arc<dyn Fn(&str)>> = if ctx.events.contains("linkClick") {
+        let on_link: Option<Arc<dyn Fn(&str)>> = if ctx.events.contains("linkClick") && !ctx.inert {
             let callback = ctx.event_callback.clone();
             let element_id = ctx.id;
             Some(Arc::new(move |url: &str| {

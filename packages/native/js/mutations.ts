@@ -158,6 +158,7 @@ const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "autoFocus",
   "tabIndex",
   "draggable",
+  "inert",
   "motion",
   "testId",
   "highlight",

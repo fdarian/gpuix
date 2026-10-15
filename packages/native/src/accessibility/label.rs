@@ -37,7 +37,7 @@ where
         .and_then(|control| control.custom_props().get("disabled"))
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
-    if disabled {
+    if disabled || tree.is_inert(control_id) {
         return el;
     }
     let focus_handle = focus_handles.get(&control_id).cloned();
