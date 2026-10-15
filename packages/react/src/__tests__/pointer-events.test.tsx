@@ -473,6 +473,67 @@ describeNative("pointer events", () => {
       testRoot.renderer.nativeSimulateMouseUp(50, 50, 2)
     })
 
+    it.skipIf(process.platform !== "darwin")(
+      "fires contextmenu on a ctrl+primary press on macOS, with button 0",
+      () => {
+        const seen: string[] = []
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 100 }}
+            onContextMenu={(event: { button: number; modifiers: { ctrl: boolean } }) =>
+              seen.push(`${event.button}:${event.modifiers.ctrl}`)
+            }
+          />,
+        )
+
+        testRoot.renderer.nativeSimulateMouseDown(50, 50, 0, "ctrl")
+        expect(seen).toEqual(["0:true"])
+        testRoot.renderer.nativeSimulateMouseUp(50, 50, 0, "ctrl")
+      },
+    )
+
+    it("fires no contextmenu for a plain primary press", () => {
+      testRoot.render(
+        <div style={{ width: 200, height: 100 }} onContextMenu={record("box")} />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      expect(log).toEqual([])
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 0)
+    })
+
+    it("fires pointerdown and pointerup for the first and last button only; the others are pointermove", () => {
+      const seen: string[] = []
+      const note = (name: string) => (event: { button: number; buttons: number }) =>
+        seen.push(`${name}:${event.button}:${event.buttons}`)
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 100 }}
+          onPointerDown={note("pointerdown")}
+          onPointerMove={note("pointermove")}
+          onPointerUp={note("pointerup")}
+          onMouseDown={note("mousedown")}
+          onMouseUp={note("mouseup")}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 2)
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 2)
+
+      expect(seen).toEqual([
+        "pointerdown:0:1",
+        "mousedown:0:1",
+        "pointermove:2:3",
+        "mousedown:2:3",
+        "pointermove:0:2",
+        "mouseup:0:2",
+        "pointerup:2:0",
+        "mouseup:2:0",
+      ])
+    })
+
     it("counts clicks in detail and fires dblclick after the second click", () => {
       const details: string[] = []
       testRoot.render(

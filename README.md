@@ -4387,12 +4387,12 @@ text imports no longer need a runtime flag.
 | Click | `onClick` | the mouse fields below, `detail` — primary button only. Fires on the nearest common ancestor of the press and release targets |
 | Aux click | `onAuxClick` | as `onClick` — non-primary buttons |
 | Double click | `onDoubleClick` | as `onClick`, after the click whose `detail` is 2 |
-| Context menu | `onContextMenu` | as `onClick`, on the secondary button **press** |
+| Context menu | `onContextMenu` | as `onClick`, on the secondary button **press**, and on macOS on a ctrl+primary press (`button` 0) |
 | Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` |
 | Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`, `movementX`, `movementY` |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` also has `movementX` and `movementY`. `onPointerCancel` fires on the press target when a `draggable` drag starts |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` also has `movementX` and `movementY`. `onPointerCancel` fires on the press target when a `draggable` drag starts. As in the DOM, `pointerdown` fires when the first button goes down and `pointerup` when the last comes up; a button pressed or released in between is a `pointermove` with that `button` and the updated `buttons` (the mouse events still fire for every button). Boundary events come as all four pointer ones, then all four mouse ones |
 | Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
 | Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |

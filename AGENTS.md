@@ -136,7 +136,7 @@ Rules that sit in the dispatcher and are easy to miss:
 - `inert` is inherited like `pointer-events: none`, and a descendant's `auto` does not undo it (`Inherited::descend` in `renderer.rs`). There is no hover, group state or listener in an inert subtree.
 - A disabled form control gets no `click`, `auxclick` or `dblclick` (`RetainedTree::in_disabled_form_control`, checked in `dispatcher::release`). `element.click()` and the accessibility click skip it as well (`events/synthetic_click.rs`). Pointer and mouse move events still reach it.
 - `mousedownoutside` is gpuix's own event, delivered to each listener whose logical subtree does not contain the press target, and it does not bubble.
-- `contextmenu` fires on mousedown, not mouseup.
+- `contextmenu` fires on mousedown, not mouseup, for the secondary button and, on macOS only, for ctrl+primary.
 
 Not in the dispatcher: keys (`events/keyboard.rs`), focus events (`GpuixView::observe_focus`), the VoiceOver press (`apply_a11y_click`), `scroll`, `onLayout` and observer reports (paint), and transition and animation events (`emit_bubbling_event` in `renderer.rs`, which gives them `target` and `path` so they bubble).
 
