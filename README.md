@@ -3103,7 +3103,9 @@ document bubble, window bubble. The `onKeyDown` and `onKeyUp` options of
 
 ### Tab and Escape are defaults
 
-**Tab** and **Shift+Tab** move focus through the tab order, like a browser. The
+**Tab** and **Shift+Tab** move focus through the tab order, like a browser, and
+scroll the newly focused element into view: every scrolling ancestor moves to the
+nearest edge, and only if the element is not already in view. The
 default runs after every handler of that keystroke, so any handler can cancel
 it:
 
@@ -3161,7 +3163,8 @@ them are queued.
 `focusNext()` and `focusPrevious()` map directly to GPUI's
 `window.focus_next()` and `window.focus_prev()`.
 `focusNextWithin(id)` / `focusPreviousWithin(id)` wrap inside that subtree.
-`getFocusedElementId()` returns the host id, or `null`. Browser focus requests made
+`getFocusedElementId()` returns the host id, or `null`. These renderer methods do
+not scroll; Tab and `element.focus()` do. Browser focus requests made
 while WebGPU opens are queued and applied after the first focus handles exist. If
 several requests arrive before that render, the latest request wins.
 
@@ -3171,7 +3174,7 @@ Element refs have the DOM focus methods (React instances and Solid
 ```tsx
 const buttonRef = useRef(null)
 
-buttonRef.current.focus()                       // scrolls it into view
+buttonRef.current.focus()                       // scrolls it to the nearest edge, if it is out of view
 buttonRef.current.focus({ preventScroll: true })
 buttonRef.current.blur()                        // no-op unless it is focused
 buttonRef.current.matches(':focus-visible')

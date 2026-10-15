@@ -24,7 +24,21 @@ export function focusHostElement(
   options?: FocusOptions
 ): void {
   required(renderer.focusElement, "focus()").call(renderer, id)
-  if (!options?.preventScroll) renderer.scrollIntoView?.(id)
+  if (!options?.preventScroll) scrollFocusIntoView(renderer, id)
+}
+
+/** Tab and Shift+Tab: moves focus along the tab order, then scrolls the new element into view. */
+export function moveFocusByTab(renderer: NativeRenderer, backwards: boolean): void {
+  const move = backwards ? renderer.focusPrevious : renderer.focusNext
+  if (!move) return
+  move.call(renderer)
+  const id = renderer.getFocusedElementId?.()
+  if (id != null) scrollFocusIntoView(renderer, id)
+}
+
+/** Browsers scroll a newly focused element to its nearest edge, and only if it is not in view. */
+function scrollFocusIntoView(renderer: NativeRenderer, id: number): void {
+  renderer.scrollIntoView?.(id, "nearest", "nearest")
 }
 
 export function blurHostElement(renderer: NativeRenderer, id: number): void {

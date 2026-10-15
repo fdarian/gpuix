@@ -220,6 +220,36 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     expect(scrollY()).toBeLessThan(0)
   })
 
+  it("scrolls Tab and focus() to the nearest edge, and only if needed", () => {
+    let visible!: HostElement
+    let far!: HostElement
+    const item = { width: 100, height: 40, flexShrink: 0 }
+    const { renderer, focused, idOf } = setup(() => (
+      <div testId="scroller" style={{ width: 200, height: 100, overflow: "scroll" }}>
+        <div testId="i0" tabIndex={0} style={item} />
+        <div ref={visible} testId="i1" tabIndex={0} style={item} />
+        <div testId="i2" tabIndex={0} style={item} />
+        <div ref={far} testId="i3" tabIndex={0} style={item} />
+        <div testId="i4" tabIndex={0} style={item} />
+        <div testId="i5" tabIndex={0} style={item} />
+      </div>
+    ))
+    const scrollTop = () => 0 - (renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0)
+    renderer.simulateKeystrokes("tab tab")
+    expect(focused()).toBe("i1")
+    expect(scrollTop()).toBe(0)
+    renderer.simulateKeystrokes("tab")
+    expect(focused()).toBe("i2")
+    expect(scrollTop()).toBe(20)
+    visible.focus()
+    expect(scrollTop()).toBe(20)
+    far.focus({ preventScroll: true })
+    expect(scrollTop()).toBe(20)
+    far.blur()
+    far.focus()
+    expect(scrollTop()).toBe(60)
+  })
+
   it("does not focus a disabled input that has a tabIndex", () => {
     const { renderer, focused, idOf, center } = setup(() => (
       <div style={{ width: 200, height: 100 }}>
