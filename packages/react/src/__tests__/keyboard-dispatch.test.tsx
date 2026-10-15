@@ -110,6 +110,29 @@ describeNative("synchronous key dispatch", () => {
     expect(field.control().selectionStart).toBe(1)
   })
 
+  it("lets a handler read the caret, move it and cancel the key", () => {
+    const seen: Record<string, unknown> = {}
+    const field = mountControl("hello", {
+      onKeyDown: (event) => {
+        seen.caret = field.control().selectionStart
+        field.control().setSelectionRange(4, 4)
+        seen.after = field.control().selectionStart
+        seen.windowSize = testRoot.renderer.getWindowSize()
+        seen.a11y = testRoot.renderer.getA11yTree()
+        event.preventDefault()
+      },
+    })
+    field.control().setSelectionRange(2, 2)
+    field.press("left")
+
+    expect(seen.caret).toBe(2)
+    expect(seen.after).toBe(4)
+    expect(seen.windowSize).toEqual(testRoot.renderer.getWindowSize())
+    expect(seen.a11y).toBeDefined()
+    expect(field.control().selectionStart).toBe(4)
+    expect(field.value()).toBe('Value: "hello"')
+  })
+
   it("lets a handler call back into the renderer while the key is dispatched", () => {
     const seen: Record<string, unknown> = {}
     function App() {

@@ -1186,17 +1186,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_list_scroll_top(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, _cx| {
-                        view.virtual_list_scroll_top(id).map(|top| top.to_vec())
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(result)
-        })
+        update_view(|view, _window, _cx| view.virtual_list_scroll_top(id).map(|top| top.to_vec()))
     }
 
     /// `"hidden"` | `"minimal"` | `"full"`.
@@ -1380,13 +1370,10 @@ impl TestGpuixRenderer {
     #[napi(js_name = "getA11yTree")]
     pub fn get_a11y_tree(&self) -> Result<String> {
         self.flush()?;
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _| {
-                window
-                    .debug_a11y_tree_json()
-                    .unwrap_or_else(|| "{}".to_string())
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
+        window_call(|window, _cx| {
+            window
+                .debug_a11y_tree_json()
+                .unwrap_or_else(|| "{}".to_string())
         })
     }
 
@@ -1517,14 +1504,10 @@ impl TestGpuixRenderer {
     /// under test as in a real window instead of falling back to a default.
     #[napi]
     pub fn get_window_size(&self) -> Result<crate::renderer::WindowSize> {
-        with_test_state(|cx, window, _view| {
-            let size = cx
-                .update_window(window, |_, window, _| window.viewport_size())
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            Ok(crate::renderer::WindowSize {
-                width: f32::from(size.width) as f64,
-                height: f32::from(size.height) as f64,
-            })
+        let size = window_call(|window, _cx| window.viewport_size())?;
+        Ok(crate::renderer::WindowSize {
+            width: f32::from(size.width) as f64,
+            height: f32::from(size.height) as f64,
         })
     }
 
