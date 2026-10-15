@@ -227,48 +227,72 @@ fn apply_longhands_to_slots<K: Kind>(
             .collect();
     }
 
-    apply_list(&mut slots, longhands.size, |slot, text| {
-        slot.size = parse_size(&split_whitespace(text))?;
-        Some(())
-    });
-    apply_list(&mut slots, longhands.position, |slot, text| {
-        slot.position = parse_position(&split_whitespace(text))?;
-        Some(())
-    });
-    apply_list(&mut slots, longhands.repeat, |slot, text| {
-        slot.repeat = parse_repeat(&split_whitespace(text))?;
-        Some(())
-    });
-    apply_list(&mut slots, longhands.origin, |slot, text| {
-        slot.origin = K::parse_box(text)?;
-        Some(())
-    });
-    apply_list(&mut slots, longhands.clip, |slot, text| {
-        slot.clip = K::parse_clip(text)?;
-        Some(())
-    });
+    for (property, value) in [
+        (Property::Size, longhands.size),
+        (Property::Position, longhands.position),
+        (Property::Repeat, longhands.repeat),
+        (Property::Origin, longhands.origin),
+        (Property::Clip, longhands.clip),
+    ] {
+        apply_list::<K>(&mut slots, property, value);
+    }
 
     slots
 }
 
+/// The layer longhands that take a comma list of one item per layer.
+#[derive(Clone, Copy)]
+pub(crate) enum Property {
+    Size,
+    Position,
+    Repeat,
+    Origin,
+    Clip,
+}
+
+impl Property {
+    fn set<K: Kind>(self, slot: &mut Slot, text: &str) -> Option<()> {
+        match self {
+            Self::Size => slot.size = parse_size(&split_whitespace(text))?,
+            Self::Position => slot.position = parse_position(&split_whitespace(text))?,
+            Self::Repeat => slot.repeat = parse_repeat(&split_whitespace(text))?,
+            Self::Origin => slot.origin = K::parse_box(text)?,
+            Self::Clip => slot.clip = K::parse_clip(text)?,
+        }
+        Some(())
+    }
+}
+
+/// Whether every item of the longhand's list is valid, which is when CSS keeps
+/// the declaration at all.
+pub(crate) fn is_valid_list<K: Kind>(property: Property, value: &str) -> bool {
+    let mut probe = Slot::new(None, BackgroundBox::default());
+    split_commas(value)
+        .into_iter()
+        .all(|item| property.set::<K>(&mut probe, item).is_some())
+}
+
 /// Applies a comma list to the slots, repeating it to cover them as CSS does. A
 /// list with any invalid item is ignored whole.
-fn apply_list(
-    slots: &mut [Slot],
-    value: Option<&str>,
-    set: impl Fn(&mut Slot, &str) -> Option<()>,
-) {
-    let Some(value) = value else { return };
-    let items = split_commas(value);
-    // An item past the last slot is still checked, so a bad one is not skipped.
-    let mut probe = Slot::new(None, BackgroundBox::default());
-    if items.iter().any(|item| set(&mut probe, item).is_none()) {
+fn apply_list<K: Kind>(slots: &mut [Slot], property: Property, value: Option<&str>) {
+    let Some(value) = value.filter(|value| is_valid_list::<K>(property, value)) else {
         return;
-    }
+    };
+    let items = split_commas(value);
     for (index, slot) in slots.iter_mut().enumerate() {
-        // Cannot fail: every item parsed above.
-        let _ = set(slot, items[index % items.len()]);
+        // Cannot fail: every item is valid.
+        let _ = property.set::<K>(slot, items[index % items.len()]);
     }
+}
+
+/// Whether the shorthand parses, colours included.
+pub(crate) fn is_valid_shorthand<K: Kind>(value: &str, colors: &ColorContext) -> bool {
+    parse_shorthand::<K>(value, colors).is_some()
+}
+
+/// Whether the `*-image` list parses.
+pub(crate) fn is_valid_image_list(value: &str, colors: &ColorContext) -> bool {
+    parse_images(value, colors).is_some()
 }
 
 /// `background-image`: `None` for an invalid list, else one entry per layer.
