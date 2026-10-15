@@ -746,8 +746,8 @@ export interface StyleDesc {
   // Pseudo-selector styles — applied by GPUI natively (no JS round-trip).
   // Nesting is one level deep: a state style cannot contain another.
   hover?: StateStyleDesc
-  /** Makes this element a group for `groupHover` and `groupActive` on its
-   *  descendants, like a Tailwind `group`. `true` is the default group; a string
+  /** Makes this element a group for `groupHover`, `groupActive` and
+   *  `groupFocusWithin` on its descendants, like a Tailwind `group`. `true` is the default group; a string
    *  names it, so groups can nest. */
   group?: string | true
   /** Applied while the nearest ancestor `group` is hovered (the pointer is over
@@ -757,6 +757,11 @@ export interface StyleDesc {
   /** Applied while the mouse is down inside the nearest ancestor `group`. Same
    *  `group` field as `groupHover`. */
   groupActive?: GroupStateStyleDesc
+  /** Applied while the nearest ancestor `group` or anything inside it has focus
+   *  (`:focus-within` of the group). Same `group` field as `groupHover`. Beats
+   *  the element's own `hover` and `active` and loses to its `focusWithin`
+   *  and `focusVisible`. */
+  groupFocusWithin?: GroupStateStyleDesc
   active?: StateStyleDesc
   /** While the element matches `:focus-visible`: focused by the keyboard (Tab),
    *  or a text control, or focus moved there by script from an element that
@@ -781,11 +786,12 @@ export type StateStyleDesc = Omit<
   | "group"
   | "groupHover"
   | "groupActive"
+  | "groupFocusWithin"
   | "fontVariantNumeric"
   | "fontFeatureSettings"
 >
 
-/** A `groupHover`/`groupActive` style. Its `group` picks which ancestor group to
+/** A `groupHover`/`groupActive`/`groupFocusWithin` style. Its `group` picks which ancestor group to
  *  follow (default group when omitted). */
 export type GroupStateStyleDesc = StateStyleDesc & { group?: string | true }
 

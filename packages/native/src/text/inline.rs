@@ -109,6 +109,7 @@ fn has_state_styles(style: &StyleDesc) -> bool {
         || style.focus_visible.is_some()
         || style.group_hover.is_some()
         || style.group_active.is_some()
+        || style.group_focus_within.is_some()
         || style.declared_group().is_some()
 }
 
@@ -918,7 +919,7 @@ mod tests {
         assert_eq!(plain.len(), 1, "style alone keeps it inline");
         assert_eq!(paragraphs(&plain)[0].text, "one two three");
 
-        let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 8] = [
+        let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 9] = [
             ("listener", Box::new(|f| f.tree.set_event_listener(3, "click".into(), true))),
             ("tabIndex", Box::new(|f| f.tree.set_custom_prop(3, "tabIndex".into(), serde_json::json!(0)))),
             ("hover", Box::new(|f| { f.styled(3, serde_json::json!({"hover": {"color": "red"}})); })),
@@ -926,6 +927,7 @@ mod tests {
             ("focusVisible", Box::new(|f| { f.styled(3, serde_json::json!({"focusVisible": {"color": "red"}})); })),
             ("groupHover", Box::new(|f| { f.styled(3, serde_json::json!({"groupHover": {"color": "red"}})); })),
             ("groupActive", Box::new(|f| { f.styled(3, serde_json::json!({"groupActive": {"color": "red"}})); })),
+            ("groupFocusWithin", Box::new(|f| { f.styled(3, serde_json::json!({"groupFocusWithin": {"color": "red"}})); })),
             ("group", Box::new(|f| { f.styled(3, serde_json::json!({"group": true})); })),
         ];
         for (name, configure) in behaviours {

@@ -85,7 +85,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 
 Adapters: `packages/react/src` (`reconciler/`, `components/`, `hooks/`) and `packages/solid/src` (`host.ts`, `primitives.ts`, `components/`). The rest of the repo: `cli/` (`gpuix new`), `examples/`, `example-app/`, `disktree/`, `docs/`.
 
-**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` fold from `PointerState`, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations, then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
+**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` / `groupFocusWithin` fold from `PointerState` and the focus state, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations, then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
 
 ## Shared JavaScript runtime
 
@@ -415,7 +415,7 @@ A custom element builds its root through `custom_surface` in
 `position` to static, records bounds, and wires the accessibility node. Give the
 root its `host_element_id` first.
 
-`hover`, `active`, `groupHover` and `groupActive` are folded into the style in
+`hover`, `active`, `groupHover`, `groupActive` and `groupFocusWithin` are folded into the style in
 `build_element` before any builder runs, so a builder only applies the style it
 is given (`apply_interactive_styles`). `focusVisible` and `focusWithin` need the
 focus state, so `focus::apply_focus_styles` and `apply_focus_within` apply them

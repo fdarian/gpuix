@@ -1265,7 +1265,7 @@ mod tests {
             .unwrap_err();
         assert!(error.starts_with("hover.transitionDelay"), "{error}");
         assert!(validate_transitions(&style(r#"{ "transition": "width bogus" }"#)).is_err());
-        for name in ["groupHover", "groupActive"] {
+        for name in ["groupHover", "groupActive", "groupFocusWithin"] {
             let error = validate_transitions(&style(&format!(r#"{{ "{name}": {{ "transitionDelay": "soon" }} }}"#)))
                 .unwrap_err();
             assert!(error.starts_with(&format!("{name}.transitionDelay")), "{error}");
@@ -1834,6 +1834,7 @@ mod tests {
         assert!(clock.wants(1, Some(&style(r#"{ "focusVisible": { "transition": "all 1s" } }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "groupHover": { "transition": "all 1s" } }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "groupActive": { "transitionDuration": "1s" } }"#))));
+        assert!(clock.wants(1, Some(&style(r#"{ "groupFocusWithin": { "transition": "all 1s" } }"#))));
     }
 
     #[test]
@@ -1856,6 +1857,28 @@ mod tests {
         assert_ne!(halfway, "#ffffff");
         assert_ne!(halfway, "#000000");
         assert_eq!(clock.frame(1000, &hovered).background_color.as_deref(), Some("#ffffff"));
+    }
+
+    #[test]
+    fn a_transition_declared_only_in_group_focus_within_runs() {
+        use crate::events::state_styles::{resolve_pointer_states, PointerStates};
+        let base = style(
+            r##"{
+                "backgroundColor": "#000000",
+                "groupFocusWithin": { "backgroundColor": "#ffffff", "transition": "background-color 1s linear" }
+            }"##,
+        );
+        let mut transitions = CssTransitions::default();
+        assert!(transitions.wants(1, Some(&base)));
+        let mut clock = Clock::new();
+        let rest = resolve_pointer_states(&base, PointerStates::default());
+        let focused = resolve_pointer_states(&base, PointerStates { group_focused_within: true, ..Default::default() });
+        clock.frame(0, &rest);
+        clock.frame(0, &focused);
+        let halfway = clock.frame(500, &focused).background_color.unwrap();
+        assert_ne!(halfway, "#ffffff");
+        assert_ne!(halfway, "#000000");
+        assert_eq!(clock.frame(1000, &focused).background_color.as_deref(), Some("#ffffff"));
     }
 
     fn hidden_pair() -> RetainedTree {

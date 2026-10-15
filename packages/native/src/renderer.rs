@@ -5919,13 +5919,13 @@ impl BuildCtx<'_> {
                 .as_deref()
                 .map(|refinement| self.inherited.group_state(&refinement.followed_group()))
         };
-        let group_hover = followed(&style.group_hover);
-        let group_active = followed(&style.group_active);
         crate::events::state_styles::PointerStates {
             hovered: style.hover.is_some() && self.pointer.is_hovered(id),
             active: style.active.is_some() && self.pointer.is_active(id),
-            group_hovered: group_hover.is_some_and(|(hovered, _)| hovered),
-            group_active: group_active.is_some_and(|(_, active)| active),
+            group_hovered: followed(&style.group_hover).is_some_and(|group| group.hovered),
+            group_active: followed(&style.group_active).is_some_and(|group| group.active),
+            group_focused_within: followed(&style.group_focus_within)
+                .is_some_and(|group| group.focused_within),
         }
     }
 }
@@ -5965,30 +5965,37 @@ pub(crate) struct Inherited {
     /// The nearest ancestor's `interpolateSize`.
     pub interpolate_size: crate::motion::InterpolateSize,
     /// The `group` declarations above this element, nearest first, with the
-    /// pointer state their `groupHover` / `groupActive` followers read.
+    /// state their `groupHover` / `groupActive` / `groupFocusWithin` followers read.
     pub groups: Option<Arc<GroupScope>>,
 }
 
 /// One `group` declaration on the way down the tree.
 pub(crate) struct GroupScope {
     name: gpui::SharedString,
-    hovered: bool,
-    active: bool,
+    state: GroupState,
     parent: Option<Arc<GroupScope>>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct GroupState {
+    hovered: bool,
+    active: bool,
+    /// The group element or a descendant has focus, the source `focusWithin` reads.
+    focused_within: bool,
+}
+
 impl Inherited {
-    /// Whether the nearest ancestor `group` called `name` is hovered and
-    /// pressed. `(false, false)` when no ancestor declares it.
-    fn group_state(&self, name: &gpui::SharedString) -> (bool, bool) {
+    /// The state of the nearest ancestor `group` called `name`; all false when
+    /// no ancestor declares it.
+    fn group_state(&self, name: &gpui::SharedString) -> GroupState {
         let mut scope = self.groups.as_deref();
         while let Some(group) = scope {
             if group.name == *name {
-                return (group.hovered, group.active);
+                return group.state;
             }
             scope = group.parent.as_deref();
         }
-        (false, false)
+        GroupState::default()
     }
 
     fn root(theme: &Theme, appearance: gpui::WindowAppearance) -> Self {
@@ -6923,8 +6930,8 @@ pub(crate) fn build_element(
     ctx.css_transitions.show(id);
     ctx.css_animations.show(id);
 
-    // `hover`, `active`, `groupHover` and `groupActive` are folded into the base
-    // here, before motion, so the GPUI element never sees them: the dispatcher
+    // `hover`, `active`, `groupHover`, `groupActive` and `groupFocusWithin` are
+    // folded into the base here, before motion, so the GPUI element never sees them: the dispatcher
     // decides who is hovered.
     let pointer_states = element
         .style
@@ -7045,8 +7052,11 @@ pub(crate) fn build_element(
     if let Some(name) = style.and_then(StyleDesc::declared_group) {
         ctx.inherited.groups = Some(Arc::new(GroupScope {
             name,
-            hovered: ctx.pointer.is_hovered(id),
-            active: ctx.pointer.is_active(id),
+            state: GroupState {
+                hovered: ctx.pointer.is_hovered(id),
+                active: ctx.pointer.is_active(id),
+                focused_within: ctx.focus_styles.within.contains(&id),
+            },
             parent: ctx.inherited.groups.take(),
         }));
     }
@@ -7740,9 +7750,10 @@ fn apply_text_decoration<E: gpui::Styled>(
 
 /// The base styles of a stateful GPUI root.
 ///
-/// `hover`, `active`, `groupHover` and `groupActive` are not applied here:
-/// `build_element` folds them into `style` before any builder runs, for the
-/// elements the pointer dispatcher says are hovered or pressed. `focusVisible` and `focusWithin` need the focus state, so
+/// `hover`, `active`, `groupHover`, `groupActive` and `groupFocusWithin` are not
+/// applied here: `build_element` folds them into `style` before any builder
+/// runs, for the elements the pointer dispatcher says are hovered or pressed and
+/// those in a focused group. `focusVisible` and `focusWithin` need the focus state, so
 /// `apply_focus_styles` applies it where the element calls `track_focus`.
 pub(crate) fn apply_interactive_styles<E>(
     el: E,

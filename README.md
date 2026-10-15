@@ -2597,7 +2597,7 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` that needs to react is a block too, because an inline box
   cannot take events yet: one with an event listener, a `tabIndex`, a `hover`,
-  `active`, `focusVisible`, `groupHover` or `groupActive` style, or a `group`.
+  `active`, `focusVisible`, `groupHover`, `groupActive` or `groupFocusWithin` style, or a `group`.
   It splits the paragraph around it. A `<span>` is always inline, so give it
   none of these; use a `<text>` when the run needs to be clickable.
 - In a `display: flex` or `grid` container each run of raw strings is one item
@@ -5223,18 +5223,21 @@ way, overflow included.
 
 **Focus:** `focusVisible`, `focusWithin`. See [Focus styles](#focus-styles)
 
-**Ancestor state:** `group`, `groupHover`, `groupActive`. See [Group state styles](#group-state-styles)
+**Ancestor state:** `group`, `groupHover`, `groupActive`, `groupFocusWithin`. See [Group state styles](#group-state-styles)
 
 ### Group state styles
 
 There is no stylesheet, so an element cannot react to a hovered ancestor with a
 selector. Mark the ancestor with `group` and style the descendants with
-`groupHover` and `groupActive`, like Tailwind's `group-hover:`:
+`groupHover`, `groupActive` and `groupFocusWithin`, like Tailwind's
+`group-hover:`, `group-active:` and `group-focus-within:`:
 
 ```tsx
 <div style={{ group: true, padding: 12, backgroundColor: '#fff' }}>
   <text style={{ color: '#666', groupHover: { color: '#000' } }}>Title</text>
   <div style={{ opacity: 0, groupHover: { opacity: 1 }, groupActive: { backgroundColor: '#eee' } }} />
+  <input style={{ borderColor: '#ccc' }} />
+  <text style={{ color: '#666', groupFocusWithin: { color: '#06f' } }}>Editing</text>
 </div>
 ```
 
@@ -5242,13 +5245,16 @@ selector. Mark the ancestor with `group` and style the descendants with
 group (`group: 'card'`) and point at it with `groupHover: { group: 'card',
 backgroundColor: '#eee' }` when groups nest: the style follows the nearest
 ancestor with that name. `groupHover` applies while the pointer is over the
-group or anything inside it, `groupActive` while the mouse is down inside it.
-Each element takes one `groupHover` and one `groupActive`. The group's state is
-the pointer dispatcher's, the same that drives `hover` and `active`, and a
-group applies to its descendants, not to its own element. They fold in with the
+group or anything inside it, `groupActive` while the mouse is down inside it,
+`groupFocusWithin` while the group or anything inside it has focus. Each element
+takes one of each. The pointer states are the pointer dispatcher's, the same that
+drives `hover` and `active`, and the focus state is the one behind `focusWithin`.
+A group applies to its descendants, not to its own element. They fold in with the
 element's own states, later winning: base, `groupHover`, `hover`, `groupActive`,
-`active`. So a `color` set by a group state reaches the descendants'
-`currentColor` like one set by `hover`. `groupFocusWithin` is not available.
+`active`, `groupFocusWithin`, then `focusWithin` and `focusVisible`, which the
+focus code applies after the fold. Focus states sit above the pointer ones. So a
+`color` set by a group state reaches the descendants' `currentColor` like one set
+by `hover`.
 
 ### Hover and active
 
@@ -5409,8 +5415,8 @@ render per frame.
   proportion, as CSS specifies. Changing `transition*` does not touch a running
   transition, but dropping its property from `transitionProperty` cancels it. A
   negative delay starts part-way through
-- **State styles.** `hover`, `active`, `focusVisible`, `groupHover` and
-  `groupActive` are folded into the style that is compared, so they animate in and
+- **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
+  `groupActive` and `groupFocusWithin` are folded into the style that is compared, so they animate in and
   out. A `transition` set inside `hover` is the one used while entering hover; the
   base one is used leaving it. An
   element that declares a transition has its state styles applied by gpuix instead
@@ -5484,8 +5490,8 @@ defineKeyframes('pulse', {
   counts, `reverse`, `alternate` and `alternate-reverse`, `backwards` / `forwards`
   / `both` fill, `paused` (freezes where it is and resumes from there), a negative
   delay that starts part-way through, and a restart when `animationName` changes
-- **State styles.** `hover`, `active`, `focusVisible`, `groupHover` and
-  `groupActive` may declare `animation`. It starts when the state applies and is
+- **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
+  `groupActive` and `groupFocusWithin` may declare `animation`. It starts when the state applies and is
   cancelled when it ends
 - **`display: none`.** Going `display: none` cancels the element's animations and
   those of its descendants, and they start over when it shows again

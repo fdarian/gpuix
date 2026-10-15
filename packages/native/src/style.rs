@@ -438,14 +438,17 @@ pub struct StyleDesc {
     pub focus_visible: Option<Box<StyleDesc>>,
     /// While this element or a descendant is focused, like CSS `:focus-within`.
     pub focus_within: Option<Box<StyleDesc>>,
-    /// Makes this element a group that `groupHover`/`groupActive` styles on its
-    /// descendants react to. `true` is the default group, a string names one.
-    /// Inside `groupHover`/`groupActive` it names the group to follow instead.
+    /// Makes this element a group that `groupHover`/`groupActive`/`groupFocusWithin`
+    /// styles on its descendants react to. `true` is the default group, a string
+    /// names one. Inside those styles it names the group to follow instead.
     pub group: Option<GroupName>,
     /// Applied while the nearest ancestor `group` of that name is hovered.
     pub group_hover: Option<Box<StyleDesc>>,
     /// Applied while the mouse is down inside the nearest ancestor `group` of that name.
     pub group_active: Option<Box<StyleDesc>>,
+    /// Applied while the nearest ancestor `group` of that name, or anything inside
+    /// it, has focus.
+    pub group_focus_within: Option<Box<StyleDesc>>,
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,
@@ -474,7 +477,7 @@ impl StyleDesc {
         }
     }
 
-    /// The group a `groupHover`/`groupActive` style follows: its own `group`
+    /// The group a `groupHover`/`groupActive`/`groupFocusWithin` style follows: its own `group`
     /// field, or the default group.
     pub(crate) fn followed_group(&self) -> gpui::SharedString {
         self.declared_group().unwrap_or_else(|| DEFAULT_GROUP.into())
@@ -491,6 +494,7 @@ impl StyleDesc {
             active: None,
             group_hover: None,
             group_active: None,
+            group_focus_within: None,
             cursor: None,
             ..self.clone()
         }
@@ -788,13 +792,14 @@ mod tests {
     #[test]
     fn group_names_and_the_default_group() {
         let style: StyleDesc = serde_json::from_str(
-            r##"{"group":true,"groupHover":{"backgroundColor":"red"},"groupActive":{"group":"card","color":"blue"}}"##,
+            r##"{"group":true,"groupHover":{"backgroundColor":"red"},"groupActive":{"group":"card","color":"blue"},"groupFocusWithin":{"color":"green"}}"##,
         )
         .unwrap();
         let default = style.declared_group().unwrap();
         // An unnamed groupHover follows the default group, which `true` declares.
         assert_eq!(style.group_hover.as_ref().unwrap().followed_group(), default);
         assert_eq!(style.group_active.as_ref().unwrap().followed_group().as_ref(), "card");
+        assert_eq!(style.group_focus_within.as_ref().unwrap().followed_group(), default);
 
         let named: StyleDesc = serde_json::from_str(r##"{"group":"card"}"##).unwrap();
         assert_eq!(named.declared_group().unwrap().as_ref(), "card");

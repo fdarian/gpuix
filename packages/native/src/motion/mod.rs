@@ -661,13 +661,14 @@ pub(super) fn subtree_ids(tree: &crate::retained_tree::RetainedTree, id: u64) ->
 /// The state styles `fold_state_styles` can lay over `style`, by the name a
 /// validation error gives them. A transition or animation declared in any of
 /// them has to take part, or it never runs.
-pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 5] {
+pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 6] {
     [
         ("hover", style.hover.as_deref()),
         ("active", style.active.as_deref()),
         ("focusVisible", style.focus_visible.as_deref()),
         ("groupHover", style.group_hover.as_deref()),
         ("groupActive", style.group_active.as_deref()),
+        ("groupFocusWithin", style.group_focus_within.as_deref()),
     ]
 }
 
@@ -726,6 +727,7 @@ fn fold_state_styles(
             folded.active = style.active.clone();
             folded.group_hover = style.group_hover.clone();
             folded.group_active = style.group_active.clone();
+            folded.group_focus_within = style.group_focus_within.clone();
             std::borrow::Cow::Owned(folded)
         }
         // Borrowed: `resolve_pointer_states` copies the style itself, so cloning
@@ -2224,7 +2226,10 @@ mod tests {
 
         for folded in [rest, focused, both] {
             assert_eq!((folded.hover, folded.active, folded.focus_visible), (None, None, None));
-            assert_eq!((folded.group_hover, folded.group_active), (None, None));
+            assert_eq!(
+                (folded.group_hover, folded.group_active, folded.group_focus_within),
+                (None, None, None)
+            );
         }
     }
 

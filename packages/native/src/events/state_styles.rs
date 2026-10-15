@@ -18,23 +18,30 @@ macro_rules! overlay_fields {
             active: None,
             group_hover: None,
             group_active: None,
+            group_focus_within: None,
         }
     };
 }
 
-/// Which pointer states apply to an element: its own, and those of the nearest
-/// ancestor `group` that its `groupHover` / `groupActive` follow.
+/// Which states apply to an element: its own pointer states, and those of the
+/// nearest ancestor `group` that its `groupHover` / `groupActive` /
+/// `groupFocusWithin` follow.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PointerStates {
     pub hovered: bool,
     pub active: bool,
     pub group_hovered: bool,
     pub group_active: bool,
+    pub group_focused_within: bool,
 }
 
 impl PointerStates {
     pub fn any(self) -> bool {
-        self.hovered || self.active || self.group_hovered || self.group_active
+        self.hovered
+            || self.active
+            || self.group_hovered
+            || self.group_active
+            || self.group_focused_within
     }
 }
 
@@ -56,9 +63,14 @@ pub fn resolve_state_styles(style: &StyleDesc, hovered: bool, active: bool) -> S
 }
 
 /// `style` with the refinements of `states` folded in and every state style
-/// cleared. Later wins: `groupHover`, `hover`, `groupActive`, `active`. A
-/// group refinement is one more variant of the element, so the element's own
-/// `hover` beats a `groupHover` that sets the same field (as in Tailwind).
+/// cleared. Later wins: `groupHover`, `hover`, `groupActive`, `active`,
+/// `groupFocusWithin`. A group refinement is one more variant of the element, so
+/// the element's own `hover` beats a `groupHover` that sets the same field (as in
+/// Tailwind).
+///
+/// `groupFocusWithin` comes last because focus styles sit above the pointer ones:
+/// `focusWithin` and `focusVisible` are applied to the element after this fold,
+/// so they beat every layer here, `groupFocusWithin` included.
 pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> StyleDesc {
     let mut resolved = overlay(style, &StyleDesc::default());
     let layers = [
@@ -66,6 +78,11 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
         (states.hovered, style.hover.as_deref(), false),
         (states.group_active, style.group_active.as_deref(), true),
         (states.active, style.active.as_deref(), false),
+        (
+            states.group_focused_within,
+            style.group_focus_within.as_deref(),
+            true,
+        ),
     ];
     for (applies, refinement, names_group) in layers {
         let Some(refinement) = refinement.filter(|_| applies) else {
@@ -784,6 +801,7 @@ mod tests {
             active,
             group_hovered,
             group_active,
+            group_focused_within: false,
         };
         let fold = |states| resolve_pointer_states(&base, states);
 
@@ -812,6 +830,43 @@ mod tests {
                 (None, None, None, None)
             );
         }
+    }
+
+    #[test]
+    fn group_focus_within_folds_after_the_pointer_layers() {
+        let base = style(
+            r##"{
+                "color": "#000000", "opacity": 0.1, "width": 1, "group": "own",
+                "groupHover": { "opacity": 0.2, "width": 2 },
+                "active": { "opacity": 0.3 },
+                "groupFocusWithin": { "group": "card", "width": 9, "color": "#999999" }
+            }"##,
+        );
+        let focused = resolve_pointer_states(
+            &base,
+            PointerStates {
+                group_focused_within: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(focused.color.as_deref(), Some("#999999"));
+        assert_eq!(focused.group.as_ref(), base.group.as_ref(), "the followed name is dropped");
+        assert_eq!(focused.group_focus_within, None);
+
+        let all = resolve_pointer_states(
+            &base,
+            PointerStates {
+                hovered: true,
+                active: true,
+                group_hovered: true,
+                group_active: true,
+                group_focused_within: true,
+            },
+        );
+        assert_eq!(all.width, style(r##"{"width":9}"##).width, "beats groupHover");
+        assert_eq!(all.opacity, Some(0.3), "leaves what it does not set");
+        let rest = resolve_pointer_states(&base, PointerStates::default());
+        assert_eq!(rest.width, base.width);
     }
 
     #[test]

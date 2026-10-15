@@ -287,3 +287,145 @@ describeNative("groupActive", () => {
     })
   })
 })
+
+describeNative("groupFocusWithin", () => {
+  const widthOf = (testRoot: TestRoot, testId: string): number => {
+    testRoot.renderer.dispatchNativeEvents()
+    return testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId(testId).id).width
+  }
+  const focus = (testRoot: TestRoot, testId: string) =>
+    testRoot.renderer.focusElement(testRoot.renderer.findByTestId(testId).id)
+  const blur = (testRoot: TestRoot, testId: string) =>
+    testRoot.renderer.blurElement(testRoot.renderer.findByTestId(testId).id)
+
+  it("applies to descendants while an input inside the group is focused, and clears on blur", () => {
+    const tree = (
+      <div style={{ group: true, width: 200, height: 100 }}>
+        <input testId="field" style={{ width: 100, height: 20 }} />
+        <div testId="follower" style={{ width: 40, height: 20, groupFocusWithin: { width: 80 } }} />
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      expect(widthOf(testRoot, "follower")).toBe(40)
+      focus(testRoot, "field")
+      expect(widthOf(testRoot, "follower")).toBe(80)
+      blur(testRoot, "field")
+      expect(widthOf(testRoot, "follower")).toBe(40)
+      // A click moves focus the same way a script does.
+      testRoot.renderer.nativeSimulateMouseDown(10, 10)
+      testRoot.renderer.nativeSimulateMouseUp(10, 10)
+      expect(widthOf(testRoot, "follower")).toBe(80)
+      testRoot.renderer.nativeSimulateMouseDown(150, 80)
+      testRoot.renderer.nativeSimulateMouseUp(150, 80)
+      expect(widthOf(testRoot, "follower")).toBe(40)
+    })
+  })
+
+  it("does not apply while focus is outside the group", () => {
+    const tree = (
+      <div>
+        <div style={{ group: true, width: 200, height: 50 }}>
+          <div testId="follower" style={{ width: 40, height: 20, groupFocusWithin: { width: 80 } }} />
+        </div>
+        <input testId="outside" style={{ width: 100, height: 20 }} />
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      focus(testRoot, "outside")
+      expect(widthOf(testRoot, "follower")).toBe(40)
+    })
+  })
+
+  it("follows the nearest group by name", () => {
+    const tree = (
+      <div style={{ group: "outer", width: 300, height: 200 }}>
+        <input testId="outer-field" style={{ width: 100, height: 20 }} />
+        <div style={{ group: "inner", width: 200, height: 100 }}>
+          <input testId="inner-field" style={{ width: 100, height: 20 }} />
+          <div testId="inner-follower" style={{ width: 10, height: 20, groupFocusWithin: { group: "inner", width: 20 } }} />
+          <div testId="outer-follower" style={{ width: 10, height: 20, groupFocusWithin: { group: "outer", width: 30 } }} />
+        </div>
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      focus(testRoot, "outer-field")
+      // The outer input is outside "inner", but inside "outer".
+      expect([widthOf(testRoot, "inner-follower"), widthOf(testRoot, "outer-follower")]).toEqual([10, 30])
+      focus(testRoot, "inner-field")
+      expect([widthOf(testRoot, "inner-follower"), widthOf(testRoot, "outer-follower")]).toEqual([20, 30])
+    })
+  })
+
+  it("applies after the element's own hover and before its focusWithin", () => {
+    const tree = (
+      <div style={{ group: true, width: 200, height: 100 }}>
+        <input testId="field" style={{ width: 100, height: 20 }} />
+        <div
+          testId="follower"
+          style={{
+            width: 10,
+            height: 20,
+            hover: { width: 20, height: 40 },
+            groupFocusWithin: { width: 30, height: 50, opacity: 0.5 },
+            focusWithin: { height: 60 },
+          }}
+        />
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      const size = () => {
+        testRoot.renderer.dispatchNativeEvents()
+        const bounds = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("follower").id)
+        return [bounds.width, bounds.height]
+      }
+      expect(size()).toEqual([10, 20])
+      focus(testRoot, "field")
+      // The follower is not focused itself, so its own `focusWithin` does not apply.
+      expect(size()).toEqual([30, 50])
+    })
+  })
+
+  it("restyles a descendant's color through currentColor", () => {
+    const tree = (
+      <div style={{ group: true, width: 100, height: 100, backgroundColor: "#ffffff" }}>
+        <input testId="field" style={{ width: 100, height: 20, opacity: 0 }} />
+        <div style={{ color: "#00ff00", groupFocusWithin: { color: "#0000ff" } }}>
+          <div style={{ width: 40, height: 40, backgroundColor: "currentColor" }} />
+        </div>
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      expect(sample(testRoot, "focus-color-off", 20, 40)).toEqual(GREEN)
+      focus(testRoot, "field")
+      expect(sample(testRoot, "focus-color-on", 20, 40)).toEqual(BLUE)
+    })
+  })
+
+  it("runs a transition declared in it", () => {
+    const tree = (
+      <div style={{ group: true, width: 200, height: 100 }}>
+        <input testId="field" style={{ width: 100, height: 20 }} />
+        <div
+          testId="follower"
+          style={{
+            width: 40,
+            height: 20,
+            groupFocusWithin: { width: 80, transition: "width 1s linear" },
+          }}
+        />
+      </div>
+    )
+    const testRoot = createTestRoot()
+    try {
+      testRoot.renderer.clockPause()
+      testRoot.render(tree)
+      focus(testRoot, "field")
+      testRoot.renderer.clockFastForward(500)
+      expect(widthOf(testRoot, "follower")).toBeCloseTo(60, 0)
+      testRoot.renderer.clockFastForward(1000)
+      expect(widthOf(testRoot, "follower")).toBe(80)
+    } finally {
+      testRoot.unmount()
+    }
+  })
+})
