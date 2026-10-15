@@ -61,7 +61,7 @@ describeNative("form", () => {
         <div>
           <textarea testId="b" name="notes" value="hi" onChange={() => {}} style={field} />
         </div>
-        <input testId="c" name="third" value="x" onChange={() => {}} style={field} />
+        <textarea testId="c" name="third" value="x" onChange={() => {}} style={field} />
       </>,
     )
     type("a", "j o")
@@ -90,7 +90,7 @@ describeNative("form", () => {
         <input testId="e" name="ro" readOnly value="5" onChange={() => {}} style={field} />
       </>,
     )
-    type("a", "enter")
+    formRef.current.requestSubmit()
     expect(submits[0].entries).toEqual([
       ["kept", "1"],
       ["ro", "5"],
@@ -147,6 +147,63 @@ describeNative("form", () => {
     expect(testRoot.renderer.getAllText()).toContain(JSON.stringify("ab\n"))
   })
 
+  describe("implicit submission without a submit button", () => {
+    // gpuix has no submit button, so a form has no default button: HTML submits
+    // on Enter only when at most one field blocks implicit submission.
+    it("does not submit on Enter when the form has two inputs", () => {
+      mountForm(
+        <>
+          <input testId="a" name="a" style={field} />
+          <input testId="b" name="b" style={field} />
+        </>,
+      )
+      type("a", "enter")
+      type("b", "enter")
+      expect(submits).toEqual([])
+    })
+
+    it("counts a disabled input, as HTML does", () => {
+      mountForm(
+        <>
+          <input testId="a" name="a" style={field} />
+          <input testId="b" name="b" disabled style={field} />
+        </>,
+      )
+      type("a", "enter")
+      expect(submits).toEqual([])
+    })
+
+    it("still submits through requestSubmit()", () => {
+      mountForm(
+        <>
+          <input testId="a" name="a" value="1" onChange={() => {}} style={field} />
+          <input testId="b" name="b" value="2" onChange={() => {}} style={field} />
+        </>,
+      )
+      formRef.current.requestSubmit()
+      expect(submits.map((submit) => submit.entries)).toEqual([
+        [
+          ["a", "1"],
+          ["b", "2"],
+        ],
+      ])
+    })
+
+    it("does not count textareas, or the inputs of a nested form", () => {
+      mountForm(
+        <>
+          <input testId="a" name="a" style={field} />
+          <textarea testId="area" name="notes" style={field} />
+          <form testId="inner">
+            <input testId="nested" name="nested" style={field} />
+          </form>
+        </>,
+      )
+      type("a", "enter")
+      expect(submits.map((submit) => submit.target)).toEqual([idOf("form")])
+    })
+  })
+
   it("does nothing for an input outside a form", () => {
     testRoot.render(
       <div style={{ width: 400, height: 200 }} onSubmit={() => submits.push({})}>
@@ -196,7 +253,7 @@ describeNative("form", () => {
           />
         </>,
       )
-      type("a", "enter")
+      formRef.current.requestSubmit()
       expect(submits).toEqual([])
       // invalid does not bubble, so the form never hears it.
       expect(invalids).toEqual([`b:${idOf("b")}`, `c:${idOf("c")}`])
@@ -225,7 +282,7 @@ describeNative("form", () => {
         </>,
       )
       testRoot.renderer.focusElement(idOf("a"))
-      testRoot.renderer.simulateKeystrokes("enter")
+      formRef.current.requestSubmit()
       expect(submits).toEqual([])
       expect(focusedTestId()).toBe("b")
     })
@@ -238,7 +295,7 @@ describeNative("form", () => {
           <input testId="c" name="c" style={field} />
         </>,
       )
-      type("c", "enter")
+      formRef.current.requestSubmit()
       expect(submits).toHaveLength(1)
     })
   })

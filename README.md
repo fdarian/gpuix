@@ -2630,7 +2630,7 @@ grapheme-safe deletion and mouse positioning.
 
 `Enter` inserts a newline in a `<textarea>`; to send on Enter instead, handle it
 in `onKeyDown` and call `preventDefault()`, as above. Enter in an `<input>`
-submits its [form](#forms), if it has one. There is no `onSubmit` on `<input>`
+submits its [form](#forms), if it has one and no other `<input>` shares it. There is no `onSubmit` on `<input>`
 or `<textarea>`. The editor updates natively first, then
 reports the complete value to React.
 `value` changes can replace the native content, but keeping the same prop value
@@ -2920,9 +2920,14 @@ submission while the control is empty.
 </form>
 ```
 
-- **Implicit submission.** Enter in an `<input>` submits its form. A `keydown`
-  handler that calls `preventDefault()` stops it. Enter in a `<textarea>` always
-  inserts a newline.
+- **Implicit submission.** Enter in an `<input>` submits its form when the form
+  has at most one `<input>`. GPUIX has no submit button (a `div` with
+  `role="button"` is not one), so no form has a default button, and HTML's
+  fallback applies: a form with two or more `<input>`s does not submit on Enter,
+  whether they are disabled, read-only or of any `type`, and a nested form's
+  inputs do not count. Call `requestSubmit()` from a button's `onClick` for
+  those. A `keydown` handler that calls `preventDefault()` stops it. A
+  `<textarea>` does not count, and Enter in it always inserts a newline.
 - **Validation.** Each `required` control with an empty value gets a
   non-bubbling, cancelable `invalid` event (`onInvalid`). The first one whose
   handlers did not call `preventDefault()` takes focus, and the form is not

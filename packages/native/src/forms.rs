@@ -7,6 +7,9 @@
 //! invalid the form gets a cancelable, bubbling `submit` event carrying the
 //! `[name, value]` entries of its named, enabled controls in document order.
 //!
+//! Enter in an `<input>` submits its form by HTML's implicit submission rule:
+//! with no submit button in gpuix, only when the form has at most one `<input>`.
+//!
 //! Both events are sent with `sync_dispatch::emit`, with the root view released:
 //! a handler is free to call back into the renderer.
 
@@ -183,8 +186,26 @@ pub(crate) fn request_submit(window: &mut Window, cx: &mut App, form: u64) -> Re
     Ok(())
 }
 
-/// Enter in an `<input>`: submit its form, if it has one. Runs once the key
-/// dispatch is over, because the root view is leased while a key is dispatched.
+/// Whether Enter in a text field submits `form`, by HTML's implicit submission
+/// rule. gpuix has no submit button (a `div` with `role="button"` is not one),
+/// so no form has a default button and the rule is the fallback: submit only
+/// when at most one field blocks implicit submission. Every `<input>` blocks it,
+/// whatever its `type`, `disabled` or `readOnly`; a `<textarea>` does not.
+fn implicit_submission_allowed(tree: &RetainedTree, form: u64) -> bool {
+    controls_of(tree, form)
+        .into_iter()
+        .filter(|id| {
+            tree.elements
+                .get(id)
+                .is_some_and(|element| element.element_type == "input")
+        })
+        .count()
+        <= 1
+}
+
+/// Enter in an `<input>`: submit its form, if it has one and the form's fields
+/// allow it. Runs once the key dispatch is over, because the root view is
+/// leased while a key is dispatched.
 pub(crate) fn implicit_submission(
     view: gpui::WeakEntity<GpuixView>,
     control: u64,
@@ -195,7 +216,10 @@ pub(crate) fn implicit_submission(
         let Some(view) = view.upgrade() else {
             return;
         };
-        let form = enclosing_form(&view.read(cx).tree.lock().unwrap(), control);
+        let form = {
+            let tree = view.read(cx).tree.lock().unwrap();
+            enclosing_form(&tree, control).filter(|form| implicit_submission_allowed(&tree, *form))
+        };
         let Some(form) = form else {
             return;
         };
@@ -247,6 +271,22 @@ mod tests {
         );
         assert_eq!(controls_of(&tree, 1), vec![2, 4, 7]);
         assert_eq!(controls_of(&tree, 5), vec![6]);
+    }
+
+    #[test]
+    fn enter_submits_only_a_form_with_at_most_one_input() {
+        let one = tree_of(
+            &[(1, "form"), (2, "input"), (3, "textarea"), (4, "form"), (5, "input")],
+            &[(1, 2), (1, 3), (1, 4), (4, 5)],
+        );
+        assert!(implicit_submission_allowed(&one, 1));
+        let two = tree_of(
+            &[(1, "form"), (2, "input"), (3, "div"), (4, "input")],
+            &[(1, 2), (1, 3), (3, 4)],
+        );
+        assert!(!implicit_submission_allowed(&two, 1));
+        let none = tree_of(&[(1, "form"), (2, "textarea")], &[(1, 2)]);
+        assert!(implicit_submission_allowed(&none, 1));
     }
 
     fn control(name: Option<&str>, value: &str) -> Control {

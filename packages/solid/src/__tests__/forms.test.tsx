@@ -34,7 +34,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         <div>
           <textarea testId="b" name="notes" value="hi" style={field} />
         </div>
-        <input testId="c" value="unnamed" style={field} />
+        <textarea testId="c" value="unnamed" style={field} />
       </form>
     ))
     type("a", "j o")
@@ -55,8 +55,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
   it("blocks on a required empty control, fires invalid and focuses it", () => {
     const submits: number[] = []
     const invalids: string[] = []
+    let form!: HostElement
     const { type, focused, idOf } = setup(() => (
-      <form onSubmit={() => submits.push(1)} onInvalid={() => invalids.push("form")}>
+      <form ref={form} onSubmit={() => submits.push(1)} onInvalid={() => invalids.push("form")}>
         <input testId="a" name="a" style={field} />
         <input
           testId="b"
@@ -67,11 +68,12 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         />
       </form>
     ))
-    type("a", "enter")
+    form.requestSubmit()
     expect(submits).toEqual([])
     expect(invalids).toEqual(["b:true"])
     expect(focused()).toBe("b")
-    type("b", "x enter")
+    type("b", "x")
+    form.requestSubmit()
     expect(submits).toEqual([1])
   })
 
@@ -120,6 +122,19 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
     type("area", "end enter")
     expect(submits).toEqual([])
     expect(text()).toBe("ab\n")
+  })
+
+  it("does not submit on Enter when the form has two inputs and no submit button", () => {
+    const submits: number[] = []
+    const { type } = setup(() => (
+      <form onSubmit={() => submits.push(1)}>
+        <input testId="a" name="a" style={field} />
+        <input testId="b" name="b" style={field} />
+      </form>
+    ))
+    type("a", "enter")
+    type("b", "enter")
+    expect(submits).toEqual([])
   })
 
   it("does not submit when keydown is prevented", () => {
