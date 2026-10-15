@@ -1,5 +1,6 @@
-import { createRenderEffect, mergeProps, splitProps, type JSX } from "solid-js"
+import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
+import { reduceMotionValues } from "@gpuix/native/host"
 import type {
   MotionProps,
   SvgCircleProps,
@@ -15,6 +16,7 @@ import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
 import { useContext } from "solid-js"
 import { PresenceContext } from "./animate-presence.js"
+import { MotionConfigContext } from "./motion-config.js"
 
 export interface MotionDivProps extends SolidHostProps, MotionProps {}
 
@@ -37,6 +39,13 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
       "transition",
     ])
     const presence = useContext(PresenceContext)
+    const config = useContext(MotionConfigContext)
+    const reduced = () => config !== undefined && config.reduced()
+    createRenderEffect(() => {
+      if (!reduced()) return
+      const release = reduceMotionValues((hostProps as { style?: unknown }).style)
+      onCleanup(release)
+    })
     createRenderEffect(() => {
       if (presence && !presence.isPresent() && !motionProps.exit) {
         presence.safeToRemove()
@@ -50,7 +59,8 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
         const isExit = Boolean(presence && !presence.isPresent() && motionProps.exit)
         const initial = presence?.initial === false ? false : motionProps.initial
         const animate = isExit ? motionProps.exit! : motionProps.animate
-        const nextKey = JSON.stringify([isExit, initial, animate, motionProps.transition])
+        const transition = motionProps.transition !== undefined ? motionProps.transition : config?.transition()
+        const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
         if (nextKey !== targetKey) {
           targetKey = nextKey
           generation += 1
@@ -61,7 +71,8 @@ function createMotionComponent<Props extends MotionSource & SolidHostProps<objec
           initial,
           animate,
           exit: motionProps.exit,
-          transition: motionProps.transition,
+          transition,
+          ...(reduced() ? { reducedMotion: true } : {}),
         }
       },
       onMotionComplete(event: EventPayload) {
