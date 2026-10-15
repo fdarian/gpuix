@@ -4,15 +4,30 @@
 //! A bad value is rejected when the style is set ([`validate_animations`]), so
 //! it fails where it is written instead of silently never running. A name with
 //! no keyframes defined is not an error, as in CSS: it just animates nothing.
+//!
+//! The runtime ([`CssAnimations`]) follows CSS Animations Level 1 and the Web
+//! Animations timing model under it: each frame the renderer hands an element's
+//! declared style and the style beneath the animations to
+//! [`CssAnimations::update`], which returns the values to lay over it. Those
+//! win over everything else the element declares, as animations do in CSS.
 
-// Nothing reads the resolved lists until the runtime lands; the tests do.
-#![cfg_attr(not(test), allow(dead_code))]
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
+use std::time::Duration;
+
+use web_time::Instant;
 
 use super::css_transition::{
     check_seconds, is_timing_function, parse_delay, parse_duration, parse_list, parse_time,
     split_outside_parens, split_whitespace_outside_parens,
 };
-use super::curve::{parse_timing_function, Ease};
+use super::curve::{ease, parse_timing_function, Curve, Ease, Repeat, Transition};
+use super::keyframes::{Keyframes, KeyframesRegistry};
+use super::measure::Measurement;
+use super::property::AnimProp;
+use super::track::{Goal, Track};
+use super::value::AnimValue;
+use super::{needs_layout, resolve_keyframes, InterpolateSize};
 use crate::style::StyleDesc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -389,6 +404,733 @@ pub(crate) fn validate_animations(style: &StyleDesc) -> Result<(), String> {
     Ok(())
 }
 
+// ── Runtime ──────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AnimationEventKind {
+    Start,
+    Iteration,
+    End,
+    Cancel,
+}
+
+impl AnimationEventKind {
+    /// The event type the host maps to `onAnimation*`.
+    pub(crate) fn event_type(self) -> &'static str {
+        match self {
+            Self::Start => "animationStart",
+            Self::Iteration => "animationIteration",
+            Self::End => "animationEnd",
+            Self::Cancel => "animationCancel",
+        }
+    }
+}
+
+/// A DOM `AnimationEvent`, minus `pseudoElement`, which is always `""`.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AnimationEvent {
+    pub(crate) id: u64,
+    pub(crate) kind: AnimationEventKind,
+    pub(crate) name: String,
+    /// Seconds.
+    pub(crate) elapsed: f64,
+}
+
+/// An event with the instant it happened at, which can be before the frame
+/// that noticed it.
+struct Scheduled {
+    event: AnimationEvent,
+    at: Instant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    Before,
+    Active,
+    After,
+}
+
+/// Where an animation is at one local time (Web Animations, "calculating the
+/// directed progress").
+struct Evaluation {
+    phase: Phase,
+    /// Zero-based, meaningful in the active phase.
+    iteration: u64,
+    /// How far through the keyframes, 0 to 1, after the direction. `None` when
+    /// the animation has no effect at this time: before the delay without
+    /// `backwards`, or after the end without `forwards`.
+    progress: Option<f64>,
+}
+
+fn active_duration(animation: &Animation) -> f64 {
+    match animation.iteration_count {
+        _ if animation.duration == 0.0 => 0.0,
+        IterationCount::Infinite => f64::INFINITY,
+        IterationCount::Finite(count) => animation.duration * count,
+    }
+}
+
+/// `elapsedTime` of an `animationstart`: the part of the active interval a
+/// negative delay already skipped.
+fn initial_elapsed(animation: &Animation) -> f64 {
+    (-animation.delay).min(active_duration(animation)).max(0.0)
+}
+
+fn evaluate(animation: &Animation, local: f64) -> Evaluation {
+    let duration = animation.duration;
+    let active_duration = active_duration(animation);
+    let end_time = (animation.delay + active_duration).max(0.0);
+    let before_boundary = animation.delay.min(end_time).max(0.0);
+    let phase = if local < before_boundary {
+        Phase::Before
+    } else if local >= end_time {
+        Phase::After
+    } else {
+        Phase::Active
+    };
+
+    let backwards_fill = matches!(animation.fill_mode, FillMode::Backwards | FillMode::Both);
+    let forwards_fill = matches!(animation.fill_mode, FillMode::Forwards | FillMode::Both);
+    let active_time = match phase {
+        Phase::Before => backwards_fill.then_some(0.0),
+        Phase::Active => Some(local - animation.delay),
+        Phase::After => forwards_fill.then(|| (local - animation.delay).clamp(0.0, active_duration)),
+    };
+    let Some(active_time) = active_time else {
+        return Evaluation { phase, iteration: 0, progress: None };
+    };
+
+    let count = match animation.iteration_count {
+        IterationCount::Infinite => f64::INFINITY,
+        IterationCount::Finite(count) => count,
+    };
+    let overall = if duration == 0.0 {
+        if phase == Phase::Before {
+            0.0
+        } else if count.is_infinite() {
+            1.0
+        } else {
+            count
+        }
+    } else if active_time >= active_duration {
+        // Not `active_time / duration`: that can land a hair past the count.
+        count
+    } else {
+        active_time / duration
+    };
+    let (mut progress, mut iteration) = (overall % 1.0, overall.floor());
+    if progress == 0.0 && phase != Phase::Before && active_time >= active_duration && count != 0.0 {
+        // The end of an iteration is its last frame, not the next one's first.
+        progress = 1.0;
+        iteration = overall - 1.0;
+    }
+    let iteration = iteration.max(0.0) as u64;
+    let backwards = match animation.direction {
+        Direction::Normal => false,
+        Direction::Reverse => true,
+        Direction::Alternate => iteration % 2 == 1,
+        Direction::AlternateReverse => iteration % 2 == 0,
+    };
+    Evaluation {
+        phase,
+        iteration,
+        progress: Some(if backwards { 1.0 - progress } else { progress }),
+    }
+}
+
+// ── Keyframes against an element ─────────────────────────────────────
+
+/// What a property is when a keyframe set leaves out an endpoint.
+#[derive(Clone, Debug, PartialEq)]
+enum Underlying {
+    Value(AnimValue),
+    /// A size the style leaves unset, which CSS computes to `auto` (`none` for
+    /// a max).
+    Keyword,
+    /// Inherited or otherwise unresolvable here: the endpoint is left out and
+    /// the nearest keyframe holds.
+    Unknown,
+}
+
+fn underlying_of(prop: AnimProp, style: &StyleDesc) -> Underlying {
+    match prop.read(style).or_else(|| prop.initial(Some(style))) {
+        Some(value) => Underlying::Value(value),
+        None if prop.size_axis().is_some() => Underlying::Keyword,
+        None => Underlying::Unknown,
+    }
+}
+
+/// One keyframe of one property.
+#[derive(Clone, Debug)]
+struct Stop {
+    offset: f64,
+    /// `None` is a size left unset, which is a keyword in CSS.
+    value: Option<AnimValue>,
+    /// Eases from this stop to the next.
+    timing: Ease,
+}
+
+enum PropPlan {
+    Continuous {
+        prop: AnimProp,
+        track: Track,
+        /// The keyframes as the style wrote them. `track` runs through px where
+        /// they are `auto` or a percentage, and the ends go back to the literal.
+        literal: Vec<AnimValue>,
+        measured: bool,
+    },
+    /// A length against a keyword, which swaps halfway through an interval
+    /// unless `interpolate-size` allows keywords.
+    Discrete { prop: AnimProp, stops: Vec<Stop> },
+}
+
+impl PropPlan {
+    fn sample(&self, progress: f64) -> (AnimProp, Option<AnimValue>) {
+        match self {
+            Self::Continuous { prop, track, literal, measured } => {
+                let value = match (measured, progress) {
+                    (true, progress) if progress <= 0.0 => literal[0].clone(),
+                    (true, progress) if progress >= 1.0 => literal[literal.len() - 1].clone(),
+                    _ => prop.clamp_value(track.value_at(progress)),
+                };
+                (*prop, Some(value))
+            }
+            Self::Discrete { prop, stops } => {
+                let last = &stops[stops.len() - 1];
+                let value = if progress <= stops[0].offset {
+                    stops[0].value.clone()
+                } else if progress >= last.offset {
+                    last.value.clone()
+                } else {
+                    let index = stops.partition_point(|stop| stop.offset <= progress) - 1;
+                    let (from, to) = (&stops[index], &stops[index + 1]);
+                    let local = (progress - from.offset) / (to.offset - from.offset);
+                    if ease(local.clamp(0.0, 1.0), &from.timing) < 0.5 {
+                        from.value.clone()
+                    } else {
+                        to.value.clone()
+                    }
+                };
+                (*prop, value)
+            }
+        }
+    }
+}
+
+/// Everything the plan was built from, so it is rebuilt only when one changes:
+/// the style beneath the animation (for the endpoints a keyframe set leaves
+/// out), the animation's own timing function, and what layout measured.
+#[derive(Clone, Debug, PartialEq)]
+struct PlanKey {
+    timing: Ease,
+    allow_keywords: bool,
+    underlying: Vec<Underlying>,
+    measurement: Option<Measurement>,
+}
+
+struct Plan {
+    key: PlanKey,
+    props: Vec<PropPlan>,
+    /// Some property reads layout, so a new measurement can change the plan.
+    reads_layout: bool,
+    /// Some property is waiting for a measurement and shows its underlying
+    /// value until one exists.
+    waiting: bool,
+}
+
+enum Endpoint {
+    Value(Option<AnimValue>),
+    Waiting,
+    Absent,
+}
+
+struct Planner<'a> {
+    keyframes: &'a Keyframes,
+    timing: &'a Ease,
+    measurement: Option<&'a Measurement>,
+    allow_keywords: bool,
+    /// Laid-out sizes taken for an unset size, once: the animation is what
+    /// moves the box, so measuring it again would chase its own output.
+    frozen: &'a mut BTreeMap<AnimProp, f64>,
+    now: Instant,
+    reads_layout: bool,
+    waiting: bool,
+}
+
+impl Planner<'_> {
+    fn endpoint(&mut self, prop: AnimProp, underlying: &Underlying) -> Endpoint {
+        match underlying {
+            Underlying::Value(value) => Endpoint::Value(Some(value.clone())),
+            Underlying::Unknown => Endpoint::Absent,
+            Underlying::Keyword if prop == AnimProp::Height => Endpoint::Value(Some(AnimValue::Auto)),
+            Underlying::Keyword if !self.allow_keywords => Endpoint::Value(None),
+            Underlying::Keyword => {
+                if let Some(size) = self.frozen.get(&prop) {
+                    return Endpoint::Value(Some(AnimValue::Number(*size)));
+                }
+                self.reads_layout = true;
+                match self.measurement.and_then(|measurement| measurement.laid_out(prop)) {
+                    Some(size) => {
+                        self.frozen.insert(prop, size);
+                        Endpoint::Value(Some(AnimValue::Number(size)))
+                    }
+                    None => Endpoint::Waiting,
+                }
+            }
+        }
+    }
+
+    /// The stops of `prop`: its keyframes, with the underlying value standing in
+    /// for a missing 0% or 100%. `None` while an endpoint waits for layout.
+    fn stops(&mut self, prop: AnimProp, underlying: &Underlying) -> Option<Vec<Stop>> {
+        let mut stops: Vec<Stop> = self
+            .keyframes
+            .frames
+            .iter()
+            .filter_map(|frame| {
+                let (_, value) = frame.values.iter().find(|(p, _)| *p == prop)?;
+                Some(Stop {
+                    offset: frame.offset,
+                    value: Some(value.clone()),
+                    timing: frame.timing.clone().unwrap_or_else(|| self.timing.clone()),
+                })
+            })
+            .collect();
+        let missing_start = stops.first().is_some_and(|stop| stop.offset > 0.0);
+        let missing_end = stops.last().is_some_and(|stop| stop.offset < 1.0);
+        if missing_start || missing_end {
+            let value = match self.endpoint(prop, underlying) {
+                Endpoint::Value(value) => Some(value),
+                Endpoint::Waiting => return None,
+                Endpoint::Absent => None,
+            };
+            if let Some(value) = value {
+                let stop = |offset| Stop { offset, value: value.clone(), timing: self.timing.clone() };
+                if missing_start {
+                    stops.insert(0, stop(0.0));
+                }
+                if missing_end {
+                    stops.push(stop(1.0));
+                }
+            }
+        }
+        if let [only] = stops.as_slice() {
+            let mut other = only.clone();
+            other.offset = if only.offset > 0.0 { 0.0 } else { 1.0 };
+            if other.offset == 0.0 {
+                stops.insert(0, other);
+            } else {
+                stops.push(other);
+            }
+        }
+        Some(stops)
+    }
+
+    fn plan_prop(&mut self, prop: AnimProp, underlying: &Underlying) -> Option<PropPlan> {
+        let stops = self.stops(prop, underlying).or_else(|| {
+            self.waiting = true;
+            None
+        })?;
+        let keyword = |stop: &Stop| matches!(stop.value, None | Some(AnimValue::Auto));
+        if prop.size_axis().is_some() && !self.allow_keywords && stops.iter().any(keyword) {
+            return Some(PropPlan::Discrete { prop, stops });
+        }
+
+        let literal: Vec<AnimValue> = stops
+            .iter()
+            .map(|stop| stop.value.clone().expect("an unset size is discrete unless keywords are allowed"))
+            .collect();
+        let resolved = if needs_layout(&literal) {
+            self.reads_layout = true;
+            let Some(measurement) = self.measurement else {
+                self.waiting = true;
+                return None;
+            };
+            match resolve_keyframes(prop, &literal, measurement) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    log::warn!("CSS animation cannot resolve {}: {error}", prop.name());
+                    return None;
+                }
+            }
+        } else {
+            literal.clone()
+        };
+
+        let transition = Transition {
+            delay: 0.0,
+            curve: Curve::Tween { duration: 1.0, ease: Ease::Name("linear".to_string()) },
+            times: Some(stops.iter().map(|stop| stop.offset).collect()),
+            segment_eases: Some(stops[..stops.len() - 1].iter().map(|stop| stop.timing.clone()).collect()),
+            repeat: Repeat::default(),
+        };
+        let name = prop.name();
+        let built = Goal::keyframes(name, literal.iter().cloned().map(Some).collect()).and_then(|goal| {
+            Track::keyframed(name, goal, literal.clone(), &resolved, transition, self.now)
+        });
+        match built {
+            Ok(track) => Some(PropPlan::Continuous { prop, track, measured: literal != resolved, literal }),
+            Err(error) => {
+                log::warn!("CSS animation cannot interpolate {name}: {error}");
+                None
+            }
+        }
+    }
+}
+
+// ── One running animation ────────────────────────────────────────────
+
+struct Run {
+    name: String,
+    /// The definition at the time the animation started: redefining the name
+    /// affects the animations that start afterwards.
+    keyframes: Arc<Keyframes>,
+    properties: Vec<AnimProp>,
+    params: Animation,
+    /// The animation's local time, in seconds, at `anchor`. It advances with
+    /// the clock while running and holds while paused.
+    base: f64,
+    anchor: Instant,
+    running: bool,
+    phase: Phase,
+    iteration: u64,
+    plan: Option<Plan>,
+    frozen: BTreeMap<AnimProp, f64>,
+}
+
+impl Run {
+    fn start(name: &str, keyframes: Arc<Keyframes>, params: &Animation, now: Instant) -> Self {
+        Self {
+            name: name.to_string(),
+            properties: keyframes.properties(),
+            keyframes,
+            params: params.clone(),
+            base: 0.0,
+            anchor: now,
+            running: params.play_state == PlayState::Running,
+            phase: Phase::Before,
+            iteration: 0,
+            plan: None,
+            frozen: BTreeMap::new(),
+        }
+    }
+
+    fn local(&self, now: Instant) -> f64 {
+        if self.running {
+            self.base + now.saturating_duration_since(self.anchor).as_secs_f64()
+        } else {
+            self.base
+        }
+    }
+
+    /// When `local` is or was, for ordering events of different animations.
+    fn instant_at(&self, local: f64, now: Instant) -> Instant {
+        let behind = self.local(now) - local;
+        if !self.running || behind <= 0.0 {
+            return now;
+        }
+        Duration::try_from_secs_f64(behind)
+            .ok()
+            .and_then(|behind| now.checked_sub(behind))
+            .unwrap_or(now)
+    }
+
+    /// Takes the other `animation-*` values from the style; play state changes
+    /// freeze or resume the clock where it is.
+    fn retune(&mut self, params: &Animation, now: Instant) {
+        if self.params.play_state != params.play_state {
+            if self.running {
+                self.base = self.local(now);
+                self.running = false;
+            } else {
+                self.anchor = now;
+                self.running = true;
+            }
+        }
+        self.params = params.clone();
+    }
+
+    fn event(&self, id: u64, kind: AnimationEventKind, elapsed: f64, at: Instant) -> Scheduled {
+        Scheduled {
+            event: AnimationEvent { id, kind, name: self.name.clone(), elapsed },
+            at,
+        }
+    }
+
+    /// Moves to `now`, queueing the events the phase and iteration changes
+    /// make (CSS Animations 2, "event dispatch").
+    fn advance(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) -> Evaluation {
+        use AnimationEventKind::{End, Iteration, Start};
+        let local = self.local(now);
+        let evaluation = evaluate(&self.params, local);
+        let params = &self.params;
+        let active_duration = active_duration(params);
+        let starts = params.delay.max(0.0);
+        let ends = (params.delay + active_duration).max(0.0);
+        let initial = initial_elapsed(params);
+
+        let from = self.phase;
+        let to = evaluation.phase;
+        let start = |at_local: f64, elapsed: f64| self.event(id, Start, elapsed, self.instant_at(at_local, now));
+        let end = |at_local: f64, elapsed: f64| self.event(id, End, elapsed, self.instant_at(at_local, now));
+        match (from, to) {
+            (Phase::Before, Phase::Active) => events.push(start(starts, initial)),
+            (Phase::Before, Phase::After) => {
+                events.push(start(starts, initial));
+                events.push(end(ends, active_duration));
+            }
+            (Phase::After, Phase::Active) => events.push(start(local, active_duration)),
+            (Phase::After, Phase::Before) => {
+                events.push(start(local, active_duration));
+                events.push(end(local, initial));
+            }
+            (Phase::Active, Phase::After) => events.push(end(ends, active_duration)),
+            (Phase::Active, Phase::Before) => events.push(end(local, initial)),
+            (Phase::Active, Phase::Active) if evaluation.iteration != self.iteration => {
+                let boundary = params.duration * evaluation.iteration as f64;
+                events.push(self.event(
+                    id,
+                    Iteration,
+                    boundary,
+                    self.instant_at(params.delay + boundary, now),
+                ));
+            }
+            _ => {}
+        }
+        self.phase = to;
+        if to == Phase::Active {
+            self.iteration = evaluation.iteration;
+        }
+        evaluation
+    }
+
+    /// Reports an animation that stops before it ended.
+    fn cancel(&self, id: u64, now: Instant, events: &mut Vec<Scheduled>) {
+        if self.phase == Phase::After {
+            return;
+        }
+        let elapsed = (self.local(now) - self.params.delay).clamp(0.0, active_duration(&self.params));
+        events.push(self.event(id, AnimationEventKind::Cancel, elapsed, now));
+    }
+
+    fn values(
+        &mut self,
+        progress: f64,
+        underlying: &StyleDesc,
+        measurement: Option<&Measurement>,
+        allow_keywords: bool,
+        now: Instant,
+    ) -> Vec<(AnimProp, Option<AnimValue>)> {
+        let reads_layout = self.plan.as_ref().is_none_or(|plan| plan.reads_layout);
+        let key = PlanKey {
+            timing: self.params.timing.clone(),
+            allow_keywords,
+            underlying: self
+                .properties
+                .iter()
+                .map(|prop| underlying_of(*prop, underlying))
+                .collect(),
+            measurement: measurement.copied().filter(|_| reads_layout),
+        };
+        if self.plan.as_ref().is_none_or(|plan| plan.key != key) {
+            let mut planner = Planner {
+                keyframes: &self.keyframes,
+                timing: &self.params.timing,
+                measurement,
+                allow_keywords,
+                frozen: &mut self.frozen,
+                now,
+                reads_layout: false,
+                waiting: false,
+            };
+            let props = self
+                .properties
+                .iter()
+                .zip(&key.underlying)
+                .filter_map(|(prop, underlying)| planner.plan_prop(*prop, underlying))
+                .collect();
+            let (reads_layout, waiting) = (planner.reads_layout, planner.waiting);
+            self.plan = Some(Plan { key, props, reads_layout, waiting });
+        }
+        let plan = self.plan.as_ref().expect("the plan was just built");
+        plan.props.iter().map(|prop| prop.sample(progress)).collect()
+    }
+
+    /// Whether the window needs another frame for this animation: it is moving
+    /// toward a phase change, or waiting on layout.
+    fn wants_frame(&self) -> bool {
+        (self.running && self.phase != Phase::After)
+            || self.plan.as_ref().is_some_and(|plan| plan.waiting)
+    }
+}
+
+// ── Per-element state ────────────────────────────────────────────────
+
+type Config = [Option<String>; 9];
+
+struct ElementState {
+    config: Config,
+    list: AnimationList,
+    runs: Vec<Run>,
+}
+
+impl ElementState {
+    fn new() -> Self {
+        Self { config: Default::default(), list: AnimationList::default(), runs: Vec::new() }
+    }
+
+    fn sync_config(&mut self, id: u64, style: &StyleDesc) {
+        let fields = animation_fields(style);
+        if fields.iter().zip(&self.config).all(|(field, kept)| *field == kept) {
+            return;
+        }
+        self.config = fields.map(Clone::clone);
+        self.list = AnimationList::parse(style).unwrap_or_else(|error| {
+            log::warn!("Invalid animation on element {id}: {error}");
+            AnimationList::default()
+        });
+    }
+
+    /// Matches the list against the running animations by name. One that stays
+    /// in the list keeps running with the new values; one that left is
+    /// cancelled; a name that is new starts if its keyframes are defined.
+    fn reconcile(
+        &mut self,
+        id: u64,
+        registry: &KeyframesRegistry,
+        now: Instant,
+        events: &mut Vec<Scheduled>,
+    ) {
+        let mut unclaimed: Vec<Option<Run>> =
+            std::mem::take(&mut self.runs).into_iter().map(Some).collect();
+        let mut runs = Vec::new();
+        for animation in &self.list.0 {
+            let Some(name) = &animation.name else {
+                continue;
+            };
+            let kept = unclaimed
+                .iter_mut()
+                .find(|slot| slot.as_ref().is_some_and(|run| run.name == *name))
+                .and_then(Option::take);
+            match kept {
+                Some(mut run) => {
+                    run.retune(animation, now);
+                    runs.push(run);
+                }
+                None => {
+                    if let Some(keyframes) = registry.get(name) {
+                        runs.push(Run::start(name, keyframes.clone(), animation, now));
+                    }
+                }
+            }
+        }
+        for run in unclaimed.into_iter().flatten() {
+            run.cancel(id, now, events);
+        }
+        self.runs = runs;
+    }
+}
+
+/// The values of the animations running on an element, ready to lay over the
+/// style beneath them.
+pub(crate) struct AnimationStyle(Vec<(AnimProp, AnimValue)>);
+
+impl AnimationStyle {
+    pub(crate) fn apply_to(self, style: &mut StyleDesc) {
+        for (prop, value) in self.0 {
+            prop.write(style, value);
+        }
+    }
+}
+
+/// Whether `style` sets an animation name that is not `none`.
+fn declares_animation(style: &StyleDesc) -> bool {
+    [&style.animation, &style.animation_name]
+        .into_iter()
+        .any(|text| text.as_deref().is_some_and(|text| !text.trim().eq_ignore_ascii_case("none")))
+}
+
+/// The animation state of every element that declares one.
+#[derive(Default)]
+pub(crate) struct CssAnimations {
+    states: HashMap<u64, ElementState>,
+    events: Vec<Scheduled>,
+    active: bool,
+}
+
+impl CssAnimations {
+    /// Whether `id` takes part in animations: it declares one, in its own style
+    /// or a state style, or already has animation state to keep.
+    pub(crate) fn wants(&self, id: u64, style: Option<&StyleDesc>) -> bool {
+        self.states.contains_key(&id)
+            || style.is_some_and(|style| {
+                declares_animation(style)
+                    || [&style.hover, &style.active, &style.focus_visible]
+                        .into_iter()
+                        .any(|state| state.as_deref().is_some_and(declares_animation))
+            })
+    }
+
+    /// Feeds one frame. `declared` is the element's style with its state styles
+    /// folded in, which holds the `animation*` values; `underlying` is the
+    /// style the animations lay over, transitions and motion included, which
+    /// supplies the endpoints a keyframe set leaves out. `inherited` is the
+    /// `interpolateSize` of the parent.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn update(
+        &mut self,
+        id: u64,
+        declared: &StyleDesc,
+        underlying: &StyleDesc,
+        registry: &KeyframesRegistry,
+        measurement: Option<&Measurement>,
+        inherited: InterpolateSize,
+        now: Instant,
+    ) -> Option<AnimationStyle> {
+        let state = self.states.entry(id).or_insert_with(ElementState::new);
+        state.sync_config(id, declared);
+        state.reconcile(id, registry, now, &mut self.events);
+
+        let allow_keywords = InterpolateSize::declared(declared)
+            .unwrap_or(inherited)
+            .allows_keywords();
+        let mut values: BTreeMap<AnimProp, Option<AnimValue>> = BTreeMap::new();
+        for run in &mut state.runs {
+            let evaluation = run.advance(id, now, &mut self.events);
+            if let Some(progress) = evaluation.progress {
+                // Later in the list is higher in the cascade.
+                values.extend(run.values(progress, underlying, measurement, allow_keywords, now));
+            }
+            self.active |= run.wants_frame();
+        }
+
+        if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
+            self.states.remove(&id);
+        }
+        let values: Vec<(AnimProp, AnimValue)> = values
+            .into_iter()
+            .filter_map(|(prop, value)| Some((prop, value?)))
+            .collect();
+        (!values.is_empty()).then_some(AnimationStyle(values))
+    }
+
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
+        self.states.retain(|id, _| keep(*id));
+    }
+
+    /// Events queued since the last call, in the order they happened.
+    pub(crate) fn take_events(&mut self) -> Vec<AnimationEvent> {
+        let mut scheduled = std::mem::take(&mut self.events);
+        scheduled.sort_by_key(|scheduled| scheduled.at);
+        scheduled.into_iter().map(|scheduled| scheduled.event).collect()
+    }
+
+    /// Whether an animation still needs frames as of the last update.
+    pub(crate) fn take_active(&mut self) -> bool {
+        std::mem::take(&mut self.active)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,5 +1332,689 @@ mod tests {
         for name in ["", "2d", "-2", "a b", "a,b", "none", "Inherit", "a(b)"] {
             assert!(check_keyframes_name(name).is_err(), "{name}");
         }
+    }
+
+    // ── Runtime ──────────────────────────────────────────────────────
+
+    use crate::style::DimensionValue;
+    use AnimationEventKind::{Cancel, End, Iteration, Start};
+
+    struct Frames {
+        origin: Instant,
+        animations: CssAnimations,
+        registry: KeyframesRegistry,
+        inherited: InterpolateSize,
+    }
+
+    type Seen = Vec<(AnimationEventKind, String, f64)>;
+
+    impl Frames {
+        fn new() -> Self {
+            Self {
+                origin: Instant::now(),
+                animations: CssAnimations::default(),
+                registry: KeyframesRegistry::default(),
+                inherited: InterpolateSize::default(),
+            }
+        }
+
+        fn define(&mut self, name: &str, frames: &str) {
+            self.registry.define(name, frames).unwrap();
+        }
+
+        fn at(&self, millis: u64) -> Instant {
+            self.origin + Duration::from_millis(millis)
+        }
+
+        /// One frame at `millis`: `style` is both what declares the animation
+        /// and what the animation lays over.
+        fn frame(&mut self, millis: u64, style: &StyleDesc) -> StyleDesc {
+            self.frame_measured(millis, style, None)
+        }
+
+        fn frame_measured(
+            &mut self,
+            millis: u64,
+            style: &StyleDesc,
+            measurement: Option<&Measurement>,
+        ) -> StyleDesc {
+            self.frame_over(millis, style, style, measurement)
+        }
+
+        fn frame_over(
+            &mut self,
+            millis: u64,
+            declared: &StyleDesc,
+            underlying: &StyleDesc,
+            measurement: Option<&Measurement>,
+        ) -> StyleDesc {
+            let mut resolved = underlying.clone();
+            let now = self.at(millis);
+            if let Some(values) = self.animations.update(
+                1,
+                declared,
+                underlying,
+                &self.registry,
+                measurement,
+                self.inherited,
+                now,
+            ) {
+                values.apply_to(&mut resolved);
+            }
+            resolved
+        }
+
+        fn events(&mut self) -> Seen {
+            self.animations
+                .take_events()
+                .into_iter()
+                .map(|event| (event.kind, event.name, event.elapsed))
+                .collect()
+        }
+    }
+
+    fn near(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} is not {expected}");
+    }
+
+    fn opacity(style: &StyleDesc) -> f64 {
+        style.opacity.expect("the style has an opacity")
+    }
+
+    fn named(kind: AnimationEventKind, name: &str, elapsed: f64) -> (AnimationEventKind, String, f64) {
+        (kind, name.to_string(), elapsed)
+    }
+
+    const FADE: &str = r#"{ "from": { "opacity": 0 }, "to": { "opacity": 1 } }"#;
+
+    fn fading(animation: &str) -> StyleDesc {
+        style(&format!(r#"{{ "animation": "{animation}" }}"#))
+    }
+
+    #[test]
+    fn an_element_without_animation_fields_takes_no_part() {
+        let frames = Frames::new();
+        assert!(!frames.animations.wants(1, Some(&style(r#"{ "opacity": 1 }"#))));
+        assert!(!frames.animations.wants(1, Some(&fading("none"))));
+        assert!(!frames.animations.wants(1, None));
+        assert!(frames.animations.wants(1, Some(&fading("fade 1s"))));
+        assert!(frames.animations.wants(1, Some(&style(r#"{ "animationName": "fade" }"#))));
+        assert!(frames
+            .animations
+            .wants(1, Some(&style(r#"{ "hover": { "animation": "fade 1s" } }"#))));
+    }
+
+    #[test]
+    fn an_animation_runs_from_the_first_style_and_ends_on_the_underlying_value() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        near(opacity(&frames.frame(0, &animated)), 0.0);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+        near(opacity(&frames.frame(250, &animated)), 0.25);
+        near(opacity(&frames.frame(750, &animated)), 0.75);
+        assert!(frames.animations.take_active());
+
+        // Fill mode none: once it ends the element is as it was declared.
+        let finished = frames.frame(1000, &animated);
+        assert_eq!(finished.opacity, None);
+        assert_eq!(frames.events(), [named(End, "fade", 1.0)]);
+        assert!(!frames.animations.take_active());
+        assert_eq!(frames.frame(5000, &animated).opacity, None);
+        assert!(frames.events().is_empty(), "a finished animation does not restart");
+    }
+
+    #[test]
+    fn fill_modes_decide_what_shows_before_the_delay_and_after_the_end() {
+        let shown = |fill: &str| {
+            let mut frames = Frames::new();
+            frames.define("fade", r#"{ "from": { "opacity": 0.1 }, "to": { "opacity": 0.8 } }"#);
+            let animated = fading(&format!("fade 1s linear 1s {fill}"));
+            let during_delay = frames.frame(0, &animated).opacity;
+            let running = frames.frame(1500, &animated).opacity;
+            let finished = frames.frame(2500, &animated).opacity;
+            near(running.unwrap(), 0.45);
+            (during_delay, finished)
+        };
+        assert_eq!(shown("none"), (None, None));
+        assert_eq!(shown("forwards"), (None, Some(0.8)));
+        assert_eq!(shown("backwards"), (Some(0.1), None));
+        assert_eq!(shown("both"), (Some(0.1), Some(0.8)));
+    }
+
+    #[test]
+    fn directions_pick_which_way_each_iteration_plays() {
+        let at = |direction: &str| {
+            let mut frames = Frames::new();
+            frames.define("fade", FADE);
+            let animated = fading(&format!("fade 1s linear 3 {direction}"));
+            frames.frame(0, &animated);
+            [250, 1250, 2250].map(|millis| opacity(&frames.frame(millis, &animated)))
+        };
+        let expect = |actual: [f64; 3], expected: [f64; 3]| {
+            actual.iter().zip(expected).for_each(|(actual, expected)| near(*actual, expected));
+        };
+        expect(at("normal"), [0.25, 0.25, 0.25]);
+        expect(at("reverse"), [0.75, 0.75, 0.75]);
+        expect(at("alternate"), [0.25, 0.75, 0.25]);
+        expect(at("alternate-reverse"), [0.75, 0.25, 0.75]);
+    }
+
+    #[test]
+    fn reversing_plays_time_backwards_but_keeps_each_interval_easing() {
+        let ease_in = Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]);
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s ease-in reverse");
+        frames.frame(0, &animated);
+        // A quarter of the way in, the keyframes are three quarters through.
+        near(opacity(&frames.frame(250, &animated)), ease(0.75, &ease_in));
+    }
+
+    #[test]
+    fn a_whole_iteration_count_ends_on_the_last_frame_of_the_last_iteration() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let forwards = fading("fade 1s linear 2 forwards");
+        frames.frame(0, &forwards);
+        near(opacity(&frames.frame(5000, &forwards)), 1.0);
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        // The second iteration runs backwards, so it ends where it began.
+        let alternating = fading("fade 1s linear 2 alternate forwards");
+        frames.frame(0, &alternating);
+        near(opacity(&frames.frame(5000, &alternating)), 0.0);
+    }
+
+    #[test]
+    fn a_fractional_count_stops_part_way_through_the_last_iteration() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 2.5 forwards");
+        frames.frame(0, &animated);
+        near(opacity(&frames.frame(2250, &animated)), 0.25);
+        assert!(frames.animations.take_active());
+        near(opacity(&frames.frame(2500, &animated)), 0.5);
+        near(opacity(&frames.frame(9000, &animated)), 0.5);
+        assert!(!frames.animations.take_active());
+        assert_eq!(frames.events().last(), Some(&named(End, "fade", 2.5)));
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let reversed = fading("fade 1s linear 1.25 alternate forwards");
+        frames.frame(0, &reversed);
+        // The partial iteration is the second, which plays backwards.
+        near(opacity(&frames.frame(9000, &reversed)), 0.75);
+    }
+
+    #[test]
+    fn infinite_never_ends_and_keeps_asking_for_frames() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear infinite");
+        frames.frame(0, &animated);
+        near(opacity(&frames.frame(1_000_000_250, &animated)), 0.25);
+        assert!(frames.animations.take_active());
+        assert!(!frames.events().iter().any(|event| event.0 == End));
+    }
+
+    #[test]
+    fn a_zero_count_or_duration_starts_and_ends_at_once() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let none = fading("fade 1s 0");
+        assert_eq!(frames.frame(0, &none).opacity, None);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0), named(End, "fade", 0.0)]);
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let instant = fading("fade 0s 3 forwards");
+        near(opacity(&frames.frame(0, &instant)), 1.0);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0), named(End, "fade", 0.0)]);
+    }
+
+    #[test]
+    fn a_negative_delay_starts_part_way_through() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 2s linear -500ms");
+        near(opacity(&frames.frame(0, &animated)), 0.25);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.5)]);
+        near(opacity(&frames.frame(1000, &animated)), 0.75);
+        assert_eq!(frames.frame(1500, &animated).opacity, None);
+        assert_eq!(frames.events(), [named(End, "fade", 2.0)]);
+    }
+
+    #[test]
+    fn a_delay_holds_until_it_ends_then_reports_the_start() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 500ms");
+        frames.frame(0, &animated);
+        frames.frame(400, &animated);
+        assert!(frames.events().is_empty());
+        assert!(frames.animations.take_active());
+        near(opacity(&frames.frame(1000, &animated)), 0.5);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+    }
+
+    #[test]
+    fn pausing_freezes_the_animation_and_resuming_continues_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let running = fading("fade 1s linear");
+        let paused = style(r#"{ "animation": "fade 1s linear", "animationPlayState": "paused" }"#);
+        near(opacity(&frames.frame(0, &running)), 0.0);
+        near(opacity(&frames.frame(500, &running)), 0.5);
+        near(opacity(&frames.frame(500, &paused)), 0.5);
+        frames.animations.take_active();
+        near(opacity(&frames.frame(5000, &paused)), 0.5);
+        assert!(!frames.animations.take_active(), "a paused animation needs no frames");
+        near(opacity(&frames.frame(5000, &running)), 0.5);
+        near(opacity(&frames.frame(5250, &running)), 0.75);
+        assert_eq!(frames.frame(5500, &running).opacity, None);
+        assert_eq!(frames.events().last(), Some(&named(End, "fade", 1.0)));
+    }
+
+    #[test]
+    fn an_animation_that_starts_paused_stays_at_its_first_frame() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let paused = style(r#"{ "animation": "fade 1s linear paused" }"#);
+        near(opacity(&frames.frame(0, &paused)), 0.0);
+        near(opacity(&frames.frame(10_000, &paused)), 0.0);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+    }
+
+    #[test]
+    fn a_new_name_cancels_the_old_animation_and_restarts() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.define("dim", r#"{ "from": { "opacity": 0.5 }, "to": { "opacity": 1 } }"#);
+        frames.frame(0, &fading("fade 1s linear"));
+        near(opacity(&frames.frame(600, &fading("fade 1s linear"))), 0.6);
+        frames.events();
+
+        let swapped = fading("dim 1s linear");
+        near(opacity(&frames.frame(700, &swapped)), 0.5);
+        assert_eq!(frames.events(), [named(Cancel, "fade", 0.7), named(Start, "dim", 0.0)]);
+        near(opacity(&frames.frame(1200, &swapped)), 0.75);
+    }
+
+    #[test]
+    fn the_same_name_keeps_running_when_its_other_values_change() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        frames.events();
+        near(opacity(&frames.frame(500, &fading("fade 2s linear"))), 0.25);
+        assert!(frames.events().is_empty());
+    }
+
+    #[test]
+    fn removing_the_animation_cancels_it_unless_it_already_ended() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        frames.events();
+        assert_eq!(frames.frame(400, &fading("none")).opacity, None);
+        assert_eq!(frames.events(), [named(Cancel, "fade", 0.4)]);
+        assert!(!frames.animations.wants(1, Some(&fading("none"))));
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear 1s"));
+        frames.events();
+        frames.frame(300, &fading("none"));
+        assert_eq!(frames.events(), [named(Cancel, "fade", 0.0)], "cancelled during its delay");
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear forwards"));
+        frames.frame(2000, &fading("fade 1s linear forwards"));
+        frames.events();
+        frames.frame(3000, &fading("none"));
+        assert!(frames.events().is_empty(), "an animation that ended is not cancelled");
+    }
+
+    #[test]
+    fn an_undefined_name_animates_nothing_until_it_is_defined() {
+        let mut frames = Frames::new();
+        let animated = fading("fade 1s linear");
+        assert_eq!(frames.frame(0, &animated).opacity, None);
+        assert!(frames.events().is_empty());
+
+        frames.define("fade", FADE);
+        near(opacity(&frames.frame(2000, &animated)), 0.0);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+        near(opacity(&frames.frame(2500, &animated)), 0.5);
+    }
+
+    #[test]
+    fn a_running_animation_keeps_the_keyframes_it_started_with() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        frames.define("fade", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#);
+        near(opacity(&frames.frame(500, &animated)), 0.5);
+        near(opacity(&frames.frame(250, &animated)), 0.25);
+    }
+
+    #[test]
+    fn the_animation_timing_function_eases_every_keyframe_interval() {
+        let ease_in = Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]);
+        let mut frames = Frames::new();
+        frames.define(
+            "pulse",
+            r#"{ "0%": { "opacity": 0 }, "50%": { "opacity": 1 }, "100%": { "opacity": 0 } }"#,
+        );
+        let animated = fading("pulse 2s ease-in");
+        frames.frame(0, &animated);
+        near(opacity(&frames.frame(500, &animated)), ease(0.5, &ease_in));
+        near(opacity(&frames.frame(1000, &animated)), 1.0);
+        near(opacity(&frames.frame(1500, &animated)), 1.0 - ease(0.5, &ease_in));
+    }
+
+    #[test]
+    fn a_keyframe_timing_function_eases_from_that_keyframe_to_the_next() {
+        let mut frames = Frames::new();
+        frames.define(
+            "pulse",
+            r#"{
+                "0%": { "opacity": 0, "animationTimingFunction": "steps(2, jump-end)" },
+                "50%": { "opacity": 1 },
+                "100%": { "opacity": 0.5 }
+            }"#,
+        );
+        let animated = fading("pulse 2s linear");
+        frames.frame(0, &animated);
+        // Two steps over the first interval: 0, then 0.5 from its midpoint.
+        near(opacity(&frames.frame(250, &animated)), 0.0);
+        near(opacity(&frames.frame(500, &animated)), 0.5);
+        near(opacity(&frames.frame(1000, &animated)), 1.0);
+        // The second interval has no easing of its own: the animation's, linear.
+        near(opacity(&frames.frame(1500, &animated)), 0.75);
+    }
+
+    #[test]
+    fn a_keyframe_only_matters_to_the_properties_it_names() {
+        let mut frames = Frames::new();
+        frames.define(
+            "grow",
+            r#"{
+                "from": { "width": 0, "opacity": 0 },
+                "50%": { "opacity": 1, "animationTimingFunction": "steps(1, jump-end)" },
+                "to": { "width": 100, "opacity": 0 }
+            }"#,
+        );
+        let animated = fading("grow 2s linear");
+        frames.frame(0, &animated);
+        let sample = frames.frame(500, &animated);
+        // Width has no 50% keyframe, so its interval spans the whole animation
+        // and the step easing of that keyframe is not its own.
+        match sample.width {
+            Some(DimensionValue::Pixels(width)) => near(width, 25.0),
+            other => panic!("{other:?}"),
+        }
+        near(opacity(&sample), 0.5);
+    }
+
+    #[test]
+    fn missing_endpoints_are_the_underlying_value() {
+        let mut frames = Frames::new();
+        frames.define("dip", r#"{ "50%": { "opacity": 0.2 } }"#);
+        let animated = style(r#"{ "animation": "dip 1s linear", "opacity": 0.9 }"#);
+        near(opacity(&frames.frame(0, &animated)), 0.9);
+        near(opacity(&frames.frame(250, &animated)), 0.55);
+        near(opacity(&frames.frame(500, &animated)), 0.2);
+        near(opacity(&frames.frame(750, &animated)), 0.55);
+    }
+
+    #[test]
+    fn a_missing_endpoint_follows_the_underlying_value_as_it_changes() {
+        let mut frames = Frames::new();
+        frames.define("fade", r#"{ "from": { "opacity": 0 } }"#);
+        let declared = fading("fade 1s linear forwards");
+        let first = style(r#"{ "animation": "fade 1s linear forwards", "opacity": 0.8 }"#);
+        let second = style(r#"{ "animation": "fade 1s linear forwards", "opacity": 0.4 }"#);
+        frames.frame_over(0, &declared, &first, None);
+        near(opacity(&frames.frame_over(250, &declared, &first, None)), 0.2);
+        near(opacity(&frames.frame_over(500, &declared, &second, None)), 0.2);
+        near(opacity(&frames.frame_over(2000, &declared, &second, None)), 0.4);
+    }
+
+    #[test]
+    fn an_endpoint_that_cannot_be_resolved_holds_the_nearest_keyframe() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "to": { "fontSize": 20 } }"#);
+        let animated = fading("grow 1s linear");
+        assert_eq!(frames.frame(0, &animated).font_size, Some(20.0));
+        assert_eq!(frames.frame(500, &animated).font_size, Some(20.0));
+    }
+
+    #[test]
+    fn an_animation_beats_the_value_it_lays_over_and_the_later_one_wins() {
+        let mut frames = Frames::new();
+        frames.define("a", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#);
+        frames.define("b", r#"{ "from": { "opacity": 0.6 }, "to": { "opacity": 0.6 } }"#);
+        let both = style(r#"{ "animation": "a 1s, b 1s", "opacity": 1 }"#);
+        near(opacity(&frames.frame(0, &both)), 0.6);
+        let reversed = style(r#"{ "animation": "b 1s, a 1s", "opacity": 1 }"#);
+        let mut frames = Frames::new();
+        frames.define("a", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#);
+        frames.define("b", r#"{ "from": { "opacity": 0.6 }, "to": { "opacity": 0.6 } }"#);
+        near(opacity(&frames.frame(0, &reversed)), 0.2);
+    }
+
+    #[test]
+    fn events_follow_the_animation_through_its_iterations() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 3");
+        frames.frame(0, &animated);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+        frames.frame(500, &animated);
+        assert!(frames.events().is_empty());
+        frames.frame(1100, &animated);
+        assert_eq!(frames.events(), [named(Iteration, "fade", 1.0)]);
+        frames.frame(2100, &animated);
+        assert_eq!(frames.events(), [named(Iteration, "fade", 2.0)]);
+        frames.frame(3100, &animated);
+        assert_eq!(frames.events(), [named(End, "fade", 3.0)]);
+    }
+
+    #[test]
+    fn a_frame_that_skips_iterations_reports_the_latest_one_once() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 5");
+        frames.frame(0, &animated);
+        frames.events();
+        frames.frame(3500, &animated);
+        assert_eq!(frames.events(), [named(Iteration, "fade", 3.0)]);
+    }
+
+    #[test]
+    fn a_frame_that_skips_the_whole_animation_reports_start_then_end() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 1s");
+        frames.frame(0, &animated);
+        assert!(frames.events().is_empty());
+        frames.frame(10_000, &animated);
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0), named(End, "fade", 1.0)]);
+    }
+
+    #[test]
+    fn events_of_different_animations_come_in_the_order_they_happened() {
+        let mut frames = Frames::new();
+        frames.define("a", FADE);
+        frames.define("b", FADE);
+        let animated = style(r#"{ "animation": "a 1s linear, b 1s linear 500ms" }"#);
+        frames.frame(0, &animated);
+        assert_eq!(frames.events(), [named(Start, "a", 0.0)]);
+        // One late frame: b starts half a second in, before a ends at one second.
+        frames.frame(3000, &animated);
+        assert_eq!(
+            frames.events(),
+            [named(Start, "b", 0.0), named(End, "a", 1.0), named(End, "b", 1.0)]
+        );
+    }
+
+    fn measured(width: f32, height: f32, natural: f32) -> Measurement {
+        Measurement {
+            border_box: gpui::size(gpui::px(width), gpui::px(height)),
+            natural_height: gpui::px(natural),
+            parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
+            scale_factor: 1.0,
+        }
+    }
+
+    fn height_of(style: &StyleDesc) -> DimensionValue {
+        style.height.clone().expect("the style has a height")
+    }
+
+    #[test]
+    fn height_auto_runs_through_the_measured_height_and_goes_back_to_auto() {
+        let mut frames = Frames::new();
+        frames.define("open", r#"{ "from": { "height": 0 }, "to": { "height": "auto" } }"#);
+        let animated = style(
+            r#"{ "animation": "open 1s linear forwards", "interpolateSize": "allow-keywords" }"#,
+        );
+        // Until layout is known the element shows where the animation starts.
+        assert_eq!(frames.frame(0, &animated).height, None);
+        assert!(frames.animations.take_active());
+
+        let measurement = measured(100.0, 0.0, 120.0);
+        let halfway = frames.frame_measured(500, &animated, Some(&measurement));
+        assert_eq!(height_of(&halfway), DimensionValue::Pixels(60.0));
+        // The end follows the measurement as the content grows.
+        let grown = measured(100.0, 60.0, 200.0);
+        assert_eq!(
+            height_of(&frames.frame_measured(500, &animated, Some(&grown))),
+            DimensionValue::Pixels(100.0)
+        );
+        assert_eq!(
+            height_of(&frames.frame_measured(1000, &animated, Some(&grown))),
+            DimensionValue::Auto
+        );
+        assert_eq!(
+            height_of(&frames.frame_measured(1000, &animated, Some(&grown))),
+            DimensionValue::Auto
+        );
+    }
+
+    #[test]
+    fn a_length_against_a_keyword_swaps_halfway_unless_keywords_are_allowed() {
+        let mut frames = Frames::new();
+        frames.define("open", r#"{ "from": { "height": 0 }, "to": { "height": "auto" } }"#);
+        let discrete = fading("open 1s linear");
+        let measurement = measured(100.0, 0.0, 120.0);
+        frames.frame_measured(0, &discrete, Some(&measurement));
+        assert_eq!(
+            height_of(&frames.frame_measured(400, &discrete, Some(&measurement))),
+            DimensionValue::Pixels(0.0)
+        );
+        assert_eq!(
+            height_of(&frames.frame_measured(600, &discrete, Some(&measurement))),
+            DimensionValue::Auto
+        );
+
+        // `interpolateSize` is inherited.
+        let mut frames = Frames::new();
+        frames.define("open", r#"{ "from": { "height": 0 }, "to": { "height": "auto" } }"#);
+        frames.inherited = InterpolateSize::AllowKeywords;
+        frames.frame_measured(0, &discrete, Some(&measurement));
+        assert_eq!(
+            height_of(&frames.frame_measured(500, &discrete, Some(&measurement))),
+            DimensionValue::Pixels(60.0)
+        );
+    }
+
+    #[test]
+    fn an_unset_size_endpoint_is_a_keyword_that_swaps_without_interpolate_size() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "to": { "width": 100 } }"#);
+        let animated = fading("grow 1s linear forwards");
+        let measurement = measured(40.0, 10.0, 10.0);
+        frames.frame_measured(0, &animated, Some(&measurement));
+        assert_eq!(frames.frame_measured(250, &animated, Some(&measurement)).width, None);
+        assert_eq!(
+            frames.frame_measured(750, &animated, Some(&measurement)).width,
+            Some(DimensionValue::Pixels(100.0))
+        );
+    }
+
+    #[test]
+    fn an_unset_size_endpoint_starts_from_the_laid_out_size_once_keywords_are_allowed() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "to": { "width": 100 } }"#);
+        let animated = style(
+            r#"{ "animation": "grow 1s linear", "interpolateSize": "allow-keywords" }"#,
+        );
+        assert_eq!(frames.frame(0, &animated).width, None, "waits for a measurement");
+        assert!(frames.animations.take_active());
+        let first = measured(40.0, 10.0, 10.0);
+        match frames.frame_measured(500, &animated, Some(&first)).width {
+            Some(DimensionValue::Pixels(width)) => near(width, 70.0),
+            other => panic!("{other:?}"),
+        }
+        // The box moved because of the animation; the start is not measured again.
+        let moved = measured(70.0, 10.0, 10.0);
+        match frames.frame_measured(500, &animated, Some(&moved)).width {
+            Some(DimensionValue::Pixels(width)) => near(width, 70.0),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_percentage_meeting_a_length_runs_through_px_and_ends_as_the_percentage() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "from": { "width": 0 }, "to": { "width": "50%" } }"#);
+        let animated = fading("grow 1s linear forwards");
+        let measurement = measured(40.0, 10.0, 10.0);
+        frames.frame_measured(0, &animated, Some(&measurement));
+        match frames.frame_measured(500, &animated, Some(&measurement)).width {
+            Some(DimensionValue::Pixels(width)) => near(width, 200.0),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            frames.frame_measured(2000, &animated, Some(&measurement)).width,
+            Some(DimensionValue::Percentage(0.5))
+        );
+    }
+
+    #[test]
+    fn colours_interpolate_like_motion_does() {
+        let mut frames = Frames::new();
+        frames.define(
+            "tint",
+            r##"{ "from": { "backgroundColor": "#000000" }, "to": { "backgroundColor": "#ffffff" } }"##,
+        );
+        let animated = fading("tint 1s linear");
+        let sample = frames.frame(500, &animated);
+        assert!(sample.background_color.is_some());
+        assert_ne!(sample.background_color.as_deref(), Some("#000000"));
+    }
+
+    #[test]
+    fn overshooting_easing_stays_inside_the_range_a_property_accepts() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s cubic-bezier(0.5, 2, 0.5, 2)");
+        let value = opacity(&frames.frame(250, &animated));
+        assert!((0.0..=1.0).contains(&value), "{value}");
+    }
+
+    #[test]
+    fn state_for_an_element_that_leaves_the_tree_is_dropped() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        assert!(frames.animations.wants(1, None));
+        frames.animations.retain(|_| false);
+        assert!(!frames.animations.wants(1, None));
     }
 }

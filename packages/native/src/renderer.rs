@@ -4790,6 +4790,8 @@ pub(crate) struct GpuixView {
     pub(crate) keyframes: crate::motion::KeyframesRegistry,
     /// CSS transition state of the elements that declare `transition*`.
     css_transitions: crate::motion::CssTransitions,
+    /// CSS animation state of the elements that declare `animation*`.
+    css_animations: crate::motion::CssAnimations,
     /// What the last paint measured for the elements that animate.
     measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
@@ -4977,6 +4979,28 @@ fn emit_transition_events(
     }
 }
 
+fn emit_animation_events(
+    callback: &Option<EventCallback>,
+    tree: &crate::retained_tree::RetainedTree,
+    events: Vec<crate::motion::AnimationEvent>,
+) {
+    for event in events {
+        let event_type = event.kind.event_type();
+        let listens = tree
+            .elements
+            .get(&event.id)
+            .is_some_and(|element| element.events().contains(event_type));
+        if !listens {
+            continue;
+        }
+        emit_event_full(callback, event.id, event_type, |payload| {
+            payload.animation_name = Some(event.name);
+            payload.elapsed_time = Some(event.elapsed);
+            payload.pseudo_element = Some(String::new());
+        });
+    }
+}
+
 fn emit_highlight_events(callback: &Option<EventCallback>, events: &[(u64, usize)]) {
     for &(id, total) in events {
         emit_event_full(callback, id, "highlight", |payload| {
@@ -5095,6 +5119,7 @@ impl GpuixView {
             motion_values: Default::default(),
             keyframes: Default::default(),
             css_transitions: Default::default(),
+            css_animations: Default::default(),
             measurements: Default::default(),
             state_source: Default::default(),
             svg_trees: Default::default(),
@@ -5518,6 +5543,8 @@ impl GpuixView {
             motion_states: &mut self.motion_states,
             motion_values: &self.motion_values,
             css_transitions: &mut self.css_transitions,
+            css_animations: &mut self.css_animations,
+            keyframes: &self.keyframes,
             measurements: &self.measurements,
             state_source: &self.state_source,
             svg_trees: &mut self.svg_trees,
@@ -5536,7 +5563,8 @@ impl GpuixView {
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        if self.css_transitions.take_active() || motion_active {
+        emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        if self.css_transitions.take_active() || self.css_animations.take_active() || motion_active {
             window.request_animation_frame();
         }
         let Some(focus_handle) = row_focus_handle else {
@@ -5649,6 +5677,8 @@ pub(crate) struct BuildCtx<'a> {
     pub motion_states: &'a mut HashMap<u64, crate::motion::MotionState>,
     motion_values: &'a crate::motion::MotionValueStore,
     css_transitions: &'a mut crate::motion::CssTransitions,
+    css_animations: &'a mut crate::motion::CssAnimations,
+    keyframes: &'a crate::motion::KeyframesRegistry,
     measurements: &'a crate::motion::measure::Measurements,
     state_source: &'a crate::motion::state_source::StateSource,
     svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
@@ -6442,6 +6472,8 @@ impl gpui::Render for GpuixView {
         let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
+        self.css_animations
+            .retain(|id| tree.elements.contains_key(&id));
         self.measurements
             .retain(|id| tree.elements.contains_key(&id));
         self.state_source
@@ -6470,6 +6502,8 @@ impl gpui::Render for GpuixView {
                     motion_states: &mut self.motion_states,
                     motion_values: &self.motion_values,
                     css_transitions: &mut self.css_transitions,
+                    css_animations: &mut self.css_animations,
+                    keyframes: &self.keyframes,
                     measurements: &self.measurements,
                     state_source: &self.state_source,
                     svg_trees: &mut self.svg_trees,
@@ -6494,7 +6528,9 @@ impl gpui::Render for GpuixView {
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_motion_value_events(&callback, &motion_value_frame.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        let transitions_active = self.css_transitions.take_active();
+        emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        let transitions_active =
+            self.css_transitions.take_active() | self.css_animations.take_active();
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -6609,29 +6645,29 @@ pub(crate) fn build_element(
     let base_style = state_style.as_ref().or(element.style.as_deref());
 
     // State styles and CSS transitions come before motion: an `animate` value
-    // is an inline style and beats a transition.
+    // is an inline style and beats a transition. CSS animations come last of
+    // all, as animations beat every normal declaration in CSS.
     let measurement = ctx.measurements.get(id);
-    let transitioned = ctx
-        .css_transitions
-        .wants(id, element.style.as_deref())
-        .then(|| {
-            let focus_visible = ctx
-                .focus_handles
-                .get(&id)
-                .is_some_and(|handle| handle.is_focused(window))
-                && window.last_input_was_keyboard();
-            crate::motion::resolve_transitioned_style(
-                ctx.css_transitions,
-                (ctx.pointer.is_hovered(id), ctx.pointer.is_active(id)),
-                ctx.motion_states.get(&id),
-                id,
-                element.style.as_deref().unwrap_or(&EMPTY_STYLE),
-                focus_visible,
-                measurement.as_ref(),
-                ctx.inherited.interpolate_size,
-                ctx.now,
-            )
-        });
+    let transitions_wanted = ctx.css_transitions.wants(id, element.style.as_deref());
+    let animations_wanted = ctx.css_animations.wants(id, element.style.as_deref());
+    let transitioned = (transitions_wanted || animations_wanted).then(|| {
+        let focus_visible = ctx
+            .focus_handles
+            .get(&id)
+            .is_some_and(|handle| handle.is_focused(window))
+            && window.last_input_was_keyboard();
+        crate::motion::resolve_declared_style(
+            transitions_wanted.then_some(&mut *ctx.css_transitions),
+            (ctx.pointer.is_hovered(id), ctx.pointer.is_active(id)),
+            ctx.motion_states.get(&id),
+            id,
+            element.style.as_deref().unwrap_or(&EMPTY_STYLE),
+            focus_visible,
+            measurement.as_ref(),
+            ctx.inherited.interpolate_size,
+            ctx.now,
+        )
+    });
     let declared_style = transitioned.as_ref().or(base_style);
     let animated_style = if element.custom_props().contains_key("motion") {
         ctx.motion_states
@@ -6658,10 +6694,31 @@ pub(crate) fn build_element(
         ctx.motion_values.apply(binding, &mut resolved);
         resolved
     });
-    let current_style = bound_style
+    let underlying_style = bound_style
         .as_ref()
         .or(animated_style.as_ref())
         .or(declared_style);
+    let css_animated = animations_wanted
+        .then(|| {
+            let declared = declared_style.unwrap_or(&EMPTY_STYLE);
+            ctx.css_animations
+                .update(
+                    id,
+                    declared,
+                    underlying_style.unwrap_or(&EMPTY_STYLE),
+                    ctx.keyframes,
+                    measurement.as_ref(),
+                    ctx.inherited.interpolate_size,
+                    ctx.now,
+                )
+                .map(|values| {
+                    let mut resolved = underlying_style.cloned().unwrap_or_default();
+                    values.apply_to(&mut resolved);
+                    resolved
+                })
+        })
+        .flatten();
+    let current_style = css_animated.as_ref().or(underlying_style);
     let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
         current_style
             .cloned()
@@ -7065,6 +7122,7 @@ pub(crate) fn build_host_container(
     // elements they drive pay for the measurement.
     if element.custom_props().contains_key("motion")
         || ctx.css_transitions.wants(element.id, element.style.as_deref())
+        || ctx.css_animations.wants(element.id, element.style.as_deref())
     {
         el = el.on_painted_layout(
             ctx.measurements

@@ -24,7 +24,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
-pub(crate) use css_animation::validate_animations;
+pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimations};
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
@@ -627,11 +627,12 @@ impl MotionState {
 
 /// The style `style` has after the state styles that currently apply (focus,
 /// hover, then press, the order GPUI refines them in), with the CSS transitions
-/// running on it laid on top. The result has no state styles left, so GPUI's own
+/// running on it laid on top (`transitions` is `None` for an element that
+/// declares none). The result has no state styles left, so GPUI's own
 /// `.hover()` / `.active()` / `.focus_visible()` refinements do not apply them a
 /// second time, instantly.
-pub(crate) fn resolve_transitioned_style(
-    transitions: &mut CssTransitions,
+pub(crate) fn resolve_declared_style(
+    transitions: Option<&mut CssTransitions>,
     pointer: (bool, bool),
     motion: Option<&MotionState>,
     id: u64,
@@ -642,7 +643,9 @@ pub(crate) fn resolve_transitioned_style(
     now: Instant,
 ) -> StyleDesc {
     let mut after = fold_state_styles(style, focus_visible, pointer);
-    if let Some(running) = transitions.update(id, &after, motion, measurement, interpolate_size, now) {
+    if let Some(running) = transitions
+        .and_then(|transitions| transitions.update(id, &after, motion, measurement, interpolate_size, now))
+    {
         running.apply_to(&mut after);
     }
     after

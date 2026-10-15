@@ -437,6 +437,13 @@ impl Track {
         }
     }
 
+    /// The value `fraction` of the way through the keyframes, easings applied,
+    /// independent of the track's own clock. CSS animations own their timeline
+    /// and ask the track only how its keyframes interpolate.
+    pub(super) fn value_at(&self, fraction: f64) -> AnimValue {
+        self.layout.decode(&self.keyframes_at(fraction, false).0)
+    }
+
     fn sample_tween(&self, elapsed: Duration, delay: Duration, duration: f64) -> Sample {
         let progress = self.progress(elapsed, delay, duration);
         let active = !self.is_static() && !progress.done;

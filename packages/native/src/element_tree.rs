@@ -238,12 +238,17 @@ pub struct EventPayload {
     /// transitionCancel.
     pub property_name: Option<String>,
 
-    /// Seconds of the transition's active time, as the DOM `elapsedTime`.
-    /// Populated for: the transition events.
+    /// The `animation-name` of the animation, as the DOM `animationName`.
+    /// Populated for: animationStart, animationIteration, animationEnd,
+    /// animationCancel.
+    pub animation_name: Option<String>,
+
+    /// Seconds of the transition's or animation's active time, as the DOM
+    /// `elapsedTime`. Populated for: the transition and animation events.
     pub elapsed_time: Option<f64>,
 
     /// Always `""`: gpuix has no pseudo-elements. Populated for: the transition
-    /// events.
+    /// and animation events.
     pub pseudo_element: Option<String>,
 
 
@@ -314,6 +319,7 @@ impl Default for EventPayload {
             focus_visible: None,
             observation: None,
             property_name: None,
+            animation_name: None,
             elapsed_time: None,
             pseudo_element: None,
             modifiers: None,

@@ -429,7 +429,7 @@ impl InterpolateSize {
         Self::parse(style.interpolate_size.as_deref()?).ok()
     }
 
-    fn allows_keywords(self) -> bool {
+    pub(super) fn allows_keywords(self) -> bool {
         self == Self::AllowKeywords
     }
 }

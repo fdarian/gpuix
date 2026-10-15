@@ -8,9 +8,6 @@
 //! winning property by property. The endpoints a definition leaves out are the
 //! element's underlying values, which only the runtime knows.
 
-// Nothing reads a definition until the runtime lands; the tests do.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
