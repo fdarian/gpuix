@@ -509,16 +509,19 @@ and a wasm-bindgen callback in the browser.
 User clicks element id=3
        │
        ▼
-GPUI fires on_click on the element
+GPUI delivers the mouse input; the native dispatcher hit-tests it
+and works out the target and its path (3, then its ancestors)
        │
        ▼
-Rust closure calls emit_event_full(callback, 3, "click", {x, y, ...})
+Rust calls emit_event_full(callback, 3, "click", {x, y, path, ...})
        │
        ▼
 Desktop ThreadsafeFunction / browser callback sends EventPayload
        │
        ▼
-JS event registry: eventHandlers.get(3)?.get("click")?.(payload)
+JS dispatchDomEvent walks the path: capture handlers from the outermost
+ancestor down, then the target's, then bubble handlers back up,
+reading eventHandlers.get(id)?.get("click")
        │
        ▼
 React handler runs: onClick={() => setCount(c => c + 1)}
@@ -2029,10 +2032,13 @@ group.
   default). Under `reducedMotion` it jumps. The item is drawn above the others
   while it is held and until it arrives; GPUIX has no `zIndex`, so this is done
   by drawing it last.
-- A drag follows the pointer after it leaves the item: the item captures the
-  pointer when pressed, as any element listening for both `onMouseDown` and
-  `onMouseMove` does. A release outside the window is not seen; the next move
-  with no button down ends the drag.
+- A drag follows the pointer after it leaves the item: the item calls
+  [`setPointerCapture`](#pointer-capture) on `pointerdown`, and the drag ends on
+  `pointerup`, `pointercancel` or `lostpointercapture`. The capture applies at
+  the next native pointer input, so on Windows and Linux, where `pointerdown`
+  reaches JavaScript after native has moved on, a move that arrives before the
+  handler runs can be lost. A release outside the window is not seen; the next
+  move with no button down ends the drag.
 
 Differences from Motion for React:
 
@@ -2084,7 +2090,7 @@ Plain scroll containers still build every child. Use `<virtual-list>` below when
 
 ### The wheel
 
-The wheel goes to the innermost scroller under the pointer that can still scroll in the direction of the delta. Each axis is independent: a scroller takes the part of the delta it can use, and the rest goes to the scroller around it. A scroller at its limit hands the whole delta on, which is how a list inside a page lets you carry on scrolling the page. Nested scrollers work. The exception is `<virtual-list>`, which takes every tick under the pointer itself and neither receives nor hands on a delta, so keep other scrollers out of it and it out of other scrollers.
+The wheel goes to the innermost scroller under the pointer that can still scroll in the direction of the delta. Each axis is independent: a scroller takes the part of the delta it can use, and the rest goes to the scroller around it. A scroller at its limit hands the whole delta on, which is how a list inside a page lets you carry on scrolling the page. Nested scrollers work. `<virtual-list>` takes part like any scroller, along the vertical axis only: it takes the vertical share it can use and hands the rest, and all of the horizontal delta, to the scroller around it, and a scroller inside one of its rows is served first.
 
 `overscrollBehavior` (and `overscrollBehaviorX` / `Y`) decides what happens to the delta a scroller cannot use. `"auto"`, the default, passes it on. `"contain"` and `"none"` keep it, so the page behind does not move.
 
@@ -2331,7 +2337,7 @@ Each **direct host child** is one virtual row. Give every row a stable React key
 </virtual-list>
 ```
 
-A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. Those children must not scroll: a `<virtual-list>` takes every wheel tick under the pointer itself and does not hand any to the scrollers around it or inside it (see [Scrolling](#scrolling)).
+A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. A scroller inside a row takes the wheel first and hands the rest to the list, which hands what it cannot use to the scrollers around it (see [Scrolling](#scrolling)).
 
 ### Chat tail behavior
 
@@ -3116,6 +3122,9 @@ runs for a key held with Ctrl, Alt or Cmd.
 A mouse press on something that is not focusable blurs the focused element, as
 in a browser. `preventDefault()` in an `onMouseDown` keeps focus where it is,
 which is how a Combobox item can be pressed while its input stays focused.
+On Windows and Linux the press reaches JavaScript through a queue after native
+has already moved focus, so `preventDefault()` in `onMouseDown` or `onPointerDown`
+has no effect there.
 
 ### Calling the renderer from a handler
 
@@ -3124,6 +3133,12 @@ renderer: `focusElement`, `scrollTo`, `getScrollOffset`, the clipboard,
 `promptForPaths`, `getWindowSize`, `getA11yTree` and the `setWindow*` calls all
 run against the window being dispatched. A handler that throws is reported like
 any other event error and the next handler still runs.
+
+`mousedown`, `pointerdown`, `mouseup`, `pointerup`, `click` and `wheel` handlers
+run the same way on macOS, but the input usually holds the root view while they
+run. A call that only changes state (`focusElement`, `blurElement`, selection,
+motion-value writes) is deferred until the input returns. A call that reads the
+view, such as `getFocusedElementId`, throws; read it from a microtask instead.
 
 ### Imperative focus
 
