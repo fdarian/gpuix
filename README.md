@@ -5080,6 +5080,82 @@ discrete properties never transition; and the one transition-start case where an
 element's first style has no `transition` and a later style adds one together with
 a changed value (the change applies instantly; the next one animates).
 
+### CSS animations
+
+`animation` and its longhands take CSS syntax, as in a DOM inline style. There is
+no stylesheet to hold `@keyframes`, so `defineKeyframes` is its analogue. The
+animation then runs natively, with no React render per frame.
+
+```tsx
+import { defineKeyframes } from '@gpuix/react' // or '@gpuix/solid'
+
+defineKeyframes('pulse', {
+  from: { opacity: 1 },
+  '50%': { opacity: 0.4, animationTimingFunction: 'ease-in-out' },
+  to: { opacity: 1 },
+})
+
+<div
+  style={{
+    width: 120,
+    height: 8,
+    backgroundColor: '#89b4fa',
+    animation: 'pulse 1.2s linear infinite',
+  }}
+  onAnimationIteration={(event) => console.log(event.animationName)}
+/>
+```
+
+- **`defineKeyframes(name, frames)`.** Keys are `from`, `to`, a percentage
+  (`'50%'`) or a comma list (`'0%, 50%'`). Values are the properties `motion` can
+  animate (see [Targets and timing](#targets-and-timing)), each with a single
+  value, plus `animationTimingFunction`, which eases from that keyframe to the
+  next. Blocks at the same offset merge, the later key winning. A property a
+  definition leaves out of `from` or `to` starts or ends at the element's own
+  value, as in CSS. A bad definition throws from `defineKeyframes` and keeps the
+  earlier one
+- **One registry for the process.** `@keyframes` is document-global, so a
+  definition reaches every window and test root, including ones created later.
+  Define keyframes once at module scope
+- **Properties.** `animation` is a comma list of `<name> <duration> <timing
+  function> <delay> <iteration count> <direction> <fill mode> <play state>` in any
+  order: the first time is the duration, the second the delay. `animationName`,
+  `animationDuration`, `animationTimingFunction`, `animationDelay`,
+  `animationIterationCount`, `animationDirection`, `animationFillMode` and
+  `animationPlayState` win over the shorthand, and shorter lists repeat to the
+  length of `animationName`. The timing functions are the ones
+  [CSS transitions](#css-transitions) take. An invalid value is rejected when the
+  style is set. A name with no keyframes animates nothing, as in a browser
+- **Behaviour.** CSS Animations Level 1: `infinite` and fractional iteration
+  counts, `reverse`, `alternate` and `alternate-reverse`, `backwards` / `forwards`
+  / `both` fill, `paused` (freezes where it is and resumes from there), a negative
+  delay that starts part-way through, and a restart when `animationName` changes
+- **State styles.** `hover`, `active` and `focusVisible` may declare `animation`.
+  It starts when the state applies and is cancelled when it ends
+- **Cascade.** Animations win over the element's style, its state styles, running
+  CSS transitions and `motion`, as animations do over normal declarations in CSS
+- **Events.** `onAnimationStart` (after the delay), `onAnimationIteration` (each
+  iteration after the first, not at the end), `onAnimationEnd` and
+  `onAnimationCancel` carry `animationName`, `elapsedTime` in seconds and
+  `pseudoElement: ""`. `onAnimationCancel` fires when the animation is removed or
+  its name changes before it ended; one that already ended is not cancelled. They
+  fire on the animating element only and do not bubble yet
+
+Differences from a browser:
+
+- Redefining a name affects animations that start afterwards. One already running
+  keeps the keyframes it started with, where a browser re-resolves it live
+- A running CSS transition does not beat an animation on the same property. The
+  animation always wins, and a transition never starts from a value an animation
+  drove, because transitions compare the style beneath the animations
+- Only the properties `motion` can animate are animatable, so `transform` and
+  discrete properties such as `display` cannot be keyframed
+- `animation-composition`, `animation-timeline` and `animation-range` are not
+  supported
+- `animation-duration: auto` is `0s`
+- A size keyframe against `auto` (or an unset size) is discrete unless
+  `interpolateSize: 'allow-keywords'` applies, as for transitions
+
 > **Note: `white-space: pre` is not supported.** GPUI's text system only has `normal` (wraps) and `nowrap` (single line). To preserve newlines like HTML `<pre>`, split your text on `\n` in React and render each line as a separate `<text>` element in a flex column:
 >
 > ```tsx
