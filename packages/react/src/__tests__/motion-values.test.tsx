@@ -2,6 +2,7 @@ import { useState } from "react"
 import { describe, expect, it } from "vitest"
 import {
   animate,
+  motion,
   motionValue,
   useMotionValue,
   useMotionValueEvent,
@@ -33,6 +34,12 @@ function sizeOf(renderer: TestRenderer, testId: string) {
 const row = { display: "flex", flexDirection: "column", alignItems: "flex-start" } as const
 
 describeNative("motion values in style", () => {
+  it("types a motion.div's style to accept a motion value", () => {
+    const width = motionValue(40)
+    const box = <motion.div animate={{ height: 20 }} style={{ width, height: 20 }} />
+    expect(box.props.style.width).toBe(width)
+  })
+
   it("drives an element's bounds from a bound value", () => {
     const { render, renderer } = createTestRoot()
     renderer.clockPause()

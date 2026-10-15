@@ -19,7 +19,7 @@ export {
   useVelocity,
 } from "./hooks/use-motion-value.js"
 export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
-export { animate, motionValue } from "@gpuix/native/host"
+export { animate, isMotionValue, motionValue } from "@gpuix/native/host"
 export type {
   AnimationControls,
   MotionSpringConfig,

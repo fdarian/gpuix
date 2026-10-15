@@ -4,9 +4,9 @@ import { createElement, forwardRef, useContext, useEffect, useMemo } from "react
 import type { ReactElement, ReactNode } from "react"
 import type {
   MotionProps,
+  MotionValueStyle,
   Props,
   PublicInstance,
-  StyleDesc,
   SvgCircleProps,
   SvgEllipseProps,
   SvgGroupProps,
@@ -47,7 +47,7 @@ export type GpuixComponentType = keyof typeof gpuixComponents
 
 export interface MotionDivProps extends MotionProps {
   children?: ReactNode
-  style?: StyleDesc
+  style?: MotionValueStyle
   onClick?: Props["onClick"]
   onMouseDown?: Props["onMouseDown"]
   onMouseUp?: Props["onMouseUp"]
