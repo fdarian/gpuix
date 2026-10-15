@@ -6533,14 +6533,16 @@ impl gpui::Render for GpuixView {
         crate::scroll::begin_frame();
         crate::scrollbar::begin_frame(now);
         let scroll_animating = crate::scroll::advance_animations(now);
+        // Before the motion sync reads them, so an element that stopped being
+        // measured does not seed its motion from a size laid out long ago.
+        self.measurements
+            .prune(|id| tree.elements.contains_key(&id));
         let (motion_active, motion_settled) =
             sync_motion_states(&tree, &mut self.motion_states, &self.measurements, now);
         let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
         self.css_transitions
             .retain(|id| tree.elements.contains_key(&id));
         self.css_animations
-            .retain(|id| tree.elements.contains_key(&id));
-        self.measurements
             .retain(|id| tree.elements.contains_key(&id));
         self.state_source
             .retain(|id| tree.elements.contains_key(&id));
@@ -6727,7 +6729,7 @@ pub(crate) fn build_element(
     let transitions_wanted = ctx.css_transitions.wants(id, element.style.as_deref());
     let animations_wanted = ctx.css_animations.wants(id, element.style.as_deref());
     // A plain element has no measurement to read: it is not wrapped below, and
-    // the root render prunes the ones of elements that left the tree.
+    // the root render prunes the measurement of any element that was not.
     let measured = has_motion || transitions_wanted || animations_wanted;
     let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
     let transitioned = (transitions_wanted || animations_wanted).then(|| {

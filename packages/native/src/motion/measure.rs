@@ -7,7 +7,7 @@
 //! frame records it here and the build of the next frame reads it.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use gpui::{
@@ -68,6 +68,8 @@ impl Measurement {
 #[derive(Clone, Default)]
 pub(crate) struct Measurements {
     by_element: Rc<RefCell<HashMap<u64, Measurement>>>,
+    /// The elements `wrap` was called for since the last `prune`.
+    wrapped: Rc<RefCell<HashSet<u64>>>,
     painted_frames: Rc<Cell<u64>>,
 }
 
@@ -76,8 +78,19 @@ impl Measurements {
         self.by_element.borrow().get(&id).copied()
     }
 
-    pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
-        self.by_element.borrow_mut().retain(|id, _| keep(*id));
+    /// Drops the measurement of every element that `exists` rejects or that was
+    /// not wrapped since the last prune, then starts a new round of wrapping.
+    ///
+    /// An element that stops being measured keeps living, and a measurement
+    /// left behind would seed the size it starts from if it gains motion later.
+    /// Rows of a virtual list are built after the root render, so the round
+    /// runs from one root render to the next.
+    pub(crate) fn prune(&self, mut exists: impl FnMut(u64) -> bool) {
+        let mut wrapped = self.wrapped.borrow_mut();
+        self.by_element
+            .borrow_mut()
+            .retain(|id, _| wrapped.contains(id) && exists(*id));
+        wrapped.clear();
     }
 
     /// How many frames have been painted. An element without a measurement
@@ -100,6 +113,7 @@ impl Measurements {
     /// lives on GPUI's `Interactivity`, which `<img>`, `<svg>`, `<input>` and
     /// the other custom elements build behind an `AnyElement`.
     pub(crate) fn wrap(&self, id: u64, border: VerticalBorder, child: AnyElement) -> AnyElement {
+        self.wrapped.borrow_mut().insert(id);
         Measured {
             id,
             border,
@@ -315,20 +329,55 @@ mod tests {
         );
     }
 
-    #[test]
-    fn retain_drops_measurements() {
-        let measurements = Measurements::default();
-        let measurement = Measurement {
+    fn some_measurement() -> Measurement {
+        Measurement {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
             natural_height: gpui::px(2.0),
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
-        };
+        }
+    }
+
+    fn wrap_empty(measurements: &Measurements, id: u64) {
+        measurements.wrap(id, VerticalBorder::default(), gpui::Empty.into_any_element());
+    }
+
+    #[test]
+    fn prune_drops_measurements_of_elements_that_left_the_tree() {
+        let measurements = Measurements::default();
+        let measurement = some_measurement();
         measurements.by_element.borrow_mut().insert(1, measurement);
         measurements.by_element.borrow_mut().insert(2, measurement);
-        assert_eq!(measurements.get(1), Some(measurement));
-        measurements.retain(|id| id == 2);
+        wrap_empty(&measurements, 1);
+        wrap_empty(&measurements, 2);
+        measurements.prune(|id| id == 2);
         assert_eq!(measurements.get(1), None);
         assert_eq!(measurements.get(2), Some(measurement));
+    }
+
+    #[test]
+    fn prune_drops_the_measurement_of_an_element_that_was_not_wrapped() {
+        let measurements = Measurements::default();
+        let measurement = some_measurement();
+        measurements.by_element.borrow_mut().insert(1, measurement);
+        measurements.by_element.borrow_mut().insert(2, measurement);
+        wrap_empty(&measurements, 1);
+        measurements.prune(|_| true);
+        assert_eq!(measurements.get(1), Some(measurement));
+        assert_eq!(measurements.get(2), None);
+    }
+
+    #[test]
+    fn a_wrap_counts_for_one_round_only() {
+        let measurements = Measurements::default();
+        measurements
+            .by_element
+            .borrow_mut()
+            .insert(1, some_measurement());
+        wrap_empty(&measurements, 1);
+        measurements.prune(|_| true);
+        assert!(measurements.get(1).is_some());
+        measurements.prune(|_| true);
+        assert_eq!(measurements.get(1), None);
     }
 }
