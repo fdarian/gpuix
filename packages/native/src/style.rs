@@ -30,7 +30,7 @@ pub struct BoxShadowValue {
 /// `boxShadow` is one shadow or a list of them, painted in the order given.
 /// JS may also send the CSS string, which is parsed into the same layers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged, from = "BoxShadowInput")]
+#[serde(untagged, try_from = "BoxShadowInput")]
 pub enum BoxShadowValues {
     Many(Vec<BoxShadowValue>),
     One(BoxShadowValue),
@@ -44,17 +44,32 @@ enum BoxShadowInput {
     One(BoxShadowValue),
 }
 
-impl From<BoxShadowInput> for BoxShadowValues {
-    fn from(input: BoxShadowInput) -> Self {
-        match input {
-            // An invalid declaration is ignored like in CSS: no layers, no shadow.
-            BoxShadowInput::Css(css) => {
-                Self::Many(crate::css::box_shadow::parse(&css).unwrap_or_default())
-            }
-            BoxShadowInput::Many(layers) => Self::Many(layers),
-            BoxShadowInput::One(layer) => Self::One(layer),
+impl BoxShadowInput {
+    /// `None` for a CSS string that is not a valid `box-shadow`.
+    fn into_values(self) -> Option<BoxShadowValues> {
+        match self {
+            Self::Css(css) => crate::css::box_shadow::parse(&css).map(BoxShadowValues::Many),
+            Self::Many(layers) => Some(BoxShadowValues::Many(layers)),
+            Self::One(layer) => Some(BoxShadowValues::One(layer)),
         }
     }
+}
+
+impl TryFrom<BoxShadowInput> for BoxShadowValues {
+    type Error = &'static str;
+
+    fn try_from(input: BoxShadowInput) -> Result<Self, Self::Error> {
+        input.into_values().ok_or("not a valid box-shadow")
+    }
+}
+
+/// A style's `boxShadow`. An invalid CSS string leaves it unset, as CSS drops
+/// an invalid declaration, so the base style's shadow still applies under a
+/// state style that gets it wrong.
+fn deserialize_box_shadow<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<BoxShadowValues>, D::Error> {
+    Ok(Option::<BoxShadowInput>::deserialize(deserializer)?.and_then(BoxShadowInput::into_values))
 }
 
 impl BoxShadowValues {
@@ -306,6 +321,7 @@ pub struct StyleDesc {
     pub border_top_right_radius: Option<f64>,
     pub border_bottom_left_radius: Option<f64>,
     pub border_bottom_right_radius: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_box_shadow")]
     pub box_shadow: Option<BoxShadowValues>,
     /// CSS `filter`, e.g. `"blur(4px) brightness(1.2)"`. Applied to the element and
     /// everything in it. An invalid string is ignored.
@@ -489,7 +505,7 @@ pub(crate) struct Fill {
 }
 
 impl BackgroundValue {
-    fn resolve(&self, colors: &ColorContext) -> Option<gpui::Background> {
+    pub(crate) fn resolve(&self, colors: &ColorContext) -> Option<gpui::Background> {
         match self {
             Self::Color(value) => colors.resolve(value).map(Into::into),
             Self::Gradient(gradient) => {
@@ -671,8 +687,13 @@ impl StyleDesc {
             clip: self.background_clip.as_deref(),
         };
         let parsed = crate::css::background::resolve(&inputs, colors);
-        let color = if let Some(value) = self.background_color.as_deref() {
-            colors.resolve(value).map(Into::into)
+        // An invalid `backgroundColor` is dropped, so the shorthand's colour still shows.
+        let own_color = self
+            .background_color
+            .as_deref()
+            .and_then(|value| colors.resolve(value));
+        let color = if let Some(own_color) = own_color {
+            Some(own_color.into())
         } else if let Some(background) = self.background.as_ref() {
             match background {
                 BackgroundValue::Color(value) => colors
@@ -757,10 +778,10 @@ mod tests {
     }
 
     #[test]
-    fn an_invalid_box_shadow_string_paints_nothing_and_keeps_the_rest_of_the_style() {
+    fn an_invalid_box_shadow_string_is_left_unset_and_keeps_the_rest_of_the_style() {
         let style: StyleDesc =
             serde_json::from_str(r##"{"boxShadow":"4 4 red","color":"red"}"##).unwrap();
-        assert!(style.box_shadow.as_ref().unwrap().as_slice().is_empty());
+        assert_eq!(style.box_shadow, None);
         assert_eq!(style.color.as_deref(), Some("red"));
     }
 
@@ -825,6 +846,17 @@ mod tests {
         .color_space(gpui::ColorSpace::Oklab);
 
         assert_eq!(style.resolved_fill(&light()).color, Some(expected));
+    }
+
+    #[test]
+    fn an_invalid_background_color_is_dropped_so_the_shorthands_colour_applies() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{"background":"linear-gradient(red, blue), #0000ff","backgroundColor":"notacolour"}"##,
+        )
+        .unwrap();
+        let fill = style.resolved_fill(&light());
+        assert_eq!(fill.color, Some(crate::color::parse_color_rgba("#0000ff").unwrap().into()));
+        assert_eq!(fill.layers.len(), 1);
     }
 
     #[test]

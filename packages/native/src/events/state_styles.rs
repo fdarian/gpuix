@@ -1,5 +1,11 @@
+use std::borrow::Cow;
+
+use crate::color::{ColorContext, Scheme};
+use crate::css::background::{self, Background, Property};
 use crate::css::border::{parse_border, parse_color_sides, LineStyle};
-use crate::style::StyleDesc;
+use crate::css::mask::Mask;
+use crate::css::{clip_path, filter};
+use crate::style::{BackgroundValue, StyleDesc};
 
 /// Takes `$base`'s value for every field `$over` leaves unset. Written as a
 /// struct literal so a field added to `StyleDesc` and missing from this list
@@ -78,6 +84,8 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
 }
 
 fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
+    let over = without_invalid_values(over);
+    let over = over.as_ref();
     let mut base = base.clone();
     drop_shadowed_longhands(&mut base, over);
     overlay_fields!(
@@ -116,6 +124,58 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
         overscroll_behavior_x, overscroll_behavior_y, scroll_behavior,
     )
+}
+
+/// `over` without the values CSS drops as invalid when it parses the
+/// declaration, so the base value still applies instead of being replaced by
+/// one that paints nothing. A shorthand that is invalid must go before
+/// `drop_shadowed_longhands` too, or it would reset the longhands it covers.
+///
+/// Only the properties whose value is a CSS string are checked. Whether a
+/// colour resolves does not depend on the element, so the root context stands
+/// in for it. Parsing here is not reused for painting: the style holds the text.
+fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
+    let colors = ColorContext::root(Scheme::Light);
+    let mut cleaned: Option<StyleDesc> = None;
+    macro_rules! drop_if_invalid {
+        ($($field:ident: |$value:ident| $valid:expr),+ $(,)?) => {$(
+            if over.$field.as_deref().is_some_and(|$value| !$valid) {
+                cleaned.get_or_insert_with(|| over.clone()).$field = None;
+            }
+        )+};
+    }
+    drop_if_invalid!(
+        filter: |value| filter::parse_resolved(value, &colors).is_some(),
+        backdrop_filter: |value| filter::parse_resolved(value, &colors).is_some(),
+        clip_path: |value| clip_path::parse(value).is_some(),
+        mask: |value| background::is_valid_shorthand::<Mask>(value, &colors),
+        mask_image: |value| background::is_valid_image_list(value, &colors),
+        mask_size: |value| background::is_valid_list::<Mask>(Property::Size, value),
+        mask_position: |value| background::is_valid_list::<Mask>(Property::Position, value),
+        mask_repeat: |value| background::is_valid_list::<Mask>(Property::Repeat, value),
+        mask_origin: |value| background::is_valid_list::<Mask>(Property::Origin, value),
+        mask_clip: |value| background::is_valid_list::<Mask>(Property::Clip, value),
+        background_color: |value| colors.resolve(value).is_some(),
+        background_image: |value| background::is_valid_image_list(value, &colors),
+        background_size: |value| background::is_valid_list::<Background>(Property::Size, value),
+        background_position: |value| background::is_valid_list::<Background>(Property::Position, value),
+        background_repeat: |value| background::is_valid_list::<Background>(Property::Repeat, value),
+        background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value),
+        background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value),
+    );
+    if let Some(value) = &over.background {
+        let valid = match value {
+            // A plain colour, or the shorthand with layers.
+            BackgroundValue::Color(text) => {
+                colors.resolve(text).is_some() || background::is_valid_shorthand::<Background>(text, &colors)
+            }
+            BackgroundValue::Gradient(_) => value.resolve(&colors).is_some(),
+        };
+        if !valid {
+            cleaned.get_or_insert_with(|| over.clone()).background = None;
+        }
+    }
+    cleaned.map_or(Cow::Borrowed(over), Cow::Owned)
 }
 
 /// The border all-sides longhands (`borderWidth`, `borderColor`, `borderStyle`)
@@ -773,5 +833,78 @@ mod tests {
             },
         );
         assert_eq!(hovered_only.opacity, Some(1.0), "the element's hover is not the group's");
+    }
+
+    /// A state style whose value for `field` is invalid leaves the base's alone,
+    /// like CSS dropping an invalid declaration, while a valid `none` replaces it.
+    fn resolved_hover(base_and_hover: &str) -> StyleDesc {
+        resolve_state_styles(&style(base_and_hover), true, false)
+    }
+
+    #[test]
+    fn an_invalid_state_box_shadow_keeps_the_base_shadow() {
+        let resolved = resolved_hover(
+            r##"{"boxShadow":"0 1px 2px red","hover":{"boxShadow":"4 4 red"}}"##,
+        );
+        assert_eq!(resolved.box_shadow.as_ref().unwrap().as_slice().len(), 1);
+        let none = resolved_hover(r##"{"boxShadow":"0 1px 2px red","hover":{"boxShadow":"none"}}"##);
+        assert!(none.box_shadow.as_ref().unwrap().as_slice().is_empty());
+    }
+
+    #[test]
+    fn an_invalid_state_filter_or_clip_path_keeps_the_base() {
+        let resolved = resolved_hover(
+            r##"{"filter":"blur(2px)","backdropFilter":"blur(4px)","clipPath":"inset(0)",
+                "hover":{"filter":"blur(","backdropFilter":"drop-shadow(1px 2px notacolour)","clipPath":"circle(-5px)"}}"##,
+        );
+        assert_eq!(resolved.filter.as_deref(), Some("blur(2px)"));
+        assert_eq!(resolved.backdrop_filter.as_deref(), Some("blur(4px)"));
+        assert_eq!(resolved.clip_path.as_deref(), Some("inset(0)"));
+        let none = resolved_hover(
+            r##"{"filter":"blur(2px)","clipPath":"inset(0)","hover":{"filter":"none","clipPath":"none"}}"##,
+        );
+        assert_eq!(none.filter.as_deref(), Some("none"));
+        assert_eq!(none.clip_path.as_deref(), Some("none"));
+    }
+
+    #[test]
+    fn an_invalid_state_mask_keeps_the_base_mask_and_does_not_reset_its_longhands() {
+        let resolved = resolved_hover(
+            r##"{"mask":"linear-gradient(black, transparent)","maskSize":"10px",
+                "hover":{"mask":"linear-gradient(","maskSize":"-1px","maskImage":"nope"}}"##,
+        );
+        assert_eq!(resolved.mask.as_deref(), Some("linear-gradient(black, transparent)"));
+        assert_eq!(resolved.mask_size.as_deref(), Some("10px"));
+        assert_eq!(resolved.mask_image, None);
+        // Valid ones still replace, and a shorthand still resets the longhands.
+        let valid = resolved_hover(
+            r##"{"mask":"linear-gradient(black, transparent)","maskSize":"10px",
+                "hover":{"mask":"none"}}"##,
+        );
+        assert_eq!(valid.mask.as_deref(), Some("none"));
+        assert_eq!(valid.mask_size, None);
+    }
+
+    #[test]
+    fn an_invalid_state_background_keeps_the_base_background() {
+        let resolved = resolved_hover(
+            r##"{"background":"linear-gradient(red, blue)","backgroundImage":"linear-gradient(blue, red)",
+                "backgroundSize":"10px","backgroundColor":"#111111",
+                "hover":{"background":"linear-gradient(red","backgroundImage":"linear-gradient(red)","backgroundSize":"1 2 3",
+                         "backgroundColor":"nope"}}"##,
+        );
+        assert!(matches!(
+            resolved.background,
+            Some(BackgroundValue::Color(ref value)) if value == "linear-gradient(red, blue)"
+        ));
+        assert_eq!(resolved.background_image.as_deref(), Some("linear-gradient(blue, red)"));
+        assert_eq!(resolved.background_size.as_deref(), Some("10px"));
+        assert_eq!(resolved.background_color.as_deref(), Some("#111111"));
+        // A plain colour and an object gradient are valid backgrounds.
+        let colour = resolved_hover(r##"{"background":"blue","hover":{"background":"red"}}"##);
+        assert!(matches!(
+            colour.background,
+            Some(BackgroundValue::Color(ref value)) if value == "red"
+        ));
     }
 }
