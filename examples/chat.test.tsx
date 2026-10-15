@@ -153,7 +153,8 @@ describeNative('chat example', () => {
     expect(col).toBeDefined()
     expect(item).toBeDefined()
     const colBox = renderer.getElementBounds(col!.id)
-    const itemBox = renderer.getElementBounds(item!.id)
+    // A text node has no box in the DOM: the holder of the text does.
+    const itemBox = renderer.getElementBounds(item!.parentId!)
     expect(colBox).not.toBeNull()
     expect(itemBox).not.toBeNull()
     expect(itemBox!.x + itemBox!.width).toBeLessThanOrEqual(colBox!.x + colBox!.width + 1)

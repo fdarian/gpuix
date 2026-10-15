@@ -362,6 +362,33 @@ function matches(node: TreeNode, selector: Selector): boolean {
   return true
 }
 
+function isRawText(node: TreeNode): boolean {
+  return (
+    node.type === "text" &&
+    node.text != null &&
+    !node.children?.length &&
+    node.style === undefined &&
+    !node.events?.length &&
+    node.customProps === undefined
+  )
+}
+
+function nearestAncestorWithBounds(
+  root: TreeNode | null,
+  id: number
+): TreeNode | undefined {
+  const walk = (node: TreeNode, holder?: TreeNode): TreeNode | undefined | null => {
+    const nearest = node.bounds ? node : holder
+    if (node.id === id) return nearest
+    for (const child of node.children ?? []) {
+      const found = walk(child, nearest)
+      if (found !== null) return found
+    }
+    return null
+  }
+  return (root && walk(root)) ?? undefined
+}
+
 function collect(node: TreeNode | null, selector: Selector): TreeNode[] {
   if (!node) return []
   const roots = selector.parent
@@ -459,10 +486,15 @@ export class Locator {
     const node = await this.element()
     if (node.bounds) return node.bounds
     const { bounds } = await this.app.call("getBounds", { elementId: node.id })
-    if (!bounds) {
-      throw new AutomationError("NotFound", "Element has no painted bounds")
+    if (bounds) return bounds
+    // A text node has no box of its own in the DOM, and its text is laid out
+    // as part of the paragraph of the element that holds it.
+    if (isRawText(node)) {
+      const { tree } = await this.app.call("getTree", {})
+      const holder = nearestAncestorWithBounds(tree, node.id)
+      if (holder?.bounds) return holder.bounds
     }
-    return bounds
+    throw new AutomationError("NotFound", "Element has no painted bounds")
   }
 
   /** The centre of the last painted bounds, in window coordinates. */
