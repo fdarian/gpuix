@@ -26,7 +26,7 @@ The default runs after every element `onKeyDown` and the window `onKeyDown` of t
 
 Apps that called `renderer.focusNext()` from a window `onKeyDown` for Tab must remove that call, or Tab moves twice.
 
-Tab no longer types a tab character into `<input>` or `<textarea>`. Each key event also has a `keystrokeId`, shared by all events of one keystroke.
+Tab no longer types a tab character into `<input>` or `<textarea>`.
 
 Headless controls follow Base UI focus rules:
 
