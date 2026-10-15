@@ -1525,13 +1525,16 @@ the element is. A list of one value is that value. The same list works in
 | `repeatType` | `"loop"` | `"loop"` plays every iteration from the first keyframe, `"reverse"` plays odd iterations backwards in time (their easing runs backwards too), `"mirror"` plays them through the keyframes in reverse order with the same timing and easing |
 | `repeatDelay` | `0` | Seconds held on the last value between iterations |
 
-`duration` is the length of one iteration. `times` and an `ease` list apply to
-every property that uses the transition, and each needs the right count for the
-list it meets, so give a property with a different number of keyframes its own
-entry: `transition={{ duration: 1, width: { times: [0, 0.2, 1] } }}`. A spring
-animates between two keyframes only and takes `repeat` but not `times` or an
-`ease` list. A `times` or `ease` list of the wrong length makes the description invalid:
-the element does not animate and the renderer logs a warning.
+`duration` is the length of one iteration. A `times` or `ease` list in a shared
+transition (the top level or `default`) applies to the properties whose
+keyframes it fits and is left out for the others, which use the rest of the
+transition (an `ease` list left out becomes the default ease): in `animate={{ width: [0, 50, 100], height: 10 }}`
+with `times: [0, 0.2, 1]`, only `width` follows the times. To give a property
+its own, name it: `transition={{ duration: 1, width: { times: [0, 0.2, 1] } }}`.
+That list must fit the property's keyframes: one of the wrong length makes the
+description invalid, so the element does not animate and the renderer logs a
+warning. A spring animates between two keyframes only and takes `repeat` but not
+`times` or an `ease` list.
 
 ```tsx
 <motion.div

@@ -15,6 +15,7 @@ mod track;
 mod value;
 mod values;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use serde_json::{Map, Value};
 use web_time::Instant;
@@ -166,8 +167,14 @@ struct Transitions {
 }
 
 impl Transitions {
-    fn for_prop(&self, prop: PropKey) -> &Transition {
-        self.per_prop.get(&prop).unwrap_or(&self.fallback)
+    /// A property's own transition is used as written, so a `times` or `ease`
+    /// list of the wrong length is an error. A shared one only applies to the
+    /// properties whose keyframes it fits.
+    fn for_prop(&self, prop: PropKey, goal: &Goal) -> Cow<'_, Transition> {
+        match self.per_prop.get(&prop) {
+            Some(own) => Cow::Borrowed(own),
+            None => self.fallback.for_shared_keyframes(goal.keyframe_count()),
+        }
     }
 
     /// `reduced` replaces the transition of every position and size property
@@ -415,11 +422,11 @@ impl MotionState {
         let mut pending = self.pending.clone();
         let mut moving = false;
         for (prop, goal) in &description.animate {
-            let transition = description.transition.for_prop(*prop);
+            let transition = description.transition.for_prop(*prop, goal);
             let previous = self.tracks.get(prop);
             let waiting = self.pending.get(prop);
             let unchanged = match (previous, waiting) {
-                (Some(track), _) => track.goal() == goal && track.transition() == transition,
+                (Some(track), _) => track.goal() == goal && track.transition() == &*transition,
                 (None, Some(waiting)) => waiting.goal == *goal && waiting.transition == *transition,
                 (None, None) => false,
             };
@@ -432,7 +439,7 @@ impl MotionState {
                 (None, Some(waiting)) => waiting.from.clone().map_or(Start::Layout, Start::Value),
                 (None, None) => start_for(*prop, None, base),
             };
-            let begun = begin(*prop, start, goal, transition, measurement, painted, now)?;
+            let begun = begin(*prop, start, goal, &transition, measurement, painted, now)?;
             tracks.remove(prop);
             pending.remove(prop);
             match begun {
@@ -932,8 +939,8 @@ fn mount_tracks(
             None => Start::Rest,
             Some(initial) => start_for(*prop, initial.get(prop), base),
         };
-        let transition = description.transition.for_prop(*prop);
-        match begin(*prop, start, goal, transition, measurement, painted, now)? {
+        let transition = description.transition.for_prop(*prop, goal);
+        match begin(*prop, start, goal, &transition, measurement, painted, now)? {
             Begun::Track(track) => {
                 tracks.insert(*prop, track);
             }
@@ -3059,10 +3066,13 @@ mod tests {
         }
 
         #[test]
-        fn times_and_ease_must_match_the_keyframes() {
+        fn a_propertys_own_times_and_ease_must_match_its_keyframes() {
             let started = Instant::now();
             let fails = |transition: serde_json::Value| {
-                let description = linear(json!({ "width": [0.0, 1.0, 2.0] }), transition);
+                let description = linear(
+                    json!({ "width": [0.0, 1.0, 2.0] }),
+                    json!({ "duration": 1.0, "width": transition }),
+                );
                 MotionState::new(&description, None, None, 0, started).err().unwrap()
             };
             assert!(fails(json!({ "times": [0.0, 1.0] })).contains("times lists 2"));
@@ -3070,6 +3080,66 @@ mod tests {
             assert!(fails(json!({ "times": [0.0, 0.8, 0.5] })).contains("ascending"));
             assert!(fails(json!({ "times": [0.0, 0.5, 1.5] })).contains("0 to 1"));
             assert!(fails(json!({ "type": "spring", "times": [0.0, 0.5, 1.0] })).contains("times"));
+            // `default` is as shared as the top level: it is the one that is lenient.
+            let shared = linear(
+                json!({ "width": [0.0, 1.0, 2.0] }),
+                json!({ "default": { "duration": 1.0, "times": [0.0, 1.0] } }),
+            );
+            assert!(MotionState::new(&shared, None, None, 0, started).is_ok());
+        }
+
+        fn opacity(state: &MotionState, now: Instant) -> f64 {
+            state.tracks[&PropKey::Style(AnimProp::Opacity)].sample(now).position[0]
+        }
+
+        #[test]
+        fn a_shared_times_applies_only_to_the_properties_it_fits() {
+            let started = Instant::now();
+            for transition in [
+                json!({ "duration": 1.0, "ease": "linear", "times": [0.0, 0.2, 1.0] }),
+                json!({ "default": { "duration": 1.0, "ease": "linear", "times": [0.0, 0.2, 1.0] } }),
+            ] {
+                let description = json!({
+                    "initial": { "width": 0.0, "opacity": 0.0 },
+                    "animate": { "width": [0.0, 50.0, 100.0], "opacity": 1.0 },
+                    "transition": transition
+                });
+                let state = MotionState::new(&description, None, None, 0, started).unwrap();
+                near(width(&state, at(started, 0.1)), 25.0);
+                near(width(&state, at(started, 0.2)), 50.0);
+                near(opacity(&state, at(started, 0.2)), 0.2);
+                near(opacity(&state, at(started, 0.5)), 0.5);
+            }
+        }
+
+        #[test]
+        fn a_shared_ease_list_applies_only_to_the_properties_it_fits() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": 0.0, "opacity": 0.0 },
+                "animate": { "width": [0.0, 100.0, 0.0], "opacity": 1.0 },
+                "transition": { "duration": 1.0, "ease": ["linear", "easeIn"] }
+            });
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            near(width(&state, at(started, 0.25)), 50.0);
+            // Opacity has one segment, so it takes the default ease, not "linear".
+            let expected = curve::ease(0.5, &curve::Ease::Name("easeOut".to_string()));
+            near(opacity(&state, at(started, 0.5)), expected);
+        }
+
+        #[test]
+        fn a_propertys_own_transition_does_not_borrow_the_shared_times() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "width": 0.0 },
+                "animate": { "width": [0.0, 100.0] },
+                "transition": {
+                    "times": [0.0, 0.2, 1.0],
+                    "width": { "duration": 1.0, "ease": "linear" }
+                }
+            });
+            let state = MotionState::new(&description, None, None, 0, started).unwrap();
+            near(width(&state, at(started, 0.5)), 50.0);
         }
 
         #[test]

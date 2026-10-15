@@ -1,5 +1,6 @@
 //! Tween easing and spring physics shared by every animated property.
 
+use std::borrow::Cow;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -334,6 +335,31 @@ impl Transition {
             }
         }
         Ok(())
+    }
+
+    /// This transition for a property of `frames` keyframes when it is shared:
+    /// a `times` or `ease` list that does not fit that many keyframes is left
+    /// out, and a single `ease` takes the place of a dropped `ease` list.
+    pub(super) fn for_shared_keyframes(&self, frames: usize) -> Cow<'_, Transition> {
+        let times_fit = self.times.as_ref().is_none_or(|times| times.len() == frames);
+        let eases_fit = self
+            .segment_eases
+            .as_ref()
+            .is_none_or(|eases| eases.len() == frames - 1);
+        if times_fit && eases_fit {
+            return Cow::Borrowed(self);
+        }
+        let mut fitted = self.clone();
+        if !times_fit {
+            fitted.times = None;
+        }
+        if !eases_fit {
+            fitted.segment_eases = None;
+            if let Curve::Tween { ease, .. } = &mut fitted.curve {
+                *ease = default_ease();
+            }
+        }
+        Cow::Owned(fitted)
     }
 
     /// Where the `frames` keyframes sit in an iteration.

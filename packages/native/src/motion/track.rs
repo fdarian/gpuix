@@ -44,6 +44,12 @@ impl Goal {
         &self.frames
     }
 
+    /// How many keyframes a track for this goal has: a single target runs
+    /// from the current value.
+    pub(super) fn keyframe_count(&self) -> usize {
+        self.frames.len().max(2)
+    }
+
     /// The target of a single goal, or the last keyframe.
     pub(super) fn last(&self) -> &AnimValue {
         self.frames
