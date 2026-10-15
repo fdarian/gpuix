@@ -1,0 +1,694 @@
+//! The motion value graph as the renderer and JS see it: ids and values as
+//! JSON, a per-frame sample of the values something depends on, and the
+//! `motionValues` style binding.
+//!
+//! The graph is lazy (see [`super::values`]). This layer is what makes it tick:
+//! each frame samples every value that is bound to an element or has a
+//! listener, in one pass at the frame's instant, so a spring follower sees every
+//! frame and a transform reads the same instant as the value it maps.
+
+use std::collections::{HashMap, HashSet};
+
+use serde::Deserialize;
+use serde_json::{Map, Value};
+use web_time::Instant;
+
+use super::curve::{parse_ease, Curve, Transition};
+use super::property::{check_finite, expand_shorthand, parse_shadow_list, shadow_layers, AnimProp};
+use super::value::{AnimValue, Color};
+use super::values::{MotionValues, TransformOptions, ValueId};
+use crate::style::StyleDesc;
+
+const NAME: &str = "motion value";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MotionValueEventKind {
+    Change,
+    AnimationStart,
+    AnimationComplete,
+}
+
+impl MotionValueEventKind {
+    pub(crate) fn event_type(self) -> &'static str {
+        match self {
+            Self::Change => "motionValueChange",
+            Self::AnimationStart => "motionValueAnimationStart",
+            Self::AnimationComplete => "motionValueAnimationComplete",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MotionValueEvent {
+    pub(crate) id: u32,
+    pub(crate) kind: MotionValueEventKind,
+    /// The value as JSON text, for a change.
+    pub(crate) value: Option<String>,
+}
+
+#[derive(Default)]
+pub(crate) struct MotionValueFrame {
+    /// Something sampled is still moving by itself, so another frame is due.
+    pub(crate) active: bool,
+    pub(crate) events: Vec<MotionValueEvent>,
+}
+
+struct Watch {
+    change: bool,
+    animation: bool,
+    reported: AnimValue,
+    was_active: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct MotionValueStore {
+    graph: MotionValues,
+    watches: HashMap<ValueId, Watch>,
+    /// What the last frame sampled for the values elements bind.
+    frame_values: HashMap<ValueId, AnimValue>,
+    /// Events found while writing, delivered by the next frame.
+    pending: Vec<MotionValueEvent>,
+    warned: HashSet<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawTransformOptions {
+    clamp: Option<bool>,
+    ease: Option<Value>,
+}
+
+impl MotionValueStore {
+    pub(crate) fn create_source(&mut self, id: f64, initial: &Value) -> Result<(), String> {
+        self.graph.source(value_id(id)?, parse_value(initial)?)
+    }
+
+    pub(crate) fn create_transform(
+        &mut self,
+        id: f64,
+        input: f64,
+        input_range: Vec<f64>,
+        output_range: &Value,
+        options: Option<&Value>,
+    ) -> Result<(), String> {
+        let outputs = output_range
+            .as_array()
+            .ok_or_else(|| format!("a {NAME} transform's output range must be an array"))?
+            .iter()
+            .map(parse_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        self.graph.transform(
+            value_id(id)?,
+            value_id(input)?,
+            input_range,
+            outputs,
+            parse_transform_options(options)?,
+        )
+    }
+
+    /// A spring that chases another value.
+    pub(crate) fn create_follower(
+        &mut self,
+        id: f64,
+        source: f64,
+        config: &Value,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.graph
+            .follow(value_id(id)?, value_id(source)?, parse_spring(config)?, now)
+    }
+
+    /// A spring with a target of its own, moved by `set`.
+    pub(crate) fn create_spring(
+        &mut self,
+        id: f64,
+        initial: &Value,
+        config: &Value,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.graph
+            .spring(value_id(id)?, parse_value(initial)?, parse_spring(config)?, now)
+    }
+
+    pub(crate) fn dispose(&mut self, id: f64) -> Result<bool, String> {
+        let id = value_id(id)?;
+        self.watches.remove(&id);
+        self.frame_values.remove(&id);
+        Ok(self.graph.remove(id))
+    }
+
+    pub(crate) fn get(&mut self, id: f64, now: Instant) -> Result<Value, String> {
+        to_json(&self.graph.get(value_id(id)?, now)?)
+    }
+
+    /// Per second. Only a number has one rate, so any other value is an error.
+    pub(crate) fn velocity(&mut self, id: f64, now: Instant) -> Result<f64, String> {
+        let sample = self.graph.sample(value_id(id)?, now)?;
+        match (sample.value, sample.velocity.as_slice()) {
+            (AnimValue::Number(_), [rate]) => Ok(*rate),
+            _ => Err(format!("getVelocity is for {NAME}s that hold a number")),
+        }
+    }
+
+    pub(crate) fn is_animating(&mut self, id: f64, now: Instant) -> Result<bool, String> {
+        self.graph.is_animating(value_id(id)?, now)
+    }
+
+    pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
+        self.graph.set(value_id(id)?, parse_value(value)?, now)?;
+        self.observe(now);
+        Ok(())
+    }
+
+    pub(crate) fn jump(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
+        self.graph.jump(value_id(id)?, parse_value(value)?, now)?;
+        self.observe(now);
+        Ok(())
+    }
+
+    /// With no `transition`, the tween every animation defaults to.
+    pub(crate) fn animate(
+        &mut self,
+        id: f64,
+        target: &Value,
+        transition: Option<&Value>,
+        now: Instant,
+    ) -> Result<(), String> {
+        let transition = match transition {
+            Some(transition) => Transition::parse(transition.clone())?,
+            None => Transition::default(),
+        };
+        self.graph
+            .animate(value_id(id)?, parse_value(target)?, transition, now)?;
+        self.observe(now);
+        Ok(())
+    }
+
+    pub(crate) fn stop(&mut self, id: f64, now: Instant) -> Result<(), String> {
+        self.graph.stop(value_id(id)?, now)?;
+        self.observe(now);
+        Ok(())
+    }
+
+    /// Chooses which events a value delivers. Neither removes the listener.
+    pub(crate) fn listen(
+        &mut self,
+        id: f64,
+        change: bool,
+        animation: bool,
+        now: Instant,
+    ) -> Result<(), String> {
+        let id = value_id(id)?;
+        if !change && !animation {
+            self.watches.remove(&id);
+            return Ok(());
+        }
+        if let Some(watch) = self.watches.get_mut(&id) {
+            watch.change = change;
+            watch.animation = animation;
+            return Ok(());
+        }
+        let sample = self.graph.sample(id, now)?;
+        self.watches.insert(
+            id,
+            Watch {
+                change,
+                animation,
+                reported: sample.value,
+                was_active: sample.active,
+            },
+        );
+        Ok(())
+    }
+
+    /// Samples everything something depends on at `now`: the values the
+    /// elements' `motionValues` bind and the values with a listener.
+    pub(crate) fn frame<'a>(
+        &mut self,
+        bindings: impl IntoIterator<Item = &'a Value>,
+        now: Instant,
+    ) -> MotionValueFrame {
+        let mut frame = MotionValueFrame::default();
+        self.frame_values.clear();
+        let mut bound = Vec::new();
+        for binding in bindings {
+            match parse_binding(binding) {
+                Ok(pairs) => bound.extend(pairs.into_iter().map(|(_, id)| id)),
+                Err(error) => self.warn(error),
+            }
+        }
+        bound.sort_unstable_by_key(|id| id.0);
+        bound.dedup();
+
+        for id in bound {
+            match self.graph.sample(id, now) {
+                Ok(sample) => {
+                    frame.active |= sample.active;
+                    self.frame_values.insert(id, sample.value);
+                }
+                Err(error) => self.warn(error),
+            }
+        }
+        frame.active |= self.observe(now);
+        frame.events = std::mem::take(&mut self.pending);
+        frame
+    }
+
+    /// Lays the bound values the last frame sampled over `style`.
+    pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc) {
+        let Ok(pairs) = parse_binding(binding) else {
+            return;
+        };
+        for (prop, id) in pairs {
+            let Some(value) = self.frame_values.get(&id) else {
+                continue;
+            };
+            if prop.accepts(value) {
+                prop.write(style, prop.clamp_value(value.clone()));
+            }
+        }
+    }
+
+    /// Whether any listened value is moving. Events it finds wait in `pending`.
+    fn observe(&mut self, now: Instant) -> bool {
+        let mut active = false;
+        let mut failed = Vec::new();
+        let mut ids: Vec<ValueId> = self.watches.keys().copied().collect();
+        ids.sort_unstable_by_key(|id| id.0);
+        for id in ids {
+            let sample = match self.graph.sample(id, now) {
+                Ok(sample) => sample,
+                Err(error) => {
+                    failed.push(error);
+                    continue;
+                }
+            };
+            active |= sample.active;
+            let Some(watch) = self.watches.get_mut(&id) else {
+                continue;
+            };
+            if watch.change && sample.value != watch.reported {
+                match to_json(&sample.value).and_then(|json| {
+                    serde_json::to_string(&json).map_err(|error| error.to_string())
+                }) {
+                    Ok(text) => self.pending.push(MotionValueEvent {
+                        id: id.0,
+                        kind: MotionValueEventKind::Change,
+                        value: Some(text),
+                    }),
+                    Err(error) => failed.push(error),
+                }
+            }
+            watch.reported = sample.value;
+            if watch.animation && sample.active != watch.was_active {
+                self.pending.push(MotionValueEvent {
+                    id: id.0,
+                    kind: if sample.active {
+                        MotionValueEventKind::AnimationStart
+                    } else {
+                        MotionValueEventKind::AnimationComplete
+                    },
+                    value: None,
+                });
+            }
+            watch.was_active = sample.active;
+        }
+        for error in failed {
+            self.warn(error);
+        }
+        active
+    }
+
+    /// A bad binding or a value that cannot be read is found again on every
+    /// frame, so each message is logged once.
+    fn warn(&mut self, message: String) {
+        if self.warned.insert(message.clone()) {
+            log::warn!("{message}");
+        }
+    }
+}
+
+fn value_id(id: f64) -> Result<ValueId, String> {
+    if id.fract() != 0.0 || id < 0.0 || id > f64::from(u32::MAX) {
+        return Err(format!("a {NAME} id must be a whole number up to {}, got {id}", u32::MAX));
+    }
+    Ok(ValueId(id as u32))
+}
+
+/// A number, a percentage or colour string, a list of numbers, or a
+/// `boxShadow` layer or list.
+fn parse_value(value: &Value) -> Result<AnimValue, String> {
+    match value {
+        Value::Number(number) => {
+            let number = number
+                .as_f64()
+                .ok_or_else(|| format!("a {NAME} number must fit a double"))?;
+            Ok(AnimValue::Number(check_finite(NAME, number)?))
+        }
+        Value::String(text) => match text.strip_suffix('%') {
+            Some(percent) => {
+                let percent: f64 = percent
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("a {NAME} is not a valid percentage: {text}"))?;
+                Ok(AnimValue::Percent(check_finite(NAME, percent / 100.0)?))
+            }
+            None => Color::parse(text)
+                .map(AnimValue::Color)
+                .ok_or_else(|| format!("a {NAME} string must be a colour or a percentage: {text}")),
+        },
+        Value::Array(items) if !items.is_empty() && items.iter().all(Value::is_number) => {
+            items
+                .iter()
+                .map(|item| {
+                    let number = item.as_f64().ok_or_else(|| format!("a {NAME} number must fit a double"))?;
+                    check_finite(NAME, number)
+                })
+                .collect::<Result<_, _>>()
+                .map(AnimValue::Numbers)
+        }
+        Value::Array(_) | Value::Object(_) => {
+            parse_shadow_list(NAME, value).map(AnimValue::Shadows)
+        }
+        other => Err(format!("a {NAME} cannot hold {other}")),
+    }
+}
+
+fn to_json(value: &AnimValue) -> Result<Value, String> {
+    let number = |number: f64| {
+        serde_json::Number::from_f64(number)
+            .map(Value::Number)
+            .ok_or_else(|| format!("a {NAME} reached a number JSON cannot hold"))
+    };
+    match value {
+        AnimValue::Number(value) => number(*value),
+        AnimValue::Percent(fraction) => Ok(Value::String(format!("{}%", fraction * 100.0))),
+        AnimValue::Color(color) => Ok(Value::String(color.to_css())),
+        AnimValue::Shadows(shadows) => serde_json::to_value(shadow_layers(shadows.clone()))
+            .map_err(|error| error.to_string()),
+        AnimValue::Numbers(values) => values
+            .iter()
+            .map(|value| number(*value))
+            .collect::<Result<_, _>>()
+            .map(Value::Array),
+        AnimValue::Path(_) | AnimValue::Auto => {
+            Err(format!("a {NAME} cannot hold {value:?}"))
+        }
+    }
+}
+
+fn parse_transform_options(options: Option<&Value>) -> Result<TransformOptions, String> {
+    let Some(options) = options.filter(|options| !options.is_null()) else {
+        return Ok(TransformOptions::default());
+    };
+    let raw: RawTransformOptions = serde_json::from_value(options.clone())
+        .map_err(|error| format!("{NAME} transform options: {error}"))?;
+    let ease = match raw.ease {
+        None => Vec::new(),
+        // Four numbers are one cubic bezier; a list of easings has one per segment.
+        Some(Value::Array(items)) if !items.iter().all(Value::is_number) => {
+            items.into_iter().map(parse_ease).collect::<Result<_, _>>()?
+        }
+        Some(single) => vec![parse_ease(single)?],
+    };
+    Ok(TransformOptions {
+        clamp: raw.clamp.unwrap_or(true),
+        ease,
+    })
+}
+
+fn parse_spring(config: &Value) -> Result<Transition, String> {
+    let mut config = match config {
+        Value::Object(config) => config.clone(),
+        Value::Null => Map::new(),
+        _ => return Err(format!("a {NAME} spring config must be an object")),
+    };
+    config
+        .entry("type")
+        .or_insert_with(|| Value::String("spring".to_string()));
+    let transition = Transition::parse(Value::Object(config))?;
+    match transition.curve {
+        Curve::Spring(_) => Ok(transition),
+        Curve::Tween { .. } => Err(format!("a {NAME} spring needs a spring transition")),
+    }
+}
+
+/// `{ opacity: 3, padding: 4 }`: style properties to the values that drive
+/// them, shorthands expanded.
+fn parse_binding(binding: &Value) -> Result<Vec<(AnimProp, ValueId)>, String> {
+    let map = binding
+        .as_object()
+        .ok_or_else(|| "motionValues must be an object of property to motion value".to_string())?;
+    let mut pairs = Vec::new();
+    for (name, id) in map {
+        let id = value_id(
+            id.as_f64()
+                .ok_or_else(|| format!("motionValues.{name} must be a motion value id"))?,
+        )?;
+        match (AnimProp::from_name(name), expand_shorthand(name)) {
+            (Some(prop), _) => pairs.push((prop, id)),
+            (None, Some(props)) => pairs.extend(props.iter().map(|prop| (*prop, id))),
+            (None, None) => return Err(format!("motionValues cannot bind {name}")),
+        }
+    }
+    Ok(pairs)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use serde_json::json;
+
+    use super::*;
+
+    struct Clock(Instant);
+
+    impl Clock {
+        fn at(&self, millis: u64) -> Instant {
+            self.0 + Duration::from_millis(millis)
+        }
+    }
+
+    fn clock() -> Clock {
+        Clock(Instant::now())
+    }
+
+    fn linear(seconds: f64) -> Value {
+        json!({ "duration": seconds, "ease": "linear" })
+    }
+
+    fn kinds(frame: &MotionValueFrame) -> Vec<(u32, MotionValueEventKind)> {
+        frame.events.iter().map(|event| (event.id, event.kind)).collect()
+    }
+
+    #[test]
+    fn values_round_trip_through_json() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(2.5)).unwrap();
+        assert_eq!(store.get(0.0, clock.at(0)).unwrap(), json!(2.5));
+
+        store.create_source(1.0, &json!("50%")).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("50%"));
+
+        store.create_source(2.0, &json!([1, 2, 3])).unwrap();
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!([1.0, 2.0, 3.0]));
+
+        let shadow = json!({ "offsetX": 0, "offsetY": 2, "blurRadius": 4, "spreadRadius": 0, "color": "#000000" });
+        store.create_source(3.0, &json!([shadow])).unwrap();
+        let read = store.get(3.0, clock.at(0)).unwrap();
+        assert_eq!(read[0]["offsetY"], json!(2.0));
+        assert_eq!(read[0]["blurRadius"], json!(4.0));
+        assert_eq!(read[0]["inset"], json!(false));
+
+        store.create_source(4.0, &json!("#ff0000")).unwrap();
+        assert!(store.get(4.0, clock.at(0)).unwrap().as_str().unwrap().starts_with("rgba("));
+    }
+
+    #[test]
+    fn values_it_cannot_hold_are_rejected() {
+        let mut store = MotionValueStore::default();
+        for value in [json!(null), json!(true), json!("auto"), json!("not a colour")] {
+            assert!(store.create_source(0.0, &value).is_err(), "{value}");
+        }
+        assert!(store.create_source(-1.0, &json!(0)).is_err());
+        assert!(store.create_source(0.5, &json!(0)).is_err());
+        store.create_source(0.0, &json!(0)).unwrap();
+        assert!(store.create_source(0.0, &json!(1)).is_err());
+    }
+
+    #[test]
+    fn animate_takes_the_transition_as_json() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.animate(1.0, &json!(100), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(250)).unwrap(), json!(25.0));
+        assert!(store.is_animating(1.0, clock.at(250)).unwrap());
+        assert_eq!(store.velocity(1.0, clock.at(250)).unwrap(), 100.0);
+        store.stop(1.0, clock.at(500)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(900)).unwrap(), json!(50.0));
+        assert!(store
+            .animate(1.0, &json!(1), Some(&json!({ "bogus": 1 })), clock.at(900))
+            .is_err());
+    }
+
+    #[test]
+    fn velocity_is_for_numbers() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("#000000")).unwrap();
+        assert!(store.velocity(1.0, clock.at(0)).is_err());
+    }
+
+    #[test]
+    fn a_transform_and_a_spring_are_built_from_json() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store
+            .create_transform(
+                2.0,
+                1.0,
+                vec![0.0, 100.0],
+                &json!(["#000000", "#ffffff"]),
+                Some(&json!({ "clamp": false, "ease": "linear" })),
+            )
+            .unwrap();
+        store
+            .create_transform(3.0, 1.0, vec![0.0, 100.0], &json!([0, 10]), Some(&json!({ "ease": [0.25, 0.1, 0.25, 1.0] })))
+            .unwrap();
+        store.set(1.0, &json!(100), clock.at(0)).unwrap();
+        assert_eq!(store.get(3.0, clock.at(0)).unwrap(), json!(10.0));
+
+        store.create_follower(4.0, 1.0, &json!({ "stiffness": 300, "damping": 30 }), clock.at(0)).unwrap();
+        assert_eq!(store.get(4.0, clock.at(0)).unwrap(), json!(100.0));
+        store.set(1.0, &json!(0), clock.at(16)).unwrap();
+        // The follower retargets when it is first sampled after the change.
+        store.get(4.0, clock.at(16)).unwrap();
+        let mid = store.get(4.0, clock.at(48)).unwrap().as_f64().unwrap();
+        assert!(mid > 0.0 && mid < 100.0, "{mid}");
+
+        store.create_spring(5.0, &json!(0), &json!({}), clock.at(0)).unwrap();
+        store.set(5.0, &json!(10), clock.at(0)).unwrap();
+        assert!(store.is_animating(5.0, clock.at(50)).unwrap());
+        assert!(store
+            .create_spring(6.0, &json!(0), &json!({ "type": "tween" }), clock.at(0))
+            .is_err());
+    }
+
+    #[test]
+    fn a_listener_hears_changes_once_each() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, true, false, clock.at(0)).unwrap();
+
+        assert!(kinds(&store.frame([], clock.at(0))).is_empty());
+        store.set(1.0, &json!(5), clock.at(10)).unwrap();
+        let frame = store.frame([], clock.at(10));
+        assert_eq!(frame.events.len(), 1);
+        assert_eq!(frame.events[0].value.as_deref(), Some("5.0"));
+        assert!(store.frame([], clock.at(20)).events.is_empty());
+
+        store.listen(1.0, false, false, clock.at(20)).unwrap();
+        store.set(1.0, &json!(6), clock.at(30)).unwrap();
+        assert!(store.frame([], clock.at(30)).events.is_empty());
+    }
+
+    #[test]
+    fn animation_start_and_complete_are_found_by_diffing_activity() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+
+        store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
+        // The clock jumps past the end before the next frame: both are still delivered.
+        let frame = store.frame([], clock.at(5000));
+        assert_eq!(
+            kinds(&frame),
+            vec![
+                (1, MotionValueEventKind::AnimationStart),
+                (1, MotionValueEventKind::AnimationComplete)
+            ]
+        );
+        assert!(!frame.active);
+        assert!(store.frame([], clock.at(5016)).events.is_empty());
+    }
+
+    #[test]
+    fn a_frame_is_active_while_a_bound_or_listened_value_moves() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.create_source(2.0, &json!(0)).unwrap();
+        store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
+        store.animate(2.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
+
+        assert!(!store.frame([], clock.at(100)).active);
+        let binding = json!({ "opacity": 1 });
+        assert!(store.frame([&binding], clock.at(100)).active);
+        assert!(!store.frame([&binding], clock.at(1000)).active);
+        store.listen(2.0, true, false, clock.at(500)).unwrap();
+        assert!(store.frame([], clock.at(600)).active);
+    }
+
+    #[test]
+    fn bound_values_are_laid_over_a_style() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0.5)).unwrap();
+        store.create_source(2.0, &json!("#ff0000")).unwrap();
+        store.create_source(3.0, &json!(8)).unwrap();
+        let binding = json!({ "opacity": 1, "backgroundColor": 2, "padding": 3 });
+        store.frame([&binding], clock.at(0));
+
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        assert_eq!(style.opacity, Some(0.5));
+        assert!(style.background_color.as_deref().unwrap().starts_with("rgba("));
+        assert_eq!(style.padding_top, Some(8.0));
+        assert_eq!(style.padding_left, Some(8.0));
+    }
+
+    #[test]
+    fn a_bound_value_is_clamped_and_a_mismatch_is_skipped() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(3)).unwrap();
+        store.create_source(2.0, &json!("#ff0000")).unwrap();
+        let binding = json!({ "opacity": 1 });
+        let mismatch = json!({ "opacity": 2 });
+        store.frame([&binding, &mismatch], clock.at(0));
+
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        assert_eq!(style.opacity, Some(1.0));
+
+        let mut style = StyleDesc::default();
+        store.apply(&mismatch, &mut style);
+        assert_eq!(style.opacity, None);
+    }
+
+    #[test]
+    fn bindings_name_real_properties() {
+        assert!(parse_binding(&json!({ "display": 1 })).is_err());
+        assert!(parse_binding(&json!({ "opacity": "x" })).is_err());
+        assert!(parse_binding(&json!([1])).is_err());
+        assert_eq!(parse_binding(&json!({ "padding": 1 })).unwrap().len(), 4);
+    }
+
+    #[test]
+    fn a_disposed_value_stops_being_sampled() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, true, true, clock.at(0)).unwrap();
+        assert!(store.dispose(1.0).unwrap());
+        assert!(!store.dispose(1.0).unwrap());
+        assert!(store.get(1.0, clock.at(0)).is_err());
+        assert!(store.frame([&json!({ "opacity": 1 })], clock.at(0)).events.is_empty());
+    }
+}

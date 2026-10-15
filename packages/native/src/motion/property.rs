@@ -115,21 +115,7 @@ impl Field for Option<BoxShadowValues> {
 
     fn write(&mut self, value: AnimValue) {
         match value {
-            AnimValue::Shadows(shadows) => {
-                *self = Some(BoxShadowValues::Many(
-                    shadows
-                        .into_iter()
-                        .map(|shadow| BoxShadowValue {
-                            offset_x: shadow.offset_x,
-                            offset_y: shadow.offset_y,
-                            blur_radius: shadow.blur,
-                            spread_radius: shadow.spread,
-                            color: shadow.color.to_css(),
-                            inset: shadow.inset,
-                        })
-                        .collect(),
-                ));
-            }
+            AnimValue::Shadows(shadows) => *self = Some(shadow_layers(shadows)),
             other => unreachable!("a shadow field was given {other:?}"),
         }
     }
@@ -376,24 +362,7 @@ impl AnimProp {
                         .ok_or_else(|| format!("motion {name} is not a valid colour: {text}"))?,
                 )
             }
-            Kind::Shadow => {
-                let shadows: BoxShadowValues = serde_json::from_value(value.clone())
-                    .map_err(|error| format!("motion {name}: {error}"))?;
-                for layer in shadows.as_slice() {
-                    for number in [
-                        layer.offset_x,
-                        layer.offset_y,
-                        layer.blur_radius,
-                        layer.spread_radius,
-                    ] {
-                        check_finite(name, number)?;
-                    }
-                    if layer.blur_radius < 0.0 {
-                        return Err(format!("motion {name} blur must be non-negative"));
-                    }
-                }
-                AnimValue::Shadows(shadows_from(shadows.as_slice())?)
-            }
+            Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value)?),
         };
         self.validate(&parsed)?;
         Ok(parsed)
@@ -418,6 +387,17 @@ impl AnimProp {
         }
     }
 
+    /// Whether `write` can put `value` in this property.
+    pub(super) fn accepts(self, value: &AnimValue) -> bool {
+        matches!(
+            (self.kind(), value),
+            (Kind::Number | Kind::FontWeight, AnimValue::Number(_))
+                | (Kind::Dimension, AnimValue::Number(_) | AnimValue::Percent(_))
+                | (Kind::Color, AnimValue::Color(_))
+                | (Kind::Shadow, AnimValue::Shadows(_))
+        )
+    }
+
     /// Springs overshoot their target, so what is applied has to stay inside
     /// the range GPUI accepts. The unclamped value keeps driving the physics.
     pub(super) fn clamp_value(self, value: AnimValue) -> AnimValue {
@@ -439,7 +419,43 @@ impl AnimProp {
     }
 }
 
-fn check_finite(name: &str, value: f64) -> Result<f64, String> {
+/// A `boxShadow` value: one layer or a list of them.
+pub(super) fn parse_shadow_list(name: &str, value: &Value) -> Result<Vec<Shadow>, String> {
+    let shadows: BoxShadowValues = serde_json::from_value(value.clone())
+        .map_err(|error| format!("motion {name}: {error}"))?;
+    for layer in shadows.as_slice() {
+        for number in [
+            layer.offset_x,
+            layer.offset_y,
+            layer.blur_radius,
+            layer.spread_radius,
+        ] {
+            check_finite(name, number)?;
+        }
+        if layer.blur_radius < 0.0 {
+            return Err(format!("motion {name} blur must be non-negative"));
+        }
+    }
+    shadows_from(shadows.as_slice())
+}
+
+pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
+    BoxShadowValues::Many(
+        shadows
+            .into_iter()
+            .map(|shadow| BoxShadowValue {
+                offset_x: shadow.offset_x,
+                offset_y: shadow.offset_y,
+                blur_radius: shadow.blur,
+                spread_radius: shadow.spread,
+                color: shadow.color.to_css(),
+                inset: shadow.inset,
+            })
+            .collect(),
+    )
+}
+
+pub(super) fn check_finite(name: &str, value: f64) -> Result<f64, String> {
     if !value.is_finite() || value.abs() > f32::MAX as f64 {
         return Err(format!("motion {name} must fit a finite 32-bit float"));
     }

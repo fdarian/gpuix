@@ -81,6 +81,26 @@ pub(super) struct RawTransition {
     pub(super) rest_delta: Option<f64>,
 }
 
+/// Framer's names are camelCase; anything else is a CSS `<easing-function>`
+/// (`ease-in`, `steps(4)`, `linear(..)`).
+fn resolve_ease(ease: Ease) -> Result<Ease, String> {
+    match ease {
+        Ease::Name(name) if !FRAMER_EASES.contains(&name.as_str()) => parse_timing_function(&name)
+            .map_err(|error| format!("unknown motion easing: {name} ({error})")),
+        other => Ok(other),
+    }
+}
+
+/// An easing from a description: a name, a CSS easing function or four
+/// cubic-bezier numbers.
+pub(super) fn parse_ease(value: serde_json::Value) -> Result<Ease, String> {
+    let ease: Ease = serde_json::from_value(value)
+        .map_err(|error| format!("motion easing must be a name or four numbers: {error}"))?;
+    let ease = resolve_ease(ease)?;
+    validate_ease(&ease)?;
+    Ok(ease)
+}
+
 impl Transition {
     pub(super) fn parse(value: serde_json::Value) -> Result<Self, String> {
         let raw: RawTransition =
@@ -111,13 +131,8 @@ impl TryFrom<RawTransition> for Transition {
                 }
                 let duration = raw.duration.unwrap_or_else(default_duration);
                 let ease = match raw.ease.clone() {
-                    // Framer's names are camelCase; anything else is a CSS
-                    // `<easing-function>` (`ease-in`, `steps(4)`, `linear(..)`).
-                    Some(Ease::Name(name)) if !FRAMER_EASES.contains(&name.as_str()) => {
-                        parse_timing_function(&name)
-                            .map_err(|error| format!("unknown motion easing: {name} ({error})"))?
-                    }
-                    other => other.unwrap_or_else(default_ease),
+                    Some(ease) => resolve_ease(ease)?,
+                    None => default_ease(),
                 };
                 validate_seconds(duration, "duration")?;
                 validate_ease(&ease)?;

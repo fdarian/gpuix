@@ -4,6 +4,7 @@
 //! animated property. A retarget restarts only the properties whose target or
 //! transition changed, so the rest keep running undisturbed.
 
+mod bindings;
 mod css_transition;
 mod curve;
 pub(crate) mod measure;
@@ -12,8 +13,6 @@ pub(crate) mod state_source;
 mod svg_attr;
 mod track;
 mod value;
-// Nothing outside its tests reads the graph until the renderer binds it.
-#[allow(dead_code)]
 mod values;
 
 use std::collections::{BTreeMap, HashMap};
@@ -25,6 +24,7 @@ pub(crate) use curve::cubic_bezier;
 pub(crate) use css_transition::{
     validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };
+pub(crate) use bindings::{MotionValueEvent, MotionValueStore};
 use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
