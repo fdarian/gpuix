@@ -5831,12 +5831,20 @@ fn build_virtual_list(
         view.build_virtual_child(list_id, index, child_id, inherited.clone(), window, cx)
     });
     let scroll_state = list_state.clone();
-    let mut list = gpui::list(list_state, render_item)
-        .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
-        .id(gpui::ElementId::Name(gpui::SharedString::from(format!(
+    // The list inserts its own hitbox under this id, so a host id makes it a
+    // target. Under `pointer-events: none` it stays a GPUI detail: the list's
+    // hitbox cannot pass the pointer through.
+    let list_element_id = if ctx.inherited.pointer_events_none {
+        gpui::ElementId::Name(gpui::SharedString::from(format!(
             "__gpuix_virtual_list_{}",
             element.id
-        ))));
+        )))
+    } else {
+        crate::events::ids::host_element_id(element.id)
+    };
+    let mut list = gpui::list(list_state, render_item)
+        .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
+        .id(list_element_id);
     if let Some(style) = element.style.as_deref() {
         list = apply_styles(list, style);
     }

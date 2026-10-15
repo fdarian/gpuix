@@ -99,6 +99,29 @@ describeNative("pointer events", () => {
       expect(log).toEqual(["inner"])
     })
 
+    it("targets a virtual-list where no row is, and bubbles from it", () => {
+      const seen: { target: number; path: number[] }[] = []
+      testRoot.render(
+        <div
+          style={{ width: 400, height: 300 }}
+          onClick={(event: { target: number; path: number[] }) =>
+            seen.push({ target: event.target, path: event.path })
+          }
+        >
+          <virtual-list estimatedItemHeight={20} style={{ width: 200, height: 160 }}>
+            <div style={{ width: 200, height: 20, flexShrink: 0 }} />
+            <div style={{ width: 200, height: 20, flexShrink: 0 }} />
+          </virtual-list>
+        </div>,
+      )
+      const list = testRoot.renderer.findByType("virtual-list")[0]!.id
+      const root = idOfWidth(400)
+
+      testRoot.renderer.nativeSimulateClick(100, 120)
+
+      expect(seen).toEqual([{ target: list, path: [list, root] }])
+    })
+
     it("hits an element with no listener and no fill, and bubbles from it", () => {
       testRoot.render(
         <div style={{ width: 400, height: 300 }} onClick={record("outer")}>
