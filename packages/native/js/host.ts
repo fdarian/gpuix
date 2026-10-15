@@ -1388,8 +1388,26 @@ export type SelectionHost = Pick<GpuixRenderer, "getSelectedText">
 export type AppearanceHost = Pick<GpuixRenderer, "getAppearance">
 /** The effective window appearance. `setAppearance` also takes `"system"`. */
 export type Appearance = "light" | "dark"
+/** The native motion value graph. Ids are chosen by the caller. */
+export type MotionValueHost = Pick<
+  GpuixRenderer,
+  | "createMotionValue"
+  | "createMotionTransform"
+  | "createMotionFollower"
+  | "createMotionSpring"
+  | "disposeMotionValue"
+  | "getMotionValue"
+  | "getMotionValueVelocity"
+  | "isMotionValueAnimating"
+  | "setMotionValue"
+  | "jumpMotionValue"
+  | "animateMotionValue"
+  | "stopMotionValue"
+  | "setMotionValueListener"
+>
 /** `applyBatch` plus the live renderer methods a host may also expose. */
 export type NativeRenderer = MutationHost &
+  Partial<MotionValueHost> &
   Partial<
     Pick<
       GpuixRenderer,

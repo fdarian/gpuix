@@ -21,6 +21,7 @@ import type {
   ElementBounds,
   HighlightMatch,
   ImagePixelFormat,
+  MotionValueHost,
   NativeRenderer,
   PathPromptOptions,
   WindowKeyEventHandlers,
@@ -37,7 +38,9 @@ export {
 } from "./cpu-throttle.js"
 export type { MacCpuThrottle } from "./cpu-throttle.js"
 
-interface NativeTestRendererApi extends NativeRenderer {
+interface NativeTestRendererApi
+  extends Omit<NativeRenderer, keyof MotionValueHost>,
+    MotionValueHost {
   promptForPaths(options?: PathPromptOptions): Promise<string[] | null>
   writeClipboardText(text: string): void
   readClipboardText(): string | null
@@ -743,6 +746,60 @@ export class TestRenderer implements NativeRenderer {
 
   clockResume(): number {
     return this.native.clockResume()
+  }
+
+  // ── Motion values ───────────────────────────────────────────────
+
+  createMotionValue(...args: Parameters<MotionValueHost["createMotionValue"]>): void {
+    this.native.createMotionValue(...args)
+  }
+
+  createMotionTransform(...args: Parameters<MotionValueHost["createMotionTransform"]>): void {
+    this.native.createMotionTransform(...args)
+  }
+
+  createMotionFollower(...args: Parameters<MotionValueHost["createMotionFollower"]>): void {
+    this.native.createMotionFollower(...args)
+  }
+
+  createMotionSpring(...args: Parameters<MotionValueHost["createMotionSpring"]>): void {
+    this.native.createMotionSpring(...args)
+  }
+
+  disposeMotionValue(id: number): boolean {
+    return this.native.disposeMotionValue(id)
+  }
+
+  getMotionValue(id: number): unknown {
+    return this.native.getMotionValue(id)
+  }
+
+  getMotionValueVelocity(id: number): number {
+    return this.native.getMotionValueVelocity(id)
+  }
+
+  isMotionValueAnimating(id: number): boolean {
+    return this.native.isMotionValueAnimating(id)
+  }
+
+  setMotionValue(id: number, value: unknown): void {
+    this.native.setMotionValue(id, value)
+  }
+
+  jumpMotionValue(id: number, value: unknown): void {
+    this.native.jumpMotionValue(id, value)
+  }
+
+  animateMotionValue(id: number, target: unknown, transition?: unknown): void {
+    this.native.animateMotionValue(id, target, transition)
+  }
+
+  stopMotionValue(id: number): void {
+    this.native.stopMotionValue(id)
+  }
+
+  setMotionValueListener(id: number, change: boolean, animation: boolean): void {
+    this.native.setMotionValueListener(id, change, animation)
   }
 
   /** Advance GPUI's test dispatcher and run due timers.
