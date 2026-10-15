@@ -76,10 +76,6 @@ impl Measurements {
         self.by_element.borrow().get(&id).copied()
     }
 
-    pub(crate) fn remove(&self, id: u64) {
-        self.by_element.borrow_mut().remove(&id);
-    }
-
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
         self.by_element.borrow_mut().retain(|id, _| keep(*id));
     }
@@ -320,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_and_remove_drop_measurements() {
+    fn retain_drops_measurements() {
         let measurements = Measurements::default();
         let measurement = Measurement {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
@@ -331,9 +327,8 @@ mod tests {
         measurements.by_element.borrow_mut().insert(1, measurement);
         measurements.by_element.borrow_mut().insert(2, measurement);
         assert_eq!(measurements.get(1), Some(measurement));
-        measurements.remove(1);
+        measurements.retain(|id| id == 2);
         assert_eq!(measurements.get(1), None);
-        measurements.retain(|_| false);
-        assert_eq!(measurements.get(2), None);
+        assert_eq!(measurements.get(2), Some(measurement));
     }
 }

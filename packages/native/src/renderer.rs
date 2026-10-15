@@ -6684,9 +6684,16 @@ pub(crate) fn build_element(
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition. CSS animations come last of
     // all, as animations beat every normal declaration in CSS.
-    let measurement = ctx.measurements.get(id);
+    let props = element.custom_props();
+    let has_motion = props.contains_key("motion");
+    let motion_binding = props.get("motionValues");
+    let layout_source = props.get("layout");
     let transitions_wanted = ctx.css_transitions.wants(id, element.style.as_deref());
     let animations_wanted = ctx.css_animations.wants(id, element.style.as_deref());
+    // A plain element has no measurement to read: it is not wrapped below, and
+    // the root render prunes the ones of elements that left the tree.
+    let measured = has_motion || transitions_wanted || animations_wanted;
+    let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
     let transitioned = (transitions_wanted || animations_wanted).then(|| {
         let focus_visible = ctx
             .focus_handles
@@ -6706,7 +6713,7 @@ pub(crate) fn build_element(
         )
     });
     let declared_style = transitioned.as_ref().or(base_style);
-    let animated_style = if element.custom_props().contains_key("motion") {
+    let animated_style = if has_motion {
         ctx.motion_states
             .get(&id)
             .and_then(|state| state.visible_style(ctx.now))
@@ -6722,7 +6729,7 @@ pub(crate) fn build_element(
         None
     };
     // Motion values are inline style as well, and come after `motion`.
-    let bound_style = element.custom_props().get("motionValues").map(|binding| {
+    let bound_style = motion_binding.map(|binding| {
         let mut resolved = animated_style
             .as_ref()
             .or(declared_style)
@@ -6885,14 +6892,10 @@ pub(crate) fn build_element(
     // elements they drive pay for the measurement. It wraps every kind of
     // element here, because the custom ones and `virtual-list` build their
     // GPUI element out of reach of `build_host_container`.
-    let built = if element.custom_props().contains_key("motion")
-        || transitions_wanted
-        || animations_wanted
-    {
+    let built = if measured {
         ctx.measurements
             .wrap(id, crate::motion::measure::VerticalBorder::of(style), built)
     } else {
-        ctx.measurements.remove(id);
         built
     };
     // The probe goes inside the glide, so its hitbox follows the box.
@@ -6901,7 +6904,7 @@ pub(crate) fn build_element(
     } else {
         built
     };
-    match element.custom_props().get("layout") {
+    match layout_source {
         Some(source) => ctx.layout_flips.wrap(id, source, built, ctx.now, ctx.motion_values),
         None => built,
     }
