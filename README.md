@@ -927,8 +927,8 @@ one bound to the window your component is rendered in:
 | OS reduced motion | `useReducedMotion()` | `createReducedMotion()` |
 
 Code with no component to ask can import `matchMedia` from the adapter. It uses
-the window of the most recently mounted root and throws before any root is
-mounted. Outside an adapter, `matchMediaFor(renderer)` from `@gpuix/native/host`
+the window of the most recently mounted root that is still mounted, and throws
+when no root is mounted. Outside an adapter, `matchMediaFor(renderer)` from `@gpuix/native/host`
 binds to a renderer.
 
 Supported syntax is Media Queries Level 4: `and`, `or`, `not`, `only`, comma
@@ -5344,12 +5344,17 @@ render per frame.
   proportion, as CSS specifies. Changing `transition*` does not touch a running
   transition, but dropping its property from `transitionProperty` cancels it. A
   negative delay starts part-way through
-- **State styles.** `hover`, `active` and `focusVisible` are folded into the style
-  that is compared, so they animate in and out. A `transition` set inside `hover`
-  is the one used while entering hover; the base one is used leaving it. An
+- **State styles.** `hover`, `active`, `focusVisible`, `groupHover` and
+  `groupActive` are folded into the style that is compared, so they animate in and
+  out. A `transition` set inside `hover` is the one used while entering hover; the
+  base one is used leaving it. An
   element that declares a transition has its state styles applied by gpuix instead
   of GPUI's per-element refinements, so they show one frame after the pointer
   moves. Elements without a transition behave as before
+- **`display: none`.** An element that is not rendered has no transitions: going
+  `display: none` cancels the running ones (`onTransitionCancel`), for its
+  descendants too, and a style changed while it is hidden does not transition when
+  it shows again, as in a browser
 - **`motion`.** A property `animate` names belongs to `motion` and is not
   transitioned
 - **Events.** `onTransitionRun`, `onTransitionStart` (after the delay),
@@ -5414,15 +5419,19 @@ defineKeyframes('pulse', {
   counts, `reverse`, `alternate` and `alternate-reverse`, `backwards` / `forwards`
   / `both` fill, `paused` (freezes where it is and resumes from there), a negative
   delay that starts part-way through, and a restart when `animationName` changes
-- **State styles.** `hover`, `active` and `focusVisible` may declare `animation`.
-  It starts when the state applies and is cancelled when it ends
+- **State styles.** `hover`, `active`, `focusVisible`, `groupHover` and
+  `groupActive` may declare `animation`. It starts when the state applies and is
+  cancelled when it ends
+- **`display: none`.** Going `display: none` cancels the element's animations and
+  those of its descendants, and they start over when it shows again
 - **Cascade.** Animations win over the element's style, its state styles, running
   CSS transitions and `motion`, as animations do over normal declarations in CSS
 - **Events.** `onAnimationStart` (after the delay), `onAnimationIteration` (each
   iteration after the first, not at the end), `onAnimationEnd` and
   `onAnimationCancel` carry `animationName`, `elapsedTime` in seconds and
   `pseudoElement: ""`. `onAnimationCancel` fires when the animation is removed or
-  its name changes before it ended; one that already ended is not cancelled. They
+  its name changes before it ended; one that ran out before that frame ends
+  (`onAnimationEnd`) and is not cancelled. They
   bubble like the DOM (`target` is the animating element) and cannot be
   cancelled; each has an `on…Capture` twin
 
