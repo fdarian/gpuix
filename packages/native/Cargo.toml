@@ -158,3 +158,9 @@ opt-level = 3
 
 [profile.dev.package.miniz_oxide]
 opt-level = 3
+
+# gpui pins `taffy = "=0.13.0"`; the vendored copy resolves `calc()` values, which
+# upstream returns 0 for. This workspace has its own lockfile, so the patch in
+# zed/Cargo.toml does not reach it.
+[patch.crates-io]
+taffy = { path = "../../zed/third_party/taffy" }
