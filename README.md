@@ -3642,9 +3642,15 @@ Key events are DOM-shaped. `event.key` holds `KeyboardEvent.key` values:
 `"Shift"`/`"Control"`/`"Alt"`/`"Meta"`, and the character produced for
 printable keys, with shift case (`"A"`, `"!"`). Anything else is
 `"Unidentified"`. `event.code` is the physical key (`"KeyA"`, `"Digit1"`,
-`"ArrowLeft"`), derived from GPUI's key name with a US QWERTY layout, so on
-other layouts a printable key's `code` follows the US position of the
-character GPUI reports, and it is `""` when nothing maps. `repeat` is true for
+`"ArrowLeft"`, `"NumpadEnter"`). On macOS both come from the keyboard as in
+Chrome: `code` from the key's position, whatever the layout, and `key` from the
+character the active layout types there with shift and option applied (control
+and command are ignored). On a Cyrillic layout Ctrl+C reports `key` `"с"` and
+`code` `"KeyC"`, on AZERTY the key that types `a` reports `"KeyQ"`, and
+Option+s reports `"ß"`. Elsewhere `code` is derived from GPUI's key name with
+a US QWERTY layout, so on other layouts a printable key's `code` follows the US
+position of the character GPUI reports, and it is `""` when nothing maps.
+`repeat` is true for
 auto-repeat, `isComposing` is always `false` (a key that feeds an IME
 composition is consumed by the platform before GPUI sees it), and `shiftKey`,
 `ctrlKey`, `altKey` and `metaKey` mirror `modifiers`. The `simulateKeystrokes`
@@ -6664,7 +6670,8 @@ Popover) can open from one. Only another `nativeSimulate*` call, `advanceTime` o
 grammar of Playwright's `keyboard.press`, the same names a handler reads back
 as `event.key` and `event.code`. A press is a DOM `key` (`"Enter"`, `"a"`,
 `"A"`, `"ArrowDown"`, `"Escape"`, `"Tab"`, `"Backspace"`, `"F2"`, `"PageUp"`) or
-a `code` (`"Space"`, `"KeyA"`, `"Digit1"`), with modifiers joined by `+`
+a `code` (`"Space"`, `"KeyA"`, `"Digit1"`, `"ShiftLeft"`, `"NumpadEnter"`,
+`"Numpad1"`), with modifiers joined by `+`
 (`"Shift+Tab"`, `"Meta+a"`, `"Control+Shift+P"`, `"Alt+ArrowLeft"`).
 `"ControlOrMeta"` is Meta on macOS and Control elsewhere. Names are
 case-sensitive, and one that is not a key throws before anything is pressed:
@@ -6681,8 +6688,11 @@ A sequence is space-separated, so the space bar is `"Space"`. Each press is a
 focused `<input>` unless a handler cancels the `keydown`: `"a Shift+b"` types
 `aB`, and `"A"` types `A` without Shift held, as in Playwright. A held
 Control, Alt or Meta types nothing. `nativeSimulateKeyDown(id, press)` and
-`nativeSimulateKeyUp(id, press)` send one half of a single press. `code` assumes
-a US QWERTY layout, as it does on events. The browser (wasm) automation path
+`nativeSimulateKeyUp(id, press)` send one half of a single press. A press that
+names a `code` (`"KeyA"`, `"NumpadEnter"`) reports exactly that `code`, and for
+a character key the US character on it (`"a"`, `"A"` with Shift), whatever
+layout the machine has; a press that names a key (`"a"`, `"Enter"`) derives
+`code` from it for a US QWERTY layout. The browser (wasm) automation path
 passes the names through to the page without checking them.
 
 A file drag is simulated in steps, each a native event that reaches your

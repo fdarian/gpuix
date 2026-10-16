@@ -57,13 +57,15 @@ pub struct EventPayload {
 
     // ── Keyboard ─────────────────────────────────────────────────────
     /// DOM `KeyboardEvent.key`: "a", "A", "Enter", "Escape", "ArrowDown", " ",
-    /// "F1", "Shift". See `events/key_names.rs`.
+    /// "F1", "Shift". On macOS the character the keyboard layout types, with
+    /// shift and option applied. See `events/key_names.rs`.
     /// Populated for: keydown, keyup.
     pub key: Option<String>,
 
     /// DOM `KeyboardEvent.code`, the physical key: "KeyA", "Digit1", "Enter",
-    /// "ArrowLeft". Empty when it cannot be derived. Assumes a US QWERTY layout
-    /// for printable keys.
+    /// "ArrowLeft". From the key code where the platform reports one (macOS),
+    /// otherwise derived from the key assuming a US QWERTY layout, and empty
+    /// when it cannot be derived.
     /// Populated for: keydown, keyup.
     pub code: Option<String>,
 

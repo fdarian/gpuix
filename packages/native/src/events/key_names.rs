@@ -1,18 +1,22 @@
 //! GPUI key names to DOM `KeyboardEvent.key` and `.code` values, and back.
 //!
 //! GPUI names a key by what is printed on it, lowercase for the named keys
-//! (`enter`, `down`, `pageup`, `f1`), and has no physical key code. The DOM
-//! wants `Enter`, `ArrowDown`, `PageUp`, and a `code` naming the key's position.
-//! This is the only place that mapping lives, in both directions: the payload
-//! builder calls `dom_key` and JS only reads the result, and the simulated
-//! keyboard (`parse_presses`) turns Playwright's `keyboard.press` grammar back
-//! into GPUI keystrokes with the same tables.
+//! (`enter`, `down`, `pageup`, `f1`). The DOM wants `Enter`, `ArrowDown`,
+//! `PageUp`, and a `code` naming the key's position. This is the only place
+//! that mapping lives, in both directions: the payload builder calls
+//! `dom_key_of_event` and JS only reads the result, and the simulated keyboard
+//! (`parse_presses`) turns Playwright's `keyboard.press` grammar back into GPUI
+//! keystrokes with the same tables.
 //!
-//! `code` is derived from GPUI's `key`, which is layout-dependent on every
-//! platform, so printable keys assume a US QWERTY position: on AZERTY the key
-//! that types `a` reports `KeyA`, where a browser reports `KeyQ`. Named keys
-//! are exact, except that the numpad cannot be told apart from the main block
-//! (macOS reports both Enters as `enter`).
+//! macOS reports the physical key (`NativeKey::key_code`, see `key_codes`) and
+//! the character the layout types on it. `code` comes from the first and `key`
+//! from the second, as in Chrome, so on AZERTY the key that types `a` reports
+//! `KeyQ`. A keystroke with no native key (a platform that does not report one,
+//! or a simulated name that is a key rather than a code) derives both from
+//! GPUI's `key`, assuming a US QWERTY position. Named keys are exact, except
+//! that without a key code the numpad cannot be told apart from the main block.
+
+use crate::events::key_codes;
 
 /// What `KeyboardEvent.key` and `.code` hold for one keystroke.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -249,13 +253,48 @@ fn unknown_key(name: &str, press: &str) -> String {
     )
 }
 
+/// One simulated key: the keystroke a platform would report, and the physical
+/// key when the press named a `code`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Press {
+    pub keystroke: gpui::Keystroke,
+    pub native_key: gpui::NativeKey,
+}
+
+/// The character a `Numpad*` code types.
+fn numpad_character(code: &str) -> Option<char> {
+    match code {
+        "NumpadMultiply" => Some('*'),
+        "NumpadAdd" => Some('+'),
+        "NumpadSubtract" => Some('-'),
+        "NumpadDecimal" => Some('.'),
+        "NumpadDivide" => Some('/'),
+        "NumpadEqual" => Some('='),
+        "NumpadComma" => Some(','),
+        _ => {
+            let digit = code.strip_prefix("Numpad")?;
+            let mut chars = digit.chars();
+            match (chars.next(), chars.next()) {
+                (Some(digit), None) if digit.is_ascii_digit() => Some(digit),
+                _ => None,
+            }
+        }
+    }
+}
+
 /// One Playwright `keyboard.press` key, as the keystroke a platform would
 /// report for it: `"Enter"`, `"a"`, `"Shift+Tab"`, `"Meta+a"`, `"Space"`,
 /// `"KeyA"`, `"ControlOrMeta+Shift+P"`. Names are case-sensitive, as in the DOM.
 ///
+/// A name that is a `code` and not a `key` (`"KeyA"`, `"Digit1"`, `"ShiftLeft"`,
+/// `"NumpadEnter"`) also carries the physical key, so the event reports that
+/// `code` and, for a character key, the character the US layout types on it.
+/// A name that is a `key` (`"a"`, `"Enter"`) carries none and `code` is derived
+/// from it.
+///
 /// `key_char` is what the key types, and is absent while Control, Alt or Meta
 /// is held, as on a real keyboard.
-pub(crate) fn parse_press(press: &str) -> Result<gpui::Keystroke, String> {
+pub(crate) fn parse_press(press: &str) -> Result<Press, String> {
     let parts = split_press(press);
     let (key, modifier_names) = parts.split_last().expect("split_press never returns nothing");
     let mut modifiers = gpui::Modifiers::default();
@@ -281,13 +320,35 @@ pub(crate) fn parse_press(press: &str) -> Result<gpui::Keystroke, String> {
         (Some(only), None) => Some(only),
         _ => None,
     };
-    let (gpui_key, typed) = if single == Some(' ') || *key == "Space" {
+    // Whether `key` names a physical key rather than what it types, and the
+    // character the layout types on it.
+    let mut names_code = false;
+    let mut layout_char = None;
+    let (gpui_key, typed) = if single == Some(' ') {
         ("space".to_string(), Some(" ".to_string()))
-    } else if let Some(character) = single.or_else(|| code_character(key)) {
+    } else if let Some(character) = single {
         let (gpui_key, typed) = character_key(character, modifiers.shift)
             .ok_or_else(|| unknown_key(key, press))?;
         (gpui_key, Some(typed))
+    } else if *key == "Space" {
+        names_code = true;
+        layout_char = Some(" ".to_string());
+        ("space".to_string(), Some(" ".to_string()))
+    } else if let Some(character) = code_character(key) {
+        names_code = true;
+        let (gpui_key, typed) = character_key(character, modifiers.shift)
+            .ok_or_else(|| unknown_key(key, press))?;
+        layout_char = Some(typed.clone());
+        (gpui_key, Some(typed))
+    } else if let Some(character) = numpad_character(key) {
+        names_code = true;
+        layout_char = Some(character.to_string());
+        (character.to_string(), Some(character.to_string()))
+    } else if *key == "NumpadEnter" {
+        names_code = true;
+        ("enter".to_string(), Some("\n".to_string()))
     } else if let Some(row) = named_row(key) {
+        names_code = row.1 != *key;
         match row.1 {
             "Shift" => modifiers.shift = true,
             "Control" => modifiers.control = true,
@@ -308,15 +369,21 @@ pub(crate) fn parse_press(press: &str) -> Result<gpui::Keystroke, String> {
     };
 
     let types_text = !(modifiers.platform || modifiers.control || modifiers.alt || modifiers.function);
-    Ok(gpui::Keystroke {
-        modifiers,
-        key: gpui_key,
-        key_char: typed.filter(|_| types_text),
+    Ok(Press {
+        keystroke: gpui::Keystroke {
+            modifiers,
+            key: gpui_key,
+            key_char: typed.filter(|_| types_text),
+        },
+        native_key: gpui::NativeKey {
+            key_code: names_code.then(|| key_codes::key_code(key)).flatten(),
+            layout_char,
+        },
     })
 }
 
 /// A space-separated sequence of presses, parsed whole so a typo dispatches nothing.
-pub(crate) fn parse_presses(sequence: &str) -> Result<Vec<gpui::Keystroke>, String> {
+pub(crate) fn parse_presses(sequence: &str) -> Result<Vec<Press>, String> {
     let presses = sequence
         .split_whitespace()
         .map(parse_press)
@@ -327,8 +394,26 @@ pub(crate) fn parse_presses(sequence: &str) -> Result<Vec<gpui::Keystroke>, Stri
     Ok(presses)
 }
 
+/// The DOM `key` and `code` of one key event. The physical key and the
+/// layout's character, where the platform reported them, win over what GPUI's
+/// US-assuming `key` says.
+pub(crate) fn dom_key_of_event(keystroke: &gpui::Keystroke, native_key: &gpui::NativeKey) -> DomKey {
+    let derived = dom_key(
+        &keystroke.key,
+        keystroke.key_char.as_deref(),
+        keystroke.modifiers.shift,
+    );
+    DomKey {
+        key: native_key.layout_char.clone().unwrap_or(derived.key),
+        code: native_key
+            .key_code
+            .and_then(key_codes::code)
+            .map_or(derived.code, str::to_string),
+    }
+}
+
 /// `key`, `key_char` and `shift` are the fields of `gpui::Keystroke`.
-pub(crate) fn dom_key(key: &str, key_char: Option<&str>, shift: bool) -> DomKey {
+fn dom_key(key: &str, key_char: Option<&str>, shift: bool) -> DomKey {
     if let Some(named) = named_key(key) {
         return named;
     }
@@ -456,7 +541,9 @@ mod tests {
     }
 
     fn press(source: &str) -> (String, Option<String>, [bool; 4]) {
-        let keystroke = parse_press(source).unwrap_or_else(|error| panic!("{source}: {error}"));
+        let keystroke = parse_press(source)
+            .unwrap_or_else(|error| panic!("{source}: {error}"))
+            .keystroke;
         let modifiers = keystroke.modifiers;
         (
             keystroke.key,
@@ -491,7 +578,9 @@ mod tests {
         assert_eq!(press("KeyA"), ("a".into(), Some("a".into()), [false; 4]));
         assert_eq!(press("Digit1"), ("1".into(), Some("1".into()), [false; 4]));
         assert_eq!(press("Minus").0, "-");
-        assert_eq!(press("NumpadAdd").0, "add");
+        assert_eq!(press("NumpadAdd"), ("+".into(), Some("+".into()), [false; 4]));
+        assert_eq!(press("Numpad7"), ("7".into(), Some("7".into()), [false; 4]));
+        assert_eq!(press("NumpadEnter"), ("enter".into(), Some("\n".into()), [false; 4]));
     }
 
     #[test]
@@ -549,7 +638,7 @@ mod tests {
         let keys: Vec<String> = parse_presses("a  Shift+b Enter")
             .unwrap()
             .into_iter()
-            .map(|keystroke| keystroke.key)
+            .map(|press| press.keystroke.key)
             .collect();
         assert_eq!(keys, ["a", "b", "enter"]);
         assert!(parse_presses("a bogus").is_err());
@@ -559,12 +648,8 @@ mod tests {
     #[test]
     fn a_parsed_press_round_trips_to_its_dom_key() {
         for source in ["Enter", "ArrowDown", "Escape", "a", "A", "Shift+b", "Space", "F5", "Shift+1"] {
-            let keystroke = parse_press(source).unwrap();
-            let dom = dom_key(
-                &keystroke.key,
-                keystroke.key_char.as_deref(),
-                keystroke.modifiers.shift,
-            );
+            let press = parse_press(source).unwrap();
+            let dom = dom_key_of_event(&press.keystroke, &press.native_key);
             let expected = match source {
                 "Shift+b" => "B",
                 "Space" => " ",
@@ -573,5 +658,116 @@ mod tests {
             };
             assert_eq!(dom.key, expected, "{source}");
         }
+    }
+
+    fn native(source: &str) -> (Option<u16>, Option<String>) {
+        let press = parse_press(source).unwrap_or_else(|error| panic!("{source}: {error}"));
+        (press.native_key.key_code, press.native_key.layout_char)
+    }
+
+    fn event_dom_key(source: &str) -> (String, String) {
+        let press = parse_press(source).unwrap();
+        let dom = dom_key_of_event(&press.keystroke, &press.native_key);
+        (dom.key, dom.code)
+    }
+
+    fn typed_on(key: &str, key_code: u16, layout_char: Option<&str>) -> (String, String) {
+        let keystroke = gpui::Keystroke {
+            modifiers: gpui::Modifiers::default(),
+            key: key.to_string(),
+            key_char: None,
+        };
+        let native_key = gpui::NativeKey {
+            key_code: Some(key_code),
+            layout_char: layout_char.map(str::to_string),
+        };
+        let dom = dom_key_of_event(&keystroke, &native_key);
+        (dom.key, dom.code)
+    }
+
+    #[test]
+    fn the_layout_character_is_the_key_and_the_key_code_is_the_code() {
+        // Cyrillic layout, the key in the C position: Ctrl+C reports the Cyrillic letter.
+        assert_eq!(typed_on("c", 0x08, Some("с")), ("с".into(), "KeyC".into()));
+        // AZERTY: the key that types "a" is in the Q position.
+        assert_eq!(typed_on("a", 0x0c, Some("a")), ("a".into(), "KeyQ".into()));
+        // Option+s types "ß" on the S key.
+        assert_eq!(typed_on("s", 0x01, Some("ß")), ("ß".into(), "KeyS".into()));
+        // Shift applied to the layout character.
+        assert_eq!(typed_on("1", 0x12, Some("!")), ("!".into(), "Digit1".into()));
+    }
+
+    #[test]
+    fn a_key_without_a_layout_character_keeps_its_name() {
+        assert_eq!(typed_on("enter", 0x24, None), ("Enter".into(), "Enter".into()));
+        assert_eq!(typed_on("enter", 0x4c, None), ("Enter".into(), "NumpadEnter".into()));
+        assert_eq!(typed_on("left", 0x7b, None), ("ArrowLeft".into(), "ArrowLeft".into()));
+        assert_eq!(typed_on("f5", 0x60, None), ("F5".into(), "F5".into()));
+        assert_eq!(typed_on("home", 0x73, None), ("Home".into(), "Home".into()));
+    }
+
+    #[test]
+    fn a_key_code_the_table_lacks_falls_back_to_the_derived_code() {
+        assert_eq!(typed_on("a", 0xfff, Some("a")), ("a".into(), "KeyA".into()));
+    }
+
+    #[test]
+    fn no_native_key_derives_everything_from_the_keystroke() {
+        let keystroke = gpui::Keystroke {
+            modifiers: gpui::Modifiers { shift: true, ..Default::default() },
+            key: "a".to_string(),
+            key_char: Some("A".to_string()),
+        };
+        let dom = dom_key_of_event(&keystroke, &gpui::NativeKey::default());
+        assert_eq!((dom.key, dom.code), ("A".to_string(), "KeyA".to_string()));
+    }
+
+    #[test]
+    fn a_press_that_names_a_code_carries_the_physical_key() {
+        assert_eq!(native("KeyA"), (Some(0x00), Some("a".into())));
+        assert_eq!(native("Shift+KeyA"), (Some(0x00), Some("A".into())));
+        assert_eq!(native("Digit1"), (Some(0x12), Some("1".into())));
+        assert_eq!(native("Shift+Digit1"), (Some(0x12), Some("!".into())));
+        assert_eq!(native("Minus"), (Some(0x1b), Some("-".into())));
+        assert_eq!(native("Space"), (Some(0x31), Some(" ".into())));
+        assert_eq!(native("ShiftLeft"), (Some(0x38), None));
+        assert_eq!(native("MetaRight"), (Some(0x36), None));
+        assert_eq!(native("NumpadEnter"), (Some(0x4c), None));
+        assert_eq!(native("Numpad3"), (Some(0x55), Some("3".into())));
+        assert_eq!(native("NumpadAdd"), (Some(0x45), Some("+".into())));
+    }
+
+    #[test]
+    fn control_and_meta_do_not_change_the_layout_character() {
+        assert_eq!(native("Control+KeyC"), (Some(0x08), Some("c".into())));
+        assert_eq!(press("Control+KeyC").1, None);
+        assert_eq!(native("Meta+Shift+KeyC"), (Some(0x08), Some("C".into())));
+    }
+
+    #[test]
+    fn a_press_that_names_a_key_carries_no_physical_key() {
+        for source in ["a", "A", "Enter", "Escape", "ArrowLeft", "F5", "Shift+Tab", "Shift", " ", "!"] {
+            assert_eq!(native(source), (None, None), "{source}");
+        }
+    }
+
+    #[test]
+    fn events_report_the_code_a_press_names() {
+        assert_eq!(event_dom_key("KeyA"), ("a".into(), "KeyA".into()));
+        assert_eq!(event_dom_key("Shift+KeyA"), ("A".into(), "KeyA".into()));
+        assert_eq!(event_dom_key("Digit1"), ("1".into(), "Digit1".into()));
+        assert_eq!(event_dom_key("Shift+Digit1"), ("!".into(), "Digit1".into()));
+        assert_eq!(event_dom_key("Control+KeyC"), ("c".into(), "KeyC".into()));
+        assert_eq!(event_dom_key("ShiftLeft"), ("Shift".into(), "ShiftLeft".into()));
+        assert_eq!(event_dom_key("ShiftRight"), ("Shift".into(), "ShiftRight".into()));
+        assert_eq!(event_dom_key("NumpadEnter"), ("Enter".into(), "NumpadEnter".into()));
+        assert_eq!(event_dom_key("Enter"), ("Enter".into(), "Enter".into()));
+        assert_eq!(event_dom_key("Numpad1"), ("1".into(), "Numpad1".into()));
+        assert_eq!(event_dom_key("NumpadAdd"), ("+".into(), "NumpadAdd".into()));
+        assert_eq!(event_dom_key("Space"), (" ".into(), "Space".into()));
+        // A key name derives its code, as before.
+        assert_eq!(event_dom_key("a"), ("a".into(), "KeyA".into()));
+        assert_eq!(event_dom_key("A"), ("A".into(), "KeyA".into()));
+        assert_eq!(event_dom_key("ArrowLeft"), ("ArrowLeft".into(), "ArrowLeft".into()));
     }
 }

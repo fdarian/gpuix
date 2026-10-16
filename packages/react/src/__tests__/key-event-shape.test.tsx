@@ -66,6 +66,30 @@ describeNative("DOM-shaped key events", () => {
     ])
   })
 
+  it("a press that names a code reports that code, and the US character on it", () => {
+    press("KeyA Shift+KeyA Digit1 Shift+Digit1 Control+KeyC ShiftLeft NumpadEnter Enter Numpad1 NumpadAdd")
+    expect(keys()).toEqual([
+      ["a", "KeyA"],
+      ["A", "KeyA"],
+      ["1", "Digit1"],
+      ["!", "Digit1"],
+      ["c", "KeyC"],
+      ["Shift", "ShiftLeft"],
+      ["Enter", "NumpadEnter"],
+      ["Enter", "Enter"],
+      ["1", "Numpad1"],
+      ["+", "NumpadAdd"],
+    ])
+  })
+
+  it("keyup carries the code of the key that went down", () => {
+    press("Shift+KeyQ")
+    expect(events.map((event) => [event.type, event.key, event.code])).toEqual([
+      ["keydown", "Q", "KeyQ"],
+      ["keyup", "Q", "KeyQ"],
+    ])
+  })
+
   it("sets the modifier booleans next to modifiers", () => {
     press("Meta+s")
     const [down] = events

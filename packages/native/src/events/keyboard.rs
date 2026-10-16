@@ -109,6 +109,7 @@ fn key_payload(
     cx: &App,
     event_type: &str,
     keystroke: &gpui::Keystroke,
+    native_key: &gpui::NativeKey,
     is_held: Option<bool>,
 ) -> Option<EventPayload> {
     let window_listens = if event_type == "keydown" {
@@ -137,11 +138,7 @@ fn key_payload(
     if path.is_none() && !window_listens {
         return None;
     }
-    let dom_key = key_names::dom_key(
-        &keystroke.key,
-        keystroke.key_char.as_deref(),
-        keystroke.modifiers.shift,
-    );
+    let dom_key = key_names::dom_key_of_event(keystroke, native_key);
     let mut payload = EventPayload {
         event_type: event_type.to_string(),
         key: Some(dom_key.key),
@@ -198,6 +195,7 @@ pub(crate) fn install_key_down(
             cx,
             "keydown",
             &event.keystroke,
+            &event.native_key,
             Some(event.is_held),
         )
         .map(|payload| sync_dispatch::emit(window, cx, &callback, payload))
@@ -243,6 +241,7 @@ pub(crate) fn window_input_listeners(
                     cx,
                     "keyup",
                     &event.keystroke,
+                    &event.native_key,
                     None,
                 )
                 .map(|payload| sync_dispatch::emit(window, cx, &callback, payload))
@@ -261,6 +260,7 @@ pub(crate) fn window_input_listeners(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::AppContext as _;
 
     struct Blank;
 
@@ -291,5 +291,66 @@ mod tests {
         }
         cx.simulate_keystrokes(windows[0].into(), "x");
         assert_eq!(*sent.lock().unwrap(), vec![1.0]);
+    }
+
+    fn typed(
+        cx: &mut gpui::TestAppContext,
+        key: &str,
+        modifiers: gpui::Modifiers,
+        native_key: gpui::NativeKey,
+    ) -> Vec<(String, String, String)> {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let callback: Option<EventCallback> = Some({
+            let sent = sent.clone();
+            Arc::new(move |payload: EventPayload| {
+                sent.lock().unwrap().push((
+                    payload.event_type,
+                    payload.key.unwrap(),
+                    payload.code.unwrap(),
+                ));
+            })
+        });
+        let routing = InputRouting::default();
+        routing.set_window_keys(true, false, 1);
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        let window = cx.add_window(|_, _| Blank);
+        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing));
+        cx.update_window(window.into(), |_, window, cx| {
+            let keystroke = gpui::Keystroke {
+                modifiers,
+                key: key.to_string(),
+                key_char: None,
+            };
+            window.dispatch_native_keystroke(keystroke, native_key, cx);
+        })
+        .unwrap();
+        let sent = sent.lock().unwrap().clone();
+        sent
+    }
+
+    fn native(key_code: u16, layout_char: Option<&str>) -> gpui::NativeKey {
+        gpui::NativeKey {
+            key_code: Some(key_code),
+            layout_char: layout_char.map(str::to_string),
+        }
+    }
+
+    #[gpui::test]
+    fn the_layout_character_and_the_key_code_decide_key_and_code(cx: &mut gpui::TestAppContext) {
+        let none = gpui::Modifiers::default();
+        let control = gpui::Modifiers { control: true, ..none };
+        let row = |key: &str, code: &str| ("keydown".to_string(), key.to_string(), code.to_string());
+        // Cyrillic layout, Ctrl on the C position
+        assert_eq!(typed(cx, "c", control, native(0x08, Some("с"))), [row("с", "KeyC")]);
+        // AZERTY: the key that types "a" sits where QWERTY has Q
+        assert_eq!(typed(cx, "a", none, native(0x0c, Some("a"))), [row("a", "KeyQ")]);
+        // Option+s
+        assert_eq!(typed(cx, "s", none, native(0x01, Some("ß"))), [row("ß", "KeyS")]);
+        // The numpad's Enter is not the main one
+        assert_eq!(typed(cx, "enter", none, native(0x4c, None)), [row("Enter", "NumpadEnter")]);
+        assert_eq!(typed(cx, "enter", none, native(0x24, None)), [row("Enter", "Enter")]);
+        assert_eq!(typed(cx, "left", none, native(0x7b, None)), [row("ArrowLeft", "ArrowLeft")]);
+        // No native key: derived from the keystroke, as on a platform without one
+        assert_eq!(typed(cx, "a", none, gpui::NativeKey::default()), [row("a", "KeyA")]);
     }
 }

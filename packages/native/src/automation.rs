@@ -14,11 +14,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::{
-    canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
-    LayoutInsets, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Styled, Window,
+    canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, LayoutInsets,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled, Window,
 };
 use web_time::Instant;
+
+use crate::events::key_names::Press;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ElementBounds {
@@ -280,9 +281,9 @@ pub fn dispatch_keystrokes(
     cx: &mut App,
     keystrokes: &str,
 ) -> Result<(), String> {
-    for keystroke in crate::events::key_names::parse_presses(keystrokes)? {
-        send_key_down(window, cx, keystroke.clone(), false);
-        send_key_up(window, cx, keystroke);
+    for press in crate::events::key_names::parse_presses(keystrokes)? {
+        send_key_down(window, cx, press.clone(), false);
+        send_key_up(window, cx, press);
     }
     Ok(())
 }
@@ -303,19 +304,20 @@ pub fn dispatch_key_up(window: &mut Window, cx: &mut App, keystroke: &str) -> Re
     Ok(())
 }
 
-fn send_key_down(window: &mut Window, cx: &mut App, keystroke: Keystroke, is_held: bool) {
+fn send_key_down(window: &mut Window, cx: &mut App, press: Press, is_held: bool) {
     // Only a keystroke with a `key_char` goes through `dispatch_keystroke`,
     // which inserts that text into the focused input unless a handler stopped
     // the keydown. It would also invent a `key_char` for a key that has none
     // (`Shift` types "shift"), so every other key is a bare event.
-    if keystroke.key_char.is_some() && !is_held {
-        window.dispatch_keystroke(keystroke, cx);
+    if press.keystroke.key_char.is_some() && !is_held {
+        window.dispatch_native_keystroke(press.keystroke, press.native_key, cx);
     } else {
         window.dispatch_event(
             KeyDownEvent {
-                keystroke,
+                keystroke: press.keystroke,
                 is_held,
                 prefer_character_input: false,
+                native_key: press.native_key,
             }
             .to_platform_input(),
             cx,
@@ -323,8 +325,15 @@ fn send_key_down(window: &mut Window, cx: &mut App, keystroke: Keystroke, is_hel
     }
 }
 
-fn send_key_up(window: &mut Window, cx: &mut App, keystroke: Keystroke) {
-    window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
+fn send_key_up(window: &mut Window, cx: &mut App, press: Press) {
+    window.dispatch_event(
+        KeyUpEvent {
+            keystroke: press.keystroke,
+            native_key: press.native_key,
+        }
+        .to_platform_input(),
+        cx,
+    );
 }
 
 /// Every automation mouse dispatcher takes modifiers, so a test can drive
