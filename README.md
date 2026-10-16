@@ -1108,6 +1108,10 @@ GPUIX installs `clipboard` there so code written for the web runs unchanged. An 
 created last. Only text is supported, not images or `ClipboardItem`s; the
 browser build leaves the browser's own `navigator.clipboard` alone.
 
+`@gpuix/native` also declares `Navigator.clipboard` globally, so a project whose
+`tsconfig` has no DOM lib (`lib: ["ESNext"]`) type-checks `navigator.clipboard`
+too. With the DOM lib the declaration is identical to its own and merges.
+
 `TestRenderer` has its own in-memory clipboard, so a test can
 `writeText()` then paste into an `<input>`, or copy out of one and
 `readText()`, without touching the system pasteboard.

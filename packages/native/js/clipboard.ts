@@ -1,4 +1,5 @@
 import type { NativeRenderer } from "./host.js"
+import "./clipboard-global.js"
 
 /** The `navigator.clipboard` text subset. Images and rich items are not supported. */
 export interface Clipboard {
