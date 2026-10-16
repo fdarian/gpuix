@@ -209,6 +209,11 @@ pub struct PointerState {
     pub(super) pressed: FxHashMap<u32, Press>,
     /// Held buttons as the DOM `buttons` bitmask.
     pub(super) buttons: u32,
+    /// Set when the `pointerdown` that began the contact was cancelled: until the
+    /// contact ends the mouse's compatibility events (`mousedown`, `mousemove`,
+    /// `mouseup`) are not fired. It belongs to the pointer, not to a button, so a
+    /// button that joins the first one is covered too.
+    pub(super) mouse_events_suppressed: bool,
     /// Buttons whose press went to the window (a drag region) and not to the page, as the
     /// `buttons` bitmask. The release is the window's too, and until it comes the pointer is
     /// the window's: a move is not the page's.
@@ -248,6 +253,20 @@ impl PointerState {
     /// The hover target, the innermost element of the hover chain.
     pub fn hover_target(&self) -> Option<u64> {
         self.hovered.first().copied()
+    }
+
+    /// Whether the pointer's cancelled `pointerdown` keeps `event_type` from firing.
+    /// Hover events (`mouseover`, `mouseenter`, ...) are never held back, nor are
+    /// `click`, `dblclick`, `auxclick` and `contextmenu`.
+    pub(super) fn suppresses(&self, event_type: &str) -> bool {
+        self.mouse_events_suppressed
+            && matches!(event_type, "mousedown" | "mousemove" | "mouseup")
+    }
+
+    /// Called with the outcome of the `pointerdown` the press delivered, which
+    /// only the code that delivers it knows.
+    pub(crate) fn suppress_mouse_events(&mut self) {
+        self.mouse_events_suppressed = true;
     }
 
     /// The element that holds explicit pointer capture, once an input applied it.

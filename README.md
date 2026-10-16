@@ -3794,6 +3794,20 @@ which is how a Combobox item can be pressed while its input stays focused.
 press reaches JavaScript through a queue after native has already moved focus,
 so `preventDefault()` in `onMouseDown` has no effect there.
 
+### A cancelled `pointerdown` hides the press's mouse events
+
+`preventDefault()` in an `onPointerDown` keeps the mouse events of that press from
+firing, as in browsers (Pointer Events, "prevent mouse events"): no `mousedown`, no
+`mousemove` while the button is held, and no `mouseup`, until the button is released.
+`pointermove`, `pointerup`, `click` and the others still fire, and so do `contextmenu`
+and `onMouseDownOutside`. The focus move of the press is not cancelled (only
+`onMouseDown` does that), and `mouseover`, `mouseout`, `mouseenter` and `mouseleave`
+are never held back. The rule belongs to the press, not to a button: a second button
+pressed while the first is down joins it, and the next press starts afresh. A
+`mousemove` with no button held is unaffected. It works on macOS and in the test
+renderer; on Windows and Linux the press reaches JavaScript through a queue, so the
+mouse events are not held back.
+
 ### Calling the renderer from a handler
 
 Key and focus handlers run in the middle of a native call, and may still use the
@@ -5138,8 +5152,8 @@ text imports no longer need a runtime flag.
 | Aux click | `onAuxClick` | as `onClick` — non-primary buttons |
 | Double click | `onDoubleClick` | as `onClick`, after the click whose `detail` is 2 |
 | Context menu | `onContextMenu` | as `onClick`, on the secondary button **press**, and on macOS on a ctrl+primary press (`button` 0) |
-| Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` |
-| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`; `movementX` and `movementY` carry the motion |
+| Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` — not fired for a press whose `pointerdown` was cancelled |
+| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`; `movementX` and `movementY` carry the motion. Not fired while a press whose `pointerdown` was cancelled is held |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
 | Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` carries the motion in `movementX` and `movementY`, which are `0` on every other mouse and pointer event. `onPointerCancel` fires on the press target when a `draggable` drag starts. As in the DOM, `pointerdown` fires when the first button goes down and `pointerup` when the last comes up; a button pressed or released in between is a `pointermove` with that `button` and the updated `buttons` (the mouse events still fire for every button). Boundary events come as all four pointer ones, then all four mouse ones |

@@ -161,7 +161,8 @@ impl PointerDispatch {
     /// Dispatches a press and delivers its events in order. A `mousedown`
     /// handler that cancels it keeps the focus default from running, the same
     /// way GPUI's own handlers do. `pointerdown` does not: in the DOM only
-    /// `mousedown` decides that.
+    /// `mousedown` decides that. What it does decide is whether the mouse events
+    /// of the press fire at all: see `PointerState::suppresses`.
     fn press(
         &self,
         view: &WeakEntity<GpuixView>,
@@ -187,8 +188,16 @@ impl PointerDispatch {
         crate::focus::defer_mouse_down_default(window, cx, &self.activation.routing, target_path);
         let mut mouse_down_prevented = false;
         for payload in output.into_payloads() {
+            // A cancelled `pointerdown` of this press holds back the `mousedown` after it.
+            if self.pointer.borrow().suppresses(&payload.event_type) {
+                continue;
+            }
+            let is_pointer_down = payload.event_type == "pointerdown";
             let is_mouse_down = payload.event_type == "mousedown";
             let outcome = sync_dispatch::emit(window, cx, &self.activation.callback, payload);
+            if is_pointer_down && outcome.default_prevented {
+                self.pointer.borrow_mut().suppress_mouse_events();
+            }
             mouse_down_prevented |= is_mouse_down && outcome.default_prevented;
         }
         if mouse_down_prevented {

@@ -6,6 +6,7 @@
 import fs from "fs"
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
+import { document } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./test-utils"
 
@@ -647,6 +648,150 @@ describeNative("pointer events", () => {
         "box:pointerup",
         "box:mouseup",
       ])
+    })
+  })
+
+  describe("a cancelled pointerdown", () => {
+    const allEvents = (cancel: (event: { preventDefault(): void }) => void) => ({
+      onPointerDown: (event: { preventDefault(): void }) => {
+        log.push("pointerdown")
+        cancel(event)
+      },
+      onPointerMove: () => log.push("pointermove"),
+      onPointerUp: () => log.push("pointerup"),
+      onMouseDown: () => log.push("mousedown"),
+      onMouseMove: () => log.push("mousemove"),
+      onMouseUp: () => log.push("mouseup"),
+      onClick: () => log.push("click"),
+    })
+
+    it("holds back mousedown, the mousemoves of the press and mouseup, but not the pointer events or the click", () => {
+      testRoot.render(
+        <div style={{ width: 200, height: 100 }} {...allEvents((event) => event.preventDefault())} />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseMove(60, 50)
+      testRoot.renderer.nativeSimulateMouseUp(60, 50, 0)
+
+      expect(log).toEqual(["pointerdown", "pointermove", "pointerup", "click"])
+    })
+
+    it("fires the mouse events of the next press, and mousemove after the release, as usual", () => {
+      let cancel = true
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 100 }}
+          {...allEvents((event) => cancel && event.preventDefault())}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 0)
+      log.length = 0
+      testRoot.renderer.nativeSimulateMouseMove(55, 50)
+      expect(log).toEqual(["pointermove", "mousemove"])
+
+      cancel = false
+      log.length = 0
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseMove(60, 50)
+      testRoot.renderer.nativeSimulateMouseUp(60, 50, 0)
+      expect(log).toEqual([
+        "pointerdown",
+        "mousedown",
+        "pointermove",
+        "mousemove",
+        "pointerup",
+        "mouseup",
+        "click",
+      ])
+    })
+
+    it("is cancelled for one press only: a press elsewhere is judged by its own pointerdown", () => {
+      testRoot.render(
+        <div style={{ width: 400, height: 100 }}>
+          <div
+            testId="first"
+            style={{ width: 200, height: 100 }}
+            onPointerDown={(event: { preventDefault(): void }) => event.preventDefault()}
+            onMouseDown={() => log.push("first:mousedown")}
+            onMouseUp={() => log.push("first:mouseup")}
+          />
+          <div
+            testId="second"
+            style={{ position: "absolute", left: 200, top: 0, width: 200, height: 100 }}
+            onMouseDown={() => log.push("second:mousedown")}
+            onMouseUp={() => log.push("second:mouseup")}
+          />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateClick(50, 50)
+      testRoot.renderer.nativeSimulateClick(300, 50)
+
+      expect(log).toEqual(["second:mousedown", "second:mouseup"])
+    })
+
+    it("also covers a button that joins the first one, until the last is up", () => {
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 100 }}
+          onPointerDown={(event: { preventDefault(): void }) => event.preventDefault()}
+          onMouseDown={() => log.push("mousedown")}
+          onMouseUp={() => log.push("mouseup")}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 2)
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 2)
+      testRoot.renderer.nativeSimulateMouseUp(50, 50, 0)
+
+      expect(log).toEqual([])
+    })
+
+    it("leaves the hover events and the contextmenu of a secondary press alone", () => {
+      testRoot.render(
+        <div style={{ width: 400, height: 100 }}>
+          <div
+            style={{ width: 200, height: 100 }}
+            onPointerDown={(event: { preventDefault(): void }) => event.preventDefault()}
+            onMouseDown={record("a")}
+            onMouseOut={record("a")}
+            onContextMenu={record("a")}
+          />
+          <div
+            style={{ position: "absolute", left: 200, top: 0, width: 200, height: 100 }}
+            onMouseOver={record("b")}
+            onMouseEnter={record("b")}
+            onMouseMove={record("b")}
+          />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 2)
+      testRoot.renderer.nativeSimulateMouseMove(300, 50)
+      testRoot.renderer.nativeSimulateMouseUp(300, 50, 2)
+
+      expect(log).toEqual(["a:contextmenu", "a:mouseout", "b:mouseover", "b:mouseenter"])
+    })
+
+    it("does not cancel the focus default of the press", () => {
+      let box: unknown
+      testRoot.render(
+        <div
+          ref={(element) => (box = element)}
+          tabIndex={0}
+          style={{ width: 200, height: 100 }}
+          onPointerDown={(event: { preventDefault(): void }) => event.preventDefault()}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50, 0)
+
+      expect(document.activeElement).toBe(box)
     })
   })
 

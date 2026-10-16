@@ -116,6 +116,8 @@ fn begin(
     target: Option<u64>,
 ) -> bool {
     state.pending_drag = None;
+    // `pointercancel` ends the contact.
+    state.mouse_events_suppressed = false;
     if let Some(press) = state.pressed.remove(&PRIMARY_BUTTON) {
         if let Some(pressed) = press.path.first() {
             emitter.emit("pointercancel", *pressed, Fields::default());

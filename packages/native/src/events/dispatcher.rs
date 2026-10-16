@@ -553,7 +553,9 @@ fn dispatch_at(
                     ..Default::default()
                 };
                 emitter.emit("pointermove", target, fields);
-                emitter.emit("mousemove", target, fields);
+                if !state.suppresses("mousemove") {
+                    emitter.emit("mousemove", target, fields);
+                }
             } else if !pointer_hidden {
                 let fields = Fields {
                     pressed_button,
@@ -561,7 +563,9 @@ fn dispatch_at(
                     ..Default::default()
                 };
                 emitter.emit_to_window("pointermove", fields);
-                emitter.emit_to_window("mousemove", fields);
+                if !state.suppresses("mousemove") {
+                    emitter.emit_to_window("mousemove", fields);
+                }
             }
         }
         PointerAction::Down {
@@ -761,6 +765,7 @@ fn cancel_press(state: &mut PointerState, emitter: &mut Emitter) -> bool {
             emitter.emit("lostpointercapture", captured, Fields::default());
         }
     }
+    state.mouse_events_suppressed = false;
     state.pressed.clear();
     state.pending_drag = None;
     set_active(state, tree, Vec::new())
@@ -894,11 +899,17 @@ fn press(
         ..Default::default()
     };
     if state.buttons == button_bit(button) {
+        // A new contact: whatever the last one decided about the mouse events is over.
+        state.mouse_events_suppressed = false;
         emitter.emit("pointerdown", target, fields);
     } else {
         emit_chord_move(state, emitter, target, button);
     }
-    emitter.emit("mousedown", target, fields);
+    // The cancelled `pointerdown` of this press is only known to the code that delivers it,
+    // which holds back this `mousedown` itself (`PointerDispatch::press`).
+    if !state.suppresses("mousedown") {
+        emitter.emit("mousedown", target, fields);
+    }
     emitter.emit_outside_presses(Some(target), fields);
     if button == SECONDARY_BUTTON
         || (CTRL_CLICK_OPENS_CONTEXT_MENU && button == PRIMARY_BUTTON && modifiers.ctrl)
@@ -959,8 +970,11 @@ fn release(
         }
     }
 
-    if let Some(target) = target {
+    if let Some(target) = target.filter(|_| !state.suppresses("mouseup")) {
         emitter.emit("mouseup", target, fields);
+    }
+    if state.buttons == 0 {
+        state.mouse_events_suppressed = false;
     }
 
     if let Some(press) = state.pressed.remove(&button) {
@@ -3156,5 +3170,160 @@ mod tests {
         dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
         let output = dispatch(&mut state, &tree, &in_drag_region(mv(chain_of(&[4, 1]))));
         assert_eq!(names(&output), ["pointercancel@3"]);
+    }
+
+    /// A press of `button` whose `pointerdown` the page cancelled, as
+    /// `PointerDispatch::press` records once the handler has returned.
+    fn press_with_cancelled_pointerdown(
+        state: &mut PointerState,
+        tree: &RetainedTree,
+        button: u32,
+        hits: Vec<Hit>,
+    ) -> Output {
+        let output = dispatch(state, tree, &down(button, 1, hits));
+        state.suppress_mouse_events();
+        output
+    }
+
+    #[test]
+    fn a_cancelled_pointerdown_holds_back_the_mouse_events_until_the_pointerup() {
+        let tree = tree(&listening_everywhere(&[
+            "pointerdown",
+            "pointermove",
+            "pointerup",
+            "mousedown",
+            "mousemove",
+            "mouseup",
+            "click",
+        ]));
+        let mut state = PointerState::default();
+        press_with_cancelled_pointerdown(&mut state, &tree, 0, chain_of(&[3, 2, 1]));
+        let output = dispatch(&mut state, &tree, &held_move(15.0, 31.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointerup@3", "click@3"]);
+    }
+
+    #[test]
+    fn the_pointerdown_itself_and_the_press_events_other_than_mousedown_still_fire() {
+        let tree = tree(&listening_everywhere(&["pointerdown", "mousedown", "contextmenu"]));
+        let mut state = PointerState::default();
+        let output = press_with_cancelled_pointerdown(&mut state, &tree, 2, chain_of(&[3, 2, 1]));
+        // `mousedown` is the listener's to hold back: the cancel is only known after `pointerdown` ran.
+        assert_eq!(names(&output), ["pointerdown@3", "mousedown@3", "contextmenu@3"]);
+        assert!(state.suppresses("mousedown"));
+    }
+
+    #[test]
+    fn a_cancelled_pointerdown_leaves_hover_events_and_an_unpressed_move_alone() {
+        let tree = tree(&listening_everywhere(&["mouseover", "mouseenter", "mouseout", "mouseleave", "mousemove"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        press_with_cancelled_pointerdown(&mut state, &tree, 0, chain_of(&[3, 2, 1]));
+        let output = dispatch(&mut state, &tree, &held_move(15.0, 30.0, chain_of(&[4, 1])));
+        let fired = names(&output);
+        for boundary in ["mouseout@3", "mouseleave@3", "mouseover@4", "mouseenter@4"] {
+            assert!(fired.contains(&boundary.to_string()), "{boundary} in {fired:?}");
+        }
+        assert!(!fired.iter().any(|name| name.starts_with("mousemove")), "{fired:?}");
+
+        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["mousemove@4"]);
+    }
+
+    #[test]
+    fn the_next_press_fires_its_mouse_events_again() {
+        let tree = tree(&listening_everywhere(&["mousedown", "mouseup", "mousemove"]));
+        let mut state = PointerState::default();
+        press_with_cancelled_pointerdown(&mut state, &tree, 0, chain_of(&[3, 2, 1]));
+        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert!(!state.suppresses("mouseup"));
+
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousedown@3"]);
+        let output = dispatch(&mut state, &tree, &held_move(15.0, 31.0, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousemove@3"]);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mouseup@3"]);
+    }
+
+    #[test]
+    fn a_press_that_was_not_cancelled_clears_a_flag_left_by_a_press_whose_release_was_lost() {
+        let tree = tree(&listening_everywhere(&["mousedown"]));
+        let mut state = PointerState::default();
+        state.suppress_mouse_events();
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousedown@3"]);
+    }
+
+    #[test]
+    fn a_button_that_joins_a_cancelled_pointerdown_is_covered_by_it() {
+        let tree = tree(&listening_everywhere(&["mousedown", "mouseup", "pointermove", "pointerup"]));
+        let mut state = PointerState::default();
+        press_with_cancelled_pointerdown(&mut state, &tree, 0, chain_of(&[3, 2, 1]));
+        let output = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointermove@3"]);
+        // The flag lives until the last button is up.
+        assert!(state.suppresses("mouseup"));
+        let output = dispatch(&mut state, &tree, &up(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["pointerup@3"]);
+        assert!(!state.suppresses("mouseup"));
+    }
+
+    #[test]
+    fn a_second_button_has_no_pointerdown_to_cancel_and_fires_its_mousedown() {
+        let tree = tree(&listening_everywhere(&["mousedown"]));
+        let mut state = PointerState::default();
+        dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        let output = dispatch(&mut state, &tree, &down(2, 1, chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousedown@3"]);
+        assert!(!state.suppresses("mousedown"));
+    }
+
+    #[test]
+    fn a_lost_release_ends_the_suppression() {
+        let tree = tree(&listening_everywhere(&["mousemove", "mousedown"]));
+        let mut state = PointerState::default();
+        press_with_cancelled_pointerdown(&mut state, &tree, 0, chain_of(&[3, 2, 1]));
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert_eq!(names(&output), ["mousemove@3"]);
+        assert!(!state.suppresses("mousemove"));
+    }
+
+    #[test]
+    fn an_element_drag_ends_the_suppression_with_the_pointercancel() {
+        let tree = draggable_tree(&listening_everywhere(&["pointercancel", "mouseup"]));
+        let mut state = pressed_on_b(&tree);
+        state.suppress_mouse_events();
+        dispatch(&mut state, &tree, &held_move(30.0, 30.0, chain_of(&[3, 2, 1])));
+        assert!(state.element_drag.is_some());
+        assert!(!state.suppresses("mouseup"));
+    }
+
+    #[test]
+    fn the_flag_names_only_the_three_compatibility_events() {
+        let mut state = PointerState::default();
+        state.suppress_mouse_events();
+        for held_back in ["mousedown", "mousemove", "mouseup"] {
+            assert!(state.suppresses(held_back), "{held_back}");
+        }
+        for fires in [
+            "mouseover",
+            "mouseout",
+            "mouseenter",
+            "mouseleave",
+            "click",
+            "auxclick",
+            "dblclick",
+            "contextmenu",
+            "pointermove",
+            "pointerup",
+            "mousedownoutside",
+        ] {
+            assert!(!state.suppresses(fires), "{fires}");
+        }
     }
 }
