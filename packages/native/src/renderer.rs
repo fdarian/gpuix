@@ -7130,7 +7130,11 @@ pub(crate) fn build_element(
         // it only differs in being inline inside a paragraph.
         host if crate::text::inline::is_host_type(host) => {
             ctx.custom_registry.destroy(id);
-            build_host_container(element, style, ctx, window, cx)
+            if crate::layout::contents::is_display_contents(element) {
+                build_contents_container(element, style, ctx, window, cx)
+            } else {
+                build_host_container(element, style, ctx, window, cx)
+            }
         }
         "virtual-list" => {
             ctx.custom_registry.destroy(id);
@@ -7559,16 +7563,34 @@ pub(crate) fn build_host_container(
     // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
     // input like the pointer's (`events::listeners`).
 
+    let (content, paint_ranks) = build_content(element, plan, ctx, window, cx);
+    el.extend(content);
+    if paint_ranks.iter().any(|rank| *rank != 0) {
+        el = el.paint_ranks(paint_ranks);
+    }
+
+    el.into_any_element()
+}
+
+/// What a host element holds, in paint order, with the paint rank of each.
+fn build_content(
+    element: &crate::retained_tree::RetainedElement,
+    plan: Vec<crate::text::inline::Child>,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) -> (Vec<gpui::AnyElement>, Vec<i32>) {
     // Text content — selectable, same as a <text> leaf.
     // An empty string paints no glyphs, so it must take no space: gpui's text
     // layout still reserves a full line for "", and Solid's universal renderer
     // creates an empty placeholder text node for every dynamic hole (`<Show>`,
     // `{cond && x}`). Emitting those as full-height lines inflated every
     // conditional row. React never sends empty text, so this is a no-op there.
+    let mut content_elements = Vec::new();
     let mut paint_ranks = Vec::new();
     if element.children.is_empty() {
         if let Some(content) = crate::text::inline::own_text(ctx.tree, element) {
-            el = el.child(text_content(element, &content, ctx));
+            content_elements.push(text_content(element, &content, ctx));
             paint_ranks.push(0);
         }
     }
@@ -7587,19 +7609,49 @@ pub(crate) fn build_host_container(
                     ));
                     ctx.contents_overlay =
                         crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-                    el = el.child(build_element(child_id, ctx, window, cx));
+                    content_elements.push(build_element(child_id, ctx, window, cx));
                 }
                 crate::text::inline::Child::Paragraph(paragraph) => {
                     paint_ranks.push(0);
-                    el = el.child(paragraph_content(&paragraph, ctx));
+                    content_elements.push(paragraph_content(&paragraph, ctx));
                 }
             }
         }
     }
+    (content_elements, paint_ranks)
+}
+
+/// A `display: contents` element that has no parent to splice into: the root, or
+/// a virtual-list row. It generates no box, so it has no id, hitbox or bounds.
+/// Its children lay out in an anonymous block in its place, and keep the text
+/// style it passes down.
+fn build_contents_container(
+    element: &crate::retained_tree::RetainedElement,
+    style: Option<&StyleDesc>,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) -> gpui::AnyElement {
+    use gpui::prelude::*;
+
+    let mut el = gpui::div();
+    el.style().position = Some(gpui::Position::Static);
+    if let Some(style) = style {
+        el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors);
+    }
+    if let Some(features) = ctx.inherited.font_features.clone() {
+        el = el.font_features(features);
+    }
+    let plan = if element.children.is_empty() {
+        Vec::new()
+    } else {
+        crate::text::inline::plan_children(ctx.tree, element)
+    };
+    let (content, paint_ranks) = build_content(element, plan, ctx, window, cx);
+    el.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         el = el.paint_ranks(paint_ranks);
     }
-
     el.into_any_element()
 }
 

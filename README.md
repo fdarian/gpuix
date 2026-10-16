@@ -5044,9 +5044,15 @@ draws one: a `dashed` anywhere makes every side dashed.
   styles (size, padding, background, border) do not apply, its inheritable text
   style (`color`, `fontSize`, `fontFamily`, `fontWeight`, `textAlign`,
   `lineHeight`, `whiteSpace`, `cursor`, `visibility`, `userSelect`) passes to the
-  children, and `getElementBounds` returns `null` for it. Its own pointer
-  handlers never fire, as it has no hitbox. The `inline-*` values and `table`
-  are not supported (the layout engine has no such box types).
+  children, and `getElementBounds` returns `null` for it. As a root, or as a
+  `<virtual-list>` row (a list lays out one measured item per row), it has no
+  parent to splice into, so its children lay out in an anonymous block in its
+  place. Its own listeners still hear every event that passes through it, with
+  `currentTarget` set to it: a click on a child, the pointer entering or leaving
+  any of its descendants (`mouseenter` and `pointerenter` fire once for the
+  whole group), keys and focus inside it, and `click()` on it. It is never the
+  target of a pointer event, as it has no box to hit. The `inline-*` values and
+  `table` are not supported (the layout engine has no such box types).
 - **`visibility: "hidden"`** keeps the layout box and every report of it
   (`getBoundingClientRect`, `onLayout`, `ResizeObserver`, `IntersectionObserver`),
   and paints nothing of its own: no background, border, shadow, outline or text.

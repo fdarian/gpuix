@@ -102,6 +102,26 @@ mod tests {
     }
 
     #[test]
+    fn a_display_contents_ancestor_is_in_the_path_in_order_though_it_has_no_hitbox() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=4 {
+            tree.create_element(id, "div".to_string());
+        }
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        tree.append_child(3, 4);
+        for id in [2, 3] {
+            let contents = serde_json::json!({"display": "contents"});
+            tree.set_style(id, std::sync::Arc::new(serde_json::from_value(contents).expect("a style")));
+        }
+
+        let path = event_path(&tree, 4);
+        assert_eq!(path, [4, 3, 2, 1]);
+        // GPUI's chain holds only the elements that built a hitbox.
+        assert!(chain_follows_path(&[4, 1], &path));
+    }
+
+    #[test]
     fn the_innermost_shared_element_is_the_common_ancestor() {
         assert_eq!(common_ancestor(&[5, 3, 1], &[6, 3, 1]), Some(3));
         assert_eq!(common_ancestor(&[5, 3, 1], &[3, 1]), Some(3));

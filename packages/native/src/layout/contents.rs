@@ -101,6 +101,14 @@ impl StyleDesc {
         );
     }
 
+    /// Only the properties CSS inherits: what a box-less element passes to the
+    /// anonymous block that stands in for it.
+    pub(crate) fn inheritable_part(&self) -> StyleDesc {
+        let mut part = StyleDesc::default();
+        part.take_inheritable_from(self);
+        part
+    }
+
     /// Fills the inheritable properties this style leaves unset from `overlay`.
     pub(crate) fn with_inherited_overlay(&self, overlay: &StyleDesc) -> StyleDesc {
         let mut result = self.clone();
@@ -198,5 +206,21 @@ mod tests {
             own_color.with_inherited_overlay(&overlay).color.as_deref(),
             Some("blue")
         );
+    }
+
+    #[test]
+    fn a_box_less_element_hands_its_stand_in_only_the_inherited_properties() {
+        let style = StyleDesc {
+            color: Some("red".to_string()),
+            font_size: Some(12.0),
+            width: Some(crate::style::DimensionValue::Pixels(40.0)),
+            background_color: Some("blue".to_string()),
+            ..Default::default()
+        };
+        let part = style.inheritable_part();
+        assert_eq!(part.color.as_deref(), Some("red"));
+        assert_eq!(part.font_size, Some(12.0));
+        assert!(part.width.is_none());
+        assert!(part.background_color.is_none());
     }
 }
