@@ -537,6 +537,11 @@ impl CustomElement for TextEditorElement {
                 editor = editor.overflow_hidden();
             }
         }
+        // The editor does not go through `custom_surface`, which is where other
+        // custom elements pick these up.
+        if let Some(features) = ctx.font_features.clone() {
+            editor = editor.font_features(features);
+        }
         editor = crate::focus::apply_focus_styles(
             editor,
             ctx.id,

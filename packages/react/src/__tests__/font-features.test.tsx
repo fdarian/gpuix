@@ -114,3 +114,70 @@ describeNative("fontFeatureSettings", () => {
     )
   })
 })
+
+describeNative("font features on form fields", () => {
+  function field(
+    name: string,
+    tag: "input" | "textarea",
+    style: Record<string, unknown>,
+    parent: Record<string, unknown> = {},
+    text: "value" | "placeholder" = "value"
+  ) {
+    const props = text === "value" ? { value: "1111111111", readOnly: true } : { placeholder: "1111111111" }
+    const Field = tag
+    return capture1(
+      name,
+      <div style={{ fontSize: 32, width: 400, ...parent }}>
+        <Field {...props} style={{ width: 400, border: "none", padding: 0, color: "white", ...style }} />
+      </div>
+    )
+  }
+
+  function capture1(name: string, tree: ReactElement) {
+    const testRoot = createTestRoot()
+    try {
+      testRoot.render(tree)
+      const file = `${SHOTS_DIR}/font-features-field-${name}.png`
+      fs.rmSync(file, { force: true })
+      testRoot.renderer.captureScreenshot(file)
+      return file
+    } finally {
+      testRoot.unmount()
+    }
+  }
+
+  function expectScreenshotsNotIdentical(left: string, right: string) {
+    expect(fs.readFileSync(left).equals(fs.readFileSync(right))).toBe(false)
+  }
+
+  for (const tag of ["input", "textarea"] as const) {
+    for (const text of ["value", "placeholder"] as const) {
+      describe(`${tag} ${text}`, () => {
+        const shot = (name: string, style: Record<string, unknown>, parent?: Record<string, unknown>) =>
+          field(`${tag}-${text}-${name}`, tag, style, parent, text)
+
+        it("takes fontVariantNumeric from its own style, as it takes it from an ancestor", () => {
+          const own = shot("own", { fontVariantNumeric: "tabular-nums" })
+          expectScreenshotsEqual(own, shot("inherited", {}, { fontVariantNumeric: "tabular-nums" }))
+          expectScreenshotsNotIdentical(own, shot("plain", {}))
+        })
+
+        it("takes fontFeatureSettings from its own style", () => {
+          const own = shot("settings", { fontFeatureSettings: '"tnum" 1' })
+          expectScreenshotsEqual(own, shot("settings-ref", { fontVariantNumeric: "tabular-nums" }))
+          expectScreenshotsNotIdentical(own, shot("settings-plain", {}))
+        })
+
+        it("lets its own value override an ancestor's", () => {
+          const overridden = shot("override", { fontVariantNumeric: "normal" }, { fontVariantNumeric: "tabular-nums" })
+          expectScreenshotsEqual(overridden, shot("override-ref", {}))
+        })
+
+        it("lets its own fontFeatureSettings win over its fontVariantNumeric", () => {
+          const conflict = shot("conflict", { fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 0' })
+          expectScreenshotsEqual(conflict, shot("conflict-ref", {}))
+        })
+      })
+    }
+  }
+})
