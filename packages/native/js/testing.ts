@@ -587,9 +587,8 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string
   ): void {
     this.native.flushIfDirty()
-    // Two inputs, not `native.simulateClick`: the press's focus change is queued
-    // while the release is delivered synchronously, so the focus handlers must
-    // run before it, as they do when a person lets go later.
+    // Two inputs, not `native.simulateClick`: whatever the press queued must
+    // reach JS before the release, as it does when a person lets go later.
     this.native.simulateMouseDown(x, y, button ?? 0, modifiers)
     this.dispatchNativeEvents()
     this.native.simulateMouseUp(x, y, button ?? 0, modifiers)

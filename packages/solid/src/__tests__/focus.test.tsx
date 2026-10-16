@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { document } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { HostElement } from "../host.js"
 
@@ -301,5 +302,73 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     renderer.setWindowActive(false)
     renderer.setWindowActive(true)
     expect(renderer.matchesFocus(idOf("a"), ":focus-visible")).toBe(true)
+  })
+
+  describe("when nobody called focus()", () => {
+    // A press, an `autoFocus` mount and a frame move focus without a call of JS's,
+    // and their events are still delivered before the input, the commit or the
+    // draw returns. The wrapper drains the queue after each call, which would hide
+    // a queued event, so watch below it.
+    function watch(renderer: ReturnType<typeof setup>["renderer"]) {
+      const sync: string[] = []
+      const handler = (renderer as any).dispatchSyncEvent
+      ;(renderer as any).native.setSyncEventHandler((event: any) => {
+        sync.push(`${event.eventType}:${renderer.getElement(event.target)?.testId}`)
+        return handler(event)
+      })
+      const queued = () =>
+        (renderer as any).native
+          .drainEvents()
+          .filter((event: any) => ["focus", "blur", "focusin", "focusout"].includes(event.eventType))
+          .map((event: any) => event.eventType)
+      return { sync, queued }
+    }
+
+    const pressScene = (onMouseDownB: (event: any) => void = () => {}) => {
+      const refs: Record<string, HostElement> = {}
+      const view = () => (
+        <div testId="scope" style={{ width: 200, height: 100 }}>
+          <div ref={(el) => (refs.a = el)} testId="a" tabIndex={0} style={box} onMouseDown={() => {}} onFocus={() => {}} />
+          <div ref={(el) => (refs.b = el)} testId="b" tabIndex={0} style={box} onMouseDown={onMouseDownB} onFocus={() => {}} onBlur={() => {}} />
+          <div testId="plain" style={box} onMouseDown={() => {}} />
+        </div>
+      )
+      return { refs, view }
+    }
+
+    it("delivers the focus of a press after its mousedown and before the press returns", () => {
+      const scene = pressScene()
+      const { renderer, center } = setup(scene.view)
+      renderer.native.flush()
+      const { sync, queued } = watch(renderer)
+
+      renderer.native.simulateMouseDown(...center("a"), 0)
+      expect(sync).toEqual(["mousedown:a", "focus:a", "focusin:a"])
+      expect(document.activeElement).toBe(scene.refs.a)
+
+      renderer.native.simulateMouseDown(...center("b"), 0)
+      expect(sync.slice(3)).toEqual(["mousedown:b", "blur:a", "focusout:a", "focus:b", "focusin:b"])
+      expect(document.activeElement).toBe(scene.refs.b)
+
+      renderer.native.simulateMouseDown(...center("plain"), 0)
+      expect(sync.slice(8)).toEqual(["mousedown:plain", "blur:b", "focusout:b"])
+      expect(document.activeElement).toBeNull()
+      expect(queued()).toEqual([])
+    })
+
+    it("delivers no focus events for a press whose mousedown was cancelled", () => {
+      const scene = pressScene((event) => event.preventDefault())
+      const { renderer, center } = setup(scene.view)
+      renderer.native.flush()
+      const { sync, queued } = watch(renderer)
+
+      renderer.native.simulateMouseDown(...center("a"), 0)
+      renderer.native.simulateMouseUp(...center("a"), 0)
+      renderer.native.simulateMouseDown(...center("b"), 0)
+      expect(sync.filter((event) => /^(focus|blur)/.test(event))).toEqual(["focus:a", "focusin:a"])
+      expect(document.activeElement).toBe(scene.refs.a)
+      expect(queued()).toEqual([])
+    })
+
   })
 })

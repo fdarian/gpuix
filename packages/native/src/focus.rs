@@ -348,6 +348,10 @@ pub(crate) fn settle_focus(window: &mut Window, cx: &mut App) -> Result<(), Stri
 /// Queue it before the press reaches JS. A focus change JS makes during the
 /// press (a closing layer giving focus back) is deferred too, and has to land
 /// after this, the way a DOM default action runs before a `setTimeout(0)`.
+///
+/// The focus events are delivered before the deferred step returns, also when
+/// the default was cancelled: the element's own focus transfer may have moved
+/// focus already, and nothing else would report it before the next frame.
 pub(crate) fn defer_mouse_down_default(
     window: &mut gpui::Window,
     cx: &mut gpui::App,
@@ -357,12 +361,14 @@ pub(crate) fn defer_mouse_down_default(
     routing.note_user_input();
     let routing = routing.clone();
     window.defer(cx, move |window, cx| {
-        if window.default_prevented() {
-            return;
+        if !window.default_prevented() {
+            match routing.first_focusable(&target_path) {
+                Some(handle) => window.focus(&handle, cx),
+                None => window.blur(),
+            }
         }
-        match routing.first_focusable(&target_path) {
-            Some(handle) => window.focus(&handle, cx),
-            None => window.blur(),
+        if let Err(error) = settle_focus(window, cx) {
+            sync_dispatch::report_deferred_error(error);
         }
     });
 }
