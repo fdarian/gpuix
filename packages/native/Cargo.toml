@@ -140,6 +140,9 @@ path = "examples/bench_serde.rs"
 
 [profile.release]
 lto = true
+# rustc's post-link llvm-strip drops ld's 4-byte pad, so the string table offset is 4 mod 8
+# whenever the indirect-symbol count is odd, and macOS 27 dyld refuses to load the addon.
+strip = "none"
 
 # capture_screenshot encodes a png on every visual test. The encoder is
 # too slow at opt-level 0 and vitest kills the worker, so build the
