@@ -2151,15 +2151,15 @@ await app.clock.resume()
 
 A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. Scrollbars are overlays, so the two values differ in nothing. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
 
-Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its children, their padding, and its own padding and border reach, measured from where the padding box starts. Content that fits never scrolls, and neither does an empty scroller.
+Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its descendants' boxes, and its own padding and border, reach, measured from where the padding box starts. This is CSS scrollable overflow: a descendant counts down to one that clips itself (`overflow` other than `visible`), whose box counts but whose own overflow does not. An absolute descendant counts only when the scroller is its containing block, so give the scroller a `position` for that. `position: fixed` boxes and anchored or deferred layers (popovers, tooltips) never count. Content that fits never scrolls, and neither does an empty scroller.
 
 Plain scroll containers still build every child. Use `<virtual-list>` below when the collection can grow large.
 
 ### The wheel
 
-The wheel goes to the innermost scroller under the pointer that can still scroll in the direction of the delta. Each axis is independent: a scroller takes the part of the delta it can use, and the rest goes to the scroller around it. A scroller at its limit hands the whole delta on, which is how a list inside a page lets you carry on scrolling the page. Nested scrollers work. `<virtual-list>` takes part like any scroller, along the vertical axis only: it takes the vertical share it can use and hands the rest, and all of the horizontal delta, to the scroller around it, and a scroller inside one of its rows is served first.
+The wheel goes to the innermost scroller under the pointer that can still scroll in the direction of the delta. One wheel event scrolls one scroller: the first one, innermost out, that can use any of it takes the whole event on both axes, and what it cannot use is dropped, not passed to the scroller around it in the same event. A scroller at its limit takes nothing, so the event goes to the next one up. That is how a list inside a page lets you carry on scrolling the page: the next gesture (a new trackpad gesture, a mouse wheel after half a second or a pointer move) finds the list at its end and scrolls the page. Nested scrollers work. `<virtual-list>` takes part like any scroller, along the vertical axis only: an event it can scroll vertically is its own, horizontal delta included, and a scroller inside one of its rows is served first.
 
-`overscrollBehavior` (and `overscrollBehaviorX` / `Y`) decides what happens to the delta a scroller cannot use. `"auto"`, the default, passes it on. `"contain"` and `"none"` keep it, so the page behind does not move.
+`overscrollBehavior` (and `overscrollBehaviorX` / `Y`) decides what happens to the delta a scroller cannot use. `"auto"`, the default, lets the next gesture reach the scroller around it. `"contain"` and `"none"` keep it, so the page behind does not move.
 
 A trackpad gesture stays on the scroller that took its first delta, momentum included, so a fling does not jump to the parent when the inner list runs out. A mouse wheel does the same until it pauses for half a second or the pointer moves. `onWheel` listeners on every element under the pointer still run, whichever scroller moved.
 
@@ -2404,7 +2404,7 @@ Each **direct host child** is one virtual row. Give every row a stable React key
 </virtual-list>
 ```
 
-A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. A scroller inside a row takes the wheel first and hands the rest to the list, which hands what it cannot use to the scrollers around it (see [Scrolling](#scrolling)).
+A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. A scroller inside a row takes the wheel first. When it is at its limit the list takes the event, and when the list is at its limit the scrollers around it do (see [Scrolling](#scrolling)).
 
 ### Chat tail behavior
 
