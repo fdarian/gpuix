@@ -122,10 +122,11 @@ where
 {
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
-        record_bounds(window.window_handle().window_id(), id, bounds, insets);
+        let window_id = window.window_handle().window_id();
+        record_bounds(window_id, id, bounds, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
-            crate::text::record_start_region(bounds, selectable);
+            crate::text::record_start_region(window_id, bounds, selectable);
         }
         if let Some(report) = &report {
             report(bounds, insets, window, cx);

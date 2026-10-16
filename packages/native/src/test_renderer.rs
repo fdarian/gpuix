@@ -1294,7 +1294,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_painted_text(&self) -> Result<Vec<String>> {
         self.flush()?;
-        Ok(crate::text::painted_text())
+        Ok(crate::text::painted_text(test_window_id()?))
     }
 
     /// Every highlight wash painted in the last frame, in paint order.
@@ -1305,7 +1305,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_painted_highlights(&self) -> Result<Vec<crate::element_tree::HighlightMatch>> {
         self.flush()?;
-        Ok(crate::text::painted_highlights()
+        Ok(crate::text::painted_highlights(test_window_id()?)
             .into_iter()
             .map(Into::into)
             .collect())

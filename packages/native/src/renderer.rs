@@ -3470,8 +3470,17 @@ impl GpuixRenderer {
     }
 
     #[napi]
-    pub fn get_painted_text(&self) -> Vec<String> {
-        crate::text::painted_text()
+    pub fn get_painted_text(&self) -> Result<Vec<String>> {
+        #[cfg(target_os = "macos")]
+        {
+            return Ok(self
+                .draw_pending_changes()?
+                .map(crate::text::painted_text)
+                .unwrap_or_default());
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::from_reason("Unsupported operating system"))
     }
 
     /// Every highlight wash painted in the last frame, in paint order.
@@ -3479,11 +3488,20 @@ impl GpuixRenderer {
     /// A quad is invisible to `getPaintedText()`, so this is the only way to
     /// assert on `highlight` without a screenshot.
     #[napi]
-    pub fn get_painted_highlights(&self) -> Vec<crate::element_tree::HighlightMatch> {
-        crate::text::painted_highlights()
-            .into_iter()
-            .map(Into::into)
-            .collect()
+    pub fn get_painted_highlights(&self) -> Result<Vec<crate::element_tree::HighlightMatch>> {
+        #[cfg(target_os = "macos")]
+        {
+            return Ok(self
+                .draw_pending_changes()?
+                .map(crate::text::painted_highlights)
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect());
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::from_reason("Unsupported operating system"))
     }
 
     /// Press space-separated keys in Playwright's `keyboard.press` grammar
@@ -4655,7 +4673,7 @@ impl WebGpuixRenderer {
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getPaintedText)]
     pub fn get_painted_text(&self) -> wasm_bindgen::JsValue {
-        web_string_array(crate::text::painted_text())
+        web_string_array(web_window_id().map(crate::text::painted_text).unwrap_or_default())
     }
 
     /// The same array of objects the napi build returns.
@@ -4665,7 +4683,9 @@ impl WebGpuixRenderer {
     /// the nested value by hand with `js_sys` is 20 lines of noise.
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getPaintedHighlights)]
     pub fn get_painted_highlights(&self) -> wasm_bindgen::JsValue {
-        let matches: Vec<crate::element_tree::HighlightMatch> = crate::text::painted_highlights()
+        let matches: Vec<crate::element_tree::HighlightMatch> = web_window_id()
+            .map(crate::text::painted_highlights)
+            .unwrap_or_default()
             .into_iter()
             .map(Into::into)
             .collect();
@@ -4909,7 +4929,7 @@ pub(crate) struct GpuixView {
     /// Persistent measurement and scroll state for React-backed virtual lists.
     virtual_lists: HashMap<u64, VirtualListEntry>,
     /// Latest pointer sample and list during selection edge scrolling.
-    selection_drag_position: Option<gpui::Point<gpui::Pixels>>,
+    selection_drag_position: Option<(gpui::WindowId, gpui::Point<gpui::Pixels>)>,
     selection_scroll_list: Option<u64>,
     selection_scroll_task: Option<gpui::Task<()>>,
     /// Motion / review clock. Live wall time unless automation freezes it.
@@ -6692,6 +6712,7 @@ impl GpuixView {
 
     fn on_selection_mouse_move(
         &mut self,
+        window: gpui::WindowId,
         position: gpui::Point<gpui::Pixels>,
         cx: &mut gpui::Context<Self>,
     ) {
@@ -6717,7 +6738,7 @@ impl GpuixView {
             self.stop_selection_scroll();
             return;
         };
-        self.selection_drag_position = Some(position);
+        self.selection_drag_position = Some((window, position));
         self.selection_scroll_list = Some(list_id);
         self.schedule_selection_scroll(cx);
     }
@@ -6732,7 +6753,7 @@ impl GpuixView {
         if self.selection_scroll_task.is_some() || !self.selection.lock().is_dragging() {
             return;
         }
-        let (Some(position), Some(list_id)) =
+        let (Some((_, position)), Some(list_id)) =
             (self.selection_drag_position, self.selection_scroll_list)
         else {
             return;
@@ -6761,7 +6782,7 @@ impl GpuixView {
             self.stop_selection_scroll();
             return;
         }
-        let (Some(position), Some(list_id)) =
+        let (Some((window, position)), Some(list_id)) =
             (self.selection_drag_position, self.selection_scroll_list)
         else {
             return;
@@ -6776,7 +6797,7 @@ impl GpuixView {
         }
 
         let before = entry.state.logical_scroll_top();
-        let selection_moved = crate::text::paint::update_drag_at(&self.selection, position);
+        let selection_moved = crate::text::paint::update_drag_at(window, &self.selection, position);
         entry.state.scroll_by(gpui::px(step));
         let after = entry.state.logical_scroll_top();
         let list_moved =
@@ -7133,13 +7154,13 @@ impl gpui::Render for GpuixView {
                 ))
                 .child(selection_frame_reset(
                     self.selection.clone(),
-                    move |position, app| {
+                    move |window, position, app| {
                         // This listener can run inside an update of GpuixView (an
                         // accessibility activation does). A nested update panics, so wait.
                         let drag_move_view = drag_move_view.clone();
                         app.defer(move |app| {
                             drag_move_view
-                                .update(app, |view, cx| view.on_selection_mouse_move(position, cx))
+                                .update(app, |view, cx| view.on_selection_mouse_move(window, position, cx))
                                 .ok();
                         });
                     },
@@ -12485,7 +12506,7 @@ mod stacking_build_tests {
             window.draw(app).clear(app);
         })
         .unwrap();
-        crate::text::painted_text()
+        crate::text::painted_text(window.window_id())
     }
 
     const ROOT: &str = r#"{"width": 400, "height": 400}"#;

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
-use gpui::Hsla;
+use gpui::{Hsla, WindowId};
 
 use crate::retained_tree::{RetainedElement, RetainedTree};
 
@@ -330,13 +330,15 @@ struct Ordinals {
 }
 
 thread_local! {
-    static ORDINALS: RefCell<Ordinals> = RefCell::new(Ordinals::default());
+    /// By window: declarations are numbered from the same start in every renderer,
+    /// and a window's frame must not reset another's count.
+    static ORDINALS: RefCell<HashMap<WindowId, Ordinals>> = RefCell::new(HashMap::new());
 }
 
-/// Clear the per-frame match numbering. Called by the frame reset, which paints
-/// before any text, including `gpui::list()` rows and deferred overlays.
-pub fn ordinal_frame_reset() {
-    ORDINALS.with(|state| *state.borrow_mut() = Ordinals::default());
+/// Clear the per-frame match numbering of `window`. Called by the frame reset, which
+/// paints before any text, including `gpui::list()` rows and deferred overlays.
+pub fn ordinal_frame_reset(window: WindowId) {
+    ORDINALS.with(|state| state.borrow_mut().insert(window, Ordinals::default()));
 }
 
 /// The wash for one match, numbered in PAINT order.
@@ -346,6 +348,7 @@ pub fn ordinal_frame_reset() {
 /// (`<code>` then `<text>`). Numbering each kind separately made `activeIndex`
 /// point at the wrong match whenever a native element came first.
 fn wash(
+    window: WindowId,
     ctx: &HighlightContext,
     spec_index: usize,
     spec: &HighlightSpec,
@@ -353,8 +356,9 @@ fn wash(
     id: MatchId,
 ) -> Wash {
     let slot = (ctx.declaration, spec_index, id);
-    let ordinal = ORDINALS.with(|state| {
-        let state = &mut *state.borrow_mut();
+    let ordinal = ORDINALS.with(|states| {
+        let mut states = states.borrow_mut();
+        let state = states.entry(window).or_default();
         if let Some(assigned) = state.assigned.get(&slot) {
             return *assigned;
         }
@@ -381,7 +385,11 @@ fn wash(
 }
 
 /// Washes for a retained `<text>` run, looked up by selection key.
-pub fn washes_for_retained_run(ctx: &HighlightContext, key: &Arc<str>) -> Vec<Wash> {
+pub fn washes_for_retained_run(
+    window: WindowId,
+    ctx: &HighlightContext,
+    key: &Arc<str>,
+) -> Vec<Wash> {
     let Some(entries) = ctx.matches.by_key.get(key) else {
         return Vec::new();
     };
@@ -390,7 +398,7 @@ pub fn washes_for_retained_run(ctx: &HighlightContext, key: &Arc<str>) -> Vec<Wa
         .filter_map(|entry| {
             let spec = ctx.set.specs.get(entry.spec)?;
             let id = MatchId::Retained(entry.index);
-            Some(wash(ctx, entry.spec, spec, entry.range.clone(), id))
+            Some(wash(window, ctx, entry.spec, spec, entry.range.clone(), id))
         })
         .collect()
 }
@@ -404,7 +412,12 @@ pub fn washes_for_retained_run(ctx: &HighlightContext, key: &Arc<str>) -> Vec<Wa
 ///
 /// Explicit `ranges` are skipped here: they index the retained subtree's joined
 /// document, which a natively generated string is not part of.
-pub fn washes_for_native_run(ctx: &HighlightContext, key: &Arc<str>, text: &str) -> Vec<Wash> {
+pub fn washes_for_native_run(
+    window: WindowId,
+    ctx: &HighlightContext,
+    key: &Arc<str>,
+    text: &str,
+) -> Vec<Wash> {
     let mut out = Vec::new();
     // Folding allocates, and a case-sensitive spec never reads it.
     let folded = ctx
@@ -424,7 +437,7 @@ pub fn washes_for_native_run(ctx: &HighlightContext, key: &Arc<str>, text: &str)
             .enumerate()
         {
             let id = MatchId::Native(key.clone(), position);
-            out.push(wash(ctx, spec_index, spec, range, id));
+            out.push(wash(window, ctx, spec_index, spec, range, id));
         }
     }
     out
@@ -784,6 +797,10 @@ fn push_match(
 mod tests {
     use super::*;
 
+    fn window() -> WindowId {
+        WindowId::from(1)
+    }
+
     fn spec(query: &str) -> HighlightSpec {
         HighlightSpec {
             query: query.to_string(),
@@ -848,11 +865,11 @@ mod tests {
     /// Paint every group's runs in document order, the way a frame would, and
     /// collect the washes per selection key.
     fn paint(ctx: &HighlightContext, groups: &GroupList) -> HashMap<Arc<str>, Vec<Wash>> {
-        ordinal_frame_reset();
+        ordinal_frame_reset(window());
         let mut out = HashMap::new();
         for group in &groups.groups {
             for (key, _) in &group.parts {
-                let washes = washes_for_retained_run(ctx, key);
+                let washes = washes_for_retained_run(window(), ctx, key);
                 if !washes.is_empty() {
                     out.insert(key.clone(), washes);
                 }
@@ -1246,12 +1263,12 @@ mod tests {
     /// when the element paints many strings.
     #[test]
     fn native_runs_share_one_active_sequence() {
-        ordinal_frame_reset();
+        ordinal_frame_reset(window());
         let ctx = native_context(spec("x"), 2);
         let first: Arc<str> = "7:0".into();
         let second: Arc<str> = "7:1".into();
-        let line_one = washes_for_native_run(&ctx, &first, "x x");
-        let line_two = washes_for_native_run(&ctx, &second, "x x");
+        let line_one = washes_for_native_run(window(), &ctx, &first, "x x");
+        let line_two = washes_for_native_run(window(), &ctx, &second, "x x");
         let actives: Vec<bool> = line_one
             .iter()
             .chain(line_two.iter())
@@ -1260,15 +1277,34 @@ mod tests {
         assert_eq!(actives, vec![false, false, true, false]);
     }
 
+    #[test]
+    fn a_window_numbers_its_matches_on_its_own() {
+        let (one, two) = (WindowId::from(1), WindowId::from(2));
+        let ctx = native_context(spec("x"), 2);
+        let first: Arc<str> = "7:0".into();
+        let second: Arc<str> = "7:1".into();
+        ordinal_frame_reset(one);
+        ordinal_frame_reset(two);
+        washes_for_native_run(one, &ctx, &first, "x x");
+
+        ordinal_frame_reset(two);
+        let late = washes_for_native_run(one, &ctx, &second, "x");
+        assert!(late[0].active, "the reset of another window restarted the numbering");
+
+        let other = washes_for_native_run(two, &ctx, &second, "x x x");
+        let actives: Vec<bool> = other.iter().map(|wash| wash.active).collect();
+        assert_eq!(actives, vec![false, false, true]);
+    }
+
     /// gpui can paint the same row twice in one frame. The second paint must
     /// reuse the ordinals rather than advance the cursor again.
     #[test]
     fn a_repainted_native_run_keeps_its_ordinals() {
-        ordinal_frame_reset();
+        ordinal_frame_reset(window());
         let ctx = native_context(spec("x"), 0);
         let key: Arc<str> = "7:0".into();
-        let first = washes_for_native_run(&ctx, &key, "x x");
-        let again = washes_for_native_run(&ctx, &key, "x x");
+        let first = washes_for_native_run(window(), &ctx, &key, "x x");
+        let again = washes_for_native_run(window(), &ctx, &key, "x x");
         assert_eq!(first[0].active, again[0].active);
         assert!(again[0].active);
         assert!(!again[1].active);
@@ -1284,11 +1320,11 @@ mod tests {
         s.active_index = Some(0);
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
 
-        ordinal_frame_reset();
+        ordinal_frame_reset(window());
         let native: Arc<str> = "9:0".into();
         // The native element paints first, so it must own ordinal 0.
-        let painted_native = washes_for_native_run(&ctx, &native, "l");
-        let painted_text = washes_for_retained_run(&ctx, &"2:0".into());
+        let painted_native = washes_for_native_run(window(), &ctx, &native, "l");
+        let painted_text = washes_for_retained_run(window(), &ctx, &"2:0".into());
         assert!(
             painted_native[0].active,
             "the first painted match is active"
@@ -1296,9 +1332,9 @@ mod tests {
         assert!(painted_text.iter().all(|wash| !wash.active));
 
         // Reverse the paint order and the ownership moves with it.
-        ordinal_frame_reset();
-        let painted_text = washes_for_retained_run(&ctx, &"2:0".into());
-        let painted_native = washes_for_native_run(&ctx, &native, "l");
+        ordinal_frame_reset(window());
+        let painted_text = washes_for_retained_run(window(), &ctx, &"2:0".into());
+        let painted_native = washes_for_native_run(window(), &ctx, &native, "l");
         assert!(painted_text[0].active);
         assert!(painted_native.iter().all(|wash| !wash.active));
     }
@@ -1320,9 +1356,9 @@ mod tests {
         s.active_index = Some(0);
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
 
-        ordinal_frame_reset();
-        let first = washes_for_retained_run(&ctx, &"2:0".into());
-        let second = washes_for_retained_run(&ctx, &"3:0".into());
+        ordinal_frame_reset(window());
+        let first = washes_for_retained_run(window(), &ctx, &"2:0".into());
+        let second = washes_for_retained_run(window(), &ctx, &"3:0".into());
         assert_eq!(first.len(), 1);
         assert_eq!(second.len(), 1);
         assert!(
@@ -1386,9 +1422,9 @@ mod tests {
         let root = resolved(1);
         let row = resolved(1);
 
-        ordinal_frame_reset();
-        let first = washes_for_native_run(&root, &"7:0".into(), "x");
-        let second = washes_for_native_run(&row, &"7:1".into(), "x");
+        ordinal_frame_reset(window());
+        let first = washes_for_native_run(window(), &root, &"7:0".into(), "x");
+        let second = washes_for_native_run(window(), &row, &"7:1".into(), "x");
         assert!(!first[0].active, "ordinal 0");
         assert!(second[0].active, "ordinal 1, not a second ordinal 0");
     }

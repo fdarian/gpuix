@@ -13,6 +13,7 @@
 //! learned this the hard way; do not move registration into `build_element`.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use parking_lot::Mutex;
 
 use gpui::{
     canvas, div, point, prelude::*, px, quad, size, BorderStyle, Bounds, Hsla, SharedString,
-    StyledText, TextLayout, TextRow, TextRun, Window,
+    StyledText, TextLayout, TextRow, TextRun, Window, WindowId,
 };
 
 use super::selection::{self, SelectionState};
@@ -71,18 +72,35 @@ pub struct PaintedHighlight {
     pub rects: Vec<(f32, f32, f32, f32)>,
 }
 
-thread_local! {
-    static REGISTRY: RefCell<Vec<RegEntry>> = const { RefCell::new(Vec::new()) };
-    static START_REGIONS: RefCell<Vec<StartRegion>> = const { RefCell::new(Vec::new()) };
+/// What one window painted this frame.
+#[derive(Default)]
+struct Frame {
+    registry: Vec<RegEntry>,
+    start_regions: Vec<StartRegion>,
     /// Every string painted this frame, selectable or not, in paint order.
     ///
     /// Native elements draw their text inside gpui, so it never appears in the
     /// retained tree and `getAllText()` cannot see it. Without this log the only
     /// way to assert what `<code>` or `<diff>` rendered is a screenshot, which
     /// tells you something changed but never what.
-    static PAINTED: RefCell<Vec<SharedString>> = const { RefCell::new(Vec::new()) };
+    painted: Vec<SharedString>,
     /// Same idea for highlight washes. See [`PaintedHighlight`].
-    static HIGHLIGHTS: RefCell<Vec<PaintedHighlight>> = const { RefCell::new(Vec::new()) };
+    highlights: Vec<PaintedHighlight>,
+}
+
+thread_local! {
+    /// By window, because every window runs the frame reset on this thread and a
+    /// window's frame must not clear another's.
+    static FRAMES: RefCell<HashMap<WindowId, Frame>> = RefCell::new(HashMap::new());
+}
+
+/// Runs `read` on the frame of `window`. Never nest calls: the map is borrowed.
+fn with_frame<R>(window: WindowId, read: impl FnOnce(&mut Frame) -> R) -> R {
+    FRAMES.with(|frames| read(frames.borrow_mut().entry(window).or_default()))
+}
+
+fn frame_reset(window: WindowId) {
+    FRAMES.with(|frames| frames.borrow_mut().insert(window, Frame::default()));
 }
 
 /// A zero-size canvas that clears the per-frame registries and installs the
@@ -91,18 +109,16 @@ thread_local! {
 /// in paint order.
 pub fn selection_frame_reset(
     selection: SharedSelection,
-    on_drag_move: impl Fn(gpui::Point<gpui::Pixels>, &mut gpui::App) + 'static,
+    on_drag_move: impl Fn(WindowId, gpui::Point<gpui::Pixels>, &mut gpui::App) + 'static,
     on_drag_end: impl Fn(&mut gpui::App) + 'static,
 ) -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |_, _, window, _| {
-            REGISTRY.with(|r| r.borrow_mut().clear());
-            START_REGIONS.with(|r| r.borrow_mut().clear());
-            PAINTED.with(|p| p.borrow_mut().clear());
-            HIGHLIGHTS.with(|h| h.borrow_mut().clear());
-            super::inline_hit::frame_reset(window.window_handle().window_id());
-            super::search::ordinal_frame_reset();
+            let id = window.window_handle().window_id();
+            frame_reset(id);
+            super::inline_hit::frame_reset(id);
+            super::search::ordinal_frame_reset(id);
             register_copy_listener(window, &selection);
             register_down_listener(window, &selection);
             register_drag_listeners(window, &selection, on_drag_move, on_drag_end);
@@ -117,14 +133,17 @@ pub fn selection_frame_reset(
 ///
 /// Only `track_host_bounds` calls this, so a start region is
 /// always the same box automation already uses. Last painted region that contains the point wins.
-pub fn record_start_region(bounds: Bounds<gpui::Pixels>, selectable: bool) {
-    START_REGIONS.with(|r| r.borrow_mut().push(StartRegion { bounds, selectable }));
+pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
+    with_frame(window, |frame| {
+        frame.start_regions.push(StartRegion { bounds, selectable })
+    });
 }
 
 /// Last painted start region that contains `position`.
-fn start_region_at(position: gpui::Point<gpui::Pixels>) -> Option<bool> {
-    START_REGIONS.with(|r| {
-        r.borrow()
+fn start_region_at(window: WindowId, position: gpui::Point<gpui::Pixels>) -> Option<bool> {
+    with_frame(window, |frame| {
+        frame
+            .start_regions
             .iter()
             .rev()
             .find(|region| region.bounds.contains(&position))
@@ -132,14 +151,16 @@ fn start_region_at(position: gpui::Point<gpui::Pixels>) -> Option<bool> {
     })
 }
 
-/// Every string painted in the last frame, in paint order. Test-facing.
-pub fn painted_text() -> Vec<String> {
-    PAINTED.with(|p| p.borrow().iter().map(|s| s.to_string()).collect())
+/// Every string `window` painted in its last frame, in paint order. Test-facing.
+pub fn painted_text(window: WindowId) -> Vec<String> {
+    with_frame(window, |frame| {
+        frame.painted.iter().map(|s| s.to_string()).collect()
+    })
 }
 
-/// Every highlight wash painted in the last frame, in paint order. Test-facing.
-pub fn painted_highlights() -> Vec<PaintedHighlight> {
-    HIGHLIGHTS.with(|h| h.borrow().clone())
+/// Every highlight wash `window` painted in its last frame, in paint order. Test-facing.
+pub fn painted_highlights(window: WindowId) -> Vec<PaintedHighlight> {
+    with_frame(window, |frame| frame.highlights.clone())
 }
 
 /// Byte offset to UTF-16 code-unit offset, so the log speaks JS's units.
@@ -151,8 +172,8 @@ fn utf16_offset(text: &str, byte: usize) -> usize {
 }
 
 /// Record text painted by a custom element that owns its text layout.
-pub fn log_painted_text(text: SharedString) {
-    PAINTED.with(|painted| painted.borrow_mut().push(text));
+pub fn log_painted_text(window: WindowId, text: SharedString) {
+    with_frame(window, |frame| frame.painted.push(text));
 }
 
 /// Text that is deliberately NOT selectable: line-number gutters, language
@@ -167,7 +188,7 @@ pub fn chrome_text(text: SharedString, runs: Option<Vec<TextRun>>) -> gpui::AnyE
         |_, _, _| (),
         move |_, _, window, _| {
             if window.visibility() == gpui::Visibility::Visible {
-                PAINTED.with(|p| p.borrow_mut().push(text.clone()))
+                log_painted_text(window.window_handle().window_id(), text.clone())
             }
         },
     )
@@ -357,6 +378,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             if window.visibility() == gpui::Visibility::Hidden {
                 return;
             }
+            let window_id = window.window_handle().window_id();
             super::inline_decoration::paint_behind(&layout, &behind, window, cx);
             if let Some(paint) = &extra_wash {
                 paint(&layout, window);
@@ -365,10 +387,10 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             // match still reads as a selection.
             let washes = match &highlight {
                 Some(HighlightSource::Resolved(ctx)) => {
-                    super::search::washes_for_retained_run(ctx, &key)
+                    super::search::washes_for_retained_run(window_id, ctx, &key)
                 }
                 Some(HighlightSource::Native(ctx)) => {
-                    super::search::washes_for_native_run(ctx, &key, &text)
+                    super::search::washes_for_native_run(window_id, ctx, &key, &text)
                 }
                 None => Vec::new(),
             };
@@ -391,8 +413,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 }
             }
             if selectable {
-                REGISTRY.with(|r| {
-                    r.borrow_mut().push(RegEntry {
+                with_frame(window_id, |frame| {
+                    frame.registry.push(RegEntry {
                         key: key.clone(),
                         text: text.clone(),
                         layout: layout.clone(),
@@ -400,10 +422,10 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     })
                 });
             }
-            PAINTED.with(|p| p.borrow_mut().push(text.clone()));
+            log_painted_text(window_id, text.clone());
             if let Some(targets) = &inline_targets {
                 super::inline_hit::register(
-                    window.window_handle().window_id(),
+                    window_id,
                     element_id,
                     layout.clone(),
                     targets.clone(),
@@ -458,8 +480,8 @@ fn paint_highlight_washes(
                 BorderStyle::default(),
             ));
         }
-        HIGHLIGHTS.with(|h| {
-            h.borrow_mut().push(PaintedHighlight {
+        with_frame(window.window_handle().window_id(), |frame| {
+            frame.highlights.push(PaintedHighlight {
                 element_id,
                 sub,
                 text: text.clone(),
@@ -548,9 +570,12 @@ fn register_link_listener(
 /// texts never share a vertical band. GPUIX lays out arbitrary React trees: a
 /// Y-only match picks the leftmost text in a flex row no matter where the
 /// pointer actually is.
-fn registry_point(position: gpui::Point<gpui::Pixels>) -> Option<(usize, usize)> {
-    REGISTRY.with(|r| {
-        let reg = r.borrow();
+fn registry_point(
+    window: WindowId,
+    position: gpui::Point<gpui::Pixels>,
+) -> Option<(usize, usize)> {
+    with_frame(window, |frame| {
+        let reg = &frame.registry;
         let mut contained: Option<usize> = None;
         let mut nearest: Option<(usize, (f32, f32))> = None;
 
@@ -597,19 +622,22 @@ fn registry_point(position: gpui::Point<gpui::Pixels>) -> Option<(usize, usize)>
 /// Like [`registry_point`], but only when the pointer shares a text's vertical
 /// band. That is the empty start or end of the line, a gutter, or parent
 /// padding on that row. A press above or below every line is chrome.
-fn registry_point_on_line(position: gpui::Point<gpui::Pixels>) -> Option<(usize, usize)> {
-    let (ei, ix) = registry_point(position)?;
-    REGISTRY.with(|r| {
-        let b = r.borrow().get(ei)?.layout.bounds();
+fn registry_point_on_line(
+    window: WindowId,
+    position: gpui::Point<gpui::Pixels>,
+) -> Option<(usize, usize)> {
+    let (ei, ix) = registry_point(window, position)?;
+    with_frame(window, |frame| {
+        let b = frame.registry.get(ei)?.layout.bounds();
         (position.y >= b.top() && position.y <= b.bottom()).then_some((ei, ix))
     })
 }
 
 /// Resolve the drag head against the frame's registry.
-fn resolve_drag(selection: &SharedSelection, head: (usize, usize)) -> bool {
-    REGISTRY.with(|r| {
-        let reg = r.borrow();
-        let elements: Vec<selection::RegisteredText> = reg
+fn resolve_drag(window: WindowId, selection: &SharedSelection, head: (usize, usize)) -> bool {
+    with_frame(window, |frame| {
+        let elements: Vec<selection::RegisteredText> = frame
+            .registry
             .iter()
             .map(|e| selection::RegisteredText {
                 key: e.key.as_ref(),
@@ -623,13 +651,14 @@ fn resolve_drag(selection: &SharedSelection, head: (usize, usize)) -> bool {
 
 /// Continue an active drag at a window position.
 pub(crate) fn update_drag_at(
+    window: WindowId,
     selection: &SharedSelection,
     position: gpui::Point<gpui::Pixels>,
 ) -> bool {
-    let Some(head) = registry_point(position) else {
+    let Some(head) = registry_point(window, position) else {
         return false;
     };
-    resolve_drag(selection, head)
+    resolve_drag(window, selection, head)
 }
 
 /// One window-level mouse-down for the whole frame.
@@ -649,7 +678,8 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
         if window.default_prevented() {
             return;
         }
-        if start_region_at(e.position) == Some(false) {
+        let window_id = window.window_handle().window_id();
+        if start_region_at(window_id, e.position) == Some(false) {
             let mut sel = selection.lock();
             if !sel.is_active() {
                 return;
@@ -659,9 +689,10 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
             window.refresh();
             return;
         }
-        let hit = registry_point_on_line(e.position).and_then(|(ei, ix)| {
-            REGISTRY.with(|r| {
-                r.borrow()
+        let hit = registry_point_on_line(window_id, e.position).and_then(|(ei, ix)| {
+            with_frame(window_id, |frame| {
+                frame
+                    .registry
                     .get(ei)
                     .map(|entry| (entry.key.clone(), entry.text.clone(), ix))
             })
@@ -707,7 +738,7 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
 fn register_drag_listeners(
     window: &mut Window,
     selection: &SharedSelection,
-    on_drag_move: impl Fn(gpui::Point<gpui::Pixels>, &mut gpui::App) + 'static,
+    on_drag_move: impl Fn(WindowId, gpui::Point<gpui::Pixels>, &mut gpui::App) + 'static,
     on_drag_end: impl Fn(&mut gpui::App) + 'static,
 ) {
     use gpui::{DispatchPhase, MouseButton, MouseMoveEvent, MouseUpEvent};
@@ -720,11 +751,12 @@ fn register_drag_listeners(
         if move_selection.lock().promote_pending() {
             window.blur();
         }
-        if update_drag_at(&move_selection, event.position) {
+        let window_id = window.window_handle().window_id();
+        if update_drag_at(window_id, &move_selection, event.position) {
             window.refresh();
         }
         if move_selection.lock().is_dragging() {
-            on_drag_move(event.position, cx);
+            on_drag_move(window_id, event.position, cx);
         }
     });
 
@@ -1000,5 +1032,53 @@ mod tests {
         assert_eq!(rows[0].rect.size.height, px(27.0));
         assert_eq!(rows[1].rect.origin.y, px(31.5));
         assert_eq!(rows[1].rect.size.height, px(47.0));
+    }
+
+    fn paint_into(window: WindowId, label: &str) {
+        let text = SharedString::from(label.to_owned());
+        with_frame(window, |frame| {
+            frame.registry.push(RegEntry {
+                key: selection_key(1, 0),
+                text: text.clone(),
+                layout: TextLayout::default(),
+                group: None,
+            });
+            frame.highlights.push(PaintedHighlight {
+                element_id: 1,
+                sub: 0,
+                text: text.clone(),
+                start: 0,
+                end: 1,
+                active: false,
+                rects: Vec::new(),
+            });
+        });
+        record_start_region(
+            window,
+            Bounds::new(point(px(0.0), px(0.0)), size(px(10.0), px(10.0))),
+            false,
+        );
+        log_painted_text(window, text);
+    }
+
+    #[test]
+    fn a_window_resetting_its_frame_leaves_another_windows_text_alone() {
+        let (one, two) = (WindowId::from(1), WindowId::from(2));
+        frame_reset(one);
+        frame_reset(two);
+        paint_into(one, "one");
+        paint_into(two, "two");
+
+        frame_reset(two);
+
+        assert_eq!(painted_text(one), ["one"]);
+        assert_eq!(painted_highlights(one).len(), 1);
+        assert_eq!(start_region_at(one, point(px(5.0), px(5.0))), Some(false));
+        assert_eq!(with_frame(one, |frame| frame.registry.len()), 1);
+
+        assert!(painted_text(two).is_empty());
+        assert!(painted_highlights(two).is_empty());
+        assert_eq!(start_region_at(two, point(px(5.0), px(5.0))), None);
+        assert_eq!(with_frame(two, |frame| frame.registry.len()), 0);
     }
 }

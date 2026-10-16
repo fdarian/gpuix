@@ -245,6 +245,15 @@ is the only place document order is guaranteed: a `list()` decides at paint time
 which rows exist. `selection_frame_reset()` must stay the first child of the
 root, or stale entries from the previous frame leak into the next drag.
 
+The registries are thread-locals, but keyed by `WindowId`: every window's frame
+reset runs on the one UI thread, so a single list would be cleared by whichever
+window reset last. That covers the selection registry, start regions, the
+painted-text and highlight logs (`text::paint::Frame`), the match numbering
+(`text::search::ORDINALS`) and the span hit registry (`text::inline_hit`). A new
+per-frame text registry takes the window id on every register and read, and its
+reset clears only that window's entry; `getPaintedText()` and
+`getPaintedHighlights()` read the window they serve.
+
 ## Text is grouped, because React splits one line into many nodes
 
 `shouldSetTextContent` is false, so `<text>Hello {name}!</text>` becomes **three**
