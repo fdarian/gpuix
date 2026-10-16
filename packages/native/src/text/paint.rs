@@ -235,6 +235,9 @@ pub struct SelectableText {
     /// The inline elements of a paragraph that have a box of their own. Their
     /// bounds are recorded from the paragraph's paint.
     pub inline_boxes: Vec<super::inline_bounds::InlineBox>,
+    /// The bytes of a paragraph whose inline boxes ask for a `cursor`, see
+    /// [`super::inline_cursor`].
+    pub inline_cursors: Vec<(Range<usize>, gpui::CursorStyle)>,
 }
 
 impl SelectableText {
@@ -262,6 +265,7 @@ impl SelectableText {
             highlight: None,
             inline_targets: None,
             inline_boxes: Vec::new(),
+            inline_cursors: Vec::new(),
         }
     }
 }
@@ -285,6 +289,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         highlight,
         inline_targets,
         inline_boxes,
+        inline_cursors,
     } = opts;
     let key = selection_key(element_id, sub);
 
@@ -303,6 +308,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         (inline.layout().clone(), inline.into_any_element())
     };
 
+    let cursor_hitboxes = (!inline_cursors.is_empty())
+        .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
     let underlay = canvas(
         |_, _, _| (),
         move |_, _, window, cx| {
@@ -377,6 +384,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .unlifted()
         .child(underlay)
         .child(glyphs)
+        .children(cursor_hitboxes)
         .into_any_element()
 }
 

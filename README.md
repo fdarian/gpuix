@@ -2740,8 +2740,7 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
 size), padding, border and margin on an inline box, `fontStyle` (there is no
-`fontStyle` style yet), `cursor` on a `<span>` (the cursor is the container's)
-and `tabIndex` on a `<span>`. A `<span>` with a style that needs a box of its own
+`fontStyle` style yet) and `tabIndex` on a `<span>`. A `<span>` with a style that needs a box of its own
 (`position: absolute`, `display: block`, `flex` or `grid`) is laid out as a block
 instead.
 
@@ -2775,6 +2774,13 @@ bubbles up, and `stopPropagation()` on the span keeps it from there.
   `group` of the container or of an element above it.
 - `pointerEvents: "none"` and `inert` on a span, or above it, keep the pointer
   off it, as on an element.
+- `cursor` on a span shows over its glyphs, as in a browser: it inherits, so the
+  innermost box around the glyph that sets one wins, and a glyph in no box that
+  sets one keeps the container's cursor (`hover` and `active` can carry it too).
+  A `display: contents` span has no box but its descendants inherit its cursor.
+  A span that wraps shows it on every line it covers, and, like events, not on the
+  blank area of the lines. A paragraph whose container has `pointerEvents: "none"`
+  or is `inert` shows none.
 - A press on a span still starts a text selection, unless a `mousedown` handler
   calls `preventDefault()`.
 - `offsetX` and `offsetY` are measured from where the span's first line begins.
@@ -6420,17 +6426,17 @@ the page sees a lost release, which cancels the press. `button` is `0` (left,
 the default), `1` or `2`. The live automation client does the same:
 `app.mouse.move` reports what `app.mouse.down` left held.
 
-### Testing native elements
-
-`getAllText()` only sees `<text>` nodes in the retained tree. `<code>`, `<diff>`
-and `<markdown>` paint their text inside GPUI, so use `getPaintedText()`, which
-returns every string painted in the last frame in paint order:
-
 `renderer.getCursor()` is the CSS keyword of the cursor the window asks the OS for
 where the pointer last was, `"default"` when nothing asks. A mouse move updates
 it. The offscreen test window is not the active window, so the OS is never told:
 this reads what GPUI resolved. Keywords that name one cursor read back as one of
 them (`"pointer"`, `"grabbing"`, `"nwse-resize"`, `"nesw-resize"`, `"not-allowed"`).
+
+### Testing native elements
+
+`getAllText()` only sees `<text>` nodes in the retained tree. `<code>`, `<diff>`
+and `<markdown>` paint their text inside GPUI, so use `getPaintedText()`, which
+returns every string painted in the last frame in paint order:
 
 ```ts
 root.render(<code code={'a\nb'} language="ts" />)

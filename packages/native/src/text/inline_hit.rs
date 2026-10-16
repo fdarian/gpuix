@@ -18,7 +18,7 @@ use gpui::{Bounds, Pixels, Point, TextLayout, WindowId};
 
 use crate::retained_tree::RetainedTree;
 
-use super::inline::Paragraph;
+use super::inline::{Paragraph, Piece};
 use super::inline_bounds::fragments;
 
 /// The inline boxes of one paragraph that can be a target, by the bytes they
@@ -43,32 +43,12 @@ impl Targets {
         pointer_events_none: bool,
         inert: bool,
     ) -> Option<Self> {
-        // A `display: contents` element is in a piece's chain and has no box.
-        let with_box: HashSet<u64> = paragraph.boxes.iter().map(|(id, _)| *id).collect();
+        let with_box = boxes_with_a_box(paragraph);
         let pieces: Vec<_> = paragraph
             .pieces
             .iter()
             .map(|piece| {
-                let (mut none, mut inert) = (pointer_events_none, inert);
-                let mut targets = Vec::new();
-                for id in &piece.boxes {
-                    let Some(element) = tree.elements.get(id) else {
-                        continue;
-                    };
-                    inert |= element.has_inert_prop();
-                    match element
-                        .style
-                        .as_deref()
-                        .and_then(|style| style.pointer_events.as_deref())
-                    {
-                        Some("none") => none = true,
-                        Some("auto") => none = false,
-                        _ => {}
-                    }
-                    if !none && !inert && with_box.contains(id) {
-                        targets.push(*id);
-                    }
-                }
+                let targets = piece_targets(tree, &with_box, piece, pointer_events_none, inert);
                 (piece.range.clone(), targets)
             })
             .filter(|(_, targets)| !targets.is_empty())
@@ -99,6 +79,43 @@ impl Targets {
             })
             .collect()
     }
+}
+
+/// The inline boxes of `paragraph` that cover text. A `display: contents`
+/// element is in a piece's chain and has no box, so it is not one of them.
+pub(super) fn boxes_with_a_box(paragraph: &Paragraph) -> HashSet<u64> {
+    paragraph.boxes.iter().map(|(id, _)| *id).collect()
+}
+
+/// The boxes around `piece` the pointer can land on, outermost first.
+pub(super) fn piece_targets(
+    tree: &RetainedTree,
+    with_box: &HashSet<u64>,
+    piece: &Piece,
+    pointer_events_none: bool,
+    inert: bool,
+) -> Vec<u64> {
+    let (mut none, mut inert) = (pointer_events_none, inert);
+    let mut targets = Vec::new();
+    for id in &piece.boxes {
+        let Some(element) = tree.elements.get(id) else {
+            continue;
+        };
+        inert |= element.has_inert_prop();
+        match element
+            .style
+            .as_deref()
+            .and_then(|style| style.pointer_events.as_deref())
+        {
+            Some("none") => none = true,
+            Some("auto") => none = false,
+            _ => {}
+        }
+        if !none && !inert && with_box.contains(id) {
+            targets.push(*id);
+        }
+    }
+    targets
 }
 
 struct Entry {

@@ -7912,6 +7912,14 @@ fn paragraph_content(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &BuildCtx,
 ) -> gpui::AnyElement {
+    let states = |id: u64, style: &StyleDesc| {
+        let inert = ctx
+            .tree
+            .elements
+            .get(&id)
+            .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+        ctx.pointer_states(id, style, inert)
+    };
     selectable_text(crate::text::SelectableText {
         group: None,
         selectable: ctx.inherited.selectable,
@@ -7925,14 +7933,7 @@ fn paragraph_content(
             paragraph,
             &ctx.inherited.colors,
             &ctx.inherited.font_state,
-            &|id, style| {
-                let inert = ctx
-                    .tree
-                    .elements
-                    .get(&id)
-                    .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-                ctx.pointer_states(id, style, inert)
-            },
+            &states,
         ),
         inline_targets: crate::text::inline_hit::Targets::of(
             ctx.tree,
@@ -7942,6 +7943,13 @@ fn paragraph_content(
         )
         .map(Arc::new),
         inline_boxes: inline_boxes(paragraph, ctx),
+        inline_cursors: crate::text::inline_cursor::of(
+            ctx.tree,
+            paragraph,
+            ctx.inherited.pointer_events_none,
+            ctx.inherited.inert,
+            &states,
+        ),
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
