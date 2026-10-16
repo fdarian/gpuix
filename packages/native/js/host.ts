@@ -682,6 +682,17 @@ export interface StyleDesc {
    *  sets it: a `<span>` inside a paragraph uses the paragraph's. Negative
    *  values and percentages throw. */
   tabSize?: number | string
+  /** CSS `word-break`, inherited, `"normal"` by default. `"break-all"` also
+   *  breaks between any two letters, so a line is filled to its edge;
+   *  `"keep-all"` does not break between CJK characters; `"break-word"` is
+   *  `"normal"` with `overflowWrap: "anywhere"`. Only a container sets it: a
+   *  `<span>` inside a paragraph uses the paragraph's. */
+  wordBreak?: "normal" | "break-all" | "keep-all" | "break-word"
+  /** CSS `overflow-wrap`, inherited, `"normal"` by default: a word longer than
+   *  its line overflows it. `"break-word"` and `"anywhere"` break such a word
+   *  where it overflows, when no earlier place on the line will do. Only a
+   *  container sets it. */
+  overflowWrap?: "normal" | "break-word" | "anywhere"
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   /** CSS `text-decoration`: lines, a style and a colour in any order, e.g.

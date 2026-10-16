@@ -78,14 +78,17 @@ describeNative("text wrapping", () => {
     expect(narrowHeight).toBeGreaterThan(rect(renderer, "prose").height)
   })
 
-  it("breaks a long unbreakable token instead of overflowing", () => {
+  it("breaks a long unbreakable token instead of overflowing when overflowWrap says so", () => {
     const { render, renderer } = createTestRoot()
     render(
       <div
         testId="box"
         style={{ width: 140, padding: 4, backgroundColor: "#111" }}
       >
-        <text testId="token" style={{ fontSize: 14, lineHeight: "20px", color: "#eee" }}>
+        <text
+          testId="token"
+          style={{ fontSize: 14, lineHeight: "20px", color: "#eee", overflowWrap: "break-word" }}
+        >
           pneumonoultramicroscopicsilicovolcanoconiosis
         </text>
       </div>,

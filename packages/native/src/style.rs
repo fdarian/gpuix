@@ -549,6 +549,12 @@ pub struct StyleDesc {
     /// CSS `tab-size`: a number of spaces, or a length. Inherited, 8 by default.
     /// Tab stops are measured from the start of each line of text.
     pub tab_size: Option<crate::css::tab_size::TabSize>,
+    /// CSS `word-break`. Inherited, `normal` by default. Only a container sets
+    /// it: a paragraph is laid out as one string with one value.
+    pub word_break: Option<crate::css::word_break::WordBreak>,
+    /// CSS `overflow-wrap`. Inherited, `normal` by default: a word longer than
+    /// its line overflows it. Only a container sets it.
+    pub overflow_wrap: Option<crate::css::word_break::OverflowWrap>,
     pub text_overflow: Option<String>,
     pub line_clamp: Option<f64>,
     /// CSS `text-decoration` and its longhands. `css::text_decoration` says what

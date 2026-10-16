@@ -6950,6 +6950,7 @@ impl gpui::Render for GpuixView {
                 .size_full()
                 .on_painted(self.measurements.frame_counter());
             root.text_style().tab_size = Some(crate::css::tab_size::DEFAULT);
+            crate::css::word_break::set_defaults(root.text_style());
             root.text_style().hang_trailing_spaces =
                 Some(crate::text::white_space::WhiteSpace::default().hangs_trailing_spaces());
             with_window_menu_actions(root)
@@ -8133,6 +8134,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(tab_size) = style.tab_size {
         el.text_style().tab_size = Some(tab_size.to_gpui());
     }
+    crate::css::word_break::apply(el.text_style(), style.word_break, style.overflow_wrap);
     match style.text_overflow.as_deref() {
         Some("ellipsis") => el = el.text_ellipsis(),
         Some("ellipsis-start") => el = el.text_ellipsis_start(),

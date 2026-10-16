@@ -22,3 +22,4 @@ pub(crate) mod position;
 pub(crate) mod syntax;
 pub(crate) mod tab_size;
 pub(crate) mod text_decoration;
+pub(crate) mod word_break;

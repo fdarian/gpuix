@@ -558,10 +558,16 @@ describeNative("white-space", () => {
     }
 
     /** Where the first match of `query` in `text` starts, in a box `columns` wide. */
-    function whereIs(whiteSpace: string, text: string, query: string, columns: number) {
+    function whereIs(
+      whiteSpace: string,
+      text: string,
+      query: string,
+      columns: number,
+      extra: Record<string, unknown> = {}
+    ) {
       const testRoot = paint(
         <div highlight={{ query, caseSensitive: true }} testId="p" style={{ width: columns * space }}>
-          <text testId="t" style={{ whiteSpace, ...TEXT }}>{text}</text>
+          <text testId="t" style={{ whiteSpace, ...TEXT, ...extra }}>{text}</text>
         </div>
       )
       const hits = testRoot.renderer.getPaintedHighlights()
@@ -611,8 +617,10 @@ describeNative("white-space", () => {
       expect(testRoot.renderer.getPaintedText()).toEqual([" ".repeat(10)])
     })
 
-    it("still breaks a word that has no earlier place to break", () => {
-      expect(whereIs("break-spaces", "ab cdefghijkl", "l", 5.5).lines).toBe(3)
+    it("breaks a word that has no earlier place to break only with overflow-wrap", () => {
+      const breaking = { overflowWrap: "break-word" }
+      expect(whereIs("break-spaces", "ab cdefghijkl", "l", 5.5, breaking).lines).toBe(3)
+      expect(whereIs("break-spaces", "ab cdefghijkl", "l", 5.5).lines).toBe(2)
     })
 
     it("counts the space at the end of a line in the aligned width", () => {
@@ -645,7 +653,9 @@ describeNative("white-space", () => {
       // selecting it stays inside the box instead of reaching past the edge.
       const testRoot = paint(
         <div highlight={{ query: "aaaa ", caseSensitive: true }} style={BOX}>
-          <text testId="t" style={{ whiteSpace: "break-spaces", ...INK }}>{"aaaa bbbb"}</text>
+          <text testId="t" style={{ whiteSpace: "break-spaces", overflowWrap: "break-word", ...INK }}>
+            {"aaaa bbbb"}
+          </text>
         </div>
       )
       const hits = testRoot.renderer.getPaintedHighlights()
@@ -658,18 +668,185 @@ describeNative("white-space", () => {
 
     it("is inherited, and a nearer pre-wrap hangs again", () => {
       const inherited = paint(
-        <div testId="p" style={{ whiteSpace: "break-spaces", width: 4.5 * space }}>
+        <div testId="p" style={{ whiteSpace: "break-spaces", overflowWrap: "break-word", width: 4.5 * space }}>
           <text style={INK}>{"aaaa bbbb"}</text>
         </div>
       )
       // The space begins a line of its own: "aaaa", " ", "bbbb".
       expect(lines(inherited, "p")).toBe(3)
       const nearer = paint(
-        <div testId="p" style={{ whiteSpace: "break-spaces", width: 4.5 * space }}>
+        <div testId="p" style={{ whiteSpace: "break-spaces", overflowWrap: "break-word", width: 4.5 * space }}>
           <text style={{ whiteSpace: "pre-wrap", ...INK }}>{"aaaa bbbb"}</text>
         </div>
       )
       expect(lines(nearer, "p")).toBe(2)
+    })
+
+    it("keeps a space with the word before it when the word is not broken", () => {
+      // overflow-wrap is normal: "aaaa " overflows its line by the space, which
+      // does not begin a line of its own as it does when the word is cut.
+      const testRoot = paint(
+        <div testId="p" style={{ whiteSpace: "break-spaces", width: 4.5 * space }}>
+          <text style={INK}>{"aaaa bbbb"}</text>
+        </div>
+      )
+      expect(lines(testRoot, "p")).toBe(2)
+      expect(whereIs("break-spaces", "aaaa bbbb", "bbbb", 4.5)).toMatchObject({ line: 1, lines: 2 })
+    })
+  })
+
+  describe("word-break and overflow-wrap", () => {
+    const space = measureSpace()
+
+    /** `text` in a box `columns` wide: the lines it takes, and where the first match of `query` is. */
+    function lay(style: Record<string, unknown>, text: string, query: string, width: number) {
+      const testRoot = paint(
+        <div highlight={{ query, caseSensitive: true }} testId="p" style={{ width }}>
+          <text testId="t" style={{ ...TEXT, ...style }}>{text}</text>
+        </div>
+      )
+      const hits = testRoot.renderer.getPaintedHighlights()
+      expect(hits).toHaveLength(1)
+      const rects = hits[0]!.rects
+      const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!
+      return {
+        lines: lines(testRoot, "p"),
+        pieces: rects.length,
+        line: Math.round((rects[0]!.y - box.y) / LINE),
+        column: (rects[0]!.x - box.x) / space,
+        right: Math.max(...rects.map((rect) => rect.x + rect.width)) - box.x,
+      }
+    }
+
+    it("lets a word that is longer than its line overflow it by default", () => {
+      const width = 4.5 * space
+      const overflowing = lay({}, "aaaaaaaaaa bbb", "bbb", width)
+      expect(overflowing).toMatchObject({ lines: 2, line: 1 })
+      expect(overflowing.column).toBeCloseTo(0, 1)
+      expect(lay({}, "aaaaaaaaaa bbb", "aaaaaaaaaa", width).right).toBeGreaterThan(width)
+      expect(lay({ overflowWrap: "normal" }, "aaaaaaaaaa bbb", "bbb", width).lines).toBe(2)
+    })
+
+    it("cuts such a word at the edge for break-word, anywhere and word-break: break-word", () => {
+      const width = 4.5 * space
+      for (const style of [
+        { overflowWrap: "break-word" },
+        { overflowWrap: "anywhere" },
+        { wordBreak: "break-word" },
+      ]) {
+        const cut = lay(style, "aaaaaaaaaa bbb", "bbb", width)
+        // "aaaa", "aaaa", "aa " and "bbb".
+        expect(cut, JSON.stringify(style)).toMatchObject({ lines: 4, line: 3 })
+        expect(lay(style, "aaaaaaaaaa", "aaaaaaaaaa", width).right).toBeLessThanOrEqual(width + 0.01)
+      }
+    })
+
+    it("cuts a word only when no earlier place on its line will do", () => {
+      const width = 5.5 * space
+      // "bbbbbbbbbb" fits on a line after the space, so it goes down whole first.
+      const text = "aa bbbbbbbbbb"
+      expect(lay({ overflowWrap: "break-word" }, text, "bbbbbbbbbb", width)).toMatchObject({
+        lines: 3,
+        line: 1,
+        pieces: 2,
+      })
+      expect(lay({}, text, "bbbbbbbbbb", width)).toMatchObject({ lines: 2, line: 1, pieces: 1 })
+    })
+
+    it("fills the line to the edge for break-all, although a space comes earlier", () => {
+      const width = 6.5 * space
+      const text = "aaaa bbbb"
+      const normal = lay({}, text, "bbbb", width)
+      expect(normal).toMatchObject({ lines: 2, line: 1, pieces: 1 })
+      const all = lay({ wordBreak: "break-all" }, text, "bbbb", width)
+      expect(all).toMatchObject({ lines: 2, line: 0, pieces: 2 })
+      expect(all.column).toBeCloseTo(5, 1)
+      expect(all.right).toBeLessThanOrEqual(width + 0.01)
+    })
+
+    it("keeps a run of CJK characters together for keep-all", () => {
+      const text = "中中中中"
+      const cjk = lay({}, text, text, 400).right / 4
+      const width = 2.5 * cjk
+      expect(lay({}, text, text, width).lines).toBe(2)
+      const kept = lay({ wordBreak: "keep-all" }, text, text, width)
+      expect(kept.lines).toBe(1)
+      expect(kept.right).toBeGreaterThan(width)
+      // It is still a place to break at a space, and the run is cut if overflow-wrap says so.
+      expect(lay({ wordBreak: "keep-all" }, `${text} ab`, "ab", width).line).toBe(1)
+      expect(lay({ wordBreak: "keep-all", overflowWrap: "break-word" }, text, text, width).lines).toBe(2)
+    })
+
+    it("is inherited, and a nearer declaration wins", () => {
+      const width = 4.5 * space
+      const nested = (outer: Record<string, unknown>, inner: Record<string, unknown>) => {
+        const testRoot = paint(
+          <div testId="p" style={{ width, ...outer }}>
+            <text style={{ ...TEXT, ...inner }}>{"aaaaaaaaaa bbb"}</text>
+          </div>
+        )
+        return lines(testRoot, "p")
+      }
+      expect(nested({ overflowWrap: "anywhere" }, {})).toBe(4)
+      expect(nested({ overflowWrap: "anywhere" }, { overflowWrap: "normal" })).toBe(2)
+      expect(nested({}, { overflowWrap: "anywhere" })).toBe(4)
+      expect(nested({ wordBreak: "break-all" }, {})).toBe(4)
+    })
+
+    it("is the paragraph's, so a span cannot change it", () => {
+      const width = 4.5 * space
+      const paragraph = (span: Record<string, unknown>) => {
+        const testRoot = paint(
+          <div testId="p" style={{ width }}>
+            <text style={TEXT}>
+              {"aaaaaaaaaa "}
+              <span style={span}>{"bbbb"}</span>
+            </text>
+          </div>
+        )
+        return lines(testRoot, "p")
+      }
+      expect(paragraph({ overflowWrap: "anywhere", wordBreak: "break-all" })).toBe(paragraph({}))
+    })
+
+    it("leaves a textarea breaking a long word at its edge", () => {
+      const height = (width: number) => {
+        const testRoot = paint(
+          <textarea
+            testId="t"
+            value="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            minRows={1}
+            maxRows={8}
+            readOnly
+            style={{ ...TEXT, width }}
+          />
+        )
+        return testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!.height
+      }
+      expect(height(8 * space)).toBeGreaterThan(height(100 * space))
+    })
+
+    it("reports a value CSS does not have as an uncaught error", () => {
+      for (const [property, value] of [
+        ["wordBreak", "anywhere"],
+        ["wordBreak", "wide"],
+        ["overflowWrap", "break-all"],
+        ["overflowWrap", "wide"],
+        ["overflowWrap", ""],
+      ] as const) {
+        const errors: Error[] = []
+        const { render, unmount } = createTestRoot({
+          onUncaughtError: (error) => errors.push(error),
+        })
+        try {
+          render(<text style={{ [property]: value } as never}>{"a b"}</text>)
+          expect(errors.map((error) => error.message).join(), `${property} ${value}`).toMatch(
+            new RegExp(`invalid ${property}`)
+          )
+        } finally {
+          unmount()
+        }
+      }
     })
   })
 })

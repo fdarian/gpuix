@@ -95,6 +95,8 @@ impl StyleDesc {
             line_height,
             white_space,
             tab_size,
+            word_break,
+            overflow_wrap,
             cursor,
             visibility,
             user_select,
@@ -127,6 +129,8 @@ impl StyleDesc {
             line_height,
             white_space,
             tab_size,
+            word_break,
+            overflow_wrap,
             cursor,
             visibility,
             user_select,
@@ -194,6 +198,20 @@ mod tests {
         overlay.take_inheritable_from(&declared);
         let merged = StyleDesc::default().with_inherited_overlay(&overlay);
         assert_eq!(merged.tab_size, declared.tab_size);
+    }
+
+    #[test]
+    fn word_break_and_overflow_wrap_pass_through_a_display_contents_element() {
+        let declared = StyleDesc {
+            word_break: Some(crate::css::word_break::WordBreak::KeepAll),
+            overflow_wrap: Some(crate::css::word_break::OverflowWrap::Anywhere),
+            ..Default::default()
+        };
+        let mut overlay = StyleDesc::default();
+        overlay.take_inheritable_from(&declared);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        assert_eq!(merged.word_break, declared.word_break);
+        assert_eq!(merged.overflow_wrap, declared.overflow_wrap);
     }
 
     #[test]

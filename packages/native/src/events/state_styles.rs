@@ -127,7 +127,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         border_left_width, border_color, border_radius, border_top_left_radius,
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
         box_shadow, border_style, aspect_ratio, outline_width, outline_color, outline_offset,
-        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, text_overflow,
+        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
         text_decoration_color,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
