@@ -202,6 +202,20 @@ pub fn boxes_under(
     })
 }
 
+/// The layout of the paragraph of `container` that `window` painted last.
+#[cfg(test)]
+pub fn painted_layout(window: WindowId, container: u64) -> TextLayout {
+    PARAGRAPHS.with(|paragraphs| {
+        paragraphs.borrow()[&window]
+            .iter()
+            .rev()
+            .find(|entry| entry.container == container)
+            .expect("the paragraph was painted")
+            .layout
+            .clone()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

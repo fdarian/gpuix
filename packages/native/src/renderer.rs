@@ -12196,6 +12196,111 @@ mod inline_run_size_tests {
         );
     }
 
+    /// A container (id 1) of three spans (ids 3, 5 and 7), a large one and two of the
+    /// size of the container, each of which is alone on its row after the first.
+    /// Returns what `boxes_under` says for each of the points `probe` is given, with the
+    /// layout the paragraph was painted in.
+    fn hits_over(
+        cx: &mut gpui::TestAppContext,
+        probe: impl Fn(&gpui::TextLayout) -> Vec<gpui::Point<gpui::Pixels>>,
+    ) -> (gpui::TextLayout, Vec<Vec<u64>>) {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            let container: StyleDesc = serde_json::from_str(CONTAINER).unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(container));
+            tree.set_root(1);
+            for (span, style, text) in [
+                (3, r#"{"fontSize": 30}"#, "Big "),
+                (5, r#"{}"#, "bbbbbbbbbbbbbbbb "),
+                (7, r#"{}"#, "cccccccccccccccc"),
+            ] {
+                tree.create_element(span, "span".to_owned());
+                let style: StyleDesc = serde_json::from_str(style).unwrap();
+                tree.set_style(span, Arc::new(style));
+                tree.append_child(1, span);
+                tree.create_element(span + 1, "text".to_owned());
+                tree.set_text(span + 1, text.to_owned());
+                tree.append_child(span, span + 1);
+            }
+        }
+        let window = cx.add_window(|window, _| {
+            crate::events::enable_dom_hit_testing(window);
+            GpuixView::new(
+                tree,
+                None,
+                "test".to_owned(),
+                SharedSelection::default(),
+                crate::events::state::PointerRequests::default(),
+            )
+        });
+        cx.update_window(window.into(), |_, window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+            let id = window.window_handle().window_id();
+            let layout = crate::text::inline_hit::painted_layout(id, 1);
+            let hits = probe(&layout)
+                .into_iter()
+                .map(|point| {
+                    crate::text::inline_hit::boxes_under(id, 1, point)
+                        .into_iter()
+                        .map(|(id, _)| id)
+                        .collect()
+                })
+                .collect();
+            (layout, hits)
+        })
+        .unwrap()
+    }
+
+    #[gpui::test]
+    fn the_pointer_is_on_the_span_of_the_row_it_is_in_when_rows_differ_in_height(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let top = |span: u64| crate::automation::get_bounds(span).unwrap().y as f32;
+        let height = |span: u64| crate::automation::get_bounds(span).unwrap().height as f32;
+        // The pointer over the first glyph of a row, `y` below the top of the window.
+        let at = |layout: &gpui::TextLayout, y: f32| {
+            gpui::point(layout.bounds().left() + gpui::px(3.0), gpui::px(y))
+        };
+        let (layout, hits) = hits_over(cx, |layout| {
+            vec![
+                // The large span's content area is in the first, 45px, row. Under
+                // rows of 15px, these points are in the rows that follow it.
+                at(layout, top(3) + height(3) / 2.0),
+                at(layout, top(3) + height(3) - 1.0),
+                // Under the content area of the large span, in the line box of its row.
+                at(layout, 44.0),
+                // The content area of the span of the next row, just past the end of the
+                // tall one, and the line box over it.
+                at(layout, top(5) + 0.5),
+                at(layout, top(5) - 0.5),
+                at(layout, top(7) + height(7) / 2.0),
+            ]
+        });
+        let text = layout.text();
+        let row_of = |word: &str| {
+            // The byte after the first of a row: the first is also the end of the row before.
+            layout.row_for_index(text.find(word).unwrap() + 1).unwrap()
+        };
+        let rows = [row_of("Big"), row_of("bbbb"), row_of("cccc")];
+        assert_height(f64::from(f32::from(rows[0].height)), 45.0);
+        assert_height(f64::from(f32::from(rows[1].height)), 15.0);
+        assert_height(f64::from(f32::from(rows[2].height)), 15.0);
+        assert_near(
+            f64::from(f32::from(rows[1].top - rows[0].top)),
+            45.0,
+            "the second row to start under the first",
+        );
+        assert_near(
+            f64::from(f32::from(rows[2].top - rows[1].top)),
+            15.0,
+            "the third row to start under the second",
+        );
+        assert_eq!(hits, [vec![3], vec![3], vec![], vec![5], vec![], vec![7]]);
+    }
+
     #[gpui::test]
     fn a_container_line_height_in_px_is_not_scaled_by_a_larger_span(cx: &mut gpui::TestAppContext) {
         let container = r#"{"width": 120, "fontSize": 10, "lineHeight": "24px"}"#;
