@@ -9,6 +9,7 @@
     "diff": "bun --hot diff.tsx",
     "test": "vitest run --exclude '**/*.perf.test.tsx'",
     "test:perf": "NODE_ENV=production vitest run --no-file-parallelism chat.perf.test.tsx timeline.perf.test.tsx rerender.perf.test.tsx",
+    "test:perf:overflow": "NODE_ENV=production vitest run --no-file-parallelism overflow-clip.perf.test.tsx",
     "test:perf:menus": "NODE_ENV=production vitest run --no-file-parallelism command-menus.perf.test.tsx",
     "test:perf:svg": "NODE_ENV=production vitest run --no-file-parallelism svg-raster.perf.test.tsx",
     "native-text": "bun --hot native-text.tsx",
