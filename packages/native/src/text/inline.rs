@@ -120,8 +120,9 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     if is_display_contents(element) {
         return children_are_inline(tree, element, parent);
     }
-    // An inline box has no focus handle, so a focusable `<text>` stays a block.
-    // A `<span>` is inline whatever its `tabIndex`.
+    // A focusable `<span>` stays inline: its paragraph anchors the focus handle
+    // ([`super::inline_focus`]). A focusable `<text>` is a block, an element of
+    // its own with the handle.
     if element.element_type == "text" && element.needs_focus() {
         return false;
     }

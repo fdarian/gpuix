@@ -238,6 +238,9 @@ pub struct SelectableText {
     /// The bytes of a paragraph whose inline boxes ask for a `cursor`, see
     /// [`super::inline_cursor`].
     pub inline_cursors: Vec<(Range<usize>, gpui::CursorStyle)>,
+    /// The inline boxes of a paragraph that can take focus, in tree order, see
+    /// [`super::inline_focus`].
+    pub inline_focus: Vec<super::inline_focus::FocusableBox>,
 }
 
 impl SelectableText {
@@ -266,6 +269,7 @@ impl SelectableText {
             inline_targets: None,
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
+            inline_focus: Vec::new(),
         }
     }
 }
@@ -290,6 +294,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_targets,
         inline_boxes,
         inline_cursors,
+        inline_focus,
     } = opts;
     let key = selection_key(element_id, sub);
 
@@ -310,6 +315,10 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
 
     let cursor_hitboxes = (!inline_cursors.is_empty())
         .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
+    let press_focus: Vec<_> = inline_focus
+        .iter()
+        .map(|focusable| (focusable.id, focusable.handle.clone()))
+        .collect();
     let underlay = canvas(
         |_, _, _| (),
         move |_, _, window, cx| {
@@ -368,6 +377,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 );
             }
             super::inline_bounds::record(&layout, &inline_boxes, window, cx);
+            super::inline_focus::focus_on_press(window, element_id, press_focus.clone());
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);
             }
@@ -385,6 +395,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .child(underlay)
         .child(glyphs)
         .children(cursor_hitboxes)
+        .children(super::inline_focus::anchors(inline_focus))
         .into_any_element()
 }
 

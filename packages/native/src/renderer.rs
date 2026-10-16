@@ -7943,6 +7943,7 @@ fn paragraph_content(
         )
         .map(Arc::new),
         inline_boxes: inline_boxes(paragraph, ctx),
+        inline_focus: focusable_inline_boxes(paragraph, ctx),
         inline_cursors: crate::text::inline_cursor::of(
             ctx.tree,
             paragraph,
@@ -7976,6 +7977,27 @@ fn inline_boxes(
             report: ctx.tree.elements.get(id).and_then(|element| {
                 paint_reporter(*id, element.events(), Some(paragraph.container), ctx)
             }),
+        })
+        .collect()
+}
+
+/// The inline elements of a paragraph that are focusable, with the handle
+/// `sync_focus_handles` made for them.
+fn focusable_inline_boxes(
+    paragraph: &crate::text::inline::Paragraph,
+    ctx: &BuildCtx,
+) -> Vec<crate::text::inline_focus::FocusableBox> {
+    crate::text::inline_focus::in_tree_order(paragraph, |id| ctx.focus_handles.get(&id))
+        .into_iter()
+        .filter_map(|(id, handle)| {
+            let props = ctx.tree.elements.get(&id)?.custom_props().clone();
+            Some(crate::text::inline_focus::FocusableBox {
+                id,
+                handle: handle.clone(),
+                accessibility: Box::new(move |anchor| {
+                    crate::accessibility::apply_accessibility(anchor, id, &props, None)
+                }),
+            })
         })
         .collect()
 }

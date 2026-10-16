@@ -2727,9 +2727,9 @@ and not drawn; `double`, `dotted` and `dashed` draw solid, a wavy
 line-through draws solid, and a thickness is accepted and the line stays 1px.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
-- A nested `<text>` with a `tabIndex` is a block too, because an inline box has
-  no focus handle. It splits the paragraph around it. A `<span>` is always
-  inline and never takes focus.
+- A nested `<text>` with a `tabIndex` is a block too: it is an element of its own
+  with the focus handle, and it splits the paragraph around it. A `<span>` stays
+  inline whatever its `tabIndex`, see [Focus on an inline box](#focus-on-an-inline-box).
 - In a `display: flex` or `grid` container each run of raw strings is one item
   and every `<span>` or nested `<text>` is an item of its own, with its content as
   a paragraph.
@@ -2739,8 +2739,8 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 - White space is processed as in CSS, see [White space](#white-space).
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
-size), padding, border and margin on an inline box, `fontStyle` (there is no
-`fontStyle` style yet) and `tabIndex` on a `<span>`. A `<span>` with a style that needs a box of its own
+size), padding, border and margin on an inline box and `fontStyle` (there is no
+`fontStyle` style yet). A `<span>` with a style that needs a box of its own
 (`position: absolute`, `display: block`, `flex` or `grid`) is laid out as a block
 instead.
 
@@ -2804,6 +2804,41 @@ padding or border. An `IntersectionObserver` intersects the union with the clips
 the paragraph's container and its ancestors, so a span that wraps counts the gap in
 its rect as visible. A span that stops painting is reported as 0 by 0 and not
 intersecting.
+
+### Focus on an inline box
+
+A `<span>` with a `tabIndex` is focusable like any element, and stays inline:
+
+```tsx
+<text>
+  Read the <span tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && open()}>docs</span> first
+</text>
+```
+
+- It is in the tab order at its place in the document, between the focusables
+  before and after the paragraph and in tree order among the spans of the
+  paragraph, a span around another before it. `tabIndex={n}` with `n > 0` and
+  `-1` mean what they mean on a `div`.
+- `focus()`, `blur()`, `document.activeElement` and `matches(':focus')`,
+  `':focus-visible'` and `':focus-within'` (of the container and its ancestors)
+  work on its ref. `focus`, `blur`, `focusin` and `focusout` have the span as
+  `target`, the element on the other side of the move as `relatedTarget`, and
+  `focusVisible` as for an element. Tab and Shift+Tab move focus into and out of
+  it, and scroll it into view by the rect of its lines.
+- A press on its glyphs focuses it, the innermost focusable span if they are
+  nested, even when the paragraph is inside a focusable element. A focusable `<span>`
+  with `tabIndex={-1}` is focused by a press or `focus()`, and Tab skips it. A
+  press beside the glyphs (the blank area of a line, the padding) is a press on
+  the container. A `mousedown` handler that calls `preventDefault()` keeps the
+  focus where it was.
+- `inert` and removing `tabIndex` work as on an element: the span leaves the tab
+  order and gives up focus.
+- `role` and `aria-*` on the span are exposed with it. The accessibility node
+  has no size, so a screen reader finds it at the top-left of the paragraph, not
+  over its glyphs.
+- A span with no text left, or with `display: none`, has no box and no tab stop.
+  Like a `display: none` element, it still takes `focus()`. `focusVisible` and
+  `focusWithin` styles of a span are not applied.
 
 ### White space
 
@@ -3333,7 +3368,8 @@ Retained element ID ► persistent gpui::FocusHandle ► keyboard/action dispatc
 ### What is focusable
 
 Like the DOM: an enabled `<input>` or `<textarea>`, or any element with a
-`tabIndex`. **A key or focus listener does not make an element focusable.**
+`tabIndex`, a `<span>` in a paragraph included (see
+[Focus on an inline box](#focus-on-an-inline-box)). **A key or focus listener does not make an element focusable.**
 `onKeyDown` on a parent still hears the keys of a focused descendant, by
 bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it a
 `tabIndex` (`-1` is enough when it should not be a tab stop).
