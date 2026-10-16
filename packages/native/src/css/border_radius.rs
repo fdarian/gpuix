@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(resolved("calc(1em + 25%)"), corner(DefiniteLength::calc(px(20.0), 0.25), DefiniteLength::calc(px(20.0), 0.25)));
         assert_eq!(
             resolved("calc(100% - 1em) 2rem"),
-            corner(DefiniteLength::calc(px(-20.0), 1.0), len(10.0))
+            corner(DefiniteLength::calc(px(-20.0), 1.0), len(20.0))
         );
         assert_eq!(resolved("calc(50% + 0px)"), corner(percent(0.5), percent(0.5)));
         // A radius that comes out negative only in this context is zero, as CSS clamps it.
@@ -361,7 +361,7 @@ mod tests {
         );
         assert_eq!(CornerRadiusValue::px(4.0).to_json(), serde_json::json!(4.0));
         assert_eq!(parse_corner("50% 20px").unwrap().to_json(), serde_json::json!("50% 20px"));
-        assert_eq!(parse_corner("calc(1em + 25%)").unwrap().to_json(), serde_json::json!("calc(1em + 25%)"));
+        assert_eq!(parse_corner("calc(1em + 25%)").unwrap().to_json(), serde_json::json!("calc(25% + 1em)"));
         assert_eq!(parse_corner("2rem").unwrap().to_json(), serde_json::json!("2rem"));
     }
 }

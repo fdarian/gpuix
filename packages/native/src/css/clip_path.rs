@@ -751,6 +751,26 @@ mod tests {
     }
 
     #[test]
+    fn rect_and_xywh_take_the_units_of_the_element() {
+        // `1em` is 20px and `1rem` 10px in the test context.
+        assert_eq!(edges("rect(1em 1rem 2em calc(10% + 1em))")[..3], [len(20.0), len(10.0), len(40.0)]);
+        assert_eq!(
+            edges("rect(1em 1rem 2em calc(10% + 1em))")[3],
+            LengthPercentage::Calc { length: px(20.0), percent: 0.1 }
+        );
+        // The far edge of `xywh()` is the sum of the near edge and the size, in whatever units those are.
+        assert_eq!(
+            edges("xywh(10px 5% 50% 3em)"),
+            [
+                pct(0.05),
+                LengthPercentage::Calc { length: px(10.0), percent: 0.5 },
+                LengthPercentage::Calc { length: px(60.0), percent: 0.05 },
+                len(10.0),
+            ]
+        );
+    }
+
+    #[test]
     fn rect_auto_is_the_start_for_top_and_left_and_the_end_for_right_and_bottom() {
         assert_eq!(
             edges("rect(auto auto auto auto)"),
@@ -795,7 +815,6 @@ mod tests {
             "rect(0 1px 2px)",
             "rect(0 1px 2px 3px 4px)",
             "rect(0, 1px, 2px, 3px)",
-            "rect(0 1px 2px 3em)",
             "rect(0 1px 2px 3px round)",
             "rect(0 1px 2px 3px round -1px)",
             "rect(round 4px)",
@@ -806,9 +825,6 @@ mod tests {
             "xywh(0 0 -1px 5px)",
             "xywh(0 0 5px -1%)",
             "xywh(0 0 5px 5px 5px)",
-            // `10px + 50%` and `5% + 20px` have no single value.
-            "xywh(10px 0 50% 5px)",
-            "xywh(0 5% 5px 20px)",
         ] {
             assert_eq!(parse(value), None, "{value}");
         }
