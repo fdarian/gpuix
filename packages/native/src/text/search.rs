@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use gpui::Hsla;
 
-use crate::retained_tree::RetainedTree;
+use crate::retained_tree::{RetainedElement, RetainedTree};
 
 // ── Spec ─────────────────────────────────────────────────────────────
 
@@ -528,10 +528,32 @@ impl GroupList {
 /// Shape only: an empty one is transparent rather than a run boundary, so
 /// `{'a'}{''}{'b'}` stays one line. Copy uses the same predicate through
 /// [`group_id`], which is the only way the two can agree.
-pub fn is_text_leaf(element: &crate::retained_tree::RetainedElement) -> bool {
+pub fn is_text_leaf(element: &RetainedElement) -> bool {
     element.element_type == "text"
         && element.children.is_empty()
         && !element.custom_props().contains_key("highlight")
+}
+
+/// The adjacent primitive text leaves of `parent` that `id` is one of, or an
+/// empty slice when `id` is not a leaf. A non-text sibling ends the run for search,
+/// so it must end it for copy too, and this is the one place that decides.
+fn leaf_siblings<'a>(tree: &RetainedTree, parent: &'a RetainedElement, id: u64) -> &'a [u64] {
+    let is_leaf = |id: &u64| tree.elements.get(id).is_some_and(is_text_leaf);
+    let Some(position) = parent.children.iter().position(|child| *child == id) else {
+        return &[];
+    };
+    if !is_leaf(&id) {
+        return &[];
+    }
+    let start = parent.children[..position]
+        .iter()
+        .rposition(|child| !is_leaf(child))
+        .map_or(0, |ix| ix + 1);
+    let end = parent.children[position..]
+        .iter()
+        .position(|child| !is_leaf(child))
+        .map_or(parent.children.len(), |ix| position + ix);
+    &parent.children[start..end]
 }
 
 /// Id of the first run of the adjacent primitive-text run `id` belongs to, or
@@ -543,19 +565,29 @@ pub fn is_text_leaf(element: &crate::retained_tree::RetainedElement) -> bool {
 /// not end it for copy.
 pub fn group_id(tree: &RetainedTree, id: u64) -> Option<u64> {
     let element = tree.elements.get(&id)?;
-    if !is_text_leaf(element) {
-        return None;
-    }
     let parent = tree.elements.get(&element.parent?)?;
-    let position = parent.children.iter().position(|child| *child == id)?;
-    let mut first = id;
-    for &sibling in parent.children[..position].iter().rev() {
-        match tree.elements.get(&sibling) {
-            Some(sibling_element) if is_text_leaf(sibling_element) => first = sibling,
-            _ => break,
-        }
+    leaf_siblings(tree, parent, id).first().copied()
+}
+
+/// The text a childless `element` paints. A text leaf under a parent that lays
+/// out no paragraph is one piece of its run, so its edge spaces go only where
+/// the run starts and ends; anything else is a block of its own, see
+/// [`super::inline::own_text`].
+pub fn leaf_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String> {
+    let parent = element
+        .parent
+        .and_then(|parent| tree.elements.get(&parent))
+        .filter(|parent| !super::inline::is_host_container(parent));
+    let Some(parent) = parent else {
+        return super::inline::own_text(tree, element);
+    };
+    let leaves = leaf_siblings(tree, parent, element.id);
+    if leaves.is_empty() {
+        return super::inline::own_text(tree, element);
     }
-    Some(first)
+    let run = super::inline::leaf_run(tree, parent, leaves)?;
+    let (_, range) = run.parts.iter().find(|(id, _)| *id == element.id)?;
+    Some(run.text[range.clone()].to_string())
 }
 
 fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group>) {
@@ -592,35 +624,31 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
         return;
     }
 
-    let mut pending: Vec<(Arc<str>, Range<usize>)> = Vec::new();
-    let mut pending_text = String::new();
+    let mut run: Vec<u64> = Vec::new();
     for &child_id in &element.children {
         let Some(child) = tree.elements.get(&child_id) else {
             continue;
         };
-        if !is_text_leaf(child) {
-            flush(&mut pending, &mut pending_text, out);
-            collect_into(tree, child_id, false, out);
+        if is_text_leaf(child) {
+            run.push(child_id);
             continue;
         }
-        let Some(content) = super::inline::own_text(tree, child) else {
-            continue;
-        };
-        let start = pending_text.len();
-        pending_text.push_str(&content);
-        pending.push((
-            crate::text::selection_key(child_id, 0),
-            start..pending_text.len(),
-        ));
+        flush(tree, element, &mut run, out);
+        collect_into(tree, child_id, false, out);
     }
-    flush(&mut pending, &mut pending_text, out);
+    flush(tree, element, &mut run, out);
 }
 
-fn flush(parts: &mut Vec<(Arc<str>, Range<usize>)>, text: &mut String, out: &mut Vec<Group>) {
-    if parts.is_empty() {
-        return;
+fn flush(tree: &RetainedTree, parent: &RetainedElement, run: &mut Vec<u64>, out: &mut Vec<Group>) {
+    let leaves = std::mem::take(run);
+    if let Some(run) = super::inline::leaf_run(tree, parent, &leaves) {
+        let parts = run
+            .parts
+            .into_iter()
+            .map(|(id, range)| (crate::text::selection_key(id, 0), range))
+            .collect();
+        out.push(Group::new(parts, run.text));
     }
-    out.push(Group::new(std::mem::take(parts), std::mem::take(text)));
 }
 
 // ── Resolution ───────────────────────────────────────────────────────
@@ -985,9 +1013,7 @@ mod tests {
     fn custom_parent_tree() -> RetainedTree {
         let mut tree = RetainedTree::new();
         tree.create_element(1, "anchored".to_string());
-        // A no-break space, because each string is a block of its own for white
-        // space, and a plain space at the end of one is removed.
-        for (id, text) in [(3, "Hello\u{00A0}"), (4, "Tommy"), (5, "!")] {
+        for (id, text) in [(3, "Hello "), (4, "Tommy"), (5, "!")] {
             tree.create_element(id, "text".to_string());
             tree.append_child(1, id);
             tree.set_text(id, text.to_string());
@@ -1000,14 +1026,87 @@ mod tests {
         let groups = GroupList::collect(&custom_parent_tree(), 1);
         assert_eq!(groups.groups[0].parts.len(), 3);
         let set = HighlightSet {
-            specs: vec![spec("Hello\u{00A0}Tommy")],
+            specs: vec![spec("Hello Tommy")],
         };
         let ctx = context(&groups, set);
         assert_eq!(ctx.matches.total, 1);
         let painted = paint(&ctx, &groups);
-        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..7);
+        assert_eq!(painted[&Arc::from("3:0")][0].range, 0..6);
         assert_eq!(painted[&Arc::from("4:0")][0].range, 0..5);
         assert!(!painted.contains_key(&Arc::<str>::from("5:0")));
+    }
+
+    fn leaves_under(parent: &str, texts: &[&str]) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, parent.to_string());
+        for (ix, text) in texts.iter().enumerate() {
+            let id = ix as u64 + 2;
+            tree.create_element(id, "text".to_string());
+            tree.append_child(1, id);
+            tree.set_text(id, text.to_string());
+        }
+        tree
+    }
+
+    fn painted_leaf(tree: &RetainedTree, id: u64) -> Option<String> {
+        leaf_text(tree, &tree.elements[&id])
+    }
+
+    #[test]
+    fn a_space_between_text_leaves_of_a_custom_parent_survives() {
+        for parent in ["anchored", "virtual-list"] {
+            let tree = leaves_under(parent, &["Volume: ", "78%"]);
+            let groups = GroupList::collect(&tree, 1);
+            assert_eq!(groups.groups.len(), 1, "{parent}");
+            assert_eq!(groups.groups[0].text, "Volume: 78%", "{parent}");
+            assert_eq!(groups.groups[0].parts[0].1, 0..8, "{parent}");
+            assert_eq!(groups.groups[0].parts[1].1, 8..11, "{parent}");
+            assert_eq!(painted_leaf(&tree, 2).as_deref(), Some("Volume: "));
+            assert_eq!(painted_leaf(&tree, 3).as_deref(), Some("78%"));
+        }
+    }
+
+    #[test]
+    fn a_run_of_text_leaves_collapses_across_leaves_and_strips_only_its_edges() {
+        let tree = leaves_under("anchored", &[" a ", " ", " b", "  ", "c "]);
+        let groups = GroupList::collect(&tree, 1);
+        assert_eq!(groups.groups.len(), 1);
+        assert_eq!(groups.groups[0].text, "a b c");
+        let painted: Vec<_> = (2..=6).map(|id| painted_leaf(&tree, id)).collect();
+        assert_eq!(
+            painted,
+            vec![
+                Some("a ".to_string()),
+                None,
+                Some("b".to_string()),
+                Some(" ".to_string()),
+                Some("c".to_string()),
+            ]
+        );
+        // The parts and the painted strings are the same bytes of the group.
+        let joined: String = painted.into_iter().flatten().collect();
+        assert_eq!(joined, "a b c");
+    }
+
+    #[test]
+    fn a_non_text_sibling_restarts_the_space_stripping_of_a_custom_parent() {
+        let mut tree = leaves_under("anchored", &["a ", "b "]);
+        tree.create_element(9, "div".to_string());
+        tree.append_child(1, 9);
+        tree.create_element(10, "text".to_string());
+        tree.append_child(1, 10);
+        tree.set_text(10, " c".to_string());
+        let groups = GroupList::collect(&tree, 1);
+        let texts: Vec<_> = groups.groups.iter().map(|group| group.text.as_str()).collect();
+        assert_eq!(texts, vec!["a b", "c"]);
+        assert_eq!(painted_leaf(&tree, 3).as_deref(), Some("b"));
+        assert_eq!(painted_leaf(&tree, 10).as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn a_text_leaf_under_a_div_keeps_its_own_block_white_space() {
+        let tree = leaves_under("div", &["a "]);
+        assert_eq!(painted_leaf(&tree, 2).as_deref(), Some("a"));
     }
 
     #[test]

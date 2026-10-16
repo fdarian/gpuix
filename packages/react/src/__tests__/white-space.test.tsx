@@ -272,6 +272,21 @@ describeNative("white-space", () => {
       expect(testRoot.renderer.findByText("hello   world")).toBeDefined()
     })
 
+    it("keeps the space between the strings of a custom element", () => {
+      const testRoot = paint(
+        <div style={{ width: 400 }} highlight={{ query: "Volume: 78" }}>
+          <anchored>
+            {"Volume: "}
+            {"78%"}
+          </anchored>
+        </div>
+      )
+      const painted = testRoot.renderer.getPaintedText()
+      expect(painted).toContain("Volume: ")
+      expect(painted).toContain("78%")
+      expect(testRoot.renderer.getPaintedHighlights().length).toBeGreaterThan(0)
+    })
+
     it("reads the collapsed text in the accessibility value", () => {
       const testRoot = paint(
         <text style={{ ...TEXT, width: 300 }}>

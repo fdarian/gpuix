@@ -7715,7 +7715,7 @@ fn build_content(
     let mut content_elements = Vec::new();
     let mut paint_ranks = Vec::new();
     if element.children.is_empty() {
-        if let Some(content) = crate::text::inline::own_text(ctx.tree, element) {
+        if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
             content_elements.push(text_content(element, &content, ctx));
             paint_ranks.push(0);
         }

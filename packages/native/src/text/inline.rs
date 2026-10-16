@@ -466,6 +466,40 @@ pub fn own_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String
     }
 }
 
+/// Adjacent text leaves of a parent that lays out no paragraph of its own
+/// (`anchored`, `virtual-list`, a custom element), processed as ONE paragraph:
+/// white space collapses across the leaves and only the run's start and end are
+/// stripped, as in [`plan_children`]. Each leaf still paints its own string.
+#[derive(Debug, PartialEq)]
+pub struct LeafRun {
+    pub text: String,
+    /// Each leaf that has text left, with its bytes of `text`.
+    pub parts: Vec<(u64, Range<usize>)>,
+}
+
+/// `None` when nothing is left of the run.
+pub fn leaf_run(tree: &RetainedTree, parent: &RetainedElement, leaves: &[u64]) -> Option<LeafRun> {
+    let mut paragraph = Builder::new(parent.id, white_space::computed(tree, parent), false);
+    for leaf in leaves.iter().filter_map(|id| tree.elements.get(id)) {
+        if let Some(content) = leaf.content.as_deref() {
+            paragraph.within(&[leaf], |paragraph, chain| paragraph.push_text(content, chain));
+        }
+    }
+    let mut out = Vec::new();
+    paragraph.finish(&mut out);
+    match out.pop() {
+        Some(Child::Paragraph(paragraph)) => Some(LeafRun {
+            text: paragraph.text,
+            parts: paragraph
+                .pieces
+                .iter()
+                .map(|piece| (piece.boxes[0], piece.range.clone()))
+                .collect(),
+        }),
+        _ => None,
+    }
+}
+
 /// The text an inline formatting context reads out, as painted: that of every
 /// paragraph in `plan`, in order.
 pub fn accessible_text(plan: &[Child]) -> Option<String> {
