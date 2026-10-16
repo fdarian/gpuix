@@ -56,7 +56,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid window and document pointer liste
 
   it("hear a move inside the window but outside the root, with no target", () => {
     const seen: Array<{ type: string; target: unknown; path: unknown }> = []
-    const listener = (event: any) => seen.push({ type: event.type, target: event.target, path: event.path })
+    const listener = (event: any) => seen.push({ type: event.type, target: event.target, path: event.composedPath() })
     window.addEventListener("pointermove", listener)
     outsideRoot()
     expect(seen).toEqual([{ type: "pointermove", target: null, path: [] }])

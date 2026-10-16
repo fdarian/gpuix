@@ -19,7 +19,7 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { memo, useMemo, useState, useSyncExternalStore } from 'react'
-import { useWindowSize, type EventPayload } from '@gpuix/react'
+import { useWindowSize, type DomEvent } from '@gpuix/react'
 
 import {
   AGE_BUCKETS,
@@ -868,19 +868,19 @@ export function DisktreeApp({ store, width, height }: DisktreeAppProps) {
   }
   const rescan = (includeHidden = state.includeHidden) => void store.rescan(includeHidden)
 
-  const onMouseMove = (event: EventPayload) => {
+  const onMouseMove = (event: DomEvent) => {
     const tile = tileAt(event.x ?? -1, event.y ?? -1)
     const crumbs = tile && !tile.others ? tile.crumbs : null
     if ((crumbs?.join('/') ?? null) !== (nav.hovered?.join('/') ?? null)) update({ hovered: crumbs })
   }
-  const onMouseDown = (event: EventPayload) => {
+  const onMouseDown = (event: DomEvent) => {
     if (event.button !== 0) return
     const tile = tileAt(event.x ?? -1, event.y ?? -1)
     if (!tile || tile.others) return update({ selected: null })
     // A folder opens on the first click; a file is selected inside its folder.
     open(tile.crumbs)
   }
-  const onKeyDown = (event: EventPayload) => {
+  const onKeyDown = (event: DomEvent) => {
     switch (event.key) {
       case 'Backspace':
       case 'Escape':

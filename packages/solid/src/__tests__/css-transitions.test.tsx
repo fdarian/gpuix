@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js"
 import { describe, expect, it } from "bun:test"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import type { HostElement } from "../host.js"
 
 describe.skipIf(!hasNativeTestRenderer)("Solid CSS transitions", () => {
   const widthOf = (app: ReturnType<typeof createTestRoot>): number => {
@@ -220,6 +221,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS transitions", () => {
     const [width, setWidth] = createSignal(100)
     const [stop, setStop] = createSignal(false)
     const seen: string[] = []
+    let child!: HostElement
     const app = createTestRoot()
     app.renderer.clockPause()
     app.render(() => (
@@ -227,10 +229,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS transitions", () => {
         testId="parent"
         onTransitionEndCapture={() => seen.push("parent capture")}
         onTransitionEnd={(event) =>
-          seen.push(`parent ${event.propertyName} ${event.target === app.renderer.findByTestId("child")!.id}`)
+          seen.push(`parent ${event.propertyName} ${event.target === child}`)
         }
       >
         <div
+          ref={child}
           testId="child"
           onTransitionEnd={(event) => {
             seen.push("child")

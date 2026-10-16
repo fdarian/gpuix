@@ -391,15 +391,19 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
   })
 
   it("delivers Enter and Space on a Button as a DOM click that bubbles", () => {
-    const seen: Array<{ at: string; detail?: number; pointerId?: number; pointerType?: string; target?: number; currentTarget?: number | null }> = []
+    const seen: Array<{ at: string; detail?: number; pointerId?: number; pointerType?: string; target?: object; currentTarget?: object | null }> = []
+    let buttonElement!: HostElement
+    let wrapperElement!: HostElement
     const app = createTestRoot()
     app.render(() => (
       <div
+        ref={wrapperElement}
         testId="wrapper"
         style={{ display: "flex" }}
         onClick={(event) => seen.push({ at: "wrapper", detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target, currentTarget: event.currentTarget })}
       >
         <Button
+          ref={buttonElement}
           testId="save"
           autoFocus
           onClick={(event) => seen.push({ at: "button", detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target, currentTarget: event.currentTarget })}
@@ -410,12 +414,15 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       </div>
     ))
     const button = app.renderer.findByTestId("save")!.id
-    const wrapper = app.renderer.findByTestId("wrapper")!.id
     app.renderer.nativeSimulateKeyDown(button, "Enter")
-    expect(seen).toEqual([
-      { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
-      { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
+    expect(seen.map((entry) => [entry.at, entry.detail, entry.pointerId, entry.pointerType])).toEqual([
+      ["button", 0, -1, ""],
+      ["wrapper", 0, -1, ""],
     ])
+    expect(seen[0]!.target).toBe(buttonElement)
+    expect(seen[0]!.currentTarget).toBe(buttonElement)
+    expect(seen[1]!.target).toBe(buttonElement)
+    expect(seen[1]!.currentTarget).toBe(wrapperElement)
   })
 
   it("clicks a nested Button once on Enter and Space, and its ancestor by bubbling only", () => {
@@ -464,7 +471,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
   })
 
   it("clicks from a host ref like HTMLElement.click()", () => {
-    const seen: Array<{ detail?: number; pointerId?: number; target?: number }> = []
+    const seen: Array<{ detail?: number; pointerId?: number; target?: object }> = []
     let row!: HostElement
     const app = createTestRoot()
     app.render(() => (
@@ -477,7 +484,10 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     app.renderer.flush()
     row.click()
     app.renderer.dispatchNativeEvents()
-    expect(seen).toEqual([{ detail: 0, pointerId: -1, target: row.id }])
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.detail).toBe(0)
+    expect(seen[0]!.pointerId).toBe(-1)
+    expect(seen[0]!.target).toBe(row)
   })
 
   it("does nothing from click() on a disabled form control", () => {

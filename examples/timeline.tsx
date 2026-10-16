@@ -50,7 +50,7 @@ import {
   applyMacCpuThrottleFromEnv,
   render,
   useWindowSize,
-  type EventPayload,
+  type DomEvent,
   type HostMouseEvent,
   type PublicInstance,
   type StyleDesc,
@@ -162,7 +162,7 @@ type PressEvent = HostMouseEvent
  */
 interface GestureHandlers {
   begin: (kind: DragKind, clip: Clip | null, event: PressEvent) => void
-  move: (event: EventPayload) => void
+  move: (event: DomEvent) => void
   end: () => void
 }
 
@@ -898,7 +898,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
   )
 
   // ── Wheel: pan on both axes, or zoom under the pointer ─────────────────────
-  const onWheel = useCallback((event: EventPayload) => {
+  const onWheel = useCallback((event: DomEvent) => {
     const deltaX = event.deltaX ?? 0
     const deltaY = event.deltaY ?? 0
     const zoom = event.modifiers?.cmd || event.modifiers?.ctrl
@@ -1001,7 +1001,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
 
   // ── Gesture move and end, on the single overlay ───────────────────────────
   const onGestureMove = useCallback(
-    (event: EventPayload) => {
+    (event: DomEvent) => {
       const current = dragRef.current
       if (!current) return
       const x = event.x ?? 0

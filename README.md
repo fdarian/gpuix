@@ -519,8 +519,9 @@ Rust calls emit_event_full(callback, 3, "click", {x, y, path, ...})
 Desktop ThreadsafeFunction / browser callback sends EventPayload
        │
        ▼
-JS dispatchDomEvent walks the path: capture handlers from the outermost
-ancestor down, then the target's, then bubble handlers back up,
+JS dispatchDomEvent turns the ids into the adapter's elements (target,
+currentTarget, relatedTarget) and walks the path: capture handlers from the
+outermost ancestor down, then the target's, then bubble handlers back up,
 reading eventHandlers.get(id)?.get("click")
        │
        ▼
@@ -3143,8 +3144,10 @@ losing focus, then `focus` then `focusin` on the element gaining it. `focus` and
 Every event carries `focusVisible`, whether the element matches
 `:focus-visible` (see [Focus styles](#focus-styles)), and `relatedTarget`: the
 element gaining focus on `blur` and `focusout`, the one losing it on `focus` and
-`focusin`, absent when focus came from or went to nothing. Removing a focused
-element from the tree fires nothing, like the DOM.
+`focusin`, `null` when focus came from or went to nothing. Both `target` and
+`relatedTarget` are elements, the objects a `ref` gives, so
+`event.relatedTarget === menuRef.current` works. Removing a focused element
+from the tree fires nothing, like the DOM.
 
 The props follow each framework's web behaviour:
 
@@ -3162,7 +3165,8 @@ React DOM listens to `focusin` and `focusout` for `onFocus` and `onBlur`, so in
 Each keystroke is **one** `keydown`, and one `keyup` on release, like the DOM.
 It targets the focused element, runs capture, target and bubble through its
 ancestors, then reaches `document` and `window`. With nothing focused it goes to
-`window` alone and `event.target` is `undefined`.
+`window` alone and `event.target` is `null` (GPUIX has no `body` or `html`
+element to stand in).
 
 Handlers run synchronously, before the editor acts on the key, so
 `preventDefault()` has its DOM meaning:
@@ -3239,7 +3243,7 @@ listens. `window.addEventListener('pointermove', fn)` fires while the pointer is
 over bare background, where the event's `target` is the root element. A
 `pointermove` or `mousemove` inside the window but outside the root element's box
 has no element under it: it is aimed at the window, like a key with nothing
-focused, so `event.target` is `undefined` and only the `window` and `document`
+focused, so `event.target` is `null` and only the `window` and `document`
 listeners run (no element handler, the root's included). Nothing fires while the
 pointer is outside the window or over an `appRegion` drag area. Native produces
 only the types that have a listener on `window`, `document` or an element on the
@@ -3966,7 +3970,7 @@ the same attachment as `onKeyDown`. Text selection is app-wide, not per element.
 It fires once when the selected ranges change, including a clear to empty
 (`value` is then omitted). An unchanged frame does not fire.
 
-The payload is a normal `EventPayload`. `value` is the joined selected text.
+The event is a `RootEvent`, an event with no propagation. `value` is the joined selected text.
 
 Selection works because each painted text element registers itself into a
 per-frame registry in **paint order**, which is document order. A drag anchored
@@ -4575,7 +4579,7 @@ text imports no longer need a runtime flag.
 | Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` also has `movementX` and `movementY`. `onPointerCancel` fires on the press target when a `draggable` drag starts. As in the DOM, `pointerdown` fires when the first button goes down and `pointerup` when the last comes up; a button pressed or released in between is a `pointermove` with that `button` and the updated `buttons` (the mouse events still fire for every button). Boundary events come as all four pointer ones, then all four mouse ones |
 | Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
 | Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
-| Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
+| Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element, `currentTarget` the listening one |
 | Key down | `onKeyDown` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
 | Focus | `onFocus` | `focusVisible`, `relatedTarget`. See [Focus events](#focus-events) |
@@ -4593,8 +4597,8 @@ text imports no longer need a runtime flag.
 | Link click | `onLinkClick` | `value` (URL) — `<markdown>` only |
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
 | Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
-| Pointer lock change | `onPointerLockChange` | `target` (the locked element, absent once released) — window-level on `render()` |
-| Pointer lock error | `onPointerLockError` | `target` (the element that was asked) — window-level on `render()` |
+| Pointer lock change | `onPointerLockChange` | `target` (the locked element, `null` once released) — window-level on `render()` |
+| Pointer lock error | `onPointerLockError` | `target` (the element that was asked, `null` if it left the tree) — window-level on `render()` |
 
 Every pointer, mouse and drag handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
@@ -4609,11 +4613,23 @@ only paints above it is outside. The handler runs at the listening element alone
 element, reports the captured element.
 
 Events are DOM-shaped and propagate like the DOM. A handler receives
-`target` and `currentTarget` (element ids), `eventPhase`, `bubbles`,
-`cancelable`, `defaultPrevented`, `stopPropagation()`,
+`target`, `currentTarget` and `relatedTarget`, `composedPath()`, `eventPhase`,
+`bubbles`, `cancelable`, `defaultPrevented`, `stopPropagation()`,
 `stopImmediatePropagation()` and `preventDefault()`, plus `clientX`/`clientY`,
-`offsetX`/`offsetY`, `button`, `buttons`, `detail`, `relatedTarget`,
-`pointerId`, `pointerType` and `modifiers` where the event has them.
+`offsetX`/`offsetY`, `button`, `buttons`, `detail`, `pointerId`, `pointerType`
+and `modifiers` where the event has them.
+
+`target`, `currentTarget` and `relatedTarget` are **elements**, for every
+event: the same object a `ref` gives in that adapter (React's host instance,
+Solid's element), so they compare with `===` and a handler can call
+`event.target.getBoundingClientRect()`. During the `window` and `document`
+phases `currentTarget` is that object. `target` is `null` only for an event
+aimed at the window (a key with nothing focused, a pointer move outside the
+root), and `relatedTarget` is `null` when there is no other element. A native
+element id is still there as `event.elementId`, for the renderer methods that
+take one (`renderer.scrollTo(elementId, ...)`). `composedPath()` lists the
+elements the event travels through, target first and the root last, without
+`window` and `document`.
 `x`/`y` are the same as `clientX`/`clientY`. `offsetX`/`offsetY` are relative
 to the target's padding edge. Native only produces an event type when the
 target or one of its ancestors listens for it (the drag events below are the exception, except `drag`). Capture
@@ -4835,7 +4851,7 @@ const dial = useRef<PublicInstance>(null)
 
 render(<App />, {
   onPointerLockChange(event) {
-    setLocked(event.target !== undefined) // the locked element's id, absent once released
+    setLocked(event.target !== null) // the locked element, null once released
   },
   onPointerLockError(event) {
     console.warn('could not lock', event.target)
@@ -4858,11 +4874,12 @@ in the DOM they fire at `document`:
 
 - `onPointerLockChange` fires when the lock element changes: the lock was
   granted, moved to another element, or ended. The event's `target` is the
-  locked element, absent once the lock is gone. A lock ends by
+  locked element, `null` once the lock is gone. A lock ends by
   `exitPointerLock()`, when the window loses focus (the platform releases it),
   and when the locked element leaves the tree.
 - `onPointerLockError` fires when a request fails: the element is not in the
-  tree, or the platform refused. `target` is the element that was asked.
+  tree, or the platform refused. `target` is the element that was asked, or
+  `null` when it already left the tree.
 
 Asking again for the element that already holds the lock does nothing. Asking
 for another one moves the lock without releasing the cursor.

@@ -15,7 +15,7 @@ import {
   flushSync,
   render,
   useGpuix,
-  type EventPayload,
+  type DomEvent,
   type PublicInstance,
 } from '@gpuix/react'
 import dedent from 'string-dedent'
@@ -376,7 +376,7 @@ const Transcript = memo(function Transcript({
   loading: 'previous' | 'next' | 'route' | null
   listRef: React.Ref<PublicInstance>
   onNavigate: (href: string) => void
-  onVisibleRange: (event: EventPayload) => void
+  onVisibleRange: (event: DomEvent) => void
 }) {
   return (
     <virtual-list
@@ -551,7 +551,7 @@ export function InfiniteChatApp({
   )
 
   const handleVisibleRange = useCallback(
-    (event: EventPayload) => {
+    (event: DomEvent) => {
       const start = Math.floor(event.startIndex ?? 0)
       const end = Math.ceil(event.endIndex ?? start + 1)
       const rowCount = messages.length + (before ? 1 : 0) + (after ? 1 : 0)

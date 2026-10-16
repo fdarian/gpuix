@@ -5,10 +5,17 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
   it("locks an element from its ref and reports the outcome on the root", () => {
     const log: string[] = []
+    const targets: Array<object | null> = []
     let box!: HostElement
     const app = createTestRoot({
-      onPointerLockChange: (event) => log.push(`change:${event.target ?? "none"}`),
-      onPointerLockError: (event) => log.push(`error:${event.target}`),
+      onPointerLockChange: (event) => {
+        targets.push(event.target)
+        log.push(`change:${event.target === null ? "none" : "element"}`)
+      },
+      onPointerLockError: (event) => {
+        targets.push(event.target)
+        log.push(`error:${event.target === null ? "none" : "element"}`)
+      },
     })
     app.render(() => (
       <div
@@ -26,11 +33,10 @@ describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
     app.renderer.simulatePointerLockGranting(false)
     box.requestPointerLock()
 
-    expect(log).toEqual([
-      `change:${box.id}`,
-      "mousemove@20,30",
-      "change:none",
-      `error:${box.id}`,
-    ])
+    expect(log).toEqual(["change:element", "mousemove@20,30", "change:none", "error:element"])
+    expect(targets).toHaveLength(3)
+    expect(targets[0]).toBe(box)
+    expect(targets[1]).toBeNull()
+    expect(targets[2]).toBe(box)
   })
 })

@@ -18,9 +18,11 @@ function setup(view: () => any) {
 
 describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
   it("submits on Enter in an input, with its FormData", () => {
-    const submits: Array<{ entries: [string, FormDataEntryValue][]; target: number; submitter: unknown }> = []
-    const { type, idOf } = setup(() => (
+    const submits: Array<{ entries: [string, FormDataEntryValue][]; target: object; submitter: unknown }> = []
+    let form!: HostElement
+    const { type } = setup(() => (
       <form
+        ref={form}
         testId="form"
         onSubmit={(event) =>
           submits.push({
@@ -40,31 +42,33 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
     type("a", "j o")
     expect(submits).toEqual([])
     type("a", "Enter")
-    expect(submits).toEqual([
+    expect(submits.map((submit) => ({ entries: submit.entries, submitter: submit.submitter }))).toEqual([
       {
         entries: [
           ["first", "jo"],
           ["notes", "hi"],
         ],
-        target: idOf("form"),
         submitter: null,
       },
     ])
+    expect(submits[0]!.target).toBe(form)
   })
 
   it("blocks on a required empty control, fires invalid and focuses it", () => {
     const submits: number[] = []
     const invalids: string[] = []
     let form!: HostElement
-    const { type, focused, idOf } = setup(() => (
+    let b!: HostElement
+    const { type, focused } = setup(() => (
       <form ref={form} onSubmit={() => submits.push(1)} onInvalid={() => invalids.push("form")}>
         <input testId="a" name="a" style={field} />
         <input
+          ref={b}
           testId="b"
           name="b"
           required
           style={field}
-          onInvalid={(event) => invalids.push(`b:${event.target === idOf("b")}`)}
+          onInvalid={(event) => invalids.push(`b:${event.target === b}`)}
         />
       </form>
     ))
@@ -80,14 +84,16 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
   it("validates on Enter in the input: invalid at it, focus on it, no submit", () => {
     const submits: number[] = []
     const invalids: string[] = []
-    const { type, focused, idOf } = setup(() => (
+    let a!: HostElement
+    const { type, focused } = setup(() => (
       <form onSubmit={() => submits.push(1)} onInvalid={() => invalids.push("form")}>
         <input
+          ref={a}
           testId="a"
           name="a"
           required
           style={field}
-          onInvalid={(event) => invalids.push(`a:${event.target === idOf("a")}`)}
+          onInvalid={(event) => invalids.push(`a:${event.target === a}`)}
         />
       </form>
     ))
@@ -100,14 +106,16 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
   it("moves focus on Enter to the first invalid control, which may be a textarea", () => {
     const submits: number[] = []
     const invalids: string[] = []
-    const { type, focused, idOf } = setup(() => (
+    let area!: HostElement
+    const { type, focused } = setup(() => (
       <form onSubmit={() => submits.push(1)}>
         <textarea
+          ref={area}
           testId="area"
           name="notes"
           required
           style={field}
-          onInvalid={(event) => invalids.push(`area:${event.target === idOf("area")}`)}
+          onInvalid={(event) => invalids.push(`area:${event.target === area}`)}
         />
         <input testId="a" name="a" style={field} onInvalid={() => invalids.push("a")} />
       </form>

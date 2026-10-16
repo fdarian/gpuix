@@ -2,6 +2,7 @@ import { createSignal } from "solid-js"
 import { describe, expect, it } from "bun:test"
 import { defineKeyframes } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import type { HostElement } from "../host.js"
 
 defineKeyframes("solid-grow", { from: { width: 100 }, to: { width: 200 } })
 defineKeyframes("solid-shrink", { from: { width: 200 }, to: { width: 100 } })
@@ -128,16 +129,17 @@ describe.skipIf(!hasNativeTestRenderer)("Solid CSS animations", () => {
 
   it("bubbles a child's animation events to its parent with the child as target", () => {
     const seen: string[] = []
+    let child!: HostElement
     const app = createTestRoot()
     app.renderer.clockPause()
     app.render(() => (
       <div
         testId="parent"
         onAnimationEnd={(event) =>
-          seen.push(`parent ${event.animationName} ${event.target === app.renderer.findByTestId("child")!.id}`)
+          seen.push(`parent ${event.animationName} ${event.target === child}`)
         }
       >
-        <div testId="child" style={{ width: 50, height: 20, animation: "solid-grow 1s linear" }} />
+        <div ref={child} testId="child" style={{ width: 50, height: 20, animation: "solid-grow 1s linear" }} />
       </div>
     ))
     app.renderer.dispatchNativeEvents()
