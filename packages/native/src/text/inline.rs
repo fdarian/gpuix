@@ -1092,7 +1092,7 @@ mod tests {
 
     #[test]
     fn a_tab_is_kept_where_the_white_space_keeps_spaces() {
-        for mode in ["pre", "pre-wrap"] {
+        for mode in ["pre", "pre-wrap", "break-spaces"] {
             let mut f = Fixture::new();
             f.styled(1, serde_json::json!({"whiteSpace": mode}));
             f.text(1, 2, "ab\tc\n\td");
@@ -1149,6 +1149,24 @@ mod tests {
         f.styled(1, serde_json::json!({"whiteSpace": "pre-wrap"}));
         f.text(1, 2, "a  ");
         assert_eq!(text_of(&f, 1), "a  ");
+    }
+
+    #[test]
+    fn break_spaces_keeps_the_spaces_at_both_ends_of_a_paragraph_and_of_a_line() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "break-spaces"}));
+        f.text(1, 2, "  a  \n  b  ");
+        assert_eq!(text_of(&f, 1), "  a  \n  b  ");
+    }
+
+    #[test]
+    fn break_spaces_is_inherited_by_a_span() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"whiteSpace": "break-spaces"}));
+        f.add(1, 2, "span");
+        f.text(2, 3, " a  ");
+        f.text(1, 4, " b");
+        assert_eq!(text_of(&f, 1), " a   b");
     }
 
     #[test]

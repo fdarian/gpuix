@@ -15,6 +15,7 @@ pub enum WhiteSpace {
     Pre,
     PreWrap,
     PreLine,
+    BreakSpaces,
 }
 
 impl WhiteSpace {
@@ -25,6 +26,7 @@ impl WhiteSpace {
             "pre" => Some(Self::Pre),
             "pre-wrap" => Some(Self::PreWrap),
             "pre-line" => Some(Self::PreLine),
+            "break-spaces" => Some(Self::BreakSpaces),
             _ => None,
         }
     }
@@ -41,23 +43,35 @@ impl WhiteSpace {
 
     /// Whether the line may wrap at a soft wrap opportunity.
     pub fn wraps(self) -> bool {
-        matches!(self, Self::Normal | Self::PreWrap | Self::PreLine)
+        matches!(
+            self,
+            Self::Normal | Self::PreWrap | Self::PreLine | Self::BreakSpaces
+        )
     }
 
     /// Whether the spaces and tabs at the end of a line hang: they are not
-    /// measured to fit the line or to align it. In `pre` they are content, and
-    /// `nowrap` has none left at the end of a line to hang.
+    /// measured to fit the line or to align it. In `pre` they are content,
+    /// `nowrap` has none left at the end of a line to hang, and in
+    /// `break-spaces` they take up room like any other character.
     pub fn hangs_trailing_spaces(self) -> bool {
-        self.wraps()
+        self.wraps() && !self.breaks_spaces()
+    }
+
+    /// Whether the line may break after every space and tab, so that a space
+    /// that does not fit starts the next line.
+    pub fn breaks_spaces(self) -> bool {
+        self == Self::BreakSpaces
     }
 }
 
-/// What gpui is told about an element's `white-space`: whether its text wraps and
-/// whether the spaces at the end of a line hang. Collapsing is the paragraph
+/// What gpui is told about an element's `white-space`: whether its text wraps,
+/// whether the spaces at the end of a line hang and whether it breaks after
+/// every space. Collapsing is the paragraph
 /// builder's (`text::inline`).
 pub trait StyledWhiteSpace: gpui::Styled + Sized {
     fn white_space(mut self, value: WhiteSpace) -> Self {
         self.text_style().hang_trailing_spaces = Some(value.hangs_trailing_spaces());
+        self.text_style().break_spaces = Some(value.breaks_spaces());
         if value.wraps() {
             self.whitespace_normal()
         } else {
@@ -163,17 +177,18 @@ mod tests {
     }
 
     #[test]
-    fn parses_the_five_values() {
+    fn parses_the_six_values() {
         for (text, value) in [
             ("normal", WhiteSpace::Normal),
             ("nowrap", WhiteSpace::Nowrap),
             ("pre", WhiteSpace::Pre),
             ("pre-wrap", WhiteSpace::PreWrap),
             ("pre-line", WhiteSpace::PreLine),
+            ("break-spaces", WhiteSpace::BreakSpaces),
         ] {
             assert_eq!(WhiteSpace::parse(text), Some(value));
         }
-        assert_eq!(WhiteSpace::parse("break-spaces"), None);
+        assert_eq!(WhiteSpace::parse("break-word"), None);
     }
 
     #[test]
@@ -191,6 +206,10 @@ mod tests {
     fn pre_keeps_everything() {
         assert_eq!(run(WhiteSpace::Pre, " a  b\t\n  c "), " a  b\t\n  c ");
         assert_eq!(run(WhiteSpace::PreWrap, "a  b\n c"), "a  b\n c");
+        assert_eq!(
+            run(WhiteSpace::BreakSpaces, " a  b\t\n  c "),
+            " a  b\t\n  c "
+        );
     }
 
     #[test]
@@ -203,10 +222,13 @@ mod tests {
         assert!(WhiteSpace::Normal.wraps());
         assert!(WhiteSpace::PreWrap.wraps());
         assert!(WhiteSpace::PreLine.wraps());
+        assert!(WhiteSpace::BreakSpaces.wraps());
         assert!(!WhiteSpace::Nowrap.wraps());
         assert!(!WhiteSpace::Pre.wraps());
         assert!(!WhiteSpace::Normal.keeps_line_feeds());
         assert!(WhiteSpace::PreLine.keeps_line_feeds());
+        assert!(WhiteSpace::BreakSpaces.keeps_line_feeds());
+        assert!(!WhiteSpace::BreakSpaces.collapses_spaces());
     }
 
     #[test]
@@ -215,6 +237,7 @@ mod tests {
             (WhiteSpace::Normal, true),
             (WhiteSpace::PreWrap, true),
             (WhiteSpace::PreLine, true),
+            (WhiteSpace::BreakSpaces, false),
             (WhiteSpace::Nowrap, false),
             (WhiteSpace::Pre, false),
         ] {
@@ -223,17 +246,41 @@ mod tests {
     }
 
     #[test]
+    fn only_break_spaces_breaks_after_every_space() {
+        for value in [
+            WhiteSpace::Normal,
+            WhiteSpace::Nowrap,
+            WhiteSpace::Pre,
+            WhiteSpace::PreWrap,
+            WhiteSpace::PreLine,
+        ] {
+            assert!(!value.breaks_spaces(), "{value:?}");
+        }
+        assert!(WhiteSpace::BreakSpaces.breaks_spaces());
+    }
+
+    #[test]
     fn the_white_space_of_an_element_reaches_the_text_style() {
         for (value, wraps) in [
             (WhiteSpace::Normal, true),
             (WhiteSpace::PreWrap, true),
             (WhiteSpace::PreLine, true),
+            (WhiteSpace::BreakSpaces, true),
             (WhiteSpace::Nowrap, false),
             (WhiteSpace::Pre, false),
         ] {
             let mut el = gpui::div().white_space(value);
             let text_style = el.text_style();
-            assert_eq!(text_style.hang_trailing_spaces, Some(wraps), "{value:?}");
+            assert_eq!(
+                text_style.hang_trailing_spaces,
+                Some(wraps && value != WhiteSpace::BreakSpaces),
+                "{value:?}"
+            );
+            assert_eq!(
+                text_style.break_spaces,
+                Some(value == WhiteSpace::BreakSpaces),
+                "{value:?}"
+            );
             assert_eq!(
                 text_style.white_space,
                 Some(if wraps {

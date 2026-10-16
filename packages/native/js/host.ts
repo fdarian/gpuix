@@ -672,8 +672,9 @@ export interface StyleDesc {
   lineHeight?: number | string
   /** CSS `white-space`, inherited. `normal` and `nowrap` collapse spaces and turn
    *  a newline into a space, `pre-line` collapses spaces and keeps newlines,
-   *  `pre-wrap` and `pre` keep both. `nowrap` and `pre` do not wrap. */
-  whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line"
+   *  `pre-wrap`, `break-spaces` and `pre` keep both. `nowrap` and `pre` do not
+   *  wrap. `break-spaces` breaks after every space, and its spaces never hang. */
+  whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line" | "break-spaces"
   /** CSS `tab-size`, inherited, 8 by default. A number is that many spaces and a
    *  string is a CSS length such as `"40px"`. A tab that `whiteSpace` keeps
    *  advances to the next multiple of it, counted from the start of each line of

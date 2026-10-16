@@ -535,4 +535,141 @@ describeNative("white-space", () => {
       expect(rect.x + rect.width).toBeGreaterThan(box.x + box.width)
     })
   })
+
+  describe("break-spaces", () => {
+    const space = measureSpace()
+    const BOX = { width: 4.5 * space, backgroundColor: "#101010" } as const
+    const INK = { ...TEXT, color: "#ffffff" } as const
+
+    function shoot(name: string, node: React.ReactNode) {
+      const testRoot = paint(node)
+      const file = path.join(SHOTS_DIR, `white-space-break-${name}.png`)
+      testRoot.renderer.captureScreenshot(file)
+      return file
+    }
+
+    /** `text` in a box 4.5 columns wide. */
+    function rows(whiteSpace: string, textAlign: string, text: string) {
+      return (
+        <div style={BOX}>
+          <text style={{ whiteSpace, textAlign, ...INK }}>{text}</text>
+        </div>
+      )
+    }
+
+    /** Where the first match of `query` in `text` starts, in a box `columns` wide. */
+    function whereIs(whiteSpace: string, text: string, query: string, columns: number) {
+      const testRoot = paint(
+        <div highlight={{ query, caseSensitive: true }} testId="p" style={{ width: columns * space }}>
+          <text testId="t" style={{ whiteSpace, ...TEXT }}>{text}</text>
+        </div>
+      )
+      const hits = testRoot.renderer.getPaintedHighlights()
+      expect(hits).toHaveLength(1)
+      const rect = hits[0]!.rects[0]!
+      const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!
+      return {
+        column: (rect.x - box.x) / space,
+        line: Math.round((rect.y - box.y) / LINE),
+        lines: lines(testRoot, "p"),
+      }
+    }
+
+    it("keeps the spaces, tabs and line feeds like pre-wrap", () => {
+      const testRoot = paint(<text style={{ whiteSpace: "break-spaces", ...TEXT }}>{"  a  \tb \n  c  "}</text>)
+      expect(testRoot.renderer.getPaintedText()).toEqual(["  a  \tb \n  c  "])
+    })
+
+    it("moves a space that does not fit to the next line and starts it there", () => {
+      // "a bb " fills 5 of the 5.5 columns, so the second of the three spaces
+      // starts the next line, which is "  c".
+      const broken = whereIs("break-spaces", "a bb   c", "c", 5.5)
+      expect(broken.line).toBe(1)
+      expect(broken.column).toBeCloseTo(2, 1)
+      expect(broken.lines).toBe(2)
+      // pre-wrap hangs all three spaces and starts the next line with "c".
+      const wrapped = whereIs("pre-wrap", "a bb   c", "c", 5.5)
+      expect(wrapped.line).toBe(1)
+      expect(wrapped.column).toBeCloseTo(0, 1)
+    })
+
+    it("breaks a run of spaces between any two of them", () => {
+      const text = `a${" ".repeat(8)}b`
+      const broken = whereIs("break-spaces", text, "b", 3.5)
+      expect(broken.lines).toBe(4)
+      expect(broken.line).toBe(3)
+      expect(whereIs("pre-wrap", text, "b", 3.5).lines).toBe(2)
+    })
+
+    it("wraps a line of nothing but spaces", () => {
+      const testRoot = paint(
+        <div testId="p" style={{ width: 3.5 * space }}>
+          <text style={{ whiteSpace: "break-spaces", ...TEXT }}>{" ".repeat(10)}</text>
+        </div>
+      )
+      expect(lines(testRoot, "p")).toBe(4)
+      expect(testRoot.renderer.getPaintedText()).toEqual([" ".repeat(10)])
+    })
+
+    it("still breaks a word that has no earlier place to break", () => {
+      expect(whereIs("break-spaces", "ab cdefghijkl", "l", 5.5).lines).toBe(3)
+    })
+
+    it("counts the space at the end of a line in the aligned width", () => {
+      // "aaa  bbb" breaks after the first space: "aaa " and " bbb", each four
+      // columns wide, which are the two rows of pre that no space hangs from.
+      for (const textAlign of ["center", "right"]) {
+        const broken = shoot(
+          `${textAlign}-wrapped`,
+          rows("break-spaces", textAlign, "aaa  bbb")
+        )
+        const byHand = shoot(`${textAlign}-by-hand`, rows("pre", textAlign, "aaa \n bbb"))
+        expectScreenshotsEqual(broken, byHand)
+        const hung = shoot(`${textAlign}-pre-wrap`, rows("pre-wrap", textAlign, "aaa  bbb"))
+        expectScreenshotsDiffer(broken, hung)
+      }
+    })
+
+    it("counts the spaces at the end of the text and before a line feed", () => {
+      for (const textAlign of ["center", "right"]) {
+        const spaced = shoot(`${textAlign}-spaced`, rows("break-spaces", textAlign, "ab  \ncd  "))
+        const pre = shoot(`${textAlign}-spaced-pre`, rows("pre", textAlign, "ab  \ncd  "))
+        const bare = shoot(`${textAlign}-bare`, rows("break-spaces", textAlign, "ab\ncd"))
+        expectScreenshotsEqual(spaced, pre)
+        expectScreenshotsDiffer(spaced, bare)
+      }
+    })
+
+    it("does not let a space overflow its box where pre-wrap lets it hang", () => {
+      // The space of "aaaa bbbb" does not fit in 4.5 columns, so it wraps, and
+      // selecting it stays inside the box instead of reaching past the edge.
+      const testRoot = paint(
+        <div highlight={{ query: "aaaa ", caseSensitive: true }} style={BOX}>
+          <text testId="t" style={{ whiteSpace: "break-spaces", ...INK }}>{"aaaa bbbb"}</text>
+        </div>
+      )
+      const hits = testRoot.renderer.getPaintedHighlights()
+      expect(hits).toHaveLength(1)
+      const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!
+      for (const rect of hits[0]!.rects) {
+        expect(rect.x + rect.width).toBeLessThanOrEqual(box.x + box.width + 0.01)
+      }
+    })
+
+    it("is inherited, and a nearer pre-wrap hangs again", () => {
+      const inherited = paint(
+        <div testId="p" style={{ whiteSpace: "break-spaces", width: 4.5 * space }}>
+          <text style={INK}>{"aaaa bbbb"}</text>
+        </div>
+      )
+      // The space begins a line of its own: "aaaa", " ", "bbbb".
+      expect(lines(inherited, "p")).toBe(3)
+      const nearer = paint(
+        <div testId="p" style={{ whiteSpace: "break-spaces", width: 4.5 * space }}>
+          <text style={{ whiteSpace: "pre-wrap", ...INK }}>{"aaaa bbbb"}</text>
+        </div>
+      )
+      expect(lines(nearer, "p")).toBe(2)
+    })
+  })
 })
