@@ -1437,8 +1437,8 @@ current visible value, so reversing an animation does not jump.
 A property that `initial` does not name starts from the element's own `style`
 value, as Motion for React reads it from the DOM, and otherwise from the CSS
 initial value (`0` for padding, margin and radii, `1` for `opacity`,
-`transparent` for `backgroundColor`, the element's `color` for `borderColor` and
-`outlineColor`), or the inherited value for `color`: the parent's colour, or the
+`transparent` for `backgroundColor`, the element's `color` for the border colours,
+`outlineColor` and `textDecorationColor`), or the inherited value for `color`: the parent's colour, or the
 scheme's black or white at the root. An unset `width`, `height`, `minWidth`,
 `minHeight`, `maxWidth` or `maxHeight` starts from the size layout gave the
 element, read back from the previous frame, so the clock starts on the first
@@ -1466,10 +1466,10 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `aspectRatio` | zero or greater |
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
-| `backgroundColor`, `color`, `borderColor`, `outlineColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
+| `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
 
-`padding`, `margin`, `borderWidth`, `borderRadius` and `gap` are shorthands that
+`padding`, `margin`, `borderWidth`, `borderColor`, `borderRadius` and `gap` are shorthands that
 expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
 `borderTopLeftRadius` in `style`. When a description names a shorthand and one of
 its longhands, the longhand wins.
@@ -2851,6 +2851,20 @@ search match lies over them.
   `boxShadow`, `opacity` and `filter` are not read there. The metrics are the
   line's, so a span in a font whose ascent and descent differ from the rest of the
   line has the line's content area, not its own.
+- **The colours of a box transition and animate.** `color`, `backgroundColor`,
+  `textDecorationColor`, `outlineColor` and the border colours (`borderColor` and
+  `borderTopColor` ... `borderLeftColor`) take part in [CSS transitions](#css-transitions)
+  and [CSS animations](#css-animations) as an element's do, natively and without a
+  render per frame, with the same timing, delay, `transition-behavior` and
+  interpolation (Oklab, or sRGB for legacy colours). A
+  `<mark style={{ backgroundColor, transition: 'background-color 200ms' }}>` fades
+  when its colour changes, and a keyframe animation on a span can pulse it. A colour
+  moves no line, so the paragraph is not laid out again. Nothing else of a span
+  moves: a transition or keyframe on its padding, margin, font or size changes it
+  at once and starts no event. `onTransitionRun` and the other transition and
+  animation events fire with the span as `target`. A colour written only inside the
+  `border`, `borderTop` or `textDecoration` shorthand is not a target, as for an
+  element: write the longhand. `motion` (`animate`, `exit`) has no `motion.span`.
 
 ### Events on inline boxes
 
@@ -6129,6 +6143,8 @@ render per frame.
   (`transform`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
+- **Inline boxes.** A `<span>` transitions its colours too, and only them (see
+  [Painting an inline box](#painting-an-inline-box))
 - **Discrete properties.** `display`, `visibility`, `flexDirection`, `flexWrap`,
   `alignItems`, `alignSelf`, `alignContent`, `justifyContent`, `justifyItems` and
   `justifySelf` have no in-between values, so they change at once unless the
