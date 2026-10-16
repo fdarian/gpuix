@@ -3776,9 +3776,9 @@ runs for a key held with Ctrl, Alt or Cmd.
 A mouse press on something that is not focusable blurs the focused element, as
 in a browser. `preventDefault()` in an `onMouseDown` keeps focus where it is,
 which is how a Combobox item can be pressed while its input stays focused.
-On Windows and Linux the press reaches JavaScript through a queue after native
-has already moved focus, so `preventDefault()` in `onMouseDown` or `onPointerDown`
-has no effect there.
+`onPointerDown` does not keep focus, as in browsers. On Windows and Linux the
+press reaches JavaScript through a queue after native has already moved focus,
+so `preventDefault()` in `onMouseDown` has no effect there.
 
 ### Calling the renderer from a handler
 
