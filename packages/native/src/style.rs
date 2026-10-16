@@ -967,6 +967,36 @@ pub fn parse_cursor(name: &str) -> Option<gpui::CursorStyle> {
     })
 }
 
+/// The CSS keyword for a GPUI cursor, the one `parse_cursor` maps back to the
+/// same cursor. Several keywords name one cursor, and this is the canonical one.
+pub fn cursor_name(style: gpui::CursorStyle) -> &'static str {
+    use gpui::CursorStyle;
+    match style {
+        CursorStyle::Arrow => "default",
+        CursorStyle::PointingHand => "pointer",
+        CursorStyle::IBeam => "text",
+        CursorStyle::IBeamCursorForVerticalLayout => "vertical-text",
+        CursorStyle::Crosshair => "crosshair",
+        CursorStyle::OpenHand => "grab",
+        CursorStyle::ClosedHand => "grabbing",
+        CursorStyle::ResizeColumn => "col-resize",
+        CursorStyle::ResizeRow => "row-resize",
+        CursorStyle::ResizeLeftRight => "ew-resize",
+        CursorStyle::ResizeUpDown => "ns-resize",
+        CursorStyle::ResizeUpLeftDownRight => "nwse-resize",
+        CursorStyle::ResizeUpRightDownLeft => "nesw-resize",
+        CursorStyle::ResizeLeft => "w-resize",
+        CursorStyle::ResizeRight => "e-resize",
+        CursorStyle::ResizeUp => "n-resize",
+        CursorStyle::ResizeDown => "s-resize",
+        CursorStyle::OperationNotAllowed => "not-allowed",
+        CursorStyle::DragLink => "alias",
+        CursorStyle::DragCopy => "copy",
+        CursorStyle::ContextualMenu => "context-menu",
+        CursorStyle::None => "none",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1329,6 +1359,40 @@ mod tests {
             Some(gpui::CursorStyle::PointingHand)
         );
         assert_eq!(parse_cursor("default"), Some(gpui::CursorStyle::Arrow));
+    }
+
+    #[test]
+    fn every_cursor_has_a_keyword_that_parses_back_to_it() {
+        use gpui::CursorStyle::*;
+        let all = [
+            Arrow,
+            IBeam,
+            Crosshair,
+            ClosedHand,
+            OpenHand,
+            PointingHand,
+            ResizeLeft,
+            ResizeRight,
+            ResizeLeftRight,
+            ResizeUp,
+            ResizeDown,
+            ResizeUpDown,
+            ResizeUpLeftDownRight,
+            ResizeUpRightDownLeft,
+            ResizeColumn,
+            ResizeRow,
+            IBeamCursorForVerticalLayout,
+            OperationNotAllowed,
+            DragLink,
+            DragCopy,
+            ContextualMenu,
+            None,
+        ];
+        for style in all {
+            assert_eq!(parse_cursor(cursor_name(style)), Some(style), "{style:?}");
+        }
+        let names: std::collections::HashSet<_> = all.into_iter().map(cursor_name).collect();
+        assert_eq!(names.len(), all.len(), "one keyword per cursor");
     }
 
     #[test]
