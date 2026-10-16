@@ -7925,6 +7925,13 @@ fn paragraph_content(
             &ctx.inherited.colors,
             &ctx.inherited.font_state,
         ),
+        inline_targets: crate::text::inline_hit::Targets::of(
+            ctx.tree,
+            paragraph,
+            ctx.inherited.pointer_events_none,
+            ctx.inherited.inert,
+        )
+        .map(Arc::new),
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,

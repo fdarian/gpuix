@@ -101,6 +101,7 @@ pub fn selection_frame_reset(
             START_REGIONS.with(|r| r.borrow_mut().clear());
             PAINTED.with(|p| p.borrow_mut().clear());
             HIGHLIGHTS.with(|h| h.borrow_mut().clear());
+            super::inline_hit::frame_reset();
             super::search::ordinal_frame_reset();
             register_copy_listener(window, &selection);
             register_down_listener(window, &selection);
@@ -228,6 +229,9 @@ pub struct SelectableText {
     /// that must never merge with its neighbour, which is every custom element.
     pub group: Option<u64>,
     pub highlight: Option<HighlightSource>,
+    /// The inline boxes of a paragraph that the pointer can target, registered
+    /// under `element_id` as the container.
+    pub inline_targets: Option<Arc<super::inline_hit::Targets>>,
 }
 
 impl SelectableText {
@@ -253,6 +257,7 @@ impl SelectableText {
             selectable: true,
             group: None,
             highlight: None,
+            inline_targets: None,
         }
     }
 }
@@ -274,6 +279,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         selectable,
         group,
         highlight,
+        inline_targets,
     } = opts;
     let key = selection_key(element_id, sub);
 
@@ -341,6 +347,9 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 });
             }
             PAINTED.with(|p| p.borrow_mut().push(text.clone()));
+            if let Some(targets) = &inline_targets {
+                super::inline_hit::register(element_id, layout.clone(), targets.clone());
+            }
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);
             }
