@@ -40,6 +40,12 @@ describeNative("boxShadow as a CSS string", () => {
     expectScreenshotsEqual(css.file, object.file)
   })
 
+  it("resolves em against the element's font size", () => {
+    const em = capture("em", boxed({ fontSize: 10, boxShadow: "0 0.6em 0 0.2em #ff0000" }))
+    const px = capture("em-px", boxed({ fontSize: 10, boxShadow: "0 6px 0 2px #ff0000" }))
+    expectScreenshotsEqual(em.file, px.file)
+  })
+
   it("takes several layers, one of them inset, in the order given", () => {
     const css = capture(
       "layers-css",
@@ -94,7 +100,7 @@ describeNative("boxShadow as a CSS string", () => {
 
   it("ignores an invalid string, like any invalid declaration", () => {
     const none = capture("none", boxed({}))
-    for (const bad of ["1px", "4 4 red", "1px 2px 3px 4px 5px red", "red", "1em 2em red"]) {
+    for (const bad of ["1px", "4 4 red", "1px 2px 3px 4px 5px red", "red", "1foo 2foo red", "1% 2% red"]) {
       expectScreenshotsEqual(capture("invalid", boxed({ boxShadow: bad })).file, none.file)
     }
     expectScreenshotsEqual(capture("keyword-none", boxed({ boxShadow: "none" })).file, none.file)
