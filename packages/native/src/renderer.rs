@@ -11612,7 +11612,7 @@ mod dimension_length_tests {
         assert_eq!((offset.x, blur), (gpui::px(20.0), gpui::px(12.0)));
 
         let layers = refinement.background_layers.expect("the layers are applied");
-        let gpui::BackgroundImage::Gradient(gradient) = &layers[0].image;
+        let gpui::BackgroundImage::Gradient(gradient) = &layers[0].image else { panic!("an image layer") };
         let positions: Vec<_> = gradient
             .items
             .iter()

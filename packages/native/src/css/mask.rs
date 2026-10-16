@@ -129,9 +129,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(layers.len(), 2);
-        let BackgroundImage::Gradient(first) = &layers[0].image;
+        let BackgroundImage::Gradient(first) = &layers[0].image else { panic!("an image layer") };
         assert!(first.repeating);
-        let BackgroundImage::Gradient(second) = &layers[1].image;
+        let BackgroundImage::Gradient(second) = &layers[1].image else { panic!("an image layer") };
         assert!(matches!(second.shape, gpui::GradientShape::Radial { .. }));
     }
 
@@ -228,7 +228,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(layers.len(), 1);
-        let BackgroundImage::Gradient(gradient) = &layers[0].image;
+        let BackgroundImage::Gradient(gradient) = &layers[0].image else { panic!("an image layer") };
         assert!(matches!(gradient.shape, gpui::GradientShape::Radial { .. }));
         assert_eq!(layers[0].repeat, BackgroundRepeat { x: RepeatStyle::Repeat, y: RepeatStyle::NoRepeat });
         assert_eq!(layers[0].origin, BackgroundBox::PaddingBox);
@@ -284,7 +284,7 @@ mod tests {
             }
         );
         assert_eq!(layers[0].position.x.offset, LengthPercentage::Length(px(10.0)));
-        let BackgroundImage::Gradient(gradient) = &layers[0].image;
+        let BackgroundImage::Gradient(gradient) = &layers[0].image else { panic!("an image layer") };
         let gpui::GradientItem::Stop(last) = gradient.items[1] else { panic!("a hint") };
         assert_eq!(last.position, Some(gpui::StopPosition::Calc { length: px(-10.0), fraction: 1.0 }));
         assert_eq!(image("linear-gradient(black 1ch, transparent)"), None);

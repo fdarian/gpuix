@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn a_text_clipped_colour_becomes_the_bottom_layer() {
         let layer = solid_layer(gpui::red(), BackgroundBox::Text);
-        let BackgroundImage::Gradient(gradient) = &layer.image;
+        let BackgroundImage::Gradient(gradient) = &layer.image else { panic!("an image layer") };
         assert_eq!(gradient.items.len(), 2);
         assert_eq!(layer.clip, BackgroundBox::Text);
     }
@@ -640,7 +640,7 @@ mod tests {
             &LengthContext::for_tests(),
         );
         assert_eq!(resolved.layers.len(), 1);
-        let BackgroundImage::Gradient(gradient) = &resolved.layers[0].image;
+        let BackgroundImage::Gradient(gradient) = &resolved.layers[0].image else { panic!("an image layer") };
         assert!(matches!(gradient.shape, gpui::GradientShape::Radial { .. }));
         assert_eq!(
             resolved.layers[0].repeat,
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn oklab_gradients_keep_their_space() {
         let resolved = shorthand("linear-gradient(in oklab, red, blue)");
-        let BackgroundImage::Gradient(gradient) = &resolved.layers[0].image;
+        let BackgroundImage::Gradient(gradient) = &resolved.layers[0].image else { panic!("an image layer") };
         assert_eq!(gradient.color_space, gpui::ColorSpace::Oklab);
     }
 
@@ -763,7 +763,7 @@ mod tests {
                 height: Some(LengthPercentage::Length(px(80.0))),
             }
         );
-        let BackgroundImage::Gradient(gradient) = &layer.image;
+        let BackgroundImage::Gradient(gradient) = &layer.image else { panic!("an image layer") };
         let gpui::GradientItem::Stop(stop) = gradient.items[0] else { panic!("a hint") };
         assert_eq!(stop.position, Some(gpui::StopPosition::Calc { length: px(20.0), fraction: 0.1 }));
 
