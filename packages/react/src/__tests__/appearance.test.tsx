@@ -82,12 +82,14 @@ describeNative("appearance", () => {
     dark.addEventListener("change", (event) => changes.push((event as { matches: boolean }).matches))
     expect(dark.matches).toBe(system === "dark")
 
-    renderer.setAppearance("dark")
-    expect(dark.matches).toBe(true)
-    renderer.setAppearance("light")
-    expect(dark.matches).toBe(false)
-    expect(changes.at(-1)).toBe(false)
-    expect(changes).toContain(true)
+    // Forcing the appearance the window already has is not a change, so start from the other one.
+    const other = opposite(system)
+    renderer.setAppearance(other)
+    expect(dark.matches).toBe(other === "dark")
+    expect(changes).toEqual([other === "dark"])
+    renderer.setAppearance(system)
+    expect(dark.matches).toBe(system === "dark")
+    expect(changes).toEqual([other === "dark", system === "dark"])
     unmount()
   })
 
