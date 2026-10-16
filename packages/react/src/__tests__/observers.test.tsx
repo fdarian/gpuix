@@ -29,7 +29,7 @@ describeNative("ResizeObserver", () => {
         <div style={{ flexDirection: "column" }}>
           <div
             ref={ref("box")}
-            style={{ width: 100, height: 60, padding: 10, borderWidth: 2, borderColor: "#fff" }}
+            style={{ width: 100, height: 60, padding: 10, borderWidth: 2, borderStyle: "solid", borderColor: "#fff" }}
           />
         </div>
       )
@@ -194,7 +194,7 @@ describeNative("ResizeObserver", () => {
         <div style={{ flexDirection: "column" }}>
           <div
             ref={ref("a")}
-            style={{ visibility, width, height: 20, padding: 4, borderWidth: 1, borderColor: "#fff" }}
+            style={{ visibility, width, height: 20, padding: 4, borderWidth: 1, borderStyle: "solid", borderColor: "#fff" }}
           />
         </div>
       )
@@ -288,7 +288,7 @@ describeNative("ResizeObserver", () => {
       const { render, renderer, ref, element, unmount } = setup()
       try {
         const entries: ResizeObserverEntry[] = []
-        render(hovered(ref, { borderWidth: 1, borderColor: "#fff" }, { borderWidth: 5 }))
+        render(hovered(ref, { borderWidth: 1, borderStyle: "solid", borderColor: "#fff" }, { borderWidth: 5 }))
         new ResizeObserver((batch) => entries.push(...batch)).observe(element("box"))
         renderer.dispatchNativeEvents()
         expect(entries[0]!.contentRect).toMatchObject({ width: 98, height: 58 })
@@ -305,7 +305,7 @@ describeNative("ResizeObserver", () => {
     it("gives clientLeft the hover border width", () => {
       const { render, renderer, ref, element, unmount } = setup()
       try {
-        render(hovered(ref, { borderWidth: 1, borderColor: "#fff" }, { borderWidth: 5 }))
+        render(hovered(ref, { borderWidth: 1, borderStyle: "solid", borderColor: "#fff" }, { borderWidth: 5 }))
         expect(renderer.getElementBounds(element("box").id).clientLeft).toBe(1)
 
         pointerOver(renderer, element("box")).enter()
@@ -636,7 +636,7 @@ describeNative("IntersectionObserver", () => {
       <div style={{ flexDirection: "column", padding: 20 }}>
         <div
           ref={ref("root")}
-          style={{ position: "relative", width: 100, height: 100, borderWidth: 10, overflow: "hidden" }}
+          style={{ position: "relative", width: 100, height: 100, borderWidth: 10, borderStyle: "solid", overflow: "hidden" }}
         >
           <div style={{ position: "absolute", ...target }} ref={ref("a")} />
         </div>
@@ -721,7 +721,7 @@ describeNative("IntersectionObserver", () => {
           <div style={{ flexDirection: "column", padding: 20, position: "relative" }}>
             <div
               ref={ref("root")}
-              style={{ width: 100, height: 100, borderWidth, overflow: "hidden" }}
+              style={{ width: 100, height: 100, borderWidth, borderStyle: "solid", overflow: "hidden" }}
             />
             <div
               ref={ref("a")}
@@ -748,7 +748,7 @@ describeNative("IntersectionObserver", () => {
       const { entries, callback } = collect()
       render(
         <div style={{ flexDirection: "column", padding: 20 }}>
-          <div style={{ position: "relative", width: 100, height: 100, borderWidth: 10, overflow: "hidden" }}>
+          <div style={{ position: "relative", width: 100, height: 100, borderWidth: 10, borderStyle: "solid", overflow: "hidden" }}>
             <div
               ref={ref("a")}
               style={{ position: "absolute", top: -10, left: -10, width: 10, height: 10 }}

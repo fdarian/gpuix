@@ -129,7 +129,14 @@ describeNative("background and border on inline boxes", () => {
       <div style={PAGE}>
         <text testId="p" style={{ ...TEXT, lineHeight: "40px" }}>
           aa{" "}
-          <span testId="s" style={{ paddingTop: 4, paddingBottom: 3, borderTopWidth: 2, borderBottomWidth: 1 }}>
+          <span testId="s" style={{
+              paddingTop: 4,
+              paddingBottom: 3,
+              borderTopWidth: 2,
+              borderBottomWidth: 1,
+              borderTopStyle: "solid",
+              borderBottomStyle: "solid",
+            }}>
             bbbb
           </span>{" "}
           cc
@@ -157,6 +164,7 @@ describeNative("background and border on inline boxes", () => {
   const BOX = {
     backgroundColor: "#ffff00",
     borderWidth: 2,
+    borderStyle: "solid",
     borderColor: "#0000ff",
     borderRadius: 8,
     paddingLeft: 4,
@@ -331,7 +339,7 @@ describeNative("background and border on inline boxes", () => {
     const { testRoot, shoot } = setup(
       <div style={PAGE}>
         <text testId="p" style={TEXT}>
-          aa <span style={{ borderWidth: 3 }}>bb</span>
+          aa <span style={{ borderWidth: 3, borderStyle: "solid" }}>bb</span>
         </text>
       </div>
     )

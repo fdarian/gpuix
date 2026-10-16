@@ -18,9 +18,11 @@ const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color
 const SPACE = {
   marginLeft: 10,
   borderLeftWidth: 2,
+  borderLeftStyle: "solid",
   paddingLeft: 4,
   marginRight: 6,
   borderRightWidth: 1,
+  borderRightStyle: "solid",
   paddingRight: 3,
 } as const
 /** What a span is tall: the content area of Menlo at 16px, not the 20px line. */
@@ -108,7 +110,14 @@ describeNative("border box of an inline element", () => {
             <span ref={t.ref("outer")} style={{ marginLeft: 2, paddingLeft: 3, paddingRight: 5, marginRight: 7 }}>
               <span
                 ref={t.ref("inner")}
-                style={{ marginLeft: 11, borderLeftWidth: 1, borderRightWidth: 2, marginRight: 13 }}
+                style={{
+                  marginLeft: 11,
+                  borderLeftWidth: 1,
+                  borderRightWidth: 2,
+                  borderLeftStyle: "solid",
+                  borderRightStyle: "solid",
+                  marginRight: 13,
+                }}
               >
                 bb
               </span>
@@ -346,7 +355,7 @@ describeNative("lengths of an inline element", () => {
             >
               bb
             </span>{" "}
-            <span ref={t.ref("rem")} style={{ paddingLeft: "2rem", borderLeftWidth: "0.25em" }}>
+            <span ref={t.ref("rem")} style={{ paddingLeft: "2rem", borderLeftWidth: "0.25em", borderLeftStyle: "solid" }}>
               cc
             </span>
           </text>

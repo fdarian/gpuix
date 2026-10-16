@@ -250,6 +250,7 @@ describe("<code>", () => {
             padding: 12,
             borderRadius: 10,
             borderWidth: 1,
+            borderStyle: "solid",
             borderColor: "#ffffff1f",
             backgroundColor: "#ffffff09",
           }}

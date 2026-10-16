@@ -38,7 +38,7 @@ describeNative("hover color and currentColor", () => {
     const tree = (
       <div style={{ width: 300, height: 100, display: "flex", color: "#00ff00", hover: { color: "#0000ff" } }}>
         <div style={{ width: 50, height: 50, backgroundColor: "currentColor" }} />
-        <div style={{ width: 50, height: 50, borderWidth: 10, borderColor: "currentColor", boxSizing: "border-box" }} />
+        <div style={{ width: 50, height: 50, borderWidth: 10, borderStyle: "solid", borderColor: "currentColor", boxSizing: "border-box" }} />
         <svg source={TWO_TONE} style={{ width: 50, height: 50 }} />
       </div>
     )

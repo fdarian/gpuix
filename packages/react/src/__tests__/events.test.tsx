@@ -738,6 +738,7 @@ describeNative("events", () => {
                   gap: 6,
                   borderRadius: 10,
                   borderWidth: 1,
+                  borderStyle: "solid",
                   borderColor: "#3d4660",
                   backgroundColor: "#1c2233",
                 }}
@@ -836,6 +837,7 @@ describeNative("events", () => {
                     gap: 8,
                     borderRadius: 12,
                     borderWidth: 1,
+                    borderStyle: "solid",
                     borderColor: "#4a5678",
                     backgroundColor: "#0d172b",
                   }}
@@ -910,6 +912,7 @@ describeNative("events", () => {
                       gap: 6,
                       borderRadius: 12,
                       borderWidth: 1,
+                      borderStyle: "solid",
                       borderColor: "#4f5b82",
                       backgroundColor: "#131c34",
                     }}
@@ -2814,6 +2817,7 @@ describeNative("events", () => {
                 backgroundColor: "#16213e",
                 borderRadius: 8,
                 borderWidth: 2,
+                borderStyle: "solid",
                 borderColor: "#0f3460",
               }}
             >

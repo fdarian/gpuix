@@ -38,6 +38,8 @@ function sides(name: string, style: Record<string, unknown>) {
       bottom: pixels.at(50, 96),
       left: pixels.at(3, 50),
       middle: pixels.at(50, 50),
+      topEdge: pixels.at(50, 1),
+      topInside: pixels.at(50, 5),
     }
   } finally {
     testRoot.unmount()
@@ -48,6 +50,7 @@ describeNative("per-side border colours", () => {
   it("paints each side in its own colour", () => {
     const shot = sides("longhands", {
       borderWidth: 10,
+      borderStyle: "solid",
       borderTopColor: "#ff0000",
       borderRightColor: "#00ff00",
       borderBottomColor: "#0000ff",
@@ -61,7 +64,12 @@ describeNative("per-side border colours", () => {
   })
 
   it("lets a per-side colour override borderColor", () => {
-    const shot = sides("override", { borderWidth: 10, borderColor: "#ff0000", borderBottomColor: "#0000ff" })
+    const shot = sides("override", {
+      borderWidth: 10,
+      borderStyle: "solid",
+      borderColor: "#ff0000",
+      borderBottomColor: "#0000ff",
+    })
     expect(shot.top).toEqual(RED)
     expect(shot.left).toEqual(RED)
     expect(shot.bottom).toEqual(BLUE)
@@ -70,6 +78,7 @@ describeNative("per-side border colours", () => {
   it("resolves currentColor and colour functions per side", () => {
     const shot = sides("functions", {
       borderWidth: 10,
+      borderStyle: "solid",
       borderColor: "red",
       borderLeftColor: "currentColor",
       borderRightColor: "color-mix(in srgb, blue, blue)",
@@ -81,30 +90,31 @@ describeNative("per-side border colours", () => {
 
 describeNative("borderColor with one to four values", () => {
   it("one value covers every side", () => {
-    const shot = sides("one", { borderWidth: 10, borderColor: "#ff0000" })
+    const shot = sides("one", { borderWidth: 10, borderStyle: "solid", borderColor: "#ff0000" })
     expect([shot.top, shot.right, shot.bottom, shot.left]).toEqual([RED, RED, RED, RED])
   })
 
   it("two values are vertical then horizontal", () => {
-    const shot = sides("two", { borderWidth: 10, borderColor: "#ff0000 #0000ff" })
+    const shot = sides("two", { borderWidth: 10, borderStyle: "solid", borderColor: "#ff0000 #0000ff" })
     expect([shot.top, shot.right, shot.bottom, shot.left]).toEqual([RED, BLUE, RED, BLUE])
   })
 
   it("three values are top, horizontal, bottom", () => {
-    const shot = sides("three", { borderWidth: 10, borderColor: "#ff0000 #0000ff #00ff00" })
+    const shot = sides("three", { borderWidth: 10, borderStyle: "solid", borderColor: "#ff0000 #0000ff #00ff00" })
     expect([shot.top, shot.right, shot.bottom, shot.left]).toEqual([RED, BLUE, GREEN, BLUE])
   })
 
   it("four values are top, right, bottom, left, and may be functions", () => {
     const shot = sides("four", {
       borderWidth: 10,
+      borderStyle: "solid",
       borderColor: "#ff0000 rgb(0 255 0) #0000ff color-mix(in srgb, red, red)",
     })
     expect([shot.top, shot.right, shot.bottom, shot.left]).toEqual([RED, GREEN, BLUE, RED])
   })
 
   it("one invalid colour ignores the whole value", () => {
-    const shot = sides("invalid", { borderWidth: 10, borderColor: "#ff0000 nonsense" })
+    const shot = sides("invalid", { borderWidth: 10, borderStyle: "solid", borderColor: "#ff0000 nonsense" })
     expect(shot.top).not.toEqual(RED)
     expect(shot.right).not.toEqual(RED)
   })
@@ -157,6 +167,29 @@ describeNative("border shorthands", () => {
     expect(sides("wavy", { border: "10px wavy red" })).toEqual(none)
     expect(sides("no-style", { border: "10px red" })).toEqual(none)
     expect(sides("hidden", { border: "10px hidden red" })).toEqual(none)
+  })
+
+  it("paints nothing for a width and a colour without a style", () => {
+    const none = sides("unstyled-longhands", {})
+    expect(sides("width-only", { borderWidth: 10 })).toEqual(none)
+    expect(sides("width-colour", { borderWidth: 10, borderColor: "#ff0000" })).toEqual(none)
+    expect(sides("side-width", { borderTopWidth: 10, borderTopColor: "#ff0000" })).toEqual(none)
+    expect(sides("style-none", { borderWidth: 10, borderColor: "#ff0000", borderStyle: "none" })).toEqual(none)
+  })
+
+  it("paints only the sides that have a style", () => {
+    const shot = sides("one-side", { borderWidth: 10, borderColor: "#ff0000", borderBottomStyle: "solid" })
+    expect(shot.bottom).toEqual(RED)
+    expect([shot.top, shot.right, shot.left]).toEqual([WHITE, WHITE, WHITE])
+    const two = sides("two-sides", { borderWidth: 10, borderColor: "#ff0000", borderStyle: "solid none" })
+    expect([two.top, two.bottom, two.left, two.right]).toEqual([RED, RED, WHITE, WHITE])
+  })
+
+  it("gives a style with no width the medium width", () => {
+    const shot = sides("medium", { borderColor: "#ff0000", borderStyle: "solid" })
+    expect(shot.topEdge).toEqual(RED)
+    expect(shot.topInside, "the border is 3px").toEqual(WHITE)
+    expect(shot.middle).toEqual(WHITE)
   })
 
   it("repaints currentColor borders when a hover changes color", () => {

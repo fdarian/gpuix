@@ -197,6 +197,7 @@ describeNative("transitions and animations of an inline box's colours", () => {
             <span
               style={{
                 borderWidth: 4,
+                borderStyle: "solid",
                 borderColor: state === "red" ? colours.red : colours.blue,
                 borderLeftColor: colours.red,
                 transition: "border-color 1s linear",

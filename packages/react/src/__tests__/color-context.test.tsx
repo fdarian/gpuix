@@ -46,7 +46,7 @@ describeNative("currentColor", () => {
   it("takes the element's own color in a border", () => {
     const shot = paint(
       "border",
-      <div style={{ width: 100, height: 100, color: "#ff0000", borderWidth: 10, borderColor: "currentColor" }} />
+      <div style={{ width: 100, height: 100, color: "#ff0000", borderWidth: 10, borderStyle: "solid", borderColor: "currentColor" }} />
     )
     expectNear(shot.at(3, 50), RED)
   })
@@ -117,6 +117,7 @@ describeNative("currentColor", () => {
             height: 100,
             color: "#0000ff",
             borderWidth: 10,
+            borderStyle: "solid",
             borderColor: "currentColor",
             hover: { color: "#ff0000" },
           }}

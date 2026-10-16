@@ -28,7 +28,14 @@ describeNative("display: contents", () => {
       testRoot.render(
         <div
           testId="root"
-          style={{ display: "contents", padding: 30, borderWidth: 4, backgroundColor: "#ff0000", width: 500 }}
+          style={{
+            display: "contents",
+            padding: 30,
+            borderWidth: 4,
+            borderStyle: "solid",
+            backgroundColor: "#ff0000",
+            width: 500,
+          }}
         >
           <div testId="a" style={{ width: 50, height: 50 }} />
           <div style={{ display: "contents" }}>

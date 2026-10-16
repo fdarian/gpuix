@@ -81,7 +81,7 @@ describeNative("getBoundingClientRect", () => {
   it("is the border box, for an input as for a div", () => {
     const { render, unmount } = createTestRoot()
     try {
-      const style = { width: 100, height: 30, borderWidth: 3, borderColor: "#ffffff" }
+      const style = { width: 100, height: 30, borderWidth: 3, borderStyle: "solid", borderColor: "#ffffff" }
       let div: PublicInstance | null = null
       let input: PublicInstance | null = null
       render(

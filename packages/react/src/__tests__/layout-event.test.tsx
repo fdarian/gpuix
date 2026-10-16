@@ -15,7 +15,7 @@ describeNative("onLayout", () => {
         <div style={{ padding: 10 }}>
           <div
             testId="box"
-            style={{ width: 120, height: 40, borderWidth: 2, borderColor: "#fff" }}
+            style={{ width: 120, height: 40, borderWidth: 2, borderStyle: "solid", borderColor: "#fff" }}
             onLayout={(event) => events.push(event)}
           />
         </div>

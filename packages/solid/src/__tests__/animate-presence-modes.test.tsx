@@ -186,6 +186,7 @@ describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="popLayout"'
             position: "relative",
             overflow: "scroll",
             borderWidth: 2,
+            borderStyle: "solid",
             paddingLeft: 6,
             paddingTop: 4,
           }}

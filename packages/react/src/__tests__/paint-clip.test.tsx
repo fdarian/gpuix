@@ -78,6 +78,7 @@ describeNative("rounded overflow clip", () => {
           height: 100,
           borderRadius: 30,
           borderWidth: 10,
+          borderStyle: "solid",
           borderColor: "#0000ff",
           overflow: "hidden",
         }}

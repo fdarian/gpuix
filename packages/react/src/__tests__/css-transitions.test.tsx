@@ -826,7 +826,7 @@ describeNative("CSS transitions", () => {
     // currentColor follows a new color without a transition of its own.
     {
       const { render, tree, settle } = setup()
-      const following = { borderColor: "currentColor", borderWidth: 2 }
+      const following = { borderColor: "currentColor", borderWidth: 2, borderStyle: "solid" }
       render(tree({ color: "#ff0000" }, following))
       settle(16)
       render(tree({ color: "#0000ff" }, following))

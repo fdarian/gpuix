@@ -112,10 +112,10 @@ describe("style props reach the renderer", () => {
     comparePixels(
       "border-clear",
       <div style={{ display: "flex", padding: 20, backgroundColor: "#101010" }}>
-        <div style={{ width: 300, height: 100, borderWidth: 6, borderColor: "#ff0000" }} />
+        <div style={{ width: 300, height: 100, borderWidth: 6, borderStyle: "solid", borderColor: "#ff0000" }} />
       </div>,
       <div style={{ display: "flex", padding: 20, backgroundColor: "#101010" }}>
-        <div style={{ width: 300, height: 100, borderWidth: 0, borderColor: "#ff0000" }} />
+        <div style={{ width: 300, height: 100, borderWidth: 0, borderStyle: "solid", borderColor: "#ff0000" }} />
       </div>
     )
   })
@@ -134,6 +134,7 @@ describe("style props reach the renderer", () => {
             backgroundColor: "#7c86ff",
             borderWidth: 0,
             borderBottomWidth: 12,
+            borderStyle: "solid",
             borderColor: "#ff5c7a",
           }}
         />

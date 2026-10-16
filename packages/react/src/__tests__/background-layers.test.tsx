@@ -198,6 +198,7 @@ describeNative("layers: size, position, repeat, origin, clip", () => {
     const framed = {
       padding: 10,
       borderWidth: 10,
+      borderStyle: "solid",
       borderColor: "#00ff00",
       backgroundImage: solid("red"),
     }

@@ -601,7 +601,9 @@ export interface StyleDesc {
   opacity?: number
 
   /** A length (see `DimensionValue`) with no percentage, or `"thin"` (1px), `"medium"` (3px) or
-   *  `"thick"` (5px). A negative width is 0. The sides win over `borderWidth`. */
+   *  `"thick"` (5px). A negative width is 0. The sides win over `borderWidth`. A side
+   *  only has a width when its line style is visible: with no `borderStyle` (or
+   *  `border*` shorthand or side style) it is `none` and the width is 0, as in CSS. */
   borderWidth?: DimensionValue
   borderTopWidth?: DimensionValue
   borderRightWidth?: DimensionValue
@@ -688,7 +690,8 @@ export interface StyleDesc {
   clipPath?: string
   /** One to four line styles, like `borderColor`: `"dotted"`, `"dotted dashed"` (top-bottom,
    *  left-right), ... A `none` or `hidden` side has no width. One invalid keyword ignores the
-   *  whole value. A side that no `border*` value gives a style is `solid`. */
+   *  whole value. A side that no `border*` value gives a style is `none`, as in CSS:
+   *  no width, nothing painted. A visible style with no width is `medium` (3px). */
   borderStyle?: LineStyle | (string & {})
   borderTopStyle?: LineStyle
   borderRightStyle?: LineStyle

@@ -70,7 +70,7 @@ describe.skipIf(!hasNativeTestRenderer)("getBoundingClientRect", () => {
     const app = createTestRoot()
     let div!: HostElement
     let input!: HostElement
-    const style = { width: 100, height: 30, borderWidth: 3, borderColor: "#ffffff" }
+    const style = { width: 100, height: 30, borderWidth: 3, borderStyle: "solid", borderColor: "#ffffff" }
     app.render(() => (
       <div style={{ flexDirection: "column" }}>
         <div ref={(host) => (div = host)} style={style} />

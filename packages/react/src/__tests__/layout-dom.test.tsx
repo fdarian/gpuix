@@ -75,7 +75,7 @@ describeNative("DOM layout: position", () => {
   it("absolute resolves against the nearest positioned ancestor, not its parent", () => {
     withRoot(
       <div style={{ paddingLeft: 40, paddingTop: 30 }}>
-        <div testId="cb" style={{ position: "relative", width: 300, height: 200, borderWidth: 2, borderColor: "#fff" }}>
+        <div testId="cb" style={{ position: "relative", width: 300, height: 200, borderWidth: 2, borderStyle: "solid", borderColor: "#fff" }}>
           <div testId="middle" style={{ marginLeft: 50, marginTop: 60, width: 100, height: 100 }}>
             <div
               testId="abs"
@@ -667,7 +667,7 @@ describeNative("DOM layout: display contents", () => {
         <div testId="a" style={{ width: 20, height: 20 }} />
         <div
           testId="contents"
-          style={{ display: "contents", width: 500, padding: 40, backgroundColor: "#ff0000", borderWidth: 4 }}
+          style={{ display: "contents", width: 500, padding: 40, backgroundColor: "#ff0000", borderWidth: 4, borderStyle: "solid" }}
         >
           <div testId="b" style={{ width: 20, height: 20 }} />
           <div style={{ display: "contents" }}>

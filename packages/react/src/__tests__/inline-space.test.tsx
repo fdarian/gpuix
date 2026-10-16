@@ -17,9 +17,11 @@ const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color
 const SPACE = {
   marginLeft: 10,
   borderLeftWidth: 2,
+  borderLeftStyle: "solid",
   paddingLeft: 4,
   marginRight: 6,
   borderRightWidth: 1,
+  borderRightStyle: "solid",
   paddingRight: 3,
 } as const
 const LEADING = 16
@@ -89,7 +91,9 @@ describeNative("space of an inline box", () => {
       expect(afterX(SPACE) - plain).toBeCloseTo(LEADING + TRAILING, 1)
       expect(afterX({ paddingLeft: 7 }) - plain).toBeCloseTo(7, 1)
       expect(afterX({ marginRight: 7 }) - plain).toBeCloseTo(7, 1)
-      expect(afterX({ borderLeftWidth: 7 }) - plain).toBeCloseTo(7, 1)
+      expect(afterX({ borderLeftWidth: 7, borderLeftStyle: "solid" }) - plain).toBeCloseTo(7, 1)
+      expect(afterX({ borderLeftWidth: 7, borderLeftColor: "#ff0000" }) - plain, "no line style, no border").toBeCloseTo(0, 1)
+      expect(afterX({ borderLeftStyle: "solid" }) - plain, "medium without a width").toBeCloseTo(3, 1)
     })
   }
 
@@ -137,7 +141,7 @@ describeNative("space of an inline box", () => {
     expect(heightOf({ paddingRight: 2 * column })).toBeCloseTo(2 * LINE, 1)
     expect(heightOf({ marginLeft: 2 * column })).toBeCloseTo(2 * LINE, 1)
     expect(
-      heightOf({ paddingTop: 30, marginBottom: 30, borderTopWidth: 5 }),
+      heightOf({ paddingTop: 30, marginBottom: 30, borderTopWidth: 5, borderTopStyle: "solid" }),
       "vertical space moves no line"
     ).toBeCloseTo(LINE, 1)
   })

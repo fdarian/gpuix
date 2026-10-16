@@ -127,6 +127,7 @@ describeNative("scrollable extent follows CSS scrollable overflow", () => {
           width: 200,
           height: 100,
           borderWidth: 4,
+          borderStyle: "solid",
           borderColor: "#ffffff",
           overflow: "scroll",
         }}

@@ -1582,11 +1582,13 @@ describeNative("style properties", () => {
                     backgroundColor: "#45475a",
                     borderColor: "#89b4fa",
                     borderWidth: 1,
+                  borderStyle: "solid",
                   },
                   active: {
                     backgroundColor: "#585b70",
                     borderColor: "#f38ba8",
                     borderWidth: 2,
+                  borderStyle: "solid",
                   },
                 }}
               >

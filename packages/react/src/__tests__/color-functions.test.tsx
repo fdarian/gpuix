@@ -122,6 +122,7 @@ describeNative("native color functions", () => {
           height: 180,
           backgroundColor: "oklch(67.3% 0.182 276.935)",
           borderWidth: 8,
+          borderStyle: "solid",
           borderColor: "hwb(0 0% 0%)",
           color: "hsl(0 0% 100%)",
           selectionColor: "lab(70% 40 30 / 35%)",
