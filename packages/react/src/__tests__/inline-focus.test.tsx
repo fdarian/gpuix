@@ -482,6 +482,95 @@ describeNative("focus on inline boxes", () => {
       expect(focused()).toBeNull()
     })
 
+    describe("mousedown default", () => {
+      /** An input that has focus, then a press on a focusable span, which `prevent` makes on its `mousedown`
+       *  or `pointerdown` as the DOM lets a handler do. */
+      function pressed(prevent?: "mousedown" | "pointerdown", around = false) {
+        const log: string[] = []
+        const refs: Record<string, any> = {}
+        const span = (
+          <span
+            testId="one"
+            tabIndex={0}
+            onFocus={() => log.push("focus one")}
+            onBlur={() => log.push("blur one")}
+            onMouseDown={prevent === "mousedown" ? (event) => event.preventDefault() : undefined}
+            onPointerDown={prevent === "pointerdown" ? (event) => event.preventDefault() : undefined}
+          >
+            one
+          </span>
+        )
+        const paragraph = (
+          <text testId="p" style={TEXT}>
+            Go to {span}
+          </text>
+        )
+        const setupped = setup(
+          <div style={{ width: 300 }}>
+            <div
+              ref={(element) => (refs.before = element)}
+              testId="before"
+              tabIndex={0}
+              style={STOP}
+              onFocus={() => log.push("focus before")}
+              onBlur={() => log.push("blur before")}
+            />
+            {around ? (
+              <div testId="card" tabIndex={0} style={{ width: 300 }}>
+                {paragraph}
+              </div>
+            ) : (
+              paragraph
+            )}
+          </div>
+        )
+        refs.before.focus()
+        log.length = 0
+        setupped.click("p", 7)
+        return { ...setupped, log }
+      }
+
+      for (const around of [false, true]) {
+        const where = around ? " inside a focusable element" : ""
+
+        it(`keeps focus where it was when mousedown is prevented${where}`, () => {
+          const { focused, log } = pressed("mousedown", around)
+          expect(focused()).toBe("before")
+          expect(log).toEqual([])
+        })
+
+        it(`focuses the span when nothing prevents the press${where}`, () => {
+          const { focused, log } = pressed(undefined, around)
+          expect(focused()).toBe("one")
+          expect(log).toEqual(["blur before", "focus one"])
+        })
+
+        it(`focuses the span when only pointerdown is prevented${where}`, () => {
+          const { focused, log } = pressed("pointerdown", around)
+          expect(focused()).toBe("one")
+          expect(log).toEqual(["blur before", "focus one"])
+        })
+      }
+
+      it("does not carry a prevented press's focus over to the next press", () => {
+        const { focused, click, testRoot } = setup(
+          <div style={{ width: 300 }}>
+            <text testId="p" style={TEXT}>
+              <span testId="one" tabIndex={0} onMouseDown={(event) => event.preventDefault()}>
+                one
+              </span>
+            </text>
+            <div testId="plain" tabIndex={0} style={STOP} />
+          </div>
+        )
+        click("p", 1)
+        expect(focused()).toBeNull()
+        const point = cell(testRoot, "plain", 0)
+        testRoot.renderer.nativeSimulateClick(point.x, point.y)
+        expect(focused()).toBe("plain")
+      })
+    })
+
     it("lets what covers the paragraph take the press", () => {
       const { focused, testRoot } = setup(
         <div style={{ width: 300, height: 100 }}>
