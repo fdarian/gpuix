@@ -15,6 +15,7 @@ import {
   validateKeyframes,
   type EventPayload,
   type MediaFeatures,
+  type WindowOptions,
 } from "../index.js"
 import type {
   DebugFrameOverlayMode,
@@ -32,7 +33,7 @@ import { forgetActiveElementSource } from "./events/window-target.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
-import { readFontFiles } from "./fonts.js"
+import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import {
   registerKeyframesHost,
   registerKeyframesValidator,
@@ -73,6 +74,7 @@ interface NativeTestRendererApi
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
   setAppearance(appearance: string): void
   getAppearance(): string
+  getWindowTitle(): string
   setWindowMediaChange(enabled: boolean): void
   getMediaFeatures(): MediaFeatures
   setMediaFeatures(
@@ -187,15 +189,17 @@ interface NativeTestRendererApi
 }
 
 interface NativeTestRendererConstructor {
-  new (width?: number, height?: number): NativeTestRendererApi
+  new (options?: WindowOptions): NativeTestRendererApi
 }
 
-/** Offscreen window size for a test renderer. Defaults to 1280x800 in native. */
-export interface TestRendererOptions {
-  width?: number
-  height?: number
-  /** Font files registered right after the renderer is created. See `WindowFontsOption`. */
-  fonts?: string[]
+/**
+ * The options a live window takes (`WindowOptions`), applied to the offscreen test window by
+ * the same translation, plus the fonts option and the test hooks below. The size defaults to
+ * 1280x800 and `focus` to false, since the window is offscreen and must not take the OS's
+ * keyboard. `fullscreen`, `appId`, `appName` and `layerShell` have no effect on it; the README's
+ * Testing section lists what each option does there.
+ */
+export interface TestRendererOptions extends WindowOptions, WindowFontsOption {
   /** Framework scheduling boundary for events drained from native. */
   dispatchEvent?: (event: EventPayload) => void
   /**
@@ -372,7 +376,7 @@ export class TestRenderer implements NativeRenderer {
       )
     }
     const fonts = readFontFiles(options.fonts)
-    this.native = new NativeTestRenderer(options.width, options.height)
+    this.native = new NativeTestRenderer(options)
     if (latestRenderer) forgetActiveElementSource(latestRenderer)
     latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)
@@ -941,14 +945,25 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getWindowSize()
   }
 
-  /** Validates the value and does nothing. The test window is a real offscreen
-   *  platform window with no run loop, so it never receives an appearance change. */
+  /** `"system"` | `"light"` | `"dark"`, as on the live renderer: the window's appearance
+   *  follows (`getAppearance`, `light-dark()`, `prefers-color-scheme`) and `appearanceChange`
+   *  is delivered. `"system"` returns to the platform's own. */
   setAppearance(appearance: string): void {
+    this.native.flush()
     this.native.setAppearance(appearance)
+    this.native.flush()
+    this.dispatchNativeEvents()
   }
 
-  /** The offscreen window's appearance, which is the system's. */
+  /** The window's title, as the platform window has it: the `title` option, or `"GPUIX"`. */
+  getWindowTitle(): string {
+    this.native.flush()
+    return this.native.getWindowTitle()
+  }
+
+  /** The window's effective appearance, `"light"` or `"dark"`. */
   getAppearance(): string {
+    this.native.flush()
     return this.native.getAppearance()
   }
 

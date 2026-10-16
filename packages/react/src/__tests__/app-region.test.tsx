@@ -19,7 +19,7 @@ describeRegions("appRegion", () => {
   let log: string[]
 
   beforeEach(() => {
-    testRoot = createTestRoot()
+    testRoot = createTestRoot({ titlebarTransparent: true })
     log = []
   })
 

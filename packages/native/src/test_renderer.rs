@@ -23,7 +23,7 @@ use crate::element_tree::EventPayload;
 use crate::renderer::{
     apply_batch_to_tree, debug_frame_overlay_mode_name, debug_frame_overlay_stats_js,
     parse_debug_frame_overlay_mode, to_element_id, DebugFrameOverlayStats, EventCallback,
-    GpuixView, PathPromptOptions, PromptForPathsTask,
+    GpuixView, PathPromptOptions, PromptForPathsTask, WindowOptions,
 };
 use crate::retained_tree::RetainedTree;
 
@@ -220,6 +220,31 @@ fn update_view_or_defer(
     )
 }
 
+/// Every window option unset, so the test window's own defaults apply. `WindowOptions::default`
+/// is the live renderer's (800x600, focused), not this window's.
+fn unset_window_options() -> WindowOptions {
+    WindowOptions {
+        title: None,
+        app_name: None,
+        width: None,
+        height: None,
+        min_width: None,
+        min_height: None,
+        resizable: None,
+        fullscreen: None,
+        transparent: None,
+        titlebar_transparent: None,
+        window_background: None,
+        appearance: None,
+        traffic_light_x: None,
+        traffic_light_y: None,
+        focus: None,
+        show: None,
+        app_id: None,
+        layer_shell: None,
+    }
+}
+
 /// Default offscreen window size. Matches gpui's `open_offscreen_window_default`,
 /// so a `new TestGpuixRenderer()` with no size behaves exactly as before.
 ///
@@ -374,14 +399,25 @@ impl TestGpuixRenderer {
 
 #[napi]
 impl TestGpuixRenderer {
+    /// The same `WindowOptions` the live renderer opens its window with, translated by the
+    /// same `to_gpui_window_options`. The size defaults to 1280x800 (not the live 800x600),
+    /// and `focus` to false: the window is offscreen and must not take the OS's keyboard.
+    /// `fullscreen` is ignored, because a fullscreen window would leave the offscreen
+    /// position; see the README's test renderer section for what else the window cannot
+    /// represent.
     #[napi(constructor)]
-    pub fn new(width: Option<f64>, height: Option<f64>) -> Result<Self> {
+    pub fn new(options: Option<WindowOptions>) -> Result<Self> {
         // Quiet unless RUST_LOG asks, so a suite can be run for its warnings.
         let _ = env_logger::try_init();
+        let options = options.unwrap_or_else(unset_window_options);
         let window_size = gpui::size(
-            gpui::px(window_dimension(width, DEFAULT_WINDOW_WIDTH, "width")?),
-            gpui::px(window_dimension(height, DEFAULT_WINDOW_HEIGHT, "height")?),
+            gpui::px(window_dimension(options.width, DEFAULT_WINDOW_WIDTH, "width")?),
+            gpui::px(window_dimension(options.height, DEFAULT_WINDOW_HEIGHT, "height")?),
         );
+        let appearance =
+            crate::renderer::appearance_override(&options).map_err(Error::from_reason)?;
+        let title = options.title.clone().unwrap_or_else(|| "GPUIX".to_string());
+        let frameless = options.frameless();
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
         let events: Arc<Mutex<Vec<EventPayload>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -411,23 +447,40 @@ impl TestGpuixRenderer {
 
         // Open an offscreen window at (-10000, -10000) with the same GpuixView
         // and native GPU renderer as production.
+        let bounds = gpui::Bounds {
+            origin: gpui::point(gpui::px(-10000.0), gpui::px(-10000.0)),
+            size: window_size,
+        };
+        let gpui_options = crate::renderer::to_gpui_window_options(
+            &WindowOptions {
+                fullscreen: Some(false),
+                focus: Some(options.focus.unwrap_or(false)),
+                ..options
+            },
+            bounds,
+        );
         let window_handle = cx
-            .open_offscreen_window(window_size, |window, app| {
-                app.new(|cx| {
-                    let mut view = GpuixView::new(
-                        tree_clone,
-                        callback_clone,
-                        "GPUIX Test".to_string(),
-                        selection_clone,
-                        pointer_requests_clone,
-                    );
-                    view.observe_appearance(window, cx);
-                    view.simulate_platform_pointer_lock(simulated_platform_clone);
-                    view.simulate_window_actions(window_actions_clone);
-                    view.set_frameless(true);
-                    crate::events::enable_dom_hit_testing(window);
-                    view.install_key_interception(window, cx);
-                    view
+            .update(|app| {
+                // Before the window opens, as the live renderer does: a window made with an
+                // `appearance` starts in it, and one made without clears the previous one's.
+                app.set_window_appearance(appearance);
+                app.open_window(gpui_options, |window, app| {
+                    app.new(|cx| {
+                        let mut view = GpuixView::new(
+                            tree_clone,
+                            callback_clone,
+                            title,
+                            selection_clone,
+                            pointer_requests_clone,
+                        );
+                        view.observe_appearance(window, cx);
+                        view.simulate_platform_pointer_lock(simulated_platform_clone);
+                        view.simulate_window_actions(window_actions_clone);
+                        view.set_frameless(frameless);
+                        crate::events::enable_dom_hit_testing(window);
+                        view.install_key_interception(window, cx);
+                        view
+                    })
                 })
             })
             .map_err(|e| Error::from_reason(format!("Failed to open test window: {}", e)))?;
@@ -821,8 +874,11 @@ impl TestGpuixRenderer {
     }
 
     #[napi]
-    pub fn set_window_media_change(&self, enabled: bool) {
+    pub fn set_window_media_change(&self, enabled: bool) -> Result<()> {
         self.media.lock().unwrap().listening = enabled;
+        update_view_or_defer(move |view, _window, _cx| {
+            view.set_appearance_media_listener(enabled);
+        })
     }
 
     /// The preferences this window reports, which start as "no preference".
@@ -850,14 +906,21 @@ impl TestGpuixRenderer {
         }
     }
 
-    /// Validates and does nothing. This renderer drives the real offscreen
-    /// platform window, which has no run loop here, so AppKit never delivers
-    /// the appearance change and `getAppearance` would not follow. Forcing
-    /// NSApp's appearance would only change the test process.
+    /// `"system"` follows the platform's light/dark setting, `"light"` and `"dark"` force
+    /// it, as on the live renderer. The override is the platform's (on macOS the process's
+    /// `NSApplication.appearance`), so it outlives this renderer until a window is made
+    /// with another `appearance` or `"system"` is set.
     #[napi]
     pub fn set_appearance(&self, appearance: String) -> Result<()> {
-        crate::renderer::parse_window_appearance(&appearance).map_err(Error::from_reason)?;
-        Ok(())
+        let appearance =
+            crate::renderer::parse_window_appearance(&appearance).map_err(Error::from_reason)?;
+        window_call(move |_window, cx| cx.set_window_appearance(appearance))
+    }
+
+    /// The platform window's title, as the title bar shows it.
+    #[napi]
+    pub fn get_window_title(&self) -> Result<String> {
+        window_call(|window, _cx| window.window_title())
     }
 
     #[napi]

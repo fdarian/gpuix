@@ -20,7 +20,7 @@ function center(root: ReturnType<typeof createTestRoot>, testId: string) {
 
 describeNative('titlebar example', () => {
   it('moves the window from the bar and shows the page no event', () => {
-    const root = createTestRoot({ width: 640, height: 360 })
+    const root = createTestRoot({ width: 640, height: 360, titlebarTransparent: true })
     root.render(<TitlebarApp />)
     const title = center(root, 'title')
 
@@ -32,7 +32,7 @@ describeNative('titlebar example', () => {
   })
 
   it('counts clicks on the no-drag button without moving the window', async () => {
-    const root = createTestRoot({ width: 640, height: 360 })
+    const root = createTestRoot({ width: 640, height: 360, titlebarTransparent: true })
     root.render(<TitlebarApp />)
     const point = center(root, 'count-button')
 
@@ -46,7 +46,7 @@ describeNative('titlebar example', () => {
   })
 
   it('paints the bar', () => {
-    const root = createTestRoot({ width: 640, height: 360 })
+    const root = createTestRoot({ width: 640, height: 360, titlebarTransparent: true })
     const shot = path.join(SHOTS, 'titlebar.png')
     if (fs.existsSync(shot)) fs.unlinkSync(shot)
     root.render(<TitlebarApp />)

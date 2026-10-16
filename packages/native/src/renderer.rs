@@ -5482,6 +5482,14 @@ impl GpuixView {
         }
     }
 
+    /// The appearance half of `set_media_change_listener`: `prefers-color-scheme` changes
+    /// with the window appearance. The test window has no OS notifications to observe, so it
+    /// does not take the other half.
+    #[cfg(feature = "test-support")]
+    pub(crate) fn set_appearance_media_listener(&mut self, enabled: bool) {
+        self.window_media_change = enabled;
+    }
+
     /// How many frames have been painted, for a test that counts the draws a read caused.
     #[cfg(feature = "test-support")]
     pub(crate) fn painted_frame_count(&self) -> u64 {
@@ -9133,7 +9141,7 @@ pub(crate) fn appearance_name(appearance: gpui::WindowAppearance) -> &'static st
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn appearance_override(
+pub(crate) fn appearance_override(
     options: &WindowOptions,
 ) -> std::result::Result<Option<gpui::WindowAppearance>, String> {
     match options.appearance.as_deref() {
@@ -9142,7 +9150,7 @@ fn appearance_override(
     }
 }
 
-fn to_gpui_window_options(
+pub(crate) fn to_gpui_window_options(
     options: &WindowOptions,
     bounds: gpui::Bounds<gpui::Pixels>,
 ) -> gpui::WindowOptions {

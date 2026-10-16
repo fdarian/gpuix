@@ -102,6 +102,7 @@ function calls(r, ids) {
     getSyntaxCacheStats: () => r.getSyntaxCacheStats(),
     getTextSelection: () => r.getTextSelection(ids.field),
     getWindowSize: () => r.getWindowSize(),
+    getWindowTitle: () => r.getWindowTitle(),
     hasPointerCapture: () => r.hasPointerCapture(ids.box, 1),
     isMotionValueAnimating: () => r.isMotionValueAnimating(910),
     jumpMotionValue: () => r.jumpMotionValue(910, 2),

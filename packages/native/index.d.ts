@@ -399,7 +399,15 @@ export declare class GpuixRenderer {
  *   r.captureScreenshot("/tmp/test.png")  // saves rendered UI as PNG
  */
 export declare class TestGpuixRenderer {
-  constructor(width?: number | undefined | null, height?: number | undefined | null)
+  /**
+   * The same `WindowOptions` the live renderer opens its window with, translated by the
+   * same `to_gpui_window_options`. The size defaults to 1280x800 (not the live 800x600),
+   * and `focus` to false: the window is offscreen and must not take the OS's keyboard.
+   * `fullscreen` is ignored, because a fullscreen window would leave the offscreen
+   * position; see the README's test renderer section for what else the window cannot
+   * represent.
+   */
+  constructor(options?: WindowOptions | undefined | null)
   /**
    * How many elements the retained tree holds, reachable from the root or
    * not. `getTreeJson` walks from the root, so it cannot see a node that was
@@ -504,12 +512,14 @@ export declare class TestGpuixRenderer {
    */
   setMediaFeatures(reducedMotion?: boolean | undefined | null, increasedContrast?: boolean | undefined | null, forcedColors?: boolean | undefined | null): void
   /**
-   * Validates and does nothing. This renderer drives the real offscreen
-   * platform window, which has no run loop here, so AppKit never delivers
-   * the appearance change and `getAppearance` would not follow. Forcing
-   * NSApp's appearance would only change the test process.
+   * `"system"` follows the platform's light/dark setting, `"light"` and `"dark"` force
+   * it, as on the live renderer. The override is the platform's (on macOS the process's
+   * `NSApplication.appearance`), so it outlives this renderer until a window is made
+   * with another `appearance` or `"system"` is set.
    */
   setAppearance(appearance: string): void
+  /** The platform window's title, as the title bar shows it. */
+  getWindowTitle(): string
   getAppearance(): string
   /**
    * Simulate a mouse down event at the given window coordinates.

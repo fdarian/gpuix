@@ -961,10 +961,14 @@ accepted and ignored, and `getAppearance()` reports GPUI's value for the
 window. GPUIX does not change the default theme of `<code>`, `<diff>` or
 `<markdown>` with the appearance; pass those your own colors.
 
-`TestRenderer.getAppearance()` reports the system appearance and
-`setAppearance` only validates its argument. The test window is a real
-offscreen platform window without a run loop, so it never receives an
-appearance change and `onAppearanceChange` does not fire under test.
+`TestRenderer` does what the live renderer does: the `appearance` option and
+`setAppearance` apply to the test window, `getAppearance()` reads it back,
+`onAppearanceChange` fires, and `light-dark()` and `prefers-color-scheme` follow.
+`setAppearance('system')` restores the platform's appearance, and a test window
+made without an `appearance` starts there. The override belongs to the platform,
+not to the window (on macOS it is the process's `NSApplication.appearance`), so a
+test that forces one and does not make another window leaves it set for the rest
+of that process.
 
 ### matchMedia
 
@@ -5871,7 +5875,20 @@ renderer.captureScreenshot('/tmp/test.png')
 const text = renderer.getAllText()
 ```
 
-`createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
+`createTestRoot(options)` takes the same window options as a live window (`WindowOptions`), plus `fonts` to register font files, and opens the offscreen window with them through the same translation. The size defaults to 1280x800, not the live 800x600, and `focus` to `false`. What the window does with each option:
+
+| Option | In the test window |
+|---|---|
+| `width`, `height` | The window size (`getWindowSize()`). |
+| `title` | The platform window's title, read with `getWindowTitle()`. `"GPUIX"` when unset. |
+| `appearance` | Applied before the window opens; see [Appearance](#appearance). |
+| `titlebarTransparent` | The window counts as frameless, so [`appRegion`](#window-drag-regions) applies and a press in a drag region is recorded (below). Without it `appRegion` does nothing, as in a window with a titlebar. |
+| `transparent`, `windowBackground` | Set on the native window. |
+| `trafficLightX`, `trafficLightY`, `resizable`, `minWidth`, `minHeight` | Set on the native window, which the test renderer cannot observe: it has no way to resize the window or to read the traffic lights back, so a test sees no difference. |
+| `show` | `false` never orders the window front. |
+| `focus` | `true` makes the offscreen window key and takes the OS's keyboard focus, which is why it defaults to `false`. Focus events come from `setWindowActive`, not from this. |
+| `fullscreen` | **Ignored.** A fullscreen window would leave its offscreen position. |
+| `appName`, `appId`, `layerShell` | **Ignored.** The test window has no application menu, and `appId` and `layerShell` are Linux only. |
 
 Simulated input is dispatched the way a window's own input callback does it, so a
 handler it runs can read and write the renderer: `getFocusedElementId()`,
@@ -5974,13 +5991,16 @@ expect(hit.rects).toHaveLength(1)
 ### Window actions in tests
 
 The test window is offscreen and cannot move, so a press in an
-[`appRegion: "drag"`](#window-drag-regions) box is recorded instead. Every test
-window counts as frameless, so `appRegion` always applies.
+[`appRegion: "drag"`](#window-drag-regions) box is recorded instead. A window
+counts as frameless, and `appRegion` applies, when it was made with
+`titlebarTransparent: true`, as live.
 `takeSimulatedWindowActions()` returns what the window was asked to do since the
 last call, oldest first: `"move"`, `"titlebarDoubleClick"` (macOS), `"zoom"` or
 `"showMenu"` (Linux):
 
 ```ts
+const { renderer } = createTestRoot({ titlebarTransparent: true })
+// render a page with an appRegion: "drag" bar at the top
 renderer.nativeSimulateMouseDown(300, 20)
 renderer.nativeSimulateMouseUp(300, 20)
 expect(renderer.takeSimulatedWindowActions()).toEqual(['move'])
