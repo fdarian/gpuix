@@ -16,7 +16,9 @@ use gpui::{
 use crate::color::ColorContext;
 use crate::css::font_features::FontFeatureState;
 use crate::css::text_decoration;
+use crate::events::state_styles::{resolve_pointer_states, PointerStates};
 use crate::retained_tree::RetainedTree;
+use crate::style::StyleDesc;
 
 use super::inline::Paragraph;
 
@@ -67,11 +69,14 @@ impl RunStyle {
 /// restyles anything, so the caller can paint it as plain text.
 ///
 /// `colors` and `font_state` are the container's, as its children inherit them.
+/// `states` says which pointer states apply to a box, so that its `hover` and
+/// `active` styles are folded into the run it paints.
 pub fn run_styles(
     tree: &RetainedTree,
     paragraph: &Paragraph,
     colors: &ColorContext,
     font_state: &FontFeatureState,
+    states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
 ) -> Vec<RunStyle> {
     let mut runs: Vec<RunStyle> = Vec::with_capacity(paragraph.pieces.len());
     for piece in &paragraph.pieces {
@@ -82,12 +87,20 @@ pub fn run_styles(
         let mut colors = *colors;
         let mut font_state = font_state.clone();
         for id in &piece.boxes {
-            let Some(declared) = tree
+            let Some(base) = tree
                 .elements
                 .get(id)
                 .and_then(|element| element.style.as_deref())
             else {
                 continue;
+            };
+            let pointer_states = states(*id, base);
+            let folded;
+            let declared = if pointer_states.any() {
+                folded = resolve_pointer_states(base, pointer_states);
+                &folded
+            } else {
+                base
             };
             colors = colors.descend(declared);
             // It has no box, so what it declares reaches the text only as far as
@@ -332,6 +345,13 @@ mod tests {
     }
 
     fn runs_of(tree: &RetainedTree) -> Vec<RunStyle> {
+        runs_with(tree, &|_, _| PointerStates::default())
+    }
+
+    fn runs_with(
+        tree: &RetainedTree,
+        states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    ) -> Vec<RunStyle> {
         let plan = plan_children(tree, &tree.elements[&1]);
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
@@ -341,7 +361,35 @@ mod tests {
             paragraph,
             &ColorContext::root(Scheme::Light),
             &FontFeatureState::default(),
+            states,
         )
+    }
+
+    #[test]
+    fn a_hovered_box_paints_its_hover_style_and_its_children_inherit_it() {
+        let tree = tree_with(&[
+            (
+                3,
+                serde_json::json!({
+                    "color": "#ff0000",
+                    "hover": {"color": "#0000ff", "fontWeight": 700}
+                }),
+            ),
+            (5, serde_json::json!({"backgroundColor": "#ffff00"})),
+        ]);
+        let rest = runs_of(&tree);
+        let hovered = runs_with(&tree, &|id, _| PointerStates {
+            hovered: id == 3,
+            ..Default::default()
+        });
+        assert_eq!(rest[1].weight, None);
+        assert_ne!(hovered[1].color, rest[1].color);
+        assert_eq!(hovered[1].weight, Some(FontWeight(700.0)));
+        assert_eq!(
+            hovered[2].color, hovered[1].color,
+            "the span nested in it inherits the hover colour"
+        );
+        assert_eq!(hovered[0], rest[0], "the text before it does not change");
     }
 
     #[test]

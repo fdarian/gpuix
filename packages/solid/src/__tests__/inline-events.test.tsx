@@ -1,7 +1,12 @@
 /** Events on inline boxes: a span is the target where its glyphs are. */
+import fs from "fs"
+import os from "os"
+import path from "path"
 import { describe, expect, it } from "bun:test"
 import type { HostElement } from "../host.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+
+const shots = fs.mkdtempSync(path.join(os.tmpdir(), "gpuix-solid-inline-events-"))
 
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
@@ -85,6 +90,31 @@ describe.skipIf(!hasNativeTestRenderer)("Solid events on inline boxes", () => {
       app.renderer.nativeSimulateMouseMove(point.x, point.y)
     }
     expect(seen).toEqual(["text enter", "a enter", "a leave", "b enter", "b leave"])
+    app.unmount()
+  })
+
+  it("paints the hover style of a span while the pointer is on it", () => {
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ width: 400, backgroundColor: "#ffffff" }}>
+        <text testId="p" style={TEXT}>
+          Hello <span style={{ hover: { color: "#0000ff" } }}>world</span>!
+        </text>
+      </div>
+    ))
+    const shot = (name: string) => {
+      const file = path.join(shots, `${name}.png`)
+      app.renderer.captureScreenshot(file)
+      return fs.readFileSync(file)
+    }
+    const rest = shot("rest")
+    const over = cell(app, "p", 8)
+    app.renderer.nativeSimulateMouseMove(over.x, over.y)
+    expect(shot("over").equals(rest)).toBe(false)
+
+    const away = cell(app, "p", 1)
+    app.renderer.nativeSimulateMouseMove(away.x, away.y)
+    expect(shot("away").equals(rest)).toBe(true)
     app.unmount()
   })
 })

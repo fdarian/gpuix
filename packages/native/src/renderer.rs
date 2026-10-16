@@ -7924,6 +7924,14 @@ fn paragraph_content(
             paragraph,
             &ctx.inherited.colors,
             &ctx.inherited.font_state,
+            &|id, style| {
+                let inert = ctx
+                    .tree
+                    .elements
+                    .get(&id)
+                    .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+                ctx.pointer_states(id, style, inert)
+            },
         ),
         inline_targets: crate::text::inline_hit::Targets::of(
             ctx.tree,

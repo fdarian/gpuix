@@ -2,9 +2,11 @@
 /// is on a glyph of its text, and the span is then the target, with the
 /// paragraph's container and its ancestors on the path.
 
+import fs from "fs"
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
+import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -295,5 +297,71 @@ describeNative("events on inline boxes", () => {
     const { testRoot } = hello()
     expect(testRoot.renderer.findByText("world")).toBeDefined()
     expect(testRoot.renderer.getAllText().join("")).toContain("world")
+  })
+
+  describe("state styles", () => {
+    const BLUE = [0, 0, 255]
+
+    function bluePixels(testRoot: TestRoot, name: string) {
+      const file = `${SHOTS_DIR}/inline-events-${name}.png`
+      fs.rmSync(file, { force: true })
+      testRoot.renderer.captureScreenshot(file)
+      const pixels = readLogicalPixels(file, testRoot.renderer)
+      const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("p")!.id)!
+      let found = 0
+      for (let y = Math.floor(box.y); y < Math.ceil(box.y + box.height); y++) {
+        for (let x = Math.floor(box.x); x < Math.ceil(box.x + box.width); x++) {
+          const [r, g, b] = pixels.at(x, y)
+          if (Math.abs(r - BLUE[0]) < 8 && Math.abs(g - BLUE[1]) < 8 && Math.abs(b - BLUE[2]) < 8) found++
+        }
+      }
+      return found
+    }
+
+    function paragraph(style: Record<string, unknown>) {
+      return setup(
+        <div style={{ width: 400, backgroundColor: "#ffffff" }}>
+          <text testId="p" style={TEXT}>
+            Hello <span style={style}>world</span>!
+          </text>
+        </div>
+      )
+    }
+
+    it("paints the hover style of a span while the pointer is on it", () => {
+      const testRoot = paragraph({ hover: { color: "#0000ff" } })
+      expect(bluePixels(testRoot, "hover-off")).toBe(0)
+
+      const on = cell(testRoot, "p", 8)
+      testRoot.renderer.nativeSimulateMouseMove(on.x, on.y)
+      expect(bluePixels(testRoot, "hover-on")).toBeGreaterThan(20)
+
+      const off = cell(testRoot, "p", 1)
+      testRoot.renderer.nativeSimulateMouseMove(off.x, off.y)
+      expect(bluePixels(testRoot, "hover-gone")).toBe(0)
+    })
+
+    it("paints the active style of a span while its press is held", () => {
+      const testRoot = paragraph({ active: { color: "#0000ff" } })
+      const on = cell(testRoot, "p", 8)
+      testRoot.renderer.nativeSimulateMouseDown(on.x, on.y)
+      expect(bluePixels(testRoot, "active-on")).toBeGreaterThan(20)
+      testRoot.renderer.nativeSimulateMouseUp(on.x, on.y)
+      expect(bluePixels(testRoot, "active-off")).toBe(0)
+    })
+
+    it("paints a span's groupHover when the pointer is on the group around it", () => {
+      const testRoot = setup(
+        <div style={{ width: 400, backgroundColor: "#ffffff" }}>
+          <text testId="p" style={{ ...TEXT, group: true }}>
+            Hello <span style={{ groupHover: { color: "#0000ff" } }}>world</span>!
+          </text>
+        </div>
+      )
+      expect(bluePixels(testRoot, "group-off")).toBe(0)
+      const hello = cell(testRoot, "p", 1)
+      testRoot.renderer.nativeSimulateMouseMove(hello.x, hello.y)
+      expect(bluePixels(testRoot, "group-on")).toBeGreaterThan(20)
+    })
   })
 })
