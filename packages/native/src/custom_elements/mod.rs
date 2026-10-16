@@ -52,6 +52,8 @@ pub struct CustomRenderContext<'a> {
     pub style: Option<&'a crate::style::StyleDesc>,
     /// Computed `color` and `colorScheme` of this element, for `currentColor`.
     pub colors: crate::color::ColorContext,
+    /// Computed `font-size`, root font size and viewport of this element.
+    pub lengths: crate::css::length::LengthContext,
     /// Font features this element declares, for the text it paints.
     pub font_features: Option<gpui::FontFeatures>,
     /// Built child elements from the retained tree for this custom node.
@@ -154,9 +156,10 @@ pub(crate) fn custom_surface(
                 el,
                 &style.without_pointer_states(),
                 &ctx.colors,
+                &ctx.lengths,
             )
         } else {
-            crate::renderer::apply_interactive_styles(el, style, &ctx.colors)
+            crate::renderer::apply_interactive_styles(el, style, &ctx.colors, &ctx.lengths)
         };
     }
     if let Some(features) = ctx.font_features.clone() {
@@ -176,6 +179,7 @@ pub(crate) fn custom_surface(
             ctx.id,
             ctx.style,
             &ctx.colors,
+            &ctx.lengths,
             &ctx.focus_styles,
         ),
         None => crate::focus::apply_focus_within(
@@ -183,6 +187,7 @@ pub(crate) fn custom_surface(
             ctx.id,
             ctx.style,
             &ctx.colors,
+            &ctx.lengths,
             &ctx.focus_styles,
         ),
     };

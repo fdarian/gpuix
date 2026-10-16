@@ -35,6 +35,7 @@ use std::time::Duration;
 use wasm_bindgen::JsCast as _;
 
 use crate::accessibility::{apply_a11y_click, apply_accessibility};
+use crate::css::length::LengthContext;
 use crate::custom_elements::{CustomElementRegistry, CustomRenderContext};
 use crate::events::app_region::AppRegion;
 use crate::element_tree::EventPayload;
@@ -5731,6 +5732,10 @@ impl GpuixView {
         // captured ranges would paint a wash over the wrong glyphs, or at a byte
         // offset that is no longer a character boundary.
         let mut inherited = inherited;
+        let viewport = window.viewport_size();
+        inherited.lengths = inherited
+            .lengths
+            .with_viewport(f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
         if let Some(declaration) = inherited.highlight.as_ref().map(|ctx| ctx.declaration) {
             inherited.highlight = tree
                 .elements
@@ -5999,6 +6004,13 @@ pub(crate) struct Inherited {
     /// Computed `color` and `colorScheme`, which `currentColor` and
     /// `light-dark()` resolve against.
     pub colors: crate::color::ColorContext,
+    /// Computed `font-size`, root font size and viewport, which `em`, `rem` and
+    /// the viewport units resolve against. The viewport is read again on every
+    /// build, including a virtual list's rows.
+    pub lengths: LengthContext,
+    /// No element has been built yet: the next one is the root, whose computed
+    /// font size becomes the `rem`.
+    above_root: bool,
     /// `fontVariantNumeric` and `fontFeatureSettings` as inherited so far.
     pub font_state: crate::css::font_features::FontFeatureState,
     /// The combined features, only on the element whose style declares one of the
@@ -6043,7 +6055,12 @@ impl Inherited {
         GroupState::default()
     }
 
-    fn root(theme: &Theme, appearance: gpui::WindowAppearance, frameless: bool) -> Self {
+    fn root(
+        theme: &Theme,
+        appearance: gpui::WindowAppearance,
+        frameless: bool,
+        viewport: gpui::Size<gpui::Pixels>,
+    ) -> Self {
         let mut wash = theme.accent;
         wash.a = 0.35;
         Self {
@@ -6055,6 +6072,11 @@ impl Inherited {
             app_region: None,
             frameless,
             colors: crate::color::ColorContext::root(color_scheme_of(appearance)),
+            lengths: LengthContext::initial(
+                f64::from(f32::from(viewport.width)),
+                f64::from(f32::from(viewport.height)),
+            ),
+            above_root: true,
             font_state: Default::default(),
             font_features: None,
             interpolate_size: Default::default(),
@@ -6065,6 +6087,10 @@ impl Inherited {
 
     /// Apply the inheritable parts of `style` for the subtree below it.
     fn descend(mut self, style: Option<&StyleDesc>, inert: bool) -> Self {
+        self.lengths = self
+            .lengths
+            .descend(style.and_then(|style| style.font_size.as_ref()), self.above_root);
+        self.above_root = false;
         self.font_features = None;
         self.container = self.container.within(style.unwrap_or(&EMPTY_STYLE));
         self.inert |= inert;
@@ -6853,7 +6879,12 @@ impl gpui::Render for GpuixView {
                     svg_trees: &mut self.svg_trees,
                     now,
                     selection: self.selection.clone(),
-                    inherited: Inherited::root(&theme, window.appearance(), self.frameless),
+                    inherited: Inherited::root(
+                        &theme,
+                        window.appearance(),
+                        self.frameless,
+                        window.viewport_size(),
+                    ),
                     highlights: &mut self.highlights,
                     paint_reports: &self.paint_reports,
                     highlight_events: &mut highlight_events,
@@ -7228,6 +7259,7 @@ pub(crate) fn build_element(
                 activation: ctx.activation,
                 style,
                 colors: inherited.colors,
+                lengths: inherited.lengths,
                 font_features: inherited.font_features.clone(),
                 children: custom_children,
                 svg_markup,
@@ -7423,7 +7455,7 @@ fn build_virtual_list(
         .with_sizing_behavior(gpui::ListSizingBehavior::Auto)
         .id(list_element_id);
     if let Some(style) = element.style.as_deref() {
-        list = apply_styles(list, style, &ctx.inherited.colors).overscroll_behavior(
+        list = apply_styles(list, style, &ctx.inherited.colors, &ctx.inherited.lengths).overscroll_behavior(
             gpui::OverscrollBehavior::Auto,
             crate::scroll::overscroll_y(style),
         );
@@ -7513,7 +7545,7 @@ pub(crate) fn build_host_container(
     };
 
     if let Some(style) = style {
-        el = apply_interactive_styles(el, style, &ctx.inherited.colors);
+        el = apply_interactive_styles(el, style, &ctx.inherited.colors, &ctx.inherited.lengths);
 
         if let Some(features) = ctx.inherited.font_features.clone() {
             el = el.font_features(features);
@@ -7551,6 +7583,7 @@ pub(crate) fn build_host_container(
             element.id,
             style,
             &ctx.inherited.colors,
+            &ctx.inherited.lengths,
             &ctx.focus_styles,
         );
     } else {
@@ -7559,6 +7592,7 @@ pub(crate) fn build_host_container(
             element.id,
             style,
             &ctx.inherited.colors,
+            &ctx.inherited.lengths,
             &ctx.focus_styles,
         );
     }
@@ -7898,36 +7932,42 @@ pub(crate) fn apply_interactive_styles<E>(
     el: E,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
+    lengths: &LengthContext,
 ) -> E
 where
     E: gpui::Styled + gpui::StatefulInteractiveElement,
 {
-    apply_styles(el, style, colors)
+    apply_styles(el, style, colors, lengths)
 }
 
 /// A state refinement: the base colours that follow `currentColor` first, so a
 /// state that changes `color` repaints them, then the state's own styles.
+/// `colors` and `lengths` are the refinement's, from `for_state`.
 pub(crate) fn apply_state_styles<E: gpui::Styled>(
     mut refinement: E,
     base: &StyleDesc,
     state: &StyleDesc,
     colors: &crate::color::ColorContext,
+    lengths: &LengthContext,
 ) -> E {
     if let Some(followers) = base.colors_following_current(state) {
-        refinement = apply_styles(refinement, &followers, colors);
+        refinement = apply_styles(refinement, &followers, colors, lengths);
     }
-    apply_styles(refinement, state, colors)
+    apply_styles(refinement, state, colors, lengths)
 }
 
-/// `colors` is the context of the element `style` belongs to: its own computed
-/// `color`, so `currentColor` in a border or shadow means what CSS says.
+/// `colors` and `lengths` are the context of the element `style` belongs to: its
+/// own computed `color`, so `currentColor` in a border or shadow means what CSS
+/// says, and its computed `font-size`, which is the text size `style.font_size`
+/// declares once resolved.
 pub(crate) fn apply_styles<E: gpui::Styled>(
     el: E,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
+    lengths: &LengthContext,
 ) -> E {
     let fill = style.resolved_fill(colors);
-    apply_styles_with_fill(el, style, colors, fill)
+    apply_styles_with_fill(el, style, colors, lengths, fill)
 }
 
 /// `fill` must be `style.resolved_fill(colors)`.
@@ -7935,6 +7975,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
+    lengths: &LengthContext,
     fill: crate::style::Fill,
 ) -> E {
     el = crate::layout::style::apply(el, style);
@@ -8073,8 +8114,8 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(color) = colors.declared {
         el = el.text_color(color);
     }
-    if let Some(size) = style.font_size {
-        el = el.text_size(gpui::px(size as f32));
+    if style.font_size.is_some() {
+        el = el.text_size(gpui::px(lengths.font_size as f32));
     }
     if let Some(ref family) = style.font_family {
         el = el.font_family(family.clone());
@@ -10089,7 +10130,7 @@ mod inherited_pointer_events_tests {
     }
 
     fn root() -> Inherited {
-        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true)
+        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true, TEST_VIEWPORT)
     }
 
     #[test]
@@ -10126,7 +10167,7 @@ mod inherited_app_region_tests {
     }
 
     fn frameless() -> Inherited {
-        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true)
+        Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, true, TEST_VIEWPORT)
     }
 
     #[test]
@@ -10160,7 +10201,7 @@ mod inherited_app_region_tests {
 
     #[test]
     fn a_window_with_a_titlebar_has_no_regions() {
-        let framed = Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, false);
+        let framed = Inherited::root(&Theme::dark(), gpui::WindowAppearance::Dark, false, TEST_VIEWPORT);
         assert_eq!(framed.descend(Some(&style("drag")), false).app_region, None);
     }
 
@@ -10172,3 +10213,266 @@ mod inherited_app_region_tests {
     }
 }
 
+
+#[cfg(test)]
+const TEST_VIEWPORT: gpui::Size<gpui::Pixels> = gpui::Size {
+    width: gpui::px(800.0),
+    height: gpui::px(600.0),
+};
+
+/// The computed `font-size` through a real build, read back as the height of a
+/// line of text: gpui's line height is a fixed multiple of the font size.
+#[cfg(test)]
+mod font_size_cascade_tests {
+    use super::*;
+
+    const CALIBRATION: u64 = 9999;
+    /// Line heights are rounded to the pixel grid.
+    const TOLERANCE: f64 = 0.5;
+
+    struct Node {
+        id: u64,
+        element_type: &'static str,
+        parent: Option<u64>,
+        style: &'static str,
+    }
+
+    fn node(id: u64, parent: Option<u64>, style: &'static str) -> Node {
+        Node { id, element_type: "div", parent, style }
+    }
+
+    fn virtual_list(id: u64, parent: Option<u64>, style: &'static str) -> Node {
+        Node { id, element_type: "virtual-list", parent, style }
+    }
+
+    fn probe(id: u64) -> u64 {
+        id + 20_000
+    }
+
+    struct Page {
+        tree: Arc<Mutex<RetainedTree>>,
+        window: gpui::WindowHandle<GpuixView>,
+        height_per_px: f64,
+    }
+
+    impl Page {
+        /// The first node is the root. Each node gets a style-less line of text
+        /// that inherits whatever size the node computes.
+        fn new(cx: &mut gpui::TestAppContext, nodes: &[Node]) -> Self {
+            let tree = Arc::new(Mutex::new(RetainedTree::new()));
+            let root = nodes[0].id;
+            {
+                let mut tree = tree.lock().unwrap();
+                let calibration = node(CALIBRATION, Some(root), r#"{"fontSize": 100}"#);
+                for node in nodes.iter().chain([&calibration]) {
+                    let style: StyleDesc = serde_json::from_str(node.style).unwrap();
+                    tree.create_element(node.id, node.element_type.to_owned());
+                    tree.set_style(node.id, Arc::new(style));
+                    tree.create_element(probe(node.id), "div".to_owned());
+                    tree.create_element(probe(node.id) + 10_000, "text".to_owned());
+                    tree.set_text(probe(node.id) + 10_000, "m".to_owned());
+                    tree.append_child(probe(node.id), probe(node.id) + 10_000);
+                    tree.append_child(node.id, probe(node.id));
+                    if let Some(parent) = node.parent {
+                        tree.append_child(parent, node.id);
+                    }
+                }
+                tree.set_root(root);
+            }
+            let view_tree = tree.clone();
+            let window = cx.add_window(|window, _| {
+                crate::events::enable_dom_hit_testing(window);
+                GpuixView::new(
+                    view_tree,
+                    None,
+                    "test".to_owned(),
+                    SharedSelection::default(),
+                    crate::events::state::PointerRequests::default(),
+                )
+            });
+            let mut page = Self { tree, window, height_per_px: 0.0 };
+            page.draw(cx);
+            page.height_per_px = page.height(probe(CALIBRATION)) / 100.0;
+            assert!(page.height_per_px > 0.0, "the calibration text has no height");
+            page
+        }
+
+        fn draw(&self, cx: &mut gpui::TestAppContext) {
+            cx.update_window(self.window.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+            })
+            .unwrap();
+        }
+
+        fn height(&self, id: u64) -> f64 {
+            crate::automation::get_bounds(id)
+                .unwrap_or_else(|| panic!("element {id} was not painted"))
+                .height
+        }
+
+        /// The computed font size of node `id`, from its probe.
+        fn font_size(&self, id: u64) -> f64 {
+            self.height(probe(id)) / self.height_per_px
+        }
+
+        fn assert_font_sizes(&self, expected: &[(u64, f64)]) {
+            for (id, size) in expected {
+                let measured = self.font_size(*id);
+                assert!(
+                    (measured - size).abs() <= TOLERANCE,
+                    "node {id} should compute {size}px but measures {measured}px"
+                );
+            }
+        }
+
+        fn set_style(&self, cx: &mut gpui::TestAppContext, id: u64, style: &str) {
+            let style: StyleDesc = serde_json::from_str(style).unwrap();
+            self.tree.lock().unwrap().set_style(id, Arc::new(style));
+            self.draw(cx);
+        }
+    }
+
+    #[gpui::test]
+    fn a_page_without_a_font_size_uses_the_default(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(cx, &[node(1, None, "{}"), node(2, Some(1), "{}")]);
+        page.assert_font_sizes(&[(2, crate::css::length::INITIAL_FONT_SIZE)]);
+    }
+
+    #[gpui::test]
+    fn em_is_relative_to_the_parent_and_compounds(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": 10}"#),
+                node(2, Some(1), r#"{"fontSize": "2em"}"#),
+                node(3, Some(2), r#"{"fontSize": "1.5em"}"#),
+                node(4, Some(3), "{}"),
+            ],
+        );
+        // A child that declares nothing inherits the computed size.
+        page.assert_font_sizes(&[(1, 10.0), (2, 20.0), (3, 30.0), (4, 30.0)]);
+    }
+
+    #[gpui::test]
+    fn a_percentage_is_a_fraction_of_the_parents_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": 20}"#),
+                node(2, Some(1), r#"{"fontSize": "150%"}"#),
+                node(3, Some(2), r#"{"fontSize": "50%"}"#),
+            ],
+        );
+        page.assert_font_sizes(&[(2, 30.0), (3, 15.0)]);
+    }
+
+    #[gpui::test]
+    fn rem_is_the_initial_size_until_the_root_sets_one(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                node(2, Some(1), r#"{"fontSize": "2rem"}"#),
+                node(3, Some(2), r#"{"fontSize": "0.5rem"}"#),
+            ],
+        );
+        page.assert_font_sizes(&[(2, 32.0), (3, 8.0)]);
+    }
+
+    #[gpui::test]
+    fn rem_follows_the_font_size_the_root_sets(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": "10px"}"#),
+                node(2, Some(1), r#"{"fontSize": "3rem"}"#),
+                node(3, Some(2), r#"{"fontSize": "1rem"}"#),
+            ],
+        );
+        page.assert_font_sizes(&[(2, 30.0), (3, 10.0)]);
+    }
+
+    #[gpui::test]
+    fn the_roots_own_rem_is_the_initial_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[node(1, None, r#"{"fontSize": "2rem"}"#), node(2, Some(1), r#"{"fontSize": "1rem"}"#)],
+        );
+        page.assert_font_sizes(&[(1, 32.0), (2, 32.0)]);
+    }
+
+    #[gpui::test]
+    fn viewport_units_in_a_font_size_follow_a_resize(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                node(2, Some(1), r#"{"fontSize": "calc(1rem + 2vw)"}"#),
+                node(3, Some(2), r#"{"fontSize": "10vh"}"#),
+            ],
+        );
+        let width = cx
+            .update_window(page.window.into(), |_, window, _| f64::from(f32::from(window.viewport_size().width)))
+            .unwrap();
+        page.assert_font_sizes(&[(2, 16.0 + width * 0.02)]);
+        cx.simulate_window_resize(page.window.into(), gpui::size(gpui::px(500.0), gpui::px(300.0)));
+        page.draw(cx);
+        page.assert_font_sizes(&[(2, 16.0 + 500.0 * 0.02), (3, 30.0)]);
+    }
+
+    #[gpui::test]
+    fn a_new_style_changes_the_size_children_resolve_against(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[node(1, None, r#"{"fontSize": 20}"#), node(2, Some(1), r#"{"fontSize": "2em"}"#)],
+        );
+        page.assert_font_sizes(&[(2, 40.0)]);
+        page.set_style(cx, 1, r#"{"fontSize": 10}"#);
+        page.assert_font_sizes(&[(2, 20.0)]);
+    }
+
+    #[gpui::test]
+    fn a_hover_font_size_changes_what_the_children_resolve_against(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": 20}"#),
+                node(2, Some(1), r#"{"fontSize": "1em", "hover": {"fontSize": "2em"}}"#),
+                node(3, Some(2), r#"{"fontSize": "1.5em"}"#),
+            ],
+        );
+        page.assert_font_sizes(&[(2, 20.0), (3, 30.0)]);
+        let bounds = crate::automation::get_bounds(2).unwrap();
+        let inside = gpui::point(
+            gpui::px((bounds.x + bounds.width / 2.0) as f32),
+            gpui::px((bounds.y + 1.0) as f32),
+        );
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            inside,
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        page.assert_font_sizes(&[(2, 40.0), (3, 60.0)]);
+    }
+
+    #[gpui::test]
+    fn a_virtual_list_row_resolves_viewport_units_in_the_current_window(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                virtual_list(2, Some(1), r#"{"height": 300}"#),
+                node(3, Some(2), r#"{"fontSize": "10vh"}"#),
+            ],
+        );
+        let height = cx
+            .update_window(page.window.into(), |_, window, _| f64::from(f32::from(window.viewport_size().height)))
+            .unwrap();
+        page.assert_font_sizes(&[(3, height * 0.1)]);
+        cx.simulate_window_resize(page.window.into(), gpui::size(gpui::px(500.0), gpui::px(300.0)));
+        page.draw(cx);
+        page.assert_font_sizes(&[(3, 30.0)]);
+    }
+}

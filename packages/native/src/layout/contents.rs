@@ -191,12 +191,12 @@ mod tests {
         assert_eq!(overlay.color.as_deref(), Some("red"));
 
         let own = StyleDesc {
-            font_size: Some(12.0),
+            font_size: Some(crate::css::length::LinearLength::px(12.0)),
             ..Default::default()
         };
         let merged = own.with_inherited_overlay(&overlay);
         assert_eq!(merged.color.as_deref(), Some("red"));
-        assert_eq!(merged.font_size, Some(12.0));
+        assert_eq!(merged.font_size, Some(crate::css::length::LinearLength::px(12.0)));
 
         let own_color = StyleDesc {
             color: Some("blue".to_string()),

@@ -30,6 +30,7 @@ use std::sync::Arc;
 use gpui::{px, Font, Hsla, SharedString};
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
+use crate::css::length::LengthContext;
 use crate::style::StyleDesc;
 use crate::syntax::{cache::highlight_cached, HighlightedDocument};
 use crate::text::runs::runs_for_spans;
@@ -106,10 +107,17 @@ impl Typography {
     }
 }
 
-fn typography(style: Option<&StyleDesc>, theme: &Theme, m: &Metrics) -> Typography {
+/// `lengths` is the element's own: its computed font size is the declared
+/// `fontSize` once resolved against the parent's.
+fn typography(
+    style: Option<&StyleDesc>,
+    lengths: &LengthContext,
+    theme: &Theme,
+    m: &Metrics,
+) -> Typography {
     let text_size = style
-        .and_then(|style| style.font_size)
-        .map(|size| size as f32)
+        .is_some_and(|style| style.font_size.is_some())
+        .then_some(lengths.font_size as f32)
         .filter(|size| *size > 0.0)
         .unwrap_or(m.code_text_size);
     Typography {
@@ -166,7 +174,7 @@ impl CustomElement for CodeElement {
         let theme = self.theme.clone();
         let m = &theme.metrics;
         let highlight = self.resolve_highlight();
-        let type_style = typography(ctx.style, &theme, m);
+        let type_style = typography(ctx.style, &ctx.lengths, &theme, m);
         let font = type_style.font();
         let lines: Vec<&str> = self.code.split('\n').collect();
         let gutter_width = gutter_width(lines.len(), m);
@@ -291,10 +299,17 @@ mod tests {
         assert_eq!(gutter_width(9, &m), 64.0);
     }
 
+    use crate::css::length::LinearLength;
+
+    fn lengths_of(style: Option<&StyleDesc>) -> LengthContext {
+        LengthContext::initial(800.0, 600.0)
+            .descend(style.and_then(|style| style.font_size.as_ref()), false)
+    }
+
     #[test]
     fn typography_falls_back_to_the_theme() {
         let theme = Theme::dark();
-        let resolved = typography(None, &theme, &theme.metrics);
+        let resolved = typography(None, &lengths_of(None), &theme, &theme.metrics);
         assert_eq!(resolved.family, theme.font_mono);
         assert_eq!(resolved.text_size, theme.metrics.code_text_size);
         assert_eq!(resolved.line_height, theme.metrics.code_line_height);
@@ -306,12 +321,12 @@ mod tests {
         let theme = Theme::dark();
         let style = StyleDesc {
             font_family: Some("Fira Code".to_string()),
-            font_size: Some(20.0),
+            font_size: Some(LinearLength::px(20.0)),
             line_height: Some(30.0),
             color: Some("#ff0000".to_string()),
             ..Default::default()
         };
-        let resolved = typography(Some(&style), &theme, &theme.metrics);
+        let resolved = typography(Some(&style), &lengths_of(Some(&style)), &theme, &theme.metrics);
         assert_eq!(resolved.family, "Fira Code");
         assert_eq!(resolved.text_size, 20.0);
         assert_eq!(resolved.line_height, 30.0);
@@ -325,11 +340,11 @@ mod tests {
     fn typography_ignores_a_zero_size_or_line_height() {
         let theme = Theme::dark();
         let style = StyleDesc {
-            font_size: Some(0.0),
+            font_size: Some(LinearLength::px(0.0)),
             line_height: Some(0.0),
             ..Default::default()
         };
-        let resolved = typography(Some(&style), &theme, &theme.metrics);
+        let resolved = typography(Some(&style), &lengths_of(Some(&style)), &theme, &theme.metrics);
         assert_eq!(resolved.text_size, theme.metrics.code_text_size);
         assert_eq!(resolved.line_height, theme.metrics.code_line_height);
     }
@@ -338,10 +353,10 @@ mod tests {
     fn a_bare_font_size_scales_the_row_height() {
         let theme = Theme::dark();
         let style = StyleDesc {
-            font_size: Some((theme.metrics.code_text_size * 2.0) as f64),
+            font_size: Some(LinearLength::px((theme.metrics.code_text_size * 2.0) as f64)),
             ..Default::default()
         };
-        let resolved = typography(Some(&style), &theme, &theme.metrics);
+        let resolved = typography(Some(&style), &lengths_of(Some(&style)), &theme, &theme.metrics);
         // Doubling the glyphs without doubling the row would overlap the lines.
         assert_eq!(resolved.line_height, theme.metrics.code_line_height * 2.0);
     }
@@ -351,10 +366,10 @@ mod tests {
         let mut metrics = Metrics::default();
         metrics.code_text_size = 0.0;
         let style = StyleDesc {
-            font_size: Some(20.0),
+            font_size: Some(LinearLength::px(20.0)),
             ..Default::default()
         };
-        let resolved = typography(Some(&style), &Theme::dark(), &metrics);
+        let resolved = typography(Some(&style), &lengths_of(Some(&style)), &Theme::dark(), &metrics);
         assert_eq!(resolved.line_height, metrics.code_line_height);
     }
 

@@ -2172,8 +2172,8 @@ mod tests {
         let mut frames = Frames::new();
         frames.define("grow", r#"{ "to": { "fontSize": 20 } }"#);
         let animated = fading("grow 1s linear");
-        assert_eq!(frames.frame(0, &animated).font_size, Some(20.0));
-        assert_eq!(frames.frame(500, &animated).font_size, Some(20.0));
+        assert_eq!(frames.frame(0, &animated).font_size, Some(crate::css::length::LinearLength::px(20.0)));
+        assert_eq!(frames.frame(500, &animated).font_size, Some(crate::css::length::LinearLength::px(20.0)));
     }
 
     #[test]

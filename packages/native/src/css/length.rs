@@ -18,7 +18,7 @@ use super::dimension::{parse_linear_length, MAX_LENGTH};
 /// `vmin` and `vmax` stay separate because which viewport side they follow is
 /// only known against a window.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub(crate) struct LinearLength {
+pub struct LinearLength {
     pub(crate) px: f64,
     pub(crate) percent: f64,
     pub(crate) em: f64,
@@ -100,16 +100,73 @@ impl LinearLength {
     }
 }
 
-/// What a length needs besides itself to become px.
+/// The CSS initial `font-size` in px. gpui's default text style is `rems(1.)` and
+/// `Window::rem_size` is 16px until set, which gpuix never does.
+pub(crate) const INITIAL_FONT_SIZE: f64 = 16.0;
+
+/// What a length needs besides itself to become px. One context describes one
+/// element; `descend` makes the context its children inherit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LengthContext {
+    /// This element's computed `font-size`, which `em` means.
     pub(crate) font_size: f64,
+    /// The parent's computed `font-size`: the `em` and `%` of this element's own
+    /// `font-size`, and of a state refinement of it.
+    parent_font_size: f64,
+    /// The computed `font-size` of the root element, which `rem` means.
     pub(crate) root_font_size: f64,
     pub(crate) viewport_width: f64,
     pub(crate) viewport_height: f64,
 }
 
 impl LengthContext {
+    /// The context above the root element: every font size is the initial one.
+    pub(crate) fn initial(viewport_width: f64, viewport_height: f64) -> Self {
+        Self {
+            font_size: INITIAL_FONT_SIZE,
+            parent_font_size: INITIAL_FONT_SIZE,
+            root_font_size: INITIAL_FONT_SIZE,
+            viewport_width,
+            viewport_height,
+        }
+    }
+
+    pub(crate) fn with_viewport(self, viewport_width: f64, viewport_height: f64) -> Self {
+        Self { viewport_width, viewport_height, ..self }
+    }
+
+    /// The context of an element declaring `font_size`, whose parent has `self`.
+    /// A font size is relative to the parent's: `em` is its size and `%` a
+    /// fraction of it. `rem` is the root's, except for the root element itself,
+    /// whose `rem` is still the initial size. No declaration inherits.
+    pub(crate) fn descend(&self, font_size: Option<&LinearLength>, is_root: bool) -> Self {
+        let computed = self.computed_font_size(font_size);
+        Self {
+            font_size: computed,
+            parent_font_size: self.font_size,
+            root_font_size: if is_root { computed } else { self.root_font_size },
+            ..*self
+        }
+    }
+
+    /// The context of a state refinement (`focusVisible`) of the element that has
+    /// `self`: its `font-size` still resolves against the parent's, and a state
+    /// that sets none keeps the element's own.
+    pub(crate) fn for_state(&self, font_size: Option<&LinearLength>) -> Self {
+        let Some(font_size) = font_size else { return *self };
+        let parent = Self { font_size: self.parent_font_size, ..*self };
+        Self { font_size: parent.computed_font_size(Some(font_size)), ..*self }
+    }
+
+    /// `self` is the parent's context. A negative result is clamped to 0, as CSS
+    /// clamps `calc()` in a non-negative range.
+    fn computed_font_size(&self, declared: Option<&LinearLength>) -> f64 {
+        match declared {
+            Some(length) => self.resolve(length, self.font_size).max(0.0),
+            None => self.font_size,
+        }
+    }
+
     /// `percent_basis` is the px a `100%` stands for.
     pub(crate) fn resolve(&self, length: &LinearLength, percent_basis: f64) -> f64 {
         let (min_side, max_side) = if self.viewport_width < self.viewport_height {
@@ -297,8 +354,13 @@ mod tests {
         }
     }
 
-    const CONTEXT: LengthContext =
-        LengthContext { font_size: 20.0, root_font_size: 16.0, viewport_width: 800.0, viewport_height: 600.0 };
+    const CONTEXT: LengthContext = LengthContext {
+        font_size: 20.0,
+        parent_font_size: 10.0,
+        root_font_size: 16.0,
+        viewport_width: 800.0,
+        viewport_height: 600.0,
+    };
 
     #[test]
     fn resolve_adds_every_term_in_px() {
@@ -330,5 +392,80 @@ mod tests {
         assert_eq!(CONTEXT.split(&parse("calc(100% - 20px)")), (-20.0, 1.0));
         assert_eq!(CONTEXT.split(&parse("calc(50% + 1em + 10vw)")), (100.0, 0.5));
         assert_eq!(CONTEXT.split(&parse("12px")), (12.0, 0.0));
+    }
+
+    fn context(width: f64, height: f64) -> LengthContext {
+        LengthContext::initial(width, height)
+    }
+
+    #[test]
+    fn the_initial_context_is_the_default_size_everywhere() {
+        let initial = context(800.0, 600.0);
+        assert_eq!(initial.font_size, INITIAL_FONT_SIZE);
+        assert_eq!(initial.root_font_size, INITIAL_FONT_SIZE);
+        assert_eq!((initial.viewport_width, initial.viewport_height), (800.0, 600.0));
+        let resized = initial.with_viewport(300.0, 200.0);
+        assert_eq!((resized.viewport_width, resized.viewport_height), (300.0, 200.0));
+        assert_eq!(resized.font_size, INITIAL_FONT_SIZE);
+    }
+
+    #[test]
+    fn a_font_size_without_a_declaration_is_the_parents() {
+        let parent = context(800.0, 600.0).descend(Some(&parse("20px")), true);
+        let child = parent.descend(None, false);
+        assert_eq!(child.font_size, 20.0);
+        assert_eq!(child.root_font_size, 20.0);
+    }
+
+    #[test]
+    fn em_and_percent_in_a_font_size_are_the_parents_size() {
+        let parent = context(800.0, 600.0).descend(Some(&parse("20px")), true);
+        assert_eq!(parent.descend(Some(&parse("1.5em")), false).font_size, 30.0);
+        assert_eq!(parent.descend(Some(&parse("50%")), false).font_size, 10.0);
+        assert_eq!(parent.descend(Some(&parse("calc(100% + 2px)")), false).font_size, 22.0);
+        assert_eq!(parent.descend(Some(&parse("calc(1em - 5px)")), false).font_size, 15.0);
+    }
+
+    #[test]
+    fn nested_em_compounds() {
+        let root = context(800.0, 600.0).descend(Some(&parse("10px")), true);
+        let child = root.descend(Some(&parse("2em")), false);
+        let grandchild = child.descend(Some(&parse("2em")), false);
+        assert_eq!((child.font_size, grandchild.font_size), (20.0, 40.0));
+    }
+
+    #[test]
+    fn rem_is_the_roots_size_and_the_roots_own_rem_is_the_initial_one() {
+        let root = context(800.0, 600.0).descend(Some(&parse("2rem")), true);
+        assert_eq!(root.font_size, 2.0 * INITIAL_FONT_SIZE);
+        assert_eq!(root.root_font_size, 2.0 * INITIAL_FONT_SIZE);
+        let child = root.descend(Some(&parse("1.5rem")), false);
+        assert_eq!(child.font_size, 3.0 * INITIAL_FONT_SIZE);
+        assert_eq!(child.root_font_size, 2.0 * INITIAL_FONT_SIZE);
+    }
+
+    #[test]
+    fn viewport_units_in_a_font_size_follow_the_viewport() {
+        let size = parse("calc(1rem + 2vw)");
+        let wide = context(800.0, 600.0).descend(Some(&size), false);
+        assert_eq!(wide.font_size, 32.0);
+        let narrow = context(400.0, 600.0).descend(Some(&size), false);
+        assert_eq!(narrow.font_size, 24.0);
+    }
+
+    #[test]
+    fn a_negative_font_size_is_zero() {
+        let size = parse("calc(1em - 40px)");
+        assert_eq!(context(800.0, 600.0).descend(Some(&size), false).font_size, 0.0);
+    }
+
+    #[test]
+    fn a_state_font_size_resolves_against_the_parent_and_a_state_without_one_keeps_the_elements() {
+        let parent = context(800.0, 600.0).descend(Some(&parse("20px")), true);
+        let element = parent.descend(Some(&parse("2em")), false);
+        assert_eq!(element.font_size, 40.0);
+        assert_eq!(element.for_state(Some(&parse("1.5em"))).font_size, 30.0);
+        assert_eq!(element.for_state(None), element);
+        assert_eq!(element.for_state(Some(&parse("1.5em"))).root_font_size, 20.0);
     }
 }

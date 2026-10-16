@@ -355,7 +355,9 @@ pub struct StyleDesc {
     pub outline_offset: Option<f64>,
 
     // Text
-    pub font_size: Option<f64>,
+    /// A number is px; a string is a CSS length. `em` and `%` are relative to the
+    /// parent's font size, `rem` to the root's. Inherited.
+    pub font_size: Option<crate::css::length::LinearLength>,
     pub font_family: Option<String>,
     pub font_weight: Option<FontWeightValue>,
     /// CSS `font-style`: `normal`, `italic` or `oblique`. Inherited.

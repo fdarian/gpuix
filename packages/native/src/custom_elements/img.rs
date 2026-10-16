@@ -546,7 +546,7 @@ impl CustomElement for ImgElement {
         el = crate::events::app_region::mark(el, ctx.app_region);
 
         if let Some(style) = ctx.style {
-            el = crate::renderer::apply_interactive_styles(el, style, &ctx.colors);
+            el = crate::renderer::apply_interactive_styles(el, style, &ctx.colors, &ctx.lengths);
             // GPUI fills `aspect_ratio` from the bitmap once it loads. That
             // overrides a definite height and jumps the box. A CSS `<img>` with
             // both width and height keeps that box; `objectFit` paints inside it.

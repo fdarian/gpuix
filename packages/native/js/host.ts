@@ -622,7 +622,7 @@ export interface StyleDesc {
   /** Gap between the border box and the outline. Negative draws it inside. */
   outlineOffset?: number
 
-  fontSize?: number
+  fontSize?: number | string
   fontFamily?: string
   fontWeight?: string | number
   /** CSS `font-style`, inherited. Applies to the element and to inline runs. */

@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
+use crate::css::length::LinearLength;
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
 
@@ -92,6 +93,21 @@ impl Field for Option<DimensionValue> {
             AnimValue::Auto => DimensionValue::Auto,
             other => unreachable!("a dimension field was given {other:?}"),
         });
+    }
+}
+
+impl Field for Option<LinearLength> {
+    /// Only a plain px length is a number a track can run from: `em`, `%` and the
+    /// viewport units need the cascade, which motion does not have.
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+        self.as_ref()?.as_px().map(AnimValue::Number)
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Number(value) => *self = Some(LinearLength::px(value)),
+            other => unreachable!("a length field was given {other:?}"),
+        }
     }
 }
 
@@ -491,6 +507,14 @@ impl AnimProp {
         let name = self.name();
         let colors = self.colors(colors);
         let parsed = match self.kind() {
+            Kind::Number if self == Self::FontSize && value.is_string() => {
+                return Err(
+                    "motion cannot animate fontSize to or from a CSS length: only a number of px, \
+                     because em, rem, % and the viewport units are resolved against the parent \
+                     and the window when the tree is applied"
+                        .to_owned(),
+                );
+            }
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
             Kind::FontWeight => {
                 let weight: FontWeightValue = serde_json::from_value(value.clone())
@@ -682,6 +706,35 @@ mod tests {
             Some(AnimValue::Keyword(Some("grid".to_string())))
         );
         assert_eq!(AnimProp::Visibility.read(&style, &colors), None);
+    }
+
+    #[test]
+    fn only_a_px_font_size_is_animatable() {
+        let colors = Colors::root();
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::FontSize.read(&style, &colors)
+        };
+        assert_eq!(read(r#"{ "fontSize": 18 }"#), Some(AnimValue::Number(18.0)));
+        assert_eq!(read(r#"{ "fontSize": "18px" }"#), Some(AnimValue::Number(18.0)));
+        assert_eq!(read(r#"{ "fontSize": "1.5em" }"#), None);
+        assert_eq!(read(r#"{ "fontSize": "calc(1rem + 2vw)" }"#), None);
+
+        let mut style = StyleDesc::default();
+        AnimProp::FontSize.write(&mut style, AnimValue::Number(24.0));
+        assert_eq!(style.font_size, Some(LinearLength::px(24.0)));
+    }
+
+    #[test]
+    fn a_font_size_target_must_be_a_number_and_a_css_length_says_why() {
+        let colors = Colors::root();
+        assert_eq!(
+            AnimProp::FontSize.parse(&serde_json::json!(18), &colors).unwrap(),
+            AnimValue::Number(18.0)
+        );
+        let error = AnimProp::FontSize.parse(&serde_json::json!("2em"), &colors).unwrap_err();
+        assert!(error.starts_with("motion cannot animate fontSize to or from a CSS length"), "{error}");
+        assert!(AnimProp::FontSize.parse(&serde_json::json!(-1), &colors).is_err());
     }
 
     #[test]

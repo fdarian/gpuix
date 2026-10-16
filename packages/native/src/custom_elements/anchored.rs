@@ -368,7 +368,7 @@ impl CustomElement for AnchoredElement {
         content = crate::events::app_region::mark(content, ctx.app_region);
         content = crate::automation::track_own_bounds(content, ctx.id, ctx.observe.clone());
         if let Some(style) = ctx.style {
-            content = crate::renderer::apply_interactive_styles(content, style, &ctx.colors);
+            content = crate::renderer::apply_interactive_styles(content, style, &ctx.colors, &ctx.lengths);
         }
         if self.fill_window {
             // `anchored()` is absolute and sized by its content, so a percentage
