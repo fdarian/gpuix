@@ -92,6 +92,11 @@ impl LinearLength {
         terms.iter().all(|term| *term <= 0.0) && terms.iter().any(|term| *term < 0.0)
     }
 
+    /// Whether the px of this length depend on the font size or the viewport.
+    pub(crate) fn is_relative(&self) -> bool {
+        self.terms()[2..].iter().any(|term| *term != 0.0)
+    }
+
     pub(crate) fn has_percent(&self) -> bool {
         self.percent != 0.0
     }

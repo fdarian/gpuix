@@ -83,7 +83,7 @@ pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
         _ => {}
     }
     el = apply_flex_direction(el, style);
-    el = apply_grid(el, style);
+    el = apply_grid(el, style, lengths);
     el = apply_size(el, style, lengths);
     el = apply_margin(el, style, lengths);
     el = apply_padding(el, style, lengths);
@@ -215,7 +215,7 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthConte
     el
 }
 
-fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc) -> E {
+fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     match &style.grid_template_columns {
         Some(GridTemplateValue::Count(count)) => {
             el = match style.grid_column_min.as_deref() {
@@ -224,8 +224,8 @@ fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc) -> E {
                 _ => el.grid_cols(*count),
             };
         }
-        Some(GridTemplateValue::Tracks { tracks, .. }) => {
-            el.style().grid_cols_template = Some(tracks.as_ref().clone());
+        Some(GridTemplateValue::Tracks(list)) => {
+            el.style().grid_cols_template = Some(list.resolve(lengths));
         }
         None => {}
     }
@@ -237,16 +237,16 @@ fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc) -> E {
                 _ => el.grid_rows(*count),
             };
         }
-        Some(GridTemplateValue::Tracks { tracks, .. }) => {
-            el.style().grid_rows_template = Some(tracks.as_ref().clone());
+        Some(GridTemplateValue::Tracks(list)) => {
+            el.style().grid_rows_template = Some(list.resolve(lengths));
         }
         None => {}
     }
     if let Some(auto) = &style.grid_auto_columns {
-        el.style().grid_auto_cols = Some(auto.tracks.as_ref().clone());
+        el.style().grid_auto_cols = Some(auto.resolve(lengths));
     }
     if let Some(auto) = &style.grid_auto_rows {
-        el.style().grid_auto_rows = Some(auto.tracks.as_ref().clone());
+        el.style().grid_auto_rows = Some(auto.resolve(lengths));
     }
     if let Some(flow) = style.grid_auto_flow.as_deref().and_then(auto_flow) {
         el.style().grid_auto_flow = Some(flow);

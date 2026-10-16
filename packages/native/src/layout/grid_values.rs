@@ -9,6 +9,7 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::grid;
+use crate::css::length::LengthContext;
 
 enum Input<'a> {
     Number(f64),
@@ -59,22 +60,48 @@ fn number_as_line(number: f64) -> Result<gpui::GridPlacement, String> {
     Ok(gpui::GridPlacement::Line(number as i16))
 }
 
+/// The context a track list is checked in when it is deserialized. Whether a
+/// list is valid never depends on the context, only the px of its relative
+/// lengths do.
+fn validation_context() -> LengthContext {
+    LengthContext::initial(0.0, 0.0)
+}
+
+const REPARSE: &str = "a track list that parsed once parses in every context";
+
 /// `gridTemplateColumns` / `gridTemplateRows`: a CSS track list, or a count `n`
 /// meaning `repeat(n, minmax(0, 1fr))`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GridTemplateValue {
     Count(u16),
-    Tracks {
-        source: String,
-        tracks: Arc<gpui::GridTemplateTracks>,
-    },
+    Tracks(GridTemplateList),
+}
+
+/// A track list and the text it was parsed from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridTemplateList {
+    source: String,
+    /// Parsed in [`validation_context`], so only final when `relative` is false.
+    tracks: Arc<gpui::GridTemplateTracks>,
+    relative: bool,
+}
+
+impl GridTemplateList {
+    /// The tracks with their `em`, `rem` and viewport lengths resolved in
+    /// `lengths`, the context of the element the list belongs to.
+    pub(crate) fn resolve(&self, lengths: &LengthContext) -> gpui::GridTemplateTracks {
+        if !self.relative {
+            return self.tracks.as_ref().clone();
+        }
+        grid::parse_template(&self.source, lengths).expect(REPARSE).value
+    }
 }
 
 impl Serialize for GridTemplateValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Count(count) => serializer.serialize_u16(*count),
-            Self::Tracks { source, .. } => serializer.serialize_str(source),
+            Self::Tracks(list) => serializer.serialize_str(&list.source),
         }
     }
 }
@@ -87,10 +114,14 @@ impl<'de> Deserialize<'de> for GridTemplateValue {
             |input| match input {
                 // Existing behaviour: a count is clamped, not rejected.
                 Input::Number(count) => Ok(Self::Count(count.round().clamp(1.0, 64.0) as u16)),
-                Input::Text(text) => Ok(Self::Tracks {
-                    source: text.to_string(),
-                    tracks: Arc::new(grid::parse_template(text)?),
-                }),
+                Input::Text(text) => {
+                    let parsed = grid::parse_template(text, &validation_context())?;
+                    Ok(Self::Tracks(GridTemplateList {
+                        source: text.to_string(),
+                        tracks: Arc::new(parsed.value),
+                        relative: parsed.relative,
+                    }))
+                }
             },
         )
     }
@@ -100,7 +131,19 @@ impl<'de> Deserialize<'de> for GridTemplateValue {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GridAutoTracks {
     source: String,
-    pub tracks: Arc<Vec<gpui::GridTrack>>,
+    /// Parsed in [`validation_context`], so only final when `relative` is false.
+    tracks: Arc<Vec<gpui::GridTrack>>,
+    relative: bool,
+}
+
+impl GridAutoTracks {
+    /// See [`GridTemplateList::resolve`].
+    pub(crate) fn resolve(&self, lengths: &LengthContext) -> Vec<gpui::GridTrack> {
+        if !self.relative {
+            return self.tracks.as_ref().clone();
+        }
+        grid::parse_auto_tracks(&self.source, lengths).expect(REPARSE).value
+    }
 }
 
 impl Serialize for GridAutoTracks {
@@ -119,8 +162,12 @@ impl<'de> Deserialize<'de> for GridAutoTracks {
                     Input::Number(pixels) => format!("{pixels}px"),
                     Input::Text(text) => text.to_string(),
                 };
-                let tracks = Arc::new(grid::parse_auto_tracks(&source)?);
-                Ok(Self { source, tracks })
+                let parsed = grid::parse_auto_tracks(&source, &validation_context())?;
+                Ok(Self {
+                    source,
+                    tracks: Arc::new(parsed.value),
+                    relative: parsed.relative,
+                })
             },
         )
     }
@@ -257,5 +304,79 @@ impl<'de> Deserialize<'de> for GridTemplateAreasValue {
                 }),
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn template(text: &str) -> GridTemplateValue {
+        serde_json::from_value(serde_json::json!(text)).unwrap()
+    }
+
+    fn list(text: &str) -> GridTemplateList {
+        match template(text) {
+            GridTemplateValue::Tracks(list) => list,
+            GridTemplateValue::Count(_) => panic!("{text} is a track list"),
+        }
+    }
+
+    fn first_track(tracks: &gpui::GridTemplateTracks) -> gpui::GridTrackSize {
+        match &tracks.entries[0] {
+            gpui::GridTemplateEntry::Track(track) => track.min,
+            entry => panic!("expected a track, got {entry:?}"),
+        }
+    }
+
+    #[test]
+    fn a_relative_list_resolves_in_each_context_it_is_applied_in() {
+        let list = list("10em 1fr");
+        let small = LengthContext::initial(100.0, 100.0);
+        assert_eq!(first_track(&list.resolve(&small)), gpui::GridTrackSize::Length(160.0));
+        assert_eq!(
+            first_track(&list.resolve(&LengthContext::for_tests())),
+            gpui::GridTrackSize::Length(200.0)
+        );
+    }
+
+    #[test]
+    fn an_absolute_list_is_the_same_in_every_context() {
+        let list = list("10px 1fr");
+        assert!(!list.relative);
+        assert_eq!(
+            list.resolve(&LengthContext::for_tests()),
+            list.resolve(&LengthContext::initial(1.0, 1.0))
+        );
+    }
+
+    #[test]
+    fn an_invalid_list_fails_to_deserialize() {
+        assert!(serde_json::from_value::<GridTemplateValue>(serde_json::json!("-1em")).is_err());
+        assert!(serde_json::from_value::<GridAutoTracks>(serde_json::json!("calc(1em")).is_err());
+        assert!(serde_json::from_value::<GridTemplateValue>(serde_json::json!("fit-content(calc(10% + 1em))")).is_err());
+    }
+
+    #[test]
+    fn the_source_is_kept_for_the_automation_dump() {
+        assert_eq!(
+            serde_json::to_value(template("repeat(2, 5em)")).unwrap(),
+            serde_json::json!("repeat(2, 5em)")
+        );
+        let auto: GridAutoTracks = serde_json::from_value(serde_json::json!("calc(10vw)")).unwrap();
+        assert_eq!(serde_json::to_value(&auto).unwrap(), serde_json::json!("calc(10vw)"));
+    }
+
+    #[test]
+    fn an_auto_track_number_is_px() {
+        let auto: GridAutoTracks = serde_json::from_value(serde_json::json!(40)).unwrap();
+        assert!(!auto.relative);
+        assert_eq!(
+            auto.resolve(&LengthContext::for_tests()),
+            vec![gpui::GridTrack {
+                min: gpui::GridTrackSize::Length(40.0),
+                max: gpui::GridTrackSize::Length(40.0)
+            }]
+        );
     }
 }

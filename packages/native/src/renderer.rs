@@ -10775,6 +10775,107 @@ mod dimension_length_tests {
         near(page.size(2), (180.0, 20.0));
     }
 
+    /// Element 1 is a 400px root and 2 a grid with `style` and two 10px-high items, 3 and 4.
+    fn grid(cx: &mut gpui::TestAppContext, root: &str, style: &str) -> Page {
+        Page::new(
+            cx,
+            &[
+                (1, None, root),
+                (2, Some(1), style),
+                (3, Some(2), r#"{"height": 10}"#),
+                (4, Some(2), r#"{"height": 10}"#),
+            ],
+        )
+    }
+
+    const GRID_ROOT: &str = r#"{"width": 400, "height": 400}"#;
+
+    #[gpui::test]
+    fn grid_tracks_in_em_follow_the_font_size_of_the_grid(cx: &mut gpui::TestAppContext) {
+        let page = grid(
+            cx,
+            GRID_ROOT,
+            r#"{"display": "grid", "width": 400, "fontSize": 10, "gridTemplateColumns": "repeat(2, 5em)"}"#,
+        );
+        near(page.size(3), (50.0, 10.0));
+        near(page.offset(4, 2), (50.0, 0.0));
+        page.set_style(
+            cx,
+            2,
+            r#"{"display": "grid", "width": 400, "fontSize": 20, "gridTemplateColumns": "repeat(2, 5em)"}"#,
+        );
+        near(page.size(3), (100.0, 10.0));
+        near(page.offset(4, 2), (100.0, 0.0));
+    }
+
+    #[gpui::test]
+    fn grid_tracks_in_rem_follow_the_root_font_size(cx: &mut gpui::TestAppContext) {
+        let page = grid(
+            cx,
+            r#"{"width": 400, "height": 400, "fontSize": 30}"#,
+            r#"{"display": "grid", "width": 400, "fontSize": 10, "gridTemplateColumns": "minmax(2rem, 1fr) 1em"}"#,
+        );
+        near(page.size(3), (390.0, 10.0));
+        near(page.size(4), (10.0, 10.0));
+        page.set_style(cx, 2, r#"{"display": "grid", "width": 400, "gridTemplateColumns": "minmax(2rem, 1fr) 1em"}"#);
+        near(page.size(4), (30.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn a_grid_track_calc_with_a_percentage_is_of_the_grid_width(cx: &mut gpui::TestAppContext) {
+        let page = grid(
+            cx,
+            GRID_ROOT,
+            r#"{"display": "grid", "width": 400, "gridTemplateColumns": "calc(100% - 20px) 20px"}"#,
+        );
+        near(page.size(3), (380.0, 10.0));
+        near(page.size(4), (20.0, 10.0));
+        page.set_style(cx, 2, r#"{"display": "grid", "width": 200, "gridTemplateColumns": "calc(100% - 20px) 20px"}"#);
+        near(page.size(3), (180.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn a_grid_track_in_viewport_units_follows_a_resize(cx: &mut gpui::TestAppContext) {
+        let page = grid(
+            cx,
+            GRID_ROOT,
+            r#"{"display": "grid", "width": 400, "gridTemplateColumns": "10vw calc(5vh + 1px)"}"#,
+        );
+        let viewport = cx
+            .update_window(page.window.into(), |_, window, _| window.viewport_size())
+            .unwrap();
+        let (width, height) = (f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
+        near(page.size(3), (width * 0.1, 10.0));
+        near(page.size(4), (height * 0.05 + 1.0, 10.0));
+        cx.simulate_window_resize(page.window.into(), gpui::size(gpui::px(500.0), gpui::px(300.0)));
+        page.draw(cx);
+        near(page.size(3), (50.0, 10.0));
+        near(page.size(4), (16.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn grid_auto_tracks_resolve_relative_units_but_a_number_stays_px(cx: &mut gpui::TestAppContext) {
+        let page = grid(
+            cx,
+            r#"{"width": 400, "height": 400, "fontSize": 30}"#,
+            r#"{"display": "grid", "width": 400, "fontSize": 10, "gridAutoRows": "2rem"}"#,
+        );
+        near(page.offset(4, 2), (0.0, 60.0));
+        page.set_style(
+            cx,
+            2,
+            r#"{"display": "grid", "width": 400, "fontSize": 10, "gridAutoFlow": "column", "gridAutoColumns": 30}"#,
+        );
+        near(page.size(3), (30.0, 10.0));
+        near(page.offset(4, 2), (30.0, 0.0));
+        page.set_style(
+            cx,
+            2,
+            r#"{"display": "grid", "width": 400, "fontSize": 10, "gridAutoFlow": "column", "gridAutoColumns": "3em"}"#,
+        );
+        near(page.size(3), (30.0, 10.0));
+    }
+
     /// Element 1 is a 200px root; element 2 has `style` and a 10px child, 3.
     fn padded(cx: &mut gpui::TestAppContext, style: &str) -> Page {
         Page::new(

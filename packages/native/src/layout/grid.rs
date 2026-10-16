@@ -3,6 +3,10 @@
 //! Everything here parses once, when a style is deserialized, so the per-frame
 //! `apply_styles` only moves already-built values into GPUI.
 
+use crate::css::dimension::{
+    parse_length_percentage, parse_linear_length, split_dimension, LengthPercentage,
+};
+use crate::css::length::LengthContext;
 use gpui::{
     GridPlacement, GridRepetition, GridTemplateArea, GridTemplateAreas, GridTemplateEntry,
     GridTemplateTracks, GridTrack, GridTrackSize, SharedString,
@@ -100,6 +104,34 @@ impl<'a> Cursor<'a> {
         &rest[..length]
     }
 
+    /// One `<length>` as written: a number with its unit, or a `calc()` through its
+    /// closing parenthesis.
+    fn length_token(&mut self) -> Result<&'a str, String> {
+        self.skip_whitespace();
+        let start = self.position;
+        if self.peek_ident_followed_by_paren() == Some("calc") {
+            self.ident();
+            let mut depth = 0usize;
+            for (index, character) in self.rest().char_indices() {
+                match character {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            self.position += index + 1;
+                            return Ok(&self.text[start..self.position]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            return Err(self.error("unclosed calc()"));
+        }
+        self.number()?;
+        self.unit();
+        Ok(&self.text[start..self.position])
+    }
+
     fn peek_ident_followed_by_paren(&mut self) -> Option<&'a str> {
         let saved = self.position;
         let name = self.ident();
@@ -109,27 +141,70 @@ impl<'a> Cursor<'a> {
     }
 }
 
-/// A `<length-percentage>` or `<flex>`, as a track sizing function bound.
-fn parse_dimension(cursor: &mut Cursor) -> Result<GridTrackSize, String> {
-    let value = cursor.number()?;
-    match cursor.unit() {
-        "" | "px" => Ok(GridTrackSize::Length(value)),
-        "%" => Ok(GridTrackSize::Percent(value / 100.0)),
-        "fr" if value >= 0.0 => Ok(GridTrackSize::Fr(value)),
-        "fr" => Err("a flex factor cannot be negative".to_string()),
-        unit => Err(format!("unsupported unit {unit:?}, use px, % or fr")),
+/// What the lengths of a track list resolve against, and whether any of them
+/// needed it: a list that did not parses the same in every context.
+pub struct TrackLengths<'a> {
+    context: &'a LengthContext,
+    relative: bool,
+}
+
+/// A parsed track list. `relative` says the list has a length whose px depend
+/// on the element's font size or the window, so it has to be parsed again in
+/// another context to change.
+pub struct Parsed<T> {
+    pub value: T,
+    pub relative: bool,
+}
+
+impl TrackLengths<'_> {
+    /// One `<length-percentage>` as a track size: px, a percentage, or the
+    /// sum of the two that `calc()` makes.
+    fn size(&mut self, token: &str) -> Result<GridTrackSize, String> {
+        let linear = parse_linear_length(token)
+            .ok_or_else(|| format!("invalid track size {token:?}, use a length, a percentage, calc() or fr"))?;
+        if linear.is_negative() {
+            return Err("a track size cannot be negative".to_string());
+        }
+        self.relative |= linear.is_relative();
+        let resolved = parse_length_percentage(token, self.context)
+            .ok_or_else(|| format!("invalid track size {token:?}"))?;
+        Ok(match resolved {
+            // A calc() clamps to the range of its property, as in CSS.
+            LengthPercentage::Length(px) => GridTrackSize::Length(px.max(0.0) as f32),
+            LengthPercentage::Percent(fraction) => GridTrackSize::Percent(fraction as f32),
+            LengthPercentage::Calc { px, percent } => GridTrackSize::Calc {
+                length: px as f32,
+                fraction: percent as f32,
+            },
+        })
     }
 }
 
-fn parse_breadth(cursor: &mut Cursor) -> Result<GridTrackSize, String> {
-    if cursor.peek().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+')) {
-        let size = parse_dimension(cursor)?;
-        return match size {
-            GridTrackSize::Length(value) | GridTrackSize::Percent(value) if value < 0.0 => {
-                Err("a track size cannot be negative".to_string())
+/// A `<length-percentage>` or `<flex>`, as a track sizing function bound.
+fn parse_dimension(cursor: &mut Cursor, lengths: &mut TrackLengths) -> Result<GridTrackSize, String> {
+    let token = cursor.length_token()?;
+    match split_dimension(token) {
+        Some((value, unit)) if unit == "fr" => {
+            if value < 0.0 {
+                return Err("a flex factor cannot be negative".to_string());
             }
-            size => Ok(size),
-        };
+            Ok(GridTrackSize::Fr(value as f32))
+        }
+        // A number is px, which CSS only allows for 0.
+        Some((value, unit)) if unit.is_empty() && value >= 0.0 => Ok(GridTrackSize::Length(value as f32)),
+        Some((_, unit)) if unit.is_empty() => Err("a track size cannot be negative".to_string()),
+        _ => lengths.size(token),
+    }
+}
+
+fn starts_dimension(cursor: &mut Cursor) -> bool {
+    cursor.peek().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+'))
+        || cursor.peek_ident_followed_by_paren() == Some("calc")
+}
+
+fn parse_breadth(cursor: &mut Cursor, lengths: &mut TrackLengths) -> Result<GridTrackSize, String> {
+    if starts_dimension(cursor) {
+        return parse_dimension(cursor, lengths);
     }
     match cursor.ident() {
         Some("auto") => Ok(GridTrackSize::Auto),
@@ -139,26 +214,29 @@ fn parse_breadth(cursor: &mut Cursor) -> Result<GridTrackSize, String> {
     }
 }
 
-fn parse_track(cursor: &mut Cursor) -> Result<GridTrack, String> {
+fn parse_track(cursor: &mut Cursor, lengths: &mut TrackLengths) -> Result<GridTrack, String> {
     match cursor.peek_ident_followed_by_paren() {
         Some("minmax") => {
             cursor.ident();
             cursor.expect('(')?;
-            let min = parse_breadth(cursor)?;
+            let min = parse_breadth(cursor, lengths)?;
             if matches!(min, GridTrackSize::Fr(_)) {
                 return Err("the minimum of minmax() cannot be a flex factor".to_string());
             }
             cursor.expect(',')?;
-            let max = parse_breadth(cursor)?;
+            let max = parse_breadth(cursor, lengths)?;
             cursor.expect(')')?;
             Ok(GridTrack { min, max })
         }
         Some("fit-content") => {
             cursor.ident();
             cursor.expect('(')?;
-            let limit = match parse_dimension(cursor)? {
+            let limit = match parse_dimension(cursor, lengths)? {
                 GridTrackSize::Length(value) => GridTrackSize::FitContentLength(value),
                 GridTrackSize::Percent(value) => GridTrackSize::FitContentPercent(value),
+                GridTrackSize::Calc { .. } => {
+                    return Err("fit-content() cannot take a length mixed with a percentage".to_string())
+                }
                 _ => return Err("fit-content() takes a length or a percentage".to_string()),
             };
             cursor.expect(')')?;
@@ -167,9 +245,8 @@ fn parse_track(cursor: &mut Cursor) -> Result<GridTrack, String> {
                 max: limit,
             })
         }
-        Some(other) => Err(format!("unknown function {other}()")),
-        None => {
-            let size = parse_breadth(cursor)?;
+        Some("calc") | None => {
+            let size = parse_breadth(cursor, lengths)?;
             Ok(match size {
                 GridTrackSize::Fr(_) => GridTrack {
                     min: GridTrackSize::Auto,
@@ -178,6 +255,7 @@ fn parse_track(cursor: &mut Cursor) -> Result<GridTrack, String> {
                 size => GridTrack { min: size, max: size },
             })
         }
+        Some(other) => Err(format!("unknown function {other}()")),
     }
 }
 
@@ -195,7 +273,7 @@ fn parse_line_names(cursor: &mut Cursor, into: &mut Vec<SharedString>) -> Result
     Ok(())
 }
 
-fn parse_repeat(cursor: &mut Cursor) -> Result<GridTemplateEntry, String> {
+fn parse_repeat(cursor: &mut Cursor, lengths: &mut TrackLengths) -> Result<GridTemplateEntry, String> {
     cursor.ident();
     cursor.expect('(')?;
     let repetition = match cursor.peek() {
@@ -225,7 +303,7 @@ fn parse_repeat(cursor: &mut Cursor) -> Result<GridTemplateEntry, String> {
         if cursor.peek_ident_followed_by_paren() == Some("repeat") {
             return Err("repeat() cannot be nested".to_string());
         }
-        tracks.push(parse_track(cursor)?);
+        tracks.push(parse_track(cursor, lengths)?);
         line_names.push(std::mem::take(&mut pending));
     }
     line_names.push(pending);
@@ -242,14 +320,18 @@ fn parse_repeat(cursor: &mut Cursor) -> Result<GridTemplateEntry, String> {
 
 /// `grid-template-columns` / `grid-template-rows`: `none`, or a track list with
 /// optional `[line names]` and `repeat()`.
-pub fn parse_template(input: &str) -> Result<GridTemplateTracks, String> {
+pub(crate) fn parse_template(
+    input: &str,
+    context: &LengthContext,
+) -> Result<Parsed<GridTemplateTracks>, String> {
     let mut cursor = Cursor::new(input);
+    let mut lengths = TrackLengths { context, relative: false };
     let mut template = GridTemplateTracks::default();
     let mut pending = Vec::new();
     if cursor.peek_ident_followed_by_paren().is_none() {
         let saved = cursor.position;
         if cursor.ident() == Some("none") && cursor.at_end() {
-            return Ok(template);
+            return Ok(Parsed { value: template, relative: false });
         }
         cursor.position = saved;
     }
@@ -260,7 +342,7 @@ pub fn parse_template(input: &str) -> Result<GridTemplateTracks, String> {
             break;
         }
         let entry = if cursor.peek_ident_followed_by_paren() == Some("repeat") {
-            let entry = parse_repeat(&mut cursor)?;
+            let entry = parse_repeat(&mut cursor, &mut lengths)?;
             if let GridTemplateEntry::Repeat { repetition, .. } = &entry {
                 if !matches!(repetition, GridRepetition::Count(_)) {
                     auto_repeats += 1;
@@ -268,7 +350,7 @@ pub fn parse_template(input: &str) -> Result<GridTemplateTracks, String> {
             }
             entry
         } else {
-            GridTemplateEntry::Track(parse_track(&mut cursor)?)
+            GridTemplateEntry::Track(parse_track(&mut cursor, &mut lengths)?)
         };
         template.entries.push(entry);
         template.line_names.push(std::mem::take(&mut pending));
@@ -280,20 +362,24 @@ pub fn parse_template(input: &str) -> Result<GridTemplateTracks, String> {
     if auto_repeats > 1 {
         return Err("only one auto-fill or auto-fit repeat is allowed".to_string());
     }
-    Ok(template)
+    Ok(Parsed { value: template, relative: lengths.relative })
 }
 
 /// `grid-auto-columns` / `grid-auto-rows`: a list of track sizes.
-pub fn parse_auto_tracks(input: &str) -> Result<Vec<GridTrack>, String> {
+pub(crate) fn parse_auto_tracks(
+    input: &str,
+    context: &LengthContext,
+) -> Result<Parsed<Vec<GridTrack>>, String> {
     let mut cursor = Cursor::new(input);
+    let mut lengths = TrackLengths { context, relative: false };
     let mut tracks = Vec::new();
     while !cursor.at_end() {
-        tracks.push(parse_track(&mut cursor)?);
+        tracks.push(parse_track(&mut cursor, &mut lengths)?);
     }
     if tracks.is_empty() {
         return Err("expected at least one track size".to_string());
     }
-    Ok(tracks)
+    Ok(Parsed { value: tracks, relative: lengths.relative })
 }
 
 /// One `<grid-line>`: `auto`, `3`, `-1`, `span 2`, `name`, `name 2`, `span name`.
@@ -455,6 +541,11 @@ mod tests {
         GridTrack { min, max }
     }
 
+    /// `1em` is 20px, `1rem` 10px and the viewport 800x600.
+    fn parse_template(text: &str) -> Result<GridTemplateTracks, String> {
+        super::parse_template(text, &LengthContext::for_tests()).map(|parsed| parsed.value)
+    }
+
     #[test]
     fn parses_fixed_flexible_and_intrinsic_tracks() {
         let template = parse_template("100px 1fr 25% auto min-content max-content").unwrap();
@@ -534,9 +625,188 @@ mod tests {
     fn rejects_invalid_templates() {
         assert!(parse_template("").is_err());
         assert!(parse_template("minmax(1fr, 100px)").is_err());
-        assert!(parse_template("10em").is_err());
         assert!(parse_template("-5px").is_err());
         assert!(parse_template("blah").is_err());
+    }
+
+    fn only_track(text: &str) -> GridTrack {
+        match parse_template(text).unwrap().entries.as_slice() {
+            [GridTemplateEntry::Track(track)] => *track,
+            entries => panic!("{text} should be one track, got {entries:?}"),
+        }
+    }
+
+    fn lengths(text: &str) -> GridTrackSize {
+        let track = only_track(text);
+        assert_eq!(track.min, track.max, "{text}");
+        track.min
+    }
+
+    #[test]
+    fn relative_units_resolve_in_the_context_inside_repeat_and_minmax() {
+        let template = parse_template("repeat(2, 10em) minmax(5rem, 1fr)").unwrap();
+        assert_eq!(
+            template.entries,
+            vec![
+                GridTemplateEntry::Repeat {
+                    repetition: GridRepetition::Count(2),
+                    tracks: vec![track(GridTrackSize::Length(200.0), GridTrackSize::Length(200.0))],
+                    line_names: vec![vec![], vec![]],
+                },
+                GridTemplateEntry::Track(track(GridTrackSize::Length(50.0), GridTrackSize::Fr(1.0))),
+            ]
+        );
+    }
+
+    #[test]
+    fn every_relative_unit_is_a_length() {
+        assert_eq!(lengths("2em"), GridTrackSize::Length(40.0));
+        assert_eq!(lengths("1.5rem"), GridTrackSize::Length(15.0));
+        assert_eq!(lengths("10vw"), GridTrackSize::Length(80.0));
+        assert_eq!(lengths("10vh"), GridTrackSize::Length(60.0));
+        assert_eq!(lengths("10vmin"), GridTrackSize::Length(60.0));
+        assert_eq!(lengths("10vmax"), GridTrackSize::Length(80.0));
+        assert_eq!(lengths("1in"), GridTrackSize::Length(96.0));
+    }
+
+    #[test]
+    fn a_calc_without_a_percentage_is_a_length() {
+        assert_eq!(lengths("calc(50vw - 20px)"), GridTrackSize::Length(380.0));
+        assert_eq!(lengths("calc(1em + 2rem)"), GridTrackSize::Length(40.0));
+        assert_eq!(lengths("calc(2 * (1em + 5px))"), GridTrackSize::Length(50.0));
+        assert_eq!(lengths("calc(100% / 4)"), GridTrackSize::Percent(0.25));
+        assert_eq!(lengths("calc(25% + 25%)"), GridTrackSize::Percent(0.5));
+    }
+
+    #[test]
+    fn a_calc_that_comes_out_negative_clamps_to_zero() {
+        assert_eq!(lengths("calc(1em - 30px)"), GridTrackSize::Length(0.0));
+    }
+
+    #[test]
+    fn a_calc_of_a_length_and_a_percentage_is_a_calc_track() {
+        assert_eq!(
+            lengths("calc(100% - 20px)"),
+            GridTrackSize::Calc { length: -20.0, fraction: 1.0 }
+        );
+        assert_eq!(
+            lengths("calc(10% + 1em)"),
+            GridTrackSize::Calc { length: 20.0, fraction: 0.1 }
+        );
+        assert_eq!(
+            only_track("minmax(calc(50% - 1rem), 1fr)"),
+            track(GridTrackSize::Calc { length: -10.0, fraction: 0.5 }, GridTrackSize::Fr(1.0))
+        );
+    }
+
+    #[test]
+    fn a_calc_is_one_track_whatever_its_spaces() {
+        let template = parse_template("calc( 1em  +  2px ) [x] calc(100%-0px)");
+        assert!(template.is_err(), "calc(100%-0px) is not a valid sum");
+        let template = parse_template("calc( 1em  +  2px ) [x] 1fr").unwrap();
+        assert_eq!(template.entries.len(), 2);
+    }
+
+    #[test]
+    fn fit_content_takes_relative_lengths_but_not_a_mix() {
+        assert_eq!(
+            only_track("fit-content(5em)"),
+            track(GridTrackSize::Auto, GridTrackSize::FitContentLength(100.0))
+        );
+        assert_eq!(
+            only_track("fit-content(calc(10vw + 1px))"),
+            track(GridTrackSize::Auto, GridTrackSize::FitContentLength(81.0))
+        );
+        assert!(parse_template("fit-content(calc(100% - 1px))").is_err());
+    }
+
+    #[test]
+    fn auto_tracks_take_relative_lengths() {
+        let tracks = parse_auto_tracks("2rem minmax(1em, calc(10vh))", &LengthContext::for_tests())
+            .unwrap()
+            .value;
+        assert_eq!(
+            tracks,
+            vec![
+                track(GridTrackSize::Length(20.0), GridTrackSize::Length(20.0)),
+                track(GridTrackSize::Length(20.0), GridTrackSize::Length(60.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_list_is_relative_when_a_length_depends_on_the_context() {
+        let relative = |text: &str| parse_template_in(text, &LengthContext::for_tests()).relative;
+        for text in ["10em", "1rem", "5vw", "5vh", "5vmin", "5vmax", "repeat(2, minmax(1em, 1fr))", "calc(100% - 1em)"] {
+            assert!(relative(text), "{text}");
+        }
+        for text in ["10px", "50%", "1fr", "auto", "1in", "calc(100% - 20px)", "calc(1em - 1em)", "none", "repeat(auto-fill, 20px)"] {
+            assert!(!relative(text), "{text}");
+        }
+        let auto = |text: &str| parse_auto_tracks(text, &LengthContext::for_tests()).unwrap().relative;
+        assert!(auto("1em") && !auto("1px"));
+    }
+
+    fn parse_template_in(text: &str, context: &LengthContext) -> Parsed<GridTemplateTracks> {
+        super::parse_template(text, context).unwrap()
+    }
+
+    #[test]
+    fn validity_does_not_depend_on_the_context() {
+        let contexts = [
+            LengthContext::for_tests(),
+            LengthContext::initial(0.0, 0.0),
+            LengthContext::initial(1.0e6, 3.0),
+        ];
+        let texts = [
+            "10em",
+            "repeat(2, 10em)",
+            "minmax(5rem, 1fr)",
+            "calc(50vw - 20px)",
+            "calc(1em - 1000px)",
+            "calc(100% - 1em)",
+            "fit-content(calc(1em - 1000px))",
+            "fit-content(calc(100% - 1em))",
+            "-1em",
+            "calc(-1em)",
+            "calc(0px - 1em)",
+            "minmax(1fr, 1em)",
+            "calc(1em",
+            "5emm",
+        ];
+        for text in texts {
+            let validity: Vec<bool> = contexts
+                .iter()
+                .map(|context| super::parse_template(text, context).is_ok())
+                .collect();
+            assert!(
+                validity.iter().all(|valid| *valid == validity[0]),
+                "{text} is {validity:?} across contexts"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_relative_forms() {
+        for text in [
+            "-1em",
+            "calc(-1em)",
+            "calc(0px - 1em)",
+            "-5rem",
+            "5emm",
+            "5 em",
+            "calc(1em",
+            "calc(1em +)",
+            "calc(1fr)",
+            "calc(10px * 2px)",
+            "minmax(1fr, 1em)",
+            "minmax(1em)",
+            "repeat(2, calc(1em)",
+            "5furlongs",
+        ] {
+            assert!(parse_template(text).is_err(), "{text} should be invalid");
+        }
+        assert!(parse_auto_tracks("-1em", &LengthContext::for_tests()).is_err());
     }
 
     #[test]
