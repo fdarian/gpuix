@@ -176,6 +176,7 @@ interface NativeTestRendererApi
     format?: ImagePixelFormat
   ): void
   getScrollOffset(elementId: number): number[] | null
+  getCursor(): string
   getListScrollTop(elementId: number): number[] | null
   setDebugFrameOverlay(mode: DebugFrameOverlayMode): string
   getDebugFrameOverlay(): string
@@ -1173,6 +1174,15 @@ export class TestRenderer implements NativeRenderer {
     const result = this.native.getScrollOffset(elementId)
     if (!result) return null
     return [result[0], result[1]]
+  }
+
+  /** The CSS keyword of the cursor the window asks the platform for where the pointer last
+   *  was (`"default"` when nothing asks). A mouse move updates it, a draw keeps it current.
+   *  Keywords that name one cursor read back as the first of them: `"pointer"`, `"grabbing"`,
+   *  `"nwse-resize"`, `"nesw-resize"`, `"not-allowed"`. */
+  getCursor(): string {
+    this.native.flush()
+    return this.native.getCursor()
   }
 
   /** The logical scroll anchor of a `<virtual-list>`:

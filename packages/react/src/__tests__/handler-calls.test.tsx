@@ -82,6 +82,7 @@ function calls(r, ids) {
     getAllText: () => r.getAllText(),
     getAppearance: () => r.getAppearance(),
     getAutomationTree: () => r.getAutomationTree(),
+    getCursor: () => r.getCursor(),
     getDebugFrameOverlay: () => r.getDebugFrameOverlay(),
     getDebugFrameOverlayStats: () => r.getDebugFrameOverlayStats(),
     getElement: () => r.getElement(ids.box),

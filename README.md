@@ -6426,6 +6426,12 @@ the default), `1` or `2`. The live automation client does the same:
 and `<markdown>` paint their text inside GPUI, so use `getPaintedText()`, which
 returns every string painted in the last frame in paint order:
 
+`renderer.getCursor()` is the CSS keyword of the cursor the window asks the OS for
+where the pointer last was, `"default"` when nothing asks. A mouse move updates
+it. The offscreen test window is not the active window, so the OS is never told:
+this reads what GPUI resolved. Keywords that name one cursor read back as one of
+them (`"pointer"`, `"grabbing"`, `"nwse-resize"`, `"nesw-resize"`, `"not-allowed"`).
+
 ```ts
 root.render(<code code={'a\nb'} language="ts" />)
 expect(renderer.getPaintedText()).toEqual(['a', 'b'])

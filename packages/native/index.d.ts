@@ -716,6 +716,13 @@ export declare class TestGpuixRenderer {
    */
   getScrollOffset(elementId: number): Array<number> | null
   /**
+   * The CSS keyword of the cursor the window asks the platform for at the pointer's last
+   * hit test (`default` when nothing asks). It is read from the window, not from the OS: the
+   * offscreen window is not active, so the platform is never told. A move (or a draw) is
+   * what updates it.
+   */
+  getCursor(): string
+  /**
    * Capture a screenshot of the current rendered state and save as PNG.
    * Supported on macOS through Metal and Windows through DirectX.
    */
