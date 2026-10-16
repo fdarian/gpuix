@@ -85,7 +85,7 @@ export function Button(allProps: ButtonProps): JSX.Element {
     asChild: local.asChild,
     children: local.children,
     props: Object.defineProperties(
-      { ...props },
+      Object.defineProperties({}, Object.getOwnPropertyDescriptors(props)),
       {
         ...Object.getOwnPropertyDescriptors(button),
         style: {

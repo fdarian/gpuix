@@ -147,8 +147,7 @@ export interface DialogBackdropProps extends HostProps {
  */
 export function DialogBackdrop(props: DialogBackdropProps): JSX.Element {
   const state = context("DialogBackdrop")
-  return jsx("div", {
-    ...props,
+  return jsx("div", overrideProps(props, {
     get style() {
       return { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, ...props.style }
     },
@@ -156,7 +155,7 @@ export function DialogBackdrop(props: DialogBackdropProps): JSX.Element {
       props.onClick?.(event)
       if (state.pointerDismissal()) state.setOpen(false)
     },
-  })
+  }))
 }
 
 export interface DialogPopupProps extends HostProps {
@@ -210,7 +209,10 @@ export function DialogPopup(allProps: DialogPopupProps): JSX.Element {
 }
 
 export function DialogTitle(props: HostProps & { children?: JSX.Element }): JSX.Element {
-  return jsx("div", { role: "heading", "aria-level": 2, ...props })
+  return jsx("div", Object.defineProperties(
+    { role: "heading", "aria-level": 2 },
+    Object.getOwnPropertyDescriptors(props)
+  ))
 }
 
 export function DialogDescription(props: HostProps & { children?: JSX.Element }): JSX.Element {

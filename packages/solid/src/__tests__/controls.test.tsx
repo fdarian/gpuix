@@ -437,6 +437,32 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     expect(seen).toEqual(["inner", "outer"])
   })
 
+  it("updates a Button, DialogBackdrop and ComboboxInput host props in place when a reactive prop changes", () => {
+    const [mark, setMark] = createSignal("a")
+    const refs: Record<string, HostElement[]> = { button: [], input: [], backdrop: [] }
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 400, height: 400 }}>
+        <Button testId="button" ref={(element: HostElement) => refs.button.push(element)} data-mark={mark()} style={{ width: 60, height: 24 }}><text>Save</text></Button>
+        <Combobox items={["alpha"]}>
+          <ComboboxInput testId="input" ref={(element: HostElement) => refs.input.push(element)} data-mark={mark()} style={{ width: 120, height: 32 }} />
+        </Combobox>
+        <Dialog defaultOpen>
+          <DialogPortal>
+            <DialogBackdrop testId="backdrop" ref={(element: HostElement) => refs.backdrop.push(element)} data-mark={mark()} />
+          </DialogPortal>
+        </Dialog>
+      </div>
+    ))
+    const read = () => Object.values(refs).map((elements) => ({
+      built: elements.length,
+      mark: elements.at(-1)!.props.get("data-mark"),
+    }))
+    expect(read()).toEqual([{ built: 1, mark: "a" }, { built: 1, mark: "a" }, { built: 1, mark: "a" }])
+    app.flushSync(() => setMark("b"))
+    expect(read()).toEqual([{ built: 1, mark: "b" }, { built: 1, mark: "b" }, { built: 1, mark: "b" }])
+  })
+
   it("clicks from a host ref like HTMLElement.click()", () => {
     const seen: Array<{ detail?: number; pointerId?: number; target?: number }> = []
     let row!: HostElement

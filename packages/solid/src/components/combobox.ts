@@ -170,8 +170,7 @@ export interface ComboboxInputProps extends InputProps {
 export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
   const state = context("ComboboxInput")
   const disabled = () => props.disabled ?? state.disabled
-  return jsx("input", {
-    ...props,
+  return jsx("input", overrideProps(props, {
     ref(element: HostElement) {
       state.inputRef.current = element
       props.ref?.(element)
@@ -214,7 +213,7 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
         }
       }
     },
-  })
+  }))
 }
 
 export interface ComboboxTriggerProps extends HostProps { children?: JSX.Element; asChild?: boolean; disabled?: boolean }
