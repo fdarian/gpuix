@@ -156,6 +156,9 @@ fn apply_size<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) 
     set_size(&mut refinement.min_size.height, None, &style.min_height, lengths);
     set_size(&mut refinement.max_size.width, Some(&mut widths.max_width), &style.max_width, lengths);
     set_size(&mut refinement.max_size.height, None, &style.max_height, lengths);
+    if style.measure_natural_width {
+        refinement.measure_natural_width = Some(true);
+    }
     el
 }
 

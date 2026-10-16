@@ -24,6 +24,10 @@ pub(crate) struct Measurement {
     /// The border-box height the element would have if it sized to its content,
     /// whatever height it was actually laid out at.
     pub natural_height: Pixels,
+    /// The border-box width the element would have with `width: auto`. `None`
+    /// until a frame was laid out with the element flagged to measure it, which
+    /// only an element that can animate `width` to or from `auto` is.
+    pub natural_width: Option<Pixels>,
     /// The content box of the parent, which a percentage length resolves
     /// against. A root has no parent, so it is the window's content size, as
     /// the initial containing block is in a document.
@@ -36,14 +40,27 @@ pub(crate) struct Measurement {
 }
 
 impl Measurement {
-    /// The natural height rounded up to a whole device pixel, so content that
-    /// ends part-way through a pixel is not clipped by a height that stops
-    /// short of it. The epsilon keeps a height that is already whole, but off
-    /// by f32 rounding, from gaining a pixel.
-    pub(super) fn natural_height_px(&self) -> f64 {
+    /// The natural size along the axis `prop` sizes, rounded up to a whole
+    /// device pixel, so content that ends part-way through a pixel is not
+    /// clipped by a size that stops short of it. The epsilon keeps a size that
+    /// is already whole, but off by f32 rounding, from gaining a pixel.
+    ///
+    /// `None` for a property that is not a size, and for a width until it has
+    /// been measured.
+    pub(super) fn natural_px(&self, prop: AnimProp) -> Option<f64> {
+        let length = match prop.size_axis()? {
+            Axis::Width => self.natural_width?,
+            Axis::Height => self.natural_height,
+        };
         let scale = f64::from(self.scale_factor);
-        let device = f64::from(self.natural_height.as_f32()) * scale;
-        (device - 1e-3).ceil().max(0.0) / scale
+        let device = f64::from(length.as_f32()) * scale;
+        Some((device - 1e-3).ceil().max(0.0) / scale)
+    }
+
+    /// Whether values of `prop` that include an `auto` (`has_auto`) or not can
+    /// be resolved in px: an `auto` needs the natural size.
+    pub(super) fn resolves(&self, prop: AnimProp, has_auto: bool) -> bool {
+        !has_auto || self.natural_px(prop).is_some()
     }
 
     /// What a percentage of `prop` is in px: a fraction of the parent's content
@@ -146,6 +163,7 @@ impl Measurements {
         let measurement = Measurement {
             border_box: bounds.size,
             natural_height: natural_height(content.height, window.layout_insets(layout_id).border),
+            natural_width: window.layout_natural_width(layout_id),
             parent_content: window
                 .layout_parent_content_size(layout_id)
                 .unwrap_or_else(|| window.viewport_size()),
@@ -249,6 +267,7 @@ mod tests {
         Measurement {
             border_box: gpui::size(gpui::px(40.0), gpui::px(30.0)),
             natural_height: gpui::px(natural_height),
+            natural_width: None,
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor,
             percent_height_resolves: true,
@@ -257,12 +276,40 @@ mod tests {
 
     #[test]
     fn the_natural_height_rounds_up_to_the_device_pixel() {
-        assert_eq!(measurement(80.2, 1.0).natural_height_px(), 81.0);
-        assert_eq!(measurement(80.2, 2.0).natural_height_px(), 80.5);
-        assert_eq!(measurement(80.0, 2.0).natural_height_px(), 80.0);
-        assert_eq!(measurement(0.0, 2.0).natural_height_px(), 0.0);
+        assert_eq!(measurement(80.2, 1.0).natural_px(AnimProp::Height), Some(81.0));
+        assert_eq!(measurement(80.2, 2.0).natural_px(AnimProp::Height), Some(80.5));
+        assert_eq!(measurement(80.0, 2.0).natural_px(AnimProp::Height), Some(80.0));
+        assert_eq!(measurement(0.0, 2.0).natural_px(AnimProp::Height), Some(0.0));
         // f32 noise on a whole height is not a pixel of content.
-        assert_eq!(measurement(80.000_01, 2.0).natural_height_px(), 80.0);
+        assert_eq!(measurement(80.000_01, 2.0).natural_px(AnimProp::Height), Some(80.0));
+    }
+
+    #[test]
+    fn the_natural_width_rounds_up_like_the_height_and_is_missing_until_measured() {
+        let wide = |natural: f32, scale_factor: f32| Measurement {
+            natural_width: Some(gpui::px(natural)),
+            ..measurement(10.0, scale_factor)
+        };
+        assert_eq!(wide(120.2, 1.0).natural_px(AnimProp::Width), Some(121.0));
+        assert_eq!(wide(120.2, 2.0).natural_px(AnimProp::Width), Some(120.5));
+        assert_eq!(wide(120.000_01, 2.0).natural_px(AnimProp::Width), Some(120.0));
+        assert_eq!(wide(0.0, 2.0).natural_px(AnimProp::Width), Some(0.0));
+        assert_eq!(measurement(10.0, 1.0).natural_px(AnimProp::Width), None);
+        assert_eq!(wide(120.0, 1.0).natural_px(AnimProp::Height), Some(10.0));
+        assert_eq!(wide(120.0, 1.0).natural_px(AnimProp::Opacity), None);
+    }
+
+    #[test]
+    fn an_auto_resolves_only_with_the_natural_size_of_its_axis() {
+        let unmeasured = measurement(10.0, 1.0);
+        assert!(unmeasured.resolves(AnimProp::Height, true));
+        assert!(!unmeasured.resolves(AnimProp::Width, true));
+        assert!(unmeasured.resolves(AnimProp::Width, false));
+        let measured = Measurement {
+            natural_width: Some(gpui::px(50.0)),
+            ..unmeasured
+        };
+        assert!(measured.resolves(AnimProp::Width, true));
     }
 
     #[test]
@@ -336,6 +383,7 @@ mod tests {
         Measurement {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
             natural_height: gpui::px(2.0),
+            natural_width: None,
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
             percent_height_resolves: true,

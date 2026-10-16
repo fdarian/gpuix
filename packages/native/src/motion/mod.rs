@@ -25,6 +25,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
+use css_animation::animates_width;
 pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimations};
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
@@ -33,6 +34,7 @@ pub(crate) use css_transition::{
     TransitionStyle,
 };
 pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
+use css_transition::transitions_width;
 use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
@@ -494,12 +496,25 @@ impl MotionState {
         now: Instant,
     ) -> Result<(), String> {
         for (prop, waiting) in std::mem::take(&mut self.pending) {
+            // A width `auto` is measured by the frame painted after the element
+            // asked for it, so a measurement without it waits one more frame.
+            let unresolved = match (prop, measurement) {
+                (PropKey::Style(style_prop), Some(measurement)) => {
+                    !measurement.resolves(style_prop, waiting.goal.has_auto())
+                }
+                _ => false,
+            };
             let start = match (measurement, waiting.from.clone()) {
                 (None, _) if painted <= waiting.painted => {
                     self.pending.insert(prop, waiting);
                     continue;
                 }
+                (Some(_), _) if unresolved && painted <= waiting.painted + 1 => {
+                    self.pending.insert(prop, waiting);
+                    continue;
+                }
                 (None, _) => Start::Rest,
+                (Some(_), _) if unresolved => Start::Rest,
                 (Some(_), Some(from)) => Start::Value(from),
                 (Some(_), None) => Start::Layout,
             };
@@ -539,7 +554,10 @@ impl MotionState {
             let PropKey::Style(prop) = key else {
                 continue;
             };
-            if !track.is_measured() || !track.sample(now).active {
+            if !track.is_measured()
+                || !track.sample(now).active
+                || !measurement.resolves(*prop, track.goal().has_auto())
+            {
                 continue;
             }
             let followed = if track.restarts_on_follow() {
@@ -559,6 +577,17 @@ impl MotionState {
             }
         }
         Ok(())
+    }
+
+    /// Whether a `width` animation to or from `auto` is waiting for the natural
+    /// width or following it as it changes.
+    fn needs_natural_width(&self, now: Instant) -> bool {
+        let key = PropKey::Style(AnimProp::Width);
+        self.valid
+            && (self.pending.get(&key).is_some_and(|waiting| waiting.goal.has_auto())
+                || self.tracks.get(&key).is_some_and(|track| {
+                    track.goal().has_auto() && track.is_measured() && track.sample(now).active
+                }))
     }
 
     /// Whether this description animates `prop`, which then is not a CSS
@@ -658,6 +687,31 @@ pub(super) fn subtree_ids(tree: &crate::retained_tree::RetainedTree, id: u64) ->
         }
     }
     ids
+}
+
+/// Whether layout should also measure the width `declared` would have with
+/// `width: auto`, which gpuix reads a frame later. It costs an extra layout of
+/// the tree, so only an element whose motion, transitions or animations can
+/// run on `width` to or from `auto` asks.
+///
+/// A transition or animation needs the measurement before the style changes,
+/// so any that covers `width` asks, but only under `interpolate-size:
+/// allow-keywords`: without it a change to or from `auto` is instant.
+pub(crate) fn wants_natural_width(
+    motion: Option<&MotionState>,
+    declared: Option<&StyleDesc>,
+    inherited: InterpolateSize,
+    keyframes: &KeyframesRegistry,
+    now: Instant,
+) -> bool {
+    if motion.is_some_and(|motion| motion.needs_natural_width(now)) {
+        return true;
+    }
+    let Some(declared) = declared else {
+        return false;
+    };
+    InterpolateSize::declared(declared).unwrap_or(inherited).allows_keywords()
+        && (transitions_width(declared) || animates_width(declared, keyframes))
 }
 
 /// The state styles `fold_state_styles` can lay over `style`, by the name a
@@ -808,15 +862,19 @@ fn start_for(key: PropKey, explicit: Option<&AnimValue>, base: Base) -> Start {
     }
 }
 
-/// The px a target that layout has to resolve stands for: `height: auto` is
-/// the natural height, a percentage a share of the parent's content box.
+/// The px a target that layout has to resolve stands for: `auto` is the
+/// natural size along the axis of `prop`, a percentage a share of the parent's
+/// content box. A caller checks `Measurement::resolves` first.
 fn measured_end(
     prop: AnimProp,
     target: &AnimValue,
     measurement: &Measurement,
 ) -> Result<AnimValue, String> {
     match target {
-        AnimValue::Auto => Ok(AnimValue::Number(measurement.natural_height_px())),
+        AnimValue::Auto => measurement
+            .natural_px(prop)
+            .map(AnimValue::Number)
+            .ok_or_else(|| format!("motion cannot resolve {} as auto: its natural size is not measured", prop.name())),
         AnimValue::Percent(fraction) => in_pixels(prop, &AnimValue::Percent(*fraction), measurement),
         other => unreachable!("{other:?} is not resolved through layout"),
     }
@@ -879,7 +937,7 @@ fn begin(
                 return Ok(Begun::Track(Track::resting_at_auto(transition.clone(), now)));
             }
         };
-        let Some(measurement) = measurement else {
+        let Some(measurement) = measurement.filter(|measurement| measurement.resolves(prop, true)) else {
             return Ok(wait(Some(from)));
         };
         let from = in_pixels(prop, &from, measurement)?;
@@ -975,6 +1033,11 @@ fn begin_keyframes(
         literal.push(value);
     }
 
+    let has_auto = literal.contains(&AnimValue::Auto);
+    let measurement = match key {
+        PropKey::Style(prop) => measurement.filter(|measurement| measurement.resolves(prop, has_auto)),
+        PropKey::Svg(_) => measurement,
+    };
     let resolved = match (key, needs_layout(&literal), measurement) {
         (PropKey::Style(prop), true, Some(measurement)) => {
             resolve_keyframes(prop, &literal, measurement)?
@@ -1981,7 +2044,6 @@ mod tests {
             serde_json::json!({ "initial": { "position": "absolute" }, "animate": {} }),
             serde_json::json!({ "animate": { "opacity": 1.0 }, "transition": { "bogus": {} } }),
             serde_json::json!({ "animate": { "opacity": 1.0 }, "transition": { "opacity": { "default": {} } } }),
-            serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
         ] {
             assert!(
                 MotionState::new(&description, None, Colors::root(), None, 0, now).is_err(),
@@ -2493,9 +2555,19 @@ mod tests {
             Measurement {
                 border_box: gpui::size(gpui::px(width), gpui::px(height)),
                 natural_height: gpui::px(natural),
+                natural_width: None,
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
+            }
+        }
+
+        /// A measurement whose element is `width` wide as laid out and would be
+        /// `natural` wide with `width: auto`.
+        fn wide(width: f32, natural: f32) -> Measurement {
+            Measurement {
+                natural_width: Some(gpui::px(natural)),
+                ..measurement(width, 30.0, 30.0)
             }
         }
 
@@ -2856,6 +2928,140 @@ mod tests {
             assert_eq!(height(&state, started), Some(DimensionValue::Auto));
         }
 
+        fn open_wide() -> serde_json::Value {
+            linear(
+                serde_json::json!({ "width": "auto" }),
+                serde_json::json!({ "width": 0.0 }),
+            )
+        }
+
+        #[test]
+        fn opening_a_width_waits_for_the_natural_width_then_runs_to_it_and_settles_to_auto() {
+            let started = Instant::now();
+            let mut state = MotionState::new(&open_wide(), None, Colors::root(), None, 0, started).unwrap();
+            assert_eq!(pixels(style_at(&state, started).width), 0.0);
+            assert!(state.frame(started).active);
+            assert!(state.owns(AnimProp::Width));
+            assert!(state.needs_natural_width(started), "the element is flagged to measure it");
+
+            // A measurement from a frame that did not measure the width does not
+            // start it: the clock waits for the natural width.
+            let laid_out_at = at(started, 0.1);
+            state.sync(&open_wide(), None, Colors::root(), Some(&measurement(0.0, 30.0, 30.0)), 0, laid_out_at).unwrap();
+            assert!(state.frame(laid_out_at).active);
+            assert_eq!(pixels(style_at(&state, at(laid_out_at, 0.5)).width), 0.0);
+
+            let measured_at = at(started, 0.3);
+            let measured = wide(0.0, 120.0);
+            state.sync(&open_wide(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
+            assert_eq!(pixels(style_at(&state, measured_at).width), 0.0);
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 60.0);
+            assert!(state.needs_natural_width(at(measured_at, 0.5)), "it follows the width while it runs");
+
+            let end = at(measured_at, 1.0);
+            state.sync(&open_wide(), None, Colors::root(), Some(&measured), 0, end).unwrap();
+            let frame = state.frame(end);
+            assert!(!frame.active);
+            assert!(frame.just_settled);
+            assert_eq!(style_at(&state, end).width, Some(DimensionValue::Auto));
+            assert!(!state.needs_natural_width(end), "a settled auto is not measured again");
+        }
+
+        #[test]
+        fn the_natural_width_target_rounds_up_to_the_device_pixel() {
+            let started = Instant::now();
+            let measured = Measurement {
+                scale_factor: 2.0,
+                ..wide(0.0, 120.2)
+            };
+            let state = MotionState::new(&open_wide(), None, Colors::root(), Some(&measured), 0, started).unwrap();
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).width), 60.25);
+        }
+
+        #[test]
+        fn a_width_whose_natural_width_never_arrives_jumps_to_auto_instead_of_asking_for_frames() {
+            let started = Instant::now();
+            let mut state = MotionState::new(&open_wide(), None, Colors::root(), None, 0, started).unwrap();
+            let unmeasured = measurement(0.0, 30.0, 30.0);
+            let late = at(started, 0.5);
+            state.sync(&open_wide(), None, Colors::root(), Some(&unmeasured), 1, late).unwrap();
+            assert!(state.frame(late).active, "one more frame of grace");
+            state.sync(&open_wide(), None, Colors::root(), Some(&unmeasured), 2, late).unwrap();
+            assert_eq!(style_at(&state, late).width, Some(DimensionValue::Auto));
+            assert!(!state.frame(late).active);
+        }
+
+        #[test]
+        fn the_width_target_follows_the_content_while_a_tween_runs() {
+            let started = Instant::now();
+            let mut state =
+                MotionState::new(&open_wide(), None, Colors::root(), Some(&wide(0.0, 120.0)), 0, started).unwrap();
+            let grown = wide(60.0, 200.0);
+            let now = at(started, 0.5);
+            state.sync(&open_wide(), None, Colors::root(), Some(&grown), 0, now).unwrap();
+            assert_eq!(pixels(style_at(&state, now).width), 60.0, "the value showing does not jump");
+            assert_eq!(pixels(style_at(&state, at(started, 1.0)).width), 130.0);
+        }
+
+        #[test]
+        fn a_measurement_without_the_natural_width_leaves_a_running_width_alone() {
+            let started = Instant::now();
+            let mut state =
+                MotionState::new(&open_wide(), None, Colors::root(), Some(&wide(0.0, 120.0)), 0, started).unwrap();
+            let now = at(started, 0.5);
+            state.sync(&open_wide(), None, Colors::root(), Some(&measurement(60.0, 30.0, 30.0)), 0, now).unwrap();
+            assert_eq!(pixels(style_at(&state, at(started, 0.9)).width), 108.0);
+        }
+
+        #[test]
+        fn collapsing_from_a_settled_width_auto_starts_at_the_width_layout_gave() {
+            let started = Instant::now();
+            let mut state = MotionState::new(
+                &linear(serde_json::json!({ "width": "auto" }), serde_json::json!(false)),
+                None, Colors::root(),
+                None,
+                0,
+                started,
+            )
+            .unwrap();
+            let closed = linear(serde_json::json!({ "width": 0.0 }), serde_json::json!(false));
+            state.sync(&closed, None, Colors::root(), Some(&wide(100.0, 100.0)), 0, started).unwrap();
+            assert_eq!(pixels(style_at(&state, started).width), 100.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).width), 50.0);
+        }
+
+        #[test]
+        fn a_number_target_retargeted_to_auto_waits_one_frame_for_the_natural_width() {
+            let started = Instant::now();
+            let fixed = linear(serde_json::json!({ "width": 50.0 }), serde_json::json!(false));
+            let mut state = MotionState::new(&fixed, None, Colors::root(), Some(&wide(50.0, 50.0)), 0, started).unwrap();
+            assert!(!state.needs_natural_width(started), "a number target does not ask for it");
+
+            let now = at(started, 1.0);
+            let unmeasured = measurement(50.0, 30.0, 30.0);
+            state.sync(&open_wide(), None, Colors::root(), Some(&unmeasured), 0, now).unwrap();
+            assert!(state.needs_natural_width(now), "the retarget asks for it");
+            assert_eq!(pixels(style_at(&state, now).width), 50.0);
+
+            let measured_at = at(now, 0.1);
+            state.sync(&open_wide(), None, Colors::root(), Some(&wide(50.0, 120.0)), 0, measured_at).unwrap();
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 85.0);
+        }
+
+        #[test]
+        fn only_width_motion_toward_auto_asks_for_the_natural_width() {
+            let started = Instant::now();
+            for (description, asks) in [
+                (open(), false),
+                (linear(serde_json::json!({ "opacity": 1.0 }), serde_json::json!({ "opacity": 0.0 })), false),
+                (linear(serde_json::json!({ "width": 100.0 }), serde_json::json!({ "width": 0.0 })), false),
+                (open_wide(), true),
+            ] {
+                let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+                assert_eq!(state.needs_natural_width(started), asks, "{description}");
+            }
+        }
+
         fn width(state: &MotionState, now: Instant) -> Option<DimensionValue> {
             style_at(state, now).width
         }
@@ -3207,16 +3413,15 @@ mod tests {
         }
 
         #[test]
-        fn auto_width_is_an_error_that_names_the_limit() {
+        fn auto_on_a_min_or_max_size_is_an_error_that_names_the_limit() {
             for description in [
-                serde_json::json!({ "animate": { "width": "auto" } }),
-                serde_json::json!({ "initial": { "width": "auto" }, "animate": { "width": 10.0 } }),
                 serde_json::json!({ "animate": { "minHeight": "auto" } }),
+                serde_json::json!({ "initial": { "maxWidth": "auto" }, "animate": { "maxWidth": 10.0 } }),
             ] {
                 let error = MotionState::new(&description, None, Colors::root(), None, 0, Instant::now())
                     .err()
                     .unwrap();
-                assert!(error.contains("auto") && error.contains("only height"), "{error}");
+                assert!(error.contains("auto") && error.contains("only width and height"), "{error}");
                 assert!(!error.contains("mixed units"), "{error}");
             }
         }
@@ -3633,6 +3838,7 @@ mod tests {
             Measurement {
                 border_box: gpui::size(gpui::px(100.0), gpui::px(0.0)),
                 natural_height: gpui::px(natural),
+                natural_width: Some(gpui::px(natural)),
                 parent_content: gpui::size(gpui::px(parent_width), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
@@ -3672,6 +3878,36 @@ mod tests {
             let frame = state.frame(end);
             assert!(!frame.active && frame.just_settled);
             assert_eq!(style_at(&state, end).height, Some(DimensionValue::Auto));
+        }
+
+        fn wide_keyframes() -> serde_json::Value {
+            json!({
+                "initial": { "width": 0.0 },
+                "animate": { "width": [0.0, 50.0, "auto"] },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            })
+        }
+
+        #[test]
+        fn auto_as_the_last_width_keyframe_runs_to_the_natural_width_and_settles_to_auto() {
+            let started = Instant::now();
+            let mut state = MotionState::new(&wide_keyframes(), None, Colors::root(), None, 0, started).unwrap();
+            assert!(state.frame(started).active, "waits for a measurement");
+            assert!(state.needs_natural_width(started));
+
+            let measured_at = at(started, 0.2);
+            let measured = Measurement {
+                natural_width: Some(gpui::px(80.0)),
+                ..measurement(800.0, 0.0)
+            };
+            state.sync(&wide_keyframes(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 50.0);
+            assert_eq!(pixels(style_at(&state, at(measured_at, 0.75)).width), 65.0);
+
+            let end = at(measured_at, 1.0);
+            state.sync(&wide_keyframes(), None, Colors::root(), Some(&measured), 0, end).unwrap();
+            assert!(state.frame(end).just_settled);
+            assert_eq!(style_at(&state, end).width, Some(DimensionValue::Auto));
         }
 
         #[test]

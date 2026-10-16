@@ -44,6 +44,10 @@ impl Goal {
         &self.frames
     }
 
+    pub(super) fn has_auto(&self) -> bool {
+        self.frames.contains(&Some(AnimValue::Auto))
+    }
+
     /// How many keyframes a track for this goal has: a single target runs
     /// from the current value.
     pub(super) fn keyframe_count(&self) -> usize {

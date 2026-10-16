@@ -7153,6 +7153,19 @@ pub(crate) fn build_element(
         style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
     });
     let style = anchored_style.as_ref().or(style);
+    let natural_width_style = (measured
+        && crate::motion::wants_natural_width(
+            ctx.motion_states.get(&id),
+            declared_style,
+            ctx.inherited.interpolate_size,
+            ctx.keyframes,
+            ctx.now,
+        ))
+    .then(|| StyleDesc {
+        measure_natural_width: true,
+        ..style.cloned().unwrap_or_default()
+    });
+    let style = natural_width_style.as_ref().or(style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -11515,4 +11528,165 @@ mod dimension_length_tests {
         );
     }
 
+    mod natural_width {
+        use super::*;
+
+        const ROW: &str = r#"{"display": "flex", "width": 400, "height": 100}"#;
+        const CONTENT: &str = r#"{"width": 120, "height": 10, "flexShrink": 0}"#;
+        const OPEN_KEYWORDS: &str = r#""interpolateSize": "allow-keywords""#;
+
+        /// Element 2 holds a 120px box; the clock stands still until `step`.
+        fn page(cx: &mut gpui::TestAppContext, style: &str) -> Page {
+            let page = Page::new(cx, &[(1, None, ROW), (2, Some(1), style), (3, Some(2), CONTENT)]);
+            page.window.update(cx, |view, _, _| view.clock.pause()).unwrap();
+            page
+        }
+
+        fn set_motion(page: &Page, cx: &mut gpui::TestAppContext, description: serde_json::Value) {
+            page.tree.lock().unwrap().set_custom_prop(2, "motion".to_owned(), description);
+            page.draw(cx);
+        }
+
+        /// Draws a frame `millis` later.
+        fn step(page: &Page, cx: &mut gpui::TestAppContext, millis: f64) {
+            page.window.update(cx, |view, _, _| view.clock.fast_forward_ms(millis)).unwrap();
+            page.draw(cx);
+        }
+
+        fn natural_width(page: &Page, cx: &mut gpui::TestAppContext, id: u64) -> Option<f32> {
+            page.window
+                .update(cx, |view, _, _| {
+                    view.measurements
+                        .get(id)
+                        .expect("the element is measured")
+                        .natural_width
+                        .map(f32::from)
+                })
+                .unwrap()
+        }
+
+        fn open_width() -> serde_json::Value {
+            serde_json::json!({
+                "initial": { "width": 0 },
+                "animate": { "width": "auto" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            })
+        }
+
+        #[gpui::test]
+        fn a_motion_width_runs_from_zero_to_the_content_width_and_ends_on_auto(cx: &mut gpui::TestAppContext) {
+            let page = page(cx, r#"{"display": "flex"}"#);
+            set_motion(&page, cx, open_width());
+            // The first frame has nothing measured: it holds the start.
+            near(page.size(2), (0.0, 100.0));
+            // The next one has the width, and the clock starts there.
+            step(&page, cx, 500.0);
+            near(page.size(2), (0.0, 100.0));
+            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (60.0, 100.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (120.0, 100.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (120.0, 100.0));
+        }
+
+        #[gpui::test]
+        fn auto_ends_as_the_content_width_when_the_content_changes(cx: &mut gpui::TestAppContext) {
+            let page = page(cx, r#"{"display": "flex"}"#);
+            set_motion(&page, cx, open_width());
+            step(&page, cx, 0.0);
+            step(&page, cx, 1000.0);
+            near(page.size(2), (120.0, 100.0));
+            page.set_style(cx, 3, r#"{"width": 200, "height": 10, "flexShrink": 0}"#);
+            near(page.size(2), (200.0, 100.0));
+        }
+
+        #[gpui::test]
+        fn only_an_element_that_animates_width_toward_auto_is_measured_for_it(cx: &mut gpui::TestAppContext) {
+            let page = page(cx, r#"{"display": "flex"}"#);
+            set_motion(
+                &page,
+                cx,
+                serde_json::json!({ "initial": { "opacity": 0 }, "animate": { "opacity": 1 }, "transition": { "duration": 1.0 } }),
+            );
+            step(&page, cx, 10.0);
+            assert_eq!(natural_width(&page, cx, 2), None);
+
+            set_motion(
+                &page,
+                cx,
+                serde_json::json!({ "animate": { "width": 100 }, "transition": { "duration": 1.0 } }),
+            );
+            step(&page, cx, 10.0);
+            assert_eq!(natural_width(&page, cx, 2), None);
+
+            set_motion(&page, cx, open_width());
+            step(&page, cx, 10.0);
+            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
+
+            // Settled on auto, nothing follows it any more.
+            step(&page, cx, 2000.0);
+            step(&page, cx, 10.0);
+            step(&page, cx, 10.0);
+            assert_eq!(natural_width(&page, cx, 2), None);
+        }
+
+        #[gpui::test]
+        fn a_transition_toward_an_auto_width_needs_allow_keywords_to_measure_and_run(cx: &mut gpui::TestAppContext) {
+            let closed = format!(r#"{{"display": "flex", "width": 0, {OPEN_KEYWORDS}, "transition": "width 1s linear"}}"#);
+            let open = format!(r#"{{"display": "flex", {OPEN_KEYWORDS}, "transition": "width 1s linear"}}"#);
+            let page = page(cx, &closed);
+            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
+            near(page.size(2), (0.0, 100.0));
+
+            page.set_style(cx, 2, &open);
+            near(page.size(2), (0.0, 100.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (60.0, 100.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (120.0, 100.0));
+            step(&page, cx, 500.0);
+            near(page.size(2), (120.0, 100.0));
+
+            let numeric = r#"{"display": "flex", "width": 0, "transition": "width 1s linear"}"#;
+            let page = self::page(cx, numeric);
+            assert_eq!(natural_width(&page, cx, 2), None);
+            page.set_style(cx, 2, r#"{"display": "flex", "transition": "width 1s linear"}"#);
+            step(&page, cx, 500.0);
+            near(page.size(2), (120.0, 100.0));
+        }
+
+        #[gpui::test]
+        fn a_transition_of_another_property_does_not_measure_the_width(cx: &mut gpui::TestAppContext) {
+            let page = page(
+                cx,
+                &format!(r#"{{"display": "flex", {OPEN_KEYWORDS}, "transition": "opacity 1s linear"}}"#),
+            );
+            assert_eq!(natural_width(&page, cx, 2), None);
+        }
+
+        #[gpui::test]
+        fn a_css_animation_of_width_runs_to_the_content_width(cx: &mut gpui::TestAppContext) {
+            let page = page(cx, r#"{"display": "flex"}"#);
+            page.window
+                .update(cx, |view, _, _| {
+                    view.keyframes
+                        .define("open", r#"{ "from": { "width": 0 }, "to": { "width": "auto" } }"#)
+                        .unwrap();
+                })
+                .unwrap();
+            page.set_style(
+                cx,
+                2,
+                &format!(r#"{{"display": "flex", {OPEN_KEYWORDS}, "animation": "open 1s linear forwards"}}"#),
+            );
+            step(&page, cx, 500.0);
+            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
+            step(&page, cx, 0.0);
+            near(page.size(2), (60.0, 100.0));
+            step(&page, cx, 600.0);
+            near(page.size(2), (120.0, 100.0));
+        }
+    }
 }

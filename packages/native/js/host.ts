@@ -77,9 +77,11 @@ export type DimensionValue = number | string
  *
  * `width`, `height` and the min/max sizes move between px and `%` (a share of
  * the parent's content box, or of the window for a root), and settle on the
- * unit they were given. `height` also takes `"auto"`, the height the content
- * wants. `width: "auto"` is an error: the content's width needs a second layout
- * pass to measure, and so are the size keywords.
+ * unit they were given. `width` and `height` also take `"auto"`, the size the content
+ * wants (the min and max sizes do not). The width is measured by an extra layout of the
+ * tree while the element animates it, one frame late like the height. The size keywords
+ * (`min-content` and the like) are an error, and a CSS transition or animation to or from
+ * `auto` needs `interpolateSize: "allow-keywords"`.
  *
  * Each property takes a target or keyframes (`opacity: [0, 1, 0.5]`); see
  * `MotionKeyframes`.
@@ -146,7 +148,7 @@ export type MotionStyleTargets = Pick<
   | "scrollbarWidth"
   | "selectionColor"
 > & {
-  width?: MotionLength
+  width?: MotionLength | "auto"
   height?: MotionLength | "auto"
   minWidth?: MotionLength
   minHeight?: MotionLength

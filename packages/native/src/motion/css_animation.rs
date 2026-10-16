@@ -663,7 +663,9 @@ impl Planner<'_> {
         match underlying {
             Underlying::Value(value) => Endpoint::Value(Some(value.clone())),
             Underlying::Unknown => Endpoint::Absent,
-            Underlying::Keyword if prop == AnimProp::Height => Endpoint::Value(Some(AnimValue::Auto)),
+            Underlying::Keyword if matches!(prop, AnimProp::Width | AnimProp::Height) => {
+                Endpoint::Value(Some(AnimValue::Auto))
+            }
             Underlying::Keyword if !self.allow_keywords => Endpoint::Value(None),
             Underlying::Keyword => {
                 if let Some(size) = self.frozen.get(&prop) {
@@ -743,7 +745,11 @@ impl Planner<'_> {
             .collect();
         let resolved = if needs_layout(&literal) {
             self.reads_layout = true;
-            let Some(measurement) = self.measurement else {
+            let has_auto = literal.contains(&AnimValue::Auto);
+            let Some(measurement) = self
+                .measurement
+                .filter(|measurement| measurement.resolves(prop, has_auto))
+            else {
                 self.waiting = true;
                 return None;
             };
@@ -1076,6 +1082,18 @@ fn declares_animation(style: &StyleDesc) -> bool {
     [&style.animation, &style.animation_name]
         .into_iter()
         .any(|text| text.as_deref().is_some_and(|text| !text.trim().eq_ignore_ascii_case("none")))
+}
+
+/// Whether an animation of `style` has keyframes for `width`, which at `auto`
+/// needs the natural width measured before the animation plans.
+pub(crate) fn animates_width(style: &StyleDesc, registry: &KeyframesRegistry) -> bool {
+    AnimationList::parse(style).is_ok_and(|list| {
+        list.0
+            .iter()
+            .filter_map(|animation| animation.name.as_deref())
+            .filter_map(|name| registry.get(name))
+            .any(|keyframes| keyframes.properties().contains(&AnimProp::Width))
+    })
 }
 
 /// The animation state of every element that declares one.
@@ -2245,10 +2263,19 @@ mod tests {
         );
     }
 
+    /// An element `width` wide that would be `natural` wide with `width: auto`.
+    fn measured_wide(width: f32, natural: f32) -> Measurement {
+        Measurement {
+            natural_width: Some(gpui::px(natural)),
+            ..measured(width, 10.0, 10.0)
+        }
+    }
+
     fn measured(width: f32, height: f32, natural: f32) -> Measurement {
         Measurement {
             border_box: gpui::size(gpui::px(width), gpui::px(height)),
             natural_height: gpui::px(natural),
+            natural_width: None,
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
             percent_height_resolves: true,
@@ -2323,7 +2350,10 @@ mod tests {
         let animated = fading("grow 1s linear forwards");
         let measurement = measured(40.0, 10.0, 10.0);
         frames.frame_measured(0, &animated, Some(&measurement));
-        assert_eq!(frames.frame_measured(250, &animated, Some(&measurement)).width, None);
+        assert_eq!(
+            frames.frame_measured(250, &animated, Some(&measurement)).width,
+            Some(DimensionValue::Auto)
+        );
         assert_eq!(
             frames.frame_measured(750, &animated, Some(&measurement)).width,
             Some(DimensionValue::Pixels(100.0))
@@ -2331,7 +2361,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unset_size_endpoint_starts_from_the_laid_out_size_once_keywords_are_allowed() {
+    fn an_unset_width_endpoint_starts_from_the_natural_width_once_keywords_are_allowed() {
         let mut frames = Frames::new();
         frames.define("grow", r#"{ "to": { "width": 100 } }"#);
         let animated = style(
@@ -2339,17 +2369,80 @@ mod tests {
         );
         assert_eq!(frames.frame(0, &animated).width, None, "waits for a measurement");
         assert!(frames.animations.take_active());
-        let first = measured(40.0, 10.0, 10.0);
+        // A measurement that did not measure the width keeps waiting.
+        assert_eq!(frames.frame_measured(250, &animated, Some(&measured(40.0, 10.0, 10.0))).width, None);
+        assert!(frames.animations.take_active());
+        let first = measured_wide(40.0, 40.0);
         match frames.frame_measured(500, &animated, Some(&first)).width {
             Some(DimensionValue::Pixels(width)) => near(width, 70.0),
             other => panic!("{other:?}"),
         }
-        // The box moved because of the animation; the start is not measured again.
-        let moved = measured(70.0, 10.0, 10.0);
+        // The box moved because of the animation, but its natural width did not.
+        let moved = measured_wide(70.0, 40.0);
         match frames.frame_measured(500, &animated, Some(&moved)).width {
             Some(DimensionValue::Pixels(width)) => near(width, 70.0),
             other => panic!("{other:?}"),
         }
+    }
+
+    fn width_of(style: &StyleDesc) -> DimensionValue {
+        style.width.clone().expect("the style has a width")
+    }
+
+    #[test]
+    fn width_auto_runs_through_the_natural_width_and_goes_back_to_auto() {
+        let mut frames = Frames::new();
+        frames.define("open", r#"{ "from": { "width": 0 }, "to": { "width": "auto" } }"#);
+        let animated = style(
+            r#"{ "animation": "open 1s linear forwards", "interpolateSize": "allow-keywords" }"#,
+        );
+        assert_eq!(frames.frame(0, &animated).width, None);
+        assert!(frames.animations.take_active());
+        // A measurement from a frame that did not measure the width keeps it waiting.
+        assert_eq!(frames.frame_measured(100, &animated, Some(&measured(0.0, 10.0, 10.0))).width, None);
+        assert!(frames.animations.take_active());
+
+        let halfway = frames.frame_measured(500, &animated, Some(&measured_wide(0.0, 120.0)));
+        assert_eq!(width_of(&halfway), DimensionValue::Pixels(60.0));
+        // The end follows the measurement as the content grows.
+        let grown = measured_wide(60.0, 200.0);
+        assert_eq!(
+            width_of(&frames.frame_measured(500, &animated, Some(&grown))),
+            DimensionValue::Pixels(100.0)
+        );
+        assert_eq!(
+            width_of(&frames.frame_measured(1000, &animated, Some(&grown))),
+            DimensionValue::Auto
+        );
+    }
+
+    #[test]
+    fn a_width_against_auto_swaps_halfway_unless_keywords_are_allowed() {
+        let mut frames = Frames::new();
+        frames.define("open", r#"{ "from": { "width": 0 }, "to": { "width": "auto" } }"#);
+        let discrete = fading("open 1s linear");
+        let measurement = measured_wide(0.0, 120.0);
+        frames.frame_measured(0, &discrete, Some(&measurement));
+        assert_eq!(
+            width_of(&frames.frame_measured(400, &discrete, Some(&measurement))),
+            DimensionValue::Pixels(0.0)
+        );
+        assert_eq!(
+            width_of(&frames.frame_measured(600, &discrete, Some(&measurement))),
+            DimensionValue::Auto
+        );
+    }
+
+    #[test]
+    fn only_keyframes_for_width_under_allow_keywords_ask_for_the_natural_width() {
+        let mut registry = KeyframesRegistry::default();
+        registry.define("open", r#"{ "to": { "width": "auto" } }"#).unwrap();
+        registry.define("fade", r#"{ "to": { "opacity": 0 } }"#).unwrap();
+        assert!(animates_width(&style(r#"{ "animation": "open 1s" }"#), &registry));
+        assert!(animates_width(&style(r#"{ "animationName": "fade, open" }"#), &registry));
+        assert!(!animates_width(&style(r#"{ "animation": "fade 1s" }"#), &registry));
+        assert!(!animates_width(&style(r#"{ "animation": "missing 1s" }"#), &registry));
+        assert!(!animates_width(&style(r#"{ "width": 10 }"#), &registry));
     }
 
     #[test]

@@ -608,11 +608,11 @@ impl AnimProp {
                              the element and the window when the tree is applied"
                         ));
                     }
-                    DimensionValue::Auto if self == Self::Height => AnimValue::Auto,
+                    DimensionValue::Auto if matches!(self, Self::Width | Self::Height) => AnimValue::Auto,
                     DimensionValue::Auto => {
                         return Err(format!(
-                            "motion cannot animate {name} to or from auto: only height can, because auto \
-                             width is the width of the content and measuring that needs a second layout pass"
+                            "motion cannot animate {name} to or from auto: only width and height can, \
+                             because the min and max sizes have no auto to measure"
                         ));
                     }
                 }
@@ -1062,11 +1062,31 @@ mod tests {
     }
 
     #[test]
+    fn only_width_and_height_take_auto() {
+        let colors = Colors::root();
+        for prop in [AnimProp::Width, AnimProp::Height] {
+            assert_eq!(prop.parse(&serde_json::json!("auto"), &colors), Ok(AnimValue::Auto), "{prop:?}");
+        }
+        for prop in [AnimProp::MinWidth, AnimProp::MaxWidth, AnimProp::MinHeight, AnimProp::MaxHeight] {
+            let error = prop.parse(&serde_json::json!("auto"), &colors).unwrap_err();
+            assert!(error.contains("only width and height"), "{prop:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn an_auto_dimension_writes_back_as_auto() {
+        let mut style = StyleDesc::default();
+        AnimProp::Width.write(&mut style, AnimValue::Auto);
+        assert_eq!(style.width, Some(DimensionValue::Auto));
+    }
+
+    #[test]
     fn rejects_out_of_range_and_wrong_typed_values() {
         for (prop, value) in [
             (AnimProp::Opacity, serde_json::json!(2.0)),
             (AnimProp::Width, serde_json::json!(-1.0)),
-            (AnimProp::Width, serde_json::json!("auto")),
+            (AnimProp::MinWidth, serde_json::json!("auto")),
+            (AnimProp::MaxHeight, serde_json::json!("auto")),
             (AnimProp::Width, serde_json::json!(1e300)),
             (AnimProp::PaddingTop, serde_json::json!("12px")),
             (AnimProp::BackgroundColor, serde_json::json!("not a colour")),

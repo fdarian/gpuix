@@ -478,6 +478,12 @@ fn is_keyword_change(
     prop.size_axis().is_some() && (keyword(before) || keyword(after))
 }
 
+/// Whether a transition of `style` can run on `width`, which to or from `auto`
+/// needs the natural width measured a frame before the style changes.
+pub(crate) fn transitions_width(style: &StyleDesc) -> bool {
+    TransitionList::parse(style).is_ok_and(|list| list.matching(AnimProp::Width).is_some())
+}
+
 /// Rejects a style whose `transition*` or `interpolateSize` values, in it or in
 /// a state style, do not parse, so a bad value fails where it is set instead of
 /// silently never running.
@@ -657,7 +663,7 @@ impl Running {
             return;
         }
         let end = match &self.end {
-            AnimValue::Auto => Some(measurement.natural_height_px()),
+            AnimValue::Auto => measurement.natural_px(prop),
             AnimValue::Percent(fraction) => measurement.percent_px(prop, *fraction),
             _ => None,
         };
@@ -700,15 +706,15 @@ fn common_unit(
     }
 }
 
-/// What a style declares for `prop`: `Auto` for a height that is unset or
-/// `auto`, which a transition runs to or from the laid-out height.
+/// What a style declares for `prop`: `Auto` for a width or height that is unset
+/// or `auto`, which a transition runs to or from the laid-out size.
 fn declared_value(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
     let value = super::resolve_start(
         super::PropKey::Style(prop),
         super::Base::Style(Some(style), colors),
     );
     match (value, prop) {
-        (None, AnimProp::Height) => Some(AnimValue::Auto),
+        (None, AnimProp::Width | AnimProp::Height) => Some(AnimValue::Auto),
         (value, _) => value,
     }
 }
@@ -722,27 +728,27 @@ fn computed_value(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Option<
 }
 
 /// The number a transition leaves from. A value the style leaves unset or
-/// `auto` is the size layout gave the element. `width` is left out: going to
-/// or from `auto` there needs a second layout, so it changes at once.
+/// `auto` is the size layout gave the element.
 fn laid_out_start(
     prop: AnimProp,
     declared: Option<&AnimValue>,
     measurement: Option<&Measurement>,
 ) -> Option<AnimValue> {
     match declared {
-        Some(AnimValue::Auto) | None if prop != AnimProp::Width => {
-            measurement?.laid_out(prop).map(AnimValue::Number)
-        }
-        Some(AnimValue::Auto) | None => None,
+        Some(AnimValue::Auto) | None => measurement?.laid_out(prop).map(AnimValue::Number),
         Some(value) => Some(value.clone()),
     }
 }
 
-/// The number a transition runs to: `auto` is the height the content wants.
-/// `None` when the end is unset, which only a height can resolve.
-fn laid_out_end(declared: &AnimValue, measurement: Option<&Measurement>) -> Option<AnimValue> {
+/// The number a transition runs to: `auto` is the size the content wants.
+/// `None` when that is not measured yet.
+fn laid_out_end(
+    prop: AnimProp,
+    declared: &AnimValue,
+    measurement: Option<&Measurement>,
+) -> Option<AnimValue> {
     match declared {
-        AnimValue::Auto => measurement.map(|measurement| AnimValue::Number(measurement.natural_height_px())),
+        AnimValue::Auto => measurement?.natural_px(prop).map(AnimValue::Number),
         value => Some(value.clone()),
     }
 }
@@ -978,7 +984,7 @@ impl ElementState {
                 return;
             }
             let from = laid_out_start(prop, before.as_ref(), measurement);
-            let to = after_value.as_ref().and_then(|end| laid_out_end(end, measurement));
+            let to = after_value.as_ref().and_then(|end| laid_out_end(prop, end, measurement));
             if let (Some(from), Some(to), Some(end), Some(end_computed)) =
                 (from, to, after_value, after_computed)
             {
@@ -1011,7 +1017,7 @@ impl ElementState {
         {
             return;
         }
-        let Some(to) = laid_out_end(&end, measurement) else {
+        let Some(to) = laid_out_end(prop, &end, measurement) else {
             return;
         };
         if current == to || !has_duration {
@@ -2278,6 +2284,7 @@ mod tests {
             Measurement {
                 border_box: gpui::size(gpui::px(100.0), gpui::px(height)),
                 natural_height: gpui::px(natural),
+                natural_width: None,
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
@@ -2378,16 +2385,101 @@ mod tests {
             assert_eq!(height_of(&clock.frame(300, &target)), 100.0);
         }
 
+        /// An element `width` wide that would be `natural` wide with `width: auto`.
+        fn wide(width: f32, natural: f32) -> Measurement {
+            Measurement {
+                natural_width: Some(gpui::px(natural)),
+                border_box: gpui::size(gpui::px(width), gpui::px(10.0)),
+                ..measurement(10.0, 10.0)
+            }
+        }
+
+        fn narrow() -> StyleDesc {
+            style(r#"{ "width": 0, "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#)
+        }
+
+        fn auto_width() -> StyleDesc {
+            style(r#"{ "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#)
+        }
+
         #[test]
-        fn width_to_or_from_auto_stays_instant() {
+        fn a_width_runs_to_the_natural_width_and_ends_on_auto() {
             let mut clock = Clock::new();
-            let measured = measurement(10.0, 10.0);
-            let sized = style(r#"{ "width": 50, "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#);
-            let unset = style(r#"{ "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#);
+            let measured = wide(0.0, 120.2);
+            clock.frame_measured(0, &narrow(), None, Some(&measured));
+
+            let started = clock.frame_measured(100, &auto_width(), None, Some(&measured));
+            assert_eq!(width_of(&started), 0.0);
+            assert_eq!(
+                clock.events(),
+                [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0)]
+            );
+            // The target is the natural width rounded up to the device pixel.
+            assert_eq!(width_of(&clock.frame_measured(600, &auto_width(), None, Some(&measured))), 60.5);
+            assert!(clock.transitions.take_active());
+
+            let ended = clock.frame_measured(1100, &auto_width(), None, Some(&measured));
+            assert_eq!(ended.width, None, "the style is literal auto again");
+            assert_eq!(clock.events(), [(End, "width".to_string(), 1.0)]);
+            assert!(!clock.transitions.take_active());
+        }
+
+        #[test]
+        fn leaving_a_width_of_auto_starts_from_the_laid_out_width() {
+            let mut clock = Clock::new();
+            let measured = wide(80.0, 80.0);
+            clock.frame_measured(0, &auto_width(), None, Some(&measured));
+
+            let target = style(r#"{ "width": 100, "interpolateSize": "allow-keywords", "transition": "width 1s linear" }"#);
+            assert_eq!(width_of(&clock.frame_measured(100, &target, None, Some(&measured))), 80.0);
+            assert_eq!(width_of(&clock.frame_measured(600, &target, None, Some(&measured))), 90.0);
+            assert_eq!(width_of(&clock.frame_measured(1100, &target, None, Some(&measured))), 100.0);
+        }
+
+        #[test]
+        fn the_width_end_follows_the_content_without_moving_the_value_or_the_schedule() {
+            let mut clock = Clock::new();
+            clock.frame_measured(0, &narrow(), None, Some(&wide(0.0, 80.0)));
+            clock.frame_measured(100, &auto_width(), None, Some(&wide(0.0, 80.0)));
+            clock.events();
+
+            let grown = wide(40.0, 120.0);
+            assert_eq!(width_of(&clock.frame_measured(600, &auto_width(), None, Some(&grown))), 40.0);
+            assert_eq!(width_of(&clock.frame_measured(850, &auto_width(), None, Some(&grown))), 80.0);
+            assert!(clock.events().is_empty(), "following is not a new transition");
+        }
+
+        #[test]
+        fn without_the_natural_width_the_change_is_instant() {
+            let mut clock = Clock::new();
+            // Laid out, but by a frame that did not measure the width.
+            let unmeasured = measurement(10.0, 10.0);
+            clock.frame_measured(0, &narrow(), None, Some(&unmeasured));
+            assert_eq!(clock.frame_measured(100, &auto_width(), None, Some(&unmeasured)).width, None);
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn width_to_or_from_auto_is_instant_unless_keywords_are_allowed() {
+            let mut clock = Clock::new();
+            let measured = wide(10.0, 10.0);
+            let sized = style(r#"{ "width": 50, "transition": "width 1s linear" }"#);
+            let unset = style(r#"{ "transition": "width 1s linear" }"#);
             clock.frame_measured(0, &sized, None, Some(&measured));
             assert_eq!(clock.frame_measured(100, &unset, None, Some(&measured)).width, None);
             assert_eq!(width_of(&clock.frame_measured(200, &sized, None, Some(&measured))), 50.0);
             assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn only_a_transition_that_covers_width_asks_for_the_natural_width() {
+            assert!(transitions_width(&style(r#"{ "transition": "width 1s" }"#)));
+            assert!(transitions_width(&style(r#"{ "transition": "all 1s" }"#)));
+            assert!(transitions_width(&style(r#"{ "transitionProperty": "opacity, width" }"#)));
+            assert!(!transitions_width(&style(r#"{ "transition": "opacity 1s" }"#)));
+            assert!(!transitions_width(&style(r#"{ "transition": "height 1s" }"#)));
+            assert!(!transitions_width(&style(r#"{ "transition": "none" }"#)));
+            assert!(!transitions_width(&style(r#"{ "width": 10 }"#)));
         }
 
         #[test]

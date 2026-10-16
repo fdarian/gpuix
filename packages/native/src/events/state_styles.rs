@@ -20,6 +20,7 @@ macro_rules! overlay_fields {
             group_hover: None,
             group_active: None,
             group_focus_within: None,
+            measure_natural_width: false,
         }
     };
 }
