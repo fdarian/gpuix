@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { DomEvent } from "@gpuix/native/host"
+import type { DomEvent, HostInputEvent } from "@gpuix/native/host"
 import { preventEventDefault } from "@gpuix/native/host"
 import type {
   HostMouseEvent,
@@ -263,9 +263,9 @@ export const ComboboxInput = forwardRef<PublicInstance, ComboboxInputProps>(
           onBlur?.(event)
           context.setOpen(false)
         }}
-        onChange={(event: DomEvent) => {
+        onChange={(event: HostInputEvent) => {
           onChange?.(event)
-          context.setInputValue(event.value ?? "")
+          context.setInputValue(event.value)
           if (!disabled) context.setOpen(true)
         }}
         onKeyDown={(event: KeyEvent) => {

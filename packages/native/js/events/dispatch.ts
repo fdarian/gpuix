@@ -87,7 +87,10 @@ export function captureHandlerKey(eventType: string): string {
  * carry element ids, which the event replaces with elements. `elementId` stays
  * the numeric id of the element the payload was addressed to.
  */
-export type PublicEventFields = Omit<EventPayload, "target" | "relatedTarget" | "path">
+export type PublicEventFields = Omit<EventPayload, "target" | "relatedTarget" | "path" | "data"> & {
+  /** `null` for an edit that inserted no text, see `HostInputEvent`. */
+  data?: string | null
+}
 
 /**
  * An event with no propagation, such as `onSelectionChange` or
@@ -226,6 +229,8 @@ export function createDomEvent(
   const event: DomEvent = {
     ...toRootEvent(root, payload, path[0] ?? pathlessTarget),
     ...(payload.formEntries && formSubmission(payload.formEntries)),
+    // An edit has no data unless it inserted text, and the DOM says so with null.
+    ...(payload.eventType === "change" && { data: payload.data ?? null }),
     type: payload.eventType,
     currentTarget: null,
     composedPath: () => [...path],

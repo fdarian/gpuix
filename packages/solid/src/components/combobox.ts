@@ -8,7 +8,7 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { DomEvent } from "@gpuix/native/host"
+import type { DomEvent, HostInputEvent } from "@gpuix/native/host"
 import { preventEventDefault, type HostMouseEvent, type HostPointerEvent, type HostProps, type InputProps, type KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
@@ -192,9 +192,9 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
       props.onBlur?.(event)
       state.setOpen(false)
     },
-    onChange(event: DomEvent) {
+    onChange(event: HostInputEvent) {
       props.onChange?.(event)
-      state.setInput(event.value ?? "")
+      state.setInput(event.value)
       if (!disabled()) state.setOpen(true)
     },
     onKeyDown(event: KeyEvent) {

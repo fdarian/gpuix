@@ -13,6 +13,7 @@ import type { DomEvent, RootEvent } from "./events/dispatch.js"
 import type {
   AnimationEventProps,
   CompositionEventProps,
+  HostInputEvent,
   PointerEventProps,
 } from "./events/types.js"
 import type { ScrollEvent } from "./scroll.js"
@@ -1197,7 +1198,8 @@ export interface HostProps
   // `onCompositionStart`, `onCompositionUpdate` and `onCompositionEnd`, with
   // `on…Capture` twins: see CompositionEventProps. They bubble from the
   // `<input>` or `<textarea>` being composed in.
-  onChange?: (event: DomEvent) => void
+  /** One edit of the text, the DOM `input`: see `HostInputEvent`. */
+  onChange?: (event: HostInputEvent) => void
   /** The DOM `submit` event of a descendant `<form>`, bubbling: see
    *  `FormProps.onSubmit`. Not available on `<input>` or `<textarea>`: handle
    *  Enter in `onKeyDown` and call `preventDefault()` to keep it from submitting

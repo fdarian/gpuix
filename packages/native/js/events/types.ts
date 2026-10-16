@@ -233,12 +233,33 @@ export interface HostCompositionEvent extends HostDomEvent {
   data: string
 }
 
+/**
+ * The `onChange` event of an `<input>` or `<textarea>`: one edit of its text,
+ * which is what the DOM calls `input`. `inputType` and `data` are those of an
+ * `InputEvent` as Chrome fills them: `insertText`, `insertFromPaste` and
+ * `insertCompositionText` carry the inserted text in `data`; `insertLineBreak`,
+ * the `delete…` types (`deleteContentBackward`, `deleteContentForward`,
+ * `deleteWordBackward`, `deleteWordForward`, `deleteSoftLineBackward`,
+ * `deleteSoftLineForward`, `deleteByCut`, `deleteCompositionText`) and
+ * `historyUndo` / `historyRedo` have `data` `null`. The number stepper's edit
+ * has `inputType` `""`. `isComposing` is true for the edits of a composition,
+ * the last of which comes before its `compositionend`. Setting `value` from
+ * outside fires none.
+ */
+export interface HostInputEvent extends Omit<HostDomEvent, "data"> {
+  /** The text after the edit. */
+  readonly value: string
+  readonly inputType: string
+  readonly data: string | null
+  readonly isComposing: boolean
+}
+
 export interface CompositionEventHandlerProps {
   /** A composition began. Fires before its first `compositionupdate`. */
   onCompositionStart?: (event: HostCompositionEvent) => void
   /** The composition's text changed. Fires before the `onChange` of that edit. */
   onCompositionUpdate?: (event: HostCompositionEvent) => void
-  /** The composition ended, committed or cancelled. Fires before the `onChange` of its final edit. */
+  /** The composition ended, committed or cancelled. Fires after the `onChange` of its final edit. */
   onCompositionEnd?: (event: HostCompositionEvent) => void
 }
 

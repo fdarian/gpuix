@@ -740,6 +740,75 @@ struct LastEdit {
     when: Instant,
 }
 
+/// What an edit of the text is, named as `InputEvent.inputType` names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InputKind {
+    InsertText,
+    InsertFromPaste,
+    InsertLineBreak,
+    InsertCompositionText,
+    DeleteCompositionText,
+    DeleteContentBackward,
+    DeleteContentForward,
+    DeleteWordBackward,
+    DeleteWordForward,
+    DeleteSoftLineBackward,
+    DeleteSoftLineForward,
+    DeleteByCut,
+    HistoryUndo,
+    HistoryRedo,
+    /// The number stepper: the DOM fires a plain `Event` there, which has no `inputType`.
+    Stepped,
+}
+
+impl InputKind {
+    fn input_type(self) -> &'static str {
+        match self {
+            InputKind::InsertText => "insertText",
+            InputKind::InsertFromPaste => "insertFromPaste",
+            InputKind::InsertLineBreak => "insertLineBreak",
+            InputKind::InsertCompositionText => "insertCompositionText",
+            InputKind::DeleteCompositionText => "deleteCompositionText",
+            InputKind::DeleteContentBackward => "deleteContentBackward",
+            InputKind::DeleteContentForward => "deleteContentForward",
+            InputKind::DeleteWordBackward => "deleteWordBackward",
+            InputKind::DeleteWordForward => "deleteWordForward",
+            InputKind::DeleteSoftLineBackward => "deleteSoftLineBackward",
+            InputKind::DeleteSoftLineForward => "deleteSoftLineForward",
+            InputKind::DeleteByCut => "deleteByCut",
+            InputKind::HistoryUndo => "historyUndo",
+            InputKind::HistoryRedo => "historyRedo",
+            InputKind::Stepped => "",
+        }
+    }
+
+    /// `InputEvent.data` is the inserted text for these and null for the rest,
+    /// a line break included.
+    fn carries_text(self) -> bool {
+        matches!(
+            self,
+            InputKind::InsertText | InputKind::InsertFromPaste | InputKind::InsertCompositionText
+        )
+    }
+
+    /// The kind an edit reports once its outcome is known: an edit of marked
+    /// text is the composition's own, and an insertion that inserted nothing
+    /// deleted the text it replaced.
+    fn for_outcome(self, in_composition: bool, inserted: &str) -> InputKind {
+        if in_composition {
+            return if inserted.is_empty() {
+                InputKind::DeleteCompositionText
+            } else {
+                InputKind::InsertCompositionText
+            };
+        }
+        if self.carries_text() && inserted.is_empty() {
+            return InputKind::DeleteContentBackward;
+        }
+        self
+    }
+}
+
 fn coalescing_edit(
     range: &Range<usize>,
     new_text: &str,
@@ -959,6 +1028,24 @@ impl TextEditorState {
         cx.notify();
     }
 
+    fn replace_range(
+        &mut self,
+        range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        kind: InputKind,
+        cx: &mut Context<Self>,
+    ) {
+        if self.read_only || self.disabled {
+            return;
+        }
+        let range = range_utf16
+            .as_ref()
+            .map(|range| self.range_from_utf16(range))
+            .or(self.marked_range.clone())
+            .unwrap_or(self.selected_range.clone());
+        self.edit(range, new_text, true, kind, cx);
+    }
+
     fn emit_composition(&self, event_type: &str, data: &str) {
         let tree = self.tree.lock().unwrap();
         emit_bubbling_event(&self.callback, &tree, self.element_id, event_type, |payload| {
@@ -966,7 +1053,7 @@ impl TextEditorState {
         });
     }
 
-    fn emit_change(&mut self) {
+    fn emit_change(&mut self, kind: InputKind, inserted: &str, is_composing: bool) {
         if self.emits_change {
             self.pending_values.push_back(self.content.clone());
             while self.pending_values.len() > 32 {
@@ -974,11 +1061,14 @@ impl TextEditorState {
             }
             emit_event_full(&self.callback, self.element_id, "change", |payload| {
                 payload.value = Some(self.content.clone());
+                payload.input_type = Some(kind.input_type().to_string());
+                payload.data = kind.carries_text().then(|| inserted.to_string());
+                payload.is_composing = Some(is_composing);
             });
         }
     }
 
-    fn restore(&mut self, snapshot: EditSnapshot, cx: &mut Context<Self>) {
+    fn restore(&mut self, snapshot: EditSnapshot, kind: InputKind, cx: &mut Context<Self>) {
         self.content = snapshot.content;
         self.selected_range = snapshot.selected_range;
         self.selection_reversed = snapshot.selection_reversed;
@@ -986,7 +1076,7 @@ impl TextEditorState {
         self.follow_cursor = true;
         self.last_edit = None;
         self.reset_blink(cx);
-        self.emit_change();
+        self.emit_change(kind, "", false);
         cx.notify();
     }
 
@@ -1097,7 +1187,7 @@ impl TextEditorState {
         ))
     }
 
-    fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+    fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             return;
         }
@@ -1108,10 +1198,10 @@ impl TextEditorState {
             }
             self.select_to(previous, cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteContentBackward, cx);
     }
 
-    fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+    fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             return;
         }
@@ -1122,7 +1212,7 @@ impl TextEditorState {
             }
             self.select_to(next, cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteContentForward, cx);
     }
 
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
@@ -1235,7 +1325,7 @@ impl TextEditorState {
     fn delete_word_left(
         &mut self,
         _: &DeleteWordLeft,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only {
@@ -1244,13 +1334,13 @@ impl TextEditorState {
         if self.selected_range.is_empty() {
             self.select_to(self.previous_word_boundary(self.cursor_offset()), cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteWordBackward, cx);
     }
 
     fn delete_word_right(
         &mut self,
         _: &DeleteWordRight,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only {
@@ -1259,13 +1349,13 @@ impl TextEditorState {
         if self.selected_range.is_empty() {
             self.select_to(self.next_word_boundary(self.cursor_offset()), cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteWordForward, cx);
     }
 
     fn delete_to_line_start(
         &mut self,
         _: &DeleteToLineStart,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only {
@@ -1278,13 +1368,13 @@ impl TextEditorState {
             }
             self.select_to(start, cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteSoftLineBackward, cx);
     }
 
     fn delete_to_line_end(
         &mut self,
         _: &DeleteToLineEnd,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.read_only {
@@ -1297,7 +1387,7 @@ impl TextEditorState {
             }
             self.select_to(end, cx);
         }
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteSoftLineForward, cx);
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
@@ -1317,10 +1407,10 @@ impl TextEditorState {
             return;
         }
         self.copy(&Copy, window, cx);
-        self.replace_text_in_range(None, "", window, cx);
+        self.replace_range(None, "", InputKind::DeleteByCut, cx);
     }
 
-    fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+    fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only {
             cx.propagate();
             return;
@@ -1329,7 +1419,7 @@ impl TextEditorState {
             cx.propagate();
             return;
         };
-        self.replace_text_in_range(None, &text, window, cx);
+        self.replace_range(None, &text, InputKind::InsertFromPaste, cx);
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
@@ -1338,7 +1428,7 @@ impl TextEditorState {
         }
         if let Some(previous) = self.undo_stack.pop_back() {
             self.redo_stack.push(self.snapshot());
-            self.restore(previous, cx);
+            self.restore(previous, InputKind::HistoryUndo, cx);
         }
     }
 
@@ -1349,13 +1439,13 @@ impl TextEditorState {
         if let Some(next) = self.redo_stack.pop() {
             let snapshot = self.snapshot();
             push_undo_snapshot(&mut self.undo_stack, snapshot);
-            self.restore(next, cx);
+            self.restore(next, InputKind::HistoryRedo, cx);
         }
     }
 
-    fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+    fn newline(&mut self, _: &Newline, _: &mut Window, cx: &mut Context<Self>) {
         if self.multiline && !self.read_only {
-            self.replace_text_in_range(None, "\n", window, cx);
+            self.replace_range(None, "\n", InputKind::InsertLineBreak, cx);
         }
     }
 
@@ -1365,7 +1455,15 @@ impl TextEditorState {
 
     /// Replace `range` and put the caret after the new text. `user_input`
     /// applies `maxLength`; a programmatic edit such as the number stepper does not.
-    fn edit(&mut self, range: Range<usize>, new_text: &str, user_input: bool, cx: &mut Context<Self>) {
+    /// `kind` is what the `change` event reports unless the edit ends a composition.
+    fn edit(
+        &mut self,
+        range: Range<usize>,
+        new_text: &str,
+        user_input: bool,
+        kind: InputKind,
+        cx: &mut Context<Self>,
+    ) {
         let replacement = self.single_line_if_needed(new_text);
         let replacement = if user_input {
             let Some(replacement) = self.fit_max_length(&range, replacement) else {
@@ -1390,10 +1488,15 @@ impl TextEditorState {
         self.marked_range = None;
         self.follow_cursor = true;
         self.reset_blink(cx);
+        // The input event is still part of the composition, so it comes first, as in Chrome.
+        self.emit_change(
+            kind.for_outcome(ends_composition, &replacement),
+            &replacement,
+            ends_composition,
+        );
         if ends_composition {
             self.emit_composition("compositionend", &replacement);
         }
-        self.emit_change();
         cx.notify();
     }
 
@@ -1441,7 +1544,7 @@ impl TextEditorState {
             return;
         };
         // Not user typing, so `maxLength` does not apply.
-        self.edit(0..self.content.len(), &next, false, cx);
+        self.edit(0..self.content.len(), &next, false, InputKind::Stepped, cx);
     }
 
     fn vertical_target(&self, direction: f32) -> Option<usize> {
@@ -1859,15 +1962,7 @@ impl EntityInputHandler for TextEditorState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only || self.disabled {
-            return;
-        }
-        let range = range_utf16
-            .as_ref()
-            .map(|range| self.range_from_utf16(range))
-            .or(self.marked_range.clone())
-            .unwrap_or(self.selected_range.clone());
-        self.edit(range, new_text, true, cx);
+        self.replace_range(range_utf16, new_text, InputKind::InsertText, cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -1912,17 +2007,24 @@ impl EntityInputHandler for TextEditorState {
             .unwrap_or_else(|| range.start + replacement.len()..range.start + replacement.len());
         self.follow_cursor = true;
         self.reset_blink(cx);
-        match (was_composing, self.marked_range.is_some()) {
+        let is_composing = self.marked_range.is_some();
+        match (was_composing, is_composing) {
             (false, true) => {
                 self.emit_composition("compositionstart", &replaced);
                 self.emit_composition("compositionupdate", &replacement);
             }
             (true, true) => self.emit_composition("compositionupdate", &replacement),
-            // Marking nothing cancels the composition.
-            (true, false) => self.emit_composition("compositionend", ""),
-            (false, false) => {}
+            _ => {}
         }
-        self.emit_change();
+        self.emit_change(
+            InputKind::InsertCompositionText.for_outcome(was_composing, &replacement),
+            &replacement,
+            was_composing || is_composing,
+        );
+        // Marking nothing cancels the composition; its input event is still part of it.
+        if was_composing && !is_composing {
+            self.emit_composition("compositionend", "");
+        }
         cx.notify();
     }
 
@@ -2381,6 +2483,81 @@ mod tests {
         let mut input = TextEditorElement::new(false);
         input.set_prop("theme", serde_json::json!({ "caret": "#22c55e" }));
         assert_eq!(input.theme.caret, gpui::rgba(0x22c55eff).into());
+    }
+
+    #[test]
+    fn input_kinds_are_the_input_types_of_chrome() {
+        let types = [
+            (InputKind::InsertText, "insertText"),
+            (InputKind::InsertFromPaste, "insertFromPaste"),
+            (InputKind::InsertLineBreak, "insertLineBreak"),
+            (InputKind::InsertCompositionText, "insertCompositionText"),
+            (InputKind::DeleteCompositionText, "deleteCompositionText"),
+            (InputKind::DeleteContentBackward, "deleteContentBackward"),
+            (InputKind::DeleteContentForward, "deleteContentForward"),
+            (InputKind::DeleteWordBackward, "deleteWordBackward"),
+            (InputKind::DeleteWordForward, "deleteWordForward"),
+            (InputKind::DeleteSoftLineBackward, "deleteSoftLineBackward"),
+            (InputKind::DeleteSoftLineForward, "deleteSoftLineForward"),
+            (InputKind::DeleteByCut, "deleteByCut"),
+            (InputKind::HistoryUndo, "historyUndo"),
+            (InputKind::HistoryRedo, "historyRedo"),
+            (InputKind::Stepped, ""),
+        ];
+        for (kind, input_type) in types {
+            assert_eq!(kind.input_type(), input_type);
+        }
+    }
+
+    #[test]
+    fn only_insertions_carry_text_and_a_line_break_does_not() {
+        for kind in [
+            InputKind::InsertText,
+            InputKind::InsertFromPaste,
+            InputKind::InsertCompositionText,
+        ] {
+            assert!(kind.carries_text(), "{kind:?}");
+        }
+        for kind in [
+            InputKind::InsertLineBreak,
+            InputKind::DeleteCompositionText,
+            InputKind::DeleteContentBackward,
+            InputKind::DeleteByCut,
+            InputKind::HistoryUndo,
+            InputKind::HistoryRedo,
+            InputKind::Stepped,
+        ] {
+            assert!(!kind.carries_text(), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn an_edit_of_marked_text_is_the_compositions_and_an_empty_insertion_is_a_deletion() {
+        assert_eq!(
+            InputKind::InsertText.for_outcome(true, "か"),
+            InputKind::InsertCompositionText
+        );
+        assert_eq!(
+            InputKind::InsertText.for_outcome(true, ""),
+            InputKind::DeleteCompositionText
+        );
+        assert_eq!(
+            InputKind::InsertText.for_outcome(false, ""),
+            InputKind::DeleteContentBackward
+        );
+        assert_eq!(
+            InputKind::InsertFromPaste.for_outcome(false, ""),
+            InputKind::DeleteContentBackward
+        );
+        assert_eq!(
+            InputKind::InsertFromPaste.for_outcome(false, "x"),
+            InputKind::InsertFromPaste
+        );
+        assert_eq!(
+            InputKind::DeleteWordBackward.for_outcome(false, ""),
+            InputKind::DeleteWordBackward
+        );
+        assert_eq!(InputKind::Stepped.for_outcome(false, "5"), InputKind::Stepped);
     }
 
     #[test]

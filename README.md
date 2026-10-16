@@ -3726,8 +3726,9 @@ an `<input>` or `<textarea>`, and the events follow Chrome's:
 - `compositionstart` (`data` is the text the composition takes over, usually
   `""`), then `compositionupdate` (`data` is the composition's current text) for
   every change, then `compositionend` (`data` is the final text, `""` when the
-  composition was cancelled) on commit. Each comes before the `change` of the
-  edit it belongs to. They are aimed at the input, bubble, and cannot be
+  composition was cancelled) on commit. `compositionstart` and `compositionupdate`
+  come before the `change` of their edit, `compositionend` after the `change` of
+  the final one, as in Chrome. They are aimed at the input, bubble, and cannot be
   cancelled. `onCompositionStart`, `onCompositionUpdate` and `onCompositionEnd`
   have `…Capture` twins.
 - A `keyup` while text is marked has `isComposing` true. It keeps its real
@@ -3735,9 +3736,37 @@ an `<input>` or `<textarea>`, and the events follow Chrome's:
 
 Windows and Linux report `isComposing` false and fire no composition events.
 A value an app sets while a composition is open ends it without a
-`compositionend`. `change` has no `inputType`.
+`compositionend`. The `change` of a composition's edits has `inputType`
+`insertCompositionText` and `isComposing` true, see
+[The change event](#the-change-event).
 In the test renderer, [`simulateComposition`](#simulating-keys) runs the
 sequence.
+
+### The change event
+
+`onChange` fires once per edit of the text of an `<input>` or `<textarea>`, which is
+what the DOM calls `input` (there is no `onInput`, and no `beforeinput`). Besides
+`value` it carries the fields of a DOM `InputEvent`, filled as Chrome fills them:
+
+| Edit | `inputType` | `data` |
+|---|---|---|
+| A typed character, or text from an input method that is not composing | `insertText` | the text |
+| Paste | `insertFromPaste` | the pasted text |
+| Enter in a `<textarea>` (an `<input>` fires nothing) | `insertLineBreak` | `null` |
+| Each change of a composition, and its commit | `insertCompositionText` | the composition's text |
+| A composition cancelled | `deleteCompositionText` | `null` |
+| Backspace, Delete | `deleteContentBackward`, `deleteContentForward` | `null` |
+| Alt+Backspace, Alt+Delete | `deleteWordBackward`, `deleteWordForward` | `null` |
+| Cmd+Backspace, Cmd+Delete | `deleteSoftLineBackward`, `deleteSoftLineForward` | `null` |
+| Cut | `deleteByCut` | `null` |
+| Undo, redo | `historyUndo`, `historyRedo` | `null` |
+| The number stepper (ArrowUp, ArrowDown) | `""` | `null` |
+
+Typing over a selection is `insertText` and deleting a selection is the delete type
+of its key. `data` is the text that fit under `maxLength`. `isComposing` is true for
+every edit of a composition, the commit included: it comes before `compositionend`.
+Setting `value` from code fires nothing. `data` is `null` rather than absent when
+the edit inserted no text. The handler's event is typed `HostInputEvent`.
 
 ### `window` and `document`
 
@@ -5191,7 +5220,7 @@ text imports no longer need a runtime flag.
 | Wheel | `onWheel`, `onWheelCapture` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons`, `precise`, `touchPhase`, `modifiers`. Bubbles, cancelable. See [The wheel](#the-wheel) |
 | Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
-| Change | `onChange` | `value` — `<input>` and `<textarea>` only |
+| Change | `onChange` | `value`, `inputType`, `data`, `isComposing` — `<input>` and `<textarea>` only, once per edit like the DOM `input`. See [The change event](#the-change-event) |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
 | Show more | `onShowMore` | `value` (hidden line count) — `<diff>` only |

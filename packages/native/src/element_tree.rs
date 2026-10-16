@@ -96,7 +96,7 @@ pub struct EventPayload {
 
     /// DOM `KeyboardEvent.isComposing`: an input method composition is in
     /// progress. Only macOS reports it; elsewhere it is always false.
-    /// Populated for: keydown, keyup.
+    /// Populated for: keydown, keyup, change.
     pub is_composing: Option<bool>,
 
     // ── Composition ──────────────────────────────────────────────────
@@ -105,6 +105,14 @@ pub struct EventPayload {
     /// compositionupdate and the text it ended with on compositionend.
     /// Populated for: compositionstart, compositionupdate, compositionend.
     pub data: Option<String>,
+
+    // ── Input ────────────────────────────────────────────────────────
+    /// DOM `InputEvent.inputType` of an edit of the text (`insertText`,
+    /// `deleteContentBackward`, `historyUndo`, ...), `""` for the number
+    /// stepper. `data` is the inserted text for the insert types and absent
+    /// otherwise; `isComposing` says the edit belongs to a composition.
+    /// Populated for: change.
+    pub input_type: Option<String>,
 
     /// DOM `shiftKey`, `ctrlKey`, `altKey`, `metaKey`: the booleans of
     /// `modifiers`, under the DOM names.
@@ -311,6 +319,7 @@ impl Default for EventPayload {
             repeat: None,
             is_composing: None,
             data: None,
+            input_type: None,
             shift_key: None,
             ctrl_key: None,
             alt_key: None,

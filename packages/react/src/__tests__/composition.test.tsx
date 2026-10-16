@@ -196,7 +196,7 @@ describeNative("composition events", () => {
     inputId = renderer.findByTestId("field").id
   }
 
-  it("fires start, update and end between the keys, each before the change of its edit", () => {
+  it("fires start and update before the change of their edit and end after the change of the commit", () => {
     mount()
     renderer.simulateComposition(inputId, [
       { key: "k", action: "mark", text: "k" },
@@ -217,9 +217,9 @@ describeNative("composition events", () => {
       'input:change "か"',
       "input:keyup a composing",
       "input:keydown Process composing",
+      'input:change "か"',
       'input:compositionend "か"',
       'parent:compositionend "か"',
-      'input:change "か"',
       "input:keyup Enter",
     ])
   })
