@@ -1,11 +1,15 @@
 //! The `background` shorthand and the `background-*` longhands, assembled into
 //! gpui `BackgroundLayer`s and a final colour.
 //!
-//! Only gradients can be painted. `url(...)` images are valid CSS, so their layer
-//! is skipped and the rest still paints; `none` skips its layer too.
+//! Gradients and `url()` images paint. A `url()` layer is a
+//! `BackgroundImage::Image` whose key is the hash of the address
+//! (`background_images::key`); `resolve` asks the loader for the address, and the
+//! layer paints once the image is in gpui's table. `image-set()` and `none` are
+//! skipped, and the rest still paints.
 //!
 //! `mask` and the `mask-*` longhands have the same layer grammar, so the parsing
-//! here is generic over [`Kind`] and `mask.rs` supplies the differences.
+//! here is generic over [`Kind`] and `mask.rs` supplies the differences. A mask
+//! does not paint images yet, so its `url()` layers are skipped.
 
 use gpui::{
     BackgroundBox, BackgroundImage, BackgroundLayer, BackgroundPosition, BackgroundRepeat,
@@ -18,6 +22,7 @@ use super::position::{
     parse_box, parse_length_percentage, parse_position, parse_repeat, parse_size,
 };
 use super::syntax::{split_commas, split_whitespace};
+use super::url;
 use crate::color::ColorContext;
 
 /// What differs between the `background` and `mask` layer grammars.
@@ -26,6 +31,9 @@ pub(crate) trait Kind {
     const ORIGIN: BackgroundBox;
     /// Whether the shorthand ends in a colour.
     const ALLOWS_COLOR: bool;
+    /// Whether a `url()` layer paints. Where it does not, the layer is skipped
+    /// as `none` is, but its syntax still has to be valid.
+    const PAINTS_URL_IMAGES: bool = false;
 
     /// A `<box>` keyword gpui can paint with.
     fn parse_box(token: &str) -> Option<BackgroundBox>;
@@ -50,6 +58,7 @@ pub(crate) struct Background;
 impl Kind for Background {
     const ORIGIN: BackgroundBox = BackgroundBox::PaddingBox;
     const ALLOWS_COLOR: bool = true;
+    const PAINTS_URL_IMAGES: bool = true;
 
     fn parse_box(token: &str) -> Option<BackgroundBox> {
         parse_box(token)
@@ -91,16 +100,29 @@ pub(crate) struct Resolved {
     /// First is on top, like CSS.
     pub layers: Vec<BackgroundLayer>,
     /// The `background-clip` of the last layer, which is also the colour's. A
-    /// layer that paints nothing (`none`, `url()`) still counts.
+    /// layer that paints nothing (`none`) still counts.
     pub color_clip: BackgroundBox,
 }
 
-/// One entry of the layer lists. `image` is `None` for `none`, a `url()` and a
-/// gradient gpui cannot paint: the slot keeps its index so the other lists line
-/// up with the right layer.
+/// An image a slot paints, and for a `url()` the address it was made from.
+#[derive(Clone)]
+pub(crate) struct SlotImage {
+    image: BackgroundImage,
+    url: Option<String>,
+}
+
+impl SlotImage {
+    fn gradient(gradient: gpui::Gradient) -> Self {
+        Self { image: BackgroundImage::Gradient(gradient), url: None }
+    }
+}
+
+/// One entry of the layer lists. `image` is `None` for `none`, `image-set()`, a
+/// `url()` where it does not paint and a gradient gpui cannot paint: the slot
+/// keeps its index so the other lists line up with the right layer.
 #[derive(Clone)]
 pub(crate) struct Slot {
-    image: Option<BackgroundImage>,
+    image: Option<SlotImage>,
     size: BackgroundSize,
     position: BackgroundPosition,
     repeat: BackgroundRepeat,
@@ -109,7 +131,7 @@ pub(crate) struct Slot {
 }
 
 impl Slot {
-    fn new(image: Option<BackgroundImage>, origin: BackgroundBox) -> Self {
+    fn new(image: Option<SlotImage>, origin: BackgroundBox) -> Self {
         let defaults = BackgroundLayer::new(BackgroundImage::Gradient(placeholder()));
         Self {
             image,
@@ -123,7 +145,7 @@ impl Slot {
 
     fn into_layer(self) -> Option<BackgroundLayer> {
         Some(BackgroundLayer {
-            image: self.image?,
+            image: self.image?.image,
             size: self.size,
             position: self.position,
             repeat: self.repeat,
@@ -178,6 +200,11 @@ pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext, lengths: &LengthCo
         slots.push(Slot::new(None, Background::ORIGIN));
     }
     let slots = apply_longhands_to_slots::<Background>(slots, &longhands, colors, lengths);
+    for slot in &slots {
+        if let Some(SlotImage { image: BackgroundImage::Image(key), url: Some(url) }) = &slot.image {
+            crate::background_images::request(*key, url);
+        }
+    }
     let color_clip = slots.last().map_or(BackgroundBox::BorderBox, |slot| slot.clip);
     Resolved { color, layers: into_layers(slots), color_clip }
 }
@@ -211,7 +238,7 @@ fn apply_longhands_to_slots<K: Kind>(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> Vec<Slot> {
-    if let Some(images) = longhands.image.and_then(|value| parse_images(value, colors, lengths)) {
+    if let Some(images) = longhands.image.and_then(|value| parse_images::<K>(value, colors, lengths)) {
         // The image list sets how many layers there are; the shorthand's other
         // lists repeat to cover them, as CSS does for any list shorter than it.
         let shorthand = std::mem::take(&mut slots);
@@ -294,30 +321,40 @@ pub(crate) fn is_valid_shorthand<K: Kind>(value: &str, colors: &ColorContext, le
 }
 
 /// Whether the `*-image` list parses.
-pub(crate) fn is_valid_image_list(value: &str, colors: &ColorContext, lengths: &LengthContext) -> bool {
-    parse_images(value, colors, lengths).is_some()
+pub(crate) fn is_valid_image_list<K: Kind>(value: &str, colors: &ColorContext, lengths: &LengthContext) -> bool {
+    parse_images::<K>(value, colors, lengths).is_some()
 }
 
 /// `background-image`: `None` for an invalid list, else one entry per layer.
-pub(crate) fn parse_images(
+pub(crate) fn parse_images<K: Kind>(
     value: &str,
     colors: &ColorContext,
     lengths: &LengthContext,
-) -> Option<Vec<Option<BackgroundImage>>> {
+) -> Option<Vec<Option<SlotImage>>> {
     split_commas(value)
         .into_iter()
-        .map(|item| parse_image(item, colors, lengths))
+        .map(|item| parse_image::<K>(item, colors, lengths))
         .collect()
 }
 
-/// `Some(None)` is a valid image gpui cannot paint.
-fn parse_image(item: &str, colors: &ColorContext, lengths: &LengthContext) -> Option<Option<BackgroundImage>> {
+/// `Some(None)` is a valid image that does not paint.
+fn parse_image<K: Kind>(item: &str, colors: &ColorContext, lengths: &LengthContext) -> Option<Option<SlotImage>> {
+    match url::parse(item) {
+        url::Parsed::Invalid => return None,
+        // An empty address names no image, so there is nothing to load.
+        url::Parsed::Url(address) if K::PAINTS_URL_IMAGES && !address.is_empty() => {
+            let key = crate::background_images::key(&address);
+            return Some(Some(SlotImage { image: BackgroundImage::Image(key), url: Some(address.into_owned()) }));
+        }
+        url::Parsed::Url(_) => return Some(None),
+        url::Parsed::NotUrl => {}
+    }
     let lower = item.trim().to_ascii_lowercase();
-    if lower == "none" || lower.starts_with("url(") || lower.starts_with("image-set(") {
+    if lower == "none" || lower.starts_with("image-set(") {
         return Some(None);
     }
     match gradient::parse(item, colors, lengths) {
-        Ok(parsed) => Some(Some(BackgroundImage::Gradient(parsed))),
+        Ok(parsed) => Some(Some(SlotImage::gradient(parsed))),
         Err(GradientError::Unsupported) => Some(None),
         Err(GradientError::Invalid) => None,
     }
@@ -389,7 +426,7 @@ fn parse_shorthand_layer<K: Kind>(
     lengths: &LengthContext,
     is_last: bool,
 ) -> Option<(Slot, Option<gpui::Rgba>)> {
-    let mut image: Option<Option<BackgroundImage>> = None;
+    let mut image: Option<Option<SlotImage>> = None;
     let mut position: Vec<&str> = Vec::new();
     let mut size: Vec<&str> = Vec::new();
     let mut in_size = false;
@@ -417,7 +454,7 @@ fn parse_shorthand_layer<K: Kind>(
         in_size = false;
         let lower = token.to_ascii_lowercase();
         if gradient::is_gradient(token) || lower == "none" || lower.starts_with("url(") {
-            if image.replace(parse_image(token, colors, lengths)?).is_some() {
+            if image.replace(parse_image::<K>(token, colors, lengths)?).is_some() {
                 return None;
             }
         } else if is_repeat_token(token) {
@@ -579,10 +616,10 @@ mod tests {
     }
 
     #[test]
-    fn url_and_none_layers_are_skipped_without_shifting_the_others() {
+    fn none_and_image_set_layers_are_skipped_without_shifting_the_others() {
         let resolved = resolve(
             &Inputs {
-                image: Some("url(a.png), linear-gradient(red, blue), none"),
+                image: Some("none, linear-gradient(red, blue), image-set(url(a.png) 1x)"),
                 position: Some("left, right, center"),
                 ..Default::default()
             },
@@ -595,6 +632,129 @@ mod tests {
             resolved.layers[0].position.x,
             gpui::BackgroundPositionAxis::from_start(LengthPercentage::Percent(1.0))
         );
+        assert!(crate::background_images::requested_for_tests().is_empty());
+    }
+
+    fn image_key(layer: &BackgroundLayer) -> Option<gpui::ImageKey> {
+        match layer.image {
+            BackgroundImage::Image(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    fn longhand(value: &str) -> Resolved {
+        resolve(&Inputs { image: Some(value), ..Default::default() }, &context(), &LengthContext::for_tests())
+    }
+
+    #[test]
+    fn a_url_is_an_image_layer_keyed_by_its_address() {
+        let key = crate::background_images::key("a.png");
+        for form in [
+            "url(a.png)",
+            "url(\"a.png\")",
+            "url('a.png')",
+            "url( a.png )",
+            "URL(  \"a.png\"  )",
+        ] {
+            let resolved = longhand(form);
+            assert_eq!(resolved.layers.len(), 1, "{form}");
+            assert_eq!(image_key(&resolved.layers[0]), Some(key), "{form}");
+            assert_eq!(shorthand(form).layers.len(), 1, "{form}");
+            assert_eq!(image_key(&shorthand(form).layers[0]), Some(key), "{form}");
+        }
+        assert_ne!(image_key(&longhand("url(b.png)").layers[0]), Some(key));
+        // A layer that is only a url takes the defaults a gradient layer does.
+        let layer = &longhand("url(a.png)").layers[0];
+        assert_eq!(layer.position, BackgroundPosition::ORIGIN);
+        assert_eq!(layer.size, BackgroundSize::Auto);
+        assert_eq!((layer.origin, layer.clip), (BackgroundBox::PaddingBox, BackgroundBox::BorderBox));
+    }
+
+    #[test]
+    fn a_quoted_address_may_hold_parentheses_commas_spaces_and_escaped_quotes() {
+        for (text, address) in [
+            ("url(\"a)b, c.png\")", "a)b, c.png"),
+            ("url('a (1).png')", "a (1).png"),
+            ("url(\"a\\\"b.png\")", "a\"b.png"),
+            ("url(data:image/svg+xml,%3Csvg%2F%3E)", "data:image/svg+xml,%3Csvg%2F%3E"),
+        ] {
+            let key = crate::background_images::key(address);
+            for resolved in [longhand(text), shorthand(&format!("{text} no-repeat center / 10px"))] {
+                assert_eq!(resolved.layers.len(), 1, "{text}");
+                assert_eq!(image_key(&resolved.layers[0]), Some(key), "{text}");
+            }
+            let two = longhand(&format!("{text}, linear-gradient(red, blue)"));
+            assert_eq!(two.layers.len(), 2, "{text}");
+            assert_eq!(image_key(&two.layers[0]), Some(key), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_shorthand_mixes_urls_with_gradients_and_layer_parts_in_any_order() {
+        let resolved = shorthand(
+            "url(a.png) no-repeat 10px 20px / 30px auto content-box padding-box, linear-gradient(red, blue) repeat-x, no-repeat center url(\"b.png\"), #fff",
+        );
+        assert_eq!(resolved.layers.len(), 3);
+        assert_eq!(resolved.color.unwrap().r, 1.0);
+        let first = &resolved.layers[0];
+        assert_eq!(image_key(first), Some(crate::background_images::key("a.png")));
+        assert_eq!(first.repeat, BackgroundRepeat { x: RepeatStyle::NoRepeat, y: RepeatStyle::NoRepeat });
+        assert_eq!(
+            first.size,
+            BackgroundSize::Explicit { width: Some(LengthPercentage::Length(px(30.0))), height: None }
+        );
+        assert_eq!((first.origin, first.clip), (BackgroundBox::ContentBox, BackgroundBox::PaddingBox));
+        assert!(matches!(resolved.layers[1].image, BackgroundImage::Gradient(_)));
+        assert_eq!(resolved.layers[1].repeat, BackgroundRepeat { x: RepeatStyle::Repeat, y: RepeatStyle::NoRepeat });
+        assert_eq!(image_key(&resolved.layers[2]), Some(crate::background_images::key("b.png")));
+        assert_eq!(resolved.layers[2].position, BackgroundPosition::CENTER);
+        // Two images in one layer are not a layer.
+        assert_eq!(shorthand("url(a.png) url(b.png)"), Resolved::default());
+        assert_eq!(shorthand("url(a.png) linear-gradient(red, blue)"), Resolved::default());
+    }
+
+    #[test]
+    fn the_layer_longhands_apply_to_url_layers_by_index() {
+        let resolved = resolve(
+            &Inputs {
+                image: Some("url(a.png), linear-gradient(red, blue), url(b.png)"),
+                size: Some("cover, 10px, contain"),
+                repeat: Some("no-repeat"),
+                ..Default::default()
+            },
+            &context(),
+            &LengthContext::for_tests(),
+        );
+        assert_eq!(resolved.layers.len(), 3);
+        assert_eq!(resolved.layers[0].size, BackgroundSize::Cover);
+        assert_eq!(resolved.layers[2].size, BackgroundSize::Contain);
+        assert!(resolved.layers.iter().all(|layer| layer.repeat.x == RepeatStyle::NoRepeat));
+    }
+
+    #[test]
+    fn a_broken_url_makes_the_value_invalid_and_an_empty_one_paints_nothing() {
+        for bad in ["url(a.png", "url(\"a.png)", "url(\"a.png\" x)", "url(a.png) x"] {
+            assert_eq!(longhand(bad), Resolved::default(), "{bad}");
+            assert_eq!(shorthand(bad), Resolved::default(), "{bad}");
+        }
+        assert!(longhand("url(), linear-gradient(red, blue)").layers.len() == 1);
+        assert!(longhand("url('')").layers.is_empty());
+    }
+
+    #[test]
+    fn resolving_requests_only_the_addresses_that_paint() {
+        crate::background_images::requested_for_tests();
+        longhand("url(a.png), none, linear-gradient(red, blue), url(\"b c.png\")");
+        shorthand("url(d.png) no-repeat, red");
+        assert_eq!(
+            crate::background_images::requested_for_tests(),
+            vec!["a.png", "b c.png", "d.png"]
+        );
+        // Checking that a value is valid, as a state style does, loads nothing.
+        let (colors, lengths) = (context(), LengthContext::for_tests());
+        assert!(is_valid_image_list::<Background>("url(e.png)", &colors, &lengths));
+        assert!(is_valid_shorthand::<Background>("url(e.png) center", &colors, &lengths));
+        assert!(crate::background_images::requested_for_tests().is_empty());
     }
 
     #[test]

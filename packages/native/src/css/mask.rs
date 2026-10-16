@@ -62,7 +62,7 @@ pub(crate) fn resolve(
         .map(|(slots, _)| slots);
     let image_is_valid = inputs
         .image
-        .is_some_and(|value| background::parse_images(value, colors, lengths).is_some());
+        .is_some_and(|value| background::is_valid_image_list::<Mask>(value, colors, lengths));
     if shorthand.is_none() && !image_is_valid {
         return None;
     }
