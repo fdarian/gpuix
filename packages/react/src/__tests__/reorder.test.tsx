@@ -178,6 +178,20 @@ describeNative("Reorder", () => {
     expect(boundsOf(renderer, "b")?.y).toBe(20)
   })
 
+  it("keeps a second drag of the same item going: the first drag's lostpointercapture comes before its pointerdown", () => {
+    const renderer = mount({ initial: ["a", "b", "c"] })
+    for (const press of [10, 12]) {
+      renderer.nativeSimulateMouseDown(10, press)
+      renderer.nativeSimulateMouseMove(10, press + 4)
+      expect(boundsOf(renderer, "a")?.y).toBe(4)
+      renderer.nativeSimulateMouseMove(10, press + 6)
+      expect(boundsOf(renderer, "a")?.y).toBe(6)
+      renderer.nativeSimulateMouseUp(10, press + 6, 0)
+      frame(renderer, 1100)
+      expect(boundsOf(renderer, "a")?.y).toBe(0)
+    }
+  })
+
   it("still calls the item's own mouse handlers", () => {
     let presses = 0
     const renderer = mount({ initial: ["a", "b"], onItemMouseDown: () => (presses += 1) })

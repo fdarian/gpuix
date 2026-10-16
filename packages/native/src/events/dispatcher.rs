@@ -1911,6 +1911,79 @@ mod tests {
         assert_eq!(state.requests.target(), None);
     }
 
+    /// Every capture event of an item that captures itself on press, as Reorder does.
+    const SELF_CAPTURE_EVENTS: [&str; 4] =
+        ["pointerdown", "gotpointercapture", "lostpointercapture", "pointerup"];
+
+    /// Presses the item (3) and asks for its capture, as JS does in `pointerdown`.
+    fn press_and_capture_item(state: &mut PointerState, tree: &RetainedTree) -> Vec<String> {
+        let mut seen = names(&dispatch(state, tree, &down(0, 1, chain_of(&[3, 2, 1]))));
+        state.requests.set(tree, 3, 1.0).unwrap();
+        seen.extend(names(&dispatch(state, tree, &drag_move(chain_of(&[3, 2, 1])))));
+        seen
+    }
+
+    // A `lostpointercapture` of an earlier drag of the same item cannot reach JS after the
+    // item's next `pointerdown`, so Reorder's end of a drag cannot take it for the new one's.
+    // Capture ends at the release, in the input that carries the `pointerup`, and a capture JS
+    // let go of is applied before the press that follows, so each `lostpointercapture` is
+    // ahead of the `pointerdown` of the drag after it.
+    #[test]
+    fn a_drag_after_a_drag_of_the_same_item_hears_no_lostpointercapture_of_the_first() {
+        let tree = tree(&listening_everywhere(&SELF_CAPTURE_EVENTS));
+        let mut state = PointerState::default();
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            seen.extend(press_and_capture_item(&mut state, &tree));
+            seen.extend(names(&dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])))));
+        }
+        assert_eq!(
+            seen,
+            [
+                "pointerdown@3",
+                "gotpointercapture@3",
+                "pointerup@3",
+                "lostpointercapture@3",
+                "pointerdown@3",
+                "gotpointercapture@3",
+                "pointerup@3",
+                "lostpointercapture@3",
+            ]
+        );
+        assert_eq!(state.explicit_capture(), None);
+    }
+
+    #[test]
+    fn a_capture_js_let_go_of_ends_ahead_of_the_next_press_of_the_same_item() {
+        let tree = tree(&listening_everywhere(&SELF_CAPTURE_EVENTS));
+        let mut state = PointerState::default();
+        press_and_capture_item(&mut state, &tree);
+        // JS ended the drag itself (an item left, a chorded button) while a button is still down.
+        state.requests.release(3, 1.0).unwrap();
+        let next = names(&dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1]))));
+        assert_eq!(next, ["lostpointercapture@3", "pointerdown@3"]);
+
+        // The new drag's own capture request starts a capture of its own.
+        state.requests.set(&tree, 3, 1.0).unwrap();
+        let moved = names(&dispatch(&mut state, &tree, &drag_move(chain_of(&[3, 2, 1]))));
+        assert_eq!(moved, ["gotpointercapture@3"]);
+        let released = names(&dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1]))));
+        assert_eq!(released, ["pointerup@3", "lostpointercapture@3"]);
+    }
+
+    #[test]
+    fn letting_go_and_capturing_again_before_the_next_input_fires_no_capture_event() {
+        let tree = tree(&listening_everywhere(&SELF_CAPTURE_EVENTS));
+        let mut state = PointerState::default();
+        press_and_capture_item(&mut state, &tree);
+        // What Reorder's pointerDown does for an item it still holds: release, then capture.
+        state.requests.release(3, 1.0).unwrap();
+        state.requests.set(&tree, 3, 1.0).unwrap();
+        let next = names(&dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1]))));
+        assert_eq!(next, ["pointerdown@3"]);
+        assert_eq!(state.explicit_capture(), Some(3));
+    }
+
     #[test]
     fn the_release_fires_pointerup_then_lostpointercapture_then_mouseup_then_click() {
         let tree = tree(&listening_everywhere(&[
