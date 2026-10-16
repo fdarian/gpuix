@@ -55,6 +55,7 @@ interface NativeTestRendererApi
   writeClipboardText(text: string): void
   readClipboardText(): string | null
   flush(): void
+  flushIfDirty(): void
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
   setSyncEventHandler(handler: ((event: EventPayload) => SyncDispatchResult) | null): void
@@ -478,21 +479,21 @@ export class TestRenderer implements NativeRenderer {
    *  Unlike `nativeSimulateKeystrokes`, this focuses nothing first, which is
    *  the only way to test that `autoFocus` (or a click) actually moved focus. */
   simulateKeystrokes(keystrokes: string): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     // Events already queued (the focus of an `autoFocus` element) reach JS
     // before a key does, as on a live window. Delivered after it, they would
     // undo what the key's own synchronous focus events did.
     this.dispatchNativeEvents()
     this.native.simulateKeystrokes(keystrokes)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** Focus an element, then press keys on it (the `simulateKeystrokes` grammar).
    *  @param elementId - element to focus
    *  @param keystrokes - space-separated presses, e.g. `"h i Enter Shift+Tab"` */
   nativeSimulateKeystrokes(elementId: number, keystrokes: string): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusElement(elementId)
     // Focus events are queued but a key is delivered synchronously: let the
     // focus handlers run first, as in a browser.
@@ -509,7 +510,7 @@ export class TestRenderer implements NativeRenderer {
    *  @param isHeld - whether this is a key-repeat event (default: false)
    */
   nativeSimulateKeyDown(elementId: number, keystroke: string, isHeld?: boolean): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusElement(elementId)
     // Focus events are queued but a key is delivered synchronously: let the
     // focus handlers run first, as in a browser.
@@ -524,7 +525,7 @@ export class TestRenderer implements NativeRenderer {
    *  @param keystroke - one press, e.g. `"a"`, `"Enter"`, `"Meta+s"`
    */
   nativeSimulateKeyUp(elementId: number, keystroke: string): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusElement(elementId)
     // Focus events are queued but a key is delivered synchronously: let the
     // focus handlers run first, as in a browser.
@@ -541,7 +542,7 @@ export class TestRenderer implements NativeRenderer {
     button?: number,
     modifiers?: string
   ): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     // Two inputs, not `native.simulateClick`: the press's focus change is queued
     // while the release is delivered synchronously, so the focus handlers must
     // run before it, as they do when a person lets go later.
@@ -551,7 +552,7 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchNativeEvents()
     // Flush again after framework state updates so the Rust RetainedTree
     // is fully rebuilt and GPUI has re-laid-out before any screenshot.
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: simulate scroll wheel through GPUI →
@@ -566,7 +567,7 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string,
     phase?: ScrollGesturePhase
   ): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateScrollWheel(x, y, deltaX, deltaY, modifiers, phase)
     this.dispatchNativeEvents()
   }
@@ -588,8 +589,9 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** Dispatch a move without the surrounding flushes, for perf sampling.
-   *  `nativeSimulateMouseMove` flushes before and after, so a drag timed with
-   *  it contains two complete paints and cannot be compared to a wheel. */
+   *  `nativeSimulateMouseMove` draws a pending change before and after the move, so a
+   *  drag timed with it includes the paint and a wheel timed with `dispatchScrollWheel`
+   *  does not. */
   dispatchMouseMove(
     x: number,
     y: number,
@@ -613,21 +615,21 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string,
     movement?: MouseMovement
   ): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateMouseMove(x, y, modifiers, movement?.x, movement?.y)
     this.dispatchNativeEvents()
     // Flush again after framework state updates so hover styles are applied
     // and the Rust tree is current before any screenshot.
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: the pointer leaves the window at (x, y), the way the platform
    *  reports it, with no mouse move after the last position inside. */
   nativeSimulateMouseExit(x: number, y: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateMouseExit(x, y)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** The OS ate the release of `button` (0=left, the default, 1=middle, 2=right): the
@@ -649,10 +651,10 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string,
     clickCount?: number
   ): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateMouseDown(x, y, button ?? 0, modifiers, clickCount)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: simulate mouse up through GPUI hit testing →
@@ -666,58 +668,58 @@ export class TestRenderer implements NativeRenderer {
     modifiers?: string,
     clickCount?: number
   ): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateMouseUp(x, y, button ?? 0, modifiers, clickCount)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: files from the OS enter the window at `x`, `y`. */
   nativeSimulateFileDragEnter(x: number, y: number, paths: string[]): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDragEnter(x, y, paths)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: the dragged files move to `x`, `y`. */
   nativeSimulateFileDragMove(x: number, y: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDragMove(x, y)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: the dragged files are released at `x`, `y`. */
   nativeSimulateFileDragSubmit(x: number, y: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDragSubmit(x, y)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: the dragged files leave the window. */
   nativeSimulateFileDragExit(): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDragExit()
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: the platform's drag session ends. */
   nativeSimulateFileDragEnd(): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDragEnd()
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: a whole Finder-style drop at `x`, `y`, as the platform sends it: enter, submit, exit, end. */
   nativeSimulateFileDrop(x: number, y: number, paths: string[]): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.simulateFileDrop(x, y, paths)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   // ── Tree inspection (queries Rust RetainedTree via napi) ────────
@@ -898,44 +900,44 @@ export class TestRenderer implements NativeRenderer {
   }
 
   focusElement(elementId: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusElement(elementId)
     this.dispatchNativeEvents()
   }
 
   blurElement(elementId: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.blurElement(elementId)
     this.dispatchNativeEvents()
   }
 
   matchesFocus(elementId: number, selector: string): boolean {
-    this.native.flush()
+    this.native.flushIfDirty()
     const matches = this.native.matchesFocus(elementId, selector)
     this.dispatchNativeEvents()
     return matches
   }
 
   getFocusedElementId(): number | null {
-    this.native.flush()
+    this.native.flushIfDirty()
     return this.native.getFocusedElementId()
   }
 
   /** Makes the offscreen window key (`true`, the default) or not, as when the user switches apps. */
   setWindowActive(active: boolean): void {
     this.native.setWindowActive(active)
-    this.native.flush()
+    this.native.flushIfDirty()
     this.dispatchNativeEvents()
   }
 
   focusNextWithin(elementId: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusNextWithin(elementId)
     this.dispatchNativeEvents()
   }
 
   focusPreviousWithin(elementId: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.focusPreviousWithin(elementId)
     this.dispatchNativeEvents()
   }
@@ -1120,10 +1122,10 @@ export class TestRenderer implements NativeRenderer {
   }
 
   requestSubmit(elementId: number): void {
-    this.native.flush()
+    this.native.flushIfDirty()
     this.native.requestSubmit(elementId)
     this.dispatchNativeEvents()
-    this.native.flush()
+    this.native.flushIfDirty()
   }
 
   registerFont(bytes: Buffer | Uint8Array): void {

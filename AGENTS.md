@@ -1092,8 +1092,8 @@ automated profiles. They use `createTestRoot()`, not the live window. Assert
 **p95 draw / flush ms**, not a per-frame FPS floor.
 
 Timeline drag samples are not comparable to timeline pan samples.
-`nativeSimulateMouseMove` flushes before and after the event, so every drag
-sample contains two complete GPUI paints. `dispatchScrollWheel` does not flush.
+`nativeSimulateMouseMove` draws a pending change before and after the event, so a
+drag sample includes the paint and `dispatchScrollWheel` does not.
 
 `THROTTLE` re-execs under `taskpolicy -c`. `utility` is an M1/M2 Air CPU proxy.
 `background` is harsher, closer to a 2019 Intel Mac. GPU and RAM stay on this
@@ -1106,7 +1106,7 @@ wrong runner and fails on the `vitest` imports.
 
 `packages/native` and `packages/solid` have their own `bun run test`. The native one has a single test that bundles both adapters for the browser; it needs `packages/react` built and `bun run build:web` (nightly Rust and `wasm-bindgen`), and fails without them. The zed commits are tested in zed: `cd zed && cargo test -p gpui --lib --features test-support`.
 
-The test renderer draws offscreen and takes the synchronous dispatch path for every call (see [Events](#events-one-hit-test-one-dispatcher-dom-propagation)), so a passing event test proves the macOS behaviour, not Windows or Linux. `nativeSimulate*` call `flush()` first because hit testing needs a laid-out frame; `nativeSimulateClick` sends the press and the release as two inputs and drains JS between them, because the press's focus change is queued while the release is delivered synchronously. A handler that throws does not fail the simulate call: pass `onError` and assert on it.
+The test renderer draws offscreen and takes the synchronous dispatch path for every call (see [Events](#events-one-hit-test-one-dispatcher-dom-propagation)), so a passing event test proves the macOS behaviour, not Windows or Linux. Every simulate helper (keys, wheel, pointer, file drag, focus moves) calls `flushIfDirty()` before and after the input, not `flush()`: it draws a pending change and nothing on a clean window, as a live window draws once per dirty input and never unconditionally, so a move costs one draw. Hit testing needs a laid-out frame, which that gives it; the public `flush()` always draws. `nativeSimulateClick` sends the press and the release as two inputs and drains JS between them, because the press's focus change is queued while the release is delivered synchronously. A handler that throws does not fail the simulate call: pass `onError` and assert on it.
 
 The test window opens from the live renderer's `WindowOptions` through the same `to_gpui_window_options` (`TestGpuixRenderer::new`); the README's Testing section lists what each option does there. Simulated moves report the buttons held by simulated downs (`simulateLostMouseUp` forgets one), and `scrollTo` / `getScrollOffset` speak DOM scroll positions (`scroll::gpui_offset` and `scroll::dom_position` are the only sign flip). The appearance override is process-wide (`NSApplication.appearance`), and each new test window sets or clears it.
 

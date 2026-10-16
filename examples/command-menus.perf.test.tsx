@@ -298,13 +298,13 @@ describeNative('command menu page: clipped and scrolled-out content', () => {
 
       // Wheel on the page scroller: the same rebuild plus a scroll offset change.
       const wheel = sample((i) =>
-        renderer.dispatchScrollWheel(WINDOW.width / 2, 400, 0, i % 2 === 0 ? -40 : 40),
+        renderer.dispatchScrollWheel(WINDOW.width / 2, 400, 0, i % 2 === 0 ? 40 : -40),
       )
       report(variant, 'page-wheel', wheel, elements)
 
       // A wheel over a menu's list scroller.
       const listWheel = sample((i) =>
-        renderer.dispatchScrollWheel(WINDOW.width / 2, 200, 0, i % 2 === 0 ? -40 : 40),
+        renderer.dispatchScrollWheel(WINDOW.width / 2, 200, 0, i % 2 === 0 ? 40 : -40),
       )
       report(variant, 'list-wheel', listWheel, elements)
       expect(elements).toBeGreaterThan(0)

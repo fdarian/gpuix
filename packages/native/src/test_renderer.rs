@@ -604,6 +604,19 @@ impl TestGpuixRenderer {
         update_view_or_defer(|_view, _window, cx| cx.notify())
     }
 
+    /// Draws only what a live window would: a pending change, nothing on a clean window.
+    /// `flush()` notifies the view, so it draws every call; the `nativeSimulate*` helpers
+    /// that wrap one input in a flush before and after use this instead, so an input costs
+    /// the draws a window pays (one for what it changed, more only where a handler read
+    /// layout in between) and not two more.
+    #[napi]
+    pub fn flush_if_dirty(&self) -> Result<()> {
+        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
+            return self.flush();
+        }
+        draw_pending_changes()
+    }
+
     /// Simulate a click at the given window coordinates.
     /// Dispatches MouseDown + MouseUp through GPUI's input pipeline,
     /// which triggers the same event handlers as production.
