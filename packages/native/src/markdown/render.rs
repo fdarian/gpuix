@@ -138,14 +138,16 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
             underline: run.style.link.is_some().then_some(UnderlineStyle {
                 color: Some(theme.text_muted),
                 thickness: px(1.0),
-                wavy: false,
+                ..Default::default()
             }),
             strikethrough: run.style.strikethrough.then_some(gpui::StrikethroughStyle {
                 thickness: px(1.0),
                 color: Some(theme.text_muted),
+                ..Default::default()
             }),
             font_size: None,
             line_height: None,
+            overline: None,
         });
     }
 

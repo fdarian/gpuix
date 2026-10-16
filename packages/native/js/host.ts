@@ -705,19 +705,23 @@ export interface StyleDesc {
   overflowWrap?: "normal" | "break-word" | "anywhere"
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
-  /** CSS `text-decoration`: lines, a style and a colour in any order, e.g.
-   *  `"underline line-through"` or `"underline wavy red"`. Lines are `underline`,
-   *  `line-through`, `overline` and `none`; `overline` is accepted and not drawn.
-   *  Styles are `solid` and `wavy`; `double`, `dotted` and `dashed` draw solid
-   *  and a wavy line-through draws solid. A thickness is accepted, and the line
-   *  is always 1px. A descendant cannot take a line off. */
+  /** CSS `text-decoration`: lines, a style, a colour and a thickness in any order,
+   *  e.g. `"underline line-through"` or `"underline wavy red 2px"`. Lines are
+   *  `underline`, `line-through`, `overline` and `none`; the style, colour and
+   *  thickness apply to every line the declaration names. Styles are `solid`,
+   *  `double`, `dotted`, `dashed` and `wavy`. A thickness is `auto`, `from-font`
+   *  or a length (`px` and the absolute units; not `%` or `em`). A descendant
+   *  cannot take a line off. */
   textDecoration?: string
   /** CSS `text-decoration-line`, laid over `textDecoration`. */
   textDecorationLine?: string
-  /** CSS `text-decoration-style`: `solid` or `wavy` (see `textDecoration`). */
+  /** CSS `text-decoration-style` (see `textDecoration`). */
   textDecorationStyle?: "solid" | "double" | "dotted" | "dashed" | "wavy"
   /** CSS `text-decoration-color`; `currentColor` is the element's own colour. */
   textDecorationColor?: string
+  /** CSS `text-decoration-thickness`: `auto` (1px), `from-font` (the font's
+   *  underline thickness, 1px when it has none) or a length such as `"2px"`. */
+  textDecorationThickness?: string
   /** CSS `font-variant-numeric`, inherited: `tabular-nums`, `proportional-nums`,
    *  `lining-nums`, `oldstyle-nums`, `slashed-zero`, `diagonal-fractions`,
    *  `stacked-fractions`, `ordinal`, or `normal`. One keyword per group (figure,

@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 
 use gpui::{
-    px, DefiniteLength, FontWeight, Hsla, Pixels, SharedString, StrikethroughStyle, StyledText,
-    TextInset, TextLayout, TextRun, UnderlineStyle,
+    px, DefiniteLength, FontWeight, Hsla, OverlineStyle, Pixels, SharedString, StrikethroughStyle,
+    StyledText, TextInset, TextLayout, TextRun, UnderlineStyle,
 };
 
 use crate::color::ColorContext;
@@ -48,16 +48,12 @@ pub struct RunStyle {
     pub font_style: Option<gpui::FontStyle>,
     pub family: Option<SharedString>,
     pub features: Option<gpui::FontFeatures>,
-    pub underline: Option<Line>,
-    pub strikethrough: Option<Line>,
-}
-
-/// A decoration line of a run. Its colour is the one of the box that declared
-/// it, so a descendant that changes `color` does not recolour it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Line {
-    pub color: Hsla,
-    pub wavy: bool,
+    /// The decoration lines of a run keep the colour, style and thickness of the
+    /// box that declared them, so a descendant that changes `color` does not
+    /// recolour them.
+    pub underline: Option<UnderlineStyle>,
+    pub strikethrough: Option<StrikethroughStyle>,
+    pub overline: Option<OverlineStyle>,
 }
 
 impl RunStyle {
@@ -153,13 +149,13 @@ pub fn run_styles(
                 if let Some(decoration) = text_decoration::of(declared) {
                     let color = decoration.resolve_color(&colors);
                     if decoration.underline {
-                        style.underline = Some(Line {
-                            color,
-                            wavy: decoration.wavy(),
-                        });
+                        style.underline = Some(decoration.underline_style(color));
                     }
                     if decoration.line_through {
-                        style.strikethrough = Some(Line { color, wavy: false });
+                        style.strikethrough = Some(decoration.strikethrough_style(color));
+                    }
+                    if decoration.overline {
+                        style.overline = Some(decoration.overline_style(color));
                     }
                 }
             }
@@ -292,18 +288,14 @@ impl InlineText {
                 if let Some(features) = &style.features {
                     run.font.features = features.clone();
                 }
-                if let Some(line) = style.underline {
-                    run.underline = Some(UnderlineStyle {
-                        thickness: px(1.0),
-                        color: Some(line.color),
-                        wavy: line.wavy,
-                    });
+                if style.underline.is_some() {
+                    run.underline = style.underline;
                 }
-                if let Some(line) = style.strikethrough {
-                    run.strikethrough = Some(StrikethroughStyle {
-                        thickness: px(1.0),
-                        color: Some(line.color),
-                    });
+                if style.strikethrough.is_some() {
+                    run.strikethrough = style.strikethrough;
+                }
+                if style.overline.is_some() {
+                    run.overline = style.overline;
                 }
                 run
             })
@@ -398,6 +390,7 @@ mod tests {
     use crate::color::Scheme;
     use crate::text::inline::plan_children;
     use crate::text::inline::Child;
+    use gpui::TextDecorationStyle;
     use std::sync::Arc;
 
     fn tree_with(styles: &[(u64, serde_json::Value)]) -> RetainedTree {
@@ -732,9 +725,9 @@ mod tests {
         ]);
         let runs = runs_of(&tree);
         let red = runs[1].underline.expect("underlined").color;
-        assert_eq!(runs[1].color, Some(red));
+        assert_eq!(runs[1].color, red);
         assert_eq!(runs[2].underline.expect("inherited").color, red);
-        assert_ne!(runs[2].color, Some(red));
+        assert_ne!(runs[2].color, red);
     }
 
     #[test]
@@ -746,9 +739,66 @@ mod tests {
         let runs = runs_of(&tree);
         let nested = runs.iter().find(|run| run.strikethrough.is_some()).expect("a run");
         let underline = nested.underline.expect("the parent's underline");
-        assert!(underline.wavy);
+        assert_eq!(underline.style, TextDecorationStyle::Wavy);
         assert_ne!(nested.strikethrough.unwrap().color, underline.color);
-        assert!(!nested.strikethrough.unwrap().wavy, "gpui has no wavy strikethrough");
+        assert_eq!(
+            nested.strikethrough.unwrap().style,
+            TextDecorationStyle::Solid,
+            "a nested declaration of one line brings its own style"
+        );
+    }
+
+    #[test]
+    fn one_declaration_gives_every_line_its_style_colour_and_thickness() {
+        let tree = tree_with(&[(
+            3,
+            serde_json::json!({"textDecoration": "underline overline line-through dotted 3px #00ff00"}),
+        )]);
+        let run = runs_of(&tree).remove(1);
+        let underline = run.underline.expect("underline");
+        let strikethrough = run.strikethrough.expect("line-through");
+        let overline = run.overline.expect("overline");
+        assert_eq!(underline.style, TextDecorationStyle::Dotted);
+        assert_eq!(strikethrough.style, TextDecorationStyle::Dotted);
+        assert_eq!(overline.style, TextDecorationStyle::Dotted);
+        assert_eq!(underline.thickness, gpui::px(3.0));
+        assert_eq!(strikethrough.thickness, gpui::px(3.0));
+        assert_eq!(overline.thickness, gpui::px(3.0));
+        assert!(underline.color.is_some());
+        assert_eq!(underline.color, strikethrough.color);
+        assert_eq!(underline.color, overline.color);
+        assert!(!underline.thickness_from_font);
+    }
+
+    #[test]
+    fn the_longhands_set_the_style_and_thickness_of_the_lines() {
+        let tree = tree_with(&[(
+            3,
+            serde_json::json!({
+                "textDecorationLine": "overline",
+                "textDecorationStyle": "double",
+                "textDecorationThickness": "from-font",
+            }),
+        )]);
+        let run = runs_of(&tree).remove(1);
+        let overline = run.overline.expect("overline");
+        assert_eq!(overline.style, TextDecorationStyle::Double);
+        assert!(overline.thickness_from_font);
+        assert_eq!(overline.thickness, gpui::px(1.0), "the fallback of a font with no metric");
+        assert_eq!(run.underline, None);
+    }
+
+    #[test]
+    fn a_nested_box_that_declares_a_line_again_replaces_the_outer_one() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"textDecoration": "underline wavy 2px"})),
+            (5, serde_json::json!({"textDecoration": "underline dashed"})),
+        ]);
+        let runs = runs_of(&tree);
+        let outer = runs[1].underline.expect("outer");
+        let inner = runs[2].underline.expect("inner");
+        assert_eq!((outer.style, outer.thickness), (TextDecorationStyle::Wavy, gpui::px(2.0)));
+        assert_eq!((inner.style, inner.thickness), (TextDecorationStyle::Dashed, gpui::px(1.0)));
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
 use crate::css::border::{parse_border, parse_color_sides, LineStyle};
 use crate::css::mask::Mask;
-use crate::css::{clip_path, filter};
+use crate::css::{clip_path, filter, text_decoration};
 use crate::style::{BackgroundValue, StyleDesc};
 
 /// Takes `$base`'s value for every field `$over` leaves unset. Written as a
@@ -150,7 +150,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         box_shadow, border_style, aspect_ratio, outline_width, outline_color, outline_offset,
         font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
-        text_decoration_color,
+        text_decoration_color, text_decoration_thickness,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, app_region, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
@@ -205,6 +205,7 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         background_repeat: |value| background::is_valid_list::<Background>(Property::Repeat, value, &lengths),
         background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value, &lengths),
         background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value, &lengths),
+        text_decoration: |value| text_decoration::is_valid_shorthand(value),
     );
     if let Some(value) = &over.background {
         let valid = match value {
@@ -317,6 +318,12 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.animation_direction = None;
         base.animation_fill_mode = None;
         base.animation_play_state = None;
+    }
+    if over.text_decoration.is_some() {
+        base.text_decoration_line = None;
+        base.text_decoration_style = None;
+        base.text_decoration_color = None;
+        base.text_decoration_thickness = None;
     }
     if over.overflow.is_some() {
         base.overflow_x = None;
@@ -798,6 +805,47 @@ mod tests {
         assert_eq!(pressed.border.as_deref(), Some("2px solid red"));
         assert_eq!(pressed.border_left_width, Some(LinearLength::px(3.0)));
         assert_eq!(pressed.border_top_width, None);
+    }
+
+    #[test]
+    fn a_state_text_decoration_shorthand_resets_the_base_longhands() {
+        let base = style(
+            r##"{"textDecorationLine":"line-through","textDecorationStyle":"wavy",
+                "textDecorationColor":"red","textDecorationThickness":"4px",
+                "hover":{"textDecoration":"underline"}}"##,
+        );
+        let resolved = resolve_state_styles(&base, true, false);
+        assert_eq!(resolved.text_decoration.as_deref(), Some("underline"));
+        assert_eq!(resolved.text_decoration_line, None);
+        assert_eq!(resolved.text_decoration_style, None);
+        assert_eq!(resolved.text_decoration_color, None);
+        assert_eq!(resolved.text_decoration_thickness, None);
+        let decoration = text_decoration::of(&resolved).unwrap();
+        assert!(decoration.underline && !decoration.line_through);
+        assert_eq!(decoration.style, gpui::TextDecorationStyle::Solid);
+        assert_eq!(decoration.thickness, text_decoration::Thickness::Auto);
+        assert_eq!(decoration.color, None);
+
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.text_decoration_style.as_deref(), Some("wavy"));
+    }
+
+    #[test]
+    fn a_state_text_decoration_longhand_keeps_the_rest_and_an_invalid_shorthand_resets_nothing() {
+        let base = style(
+            r##"{"textDecoration":"underline","textDecorationStyle":"wavy",
+                "hover":{"textDecorationThickness":"3px"}}"##,
+        );
+        let resolved = resolve_state_styles(&base, true, false);
+        assert_eq!(resolved.text_decoration_style.as_deref(), Some("wavy"));
+        assert_eq!(resolved.text_decoration_thickness.as_deref(), Some("3px"));
+
+        let invalid = style(
+            r##"{"textDecorationStyle":"wavy","hover":{"textDecoration":"underline 10%"}}"##,
+        );
+        let resolved = resolve_state_styles(&invalid, true, false);
+        assert_eq!(resolved.text_decoration, None);
+        assert_eq!(resolved.text_decoration_style.as_deref(), Some("wavy"));
     }
 
     #[test]

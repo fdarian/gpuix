@@ -1729,11 +1729,12 @@ impl TextEditorState {
             underline: underline.then_some(UnderlineStyle {
                 color: Some(color),
                 thickness: px(1.0),
-                wavy: false,
+                ..Default::default()
             }),
             strikethrough: None,
             font_size: None,
             line_height: None,
+            overline: None,
         };
         let marked = self.marked_range.as_ref().map(|marked| {
             self.content_to_display(marked.start)..self.content_to_display(marked.end)

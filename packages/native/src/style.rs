@@ -563,6 +563,8 @@ pub struct StyleDesc {
     pub text_decoration_line: Option<String>,
     pub text_decoration_style: Option<String>,
     pub text_decoration_color: Option<String>,
+    /// `auto`, `from-font` or a length.
+    pub text_decoration_thickness: Option<String>,
     /// CSS `font-variant-numeric` keywords, e.g. `"tabular-nums slashed-zero"`.
     /// Inherited. Not supported inside `hover`/`active`/`focusVisible`.
     pub font_variant_numeric: Option<String>,

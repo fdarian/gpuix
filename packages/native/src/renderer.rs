@@ -8214,17 +8214,13 @@ fn apply_text_decoration<E: gpui::Styled>(
     let color = decoration.resolve_color(colors);
     let text_style = el.text_style();
     if decoration.underline {
-        text_style.underline = Some(gpui::UnderlineStyle {
-            thickness: gpui::px(1.0),
-            color: Some(color),
-            wavy: decoration.wavy(),
-        });
+        text_style.underline = Some(decoration.underline_style(color));
     }
     if decoration.line_through {
-        text_style.strikethrough = Some(gpui::StrikethroughStyle {
-            thickness: gpui::px(1.0),
-            color: Some(color),
-        });
+        text_style.strikethrough = Some(decoration.strikethrough_style(color));
+    }
+    if decoration.overline {
+        text_style.overline = Some(decoration.overline_style(color));
     }
     el
 }

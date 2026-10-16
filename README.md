@@ -2723,14 +2723,26 @@ around it, as in CSS. A `display: contents` span inside a span adds no box: its
 children join the paragraph and inherit from it.
 
 `textDecoration` is the CSS shorthand (`"underline line-through"`,
-`"underline wavy red"`), and `textDecorationLine`, `textDecorationStyle` and
-`textDecorationColor` are its longhands, which win over it. A line is drawn
-over the whole box in the colour its own box had, so a descendant that changes
-`color` does not recolour it, and a descendant cannot take it off. gpui draws one
-underline and one strikethrough per run, so a nested box that declares the same
-line again replaces the outer one's style and colour. `overline` is accepted
-and not drawn; `double`, `dotted` and `dashed` draw solid, a wavy
-line-through draws solid, and a thickness is accepted and the line stays 1px.
+`"underline wavy red 2px"`), and `textDecorationLine`, `textDecorationStyle`,
+`textDecorationColor` and `textDecorationThickness` are its longhands, which win
+over it. A line is drawn over the whole box in the colour its own box had, so a
+descendant that changes `color` does not recolour it, and a descendant cannot
+take it off. gpui draws one underline, one strikethrough and one overline per
+run, so a nested box that declares the same line again replaces the outer one's
+style, colour and thickness.
+
+A declaration gives every line it names one style, one colour and one
+thickness, as in CSS. The styles are `solid`, `double` (two lines a thickness
+apart), `dotted` (round dots), `dashed` and `wavy`, on `underline`, `line-through`
+and `overline` alike. `textDecorationThickness` (also the last component of the
+shorthand) is `auto`, which is 1px, `from-font`, which is the font's own
+underline thickness and 1px for a font without one, or a length in `px` or an
+absolute unit such as `"2px"`. A percentage, `em` and a bare non-zero number are
+invalid and ignored, like in every other length in a style string. Dots and dashes
+follow Chrome's proportions (a dot is a thickness across, dashes are three
+thicknesses long with a gap of two, two long with a gap of one from a thickness
+of 3px) but do not stretch to end on a mark, so a line that is not a whole
+number of marks ends on a partial one.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` with a `tabIndex` is a block too: it is an element of its own
@@ -6030,7 +6042,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
