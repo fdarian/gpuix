@@ -381,6 +381,7 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::css::length::LinearLength;
     use crate::style::{BackgroundValue, DimensionValue};
 
     fn style(json: &str) -> StyleDesc {
@@ -415,7 +416,7 @@ mod tests {
         assert_eq!(resolved.background_color.as_deref(), Some("#222222"));
         assert_eq!(resolved.cursor.as_deref(), Some("pointer"));
         assert_eq!(resolved.color.as_deref(), Some("#ffffff"));
-        assert_eq!(resolved.padding, Some(8.0));
+        assert_eq!(resolved.padding, Some(LinearLength::px(8.0)));
         assert_eq!(resolved.opacity, None);
     }
 
@@ -491,10 +492,10 @@ mod tests {
             }"##,
         );
         let at_rest = resolve_state_styles(&base, false, false);
-        assert_eq!(at_rest.padding_top, Some(4.0));
+        assert_eq!(at_rest.padding_top, Some(LinearLength::px(4.0)));
 
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!(hovered.padding, Some(10.0));
+        assert_eq!(hovered.padding, Some(LinearLength::px(10.0)));
         assert_eq!(hovered.padding_top, None);
         assert_eq!(hovered.margin_left, None);
         assert_eq!(hovered.border_top_width, None);
@@ -509,9 +510,9 @@ mod tests {
             r##"{ "padding": 8, "hover": { "paddingTop": 1 }, "active": { "padding": 3, "paddingTop": 2 } }"##,
         );
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!((hovered.padding, hovered.padding_top), (Some(8.0), Some(1.0)));
+        assert_eq!((hovered.padding, hovered.padding_top), (Some(LinearLength::px(8.0)), Some(LinearLength::px(1.0))));
         let pressed = resolve_state_styles(&base, true, true);
-        assert_eq!((pressed.padding, pressed.padding_top), (Some(3.0), Some(2.0)));
+        assert_eq!((pressed.padding, pressed.padding_top), (Some(LinearLength::px(3.0)), Some(LinearLength::px(2.0))));
     }
 
     #[test]
@@ -962,5 +963,17 @@ mod tests {
             colour.background,
             Some(BackgroundValue::Color(ref value)) if value == "red"
         ));
+    }
+
+    #[test]
+    fn a_state_padding_or_gap_in_em_resets_the_base_sides() {
+        let base = style(r#"{"paddingTop": 4, "paddingLeft": "1rem", "rowGap": 2, "hover": {"padding": "2em", "gap": "1em"}}"#);
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.padding, Some(style(r#"{"padding": "2em"}"#).padding.unwrap()));
+        assert_eq!(hovered.gap, Some(style(r#"{"gap": "1em"}"#).gap.unwrap()));
+        assert_eq!((hovered.padding_top, hovered.padding_left), (None, None));
+        assert_eq!((hovered.row_gap, hovered.column_gap), (None, None));
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.padding_left, Some(style(r#"{"paddingLeft": "1rem"}"#).padding_left.unwrap()));
     }
 }

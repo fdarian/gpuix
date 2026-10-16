@@ -64,7 +64,7 @@ export * from "./svg.js"
  * `calc()` of them with `+`, `-` and `*` or `/` by numbers (`"calc(100% - 20px)"`), plus
  * `"auto"` and `"anchor-size(...)"` where the property accepts them. Resolved natively on
  * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates only
- * a number of px or a percentage.
+ * a number of px or a percentage (a number of px alone for `fontSize`, `padding` and `gap`).
  */
 export type DimensionValue = number | string
 
@@ -426,14 +426,18 @@ export interface StyleDesc {
   flexWrap?: string
   flexGrow?: number
   flexShrink?: number
-  flexBasis?: number
+  /** A length (see `DimensionValue`; a percentage is of the container's main size) or `"auto"`,
+   *  which uses the item's `width` (or `height` in a column). */
+  flexBasis?: DimensionValue
   alignItems?: string
   alignSelf?: string
   alignContent?: string
   justifyContent?: string
-  gap?: number
-  rowGap?: number
-  columnGap?: number
+  /** A length (see `DimensionValue`; a percentage is of the container's content box). `rowGap`
+   *  and `columnGap` win over `gap`. */
+  gap?: DimensionValue
+  rowGap?: DimensionValue
+  columnGap?: DimensionValue
   /** Reorders the children of a flex or grid container, lowest first. Ties keep document
    *  order. Layout and paint follow it; focus order stays in the document order. */
   order?: number
@@ -476,11 +480,13 @@ export interface StyleDesc {
   maxWidth?: DimensionValue
   maxHeight?: DimensionValue
 
-  padding?: number
-  paddingTop?: number
-  paddingRight?: number
-  paddingBottom?: number
-  paddingLeft?: number
+  /** A length (see `DimensionValue`; a percentage is of the containing block's width, on all
+   *  four sides). The sides win over `padding`. */
+  padding?: DimensionValue
+  paddingTop?: DimensionValue
+  paddingRight?: DimensionValue
+  paddingBottom?: DimensionValue
+  paddingLeft?: DimensionValue
 
   /** A length (see `DimensionValue`; a percentage is of the containing block's width), or
    *  `"auto"` (which absorbs free space in flex layouts). */

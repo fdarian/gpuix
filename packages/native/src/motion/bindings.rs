@@ -570,6 +570,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::css::length::LinearLength;
 
     struct Clock(Instant);
 
@@ -1021,8 +1022,8 @@ mod tests {
         store.apply(&binding, &mut style);
         assert_eq!(style.opacity, Some(0.5));
         assert!(style.background_color.as_deref().unwrap().starts_with("rgba("));
-        assert_eq!(style.padding_top, Some(8.0));
-        assert_eq!(style.padding_left, Some(8.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(8.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(8.0)));
     }
 
     #[test]

@@ -104,7 +104,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
 /// reports.
 ///
-/// `report` sees the painted box right after it is recorded. `on_painted`
+/// `report` sees the painted box right after it is recorded. `on_painted_layout`
 /// takes one listener, so the paint-driven events share this one.
 pub fn track_host_bounds<E>(
     mut el: E,

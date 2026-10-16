@@ -1212,6 +1212,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::css::length::LinearLength;
     use crate::style::DimensionValue;
 
     /// The values a frame would lay over the element's style.
@@ -1306,6 +1307,24 @@ mod tests {
     }
 
     #[test]
+    fn a_padding_or_gap_target_must_be_px_and_the_shorthand_error_names_the_shorthand() {
+        let now = Instant::now();
+        for (animate, name) in [
+            (serde_json::json!({ "paddingLeft": "calc(10% + 4px)" }), "paddingLeft"),
+            (serde_json::json!({ "padding": "2em" }), "padding"),
+            (serde_json::json!({ "columnGap": "1rem" }), "columnGap"),
+            (serde_json::json!({ "gap": "10%" }), "gap"),
+            (serde_json::json!({ "flexBasis": "calc(100% - 40px)" }), "flexBasis"),
+        ] {
+            let description = serde_json::json!({ "animate": animate, "transition": {} });
+            let error = MotionState::new(&description, None, Colors::root(), None, 0, now).err().unwrap();
+            assert!(error.contains(name) && error.contains("CSS length"), "{error}");
+        }
+        let px = serde_json::json!({ "animate": { "padding": 8, "gap": 4 }, "transition": {} });
+        assert!(MotionState::new(&px, None, Colors::root(), None, 0, now).is_ok());
+    }
+
+    #[test]
     fn finishes_at_the_exact_target() {
         let started = Instant::now();
         let description = serde_json::json!({
@@ -1353,7 +1372,7 @@ mod tests {
         let mut style = StyleDesc::default();
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.width, Some(DimensionValue::Pixels(100.0)));
-        assert_eq!(style.padding_left, Some(40.0));
+        assert_eq!(style.padding_left, Some(LinearLength::px(40.0)));
         assert_eq!(style.opacity, Some(0.0));
 
         let middle = started + Duration::from_millis(500);
@@ -1383,7 +1402,7 @@ mod tests {
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.height, Some(DimensionValue::Pixels(50.0)));
         assert_eq!(style.margin_top, Some(DimensionValue::Pixels(8.0)));
-        assert_eq!(style.row_gap, Some(4.0));
+        assert_eq!(style.row_gap, Some(LinearLength::px(4.0)));
         let frame = state.frame(started);
         assert!(!frame.active);
         assert!(frame.just_settled);
@@ -1905,7 +1924,7 @@ mod tests {
         let style = style_at(&state, at(started, 0.2));
         assert_eq!(style.opacity, Some(1.0));
         assert_eq!(style.margin_left, Some(DimensionValue::Pixels(8.0)));
-        let spring_padding = style.padding_top.unwrap();
+        let spring_padding = style.padding_top.unwrap().as_px().unwrap();
         assert!(spring_padding > 0.0 && spring_padding < 100.0);
         assert!(state.frame(at(started, 0.2)).active);
 
@@ -1927,8 +1946,8 @@ mod tests {
         });
         let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
-        assert_eq!(style.padding_top, Some(50.0));
-        assert_eq!(style.padding_bottom, Some(25.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(50.0)));
+        assert_eq!(style.padding_bottom, Some(LinearLength::px(25.0)));
     }
 
     #[test]
@@ -1946,7 +1965,7 @@ mod tests {
         let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, at(started, 0.5));
         assert_eq!(style.opacity, Some(0.5));
-        assert_eq!(style.padding_top, Some(0.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(0.0)));
     }
 
     #[test]
@@ -1999,15 +2018,15 @@ mod tests {
         });
         let state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
         let style = style_at(&state, now);
-        assert_eq!(style.padding_left, Some(3.0));
-        assert_eq!(style.padding_top, Some(9.0));
+        assert_eq!(style.padding_left, Some(LinearLength::px(3.0)));
+        assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
     }
 
     #[test]
     fn starts_from_the_elements_own_style_when_initial_omits_the_key() {
         let started = Instant::now();
         let base = StyleDesc {
-            padding: Some(40.0),
+            padding: Some(LinearLength::px(40.0)),
             width: Some(DimensionValue::Pixels(200.0)),
             ..Default::default()
         };
@@ -2020,7 +2039,7 @@ mod tests {
         let style = style_at(&state, at(started, 0.5));
         // From the shorthand in the base style, the base width, and CSS's
         // initial margin of 0.
-        assert_eq!(style.padding_top, Some(20.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(20.0)));
         assert_eq!(style.width, Some(DimensionValue::Pixels(150.0)));
         assert_eq!(style.margin_top, Some(DimensionValue::Pixels(5.0)));
     }
@@ -2162,7 +2181,7 @@ mod tests {
     fn a_newly_named_property_starts_from_the_element_style() {
         let started = Instant::now();
         let base = StyleDesc {
-            padding_top: Some(10.0),
+            padding_top: Some(LinearLength::px(10.0)),
             ..Default::default()
         };
         let mut state = MotionState::new(
@@ -2181,7 +2200,7 @@ mod tests {
         state.sync(&next, Some(&base), Colors::root(), None, 0, started).unwrap();
         assert_eq!(
             style_at(&state, at(started, 0.5)).padding_top,
-            Some(20.0)
+            Some(LinearLength::px(20.0))
         );
     }
 
@@ -2198,7 +2217,7 @@ mod tests {
         for step in 1..=200 {
             let now = at(started, step as f64 * 0.005);
             undershot |= state.tracks[&PropKey::Style(AnimProp::PaddingTop)].sample(now).position[0] < 0.0;
-            assert!(style_at(&state, now).padding_top.unwrap() >= 0.0);
+            assert!(style_at(&state, now).padding_top.unwrap().as_px().unwrap() >= 0.0);
         }
         assert!(undershot);
     }

@@ -293,7 +293,7 @@ use Initial::{ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows,
 properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow;
     FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink;
-    FlexBasis "flexBasis" Number NonNegative Unresolved, flex_basis;
+    FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis;
     RowGap "rowGap" Number NonNegative Number(0.0), row_gap | gap;
     ColumnGap "columnGap" Number NonNegative Number(0.0), column_gap | gap;
 
@@ -466,6 +466,20 @@ impl AnimProp {
         )
     }
 
+    /// Whether the field is a [`LinearLength`], of which only plain px is animatable.
+    fn is_css_length(self) -> bool {
+        matches!(
+            self,
+            Self::FontSize
+                | Self::RowGap
+                | Self::ColumnGap
+                | Self::PaddingTop
+                | Self::PaddingRight
+                | Self::PaddingBottom
+                | Self::PaddingLeft
+        )
+    }
+
     /// The context a value of this property resolves its colours in. `color`
     /// is the one that differs: `currentColor` there is the parent's colour.
     fn colors(self, colors: &Colors) -> &ColorContext {
@@ -507,13 +521,12 @@ impl AnimProp {
         let name = self.name();
         let colors = self.colors(colors);
         let parsed = match self.kind() {
-            Kind::Number if self == Self::FontSize && value.is_string() => {
-                return Err(
-                    "motion cannot animate fontSize to or from a CSS length: only a number of px, \
-                     because em, rem, % and the viewport units are resolved against the parent \
-                     and the window when the tree is applied"
-                        .to_owned(),
-                );
+            Kind::Number if self.is_css_length() && value.is_string() => {
+                return Err(format!(
+                    "motion cannot animate {name} to or from a CSS length: only a number of px, \
+                     because calc(), em, rem, % and the viewport units are resolved against the \
+                     element and the window when the tree is applied"
+                ));
             }
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
             Kind::FontWeight => {
@@ -774,11 +787,72 @@ mod tests {
     }
 
     #[test]
+    fn only_a_px_padding_or_gap_is_animatable() {
+        let colors = Colors::root();
+        let props = [
+            (AnimProp::PaddingTop, "paddingTop"),
+            (AnimProp::PaddingLeft, "paddingLeft"),
+            (AnimProp::RowGap, "rowGap"),
+            (AnimProp::ColumnGap, "columnGap"),
+        ];
+        for (prop, name) in props {
+            let read = |json: &str| prop.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors);
+            assert_eq!(read(&format!(r#"{{ "{name}": 6 }}"#)), Some(AnimValue::Number(6.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "6px" }}"#)), Some(AnimValue::Number(6.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "1in" }}"#)), Some(AnimValue::Number(96.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), None);
+            assert_eq!(read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)), None);
+
+            assert_eq!(prop.parse(&serde_json::json!(12), &colors).unwrap(), AnimValue::Number(12.0));
+            assert!(prop.parse(&serde_json::json!(-1), &colors).is_err());
+            for target in ["calc(10% + 4px)", "2em", "10%", "12px"] {
+                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
+                assert!(
+                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
+                    "{error}"
+                );
+            }
+        }
+
+        let mut style = StyleDesc::default();
+        AnimProp::PaddingTop.write(&mut style, AnimValue::Number(9.0));
+        AnimProp::RowGap.write(&mut style, AnimValue::Number(3.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
+        assert_eq!(style.row_gap, Some(LinearLength::px(3.0)));
+    }
+
+    #[test]
+    fn flex_basis_animates_between_px_and_percentages_but_not_auto_or_calc() {
+        let colors = Colors::root();
+        let read = |json: &str| {
+            AnimProp::FlexBasis.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors)
+        };
+        assert_eq!(read(r#"{ "flexBasis": 40 }"#), Some(AnimValue::Number(40.0)));
+        assert_eq!(read(r#"{ "flexBasis": "50%" }"#), Some(AnimValue::Percent(0.5)));
+        assert_eq!(read(r#"{ "flexBasis": "auto" }"#), None);
+        assert_eq!(read(r#"{ "flexBasis": "calc(100% - 40px)" }"#), None);
+
+        assert_eq!(
+            AnimProp::FlexBasis.parse(&serde_json::json!("25%"), &colors).unwrap(),
+            AnimValue::Percent(0.25)
+        );
+        for target in ["calc(100% - 40px)", "2em"] {
+            let error = AnimProp::FlexBasis.parse(&serde_json::json!(target), &colors).unwrap_err();
+            assert!(error.starts_with("motion cannot animate flexBasis to or from a CSS length"), "{error}");
+        }
+        assert!(AnimProp::FlexBasis.parse(&serde_json::json!("auto"), &colors).is_err());
+
+        let mut style = StyleDesc::default();
+        AnimProp::FlexBasis.write(&mut style, AnimValue::Percent(0.5));
+        assert_eq!(style.flex_basis, Some(DimensionValue::Percentage(0.5)));
+    }
+
+    #[test]
     fn a_longhand_reads_through_its_shorthand() {
         let colors = Colors::root();
         let style = StyleDesc {
-            padding: Some(8.0),
-            padding_left: Some(20.0),
+            padding: Some(LinearLength::px(8.0)),
+            padding_left: Some(LinearLength::px(20.0)),
             border_radius: Some(6.0),
             ..Default::default()
         };

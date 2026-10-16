@@ -244,14 +244,16 @@ pub struct StyleDesc {
     pub flex_wrap: Option<String>,
     pub flex_grow: Option<f64>,
     pub flex_shrink: Option<f64>,
-    pub flex_basis: Option<f64>,
+    /// A length (px, `%` of the container's main size, `em`, `calc()`, ...) or `auto`.
+    pub flex_basis: Option<DimensionValue>,
     pub align_items: Option<String>,
     pub align_self: Option<String>,
     pub align_content: Option<String>,
     pub justify_content: Option<String>,
-    pub gap: Option<f64>,
-    pub row_gap: Option<f64>,
-    pub column_gap: Option<f64>,
+    /// A number is px; a string is a CSS length. `%` is of the container's content box.
+    pub gap: Option<LinearLength>,
+    pub row_gap: Option<LinearLength>,
+    pub column_gap: Option<LinearLength>,
     /// Stable-sorts the children of a flex or grid container. Default 0.
     pub order: Option<f64>,
     pub justify_items: Option<String>,
@@ -282,12 +284,12 @@ pub struct StyleDesc {
     pub max_width: Option<DimensionValue>,
     pub max_height: Option<DimensionValue>,
 
-    // Spacing (padding)
-    pub padding: Option<f64>,
-    pub padding_top: Option<f64>,
-    pub padding_right: Option<f64>,
-    pub padding_bottom: Option<f64>,
-    pub padding_left: Option<f64>,
+    // Spacing (padding): px or a CSS length; `%` is of the containing block's width.
+    pub padding: Option<LinearLength>,
+    pub padding_top: Option<LinearLength>,
+    pub padding_right: Option<LinearLength>,
+    pub padding_bottom: Option<LinearLength>,
+    pub padding_left: Option<LinearLength>,
 
     // Spacing (margin): px, a percentage of the containing block width, or "auto".
     pub margin: Option<DimensionValue>,
@@ -384,7 +386,7 @@ pub struct StyleDesc {
     // Text
     /// A number is px; a string is a CSS length. `em` and `%` are relative to the
     /// parent's font size, `rem` to the root's. Inherited.
-    pub font_size: Option<crate::css::length::LinearLength>,
+    pub font_size: Option<LinearLength>,
     pub font_family: Option<String>,
     pub font_weight: Option<FontWeightValue>,
     /// CSS `font-style`: `normal`, `italic` or `oblique`. Inherited.
@@ -1057,5 +1059,55 @@ mod tests {
 
         let style: StyleDesc = serde_json::from_str(r#"{"textDecoration":"none"}"#).unwrap();
         assert_eq!(style.text_decoration.as_deref(), Some("none"));
+    }
+
+    fn style_of(json: &str) -> StyleDesc {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn padding_gap_and_their_longhands_take_a_length_of_any_unit() {
+        let style = style_of(
+            r#"{
+                "padding": 4, "paddingTop": "2em", "paddingRight": "1rem", "paddingBottom": "10%", "paddingLeft": "calc(10% + 4px)",
+                "gap": "1in", "rowGap": "50vw", "columnGap": "calc(1em + 2px)"
+            }"#,
+        );
+        let length = |text: &str| Some(parse_linear_length(text).unwrap());
+        assert_eq!(style.padding, Some(LinearLength::px(4.0)));
+        assert_eq!(style.padding_top, length("2em"));
+        assert_eq!(style.padding_right, length("1rem"));
+        assert_eq!(style.padding_bottom, Some(LinearLength::percent(0.1)));
+        assert_eq!(style.padding_left, length("calc(10% + 4px)"));
+        assert_eq!(style.gap, Some(LinearLength::px(96.0)));
+        assert_eq!(style.row_gap, length("50vw"));
+        assert_eq!(style.column_gap, length("calc(1em + 2px)"));
+    }
+
+    #[test]
+    fn a_bad_padding_or_gap_is_an_error() {
+        assert_eq!(style_of(r#"{"gap": "12px"}"#).gap, Some(LinearLength::px(12.0)));
+        for json in [r#"{"padding": "12"}"#, r#"{"padding": "auto"}"#, r#"{"gap": "12foo"}"#, r#"{"paddingLeft": true}"#, r#"{"rowGap": "calc(1px + 2)"}"#] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+    }
+
+    #[test]
+    fn flex_basis_takes_a_dimension_including_auto() {
+        assert_eq!(style_of(r#"{"flexBasis": 40}"#).flex_basis, Some(DimensionValue::Pixels(40.0)));
+        assert_eq!(style_of(r#"{"flexBasis": "50%"}"#).flex_basis, Some(DimensionValue::Percentage(0.5)));
+        assert_eq!(style_of(r#"{"flexBasis": "auto"}"#).flex_basis, Some(DimensionValue::Auto));
+        assert_eq!(style_of(r#"{"flexBasis": "2em"}"#).flex_basis, Some(calc("2em")));
+        assert_eq!(
+            style_of(r#"{"flexBasis": "calc(100% - 40px)"}"#).flex_basis,
+            Some(calc("calc(100% - 40px)"))
+        );
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"flexBasis": "content"}"#).is_err());
+    }
+
+    #[test]
+    fn a_padding_and_gap_round_trip_through_serialization() {
+        let style = style_of(r#"{"padding": "calc(10% + 4px)", "paddingTop": 3, "gap": "2em", "flexBasis": "calc(1em + 1%)"}"#);
+        assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
     }
 }

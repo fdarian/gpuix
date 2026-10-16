@@ -1,28 +1,30 @@
-//! The layout half of `apply_styles`: display, flex direction, position and
-//! insets, sizes, margins, and the grid properties.
+//! The layout half of `apply_styles`: display, flex direction, flex basis,
+//! position and insets, sizes, margins, padding, gaps, and the grid properties.
 
 use gpui::Styled;
 
-use crate::css::length::LengthContext;
+use crate::css::length::{LengthContext, LinearLength};
 use crate::style::{DimensionValue, StyleDesc};
 
 use super::grid_values::GridTemplateValue;
+
+fn linear(value: &LinearLength, lengths: &LengthContext) -> gpui::DefiniteLength {
+    let (total, fraction) = lengths.split(value);
+    if fraction == 0.0 {
+        gpui::px(total as f32).into()
+    } else if total == 0.0 {
+        gpui::relative(fraction as f32)
+    } else {
+        gpui::DefiniteLength::calc(gpui::px(total as f32), fraction as f32)
+    }
+}
 
 /// `None` for `auto` and `anchor-size()`, which leave the property to layout.
 fn definite(value: &DimensionValue, lengths: &LengthContext) -> Option<gpui::DefiniteLength> {
     match value {
         DimensionValue::Pixels(pixels) => Some(gpui::px(*pixels as f32).into()),
         DimensionValue::Percentage(fraction) => Some(gpui::relative(*fraction as f32)),
-        DimensionValue::Calc(length) => {
-            let (total, fraction) = lengths.split(length);
-            Some(if fraction == 0.0 {
-                gpui::px(total as f32).into()
-            } else if total == 0.0 {
-                gpui::relative(fraction as f32)
-            } else {
-                gpui::DefiniteLength::calc(gpui::px(total as f32), fraction as f32)
-            })
-        }
+        DimensionValue::Calc(value) => Some(linear(value, lengths)),
         DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
     }
 }
@@ -84,7 +86,12 @@ pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
     el = apply_grid(el, style);
     el = apply_size(el, style, lengths);
     el = apply_margin(el, style, lengths);
+    el = apply_padding(el, style, lengths);
+    el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
+    if let Some(value) = &style.flex_basis {
+        el.style().flex_basis = Some(length(value, lengths));
+    }
     if let Some(value) = style.justify_items.as_deref().and_then(align_items) {
         el.style().justify_items = Some(value);
     }
@@ -136,6 +143,48 @@ fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext
     }
     if let Some(value) = &style.margin_left {
         el.style().margin.left = Some(length(value, lengths));
+    }
+    el
+}
+
+fn apply_padding<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
+    if let Some(value) = &style.padding {
+        let padding = &mut el.style().padding;
+        let value = linear(value, lengths);
+        padding.top = Some(value);
+        padding.right = Some(value);
+        padding.bottom = Some(value);
+        padding.left = Some(value);
+    }
+    if let Some(value) = &style.padding_top {
+        el.style().padding.top = Some(linear(value, lengths));
+    }
+    if let Some(value) = &style.padding_right {
+        el.style().padding.right = Some(linear(value, lengths));
+    }
+    if let Some(value) = &style.padding_bottom {
+        el.style().padding.bottom = Some(linear(value, lengths));
+    }
+    if let Some(value) = &style.padding_left {
+        el.style().padding.left = Some(linear(value, lengths));
+    }
+    el
+}
+
+/// The axis gaps come after `gap`, so they win, as CSS orders the shorthand
+/// before its longhands.
+fn apply_gap<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
+    if let Some(value) = &style.gap {
+        let gap = &mut el.style().gap;
+        let value = linear(value, lengths);
+        gap.width = Some(value);
+        gap.height = Some(value);
+    }
+    if let Some(value) = &style.row_gap {
+        el.style().gap.height = Some(linear(value, lengths));
+    }
+    if let Some(value) = &style.column_gap {
+        el.style().gap.width = Some(linear(value, lengths));
     }
     el
 }

@@ -1191,6 +1191,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::css::length::LinearLength;
     use crate::events::state_styles::resolve_state_styles;
     use crate::style::DimensionValue;
 
@@ -2057,7 +2058,7 @@ mod tests {
         clock.frame(0, &target);
         let middle = clock.frame(500, &target);
         assert_eq!(middle.opacity, Some(0.5));
-        assert_eq!(middle.padding_left, Some(5.0));
+        assert_eq!(middle.padding_left, Some(LinearLength::px(5.0)));
     }
 
     #[test]

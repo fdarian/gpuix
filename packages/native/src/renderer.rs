@@ -7973,9 +7973,6 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(shrink) = style.flex_shrink {
         el.style().flex_shrink = Some(shrink as f32);
     }
-    if let Some(basis) = style.flex_basis {
-        el = el.flex_basis(gpui::px(basis as f32));
-    }
     match style.align_items.as_deref() {
         Some("center") => el = el.items_center(),
         Some("start") | Some("flex-start") => el = el.items_start(),
@@ -8021,32 +8018,6 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
             el.style().align_self = Some(gpui::AlignItems::Baseline);
         }
         _ => {}
-    }
-    if let Some(gap) = style.gap {
-        el = el.gap(gpui::px(gap as f32));
-    }
-    // Per-axis gaps were in the style type and implemented nowhere. They come
-    // after `gap` so the axis value wins, matching CSS shorthand order.
-    if let Some(gap) = style.row_gap {
-        el = el.gap_y(gpui::px(gap as f32));
-    }
-    if let Some(gap) = style.column_gap {
-        el = el.gap_x(gpui::px(gap as f32));
-    }
-    if let Some(p) = style.padding {
-        el = el.p(gpui::px(p as f32));
-    }
-    if let Some(pt) = style.padding_top {
-        el = el.pt(gpui::px(pt as f32));
-    }
-    if let Some(pr) = style.padding_right {
-        el = el.pr(gpui::px(pr as f32));
-    }
-    if let Some(pb) = style.padding_bottom {
-        el = el.pb(gpui::px(pb as f32));
-    }
-    if let Some(pl) = style.padding_left {
-        el = el.pl(gpui::px(pl as f32));
     }
     if let Some(ratio) = style.aspect_ratio.and_then(|ratio| ratio.ratio()) {
         el = el.aspect_ratio(ratio as f32);
@@ -10439,6 +10410,16 @@ mod dimension_length_tests {
     /// `nodes` are `(id, parent, style)`; the first is the root.
     impl Page {
         fn new(cx: &mut gpui::TestAppContext, nodes: &[(u64, Option<u64>, &str)]) -> Self {
+            Self::with_events(cx, nodes, &[], None)
+        }
+
+        /// `listeners` are `(id, event type)`; `callback` receives what they emit.
+        fn with_events(
+            cx: &mut gpui::TestAppContext,
+            nodes: &[(u64, Option<u64>, &str)],
+            listeners: &[(u64, &str)],
+            callback: Option<EventCallback>,
+        ) -> Self {
             let tree = Arc::new(Mutex::new(RetainedTree::new()));
             {
                 let mut tree = tree.lock().unwrap();
@@ -10450,6 +10431,9 @@ mod dimension_length_tests {
                         tree.append_child(*parent, *id);
                     }
                 }
+                for (id, event_type) in listeners {
+                    tree.set_event_listener(*id, (*event_type).to_owned(), true);
+                }
                 tree.set_root(nodes[0].0);
             }
             let view_tree = tree.clone();
@@ -10457,7 +10441,7 @@ mod dimension_length_tests {
                 crate::events::enable_dom_hit_testing(window);
                 GpuixView::new(
                     view_tree,
-                    None,
+                    callback,
                     "test".to_owned(),
                     SharedSelection::default(),
                     crate::events::state::PointerRequests::default(),
@@ -10632,5 +10616,164 @@ mod dimension_length_tests {
         );
         page.draw(cx);
         near(page.size(2), (180.0, 20.0));
+    }
+
+    /// Element 1 is a 200px root; element 2 has `style` and a 10px child, 3.
+    fn padded(cx: &mut gpui::TestAppContext, style: &str) -> Page {
+        Page::new(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), style),
+                (3, Some(2), r#"{"width": 10, "height": 10}"#),
+            ],
+        )
+    }
+
+    #[gpui::test]
+    fn padding_with_a_percentage_is_of_the_containing_block_width(cx: &mut gpui::TestAppContext) {
+        let page = padded(cx, r#"{"width": 100, "height": 100, "padding": "calc(10% + 4px)"}"#);
+        near(page.offset(3, 2), (24.0, 24.0));
+        page.set_style(cx, 2, r#"{"width": 100, "height": 100, "padding": "10%", "paddingTop": "calc(50% - 1em)"}"#);
+        near(page.offset(3, 2), (20.0, 84.0));
+    }
+
+    #[gpui::test]
+    fn padding_in_em_and_rem_follows_the_font_sizes(cx: &mut gpui::TestAppContext) {
+        let page = padded(cx, r#"{"width": 100, "height": 100, "fontSize": 20, "padding": "2em"}"#);
+        near(page.offset(3, 2), (40.0, 40.0));
+        page.set_style(
+            cx,
+            2,
+            r#"{"width": 100, "height": 100, "fontSize": 20, "paddingLeft": "1rem", "paddingTop": "0.5em"}"#,
+        );
+        near(page.offset(3, 2), (16.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn each_padding_side_beats_the_shorthand(cx: &mut gpui::TestAppContext) {
+        let page = padded(
+            cx,
+            r#"{"width": 100, "height": 100, "padding": "1in", "paddingLeft": 3, "paddingTop": "2px"}"#,
+        );
+        near(page.offset(3, 2), (3.0, 2.0));
+        near(page.size(2), (100.0, 100.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_padding_resolves_in_the_hover_font_size(cx: &mut gpui::TestAppContext) {
+        let page = padded(
+            cx,
+            r#"{"width": 100, "height": 100, "fontSize": 20, "hover": {"padding": "1em"}}"#,
+        );
+        near(page.offset(3, 2), (0.0, 0.0));
+        let bounds = page.bounds(2);
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            gpui::point(gpui::px((bounds.x + 90.0) as f32), gpui::px((bounds.y + 90.0) as f32)),
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        near(page.offset(3, 2), (20.0, 20.0));
+    }
+
+    /// Element 2 is a 100px wide flex container with `style` and children 3, 4, 5
+    /// of 40 by 20.
+    fn flowing(cx: &mut gpui::TestAppContext, style: &str) -> Page {
+        let item = r#"{"width": 40, "height": 20}"#;
+        Page::new(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), style),
+                (3, Some(2), item),
+                (4, Some(2), item),
+                (5, Some(2), item),
+            ],
+        )
+    }
+
+    #[gpui::test]
+    fn gap_is_a_length_between_the_children(cx: &mut gpui::TestAppContext) {
+        let page = flowing(
+            cx,
+            r#"{"display": "flex", "flexDirection": "column", "width": 100, "fontSize": 10, "gap": "calc(1em + 2px)"}"#,
+        );
+        near(page.offset(4, 2), (0.0, 20.0 + 12.0));
+        near(page.offset(5, 2), (0.0, 2.0 * (20.0 + 12.0)));
+    }
+
+    #[gpui::test]
+    fn row_gap_and_column_gap_beat_gap(cx: &mut gpui::TestAppContext) {
+        let page = flowing(
+            cx,
+            r#"{"display": "flex", "flexWrap": "wrap", "alignContent": "flex-start", "width": 100, "fontSize": 10,
+                "gap": 100, "rowGap": "1rem", "columnGap": "2em"}"#,
+        );
+        near(page.offset(4, 2), (60.0, 0.0));
+        near(page.offset(5, 2), (0.0, 20.0 + 16.0));
+
+        page.set_style(
+            cx,
+            2,
+            r#"{"display": "flex", "flexWrap": "wrap", "alignContent": "flex-start", "width": 100, "fontSize": 10,
+                "columnGap": "2em", "gap": "1em"}"#,
+        );
+        near(page.offset(4, 2), (60.0, 0.0));
+        near(page.offset(5, 2), (0.0, 30.0));
+    }
+
+    fn basis(cx: &mut gpui::TestAppContext, item: &str) -> Page {
+        Page::new(
+            cx,
+            &[
+                (1, None, r#"{"display": "flex", "width": 200, "height": 50}"#),
+                (2, Some(1), item),
+            ],
+        )
+    }
+
+    #[gpui::test]
+    fn flex_basis_takes_a_length_percentage_or_calc(cx: &mut gpui::TestAppContext) {
+        let page = basis(cx, r#"{"flexBasis": "50%", "flexShrink": 0}"#);
+        near(page.size(2), (100.0, 50.0));
+        page.set_style(cx, 2, r#"{"flexBasis": "calc(100% - 40px)", "flexShrink": 0}"#);
+        near(page.size(2), (160.0, 50.0));
+        page.set_style(cx, 2, r#"{"flexBasis": "2em", "fontSize": 15}"#);
+        near(page.size(2), (30.0, 50.0));
+        page.set_style(cx, 2, r#"{"flexBasis": 70}"#);
+        near(page.size(2), (70.0, 50.0));
+    }
+
+    #[gpui::test]
+    fn flex_basis_auto_uses_the_main_size(cx: &mut gpui::TestAppContext) {
+        let page = basis(cx, r#"{"width": 30, "flexBasis": "auto"}"#);
+        near(page.size(2), (30.0, 50.0));
+        page.set_style(cx, 2, r#"{"width": 30, "flexBasis": 80, "flexShrink": 0}"#);
+        near(page.size(2), (80.0, 50.0));
+    }
+
+    #[gpui::test]
+    fn a_resize_observer_content_box_excludes_the_resolved_padding(cx: &mut gpui::TestAppContext) {
+        let payloads = Arc::new(Mutex::new(Vec::<EventPayload>::new()));
+        let sink = payloads.clone();
+        let page = Page::with_events(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), r#"{"width": 100, "height": 100, "fontSize": 20, "padding": "1em", "paddingLeft": "calc(10% + 1em)"}"#),
+            ],
+            &[(2, crate::observers::RESIZE_EVENT)],
+            Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))),
+        );
+        page.draw(cx);
+        cx.run_until_parked();
+        let payloads = payloads.lock().unwrap();
+        let observation = payloads
+            .iter()
+            .find_map(|payload| payload.observation.as_ref())
+            .expect("the observer reported");
+        assert_eq!((observation.padding_left, observation.padding_top), (40.0, 20.0));
+        assert_eq!((observation.content_width, observation.content_height), (100.0 - 40.0 - 20.0, 60.0));
     }
 }
