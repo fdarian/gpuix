@@ -1449,8 +1449,9 @@ list can be animated, in `animate`, `initial` and `exit`:
 | Target | Range or unit |
 |---|---|
 | `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater |
-| `top`, `right`, `bottom`, `left` | pixels |
-| `marginTop`, `marginRight`, `marginBottom`, `marginLeft`, `outlineOffset` | pixels, may be negative |
+| `top`, `right`, `bottom`, `left` | pixels or `%`, may be negative |
+| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | pixels or `%`, may be negative |
+| `outlineOffset` | pixels, may be negative |
 | `paddingTop` ... `paddingLeft`, `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight`, `flexGrow`, `flexShrink`, `flexBasis`, `aspectRatio` | zero or greater |
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
@@ -1465,15 +1466,21 @@ its longhands, the longhand wins.
 Naming a discrete property (`display`, `position`, ...) or an unknown key is an
 error, not a silent no-op.
 
-**Layout-resolved lengths.** The sizes in the first row move between units, and
+**Layout-resolved lengths.** The sizes, insets and margins move between units, and
 `height` also moves to or from `"auto"`:
 
 - `px` to `%` and back runs in px, with the percentage resolved against the
-  parent's content box (`width`, `minWidth` and `maxWidth` against its width, the
-  height ones against its height). The percentage follows the parent if it
-  resizes mid-flight, and the style settles on the unit you asked for. A root
-  element has no parent, so it resolves against the window's content size, as the
-  initial containing block does in a document.
+  parent's content box, along the axis CSS uses: `width`, `minWidth`, `maxWidth`,
+  `left`, `right` and all four margins against its width (`marginTop` too, as in
+  CSS), `height`, `minHeight`, `maxHeight`, `top` and `bottom` against its height.
+  The percentage follows the parent if it resizes mid-flight, and the style
+  settles on the unit you asked for. A root element has no parent, so it resolves
+  against the window's content size, as the initial containing block does in a
+  document. An absolute box resolves against its nearest positioned ancestor's
+  padding box in layout, but motion measures the parent's content box, so the two
+  differ by the padding of that parent (and by the ancestor, when the parent is
+  not positioned).
+- `padding` and `flexBasis` take numbers only, so they have no `%` to animate.
 - `height: "auto"` is the height the content wants. The target follows the
   content while it grows (a spring keeps its velocity), the end is rounded up to
   a whole device pixel so nothing clips, and the style goes back to a literal
@@ -5551,10 +5558,12 @@ render per frame.
   element mounts with never transitions. A property that is unset starts from its
   CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
   an unset `width`) changes instantly
-- **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth` or
-  `maxHeight` that moves between a pixel length and a percentage transitions in
-  px, with the percentage resolved against the parent's content box (the window's
-  content size for a root). It follows the parent while it runs and settles on the
+- **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
+  `maxHeight`, `top`, `right`, `bottom`, `left` or margin that moves between a
+  pixel length and a percentage transitions in px, with the percentage resolved
+  against the parent's content box (the window's content size for a root), along
+  the axis CSS uses: the width for `left`, `right` and every margin side, the
+  height for `top` and `bottom`. It follows the parent while it runs and settles on the
   literal target unit. Two percentages interpolate as percentages
 - **`auto` heights.** As in a browser, a change between a length and `auto` is
   discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an

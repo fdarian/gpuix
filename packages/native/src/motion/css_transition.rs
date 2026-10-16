@@ -2641,6 +2641,37 @@ mod tests {
             clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
             assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 20.0);
         }
+
+        #[test]
+        fn a_margin_percentage_resolves_against_the_parent_width() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            let spaced = |margin: &str| {
+                style(&format!(r#"{{ "marginTop": {margin}, "transition": "margin-top 1s linear" }}"#))
+            };
+            clock.frame_measured(0, &spaced("0"), None, Some(&parent));
+            clock.frame_measured(0, &spaced(r#""50%""#), None, Some(&parent));
+            let middle = clock.frame_measured(500, &spaced(r#""50%""#), None, Some(&parent));
+            assert_eq!(middle.margin_top, Some(DimensionValue::Pixels(50.0)));
+            let ended = clock.frame_measured(1000, &spaced(r#""50%""#), None, Some(&parent));
+            assert_eq!(ended.margin_top, Some(DimensionValue::Percentage(0.5)));
+        }
+
+        #[test]
+        fn an_inset_percentage_resolves_against_the_parent_height_for_top_and_the_width_for_left() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            let placed = |inset: &str| {
+                style(&format!(
+                    r#"{{ "top": {inset}, "left": {inset}, "transition": "top 1s linear, left 1s linear" }}"#
+                ))
+            };
+            clock.frame_measured(0, &placed("0"), None, Some(&parent));
+            clock.frame_measured(0, &placed(r#""50%""#), None, Some(&parent));
+            let middle = clock.frame_measured(500, &placed(r#""50%""#), None, Some(&parent));
+            assert_eq!(middle.top, Some(DimensionValue::Pixels(20.0)));
+            assert_eq!(middle.left, Some(DimensionValue::Pixels(50.0)));
+        }
     }
     mod discrete {
         use super::*;

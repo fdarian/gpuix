@@ -219,6 +219,61 @@ describeNative("motion properties", () => {
       expect(boundsOf(renderer, "root").width).toBe(200)
     })
 
+    it("resolves a margin percentage against the parent width on every side", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: 400 }}>
+          <motion.div
+            testId="box"
+            initial={{ marginLeft: 0, marginTop: 0 }}
+            animate={{ marginLeft: "50%", marginTop: "25%" }}
+            transition={linear}
+            style={{ width: 20, height: 20 }}
+          />
+        </div>
+      )
+      renderer.clockFastForward(500)
+      const halfway = boundsOf(renderer, "box")
+      expect(halfway.x).toBeCloseTo(100, 0)
+      // 25% of the 400 px width, not of the height.
+      expect(halfway.y).toBeCloseTo(50, 0)
+
+      renderer.clockFastForward(1000)
+      const done = boundsOf(renderer, "box")
+      expect(done.x).toBe(200)
+      expect(done.y).toBe(100)
+    })
+
+    it("resolves an inset percentage against the parent height for top and width for left", () => {
+      const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+      const render = (node: ReactNode) => settled(mount, renderer, node)
+
+      renderer.clockPause()
+      render(
+        <div style={{ position: "relative", width: 400, height: 200 }}>
+          <motion.div
+            testId="box"
+            initial={{ top: 0, left: 0 }}
+            animate={{ top: "50%", left: "50%" }}
+            transition={linear}
+            style={{ position: "absolute", width: 20, height: 20 }}
+          />
+        </div>
+      )
+      renderer.clockFastForward(500)
+      const halfway = boundsOf(renderer, "box")
+      expect(halfway.x).toBeCloseTo(100, 0)
+      expect(halfway.y).toBeCloseTo(50, 0)
+
+      renderer.clockFastForward(1000)
+      const done = boundsOf(renderer, "box")
+      expect(done.x).toBe(200)
+      expect(done.y).toBe(100)
+    })
+
     it("starts from the laid-out size when the style leaves it unset", () => {
       const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
       const render = (node: ReactNode) => settled(mount, renderer, node)

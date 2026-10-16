@@ -835,7 +835,7 @@ fn in_pixels(
         .map(AnimValue::Number)
         .ok_or_else(|| {
             format!(
-                "motion cannot resolve {} as a percentage: only sizes are measured against the parent",
+                "motion cannot resolve {} as a percentage: only sizes, margins and insets are measured against the parent",
                 prop.name()
             )
         })
@@ -2939,6 +2939,68 @@ mod tests {
             let end = at(started, 1.5);
             state.sync(&grow_to_half(), None, Colors::root(), Some(&resized), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
+        }
+
+        /// Runs `property` from 0 to `"50%"` for a second, linear, in a parent
+        /// 200 wide and 80 tall, and reads it half-way.
+        fn halfway_to_half(property: &str) -> (MotionState, Instant, serde_json::Value) {
+            let started = Instant::now();
+            let description = linear(
+                serde_json::json!({ property: "50%" }),
+                serde_json::json!({ property: 0.0 }),
+            );
+            let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+            let state =
+                MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
+            (state, started, description)
+        }
+
+        #[test]
+        fn a_margin_percentage_is_a_share_of_the_parent_width_on_every_side() {
+            for property in ["marginTop", "marginRight", "marginBottom", "marginLeft"] {
+                let (state, started, description) = halfway_to_half(property);
+                let mut state = state;
+                let margin = |style: StyleDesc| match property {
+                    "marginTop" => style.margin_top,
+                    "marginRight" => style.margin_right,
+                    "marginBottom" => style.margin_bottom,
+                    _ => style.margin_left,
+                };
+                assert_eq!(pixels(margin(style_at(&state, at(started, 0.5)))), 50.0, "{property}");
+                let end = at(started, 1.0);
+                let measured = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+                state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
+                assert_eq!(
+                    margin(style_at(&state, end)),
+                    Some(DimensionValue::Percentage(0.5)),
+                    "{property}"
+                );
+            }
+        }
+
+        #[test]
+        fn an_inset_percentage_is_a_share_of_the_parent_height_for_top_and_bottom_and_width_for_left_and_right() {
+            for (property, halfway) in [("top", 20.0), ("bottom", 20.0), ("left", 50.0), ("right", 50.0)] {
+                let (state, started, _) = halfway_to_half(property);
+                let style = style_at(&state, at(started, 0.5));
+                let inset = match property {
+                    "top" => style.top,
+                    "bottom" => style.bottom,
+                    "left" => style.left,
+                    _ => style.right,
+                };
+                assert_eq!(pixels(inset), halfway, "{property}");
+            }
+        }
+
+        #[test]
+        fn a_margin_percentage_end_follows_the_parent_width_while_it_runs() {
+            let (mut state, started, description) = halfway_to_half("marginLeft");
+            let now = at(started, 0.5);
+            let resized = in_parent(measurement(0.0, 10.0, 10.0), 400.0, 80.0);
+            state.sync(&description, None, Colors::root(), Some(&resized), 0, now).unwrap();
+            assert_eq!(pixels(style_at(&state, now).margin_left), 50.0, "the value showing does not jump");
+            assert_eq!(pixels(style_at(&state, at(started, 1.0)).margin_left), 125.0);
         }
 
         #[test]

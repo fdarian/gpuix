@@ -45,9 +45,13 @@ impl Measurement {
     }
 
     /// What a percentage of `prop` is in px: a fraction of the parent's content
-    /// box along the axis `prop` sizes. `None` for a property that is not a size.
+    /// box along the axis CSS resolves it against (`AnimProp::percent_axis`).
+    /// `None` for a property that takes no percentage.
+    ///
+    /// The parent stands in for the containing block, which an absolute box
+    /// resolves against its nearest positioned ancestor's padding box instead.
     pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
-        let length = match prop.size_axis()? {
+        let length = match prop.percent_axis()? {
             Axis::Width => self.parent_content.width,
             Axis::Height => self.parent_content.height,
         };
@@ -302,8 +306,36 @@ mod tests {
         assert_eq!(nested.percent_px(AnimProp::MaxWidth, 0.25), Some(50.0));
         assert_eq!(nested.percent_px(AnimProp::Height, 0.5), Some(40.0));
         assert_eq!(nested.percent_px(AnimProp::MinHeight, 1.0), Some(80.0));
-        assert_eq!(nested.percent_px(AnimProp::Top, 0.5), None);
         assert_eq!(nested.percent_px(AnimProp::Opacity, 0.5), None);
+        assert_eq!(nested.percent_px(AnimProp::RowGap, 0.5), None);
+    }
+
+    #[test]
+    fn a_margin_percentage_is_a_share_of_the_width_on_every_side() {
+        let nested = Measurement {
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+            ..measurement(50.0, 1.0)
+        };
+        for margin in [
+            AnimProp::MarginTop,
+            AnimProp::MarginRight,
+            AnimProp::MarginBottom,
+            AnimProp::MarginLeft,
+        ] {
+            assert_eq!(nested.percent_px(margin, 0.25), Some(50.0), "{margin:?}");
+        }
+    }
+
+    #[test]
+    fn an_inset_percentage_is_a_share_of_the_height_for_top_and_bottom_and_the_width_for_left_and_right() {
+        let nested = Measurement {
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+            ..measurement(50.0, 1.0)
+        };
+        assert_eq!(nested.percent_px(AnimProp::Top, 0.5), Some(40.0));
+        assert_eq!(nested.percent_px(AnimProp::Bottom, 0.25), Some(20.0));
+        assert_eq!(nested.percent_px(AnimProp::Left, 0.5), Some(100.0));
+        assert_eq!(nested.percent_px(AnimProp::Right, 0.25), Some(50.0));
     }
 
     #[test]

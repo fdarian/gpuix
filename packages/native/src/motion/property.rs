@@ -363,7 +363,8 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
     })
 }
 
-/// The side of the border box a size property measures.
+/// The axis of a box: the side of the border box a size property measures, or
+/// the side of the containing block a percentage resolves against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Axis {
     Width,
@@ -395,6 +396,23 @@ impl AnimProp {
             Self::Width | Self::MinWidth | Self::MaxWidth => Some(Axis::Width),
             Self::Height | Self::MinHeight | Self::MaxHeight => Some(Axis::Height),
             _ => None,
+        }
+    }
+
+    /// The axis of the containing block a percentage of this property is a
+    /// share of. Margins take the width on every side, as CSS does; insets take
+    /// the height for `top` and `bottom`. `None` for a property that takes no
+    /// percentage here.
+    pub(super) fn percent_axis(self) -> Option<Axis> {
+        match self {
+            Self::MarginTop
+            | Self::MarginRight
+            | Self::MarginBottom
+            | Self::MarginLeft
+            | Self::Left
+            | Self::Right => Some(Axis::Width),
+            Self::Top | Self::Bottom => Some(Axis::Height),
+            _ => self.size_axis(),
         }
     }
 
