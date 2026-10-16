@@ -20,4 +20,5 @@ pub(crate) mod mask;
 mod parse_cost;
 pub(crate) mod position;
 pub(crate) mod syntax;
+pub(crate) mod tab_size;
 pub(crate) mod text_decoration;

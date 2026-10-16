@@ -674,6 +674,13 @@ export interface StyleDesc {
    *  a newline into a space, `pre-line` collapses spaces and keeps newlines,
    *  `pre-wrap` and `pre` keep both. `nowrap` and `pre` do not wrap. */
   whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line"
+  /** CSS `tab-size`, inherited, 8 by default. A number is that many spaces and a
+   *  string is a CSS length such as `"40px"`. A tab that `whiteSpace` keeps
+   *  advances to the next multiple of it, counted from the start of each line of
+   *  text, so a wrapped line counts again from its own start. Only a container
+   *  sets it: a `<span>` inside a paragraph uses the paragraph's. Negative
+   *  values and percentages throw. */
+  tabSize?: number | string
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   /** CSS `text-decoration`: lines, a style and a colour in any order, e.g.

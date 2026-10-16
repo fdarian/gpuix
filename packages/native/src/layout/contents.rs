@@ -94,6 +94,7 @@ impl StyleDesc {
             text_align,
             line_height,
             white_space,
+            tab_size,
             cursor,
             visibility,
             user_select,
@@ -125,6 +126,7 @@ impl StyleDesc {
             text_align,
             line_height,
             white_space,
+            tab_size,
             cursor,
             visibility,
             user_select,
@@ -180,6 +182,18 @@ mod tests {
         let tree = tree();
         let flat = flatten(&tree, &[4, 5]);
         assert!(matches!(flat, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn tab_size_passes_through_a_display_contents_element() {
+        let declared = StyleDesc {
+            tab_size: Some(crate::css::tab_size::TabSize::Spaces(2.0)),
+            ..Default::default()
+        };
+        let mut overlay = StyleDesc::default();
+        overlay.take_inheritable_from(&declared);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        assert_eq!(merged.tab_size, declared.tab_size);
     }
 
     #[test]

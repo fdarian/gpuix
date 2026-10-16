@@ -546,6 +546,9 @@ pub struct StyleDesc {
     /// or a length where `%` is of the font size. Inherited.
     pub line_height: Option<crate::css::line_height::LineHeight>,
     pub white_space: Option<String>,
+    /// CSS `tab-size`: a number of spaces, or a length. Inherited, 8 by default.
+    /// Tab stops are measured from the start of each line of text.
+    pub tab_size: Option<crate::css::tab_size::TabSize>,
     pub text_overflow: Option<String>,
     pub line_clamp: Option<f64>,
     /// CSS `text-decoration` and its longhands. `css::text_decoration` says what

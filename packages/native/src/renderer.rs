@@ -6945,9 +6945,10 @@ impl gpui::Render for GpuixView {
             use gpui::prelude::*;
             let drag_move_view = cx.weak_entity();
             let drag_end_view = drag_move_view.clone();
-            let root = gpui::div()
+            let mut root = gpui::div()
                 .size_full()
                 .on_painted(self.measurements.frame_counter());
+            root.text_style().tab_size = Some(crate::css::tab_size::DEFAULT);
             with_window_menu_actions(root)
                 .child(crate::events::listeners::pointer_frame(
                     cx.weak_entity(),
@@ -8129,6 +8130,9 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
         } else {
             el.whitespace_nowrap()
         };
+    }
+    if let Some(tab_size) = style.tab_size {
+        el.text_style().tab_size = Some(tab_size.to_gpui());
     }
     match style.text_overflow.as_deref() {
         Some("ellipsis") => el = el.text_ellipsis(),
