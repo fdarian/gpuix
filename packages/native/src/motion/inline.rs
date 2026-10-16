@@ -450,6 +450,49 @@ mod tests {
     }
 
     #[test]
+    fn the_painted_background_border_and_outline_are_the_sampled_colours() {
+        use crate::text::inline_decoration::of;
+        use crate::text::inline_insets::InsetSpec;
+
+        let mut page = Page::new();
+        let style = |colour: &str| {
+            format!(
+                r#"{{ "backgroundColor": "{colour}", "borderWidth": 2, "borderColor": "{colour}",
+                    "outlineWidth": 1, "outlineColor": "{colour}",
+                    "transition": "background-color 1s linear, border-color 1s linear, outline-color 1s linear" }}"#
+            )
+        };
+        page.style(3, &style("red"));
+        page.frame(0);
+        page.style(3, &style("blue"));
+        page.frame(0);
+        let styles = page.frame(500);
+
+        let paragraph = page.paragraph();
+        let lengths = LengthContext::initial(800.0, 600.0);
+        let states = |_: u64, _: &StyleDesc| PointerStates::default();
+        let insets = InsetSpec::of(&page.tree, &paragraph, &lengths, &states);
+        let decorations = of(
+            &page.tree,
+            &paragraph,
+            &ColorContext::root(Scheme::Light),
+            &lengths,
+            &states,
+            &styles,
+            &insets,
+        );
+        let decoration = &decorations[0];
+        let between = |color: gpui::Hsla| {
+            let color = gpui::Rgba::from(color);
+            assert!(color.r > 0.05 && color.r < 0.95 && color.b > 0.05 && color.b < 0.95, "{color:?}");
+        };
+        between(decoration.paint.background.expect("a background"));
+        between(decoration.paint.colors.top);
+        between(decoration.paint.colors.left);
+        between(decoration.outline.expect("an outline").color);
+    }
+
+    #[test]
     fn the_state_of_a_removed_box_is_dropped() {
         let mut page = Page::new();
         page.style(3, r#"{ "backgroundColor": "red", "transition": "background-color 1s linear" }"#);
