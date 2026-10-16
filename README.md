@@ -4954,7 +4954,7 @@ CSS-like styling via the `style` prop:
 
 **Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"` | `"contents"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
-**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number) or percentages (string like `"100%"`). `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
+**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), percentages (string like `"100%"`) or `"auto"`. The intrinsic keywords `max-content`, `min-content` and `fit-content` are rejected: taffy 0.13 has no intrinsic size keywords. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
 **Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — margins take pixels, a percentage of the containing block's width, or `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
@@ -5913,7 +5913,7 @@ handler it runs can read and write the renderer: `getFocusedElementId()`,
 current values inside an `onMouseDown`, and a `DismissableLayer` (Dialog,
 Popover) can open from one. Only another `nativeSimulate*` call, `advanceTime` or
 `captureScreenshot` throws there. The test window is one per thread: making a
-`TestRenderer` tears down the previous one.
+`TestRenderer` tears down the previous one. Call `renderer.dispose()` when a test is done with its renderer (`createTestRoot().unmount()` does, after unmounting the root); native calls that need the window throw afterwards. A renderer nobody disposes is leaked when the thread exits, which is safe but keeps the window until then.
 
 ### Simulating keys
 
