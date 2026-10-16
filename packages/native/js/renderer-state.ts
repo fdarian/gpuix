@@ -21,8 +21,6 @@ export interface RendererRootHandlers {
   onWindowKeyUp?: WindowKeyEventHandler
   onSelectionChange?: WindowEventHandler
   onAppearanceChange?: WindowEventHandler
-  onPointerLockChange?: WindowEventHandler
-  onPointerLockError?: WindowEventHandler
   /** See `WindowKeyEventHandlers.tabNavigation`. Defaults to true. */
   tabNavigation?: boolean
   onEvent?: (event: EventPayload) => void

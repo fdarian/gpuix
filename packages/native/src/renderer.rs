@@ -5686,8 +5686,8 @@ impl GpuixView {
     }
 
     /// Applies the pointer lock JS asked for and reports what came of it as
-    /// `pointerlockchange` and `pointerlockerror`. Document-level events: the
-    /// element, when there is one, is the payload's `target`.
+    /// `pointerlockchange` and `pointerlockerror`. Document-level events, so
+    /// they name no element: JS reads the lock element from the renderer.
     pub(crate) fn apply_pointer_lock(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) {
         use crate::events::pointer_lock::{apply, GpuiLock};
         let events = {
@@ -5698,9 +5698,7 @@ impl GpuixView {
             }
         };
         for event in events {
-            emit_event_full(&self.event_callback, 0, event.event_type(), |payload| {
-                payload.target = event.element().map(|id| id as f64);
-            });
+            emit_event_full(&self.event_callback, 0, event.event_type(), |_| {});
         }
     }
 

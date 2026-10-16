@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import React from "react"
-import type { RootEvent } from "@gpuix/native/host"
 import { document, window } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
@@ -18,28 +17,37 @@ describeNative("pointer lock", () => {
   type Lockable = { id: number; requestPointerLock(): void }
 
   let testRoot: ReturnType<typeof createTestRoot>
+  /** The lock events at `document`, by type and the element it held then. */
   let log: string[]
-  /** The `target` of each lock event, in the order they fired. */
-  let targets: Array<object | null>
   let first: Lockable
   let second: Lockable
+  let stopLog: Array<() => void>
 
-  /** Names the lock events by type, with the element they name. */
-  const lockEvents = () => ({
-    onPointerLockChange: (event: RootEvent) => {
-      targets.push(event.target)
-      log.push(`change:${event.target === null ? "none" : "element"}`)
-    },
-    onPointerLockError: (event: RootEvent) => {
-      targets.push(event.target)
-      log.push(`error:${event.target === null ? "none" : "element"}`)
-    },
-  })
+  /** Records what `document.pointerLockElement` is while each lock event runs. */
+  const recordLockEvents = () => {
+    const holder = (element: object | null) =>
+      element === first ? "first" : element === second ? "second" : element === null ? "none" : "other"
+    const onChange = () => log.push(`change:${holder(document.pointerLockElement)}`)
+    const onError = () => log.push(`error:${holder(document.pointerLockElement)}`)
+    document.addEventListener("pointerlockchange", onChange as never)
+    document.addEventListener("pointerlockerror", onError as never)
+    stopLog.push(() => {
+      document.removeEventListener("pointerlockchange", onChange as never)
+      document.removeEventListener("pointerlockerror", onError as never)
+    })
+  }
 
   beforeEach(() => {
-    testRoot = createTestRoot(lockEvents())
+    testRoot = createTestRoot()
     log = []
-    targets = []
+    stopLog = []
+    recordLockEvents()
+  })
+
+  afterEach(() => {
+    for (const stop of stopLog) stop()
+    // A root that still holds a lock would be the one `document.pointerLockElement` reads next.
+    testRoot.unmount()
   })
 
   /** `first` at (0..100, 0..100), `second` at (0..100, 100..200). */
@@ -81,8 +89,7 @@ describeNative("pointer lock", () => {
 
     first.requestPointerLock()
 
-    expect(log).toEqual(["change:element"])
-    expect(targets[0]).toBe(first)
+    expect(log).toEqual(["change:first"])
     expect(testRoot.renderer.pointerLockElement()).toBe(first.id)
   })
 
@@ -118,7 +125,7 @@ describeNative("pointer lock", () => {
       for (const remove of stop) remove()
     })
 
-    it("pointerlockchange reaches document and then window listeners, and pointerLockElement is set first", () => {
+    it("pointerlockchange targets document, reaches document and then window listeners, and pointerLockElement is set first", () => {
       testRoot.render(<Boxes />)
       const lockSeenByListener: Array<object | null> = []
       listen(document, "pointerlockchange", "document")
@@ -130,11 +137,37 @@ describeNative("pointer lock", () => {
 
       expect(heard).toEqual(["document", "window"])
       expect(events[0].type).toBe("pointerlockchange")
-      expect(events[0].target).toBe(first)
       expect(events[0].bubbles).toBe(true)
       expect(events[0].cancelable).toBe(false)
       expect(lockSeenByListener).toEqual([first])
       expect(document.pointerLockElement).toBe(first)
+    })
+
+    it("the target is document whichever target the listener sits on, and the phase follows the DOM", () => {
+      testRoot.render(<Boxes />)
+      const seen: Array<[string, boolean, boolean, number]> = []
+      const record = (name: string) => (event: LockEvent) =>
+        seen.push([name, event.target === document, event.currentTarget === (name.startsWith("window") ? window : document), event.eventPhase])
+      const listeners: Array<[typeof document | typeof window, string, boolean]> = [
+        [window, "window-capture", true],
+        [document, "document-capture", true],
+        [document, "document", false],
+        [window, "window", false],
+      ]
+      for (const [target, name, capture] of listeners) {
+        const listener = record(name)
+        target.addEventListener("pointerlockchange", listener as never, capture)
+        stop.push(() => target.removeEventListener("pointerlockchange", listener as never, capture))
+      }
+
+      first.requestPointerLock()
+
+      expect(seen).toEqual([
+        ["window-capture", true, true, 1],
+        ["document-capture", true, true, 2],
+        ["document", true, true, 2],
+        ["window", true, true, 3],
+      ])
     })
 
     it("exitPointerLock fires pointerlockchange with no element and clears pointerLockElement", () => {
@@ -145,7 +178,7 @@ describeNative("pointer lock", () => {
       testRoot.renderer.exitPointerLock()
 
       expect(heard).toEqual(["document"])
-      expect(events[0].target).toBeNull()
+      expect(events[0].target).toBe(document)
       expect(document.pointerLockElement).toBeNull()
     })
 
@@ -159,7 +192,7 @@ describeNative("pointer lock", () => {
 
       expect(heard).toEqual(["document"])
       expect(events[0].type).toBe("pointerlockerror")
-      expect(events[0].target).toBe(first)
+      expect(events[0].target).toBe(document)
       expect(document.pointerLockElement).toBeNull()
     })
 
@@ -176,15 +209,13 @@ describeNative("pointer lock", () => {
 
     it("a capture-phase window listener runs before the document's and can stop it", () => {
       testRoot.render(<Boxes />)
-      document.addEventListener("pointerlockchange", (() => heard.push("document")) as never)
-      window.addEventListener(
-        "pointerlockchange",
-        ((event: { stopPropagation(): void }) => {
-          heard.push("window-capture")
-          event.stopPropagation()
-        }) as never,
-        true,
-      )
+      listen(document, "pointerlockchange", "document")
+      const capture = (event: { stopPropagation(): void }) => {
+        heard.push("window-capture")
+        event.stopPropagation()
+      }
+      window.addEventListener("pointerlockchange", capture as never, true)
+      stop.push(() => window.removeEventListener("pointerlockchange", capture as never, true))
 
       first.requestPointerLock()
 
@@ -198,8 +229,7 @@ describeNative("pointer lock", () => {
 
     first.requestPointerLock()
 
-    expect(log).toEqual(["error:element"])
-    expect(targets[0]).toBe(first)
+    expect(log).toEqual(["error:none"])
     expect(testRoot.renderer.pointerLockElement()).toBeNull()
   })
 
@@ -210,9 +240,7 @@ describeNative("pointer lock", () => {
 
     removed.requestPointerLock()
 
-    // The element is gone from the tree, so the event has nothing to name.
     expect(log).toEqual(["error:none"])
-    expect(targets).toEqual([null])
     expect(testRoot.renderer.pointerLockElement()).toBeNull()
   })
 
@@ -251,8 +279,7 @@ describeNative("pointer lock", () => {
 
     second.requestPointerLock()
 
-    expect(log).toEqual(["change:element"])
-    expect(targets.at(-1)).toBe(second)
+    expect(log).toEqual(["change:second"])
     expect(testRoot.renderer.pointerLockElement()).toBe(second.id)
   })
 
@@ -379,8 +406,7 @@ describeNative("pointer lock", () => {
       testRoot.renderer.nativeSimulateMouseMove(60, 40)
 
       expect(lockInHandler).toBe(second.id)
-      expect(log).toEqual(["change:element"])
-      expect(targets[0]).toBe(second)
+      expect(log).toEqual(["change:second"])
       expect(seen).toEqual([{ name: "second", type: "pointermove", x: 30, y: 150 }])
     })
 
@@ -428,7 +454,7 @@ describeNative("pointer lock", () => {
       testRoot.renderer.nativeSimulateMouseDown(30, 40)
 
       expect(lockId).toBeNull()
-      expect(log).toEqual(["error:element"])
+      expect(log).toEqual(["error:none"])
     })
   })
 

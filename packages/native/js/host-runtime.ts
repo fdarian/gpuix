@@ -42,11 +42,11 @@ export interface PointerCaptureMethods {
  * `requestPointerLock()` hides the cursor and freezes it, and from then on
  * every pointer and mouse event goes to this element with a frozen
  * `clientX`/`clientY` and the real motion in `movementX`/`movementY`. It
- * returns at once and the outcome arrives with the next frame, as the root's
- * `onPointerLockChange` or `onPointerLockError`. It fails (`onPointerLockError`)
- * for an element that is not in the tree and when the platform refuses: the
- * window must be active, and only macOS can lock the pointer. Call
- * `renderer.exitPointerLock()` to release it.
+ * returns at once and the outcome arrives with the next frame, as
+ * `pointerlockchange` or `pointerlockerror` at `document`. It fails
+ * (`pointerlockerror`) for an element that is not in the tree and when the
+ * platform refuses: the window must be active, and only macOS can lock the
+ * pointer. Call `renderer.exitPointerLock()` to release it.
  */
 export interface ElementMethods extends PointerCaptureMethods {
   click(): void

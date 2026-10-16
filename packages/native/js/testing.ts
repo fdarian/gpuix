@@ -1103,8 +1103,8 @@ export class TestRenderer implements NativeRenderer {
     this.native.cancelDrag()
   }
 
-  /** The frame it asks for is drawn here, so `onPointerLockChange` or
-   *  `onPointerLockError` has run when this returns. */
+  /** The frame it asks for is drawn here, so `pointerlockchange` or
+   *  `pointerlockerror` has reached its listeners when this returns. */
   requestPointerLock(elementId: number): void {
     this.native.requestPointerLock(elementId)
     this.dispatchNativeEvents()

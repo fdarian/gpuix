@@ -1,23 +1,13 @@
 import { describe, expect, it } from "bun:test"
-import { document } from "@gpuix/native/host"
+import { document, window } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
-  it("locks an element from its ref and reports the outcome on the root", () => {
+  it("locks an element from its ref and reports the outcome at document", () => {
     const log: string[] = []
-    const targets: Array<object | null> = []
     let box!: HostElement
-    const app = createTestRoot({
-      onPointerLockChange: (event) => {
-        targets.push(event.target)
-        log.push(`change:${event.target === null ? "none" : "element"}`)
-      },
-      onPointerLockError: (event) => {
-        targets.push(event.target)
-        log.push(`error:${event.target === null ? "none" : "element"}`)
-      },
-    })
+    const app = createTestRoot()
     app.render(() => (
       <div
         ref={box}
@@ -25,6 +15,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
         onMouseMove={(event) => log.push(`${event.type}@${event.clientX},${event.clientY}`)}
       />
     ))
+    const holder = () => (document.pointerLockElement === box ? "box" : "none")
+    const onChange = () => log.push(`change:${holder()}`)
+    const onError = () => log.push(`error:${holder()}`)
+    document.addEventListener("pointerlockchange", onChange as never)
+    document.addEventListener("pointerlockerror", onError as never)
     app.renderer.nativeSimulateMouseMove(20, 30)
     log.length = 0
 
@@ -34,11 +29,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
     app.renderer.simulatePointerLockGranting(false)
     box.requestPointerLock()
 
-    expect(log).toEqual(["change:element", "mousemove@20,30", "change:none", "error:element"])
-    expect(targets).toHaveLength(3)
-    expect(targets[0]).toBe(box)
-    expect(targets[1]).toBeNull()
-    expect(targets[2]).toBe(box)
+    document.removeEventListener("pointerlockchange", onChange as never)
+    document.removeEventListener("pointerlockerror", onError as never)
+    expect(log).toEqual(["change:box", "mousemove@20,30", "change:none", "error:none"])
   })
 
   it("reads movementX and movementY as 0 on every mouse event but a move", () => {
@@ -59,25 +52,34 @@ describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
     expect(seen).toEqual(["mousemove:6,-2", "mousedown:0,0", "click:0,0"])
   })
 
-  it("fires pointerlockchange and pointerlockerror at document listeners", () => {
+  it("targets document with both events, and window hears them after", () => {
     const log: string[] = []
     let box!: HostElement
     const app = createTestRoot()
     app.render(() => <div ref={box} style={{ width: 100, height: 100 }} />)
-    const onChange = (event: { target: object | null }) =>
-      log.push(`change:${event.target === box ? "box" : "none"}:${document.pointerLockElement === box}`)
-    const onError = (event: { target: object | null }) =>
-      log.push(`error:${event.target === box ? "box" : "none"}`)
-    document.addEventListener("pointerlockchange", onChange as never)
-    document.addEventListener("pointerlockerror", onError as never)
+    const record = (name: string) => (event: { type: string; target: object | null }) =>
+      log.push(`${name}:${event.type}:${event.target === document}`)
+    const atDocument = record("document")
+    const atWindow = record("window")
+    for (const type of ["pointerlockchange", "pointerlockerror"]) {
+      document.addEventListener(type, atDocument as never)
+      window.addEventListener(type, atWindow as never)
+    }
 
-    box.requestPointerLock()
-    app.renderer.exitPointerLock()
     app.renderer.simulatePointerLockGranting(false)
     box.requestPointerLock()
+    app.renderer.simulatePointerLockGranting(true)
+    box.requestPointerLock()
 
-    document.removeEventListener("pointerlockchange", onChange as never)
-    document.removeEventListener("pointerlockerror", onError as never)
-    expect(log).toEqual(["change:box:true", "change:none:false", "error:box"])
+    for (const type of ["pointerlockchange", "pointerlockerror"]) {
+      document.removeEventListener(type, atDocument as never)
+      window.removeEventListener(type, atWindow as never)
+    }
+    expect(log).toEqual([
+      "document:pointerlockerror:true",
+      "window:pointerlockerror:true",
+      "document:pointerlockchange:true",
+      "window:pointerlockchange:true",
+    ])
   })
 })

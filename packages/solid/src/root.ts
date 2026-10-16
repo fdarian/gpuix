@@ -116,8 +116,6 @@ export function createRoot(
       onWindowKeyUp: rootHandlers.onKeyUp,
       onSelectionChange,
       onAppearanceChange,
-      onPointerLockChange: rootHandlers.onPointerLockChange,
-      onPointerLockError: rootHandlers.onPointerLockError,
       tabNavigation: rootHandlers.tabNavigation,
       onEvent: rootHandlers.onEvent,
     })

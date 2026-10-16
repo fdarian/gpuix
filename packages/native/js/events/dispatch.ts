@@ -90,7 +90,7 @@ export type PublicEventFields = Omit<EventPayload, "target" | "relatedTarget" | 
 
 /**
  * An event with no propagation, such as `onSelectionChange` or
- * `onPointerLockChange`: the payload with its elements in place of their ids.
+ * `onAppearanceChange`: the payload with its elements in place of their ids.
  * An element is the object a `ref` gives in the adapter (React's host
  * instance, Solid's element).
  */
@@ -98,7 +98,8 @@ export interface RootEvent extends PublicEventFields {
   /**
    * The element the event was aimed at. `null` for an event aimed at the
    * window: a key with nothing focused, a pointer move outside every element.
-   * GPUIX has no `body` or `html` element to stand in.
+   * GPUIX has no `body` or `html` element to stand in. The `document` object
+   * for `pointerlockchange` and `pointerlockerror`, as in the DOM.
    */
   readonly target: object | null
   /** The other element of a boundary or focus event, or `null` when there is none. */
@@ -209,19 +210,18 @@ export function toRootEvent(root: DomEventRoot, payload: EventPayload, target: o
 /**
  * Creates the event object and the state behind its stop methods. `path` is
  * the propagation path as elements, target first; empty for an event aimed at
- * the window, whose `target` is the element `payload.target` names, if any.
+ * the window or the document, whose `target` is `pathlessTarget`.
  */
 export function createDomEvent(
   root: DomEventRoot,
   payload: EventPayload,
-  path: readonly object[]
+  path: readonly object[],
+  pathlessTarget: object | null
 ): { event: DomEvent; state: DomEventState } {
   const state = { propagationStopped: false, immediatePropagationStopped: false }
   const cancelable = eventIsCancelable(payload.eventType)
   const event: DomEvent = {
-    // An event aimed at the window has no path but may still name an element
-    // (the lock element of `pointerlockchange`).
-    ...toRootEvent(root, payload, path[0] ?? optionalElement(root, payload.target)),
+    ...toRootEvent(root, payload, path[0] ?? pathlessTarget),
     ...(payload.formEntries && formSubmission(payload.formEntries)),
     type: payload.eventType,
     currentTarget: null,
@@ -290,7 +290,7 @@ export function dispatchDomEvent(
   }
 
   const elements = path.map((id) => requireElement(root, id, payload.eventType))
-  const { event, state } = createDomEvent(root, payload, elements)
+  const { event, state } = createDomEvent(root, payload, elements, null)
   const errors: unknown[] = []
   const captureKey = captureHandlerKey(payload.eventType)
   const visit = (index: number, phase: number, keys: string[]) => {

@@ -1,6 +1,7 @@
 import type { EventPayload } from "../../index.js"
 import {
   createDomEvent,
+  EVENT_PHASE_AT_TARGET,
   EVENT_PHASE_BUBBLING,
   EVENT_PHASE_CAPTURING,
   EVENT_PHASE_NONE,
@@ -300,6 +301,13 @@ export function syncWindowEventListeners(renderer: {
   }
 }
 
+const DOCUMENT_EVENT_TYPES: ReadonlySet<string> = new Set(["pointerlockchange", "pointerlockerror"])
+
+/** Whether the DOM aims the event at `document` itself, with no element on the path. */
+export function isDocumentEvent(eventType: string): boolean {
+  return DOCUMENT_EVENT_TYPES.has(eventType)
+}
+
 export interface PropagationResult extends DomDispatchResult {
   /** The event the listeners saw. */
   event: DomEvent
@@ -318,14 +326,19 @@ export function dispatchPropagating(
   payload: EventPayload,
   scoped?: GpuixEventTarget
 ): PropagationResult {
+  // When `document` is the target, both its capture and bubble listeners run at the target.
+  const documentPhase = (event: DomEvent, phase: number) =>
+    event.target === document ? EVENT_PHASE_AT_TARGET : phase
   const bubble = (event: DomEvent, state: DomEventState, fail: (error: unknown) => void) => {
-    document.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
+    document.run(event, state, false, documentPhase(event, EVENT_PHASE_BUBBLING), fail)
     if (!state.propagationStopped) window.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
     if (!state.propagationStopped) scoped?.run(event, state, false, EVENT_PHASE_BUBBLING, fail)
   }
   const capture = (event: DomEvent, state: DomEventState, fail: (error: unknown) => void) => {
     window.run(event, state, true, EVENT_PHASE_CAPTURING, fail)
-    if (!state.propagationStopped) document.run(event, state, true, EVENT_PHASE_CAPTURING, fail)
+    if (!state.propagationStopped) {
+      document.run(event, state, true, documentPhase(event, EVENT_PHASE_CAPTURING), fail)
+    }
   }
 
   if (payload.path && payload.path.length > 0) {
@@ -341,7 +354,12 @@ export function dispatchPropagating(
     return { ...result, event: seen }
   }
 
-  const { event, state } = createDomEvent(root, payload, [])
+  const { event, state } = createDomEvent(
+    root,
+    payload,
+    [],
+    isDocumentEvent(payload.eventType) ? document : null
+  )
   const errors: unknown[] = []
   const fail = (error: unknown) => errors.push(error)
   capture(event, state, fail)

@@ -123,13 +123,6 @@ impl LockEvent {
             LockEvent::Error(_) => "pointerlockerror",
         }
     }
-
-    pub fn element(&self) -> Option<u64> {
-        match self {
-            LockEvent::Change(element) => *element,
-            LockEvent::Error(element) => Some(*element),
-        }
-    }
 }
 
 /// Applies the pending request, then checks the lock still stands: the platform

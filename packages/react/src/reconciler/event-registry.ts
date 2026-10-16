@@ -27,8 +27,6 @@ export function attachRoot(renderer: NativeRenderer, container: Container): void
     onWindowKeyUp: container.windowKeyEventHandlers.onKeyUp,
     onSelectionChange: container.windowKeyEventHandlers.onSelectionChange,
     onAppearanceChange: container.windowKeyEventHandlers.onAppearanceChange,
-    onPointerLockChange: container.windowKeyEventHandlers.onPointerLockChange,
-    onPointerLockError: container.windowKeyEventHandlers.onPointerLockError,
     tabNavigation: container.windowKeyEventHandlers.tabNavigation,
     onEvent: container.onEvent,
   })
