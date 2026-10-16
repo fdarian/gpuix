@@ -2074,17 +2074,19 @@ mod tests {
     #[test]
     fn elements_at_orders_the_children_of_a_hidden_element_by_paint_rank() {
         // Nothing is lifted out of a `visibility: hidden` element: 3 stays among its siblings.
+        // The hidden box is no hit, and its `visible` descendants are.
         let hidden = StyleDesc { visibility: Some("hidden".to_string()), ..Default::default() };
+        let shown = |style: StyleDesc| StyleDesc { visibility: Some("visible".to_string()), ..style };
         let order = hits(vec![
             (1, 0, "div", flow()),
             (2, 1, "div", hidden),
-            (3, 2, "div", at("absolute", Some(-1.0))),
-            (4, 2, "div", flow()),
-            (5, 2, "div", at("relative", None)),
+            (3, 2, "div", shown(at("absolute", Some(-1.0)))),
+            (4, 2, "div", shown(flow())),
+            (5, 2, "div", shown(at("relative", None))),
             (6, 1, "div", at("absolute", Some(2.0))),
         ]);
-        // From the bottom: 1, 2, 3 (negative), 4, 5 (positioned), then 6 in the context.
-        assert_eq!(order, [6, 5, 4, 3, 2, 1]);
+        // From the bottom: 1, 3 (negative), 4, 5 (positioned), then 6 in the context.
+        assert_eq!(order, [6, 5, 4, 3, 1]);
     }
 
     #[test]
