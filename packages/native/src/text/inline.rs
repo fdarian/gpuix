@@ -56,7 +56,7 @@ fn display_of(element: &RetainedElement) -> Option<&str> {
 
 /// A child that generates no box at all.
 fn is_display_none(element: &RetainedElement) -> bool {
-    display_of(element) == Some("none")
+    crate::layout::box_generation::is_display_none(element)
 }
 
 /// What a React/Solid string child is: a `text` node with no box of its own.

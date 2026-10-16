@@ -131,7 +131,7 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, app_region, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
-        transition_delay, interpolate_size,
+        transition_delay, transition_behavior, interpolate_size,
         animation, animation_name, animation_duration, animation_timing_function,
         animation_delay, animation_iteration_count, animation_direction, animation_fill_mode,
         animation_play_state,
@@ -280,6 +280,7 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.transition_duration = None;
         base.transition_timing_function = None;
         base.transition_delay = None;
+        base.transition_behavior = None;
     }
     if over.animation.is_some() {
         base.animation_name = None;

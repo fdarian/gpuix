@@ -711,7 +711,9 @@ export interface StyleDesc {
    * first style never transitions. `animate` on a `motion` element beats a
    * transition on the same property. Events: `onTransitionRun`,
    * `onTransitionStart`, `onTransitionEnd`, `onTransitionCancel`.
-   * An invalid value is an error. `transition-behavior` is not supported.
+   * An invalid value is an error. Discrete properties (`display`, `visibility`,
+   * `flexDirection`, ...) transition only with `allow-discrete`, in the
+   * shorthand or `transitionBehavior`.
    * A change between a length and `auto` (a `height` that is `auto` or unset,
    * and an unset `minHeight` / `maxHeight`, whose value is `auto` / `none`)
    * applies at once, as in a browser, unless `interpolateSize` allows it.
@@ -726,6 +728,14 @@ export interface StyleDesc {
   transitionTimingFunction?: string
   /** A list of `<time>`s. Negative starts the transition part-way through. */
   transitionDelay?: string
+  /**
+   * A list of `normal` or `allow-discrete`. `allow-discrete` lets a discrete
+   * property transition: it flips at the halfway point of the eased progress,
+   * except `display`, where the side that is not `none` shows for the whole
+   * duration, and `visibility`, which is `visible` for the whole duration when
+   * either end is. `normal` (the default) applies a discrete change at once.
+   */
+  transitionBehavior?: string
   /**
    * `"allow-keywords"` lets a CSS transition run between a length and a sizing
    * keyword: `height` to or from `auto`, and from an unset `minHeight` /

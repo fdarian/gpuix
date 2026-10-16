@@ -38,6 +38,9 @@ struct Entry {
     /// Seconds. A negative delay starts the transition part-way through.
     delay: f64,
     timing: Ease,
+    /// `transition-behavior: allow-discrete`: the property may flip at half
+    /// instead of being left out.
+    allow_discrete: bool,
 }
 
 impl Entry {
@@ -83,6 +86,10 @@ impl TransitionList {
             lists.delays = parse_list(text, parse_delay)
                 .map_err(|error| format!("transitionDelay: {error}"))?;
         }
+        if let Some(text) = style.transition_behavior.as_deref() {
+            lists.behaviors = parse_list(text, parse_behavior)
+                .map_err(|error| format!("transitionBehavior: {error}"))?;
+        }
         Ok(lists.into_entries())
     }
 }
@@ -99,13 +106,14 @@ enum Properties {
     List(Vec<PropertyName>),
 }
 
-/// The four `transition-*` lists. They are as long as each was written; the
+/// The five `transition-*` lists. They are as long as each was written; the
 /// property list sets the count and the others repeat or truncate to it.
 struct Lists {
     properties: Properties,
     durations: Vec<f64>,
     timings: Vec<Ease>,
     delays: Vec<f64>,
+    behaviors: Vec<bool>,
 }
 
 impl Lists {
@@ -115,6 +123,7 @@ impl Lists {
             durations: vec![0.0],
             timings: vec![default_timing()],
             delays: vec![0.0],
+            behaviors: vec![false],
         }
     }
 
@@ -134,12 +143,14 @@ impl Lists {
             durations: Vec::new(),
             timings: Vec::new(),
             delays: Vec::new(),
+            behaviors: Vec::new(),
         };
         for item in &items {
             let mut property = None;
             let mut duration = None;
             let mut delay = None;
             let mut timing = None;
+            let mut behavior = None;
             for token in split_whitespace_outside_parens(item) {
                 if let Some(time) = parse_time(token) {
                     if duration.is_none() {
@@ -156,6 +167,10 @@ impl Lists {
                     if timing.replace(parse_timing_function(token)?).is_some() {
                         return Err(format!("two timing functions in `{item}`"));
                     }
+                } else if is_behavior(token) {
+                    if behavior.replace(parse_behavior(token)?).is_some() {
+                        return Err(format!("two transition behaviors in `{item}`"));
+                    }
                 } else if token.eq_ignore_ascii_case("none") {
                     none = true;
                     if property.replace(PropertyName::All).is_some() {
@@ -169,6 +184,7 @@ impl Lists {
             lists.durations.push(duration.unwrap_or(0.0));
             lists.timings.push(timing.unwrap_or_else(default_timing));
             lists.delays.push(delay.unwrap_or(0.0));
+            lists.behaviors.push(behavior.unwrap_or(false));
         }
         if none {
             if items.len() != 1 || properties != [PropertyName::All] {
@@ -179,6 +195,7 @@ impl Lists {
             lists.durations = vec![0.0];
             lists.timings = vec![default_timing()];
             lists.delays = vec![0.0];
+            lists.behaviors = vec![false];
         } else {
             lists.properties = Properties::List(properties);
         }
@@ -201,6 +218,7 @@ impl Lists {
                     duration: self.durations[index % self.durations.len()],
                     delay: self.delays[index % self.delays.len()],
                     timing: self.timings[index % self.timings.len()].clone(),
+                    allow_discrete: self.behaviors[index % self.behaviors.len()],
                 })
                 .collect(),
         )
@@ -300,6 +318,19 @@ pub(super) fn parse_delay(text: &str) -> Result<f64, String> {
     check_seconds(seconds, text)
 }
 
+fn is_behavior(token: &str) -> bool {
+    matches!(token.to_ascii_lowercase().as_str(), "normal" | "allow-discrete")
+}
+
+/// `transition-behavior`: whether the item allows discrete properties.
+fn parse_behavior(text: &str) -> Result<bool, String> {
+    match text.to_ascii_lowercase().as_str() {
+        "normal" => Ok(false),
+        "allow-discrete" => Ok(true),
+        _ => Err(format!("not `normal` or `allow-discrete`: {text}")),
+    }
+}
+
 pub(super) fn is_timing_function(token: &str) -> bool {
     token.ends_with(')')
         || matches!(
@@ -397,7 +428,7 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
             let camel = camel_case(ident);
             expand_shorthand(&camel)
                 .map(<[AnimProp]>::to_vec)
-                .or_else(|| AnimProp::from_name(&camel).map(|prop| vec![prop]))
+                .or_else(|| AnimProp::from_css_name(&camel).map(|prop| vec![prop]))
                 .unwrap_or_default()
         }
     }
@@ -476,12 +507,14 @@ fn declares_transition(style: &StyleDesc) -> bool {
         || style.transition_property.is_some()
         || style.transition_duration.is_some()
         || style.transition_timing_function.is_some()
-        || style.transition_delay.is_some();
+        || style.transition_delay.is_some()
+        || style.transition_behavior.is_some();
     set && !(only_none(&style.transition)
         && only_none(&style.transition_property)
         && style.transition_duration.is_none()
         && style.transition_timing_function.is_none()
-        && style.transition_delay.is_none())
+        && style.transition_delay.is_none()
+        && style.transition_behavior.is_none())
 }
 
 // ── Running transitions ──────────────────────────────────────────────
@@ -561,7 +594,9 @@ impl Running {
         now: Instant,
     ) -> Option<Self> {
         let (from, to) = common_unit(prop, from, to, measurement)?;
-        let segment = pair(prop.name(), &from, &to).ok().filter(|pair| !pair.is_discrete())?;
+        let segment = pair(prop.name(), &from, &to)
+            .ok()
+            .filter(|pair| entry.allow_discrete || !pair.is_discrete())?;
         Some(Self {
             measured: end != to,
             started: now,
@@ -704,9 +739,9 @@ fn laid_out_end(declared: &AnimValue, measurement: Option<&Measurement>) -> Opti
     }
 }
 
-/// The five `transition*` strings, compared to notice a change without
+/// The six `transition*` strings, compared to notice a change without
 /// reparsing every frame.
-type ConfigKey = [Option<String>; 5];
+type ConfigKey = [Option<String>; 6];
 
 fn config_key(style: &StyleDesc) -> ConfigKey {
     [
@@ -715,6 +750,7 @@ fn config_key(style: &StyleDesc) -> ConfigKey {
         style.transition_duration.clone(),
         style.transition_timing_function.clone(),
         style.transition_delay.clone(),
+        style.transition_behavior.clone(),
     ]
 }
 
@@ -1037,6 +1073,23 @@ impl CssTransitions {
         }
     }
 
+    /// The elements that were rendered and transition `display` under
+    /// `allow-discrete`, so a `display: none` they now declare may still be
+    /// shown while the transition runs. The element decides once it has stepped
+    /// the transition.
+    pub(crate) fn held_displays(&self) -> HashSet<u64> {
+        self.states
+            .iter()
+            .filter(|(_, state)| {
+                state.running.contains_key(&AnimProp::Display)
+                    || state.list.matching(AnimProp::Display).is_some_and(|entry| {
+                        entry.allow_discrete && entry.duration + entry.delay > 0.0
+                    })
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// Feeds one frame's after-change style. The first style an element is seen
     /// with never transitions: there is nothing before it. `inherited` is the
     /// `interpolateSize` of the parent, which `after` overrides when it sets one.
@@ -1154,6 +1207,7 @@ mod tests {
                 duration: 0.15,
                 delay: 0.0,
                 timing: Ease::CubicBezier([0.0, 0.0, 0.58, 1.0]),
+                allow_discrete: false,
             }
         );
         assert_eq!(entry(&transitions, 1).1, 0.2);
@@ -1296,6 +1350,71 @@ mod tests {
             let error = parse_error(json);
             assert!(error.contains(mentions), "{json}: {error}");
         }
+    }
+
+    fn behaviors(transitions: &TransitionList) -> Vec<bool> {
+        transitions.0.iter().map(|entry| entry.allow_discrete).collect()
+    }
+
+    #[test]
+    fn the_shorthand_reads_a_behavior_in_any_position() {
+        let transitions = list(
+            r#"{ "transition": "display 1s allow-discrete, opacity normal .2s, allow-discrete 2s width" }"#,
+        );
+        assert_eq!(behaviors(&transitions), [true, false, true]);
+        assert_eq!(entry(&transitions, 0), (&Matcher::Props(vec![AnimProp::Display]), 1.0, 0.0));
+        assert_eq!(entry(&transitions, 1).0, &Matcher::Props(vec![AnimProp::Opacity]));
+        assert_eq!(entry(&transitions, 2).0, &Matcher::Props(vec![AnimProp::Width]));
+        assert_eq!(behaviors(&list(r#"{ "transition": "all 1s ALLOW-DISCRETE" }"#)), [true]);
+        assert_eq!(behaviors(&list(r#"{ "transition": "all 1s" }"#)), [false]);
+        assert_eq!(behaviors(&list(r#"{ "transition": "1s" }"#)), [false]);
+    }
+
+    #[test]
+    fn the_behavior_longhand_wins_and_repeats_to_the_property_list() {
+        let transitions = list(
+            r#"{
+                "transition": "width 1s allow-discrete",
+                "transitionBehavior": "normal"
+            }"#,
+        );
+        assert_eq!(behaviors(&transitions), [false]);
+        let transitions = list(
+            r#"{
+                "transitionProperty": "display, visibility, opacity",
+                "transitionDuration": "1s",
+                "transitionBehavior": "allow-discrete, normal"
+            }"#,
+        );
+        assert_eq!(behaviors(&transitions), [true, false, true]);
+        let transitions = list(
+            r#"{
+                "transitionProperty": "display",
+                "transitionDuration": "1s",
+                "transitionBehavior": "normal, allow-discrete"
+            }"#,
+        );
+        assert_eq!(behaviors(&transitions), [false]);
+        assert!(list(r#"{ "transition": "none", "transitionBehavior": "allow-discrete" }"#).0.is_empty());
+    }
+
+    #[test]
+    fn a_bad_behavior_is_an_error() {
+        for (json, mentions) in [
+            (r#"{ "transitionBehavior": "discrete" }"#, "transitionBehavior"),
+            (r#"{ "transitionBehavior": "normal," }"#, "empty"),
+            (r#"{ "transitionBehavior": "normal allow-discrete" }"#, "allow-discrete"),
+            (r#"{ "transition": "display 1s allow-discrete normal" }"#, "two transition behaviors"),
+        ] {
+            let error = parse_error(json);
+            assert!(error.contains(mentions), "{json}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_behavior_alone_declares_a_transition() {
+        assert!(declares_transition(&style(r#"{ "transitionBehavior": "allow-discrete" }"#)));
+        assert!(validate_transitions(&style(r#"{ "hover": { "transitionBehavior": "soon" } }"#)).is_err());
     }
 
     // ── State machine ────────────────────────────────────────────────
@@ -2371,6 +2490,246 @@ mod tests {
             clock.frame_measured(0, &tall("0"), None, Some(&parent));
             clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
             assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 20.0);
+        }
+    }
+    mod discrete {
+        use super::*;
+
+        /// A style with one discrete property set, transitioning it for a
+        /// second without easing.
+        fn with(property: &str, value: &str, behavior: &str) -> StyleDesc {
+            let css = kebab_case(property);
+            style(&format!(
+                r#"{{ "{property}": "{value}", "transition": "{css} 1s linear {behavior}" }}"#
+            ))
+        }
+
+        fn display(style: &StyleDesc) -> Option<&str> {
+            style.display.as_deref()
+        }
+
+        fn visibility(style: &StyleDesc) -> Option<&str> {
+            style.visibility.as_deref()
+        }
+
+        #[test]
+        fn a_discrete_property_flips_at_half_with_allow_discrete() {
+            let mut clock = Clock::new();
+            let row = with("flexDirection", "row", "allow-discrete");
+            let column = with("flexDirection", "column", "allow-discrete");
+            clock.frame(0, &row);
+            assert_eq!(clock.frame(0, &column).flex_direction.as_deref(), Some("row"));
+            assert_eq!(clock.frame(499, &column).flex_direction.as_deref(), Some("row"));
+            assert_eq!(clock.frame(500, &column).flex_direction.as_deref(), Some("column"));
+            assert_eq!(clock.frame(999, &column).flex_direction.as_deref(), Some("column"));
+            assert!(clock.transitions.take_active());
+            assert_eq!(clock.frame(1000, &column).flex_direction.as_deref(), Some("column"));
+            assert!(!clock.transitions.take_active());
+        }
+
+        #[test]
+        fn the_flip_follows_the_timing_function_and_the_delay() {
+            let mut clock = Clock::new();
+            let style_of = |direction: &str| {
+                style(&format!(
+                    r#"{{ "flexDirection": "{direction}",
+                         "transition": "flex-direction 1s ease-in 500ms allow-discrete" }}"#
+                ))
+            };
+            clock.frame(0, &style_of("row"));
+            let column = style_of("column");
+            clock.frame(0, &column);
+            // Linear progress 0.6 is eased below a half by ease-in.
+            assert_eq!(clock.frame(1100, &column).flex_direction.as_deref(), Some("row"));
+            assert_eq!(clock.frame(1400, &column).flex_direction.as_deref(), Some("column"));
+        }
+
+        #[test]
+        fn normal_leaves_a_discrete_property_alone() {
+            for behavior in ["", "normal"] {
+                let mut clock = Clock::new();
+                clock.frame(0, &with("flexDirection", "row", behavior));
+                let column = with("flexDirection", "column", behavior);
+                assert_eq!(clock.frame(10, &column).flex_direction.as_deref(), Some("column"));
+                assert!(clock.events().is_empty(), "{behavior:?}");
+            }
+        }
+
+        #[test]
+        fn all_covers_discrete_properties_only_with_allow_discrete() {
+            let all = |direction: &str, behavior: &str| {
+                style(&format!(
+                    r#"{{ "flexDirection": "{direction}", "transition": "all 1s linear {behavior}" }}"#
+                ))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &all("row", "allow-discrete"));
+            assert_eq!(
+                clock.frame(0, &all("column", "allow-discrete")).flex_direction.as_deref(),
+                Some("row")
+            );
+            let mut clock = Clock::new();
+            clock.frame(0, &all("row", ""));
+            assert_eq!(clock.frame(0, &all("column", "")).flex_direction.as_deref(), Some("column"));
+        }
+
+        #[test]
+        fn display_none_is_shown_for_the_whole_duration() {
+            let mut clock = Clock::new();
+            // block to none: block until the end.
+            clock.frame(0, &with("display", "block", "allow-discrete"));
+            let none = with("display", "none", "allow-discrete");
+            assert_eq!(display(&clock.frame(0, &none)), Some("block"));
+            assert_eq!(display(&clock.frame(1, &none)), Some("block"));
+            assert_eq!(display(&clock.frame(600, &none)), Some("block"));
+            assert_eq!(display(&clock.frame(999, &none)), Some("block"));
+            assert_eq!(display(&clock.frame(1000, &none)), Some("none"));
+
+            // none to flex: flex from the first frame it runs.
+            let mut clock = Clock::new();
+            clock.frame(0, &with("display", "none", "allow-discrete"));
+            let flex = with("display", "flex", "allow-discrete");
+            assert_eq!(display(&clock.frame(0, &flex)), Some("none"));
+            assert_eq!(display(&clock.frame(1, &flex)), Some("flex"));
+            assert_eq!(display(&clock.frame(600, &flex)), Some("flex"));
+        }
+
+        #[test]
+        fn display_between_visible_values_flips_at_half() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with("display", "flex", "allow-discrete"));
+            let block = with("display", "block", "allow-discrete");
+            assert_eq!(display(&clock.frame(100, &block)), Some("flex"));
+            assert_eq!(display(&clock.frame(600, &block)), Some("block"));
+        }
+
+        #[test]
+        fn visibility_is_visible_for_the_whole_duration_when_either_end_is() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with("visibility", "visible", "allow-discrete"));
+            let hidden = with("visibility", "hidden", "allow-discrete");
+            assert_eq!(visibility(&clock.frame(0, &hidden)), Some("visible"));
+            assert_eq!(visibility(&clock.frame(900, &hidden)), Some("visible"));
+            assert_eq!(visibility(&clock.frame(1000, &hidden)), Some("hidden"));
+
+            // hidden to visible shows at once, not at half.
+            let visible = with("visibility", "visible", "allow-discrete");
+            assert_eq!(visibility(&clock.frame(1000, &visible)), Some("hidden"));
+            assert_eq!(visibility(&clock.frame(1100, &visible)), Some("visible"));
+            assert_eq!(visibility(&clock.frame(1900, &visible)), Some("visible"));
+        }
+
+        #[test]
+        fn an_unset_visibility_is_visible() {
+            let mut clock = Clock::new();
+            let unset = style(r#"{ "transition": "visibility 1s linear allow-discrete" }"#);
+            clock.frame(0, &unset);
+            let hidden = with("visibility", "hidden", "allow-discrete");
+            assert_eq!(visibility(&clock.frame(0, &hidden)), Some("visible"));
+            assert_eq!(visibility(&clock.frame(900, &hidden)), Some("visible"));
+        }
+
+        #[test]
+        fn an_unset_value_is_a_value_of_its_own() {
+            let mut clock = Clock::new();
+            let unset = style(r#"{ "transition": "display 1s linear allow-discrete" }"#);
+            clock.frame(0, &unset);
+            let none = with("display", "none", "allow-discrete");
+            assert_eq!(display(&clock.frame(0, &none)), None);
+            assert_eq!(display(&clock.frame(500, &none)), None);
+            assert_eq!(display(&clock.frame(1000, &none)), Some("none"));
+        }
+
+        #[test]
+        fn discrete_transitions_fire_events_like_any_other() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with("flexDirection", "row", "allow-discrete"));
+            let column = with("flexDirection", "column", "allow-discrete");
+            clock.frame(0, &column);
+            assert_eq!(
+                clock.events(),
+                [(Run, "flex-direction".to_string(), 0.0), (Start, "flex-direction".to_string(), 0.0)]
+            );
+            clock.frame(1000, &column);
+            assert_eq!(clock.events(), [(End, "flex-direction".to_string(), 1.0)]);
+
+            // An interrupt past the flip cancels and starts again from the value showing.
+            let row = with("flexDirection", "row", "allow-discrete");
+            clock.frame(1000, &row);
+            clock.events();
+            clock.frame(1700, &row);
+            clock.frame(1700, &column);
+            assert_eq!(
+                clock.events(),
+                [
+                    (Cancel, "flex-direction".to_string(), 0.7),
+                    (Run, "flex-direction".to_string(), 0.0),
+                    (Start, "flex-direction".to_string(), 0.0)
+                ]
+            );
+        }
+
+        #[test]
+        fn reversing_a_discrete_transition_shortens_the_way_back() {
+            let mut clock = Clock::new();
+            let row = with("flexDirection", "row", "allow-discrete");
+            let column = with("flexDirection", "column", "allow-discrete");
+            clock.frame(0, &row);
+            clock.frame(0, &column);
+            clock.frame(600, &column);
+            clock.events();
+            // 60% in, so the way back takes 600ms and flips at its middle.
+            assert_eq!(clock.frame(600, &row).flex_direction.as_deref(), Some("column"));
+            assert_eq!(clock.frame(890, &row).flex_direction.as_deref(), Some("column"));
+            assert_eq!(clock.frame(900, &row).flex_direction.as_deref(), Some("row"));
+            clock.events();
+            clock.frame(1200, &row);
+            assert_eq!(clock.events(), [(End, "flex-direction".to_string(), 0.6)]);
+        }
+
+        #[test]
+        fn a_shadow_that_cannot_blend_flips_with_allow_discrete() {
+            let shadow = |inset: bool, behavior: &str| {
+                style(&format!(
+                    r##"{{ "boxShadow": {{ "offsetX": 0, "offsetY": 0, "blurRadius": 4, "spreadRadius": 0,
+                                         "color": "#000", "inset": {inset} }},
+                         "transition": "box-shadow 1s linear {behavior}" }}"##
+                ))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &shadow(false, "allow-discrete"));
+            let inset = |style: &StyleDesc| match &style.box_shadow {
+                Some(crate::style::BoxShadowValues::Many(layers)) => layers[0].inset,
+                Some(crate::style::BoxShadowValues::One(layer)) => layer.inset,
+                None => panic!("no shadow"),
+            };
+            assert!(!inset(&clock.frame(0, &shadow(true, "allow-discrete"))));
+            assert!(inset(&clock.frame(600, &shadow(true, "allow-discrete"))));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &shadow(false, "normal"));
+            assert!(inset(&clock.frame(0, &shadow(true, "normal"))));
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn display_is_held_while_it_transitions_to_none() {
+            let held = |clock: &Clock| clock.transitions.held_displays().contains(&1);
+            let mut clock = Clock::new();
+            assert!(!held(&clock));
+            clock.frame(0, &with("display", "block", "allow-discrete"));
+            assert!(held(&clock));
+            clock.frame(0, &with("display", "none", "allow-discrete"));
+            assert!(held(&clock));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &with("display", "block", ""));
+            assert!(!held(&clock));
+            let instant = style(
+                r#"{ "display": "block", "transition": "display 0s allow-discrete" }"#,
+            );
+            clock.frame(0, &instant);
+            assert!(!held(&clock), "a zero duration holds nothing");
         }
     }
 }

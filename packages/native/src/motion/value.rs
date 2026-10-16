@@ -178,6 +178,9 @@ pub(super) enum AnimValue {
     /// `height: auto`. Never interpolated: a track swaps it for the measured
     /// height while it runs and applies it again once it settles.
     Auto,
+    /// An enum-like property (`display`, `visibility`, ...). `None` is the
+    /// style leaving it unset.
+    Keyword(Option<String>),
 }
 
 impl AnimValue {
@@ -190,6 +193,7 @@ impl AnimValue {
             Self::Numbers(_) => "a list of numbers",
             Self::Path(_) => "path data",
             Self::Auto => "auto",
+            Self::Keyword(_) => "a keyword",
         }
     }
 }
@@ -212,6 +216,52 @@ pub(super) enum Layout {
     /// Paths with different commands cannot blend: one channel runs from
     /// option to option and the value flips at the halfway point between them.
     DiscretePath(Vec<PathData>),
+    /// Two keywords: one channel, the eased progress, with the value flipping
+    /// at the halfway point.
+    Keyword {
+        from: Option<String>,
+        to: Option<String>,
+        rule: KeywordRule,
+    },
+}
+
+/// How a keyword property interpolates between its two values, CSS Transitions
+/// Level 2 "discrete" with the exceptions the specs give a few properties.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum KeywordRule {
+    Discrete,
+    /// `none` is not visible, so the other value shows for the whole duration.
+    Display,
+    /// `visible` shows for the whole duration when either end has it.
+    Visibility,
+}
+
+impl KeywordRule {
+    fn of(name: &str) -> Self {
+        match name {
+            "display" => Self::Display,
+            "visibility" => Self::Visibility,
+            _ => Self::Discrete,
+        }
+    }
+
+    fn at<'a>(self, from: &'a Option<String>, to: &'a Option<String>, progress: f64) -> &'a Option<String> {
+        if progress > 0.0 && progress < 1.0 {
+            let shown = |keyword: &str, value: &'a Option<String>| value.as_deref() == Some(keyword);
+            match self {
+                Self::Display if shown("none", from) => return to,
+                Self::Display if shown("none", to) => return from,
+                Self::Visibility if shown("visible", from) => return from,
+                Self::Visibility if shown("visible", to) => return to,
+                _ => {}
+            }
+        }
+        if progress < 0.5 {
+            from
+        } else {
+            to
+        }
+    }
 }
 
 /// The option a discrete channel stands on: the nearest whole number, halves
@@ -240,6 +290,9 @@ impl Layout {
             Self::Path(template) => AnimValue::Path(template.with_numbers(channels)),
             Self::DiscretePath(options) => {
                 AnimValue::Path(options[option_index(channels[0], options.len())].clone())
+            }
+            Self::Keyword { from, to, rule } => {
+                AnimValue::Keyword(rule.at(from, to, channels[0]).clone())
             }
         }
     }
@@ -279,12 +332,13 @@ impl Pair {
         self.layout.decode(&channels)
     }
 
-    /// Shadow lists that differ in `inset` flip at half instead of blending,
-    /// which a CSS transition does not run at all.
+    /// Values that flip at half instead of blending (shadow lists that differ
+    /// in `inset`, path data with other commands, keywords), which a CSS
+    /// transition runs only under `transition-behavior: allow-discrete`.
     pub(super) fn is_discrete(&self) -> bool {
         matches!(
             self.layout,
-            Layout::DiscreteShadows(_) | Layout::DiscretePath(_)
+            Layout::DiscreteShadows(_) | Layout::DiscretePath(_) | Layout::Keyword { .. }
         )
     }
 }
@@ -346,6 +400,23 @@ pub(super) fn align(name: &str, values: &[&AnimValue]) -> Result<Aligned, String
             AnimValue::Path(path) => path,
             _ => unreachable!("kinds were checked"),
         }))),
+        AnimValue::Keyword(_) => {
+            let keyword = |value: &AnimValue| match value {
+                AnimValue::Keyword(keyword) => keyword.clone(),
+                _ => unreachable!("kinds were checked"),
+            };
+            let [from, to] = values else {
+                return Err(format!("motion {name} cannot animate more than two keywords"));
+            };
+            Ok(Aligned {
+                layout: Layout::Keyword {
+                    from: keyword(from),
+                    to: keyword(to),
+                    rule: KeywordRule::of(name),
+                },
+                frames: vec![vec![0.0], vec![1.0]],
+            })
+        }
         AnimValue::Auto => Err(format!(
             "motion {name} cannot animate from {} to {}: mixed units are not supported",
             values[0].describe(),

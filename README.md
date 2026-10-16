@@ -5505,14 +5505,30 @@ render per frame.
 
 - **Properties.** `transition` is a comma list of `<property> <duration> <timing
   function> <delay>` in any order, plus `all` and `none`. `transitionProperty`,
-  `transitionDuration`, `transitionTimingFunction` and `transitionDelay` win over
-  the shorthand, and shorter lists repeat to the length of `transitionProperty`.
+  `transitionDuration`, `transitionTimingFunction`, `transitionDelay` and
+  `transitionBehavior` win over the shorthand, and shorter lists repeat to the
+  length of `transitionProperty`.
   Every property `motion` can animate (see [Targets and timing](#targets-and-timing))
   can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
   `flex`, ...) cover their longhands. A valid CSS name gpuix does not animate
   (`transform`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
+- **Discrete properties.** `display`, `visibility`, `flexDirection`, `flexWrap`,
+  `alignItems`, `alignSelf`, `alignContent`, `justifyContent`, `justifyItems` and
+  `justifySelf` have no in-between values, so they change at once unless the
+  transition says `allow-discrete`, as in CSS Transitions Level 2:
+  `transition: 'display 1s allow-discrete'`, or `transitionBehavior` (a list of
+  `normal` and `allow-discrete`). `all` covers them only with `allow-discrete`.
+  The value flips at the halfway point of the eased progress, after the delay.
+  `display` is the exception: the side that is not `none` shows for the whole
+  duration, so `block` to `none` stays visible until the end and then goes away
+  (the exit animation pattern), and `visibility` is `visible` for the whole duration
+  when either end is. A `boxShadow` change between lists that differ in `inset`
+  flips the same way. The events are the ones other properties fire.
+  Other discrete properties (`position`, `overflow`, `pointerEvents`, ...) are not
+  transitionable: parts of gpuix read them from the declared style, not from the
+  running transition
 - **Timing functions.** `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`,
   `cubic-bezier()` (it may overshoot), `steps(n, jump-start | jump-end |
   jump-none | jump-both | start | end)`, `step-start`, `step-end` and `linear()`
@@ -5552,7 +5568,11 @@ render per frame.
 - **`display: none`.** An element that is not rendered has no transitions: going
   `display: none` cancels the running ones (`onTransitionCancel`), for its
   descendants too, and a style changed while it is hidden does not transition when
-  it shows again, as in a browser
+  it shows again, as in a browser. The exception is a `display` transition with
+  `allow-discrete` going to `none`: the element and its descendants stay rendered
+  until it ends. Going from `none` has no transition, and so no events, because
+  nothing was rendered to start from; there is no `@starting-style`, and
+  `motion`'s `initial` is the way to animate an element in
 - **`motion`.** A property `animate` names belongs to `motion` and is not
   transitioned
 - **Events.** `onTransitionRun`, `onTransitionStart` (after the delay),
@@ -5562,10 +5582,9 @@ render per frame.
   cancelled; `onTransitionEndCapture` and the other `…Capture` props listen in the
   capture phase
 
-Not supported: `transition-behavior: allow-discrete`, so `display` and other
-discrete properties never transition; and the one transition-start case where an
-element's first style has no `transition` and a later style adds one together with
-a changed value (the change applies instantly; the next one animates).
+Not supported: the one transition-start case where an element's first style has
+no `transition` and a later style adds one together with a changed value (the
+change applies instantly; the next one animates).
 
 ### CSS animations
 

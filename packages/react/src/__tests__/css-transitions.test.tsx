@@ -147,6 +147,113 @@ describeNative("CSS transitions", () => {
     expect(seen).toEqual(["run", "cancel 0.5"])
   })
 
+  describe("allow-discrete", () => {
+    function positionOf(
+      renderer: ReturnType<typeof createTestRoot>["renderer"],
+      testId: string
+    ) {
+      renderer.dispatchNativeEvents()
+      const bounds = renderer.getElementBounds(renderer.findByTestId(testId).id)
+      return [bounds.x, bounds.y]
+    }
+
+    it("flips flexDirection at half the transition and lays the children out again", () => {
+      const row = (direction: "row" | "column", behavior: string) => (
+        <div
+          testId="parent"
+          style={{
+            display: "flex",
+            flexDirection: direction,
+            width: 100,
+            height: 100,
+            transition: `flex-direction 1s linear ${behavior}`,
+          }}
+        >
+          <div testId="first" style={{ width: 20, height: 20, flexShrink: 0 }} />
+          <div testId="second" style={{ width: 20, height: 20, flexShrink: 0 }} />
+        </div>
+      )
+      const { render, renderer } = createTestRoot()
+      renderer.clockPause()
+      render(row("row", "allow-discrete"))
+      const origin = positionOf(renderer, "first")
+      const offset = () => {
+        const [x, y] = positionOf(renderer, "second")
+        return [x - origin[0], y - origin[1]]
+      }
+      expect(offset()).toEqual([20, 0])
+
+      render(row("column", "allow-discrete"))
+      renderer.clockFastForward(400)
+      expect(offset()).toEqual([20, 0])
+      renderer.clockFastForward(200)
+      expect(offset()).toEqual([0, 20])
+
+      const plain = createTestRoot()
+      plain.renderer.clockPause()
+      plain.render(row("row", ""))
+      plain.render(row("column", ""))
+      plain.renderer.clockFastForward(16)
+      const [x, y] = positionOf(plain.renderer, "second")
+      const [firstX, firstY] = positionOf(plain.renderer, "first")
+      expect([x - firstX, y - firstY]).toEqual([0, 20])
+    })
+
+    it("keeps an element laid out while display transitions to none, then removes it", () => {
+      const seen: string[] = []
+      const card = (display?: "none") => (
+        <div style={{ width: 100 }}>
+          <div
+            testId="card"
+            onTransitionRun={(event) => seen.push(`run ${event.propertyName}`)}
+            onTransitionEnd={(event) => seen.push(`end ${event.propertyName}`)}
+            style={{
+              display,
+              width: 100,
+              height: 20,
+              transition: "display 1s linear allow-discrete",
+            }}
+          />
+          <div testId="below" style={{ width: 100, height: 20 }} />
+        </div>
+      )
+      const { render, renderer } = createTestRoot()
+      renderer.clockPause()
+      render(card())
+      const top = positionOf(renderer, "below")[1]
+      expect(widthOf(renderer, "card")).toBe(100)
+
+      render(card("none"))
+      renderer.clockFastForward(500)
+      expect(widthOf(renderer, "card")).toBe(100)
+      expect(positionOf(renderer, "below")[1]).toBe(top)
+
+      renderer.clockFastForward(600)
+      expect(positionOf(renderer, "below")[1]).toBe(top - 20)
+      renderer.dispatchNativeEvents()
+      expect(seen).toEqual(["run display", "end display"])
+    })
+
+    it("hides at once without allow-discrete", () => {
+      const card = (display?: "none") => (
+        <div style={{ width: 100 }}>
+          <div
+            testId="card"
+            style={{ display, width: 100, height: 20, transition: "display 1s linear" }}
+          />
+          <div testId="below" style={{ width: 100, height: 20 }} />
+        </div>
+      )
+      const { render, renderer } = createTestRoot()
+      renderer.clockPause()
+      render(card())
+      const top = positionOf(renderer, "below")[1]
+      render(card("none"))
+      renderer.clockFastForward(16)
+      expect(positionOf(renderer, "below")[1]).toBe(top - 20)
+    })
+  })
+
   it("animates the focusVisible style on keyboard focus only", () => {
     const { render, renderer } = createTestRoot()
     renderer.clockPause()

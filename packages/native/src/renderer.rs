@@ -5694,6 +5694,7 @@ impl GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let activation = self.activation();
+        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let mut build_ctx = BuildCtx {
             tree: &tree,
             event_callback: &callback,
@@ -6762,6 +6763,7 @@ impl gpui::Render for GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let activation = self.activation();
+        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -6968,6 +6970,16 @@ pub(crate) fn build_element(
             ctx.now,
         )
     });
+    // A `display` transition with `allow-discrete` kept the box until now.
+    if crate::layout::box_generation::declares_display_none(element)
+        && transitioned
+            .as_ref()
+            .is_none_or(|style| style.display.as_deref() == Some("none"))
+    {
+        ctx.css_transitions.hide(tree, id, ctx.now);
+        ctx.css_animations.hide(tree, id, ctx.now);
+        return gpui::Empty.into_any_element();
+    }
     let declared_style = transitioned.as_ref().or(base_style);
     let animated_style = if has_motion {
         ctx.motion_states

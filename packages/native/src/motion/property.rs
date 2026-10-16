@@ -1,8 +1,10 @@
 //! The animatable properties: one `AnimProp` per `StyleDesc` longhand whose
 //! value is a number, a length, a colour or a shadow list.
 //!
-//! Discrete properties (`display`, `position`, ...) are deliberately absent, so
-//! naming one in `animate` is an error instead of a silent no-op.
+//! Discrete properties (`display`, `visibility`, ...) are `Kind::Keyword`. Only
+//! a CSS transition with `transition-behavior: allow-discrete` runs them;
+//! [`AnimProp::from_name`] leaves them out, so naming one in `animate` is an
+//! error instead of a silent no-op.
 
 use serde_json::Value;
 
@@ -18,6 +20,7 @@ enum Kind {
     Color,
     FontWeight,
     Shadow,
+    Keyword,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -43,6 +46,11 @@ enum Initial {
     /// The element's own `color`.
     CurrentColor,
     NoShadows,
+    /// A keyword that is the same as leaving the property unset.
+    Keyword(&'static str),
+    /// A keyword whose unset value is the element's default, which the style
+    /// cannot name.
+    Unset,
 }
 
 /// How a `StyleDesc` field converts to and from an animated value.
@@ -139,6 +147,37 @@ impl Field for Option<BoxShadowValues> {
     }
 }
 
+fn keyword_read(slot: &Option<String>) -> Option<AnimValue> {
+    slot.clone().map(|keyword| AnimValue::Keyword(Some(keyword)))
+}
+
+fn keyword_write(slot: &mut Option<String>, value: AnimValue) {
+    match value {
+        AnimValue::Keyword(keyword) => *slot = keyword,
+        other => unreachable!("a keyword field was given {other:?}"),
+    }
+}
+
+/// `Option<String>` holds both colours and keywords, so the kind of the row
+/// picks the conversion.
+macro_rules! read_field {
+    (Keyword, $slot:expr, $colors:expr) => {
+        keyword_read(&$slot)
+    };
+    ($kind:ident, $slot:expr, $colors:expr) => {
+        Field::read(&$slot, $colors)
+    };
+}
+
+macro_rules! write_field {
+    (Keyword, $slot:expr, $value:expr) => {
+        keyword_write(&mut $slot, $value)
+    };
+    ($kind:ident, $slot:expr, $value:expr) => {
+        Field::write(&mut $slot, $value)
+    };
+}
+
 fn font_weight(value: &FontWeightValue) -> f64 {
     crate::renderer::parse_font_weight(value).0 as f64
 }
@@ -176,7 +215,7 @@ macro_rules! properties {
         impl AnimProp {
             pub(super) const ALL: &'static [AnimProp] = &[$(Self::$variant),*];
 
-            pub(super) fn from_name(name: &str) -> Option<Self> {
+            fn lookup(name: &str) -> Option<Self> {
                 match name {
                     $($name => Some(Self::$variant),)*
                     _ => None,
@@ -213,8 +252,8 @@ macro_rules! properties {
                 let colors = self.colors(colors);
                 match self {
                     $(Self::$variant => {
-                        let value = style.$field.read(colors);
-                        $(let value = value.or_else(|| style.$fallback.read(colors));)?
+                        let value = read_field!($kind, style.$field, colors);
+                        $(let value = value.or_else(|| read_field!($kind, style.$fallback, colors));)?
                         value
                     }),*
                 }
@@ -222,14 +261,14 @@ macro_rules! properties {
 
             pub(super) fn write(self, style: &mut StyleDesc, value: AnimValue) {
                 match self {
-                    $(Self::$variant => style.$field.write(value)),*
+                    $(Self::$variant => write_field!($kind, style.$field, value)),*
                 }
             }
         }
     };
 }
 
-use Initial::{CurrentColor, NoShadows, Number, Transparent, Unresolved};
+use Initial::{CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
 
 properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow;
@@ -287,6 +326,17 @@ properties! {
     ScrollbarColor "scrollbarColor" Color None Unresolved, scrollbar_color;
     ScrollbarWidth "scrollbarWidth" Number NonNegative Unresolved, scrollbar_width;
     SelectionColor "selectionColor" Color None Unresolved, selection_color;
+
+    Display "display" Keyword None Unset, display;
+    Visibility "visibility" Keyword None InitialKeyword("visible"), visibility;
+    FlexDirection "flexDirection" Keyword None Unset, flex_direction;
+    FlexWrap "flexWrap" Keyword None Unset, flex_wrap;
+    AlignItems "alignItems" Keyword None Unset, align_items;
+    AlignSelf "alignSelf" Keyword None Unset, align_self;
+    AlignContent "alignContent" Keyword None Unset, align_content;
+    JustifyContent "justifyContent" Keyword None Unset, justify_content;
+    JustifyItems "justifyItems" Keyword None Unset, justify_items;
+    JustifySelf "justifySelf" Keyword None Unset, justify_self;
 }
 
 /// CSS shorthands, expanded to longhands when a description is parsed so
@@ -321,6 +371,23 @@ pub(super) enum Axis {
 }
 
 impl AnimProp {
+    /// The property `animate` and keyframes name: not a discrete one.
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        Self::lookup(name).filter(|prop| !prop.is_discrete())
+    }
+
+    /// The property a CSS `transition-property` name stands for, discrete ones
+    /// included.
+    pub(super) fn from_css_name(name: &str) -> Option<Self> {
+        Self::lookup(name)
+    }
+
+    /// Whether the value flips instead of blending, so only a transition with
+    /// `allow-discrete` runs it.
+    pub(super) fn is_discrete(self) -> bool {
+        self.kind() == Kind::Keyword
+    }
+
     /// The axis whose laid-out size an unset value of this property is, so an
     /// animation can start from what layout produced.
     pub(super) fn size_axis(self) -> Option<Axis> {
@@ -379,6 +446,8 @@ impl AnimProp {
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
             Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current))),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
+            Initial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
+            Initial::Unset => Some(AnimValue::Keyword(None)),
         }
     }
 
@@ -432,6 +501,9 @@ impl AnimProp {
                 )
             }
             Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value, colors)?),
+            Kind::Keyword => {
+                return Err(format!("motion cannot animate {name}: it is discrete"));
+            }
         };
         self.validate(&parsed)?;
         Ok(parsed)
@@ -555,6 +627,33 @@ mod tests {
         for discrete in ["display", "position", "flexDirection", "padding", "bogus"] {
             assert!(AnimProp::from_name(discrete).is_none(), "{discrete}");
         }
+    }
+
+    #[test]
+    fn discrete_properties_are_css_names_but_not_animatable() {
+        for name in ["display", "visibility", "flexDirection", "justifySelf"] {
+            let prop = AnimProp::from_css_name(name).unwrap();
+            assert!(prop.is_discrete(), "{name}");
+            assert!(AnimProp::from_name(name).is_none(), "{name}");
+        }
+        assert!(!AnimProp::from_css_name("opacity").unwrap().is_discrete());
+        assert!(AnimProp::from_css_name("position").is_none());
+    }
+
+    #[test]
+    fn an_unset_discrete_property_starts_from_its_initial_keyword() {
+        let colors = Colors::root();
+        assert_eq!(AnimProp::Display.initial(&colors), Some(AnimValue::Keyword(None)));
+        assert_eq!(
+            AnimProp::Visibility.initial(&colors),
+            Some(AnimValue::Keyword(Some("visible".to_string())))
+        );
+        let style = StyleDesc { display: Some("grid".to_string()), ..Default::default() };
+        assert_eq!(
+            AnimProp::Display.read(&style, &colors),
+            Some(AnimValue::Keyword(Some("grid".to_string())))
+        );
+        assert_eq!(AnimProp::Visibility.read(&style, &colors), None);
     }
 
     #[test]

@@ -500,7 +500,7 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
             .map(|value| number(*value))
             .collect::<Result<_, _>>()
             .map(Value::Array),
-        AnimValue::Path(_) | AnimValue::Auto => {
+        AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
             Err(format!("a {NAME} cannot hold {value:?}"))
         }
     }
