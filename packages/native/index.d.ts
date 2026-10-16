@@ -64,6 +64,17 @@ export declare class GpuixRenderer {
   tick(): boolean
   isInitialized(): boolean
   /**
+   * Registers the function native calls synchronously for events whose
+   * default JS can cancel: `keydown`, `keyup`. It takes the `EventPayload`
+   * and returns `{ defaultPrevented, propagationStopped }`. Pass `null` to
+   * remove it.
+   *
+   * Synchronous on macOS, where GPUI runs on the JS thread inside `tick()`.
+   * Windows and Linux run GPUI on another thread and keep delivering these
+   * events through the queue, so their handlers cannot cancel anything.
+   */
+  setSyncEventHandler(handler?: ((arg: EventPayload) => SyncDispatchResult) | undefined | null): void
+  /**
    * Wake JavaScript after the display link queues a frame. Returns true on macOS,
    * false on other platforms. Call tick() in the callback; it never blocks.
    * Wakes coalesce while JavaScript is busy and do not keep the process alive.
@@ -322,6 +333,13 @@ export declare class GpuixRenderer {
    * an `<img>` host node. Prefer `setImagePixels` for live waveforms.
    */
   setImage(elementId: number, bytes: Buffer): void
+  /**
+   * Encoded bytes for the `blob:` URL a `url()` background image names. The
+   * JS layer fetches the blob, because a blob URL only exists in its process.
+   */
+  setStyleImage(url: string, bytes: Buffer): void
+  /** The JS layer could not read the `blob:` URL a `url()` background names. */
+  failStyleImage(url: string, message: string): void
   /** `select()` on an `<input>` or `<textarea>`: select all of its text. */
   selectText(elementId: number): void
   /**
@@ -365,11 +383,17 @@ export declare class GpuixRenderer {
    * assert on `highlight` without a screenshot.
    */
   getPaintedHighlights(): Array<HighlightMatch>
-  /** Simulate space-separated keystrokes through the focused element's input pipeline. */
+  /**
+   * Press space-separated keys in Playwright's `keyboard.press` grammar
+   * (`"Enter"`, `"Shift+Tab"`, `"Meta+a"`, `"a"`, `"Space"`) through the
+   * focused element's input pipeline, each as a keydown then a keyup.
+   */
   simulateKeystrokes(keystrokes: string): void
+  /** One keydown (one press in the `simulate_keystrokes` grammar), no keyup. */
   simulateKeyDown(keystroke: string, isHeld?: boolean | undefined | null): void
+  /** One keyup (one press in the `simulate_keystrokes` grammar). */
   simulateKeyUp(keystroke: string): void
-  /** `modifiers` uses the `press()` syntax: "cmd", "cmd-shift", "alt". */
+  /** `modifiers` is hyphenated: "cmd", "cmd-shift", "alt". */
   simulateClick(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
   simulateMouseDown(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
   simulateMouseUp(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
@@ -416,6 +440,18 @@ export declare class TestGpuixRenderer {
    */
   constructor(options?: WindowOptions | undefined | null)
   /**
+   * Tears the window and its GPUI app down. Every call that needs the window
+   * throws afterwards; the retained tree stays readable. Call it after the
+   * root is unmounted.
+   */
+  dispose(): void
+  /**
+   * Registers the function native calls synchronously for `keydown` and
+   * `keyup`; see `GpuixRenderer::setSyncEventHandler`. Without one, those
+   * events are queued for `drainEvents` like every other.
+   */
+  setSyncEventHandler(handler?: ((arg: EventPayload) => SyncDispatchResult) | undefined | null): void
+  /**
    * How many elements the retained tree holds, reachable from the root or
    * not. `getTreeJson` walks from the root, so it cannot see a node that was
    * detached and never destroyed. This is the only way a test can prove a
@@ -454,28 +490,34 @@ export declare class TestGpuixRenderer {
    * Dispatches MouseDown + MouseUp through GPUI's input pipeline,
    * which triggers the same event handlers as production.
    * IMPORTANT: Call flush() before this — hit testing requires laid-out elements.
-   * `modifiers` uses the `press()` syntax: "cmd", "cmd-shift", "alt".
+   * `modifiers` is hyphenated: "cmd", "cmd-shift", "alt".
    */
   simulateClick(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null): void
   /**
-   * Simulate key strokes through GPUI's input pipeline.
-   * Format: space-separated keys, e.g. "a", "enter", "cmd-shift-p".
-   * The focused element receives keyDown/keyUp events.
+   * Press a space-separated sequence of keys through GPUI's input pipeline,
+   * in Playwright's `keyboard.press` grammar: a DOM `key` ("Enter", "a",
+   * "ArrowDown") or `code` ("Space", "KeyA"), modifiers joined with `+`
+   * ("Shift+Tab", "Meta+a", "ControlOrMeta+Shift+P"). Each press is a
+   * keydown then a keyup, and typed characters reach the focused input.
+   * An unknown name is an error and nothing is pressed.
    */
   simulateKeystrokes(keystrokes: string): void
   /**
-   * Simulate a single key down event through GPUI's input pipeline.
-   * Format: modifier-key string, e.g. "a", "enter", "cmd-s".
-   * Unlike simulate_keystrokes, this dispatches ONLY a KeyDownEvent —
-   * no automatic KeyUpEvent follows. Use with simulate_key_up for
-   * fine-grained key event testing.
+   * Dispatch one keydown (one press in the `simulate_keystrokes` grammar)
+   * with no keyup after it. Pairs with `simulate_key_up`. A key that types
+   * text inserts it, like a keydown does in a browser.
    */
   simulateKeyDown(keystroke: string, isHeld?: boolean | undefined | null): void
   /**
-   * Simulate a single key up event through GPUI's input pipeline.
-   * Format: modifier-key string, e.g. "a", "enter", "cmd-s".
-   * Pairs with simulate_key_down for fine-grained key event testing.
+   * A key the platform's input method consumes (one press in the
+   * `simulate_keystrokes` grammar), with no keyup after it, as macOS delivers
+   * it: the key is announced to the observers of keys that compose, then the
+   * input method calls the focused text input. `action` is `"mark"` (set the
+   * composition to `text`), `"commit"` (end it with `text`) or `"unmark"` (end
+   * it with the text it has; `text` is ignored). Pairs with `simulate_key_up`.
    */
+  simulateImeKeyDown(keystroke: string, action: string, text?: string | undefined | null): void
+  /** Dispatch one keyup (one press in the `simulate_keystrokes` grammar). */
   simulateKeyUp(keystroke: string): void
   /**
    * Simulate a mouse move to the given coordinates. It reports the buttons held by
@@ -565,10 +607,18 @@ export declare class TestGpuixRenderer {
    * continue one with `"moved"`.
    */
   simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number, modifiers?: string | undefined | null, phase?: string | undefined | null): void
-  /** Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`). */
-  simulateFileDragEnter(x: number, y: number, paths: Array<string>): void
-  /** The dragged files move to `x`, `y` (`FileDropEvent::Pending`). */
-  simulateFileDragMove(x: number, y: number): void
+  /**
+   * Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`).
+   * Returns the operation the window answered the drag source with, which the
+   * `dragover` it fired decided: `"none"`, `"copy"`, `"move"` or `"link"`, or
+   * `null` when the window picked none and the platform keeps its default.
+   */
+  simulateFileDragEnter(x: number, y: number, paths: Array<string>): string | null
+  /**
+   * The dragged files move to `x`, `y` (`FileDropEvent::Pending`). Returns the
+   * operation the window answered the drag source with, as `simulateFileDragEnter` does.
+   */
+  simulateFileDragMove(x: number, y: number): string | null
   /** The dragged files are released at `x`, `y` (`FileDropEvent::Submit`). */
   simulateFileDragSubmit(x: number, y: number): void
   /** The dragged files leave the window (`FileDropEvent::Exited`). */
@@ -685,6 +735,10 @@ export declare class TestGpuixRenderer {
   setImagePixels(elementId: number, width: number, height: number, pixels: Buffer, format?: string | undefined | null): void
   /** Encoded image bytes onto an `<img>` host node. */
   setImage(elementId: number, bytes: Buffer): void
+  /** Encoded bytes for the `blob:` URL a `url()` background image names. */
+  setStyleImage(url: string, bytes: Buffer): void
+  /** The `blob:` URL a `url()` background names could not be read. */
+  failStyleImage(url: string, message: string): void
   /** `select()` on an `<input>` or `<textarea>`. */
   selectText(elementId: number): void
   /** `setSelectionRange(start, end, direction)`; offsets are UTF-16 units. */
@@ -910,7 +964,7 @@ export interface EventPayload {
   elementId: number
   /**
    * Event type string — matches the key used in EVENT_PROPS on the JS side.
-   * e.g. "click", "mousedown", "mouseenter", "keyDown", "wheel", etc. Pointer,
+   * e.g. "click", "mousedown", "mouseenter", "keydown", "wheel", etc. Pointer,
    * mouse and drag types are the lowercase DOM names.
    */
   eventType: string
@@ -940,28 +994,80 @@ export interface EventPayload {
    */
   pressedButton?: number
   /**
-   * Key name, e.g. "a", "enter", "escape", "down", "left", "f1".
-   * Populated for: keyDown, keyUp.
+   * DOM `KeyboardEvent.key`: "a", "A", "Enter", "Escape", "ArrowDown", " ",
+   * "F1", "Shift". On macOS the character the keyboard layout types, with
+   * shift and option applied. See `events/key_names.rs`.
+   * Populated for: keydown, keyup.
    */
   key?: string
   /**
+   * DOM `KeyboardEvent.code`, the physical key: "KeyA", "Digit1", "Enter",
+   * "ArrowLeft". From the key code where the platform reports one (macOS),
+   * otherwise derived from the key assuming a US QWERTY layout, and empty
+   * when it cannot be derived.
+   * Populated for: keydown, keyup.
+   */
+  code?: string
+  /**
+   * Legacy `KeyboardEvent.keyCode`, a Windows virtual-key code with the
+   * numbers Chrome on macOS reports: 65-90 for letters, 48-57 for the digit
+   * row, 13 for Enter, 37-40 for the arrows, 229 for a key the input method
+   * took ("Process"), and 0 for a key Chrome gives no code. See
+   * `events/key_codes.rs`.
+   * Populated for: keydown, keyup.
+   */
+  keyCode?: number
+  /**
+   * Legacy `KeyboardEvent.which`, equal to `key_code`.
+   * Populated for: keydown, keyup.
+   */
+  which?: number
+  /**
    * The character produced by the key press (e.g. "ß" for option-s).
    * May differ from `key` when modifiers are active.
-   * Populated for: keyDown, keyUp.
+   * Populated for: keydown, keyup.
    */
   keyChar?: string
   /**
-   * Whether this is a key-repeat event (key held down).
-   * Populated for: keyDown.
+   * Whether this is a key-repeat event (key held down). Same as `repeat`.
+   * Populated for: keydown.
    */
   isHeld?: boolean
   /**
-   * Id of the GPUI key dispatch that produced this event. Every element
-   * `keyDown` and the trailing `windowKeyDown` of one keystroke share it, so
-   * JS can apply `preventDefault` / `stopPropagation` across them.
-   * Populated for: keyDown, keyUp, windowKeyDown, windowKeyUp.
+   * DOM `KeyboardEvent.repeat`.
+   * Populated for: keydown, keyup.
    */
-  keystrokeId?: number
+  repeat?: boolean
+  /**
+   * DOM `KeyboardEvent.isComposing`: an input method composition is in
+   * progress. Only macOS reports it; elsewhere it is always false.
+   * Populated for: keydown, keyup, change.
+   */
+  isComposing?: boolean
+  /**
+   * DOM `CompositionEvent.data`: the text the composition replaces on
+   * compositionstart (the selection), the composition's current text on
+   * compositionupdate and the text it ended with on compositionend.
+   * Populated for: compositionstart, compositionupdate, compositionend.
+   */
+  data?: string
+  /**
+   * DOM `InputEvent.inputType` of an edit of the text (`insertText`,
+   * `deleteContentBackward`, `historyUndo`, ...), `""` for the number
+   * stepper. `data` is the inserted text for the insert types and absent
+   * otherwise; `isComposing` says the edit belongs to a composition.
+   * Populated for: change.
+   */
+  inputType?: string
+  /**
+   * DOM `shiftKey`, `ctrlKey`, `altKey`, `metaKey`: the booleans of
+   * `modifiers`, under the DOM names.
+   * Populated for: keydown, keyup.
+   */
+  shiftKey?: boolean
+  ctrlKey?: boolean
+  altKey?: boolean
+  metaKey?: boolean
   /**
    * Wheel delta on the X axis in pixels, positive towards the end, like the DOM.
    * Populated for: wheel.
@@ -1123,8 +1229,8 @@ export interface EventPayload {
   pointerType?: string
   /**
    * Whether the element matches `:focus-visible`: the new focus for `focus`
-   * and `focusIn`, the focus being left for `blur` and `focusOut`.
-   * Populated for: focus, blur, focusIn, focusOut.
+   * and `focusin`, the focus being left for `blur` and `focusout`.
+   * Populated for: focus, blur, focusin, focusout.
    */
   focusVisible?: boolean
   /**
@@ -1315,6 +1421,14 @@ export interface PathPromptOptions {
    * ".png,.jpg,image/*,application/pdf". Directories are never filtered.
    */
   accept?: string
+}
+
+/** What the sync handler returns. */
+export interface SyncDispatchResult {
+  defaultPrevented: boolean
+  propagationStopped: boolean
+  /** The `dropEffect` a `dragover` ended with. */
+  dropEffect?: string
 }
 
 /** `selectionStart`, `selectionEnd` and `selectionDirection` of a text control. */

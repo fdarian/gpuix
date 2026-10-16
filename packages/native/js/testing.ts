@@ -164,6 +164,9 @@ interface NativeTestRendererApi
   getScrollMetrics(elementId: number): number[] | null
   scrollByKey(key: string, shift: boolean): void
   setImage(elementId: number, bytes: Buffer | Uint8Array): void
+  /** Encoded bytes for the `blob:` URL a `url()` background names. */
+  setStyleImage(url: string, bytes: Buffer | Uint8Array): void
+  failStyleImage(url: string, message: string): void
   selectText(elementId: number): void
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
   getTextSelection(elementId: number): { start: number; end: number; direction: string }
@@ -1165,6 +1168,18 @@ export class TestRenderer implements NativeRenderer {
   setImage(elementId: number, bytes: Buffer | Uint8Array): void {
     this.native.flush()
     this.native.setImage(elementId, bytes as Buffer)
+    this.native.flush()
+  }
+
+  setStyleImage(url: string, bytes: Buffer | Uint8Array): void {
+    this.native.flush()
+    this.native.setStyleImage(url, bytes as Buffer)
+    this.native.flush()
+  }
+
+  failStyleImage(url: string, message: string): void {
+    this.native.flush()
+    this.native.failStyleImage(url, message)
     this.native.flush()
   }
 

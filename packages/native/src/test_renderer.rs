@@ -1539,6 +1539,25 @@ impl TestGpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    /// Encoded bytes for the `blob:` URL a `url()` background image names.
+    #[napi]
+    pub fn set_style_image(&self, url: String, bytes: Buffer) -> Result<()> {
+        let bytes = bytes.to_vec();
+        update_view(move |_, window, cx| {
+            crate::background_images::deliver_to_view(&url, bytes, window, cx)
+        })?
+        .map_err(Error::from_reason)
+    }
+
+    /// The `blob:` URL a `url()` background names could not be read.
+    #[napi]
+    pub fn fail_style_image(&self, url: String, message: String) -> Result<()> {
+        update_view(move |_, window, cx| {
+            crate::background_images::fail_in_view(&url, message, window, cx)
+        })?
+        .map_err(Error::from_reason)
+    }
+
     /// `select()` on an `<input>` or `<textarea>`.
     #[napi]
     pub fn select_text(&self, element_id: f64) -> Result<()> {

@@ -2,6 +2,7 @@ import { DOM_DISPATCHED_HANDLER_PROPS, KEYBOARD_FOCUS_EVENT_PROPS } from "./even
 import { registerMutationQueue } from "./bounds.js"
 import { createBlobImageLoader, type BlobImageHost } from "./blob-images.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
+import { createStyleImageLoader, type StyleImageHost } from "./style-images.js"
 import { SVG_TEXT_PROPS } from "./svg.js"
 
 export type MutationValue = number | string | boolean | object | null
@@ -24,7 +25,7 @@ export interface MutationQueue extends MutationRenderer {
 }
 
 export function createMutationQueue(
-  renderer: MutationHost & BlobImageHost,
+  renderer: MutationHost & BlobImageHost & StyleImageHost,
   onDestroyed: (ids: readonly number[]) => void = () => {},
   scheduleFlush?: (flush: () => void) => void
 ): MutationQueue {
@@ -54,6 +55,8 @@ export function createMutationQueue(
     },
   })
 
+  const styleImages = createStyleImageLoader(renderer)
+
   const mutations: MutationQueue = {
     get pending() {
       return queue.length
@@ -74,6 +77,7 @@ export function createMutationQueue(
       enqueue(["insertBefore", parentId, childId, beforeId])
     },
     setStyle(id, style) {
+      styleImages.style(style)
       enqueue(["setStyle", id, style])
     },
     setText(id, content) {
@@ -89,6 +93,7 @@ export function createMutationQueue(
       enqueue(["setKeyboardFocusDim", enabled])
     },
     setUniversalStyle(style) {
+      styleImages.style(style)
       enqueue(["setUniversalStyle", style])
     },
     setCustomProp(id, key, value) {

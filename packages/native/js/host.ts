@@ -2092,6 +2092,8 @@ export type NativeRenderer = MutationHost &
       | "getScrollMetrics"
       | "scrollByKey"
       | "setImage"
+      | "setStyleImage"
+      | "failStyleImage"
       | "setImagePixels"
       | "selectText"
       | "setSelectionRange"

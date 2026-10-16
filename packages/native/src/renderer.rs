@@ -3314,6 +3314,44 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// Encoded bytes for the `blob:` URL a `url()` background image names. The
+    /// JS layer fetches the blob, because a blob URL only exists in its process.
+    #[napi]
+    pub fn set_style_image(&self, url: String, bytes: Buffer) -> Result<()> {
+        let bytes = bytes.to_vec();
+        #[cfg(target_os = "macos")]
+        {
+            return update_window(move |_, window, cx| {
+                crate::background_images::deliver_to_view(&url, bytes, window, cx)
+            })?
+            .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (url, bytes);
+            Err(Error::from_reason("setStyleImage is only implemented on macOS"))
+        }
+    }
+
+    /// The JS layer could not read the `blob:` URL a `url()` background names.
+    #[napi]
+    pub fn fail_style_image(&self, url: String, message: String) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            return update_window(move |_, window, cx| {
+                crate::background_images::fail_in_view(&url, message, window, cx)
+            })?
+            .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (url, message);
+            Err(Error::from_reason("failStyleImage is only implemented on macOS"))
+        }
+    }
+
     /// `select()` on an `<input>` or `<textarea>`: select all of its text.
     #[napi]
     pub fn select_text(&self, element_id: f64) -> Result<()> {
@@ -7229,6 +7267,19 @@ impl gpui::Render for GpuixView {
 static EMPTY_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(StyleDesc::default);
 
 pub(crate) fn build_element(
+    id: u64,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) -> gpui::AnyElement {
+    let element = build_element_unpumped(id, ctx, window, cx);
+    // Every style resolves while its element is built, and a virtual-list row is
+    // built in list layout, so this is the one place that sees both.
+    crate::background_images::pump(window, cx);
+    element
+}
+
+fn build_element_unpumped(
     id: u64,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
