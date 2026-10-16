@@ -478,10 +478,10 @@ describeNative("inline text", () => {
   describe("textDecoration", () => {
     const WHITE = { width: 120, backgroundColor: "#ffffff", color: "#000000", ...TEXT } as const
 
-    function signature(name: string, decoration: React.CSSProperties) {
+    function signature(name: string, decoration: React.CSSProperties, paragraph: object = {}) {
       const testRoot = createTestRoot()
       testRoot.render(
-        <text style={WHITE}>
+        <text style={{ ...WHITE, ...paragraph }}>
           <span style={decoration as never}>xx</span>
         </text>
       )
@@ -490,7 +490,7 @@ describeNative("inline text", () => {
 
     function digest(pixels: Pixels) {
       const hash = createHash("sha1")
-      for (let y = 0; y < LINE + 4; y++) {
+      for (let y = 0; y < LINE + 12; y++) {
         for (let x = 0; x < WHITE.width; x++) hash.update(pixels.at(x, y).join(",") + ";")
       }
       return hash.digest("hex").slice(0, 10)
@@ -543,11 +543,11 @@ describeNative("inline text", () => {
       expect(signature("wavy", { textDecoration: "underline wavy" })).not.toBe(solid)
     })
 
-    it("draws a double, dotted or dashed line as a solid one", () => {
-      const solid = signature("fallback-solid", { textDecoration: "underline" })
-      for (const style of ["double", "dotted", "dashed"]) {
-        expect(signature(`fallback-${style}`, { textDecoration: `underline ${style}` })).toBe(solid)
-      }
+    it("draws a double, dotted and dashed line differently from a solid one and from each other", () => {
+      const signatures = ["solid", "double", "dotted", "dashed", "wavy"].map((style) =>
+        signature(`style-${style}`, { textDecoration: `underline ${style} 2px` }, { paddingBottom: 12 })
+      )
+      expect(new Set(signatures).size).toBe(signatures.length)
     })
 
     it("reads the longhands like the shorthand", () => {
@@ -608,7 +608,7 @@ describeNative("inline text", () => {
       testRoot.render(node)
       const pixels = shoot(testRoot, name)
       const rows: string[] = []
-      for (let y = 0; y < LINE + 4; y++) {
+      for (let y = 0; y < LINE + 12; y++) {
         for (let x = 0; x < WHITE.width; x++) rows.push(pixels.at(x, y).join(","))
       }
       return rows.join(";")
