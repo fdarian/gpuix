@@ -15,6 +15,7 @@ mod accessibility;
 #[cfg(target_os = "macos")]
 mod app_menu;
 mod automation;
+mod background_images;
 mod color;
 mod css;
 mod custom_elements;

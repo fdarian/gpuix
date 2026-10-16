@@ -80,7 +80,7 @@ impl ImgObjectFit {
 }
 
 #[derive(Debug, Clone, Default)]
-enum ImgSource {
+pub(crate) enum ImgSource {
     #[default]
     Empty,
     Path(std::path::PathBuf),
@@ -217,7 +217,7 @@ enum Resolved {
 }
 
 /// The source `src` names.
-fn resolve_src(src: &str) -> ImgSource {
+pub(crate) fn resolve_src(src: &str) -> ImgSource {
     if src.is_empty() {
         ImgSource::Empty
     } else if src.starts_with("blob:") {
