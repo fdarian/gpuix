@@ -723,6 +723,38 @@ describeNative("CSS transitions", () => {
     expect(targets[0]).toBe(child)
   })
 
+  it("transitions an unset color from the one it inherits", () => {
+    const { render, renderer } = createTestRoot()
+    fs.mkdirSync(SHOTS_DIR, { recursive: true })
+    const file = path.join(SHOTS_DIR, "css-transition-inherited-color.png")
+    // The inner box paints the child's `color` through `currentColor`.
+    const tree = (color: string | undefined) => (
+      <div style={{ width: "100%", height: "100%", color: "#ff0000" }}>
+        <div style={{ width: 40, height: 40, transition: "color 1s linear", color }}>
+          <div style={{ width: 40, height: 40, backgroundColor: "currentColor" }} />
+        </div>
+      </div>
+    )
+    const sample = () => {
+      renderer.dispatchNativeEvents()
+      renderer.captureScreenshot(file)
+      return readLogicalPixels(file, renderer).at(10, 10).slice(0, 3)
+    }
+
+    renderer.clockPause()
+    render(tree(undefined))
+    expect(sample()).toEqual([255, 0, 0])
+
+    render(tree("#0000ff"))
+    renderer.clockFastForward(500)
+    const middle = sample()
+    expect(Math.abs(middle[0] - 128)).toBeLessThan(6)
+    expect(Math.abs(middle[2] - 128)).toBeLessThan(6)
+
+    renderer.clockFastForward(1000)
+    expect(sample()).toEqual([0, 0, 255])
+  })
+
   it("treats a colour scheme flip as a change of light-dark(), and a new color as none of currentColor", () => {
     const record = (seen: string[]) => (type: string) => () => seen.push(type)
     // The parent sets the scheme and the colour the child's colours resolve in.

@@ -3868,6 +3868,26 @@ mod tests {
         }
 
         #[test]
+        fn an_unset_color_starts_from_the_inherited_one() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "opacity": 1.0 },
+                "animate": { "color": "#0000ff" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let colors = Colors::of(&parent(Scheme::Light, "#ff0000"), None);
+            let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
+            near(rgba(style_at(&state, started).color.as_deref().unwrap()), "#ff0000");
+            near(rgba(style_at(&state, at(started, 1.0)).color.as_deref().unwrap()), "#0000ff");
+
+            // With no `color` above either, it is the `CanvasText` of the element's scheme.
+            let base = StyleDesc { color_scheme: Some("dark".to_string()), ..Default::default() };
+            let canvas = Colors::of(&ColorContext::root(Scheme::Light), Some(&base));
+            let state = MotionState::new(&description, Some(&base), canvas, None, 0, started).unwrap();
+            near(rgba(style_at(&state, started).color.as_deref().unwrap()), "#ffffff");
+        }
+
+        #[test]
         fn color_mix_and_color_function_targets_animate() {
             let started = Instant::now();
             let description = json!({

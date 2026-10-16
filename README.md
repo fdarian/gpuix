@@ -1435,11 +1435,18 @@ A property that `initial` does not name starts from the element's own `style`
 value, as Motion for React reads it from the DOM, and otherwise from the CSS
 initial value (`0` for padding, margin and radii, `1` for `opacity`,
 `transparent` for `backgroundColor`, the element's `color` for `borderColor` and
-`outlineColor`). An unset `width`, `height`, `minWidth`, `minHeight`,
-`maxWidth` or `maxHeight` starts from the size layout gave the element, read
-back from the previous frame, so the clock starts on the first frame that has it.
-Other values CSS leaves to layout or inheritance (`top` unset, `fontSize`,
-`color`) have no start yet, so that property begins at its target.
+`outlineColor`), or the inherited value for `color`: the parent's colour, or the
+scheme's black or white at the root. An unset `width`, `height`, `minWidth`,
+`minHeight`, `maxWidth` or `maxHeight` starts from the size layout gave the
+element, read back from the previous frame, so the clock starts on the first
+frame that has it.
+
+Where CSS computes an unset property to a keyword (`top`, `right`, `bottom`,
+`left`, `flexBasis` and `aspectRatio` are `auto`, `lineHeight` is `normal`),
+there is nothing to blend from, so as in CSS that property begins at its target.
+`fontSize` and `fontWeight` are inherited and gpuix does not carry their
+computed value down the tree yet, so an unset `fontSize` also begins at its
+target and an unset `fontWeight` starts from `400` whatever the parent's is.
 
 ### Targets and timing
 
@@ -5565,8 +5572,16 @@ render per frame.
   of the style after the change, so a change that also adds the transition (or a
   duration) runs. The first style an
   element mounts with never transitions. A property that is unset starts from its
-  CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
-  an unset `width`) changes instantly
+  CSS computed value: the initial one (`opacity` 1, padding `0`, `boxShadow`
+  none, `backgroundColor` transparent) or the inherited one (`color` is the
+  parent's colour, so `color` unset to `color: 'blue'` runs from it, and a
+  `color` dropped runs back to it). One whose computed value is a keyword CSS
+  does not blend with a number, length or colour changes instantly: an unset
+  `top`, `right`, `bottom`, `left`, `flexBasis` and `aspectRatio` (`auto`),
+  `lineHeight` (`normal`), `scrollbarWidth` and an unset `width`. `fontSize`
+  and `fontWeight` are inherited too but gpuix does not carry their computed
+  value down yet, so an unset `fontSize` changes instantly and an unset
+  `fontWeight` runs from `400`. `zIndex` is not animatable
 - **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, `top`, `right`, `bottom`, `left` or margin that moves between a
   pixel length and a percentage transitions in px, with the percentage resolved

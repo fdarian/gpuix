@@ -34,17 +34,21 @@ enum Clamp {
     Weight,
 }
 
-/// What a property is before anything sets it, when its CSS initial value is
+/// What a property is before anything sets it, when its computed value is
 /// something an animation can start from.
 #[derive(Clone, Copy)]
 enum Initial {
-    /// `auto`, `none`, `normal`, or inherited: not a value a track can start
-    /// from until layout can resolve it.
+    /// `auto`, `none`, `normal`: CSS does not interpolate these with a length,
+    /// number or colour, so nothing animates from them. Inherited `fontSize` and
+    /// `fontWeight` also sit here until the renderer carries their computed value.
     Unresolved,
     Number(f64),
     Transparent,
     /// The element's own `color`.
     CurrentColor,
+    /// What the element's `color` computes to when unset: inherited, or the
+    /// `CanvasText` of its scheme at the root.
+    ComputedColor,
     NoShadows,
     /// A keyword that is the same as leaving the property unset.
     Keyword(&'static str),
@@ -268,7 +272,7 @@ macro_rules! properties {
     };
 }
 
-use Initial::{CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
+use Initial::{ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
 
 properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow;
@@ -300,7 +304,7 @@ properties! {
     Left "left" Dimension None Unresolved, left;
 
     BackgroundColor "backgroundColor" Color None Transparent, background_color;
-    Color "color" Color None Unresolved, color;
+    Color "color" Color None ComputedColor, color;
     Opacity "opacity" Number Unit Number(1.0), opacity;
 
     BorderTopWidth "borderTopWidth" Number NonNegative Number(0.0), border_top_width | border_width;
@@ -455,14 +459,20 @@ impl AnimProp {
         }
     }
 
-    /// The value before the style sets it. `None` means CSS leaves it to layout
-    /// or inheritance, which a track cannot start from yet.
+    /// The value before the style sets it: the CSS computed value of an unset
+    /// property. `None` where that is `auto`, `normal` or a size layout decides,
+    /// which a track cannot blend from, or an inherited value the renderer does
+    /// not carry yet.
     pub(super) fn initial(self, colors: &Colors) -> Option<AnimValue> {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
             Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, false))),
+            // The context keeps the resolved colour, not the syntax it was
+            // written in. Hex, names and `rgb()` are what a colour is nearly
+            // always written in, so it counts as legacy and blends in sRGB.
+            Initial::ComputedColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, true))),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
             Initial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
             Initial::Unset => Some(AnimValue::Keyword(None)),

@@ -2155,6 +2155,19 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_color_endpoint_is_the_inherited_colour() {
+        let mut frames = Frames::new();
+        frames.parent_colors = ColorContext::root(crate::color::Scheme::Light)
+            .descend(&style(r##"{ "color": "#ff0000" }"##));
+        frames.define("tint", r##"{ "to": { "color": "#0000ff" } }"##);
+        let animated = fading("tint 1s linear");
+        let color = |sample: StyleDesc| crate::color::parse_color_rgba(&sample.color.unwrap()).unwrap();
+        assert_eq!(color(frames.frame(0, &animated)).r, 1.0);
+        let middle = color(frames.frame(500, &animated));
+        assert!(middle.r > 0.4 && middle.b > 0.4, "{middle:?}");
+    }
+
+    #[test]
     fn an_endpoint_that_cannot_be_resolved_holds_the_nearest_keyframe() {
         let mut frames = Frames::new();
         frames.define("grow", r#"{ "to": { "fontSize": 20 } }"#);

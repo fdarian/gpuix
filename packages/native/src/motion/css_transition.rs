@@ -2932,4 +2932,154 @@ mod tests {
             assert!(!held(&clock), "a zero duration holds nothing");
         }
     }
+
+    /// A property the style leaves unset has a CSS computed value to transition
+    /// from when it is interpolable, and none when it is `auto` or `normal`.
+    mod unset_start {
+        use super::*;
+
+        const ALL: &str = "all 1s linear";
+
+        fn with_transition(declarations: &str) -> StyleDesc {
+            style(&format!(r#"{{ {declarations}"transition": "{ALL}" }}"#))
+        }
+
+        /// The number `prop` reads after half a second of a transition from the
+        /// unset style to one that declares `declaration`.
+        fn halfway(declaration: &str, prop: AnimProp) -> Option<AnimValue> {
+            let mut clock = Clock::new();
+            clock.frame(0, &with_transition(""));
+            let target = with_transition(&format!("{declaration},"));
+            clock.frame(0, &target);
+            prop.read(&clock.frame(500, &target), &Colors::root())
+        }
+
+        #[test]
+        fn an_interpolable_property_leaves_from_its_computed_value() {
+            for (declaration, prop, expected) in [
+                (r#""opacity": 0"#, AnimProp::Opacity, 0.5),
+                (r#""flexGrow": 2"#, AnimProp::FlexGrow, 1.0),
+                (r#""flexShrink": 0"#, AnimProp::FlexShrink, 0.5),
+                (r#""paddingTop": 10"#, AnimProp::PaddingTop, 5.0),
+                (r#""marginLeft": 10"#, AnimProp::MarginLeft, 5.0),
+                (r#""rowGap": 10"#, AnimProp::RowGap, 5.0),
+                (r#""columnGap": 10"#, AnimProp::ColumnGap, 5.0),
+                (r#""borderBottomWidth": 10"#, AnimProp::BorderBottomWidth, 5.0),
+                (r#""borderTopLeftRadius": 10"#, AnimProp::BorderTopLeftRadius, 5.0),
+                (r#""outlineWidth": 10"#, AnimProp::OutlineWidth, 5.0),
+                (r#""outlineOffset": 10"#, AnimProp::OutlineOffset, 5.0),
+            ] {
+                assert_eq!(
+                    halfway(declaration, prop),
+                    Some(AnimValue::Number(expected)),
+                    "{declaration}"
+                );
+            }
+        }
+
+        #[test]
+        fn an_unset_shadow_and_background_leave_from_none_and_transparent() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with_transition(""));
+            let target = with_transition(
+                r##""backgroundColor": "#ff0000", "boxShadow": { "offsetX": 0, "offsetY": 4, "blurRadius": 8, "spreadRadius": 0, "color": "#000000" },"##,
+            );
+            clock.frame(0, &target);
+            let middle = clock.frame(500, &target);
+            let background = crate::color::parse_color_rgba(middle.background_color.as_deref().unwrap()).unwrap();
+            assert!((background.a - 0.5).abs() < 0.01, "{}", background.a);
+            let Some(crate::style::BoxShadowValues::Many(layers)) = middle.box_shadow else {
+                panic!("expected a shadow list");
+            };
+            assert_eq!(layers[0].offset_y, 2.0);
+            assert_eq!(layers[0].blur_radius, 4.0);
+        }
+
+        fn colour_after(clock: &mut Clock, millis: u64, after: &StyleDesc) -> String {
+            clock.frame(millis, after).color.unwrap()
+        }
+
+        #[test]
+        fn an_unset_color_leaves_from_the_inherited_one() {
+            let mut clock = Clock::new();
+            clock.parent_colors = ColorContext::root(crate::color::Scheme::Light)
+                .descend(&style(r##"{ "color": "#ff0000" }"##));
+            clock.frame(0, &with_transition(""));
+            let target = with_transition(r##""color": "#0000ff","##);
+            near(&colour_after(&mut clock, 0, &target), "#ff0000");
+            assert_eq!(clock.events(), [(Run, "color".to_string(), 0.0), (Start, "color".to_string(), 0.0)]);
+            near(&colour_after(&mut clock, 500, &target), "#800080");
+            assert_eq!(colour_after(&mut clock, 1000, &target), "#0000ff");
+        }
+
+        #[test]
+        fn a_color_that_becomes_unset_leaves_to_the_inherited_one() {
+            let mut clock = Clock::new();
+            clock.parent_colors = ColorContext::root(crate::color::Scheme::Light)
+                .descend(&style(r##"{ "color": "#ff0000" }"##));
+            clock.frame(0, &with_transition(r##""color": "#0000ff","##));
+            let unset = with_transition("");
+            near(&colour_after(&mut clock, 0, &unset), "#0000ff");
+            near(&colour_after(&mut clock, 500, &unset), "#800080");
+            let finished = clock.frame(1000, &unset);
+            assert_eq!(finished.color, None, "the inherited colour paints again");
+        }
+
+        #[test]
+        fn an_unset_color_with_no_parent_colour_leaves_from_the_canvas_text_of_its_scheme() {
+            let mut clock = Clock::new();
+            let dark = |declarations: &str| {
+                style(&format!(r#"{{ "colorScheme": "dark", {declarations}"transition": "{ALL}" }}"#))
+            };
+            clock.frame(0, &dark(""));
+            near(&colour_after(&mut clock, 0, &dark(r##""color": "#000000","##)), "#ffffff");
+        }
+
+        #[test]
+        fn a_parents_new_colour_is_not_a_change_of_an_unset_color() {
+            let mut clock = Clock::new();
+            let inherited = |color: &str| {
+                ColorContext::root(crate::color::Scheme::Light).descend(&style(&format!(r#"{{ "color": "{color}" }}"#)))
+            };
+            clock.parent_colors = inherited("#ff0000");
+            clock.frame(0, &with_transition(""));
+            clock.parent_colors = inherited("#0000ff");
+            clock.frame(0, &with_transition(""));
+            assert!(clock.events().is_empty());
+        }
+
+        /// `auto` and `normal` are keywords CSS does not blend with a length or
+        /// a number, so a transition out of an unset one takes the target at once.
+        #[test]
+        fn a_property_whose_computed_value_is_a_keyword_does_not_animate_from_unset() {
+            for (declaration, prop, target) in [
+                (r#""top": 10"#, AnimProp::Top, AnimValue::Number(10.0)),
+                (r#""right": 10"#, AnimProp::Right, AnimValue::Number(10.0)),
+                (r#""bottom": 10"#, AnimProp::Bottom, AnimValue::Number(10.0)),
+                (r#""left": 10"#, AnimProp::Left, AnimValue::Number(10.0)),
+                (r#""flexBasis": 100"#, AnimProp::FlexBasis, AnimValue::Number(100.0)),
+                (r#""lineHeight": 20"#, AnimProp::LineHeight, AnimValue::Number(20.0)),
+                (r#""aspectRatio": 2"#, AnimProp::AspectRatio, AnimValue::Number(2.0)),
+            ] {
+                let mut clock = Clock::new();
+                clock.frame(0, &with_transition(""));
+                let target_style = with_transition(&format!("{declaration},"));
+                let at_once = clock.frame(0, &target_style);
+                assert_eq!(prop.read(&at_once, &Colors::root()), Some(target), "{declaration}");
+                assert!(clock.events().is_empty(), "{declaration}: {:?}", clock.events());
+            }
+        }
+
+        #[test]
+        fn line_height_transitions_between_two_declared_values() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with_transition(r#""lineHeight": 20,"#));
+            let target = with_transition(r#""lineHeight": 40,"#);
+            clock.frame(0, &target);
+            assert_eq!(
+                AnimProp::LineHeight.read(&clock.frame(500, &target), &Colors::root()),
+                Some(AnimValue::Number(30.0))
+            );
+        }
+    }
 }
