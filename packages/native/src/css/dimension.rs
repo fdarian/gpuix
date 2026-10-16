@@ -1,9 +1,14 @@
 //! Numbers, lengths, percentages and `calc()` over them, shared by every value
 //! parser that reads a dimension.
 //!
-//! Only absolute length units resolve: `em`, `rem` and the viewport units need
-//! the element's font size or the window, which the parsers do not receive, so
-//! they are invalid here rather than silently wrong.
+//! [`parse_linear_length`] reads one length of any unit into a
+//! [`LinearLength`], which stays unresolved: `em`, `rem`, `%` and the viewport
+//! units need the element or the window. The other parsers here have no such
+//! context, so they accept only what is already known without one (an absolute
+//! length, a number or a percentage) and treat everything else as invalid
+//! rather than silently wrong.
+
+use super::length::LinearLength;
 
 /// The largest length a value may take. Browsers clamp an out-of-range length
 /// instead of rejecting it (Chrome's `LayoutUnit` saturates here), and gpui
@@ -12,38 +17,37 @@ pub(crate) const MAX_LENGTH: f64 = 33_554_431.0;
 
 /// What a token or a `calc()` expression evaluates to.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Quantity {
+enum Quantity {
     Number(f64),
-    /// In px.
-    Length(f64),
-    /// In percent, so `50%` is `Percent(50.0)`.
-    Percent(f64),
+    Linear(LinearLength, Units),
 }
 
-impl Quantity {
-    fn value(self) -> f64 {
-        match self {
-            Self::Number(value) | Self::Length(value) | Self::Percent(value) => value,
-        }
-    }
+/// The kinds of unit a [`Quantity::Linear`] was written with, which `0px`,
+/// `0%` and `0em` all collapse into the same all-zero [`LinearLength`] and the
+/// context-free parsers must still tell apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Units {
+    absolute: bool,
+    percent: bool,
+    relative: bool,
+}
 
-    fn with_value(self, value: f64) -> Self {
-        match self {
-            Self::Number(_) => Self::Number(value),
-            Self::Length(_) => Self::Length(value),
-            Self::Percent(_) => Self::Percent(value),
-        }
-    }
+impl Units {
+    const ABSOLUTE: Self = Self { absolute: true, percent: false, relative: false };
+    const PERCENT: Self = Self { absolute: false, percent: true, relative: false };
+    const RELATIVE: Self = Self { absolute: false, percent: false, relative: true };
 
-    fn same_kind(self, other: Self) -> bool {
-        std::mem::discriminant(&self) == std::mem::discriminant(&other)
+    fn union(self, other: Self) -> Self {
+        Self {
+            absolute: self.absolute || other.absolute,
+            percent: self.percent || other.percent,
+            relative: self.relative || other.relative,
+        }
     }
 }
 
-/// Parses a number, an absolute length, a percentage or a `calc()` of them.
-/// `None` for anything else, including units the parsers cannot resolve and
-/// `calc()` that mixes lengths with percentages: no value can hold both.
-pub(crate) fn parse_quantity(token: &str) -> Option<Quantity> {
+/// Parses a number, a length of any unit, a percentage or a `calc()` of them.
+fn parse_quantity(token: &str) -> Option<Quantity> {
     let token = token.trim();
     if let Some(args) = super::syntax::function_args(token, "calc") {
         return evaluate(args);
@@ -53,11 +57,19 @@ pub(crate) fn parse_quantity(token: &str) -> Option<Quantity> {
 }
 
 fn quantity(value: f64, unit: &str) -> Option<Quantity> {
-    Some(match unit {
-        "" => Quantity::Number(value),
-        "%" => Quantity::Percent(value),
-        _ => Quantity::Length(value * px_per(unit)?),
-    })
+    let linear = |length: LinearLength, units: Units| Some(Quantity::Linear(length, units));
+    let fraction = value / 100.0;
+    match unit {
+        "" => Some(Quantity::Number(value)),
+        "%" => linear(LinearLength::percent(fraction), Units::PERCENT),
+        "em" => linear(LinearLength { em: value, ..LinearLength::default() }, Units::RELATIVE),
+        "rem" => linear(LinearLength { rem: value, ..LinearLength::default() }, Units::RELATIVE),
+        "vw" => linear(LinearLength { vw: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "vh" => linear(LinearLength { vh: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "vmin" => linear(LinearLength { vmin: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "vmax" => linear(LinearLength { vmax: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        _ => linear(LinearLength::px(value * px_per(unit)?), Units::ABSOLUTE),
+    }
 }
 
 fn px_per(unit: &str) -> Option<f64> {
@@ -73,12 +85,24 @@ fn px_per(unit: &str) -> Option<f64> {
     })
 }
 
+/// One CSS length: a dimension of any length unit or `%`, a `calc()` of them,
+/// or a bare `0`. Each term is clamped to [`MAX_LENGTH`]. A bare number
+/// that is not zero, and a `calc()` that comes to a plain number, are not
+/// lengths.
+pub(crate) fn parse_linear_length(token: &str) -> Option<LinearLength> {
+    match parse_quantity(token)? {
+        Quantity::Linear(length, _) => Some(length.clamped()),
+        Quantity::Number(_) if is_zero_literal(token) => Some(LinearLength::default()),
+        Quantity::Number(_) => None,
+    }
+}
+
 /// A length in px, clamped to [`MAX_LENGTH`]. A bare number is only a length
 /// when it is zero.
 pub(crate) fn parse_length(token: &str) -> Option<f64> {
     match parse_quantity(token)? {
-        Quantity::Length(value) => Some(clamp_length(value)),
-        _ if is_zero_literal(token) => Some(0.0),
+        Quantity::Linear(length, Units::ABSOLUTE) => length.as_px().map(clamp_length),
+        Quantity::Number(_) if is_zero_literal(token) => Some(0.0),
         _ => None,
     }
 }
@@ -92,10 +116,10 @@ fn is_zero_literal(token: &str) -> bool {
 /// A length in px or a percentage as a fraction, for the places that take either.
 pub(crate) fn parse_length_percentage(token: &str) -> Option<LengthPercentage> {
     match parse_quantity(token)? {
-        Quantity::Length(value) => Some(LengthPercentage::Length(clamp_length(value))),
-        Quantity::Percent(value) => Some(LengthPercentage::Percent(value / 100.0)),
+        Quantity::Linear(length, Units::ABSOLUTE) => length.as_px().map(|px| LengthPercentage::Length(clamp_length(px))),
+        Quantity::Linear(length, Units::PERCENT) => length.as_percent().map(LengthPercentage::Percent),
         Quantity::Number(_) if is_zero_literal(token) => Some(LengthPercentage::Length(0.0)),
-        Quantity::Number(_) => None,
+        _ => None,
     }
 }
 
@@ -110,8 +134,8 @@ pub(crate) enum LengthPercentage {
 pub(crate) fn parse_number_or_percentage(token: &str) -> Option<f64> {
     match parse_quantity(token)? {
         Quantity::Number(value) => Some(value),
-        Quantity::Percent(value) => Some(value / 100.0),
-        Quantity::Length(_) => None,
+        Quantity::Linear(length, Units::PERCENT) => length.as_percent(),
+        Quantity::Linear(..) => None,
     }
 }
 
@@ -229,7 +253,11 @@ fn evaluate(args: &str) -> Option<Quantity> {
     let tokens = tokenize(args)?;
     let mut parser = Parser { tokens: &tokens, index: 0 };
     let result = parser.sum()?;
-    (parser.index == tokens.len() && result.value().is_finite()).then_some(result)
+    let finite = match result {
+        Quantity::Number(value) => value.is_finite(),
+        Quantity::Linear(length, _) => length.is_finite(),
+    };
+    (parser.index == tokens.len() && finite).then_some(result)
 }
 
 struct Parser<'a> {
@@ -252,11 +280,16 @@ impl Parser<'_> {
             };
             self.index += 1;
             let right = self.product()?;
-            if !left.same_kind(right) {
-                return None;
-            }
-            let sign = if subtract { -1.0 } else { 1.0 };
-            left = left.with_value(left.value() + sign * right.value());
+            left = match (left, right) {
+                (Quantity::Number(left), Quantity::Number(right)) => {
+                    Quantity::Number(if subtract { left - right } else { left + right })
+                }
+                (Quantity::Linear(left, left_units), Quantity::Linear(right, right_units)) => {
+                    let length = if subtract { left.minus(right) } else { left.plus(right) };
+                    Quantity::Linear(length, left_units.union(right_units))
+                }
+                _ => return None,
+            };
         }
     }
 
@@ -271,11 +304,11 @@ impl Parser<'_> {
             self.index += 1;
             let right = self.factor()?;
             left = match (left, right, divide) {
-                (_, Quantity::Number(divisor), true) if divisor != 0.0 => {
-                    left.with_value(left.value() / divisor)
+                (_, Quantity::Number(divisor), true) if divisor != 0.0 && divisor.is_finite() => {
+                    map_quantity(left, |value| value / divisor)
                 }
-                (Quantity::Number(factor), other, false) => other.with_value(factor * other.value()),
-                (other, Quantity::Number(factor), false) => other.with_value(other.value() * factor),
+                (Quantity::Number(factor), other, false) => map_quantity(other, |value| value * factor),
+                (other, Quantity::Number(factor), false) => map_quantity(other, |value| value * factor),
                 _ => return None,
             };
         }
@@ -301,6 +334,13 @@ impl Parser<'_> {
     }
 }
 
+fn map_quantity(quantity: Quantity, mut apply: impl FnMut(f64) -> f64) -> Quantity {
+    match quantity {
+        Quantity::Number(value) => Quantity::Number(apply(value)),
+        Quantity::Linear(length, units) => Quantity::Linear(length.map(apply), units),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,28 +358,63 @@ mod tests {
         assert_eq!(split_dimension("1%%"), None);
     }
 
+    fn linear(text: &str) -> LinearLength {
+        parse_linear_length(text).unwrap_or_else(|| panic!("{text} should parse"))
+    }
+
     #[test]
-    fn units_resolve_to_px_and_only_absolute_ones() {
-        assert_eq!(parse_quantity("1in"), Some(Quantity::Length(96.0)));
-        assert_eq!(parse_quantity("1PC"), Some(Quantity::Length(16.0)));
-        assert_eq!(parse_quantity("3"), Some(Quantity::Number(3.0)));
-        assert_eq!(parse_quantity("50%"), Some(Quantity::Percent(50.0)));
+    fn absolute_units_resolve_to_px() {
+        assert_eq!(parse_length("1in"), Some(96.0));
+        assert_eq!(parse_length("1PC"), Some(16.0));
+        assert_eq!(parse_length("2.54cm"), Some(96.0));
+        assert_eq!(parse_length("25.4MM"), Some(96.0));
+        assert_eq!(parse_length("101.6q"), Some(96.0));
+        assert_eq!(parse_length("72pt"), Some(96.0));
+        assert_eq!(parse_length("3PX"), Some(3.0));
+        assert_eq!(parse_number_or_percentage("3"), Some(3.0));
+        assert_eq!(parse_number_or_percentage("50%"), Some(0.5));
+    }
+
+    #[test]
+    fn the_context_free_parsers_reject_units_that_need_a_context() {
         for unit in ["em", "rem", "vw", "vh", "vmin", "vmax", "ch", "fr"] {
-            assert_eq!(parse_quantity(&format!("1{unit}")), None, "{unit}");
+            let text = format!("1{unit}");
+            assert_eq!(parse_length(&text), None, "{unit}");
+            assert_eq!(parse_length_percentage(&text), None, "{unit}");
+            assert_eq!(parse_number_or_percentage(&text), None, "{unit}");
         }
+        for text in ["calc(1px + 50%)", "calc(50% + 1px)", "calc(1px + 0%)", "calc(1em - 1em)", "0em", "0%", "0vw"] {
+            assert_eq!(parse_length(text), None, "{text}");
+        }
+        assert_eq!(parse_length_percentage("calc(1px + 50%)"), None);
+        assert_eq!(parse_length_percentage("calc(1px + 0%)"), None);
+        assert_eq!(parse_length_percentage("0em"), None);
+        assert_eq!(parse_number_or_percentage("0px"), None);
+        assert_eq!(parse_number_or_percentage("calc(50% + 1px)"), None);
+    }
+
+    #[test]
+    fn length_percentage_tells_a_length_from_a_percentage() {
+        assert_eq!(parse_length_percentage("12px"), Some(LengthPercentage::Length(12.0)));
+        assert_eq!(parse_length_percentage("50%"), Some(LengthPercentage::Percent(0.5)));
+        assert_eq!(parse_length_percentage("0"), Some(LengthPercentage::Length(0.0)));
+        assert_eq!(parse_length_percentage("0%"), Some(LengthPercentage::Percent(0.0)));
+        assert_eq!(parse_length_percentage("calc(100% / 4)"), Some(LengthPercentage::Percent(0.25)));
+        assert_eq!(parse_length_percentage("calc(1in + 24px)"), Some(LengthPercentage::Length(120.0)));
+        assert_eq!(parse_length_percentage("3"), None);
     }
 
     #[test]
     fn calc_follows_operator_precedence_and_nests() {
-        let calc = |text: &str| parse_quantity(text);
-        assert_eq!(calc("calc(1px + 2px * 3)"), Some(Quantity::Length(7.0)));
-        assert_eq!(calc("calc((1px + 2px) * 3)"), Some(Quantity::Length(9.0)));
-        assert_eq!(calc("calc(10px / 4)"), Some(Quantity::Length(2.5)));
-        assert_eq!(calc("calc(1px - -2px)"), Some(Quantity::Length(3.0)));
-        assert_eq!(calc("calc(calc(1px + 1px) * 2)"), Some(Quantity::Length(4.0)));
-        assert_eq!(calc("calc(100% / 3)"), Some(Quantity::Percent(100.0 / 3.0)));
-        assert_eq!(calc("calc(2 * 3)"), Some(Quantity::Number(6.0)));
-        assert_eq!(calc("calc(1in + 24px)"), Some(Quantity::Length(120.0)));
+        let calc = |text: &str| parse_length(text);
+        assert_eq!(calc("calc(1px + 2px * 3)"), Some(7.0));
+        assert_eq!(calc("calc((1px + 2px) * 3)"), Some(9.0));
+        assert_eq!(calc("calc(10px / 4)"), Some(2.5));
+        assert_eq!(calc("calc(1px - -2px)"), Some(3.0));
+        assert_eq!(calc("calc(calc(1px + 1px) * 2)"), Some(4.0));
+        assert_eq!(calc("calc(1in + 24px)"), Some(120.0));
+        assert_eq!(parse_number_or_percentage("calc(100% / 4)"), Some(0.25));
+        assert_eq!(parse_number_or_percentage("calc(2 * 3)"), Some(6.0));
     }
 
     #[test]
@@ -355,13 +430,103 @@ mod tests {
             "calc(1px / 0)",
             "calc(2 / 1px)",
             "calc(1px + 2)",
-            "calc(1px + 50%)",
-            "calc(1px + 1em)",
+            "calc(2 + 1px)",
+            "calc(1px + 1em * 2em)",
             "calc((1px)",
             "calc(1px))",
             "calc(1px) 2px",
         ] {
-            assert_eq!(parse_quantity(text), None, "{text}");
+            assert_eq!(parse_linear_length(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn every_unit_parses_into_its_own_term() {
+        assert_eq!(linear("12px"), LinearLength::px(12.0));
+        assert_eq!(linear("1in"), LinearLength::px(96.0));
+        assert_eq!(linear("2.54cm"), LinearLength::px(96.0));
+        assert_eq!(linear("25.4mm"), LinearLength::px(96.0));
+        assert_eq!(linear("101.6q"), LinearLength::px(96.0));
+        assert_eq!(linear("72pt"), LinearLength::px(96.0));
+        assert_eq!(linear("6pc"), LinearLength::px(96.0));
+        assert_eq!(linear("50%"), LinearLength::percent(0.5));
+        assert_eq!(linear("1.5em"), LinearLength { em: 1.5, ..LinearLength::default() });
+        assert_eq!(linear("2rem"), LinearLength { rem: 2.0, ..LinearLength::default() });
+        assert_eq!(linear("50vw"), LinearLength { vw: 0.5, ..LinearLength::default() });
+        assert_eq!(linear("25vh"), LinearLength { vh: 0.25, ..LinearLength::default() });
+        assert_eq!(linear("10vmin"), LinearLength { vmin: 0.1, ..LinearLength::default() });
+        assert_eq!(linear("75vmax"), LinearLength { vmax: 0.75, ..LinearLength::default() });
+    }
+
+    #[test]
+    fn units_signs_and_whitespace_are_forgiving_where_css_is() {
+        assert_eq!(linear("1EM"), linear("1em"));
+        assert_eq!(linear("5VMIN"), linear("5vmin"));
+        assert_eq!(linear("  12Px "), LinearLength::px(12.0));
+        assert_eq!(linear("-3rem"), LinearLength { rem: -3.0, ..LinearLength::default() });
+        assert_eq!(linear("+.5em"), LinearLength { em: 0.5, ..LinearLength::default() });
+        assert_eq!(linear("CALC( 1PX  +  2Px )"), LinearLength::px(3.0));
+        assert_eq!(linear("0"), LinearLength::px(0.0));
+        assert_eq!(linear("-0.0"), LinearLength::px(0.0));
+        assert_eq!(linear("0%"), LinearLength::percent(0.0));
+    }
+
+    #[test]
+    fn vmin_and_vmax_stay_separate_from_vw_and_vh() {
+        let length = linear("calc(10vmin + 20vmax + 30vw + 40vh)");
+        assert_eq!(length.vmin, 0.1);
+        assert_eq!(length.vmax, 0.2);
+        assert_eq!(length.vw, 0.3);
+        assert_eq!(length.vh, 0.4);
+        assert_eq!(linear("calc(10vmin - 10vmin)").vmin, 0.0);
+    }
+
+    #[test]
+    fn calc_mixes_every_unit_with_plus_and_minus() {
+        let length = linear("calc(100% - 20px)");
+        assert_eq!((length.percent, length.px), (1.0, -20.0));
+        let length = linear("calc(1em + 2rem - 3vw)");
+        assert_eq!((length.em, length.rem, length.vw, length.px), (1.0, 2.0, -0.03, 0.0));
+        assert_eq!(linear("calc(1px + 1em - 1em)").as_px(), Some(1.0));
+    }
+
+    #[test]
+    fn calc_scales_a_mixed_length_by_numbers() {
+        let length = linear("calc(2 * (1em + 4px))");
+        assert_eq!((length.em, length.px), (2.0, 8.0));
+        let length = linear("calc((1em + 4px) * 2)");
+        assert_eq!((length.em, length.px), (2.0, 8.0));
+        assert_eq!(linear("calc(100% / 3)").percent, 1.0 / 3.0);
+        assert_eq!(linear("calc((2em + 6px) / 2)"), linear("calc(1em + 3px)"));
+        assert_eq!(linear("calc(2 * 3 * 1px)"), LinearLength::px(6.0));
+        assert_eq!(linear("calc(calc(1em + calc(2px * 2)) * 2)"), linear("calc(2em + 8px)"));
+        assert_eq!(linear("calc((1 + 2) * 1rem)").rem, 3.0);
+    }
+
+    #[test]
+    fn linear_length_rejects_what_is_not_one_length() {
+        for text in [
+            "",
+            "12",
+            "1.5",
+            "calc(2 * 3)",
+            "calc(0)",
+            "12 px",
+            "12px 4px",
+            "12pxx",
+            "12foo",
+            "1ch",
+            "1fr",
+            "px",
+            "auto",
+            "calc(1 + 2px)",
+            "calc(1px * 2em)",
+            "calc(1px / 0)",
+            "calc(1px / 0px)",
+            "calc(1px) junk",
+            "1px junk",
+        ] {
+            assert_eq!(parse_linear_length(text), None, "{text}");
         }
     }
 
@@ -371,6 +536,10 @@ mod tests {
         assert_eq!(parse_length("-1e300px"), Some(-MAX_LENGTH));
         assert_eq!(parse_length("1e999px"), Some(MAX_LENGTH));
         assert_eq!(parse_length("calc(1e300px * 1e300)"), None);
+        assert_eq!(parse_linear_length("calc(1e300px * 1e300)"), None);
+        let huge = linear("calc(1e300% + 1e300em - 1e300vw)");
+        assert_eq!((huge.percent, huge.em, huge.vw), (MAX_LENGTH, MAX_LENGTH, -MAX_LENGTH));
+        assert_eq!(linear("1e999rem").rem, MAX_LENGTH);
         assert!(f64::from(parse_length("1e300px").unwrap() as f32).is_finite());
     }
 
