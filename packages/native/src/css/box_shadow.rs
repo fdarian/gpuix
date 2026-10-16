@@ -1,7 +1,8 @@
 //! The CSS `box-shadow` string, parsed into the per-layer struct the object
 //! form already uses.
 
-use super::dimension;
+use super::dimension::parse_definite_length;
+use super::length::LinearLength;
 use super::syntax::{split_commas, split_whitespace};
 use crate::style::BoxShadowValue;
 
@@ -11,8 +12,9 @@ const DEFAULT_COLOR: &str = "currentColor";
 /// `None` when the declaration is invalid, which CSS ignores as a whole. An
 /// empty list is the valid `none`.
 ///
-/// Colours are not resolved here: they need the element's `currentColor` and
-/// `colorScheme`, so each layer keeps its colour text for `apply_styles`.
+/// Colours and lengths are not resolved here: they need the element's
+/// `currentColor`, `colorScheme` and font size, so each layer keeps its colour
+/// text and its unresolved lengths for `apply_styles`.
 pub(crate) fn parse(value: &str) -> Option<Vec<BoxShadowValue>> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
@@ -31,12 +33,12 @@ fn parse_layer(layer: &str) -> Option<BoxShadowValue> {
 
     let mut inset = false;
     let mut color: Option<&str> = None;
-    let mut lengths: Vec<f64> = Vec::new();
+    let mut lengths: Vec<LinearLength> = Vec::new();
     // The lengths must be contiguous, so `1px red 2px` is invalid.
     let mut run = Run::NotStarted;
 
     for token in split_whitespace(layer) {
-        if let Some(length) = dimension::parse_length(token) {
+        if let Some(length) = parse_definite_length(token) {
             if run == Run::Closed {
                 return None;
             }
@@ -60,12 +62,12 @@ fn parse_layer(layer: &str) -> Option<BoxShadowValue> {
         return None;
     };
     let (blur_radius, spread_radius) = match rest {
-        [] => (0.0, 0.0),
-        [blur] => (*blur, 0.0),
+        [] => (LinearLength::px(0.0), LinearLength::px(0.0)),
+        [blur] => (*blur, LinearLength::px(0.0)),
         [blur, spread] => (*blur, *spread),
         _ => return None,
     };
-    if blur_radius < 0.0 {
+    if blur_radius.is_negative() {
         return None;
     }
     Some(BoxShadowValue {
@@ -81,6 +83,8 @@ fn parse_layer(layer: &str) -> Option<BoxShadowValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::css::dimension::MAX_LENGTH;
+    use crate::css::length::LengthContext;
 
     fn layer(
         offset_x: f64,
@@ -91,10 +95,10 @@ mod tests {
         inset: bool,
     ) -> BoxShadowValue {
         BoxShadowValue {
-            offset_x,
-            offset_y,
-            blur_radius,
-            spread_radius,
+            offset_x: LinearLength::px(offset_x),
+            offset_y: LinearLength::px(offset_y),
+            blur_radius: LinearLength::px(blur_radius),
+            spread_radius: LinearLength::px(spread_radius),
             color: color.to_owned(),
             inset,
         }
@@ -165,7 +169,11 @@ mod tests {
             "1px 2px red blue",
             "1px red 2px",
             "inset inset 1px 2px",
-            "1em 2em red",
+            "1ch 2ch red",
+            "1px 50% red",
+            "1px 2px 0% red",
+            "1px 2px -1em red",
+            "1px 2px calc(1px + 10%) red",
             "1px 2px red,",
             "red",
         ] {
@@ -184,10 +192,10 @@ mod tests {
             Some(vec![layer(96.0, 0.0, 0.0, 0.0, "red", false)])
         );
         let parsed = parse("1pt 25.4MM 2.54cm 4q red").unwrap();
-        assert!((parsed[0].offset_x - 96.0 / 72.0).abs() < 1e-9);
-        assert!((parsed[0].offset_y - 96.0).abs() < 1e-9);
-        assert!((parsed[0].blur_radius - 96.0).abs() < 1e-9);
-        assert!((parsed[0].spread_radius - 4.0 * 96.0 / 101.6).abs() < 1e-9);
+        assert!((parsed[0].offset_x.as_px().unwrap() - 96.0 / 72.0).abs() < 1e-9);
+        assert!((parsed[0].offset_y.as_px().unwrap() - 96.0).abs() < 1e-9);
+        assert!((parsed[0].blur_radius.as_px().unwrap() - 96.0).abs() < 1e-9);
+        assert!((parsed[0].spread_radius.as_px().unwrap() - 4.0 * 96.0 / 101.6).abs() < 1e-9);
     }
 
     #[test]
@@ -208,17 +216,22 @@ mod tests {
     }
 
     #[test]
-    fn units_without_a_context_are_invalid() {
-        for input in ["1em 1em red", "1rem 0 red", "1vw 0 red", "1vh 0 red"] {
-            assert_eq!(parse(input), None, "{input}");
-        }
+    fn relative_units_stay_unresolved_until_the_element_is_known() {
+        let parsed = parse("1em calc(1rem + 2px) 10vw -1vh red").unwrap();
+        let lengths = LengthContext::for_tests();
+        let px = |length: LinearLength| lengths.resolve_definite(&length).unwrap();
+        assert_eq!(px(parsed[0].offset_x), 20.0);
+        assert_eq!(px(parsed[0].offset_y), 12.0);
+        assert_eq!(px(parsed[0].blur_radius), 80.0);
+        assert_eq!(px(parsed[0].spread_radius), -6.0);
+        assert!(parsed[0].offset_x.as_px().is_none());
     }
 
     #[test]
     fn a_huge_length_clamps_like_a_browser_instead_of_overflowing_f32() {
         let parsed = parse("1e300px -1e999px 1e300px 0 red").unwrap();
-        assert_eq!(parsed[0].offset_x, dimension::MAX_LENGTH);
-        assert_eq!(parsed[0].offset_y, -dimension::MAX_LENGTH);
-        assert!((parsed[0].blur_radius as f32).is_finite());
+        assert_eq!(parsed[0].offset_x, LinearLength::px(MAX_LENGTH));
+        assert_eq!(parsed[0].offset_y, LinearLength::px(-MAX_LENGTH));
+        assert!((parsed[0].blur_radius.as_px().unwrap() as f32).is_finite());
     }
 }

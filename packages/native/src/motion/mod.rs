@@ -2240,8 +2240,8 @@ mod tests {
         let style = style_at(&state, at(started, 0.5));
         let shadows = style.box_shadow.unwrap();
         assert_eq!(shadows.as_slice().len(), 1);
-        assert_eq!(shadows.as_slice()[0].offset_y, 4.0);
-        assert_eq!(shadows.as_slice()[0].blur_radius, 10.0);
+        assert_eq!(shadows.as_slice()[0].offset_y.as_px(), Some(4.0));
+        assert_eq!(shadows.as_slice()[0].blur_radius.as_px(), Some(10.0));
         assert!((rgba(&shadows.as_slice()[0].color)[3] - 0.5).abs() < 0.01);
         assert!(state.frame(at(started, 1.0)).just_settled);
     }
@@ -3831,9 +3831,9 @@ mod tests {
                 Some(crate::style::BoxShadowValues::Many(layers)) => layers,
                 other => panic!("expected a list, got {other:?}"),
             };
-            near(shadows(0.5)[0].blur_radius, 5.0);
+            near(shadows(0.5)[0].blur_radius.as_px().unwrap(), 5.0);
             assert_eq!(shadows(1.5).len(), 2);
-            near(shadows(1.5)[0].blur_radius, 5.0);
+            near(shadows(1.5)[0].blur_radius.as_px().unwrap(), 5.0);
 
             let list = json!({ "animate": { "boxShadow": [layer(1.0), layer(2.0)] } });
             let state = MotionState::new(&list, None, Colors::root(), None, 0, started).unwrap();

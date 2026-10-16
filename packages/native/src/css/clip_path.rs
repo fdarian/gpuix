@@ -7,11 +7,11 @@
 //! `/` in `round` are dropped.
 
 use gpui::{
-    BackgroundBox, BackgroundPosition, ClipPath, ClipShape, InsetRadii, LengthPercentage,
-    ShapeRadius,
+    BackgroundBox, BackgroundPosition, ClipPath, ClipShape, InsetRadii, ShapeRadius,
 };
 
 use super::cache::Cache;
+use super::length::LengthContext;
 use super::position::{parse_box, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
 
@@ -21,11 +21,11 @@ thread_local! {
 
 /// `None` when the declaration is invalid. `Some(None)` is the valid `none`,
 /// which a state style needs in order to clear the base clip path.
-pub(crate) fn parse(value: &str) -> Option<Option<ClipPath>> {
-    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value)))
+pub(crate) fn parse(value: &str, lengths: &LengthContext) -> Option<Option<ClipPath>> {
+    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value, lengths)))
 }
 
-fn parse_uncached(value: &str) -> Option<Option<ClipPath>> {
+fn parse_uncached(value: &str, lengths: &LengthContext) -> Option<Option<ClipPath>> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
         return Some(None);
@@ -37,7 +37,7 @@ fn parse_uncached(value: &str) -> Option<Option<ClipPath>> {
             if reference.replace(parsed).is_some() {
                 return None;
             }
-        } else if shape.replace(parse_shape(token)?).is_some() {
+        } else if shape.replace(parse_shape(token, lengths)?).is_some() {
             return None;
         }
     }
@@ -58,18 +58,18 @@ fn parse_reference_box(token: &str) -> Option<BackgroundBox> {
     }
 }
 
-fn parse_shape(token: &str) -> Option<ClipShape> {
+fn parse_shape(token: &str, lengths: &LengthContext) -> Option<ClipShape> {
     if let Some(args) = function_args(token, "inset") {
-        return parse_inset(args);
+        return parse_inset(args, lengths);
     }
     if let Some(args) = function_args(token, "circle") {
-        return parse_circle(args);
+        return parse_circle(args, lengths);
     }
     if let Some(args) = function_args(token, "ellipse") {
-        return parse_ellipse(args);
+        return parse_ellipse(args, lengths);
     }
     if let Some(args) = function_args(token, "polygon") {
-        return parse_polygon(args);
+        return parse_polygon(args, lengths);
     }
     None
 }
@@ -86,7 +86,7 @@ fn expand_sides<T: Copy>(values: &[T]) -> Option<[T; 4]> {
     })
 }
 
-fn parse_inset(args: &str) -> Option<ClipShape> {
+fn parse_inset(args: &str, lengths: &LengthContext) -> Option<ClipShape> {
     let spaced = args.replace('/', " / ");
     let tokens = split_whitespace(&spaced);
     let round_at = tokens
@@ -96,12 +96,12 @@ fn parse_inset(args: &str) -> Option<ClipShape> {
     let sides = expand_sides(
         &insets
             .iter()
-            .map(|token| parse_length_percentage(token))
+            .map(|token| parse_length_percentage(token, lengths))
             .collect::<Option<Vec<_>>>()?,
     )?;
     let radii = match round_at {
         None => InsetRadii::default(),
-        Some(index) => parse_round(&tokens[index + 1..])?,
+        Some(index) => parse_round(&tokens[index + 1..], lengths)?,
     };
     Some(ClipShape::Inset {
         top: sides[0],
@@ -113,20 +113,20 @@ fn parse_inset(args: &str) -> Option<ClipShape> {
 }
 
 /// `<length-percentage>{1,4}` and, optionally, `/ <length-percentage>{1,4}`.
-fn parse_round(tokens: &[&str]) -> Option<InsetRadii> {
+fn parse_round(tokens: &[&str], lengths: &LengthContext) -> Option<InsetRadii> {
     let horizontal_end = tokens.iter().position(|token| *token == "/");
     let horizontal = &tokens[..horizontal_end.unwrap_or(tokens.len())];
     if let Some(index) = horizontal_end {
         let vertical = tokens[index + 1..]
             .iter()
-            .map(|token| parse_non_negative(token))
+            .map(|token| parse_non_negative(token, lengths))
             .collect::<Option<Vec<_>>>()?;
         expand_sides(&vertical)?;
     }
     let corners = expand_sides(
         &horizontal
             .iter()
-            .map(|token| parse_non_negative(token))
+            .map(|token| parse_non_negative(token, lengths))
             .collect::<Option<Vec<_>>>()?,
     )?;
     Some(InsetRadii {
@@ -137,46 +137,49 @@ fn parse_round(tokens: &[&str]) -> Option<InsetRadii> {
     })
 }
 
-fn parse_shape_radius(token: &str) -> Option<ShapeRadius> {
+fn parse_shape_radius(token: &str, lengths: &LengthContext) -> Option<ShapeRadius> {
     match token.to_ascii_lowercase().as_str() {
         "closest-side" => Some(ShapeRadius::ClosestSide),
         "farthest-side" => Some(ShapeRadius::FarthestSide),
-        _ => parse_non_negative(token).map(ShapeRadius::Length),
+        _ => parse_non_negative(token, lengths).map(ShapeRadius::Length),
     }
 }
 
 /// Splits `<radii> at <position>` into the tokens before and after `at`. The
 /// position is the centre of the reference box when `at` is absent.
-fn split_at_position<'a>(tokens: &'a [&'a str]) -> Option<(&'a [&'a str], BackgroundPosition)> {
+fn split_at_position<'a>(
+    tokens: &'a [&'a str],
+    lengths: &LengthContext,
+) -> Option<(&'a [&'a str], BackgroundPosition)> {
     match tokens.iter().position(|token| token.eq_ignore_ascii_case("at")) {
         None => Some((tokens, BackgroundPosition::CENTER)),
-        Some(index) => Some((&tokens[..index], parse_position(&tokens[index + 1..])?)),
+        Some(index) => Some((&tokens[..index], parse_position(&tokens[index + 1..], lengths)?)),
     }
 }
 
-fn parse_circle(args: &str) -> Option<ClipShape> {
+fn parse_circle(args: &str, lengths: &LengthContext) -> Option<ClipShape> {
     let tokens = split_whitespace(args);
-    let (radii, center) = split_at_position(&tokens)?;
+    let (radii, center) = split_at_position(&tokens, lengths)?;
     let radius = match *radii {
         [] => ShapeRadius::ClosestSide,
-        [one] => parse_shape_radius(one)?,
+        [one] => parse_shape_radius(one, lengths)?,
         _ => return None,
     };
     Some(ClipShape::Circle { radius, center })
 }
 
-fn parse_ellipse(args: &str) -> Option<ClipShape> {
+fn parse_ellipse(args: &str, lengths: &LengthContext) -> Option<ClipShape> {
     let tokens = split_whitespace(args);
-    let (radii, center) = split_at_position(&tokens)?;
+    let (radii, center) = split_at_position(&tokens, lengths)?;
     let (rx, ry) = match *radii {
         [] => (ShapeRadius::ClosestSide, ShapeRadius::ClosestSide),
-        [rx, ry] => (parse_shape_radius(rx)?, parse_shape_radius(ry)?),
+        [rx, ry] => (parse_shape_radius(rx, lengths)?, parse_shape_radius(ry, lengths)?),
         _ => return None,
     };
     Some(ClipShape::Ellipse { rx, ry, center })
 }
 
-fn parse_polygon(args: &str) -> Option<ClipShape> {
+fn parse_polygon(args: &str, lengths: &LengthContext) -> Option<ClipShape> {
     let pieces = split_commas(args);
     let (even_odd, points) = match pieces.first()?.to_ascii_lowercase().as_str() {
         "nonzero" => (false, &pieces[1..]),
@@ -189,7 +192,7 @@ fn parse_polygon(args: &str) -> Option<ClipShape> {
     let points = points
         .iter()
         .map(|point| match *split_whitespace(point) {
-            [x, y] => Some((parse_length_percentage(x)?, parse_length_percentage(y)?)),
+            [x, y] => Some((parse_length_percentage(x, lengths)?, parse_length_percentage(y, lengths)?)),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
@@ -199,7 +202,15 @@ fn parse_polygon(args: &str) -> Option<ClipShape> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{px, BackgroundPositionAxis};
+    use gpui::{px, BackgroundPositionAxis, LengthPercentage};
+
+    fn parse(value: &str) -> Option<Option<ClipPath>> {
+        super::parse(value, &LengthContext::for_tests())
+    }
+
+    fn parse_uncached(value: &str) -> Option<Option<ClipPath>> {
+        super::parse_uncached(value, &LengthContext::for_tests())
+    }
 
     #[test]
     fn a_cached_parse_equals_the_uncached_one() {
@@ -249,7 +260,7 @@ mod tests {
         );
         assert_eq!(parse("inset()"), None);
         assert_eq!(parse("inset(1px 2px 3px 4px 5px)"), None);
-        assert_eq!(parse("inset(1em)"), None);
+        assert_eq!(parse("inset(1ch)"), None);
     }
 
     #[test]
@@ -380,5 +391,44 @@ mod tests {
         assert_eq!(parse("circle (10px)"), None);
         assert_eq!(parse(""), None);
         assert_eq!(parse("none circle()"), None);
+    }
+
+    #[test]
+    fn lengths_resolve_against_the_context() {
+        assert_eq!(
+            shape("inset(1em 2rem calc(10vw + 5%) calc(100% - 1em))"),
+            ClipShape::Inset {
+                top: len(20.0),
+                right: len(20.0),
+                bottom: LengthPercentage::Calc { length: px(80.0), percent: 0.05 },
+                left: LengthPercentage::Calc { length: px(-20.0), percent: 1.0 },
+                radii: InsetRadii::default(),
+            }
+        );
+        assert_eq!(
+            shape("circle(2em at 10vw calc(1rem + 10%))"),
+            ClipShape::Circle {
+                radius: ShapeRadius::Length(len(40.0)),
+                center: BackgroundPosition::new(len(80.0), LengthPercentage::Calc { length: px(10.0), percent: 0.1 }),
+            }
+        );
+        assert_eq!(
+            shape("polygon(0 0, 1em 50%, calc(1em + 10%) 10vh)"),
+            ClipShape::Polygon {
+                even_odd: false,
+                points: vec![
+                    (len(0.0), len(0.0)),
+                    (len(20.0), pct(0.5)),
+                    (LengthPercentage::Calc { length: px(20.0), percent: 0.1 }, len(60.0)),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn a_radius_that_is_negative_in_every_context_is_invalid() {
+        assert_eq!(parse("circle(-1em)"), None);
+        assert_eq!(parse("inset(0 round -1rem)"), None);
+        assert_eq!(parse("inset(0 round calc(-1em - 1px))"), None);
     }
 }

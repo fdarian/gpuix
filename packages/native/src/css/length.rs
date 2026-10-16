@@ -203,6 +203,17 @@ impl LengthContext {
     }
 }
 
+#[cfg(test)]
+impl LengthContext {
+    /// `1em` is 20px, `1rem` 10px and the viewport 800x600, so no unit
+    /// coincides with another or with the initial context.
+    pub(crate) fn for_tests() -> Self {
+        Self::initial(800.0, 600.0)
+            .descend(Some(&LinearLength::px(10.0)), true)
+            .descend(Some(&LinearLength::px(20.0)), false)
+    }
+}
+
 impl fmt::Display for LinearLength {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let terms: Vec<(f64, &str)> = [

@@ -1,28 +1,36 @@
 //! The value types shared by `background-*` longhands and gradients: lengths,
 //! angles, `<position>`, `background-size`, `background-repeat`, boxes.
 
-use super::dimension;
+use super::dimension::{self, parse_linear_length};
+use super::length::LengthContext;
 use gpui::{
     px, BackgroundBox, BackgroundPosition, BackgroundPositionAxis, BackgroundRepeat, BackgroundSize,
     LengthPercentage, RepeatStyle,
 };
 
-/// `12px`, `50%`, a `calc()` of one kind, or the unitless `0`.
-pub(crate) fn parse_length_percentage(token: &str) -> Option<LengthPercentage> {
-    Some(match dimension::parse_length_percentage(token)? {
+/// `12px`, `50%`, `2em`, a `calc()` of them, or the unitless `0`.
+pub(crate) fn parse_length_percentage(token: &str, lengths: &LengthContext) -> Option<LengthPercentage> {
+    Some(match dimension::parse_length_percentage(token, lengths)? {
         dimension::LengthPercentage::Length(length) => LengthPercentage::Length(px(length as f32)),
         dimension::LengthPercentage::Percent(fraction) => LengthPercentage::Percent(fraction as f32),
+        dimension::LengthPercentage::Calc { px: length, percent } => {
+            LengthPercentage::Calc { length: px(length as f32), percent: percent as f32 }
+        }
     })
 }
 
-/// A length or percentage that may not be negative: a radius or a size.
-pub(crate) fn parse_non_negative(token: &str) -> Option<LengthPercentage> {
-    let value = parse_length_percentage(token)?;
-    let amount = match value {
-        LengthPercentage::Length(length) => f32::from(length),
-        LengthPercentage::Percent(fraction) => fraction,
-    };
-    (amount >= 0.0).then_some(value)
+/// A length or percentage that may not be negative: a radius or a size. One
+/// that is negative whatever the context is invalid; a `calc()` that only comes
+/// out negative here is clamped to zero, which a sum of a length and a
+/// percentage cannot be until its basis is known.
+pub(crate) fn parse_non_negative(token: &str, lengths: &LengthContext) -> Option<LengthPercentage> {
+    if parse_linear_length(token)?.is_negative() {
+        return None;
+    }
+    Some(match parse_length_percentage(token, lengths)? {
+        LengthPercentage::Length(length) => LengthPercentage::Length(px(f32::from(length).max(0.0))),
+        value => value,
+    })
 }
 
 /// `90deg`, `0.25turn`, `1.5rad`, `100grad` or the unitless `0`, in degrees.
@@ -62,7 +70,7 @@ fn percent(fraction: f32) -> LengthPercentage {
 }
 
 /// A CSS `<position>`: one to four values, with keywords.
-pub(crate) fn parse_position(tokens: &[&str]) -> Option<BackgroundPosition> {
+pub(crate) fn parse_position(tokens: &[&str], lengths: &LengthContext) -> Option<BackgroundPosition> {
     let center = BackgroundPositionAxis::from_start(percent(0.5));
     let along = |keyword: Keyword, offset: Option<LengthPercentage>| -> Option<BackgroundPositionAxis> {
         Some(match (keyword, offset) {
@@ -83,7 +91,7 @@ pub(crate) fn parse_position(tokens: &[&str]) -> Option<BackgroundPosition> {
             Some(word) if is_vertical(word) => Some(BackgroundPosition { x: center, y: along(word, None)? }),
             Some(word) => Some(BackgroundPosition { x: along(word, None)?, y: center }),
             None => Some(BackgroundPosition {
-                x: BackgroundPositionAxis::from_start(parse_length_percentage(one)?),
+                x: BackgroundPositionAxis::from_start(parse_length_percentage(one, lengths)?),
                 y: center,
             }),
         },
@@ -92,7 +100,7 @@ pub(crate) fn parse_position(tokens: &[&str]) -> Option<BackgroundPosition> {
                 match keyword(token) {
                     Some(word) if vertical != is_vertical(word) && word != Keyword::Center => None,
                     Some(word) => along(word, None),
-                    None => Some(BackgroundPositionAxis::from_start(parse_length_percentage(token)?)),
+                    None => Some(BackgroundPositionAxis::from_start(parse_length_percentage(token, lengths)?)),
                 }
             };
             // `top left` is `left top`: a keyword that can only be vertical comes first.
@@ -110,7 +118,7 @@ pub(crate) fn parse_position(tokens: &[&str]) -> Option<BackgroundPosition> {
             let mut index = 0;
             while index < tokens.len() {
                 let word = keyword(tokens[index])?;
-                let offset = tokens.get(index + 1).and_then(|token| parse_length_percentage(token));
+                let offset = tokens.get(index + 1).and_then(|token| parse_length_percentage(token, lengths));
                 index += if offset.is_some() { 2 } else { 1 };
                 let slot = if is_vertical(word) {
                     &mut y
@@ -132,12 +140,12 @@ pub(crate) fn parse_position(tokens: &[&str]) -> Option<BackgroundPosition> {
 }
 
 /// `background-size`: `auto`, `cover`, `contain`, or one or two sizes.
-pub(crate) fn parse_size(tokens: &[&str]) -> Option<BackgroundSize> {
+pub(crate) fn parse_size(tokens: &[&str], lengths: &LengthContext) -> Option<BackgroundSize> {
     let dimension = |token: &str| -> Option<Option<LengthPercentage>> {
         if token.eq_ignore_ascii_case("auto") {
             Some(None)
         } else {
-            parse_non_negative(token).map(Some)
+            parse_non_negative(token, lengths).map(Some)
         }
     };
     match tokens {
@@ -190,7 +198,11 @@ mod tests {
     use super::*;
 
     fn pos(value: &str) -> Option<BackgroundPosition> {
-        parse_position(&value.split_whitespace().collect::<Vec<_>>())
+        parse_position(&value.split_whitespace().collect::<Vec<_>>(), &LengthContext::for_tests())
+    }
+
+    fn length_percentage(token: &str) -> Option<LengthPercentage> {
+        parse_length_percentage(token, &LengthContext::for_tests())
     }
 
     fn at(x: LengthPercentage, y: LengthPercentage) -> BackgroundPosition {
@@ -199,11 +211,11 @@ mod tests {
 
     #[test]
     fn lengths_percentages_and_angles() {
-        assert_eq!(parse_length_percentage("12px"), Some(LengthPercentage::Length(px(12.0))));
-        assert_eq!(parse_length_percentage("50%"), Some(LengthPercentage::Percent(0.5)));
-        assert_eq!(parse_length_percentage("0"), Some(LengthPercentage::Length(px(0.0))));
-        assert_eq!(parse_length_percentage("12"), None);
-        assert_eq!(parse_length_percentage("12em"), None);
+        assert_eq!(length_percentage("12px"), Some(LengthPercentage::Length(px(12.0))));
+        assert_eq!(length_percentage("50%"), Some(LengthPercentage::Percent(0.5)));
+        assert_eq!(length_percentage("0"), Some(LengthPercentage::Length(px(0.0))));
+        assert_eq!(length_percentage("12"), None);
+        assert_eq!(length_percentage("12ch"), None);
         assert_eq!(parse_angle("90deg"), Some(90.0));
         assert_eq!(parse_angle("0.25turn"), Some(90.0));
         assert_eq!(parse_angle("200grad"), Some(180.0));
@@ -245,18 +257,18 @@ mod tests {
     #[test]
     fn sizes() {
         let tokens = |value: &'static str| value.split_whitespace().collect::<Vec<_>>();
-        assert_eq!(parse_size(&tokens("cover")), Some(BackgroundSize::Cover));
-        assert_eq!(parse_size(&tokens("contain")), Some(BackgroundSize::Contain));
+        assert_eq!(parse_size(&tokens("cover"), &LengthContext::for_tests()), Some(BackgroundSize::Cover));
+        assert_eq!(parse_size(&tokens("contain"), &LengthContext::for_tests()), Some(BackgroundSize::Contain));
         assert_eq!(
-            parse_size(&tokens("20px auto")),
+            parse_size(&tokens("20px auto"), &LengthContext::for_tests()),
             Some(BackgroundSize::Explicit { width: Some(LengthPercentage::Length(px(20.0))), height: None })
         );
         assert_eq!(
-            parse_size(&tokens("50%")),
+            parse_size(&tokens("50%"), &LengthContext::for_tests()),
             Some(BackgroundSize::Explicit { width: Some(LengthPercentage::Percent(0.5)), height: None })
         );
-        assert_eq!(parse_size(&tokens("cover cover")), None);
-        assert_eq!(parse_size(&tokens("1 2")), None);
+        assert_eq!(parse_size(&tokens("cover cover"), &LengthContext::for_tests()), None);
+        assert_eq!(parse_size(&tokens("1 2"), &LengthContext::for_tests()), None);
     }
 
     #[test]
@@ -281,15 +293,51 @@ mod tests {
 
     #[test]
     fn lengths_are_case_insensitive_signed_and_may_be_calc() {
-        assert_eq!(parse_length_percentage("12PX"), Some(LengthPercentage::Length(px(12.0))));
-        assert_eq!(parse_length_percentage("+12Px"), Some(LengthPercentage::Length(px(12.0))));
-        assert_eq!(parse_length_percentage("-0.5in"), Some(LengthPercentage::Length(px(-48.0))));
-        assert_eq!(parse_length_percentage("+50%"), Some(LengthPercentage::Percent(0.5)));
-        assert_eq!(parse_length_percentage("calc(10px + 5px)"), Some(LengthPercentage::Length(px(15.0))));
-        assert_eq!(parse_length_percentage("calc(50% + 25%)"), Some(LengthPercentage::Percent(0.75)));
-        assert_eq!(parse_length_percentage("calc(2 * 10%)"), Some(LengthPercentage::Percent(0.2)));
-        // gpui has no length-plus-percentage value.
-        assert_eq!(parse_length_percentage("calc(50% - 10px)"), None);
-        assert_eq!(parse_length_percentage("12vw"), None);
+        assert_eq!(length_percentage("12PX"), Some(LengthPercentage::Length(px(12.0))));
+        assert_eq!(length_percentage("+12Px"), Some(LengthPercentage::Length(px(12.0))));
+        assert_eq!(length_percentage("-0.5in"), Some(LengthPercentage::Length(px(-48.0))));
+        assert_eq!(length_percentage("+50%"), Some(LengthPercentage::Percent(0.5)));
+        assert_eq!(length_percentage("calc(10px + 5px)"), Some(LengthPercentage::Length(px(15.0))));
+        assert_eq!(length_percentage("calc(50% + 25%)"), Some(LengthPercentage::Percent(0.75)));
+        assert_eq!(length_percentage("calc(2 * 10%)"), Some(LengthPercentage::Percent(0.2)));
+        assert_eq!(
+            length_percentage("calc(50% - 10px)"),
+            Some(LengthPercentage::Calc { length: px(-10.0), percent: 0.5 })
+        );
+    }
+
+    #[test]
+    fn relative_units_resolve_against_the_context() {
+        assert_eq!(length_percentage("2em"), Some(LengthPercentage::Length(px(40.0))));
+        assert_eq!(length_percentage("3rem"), Some(LengthPercentage::Length(px(30.0))));
+        assert_eq!(length_percentage("10vw"), Some(LengthPercentage::Length(px(80.0))));
+        assert_eq!(length_percentage("10vh"), Some(LengthPercentage::Length(px(60.0))));
+        assert_eq!(
+            length_percentage("calc(1em + 10%)"),
+            Some(LengthPercentage::Calc { length: px(20.0), percent: 0.1 })
+        );
+        assert_eq!(
+            parse_position(&["1em", "calc(50% - 1rem)"], &LengthContext::for_tests()),
+            Some(at(
+                LengthPercentage::Length(px(20.0)),
+                LengthPercentage::Calc { length: px(-10.0), percent: 0.5 }
+            ))
+        );
+        let tokens = ["2em", "calc(100% - 10vw)"];
+        assert_eq!(
+            parse_size(&tokens, &LengthContext::for_tests()),
+            Some(BackgroundSize::Explicit {
+                width: Some(LengthPercentage::Length(px(40.0))),
+                height: Some(LengthPercentage::Calc { length: px(-80.0), percent: 1.0 })
+            })
+        );
+    }
+
+    #[test]
+    fn a_size_that_is_negative_in_every_context_is_invalid_and_one_that_is_not_clamps() {
+        let lengths = LengthContext::for_tests();
+        assert_eq!(parse_non_negative("-1em", &lengths), None);
+        assert_eq!(parse_non_negative("calc(1em - 30px)", &lengths), Some(LengthPercentage::Length(px(0.0))));
+        assert_eq!(parse_size(&["calc(-1rem)"], &lengths), None);
     }
 }

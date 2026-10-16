@@ -3,12 +3,11 @@
 //!
 //! [`parse_linear_length`] reads one length of any unit into a
 //! [`LinearLength`], which stays unresolved: `em`, `rem`, `%` and the viewport
-//! units need the element or the window. The other parsers here have no such
-//! context, so they accept only what is already known without one (an absolute
-//! length, a number or a percentage) and treat everything else as invalid
-//! rather than silently wrong.
+//! units need the element or the window. The other parsers here take the
+//! element's [`LengthContext`] and resolve to px, and treat a percentage as
+//! invalid where the consumer has no basis for one.
 
-use super::length::LinearLength;
+use super::length::{LengthContext, LinearLength};
 
 /// The largest length a value may take. Browsers clamp an out-of-range length
 /// instead of rejecting it (Chrome's `LayoutUnit` saturates here), and gpui
@@ -24,7 +23,7 @@ enum Quantity {
 
 /// The kinds of unit a [`Quantity::Linear`] was written with, which `0px`,
 /// `0%` and `0em` all collapse into the same all-zero [`LinearLength`] and the
-/// context-free parsers must still tell apart.
+/// parsers that take only some of the kinds must still tell apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Units {
     absolute: bool,
@@ -97,14 +96,29 @@ pub(crate) fn parse_linear_length(token: &str) -> Option<LinearLength> {
     }
 }
 
-/// A length in px, clamped to [`MAX_LENGTH`]. A bare number is only a length
-/// when it is zero.
-pub(crate) fn parse_length(token: &str) -> Option<f64> {
+/// One length with no percentage, still unresolved. A bare number is only a
+/// length when it is zero, and `0%` is a percentage even though it is zero.
+pub(crate) fn parse_definite_length(token: &str) -> Option<LinearLength> {
     match parse_quantity(token)? {
-        Quantity::Linear(length, Units::ABSOLUTE) => length.as_px().map(clamp_length),
-        Quantity::Number(_) if is_zero_literal(token) => Some(0.0),
+        Quantity::Linear(length, units) if !units.percent => Some(length.clamped()),
+        Quantity::Number(_) if is_zero_literal(token) => Some(LinearLength::default()),
         _ => None,
     }
+}
+
+/// A length in px for a place with no percentage basis (a blur radius, a shadow
+/// offset), resolved against `lengths` and clamped to [`MAX_LENGTH`].
+pub(crate) fn parse_length(token: &str, lengths: &LengthContext) -> Option<f64> {
+    parse_definite_length(token).map(|length| clamp_length(lengths.resolve(&length, 0.0)))
+}
+
+/// [`parse_length`] for a place that takes no negative length. A length that is
+/// negative in any context is invalid, as a literal `-1px` is; one that only
+/// comes out negative here (`calc(1em - 20px)`) is clamped to zero, as CSS clamps
+/// a `calc()` to the range of its property.
+pub(crate) fn parse_non_negative_length(token: &str, lengths: &LengthContext) -> Option<f64> {
+    let length = parse_definite_length(token).filter(|length| !length.is_negative())?;
+    Some(clamp_length(lengths.resolve(&length, 0.0)).max(0.0))
 }
 
 /// `0` written out, the one bare number that is also a length. A `calc()` that
@@ -113,13 +127,23 @@ fn is_zero_literal(token: &str) -> bool {
     split_dimension(token.trim()).is_some_and(|(value, unit)| unit.is_empty() && value == 0.0)
 }
 
-/// A length in px or a percentage as a fraction, for the places that take either.
-pub(crate) fn parse_length_percentage(token: &str) -> Option<LengthPercentage> {
+/// A length in px or a percentage as a fraction, for the places that take
+/// either. A length that mixes the two is the sum of its px and its fraction.
+pub(crate) fn parse_length_percentage(token: &str, lengths: &LengthContext) -> Option<LengthPercentage> {
     match parse_quantity(token)? {
-        Quantity::Linear(length, Units::ABSOLUTE) => length.as_px().map(|px| LengthPercentage::Length(clamp_length(px))),
-        Quantity::Linear(length, Units::PERCENT) => length.as_percent().map(LengthPercentage::Percent),
+        Quantity::Linear(length, units) if !units.percent => {
+            Some(LengthPercentage::Length(clamp_length(lengths.resolve(&length.clamped(), 0.0))))
+        }
+        Quantity::Linear(length, units) => {
+            let (px, percent) = lengths.split(&length.clamped());
+            if units.absolute || units.relative {
+                Some(LengthPercentage::Calc { px: clamp_length(px), percent })
+            } else {
+                Some(LengthPercentage::Percent(percent))
+            }
+        }
         Quantity::Number(_) if is_zero_literal(token) => Some(LengthPercentage::Length(0.0)),
-        _ => None,
+        Quantity::Number(_) => None,
     }
 }
 
@@ -128,13 +152,16 @@ pub(crate) enum LengthPercentage {
     Length(f64),
     /// A fraction: `50%` is `0.5`.
     Percent(f64),
+    /// `px + percent * basis`.
+    Calc { px: f64, percent: f64 },
 }
 
-/// A number, or a percentage as a fraction.
+/// A number, or a percentage as a fraction. A length has no place here, so
+/// there is nothing for a context to resolve.
 pub(crate) fn parse_number_or_percentage(token: &str) -> Option<f64> {
     match parse_quantity(token)? {
         Quantity::Number(value) => Some(value),
-        Quantity::Linear(length, Units::PERCENT) => length.as_percent(),
+        Quantity::Linear(length, units) if units == Units::PERCENT => length.as_percent(),
         Quantity::Linear(..) => None,
     }
 }
@@ -362,51 +389,98 @@ mod tests {
         parse_linear_length(text).unwrap_or_else(|| panic!("{text} should parse"))
     }
 
+    fn context() -> LengthContext {
+        LengthContext::for_tests()
+    }
+
     #[test]
     fn absolute_units_resolve_to_px() {
-        assert_eq!(parse_length("1in"), Some(96.0));
-        assert_eq!(parse_length("1PC"), Some(16.0));
-        assert_eq!(parse_length("2.54cm"), Some(96.0));
-        assert_eq!(parse_length("25.4MM"), Some(96.0));
-        assert_eq!(parse_length("101.6q"), Some(96.0));
-        assert_eq!(parse_length("72pt"), Some(96.0));
-        assert_eq!(parse_length("3PX"), Some(3.0));
+        let lengths = context();
+        assert_eq!(parse_length("1in", &lengths), Some(96.0));
+        assert_eq!(parse_length("1PC", &lengths), Some(16.0));
+        assert_eq!(parse_length("2.54cm", &lengths), Some(96.0));
+        assert_eq!(parse_length("25.4MM", &lengths), Some(96.0));
+        assert_eq!(parse_length("101.6q", &lengths), Some(96.0));
+        assert_eq!(parse_length("72pt", &lengths), Some(96.0));
+        assert_eq!(parse_length("3PX", &lengths), Some(3.0));
         assert_eq!(parse_number_or_percentage("3"), Some(3.0));
         assert_eq!(parse_number_or_percentage("50%"), Some(0.5));
     }
 
     #[test]
-    fn the_context_free_parsers_reject_units_that_need_a_context() {
-        for unit in ["em", "rem", "vw", "vh", "vmin", "vmax", "ch", "fr"] {
-            let text = format!("1{unit}");
-            assert_eq!(parse_length(&text), None, "{unit}");
-            assert_eq!(parse_length_percentage(&text), None, "{unit}");
-            assert_eq!(parse_number_or_percentage(&text), None, "{unit}");
+    fn relative_units_and_calc_resolve_against_the_context() {
+        let lengths = context();
+        assert_eq!(parse_length("1.5em", &lengths), Some(30.0));
+        assert_eq!(parse_length("2rem", &lengths), Some(20.0));
+        assert_eq!(parse_length("10vw", &lengths), Some(80.0));
+        assert_eq!(parse_length("10vh", &lengths), Some(60.0));
+        assert_eq!(parse_length("10vmin", &lengths), Some(60.0));
+        assert_eq!(parse_length("10vmax", &lengths), Some(80.0));
+        assert_eq!(parse_length("calc(1em + 1rem - 4px)", &lengths), Some(26.0));
+        assert_eq!(parse_length("calc(2 * (1em + 5px))", &lengths), Some(50.0));
+        assert_eq!(parse_length("0em", &lengths), Some(0.0));
+        assert_eq!(parse_length("calc(1em - 1em)", &lengths), Some(0.0));
+        assert_eq!(
+            parse_length("1em", &lengths.descend(Some(&LinearLength::px(8.0)), false)),
+            Some(8.0)
+        );
+    }
+
+    #[test]
+    fn a_percentage_has_no_basis_in_a_plain_length() {
+        let lengths = context();
+        for text in ["50%", "0%", "calc(1px + 50%)", "calc(1em + 0%)", "calc(10% - 10%)"] {
+            assert_eq!(parse_length(text, &lengths), None, "{text}");
+            assert_eq!(parse_non_negative_length(text, &lengths), None, "{text}");
         }
-        for text in ["calc(1px + 50%)", "calc(50% + 1px)", "calc(1px + 0%)", "calc(1em - 1em)", "0em", "0%", "0vw"] {
-            assert_eq!(parse_length(text), None, "{text}");
+        for unit in ["ch", "fr", "x"] {
+            assert_eq!(parse_length(&format!("1{unit}"), &lengths), None, "{unit}");
+            assert_eq!(parse_length_percentage(&format!("1{unit}"), &lengths), None, "{unit}");
         }
-        assert_eq!(parse_length_percentage("calc(1px + 50%)"), None);
-        assert_eq!(parse_length_percentage("calc(1px + 0%)"), None);
-        assert_eq!(parse_length_percentage("0em"), None);
+        assert_eq!(parse_number_or_percentage("1em"), None);
         assert_eq!(parse_number_or_percentage("0px"), None);
         assert_eq!(parse_number_or_percentage("calc(50% + 1px)"), None);
     }
 
     #[test]
+    fn a_non_negative_length_clamps_a_calc_and_rejects_a_literal() {
+        let lengths = context();
+        assert_eq!(parse_non_negative_length("2em", &lengths), Some(40.0));
+        assert_eq!(parse_non_negative_length("calc(1em - 30px)", &lengths), Some(0.0));
+        for text in ["-1px", "-0.5em", "calc(-1em - 1px)"] {
+            assert_eq!(parse_non_negative_length(text, &lengths), None, "{text}");
+        }
+    }
+
+    #[test]
     fn length_percentage_tells_a_length_from_a_percentage() {
-        assert_eq!(parse_length_percentage("12px"), Some(LengthPercentage::Length(12.0)));
-        assert_eq!(parse_length_percentage("50%"), Some(LengthPercentage::Percent(0.5)));
-        assert_eq!(parse_length_percentage("0"), Some(LengthPercentage::Length(0.0)));
-        assert_eq!(parse_length_percentage("0%"), Some(LengthPercentage::Percent(0.0)));
-        assert_eq!(parse_length_percentage("calc(100% / 4)"), Some(LengthPercentage::Percent(0.25)));
-        assert_eq!(parse_length_percentage("calc(1in + 24px)"), Some(LengthPercentage::Length(120.0)));
-        assert_eq!(parse_length_percentage("3"), None);
+        let lengths = context();
+        let parse = |text: &str| parse_length_percentage(text, &lengths);
+        assert_eq!(parse("12px"), Some(LengthPercentage::Length(12.0)));
+        assert_eq!(parse("50%"), Some(LengthPercentage::Percent(0.5)));
+        assert_eq!(parse("0"), Some(LengthPercentage::Length(0.0)));
+        assert_eq!(parse("0%"), Some(LengthPercentage::Percent(0.0)));
+        assert_eq!(parse("calc(100% / 4)"), Some(LengthPercentage::Percent(0.25)));
+        assert_eq!(parse("calc(1in + 24px)"), Some(LengthPercentage::Length(120.0)));
+        assert_eq!(parse("3"), None);
+    }
+
+    #[test]
+    fn length_percentage_resolves_relative_units_and_keeps_a_mixed_sum() {
+        let lengths = context();
+        let parse = |text: &str| parse_length_percentage(text, &lengths);
+        assert_eq!(parse("2em"), Some(LengthPercentage::Length(40.0)));
+        assert_eq!(parse("10vw"), Some(LengthPercentage::Length(80.0)));
+        assert_eq!(parse("calc(1em + 10%)"), Some(LengthPercentage::Calc { px: 20.0, percent: 0.1 }));
+        assert_eq!(parse("calc(50% - 10px)"), Some(LengthPercentage::Calc { px: -10.0, percent: 0.5 }));
+        assert_eq!(parse("calc(2 * (1rem + 5%))"), Some(LengthPercentage::Calc { px: 20.0, percent: 0.1 }));
+        assert_eq!(parse("calc(1px + 0%)"), Some(LengthPercentage::Calc { px: 1.0, percent: 0.0 }));
     }
 
     #[test]
     fn calc_follows_operator_precedence_and_nests() {
-        let calc = |text: &str| parse_length(text);
+        let lengths = context();
+        let calc = |text: &str| parse_length(text, &lengths);
         assert_eq!(calc("calc(1px + 2px * 3)"), Some(7.0));
         assert_eq!(calc("calc((1px + 2px) * 3)"), Some(9.0));
         assert_eq!(calc("calc(10px / 4)"), Some(2.5));
@@ -532,23 +606,25 @@ mod tests {
 
     #[test]
     fn lengths_clamp_instead_of_overflowing() {
-        assert_eq!(parse_length("1e300px"), Some(MAX_LENGTH));
-        assert_eq!(parse_length("-1e300px"), Some(-MAX_LENGTH));
-        assert_eq!(parse_length("1e999px"), Some(MAX_LENGTH));
-        assert_eq!(parse_length("calc(1e300px * 1e300)"), None);
+        let lengths = context();
+        assert_eq!(parse_length("1e300px", &lengths), Some(MAX_LENGTH));
+        assert_eq!(parse_length("-1e300px", &lengths), Some(-MAX_LENGTH));
+        assert_eq!(parse_length("1e999px", &lengths), Some(MAX_LENGTH));
+        assert_eq!(parse_length("calc(1e300px * 1e300)", &lengths), None);
         assert_eq!(parse_linear_length("calc(1e300px * 1e300)"), None);
         let huge = linear("calc(1e300% + 1e300em - 1e300vw)");
         assert_eq!((huge.percent, huge.em, huge.vw), (MAX_LENGTH, MAX_LENGTH, -MAX_LENGTH));
         assert_eq!(linear("1e999rem").rem, MAX_LENGTH);
-        assert!(f64::from(parse_length("1e300px").unwrap() as f32).is_finite());
+        assert!(f64::from(parse_length("1e300px", &lengths).unwrap() as f32).is_finite());
     }
 
     #[test]
     fn a_bare_zero_is_a_length_but_a_calc_of_numbers_is_not() {
-        assert_eq!(parse_length("0"), Some(0.0));
-        assert_eq!(parse_length("-0.0"), Some(0.0));
-        assert_eq!(parse_length("4"), None);
-        assert_eq!(parse_length("calc(0)"), None);
-        assert_eq!(parse_length("calc(1 - 1)"), None);
+        let lengths = context();
+        assert_eq!(parse_length("0", &lengths), Some(0.0));
+        assert_eq!(parse_length("-0.0", &lengths), Some(0.0));
+        assert_eq!(parse_length("4", &lengths), None);
+        assert_eq!(parse_length("calc(0)", &lengths), None);
+        assert_eq!(parse_length("calc(1 - 1)", &lengths), None);
     }
 }

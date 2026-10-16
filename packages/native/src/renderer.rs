@@ -7931,7 +7931,7 @@ pub(crate) fn apply_state_styles<E: gpui::Styled>(
     colors: &crate::color::ColorContext,
     lengths: &LengthContext,
 ) -> E {
-    if let Some(followers) = base.colors_following_current(state) {
+    if let Some(followers) = base.colors_following_current(state, lengths) {
         refinement = apply_styles(refinement, &followers, colors, lengths);
     }
     apply_styles(refinement, state, colors, lengths)
@@ -7947,11 +7947,11 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
     colors: &crate::color::ColorContext,
     lengths: &LengthContext,
 ) -> E {
-    let fill = style.resolved_fill(colors);
+    let fill = style.resolved_fill(colors, lengths);
     apply_styles_with_fill(el, style, colors, lengths, fill)
 }
 
-/// `fill` must be `style.resolved_fill(colors)`.
+/// `fill` must be `style.resolved_fill(colors, lengths)`.
 pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
@@ -8136,13 +8136,14 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
                 let color = colors.resolve(&shadow.color)?;
                 // The CSS blur radius is two standard deviations; gpui's shadow
                 // shaders take the standard deviation itself.
+                let length = |length: &crate::css::length::LinearLength| lengths.resolve(length, 0.0);
                 let built = gpui::BoxShadow::new(
-                    gpui::px(shadow.offset_x as f32),
-                    gpui::px(shadow.offset_y as f32),
+                    gpui::px(length(&shadow.offset_x) as f32),
+                    gpui::px(length(&shadow.offset_y) as f32),
                     color.into(),
                 )
-                .blur_radius(gpui::px((shadow.blur_radius.max(0.0) / 2.0) as f32))
-                .spread_radius(gpui::px(shadow.spread_radius as f32));
+                .blur_radius(gpui::px((length(&shadow.blur_radius).max(0.0) / 2.0) as f32))
+                .spread_radius(gpui::px(length(&shadow.spread_radius) as f32));
                 Some(if shadow.inset { built.inset() } else { built })
             })
             .collect();
@@ -8165,25 +8166,25 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(filters) = style
         .filter
         .as_deref()
-        .and_then(|value| crate::css::filter::parse_resolved(value, colors))
+        .and_then(|value| crate::css::filter::parse_resolved(value, colors, lengths))
     {
         el.style().filter = Some(filters);
     }
     if let Some(filters) = style
         .backdrop_filter
         .as_deref()
-        .and_then(|value| crate::css::filter::parse_resolved(value, colors))
+        .and_then(|value| crate::css::filter::parse_resolved(value, colors, lengths))
     {
         el.style().backdrop_filter = Some(filters);
     }
-    if let Some(layers) = style.resolved_mask(colors) {
+    if let Some(layers) = style.resolved_mask(colors, lengths) {
         el.style().mask_layers = Some(layers);
     }
     // `Some(None)` is `none`, which a state style needs in order to clear the base clip path.
     if let Some(clip_path) = style
         .clip_path
         .as_deref()
-        .and_then(crate::css::clip_path::parse)
+        .and_then(|value| crate::css::clip_path::parse(value, lengths))
     {
         el.style().clip_path = Some(clip_path.into());
     }
@@ -10870,6 +10871,91 @@ mod dimension_length_tests {
         );
         let outline = refinement.outline.expect("the outline is applied");
         assert_eq!((outline.width, outline.offset), (gpui::px(2.0), gpui::px(11.0)));
+    }
+
+    fn refine_in_20px_font(style: &str) -> gpui::StyleRefinement {
+        let style: StyleDesc = serde_json::from_str(style).unwrap();
+        let lengths = LengthContext::initial(800.0, 600.0)
+            .descend(Some(&crate::css::length::LinearLength::px(10.0)), true)
+            .descend(Some(&crate::css::length::LinearLength::px(20.0)), false);
+        apply_styles(
+            gpui::StyleRefinement::default(),
+            &style,
+            &crate::color::ColorContext::root(crate::color::Scheme::Light),
+            &lengths,
+        )
+    }
+
+    #[test]
+    fn string_values_resolve_in_the_elements_font_size_and_the_viewport() {
+        let refinement = refine_in_20px_font(
+            r#"{
+                "boxShadow": "0 0 1em red, 1rem -10vh 0 2px blue",
+                "filter": "blur(0.5em) drop-shadow(1em 0 calc(1rem + 2px) red)",
+                "backgroundImage": "linear-gradient(red calc(1em + 10%), blue 2rem)",
+                "backgroundSize": "calc(100% - 1em) 3rem",
+                "backgroundPosition": "1em 10vw",
+                "clipPath": "inset(1em calc(2rem + 5%))"
+            }"#,
+        );
+
+        // CSS paints the first shadow on top, so gpui has them reversed, and takes half the blur.
+        let shadows = refinement.box_shadow.expect("the shadows are applied");
+        assert_eq!(shadows.len(), 2);
+        assert_eq!((shadows[0].offset.x, shadows[0].offset.y), (gpui::px(10.0), gpui::px(-60.0)));
+        assert_eq!(shadows[0].spread_radius, gpui::px(2.0));
+        assert_eq!(shadows[1].blur_radius, gpui::px(10.0));
+
+        let filters = refinement.filter.expect("the filter is applied");
+        assert_eq!(filters[0], gpui::FilterFunction::Blur(gpui::px(10.0)));
+        let gpui::FilterFunction::DropShadow { offset, blur, .. } = filters[1] else {
+            panic!("not a drop shadow");
+        };
+        assert_eq!((offset.x, blur), (gpui::px(20.0), gpui::px(12.0)));
+
+        let layers = refinement.background_layers.expect("the layers are applied");
+        let gpui::BackgroundImage::Gradient(gradient) = &layers[0].image;
+        let positions: Vec<_> = gradient
+            .items
+            .iter()
+            .map(|item| match item {
+                gpui::GradientItem::Stop(stop) => stop.position,
+                gpui::GradientItem::Hint(_) => panic!("a hint"),
+            })
+            .collect();
+        assert_eq!(
+            positions,
+            vec![
+                Some(gpui::StopPosition::Calc { length: gpui::px(20.0), fraction: 0.1 }),
+                Some(gpui::StopPosition::Length(gpui::px(20.0))),
+            ]
+        );
+        assert_eq!(
+            layers[0].size,
+            gpui::BackgroundSize::Explicit {
+                width: Some(gpui::LengthPercentage::Calc { length: gpui::px(-20.0), percent: 1.0 }),
+                height: Some(gpui::LengthPercentage::Length(gpui::px(30.0))),
+            }
+        );
+        assert_eq!(layers[0].position.x.offset, gpui::LengthPercentage::Length(gpui::px(20.0)));
+        assert_eq!(layers[0].position.y.offset, gpui::LengthPercentage::Length(gpui::px(80.0)));
+
+        let clip_path = refinement.clip_path.expect("the clip path is applied");
+        let gpui::ClipShape::Inset { top, right, .. } = clip_path.shape().expect("a shape").shape else {
+            panic!("not an inset");
+        };
+        assert_eq!(top, gpui::LengthPercentage::Length(gpui::px(20.0)));
+        assert_eq!(right, gpui::LengthPercentage::Calc { length: gpui::px(20.0), percent: 0.05 });
+    }
+
+    #[test]
+    fn a_percentage_where_a_value_has_no_basis_leaves_it_unapplied() {
+        let refinement = refine_in_20px_font(
+            r#"{"boxShadow": "10% 0 red", "filter": "blur(calc(1em + 10%))", "clipPath": "inset(1ch)"}"#,
+        );
+        assert!(refinement.box_shadow.is_none());
+        assert!(refinement.filter.is_none());
+        assert!(refinement.clip_path.is_none());
     }
 
     #[gpui::test]

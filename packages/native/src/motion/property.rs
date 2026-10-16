@@ -154,7 +154,7 @@ impl Field for Option<FontWeightValue> {
 
 impl Field for Option<BoxShadowValues> {
     fn read(&self, colors: &ColorContext) -> Option<AnimValue> {
-        shadows_from(self.as_ref()?.as_slice(), colors)
+        shadows_from("boxShadow", self.as_ref()?.as_slice(), colors)
             .ok()
             .map(AnimValue::Shadows)
     }
@@ -204,17 +204,30 @@ fn font_weight(value: &FontWeightValue) -> f64 {
 
 /// Reads the parsed per-layer structs, so every spelling `boxShadow` accepts
 /// (single, list, and whatever string forms are added) animates the same way.
-fn shadows_from(layers: &[BoxShadowValue], colors: &ColorContext) -> Result<Vec<Shadow>, String> {
+fn shadows_from(
+    name: &str,
+    layers: &[BoxShadowValue],
+    colors: &ColorContext,
+) -> Result<Vec<Shadow>, String> {
+    let px = |length: LinearLength| {
+        length.as_px().ok_or_else(|| {
+            format!(
+                "motion cannot animate {name} to or from a CSS length: only a number of px, \
+                 because calc(), em, rem and the viewport units are resolved against the \
+                 element and the window when the tree is applied"
+            )
+        })
+    };
     layers
         .iter()
         .map(|layer| {
             let color = Color::parse(&layer.color, colors)
-                .ok_or_else(|| format!("motion boxShadow has an invalid colour: {}", layer.color))?;
+                .ok_or_else(|| format!("motion {name} has an invalid colour: {}", layer.color))?;
             Ok(Shadow {
-                offset_x: layer.offset_x,
-                offset_y: layer.offset_y,
-                blur: layer.blur_radius,
-                spread: layer.spread_radius,
+                offset_x: px(layer.offset_x)?,
+                offset_y: px(layer.offset_y)?,
+                blur: px(layer.blur_radius)?,
+                spread: px(layer.spread_radius)?,
                 color,
                 inset: layer.inset,
             })
@@ -646,20 +659,11 @@ pub(super) fn parse_shadow_list(
 ) -> Result<Vec<Shadow>, String> {
     let shadows: BoxShadowValues = serde_json::from_value(value.clone())
         .map_err(|error| format!("motion {name}: {error}"))?;
-    for layer in shadows.as_slice() {
-        for number in [
-            layer.offset_x,
-            layer.offset_y,
-            layer.blur_radius,
-            layer.spread_radius,
-        ] {
-            check_finite(name, number)?;
-        }
-        if layer.blur_radius < 0.0 {
-            return Err(format!("motion {name} blur must be non-negative"));
-        }
+    let shadows = shadows_from(name, shadows.as_slice(), colors)?;
+    if shadows.iter().any(|shadow| shadow.blur < 0.0) {
+        return Err(format!("motion {name} blur must be non-negative"));
     }
-    shadows_from(shadows.as_slice(), colors)
+    Ok(shadows)
 }
 
 pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
@@ -667,10 +671,10 @@ pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
         shadows
             .into_iter()
             .map(|shadow| BoxShadowValue {
-                offset_x: shadow.offset_x,
-                offset_y: shadow.offset_y,
-                blur_radius: shadow.blur,
-                spread_radius: shadow.spread,
+                offset_x: LinearLength::px(shadow.offset_x),
+                offset_y: LinearLength::px(shadow.offset_y),
+                blur_radius: LinearLength::px(shadow.blur),
+                spread_radius: LinearLength::px(shadow.spread),
                 color: shadow.color.to_css(),
                 inset: shadow.inset,
             })
@@ -761,6 +765,29 @@ mod tests {
         let error = AnimProp::FontSize.parse(&serde_json::json!("2em"), &colors).unwrap_err();
         assert!(error.starts_with("motion cannot animate fontSize to or from a CSS length"), "{error}");
         assert!(AnimProp::FontSize.parse(&serde_json::json!(-1), &colors).is_err());
+    }
+
+    #[test]
+    fn a_box_shadow_animates_px_and_says_why_a_css_length_does_not() {
+        let colors = Colors::root();
+        let target = |value: serde_json::Value| AnimProp::BoxShadow.parse(&value, &colors);
+        assert!(matches!(target(serde_json::json!("0 2px 4px red")), Ok(AnimValue::Shadows(_))));
+        assert!(matches!(
+            target(serde_json::json!({"offsetX": 0, "offsetY": 2, "blurRadius": "4px", "spreadRadius": 0, "color": "red"})),
+            Ok(AnimValue::Shadows(_))
+        ));
+        for shadow in ["0 0 1em red", "calc(1px + 1rem) 0 red", "0 0 0 5vw red"] {
+            let error = target(serde_json::json!(shadow)).unwrap_err();
+            assert!(error.starts_with("motion cannot animate boxShadow to or from a CSS length"), "{error}");
+        }
+        assert!(target(serde_json::json!("10% 0 red")).is_err());
+
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::BoxShadow.read(&style, &colors)
+        };
+        assert!(matches!(read(r#"{ "boxShadow": "0 2px 4px red" }"#), Some(AnimValue::Shadows(_))));
+        assert_eq!(read(r#"{ "boxShadow": "0 0 1em red" }"#), None);
     }
 
     #[test]

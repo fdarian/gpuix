@@ -2,11 +2,12 @@
 //! `repeating-` forms, parsed into gpui's `Gradient`.
 
 use gpui::{
-    px, BackgroundPosition, ColorSpace, Gradient, GradientItem, GradientShape, GradientStop,
+    BackgroundPosition, ColorSpace, Gradient, GradientItem, GradientShape, GradientStop,
     LengthPercentage, LinearDirection, RadialShape, RadialSize, StopPosition,
 };
 
 use super::cache::ColorCache;
+use super::length::LengthContext;
 use super::position::{parse_angle, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
 use crate::color::ColorContext;
@@ -48,12 +49,20 @@ thread_local! {
 }
 
 /// Parses one gradient. Colours resolve against `colors`, so `currentColor`,
-/// `light-dark()` and `color-mix()` work in stops.
-pub(crate) fn parse(value: &str, colors: &ColorContext) -> Result<Gradient, GradientError> {
-    CACHE.with(|cache| cache.get_or_parse(value, colors, || parse_uncached(value, colors)))
+/// `light-dark()` and `color-mix()` work in stops, and lengths against `lengths`.
+pub(crate) fn parse(
+    value: &str,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> Result<Gradient, GradientError> {
+    CACHE.with(|cache| cache.get_or_parse(value, colors, || parse_uncached(value, colors, lengths)))
 }
 
-pub(super) fn parse_uncached(value: &str, colors: &ColorContext) -> Result<Gradient, GradientError> {
+pub(super) fn parse_uncached(
+    value: &str,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> Result<Gradient, GradientError> {
     let (args, kind, repeating) = FUNCTIONS
         .iter()
         .find_map(|(name, kind, repeating)| {
@@ -63,11 +72,11 @@ pub(super) fn parse_uncached(value: &str, colors: &ColorContext) -> Result<Gradi
 
     let pieces = split_commas(args);
     let (header, stops) = match pieces.split_first() {
-        Some((first, rest)) if is_header(first, kind) => (*first, rest),
+        Some((first, rest)) if is_header(first, kind, lengths) => (*first, rest),
         _ => ("", pieces.as_slice()),
     };
-    let (shape, color_space) = parse_header(header, kind)?;
-    let items = parse_stops(stops, kind, colors)?;
+    let (shape, color_space) = parse_header(header, kind, lengths)?;
+    let items = parse_stops(stops, kind, colors, lengths)?;
 
     let stop_count = items
         .iter()
@@ -107,15 +116,17 @@ enum Placed {
 }
 
 impl Placed {
-    fn of(position: StopPosition, kind: Kind) -> Self {
-        match position {
+    /// `None` for a sum of a length and a fraction, which is in no one unit.
+    fn of(position: StopPosition, kind: Kind) -> Option<Self> {
+        Some(match position {
             StopPosition::Fraction(fraction) if kind == Kind::Conic => {
                 Self::Angle(f64::from(fraction) * 360.0)
             }
             StopPosition::Fraction(fraction) => Self::Fraction(f64::from(fraction)),
             StopPosition::Length(length) => Self::Length(f64::from(f32::from(length))),
+            StopPosition::Calc { .. } => return None,
             StopPosition::Angle(degrees) => Self::Angle(f64::from(degrees)),
-        }
+        })
     }
 
     fn parts(self) -> (u8, f64) {
@@ -162,10 +173,13 @@ fn zero_length_average(items: &[GradientItem], kind: Kind) -> Option<GradientSto
         _ => Placed::Fraction(1.0),
     };
     // The first stop defaults to the start of the line, which is zero in any unit.
-    let start = first.position.map_or(Placed::Length(0.0), |position| Placed::of(position, kind));
+    let start = match first.position {
+        Some(position) => Placed::of(position, kind)?,
+        None => Placed::Length(0.0),
+    };
     for (index, stop) in rest.iter().enumerate() {
         let position = match (stop.position, index + 1 == rest.len()) {
-            (Some(position), _) => Placed::of(position, kind),
+            (Some(position), _) => Placed::of(position, kind)?,
             (None, true) => last_default,
             // Stops between the first and the last sit between them.
             (None, false) => continue,
@@ -194,7 +208,7 @@ fn zero_length_average(items: &[GradientItem], kind: Kind) -> Option<GradientSto
     Some(GradientStop { color: average.into(), position: None })
 }
 
-fn is_header(first: &str, kind: Kind) -> bool {
+fn is_header(first: &str, kind: Kind, lengths: &LengthContext) -> bool {
     let Some(word) = split_whitespace(first).first().map(|word| word.to_ascii_lowercase()) else {
         return false;
     };
@@ -207,13 +221,17 @@ fn is_header(first: &str, kind: Kind) -> bool {
             matches!(
                 word.as_str(),
                 "circle" | "ellipse" | "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"
-            ) || parse_length_percentage(&word).is_some()
+            ) || parse_length_percentage(&word, lengths).is_some()
         }
         Kind::Conic => word == "from",
     }
 }
 
-fn parse_header(header: &str, kind: Kind) -> Result<(GradientShape, ColorSpace), GradientError> {
+fn parse_header(
+    header: &str,
+    kind: Kind,
+    lengths: &LengthContext,
+) -> Result<(GradientShape, ColorSpace), GradientError> {
     let tokens = split_whitespace(header);
     let mut color_space = ColorSpace::Srgb;
     let mut position_tokens: Option<Vec<&str>> = None;
@@ -251,7 +269,7 @@ fn parse_header(header: &str, kind: Kind) -> Result<(GradientShape, ColorSpace),
         }
     }
     let position = match &position_tokens {
-        Some(tokens) => parse_position(tokens).ok_or(GradientError::Invalid)?,
+        Some(tokens) => parse_position(tokens, lengths).ok_or(GradientError::Invalid)?,
         None => BackgroundPosition::CENTER,
     };
 
@@ -263,7 +281,7 @@ fn parse_header(header: &str, kind: Kind) -> Result<(GradientShape, ColorSpace),
             GradientShape::Linear(parse_direction(&rest)?)
         }
         Kind::Radial => {
-            let (shape, size) = parse_radial_size(&rest)?;
+            let (shape, size) = parse_radial_size(&rest, lengths)?;
             GradientShape::Radial { shape, size, position }
         }
         Kind::Conic => {
@@ -298,10 +316,13 @@ fn parse_direction(tokens: &[&str]) -> Result<LinearDirection, GradientError> {
     })
 }
 
-fn parse_radial_size(tokens: &[&str]) -> Result<(RadialShape, RadialSize), GradientError> {
+fn parse_radial_size(
+    tokens: &[&str],
+    lengths: &LengthContext,
+) -> Result<(RadialShape, RadialSize), GradientError> {
     let mut shape = None;
     let mut keyword = None;
-    let mut lengths: Vec<LengthPercentage> = Vec::new();
+    let mut radii: Vec<LengthPercentage> = Vec::new();
     for token in tokens {
         match token.to_ascii_lowercase().as_str() {
             "circle" => {
@@ -325,16 +346,16 @@ fn parse_radial_size(tokens: &[&str]) -> Result<(RadialShape, RadialSize), Gradi
                     return Err(GradientError::Invalid);
                 }
             }
-            _ => lengths.push(parse_non_negative(token).ok_or(GradientError::Invalid)?),
+            _ => radii.push(parse_non_negative(token, lengths).ok_or(GradientError::Invalid)?),
         }
     }
-    if keyword.is_some() && !lengths.is_empty() {
+    if keyword.is_some() && !radii.is_empty() {
         return Err(GradientError::Invalid);
     }
     if let Some(size) = keyword {
         return Ok((shape.unwrap_or(RadialShape::Ellipse), size));
     }
-    match (lengths.as_slice(), shape) {
+    match (radii.as_slice(), shape) {
         ([], shape) => Ok((shape.unwrap_or(RadialShape::Ellipse), RadialSize::FarthestCorner)),
         // A circle's radius is a length, never a percentage.
         ([radius @ LengthPercentage::Length(_)], None | Some(RadialShape::Circle)) => {
@@ -347,17 +368,20 @@ fn parse_radial_size(tokens: &[&str]) -> Result<(RadialShape, RadialSize), Gradi
     }
 }
 
-fn parse_stop_position(token: &str, kind: Kind) -> Option<StopPosition> {
+fn parse_stop_position(token: &str, kind: Kind, lengths: &LengthContext) -> Option<StopPosition> {
     if kind == Kind::Conic {
         if let Some(angle) = parse_angle(token) {
             // `0` alone is an angle here, but `0%` is a fraction.
             return Some(StopPosition::Angle(angle));
         }
     }
-    match parse_length_percentage(token)? {
+    match parse_length_percentage(token, lengths)? {
         LengthPercentage::Percent(fraction) => Some(StopPosition::Fraction(fraction)),
         LengthPercentage::Length(length) if kind != Kind::Conic => Some(StopPosition::Length(length)),
-        LengthPercentage::Length(_) => None,
+        LengthPercentage::Calc { length, percent } if kind != Kind::Conic => {
+            Some(StopPosition::Calc { length, fraction: percent })
+        }
+        LengthPercentage::Length(_) | LengthPercentage::Calc { .. } => None,
     }
 }
 
@@ -365,6 +389,7 @@ fn parse_stops(
     pieces: &[&str],
     kind: Kind,
     colors: &ColorContext,
+    lengths: &LengthContext,
 ) -> Result<Vec<GradientItem>, GradientError> {
     let mut items = Vec::new();
     for piece in pieces {
@@ -372,7 +397,7 @@ fn parse_stops(
         let (color_token, positions) = tokens.split_first().ok_or(GradientError::Invalid)?;
         // A lone position is a colour hint.
         if positions.is_empty() && colors.resolve(color_token).is_none() {
-            let position = parse_stop_position(color_token, kind).ok_or(GradientError::Invalid)?;
+            let position = parse_stop_position(color_token, kind, lengths).ok_or(GradientError::Invalid)?;
             // A hint sits between two stops, so two in a row have none between them.
             if matches!(items.last(), Some(GradientItem::Hint(_))) {
                 return Err(GradientError::Invalid);
@@ -383,10 +408,10 @@ fn parse_stops(
         let color = colors.resolve(color_token).ok_or(GradientError::Invalid)?;
         let positions: Vec<Option<StopPosition>> = match positions {
             [] => vec![None],
-            [one] => vec![Some(parse_stop_position(one, kind).ok_or(GradientError::Invalid)?)],
+            [one] => vec![Some(parse_stop_position(one, kind, lengths).ok_or(GradientError::Invalid)?)],
             [first, second] => vec![
-                Some(parse_stop_position(first, kind).ok_or(GradientError::Invalid)?),
-                Some(parse_stop_position(second, kind).ok_or(GradientError::Invalid)?),
+                Some(parse_stop_position(first, kind, lengths).ok_or(GradientError::Invalid)?),
+                Some(parse_stop_position(second, kind, lengths).ok_or(GradientError::Invalid)?),
             ],
             _ => return Err(GradientError::Invalid),
         };
@@ -403,6 +428,7 @@ fn parse_stops(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::px;
     use crate::color::Scheme;
 
     fn colors(scheme: Scheme, current: f32) -> ColorContext {
@@ -423,9 +449,9 @@ mod tests {
             "linear-gradient(red)",
             "not-a-gradient(red, blue)",
         ] {
-            let uncached = parse_uncached(value, &context);
-            assert_eq!(parse(value, &context), uncached, "{value}");
-            assert_eq!(parse(value, &context), uncached, "{value} on a hit");
+            let uncached = parse_uncached(value, &context, &LengthContext::for_tests());
+            assert_eq!(parse(value, &context, &LengthContext::for_tests()), uncached, "{value}");
+            assert_eq!(parse(value, &context, &LengthContext::for_tests()), uncached, "{value} on a hit");
         }
     }
 
@@ -446,12 +472,12 @@ mod tests {
             // Twice, so every context is also read back from a hit.
             for _ in 0..2 {
                 for context in &contexts {
-                    assert_eq!(parse(value, context), parse_uncached(value, context), "{value}");
+                    assert_eq!(parse(value, context, &LengthContext::for_tests()), parse_uncached(value, context, &LengthContext::for_tests()), "{value}");
                 }
             }
             let distinct = contexts
                 .iter()
-                .map(|context| parse(value, context).unwrap())
+                .map(|context| parse(value, context, &LengthContext::for_tests()).unwrap())
                 .fold(Vec::<Gradient>::new(), |mut seen, gradient| {
                     if !seen.contains(&gradient) {
                         seen.push(gradient);
@@ -463,11 +489,11 @@ mod tests {
     }
 
     fn parsed(value: &str) -> Gradient {
-        parse(value, &ColorContext::root(Scheme::Light)).unwrap_or_else(|error| panic!("{value}: {error:?}"))
+        parse(value, &ColorContext::root(Scheme::Light), &LengthContext::for_tests()).unwrap_or_else(|error| panic!("{value}: {error:?}"))
     }
 
     fn error(value: &str) -> GradientError {
-        parse(value, &ColorContext::root(Scheme::Light)).unwrap_err()
+        parse(value, &ColorContext::root(Scheme::Light), &LengthContext::for_tests()).unwrap_err()
     }
 
     fn stop(item: &GradientItem) -> (f32, Option<StopPosition>) {
@@ -514,6 +540,42 @@ mod tests {
     }
 
     #[test]
+    fn stop_and_radius_lengths_use_the_element_context() {
+        let gradient = parsed("linear-gradient(red 2em, blue calc(1rem + 10%), green 10vw)");
+        let positions: Vec<_> = gradient.items.iter().map(|item| stop(item).1).collect();
+        assert_eq!(
+            positions,
+            vec![
+                Some(StopPosition::Length(px(40.0))),
+                Some(StopPosition::Calc { length: px(10.0), fraction: 0.1 }),
+                Some(StopPosition::Length(px(80.0))),
+            ]
+        );
+        let hint = parsed("linear-gradient(red, calc(1em + 25%), blue)");
+        assert_eq!(hint.items[1], GradientItem::Hint(StopPosition::Calc { length: px(20.0), fraction: 0.25 }));
+        let GradientShape::Radial { size, .. } = parsed("radial-gradient(circle 1em at 2rem 10vh, red, blue)").shape
+        else {
+            panic!("not radial");
+        };
+        assert_eq!(size, RadialSize::Explicit { x: LengthPercentage::Length(px(20.0)), y: LengthPercentage::Length(px(20.0)) });
+        // A sum with a fraction is no length for a circle's radius, nor a position in a conic gradient.
+        for value in [
+            "radial-gradient(circle calc(1em + 10%), red, blue)",
+            "conic-gradient(red calc(1em + 10%), blue)",
+            "conic-gradient(red 1em, blue)",
+        ] {
+            assert_eq!(error(value), GradientError::Invalid, "{value}");
+        }
+    }
+
+    #[test]
+    fn a_repeating_gradient_with_a_sum_for_a_position_is_left_to_gpui() {
+        let gradient = parsed("repeating-linear-gradient(red 0, blue calc(1em + 10%))");
+        assert_eq!(gradient.items.len(), 2);
+        assert_eq!(stop(&gradient.items[1]).1, Some(StopPosition::Calc { length: px(20.0), fraction: 0.1 }));
+    }
+
+    #[test]
     fn stop_colours_use_the_element_context() {
         let mut context = ColorContext::root(Scheme::Dark);
         context.scheme = Scheme::Dark;
@@ -521,6 +583,7 @@ mod tests {
         let gradient = parse(
             "linear-gradient(currentColor, light-dark(red, green), color-mix(in srgb, red, red))",
             &context,
+            &LengthContext::for_tests(),
         )
         .unwrap();
         let hues: Vec<f32> = gradient.items.iter().map(|item| stop(item).0).collect();
@@ -597,7 +660,7 @@ mod tests {
             "image(red)",
         ] {
             assert_eq!(
-                parse(value, &ColorContext::root(Scheme::Light)).err(),
+                parse(value, &ColorContext::root(Scheme::Light), &LengthContext::for_tests()).err(),
                 Some(GradientError::Invalid),
                 "{value}"
             );

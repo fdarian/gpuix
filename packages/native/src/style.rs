@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::css::dimension::parse_linear_length;
-use crate::css::length::LinearLength;
+use crate::css::length::{LengthContext, LinearLength};
 use crate::layout::grid_values::{
     GridAreaValue, GridAutoTracks, GridLinePairValue, GridLineValue, GridTemplateAreasValue,
     GridTemplateValue,
@@ -19,10 +19,14 @@ pub enum FontWeightValue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoxShadowValue {
-    pub offset_x: f64,
-    pub offset_y: f64,
-    pub blur_radius: f64,
-    pub spread_radius: f64,
+    #[serde(deserialize_with = "deserialize_shadow_length")]
+    pub offset_x: LinearLength,
+    #[serde(deserialize_with = "deserialize_shadow_length")]
+    pub offset_y: LinearLength,
+    #[serde(deserialize_with = "deserialize_shadow_length")]
+    pub blur_radius: LinearLength,
+    #[serde(deserialize_with = "deserialize_shadow_length")]
+    pub spread_radius: LinearLength,
     pub color: String,
     /// Draws inside the border box instead of around it, like CSS `inset`.
     #[serde(default)]
@@ -72,6 +76,15 @@ fn deserialize_box_shadow<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<BoxShadowValues>, D::Error> {
     Ok(Option::<BoxShadowInput>::deserialize(deserializer)?.and_then(BoxShadowInput::into_values))
+}
+
+fn deserialize_shadow_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LinearLength, D::Error> {
+    crate::css::length::deserialize_with(
+        deserializer,
+        "box shadow length",
+        "a CSS length without %",
+        crate::css::dimension::parse_definite_length,
+    )
 }
 
 /// `Option<LinearLength>` with a narrower grammar than a plain length.
@@ -640,7 +653,11 @@ impl StyleDesc {
     /// The colour declarations of this style that mention `currentColor` and
     /// that `state` does not set itself. A state that changes `color` repaints
     /// them, because in CSS the keyword follows the element's colour.
-    pub(crate) fn colors_following_current(&self, state: &StyleDesc) -> Option<StyleDesc> {
+    pub(crate) fn colors_following_current(
+        &self,
+        state: &StyleDesc,
+        lengths: &LengthContext,
+    ) -> Option<StyleDesc> {
         fn follows(value: &Option<String>) -> Option<String> {
             value
                 .as_deref()
@@ -713,7 +730,7 @@ impl StyleDesc {
             && self
                 .filter
                 .as_deref()
-                .is_some_and(crate::css::filter::follows_current_color)
+                .is_some_and(|value| crate::css::filter::follows_current_color(value, lengths))
         {
             followers.filter = self.filter.clone();
         }
@@ -721,7 +738,7 @@ impl StyleDesc {
             && self
                 .backdrop_filter
                 .as_deref()
-                .is_some_and(crate::css::filter::follows_current_color)
+                .is_some_and(|value| crate::css::filter::follows_current_color(value, lengths))
         {
             followers.backdrop_filter = self.backdrop_filter.clone();
         }
@@ -730,7 +747,11 @@ impl StyleDesc {
 
     /// The mask layers, or `None` when the style sets no valid mask. `Some(empty)`
     /// is `mask: none`.
-    pub(crate) fn resolved_mask(&self, colors: &ColorContext) -> Option<Vec<gpui::BackgroundLayer>> {
+    pub(crate) fn resolved_mask(
+        &self,
+        colors: &ColorContext,
+        lengths: &LengthContext,
+    ) -> Option<Vec<gpui::BackgroundLayer>> {
         crate::css::mask::resolve(
             &crate::css::mask::Inputs {
                 shorthand: self.mask.as_deref(),
@@ -742,6 +763,7 @@ impl StyleDesc {
                 clip: self.mask_clip.as_deref(),
             },
             colors,
+            lengths,
         )
     }
 
@@ -750,7 +772,7 @@ impl StyleDesc {
     /// `background` takes a plain colour as it always did, or the CSS shorthand
     /// with layers and a final colour. `backgroundColor` wins over the
     /// shorthand's colour, and the `background-*` longhands replace its parts.
-    pub(crate) fn resolved_fill(&self, colors: &ColorContext) -> Fill {
+    pub(crate) fn resolved_fill(&self, colors: &ColorContext, lengths: &LengthContext) -> Fill {
         let shorthand = match self.background.as_ref() {
             Some(BackgroundValue::Color(value)) if colors.resolve(value).is_none() => {
                 Some(value.as_str())
@@ -766,7 +788,7 @@ impl StyleDesc {
             origin: self.background_origin.as_deref(),
             clip: self.background_clip.as_deref(),
         };
-        let parsed = crate::css::background::resolve(&inputs, colors);
+        let parsed = crate::css::background::resolve(&inputs, colors, lengths);
         // An invalid `backgroundColor` is dropped, so the shorthand's colour still shows.
         let own_color = self
             .background_color
@@ -946,10 +968,10 @@ mod tests {
         .unwrap();
         let shadows = style.box_shadow.as_ref().unwrap().as_slice();
         assert_eq!(shadows.len(), 2);
-        assert_eq!(shadows[0].offset_y, 1.0);
+        assert_eq!(shadows[0].offset_y, LinearLength::px(1.0));
         assert_eq!(shadows[0].color, "rgba(0,0,0,.2)");
         assert!(shadows[1].inset);
-        assert_eq!(shadows[1].spread_radius, 1.0);
+        assert_eq!(shadows[1].spread_radius, LinearLength::px(1.0));
     }
 
     #[test]
@@ -990,7 +1012,7 @@ mod tests {
             color: Some("red".to_owned()),
             ..Default::default()
         };
-        let followers = base.colors_following_current(&hover).unwrap();
+        let followers = base.colors_following_current(&hover, &LengthContext::for_tests()).unwrap();
         assert_eq!(followers.border_color.as_deref(), Some("currentColor"));
         assert_eq!(followers.background_color, None);
         assert_eq!(followers.outline_width, Some(LinearLength::px(2.0)));
@@ -1001,11 +1023,11 @@ mod tests {
             ..hover.clone()
         };
         assert_eq!(
-            base.colors_following_current(&overriding).unwrap().border_color,
+            base.colors_following_current(&overriding, &LengthContext::for_tests()).unwrap().border_color,
             None
         );
         // Without a new colour nothing changes, so nothing is repainted.
-        assert_eq!(base.colors_following_current(&StyleDesc::default()), None);
+        assert_eq!(base.colors_following_current(&StyleDesc::default(), &LengthContext::for_tests()), None);
     }
 
     #[test]
@@ -1021,7 +1043,7 @@ mod tests {
         )
         .color_space(gpui::ColorSpace::Oklab);
 
-        assert_eq!(style.resolved_fill(&light()).color, Some(expected));
+        assert_eq!(style.resolved_fill(&light(), &LengthContext::for_tests()).color, Some(expected));
     }
 
     #[test]
@@ -1030,7 +1052,7 @@ mod tests {
             r##"{"background":"linear-gradient(red, blue), #0000ff","backgroundColor":"notacolour"}"##,
         )
         .unwrap();
-        let fill = style.resolved_fill(&light());
+        let fill = style.resolved_fill(&light(), &LengthContext::for_tests());
         assert_eq!(fill.color, Some(crate::color::parse_color_rgba("#0000ff").unwrap().into()));
         assert_eq!(fill.layers.len(), 1);
     }
@@ -1058,7 +1080,22 @@ mod tests {
         let shadows = many.box_shadow.as_ref().unwrap().as_slice();
         assert_eq!(shadows.len(), 2);
         assert!(shadows[1].inset);
-        assert_eq!(shadows[1].spread_radius, 1.0);
+        assert_eq!(shadows[1].spread_radius, LinearLength::px(1.0));
+    }
+
+    #[test]
+    fn a_box_shadow_object_takes_lengths_with_units_but_no_percentage() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{"boxShadow":{"offsetX":"1em","offsetY":2,"blurRadius":"calc(1rem + 2px)","spreadRadius":"10vw","color":"red"}}"##,
+        )
+        .unwrap();
+        let shadow = &style.box_shadow.as_ref().unwrap().as_slice()[0];
+        assert_eq!(shadow.offset_x, parse_linear_length("1em").unwrap());
+        assert_eq!(shadow.offset_y, LinearLength::px(2.0));
+        assert_eq!(shadow.blur_radius, parse_linear_length("calc(1rem + 2px)").unwrap());
+        assert_eq!(shadow.spread_radius, parse_linear_length("10vw").unwrap());
+        let percent = r##"{"boxShadow":{"offsetX":"10%","offsetY":0,"blurRadius":0,"spreadRadius":0,"color":"red"}}"##;
+        assert!(serde_json::from_str::<StyleDesc>(percent).is_err());
     }
 
     #[test]

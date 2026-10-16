@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use crate::color::{ColorContext, Scheme};
 use crate::css::background::{self, Background, Property};
+use crate::css::length::LengthContext;
 use crate::css::border::{parse_border, parse_color_sides, LineStyle};
 use crate::css::mask::Mask;
 use crate::css::{clip_path, filter};
@@ -150,9 +151,12 @@ fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
 ///
 /// Only the properties whose value is a CSS string are checked. Whether a
 /// colour resolves does not depend on the element, so the root context stands
-/// in for it. Parsing here is not reused for painting: the style holds the text.
+/// in for it, and so does the initial length context: whether a length is valid
+/// never depends on what it resolves to. Parsing here is not reused for
+/// painting: the style holds the text.
 fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
     let colors = ColorContext::root(Scheme::Light);
+    let lengths = LengthContext::initial(0.0, 0.0);
     let mut cleaned: Option<StyleDesc> = None;
     macro_rules! drop_if_invalid {
         ($($field:ident: |$value:ident| $valid:expr),+ $(,)?) => {$(
@@ -162,29 +166,29 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         )+};
     }
     drop_if_invalid!(
-        filter: |value| filter::parse_resolved(value, &colors).is_some(),
-        backdrop_filter: |value| filter::parse_resolved(value, &colors).is_some(),
-        clip_path: |value| clip_path::parse(value).is_some(),
-        mask: |value| background::is_valid_shorthand::<Mask>(value, &colors),
-        mask_image: |value| background::is_valid_image_list(value, &colors),
-        mask_size: |value| background::is_valid_list::<Mask>(Property::Size, value),
-        mask_position: |value| background::is_valid_list::<Mask>(Property::Position, value),
-        mask_repeat: |value| background::is_valid_list::<Mask>(Property::Repeat, value),
-        mask_origin: |value| background::is_valid_list::<Mask>(Property::Origin, value),
-        mask_clip: |value| background::is_valid_list::<Mask>(Property::Clip, value),
+        filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
+        backdrop_filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
+        clip_path: |value| clip_path::parse(value, &lengths).is_some(),
+        mask: |value| background::is_valid_shorthand::<Mask>(value, &colors, &lengths),
+        mask_image: |value| background::is_valid_image_list(value, &colors, &lengths),
+        mask_size: |value| background::is_valid_list::<Mask>(Property::Size, value, &lengths),
+        mask_position: |value| background::is_valid_list::<Mask>(Property::Position, value, &lengths),
+        mask_repeat: |value| background::is_valid_list::<Mask>(Property::Repeat, value, &lengths),
+        mask_origin: |value| background::is_valid_list::<Mask>(Property::Origin, value, &lengths),
+        mask_clip: |value| background::is_valid_list::<Mask>(Property::Clip, value, &lengths),
         background_color: |value| colors.resolve(value).is_some(),
-        background_image: |value| background::is_valid_image_list(value, &colors),
-        background_size: |value| background::is_valid_list::<Background>(Property::Size, value),
-        background_position: |value| background::is_valid_list::<Background>(Property::Position, value),
-        background_repeat: |value| background::is_valid_list::<Background>(Property::Repeat, value),
-        background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value),
-        background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value),
+        background_image: |value| background::is_valid_image_list(value, &colors, &lengths),
+        background_size: |value| background::is_valid_list::<Background>(Property::Size, value, &lengths),
+        background_position: |value| background::is_valid_list::<Background>(Property::Position, value, &lengths),
+        background_repeat: |value| background::is_valid_list::<Background>(Property::Repeat, value, &lengths),
+        background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value, &lengths),
+        background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value, &lengths),
     );
     if let Some(value) = &over.background {
         let valid = match value {
             // A plain colour, or the shorthand with layers.
             BackgroundValue::Color(text) => {
-                colors.resolve(text).is_some() || background::is_valid_shorthand::<Background>(text, &colors)
+                colors.resolve(text).is_some() || background::is_valid_shorthand::<Background>(text, &colors, &lengths)
             }
             BackgroundValue::Gradient(_) => value.resolve(&colors).is_some(),
         };

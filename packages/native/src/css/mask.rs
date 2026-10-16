@@ -11,6 +11,7 @@
 use gpui::{BackgroundBox, BackgroundLayer};
 
 use super::background::{self, Kind, Longhands};
+use super::length::LengthContext;
 use super::position::parse_box;
 use crate::color::ColorContext;
 
@@ -50,14 +51,18 @@ impl Kind for Mask {
 /// The mask layers, first on top, or `None` when no mask prop gave a valid
 /// shorthand or image list. `Some(empty)` is `none`: a state style needs it to
 /// clear the base mask.
-pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext) -> Option<Vec<BackgroundLayer>> {
+pub(crate) fn resolve(
+    inputs: &Inputs,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> Option<Vec<BackgroundLayer>> {
     let shorthand = inputs
         .shorthand
-        .and_then(|value| background::parse_shorthand::<Mask>(value, colors))
+        .and_then(|value| background::parse_shorthand::<Mask>(value, colors, lengths))
         .map(|(slots, _)| slots);
     let image_is_valid = inputs
         .image
-        .is_some_and(|value| background::parse_images(value, colors).is_some());
+        .is_some_and(|value| background::parse_images(value, colors, lengths).is_some());
     if shorthand.is_none() && !image_is_valid {
         return None;
     }
@@ -73,6 +78,7 @@ pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext) -> Option<Vec<Back
         shorthand.unwrap_or_default(),
         &longhands,
         colors,
+        lengths,
     ))
 }
 
@@ -90,11 +96,11 @@ mod tests {
     }
 
     fn shorthand(value: &str) -> Option<Vec<BackgroundLayer>> {
-        resolve(&Inputs { shorthand: Some(value), ..Default::default() }, &context())
+        resolve(&Inputs { shorthand: Some(value), ..Default::default() }, &context(), &LengthContext::for_tests())
     }
 
     fn image(value: &str) -> Option<Vec<BackgroundLayer>> {
-        resolve(&Inputs { image: Some(value), ..Default::default() }, &context())
+        resolve(&Inputs { image: Some(value), ..Default::default() }, &context(), &LengthContext::for_tests())
     }
 
     #[test]
@@ -138,6 +144,7 @@ mod tests {
                 ..Default::default()
             },
             &context(),
+            &LengthContext::for_tests(),
         )
         .unwrap();
         assert_eq!(layers.len(), 1);
@@ -217,6 +224,7 @@ mod tests {
                 ..Default::default()
             },
             &context(),
+            &LengthContext::for_tests(),
         )
         .unwrap();
         assert_eq!(layers.len(), 1);
@@ -236,6 +244,7 @@ mod tests {
                 ..Default::default()
             },
             &context(),
+            &LengthContext::for_tests(),
         )
         .unwrap();
         assert_eq!(layers.len(), 1);
@@ -247,10 +256,37 @@ mod tests {
 
     #[test]
     fn no_mask_prop_is_none() {
-        assert_eq!(resolve(&Inputs::default(), &context()), None);
+        assert_eq!(resolve(&Inputs::default(), &context(), &LengthContext::for_tests()), None);
         assert_eq!(
-            resolve(&Inputs { size: Some("10px"), ..Default::default() }, &context()),
+            resolve(&Inputs { size: Some("10px"), ..Default::default() }, &context(), &LengthContext::for_tests()),
             None
         );
+    }
+
+    #[test]
+    fn lengths_resolve_against_the_element() {
+        let layers = resolve(
+            &Inputs {
+                image: Some("linear-gradient(black 1em, transparent calc(100% - 1rem))"),
+                size: Some("10vw 2em"),
+                position: Some("1rem 10%"),
+                ..Default::default()
+            },
+            &context(),
+            &LengthContext::for_tests(),
+        )
+        .unwrap();
+        assert_eq!(
+            layers[0].size,
+            BackgroundSize::Explicit {
+                width: Some(LengthPercentage::Length(px(80.0))),
+                height: Some(LengthPercentage::Length(px(40.0))),
+            }
+        );
+        assert_eq!(layers[0].position.x.offset, LengthPercentage::Length(px(10.0)));
+        let BackgroundImage::Gradient(gradient) = &layers[0].image;
+        let gpui::GradientItem::Stop(last) = gradient.items[1] else { panic!("a hint") };
+        assert_eq!(last.position, Some(gpui::StopPosition::Calc { length: px(-10.0), fraction: 1.0 }));
+        assert_eq!(image("linear-gradient(black 1ch, transparent)"), None);
     }
 }

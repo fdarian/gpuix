@@ -3,6 +3,8 @@
 
 use super::cache::Cache;
 use super::dimension::{parse_length, parse_number_or_percentage, split_dimension};
+use super::dimension::{parse_length, parse_non_negative_length, parse_number_or_percentage, split_dimension};
+use super::length::LengthContext;
 use super::syntax::{function_args, split_whitespace};
 use crate::color::ColorContext;
 
@@ -36,11 +38,11 @@ thread_local! {
 
 /// `None` when the declaration is invalid, which CSS ignores as a whole. An
 /// empty list is the valid `none`.
-pub(crate) fn parse(value: &str) -> Option<Vec<Filter>> {
-    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value)))
+pub(crate) fn parse(value: &str, lengths: &LengthContext) -> Option<Vec<Filter>> {
+    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value, lengths)))
 }
 
-fn parse_uncached(value: &str) -> Option<Vec<Filter>> {
+fn parse_uncached(value: &str, lengths: &LengthContext) -> Option<Vec<Filter>> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
         return Some(Vec::new());
@@ -49,14 +51,15 @@ fn parse_uncached(value: &str) -> Option<Vec<Filter>> {
     if tokens.is_empty() {
         return None;
     }
-    tokens.into_iter().map(parse_function).collect()
+    tokens.into_iter().map(|token| parse_function(token, lengths)).collect()
 }
 
 pub(crate) fn parse_resolved(
     value: &str,
     colors: &ColorContext,
+    lengths: &LengthContext,
 ) -> Option<Vec<gpui::FilterFunction>> {
-    resolve(&parse(value)?, colors)
+    resolve(&parse(value, lengths)?, colors)
 }
 
 /// The list in gpui's terms. `None` when a `drop-shadow()` colour does not
@@ -95,8 +98,8 @@ pub(crate) fn resolve(
 
 /// True when a `drop-shadow()` takes its colour from `currentColor`, so a state
 /// that changes `color` must repaint the filter.
-pub(crate) fn follows_current_color(value: &str) -> bool {
-    parse(value).is_some_and(|filters| {
+pub(crate) fn follows_current_color(value: &str, lengths: &LengthContext) -> bool {
+    parse(value, lengths).is_some_and(|filters| {
         filters.iter().any(|filter| {
             matches!(filter, Filter::DropShadow { color, .. }
                 if color.to_ascii_lowercase().contains("currentcolor"))
@@ -104,7 +107,7 @@ pub(crate) fn follows_current_color(value: &str) -> bool {
     })
 }
 
-fn parse_function(token: &str) -> Option<Filter> {
+fn parse_function(token: &str, lengths: &LengthContext) -> Option<Filter> {
     let name_end = token.find('(')?;
     let name = token[..name_end].to_ascii_lowercase();
     let args = function_args(token, &name)?.trim();
@@ -120,7 +123,7 @@ fn parse_function(token: &str) -> Option<Filter> {
         "blur" => Filter::Blur(if args.is_empty() {
             0.0
         } else {
-            parse_length(args).filter(|length| *length >= 0.0)?
+            parse_non_negative_length(args, lengths)?
         }),
         "brightness" => Filter::Brightness(amount(1.0)?),
         "contrast" => Filter::Contrast(amount(1.0)?),
@@ -134,12 +137,12 @@ fn parse_function(token: &str) -> Option<Filter> {
         } else {
             parse_angle(args)?
         }),
-        "drop-shadow" => parse_drop_shadow(args)?,
+        "drop-shadow" => parse_drop_shadow(args, lengths)?,
         _ => return None,
     })
 }
 
-fn parse_drop_shadow(args: &str) -> Option<Filter> {
+fn parse_drop_shadow(args: &str, lengths: &LengthContext) -> Option<Filter> {
     #[derive(PartialEq)]
     enum Run {
         NotStarted,
@@ -148,16 +151,16 @@ fn parse_drop_shadow(args: &str) -> Option<Filter> {
     }
 
     let mut color: Option<&str> = None;
-    let mut lengths: Vec<f64> = Vec::new();
+    let mut length_tokens: Vec<&str> = Vec::new();
     // The lengths must be contiguous, so `1px red 2px` is invalid.
     let mut run = Run::NotStarted;
     for token in split_whitespace(args) {
-        if let Some(length) = parse_length(token) {
+        if parse_length(token, lengths).is_some() {
             if run == Run::Closed {
                 return None;
             }
             run = Run::Open;
-            lengths.push(length);
+            length_tokens.push(token);
             continue;
         }
         if run == Run::Open {
@@ -167,9 +170,13 @@ fn parse_drop_shadow(args: &str) -> Option<Filter> {
             return None;
         }
     }
-    let (offset_x, offset_y, blur) = match lengths.as_slice() {
-        [x, y] => (*x, *y, 0.0),
-        [x, y, blur] if *blur >= 0.0 => (*x, *y, *blur),
+    let (offset_x, offset_y, blur) = match length_tokens.as_slice() {
+        [x, y] => (parse_length(x, lengths)?, parse_length(y, lengths)?, 0.0),
+        [x, y, blur] => (
+            parse_length(x, lengths)?,
+            parse_length(y, lengths)?,
+            parse_non_negative_length(blur, lengths)?,
+        ),
         _ => return None,
     };
     Some(Filter::DropShadow {
@@ -220,11 +227,23 @@ mod tests {
     fn a_cached_drop_shadow_colour_still_follows_the_context() {
         let value = "drop-shadow(1px 2px currentColor)";
         let mut context = ColorContext::root(crate::color::Scheme::Light);
-        let black = parse_resolved(value, &context).unwrap();
+        let black = parse_resolved(value, &context, &LengthContext::for_tests()).unwrap();
         context.current = gpui::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-        let white = parse_resolved(value, &context).unwrap();
+        let white = parse_resolved(value, &context, &LengthContext::for_tests()).unwrap();
         assert_ne!(black, white);
         assert_eq!(white, resolve(&parse_uncached(value).unwrap(), &context).unwrap());
+    }
+
+    fn parse(value: &str) -> Option<Vec<Filter>> {
+        super::parse(value, &LengthContext::for_tests())
+    }
+
+    fn parse_uncached(value: &str) -> Option<Vec<Filter>> {
+        super::parse_uncached(value, &LengthContext::for_tests())
+    }
+
+    fn follows_current_color(value: &str) -> bool {
+        super::follows_current_color(value, &LengthContext::for_tests())
     }
 
     fn shadow(offset_x: f64, offset_y: f64, blur: f64, color: &str) -> Filter {
@@ -330,7 +349,13 @@ mod tests {
             "blur",
             "blur(2)",
             "blur(-1px)",
-            "blur(1em)",
+            "blur(1ch)",
+            "blur(50%)",
+            "blur(0%)",
+            "blur(calc(1em + 10%))",
+            "blur(-1rem)",
+            "drop-shadow(1em 50% red)",
+            "drop-shadow(1px 2px -1em)",
             "blur(1px, 2px)",
             "blur(1px) none",
             "blur(1px),blur(2px)",
@@ -395,5 +420,25 @@ mod tests {
         assert_eq!(parse("drop-shadow(calc(1px * 2) 2PT red)"), Some(vec![shadow(2.0, 2.0 * 96.0 / 72.0, 0.0, "red")]));
         assert_eq!(parse("blur(calc(1px - 2px))"), None);
         assert_eq!(parse("brightness(calc(1px))"), None);
+    }
+
+    #[test]
+    fn lengths_resolve_against_the_element() {
+        assert_eq!(
+            parse("blur(0.5em) blur(calc(1rem + 2px)) blur(10vw)"),
+            Some(vec![Filter::Blur(10.0), Filter::Blur(12.0), Filter::Blur(80.0)])
+        );
+        assert_eq!(
+            parse("drop-shadow(1em -1rem 0.25em red)"),
+            Some(vec![shadow(20.0, -10.0, 5.0, "red")])
+        );
+        // A calc() that only comes out negative here clamps, as CSS clamps a blur radius.
+        assert_eq!(parse("blur(calc(1em - 30px))"), Some(vec![Filter::Blur(0.0)]));
+        let colors = ColorContext::root(crate::color::Scheme::Light);
+        let lengths = LengthContext::for_tests().descend(Some(&crate::css::length::LinearLength::px(8.0)), false);
+        assert_eq!(
+            parse_resolved("blur(0.5em)", &colors, &lengths),
+            Some(vec![gpui::FilterFunction::Blur(gpui::px(4.0))])
+        );
     }
 }
