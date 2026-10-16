@@ -300,6 +300,37 @@ pub(crate) fn change_focus(
     settle_focus(window, cx)
 }
 
+/// Tab's move along the tab order, for the renderer's `focusNext()` and `focusPrevious()`: moves
+/// focus, tells JS, then scrolls the new focus to its nearest edge like `focus()` does. Done here
+/// rather than by the caller so the methods scroll however they are called.
+pub(crate) fn step_focus(
+    window: &mut Window,
+    cx: &mut App,
+    backwards: bool,
+) -> Result<(), String> {
+    if backwards {
+        window.focus_prev(cx);
+    } else {
+        window.focus_next(cx);
+    }
+    settle_focus(window, cx)?;
+    scroll_focus_into_view(window, cx)
+}
+
+fn scroll_focus_into_view(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    let view = sync_dispatch::root_view(window)?;
+    if view.is_updating(cx) {
+        window.defer(cx, |window, cx| {
+            if let Err(error) = scroll_focus_into_view(window, cx) {
+                sync_dispatch::report_deferred_error(error);
+            }
+        });
+        return Ok(());
+    }
+    view.update(cx, |view, cx| view.scroll_focus_into_view(window, cx));
+    Ok(())
+}
+
 /// Notices where focus is and sends the events of every move not yet sent.
 ///
 /// The events go through `sync_dispatch::emit`, so a handler of `focus` or

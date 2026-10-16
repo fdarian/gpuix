@@ -375,6 +375,14 @@ pub(crate) struct IntoView {
 }
 
 impl IntoView {
+    /// What a browser does for a newly focused element: the nearest edge, and only if it is
+    /// not in view.
+    pub(crate) const NEAREST: Self = Self {
+        block: Align::Nearest,
+        inline: Align::Nearest,
+        behavior: Behavior::Auto,
+    };
+
     pub(crate) fn parse(
         block: Option<&str>,
         inline: Option<&str>,
@@ -608,6 +616,12 @@ mod tests {
         assert_eq!(virtual_list_offset(Align::End, row, (20.0, 80.0)), Some(-60.0));
         assert_eq!(virtual_list_offset(Align::Nearest, Some((40.0, 20.0)), (20.0, 80.0)), None);
         assert_eq!(virtual_list_offset(Align::Start, None, (20.0, 80.0)), Some(0.0));
+    }
+
+    #[test]
+    fn nearest_is_what_an_explicit_nearest_asks_for() {
+        let asked = IntoView::parse(Some("nearest"), Some("nearest"), None).unwrap();
+        assert_eq!(format!("{:?}", IntoView::NEAREST), format!("{asked:?}"));
     }
 
     #[test]

@@ -882,19 +882,13 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
-        window_call(|window, cx| {
-            window.focus_next(cx);
-            crate::focus::settle_focus(window, cx)
-        })?
+        window_call(|window, cx| crate::focus::step_focus(window, cx, false))?
         .map_err(Error::from_reason)
     }
 
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
-        window_call(|window, cx| {
-            window.focus_prev(cx);
-            crate::focus::settle_focus(window, cx)
-        })?
+        window_call(|window, cx| crate::focus::step_focus(window, cx, true))?
         .map_err(Error::from_reason)
     }
 

@@ -2,7 +2,7 @@
 /** Focus moves scroll the focused element into view only if needed, to the nearest edge. */
 
 import React from "react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -87,6 +87,77 @@ describeNative("focus scrolls into view if needed", () => {
       expect(scrollTop("inner")).toBe(60)
       // Scrolled in the inner port, n2 spans 240..280 in the outer content.
       expect(scrollTop("outer")).toBe(180)
+    })
+  })
+
+  describe("renderer.focusNext() and focusPrevious()", () => {
+    it("focusNext scrolls an off-screen item to the nearest edge", () => {
+      const { renderer, focused, scrollTop, idOf } = setup(list())
+      renderer.focusElement(idOf("i1"))
+      renderer.focusNext()
+      expect(focused()).toBe("i2")
+      // i2 spans 80..120 and the port ends at 100: its bottom edge goes to the port's.
+      expect(scrollTop("scroller")).toBe(20)
+      renderer.focusNext()
+      expect(focused()).toBe("i3")
+      expect(scrollTop("scroller")).toBe(60)
+    })
+
+    it("focusPrevious scrolls an off-screen item to the nearest edge", () => {
+      const { renderer, focused, scrollTop, idOf } = setup(list())
+      renderer.focusElement(idOf("i3"))
+      renderer.scrollTo(idOf("scroller"), 0, 60)
+      renderer.focusPrevious()
+      expect(focused()).toBe("i2")
+      expect(scrollTop("scroller")).toBe(60)
+      renderer.focusPrevious()
+      expect(focused()).toBe("i1")
+      // i1 spans 40..80; the port is 60..160, so its top edge goes to the port's.
+      expect(scrollTop("scroller")).toBe(40)
+    })
+
+    it("does not scroll to a visible item", () => {
+      const { renderer, focused, scrollTop, idOf } = setup(list())
+      renderer.focusElement(idOf("i0"))
+      renderer.scrollTo(idOf("scroller"), 0, 20)
+      renderer.focusNext()
+      expect(focused()).toBe("i1")
+      expect(scrollTop("scroller")).toBe(20)
+      renderer.focusPrevious()
+      expect(focused()).toBe("i0")
+      // i0 spans 0..40 and the port is 20..120: it is cut off, so its top edge goes to the port's.
+      expect(scrollTop("scroller")).toBe(0)
+    })
+
+    it("scrolls every scrolling ancestor of a nested item", () => {
+      const { renderer, focused, scrollTop, idOf } = setup(
+        <div testId="outer" style={{ width: 250, height: 100, overflow: "scroll" }}>
+          {item("before", { height: 20 })}
+          <div style={{ width: 100, height: 200, flexShrink: 0 }} />
+          <div testId="inner" style={{ width: 200, height: 60, flexShrink: 0, overflow: "scroll" }}>
+            {["n0", "n1"].map((id) => item(id))}
+          </div>
+        </div>
+      )
+      renderer.focusElement(idOf("before"))
+      renderer.focusNext()
+      expect(focused()).toBe("n0")
+      expect(scrollTop("outer")).toBe(160)
+    })
+  })
+
+  describe("Tab", () => {
+    it("scrolls once, in the renderer, not again from JS", () => {
+      let scrolls = 0
+      const { renderer, focused, scrollTop } = setup(
+        list({ onScroll: () => (scrolls += 1) })
+      )
+      const scrollIntoView = vi.spyOn(renderer, "scrollIntoView")
+      renderer.simulateKeystrokes("Tab Tab Tab")
+      expect(focused()).toBe("i2")
+      expect(scrollTop("scroller")).toBe(20)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+      expect(scrolls).toBe(1)
     })
   })
 

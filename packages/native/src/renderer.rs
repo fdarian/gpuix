@@ -923,10 +923,16 @@ async fn run_ui_commands(
                     .send(view.matches_focus(id, &selector, window))
                     .ok();
             }),
-            UiCommand::FocusNext => window.update(cx, |_view, window, cx| window.focus_next(cx)),
-            UiCommand::FocusPrevious => {
-                window.update(cx, |_view, window, cx| window.focus_prev(cx))
-            }
+            UiCommand::FocusNext => window.update(cx, |_view, window, cx| {
+                if let Err(error) = crate::focus::step_focus(window, cx, false) {
+                    crate::events::sync_dispatch::report_deferred_error(error);
+                }
+            }),
+            UiCommand::FocusPrevious => window.update(cx, |_view, window, cx| {
+                if let Err(error) = crate::focus::step_focus(window, cx, true) {
+                    crate::events::sync_dispatch::report_deferred_error(error);
+                }
+            }),
             UiCommand::GetFocusedElementId { response } => {
                 window.update(cx, |view, window, _cx| {
                     response.send(view.focused_element_id(window)).ok();
@@ -2407,10 +2413,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_next(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window_without_view(|window, cx| {
-            window.focus_next(cx);
-            crate::focus::settle_focus(window, cx)
-        })?
+        return update_window_without_view(|window, cx| crate::focus::step_focus(window, cx, false))?
         .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -2429,10 +2432,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn focus_previous(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return update_window_without_view(|window, cx| {
-            window.focus_prev(cx);
-            crate::focus::settle_focus(window, cx)
-        })?
+        return update_window_without_view(|window, cx| crate::focus::step_focus(window, cx, true))?
         .map_err(Error::from_reason);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -4183,12 +4183,18 @@ impl WebGpuixRenderer {
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = focusNext)]
     pub fn focus_next(&self) -> Result<(), wasm_bindgen::JsValue> {
-        update_web_window(|_view, window, cx| window.focus_next(cx))
+        update_web_window(|view, window, cx| {
+            window.focus_next(cx);
+            view.scroll_focus_into_view(window, cx);
+        })
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = focusPrevious)]
     pub fn focus_previous(&self) -> Result<(), wasm_bindgen::JsValue> {
-        update_web_window(|_view, window, cx| window.focus_prev(cx))
+        update_web_window(|view, window, cx| {
+            window.focus_prev(cx);
+            view.scroll_focus_into_view(window, cx);
+        })
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getFocusedElementId)]
@@ -6562,6 +6568,22 @@ impl GpuixView {
     fn focus_can_still_arrive(&self, id: u64) -> bool {
         let tree = self.tree.lock().unwrap();
         !tree.elements.contains_key(&id) || tree.focusable_ids.contains(&id)
+    }
+
+    /// Scrolls the focused element to its nearest edge if it is out of view, as a browser does
+    /// when focus moves to it.
+    pub(crate) fn scroll_focus_into_view(
+        &self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let Some(id) = self.focused_element_id(window) else {
+            return;
+        };
+        if self.scroll_element_into_view(id, crate::scroll::IntoView::NEAREST) {
+            cx.notify();
+            window.refresh();
+        }
     }
 
     pub(crate) fn focused_element_id(&self, window: &gpui::Window) -> Option<u64> {
