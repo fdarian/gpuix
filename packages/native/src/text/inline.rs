@@ -3,9 +3,10 @@
 //!
 //! The rules follow CSS, not the shape of the retained tree:
 //! - A raw text node is inline. So is a `<span>`, and so is a `<text>` whose
-//!   parent is a `<text>` or `<span>`, unless it has behaviour of its own (see
-//!   [`has_behaviour`]). A `<text>` anywhere else is a block that starts its own
-//!   inline formatting context.
+//!   parent is a `<text>` or `<span>`, unless it is focusable. A `<text>`
+//!   anywhere else is a block that starts its own inline formatting context.
+//!   Listeners and state styles do not make a box a block: the pointer finds an
+//!   inline box through the paragraph's text ([`super::inline_hit`]).
 //! - In a block container, each maximal run of consecutive inline-level children
 //!   is ONE anonymous paragraph. A block child ends the run.
 //! - In a flex or grid container, children are blockified: each contiguous run
@@ -86,41 +87,18 @@ pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
 /// Whether swapping `old` for `new` leaves every paragraph where it was: none
 /// of the properties [`plan_children`] reads changed.
 pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
-    fn read(style: Option<&StyleDesc>) -> ([Option<&str>; 6], bool) {
+    fn read(style: Option<&StyleDesc>) -> [Option<&str>; 6] {
         let field = |get: fn(&StyleDesc) -> Option<&str>| style.and_then(get);
-        (
-            [
-                field(|style| style.display.as_deref()),
-                field(|style| style.position.as_deref()),
-                field(|style| style.overflow.as_deref()),
-                field(|style| style.overflow_x.as_deref()),
-                field(|style| style.overflow_y.as_deref()),
-                field(|style| style.white_space.as_deref()),
-            ],
-            style.is_some_and(has_state_styles),
-        )
+        [
+            field(|style| style.display.as_deref()),
+            field(|style| style.position.as_deref()),
+            field(|style| style.overflow.as_deref()),
+            field(|style| style.overflow_x.as_deref()),
+            field(|style| style.overflow_y.as_deref()),
+            field(|style| style.white_space.as_deref()),
+        ]
     }
     read(old) == read(Some(new))
-}
-
-fn has_state_styles(style: &StyleDesc) -> bool {
-    style.hover.is_some()
-        || style.active.is_some()
-        || style.focus_visible.is_some()
-        || style.group_hover.is_some()
-        || style.group_active.is_some()
-        || style.group_focus_within.is_some()
-        || style.declared_group().is_some()
-}
-
-/// Whether `element` reacts to the pointer or the keyboard: it listens for an
-/// event, takes focus, or has a state style or a `group`. Inline boxes cannot
-/// take events or hit-test yet, so a `<text>` like this stays a block to keep
-/// working. A `<span>` is still always inline.
-pub fn has_behaviour(element: &RetainedElement) -> bool {
-    !element.events().is_empty()
-        || element.needs_focus()
-        || element.style.as_deref().is_some_and(has_state_styles)
 }
 
 /// Whether `element`, a child of `parent` in a block container, is inline-level
@@ -142,7 +120,9 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     if is_display_contents(element) {
         return children_are_inline(tree, element, parent);
     }
-    if element.element_type == "text" && has_behaviour(element) {
+    // An inline box has no focus handle, so a focusable `<text>` stays a block.
+    // A `<span>` is inline whatever its `tabIndex`.
+    if element.element_type == "text" && element.needs_focus() {
         return false;
     }
     if let Some(style) = element.style.as_deref() {
@@ -196,7 +176,6 @@ pub struct Paragraph {
     pub pieces: Vec<Piece>,
     /// Every inline box that holds text, with the bytes it covers, outermost
     /// first. Hit-testing a character index back to its span reads this.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub boxes: Vec<(u64, Range<usize>)>,
 }
 
@@ -205,8 +184,9 @@ impl Paragraph {
         super::selection_key(self.container, self.index)
     }
 
-    /// Innermost inline box at `byte`, if any. Nothing hit-tests a span yet;
-    /// this is the lookup that will map a character index back to one.
+    /// Innermost inline box at `byte`, if any, with or without a box of its own
+    /// (a `display: contents` element is one). [`super::inline_hit`] needs the
+    /// whole chain and reads the pieces.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn box_at(&self, byte: usize) -> Option<u64> {
         self.pieces
@@ -933,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn a_nested_text_with_behaviour_stays_a_block() {
+    fn a_nested_text_stays_inline_whatever_it_listens_for() {
         let plain = nested_text_plan(|f| {
             f.styled(3, serde_json::json!({"color": "red"}));
         });
@@ -942,7 +922,6 @@ mod tests {
 
         let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 9] = [
             ("listener", Box::new(|f| f.tree.set_event_listener(3, "click".into(), true))),
-            ("tabIndex", Box::new(|f| f.tree.set_custom_prop(3, "tabIndex".into(), serde_json::json!(0)))),
             ("hover", Box::new(|f| { f.styled(3, serde_json::json!({"hover": {"color": "red"}})); })),
             ("active", Box::new(|f| { f.styled(3, serde_json::json!({"active": {"color": "red"}})); })),
             ("focusVisible", Box::new(|f| { f.styled(3, serde_json::json!({"focusVisible": {"color": "red"}})); })),
@@ -950,16 +929,28 @@ mod tests {
             ("groupActive", Box::new(|f| { f.styled(3, serde_json::json!({"groupActive": {"color": "red"}})); })),
             ("groupFocusWithin", Box::new(|f| { f.styled(3, serde_json::json!({"groupFocusWithin": {"color": "red"}})); })),
             ("group", Box::new(|f| { f.styled(3, serde_json::json!({"group": true})); })),
+            ("cursor", Box::new(|f| { f.styled(3, serde_json::json!({"cursor": "pointer"})); })),
         ];
         for (name, configure) in behaviours {
             let plan = nested_text_plan(|f| configure(f));
-            assert_eq!(plan.len(), 3, "{name}: paragraph, block, paragraph");
-            assert_eq!(plan[1], Child::Block(3), "{name}");
-            // The space at the end of a line, and the one at the start of the
-            // next, are removed.
-            assert_eq!(paragraphs(&plan)[0].text, "one", "{name}");
-            assert_eq!(paragraphs(&plan)[1].text, "three", "{name}");
+            assert_eq!(plan.len(), 1, "{name}");
+            let paragraph = paragraphs(&plan)[0];
+            assert_eq!(paragraph.text, "one two three", "{name}");
+            assert!(paragraph.boxes.contains(&(3, 4..7)), "{name}");
         }
+    }
+
+    #[test]
+    fn a_focusable_nested_text_stays_a_block() {
+        let plan = nested_text_plan(|f| {
+            f.tree.set_custom_prop(3, "tabIndex".into(), serde_json::json!(0));
+        });
+        assert_eq!(plan.len(), 3, "paragraph, block, paragraph");
+        assert_eq!(plan[1], Child::Block(3));
+        // The space at the end of a line, and the one at the start of the
+        // next, are removed.
+        assert_eq!(paragraphs(&plan)[0].text, "one");
+        assert_eq!(paragraphs(&plan)[1].text, "three");
     }
 
     #[test]
@@ -975,15 +966,11 @@ mod tests {
     }
 
     #[test]
-    fn state_styles_regroup() {
+    fn state_styles_do_not_regroup() {
         let plain = style(serde_json::json!({"color": "red"}));
         let hover = style(serde_json::json!({"color": "red", "hover": {"color": "blue"}}));
-        assert!(!same_paragraphs(Some(&plain), &hover));
-        assert!(!same_paragraphs(Some(&hover), &plain));
-        assert!(same_paragraphs(
-            Some(&hover),
-            &style(serde_json::json!({"hover": {"color": "green"}}))
-        ));
+        assert!(same_paragraphs(Some(&plain), &hover));
+        assert!(same_paragraphs(Some(&hover), &plain));
     }
 
     fn text_of(f: &Fixture, id: u64) -> String {

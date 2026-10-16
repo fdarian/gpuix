@@ -230,6 +230,21 @@ describeNative("events on inline boxes", () => {
     expect(seen[1].target).toBe(elements.outer)
   })
 
+  it("hits a nested text with a listener, which is no longer a block", () => {
+    const seen: string[] = []
+    const testRoot = setup(
+      <div style={{ width: 400 }}>
+        <text testId="p" style={TEXT}>
+          Hello <text onClick={() => seen.push("nested")}>world</text>
+        </text>
+      </div>
+    )
+    expect(testRoot.renderer.getPaintedText()).toEqual(["Hello world"])
+    click(testRoot, cell(testRoot, "p", 8))
+    click(testRoot, cell(testRoot, "p", 1))
+    expect(seen).toEqual(["nested"])
+  })
+
   it("lets a span with pointerEvents none through to the text", () => {
     const seen: string[] = []
     const testRoot = setup(

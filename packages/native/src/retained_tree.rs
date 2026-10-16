@@ -772,8 +772,8 @@ impl RetainedTree {
                 false
             };
             // Which listeners exist decides how the element is built. For a
-            // `<text>` it also decides whether it is an inline box, which moves
-            // text between paragraphs.
+            // `<text>` it also decides whether it is raw text (`is_raw_text`),
+            // which the paragraph builder and search read it by.
             self.dirty |= changed;
             if changed
                 && self
