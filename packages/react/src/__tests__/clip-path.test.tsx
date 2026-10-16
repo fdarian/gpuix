@@ -210,6 +210,14 @@ describeNative("clip-path", () => {
     expectWhite(inset, 100, 100)
   })
 
+  it("xywh() adds a width to its x in any units, so 10px and 50% make a calc()", () => {
+    const mixed = shoot("xywh-mixed-units", clipped({ clipPath: "xywh(10px 10px 50% 80px)" }))
+    const rect = shoot("xywh-mixed-units-as-rect", clipped({ clipPath: "rect(10px calc(10px + 50%) 90px 10px)" }))
+    expectScreenshotsEqual(mixed.file, rect.file)
+    expectRed(mixed.pixels, 65, 65)
+    expectWhite(mixed.pixels, 145, 100)
+  })
+
   it("an invalid value and an unsupported one leave the element alone", () => {
     const plain = shoot("plain-2", clipped({}))
     for (const [name, value] of [
@@ -217,7 +225,6 @@ describeNative("clip-path", () => {
       ["path", "path('M0 0 L10')"],
       ["rect", "rect(0 10px 10px)"],
       ["xywh", "xywh(0 0 -5px 5px)"],
-      ["xywh-mixed-units", "xywh(10px 0 50% 5px)"],
       ["box-only", "padding-box"],
       ["bad-circle", "circle(-5px)"],
       ["empty-polygon", "polygon()"],

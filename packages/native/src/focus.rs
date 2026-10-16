@@ -404,6 +404,11 @@ pub(crate) fn defer_mouse_down_default(
                 None => window.blur(),
             }
         }
+        // A focusable span under the press wins over the focusable element around its paragraph,
+        // which took the press first.
+        if let Some(handle) = crate::text::inline_focus::take_press_focus(window.window_handle().window_id()) {
+            window.focus(&handle, cx);
+        }
         if let Err(error) = settle_focus(window, cx) {
             sync_dispatch::report_deferred_error(error);
         }

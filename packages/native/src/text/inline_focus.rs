@@ -16,10 +16,26 @@
 //! anchor has no area for GPUI to find the pointer in. [`focus_on_press`] does it
 //! from the paragraph, so that the span wins over a focusable ancestor.
 
-use gpui::{div, prelude::*, AnyElement, Div, FocusHandle, Stateful, Window};
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use gpui::{div, prelude::*, AnyElement, Div, FocusHandle, Stateful, Window, WindowId};
 
 use super::inline::Paragraph;
 use super::inline_hit;
+
+thread_local! {
+    /// The focusable box the press being dispatched landed on, per window. Set while the
+    /// press is dispatched and taken by the default of the press, which runs after.
+    static PRESS_FOCUS: RefCell<HashMap<WindowId, FocusHandle>> = RefCell::new(HashMap::new());
+}
+
+/// The focusable box the press just dispatched landed on, if any. The default of the press
+/// focuses it, after the focus transfer of a focusable element around the paragraph, so the
+/// focus events of the press name the span and not the element that was there for a moment.
+pub(crate) fn take_press_focus(window: WindowId) -> Option<FocusHandle> {
+    PRESS_FOCUS.with(|slots| slots.borrow_mut().remove(&window))
+}
 
 /// A focusable inline box of a paragraph.
 pub struct FocusableBox {
@@ -66,15 +82,22 @@ pub fn anchors(boxes: Vec<FocusableBox>) -> Vec<AnyElement> {
 /// element takes the press for itself, because the pointer is inside it, and
 /// prevents the default, which also stops the dispatcher's default from reaching
 /// the span ([`crate::focus::defer_mouse_down_default`]). Focus is therefore set
-/// after both. It prevents nothing, so the press still starts a text selection
-/// unless something around the span took it.
+/// after both: the span is handed to the default of the press, which settles the focus
+/// events once, with the span. It prevents nothing, so the press still starts a text
+/// selection unless something around the span took it.
 pub fn focus_on_press(window: &mut Window, container: u64, handles: Vec<(u64, FocusHandle)>) {
     use gpui::{DispatchPhase, MouseDownEvent};
 
     if handles.is_empty() {
         return;
     }
-    window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+    // A span left over from a press whose default never ran must not be focused by the next.
+    window.on_mouse_event(move |_: &MouseDownEvent, phase, window, _| {
+        if phase == DispatchPhase::Capture {
+            take_press_focus(window.window_handle().window_id());
+        }
+    });
+    window.on_mouse_event(move |event: &MouseDownEvent, phase, window, _| {
         // Only a prevention that came before the paragraph's turn is the page's:
         // this runs before the listeners of the elements around it.
         if phase != DispatchPhase::Bubble || window.default_prevented() {
@@ -93,7 +116,9 @@ pub fn focus_on_press(window: &mut Window, container: u64, handles: Vec<(u64, Fo
             .find_map(|(id, _)| handles.iter().find(|(boxed, _)| boxed == id));
         if let Some((_, handle)) = focusable {
             let handle = handle.clone();
-            window.defer(cx, move |window, cx| window.focus(&handle, cx));
+            PRESS_FOCUS.with(|slots| {
+                slots.borrow_mut().insert(window.window_handle().window_id(), handle);
+            });
         }
     });
 }
