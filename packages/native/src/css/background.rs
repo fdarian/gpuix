@@ -9,11 +9,12 @@
 //!
 //! `mask` and the `mask-*` longhands have the same layer grammar, so the parsing
 //! here is generic over [`Kind`] and `mask.rs` supplies the differences. A mask
-//! does not paint images yet, so its `url()` layers are skipped.
+//! layer is built the same way, `url()` included, and adds the mode and the
+//! composite operator.
 
 use gpui::{
     BackgroundBox, BackgroundImage, BackgroundLayer, BackgroundPosition, BackgroundRepeat,
-    BackgroundSize,
+    BackgroundSize, MaskComposite, MaskMode,
 };
 
 use super::gradient::{self, GradientError};
@@ -31,15 +32,17 @@ pub(crate) trait Kind {
     const ORIGIN: BackgroundBox;
     /// Whether the shorthand ends in a colour.
     const ALLOWS_COLOR: bool;
-    /// Whether a `url()` layer paints. Where it does not, the layer is skipped
-    /// as `none` is, but its syntax still has to be valid.
-    const PAINTS_URL_IMAGES: bool = false;
+    /// Whether a layer of the shorthand may carry a `<masking-mode>` and a
+    /// `<compositing-operator>` keyword.
+    const HAS_MASK_PARTS: bool = false;
 
     /// A `<box>` keyword gpui can paint with.
     fn parse_box(token: &str) -> Option<BackgroundBox>;
 
     /// A keyword the shorthand takes that has no effect here, lowercased.
-    fn is_ignored_keyword(token: &str) -> bool;
+    fn is_ignored_keyword(_token: &str) -> bool {
+        false
+    }
 
     /// Whether the shorthand reads this token as a box, even if gpui has no
     /// equivalent for it.
@@ -58,7 +61,6 @@ pub(crate) struct Background;
 impl Kind for Background {
     const ORIGIN: BackgroundBox = BackgroundBox::PaddingBox;
     const ALLOWS_COLOR: bool = true;
-    const PAINTS_URL_IMAGES: bool = true;
 
     fn parse_box(token: &str) -> Option<BackgroundBox> {
         parse_box(token)
@@ -117,9 +119,9 @@ impl SlotImage {
     }
 }
 
-/// One entry of the layer lists. `image` is `None` for `none`, `image-set()`, a
-/// `url()` where it does not paint and a gradient gpui cannot paint: the slot
-/// keeps its index so the other lists line up with the right layer.
+/// One entry of the layer lists. `image` is `None` for `none`, `image-set()` and
+/// a gradient gpui cannot paint: the slot keeps its index so the other lists
+/// line up with the right layer.
 #[derive(Clone)]
 pub(crate) struct Slot {
     image: Option<SlotImage>,
@@ -128,6 +130,8 @@ pub(crate) struct Slot {
     repeat: BackgroundRepeat,
     origin: BackgroundBox,
     clip: BackgroundBox,
+    mode: MaskMode,
+    composite: MaskComposite,
 }
 
 impl Slot {
@@ -140,6 +144,8 @@ impl Slot {
             repeat: defaults.repeat,
             origin,
             clip: defaults.clip,
+            mode: defaults.mask_mode,
+            composite: defaults.mask_composite,
         }
     }
 
@@ -150,6 +156,8 @@ impl Slot {
             repeat: self.repeat,
             origin: self.origin,
             clip: self.clip,
+            mask_mode: self.mode,
+            mask_composite: self.composite,
             ..BackgroundLayer::new(self.image?.image)
         })
     }
@@ -173,6 +181,8 @@ pub(crate) struct Longhands<'a> {
     pub repeat: Option<&'a str>,
     pub origin: Option<&'a str>,
     pub clip: Option<&'a str>,
+    pub mode: Option<&'a str>,
+    pub composite: Option<&'a str>,
 }
 
 /// Combines the shorthand and longhands: the shorthand first, then each longhand
@@ -194,17 +204,13 @@ pub(crate) fn resolve(inputs: &Inputs, colors: &ColorContext, lengths: &LengthCo
         repeat: inputs.repeat,
         origin: inputs.origin,
         clip: inputs.clip,
+        ..Longhands::default()
     };
     if slots.is_empty() && longhands.image.is_none() {
         // CSS has one image-less layer, which `background-clip` still applies to.
         slots.push(Slot::new(None, Background::ORIGIN));
     }
     let slots = apply_longhands_to_slots::<Background>(slots, &longhands, colors, lengths);
-    for slot in &slots {
-        if let Some(SlotImage { image: BackgroundImage::Image(key), url: Some(url) }) = &slot.image {
-            crate::background_images::request(*key, url);
-        }
-    }
     let color_clip = slots.last().map_or(BackgroundBox::BorderBox, |slot| slot.clip);
     Resolved { color, layers: into_layers(slots), color_clip }
 }
@@ -229,6 +235,11 @@ pub(crate) fn apply_longhands<K: Kind>(
 }
 
 fn into_layers(slots: Vec<Slot>) -> Vec<BackgroundLayer> {
+    for slot in &slots {
+        if let Some(SlotImage { image: BackgroundImage::Image(key), url: Some(url) }) = &slot.image {
+            crate::background_images::request(*key, url);
+        }
+    }
     slots.into_iter().filter_map(Slot::into_layer).collect()
 }
 
@@ -263,6 +274,8 @@ fn apply_longhands_to_slots<K: Kind>(
         (Property::Repeat, longhands.repeat),
         (Property::Origin, longhands.origin),
         (Property::Clip, longhands.clip),
+        (Property::Mode, longhands.mode),
+        (Property::Composite, longhands.composite),
     ] {
         apply_list::<K>(&mut slots, property, value, lengths);
     }
@@ -278,6 +291,8 @@ pub(crate) enum Property {
     Repeat,
     Origin,
     Clip,
+    Mode,
+    Composite,
 }
 
 impl Property {
@@ -288,8 +303,44 @@ impl Property {
             Self::Repeat => slot.repeat = parse_repeat(&split_whitespace(text))?,
             Self::Origin => slot.origin = K::parse_box(text)?,
             Self::Clip => slot.clip = K::parse_clip(text)?,
+            Self::Mode => slot.mode = parse_mode(text)?,
+            Self::Composite => slot.composite = parse_composite(text)?,
         }
         Some(())
+    }
+}
+
+fn parse_mode(token: &str) -> Option<MaskMode> {
+    match token.trim().to_ascii_lowercase().as_str() {
+        "match-source" => Some(MaskMode::MatchSource),
+        "alpha" => Some(MaskMode::Alpha),
+        "luminance" => Some(MaskMode::Luminance),
+        _ => None,
+    }
+}
+
+fn parse_composite(token: &str) -> Option<MaskComposite> {
+    match token.trim().to_ascii_lowercase().as_str() {
+        "add" => Some(MaskComposite::Add),
+        "subtract" => Some(MaskComposite::Subtract),
+        "intersect" => Some(MaskComposite::Intersect),
+        "exclude" => Some(MaskComposite::Exclude),
+        _ => None,
+    }
+}
+
+/// A keyword only the `mask` shorthand takes.
+#[derive(Clone, Copy)]
+enum MaskPart {
+    Mode(MaskMode),
+    Composite(MaskComposite),
+}
+
+impl MaskPart {
+    fn parse(token: &str) -> Option<Self> {
+        parse_mode(token)
+            .map(Self::Mode)
+            .or_else(|| parse_composite(token).map(Self::Composite))
     }
 }
 
@@ -342,7 +393,7 @@ fn parse_image<K: Kind>(item: &str, colors: &ColorContext, lengths: &LengthConte
     match url::parse(item) {
         url::Parsed::Invalid => return None,
         // An empty address names no image, so there is nothing to load.
-        url::Parsed::Url(address) if K::PAINTS_URL_IMAGES && !address.is_empty() => {
+        url::Parsed::Url(address) if !address.is_empty() => {
             let key = crate::background_images::key(&address);
             return Some(Some(SlotImage { image: BackgroundImage::Image(key), url: Some(address.into_owned()) }));
         }
@@ -432,6 +483,8 @@ fn parse_shorthand_layer<K: Kind>(
     let mut in_size = false;
     let mut repeat: Vec<&str> = Vec::new();
     let mut boxes: Vec<&str> = Vec::new();
+    let mut mode = None;
+    let mut composite = None;
     let mut color = None;
 
     let tokens = shorthand_tokens(layer);
@@ -453,12 +506,21 @@ fn parse_shorthand_layer<K: Kind>(
         }
         in_size = false;
         let lower = token.to_ascii_lowercase();
+        let mask_part = if K::HAS_MASK_PARTS { MaskPart::parse(&lower) } else { None };
         if gradient::is_gradient(token) || lower == "none" || lower.starts_with("url(") {
             if image.replace(parse_image::<K>(token, colors, lengths)?).is_some() {
                 return None;
             }
         } else if is_repeat_token(token) {
             repeat.push(token);
+        } else if let Some(part) = mask_part {
+            let repeated = match part {
+                MaskPart::Mode(parsed) => mode.replace(parsed).is_some(),
+                MaskPart::Composite(parsed) => composite.replace(parsed).is_some(),
+            };
+            if repeated {
+                return None;
+            }
         } else if K::is_ignored_keyword(&lower) {
             // Valid in the grammar, but nothing to set.
         } else if K::is_box_token(token) {
@@ -485,6 +547,8 @@ fn parse_shorthand_layer<K: Kind>(
     if !repeat.is_empty() {
         slot.repeat = parse_repeat(&repeat)?;
     }
+    slot.mode = mode.unwrap_or(slot.mode);
+    slot.composite = composite.unwrap_or(slot.composite);
     match boxes.as_slice() {
         [] => {}
         [one] => {
@@ -852,6 +916,15 @@ mod tests {
         let resolved = shorthand("linear-gradient(in oklab, red, blue)");
         let BackgroundImage::Gradient(gradient) = &resolved.layers[0].image else { panic!("an image layer") };
         assert_eq!(gradient.color_space, gpui::ColorSpace::Oklab);
+    }
+
+    #[test]
+    fn a_background_shorthand_has_no_mask_mode_or_composite() {
+        for bad in ["luminance", "linear-gradient(red, blue) subtract", "alpha red"] {
+            assert_eq!(shorthand(bad), Resolved::default(), "{bad}");
+        }
+        let layer = &shorthand("linear-gradient(red, blue)").layers[0];
+        assert_eq!((layer.mask_mode, layer.mask_composite), (MaskMode::MatchSource, MaskComposite::Add));
     }
 
     #[test]

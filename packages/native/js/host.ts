@@ -664,9 +664,12 @@ export interface StyleDesc {
    *  background should be translucent for the effect to show. */
   backdropFilter?: string
   /** CSS `mask-image`: a comma list of `linear-`, `radial-`, `conic-gradient()` and
-   *  `repeating-` forms, `none`, or `url()` (valid but not drawn, so that layer is
-   *  skipped). The element and everything in it is multiplied by the alpha of the
-   *  layers, the first on top. */
+   *  `repeating-` forms, `none`, or `url()` (an image, loaded as `backgroundImage`
+   *  loads it). The element and everything in it is multiplied by the layers, the
+   *  first on top, each read by its `maskMode` and combined with the ones below by
+   *  its `maskComposite`. A `url()` image that has not loaded, or failed to, is a
+   *  transparent layer, so the element is hidden until it does. `image-set()` is
+   *  not supported. */
   maskImage?: string
   /** CSS lists, one entry per layer, repeating to cover the layers. Unlike
    *  `backgroundOrigin`, `maskOrigin` starts at `border-box`. `fill-box` is
@@ -677,10 +680,17 @@ export interface StyleDesc {
   maskRepeat?: string
   maskOrigin?: "border-box" | "padding-box" | "content-box" | string
   maskClip?: "border-box" | "padding-box" | "content-box" | string
-  /** CSS `mask` shorthand: layers, `position / size`, repeat and origin / clip
-   *  boxes. The longhands win over it. `mask-composite` and `mask-mode` have no
-   *  props, so only their initial values (`add`, `alpha`, `match-source`) are
-   *  accepted. An invalid string is ignored. */
+  /** CSS `mask-mode`, one entry per layer, repeating to cover the layers: `alpha`
+   *  reads a layer's alpha, `luminance` its luminance scaled by its alpha, and
+   *  `match-source` (the default) is alpha for a gradient and an image alike. */
+  maskMode?: "match-source" | "alpha" | "luminance" | string
+  /** CSS `mask-composite`, one entry per layer, repeating to cover the layers: how
+   *  a layer combines with the ones below it. The bottom layer's is ignored. The
+   *  legacy `-webkit-mask-composite` keywords are not supported. */
+  maskComposite?: "add" | "subtract" | "intersect" | "exclude" | string
+  /** CSS `mask` shorthand: layers, `position / size`, repeat, origin / clip boxes,
+   *  and a mode and a composite keyword, in any order. The longhands win over it.
+   *  An invalid string is ignored. `mask-border` is not supported. */
   mask?: string
   /** CSS `clip-path`: `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`, `polygon()` or
    *  `path()`, or `none`, with an optional `border-box` (default), `padding-box` or

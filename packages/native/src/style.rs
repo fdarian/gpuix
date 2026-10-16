@@ -641,7 +641,7 @@ pub struct StyleDesc {
     /// CSS `backdrop-filter`: the same functions, applied to what is behind the element.
     pub backdrop_filter: Option<String>,
     /// CSS `mask-image`: a comma list of gradients (and `repeating-` forms), `none`
-    /// or `url()`. Only the alpha of each layer is used. First is on top.
+    /// or `url()`. First is on top.
     pub mask_image: Option<String>,
     /// CSS `mask-size`, `-position`, `-repeat`, `-origin` and `-clip`. Each is a
     /// comma list that repeats to cover the layers.
@@ -650,6 +650,11 @@ pub struct StyleDesc {
     pub mask_repeat: Option<String>,
     pub mask_origin: Option<String>,
     pub mask_clip: Option<String>,
+    /// CSS `mask-mode`: a comma list of `alpha`, `luminance` or `match-source`, and
+    /// `mask-composite`: of `add`, `subtract`, `intersect` or `exclude`. Both repeat
+    /// to cover the layers, and the bottom layer's operator is ignored.
+    pub mask_mode: Option<String>,
+    pub mask_composite: Option<String>,
     /// CSS `mask` shorthand. The longhands above replace its parts.
     pub mask: Option<String>,
     /// CSS `clip-path`: `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`, `polygon()` or `path()` and an
@@ -1023,6 +1028,8 @@ impl StyleDesc {
                 repeat: self.mask_repeat.as_deref(),
                 origin: self.mask_origin.as_deref(),
                 clip: self.mask_clip.as_deref(),
+                mode: self.mask_mode.as_deref(),
+                composite: self.mask_composite.as_deref(),
             },
             colors,
             lengths,
@@ -1533,6 +1540,25 @@ mod tests {
         .color_space(gpui::ColorSpace::Oklab);
 
         assert_eq!(style.resolved_fill(&light(), &LengthContext::for_tests()).color, Some(expected));
+    }
+
+    #[test]
+    fn the_mask_longhands_reach_the_layers_from_json() {
+        let style: StyleDesc = serde_json::from_str(
+            r##"{"maskImage":"url(a.png), linear-gradient(black, transparent)",
+                "maskMode":"luminance, alpha","maskComposite":"intersect"}"##,
+        )
+        .unwrap();
+        let layers = style.resolved_mask(&light(), &LengthContext::for_tests()).unwrap();
+        let parts: Vec<_> = layers.iter().map(|layer| (layer.mask_mode, layer.mask_composite)).collect();
+        assert_eq!(
+            parts,
+            vec![
+                (gpui::MaskMode::Luminance, gpui::MaskComposite::Intersect),
+                (gpui::MaskMode::Alpha, gpui::MaskComposite::Intersect),
+            ]
+        );
+        assert!(matches!(layers[0].image, gpui::BackgroundImage::Image(_)));
     }
 
     #[test]

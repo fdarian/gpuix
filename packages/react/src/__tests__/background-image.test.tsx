@@ -412,15 +412,6 @@ describeNative("url() in backgroundImage", () => {
       testRoot.unmount()
     }
   })
-
-  it("still does not paint a url() in a mask", () => {
-    const at = paint(
-      stage({ backgroundColor: "#ff0000", maskImage: `${url(solid(20, 20, "#000000"))}, linear-gradient(#000, #000)` })
-    )
-    near(at(50, 50), RED)
-    const only = paint(stage({ backgroundColor: "#ff0000", maskImage: url(solid(20, 20, "#000000")) }))
-    near(only(50, 50), RED)
-  })
 })
 
 describeNative("url() backgrounds that load off the frame", () => {

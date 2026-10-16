@@ -142,7 +142,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         background, background_color, background_image, background_size, background_position,
         background_repeat, background_origin, background_clip, color, color_scheme, opacity,
         filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
-        mask_clip, mask, clip_path, font_style,
+        mask_clip, mask_mode, mask_composite, mask, clip_path, font_style,
         border, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,
@@ -200,6 +200,8 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         mask_repeat: |value| background::is_valid_list::<Mask>(Property::Repeat, value, &lengths),
         mask_origin: |value| background::is_valid_list::<Mask>(Property::Origin, value, &lengths),
         mask_clip: |value| background::is_valid_list::<Mask>(Property::Clip, value, &lengths),
+        mask_mode: |value| background::is_valid_list::<Mask>(Property::Mode, value, &lengths),
+        mask_composite: |value| background::is_valid_list::<Mask>(Property::Composite, value, &lengths),
         background_color: |value| colors.resolve(value).is_some(),
         background_image: |value| background::is_valid_image_list::<Background>(value, &colors, &lengths),
         background_size: |value| background::is_valid_list::<Background>(Property::Size, value, &lengths),
@@ -426,6 +428,8 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.mask_repeat = None;
         base.mask_origin = None;
         base.mask_clip = None;
+        base.mask_mode = None;
+        base.mask_composite = None;
     }
     // `background_color` wins over `background` when both are set, so a base
     // colour would beat a state's shorthand. A state's colour alone leaves the
@@ -951,6 +955,43 @@ mod tests {
         assert_eq!(resolved.mask.as_deref(), Some("none"));
         assert_eq!(resolved.mask_image, None);
         assert_eq!(resolved.mask_size, None);
+    }
+
+    #[test]
+    fn a_mask_shorthand_state_resets_the_base_mode_and_composite() {
+        let base = style(
+            r##"{"maskImage":"linear-gradient(black, transparent), linear-gradient(black, transparent)",
+                "maskMode":"luminance","maskComposite":"subtract",
+                "hover":{"mask":"url(a.png) no-repeat"}}"##,
+        );
+        let resolved = resolve_state_styles(&base, true, false);
+        assert_eq!(resolved.mask.as_deref(), Some("url(a.png) no-repeat"));
+        assert_eq!((resolved.mask_mode, resolved.mask_composite), (None, None));
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.mask_mode.as_deref(), Some("luminance"));
+        assert_eq!(at_rest.mask_composite.as_deref(), Some("subtract"));
+    }
+
+    #[test]
+    fn a_state_mode_or_composite_replaces_the_base_one_and_an_invalid_one_does_not() {
+        let resolved = resolved_hover(
+            r##"{"maskMode":"luminance","maskComposite":"subtract",
+                "hover":{"maskMode":"alpha","maskComposite":"nope"}}"##,
+        );
+        assert_eq!(resolved.mask_mode.as_deref(), Some("alpha"));
+        assert_eq!(resolved.mask_composite.as_deref(), Some("subtract"));
+        let invalid = resolved_hover(
+            r##"{"maskMode":"luminance","maskComposite":"subtract",
+                "hover":{"maskMode":"add","maskComposite":"alpha"}}"##,
+        );
+        assert_eq!(invalid.mask_mode.as_deref(), Some("luminance"));
+        assert_eq!(invalid.mask_composite.as_deref(), Some("subtract"));
+        // An invalid shorthand resets nothing, the new longhands included.
+        let keeps = resolved_hover(
+            r##"{"maskMode":"luminance","hover":{"mask":"linear-gradient(black, transparent) luminance alpha"}}"##,
+        );
+        assert_eq!(keeps.mask_mode.as_deref(), Some("luminance"));
+        assert_eq!(keeps.mask, None);
     }
 
     #[test]

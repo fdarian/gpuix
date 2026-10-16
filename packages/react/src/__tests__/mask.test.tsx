@@ -120,11 +120,10 @@ describeNative("mask", () => {
     expectScreenshotsEqual(plain.file, shoot("none-shorthand", masked({ mask: "none" })).file)
   })
 
-  it("an invalid value and a url() mask leave the element alone", () => {
+  it("an invalid value leaves the element alone", () => {
     const plain = shoot("plain-2", masked({}))
     expectScreenshotsEqual(plain.file, shoot("invalid", masked({ maskImage: "linear-gradient(black)" })).file)
     expectScreenshotsEqual(plain.file, shoot("invalid-shorthand", masked({ mask: "red linear-gradient(black, transparent)" })).file)
-    expectScreenshotsEqual(plain.file, shoot("url", masked({ maskImage: "url(a.svg)" })).file)
   })
 
   it("maskImage: none in a hover state clears the base mask", () => {
