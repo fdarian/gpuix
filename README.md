@@ -2807,12 +2807,29 @@ so search, selection and copy see `\t`, and it advances to the next tab stop.
 - The text of `<code>` and `<diff>` inherits it too, so a tab there gets a stop
   where it used to get the font's own tab.
 
+#### Hanging spaces
+
+In `normal`, `pre-line` and `pre-wrap` the spaces and tabs at the end of a line
+hang, as in CSS: they are not measured, so they neither wrap a line nor take part
+in aligning it.
+
+- A space that does not fit stays at the end of its line instead of wrapping. A
+  run of spaces at the edge makes no line of its own, and the next line starts
+  at the first character after it.
+- `textAlign: 'center'` and `'right'` ignore them. That holds for a space where
+  the line wraps and, in `pre-wrap`, for the spaces at the end of the text or
+  before a line break.
+- A hanging space is still there: it is selected, copied and found by search, and
+  a selection or highlight over it reaches past the edge of the box.
+- The size of a box that shrinks to its text still contains the spaces at the end
+  of its last line.
+- `pre` and `nowrap` do not hang anything: in `pre` the spaces are content and
+  count in the alignment.
+
 Deviations, where GPUI's text layout cannot build the DOM model:
 
-- A space that wraps with a line stays at the end of that line, where CSS removes
-  it (`normal`, `pre-line`) or hangs it (`pre-wrap`). It paints nothing but it
-  counts in the line's width, so `textAlign: 'center'` and `'right'` can be off
-  by a space.
+- In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
+  where CSS removes it, so selection and copy see it.
 - `break-spaces`, `word-break` and `overflow-wrap` are not supported.
 - `textOverflow` with `lineClamp` or a fixed width decides where to cut by the
   font's own width of a tab, not by the tab stop, so a line with tabs can be cut
