@@ -435,7 +435,7 @@ describeNative("events", () => {
         .findByType("div")
         .find((d) => d.events.has("keydown"))!
 
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "down")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "ArrowDown")
 
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
@@ -443,7 +443,7 @@ describeNative("events", () => {
         ]
       `)
 
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "escape")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "Escape")
 
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
@@ -470,7 +470,7 @@ describeNative("events", () => {
         .findByType("div")
         .find((d) => d.events.has("keydown"))!
 
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "cmd-s")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "Meta+s")
 
       expect(receivedEvents.length).toBeGreaterThanOrEqual(1)
       const event = receivedEvents.find((e) => e.key === "s")
@@ -992,7 +992,7 @@ describeNative("events", () => {
         .find((d) => d.events.has("keydown"))!
 
       // Arrow down through native GPUI pipeline
-      testRoot.renderer.nativeSimulateKeystrokes(list.id, "down")
+      testRoot.renderer.nativeSimulateKeystrokes(list.id, "ArrowDown")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "  Apple",
@@ -1002,7 +1002,7 @@ describeNative("events", () => {
       `)
 
       // Arrow down again
-      testRoot.renderer.nativeSimulateKeystrokes(list.id, "down")
+      testRoot.renderer.nativeSimulateKeystrokes(list.id, "ArrowDown")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "  Apple",
@@ -1012,7 +1012,7 @@ describeNative("events", () => {
       `)
 
       // Arrow down at bottom — should stay
-      testRoot.renderer.nativeSimulateKeystrokes(list.id, "down")
+      testRoot.renderer.nativeSimulateKeystrokes(list.id, "ArrowDown")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "  Apple",
@@ -1022,7 +1022,7 @@ describeNative("events", () => {
       `)
 
       // Arrow up
-      testRoot.renderer.nativeSimulateKeystrokes(list.id, "up")
+      testRoot.renderer.nativeSimulateKeystrokes(list.id, "ArrowUp")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "  Apple",
@@ -1494,8 +1494,8 @@ describeNative("events", () => {
         .findByType("div")
         .find((d) => d.events.has("keydown") && d.events.has("keyup"))!
 
-      testRoot.renderer.nativeSimulateKeyDown(div.id, "enter")
-      testRoot.renderer.nativeSimulateKeyUp(div.id, "enter")
+      testRoot.renderer.nativeSimulateKeyDown(div.id, "Enter")
+      testRoot.renderer.nativeSimulateKeyUp(div.id, "Enter")
 
       expect(events).toContain("down:Enter")
       expect(events).toContain("up:Enter")
@@ -2028,7 +2028,7 @@ describeNative("events", () => {
         .find((d) => d.events.has("keydown"))!
 
       // Cmd+S
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "cmd-s")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "Meta+s")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "Action: save",
@@ -2036,7 +2036,7 @@ describeNative("events", () => {
       `)
 
       // Cmd+Shift+P
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "cmd-shift-p")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "Shift+Meta+p")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "Action: command-palette",
@@ -2044,7 +2044,7 @@ describeNative("events", () => {
       `)
 
       // Escape (no modifiers)
-      testRoot.renderer.nativeSimulateKeystrokes(div.id, "escape")
+      testRoot.renderer.nativeSimulateKeystrokes(div.id, "Escape")
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "Action: cancel",
@@ -2163,7 +2163,7 @@ describeNative("events", () => {
       if (fs.existsSync(path1)) fs.unlinkSync(path1)
 
       testRoot.renderer.captureScreenshot(path0)
-      testRoot.renderer.nativeSimulateKeyDown(keyTarget.id, "enter")
+      testRoot.renderer.nativeSimulateKeyDown(keyTarget.id, "Enter")
       testRoot.renderer.captureScreenshot(path1)
 
       expectScreenshotsDiffer(path0, path1)

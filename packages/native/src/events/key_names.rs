@@ -1,10 +1,12 @@
-//! GPUI key names to DOM `KeyboardEvent.key` and `.code` values.
+//! GPUI key names to DOM `KeyboardEvent.key` and `.code` values, and back.
 //!
 //! GPUI names a key by what is printed on it, lowercase for the named keys
 //! (`enter`, `down`, `pageup`, `f1`), and has no physical key code. The DOM
 //! wants `Enter`, `ArrowDown`, `PageUp`, and a `code` naming the key's position.
-//! This is the only place that mapping lives; the payload builder calls it and
-//! JS only reads the result.
+//! This is the only place that mapping lives, in both directions: the payload
+//! builder calls `dom_key` and JS only reads the result, and the simulated
+//! keyboard (`parse_presses`) turns Playwright's `keyboard.press` grammar back
+//! into GPUI keystrokes with the same tables.
 //!
 //! `code` is derived from GPUI's `key`, which is layout-dependent on every
 //! platform, so printable keys assume a US QWERTY position: on AZERTY the key
@@ -41,7 +43,7 @@ const NAMED_KEYS: &[(&str, &str, &str)] = &[
     ("end", "End", "End"),
     ("pageup", "PageUp", "PageUp"),
     ("pagedown", "PageDown", "PageDown"),
-    // Modifiers. Only keystrokes parsed from text (`simulateKeystrokes("shift")`)
+    // Modifiers. Only a simulated press of the key itself (`simulateKeystrokes("Shift")`)
     // and Linux's `*_l` / `*_r` names reach here; the platforms report held
     // modifiers through `modifiers`, not as keys of their own.
     ("shift", "Shift", ""),
@@ -160,6 +162,169 @@ fn printable_code(key: char) -> String {
         .iter()
         .find(|(plain, shifted, _)| *plain == key || *shifted == key)
         .map_or_else(String::new, |(_, _, code)| (*code).to_string())
+}
+
+/// A table row for a DOM `key` or `code` name. The `key` pass comes first so
+/// `"Shift"` is the generic modifier, not `shift_l`.
+fn named_row(dom_name: &str) -> Option<&'static (&'static str, &'static str, &'static str)> {
+    NAMED_KEYS
+        .iter()
+        .find(|(_, key, _)| *key == dom_name)
+        .or_else(|| {
+            NAMED_KEYS
+                .iter()
+                .find(|(_, _, code)| !code.is_empty() && *code == dom_name)
+        })
+}
+
+/// GPUI's name for `F1`..`F35`.
+fn function_key_name(dom_name: &str) -> Option<String> {
+    let name = format!("f{}", dom_name.strip_prefix('F')?);
+    function_key(&name).map(|_| name)
+}
+
+/// The character a `Key*`, `Digit*` or punctuation `code` stands for, unshifted.
+fn code_character(code: &str) -> Option<char> {
+    if let Some(letter) = code.strip_prefix("Key") {
+        let mut chars = letter.chars();
+        return match (chars.next(), chars.next()) {
+            (Some(letter), None) if letter.is_ascii_uppercase() => {
+                Some(letter.to_ascii_lowercase())
+            }
+            _ => None,
+        };
+    }
+    PUNCTUATION
+        .iter()
+        .find(|(_, _, row_code)| *row_code == code)
+        .map(|(plain, _, _)| *plain)
+}
+
+/// GPUI `key` and the character that key types, for one typed character.
+/// US layout, like `printable_code`. A character that needs shift (`A`, `!`)
+/// is typed as itself without the shift modifier, as in Playwright.
+fn character_key(typed: char, shift: bool) -> Option<(String, String)> {
+    if typed.is_control() {
+        return None;
+    }
+    if typed.is_ascii_alphabetic() {
+        let upper = typed.is_ascii_uppercase() || shift;
+        let text = if upper {
+            typed.to_ascii_uppercase()
+        } else {
+            typed
+        };
+        return Some((typed.to_ascii_lowercase().to_string(), text.to_string()));
+    }
+    if let Some((plain, shifted, _)) = PUNCTUATION
+        .iter()
+        .find(|(plain, shifted, _)| *plain == typed || *shifted == typed)
+    {
+        let text = if *shifted == typed || shift { *shifted } else { *plain };
+        return Some((plain.to_string(), text.to_string()));
+    }
+    Some((typed.to_string(), typed.to_string()))
+}
+
+/// Splits on `+`, except a `+` with nothing before it is the key itself:
+/// `"+"` and `"Shift++"` are the plus key. Playwright's rule.
+fn split_press(press: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for (index, ch) in press.char_indices() {
+        if ch == '+' && index > start {
+            parts.push(&press[start..index]);
+            start = index + 1;
+        }
+    }
+    parts.push(&press[start..]);
+    parts
+}
+
+fn unknown_key(name: &str, press: &str) -> String {
+    format!(
+        "Unknown key {name:?} in {press:?}. A key is a DOM key value (\"Enter\", \"a\", \"ArrowDown\") \
+         or code (\"Space\", \"KeyA\", \"Digit1\"), and modifiers join with \"+\" \
+         (\"Shift+Tab\", \"Meta+a\", \"ControlOrMeta+Shift+P\")"
+    )
+}
+
+/// One Playwright `keyboard.press` key, as the keystroke a platform would
+/// report for it: `"Enter"`, `"a"`, `"Shift+Tab"`, `"Meta+a"`, `"Space"`,
+/// `"KeyA"`, `"ControlOrMeta+Shift+P"`. Names are case-sensitive, as in the DOM.
+///
+/// `key_char` is what the key types, and is absent while Control, Alt or Meta
+/// is held, as on a real keyboard.
+pub(crate) fn parse_press(press: &str) -> Result<gpui::Keystroke, String> {
+    let parts = split_press(press);
+    let (key, modifier_names) = parts.split_last().expect("split_press never returns nothing");
+    let mut modifiers = gpui::Modifiers::default();
+    for name in modifier_names {
+        match *name {
+            "Shift" => modifiers.shift = true,
+            "Control" => modifiers.control = true,
+            "Alt" => modifiers.alt = true,
+            "Meta" => modifiers.platform = true,
+            "ControlOrMeta" if cfg!(target_os = "macos") => modifiers.platform = true,
+            "ControlOrMeta" => modifiers.control = true,
+            other => {
+                return Err(format!(
+                    "{other:?} in {press:?} is not a modifier. The modifiers are \
+                     Shift, Control, Alt, Meta and ControlOrMeta"
+                ))
+            }
+        }
+    }
+
+    let mut chars = key.chars();
+    let single = match (chars.next(), chars.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    };
+    let (gpui_key, typed) = if single == Some(' ') || *key == "Space" {
+        ("space".to_string(), Some(" ".to_string()))
+    } else if let Some(character) = single.or_else(|| code_character(key)) {
+        let (gpui_key, typed) = character_key(character, modifiers.shift)
+            .ok_or_else(|| unknown_key(key, press))?;
+        (gpui_key, Some(typed))
+    } else if let Some(row) = named_row(key) {
+        match row.1 {
+            "Shift" => modifiers.shift = true,
+            "Control" => modifiers.control = true,
+            "Alt" => modifiers.alt = true,
+            "Meta" => modifiers.platform = true,
+            _ => {}
+        }
+        let typed = match row.0 {
+            "tab" => Some("\t".to_string()),
+            "enter" => Some("\n".to_string()),
+            _ => None,
+        };
+        (row.0.to_string(), typed)
+    } else if let Some(name) = function_key_name(key) {
+        (name, None)
+    } else {
+        return Err(unknown_key(key, press));
+    };
+
+    let types_text = !(modifiers.platform || modifiers.control || modifiers.alt || modifiers.function);
+    Ok(gpui::Keystroke {
+        modifiers,
+        key: gpui_key,
+        key_char: typed.filter(|_| types_text),
+    })
+}
+
+/// A space-separated sequence of presses, parsed whole so a typo dispatches nothing.
+pub(crate) fn parse_presses(sequence: &str) -> Result<Vec<gpui::Keystroke>, String> {
+    let presses = sequence
+        .split_whitespace()
+        .map(parse_press)
+        .collect::<Result<Vec<_>, _>>()?;
+    if presses.is_empty() {
+        return Err("No keys to press".to_string());
+    }
+    Ok(presses)
 }
 
 /// `key`, `key_char` and `shift` are the fields of `gpui::Keystroke`.
@@ -288,5 +453,125 @@ mod tests {
     fn unknown_names_are_unidentified() {
         expect("hyper_l", UNIDENTIFIED, "");
         assert_eq!(pair("é", None, false), ("é".into(), String::new()));
+    }
+
+    fn press(source: &str) -> (String, Option<String>, [bool; 4]) {
+        let keystroke = parse_press(source).unwrap_or_else(|error| panic!("{source}: {error}"));
+        let modifiers = keystroke.modifiers;
+        (
+            keystroke.key,
+            keystroke.key_char,
+            [
+                modifiers.shift,
+                modifiers.control,
+                modifiers.alt,
+                modifiers.platform,
+            ],
+        )
+    }
+
+    fn text(key: &str, typed: Option<&str>) -> (String, Option<String>) {
+        (key.to_string(), typed.map(str::to_string))
+    }
+
+    #[test]
+    fn presses_name_dom_keys() {
+        assert_eq!(press("Enter"), ("enter".into(), Some("\n".into()), [false; 4]));
+        assert_eq!(press("ArrowDown").0, "down");
+        assert_eq!(press("Escape"), ("escape".into(), None, [false; 4]));
+        assert_eq!(press("PageUp").0, "pageup");
+        assert_eq!(press("F2"), ("f2".into(), None, [false; 4]));
+        assert_eq!(press("Backspace").1, None);
+    }
+
+    #[test]
+    fn presses_name_codes() {
+        assert_eq!(press("Space"), ("space".into(), Some(" ".into()), [false; 4]));
+        assert_eq!(press(" ").0, "space");
+        assert_eq!(press("KeyA"), ("a".into(), Some("a".into()), [false; 4]));
+        assert_eq!(press("Digit1"), ("1".into(), Some("1".into()), [false; 4]));
+        assert_eq!(press("Minus").0, "-");
+        assert_eq!(press("NumpadAdd").0, "add");
+    }
+
+    #[test]
+    fn presses_type_the_character() {
+        let (key, typed, _) = press("a");
+        assert_eq!(text(&key, typed.as_deref()), text("a", Some("a")));
+        // Uppercase and shifted symbols type as themselves, without Shift held.
+        assert_eq!(press("A"), ("a".into(), Some("A".into()), [false; 4]));
+        assert_eq!(press("!"), ("1".into(), Some("!".into()), [false; 4]));
+        assert_eq!(press("Shift+b"), ("b".into(), Some("B".into()), [true, false, false, false]));
+        assert_eq!(press("Shift+1"), ("1".into(), Some("!".into()), [true, false, false, false]));
+        assert_eq!(press("é"), ("é".into(), Some("é".into()), [false; 4]));
+    }
+
+    #[test]
+    fn presses_join_modifiers_with_plus() {
+        assert_eq!(press("Shift+Tab"), ("tab".into(), Some("\t".into()), [true, false, false, false]));
+        // Control, Alt and Meta stop a key from typing.
+        assert_eq!(press("Control+Shift+P"), ("p".into(), None, [true, true, false, false]));
+        assert_eq!(press("Alt+ArrowLeft"), ("left".into(), None, [false, false, true, false]));
+        assert_eq!(press("Meta+a"), ("a".into(), None, [false, false, false, true]));
+        let control_or_meta = if cfg!(target_os = "macos") {
+            [false, false, false, true]
+        } else {
+            [false, true, false, false]
+        };
+        assert_eq!(press("ControlOrMeta+a"), ("a".into(), None, control_or_meta));
+    }
+
+    #[test]
+    fn a_plus_with_nothing_before_it_is_the_key() {
+        assert_eq!(press("+"), ("=".into(), Some("+".into()), [false; 4]));
+        assert_eq!(press("Shift++").0, "=");
+        assert_eq!(press("Control+-").0, "-");
+    }
+
+    #[test]
+    fn pressing_a_modifier_holds_it() {
+        assert_eq!(press("Shift"), ("shift".into(), None, [true, false, false, false]));
+        assert_eq!(press("Meta"), ("platform".into(), None, [false, false, false, true]));
+    }
+
+    #[test]
+    fn presses_reject_unknown_names() {
+        for source in ["", "enter", "cmd-shift-p", "Shift+", "F36", "Ctrl+a", "a+b", "Key", "Digit"] {
+            assert!(parse_press(source).is_err(), "{source:?} parsed");
+        }
+        let message = parse_press("cmd-p").unwrap_err();
+        assert!(message.contains("Unknown key \"cmd-p\""), "{message}");
+        assert!(parse_press("a+b").unwrap_err().contains("not a modifier"));
+    }
+
+    #[test]
+    fn sequences_split_on_spaces_and_fail_whole() {
+        let keys: Vec<String> = parse_presses("a  Shift+b Enter")
+            .unwrap()
+            .into_iter()
+            .map(|keystroke| keystroke.key)
+            .collect();
+        assert_eq!(keys, ["a", "b", "enter"]);
+        assert!(parse_presses("a bogus").is_err());
+        assert!(parse_presses("  ").is_err());
+    }
+
+    #[test]
+    fn a_parsed_press_round_trips_to_its_dom_key() {
+        for source in ["Enter", "ArrowDown", "Escape", "a", "A", "Shift+b", "Space", "F5", "Shift+1"] {
+            let keystroke = parse_press(source).unwrap();
+            let dom = dom_key(
+                &keystroke.key,
+                keystroke.key_char.as_deref(),
+                keystroke.modifiers.shift,
+            );
+            let expected = match source {
+                "Shift+b" => "B",
+                "Space" => " ",
+                "Shift+1" => "!",
+                other => other,
+            };
+            assert_eq!(dom.key, expected, "{source}");
+        }
     }
 }

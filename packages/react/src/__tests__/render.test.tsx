@@ -415,12 +415,12 @@ describeNative("render()", () => {
       .filter((element) => element.events.has("keydown"))
       .slice(1)
 
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(renderer.getFocusedElementId()).toBe(second.id)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(renderer.getFocusedElementId()).toBe(second.id)
     renderer.simulateKeystrokes("x")
-    renderer.simulateKeystrokes("shift-tab")
+    renderer.simulateKeystrokes("Shift+Tab")
     expect(renderer.getFocusedElementId()).toBe(first.id)
 
     const trace = log.join("\n")
@@ -455,13 +455,13 @@ describeNative("render()", () => {
     renderer.flush()
     const focused = () => renderer.getElement(renderer.getFocusedElementId()!)?.testId
     const steps = [focused()]
-    renderer.simulateKeystrokes("shift-tab")
+    renderer.simulateKeystrokes("Shift+Tab")
     steps.push(focused())
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     steps.push(focused())
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     steps.push(focused())
-    renderer.simulateKeystrokes("shift-tab")
+    renderer.simulateKeystrokes("Shift+Tab")
     steps.push(focused())
     expect(steps).toEqual(["field", "before", "field", "after", "field"])
   })
@@ -477,7 +477,7 @@ describeNative("render()", () => {
     renderer.flush()
     const focused = renderer.getFocusedElementId()
     expect(focused).not.toBeNull()
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(renderer.getFocusedElementId()).toBe(focused)
   })
 

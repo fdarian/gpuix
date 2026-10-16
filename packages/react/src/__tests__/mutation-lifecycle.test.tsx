@@ -298,7 +298,7 @@ describeNative("mutation lifecycle", () => {
       // The rejected root must not have disturbed the live one.
       handleGpuixEvent({ elementId: renderer.getRoot()!.id, eventType: "click" }, renderer)
       expect(onFirst).toHaveBeenCalledTimes(1)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(onFirstKey).toHaveBeenCalledTimes(1)
     } finally {
       first.unmount()

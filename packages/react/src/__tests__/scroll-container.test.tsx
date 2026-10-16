@@ -348,8 +348,8 @@ describeNative("overflow values", () => {
 
       renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
-      renderer.nativeSimulateKeystrokes(id, "down")
-      renderer.nativeSimulateKeystrokes(id, "pagedown")
+      renderer.nativeSimulateKeystrokes(id, "ArrowDown")
+      renderer.nativeSimulateKeystrokes(id, "PageDown")
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
 
       renderer.scrollTo(id, 0, -60)

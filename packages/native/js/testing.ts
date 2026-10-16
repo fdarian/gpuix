@@ -460,12 +460,16 @@ export class TestRenderer implements NativeRenderer {
     flushObservations(this)
   }
 
-  /** End-to-end: focus element → simulate keystrokes through GPUI →
-   *  dispatch resulting events to the framework.
-   *  @param elementId - element to focus (must have onKeyDown/onKeyUp)
-   *  @param keystrokes - space-separated keys, e.g. "a", "enter", "cmd-shift-p"
-   */
-  /** Send keystrokes to whatever currently holds focus.
+  /** Press keys on whatever currently holds focus, in Playwright's
+   *  `keyboard.press` grammar. A press is a DOM `key` value (`"Enter"`, `"a"`,
+   *  `"A"`, `"ArrowDown"`, `"Escape"`, `"Tab"`, `"F2"`) or a `code` name
+   *  (`"Space"`, `"KeyA"`, `"Digit1"`), with modifiers joined by `+`
+   *  (`"Shift+Tab"`, `"Meta+a"`, `"Alt+ArrowLeft"`, `"ControlOrMeta+Shift+P"`;
+   *  `ControlOrMeta` is Meta on macOS). `keystrokes` is a sequence of presses
+   *  separated by spaces: `"a Shift+b Enter"`. Each press is a `keydown` then a
+   *  `keyup`, and a typed key inserts its character into a focused input.
+   *  Names are case-sensitive and an unknown one throws before anything is
+   *  pressed.
    *
    *  Unlike `nativeSimulateKeystrokes`, this focuses nothing first, which is
    *  the only way to test that `autoFocus` (or a click) actually moved focus. */
@@ -480,6 +484,9 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
+  /** Focus an element, then press keys on it (the `simulateKeystrokes` grammar).
+   *  @param elementId - element to focus
+   *  @param keystrokes - space-separated presses, e.g. `"h i Enter Shift+Tab"` */
   nativeSimulateKeystrokes(elementId: number, keystrokes: string): void {
     this.native.flush()
     this.native.focusElement(elementId)
@@ -490,11 +497,11 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchNativeEvents()
   }
 
-  /** End-to-end: focus element → simulate a single key down through GPUI →
-   *  dispatch resulting events to the framework. Unlike nativeSimulateKeystrokes,
-   *  this dispatches ONLY a KeyDownEvent — no automatic KeyUpEvent follows.
-   *  @param elementId - element to focus (must have onKeyDown)
-   *  @param keystroke - modifier-key string, e.g. "a", "enter", "cmd-s"
+  /** Focus an element, then send one `keydown` for one press (the
+   *  `simulateKeystrokes` grammar), with no `keyup` after it. Pairs with
+   *  `nativeSimulateKeyUp`.
+   *  @param elementId - element to focus
+   *  @param keystroke - one press, e.g. `"a"`, `"Enter"`, `"Meta+s"`
    *  @param isHeld - whether this is a key-repeat event (default: false)
    */
   nativeSimulateKeyDown(elementId: number, keystroke: string, isHeld?: boolean): void {
@@ -507,10 +514,10 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchNativeEvents()
   }
 
-  /** End-to-end: focus element → simulate a single key up through GPUI →
-   *  dispatch resulting events to the framework. Pairs with nativeSimulateKeyDown.
-   *  @param elementId - element to focus (must have onKeyUp)
-   *  @param keystroke - modifier-key string, e.g. "a", "enter", "cmd-s"
+  /** Focus an element, then send one `keyup` for one press (the
+   *  `simulateKeystrokes` grammar). Pairs with `nativeSimulateKeyDown`.
+   *  @param elementId - element to focus
+   *  @param keystroke - one press, e.g. `"a"`, `"Enter"`, `"Meta+s"`
    */
   nativeSimulateKeyUp(elementId: number, keystroke: string): void {
     this.native.flush()

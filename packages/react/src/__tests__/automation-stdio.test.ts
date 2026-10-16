@@ -55,11 +55,24 @@ describe("automation stdio", () => {
   it("preserves browser key characters and held state", () => {
     expect(browserKeystrokeInit("A")).toMatchObject({ key: "A" })
     expect(browserKeystrokeInit("-")).toMatchObject({ key: "-" })
-    expect(browserKeystrokeInit("cmd-a", true)).toMatchObject({
+    expect(browserKeystrokeInit("Meta+a", true)).toMatchObject({
       key: "a",
       metaKey: true,
       repeat: true,
     })
+    expect(browserKeystrokeInit("Shift+Tab")).toMatchObject({
+      key: "Tab",
+      code: "Tab",
+      shiftKey: true,
+    })
+    expect(browserKeystrokeInit("Shift++")).toMatchObject({ key: "+", shiftKey: true })
+    expect(browserKeystrokeInit("Control+KeyA")).toMatchObject({
+      key: "a",
+      code: "KeyA",
+      ctrlKey: true,
+    })
+    expect(browserKeystrokeInit("Space")).toMatchObject({ key: " ", code: "Space" })
+    expect(() => browserKeystrokeInit("cmd-a+b")).toThrow("not a modifier")
   })
 
   it("round-trips through data: lines with log noise", async () => {

@@ -336,12 +336,13 @@ export class SseBackend extends ValidatedAutomationBackend {
   }
 }
 
+/** `text` as a sequence of key presses, one per character. */
 function toKeystrokes(text: string): string {
   return [...text]
     .map((ch) => {
-      if (ch === " ") return "space"
-      if (ch === "\n") return "enter"
-      if (ch === "\t") return "tab"
+      if (ch === " ") return "Space"
+      if (ch === "\n") return "Enter"
+      if (ch === "\t") return "Tab"
       return ch
     })
     .join(" ")
@@ -419,7 +420,7 @@ export type PointTarget = { x: number; y: number } | Locator
 export interface MouseOptions {
   /** 0 = left (default), 1 = middle, 2 = right. */
   button?: number
-  /** Held modifiers in `press()` syntax: `"cmd"`, `"cmd-shift"`, `"alt"`. */
+  /** Held modifiers, hyphenated: `"cmd"`, `"cmd-shift"`, `"alt"`. */
   modifiers?: string
 }
 
@@ -543,19 +544,20 @@ export class Locator {
 
   async fill(text: string): Promise<void> {
     const node = await this.element()
-    const browserPlatform = typeof navigator === "undefined" ? "" : navigator.platform
-    const selectAll =
-      browserPlatform.includes("Mac") ||
-      (typeof process !== "undefined" && process.platform === "darwin")
-        ? "cmd-a"
-        : "ctrl-a"
-    const replacement = text.length === 0 ? "backspace" : toKeystrokes(text)
+    const replacement = text.length === 0 ? "Backspace" : toKeystrokes(text)
     await this.app.call("keystrokes", {
       elementId: node.id,
-      keys: `${selectAll} ${replacement}`,
+      keys: `ControlOrMeta+a ${replacement}`,
     })
   }
 
+  /**
+   * Presses keys on this element in Playwright's `keyboard.press` grammar:
+   * a DOM `key` (`"Enter"`, `"a"`, `"ArrowDown"`) or `code` (`"Space"`,
+   * `"KeyA"`), modifiers joined with `+` (`"Shift+Tab"`, `"Meta+a"`,
+   * `"ControlOrMeta+Shift+P"`). Several presses are separated by spaces.
+   * Each press is a keydown then a keyup.
+   */
   async press(key: string): Promise<void> {
     const node = await this.element()
     await this.app.call("keystrokes", {
@@ -878,41 +880,82 @@ export function liveRendererAsTest(
   }
 }
 
+function splitPress(press: string): string[] {
+  const parts: string[] = []
+  let building = ""
+  for (const ch of press) {
+    if (ch === "+" && building) {
+      parts.push(building)
+      building = ""
+    } else {
+      building += ch
+    }
+  }
+  parts.push(building)
+  return parts
+}
+
+/**
+ * The `KeyboardEvent` a browser page gets for one press in the
+ * `keyboard.press` grammar. Key names are passed through as the DOM spells
+ * them: unlike native, this side has no key table to reject a typo with.
+ */
 export function browserKeystrokeInit(
-  keystroke: string,
+  press: string,
   isHeld = false
 ): KeyboardEventInit {
-  const parts = keystroke.split("-")
-  const modifiers = new Set<string>()
-  while (parts.length > 1) {
-    const modifier = parts[0].toLowerCase()
-    if (!["alt", "cmd", "ctrl", "meta", "shift"].includes(modifier)) break
-    modifiers.add(modifier)
-    parts.shift()
+  const parts = splitPress(press)
+  const name = parts.pop() as string
+  const held = new Set<string>()
+  for (const modifier of parts) {
+    switch (modifier) {
+      case "Shift":
+      case "Alt":
+      case "Control":
+      case "Meta":
+        held.add(modifier)
+        break
+      case "ControlOrMeta":
+        held.add(
+          typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+            ? "Meta"
+            : "Control"
+        )
+        break
+      default:
+        throw new AutomationError(
+          "Protocol",
+          `"${modifier}" in "${press}" is not a modifier. The modifiers are Shift, Control, Alt, Meta and ControlOrMeta`
+        )
+    }
+  }
+  if (name === "") {
+    throw new AutomationError("Protocol", `No key in "${press}"`)
   }
 
-  const keyName = parts.join("-")
-  const key =
-    {
-      backspace: "Backspace",
-      delete: "Delete",
-      down: "ArrowDown",
-      enter: "Enter",
-      escape: "Escape",
-      left: "ArrowLeft",
-      right: "ArrowRight",
-      space: " ",
-      tab: "Tab",
-      up: "ArrowUp",
-    }[keyName.toLowerCase()] ?? keyName
+  let key = name
+  let code: string | undefined
+  if (name === "Space" || name === " ") {
+    key = " "
+    code = "Space"
+  } else if (/^Key[A-Z]$/.test(name)) {
+    code = name
+    key = held.has("Shift") ? name.slice(3) : name.slice(3).toLowerCase()
+  } else if (/^Digit[0-9]$/.test(name)) {
+    code = name
+    key = name.slice(5)
+  } else if (name.length > 1) {
+    code = name
+  }
   return {
     key,
-    altKey: modifiers.has("alt"),
+    ...(code === undefined ? {} : { code }),
+    altKey: held.has("Alt"),
     bubbles: true,
-    ctrlKey: modifiers.has("ctrl"),
-    metaKey: modifiers.has("cmd") || modifiers.has("meta"),
+    ctrlKey: held.has("Control"),
+    metaKey: held.has("Meta"),
     repeat: isHeld,
-    shiftKey: modifiers.has("shift"),
+    shiftKey: held.has("Shift"),
   }
 }
 

@@ -41,8 +41,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       </Select>
     ))
     const trigger = app.renderer.findByTestId("trigger")!
-    app.renderer.nativeSimulateKeyDown(trigger.id, "down")
-    app.renderer.simulateKeystrokes("down enter")
+    app.renderer.nativeSimulateKeyDown(trigger.id, "ArrowDown")
+    app.renderer.simulateKeystrokes("ArrowDown Enter")
     expect(value()).toBe("b")
 
     app.renderer.nativeSimulateClick(60, 16)
@@ -84,8 +84,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       </Combobox>
     ))
     const input = app.renderer.findByTestId("input")!
-    app.renderer.nativeSimulateKeyDown(input.id, "down")
-    app.renderer.nativeSimulateKeystrokes(input.id, "enter")
+    app.renderer.nativeSimulateKeyDown(input.id, "ArrowDown")
+    app.renderer.nativeSimulateKeystrokes(input.id, "Enter")
     expect(value()).toBe("alpha")
   })
 
@@ -143,15 +143,15 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     const steps: string[] = []
     const step = (label: string) => steps.push(`${label}: focus=${focused()} text=${app.renderer.getAllText().join("|")}`)
 
-    app.renderer.simulateKeystrokes("tab")
+    app.renderer.simulateKeystrokes("Tab")
     step("tab")
-    app.renderer.simulateKeystrokes("enter")
+    app.renderer.simulateKeystrokes("Enter")
     step("enter")
-    app.renderer.simulateKeystrokes("tab")
+    app.renderer.simulateKeystrokes("Tab")
     step("tab in popup")
-    app.renderer.simulateKeystrokes("escape")
+    app.renderer.simulateKeystrokes("Escape")
     step("escape")
-    app.renderer.simulateKeystrokes("tab")
+    app.renderer.simulateKeystrokes("Tab")
     step("tab")
     const trigger = app.renderer.getElementBounds(app.renderer.findByTestId("trigger")!.id)!
     app.renderer.nativeSimulateClick(trigger.x + 10, trigger.y + 10)
@@ -202,28 +202,28 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       steps.push(`${keys}: focus=${focused()} text=${app.renderer.getAllText().join("|")}`)
     }
     app.renderer.focusElement(app.renderer.findByTestId("open")!.id)
-    press("enter")
-    press("tab")
-    press("tab")
-    press("tab")
-    press("down")
-    press("escape")
-    press("escape")
-    press("enter")
+    press("Enter")
+    press("Tab")
+    press("Tab")
+    press("Tab")
+    press("ArrowDown")
+    press("Escape")
+    press("Escape")
+    press("Enter")
     const popup = app.renderer.getElementBounds(app.renderer.findByTestId("popup")!.id)!
     app.renderer.nativeSimulateClick(popup.x + popup.width - 4, popup.y + 4)
     steps.push(`press popup: text=${app.renderer.getAllText().join("|")}`)
     app.renderer.nativeSimulateClick(4, 390)
     steps.push(`press backdrop: focus=${focused()} text=${app.renderer.getAllText().join("|")}`)
     expect(steps).toEqual([
-      "enter: focus=popup text=Open|Settings|pick|Close",
-      "tab: focus=select text=Open|Settings|pick|Close",
-      "tab: focus=close text=Open|Settings|pick|Close",
-      "tab: focus=select text=Open|Settings|pick|Close",
-      "down: focus=undefined text=Open|Settings|pick|A|Close",
-      "escape: focus=select text=Open|Settings|pick|Close",
-      "escape: focus=open text=Open",
-      "enter: focus=popup text=Open|Settings|pick|Close",
+      "Enter: focus=popup text=Open|Settings|pick|Close",
+      "Tab: focus=select text=Open|Settings|pick|Close",
+      "Tab: focus=close text=Open|Settings|pick|Close",
+      "Tab: focus=select text=Open|Settings|pick|Close",
+      "ArrowDown: focus=undefined text=Open|Settings|pick|A|Close",
+      "Escape: focus=select text=Open|Settings|pick|Close",
+      "Escape: focus=open text=Open",
+      "Enter: focus=popup text=Open|Settings|pick|Close",
       "press popup: text=Open|Settings|pick|Close",
       "press backdrop: focus=open text=Open",
     ])
@@ -356,9 +356,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     ))
     const focused = () => app.renderer.getElement(app.renderer.getFocusedElementId()!)?.testId
     const steps: string[] = []
-    app.renderer.simulateKeystrokes("enter")
+    app.renderer.simulateKeystrokes("Enter")
     steps.push(`open: ${focused()}`)
-    app.renderer.simulateKeystrokes("escape")
+    app.renderer.simulateKeystrokes("Escape")
     steps.push(`close: ${focused()}`)
     expect(steps).toEqual(["open: field", "close: launcher"])
   })
@@ -377,15 +377,15 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       </div>
     ))
     const focused = () => app.renderer.getElement(app.renderer.getFocusedElementId()!)?.testId
-    app.renderer.simulateKeystrokes("tab")
+    app.renderer.simulateKeystrokes("Tab")
     log.push(`focus ${focused()}`)
-    app.renderer.simulateKeystrokes("enter")
-    app.renderer.nativeSimulateKeyDown(app.renderer.getFocusedElementId()!, "space")
+    app.renderer.simulateKeystrokes("Enter")
+    app.renderer.nativeSimulateKeyDown(app.renderer.getFocusedElementId()!, "Space")
     log.push("space down")
-    app.renderer.nativeSimulateKeyUp(app.renderer.getFocusedElementId()!, "space")
+    app.renderer.nativeSimulateKeyUp(app.renderer.getFocusedElementId()!, "Space")
     app.flushSync(() => setDisabled(true))
     app.renderer.focusElement(app.renderer.findByTestId("start")!.id)
-    app.renderer.simulateKeystrokes("tab")
+    app.renderer.simulateKeystrokes("Tab")
     log.push(`focus ${focused()}`)
     expect(log).toEqual(["focus save", "save", "space down", "save", "focus end"])
   })
@@ -411,7 +411,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     ))
     const button = app.renderer.findByTestId("save")!.id
     const wrapper = app.renderer.findByTestId("wrapper")!.id
-    app.renderer.nativeSimulateKeyDown(button, "enter")
+    app.renderer.nativeSimulateKeyDown(button, "Enter")
     expect(seen).toEqual([
       { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
       { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
@@ -429,11 +429,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       </Button>
     ))
     const inner = app.renderer.findByTestId("inner")!.id
-    app.renderer.nativeSimulateKeyDown(inner, "enter")
+    app.renderer.nativeSimulateKeyDown(inner, "Enter")
     expect(seen).toEqual(["inner", "outer"])
     seen.length = 0
-    app.renderer.nativeSimulateKeyDown(inner, "space")
-    app.renderer.nativeSimulateKeyUp(inner, "space")
+    app.renderer.nativeSimulateKeyDown(inner, "Space")
+    app.renderer.nativeSimulateKeyUp(inner, "Space")
     expect(seen).toEqual(["inner", "outer"])
   })
 

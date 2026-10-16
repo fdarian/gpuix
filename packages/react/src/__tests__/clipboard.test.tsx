@@ -11,9 +11,9 @@ import { clipboard } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
-const paste = process.platform === "darwin" ? "cmd-v" : "ctrl-v"
-const copy = process.platform === "darwin" ? "cmd-c" : "ctrl-c"
-const selectAll = process.platform === "darwin" ? "cmd-a" : "ctrl-a"
+const paste = "ControlOrMeta+v"
+const copy = "ControlOrMeta+c"
+const selectAll = "ControlOrMeta+a"
 
 describeNative("clipboard", () => {
   let testRoot: ReturnType<typeof createTestRoot>

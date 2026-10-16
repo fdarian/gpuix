@@ -138,7 +138,7 @@ describe.skipIf(!hasNativeTestRenderer)("a Dialog opened from a mousedown handle
       app.renderer.nativeSimulateClick(opener.x + 5, opener.y + 5)
       expect(app.renderer.findByTestId("popup")).toBeDefined()
 
-      app.renderer.simulateKeystrokes("escape")
+      app.renderer.simulateKeystrokes("Escape")
       expect(app.renderer.findByTestId("popup")).toBeUndefined()
       expect(document.activeElement).toBe(before)
     } finally {

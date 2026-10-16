@@ -168,7 +168,7 @@ describeNative("CSS transitions", () => {
     renderer.clockFastForward(1000)
     expect(widthOf(renderer, "box")).toBe(100)
 
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     renderer.clockFastForward(500)
     const middle = widthOf(renderer, "box")
     expect(middle).toBeGreaterThan(100)

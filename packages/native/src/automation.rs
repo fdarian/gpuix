@@ -259,9 +259,8 @@ pub fn mouse_button(button: u32) -> MouseButton {
     }
 }
 
-/// Parse the held modifiers of a simulated mouse event from the same
-/// hyphenated syntax `press("cmd-a")` already uses: `"cmd"`, `"cmd-shift"`,
-/// `"alt"`. `None` and `""` mean no modifier. Unknown names are ignored, so a
+/// Parse the held modifiers of a simulated mouse event from a hyphenated
+/// string: `"cmd"`, `"cmd-shift"`, `"alt"`. `None` and `""` mean no modifier. Unknown names are ignored, so a
 /// typo weakens the gesture instead of failing the whole automation call.
 ///
 /// A string, not an object, because the same value has to cross the napi, the
@@ -284,48 +283,60 @@ pub fn parse_modifiers(modifiers: Option<&str>) -> Modifiers {
     parsed
 }
 
+/// Presses a space-separated sequence in Playwright's `keyboard.press` grammar
+/// (`"Shift+Tab"`, `"Meta+a"`, `"Enter"`): keydown, then keyup, for each. Typed
+/// characters reach the focused input like real typing. Every press is parsed
+/// before the first is sent.
 pub fn dispatch_keystrokes(
     window: &mut Window,
     cx: &mut App,
     keystrokes: &str,
 ) -> Result<(), String> {
-    for keystroke in keystrokes.split(' ') {
-        window.dispatch_keystroke(parse_keystroke(keystroke)?, cx);
+    for keystroke in crate::events::key_names::parse_presses(keystrokes)? {
+        send_key_down(window, cx, keystroke.clone(), false);
+        send_key_up(window, cx, keystroke);
     }
     Ok(())
 }
 
+/// One press's keydown, with no keyup, in the same grammar.
 pub fn dispatch_key_down(
     window: &mut Window,
     cx: &mut App,
     keystroke: &str,
     is_held: bool,
 ) -> Result<(), String> {
-    window.dispatch_event(
-        KeyDownEvent {
-            keystroke: parse_keystroke(keystroke)?,
-            is_held,
-            prefer_character_input: false,
-        }
-        .to_platform_input(),
-        cx,
-    );
+    send_key_down(window, cx, crate::events::key_names::parse_press(keystroke)?, is_held);
     Ok(())
 }
 
 pub fn dispatch_key_up(window: &mut Window, cx: &mut App, keystroke: &str) -> Result<(), String> {
-    window.dispatch_event(
-        KeyUpEvent {
-            keystroke: parse_keystroke(keystroke)?,
-        }
-        .to_platform_input(),
-        cx,
-    );
+    send_key_up(window, cx, crate::events::key_names::parse_press(keystroke)?);
     Ok(())
 }
 
-fn parse_keystroke(keystroke: &str) -> Result<Keystroke, String> {
-    Keystroke::parse(keystroke).map_err(|error| format!("Invalid keystroke '{keystroke}': {error}"))
+fn send_key_down(window: &mut Window, cx: &mut App, keystroke: Keystroke, is_held: bool) {
+    // Only a keystroke with a `key_char` goes through `dispatch_keystroke`,
+    // which inserts that text into the focused input unless a handler stopped
+    // the keydown. It would also invent a `key_char` for a key that has none
+    // (`Shift` types "shift"), so every other key is a bare event.
+    if keystroke.key_char.is_some() && !is_held {
+        window.dispatch_keystroke(keystroke, cx);
+    } else {
+        window.dispatch_event(
+            KeyDownEvent {
+                keystroke,
+                is_held,
+                prefer_character_input: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+    }
+}
+
+fn send_key_up(window: &mut Window, cx: &mut App, keystroke: Keystroke) {
+    window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
 }
 
 /// Every automation mouse dispatcher takes modifiers, so a test can drive

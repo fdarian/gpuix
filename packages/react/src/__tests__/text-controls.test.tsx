@@ -52,9 +52,9 @@ describeNative("text control selection", () => {
     let input
     testRoot.render(<Field initial="hello" onRef={(el) => (input = el)} />)
     const id = testRoot.renderer.findByType("input")[0].id
-    testRoot.renderer.nativeSimulateKeystrokes(id, "cmd-a")
+    testRoot.renderer.nativeSimulateKeystrokes(id, "Meta+a")
     expect([input.selectionStart, input.selectionEnd, input.selectionDirection]).toEqual([0, 5, "none"])
-    testRoot.renderer.nativeSimulateKeystrokes(id, "shift-left")
+    testRoot.renderer.nativeSimulateKeystrokes(id, "Shift+ArrowLeft")
     expect(input.selectionDirection).toBe("forward")
   })
 
@@ -73,7 +73,7 @@ describeNative("text control selection", () => {
     input.setSelectionRange(1, 4, "forward")
     expect(input.selectionDirection).toBe("forward")
 
-    testRoot.renderer.nativeSimulateKeystrokes(id, "J")
+    testRoot.renderer.nativeSimulateKeystrokes(id, "Shift+J")
     expect(testRoot.renderer.getAllText()).toContain("Value: hJo")
   })
 
@@ -236,7 +236,7 @@ describeNative("<input disabled>", () => {
     expect(focusedTestId()).not.toBe("field")
 
     testRoot.renderer.focusElement(testRoot.renderer.findByTestId("before").id)
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     expect(focusedTestId()).toBe("after")
     expect(log).toEqual([])
   })
@@ -248,7 +248,7 @@ describeNative("<input disabled>", () => {
     const bounds = testRoot.renderer.getElementBounds(field.id)
 
     testRoot.renderer.nativeSimulateClick(bounds.x + 20, bounds.y + 20)
-    testRoot.renderer.simulateKeystrokes("x backspace")
+    testRoot.renderer.simulateKeystrokes("x Backspace")
     expect(testRoot.renderer.getAllText()).toContain("Value: locked")
     expect(log).toEqual([])
   })
@@ -319,7 +319,7 @@ describeNative("<input type>", () => {
     }
     testRoot.render(<Password />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "left left X")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowLeft ArrowLeft Shift+X")
     expect(testRoot.renderer.getAllText()).toContain("Value: aXbc")
   })
 
@@ -344,9 +344,9 @@ describeNative("<input type>", () => {
     }
     testRoot.render(<Quantity />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "up up up")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowUp ArrowUp ArrowUp")
     expect(changes).toEqual(["9", "10"])
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "down down")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowDown ArrowDown")
     expect(changes).toEqual(["9", "10", "9", "8"])
   })
 
@@ -362,7 +362,7 @@ describeNative("<input type>", () => {
       />,
     )
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "up")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowUp")
     expect(changes).toEqual(["0.3"])
   })
 
@@ -399,9 +399,9 @@ describeNative("<input type>", () => {
       </div>,
     )
     for (const input of testRoot.renderer.findByType("input")) {
-      testRoot.renderer.nativeSimulateKeystrokes(input.id, "up")
+      testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowUp")
     }
-    testRoot.renderer.nativeSimulateKeystrokes(testRoot.renderer.findByType("textarea")[0].id, "up")
+    testRoot.renderer.nativeSimulateKeystrokes(testRoot.renderer.findByType("textarea")[0].id, "ArrowUp")
     expect(changes).toEqual([])
   })
 
@@ -483,7 +483,7 @@ describeNative("maxLength", () => {
     expect(testRoot.renderer.getAllText()).toContain("Value: abcdef")
     testRoot.renderer.nativeSimulateKeystrokes(input.id, "x")
     expect(testRoot.renderer.getAllText()).toContain("Value: abcdef")
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "backspace")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Backspace")
     expect(testRoot.renderer.getAllText()).toContain("Value: abcde")
   })
 
@@ -504,7 +504,7 @@ describeNative("maxLength", () => {
     }
     testRoot.render(<Limited />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "cmd-a x y z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Meta+a x y z")
     expect(testRoot.renderer.getAllText()).toContain("Value: xyz")
   })
   describe("over the limit", () => {
@@ -543,7 +543,7 @@ describeNative("maxLength", () => {
     it("lets a selection be deleted", () => {
       const field = mount()
       field.control().setSelectionRange(0, 2)
-      testRoot.renderer.nativeSimulateKeystrokes(field.id, "backspace")
+      testRoot.renderer.nativeSimulateKeystrokes(field.id, "Backspace")
       expect(testRoot.renderer.getAllText()).toContain("Value: cdef")
     })
 

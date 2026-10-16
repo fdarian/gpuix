@@ -42,7 +42,7 @@ describeNative("focus model", () => {
       expect(focused()).toBe(null)
 
       // A tab stop is the only one: Tab lands there, not on the listener.
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("stop")
     })
 
@@ -68,12 +68,12 @@ describeNative("focus model", () => {
       )
       renderer.focusElement(idOf("skipped"))
       expect(focused()).toBe("skipped")
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("b")
-      renderer.simulateKeystrokes("shift-tab")
+      renderer.simulateKeystrokes("Shift+Tab")
       expect(focused()).toBe("a")
-      renderer.simulateKeystrokes("shift-tab")
-      renderer.simulateKeystrokes("shift-tab")
+      renderer.simulateKeystrokes("Shift+Tab")
+      renderer.simulateKeystrokes("Shift+Tab")
       expect(["a", "b"]).toContain(focused())
     })
 
@@ -86,7 +86,7 @@ describeNative("focus model", () => {
       )
       renderer.focusElement(idOf("field"))
       expect(focused()).toBe(null)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("stop")
     })
 
@@ -103,7 +103,7 @@ describeNative("focus model", () => {
       expect(focused()).toBe(null)
       renderer.nativeSimulateClick(...center("field"))
       expect(focused()).toBe(null)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("stop")
     })
 
@@ -143,11 +143,11 @@ describeNative("focus model", () => {
         </div>
       )
       renderer.focusElement(idOf("a"))
-      for (const stroke of ["ctrl-tab", "alt-tab", "cmd-tab"]) {
+      for (const stroke of ["Control+Tab", "Alt+Tab", "Meta+Tab"]) {
         renderer.simulateKeystrokes(stroke)
         expect(focused()).toBe("a")
       }
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("b")
     })
 
@@ -159,7 +159,7 @@ describeNative("focus model", () => {
         </div>
       )
       renderer.focusElement(idOf("a"))
-      renderer.simulateKeystrokes("ctrl-tab")
+      renderer.simulateKeystrokes("Control+Tab")
       expect(keys).toEqual(["true:Tab"])
     })
   })
@@ -209,7 +209,7 @@ describeNative("focus model", () => {
       )
       const order = []
       for (let step = 0; step < 8; step++) {
-        renderer.simulateKeystrokes("tab")
+        renderer.simulateKeystrokes("Tab")
         order.push(focused())
       }
       expect(order).toEqual([
@@ -235,11 +235,11 @@ describeNative("focus model", () => {
       renderer.focusElement(idOf("image"))
       expect(focused()).toBe("image")
       renderer.focusElement(idOf("before"))
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("image")
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("after")
-      renderer.simulateKeystrokes("shift-tab")
+      renderer.simulateKeystrokes("Shift+Tab")
       expect(focused()).toBe("image")
     })
 
@@ -256,12 +256,12 @@ describeNative("focus model", () => {
       root.render(<App index={0} />)
       const { renderer } = root
       const focused = () => renderer.getElement(renderer.getFocusedElementId())?.testId
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("first")
       root.render(<App index={1} />)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("second")
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("first")
     })
   })
@@ -476,7 +476,7 @@ describeNative("focus model", () => {
       )
       // Script focus before any input matches, like Chrome.
       renderer.focusElement(idOf("a"))
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(seen).toEqual([true, true])
     })
 
@@ -509,7 +509,7 @@ describeNative("focus model", () => {
       expect(renderer.matchesFocus(idOf("button"), ":focus")).toBe(true)
       expect(renderer.matchesFocus(idOf("button"), ":focus-visible")).toBe(false)
 
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(renderer.matchesFocus(idOf("other"), ":focus-visible")).toBe(true)
       expect(renderer.matchesFocus(idOf("button"), ":focus")).toBe(false)
     })
@@ -534,14 +534,14 @@ describeNative("focus model", () => {
       renderer.focusElement(idOf("other"))
       expect(renderer.matchesFocus(idOf("other"), ":focus-visible")).toBe(false)
 
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       renderer.focusElement(idOf("button"))
       expect(renderer.matchesFocus(idOf("button"), ":focus-visible")).toBe(true)
     })
 
     it("keeps focus-visible across the window going inactive and back", () => {
       const { renderer, idOf, focused, center } = setup(scene)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       const target = focused()
       // A press on the focused element leaves its focus-visible, but the last
       // input is the mouse's, so only the remembered state can bring it back.
@@ -582,7 +582,7 @@ describeNative("focus model", () => {
 
     it("keeps a focus() made while inactive programmatic until the window returns", () => {
       const { renderer, idOf } = setup(scene)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       renderer.setWindowActive(false)
       renderer.focusElement(idOf("other"))
       renderer.setWindowActive(true)
@@ -615,7 +615,7 @@ describeNative("focus model", () => {
       const clickPng = capture(buttonClick.renderer, "button-click")
 
       const buttonTab = setup(frame)
-      buttonTab.renderer.simulateKeystrokes("tab tab")
+      buttonTab.renderer.simulateKeystrokes("Tab Tab")
       const tabPng = capture(buttonTab.renderer, "button-tab")
 
       expect(clickPng.equals(idlePng)).toBe(true)
@@ -644,7 +644,7 @@ describeNative("focus model", () => {
       )
       const { renderer } = setup(frame)
       const idle = capture(renderer, "idle")
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       const tabbed = capture(renderer, "tabbed")
       if (!isCI) expect(tabbed.equals(idle)).toBe(false)
       expect(renderer.matchesFocus(renderer.findByTestId("image").id, ":focus-visible")).toBe(true)

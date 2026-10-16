@@ -209,8 +209,8 @@ describeNative("floating controls", () => {
     testRoot.renderer.nativeSimulateClick(30, 25)
     expect(testRoot.renderer.getAllText()).toContain("Beta")
 
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
 
     expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
       [
@@ -468,8 +468,8 @@ describeNative("floating controls", () => {
       ]
     `)
 
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "down")
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowDown")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Enter")
 
     expect(testRoot.renderer.getAllText()).toContain("Selected: SvelteKit")
   })
@@ -558,8 +558,8 @@ describeNative("floating controls", () => {
     testRoot.render(<Demo />)
     const input = testRoot.renderer.findByType("input")[0]
     testRoot.renderer.nativeSimulateClick(30, 25)
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "down")
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowDown")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Enter")
 
     expect(testRoot.renderer.getAllText()).toContain("Selected: Enabled")
   })
@@ -582,7 +582,7 @@ describeNative("floating controls", () => {
 
     testRoot.render(<Demo />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "down enter")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowDown Enter")
 
     expect(testRoot.renderer.getAllText()).toContain("Selected: none")
   })
@@ -623,7 +623,7 @@ describeNative("floating controls", () => {
     const trigger = testRoot.renderer
       .findByType("div")
       .find((element) => element.events.has("mouseenter"))!
-    testRoot.renderer.nativeSimulateKeyDown(trigger.id, "escape")
+    testRoot.renderer.nativeSimulateKeyDown(trigger.id, "Escape")
     expect(testRoot.renderer.getAllText()).toEqual(["Hover me"])
 
     testRoot.renderer.nativeSimulateMouseMove(30, 25)
@@ -726,8 +726,8 @@ describeNative("floating controls", () => {
     expect(testRoot.renderer.getAllText()).toEqual(["one", "Value: one"])
 
     testRoot.renderer.nativeSimulateClick(30, 25)
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toEqual(["two", "Value: two"])
   })
 
@@ -763,8 +763,8 @@ describeNative("floating controls", () => {
 
     testRoot.renderer.nativeSimulateClick(30, 25)
     expect(testRoot.renderer.getAllText()).toContain("Two")
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toEqual(["Two", "Value: two"])
   })
 
@@ -796,11 +796,11 @@ describeNative("floating controls", () => {
     }
 
     testRoot.render(<Demo />)
-    testRoot.renderer.simulateKeystrokes("down")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
     const hide = testRoot.renderer.findByTestId("hide-two")
     const bounds = testRoot.renderer.getElementBounds(hide.id)
     testRoot.renderer.nativeSimulateClick(bounds.x + 8, bounds.y + 8)
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toContain("Value: one")
   })
 
@@ -825,8 +825,8 @@ describeNative("floating controls", () => {
 
     testRoot.render(<Demo showOne={false} />)
     testRoot.render(<Demo showOne={true} />)
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toContain("Value: two")
   })
 
@@ -862,8 +862,8 @@ describeNative("floating controls", () => {
     const nudge = testRoot.renderer.findByTestId("nudge")
     const bounds = testRoot.renderer.getElementBounds(nudge.id)
     testRoot.renderer.nativeSimulateClick(bounds.x + 8, bounds.y + 8)
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toContain("Value: two")
   })
 
@@ -891,8 +891,8 @@ describeNative("floating controls", () => {
     const twoBounds = testRoot.renderer.getElementBounds(two.id)
     testRoot.renderer.nativeSimulateClick(twoBounds.x + 8, twoBounds.y + 8)
     expect(testRoot.renderer.getAllText()).toContain("Value: one")
-    testRoot.renderer.simulateKeystrokes("down")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("ArrowDown")
+    testRoot.renderer.simulateKeystrokes("Enter")
     expect(testRoot.renderer.getAllText()).toContain("Value: one")
   })
 
@@ -1024,17 +1024,17 @@ describeNative("floating controls", () => {
     const steps = []
     const step = (label) => steps.push(`${label}: focus=${focused()} text=${testRoot.renderer.getAllText().join("|")}`)
     step("mount")
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     step("tab")
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("Enter")
     step("enter")
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     step("tab in popup")
-    testRoot.renderer.simulateKeystrokes("escape")
+    testRoot.renderer.simulateKeystrokes("Escape")
     step("escape")
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     step("tab")
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     step("tab")
     testRoot.renderer.nativeSimulateClick(...center("select-trigger"))
     step("click trigger")
@@ -1071,7 +1071,7 @@ describeNative("floating controls", () => {
     )
     expect(testRoot.renderer.getAllText()).toContain("beta")
 
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
 
     const focused = testRoot.renderer.getElement(testRoot.renderer.getFocusedElementId())
     expect({ focused: focused?.testId, text: testRoot.renderer.getAllText() }).toMatchInlineSnapshot(`
@@ -1121,18 +1121,18 @@ describeNative("floating controls", () => {
       step(keys)
     }
 
-    press("tab")
-    press("enter")
-    press("tab")
-    press("tab")
-    press("tab")
-    press("shift-tab")
-    press("shift-tab")
-    press("down")
-    press("escape")
-    press("escape")
+    press("Tab")
+    press("Enter")
+    press("Tab")
+    press("Tab")
+    press("Tab")
+    press("Shift+Tab")
+    press("Shift+Tab")
+    press("ArrowDown")
+    press("Escape")
+    press("Escape")
 
-    press("enter")
+    press("Enter")
     const popup = renderer.getElementBounds(renderer.findByTestId("popup").id)
     renderer.nativeSimulateClick(popup.x + popup.width - 4, popup.y + 4)
     step("press popup")
@@ -1141,20 +1141,20 @@ describeNative("floating controls", () => {
 
     expect("\n" + log.join("\n")).toMatchInlineSnapshot(`
       "
-      tab: focus=open text=Open
+      Tab: focus=open text=Open
       open=true
-      enter: focus=popup text=Open|Settings|Alpha|Close
-      tab: focus=select text=Open|Settings|Alpha|Close
-      tab: focus=close text=Open|Settings|Alpha|Close
-      tab: focus=select text=Open|Settings|Alpha|Close
-      shift-tab: focus=close text=Open|Settings|Alpha|Close
-      shift-tab: focus=select text=Open|Settings|Alpha|Close
-      down: focus=undefined text=Open|Settings|Alpha|Alpha|Beta|Close
-      escape: focus=select text=Open|Settings|Alpha|Close
+      Enter: focus=popup text=Open|Settings|Alpha|Close
+      Tab: focus=select text=Open|Settings|Alpha|Close
+      Tab: focus=close text=Open|Settings|Alpha|Close
+      Tab: focus=select text=Open|Settings|Alpha|Close
+      Shift+Tab: focus=close text=Open|Settings|Alpha|Close
+      Shift+Tab: focus=select text=Open|Settings|Alpha|Close
+      ArrowDown: focus=undefined text=Open|Settings|Alpha|Alpha|Beta|Close
+      Escape: focus=select text=Open|Settings|Alpha|Close
       open=false
-      escape: focus=open text=Open
+      Escape: focus=open text=Open
       open=true
-      enter: focus=popup text=Open|Settings|Alpha|Close
+      Enter: focus=popup text=Open|Settings|Alpha|Close
       press popup: focus=popup text=Open|Settings|Alpha|Close
       open=false
       press backdrop: focus=open text=Open"
@@ -1246,7 +1246,7 @@ describeNative("floating controls", () => {
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
     )
-    testRoot.renderer.simulateKeystrokes("escape")
+    testRoot.renderer.simulateKeystrokes("Escape")
     expect(testRoot.renderer.getAllText()).toEqual(["Unsaved"])
   })
 
@@ -1269,9 +1269,9 @@ describeNative("floating controls", () => {
       </DialogPrimitive.Root>
     )
     const steps = [testRoot.renderer.getAllText().join("|")]
-    testRoot.renderer.simulateKeystrokes("escape")
+    testRoot.renderer.simulateKeystrokes("Escape")
     steps.push(testRoot.renderer.getAllText().join("|"))
-    testRoot.renderer.simulateKeystrokes("escape")
+    testRoot.renderer.simulateKeystrokes("Escape")
     steps.push(testRoot.renderer.getAllText().join("|"))
     expect(steps).toMatchInlineSnapshot(`
       [
@@ -1301,7 +1301,7 @@ describeNative("floating controls", () => {
         <div tabIndex={0} testId="after" style={{ width: 80, height: 24 }} />
       </div>
     )
-    testRoot.renderer.simulateKeystrokes("tab")
+    testRoot.renderer.simulateKeystrokes("Tab")
     const focused = testRoot.renderer.getElement(testRoot.renderer.getFocusedElementId())
     expect({ focused: focused?.testId, text: testRoot.renderer.getAllText() }).toMatchInlineSnapshot(`
       {
@@ -1343,9 +1343,9 @@ describeNative("floating controls", () => {
     testRoot.render(<Demo />)
     const focused = () => testRoot.renderer.getElement(testRoot.renderer.getFocusedElementId())?.testId
     const steps = []
-    testRoot.renderer.simulateKeystrokes("enter")
+    testRoot.renderer.simulateKeystrokes("Enter")
     steps.push(`open: ${focused()}`)
-    testRoot.renderer.simulateKeystrokes("escape")
+    testRoot.renderer.simulateKeystrokes("Escape")
     steps.push(`close: ${focused()}`)
     expect(steps).toMatchInlineSnapshot(`
       [
@@ -1418,7 +1418,7 @@ describeNative("floating controls", () => {
     testRoot.render(<Demo late={false} />)
     // No focus handle yet, so the request waits.
     renderer.focusElement(renderer.findByTestId("late").id)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     testRoot.render(<Demo late />)
     expect(renderer.getElement(renderer.getFocusedElementId())?.testId).toBe("b")
   })
@@ -1438,24 +1438,24 @@ describeNative("floating controls", () => {
     const renderer = testRoot.renderer
     const focused = () => renderer.getElement(renderer.getFocusedElementId())?.testId
     testRoot.render(<Demo disabled={false} />)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     log.push(`focus ${focused()}`)
-    renderer.simulateKeystrokes("enter")
-    renderer.nativeSimulateKeyDown(renderer.getFocusedElementId(), "enter", true)
+    renderer.simulateKeystrokes("Enter")
+    renderer.nativeSimulateKeyDown(renderer.getFocusedElementId(), "Enter", true)
     // simulateKeystrokes sends no key up, so press and release by hand.
-    renderer.nativeSimulateKeyDown(renderer.getFocusedElementId(), "space")
+    renderer.nativeSimulateKeyDown(renderer.getFocusedElementId(), "Space")
     log.push("space down")
-    renderer.nativeSimulateKeyUp(renderer.getFocusedElementId(), "space")
+    renderer.nativeSimulateKeyUp(renderer.getFocusedElementId(), "Space")
     const box = renderer.getElementBounds(renderer.findByTestId("save").id)
     log.push("click")
     renderer.nativeSimulateClick(box.x + 4, box.y + 4)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     log.push(`focus ${focused()}`)
-    renderer.simulateKeystrokes("enter")
+    renderer.simulateKeystrokes("Enter")
 
     testRoot.render(<Demo disabled />)
     renderer.focusElement(renderer.findByTestId("start").id)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     log.push(`focus ${focused()}`)
     renderer.nativeSimulateClick(box.x + 4, box.y + 4)
     expect(log).toMatchInlineSnapshot(`
@@ -1491,15 +1491,15 @@ describeNative("floating controls", () => {
     const renderer = testRoot.renderer
     const button = renderer.findByTestId("save").id
     const wrapper = renderer.findByTestId("wrapper").id
-    renderer.nativeSimulateKeyDown(button, "enter")
+    renderer.nativeSimulateKeyDown(button, "Enter")
     expect(seen).toEqual([
       { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
       { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
     ])
     seen.length = 0
-    renderer.nativeSimulateKeyDown(button, "space")
+    renderer.nativeSimulateKeyDown(button, "Space")
     expect(seen).toEqual([])
-    renderer.nativeSimulateKeyUp(button, "space")
+    renderer.nativeSimulateKeyUp(button, "Space")
     expect(seen.map((entry) => entry.at)).toEqual(["button", "wrapper"])
   })
 
@@ -1512,11 +1512,11 @@ describeNative("floating controls", () => {
     )
     const renderer = testRoot.renderer
     const inner = renderer.findByTestId("inner").id
-    renderer.nativeSimulateKeyDown(inner, "enter")
+    renderer.nativeSimulateKeyDown(inner, "Enter")
     expect(seen).toEqual(["inner", "outer"])
     seen.length = 0
-    renderer.nativeSimulateKeyDown(inner, "space")
-    renderer.nativeSimulateKeyUp(inner, "space")
+    renderer.nativeSimulateKeyDown(inner, "Space")
+    renderer.nativeSimulateKeyUp(inner, "Space")
     expect(seen).toEqual(["inner", "outer"])
   })
 })

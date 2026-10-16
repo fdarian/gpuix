@@ -46,7 +46,7 @@ describeNative('chat example', () => {
 
         const composer = app.getByTestId('composer')
         await composer.fill('hello gpuix')
-        await composer.press('enter')
+        await composer.press('Enter')
         await app.getByText('GPUIX chat demo').waitFor()
       } finally {
         await app.close()
@@ -253,7 +253,7 @@ describeNative('chat example', () => {
     renderer.nativeSimulateKeystrokes(textarea.id, 'h e l l o')
     expect(renderer.getPaintedText()).toContain('hello')
 
-    renderer.nativeSimulateKeystrokes(textarea.id, 'enter')
+    renderer.nativeSimulateKeystrokes(textarea.id, 'Enter')
     expect(renderer.getPaintedText()).toContain('Do anything...')
 
     const transcript = renderer.findByType('virtual-list')[0]
@@ -308,7 +308,7 @@ describeNative('chat example', () => {
       expect(renderer.findByType('virtual-list')[0]?.children).toHaveLength(0)
 
       renderer.nativeSimulateKeystrokes(textarea.id, 'p i n g')
-      renderer.nativeSimulateKeystrokes(textarea.id, 'enter')
+      renderer.nativeSimulateKeystrokes(textarea.id, 'Enter')
       const transcript = renderer.findByType('virtual-list')[0]
       renderer.scrollToItem(transcript.id, transcript.children.length - 1)
       renderer.flush()
@@ -356,7 +356,7 @@ describeNative('chat example', () => {
       // Keyboard: Escape closes it and focus returns to the button that opened it.
       await app.getByTestId('search').click()
       expect(renderer.getPaintedText()).toContain('Search threads')
-      renderer.simulateKeystrokes('escape')
+      renderer.simulateKeystrokes('Escape')
       expect(renderer.getPaintedText()).not.toContain('Search threads')
       expect(renderer.getFocusedElementId()).toBe(renderer.findByTestId('search')?.id)
     } finally {

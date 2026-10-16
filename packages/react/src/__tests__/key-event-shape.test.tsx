@@ -32,10 +32,11 @@ describeNative("DOM-shaped key events", () => {
   })
 
   /** `[key, code]` of each keydown, in order. */
-  const keys = () => events.map((event) => [event.key, event.code])
+  const keys = () =>
+    events.filter((event) => event.type === "keydown").map((event) => [event.key, event.code])
 
   it("names named keys the way the DOM does", () => {
-    press("enter escape tab backspace delete space down left home end pageup f5")
+    press("Enter Escape Tab Backspace Delete Space ArrowDown ArrowLeft Home End PageUp F5")
     expect(keys()).toEqual([
       ["Enter", "Enter"],
       ["Escape", "Escape"],
@@ -53,9 +54,9 @@ describeNative("DOM-shaped key events", () => {
   })
 
   it("reports the produced character as key and the physical key as code", () => {
-    press("a shift-a 1 ;")
+    press("a Shift+a 1 ;")
     // A raw key event has no typed character, so shift alone decides the symbol.
-    renderer.nativeSimulateKeyDown(renderer.findByTestId("target").id, "shift-1")
+    renderer.nativeSimulateKeyDown(renderer.findByTestId("target").id, "Shift+1")
     expect(keys()).toEqual([
       ["a", "KeyA"],
       ["A", "KeyA"],
@@ -66,7 +67,7 @@ describeNative("DOM-shaped key events", () => {
   })
 
   it("sets the modifier booleans next to modifiers", () => {
-    press("cmd-s")
+    press("Meta+s")
     const [down] = events
     expect(down.key).toBe("s")
     expect(down.metaKey).toBe(true)
@@ -74,7 +75,7 @@ describeNative("DOM-shaped key events", () => {
     expect([down.shiftKey, down.ctrlKey, down.altKey]).toEqual([false, false, false])
 
     events.length = 0
-    press("ctrl-alt-shift-x")
+    press("Control+Alt+Shift+x")
     expect([events[0].shiftKey, events[0].ctrlKey, events[0].altKey, events[0].metaKey]).toEqual([
       true,
       true,

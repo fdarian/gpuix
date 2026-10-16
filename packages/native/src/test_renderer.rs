@@ -331,6 +331,20 @@ impl TestGpuixRenderer {
         update_view(|view, window, cx| view.set_text_selection(id, request, window, cx))?
             .map_err(Error::from_reason)
     }
+
+    /// Runs one simulated key input on the window, then the executors.
+    fn key_input(
+        &self,
+        input: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> std::result::Result<(), String>,
+    ) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            let result = cx
+                .update_window(window, |_, window, app| input(window, app))
+                .map_err(|error| Error::from_reason(error.to_string()))?;
+            cx.run_until_parked();
+            result.map_err(Error::from_reason)
+        })
+    }
 }
 
 #[napi]
@@ -515,7 +529,7 @@ impl TestGpuixRenderer {
     /// Dispatches MouseDown + MouseUp through GPUI's input pipeline,
     /// which triggers the same event handlers as production.
     /// IMPORTANT: Call flush() before this — hit testing requires laid-out elements.
-    /// `modifiers` uses the `press()` syntax: "cmd", "cmd-shift", "alt".
+    /// `modifiers` is hyphenated: "cmd", "cmd-shift", "alt".
     #[napi]
     pub fn simulate_click(
         &self,
@@ -554,56 +568,31 @@ impl TestGpuixRenderer {
         })
     }
 
-    /// Simulate key strokes through GPUI's input pipeline.
-    /// Format: space-separated keys, e.g. "a", "enter", "cmd-shift-p".
-    /// The focused element receives keydown/keyup events.
+    /// Press a space-separated sequence of keys through GPUI's input pipeline,
+    /// in Playwright's `keyboard.press` grammar: a DOM `key` ("Enter", "a",
+    /// "ArrowDown") or `code` ("Space", "KeyA"), modifiers joined with `+`
+    /// ("Shift+Tab", "Meta+a", "ControlOrMeta+Shift+P"). Each press is a
+    /// keydown then a keyup, and typed characters reach the focused input.
+    /// An unknown name is an error and nothing is pressed.
     #[napi]
     pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            cx.simulate_keystrokes(window, &keystrokes);
-            Ok(())
-        })
+        self.key_input(|window, cx| crate::automation::dispatch_keystrokes(window, cx, &keystrokes))
     }
 
-    /// Simulate a single key down event through GPUI's input pipeline.
-    /// Format: modifier-key string, e.g. "a", "enter", "cmd-s".
-    /// Unlike simulate_keystrokes, this dispatches ONLY a KeyDownEvent —
-    /// no automatic KeyUpEvent follows. Use with simulate_key_up for
-    /// fine-grained key event testing.
+    /// Dispatch one keydown (one press in the `simulate_keystrokes` grammar)
+    /// with no keyup after it. Pairs with `simulate_key_up`. A key that types
+    /// text inserts it, like a keydown does in a browser.
     #[napi]
     pub fn simulate_key_down(&self, keystroke: String, is_held: Option<bool>) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            let parsed = gpui::Keystroke::parse(&keystroke).map_err(|e| {
-                Error::from_reason(format!("Invalid keystroke '{}': {}", keystroke, e))
-            })?;
-
-            cx.simulate_event(
-                window,
-                gpui::KeyDownEvent {
-                    keystroke: parsed,
-                    is_held: is_held.unwrap_or(false),
-                    prefer_character_input: false,
-                },
-            );
-
-            Ok(())
+        self.key_input(|window, cx| {
+            crate::automation::dispatch_key_down(window, cx, &keystroke, is_held.unwrap_or(false))
         })
     }
 
-    /// Simulate a single key up event through GPUI's input pipeline.
-    /// Format: modifier-key string, e.g. "a", "enter", "cmd-s".
-    /// Pairs with simulate_key_down for fine-grained key event testing.
+    /// Dispatch one keyup (one press in the `simulate_keystrokes` grammar).
     #[napi]
     pub fn simulate_key_up(&self, keystroke: String) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            let parsed = gpui::Keystroke::parse(&keystroke).map_err(|e| {
-                Error::from_reason(format!("Invalid keystroke '{}': {}", keystroke, e))
-            })?;
-
-            cx.simulate_event(window, gpui::KeyUpEvent { keystroke: parsed });
-
-            Ok(())
-        })
+        self.key_input(|window, cx| crate::automation::dispatch_key_up(window, cx, &keystroke))
     }
 
     /// Simulate a mouse move to the given coordinates.

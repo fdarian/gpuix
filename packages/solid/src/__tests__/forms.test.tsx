@@ -39,7 +39,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
     ))
     type("a", "j o")
     expect(submits).toEqual([])
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([
       {
         entries: [
@@ -91,7 +91,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         />
       </form>
     ))
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([])
     expect(invalids).toEqual(["a:true"])
     expect(focused()).toBe("a")
@@ -112,7 +112,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         <input testId="a" name="a" style={field} onInvalid={() => invalids.push("a")} />
       </form>
     ))
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([])
     expect(invalids).toEqual(["area:true"])
     expect(focused()).toBe("area")
@@ -160,7 +160,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         />
       </form>
     ))
-    type("area", "end enter")
+    type("area", "End Enter")
     expect(submits).toEqual([])
     expect(text()).toBe("ab\n")
   })
@@ -173,8 +173,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         <input testId="b" name="b" style={field} />
       </form>
     ))
-    type("a", "enter")
-    type("b", "enter")
+    type("a", "Enter")
+    type("b", "Enter")
     expect(submits).toEqual([])
   })
 
@@ -185,7 +185,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
         <input testId="a" name="a" style={field} />
       </form>
     ))
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([])
   })
 })

@@ -36,11 +36,11 @@ describeNative("keyboard scrolling", () => {
   it("scrolls 40px on the arrow keys", () => {
     const { press, offset, unmount } = setup(scroller())
     try {
-      press("scroller", "down")
+      press("scroller", "ArrowDown")
       expect(offset("scroller")).toEqual([0, -40])
-      press("scroller", "down")
+      press("scroller", "ArrowDown")
       expect(offset("scroller")).toEqual([0, -80])
-      press("scroller", "up")
+      press("scroller", "ArrowUp")
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
       unmount()
@@ -50,13 +50,13 @@ describeNative("keyboard scrolling", () => {
   it("scrolls 90% of the client size on PageDown, PageUp and Space", () => {
     const { press, offset, unmount } = setup(scroller())
     try {
-      press("scroller", "pagedown")
+      press("scroller", "PageDown")
       expect(offset("scroller")).toEqual([0, -90])
-      press("scroller", "pageup")
+      press("scroller", "PageUp")
       expect(offset("scroller")).toEqual([0, 0])
-      press("scroller", "space")
+      press("scroller", "Space")
       expect(offset("scroller")).toEqual([0, -90])
-      press("scroller", "shift-space")
+      press("scroller", "Shift+Space")
       expect(offset("scroller")).toEqual([0, 0])
     } finally {
       unmount()
@@ -66,9 +66,9 @@ describeNative("keyboard scrolling", () => {
   it("jumps to the ends on Home and End", () => {
     const { press, offset, unmount } = setup(scroller())
     try {
-      press("scroller", "end")
+      press("scroller", "End")
       expect(offset("scroller")).toEqual([0, -900])
-      press("scroller", "home")
+      press("scroller", "Home")
       expect(offset("scroller")).toEqual([0, 0])
     } finally {
       unmount()
@@ -86,9 +86,9 @@ describeNative("keyboard scrolling", () => {
       </div>
     )
     try {
-      press("scroller", "right")
+      press("scroller", "ArrowRight")
       expect(offset("scroller")).toEqual([-40, 0])
-      press("scroller", "left")
+      press("scroller", "ArrowLeft")
       expect(offset("scroller")).toEqual([0, 0])
     } finally {
       unmount()
@@ -102,7 +102,7 @@ describeNative("keyboard scrolling", () => {
       </div>
     )
     try {
-      press("inside", "down")
+      press("inside", "ArrowDown")
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
       unmount()
@@ -119,10 +119,10 @@ describeNative("keyboard scrolling", () => {
       </div>
     )
     try {
-      press("inner", "down")
+      press("inner", "ArrowDown")
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([0, 0])
-      press("inner", "down")
+      press("inner", "ArrowDown")
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([0, -40])
     } finally {
@@ -135,7 +135,7 @@ describeNative("keyboard scrolling", () => {
       scroller({ onKeyDown: (event) => event.preventDefault() })
     )
     try {
-      press("scroller", "down")
+      press("scroller", "ArrowDown")
       expect(offset("scroller")).toEqual([0, 0])
     } finally {
       unmount()
@@ -148,7 +148,7 @@ describeNative("keyboard scrolling", () => {
       scroller({ onKeyDown: (event) => keys.push(event.key) })
     )
     try {
-      press("scroller", "down")
+      press("scroller", "ArrowDown")
       expect(keys).toEqual(["ArrowDown"])
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
@@ -164,8 +164,8 @@ describeNative("keyboard scrolling", () => {
       </div>
     )
     try {
-      press("field", "space")
-      press("field", "pagedown")
+      press("field", "Space")
+      press("field", "PageDown")
       expect(offset("scroller")).toEqual([0, 0])
     } finally {
       unmount()
@@ -180,9 +180,9 @@ describeNative("keyboard scrolling", () => {
       </div>
     )
     try {
-      press("button", "space")
+      press("button", "Space")
       expect(offset("scroller")).toEqual([0, 0])
-      press("button", "down")
+      press("button", "ArrowDown")
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
       unmount()
@@ -193,7 +193,7 @@ describeNative("keyboard scrolling", () => {
     const { renderer, offset, unmount } = setup(scroller())
     try {
       renderer.nativeSimulateMouseMove(50, 50)
-      renderer.simulateKeystrokes("down")
+      renderer.simulateKeystrokes("ArrowDown")
       expect(offset("scroller")).toEqual([0, -40])
     } finally {
       unmount()
@@ -204,7 +204,7 @@ describeNative("keyboard scrolling", () => {
     const tops: number[] = []
     const { press, unmount } = setup(scroller({ onScroll: (event) => tops.push(event.scrollTop) }))
     try {
-      press("scroller", "down")
+      press("scroller", "ArrowDown")
       expect(tops).toEqual([40])
     } finally {
       unmount()

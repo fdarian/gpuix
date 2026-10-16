@@ -1794,7 +1794,7 @@ describeNative("focus styles", () => {
   function run(name: string, input: "none" | "tab" | "click", options = {}) {
     const renderer = scene(options)
     const box = target(renderer)
-    if (input === "tab") renderer.simulateKeystrokes("tab")
+    if (input === "tab") renderer.simulateKeystrokes("Tab")
     if (input === "click") {
       renderer.nativeSimulateClick(box.x + 4, box.y + 4)
       renderer.nativeSimulateMouseMove(200, 110)

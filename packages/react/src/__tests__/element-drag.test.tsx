@@ -467,7 +467,7 @@ describeNative("draggable elements", () => {
 
       press(50, 50)
       move(60, 150)
-      testRoot.renderer.nativeSimulateKeyDown(source.id, "escape")
+      testRoot.renderer.nativeSimulateKeyDown(source.id, "Escape")
       expect(log).toEqual(["leave:nowhere", "end:none"])
 
       release(60, 150)

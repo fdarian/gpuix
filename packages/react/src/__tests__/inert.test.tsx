@@ -38,11 +38,11 @@ function Panel({ inert }: { inert: boolean }) {
 describeNative("inert", () => {
   it("skips the subtree when tabbing", () => {
     const { renderer, focused } = setup(<Panel inert />)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("before")
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("after")
-    renderer.simulateKeystrokes("shift-tab")
+    renderer.simulateKeystrokes("Shift+Tab")
     expect(focused()).toBe("before")
   })
 
@@ -96,7 +96,7 @@ describeNative("inert", () => {
         </div>
       </div>
     )
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe(null)
   })
 

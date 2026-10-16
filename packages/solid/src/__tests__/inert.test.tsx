@@ -25,9 +25,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid inert", () => {
         <div testId="after" tabIndex={0} style={box} />
       </div>
     ))
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("before")
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("after")
 
     renderer.focusElement(idOf("inside"))

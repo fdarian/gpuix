@@ -61,14 +61,14 @@ describeNative("synchronous key dispatch", () => {
   describe("preventDefault on keydown", () => {
     // Each case: a key that changes the caret or the text when nothing stops it.
     const cases = [
-      { key: "left", area: false, initial: "hello", caret: 2 },
-      { key: "right", area: false, initial: "hello", caret: 2 },
-      { key: "home", area: false, initial: "hello", caret: 2 },
-      { key: "end", area: false, initial: "hello", caret: 2 },
-      { key: "backspace", area: false, initial: "hello", caret: 2 },
-      { key: "enter", area: true, initial: "hello", caret: 2 },
-      { key: "up", area: true, initial: "ab\ncd", caret: 4 },
-      { key: "down", area: true, initial: "ab\ncd", caret: 1 },
+      { key: "ArrowLeft", area: false, initial: "hello", caret: 2 },
+      { key: "ArrowRight", area: false, initial: "hello", caret: 2 },
+      { key: "Home", area: false, initial: "hello", caret: 2 },
+      { key: "End", area: false, initial: "hello", caret: 2 },
+      { key: "Backspace", area: false, initial: "hello", caret: 2 },
+      { key: "Enter", area: true, initial: "hello", caret: 2 },
+      { key: "ArrowUp", area: true, initial: "ab\ncd", caret: 4 },
+      { key: "ArrowDown", area: true, initial: "ab\ncd", caret: 1 },
       { key: "x", area: false, initial: "hello", caret: 2 },
       { key: "x", area: true, initial: "hello", caret: 2 },
     ]
@@ -105,7 +105,7 @@ describeNative("synchronous key dispatch", () => {
       onKeyDown: () => seen.push(field.control().selectionStart),
     })
     field.control().setSelectionRange(2, 2)
-    field.press("left")
+    field.press("ArrowLeft")
     expect(seen).toEqual([2])
     expect(field.control().selectionStart).toBe(1)
   })
@@ -123,7 +123,7 @@ describeNative("synchronous key dispatch", () => {
       },
     })
     field.control().setSelectionRange(2, 2)
-    field.press("left")
+    field.press("ArrowLeft")
 
     expect(seen.caret).toBe(2)
     expect(seen.after).toBe(4)
@@ -187,17 +187,17 @@ describeNative("synchronous key dispatch", () => {
       let prevent = true
       testRoot.render(<Stops onKeyDown={(event) => prevent && event.preventDefault()} />)
       testRoot.renderer.focusElement(testRoot.renderer.findByTestId("one").id)
-      testRoot.renderer.simulateKeystrokes("tab")
+      testRoot.renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("one")
 
       prevent = false
-      testRoot.renderer.simulateKeystrokes("tab")
+      testRoot.renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("two")
     })
 
     it("never types a tab into a text field", () => {
       const field = mountControl("ab")
-      field.press("tab")
+      field.press("Tab")
       expect(field.value()).toBe('Value: "ab"')
     })
   })
@@ -285,7 +285,7 @@ describeNative("synchronous key dispatch", () => {
       const field = mountControl("hello")
       listen(window, "keydown", (event) => event.preventDefault())
       field.control().setSelectionRange(2, 2)
-      field.press("backspace")
+      field.press("Backspace")
       expect(field.value()).toBe('Value: "hello"')
     })
   })

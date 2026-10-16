@@ -3455,7 +3455,9 @@ impl GpuixRenderer {
             .collect()
     }
 
-    /// Simulate space-separated keystrokes through the focused element's input pipeline.
+    /// Press space-separated keys in Playwright's `keyboard.press` grammar
+    /// (`"Enter"`, `"Shift+Tab"`, `"Meta+a"`, `"a"`, `"Space"`) through the
+    /// focused element's input pipeline, each as a keydown then a keyup.
     #[napi]
     pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
         #[cfg(target_os = "macos")]
@@ -3479,6 +3481,7 @@ impl GpuixRenderer {
         }
     }
 
+    /// One keydown (one press in the `simulate_keystrokes` grammar), no keyup.
     #[napi]
     pub fn simulate_key_down(&self, keystroke: String, is_held: Option<bool>) -> Result<()> {
         let is_held = is_held.unwrap_or(false);
@@ -3504,6 +3507,7 @@ impl GpuixRenderer {
         }
     }
 
+    /// One keyup (one press in the `simulate_keystrokes` grammar).
     #[napi]
     pub fn simulate_key_up(&self, keystroke: String) -> Result<()> {
         #[cfg(target_os = "macos")]
@@ -3527,7 +3531,7 @@ impl GpuixRenderer {
         }
     }
 
-    /// `modifiers` uses the `press()` syntax: "cmd", "cmd-shift", "alt".
+    /// `modifiers` is hyphenated: "cmd", "cmd-shift", "alt".
     #[napi]
     pub fn simulate_click(
         &self,

@@ -640,7 +640,7 @@ describeNative("DOM layout: paint order and zIndex", () => {
       )
       const order: (string | undefined)[] = []
       for (let press = 0; press < 3; press++) {
-        renderer.simulateKeystrokes("tab")
+        renderer.simulateKeystrokes("Tab")
         order.push(renderer.getElement(renderer.getFocusedElementId())?.testId)
       }
       expect(order).toEqual(["a", "b", "c"])

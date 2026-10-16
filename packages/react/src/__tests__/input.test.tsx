@@ -64,7 +64,7 @@ describeNative("native text editors", () => {
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
 
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "h i enter t h e r e")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "h i Enter t h e r e")
     expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
       [
         "Value: \"hi\\nthere\"",
@@ -89,7 +89,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "left enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "ArrowLeft Enter")
 
     expect(testRoot.renderer.getAllText()).toContain('Value: "a\\nb"')
   })
@@ -111,10 +111,10 @@ describeNative("native text editors", () => {
 
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "shift-left enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Shift+ArrowLeft Enter")
     expect(testRoot.renderer.getAllText()).toContain('Value: "ab\\n"')
 
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Meta+z")
     expect(testRoot.renderer.getAllText()).toContain('Value: "abc"')
   })
 
@@ -145,7 +145,7 @@ describeNative("native text editors", () => {
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
 
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "h i shift-enter t h e r e")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "h i Shift+Enter t h e r e")
     expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
       [
         "Value: \"hi\\nthere\"",
@@ -153,7 +153,7 @@ describeNative("native text editors", () => {
       ]
     `)
 
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Enter")
     expect(testRoot.renderer.getAllText()).toContain("Submits: 1")
     expect(testRoot.renderer.getAllText()).toContain('Value: "hi\\nthere"')
   })
@@ -186,17 +186,17 @@ describeNative("native text editors", () => {
 
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "left enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "ArrowLeft Enter")
     expect(testRoot.renderer.getAllText()).toContain('Value: "a\\nb"')
     expect(testRoot.renderer.getAllText()).toContain("Submits: 0")
 
     testRoot.render(<Textarea submit />)
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Enter")
     expect(testRoot.renderer.getAllText()).toContain('Value: "a\\nb"')
     expect(testRoot.renderer.getAllText()).toContain("Submits: 1")
 
     testRoot.render(<Textarea />)
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Enter")
     expect(testRoot.renderer.getAllText()).toContain('Value: "a\\n\\nb"')
     expect(testRoot.renderer.getAllText()).toContain("Submits: 1")
   })
@@ -218,7 +218,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "cmd-backspace")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Meta+Backspace")
 
     expect(testRoot.renderer.getAllText()).toContain('Value: "keep\\n"')
   })
@@ -240,7 +240,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<Textarea />)
     const textarea = testRoot.renderer.findByType("textarea")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "cmd-left cmd-delete")
+    testRoot.renderer.nativeSimulateKeystrokes(textarea.id, "Meta+ArrowLeft Meta+Delete")
 
     expect(testRoot.renderer.getAllText()).toContain('Value: "keep\\n"')
   })
@@ -262,7 +262,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "backspace")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Backspace")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: A")
   })
@@ -284,10 +284,10 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "left b shift-left X")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "ArrowLeft b Shift+ArrowLeft Shift+X")
     expect(testRoot.renderer.getAllText()).toContain("Value: aXc")
 
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Meta+z")
     expect(testRoot.renderer.getAllText()).toContain("Value: abc")
   })
 
@@ -308,7 +308,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "a b c cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "a b c Meta+z")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: ")
     expect(testRoot.renderer.getAllText()).not.toContain("Value: ab")
@@ -333,7 +333,7 @@ describeNative("native text editors", () => {
     const input = testRoot.renderer.findByType("input")[0]
     testRoot.renderer.nativeSimulateKeystrokes(input.id, "a")
     testRoot.renderer.advanceTime(800)
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "b cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "b Meta+z")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: a")
   })
@@ -355,7 +355,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "backspace backspace cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Backspace Backspace Meta+z")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: abcd")
   })
@@ -377,7 +377,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "cmd-left delete delete cmd-z")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Meta+ArrowLeft Delete Delete Meta+z")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: abcd")
   })
@@ -386,7 +386,7 @@ describeNative("native text editors", () => {
   // same split every platform's own text fields use, so the test has to ask
   // for the chord this host actually binds.
   it("moves by words with the platform's word chord", () => {
-    const word = process.platform === "darwin" ? "alt" : "ctrl"
+    const word = process.platform === "darwin" ? "Alt" : "Control"
     function TextInput() {
       const [text, setText] = useState("hello world")
       return (
@@ -405,7 +405,7 @@ describeNative("native text editors", () => {
     const input = testRoot.renderer.findByType("input")[0]
     testRoot.renderer.nativeSimulateKeystrokes(
       input.id,
-      `${word}-left X ${word}-right Y`,
+      `${word}+ArrowLeft Shift+X ${word}+ArrowRight Shift+Y`,
     )
 
     expect(testRoot.renderer.getAllText()).toContain("Value: hello XworldY")
@@ -429,7 +429,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "backspace a")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Backspace a")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: locked")
   })
@@ -473,7 +473,7 @@ describeNative("native text editors", () => {
 
     testRoot.render(<TextInput />)
     const input = testRoot.renderer.findByType("input")[0]
-    testRoot.renderer.nativeSimulateKeystrokes(input.id, "enter")
+    testRoot.renderer.nativeSimulateKeystrokes(input.id, "Enter")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: ")
     expect(testRoot.renderer.getPaintedText()).toContain("Empty")
@@ -555,7 +555,7 @@ describeNative("native text editors", () => {
         />,
       )
       const input = testRoot.renderer.findByType("input")[0]
-      testRoot.renderer.nativeSimulateKeyDown(input.id, "cmd-v")
+      testRoot.renderer.nativeSimulateKeyDown(input.id, "Meta+v")
     }
 
     expect({ elementKeys, windowKeys }).toMatchInlineSnapshot(`

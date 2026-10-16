@@ -83,7 +83,7 @@ describeNative('disktree', () => {
     expect(await app.getByTestId('crumb-0').textContent()).toBe('node_modules')
     await app.screenshot({ path: path.join(SHOTS, 'node-modules.png') })
 
-    await app.getByTestId('disktree').press('backspace')
+    await app.getByTestId('disktree').press('Backspace')
     expect(await name()).toBe('node_modules')
 
     // The back button does the same as ⌫.

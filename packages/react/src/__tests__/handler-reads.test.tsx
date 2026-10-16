@@ -155,7 +155,7 @@ describeNative("a Dialog opened from a mousedown handler", () => {
       renderer.nativeSimulateClick(opener.x + 5, opener.y + 5)
       expect(renderer.findByTestId("popup")).toBeDefined()
 
-      renderer.simulateKeystrokes("escape")
+      renderer.simulateKeystrokes("Escape")
       expect(renderer.findByTestId("popup")).toBeUndefined()
       expect(document.activeElement).toBe(refs.before)
     } finally {

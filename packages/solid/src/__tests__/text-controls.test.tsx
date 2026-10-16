@@ -33,7 +33,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid text controls", () => {
       "backward",
     ])
 
-    app.renderer.nativeSimulateKeystrokes(field.id, "J")
+    app.renderer.nativeSimulateKeystrokes(field.id, "Shift+J")
     expect(text()).toBe("hJo")
   })
 
@@ -99,7 +99,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid text controls", () => {
         onChange={(event) => setText(event.value ?? "")}
       />
     ))
-    app.renderer.nativeSimulateKeystrokes(field.id, "up up")
+    app.renderer.nativeSimulateKeystrokes(field.id, "ArrowUp ArrowUp")
     expect(text()).toBe("2")
   })
 })

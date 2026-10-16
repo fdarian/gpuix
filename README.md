@@ -3180,8 +3180,8 @@ character GPUI reports, and it is `""` when nothing maps. `repeat` is true for
 auto-repeat, `isComposing` is always `false` (a key that feeds an IME
 composition is consumed by the platform before GPUI sees it), and `shiftKey`,
 `ctrlKey`, `altKey` and `metaKey` mirror `modifiers`. The `simulateKeystrokes`
-and `press()` test helpers still take GPUI keystroke syntax (`enter`,
-`cmd-shift-p`).
+and `press()` test helpers take these same names (`"Enter"`,
+`"Shift+Tab"`), see [Simulating keys](#simulating-keys).
 
 An element still needs a `tabIndex` to be focused, so a bare `div` with
 `onKeyDown` only hears keys that bubble up from a focused descendant.
@@ -5737,7 +5737,8 @@ two disagree.
 | `locator.getByText('...')` | A descendant of another locator |
 
 `click()` hits the center of the last painted bounds. `fill(text)` replaces the
-focused editor contents. `press('enter')` sends one key. `waitFor()` polls until
+focused editor contents. `press('Enter')` presses one key, or several separated by spaces, in the
+[key grammar](#simulating-keys). `waitFor()` polls until
 exactly one match exists. `textContent()` returns the node's own text plus every
 descendant's, like DOM `textContent`.
 
@@ -5763,8 +5764,8 @@ await app.getByTestId('clip-7-trim-end').dragTo(app.getByTestId('clip-8'))
 await app.mouse.drag({ x: 240, y: 500 }, { x: 700, y: 620 })
 ```
 
-Every mouse call takes **`modifiers`** in the same syntax as `press('cmd-a')`,
-so cmd-wheel zoom, shift-click range selection, and alt-drag duplication are all
+Every mouse call takes **`modifiers`** as a hyphenated string (`'cmd'`,
+`'cmd-shift'`, `'alt'`), so cmd-wheel zoom, shift-click range selection, and alt-drag duplication are all
 testable:
 
 ```ts
@@ -5814,7 +5815,7 @@ const app = await launch({
   env: { GPUIX_BACKGROUND: '1' },
 })
 await app.getByTestId('composer').fill('hello')
-await app.getByTestId('composer').press('enter')
+await app.getByTestId('composer').press('Enter')
 await app.getByText('hello').waitFor()
 await app.screenshot({ path: 'live.png' })
 await app.close()
@@ -5853,7 +5854,7 @@ renderer.flush()  // triggers GpuixView::render() on the native GPU
 
 // Simulate events through GPUI's native input pipeline
 renderer.nativeSimulateClick(50, 50)
-renderer.nativeSimulateKeystrokes('enter')
+renderer.simulateKeystrokes('Enter')
 
 // Inspect results
 const events = renderer.drainNativeEvents()
@@ -5870,6 +5871,35 @@ current values inside an `onMouseDown`, and a `DismissableLayer` (Dialog,
 Popover) can open from one. Only another `nativeSimulate*` call, `advanceTime` or
 `captureScreenshot` throws there. The test window is one per thread: making a
 `TestRenderer` tears down the previous one.
+
+### Simulating keys
+
+`simulateKeystrokes`, `nativeSimulateKeystrokes`, `nativeSimulateKeyDown` and
+`nativeSimulateKeyUp` on the test renderer, `press()` on a live-app locator and
+`keystrokes` / `keyDown` / `keyUp` in the automation protocol all take the
+grammar of Playwright's `keyboard.press`, the same names a handler reads back
+as `event.key` and `event.code`. A press is a DOM `key` (`"Enter"`, `"a"`,
+`"A"`, `"ArrowDown"`, `"Escape"`, `"Tab"`, `"Backspace"`, `"F2"`, `"PageUp"`) or
+a `code` (`"Space"`, `"KeyA"`, `"Digit1"`), with modifiers joined by `+`
+(`"Shift+Tab"`, `"Meta+a"`, `"Control+Shift+P"`, `"Alt+ArrowLeft"`).
+`"ControlOrMeta"` is Meta on macOS and Control elsewhere. Names are
+case-sensitive, and one that is not a key throws before anything is pressed:
+GPUI's own syntax (`"enter"`, `"cmd-shift-p"`) is not accepted.
+
+```ts
+renderer.simulateKeystrokes('Shift+Tab')              // one press
+renderer.nativeSimulateKeystrokes(id, 'h i Enter')    // a sequence, spaces between presses
+renderer.nativeSimulateKeystrokes(id, 'ControlOrMeta+a Backspace')
+```
+
+A sequence is space-separated, so the space bar is `"Space"`. Each press is a
+`keydown` then a `keyup`, and a key that types a character inserts it into a
+focused `<input>` unless a handler cancels the `keydown`: `"a Shift+b"` types
+`aB`, and `"A"` types `A` without Shift held, as in Playwright. A held
+Control, Alt or Meta types nothing. `nativeSimulateKeyDown(id, press)` and
+`nativeSimulateKeyUp(id, press)` send one half of a single press. `code` assumes
+a US QWERTY layout, as it does on events. The browser (wasm) automation path
+passes the names through to the page without checking them.
 
 A file drag is simulated in steps, each a native event that reaches your
 handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,

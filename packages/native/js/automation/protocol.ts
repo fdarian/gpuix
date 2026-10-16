@@ -44,7 +44,7 @@ const pointSchema = z.object({
 
 const buttonSchema = z.number().int().min(0).max(2).optional()
 
-/** Held modifiers, in the same hyphenated syntax as `press("cmd-a")`. */
+/** Held modifiers, hyphenated: `"cmd"`, `"cmd-shift"`, `"alt"`. */
 const modifiersSchema = z.string().optional()
 
 export const boundsSchema = z.object({

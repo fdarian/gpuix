@@ -43,7 +43,7 @@ describeNative("layout reads inside an input handler", () => {
       const neighbourId = renderer.findByTestId("neighbour").id
       expect(renderer.getElementBounds(neighbourId)?.y).toBe(50)
 
-      renderer.nativeSimulateKeystrokes(renderer.findByTestId("dialog").id, "escape")
+      renderer.nativeSimulateKeystrokes(renderer.findByTestId("dialog").id, "Escape")
 
       expect(keys).toEqual(["Escape"])
       expect(seen).toHaveLength(1)

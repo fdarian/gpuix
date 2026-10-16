@@ -32,14 +32,14 @@ describeNative("focus scrolls into view if needed", () => {
   describe("Tab and Shift+Tab", () => {
     it("scrolls an off-screen item to the nearest edge", () => {
       const { renderer, focused, scrollTop } = setup(list())
-      renderer.simulateKeystrokes("tab tab")
+      renderer.simulateKeystrokes("Tab Tab")
       expect(focused()).toBe("i1")
       expect(scrollTop("scroller")).toBe(0)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("i2")
       // i2 spans 80..120 and the port ends at 100: its bottom edge goes to the port's.
       expect(scrollTop("scroller")).toBe(20)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("i3")
       expect(scrollTop("scroller")).toBe(60)
     })
@@ -48,10 +48,10 @@ describeNative("focus scrolls into view if needed", () => {
       const { renderer, focused, scrollTop, idOf } = setup(list())
       renderer.focusElement(idOf("i3"))
       renderer.scrollTo(idOf("scroller"), 0, -60)
-      renderer.simulateKeystrokes("shift-tab")
+      renderer.simulateKeystrokes("Shift+Tab")
       expect(focused()).toBe("i2")
       expect(scrollTop("scroller")).toBe(60)
-      renderer.simulateKeystrokes("shift-tab")
+      renderer.simulateKeystrokes("Shift+Tab")
       expect(focused()).toBe("i1")
       // i1 spans 40..80; the port is 60..160, so its top edge goes to the port's.
       expect(scrollTop("scroller")).toBe(40)
@@ -61,7 +61,7 @@ describeNative("focus scrolls into view if needed", () => {
       const { renderer, focused, scrollTop, idOf } = setup(list())
       renderer.focusElement(idOf("i0"))
       renderer.scrollTo(idOf("scroller"), 0, -20)
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("i1")
       // i1 spans 40..80 and the port is 20..120.
       expect(scrollTop("scroller")).toBe(20)
@@ -77,12 +77,12 @@ describeNative("focus scrolls into view if needed", () => {
           </div>
         </div>
       )
-      renderer.simulateKeystrokes("tab tab")
+      renderer.simulateKeystrokes("Tab Tab")
       expect(focused()).toBe("n0")
       // n0 spans 220..260 in the outer content; the outer port is 100 tall.
       expect(scrollTop("outer")).toBe(160)
       expect(scrollTop("inner")).toBe(0)
-      renderer.simulateKeystrokes("tab tab")
+      renderer.simulateKeystrokes("Tab Tab")
       expect(focused()).toBe("n2")
       expect(scrollTop("inner")).toBe(60)
       // Scrolled in the inner port, n2 spans 240..280 in the outer content.

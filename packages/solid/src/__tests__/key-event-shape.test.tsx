@@ -16,7 +16,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid DOM-shaped key events", () => {
       </div>
     ))
     const id = app.renderer.findByTestId("target")!.id
-    app.renderer.nativeSimulateKeystrokes(id, "enter shift-a cmd-down")
+    app.renderer.nativeSimulateKeystrokes(id, "Enter Shift+a Meta+ArrowDown")
     expect(events.map((event) => [event.key, event.code])).toEqual([
       ["Enter", "Enter"],
       ["A", "KeyA"],

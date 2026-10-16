@@ -65,7 +65,7 @@ try {
     // tree. Assert on the user turn instead: a plain <text>, unique and retained.
     const composer = app.getByTestId("composer")
     await composer.fill("hello from solid")
-    await composer.press("enter")
+    await composer.press("Enter")
     await app.getByText("hello from solid").waitFor({ timeoutMs: 5_000 })
   })
 

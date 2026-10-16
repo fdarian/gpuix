@@ -62,7 +62,6 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     ))
     renderer.focusElement(idOf("a"))
     renderer.nativeSimulateKeystrokes(idOf("a"), "x")
-    renderer.nativeSimulateKeyUp(idOf("a"), "x")
     renderer.focusElement(idOf("b"))
     expect(types).toEqual(["focus", "focusin", "keydown", "keyup", "blur", "focusout"])
   })
@@ -117,7 +116,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     ))
     const order: (string | null)[] = []
     for (let step = 0; step < 6; step++) {
-      renderer.simulateKeystrokes("tab")
+      renderer.simulateKeystrokes("Tab")
       order.push(focused())
     }
     expect(order).toEqual(["one", "two", "three", "zero-1", "zero-2", "one"])
@@ -140,7 +139,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
 
     renderer.nativeSimulateClick(...center("other"))
     expect(visible("other")).toBe(false)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(visible("field")).toBe(true)
 
     renderer.nativeSimulateClick(...center("button"))
@@ -158,7 +157,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     ))
     // Script focus before any user input matches, like Chrome.
     renderer.focusElement(idOf("a"))
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(seen).toEqual([true, true])
   })
 
@@ -235,10 +234,10 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
       </div>
     ))
     const scrollTop = () => 0 - (renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0)
-    renderer.simulateKeystrokes("tab tab")
+    renderer.simulateKeystrokes("Tab Tab")
     expect(focused()).toBe("i1")
     expect(scrollTop()).toBe(0)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("i2")
     expect(scrollTop()).toBe(20)
     visible.focus()
@@ -261,7 +260,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     expect(focused()).toBe(null)
     renderer.nativeSimulateClick(...center("field"))
     expect(focused()).toBe(null)
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("stop")
   })
 
@@ -297,7 +296,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
         <div testId="a" tabIndex={0} style={box} />
       </div>
     ))
-    renderer.simulateKeystrokes("tab")
+    renderer.simulateKeystrokes("Tab")
     expect(focused()).toBe("a")
     renderer.setWindowActive(false)
     renderer.setWindowActive(true)

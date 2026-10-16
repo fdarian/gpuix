@@ -66,7 +66,7 @@ describeNative("form", () => {
     )
     type("a", "j o")
     expect(submits).toEqual([])
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([
       {
         entries: [
@@ -102,7 +102,7 @@ describeNative("form", () => {
     mountForm(<input testId="a" name="n" style={field} />, {
       onWrapperSubmit: (event) => heard.push(event.target),
     })
-    type("a", "enter")
+    type("a", "Enter")
     expect(heard).toEqual([idOf("form")])
   })
 
@@ -118,10 +118,10 @@ describeNative("form", () => {
       </form>,
     )
     keyDownPrevented = true
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([])
     keyDownPrevented = false
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toHaveLength(1)
   })
 
@@ -142,7 +142,7 @@ describeNative("form", () => {
       )
     }
     testRoot.render(<App />)
-    type("area", "end enter")
+    type("area", "End Enter")
     expect(submits).toEqual([])
     expect(testRoot.renderer.getAllText()).toContain(JSON.stringify("ab\n"))
   })
@@ -157,8 +157,8 @@ describeNative("form", () => {
           <input testId="b" name="b" style={field} />
         </>,
       )
-      type("a", "enter")
-      type("b", "enter")
+      type("a", "Enter")
+      type("b", "Enter")
       expect(submits).toEqual([])
     })
 
@@ -169,7 +169,7 @@ describeNative("form", () => {
           <input testId="b" name="b" disabled style={field} />
         </>,
       )
-      type("a", "enter")
+      type("a", "Enter")
       expect(submits).toEqual([])
     })
 
@@ -199,7 +199,7 @@ describeNative("form", () => {
           </form>
         </>,
       )
-      type("a", "enter")
+      type("a", "Enter")
       expect(submits.map((submit) => submit.target)).toEqual([idOf("form")])
     })
   })
@@ -211,7 +211,7 @@ describeNative("form", () => {
         <input testId="a" style={field} />
       </div>,
     )
-    type("a", "enter")
+    type("a", "Enter")
     expect(submits).toEqual([])
   })
 
@@ -227,7 +227,7 @@ describeNative("form", () => {
         style={field}
       />,
     )
-    type("a", "enter")
+    type("a", "Enter")
     expect(own).toEqual(["input"])
     expect(submits).toHaveLength(1)
   })
@@ -270,7 +270,7 @@ describeNative("form", () => {
           onInvalid={(event) => invalids.push(`a:${event.target}`)}
         />,
       )
-      type("a", "enter")
+      type("a", "Enter")
       expect(submits).toEqual([])
       expect(invalids).toEqual([`a:${idOf("a")}`])
       expect(focusedTestId()).toBe("a")
@@ -294,7 +294,7 @@ describeNative("form", () => {
           />
         </>,
       )
-      type("a", "enter")
+      type("a", "Enter")
       expect(submits).toEqual([])
       expect(invalids).toEqual([`area:${idOf("area")}`])
       expect(focusedTestId()).toBe("area")
@@ -302,9 +302,9 @@ describeNative("form", () => {
 
     it("submits once the required controls have a value", () => {
       mountForm(<input testId="a" name="a" required style={field} />)
-      type("a", "enter")
+      type("a", "Enter")
       expect(submits).toEqual([])
-      type("a", "x enter")
+      type("a", "x Enter")
       expect(submits.map((submit) => submit.entries)).toEqual([[["a", "x"]]])
     })
 
@@ -367,7 +367,7 @@ describeNative("form", () => {
         )
       }
       testRoot.render(<App />)
-      type("button", "space")
+      type("button", "Space")
       expect(submits).toHaveLength(1)
     })
   })
@@ -388,10 +388,10 @@ describeNative("form", () => {
         </form>
       </form>,
     )
-    type("inner", "enter")
+    type("inner", "Enter")
     expect(inner).toEqual([[["inner", "2"]]])
     expect(outer).toEqual([])
-    type("outer", "enter")
+    type("outer", "Enter")
     expect(outer).toEqual([[["outer", "1"]]])
   })
 

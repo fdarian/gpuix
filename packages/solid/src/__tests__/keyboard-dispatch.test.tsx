@@ -88,11 +88,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid synchronous key dispatch", () => 
     const field = app.renderer.findByTestId("field")!
     const press = (keys: string) => app.renderer.nativeSimulateKeystrokes(field.id, keys)
 
-    press("backspace")
+    press("Backspace")
     expect(text()).toBe("hell")
 
     prevent = true
-    press("backspace")
+    press("Backspace")
     press("x")
     expect(text()).toBe("hell")
   })
@@ -109,7 +109,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid synchronous key dispatch", () => 
       />
     ))
     listen(window, "keydown", (event) => event.preventDefault())
-    app.renderer.nativeSimulateKeystrokes(app.renderer.findByTestId("field")!.id, "backspace")
+    app.renderer.nativeSimulateKeystrokes(app.renderer.findByTestId("field")!.id, "Backspace")
     expect(text()).toBe("hello")
   })
 })
