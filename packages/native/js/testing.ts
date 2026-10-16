@@ -56,6 +56,7 @@ interface NativeTestRendererApi
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
   setSyncEventHandler(handler: ((event: EventPayload) => SyncDispatchResult) | null): void
+  dispose(): void
   focusElement(elementId: number): void
   blurElement(elementId: number): void
   matchesFocus(elementId: number, selector: string): boolean
@@ -403,10 +404,13 @@ export class TestRenderer implements NativeRenderer {
     bindClipboard(this)
   }
 
-  /** Releases the sync event handler, which captures this renderer. Call it after the
-   *  root is unmounted; other test renderers are not affected. */
+  /** Releases the sync event handler, which captures this renderer, and tears the native
+   *  window down. Call it after the root is unmounted. Native calls that need the window
+   *  throw afterwards; the retained tree stays readable. Without it the window is leaked
+   *  when the thread exits. */
   dispose(): void {
     this.native.setSyncEventHandler(null)
+    this.native.dispose()
   }
 
   // ── GPUI pipeline methods ───────────────────────────────────────

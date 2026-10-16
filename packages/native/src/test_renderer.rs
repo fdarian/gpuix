@@ -35,6 +35,9 @@ use crate::retained_tree::RetainedTree;
 /// gpui panics at app teardown if an `Entity` handle outlives its `App`.
 /// `view` must therefore be declared before `cx`.
 struct VisualTestState {
+    /// The `TestGpuixRenderer` that created it, so `dispose` of a renderer that a newer one
+    /// replaced does not tear the newer one down.
+    owner: u64,
     view: gpui::Entity<GpuixView>,
     window: gpui::AnyWindowHandle,
     cx: gpui::VisualTestAppContext,
@@ -44,10 +47,13 @@ struct VisualTestState {
 ///
 /// The test build enables gpui's leak detector, which panics if a handle
 /// outlives its `App`. `<input>` keeps an `Entity<TextEditorState>` in the
-/// view's custom element registry, so that panic fires from a thread-local
-/// destructor at process exit. macOS never runs this destructor, so the panic
-/// only appeared once Windows started running the suite: every test file
-/// passed and then the vitest worker died with "Worker exited unexpectedly".
+/// view's custom element registry, so dropping the state without this panics.
+///
+/// This must never run from a thread-local destructor: it touches other
+/// thread-locals (`anchor_size::ANCHORS`, ...), which may already be destroyed,
+/// and a panic in a destructor aborts the process. `TEST_STATE` is torn down
+/// explicitly instead, by `dispose` or by the next renderer, and leaked if
+/// neither happened by the time the thread exits.
 ///
 /// `drop` runs before the fields are dropped, so `view` and `cx` are both
 /// still usable here.
@@ -80,7 +86,30 @@ impl Drop for VisualTestState {
 }
 
 thread_local! {
-    static TEST_STATE: RefCell<Option<VisualTestState>> = const { RefCell::new(None) };
+    /// `ManuallyDrop` so the thread's exit leaks a state nobody disposed instead of
+    /// running its `Drop`; see `VisualTestState`. Take it out to tear it down.
+    static TEST_STATE: RefCell<std::mem::ManuallyDrop<Option<VisualTestState>>> =
+        const { RefCell::new(std::mem::ManuallyDrop::new(None)) };
+}
+
+static NEXT_RENDERER_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Tears down the state of `owner`, if it is still the current one. Called with no borrow of
+/// `TEST_STATE` held, since the teardown runs a frame.
+fn dispose_test_state(owner: Option<u64>) -> Result<()> {
+    let state = TEST_STATE.with(|cell| -> Result<Option<VisualTestState>> {
+        let mut borrow = cell.try_borrow_mut().map_err(|_| {
+            Error::from_reason(
+                "A test renderer cannot be disposed inside an event handler that native called synchronously.",
+            )
+        })?;
+        if owner.is_some_and(|owner| borrow.as_ref().is_some_and(|state| state.owner != owner)) {
+            return Ok(None);
+        }
+        Ok(borrow.take())
+    })?;
+    drop(state);
+    Ok(())
 }
 
 /// Access VisualTestAppContext + window + view mutably within thread_local.
@@ -108,7 +137,7 @@ fn with_test_state<R>(
             })?;
             let state = borrow
                 .as_mut()
-                .ok_or_else(|| Error::from_reason("TestGpuixRenderer not initialized"))?;
+                .ok_or_else(|| Error::from_reason("TestGpuixRenderer is disposed or was never created"))?;
             f(&mut state.cx, state.window, &state.view)
         })
     })
@@ -307,6 +336,7 @@ fn install_test_image_http_client(cx: &mut gpui::App) {
 ///   r.captureScreenshot("/tmp/test.png")  // saves rendered UI as PNG
 #[napi]
 pub struct TestGpuixRenderer {
+    id: u64,
     sync_handler: crate::events::sync_dispatch::SyncHandlerOwner,
     tree: Arc<Mutex<RetainedTree>>,
     events: Arc<Mutex<Vec<EventPayload>>>,
@@ -418,15 +448,20 @@ impl TestGpuixRenderer {
         .map_err(|e| Error::from_reason(e.to_string()))?;
         cx.run_until_parked();
 
+        // One window per thread: the renderer this replaces is torn down now, while every
+        // thread-local is alive.
+        dispose_test_state(None)?;
+        let id = NEXT_RENDERER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // Store !Send types on the JS main thread.
         TEST_STATE.with(|cell| {
-            *cell.borrow_mut() = Some(VisualTestState { cx, window, view });
+            **cell.borrow_mut() = Some(VisualTestState { owner: id, cx, window, view });
         });
 
         let sync_handler = crate::events::sync_dispatch::SyncHandlerOwner::new();
         sync_handler.bind_window(window.window_id());
 
         Ok(Self {
+            id,
             sync_handler,
             tree,
             events,
@@ -436,6 +471,14 @@ impl TestGpuixRenderer {
             window_actions,
             media: Arc::new(Mutex::new(crate::media::TestMedia::default())),
         })
+    }
+
+    /// Tears the window and its GPUI app down. Every call that needs the window
+    /// throws afterwards; the retained tree stays readable. Call it after the
+    /// root is unmounted.
+    #[napi]
+    pub fn dispose(&self) -> Result<()> {
+        dispose_test_state(Some(self.id))
     }
 
     /// Registers the function native calls synchronously for `keydown` and

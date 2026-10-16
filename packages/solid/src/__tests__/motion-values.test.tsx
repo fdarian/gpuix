@@ -274,10 +274,13 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion values in style", () => {
     // Both writes of a delivery land in one effect run.
     expect(runs).toEqual(["0.50 1.00"])
 
-    app.unmount()
+    // Not app.unmount(): it disposes the window the write goes through.
+    app.root.unmount()
+    app.renderer.flush()
     runs.length = 0
     x.set(0.9)
     expect(runs).toEqual([])
+    app.renderer.dispose()
   })
 
   it("frees a value's node when its last element goes, and keeps its state", () => {
@@ -380,11 +383,14 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion values in style", () => {
     for (const id of new Set(ids)) expect(() => app.renderer.getMotionValue(id)).not.toThrow()
     expect(app.renderer.getMotionValue(outside.id)).toBe(10)
 
-    app.unmount()
+    // Not app.unmount(): it disposes the window these reads go through.
+    app.root.unmount()
+    app.renderer.flush()
     for (const id of new Set(ids)) {
       expect(() => app.renderer.getMotionValue(id)).toThrow(/unknown motion value/)
     }
     expect(() => app.renderer.getMotionValue(outside.id)).toThrow(/unknown motion value/)
     expect(outside.get()).toBe(10)
+    app.renderer.dispose()
   })
 })

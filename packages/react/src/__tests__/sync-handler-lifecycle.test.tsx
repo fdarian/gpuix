@@ -43,20 +43,12 @@ describeNative("sync key handler ownership", () => {
     second.unmount()
   })
 
-  it("stops cancelling keys once the test root is disposed", () => {
+  it("stops serving the window once the test root is disposed", () => {
     const root = createTestRoot()
     root.render(<Field onKeyDown={(event) => event.preventDefault()} />)
     const id = root.renderer.findByType("input")[0].id
-    const value = () =>
-      root.renderer.getAllText().find((line) => line.startsWith("Value: "))
 
-    root.renderer.nativeSimulateKeystrokes(id, "x")
-    expect(value()).toBe('Value: "hello"')
-
-    // Without a sync handler the key reaches JS through the queue, after the
-    // editor has acted on it.
     root.renderer.dispose()
-    root.renderer.nativeSimulateKeystrokes(id, "x")
-    expect(value()).not.toBe('Value: "hello"')
+    expect(() => root.renderer.nativeSimulateKeystrokes(id, "x")).toThrow(/disposed/)
   })
 })

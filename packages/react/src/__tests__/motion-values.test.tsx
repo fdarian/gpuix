@@ -326,7 +326,7 @@ describeNative("motion values in style", () => {
   })
 
   it("disposes every node when the root unmounts", () => {
-    const { render, renderer, unmount } = createTestRoot()
+    const { render, renderer, root } = createTestRoot()
     renderer.clockPause()
     const ids: number[] = []
     const outside = motionValue(10)
@@ -348,11 +348,13 @@ describeNative("motion values in style", () => {
     for (const id of new Set(ids)) expect(() => renderer.getMotionValue(id)).not.toThrow()
     expect(renderer.getMotionValue(outside.id)).toBe(10)
 
-    unmount()
+    // Not the test root's unmount: it disposes the window these reads go through.
+    root.unmount()
     for (const id of new Set(ids)) {
       expect(() => renderer.getMotionValue(id)).toThrow(/unknown motion value/)
     }
     expect(() => renderer.getMotionValue(outside.id)).toThrow(/unknown motion value/)
     expect(outside.get()).toBe(10)
+    renderer.dispose()
   })
 })
