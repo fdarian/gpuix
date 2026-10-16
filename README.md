@@ -2771,6 +2771,11 @@ shorthand. `hover`, `active` and the other state styles change the space too.
   goes with it. The lines in between have none.
 - Boxes nested in each other add up: an inner box that starts where its parent
   does has the parent's leading space first, then its own.
+- A box is its border box: `getBoundingClientRect()`, the `onLayout` and observer
+  reports, the `outline` ring, `offsetX` and `offsetY`, and what the pointer is on
+  (events, hover, `cursor`, a press that focuses) start after its margin and end
+  before it. A pointer in the margin is on the boxes around the span, or on the
+  container; in the border and the padding it is on the span.
 - A text selection or a search match that starts or ends on the first or last
   glyph of a span leaves the space off the end of its wash. A selection that runs
   across a span washes the space inside it, so it has no holes.
@@ -2814,7 +2819,7 @@ bubbles up, and `stopPropagation()` on the span keeps it from there.
   `groupHover` follows the `group` of the container or of an element above it.
 - `pointerEvents: "none"` and `inert` on a span, or above it, keep the pointer
   off it, as on an element.
-- `cursor` on a span shows over its glyphs, as in a browser: it inherits, so the
+- `cursor` on a span shows over its border box, as in a browser: it inherits, so the
   innermost box around the glyph that sets one wins, and a glyph in no box that
   sets one keeps the container's cursor (`hover` and `active` can carry it too).
   A `display: contents` span has no box but its descendants inherit its cursor.
@@ -2823,15 +2828,20 @@ bubbles up, and `stopPropagation()` on the span keeps it from there.
   or is `inert` shows none.
 - A press on a span still starts a text selection, unless a `mousedown` handler
   calls `preventDefault()`.
-- `offsetX` and `offsetY` are measured from where the span's first line begins.
+- `offsetX` and `offsetY` are measured from the padding edge of the span's first line,
+  as for an element: after its margin and its left border (see
+  [Space around an inline box](#space-around-an-inline-box)).
 - `click()` on a span's ref, or `renderer.clickElement(id)`, clicks it by id, with the same path.
 
 ### Measure and observe an inline box
 
 A span has no box of its own, so its `getBoundingClientRect()` is the union of the
 rects of its lines, in window coordinates: the smallest rect that holds every line
-it covers. A span on one line is as wide as its glyphs and one line tall. A span
-that wraps is as tall as the lines it covers, and it spans from the leftmost
+it covers. Each is a line of its border box, so the margin of the span is outside
+it and its padding and border are in (see
+[Space around an inline box](#space-around-an-inline-box)). A span on one line is
+as wide as its glyphs and one line tall. A span that wraps is as tall as the lines
+it covers, and it spans from the leftmost
 start to the rightmost end of its lines, so it also covers the part of those lines
 that is not the span's. There is no `getClientRects()`. A space that hangs at a
 wrap belongs to the line it ends. A span with no text left (only collapsible white
@@ -2839,9 +2849,9 @@ space), `display: none` or `visibility: hidden` has no box and returns a zero
 rect, as in the DOM, and `renderer.getElementBounds(id)` returns `null`.
 
 `ResizeObserver` and `IntersectionObserver` take a span. A `ResizeObserver` reports
-the union's size, and the span's content box is its border box because it has no
-padding or border. An `IntersectionObserver` intersects the union with the clips of
-the paragraph's container and its ancestors, so a span that wraps counts the gap in
+the union's size, and the span's content box is its border box: the padding and
+border of the span are not taken off it. An `IntersectionObserver` intersects the
+union with the clips of the paragraph's container and its ancestors, so a span that wraps counts the gap in
 its rect as visible. A span that stops painting is reported as 0 by 0 and not
 intersecting.
 
@@ -2865,12 +2875,12 @@ A `<span>` with a `tabIndex` is focusable like any element, and stays inline:
   `target`, the element on the other side of the move as `relatedTarget`, and
   `focusVisible` as for an element. Tab and Shift+Tab move focus into and out of
   it, and scroll it into view by the rect of its lines.
-- A press on its glyphs focuses it, the innermost focusable span if they are
-  nested, even when the paragraph is inside a focusable element. A focusable `<span>`
-  with `tabIndex={-1}` is focused by a press or `focus()`, and Tab skips it. A
-  press beside the glyphs (the blank area of a line, the padding) is a press on
-  the container. A `mousedown` handler that calls `preventDefault()` keeps the
-  focus where it was.
+- A press on its glyphs, padding or border focuses it, the innermost focusable span
+  if they are nested, even when the paragraph is inside a focusable element. A
+  focusable `<span>` with `tabIndex={-1}` is focused by a press or `focus()`, and
+  Tab skips it. A press beside the glyphs (the blank area of a line, the padding of
+  the container, the margin of the span) is a press on the container. A
+  `mousedown` handler that calls `preventDefault()` keeps the focus where it was.
 - `inert` and removing `tabIndex` work as on an element: the span leaves the tab
   order and gives up focus.
 - `role` and `aria-*` on the span are exposed with it. The accessibility node

@@ -3,18 +3,31 @@
 //! A `<span>`'s margin, border and padding on the inline axis push the text
 //! around it, widen the line and take part in wrapping. gpui lays that out as an
 //! inset around a byte range of the text ([`gpui::TextInset`]); this module reads
-//! it from the boxes' styles.
+//! it from the boxes' styles, and works out where the border box is inside the
+//! rectangles the layout gives back.
 //!
-//! gpui puts the leading inset before the first glyph of the range and the
-//! trailing inset after its last. A box that wraps has the leading inset on its
-//! first line and the trailing on its last; a first fragment that begins a
-//! soft-wrapped row still has its leading inset, because the inset belongs to the
-//! glyph and goes where the glyph goes.
+//! The model is gpui's. `position_for_index(start)` of a box with a leading inset
+//! is the left edge of its margin box, and the first glyph is painted after the
+//! inset. The position after its last glyph is the right edge of the margin box.
+//! Boxes that start or end on the same byte nest, outermost first:
+//!
+//! ```text
+//! start:  | outer margin border padding | inner margin border padding | glyph
+//! end:    glyph | inner padding border margin | outer padding border margin |
+//! ```
+//!
+//! so the border box of a box is its first fragment moved in by its own margin
+//! and by everything the boxes around it that start on the same byte put first,
+//! and its last fragment moved in the same way from the right. A fragment that
+//! continues from or onto another line has no inset on that side. A first
+//! fragment that begins a soft-wrapped row still has its leading inset, because
+//! the inset belongs to the glyph and goes where the glyph goes.
 //!
 //! Only the inline axis is read. The top and bottom margin, padding and border
 //! of an inline box do not move a line in CSS. An inset on a box that holds no
 //! glyph has nothing to attach to and is lost.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use gpui::{px, Bounds, Pixels, TextInset, TextLayout};
@@ -26,11 +39,23 @@ use crate::style::{DimensionValue, StyleDesc};
 
 use super::inline::Paragraph;
 
-/// The inline-axis space of one box: margin, border and padding before its
-/// first glyph and after its last.
+/// How far a box's border box is inside the margin box rectangles of its first
+/// and last line fragments.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Edges {
+    pub start: Pixels,
+    pub end: Pixels,
+}
+
+/// The inline-axis space of one box: its own, with the margin kept apart because
+/// the border box starts after it.
 #[derive(Clone, Debug, PartialEq)]
 struct BoxInset {
+    id: u64,
     range: Range<usize>,
+    margin_start: f32,
+    margin_end: f32,
+    /// Margin, border and padding before the first glyph.
     leading: f32,
     trailing: f32,
 }
@@ -41,10 +66,11 @@ impl BoxInset {
     }
 }
 
-/// The insets of the boxes of one paragraph.
+/// The insets of the boxes of one paragraph, and where each box's border box is.
 #[derive(Debug, Default, PartialEq)]
 pub struct Insets {
     boxes: Vec<BoxInset>,
+    edges: HashMap<u64, Edges>,
 }
 
 impl Insets {
@@ -67,11 +93,12 @@ impl Insets {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                let inset = of_style(&declared, range);
+                let inset = of_style(&declared, *id, range);
                 (!inset.is_empty()).then_some(inset)
             })
             .collect();
-        Self { boxes }
+        let edges = edges_of(&paragraph.boxes, &boxes);
+        Self { boxes, edges }
     }
 
     /// The insets to lay the paragraph's text out with.
@@ -85,19 +112,28 @@ impl Insets {
             })
             .collect()
     }
+
+    /// Where the border box of `id` is. A box without an inset of its own can
+    /// still sit inside the space of one that starts or ends with it.
+    pub fn edges(&self, id: u64) -> Edges {
+        self.edges.get(&id).copied().unwrap_or_default()
+    }
 }
 
-fn of_style(style: &StyleDesc, range: &Range<usize>) -> BoxInset {
-    let leading = margin(style.margin_left.as_ref().or(style.margin.as_ref()))
-        + border_width(style, style.border_left_width, style.border_left.as_deref())
+fn of_style(style: &StyleDesc, id: u64, range: &Range<usize>) -> BoxInset {
+    let margin_start = margin(style.margin_left.as_ref().or(style.margin.as_ref()));
+    let margin_end = margin(style.margin_right.as_ref().or(style.margin.as_ref()));
+    let start = border_width(style, style.border_left_width, style.border_left.as_deref())
         + padding(style.padding_left.or(style.padding));
-    let trailing = margin(style.margin_right.as_ref().or(style.margin.as_ref()))
-        + border_width(style, style.border_right_width, style.border_right.as_deref())
+    let end = border_width(style, style.border_right_width, style.border_right.as_deref())
         + padding(style.padding_right.or(style.padding));
     BoxInset {
+        id,
         range: range.clone(),
-        leading,
-        trailing,
+        margin_start,
+        margin_end,
+        leading: margin_start + start,
+        trailing: margin_end + end,
     }
 }
 
@@ -125,6 +161,47 @@ fn border_width(style: &StyleDesc, side: Option<f64>, side_shorthand: Option<&st
         .or_else(|| shorthand(style.border.as_deref()))
         .unwrap_or(0.0)
         .max(0.0) as f32
+}
+
+/// The border box edges of every box of `all`, given the `insets` of those that
+/// have one, which are in the order of `all`.
+fn edges_of(all: &[(u64, Range<usize>)], insets: &[BoxInset]) -> HashMap<u64, Edges> {
+    if insets.is_empty() {
+        return HashMap::new();
+    }
+    let own: HashMap<u64, &BoxInset> = insets.iter().map(|inset| (inset.id, inset)).collect();
+    let mut edges = HashMap::with_capacity(all.len());
+    // The boxes around the one being visited, outermost first.
+    let mut around: Vec<&(u64, Range<usize>)> = Vec::new();
+    for entry in all {
+        let (id, range) = entry;
+        while around
+            .last()
+            .is_some_and(|outer| outer.1.end <= range.start)
+        {
+            around.pop();
+        }
+        let space = |same: &dyn Fn(&Range<usize>) -> bool, side: fn(&BoxInset) -> f32| -> f32 {
+            around
+                .iter()
+                .filter(|outer| same(&outer.1))
+                .filter_map(|outer| own.get(&outer.0))
+                .map(|inset| side(inset))
+                .sum()
+        };
+        let before = space(&|outer| outer.start == range.start, |inset| inset.leading);
+        let after = space(&|outer| outer.end == range.end, |inset| inset.trailing);
+        let this = own.get(id);
+        edges.insert(
+            *id,
+            Edges {
+                start: px(before + this.map_or(0.0, |inset| inset.margin_start)),
+                end: px(after + this.map_or(0.0, |inset| inset.margin_end)),
+            },
+        );
+        around.push(entry);
+    }
+    edges
 }
 
 /// `rects`, the wash of the text `range` of `text`, without the space of the boxes
@@ -209,10 +286,16 @@ mod tests {
             .collect()
     }
 
+    fn edges(insets: &Insets, id: u64) -> (f32, f32) {
+        let edges = insets.edges(id);
+        (f32::from(edges.start), f32::from(edges.end))
+    }
+
     #[test]
     fn a_paragraph_without_space_has_no_insets() {
         let insets = resting(&fixture(&[(3, serde_json::json!({"color": "red"}))]));
         assert!(insets.text().is_empty());
+        assert_eq!(edges(&insets, 3), (0.0, 0.0));
     }
 
     #[test]
@@ -224,7 +307,9 @@ mod tests {
                 "marginRight": 7, "borderRightWidth": 1, "paddingRight": 4,
             }),
         )]);
-        assert_eq!(texts(&resting(&tree)), vec![(2..4, 10.0, 12.0)]);
+        let insets = resting(&tree);
+        assert_eq!(texts(&insets), vec![(2..4, 10.0, 12.0)]);
+        assert_eq!(edges(&insets, 3), (3.0, 7.0));
     }
 
     #[test]
@@ -284,7 +369,9 @@ mod tests {
                 "marginLeft": -4, "paddingLeft": -9, "borderLeftWidth": -2, "paddingRight": 3
             }),
         )]);
-        assert_eq!(texts(&resting(&tree)), vec![(2..4, -4.0, 3.0)]);
+        let insets = resting(&tree);
+        assert_eq!(texts(&insets), vec![(2..4, -4.0, 3.0)]);
+        assert_eq!(edges(&insets, 3), (-4.0, 0.0));
     }
 
     #[test]
@@ -318,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_boxes_that_cover_the_same_bytes_each_have_their_own_inset() {
+    fn nested_boxes_that_start_on_the_same_byte_put_the_outer_first() {
         // div(1) > ["a ", span(3) > span(5) > "c"]: both spans cover 2..3.
         let mut tree = RetainedTree::new();
         for (id, kind) in [(1, "div"), (2, "text"), (3, "span"), (5, "span"), (6, "text")] {
@@ -336,7 +423,37 @@ mod tests {
         for (id, style) in styles {
             tree.set_style(id, Arc::new(serde_json::from_value(style).expect("a style")));
         }
-        // The outer box first, as gpui sums them on the glyph they share.
-        assert_eq!(texts(&resting(&tree)), vec![(2..3, 3.0, 30.0), (2..3, 12.0, 11.0)]);
+        let insets = resting_paragraph(&tree, "a c");
+        assert_eq!(texts(&insets), vec![(2..3, 3.0, 30.0), (2..3, 12.0, 11.0)]);
+        // The outer border box starts after its margin, the inner one after the
+        // outer's margin, border and padding and then its own margin.
+        assert_eq!(edges(&insets, 3), (1.0, 10.0));
+        assert_eq!(edges(&insets, 5), (3.0 + 4.0, 30.0 + 6.0));
+    }
+
+    fn resting_paragraph(tree: &RetainedTree, text: &str) -> Insets {
+        let plan = plan_children(tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        assert_eq!(paragraph.text, text);
+        Insets::of(tree, paragraph, &|_, _| PointerStates::default())
+    }
+
+    #[test]
+    fn a_box_without_space_inside_the_space_of_one_that_starts_with_it() {
+        let tree = fixture(&[(3, serde_json::json!({"marginLeft": 2, "paddingLeft": 3, "paddingRight": 5}))]);
+        let insets = resting(&tree);
+        // Span 5 covers 3..4, which ends with span 3 but does not start with it.
+        assert_eq!(edges(&insets, 5), (0.0, 5.0));
+        assert_eq!(edges(&insets, 3), (2.0, 0.0));
+    }
+
+    #[test]
+    fn a_box_around_a_padded_one_has_that_padding_inside_its_border_box() {
+        let tree = fixture(&[(5, serde_json::json!({"paddingLeft": 6, "paddingRight": 6, "marginRight": 2}))]);
+        let insets = resting(&tree);
+        assert_eq!(edges(&insets, 3), (0.0, 0.0), "span 3 ends with span 5 and holds all of its box");
+        assert_eq!(edges(&insets, 5), (0.0, 2.0));
     }
 }

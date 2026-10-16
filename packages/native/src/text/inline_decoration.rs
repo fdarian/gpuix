@@ -3,7 +3,8 @@
 //! A `<span>` has no GPUI element, so the paragraph that holds it paints what
 //! CSS draws around a box, once for each line fragment of its text. Today that
 //! is the `outline`, which `focusVisible` rings a focused span with and
-//! `hover` / `active` can declare as well.
+//! `hover` / `active` can declare as well. It rings the border box of each
+//! fragment, not the margin.
 //!
 //! The decorations are painted after the glyphs, so they lie over the text of
 //! the box, as an outline does in CSS, and they are cut by nothing but the
@@ -21,12 +22,14 @@ use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
 use super::inline::Paragraph;
-use super::inline_bounds::fragments;
+use super::inline_bounds::border_box_rows;
+use super::inline_insets::{Edges, Insets};
 
 /// The decorations of one inline box.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoxDecoration {
     pub range: Range<usize>,
+    pub edges: Edges,
     pub outline: Outline,
 }
 
@@ -44,6 +47,7 @@ pub fn of(
     colors: &ColorContext,
     lengths: &LengthContext,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    insets: &Insets,
 ) -> Vec<BoxDecoration> {
     // A box is declared the same way around every piece of text it holds, so the
     // first one decides.
@@ -74,6 +78,7 @@ pub fn of(
         .filter_map(|(id, range)| {
             Some(BoxDecoration {
                 range: range.clone(),
+                edges: insets.edges(*id),
                 outline: *outlines.get(id)?,
             })
         })
@@ -98,7 +103,7 @@ pub fn overlay(layout: TextLayout, decorations: Vec<BoxDecoration>) -> impl Into
                     outline: Some(decoration.outline),
                     ..Style::default()
                 };
-                for fragment in fragments(&layout, &decoration.range) {
+                for fragment in border_box_rows(&layout, &decoration.range, decoration.edges) {
                     style.paint(fragment, window, cx, |_, _| {});
                 }
             }
@@ -141,7 +146,14 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        of(tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), states)
+        of(
+            tree,
+            paragraph,
+            &ColorContext::root(Scheme::Light),
+            &LengthContext::initial(800.0, 600.0),
+            states,
+            &Insets::default(),
+        )
     }
 
     fn resting(tree: &RetainedTree) -> Vec<BoxDecoration> {
@@ -251,5 +263,24 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(found.iter().map(|decoration| decoration.range.clone()).collect::<Vec<_>>(), vec![3..4]);
+    }
+
+    #[test]
+    fn a_ring_is_around_the_border_box_so_it_leaves_the_margin_out() {
+        let tree = fixture(&[(3, {
+            let mut style = ring("#ff0000");
+            style["marginLeft"] = 4.into();
+            style["marginRight"] = 6.into();
+            style
+        })]);
+        let plan = plan_children(&tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let states = |_: u64, _: &StyleDesc| PointerStates::default();
+        let insets = Insets::of(&tree, paragraph, &states);
+        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &states, &insets);
+        assert_eq!(found.len(), 1);
+        assert_eq!((f32::from(found[0].edges.start), f32::from(found[0].edges.end)), (4.0, 6.0));
     }
 }

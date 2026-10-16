@@ -8,6 +8,9 @@
 //!
 //! Only a point inside a glyph's cell hits a box. The blank area after the end of
 //! a line, between two lines, or under a short paragraph belongs to the container.
+//! The cell of a box's first and last glyph holds the box's margin, border and
+//! padding, and the pointer is on the box only inside its border box: in the
+//! margin it is on the boxes around it.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -19,7 +22,8 @@ use gpui::{Bounds, Pixels, Point, TextLayout, WindowId};
 use crate::retained_tree::RetainedTree;
 
 use super::inline::{Paragraph, Piece};
-use super::inline_bounds::fragments;
+use super::inline_bounds::border_box_rows;
+use super::inline_insets::{Edges, Insets};
 
 /// The inline boxes of one paragraph that can be a target, by the bytes they
 /// cover.
@@ -27,7 +31,7 @@ use super::inline_bounds::fragments;
 pub struct Targets {
     /// The boxes around each text piece, outermost first.
     pieces: Vec<(Range<usize>, Vec<u64>)>,
-    ranges: Vec<(u64, Range<usize>)>,
+    ranges: Vec<(u64, Range<usize>, Edges)>,
 }
 
 impl Targets {
@@ -42,6 +46,7 @@ impl Targets {
         paragraph: &Paragraph,
         pointer_events_none: bool,
         inert: bool,
+        insets: &Insets,
     ) -> Option<Self> {
         let with_box = boxes_with_a_box(paragraph);
         let pieces: Vec<_> = paragraph
@@ -55,17 +60,24 @@ impl Targets {
             .collect();
         (!pieces.is_empty()).then(|| Self {
             pieces,
-            ranges: paragraph.boxes.clone(),
+            ranges: paragraph
+                .boxes
+                .iter()
+                .map(|(id, range)| (*id, range.clone(), insets.edges(*id)))
+                .collect(),
         })
     }
 
-    /// The boxes around `byte`, innermost first, each with the rectangle of its
-    /// first line fragment. A box with no rectangle covers no glyph, so it is
-    /// not there.
+    /// The boxes the pointer at `position`, in the cell of the glyph at `byte`,
+    /// is on, innermost first, each with the rectangle of the first line fragment
+    /// of its border box. `border_box` gives the rows of a box. A box with no
+    /// rows covers no glyph, and one whose rows do not hold the point has the
+    /// point in its margin, so neither is there.
     fn around(
         &self,
         byte: usize,
-        first_fragment: impl Fn(&Range<usize>) -> Option<Bounds<Pixels>>,
+        position: Point<Pixels>,
+        border_box: impl Fn(&Range<usize>, Edges) -> Vec<Bounds<Pixels>>,
     ) -> Vec<(u64, Bounds<Pixels>)> {
         let Some((_, boxes)) = self.pieces.iter().find(|(range, _)| range.contains(&byte)) else {
             return Vec::new();
@@ -74,8 +86,10 @@ impl Targets {
             .iter()
             .rev()
             .filter_map(|id| {
-                let (_, range) = self.ranges.iter().find(|(boxed, _)| boxed == id)?;
-                Some((*id, first_fragment(range)?))
+                let (_, range, edges) = self.ranges.iter().find(|(boxed, ..)| boxed == id)?;
+                let rows = border_box(range, *edges);
+                rows.iter().any(|row| row.contains(&position)).then_some(())?;
+                Some((*id, *rows.first()?))
             })
             .collect()
     }
@@ -172,8 +186,8 @@ pub fn boxes_under(
             let Ok(byte) = entry.layout.index_for_position(position) else {
                 continue;
             };
-            return entry.targets.around(byte, |range| {
-                fragments(&entry.layout, range).first().copied()
+            return entry.targets.around(byte, position, |range, edges| {
+                border_box_rows(&entry.layout, range, edges)
             });
         }
         Vec::new()
@@ -210,14 +224,23 @@ mod tests {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, "a bc d");
-        Targets::of(tree, paragraph, none, inert)
+        Targets::of(tree, paragraph, none, inert, &Insets::default())
     }
 
-    fn rect(range: &Range<usize>) -> Option<Bounds<Pixels>> {
-        Some(Bounds::new(
-            point(px(range.start as f32 * 10.0), px(0.0)),
-            size(px(range.len() as f32 * 10.0), px(20.0)),
-        ))
+    /// Ten pixels to a byte, one line.
+    fn rows(range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
+        crate::text::inline_bounds::inside(
+            vec![Bounds::new(
+                point(px(range.start as f32 * 10.0), px(0.0)),
+                size(px(range.len() as f32 * 10.0), px(20.0)),
+            )],
+            edges,
+        )
+    }
+
+    /// The middle of the cell of `byte`.
+    fn over(byte: usize) -> Point<Pixels> {
+        point(px(byte as f32 * 10.0 + 5.0), px(10.0))
     }
 
     fn ids(around: Vec<(u64, Bounds<Pixels>)>) -> Vec<u64> {
@@ -235,17 +258,17 @@ mod tests {
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        assert_eq!(Targets::of(&tree, paragraph, false, false), None);
+        assert_eq!(Targets::of(&tree, paragraph, false, false, &Insets::default()), None);
     }
 
     #[test]
     fn the_boxes_around_a_byte_come_innermost_first_with_their_first_fragment() {
         let targets = targets_of(&fixture(&[]));
-        assert_eq!(ids(targets.around(3, rect)), vec![5, 3]);
-        assert_eq!(ids(targets.around(2, rect)), vec![3]);
-        assert!(targets.around(0, rect).is_empty(), "text outside every box");
-        assert!(targets.around(5, rect).is_empty());
-        let around = targets.around(3, rect);
+        assert_eq!(ids(targets.around(3, over(3), rows)), vec![5, 3]);
+        assert_eq!(ids(targets.around(2, over(2), rows)), vec![3]);
+        assert!(targets.around(0, over(0), rows).is_empty(), "text outside every box");
+        assert!(targets.around(5, over(5), rows).is_empty());
+        let around = targets.around(3, over(3), rows);
         assert_eq!(around[0].1.origin, point(px(30.0), px(0.0)));
         assert_eq!(around[1].1.size.width, px(20.0), "span 3 covers 'bc'");
     }
@@ -253,7 +276,9 @@ mod tests {
     #[test]
     fn a_box_with_no_fragment_is_left_out() {
         let targets = targets_of(&fixture(&[]));
-        let around = targets.around(3, |range| (range.len() > 1).then(|| rect(range)).flatten());
+        let around = targets.around(3, over(3), |range, edges| {
+            if range.len() > 1 { rows(range, edges) } else { Vec::new() }
+        });
         assert_eq!(ids(around), vec![3]);
     }
 
@@ -267,8 +292,8 @@ mod tests {
             (5, serde_json::json!({"pointerEvents": "auto"})),
         ]);
         let targets = targets_of(&tree);
-        assert!(targets.around(2, rect).is_empty());
-        assert_eq!(ids(targets.around(3, rect)), vec![5]);
+        assert!(targets.around(2, over(2), rows).is_empty());
+        assert_eq!(ids(targets.around(3, over(3), rows)), vec![5]);
     }
 
     fn targets_of(tree: &RetainedTree) -> Targets {
@@ -279,8 +304,8 @@ mod tests {
     fn inert_does_not_reopen_and_a_none_container_hides_the_boxes_in_it() {
         let tree = fixture(&[(5, serde_json::json!({"pointerEvents": "auto"}))]);
         assert_eq!(plan_targets(&tree, true, false).unwrap().pieces.len(), 1);
-        assert!(plan_targets(&tree, true, false).unwrap().around(2, rect).is_empty());
-        assert_eq!(ids(plan_targets(&tree, true, false).unwrap().around(3, rect)), vec![5]);
+        assert!(plan_targets(&tree, true, false).unwrap().around(2, over(2), rows).is_empty());
+        assert_eq!(ids(plan_targets(&tree, true, false).unwrap().around(3, over(3), rows)), vec![5]);
         assert_eq!(plan_targets(&tree, false, true), None);
 
         let mut tree = tree;
@@ -292,8 +317,55 @@ mod tests {
     fn a_display_contents_box_is_not_a_target() {
         let tree = fixture(&[(3, serde_json::json!({"display": "contents"}))]);
         let targets = targets_of(&tree);
-        assert_eq!(ids(targets.around(3, rect)), vec![5]);
-        assert!(targets.around(2, rect).is_empty());
+        assert_eq!(ids(targets.around(3, over(3), rows)), vec![5]);
+        assert!(targets.around(2, over(2), rows).is_empty());
+    }
+
+    #[test]
+    fn the_pointer_in_the_margin_of_a_box_is_on_the_boxes_around_it_only() {
+        // Span 3 covers bytes 2..4 (x 20..40) and span 5 covers 3..4: the box
+        // of 3 has 4 of margin at its start and 6 at its end, which 5 ends with.
+        let tree = fixture(&[(3, serde_json::json!({"marginLeft": 4, "marginRight": 6}))]);
+        let plan = crate::text::inline::plan_children(&tree, &tree.elements[&1]);
+        let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
+        let at = |byte: usize, x: f32| ids(targets.around(byte, point(px(x), px(10.0)), rows));
+
+        assert!(at(2, 22.0).is_empty(), "in the margin before the box");
+        assert_eq!(at(2, 24.0), vec![3]);
+        assert_eq!(at(3, 33.9), vec![5, 3]);
+        assert!(at(3, 34.0).is_empty(), "in the margin after the box");
+    }
+
+    #[test]
+    fn the_pointer_in_the_margin_of_an_inner_box_is_still_on_the_one_around_it() {
+        // Span 5 has a margin of its own at its end, inside span 3's box.
+        let tree = fixture(&[(5, serde_json::json!({"marginRight": 6}))]);
+        let plan = crate::text::inline::plan_children(&tree, &tree.elements[&1]);
+        let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
+        // Span 3 ends with 5, but 5's margin is inside it.
+        assert_eq!(ids(targets.around(3, point(px(36.0), px(10.0)), rows)), vec![3]);
+        assert_eq!(ids(targets.around(3, point(px(32.0), px(10.0)), rows)), vec![5, 3]);
+    }
+
+    #[test]
+    fn the_first_fragment_of_a_box_starts_at_its_border_box() {
+        let tree = fixture(&[(3, serde_json::json!({"marginLeft": 4}))]);
+        let plan = crate::text::inline::plan_children(&tree, &tree.elements[&1]);
+        let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
+        let around = targets.around(2, over(2), rows);
+        assert_eq!(around[0].1.origin.x, px(24.0));
     }
 
     fn painted(window: WindowId) -> usize {

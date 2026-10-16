@@ -7943,9 +7943,10 @@ fn paragraph_content(
             paragraph,
             ctx.inherited.pointer_events_none,
             ctx.inherited.inert,
+            &insets,
         )
         .map(Arc::new),
-        inline_boxes: inline_boxes(paragraph, ctx),
+        inline_boxes: inline_boxes(paragraph, ctx, &insets),
         inline_focus: focusable_inline_boxes(paragraph, ctx),
         inline_decorations: crate::text::inline_decoration::of(
             ctx.tree,
@@ -7953,6 +7954,7 @@ fn paragraph_content(
             &ctx.inherited.colors,
             &ctx.inherited.lengths,
             &states,
+            &insets,
         ),
         inline_cursors: crate::text::inline_cursor::of(
             ctx.tree,
@@ -7960,6 +7962,7 @@ fn paragraph_content(
             ctx.inherited.pointer_events_none,
             ctx.inherited.inert,
             &states,
+            &insets,
         ),
         inline_insets: insets.text(),
         ..crate::text::SelectableText::new(
@@ -7973,11 +7976,11 @@ fn paragraph_content(
     })
 }
 
-/// The inline elements of a paragraph that report their own box. They have no
-/// padding or border to take off a content box, so their style is not read.
+/// The inline elements of a paragraph that report their own box.
 fn inline_boxes(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &BuildCtx,
+    insets: &crate::text::inline_insets::Insets,
 ) -> Vec<crate::text::inline_bounds::InlineBox> {
     paragraph
         .boxes
@@ -7985,6 +7988,7 @@ fn inline_boxes(
         .map(|(id, range)| crate::text::inline_bounds::InlineBox {
             id: *id,
             range: range.clone(),
+            edges: insets.edges(*id),
             report: ctx.tree.elements.get(id).and_then(|element| {
                 paint_reporter(*id, element.events(), Some(paragraph.container), ctx)
             }),

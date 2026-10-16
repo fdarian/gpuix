@@ -2,16 +2,18 @@
 //!
 //! A cursor is a request GPUI resolves on every mouse move from the hitboxes the
 //! pointer is over, so it cannot be decided while the paragraph paints. The
-//! paragraph inserts one hitbox per line fragment of each stretch of text that
-//! asks for a cursor, and requests it over each. They are hitboxes of the
+//! paragraph inserts one hitbox per line fragment of the border box of each box
+//! that has a cursor, and requests it over each. They are hitboxes of the
 //! paragraph's container as far as hit testing goes (see
 //! [`crate::events::ids::host_hit_chain`]), so nothing else about the pointer
 //! changes.
 //!
 //! The cursor is the one of the innermost box the pointer is on, inherited as in
-//! CSS. A glyph in no box that sets one, or in none at all, leaves the
-//! container's cursor.
+//! CSS: a box nested in another is outermost first, so that its hitboxes are
+//! later and win where the two overlap. A glyph in no box that sets one, or in
+//! none at all, and the margin of a box, leave the container's cursor.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use gpui::{canvas, prelude::*, CursorStyle, HitboxBehavior, TextLayout};
@@ -21,11 +23,21 @@ use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
 use super::inline::Paragraph;
-use super::inline_bounds::fragments;
+use super::inline_bounds::border_box_rows;
 use super::inline_hit::{boxes_with_a_box, piece_targets};
+use super::inline_insets::{Edges, Insets};
 
-/// The bytes of `paragraph` that ask for a cursor, in order, with the cursor.
-/// Neighbouring pieces of one cursor are one range.
+/// A box that asks for a cursor over its border box.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CursorBox {
+    pub range: Range<usize>,
+    pub cursor: CursorStyle,
+    pub edges: Edges,
+}
+
+/// The boxes of `paragraph` that ask for a cursor, outermost first, with the
+/// cursor. A box whose cursor is the one of the box it is directly inside asks
+/// for nothing more.
 ///
 /// `states` says which pointer states apply to a box, as it does for
 /// [`super::paragraph::run_styles`], so a `hover` cursor is folded in. A
@@ -37,18 +49,20 @@ pub fn of(
     pointer_events_none: bool,
     inert: bool,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
-) -> Vec<(Range<usize>, CursorStyle)> {
-    let mut cursors: Vec<(Range<usize>, CursorStyle)> = Vec::new();
+    insets: &Insets,
+) -> Vec<CursorBox> {
     if pointer_events_none || inert {
-        return cursors;
+        return Vec::new();
     }
     let with_box = boxes_with_a_box(paragraph);
+    // The cursor of each box the pointer can land on. What a box inherits is the
+    // cursor of the boxes around it, a `display: contents` one and one that
+    // keeps the pointer off included. It is the same around every piece of text
+    // the box holds, so the first one decides.
+    let mut inherited_by: HashMap<u64, Option<CursorStyle>> = HashMap::new();
     for piece in &paragraph.pieces {
         let targets = piece_targets(tree, &with_box, piece, false, false);
-        // What a box inherits is the cursor of the boxes around it, a
-        // `display: contents` one and one that keeps the pointer off included.
         let mut inherited = None;
-        let mut on_target = None;
         for id in &piece.boxes {
             let Some(base) = tree
                 .elements
@@ -63,32 +77,42 @@ pub fn of(
                 inherited = Some(cursor);
             }
             if targets.contains(id) {
-                on_target = inherited;
+                inherited_by.entry(*id).or_insert(inherited);
             }
-        }
-        let Some(cursor) = on_target else {
-            continue;
-        };
-        match cursors.last_mut() {
-            Some((range, last)) if range.end == piece.range.start && *last == cursor => {
-                range.end = piece.range.end;
-            }
-            _ => cursors.push((piece.range.clone(), cursor)),
         }
     }
-    cursors
+    let mut boxes = Vec::new();
+    let mut around: Vec<(&Range<usize>, CursorStyle)> = Vec::new();
+    for (id, range) in &paragraph.boxes {
+        let Some(Some(cursor)) = inherited_by.get(id).copied() else {
+            continue;
+        };
+        while around.last().is_some_and(|(outer, _)| outer.end <= range.start) {
+            around.pop();
+        }
+        let repeats = around.last().is_some_and(|(_, outer)| *outer == cursor);
+        around.push((range, cursor));
+        if !repeats {
+            boxes.push(CursorBox {
+                range: range.clone(),
+                cursor,
+                edges: insets.edges(*id),
+            });
+        }
+    }
+    boxes
 }
 
 /// Insert the hitboxes during prepaint and request the cursors over them during
 /// paint. It must come after the glyphs among its siblings: their prepaint is
 /// what gives `layout` its bounds and lines.
-pub fn hitboxes(layout: TextLayout, cursors: Vec<(Range<usize>, CursorStyle)>) -> impl IntoElement {
+pub fn hitboxes(layout: TextLayout, boxes: Vec<CursorBox>) -> impl IntoElement {
     canvas(
         move |_, window, _| {
             let mut hitboxes = Vec::new();
-            for (range, cursor) in &cursors {
-                for fragment in fragments(&layout, range) {
-                    hitboxes.push((window.insert_hitbox(fragment, HitboxBehavior::Normal), *cursor));
+            for inline in &boxes {
+                for row in border_box_rows(&layout, &inline.range, inline.edges) {
+                    hitboxes.push((window.insert_hitbox(row, HitboxBehavior::Normal), inline.cursor));
                 }
             }
             hitboxes
@@ -139,7 +163,10 @@ mod tests {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, "a bc d");
-        of(tree, paragraph, none, inert, states)
+        of(tree, paragraph, none, inert, states, &Insets::default())
+            .into_iter()
+            .map(|inline| (inline.range, inline.cursor))
+            .collect()
     }
 
     fn resting(tree: &RetainedTree) -> Vec<(Range<usize>, CursorStyle)> {
@@ -167,7 +194,8 @@ mod tests {
         let tree = fixture(&[(3, cursor("pointer")), (5, cursor("text"))]);
         assert_eq!(
             resting(&tree),
-            vec![(2..3, CursorStyle::PointingHand), (3..4, CursorStyle::IBeam)]
+            vec![(2..4, CursorStyle::PointingHand), (3..4, CursorStyle::IBeam)],
+            "the nested box is later, so its hitboxes win where they overlap"
         );
     }
 
@@ -236,8 +264,28 @@ mod tests {
     }
 
     #[test]
-    fn pieces_of_one_cursor_that_touch_are_one_range() {
+    fn a_box_with_the_cursor_of_the_box_around_it_asks_for_nothing_more() {
         let tree = fixture(&[(3, cursor("pointer")), (5, cursor("pointer"))]);
         assert_eq!(resting(&tree), vec![(2..4, CursorStyle::PointingHand)]);
+    }
+
+    #[test]
+    fn a_box_gives_its_border_box_edges_for_the_hitboxes() {
+        let tree = fixture(&[
+            (3, serde_json::json!({"cursor": "pointer", "marginLeft": 3, "marginRight": 5})),
+            (5, serde_json::json!({"cursor": "text"})),
+        ]);
+        let plan = plan_children(&tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let insets = Insets::of(&tree, paragraph, &|_, _| PointerStates::default());
+        let boxes = of(&tree, paragraph, false, false, &|_, _| PointerStates::default(), &insets);
+        let edges: Vec<_> = boxes
+            .iter()
+            .map(|inline| (inline.range.clone(), f32::from(inline.edges.start), f32::from(inline.edges.end)))
+            .collect();
+        // Span 5 ends where 3 does, so 3's margin is after it.
+        assert_eq!(edges, vec![(2..4, 3.0, 5.0), (3..4, 0.0, 5.0)]);
     }
 }

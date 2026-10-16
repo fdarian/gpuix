@@ -237,7 +237,7 @@ pub struct SelectableText {
     pub inline_boxes: Vec<super::inline_bounds::InlineBox>,
     /// The bytes of a paragraph whose inline boxes ask for a `cursor`, see
     /// [`super::inline_cursor`].
-    pub inline_cursors: Vec<(Range<usize>, gpui::CursorStyle)>,
+    pub inline_cursors: Vec<super::inline_cursor::CursorBox>,
     /// The margin, border and padding of the paragraph's inline boxes along the
     /// line, see [`super::inline_insets`].
     pub inline_insets: Vec<gpui::TextInset>,
