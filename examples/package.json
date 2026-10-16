@@ -9,6 +9,7 @@
     "diff": "bun --hot diff.tsx",
     "test": "vitest run --exclude '**/*.perf.test.tsx'",
     "test:perf": "NODE_ENV=production vitest run --no-file-parallelism chat.perf.test.tsx timeline.perf.test.tsx rerender.perf.test.tsx",
+    "test:perf:menus": "NODE_ENV=production vitest run --no-file-parallelism command-menus.perf.test.tsx",
     "native-text": "bun --hot native-text.tsx",
     "chat": "bun --hot chat.tsx",
     "chat-solid": "bun --hot solid/chat.tsx",
