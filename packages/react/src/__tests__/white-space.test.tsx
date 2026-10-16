@@ -849,4 +849,60 @@ describeNative("white-space", () => {
       }
     })
   })
+
+  describe("text-overflow with line-clamp", () => {
+    const space = measureSpace()
+
+    /**
+     * `text` clamped to two lines in a box `columns` wide: the lines it takes and, for each
+     * query, the line it is on, or null where the cut took it away. The highlights follow the
+     * laid out text, so a match after the `…` has no rect.
+     */
+    function clamp(style: Record<string, unknown>, text: string, columns: number, queries: string[]) {
+      const lineOf = (query: string) => {
+        const testRoot = paint(
+          <div
+            highlight={{ query, caseSensitive: true }}
+            testId="p"
+            style={{ width: (columns + 0.25) * space }}
+          >
+            <text
+              testId="t"
+              style={{ ...TEXT, textOverflow: "ellipsis", lineClamp: 2, ...style }}
+            >
+              {text}
+            </text>
+          </div>
+        )
+        const rect = testRoot.renderer.getPaintedHighlights()[0]?.rects[0]
+        const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!
+        return {
+          lines: lines(testRoot, "p"),
+          line: rect ? Math.round((rect.y - box.y) / LINE) : null,
+        }
+      }
+      return { lines: lineOf(queries[0]!).lines, at: queries.map((query) => lineOf(query).line) }
+    }
+
+    it("clamps a paragraph with tabs where its tab stops wrap it", () => {
+      // aa, tab, bb, tab and cc end at column 10, and dd would end at 13: it starts line 1.
+      const text = "aa\tbb\tcc dd ee ff gg hh ii jj"
+      const style = { whiteSpace: "pre-wrap", tabSize: 4 }
+      expect(clamp(style, text, 12, ["cc", "dd", "gg", "hh"])).toEqual({
+        lines: 2,
+        at: [0, 1, 1, null],
+      })
+    })
+
+    it("clamps a paragraph that breaks between any two letters where the lines end", () => {
+      const text = "ab cdefghij klm"
+      // ab cd, then efgh and the ellipsis; lm is long gone.
+      expect(clamp({ wordBreak: "break-all" }, text, 5, ["cd", "efgh", "lm"])).toEqual({
+        lines: 2,
+        at: [0, 1, null],
+      })
+      // Without it the second line starts at cdef.
+      expect(clamp({}, text, 5, ["ab", "cd", "cdef"])).toEqual({ lines: 2, at: [0, 1, 1] })
+    })
+  })
 })

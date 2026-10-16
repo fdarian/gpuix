@@ -3020,9 +3020,28 @@ Deviations, where GPUI's text layout cannot build the DOM model:
   measures `MinContent` as `MaxContent` for text; a probe at wrap width 0 that
   bypasses the cached layout would fix it, but it needs a flag to keep Zed's text
   sizing as it is, and it resizes every text in a flex or grid item.
-- `textOverflow` with `lineClamp` or a fixed width decides where to cut by the
-  font's own width of a tab, not by the tab stop, so a line with tabs can be cut
-  a little early or late. `<input>` and `<textarea>` have no tab stops.
+
+#### Truncating text
+
+`textOverflow: 'ellipsis'` cuts the text with `…` after the last glyph that fits.
+It cuts the text as it is laid out, so the lines it keeps are the lines the text
+wraps to without the cut:
+
+- With `lineClamp: n` the text keeps its first `n` lines, each of them as the
+  paragraph wraps it, and the `n`th ends in `…`. A newline is a line.
+- Without `lineClamp` a line that wraps is cut to its first line, and with
+  `whiteSpace: 'nowrap'` or `'pre'` each line of the text is cut at the edge of
+  the box on its own.
+- Tab stops, the spaces that hang at a soft wrap, `break-spaces`, `wordBreak` and
+  `overflowWrap` take part as they do in the layout. A word that `overflowWrap:
+  'normal'` leaves to overflow its line does so, unless it is on the last line
+  that is kept, where it is cut at a glyph.
+- The spaces and ASCII punctuation just before the `…` are dropped (`Hello,`
+  becomes `Hello…`), where a browser keeps them.
+
+`textOverflow: 'ellipsis-start'` still decides where to cut by the width of each
+character along one line, so a tab counts as the font's own width of one, not as a
+tab stop, and `lineClamp` is a line of `n` times the width.
 
 ## Text input
 
