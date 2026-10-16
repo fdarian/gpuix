@@ -7940,6 +7940,7 @@ fn paragraph_content(
             ctx.tree,
             paragraph,
             &ctx.inherited.colors,
+            &ctx.inherited.lengths,
             &ctx.inherited.font_state,
             &states,
         ),
@@ -11971,6 +11972,113 @@ mod dimension_length_tests {
             step(&page, cx, 600.0);
             near(page.size(2), (120.0, 100.0));
         }
+    }
+}
+
+/// A span's `fontSize` and `lineHeight` through a real layout: the height of the
+/// container is the sum of the heights of its rows.
+#[cfg(test)]
+mod inline_run_size_tests {
+    use super::*;
+
+    const TOLERANCE: f64 = 0.5;
+
+    /// A container (id 1) of `style` holding `text`, then a span (id 3) of
+    /// `span_style` holding `span_text`. Returns the container's height.
+    fn height_of(
+        cx: &mut gpui::TestAppContext,
+        style: &str,
+        text: &str,
+        span_style: &str,
+        span_text: &str,
+    ) -> f64 {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            let container: StyleDesc = serde_json::from_str(style).unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(container));
+            tree.set_root(1);
+            tree.create_element(2, "text".to_owned());
+            tree.set_text(2, text.to_owned());
+            tree.append_child(1, 2);
+            tree.create_element(3, "span".to_owned());
+            let span: StyleDesc = serde_json::from_str(span_style).unwrap();
+            tree.set_style(3, Arc::new(span));
+            tree.append_child(1, 3);
+            tree.create_element(4, "text".to_owned());
+            tree.set_text(4, span_text.to_owned());
+            tree.append_child(3, 4);
+        }
+        let window = cx.add_window(|window, _| {
+            crate::events::enable_dom_hit_testing(window);
+            GpuixView::new(
+                tree,
+                None,
+                "test".to_owned(),
+                SharedSelection::default(),
+                crate::events::state::PointerRequests::default(),
+            )
+        });
+        cx.update_window(window.into(), |_, window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+        })
+        .unwrap();
+        crate::automation::get_bounds(1).expect("the container was painted").height
+    }
+
+    const CONTAINER: &str = r#"{"width": 120, "fontSize": 10, "lineHeight": 1.5}"#;
+
+    fn assert_height(measured: f64, expected: f64) {
+        assert!(
+            (measured - expected).abs() <= TOLERANCE,
+            "expected a height of {expected}px but measured {measured}px"
+        );
+    }
+
+    #[gpui::test]
+    fn a_larger_span_makes_its_row_as_tall_as_its_own_line_box(cx: &mut gpui::TestAppContext) {
+        let plain = height_of(cx, CONTAINER, "a ", r#"{}"#, "b");
+        assert_height(plain, 15.0);
+        let sized = height_of(cx, CONTAINER, "a ", r#"{"fontSize": 30}"#, "b");
+        assert_height(sized, 45.0);
+    }
+
+    #[gpui::test]
+    fn a_span_line_height_without_a_font_size_sets_its_rows_height(cx: &mut gpui::TestAppContext) {
+        let tall = height_of(cx, CONTAINER, "a ", r#"{"lineHeight": 3}"#, "b");
+        assert_height(tall, 30.0);
+        let length = height_of(cx, CONTAINER, "a ", r#"{"lineHeight": "4em"}"#, "b");
+        assert_height(length, 40.0);
+    }
+
+    #[gpui::test]
+    fn sized_text_wraps_where_it_ends_and_the_rows_add_up(cx: &mut gpui::TestAppContext) {
+        let words = "word word word word word word";
+        let plain = height_of(cx, CONTAINER, "", r#"{}"#, words);
+        let sized = height_of(cx, CONTAINER, "", r#"{"fontSize": 30}"#, words);
+        let plain_rows = (plain / 15.0).round();
+        let sized_rows = (sized / 45.0).round();
+        assert_height(plain, plain_rows * 15.0);
+        assert_height(sized, sized_rows * 45.0);
+        assert!(
+            sized_rows > plain_rows,
+            "the large text wraps earlier: {sized_rows} rows against {plain_rows}"
+        );
+    }
+
+    #[gpui::test]
+    fn a_container_line_height_in_px_is_not_scaled_by_a_larger_span(cx: &mut gpui::TestAppContext) {
+        let container = r#"{"width": 120, "fontSize": 10, "lineHeight": "24px"}"#;
+        let sized = height_of(cx, container, "a ", r#"{"fontSize": 30}"#, "b");
+        // The span's 24px line box is centred on its own, larger, font, so the
+        // row is taller than 24px by the difference of the baselines, and far
+        // from the 45px that a multiplier would give.
+        assert!(
+            sized >= 24.0 - TOLERANCE && sized < 40.0,
+            "expected a row near 24px but measured {sized}px"
+        );
     }
 }
 

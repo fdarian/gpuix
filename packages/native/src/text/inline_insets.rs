@@ -30,8 +30,8 @@
 //! An inset on a box that holds no glyph has nothing to attach to and is lost.
 //!
 //! The lengths are CSS lengths (`em`, `rem`, the viewport units, `calc()`), resolved
-//! with the container's [`LengthContext`]: a span cannot set its own `fontSize`, so
-//! its `em` is the container's. A percentage margin or padding is of the width of
+//! with the [`LengthContext`] of the box that declares them, so a span's `em` is its
+//! own font size. A percentage margin or padding is of the width of
 //! the paragraph's containing block, as in CSS, which is the width the paragraph
 //! is laid out in and is not known until it is measured. [`InsetSpec`] therefore
 //! keeps the lengths as they were written, and [`InsetSpec::at`] resolves them for
@@ -52,6 +52,7 @@ use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
 
 use super::inline::Paragraph;
+use super::paragraph::box_lengths;
 
 /// Where a box's border box is: inside the margin box rectangles of its first
 /// and last line fragments, and around the content area of its lines.
@@ -203,15 +204,16 @@ pub struct InsetSpec {
 impl InsetSpec {
     /// What `paragraph`'s boxes put around their text.
     ///
-    /// `lengths` are the container's, and `states` says which states apply to a
-    /// box, as it does for [`super::paragraph::run_styles`], so a `hover` padding
-    /// is folded in.
+    /// `lengths` are the container's, from which each box gets its own, and
+    /// `states` says which states apply to a box, as it does for
+    /// [`super::paragraph::run_styles`], so a `hover` padding is folded in.
     pub fn of(
         tree: &RetainedTree,
         paragraph: &Paragraph,
         lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     ) -> Rc<Self> {
+        let box_lengths = box_lengths(tree, paragraph, lengths, states);
         let spaces = paragraph
             .boxes
             .iter()
@@ -222,7 +224,7 @@ impl InsetSpec {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                Some(space_of(&declared, *id, range, lengths))
+                Some(space_of(&declared, *id, range, &box_lengths[id]))
             })
             .collect();
         Rc::new(Self {
@@ -603,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn lengths_resolve_in_the_units_of_the_container() {
+    fn lengths_resolve_in_the_units_of_the_box() {
         assert_eq!(
             texts_in_units(serde_json::json!({
                 "marginLeft": "1em", "paddingLeft": "0.5rem", "borderLeftWidth": "2px",
@@ -611,6 +613,29 @@ mod tests {
             })),
             vec![(2..4, 20.0 + 5.0 + 2.0, 80.0 + 15.0 + 5.0)]
         );
+    }
+
+    #[test]
+    fn em_is_the_font_size_of_the_span_that_declares_it() {
+        let style = |font_size: serde_json::Value| {
+            serde_json::json!({"fontSize": font_size, "paddingLeft": "1em", "paddingRight": "1rem"})
+        };
+        let tree = fixture(&[
+            (3, style(serde_json::json!(30))),
+            (5, serde_json::json!({"paddingLeft": "1em"})),
+        ]);
+        assert_eq!(
+            texts(&spec(&tree, &LengthContext::for_tests()).at(None)),
+            vec![(2..4, 30.0, 10.0), (3..4, 30.0, 0.0)],
+            "the nested span inherits its parent's size, and rem stays the root's"
+        );
+
+        let tree = fixture(&[
+            (3, style(serde_json::json!(30))),
+            (5, serde_json::json!({"fontSize": "0.5em", "paddingLeft": "2em", "borderLeftWidth": "1em"})),
+        ]);
+        let found = texts(&spec(&tree, &LengthContext::for_tests()).at(None));
+        assert_eq!(found[1].1, 15.0 + 30.0, "a 15px border and a 30px padding: 1em and 2em of 0.5em of 30");
     }
 
     #[test]

@@ -8,13 +8,16 @@
 //! box does not restyle keeps the container's colour, weight and family, which
 //! only gpui knows once the element is in the tree.
 
+use std::collections::HashMap;
+
 use gpui::{
-    px, FontWeight, Hsla, SharedString, StrikethroughStyle, StyledText, TextInset, TextLayout,
-    TextRun, UnderlineStyle,
+    px, DefiniteLength, FontWeight, Hsla, Pixels, SharedString, StrikethroughStyle, StyledText,
+    TextInset, TextLayout, TextRun, UnderlineStyle,
 };
 
 use crate::color::ColorContext;
 use crate::css::font_features::FontFeatureState;
+use crate::css::length::LengthContext;
 use crate::css::text_decoration;
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
@@ -28,9 +31,16 @@ use super::inline::Paragraph;
 /// nested box already holds everything the boxes around it declared. A box's
 /// background and border are not here: they are painted around its line
 /// fragments by [`super::inline_decoration`], so that its padding is inside them.
+///
+/// `line_height` is what the innermost box that declared one gives, resolved
+/// where it was declared as `line-height` is inherited: a multiplier stays a
+/// multiplier, so a descendant with another size gets its own multiple, and a
+/// length is px. `font_size` is in px.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RunStyle {
     pub len: usize,
+    pub font_size: Option<f32>,
+    pub line_height: Option<DefiniteLength>,
     pub color: Option<Hsla>,
     pub weight: Option<FontWeight>,
     pub font_style: Option<gpui::FontStyle>,
@@ -67,13 +77,14 @@ impl RunStyle {
 /// The runs of `paragraph`, covering its text exactly. Empty when no box
 /// restyles anything, so the caller can paint it as plain text.
 ///
-/// `colors` and `font_state` are the container's, as its children inherit them.
-/// `states` says which states apply to a box, so that its `hover`, `active`,
+/// `colors`, `lengths` and `font_state` are the container's, as its children
+/// inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
 /// `focusWithin` and `focusVisible` styles are folded into the run it paints.
 pub fn run_styles(
     tree: &RetainedTree,
     paragraph: &Paragraph,
     colors: &ColorContext,
+    lengths: &LengthContext,
     font_state: &FontFeatureState,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
 ) -> Vec<RunStyle> {
@@ -84,6 +95,7 @@ pub fn run_styles(
             ..RunStyle::default()
         };
         let mut colors = *colors;
+        let mut lengths = *lengths;
         let mut font_state = font_state.clone();
         for id in &piece.boxes {
             let Some(base) = tree
@@ -95,9 +107,18 @@ pub fn run_styles(
             };
             let declared = &*folded(base, states(*id, base));
             colors = colors.descend(declared);
+            // A `display: contents` box has a font size too, and its children
+            // inherit it.
+            lengths = lengths.descend(declared.font_size.as_ref(), false);
             // It has no box, so what it declares reaches the text only as far as
             // it is inherited.
             let has_box = declared.display.as_deref() != Some("contents");
+            if declared.font_size.is_some() {
+                style.font_size = Some(lengths.font_size as f32);
+            }
+            if let Some(line_height) = declared.line_height.as_ref() {
+                style.line_height = Some(line_height.text_style_value(&lengths));
+            }
             if let Some(color) = colors.declared {
                 style.color = Some(color.into());
             }
@@ -150,6 +171,55 @@ pub fn run_styles(
     runs
 }
 
+/// The `LengthContext` of every box of `paragraph`: the container's, descended
+/// along the chain of boxes around the box, so that a span's `em` is its own
+/// font size. A box is declared the same way around every piece of text it
+/// holds, so the first piece that holds it decides.
+pub fn box_lengths(
+    tree: &RetainedTree,
+    paragraph: &Paragraph,
+    lengths: &LengthContext,
+    states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+) -> HashMap<u64, LengthContext> {
+    let mut of_box = HashMap::with_capacity(paragraph.boxes.len());
+    for piece in &paragraph.pieces {
+        let mut lengths = *lengths;
+        for id in &piece.boxes {
+            let Some(base) = tree
+                .elements
+                .get(id)
+                .and_then(|element| element.style.as_deref())
+            else {
+                continue;
+            };
+            lengths = lengths.descend(folded(base, states(*id, base)).font_size.as_ref(), false);
+            of_box.entry(*id).or_insert(lengths);
+        }
+    }
+    of_box
+}
+
+/// The line height a run contributes to its line box, or `None` when it takes
+/// the line's. A run with its own size has one even when no box declared a line
+/// height, because the line height it inherits is a multiple of that size.
+fn run_line_height(
+    style: &RunStyle,
+    run_font_size: Option<Pixels>,
+    base: &gpui::TextStyle,
+    rem_size: Pixels,
+) -> Option<Pixels> {
+    if style.line_height.is_none() && run_font_size.is_none() {
+        return None;
+    }
+    let font_size = run_font_size.unwrap_or_else(|| base.font_size.to_pixels(rem_size));
+    Some(
+        style
+            .line_height
+            .unwrap_or(base.line_height)
+            .to_pixels(font_size.into(), rem_size),
+    )
+}
+
 /// `StyledText` whose runs are `styles` laid over the inherited text style.
 pub struct InlineText {
     styled: StyledText,
@@ -183,11 +253,25 @@ impl InlineText {
         self.styled.layout()
     }
 
-    fn runs(&self, base: &gpui::TextStyle) -> Vec<TextRun> {
+    /// `snap` rounds a height to the device pixel as `TextLayout::layout` does
+    /// the line's.
+    fn runs(
+        &self,
+        base: &gpui::TextStyle,
+        rem_size: Pixels,
+        snap: impl Fn(Pixels) -> Pixels,
+    ) -> Vec<TextRun> {
+        let base_font_size = base.font_size.to_pixels(rem_size);
         self.styles
             .iter()
             .map(|style| {
                 let mut run = base.to_run(style.len);
+                run.font_size = style
+                    .font_size
+                    .map(px)
+                    .filter(|size| (f32::from(*size) - f32::from(base_font_size)).abs() > 1e-3);
+                run.line_height =
+                    run_line_height(style, run.font_size, base, rem_size).map(&snap);
                 if let Some(color) = style.color {
                     run.color = color;
                 }
@@ -249,7 +333,10 @@ impl gpui::Element for InlineText {
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> (gpui::LayoutId, ()) {
-        let runs = self.runs(&window.text_style());
+        let rem_size = window.rem_size();
+        let runs = self.runs(&window.text_style(), rem_size, |height| {
+            window.pixel_snap(height)
+        });
         // `with_runs` takes the element by value. The placeholder is dropped
         // at once; the layout cell that callers cloned lives in `styled`.
         let styled = std::mem::replace(&mut self.styled, StyledText::new(""));
@@ -350,9 +437,179 @@ mod tests {
             tree,
             paragraph,
             &ColorContext::root(Scheme::Light),
+            &container_lengths(),
             &FontFeatureState::default(),
             states,
         )
+    }
+
+    /// A container with `fontSize: 10`, which is the root's too.
+    fn container_lengths() -> LengthContext {
+        LengthContext::initial(800.0, 600.0)
+            .descend(Some(&crate::css::length::LinearLength::px(10.0)), true)
+    }
+
+    fn sizes(tree: &RetainedTree) -> Vec<Option<f32>> {
+        runs_of(tree).iter().map(|run| run.font_size).collect()
+    }
+
+    /// The runs gpui gets for `tree`'s paragraph in a container of 10px text
+    /// whose line height is `container_line_height`.
+    fn text_runs(tree: &RetainedTree, container_line_height: DefiniteLength) -> Vec<TextRun> {
+        let plan = plan_children(tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let base = gpui::TextStyle {
+            font_size: px(10.0).into(),
+            line_height: container_line_height,
+            ..Default::default()
+        };
+        let styles = run_styles(
+            tree,
+            paragraph,
+            &ColorContext::root(Scheme::Light),
+            &container_lengths(),
+            &FontFeatureState::default(),
+            &|_, _| PointerStates::default(),
+        );
+        InlineText::new(paragraph.text.clone().into(), styles).runs(&base, px(16.0), |height| height)
+    }
+
+    fn line_heights(runs: &[TextRun]) -> Vec<Option<f32>> {
+        runs.iter()
+            .map(|run| run.line_height.map(f32::from))
+            .collect()
+    }
+
+    #[test]
+    fn a_span_font_size_is_its_runs_size_and_a_nested_span_inherits_it() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
+        assert_eq!(sizes(&tree), vec![None, Some(20.0), None]);
+    }
+
+    #[test]
+    fn a_nested_font_size_in_em_is_relative_to_the_span_around_it() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontSize": 20})),
+            (5, serde_json::json!({"fontSize": "1.5em"})),
+        ]);
+        assert_eq!(sizes(&tree), vec![None, Some(20.0), Some(30.0), None]);
+    }
+
+    #[test]
+    fn a_font_size_in_rem_is_the_roots() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": "3rem"}))]);
+        assert_eq!(sizes(&tree), vec![None, Some(30.0), None]);
+    }
+
+    #[test]
+    fn unsized_text_has_no_font_size() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
+        assert_eq!(sizes(&tree), vec![None; 3]);
+    }
+
+    #[test]
+    fn a_display_contents_box_passes_its_font_size_to_its_children() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontWeight": 700})),
+            (5, serde_json::json!({"display": "contents", "fontSize": 20})),
+        ]);
+        assert_eq!(sizes(&tree), vec![None, None, Some(20.0), None]);
+        let nested = tree_with(&[
+            (3, serde_json::json!({"display": "contents", "fontSize": 20})),
+            (5, serde_json::json!({"fontSize": "2em"})),
+        ]);
+        assert_eq!(sizes(&nested), vec![None, Some(20.0), Some(40.0), None]);
+    }
+
+    #[test]
+    fn a_line_height_number_is_a_multiple_of_the_runs_own_size() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
+        let runs = text_runs(&tree, gpui::relative(1.5));
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+        assert_eq!(runs[1].font_size, Some(px(20.0)));
+        assert_eq!(runs[0].font_size, None);
+    }
+
+    #[test]
+    fn a_line_height_length_of_the_container_is_inherited_as_px() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
+        let runs = text_runs(&tree, px(24.0).into());
+        assert_eq!(line_heights(&runs), vec![None, Some(24.0), None]);
+    }
+
+    #[test]
+    fn a_spans_own_line_height_is_resolved_where_it_is_declared() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": 2}))]);
+        let runs = text_runs(&tree, gpui::relative(1.5));
+        assert_eq!(line_heights(&runs), vec![None, Some(40.0), None]);
+
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": "1.5em"}))]);
+        let runs = text_runs(&tree, gpui::relative(1.0));
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+
+        let tree = tree_with(&[
+            (3, serde_json::json!({"lineHeight": "1.5em"})),
+            (5, serde_json::json!({"fontSize": 30})),
+        ]);
+        let runs = text_runs(&tree, gpui::relative(1.0));
+        assert_eq!(
+            line_heights(&runs),
+            vec![None, Some(15.0), Some(15.0), None],
+            "a length is px by the time the nested span sizes its text"
+        );
+    }
+
+    #[test]
+    fn a_nested_span_resizes_a_multiplier_it_inherits() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"lineHeight": 2})),
+            (5, serde_json::json!({"fontSize": 30})),
+        ]);
+        let runs = text_runs(&tree, gpui::relative(1.0));
+        assert_eq!(line_heights(&runs), vec![None, Some(20.0), Some(60.0), None]);
+    }
+
+    #[test]
+    fn a_span_with_only_a_line_height_has_one_and_keeps_the_size() {
+        let tree = tree_with(&[(3, serde_json::json!({"lineHeight": 3}))]);
+        let runs = text_runs(&tree, gpui::relative(1.5));
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+        assert_eq!(runs[1].font_size, None);
+    }
+
+    #[test]
+    fn a_span_that_sets_nothing_about_size_takes_the_lines() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
+        let runs = text_runs(&tree, gpui::relative(1.5));
+        assert_eq!(line_heights(&runs), vec![None; 3]);
+        assert!(runs.iter().all(|run| run.font_size.is_none()));
+    }
+
+    #[test]
+    fn a_font_size_equal_to_the_containers_is_no_size_of_its_own() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": "1em", "fontWeight": 700}))]);
+        let runs = text_runs(&tree, gpui::relative(1.5));
+        assert!(runs.iter().all(|run| run.font_size.is_none()));
+        assert_eq!(line_heights(&runs), vec![None; 3]);
+    }
+
+    #[test]
+    fn boxes_get_the_lengths_of_their_own_font_size() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontSize": 20})),
+            (5, serde_json::json!({"fontSize": "1.5em"})),
+        ]);
+        let plan = plan_children(&tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let lengths = box_lengths(&tree, paragraph, &container_lengths(), &|_, _| {
+            PointerStates::default()
+        });
+        assert_eq!(lengths[&3].font_size, 20.0);
+        assert_eq!(lengths[&5].font_size, 30.0);
     }
 
     #[test]

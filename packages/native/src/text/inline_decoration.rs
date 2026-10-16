@@ -223,8 +223,7 @@ pub fn quads(rows: &[Bounds<Pixels>], paint: &BoxPaint) -> Vec<QuadSpec> {
 /// The decorations of the boxes of `paragraph` that have any, outermost first,
 /// so that a box nested in another paints over it.
 ///
-/// `colors` and `lengths` are the container's, as its children inherit them (a
-/// span's `fontSize` does not reach its text, so `em` is the container's), and
+/// `colors` and `lengths` are the container's, as its children inherit them, and
 /// `states` says which states apply to a box, as it does for
 /// [`super::paragraph::run_styles`].
 /// A `display: contents` box has no box to decorate.
@@ -241,6 +240,7 @@ pub fn of(
     let mut looks: HashMap<u64, Option<(Option<Outline>, BoxPaint)>> = HashMap::new();
     for piece in &paragraph.pieces {
         let mut colors = *colors;
+        let mut lengths = *lengths;
         for id in &piece.boxes {
             let Some(base) = tree
                 .elements
@@ -251,11 +251,12 @@ pub fn of(
             };
             let declared = folded(base, states(*id, base));
             colors = colors.descend(&declared);
+            lengths = lengths.descend(declared.font_size.as_ref(), false);
             if declared.display.as_deref() == Some("contents") || looks.contains_key(id) {
                 continue;
             }
-            let outline = border::outline(&declared, &colors, lengths).filter(is_visible);
-            let paint = BoxPaint::of(&declared, &colors, lengths);
+            let outline = border::outline(&declared, &colors, &lengths).filter(is_visible);
+            let paint = BoxPaint::of(&declared, &colors, &lengths);
             looks.insert(*id, (outline.is_some() || paint.paints()).then_some((outline, paint)));
         }
     }
@@ -371,6 +372,26 @@ mod tests {
 
     fn ring(color: &str) -> serde_json::Value {
         serde_json::json!({"outlineWidth": 2, "outlineColor": color, "outlineOffset": 1})
+    }
+
+    #[test]
+    fn a_border_in_em_is_the_font_size_of_its_span() {
+        let border = |width: &str| {
+            serde_json::json!({"borderWidth": width, "borderColor": "#ff0000", "borderStyle": "solid"})
+        };
+        let mut sized = border("1em");
+        sized["fontSize"] = serde_json::json!(20);
+        let found = resting(&fixture(&[(3, sized), (5, border("0.5em"))]));
+        assert_eq!(found.len(), 2);
+        assert_eq!(f32::from(found[0].paint.widths.left), 20.0);
+        assert_eq!(
+            f32::from(found[1].paint.widths.left),
+            10.0,
+            "the nested span inherits the 20px of its parent"
+        );
+
+        let found = resting(&fixture(&[(3, border("1em"))]));
+        assert_eq!(f32::from(found[0].paint.widths.left), 16.0, "else the container's");
     }
 
     #[test]

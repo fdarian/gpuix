@@ -144,6 +144,8 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
                 thickness: px(1.0),
                 color: Some(theme.text_muted),
             }),
+            font_size: None,
+            line_height: None,
         });
     }
 

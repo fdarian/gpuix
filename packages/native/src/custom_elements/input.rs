@@ -1708,6 +1708,8 @@ impl TextEditorState {
                 wavy: false,
             }),
             strikethrough: None,
+            font_size: None,
+            line_height: None,
         };
         let marked = self.marked_range.as_ref().map(|marked| {
             self.content_to_display(marked.start)..self.content_to_display(marked.end)

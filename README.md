@@ -2711,9 +2711,9 @@ and copies as one line, and is searched by `highlight` as one piece of text.
 ```
 
 An inline box can set `color`, `fontWeight`, `fontStyle`, `fontFamily`,
-`textDecoration` (see below), `fontVariantNumeric` and `fontFeatureSettings`; its
-`backgroundColor` (a `<mark>`-style wash), border and `borderRadius`, painted round
-each line of its text (see [Painting an inline box](#painting-an-inline-box)); and
+`fontSize`, `lineHeight`, `textDecoration` (see below), `fontVariantNumeric` and
+`fontFeatureSettings`; its `backgroundColor` (a `<mark>`-style wash), border and
+`borderRadius`, painted round each line of its text (see [Painting an inline box](#painting-an-inline-box)); and
 an `outline` (see [Focus on an inline box](#focus-on-an-inline-box)). A box inherits from the box
 around it, as in CSS. A `display: contents` span inside a span adds no box: its
 children join the paragraph and inherit from it.
@@ -2740,10 +2740,17 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
   `display: none`.
 - White space is processed as in CSS, see [White space](#white-space).
 
-Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
-size) and `fontStyle` (there is no `fontStyle` style yet). A `<span>`
-with a style that needs a box of its own (`position: absolute`, `display: block`,
-`flex` or `grid`) is laid out as a block instead.
+A box's `fontSize` is relative to the box around it (`em`, `%`; `rem` is the
+root's) and its text is shaped at that size; a box without one inherits. Its
+`lineHeight` follows CSS: a number is a multiple of the box's own font size, so a
+bigger span in a `lineHeight: 1.5` paragraph has a taller line, and a length is
+resolved in the box that declares it and inherited as px. A row is as tall as the
+CSS line box: the container's line height around its font, and each run with
+its own size or line height adds its line height around the same baseline. A
+wrapped row breaks where the sized text actually ends.
+
+A `<span>` with a style that needs a box of its own (`position: absolute`,
+`display: block`, `flex` or `grid`) is laid out as a block instead.
 
 ### Space around an inline box
 
@@ -2779,9 +2786,9 @@ shorthand. `hover`, `active` and the other state styles change the space too.
 - A text selection or a search match that starts or ends on the first or last
   glyph of a span leaves the space off the end of its wash. A selection that runs
   across a span washes the space inside it, so it has no holes.
-- The lengths are CSS [lengths](#lengths). `em` is the container's font size (a span
-  cannot set its own `fontSize`), and a percentage margin or padding is of the width
-  the paragraph is laid out in, which is the containing block's width when the
+- The lengths are CSS [lengths](#lengths). `em` is the span's own font size (its
+  `fontSize` if it or a box around it sets one, else the container's), and a
+  percentage margin or padding is of the width the paragraph is laid out in, which is the containing block's width when the
   paragraph fills its container. While the paragraph is measured for its content
   (`width: "min-content"`, a flex item without a width) a percentage counts as 0, as
   CSS treats it in intrinsic sizes.
