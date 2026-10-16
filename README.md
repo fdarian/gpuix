@@ -3651,8 +3651,8 @@ Option+s reports `"ß"`. Elsewhere `code` is derived from GPUI's key name with
 a US QWERTY layout, so on other layouts a printable key's `code` follows the US
 position of the character GPUI reports, and it is `""` when nothing maps.
 `repeat` is true for
-auto-repeat, `isComposing` is always `false` (a key that feeds an IME
-composition is consumed by the platform before GPUI sees it), and `shiftKey`,
+auto-repeat, `isComposing` is true while an input method composition is open
+(see [Input method composition](#input-method-composition)), and `shiftKey`,
 `ctrlKey`, `altKey` and `metaKey` mirror `modifiers`. The `simulateKeystrokes`
 and `press()` test helpers take these same names (`"Enter"`,
 `"Shift+Tab"`), see [Simulating keys](#simulating-keys).
@@ -3674,8 +3674,36 @@ How far `preventDefault()` reaches depends on the platform:
 | macOS, test renderer | Yes. Handlers run inside the native key dispatch |
 | Windows, Linux | No. Events reach JavaScript through a queue after native acted on the key. `preventDefault()` still cancels the Tab and Escape defaults |
 
-On macOS, a key sent to an active input method (IME composition) reaches it
-before GPUI, so `preventDefault()` cannot cancel composed text.
+On macOS, a key sent to an active input method reaches it before GPUI, so
+`preventDefault()` cannot cancel composed text.
+
+### Input method composition
+
+On macOS an input method (Japanese, Chinese, Korean, dead keys) composes text in
+an `<input>` or `<textarea>`, and the events follow Chrome's:
+
+- A key the input method takes is a `keydown` with `key` `"Process"` (its
+  `code` is the physical key, `keyChar` is absent), sent before the input
+  method sees it. `isComposing` is false for the key that starts a composition
+  and true for the keys after it. `preventDefault()` has no effect on it: the
+  input method gets the key anyway. A key the input method hands back (an arrow
+  with no candidate window) follows as an ordinary `keydown`, with
+  `isComposing` true while text is still marked.
+- `compositionstart` (`data` is the text the composition takes over, usually
+  `""`), then `compositionupdate` (`data` is the composition's current text) for
+  every change, then `compositionend` (`data` is the final text, `""` when the
+  composition was cancelled) on commit. Each comes before the `change` of the
+  edit it belongs to. They are aimed at the input, bubble, and cannot be
+  cancelled. `onCompositionStart`, `onCompositionUpdate` and `onCompositionEnd`
+  have `…Capture` twins.
+- A `keyup` while text is marked has `isComposing` true. It keeps its real
+  `key`.
+
+Windows and Linux report `isComposing` false and fire no composition events.
+A value an app sets while a composition is open ends it without a
+`compositionend`. `change` has no `inputType`, and events carry no `keyCode`.
+In the test renderer, [`simulateComposition`](#simulating-keys) runs the
+sequence.
 
 ### `window` and `document`
 
@@ -5097,6 +5125,7 @@ text imports no longer need a runtime flag.
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element, `currentTarget` the listening one |
 | Key down | `onKeyDown` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
+| Composition | `onCompositionStart`, `onCompositionUpdate`, `onCompositionEnd` | `data` — bubble from the `<input>` or `<textarea>` being composed in, not cancelable. See [Input method composition](#input-method-composition) |
 | Focus | `onFocus` | `focusVisible`, `relatedTarget`. See [Focus events](#focus-events) |
 | Blur | `onBlur` | `focusVisible`, `relatedTarget` |
 | Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`, `relatedTarget`. Bubbles |
@@ -5115,7 +5144,7 @@ text imports no longer need a runtime flag.
 | Pointer lock change | `onPointerLockChange` | `target` (the locked element, `null` once released) — window-level on `render()` |
 | Pointer lock error | `onPointerLockError` | `target` (the element that was asked, `null` if it left the tree) — window-level on `render()` |
 
-Every pointer, mouse and drag handler also has a capture-phase twin:
+Every pointer, mouse, drag and composition handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
 `onMouseDownOutside` is gpuix's own event and has none.
 
@@ -6694,6 +6723,23 @@ a character key the US character on it (`"a"`, `"A"` with Shift), whatever
 layout the machine has; a press that names a key (`"a"`, `"Enter"`) derives
 `code` from it for a US QWERTY layout. The browser (wasm) automation path
 passes the names through to the page without checking them.
+
+`simulateComposition(id, steps)` focuses an `<input>` or `<textarea>` and runs an
+input method composition in it, one step per key the input method takes. A step
+is `{ key, action: 'mark', text }` (the composition becomes `text`),
+`{ key, action: 'commit', text }` (it ends with `text`) or
+`{ key, action: 'unmark' }` (it ends with the text it has). Each step sends the
+`"Process"` `keydown`, the composition events and the `change` of the edit, then
+the `keyup` of that key, as in [Input method composition](#input-method-composition).
+It throws when `id` is not a focusable text input.
+
+```ts
+renderer.simulateComposition(id, [
+  { key: 'k', action: 'mark', text: 'k' },
+  { key: 'a', action: 'mark', text: 'か' },
+  { key: 'Enter', action: 'commit', text: 'か' },
+])
+```
 
 A file drag is simulated in steps, each a native event that reaches your
 handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,

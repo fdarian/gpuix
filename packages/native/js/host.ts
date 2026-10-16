@@ -2123,6 +2123,10 @@ export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
  * character produced (`"A"` for shift-a); `code` is the physical key (`"KeyA"`,
  * `"Digit1"`), assuming a US QWERTY layout for printable keys. The mapping from
  * GPUI key names lives in `events/key_names.rs`.
+ *
+ * On macOS a key the input method takes first has `key` `"Process"` and cannot
+ * be cancelled: `preventDefault()` does not stop the input method. `isComposing`
+ * is true while it has text marked.
  */
 export interface KeyEvent extends DomEvent {
   /** True after any handler of this keystroke called `preventDefault()`. */
