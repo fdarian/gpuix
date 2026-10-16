@@ -165,7 +165,7 @@ export function createRoot(
   // One object for the life of the root. A fresh `{ renderer }` per `render()`
   // call is a context change, which re-renders every `useGpuix()` consumer, and
   // through them busts `memo` below it, on every re-render of the root.
-  const contextValue: GpuixContextValue = { renderer }
+  const contextValue: GpuixContextValue = { renderer, mutations: batchedRenderer }
 
   return {
     render: (node): void => {

@@ -54,6 +54,8 @@ export { LayoutGroup } from "./layout-group.js"
 export type { LayoutGroupProps } from "./layout-group.js"
 export { MotionConfig, useReducedMotionConfig } from "./motion-config.js"
 export type { MotionConfigProps } from "./motion-config.js"
+export { UniversalStyle } from "./universal-style.js"
+export type { UniversalStyleProps } from "./universal-style.js"
 
 export const gpuixComponents = {
   div: "div",

@@ -11,6 +11,7 @@ import {
 import { toAppearance } from "@gpuix/native/host"
 import type {
   Appearance,
+  MutationRenderer,
   NativeRenderer,
   RendererRootBinding,
   RootEvent,
@@ -22,6 +23,8 @@ import { universalRender } from "./universal.js"
 
 export interface GpuixContextValue {
   renderer: NativeRenderer
+  /** The root's mutation queue, for what must be ordered with its element mutations. */
+  mutations: MutationRenderer
   subscribeSelection(callback: (text: string | null) => void): () => void
   subscribeAppearance(callback: (appearance: Appearance) => void): () => void
 }
@@ -171,6 +174,7 @@ export function createRoot(
         () => createComponent(GpuixContext.Provider, {
           value: {
             renderer,
+            mutations,
             subscribeSelection(callback) {
               selectionListeners.add(callback)
               callback(renderer.getSelectedText?.() ?? null)

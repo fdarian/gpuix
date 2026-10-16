@@ -52,6 +52,8 @@ export { Reorder } from "./components/reorder.js"
 export type { ReorderGroupProps, ReorderItemProps } from "./components/reorder.js"
 export { MotionConfig, createReducedMotionConfig } from "./components/motion-config.js"
 export type { MotionConfigProps } from "./components/motion-config.js"
+export { UniversalStyle } from "./components/universal-style.js"
+export type { UniversalStyleProps } from "./components/universal-style.js"
 export {
   AnimatePresence,
   PresenceContext,
