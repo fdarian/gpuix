@@ -6110,10 +6110,8 @@ composites the element as a group, like `opacity` and `mask`.
 `rect(<top> <right> <bottom> <left>)` the right and bottom are distances from the
 left and top edges, unlike `inset()`, and each of the four may be `auto` (`0` for
 top and left, `100%` for right and bottom). `xywh(<x> <y> <width> <height>)`
-takes a non-negative width and height. A width must be in the unit of its `x`
-(both `px` or both `%`) and a height in the unit of its `y`, because the far edge
-is their sum and a value is one unit or the other; `xywh(10px 0 50% 5px)` is
-invalid (a `0` is either). `rect()` has no such restriction.
+takes a non-negative width and height. The far edge is the sum of the near edge
+and the size, so `xywh(10px 0 50% 5px)` ends at `calc(10px + 50%)`.
 
 `path()` takes the SVG path data `d` accepts (all commands, relative or absolute,
 arcs included), in `px` from the top left of the reference box. Curves are
