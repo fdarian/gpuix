@@ -108,9 +108,11 @@ describeNative("gradients in backgroundImage", () => {
     near(empty(5, 50), [128, 0, 128, 255])
     near(empty(150, 50), [128, 0, 128, 255])
     const cycling = paint({ width: 400, backgroundImage: image })
-    // Red to blue over 10px, from x=10: x=2 is 20% of the way, x=7 is 70%.
-    near(cycling(2, 50), [204, 0, 51, 255], 14)
-    near(cycling(7, 50), [77, 0, 178, 255], 14)
+    // Red to blue over 10px, from x=10, so the centre of pixel 2 is 25% of the way and the
+    // centre of pixel 7 is 75%. At 2x the sampled device pixel's centre is 2.75, so 14 covers
+    // both scales.
+    near(cycling(2, 50), [191, 0, 64, 255], 14)
+    near(cycling(7, 50), [64, 0, 191, 255], 14)
     near(cycling(12, 50), cycling(2, 50), 14)
   })
 
