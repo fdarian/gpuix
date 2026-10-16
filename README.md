@@ -4169,10 +4169,12 @@ special care: a click on it bubbles to the parent's `onClick` like any child's.
 Give it `pointerEvents: "none"` only if you want the pointer to treat it as part
 of the parent.
 
-A box's own rounded corners are not excluded from hit testing, unlike in a
-browser: a pointer over the rounded-away corner of a `borderRadius` box still
-hits it. Only `overflow` other than `visible` cuts at the radius, and then it
-cuts the box's content. `clipPath` clips the box itself.
+A box's own rounded corners are excluded from hit testing, as in a browser: a
+pointer over the rounded-away corner of a `borderRadius` box does not hit it
+and reaches what is underneath, whatever its `overflow`. The cut is the box's
+own: a child that covers the corner is still hit through its own box.
+`overflow` other than `visible` also cuts the box's content at the radius, and
+`clipPath` clips the box and everything inside it.
 
 > [!IMPORTANT]
 > This changes three rules from earlier versions. A filled or absolutely
