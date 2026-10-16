@@ -210,4 +210,67 @@ describeNative("inert", () => {
     expect(log).toEqual([])
     expect(renderer.getElementsAt(50, 30)).not.toContain(idOf("auto"))
   })
+
+  describe("a virtual list under an ancestor that becomes inert after its rows were built", () => {
+    function List({ inert, log }: { inert: boolean; log: string[] }) {
+      return (
+        <div testId="shell" inert={inert} style={{ width: 200, height: 100 }}>
+          <virtual-list overdraw={0} estimatedItemHeight={20} style={{ width: 200, height: 100 }}>
+            {Array.from({ length: 20 }, (_, index) => (
+              <div
+                key={index}
+                testId={`row-${index}`}
+                tabIndex={0}
+                role="button"
+                aria-label={`row ${index}`}
+                onClick={() => log.push(`click ${index}`)}
+                style={{ width: 200, height: 20, flexShrink: 0 }}
+              />
+            ))}
+          </virtual-list>
+        </div>
+      )
+    }
+
+    const hidden = (renderer, label: string) => {
+      const nodes = Object.values(renderer.getA11yTree().nodes ?? {})
+      const node = nodes.find((node) => node.aria?.label === label)
+      if (node === undefined) throw new Error(`no accessibility node labelled ${label}`)
+      return node.aria?.hidden === true
+    }
+
+    it("takes the rows out of hit testing, focus and the accessibility tree, and puts them back", () => {
+      const log: string[] = []
+      const { root, renderer, focused, idOf, center } = setup(<List inert={false} log={log} />)
+      const row = idOf("row-1")
+      // Focusing a row scrolls it to the top of the list, so the point is read again each time.
+      const at = () => center("row-1")
+      expect(renderer.getElementsAt(...at())).toContain(row)
+      expect(hidden(renderer, "row 1")).toBe(false)
+      renderer.nativeSimulateClick(...at())
+      expect(log).toEqual(["click 1"])
+      renderer.focusElement(row)
+      expect(focused()).toBe("row-1")
+
+      root.render(<List inert log={log} />)
+      renderer.flush()
+      expect(renderer.getElementsAt(...at())).not.toContain(row)
+      expect(hidden(renderer, "row 1")).toBe(true)
+      expect(focused()).toBe(null)
+      renderer.focusElement(row)
+      renderer.flush()
+      expect(focused()).toBe(null)
+      renderer.nativeSimulateClick(...at())
+      expect(log).toEqual(["click 1"])
+
+      root.render(<List inert={false} log={log} />)
+      renderer.flush()
+      expect(renderer.getElementsAt(...at())).toContain(row)
+      expect(hidden(renderer, "row 1")).toBe(false)
+      renderer.nativeSimulateClick(...at())
+      expect(log).toEqual(["click 1", "click 1"])
+      renderer.focusElement(row)
+      expect(focused()).toBe("row-1")
+    })
+  })
 })

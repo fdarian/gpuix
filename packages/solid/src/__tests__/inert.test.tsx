@@ -102,4 +102,64 @@ describe.skipIf(!hasNativeTestRenderer)("Solid inert", () => {
     renderer.nativeSimulateClick(50, 30)
     expect(log).toEqual(["behind"])
   })
+
+  it("makes the rows of a virtual list inert when an ancestor becomes inert after they were built, and restores them", () => {
+    const log: string[] = []
+    const [inert, setInert] = createSignal(false)
+    const { app, renderer, focused, idOf } = setup(() => (
+      <div inert={inert()} style={{ width: 200, height: 100 }}>
+        <virtual-list overdraw={0} estimatedItemHeight={20} style={{ width: 200, height: 100 }}>
+          {Array.from({ length: 20 }, (_, index) => (
+            <div
+              testId={`row-${index}`}
+              tabIndex={0}
+              role="button"
+              aria-label={`row ${index}`}
+              onClick={() => log.push(`click ${index}`)}
+              style={{ width: 200, height: 20, flexShrink: 0 }}
+            />
+          ))}
+        </virtual-list>
+      </div>
+    ))
+    const row = idOf("row-1")
+    // Focusing a row scrolls it to the top of the list, so the point is read again each time.
+    const at = (): [number, number] => {
+      const bounds = renderer.getElementBounds(row)!
+      return [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2]
+    }
+    const hidden = (label: string) => {
+      const nodes = Object.values(renderer.getA11yTree().nodes ?? {}) as any[]
+      const node = nodes.find((node) => node.aria?.label === label)
+      if (node === undefined) throw new Error(`no accessibility node labelled ${label}`)
+      return node.aria?.hidden === true
+    }
+
+    expect(renderer.getElementsAt(...at())).toContain(row)
+    expect(hidden("row 1")).toBe(false)
+    renderer.nativeSimulateClick(...at())
+    expect(log).toEqual(["click 1"])
+    renderer.focusElement(row)
+    expect(focused()).toBe("row-1")
+
+    app.flushSync(() => setInert(true))
+    renderer.flush()
+    expect(renderer.getElementsAt(...at())).not.toContain(row)
+    expect(hidden("row 1")).toBe(true)
+    expect(focused()).toBe(null)
+    renderer.focusElement(row)
+    renderer.flush()
+    expect(focused()).toBe(null)
+    renderer.nativeSimulateClick(...at())
+    expect(log).toEqual(["click 1"])
+
+    app.flushSync(() => setInert(false))
+    renderer.flush()
+    expect(renderer.getElementsAt(...at())).toContain(row)
+    expect(hidden("row 1")).toBe(false)
+    renderer.nativeSimulateClick(...at())
+    expect(log).toEqual(["click 1", "click 1"])
+    renderer.focusElement(row)
+    expect(focused()).toBe("row-1")
+  })
 })
