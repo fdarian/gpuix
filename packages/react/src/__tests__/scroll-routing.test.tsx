@@ -66,13 +66,16 @@ describeNative("wheel routing", () => {
     }
   })
 
-  it("passes only what the inner scroller could not use", () => {
+  it("drops what the inner scroller could not use, and chains on the next gesture", () => {
     const { renderer, offset, scrollTo, unmount } = nested({})
     try {
       scrollTo("inner", 0, -290)
       renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
       expect(offset("inner")).toEqual([0, -300])
-      expect(offset("outer")).toEqual([0, -20])
+      expect(offset("outer")).toEqual([0, 0])
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -30, undefined, "started")
+      expect(offset("inner")).toEqual([0, -300])
+      expect(offset("outer")).toEqual([0, -30])
     } finally {
       unmount()
     }
@@ -95,8 +98,13 @@ describeNative("wheel routing", () => {
       outer: { overflow: "scroll" },
     })
     try {
-      // The inner scroller only goes along y, so the x delta is the outer's.
+      // The inner scroller only goes along y, but it takes the whole event: the x delta is
+      // dropped, not given to the outer scroller.
       renderer.nativeSimulateScrollWheel(50, 150, -20, -30)
+      expect(offset("inner")).toEqual([0, -30])
+      expect(offset("outer")).toEqual([0, 0])
+      // A sideways gesture finds nothing to scroll in the inner scroller, so the outer one has it.
+      renderer.nativeSimulateScrollWheel(50, 150, -20, 0, undefined, "started")
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([-20, 0])
     } finally {
@@ -104,22 +112,22 @@ describeNative("wheel routing", () => {
     }
   })
 
-  it("applies the clamped delta per axis in one tick and chains only the blocked axis", () => {
+  it("gives a tick to one scroller whole, and chains an axis it cannot use only on the next gesture", () => {
     const { renderer, offset, scrollTo, unmount } = nested({
       inner: { overflow: "scroll" },
     })
     try {
-      // The inner scroller has no horizontal range, so a diagonal tick moves it down and
-      // hands the sideways part to the outer scroller.
+      // The inner scroller has no horizontal range, so a diagonal tick moves it down and the
+      // sideways part is dropped.
       scrollTo("inner", 0, -100)
       renderer.nativeSimulateScrollWheel(50, 150, -20, -30)
       expect(offset("inner")).toEqual([0, -130])
-      expect(offset("outer")).toEqual([-20, 0])
-      // At the bottom the vertical part chains too, and the horizontal part still does.
+      expect(offset("outer")).toEqual([0, 0])
+      // At the bottom the inner scroller takes nothing, so the outer one has both parts.
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, -10, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, -10, -30, undefined, "started")
       expect(offset("inner")).toEqual([0, -300])
-      expect(offset("outer")).toEqual([-30, -30])
+      expect(offset("outer")).toEqual([-10, -30])
     } finally {
       unmount()
     }
@@ -169,7 +177,10 @@ describeNative("wheel routing", () => {
     try {
       renderer.nativeSimulateScrollWheel(50, 150, 0, -5000)
       expect(offset("inner")).toEqual([0, -300])
-      // What the inner scroller could not take chains to the outer one, which clamps too.
+      expect(offset("outer")).toEqual([0, 0])
+      // The next gesture finds the inner scroller at its limit, and the outer one clamps too.
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -5000, undefined, "started")
+      expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, -600])
     } finally {
       unmount()
@@ -271,7 +282,7 @@ describeNative("scroll latching", () => {
       renderer.nativeSimulateScrollWheel(50, 150, 0, -400)
       expect(offset("inner")).toEqual([0, -300])
       renderer.nativeSimulateScrollWheel(250, 50, 0, -30)
-      expect(offset("outer")).toEqual([0, -130])
+      expect(offset("outer")).toEqual([0, -30])
     } finally {
       unmount()
     }

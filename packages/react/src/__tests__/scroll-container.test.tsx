@@ -249,7 +249,10 @@ describeNative("absolute children of a scroller", () => {
 
   it("extend what the scroller can scroll to", () => {
     const { renderer, unmount } = setup(
-      <div testId="scroller" style={{ width: 200, height: 100, overflow: "scroll" }}>
+      <div
+        testId="scroller"
+        style={{ position: "relative", width: 200, height: 100, overflow: "scroll" }}
+      >
         <div
           style={{ position: "absolute", top: 250, left: 0, width: 50, height: 20 }}
         />
@@ -257,6 +260,21 @@ describeNative("absolute children of a scroller", () => {
     )
     try {
       expect(metrics(renderer, "scroller").scrollHeight).toBe(270)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("do not extend it when the scroller is not their containing block", () => {
+    const { renderer, unmount } = setup(
+      <div testId="scroller" style={{ width: 200, height: 100, overflow: "scroll" }}>
+        <div
+          style={{ position: "absolute", top: 250, left: 0, width: 50, height: 20 }}
+        />
+      </div>
+    )
+    try {
+      expect(metrics(renderer, "scroller").scrollHeight).toBe(100)
     } finally {
       unmount()
     }

@@ -62,13 +62,16 @@ describeNative("a virtual list in wheel routing", () => {
     }
   })
 
-  it("passes on only what it could not use, and the axis it does not scroll", () => {
+  it("drops what it could not use, and the axis it does not scroll, until the next gesture", () => {
     const { renderer, offset, scrollTo, unmount } = listInScroller()
     try {
       scrollTo("list", 0, -690)
       renderer.nativeSimulateScrollWheel(50, 150, -20, -30)
       expect(offset("list")[1]).toBe(-700)
-      expect(offset("outer")).toEqual([-20, -20])
+      expect(offset("outer")).toEqual([0, 0])
+      renderer.nativeSimulateScrollWheel(50, 150, -20, -30, undefined, "started")
+      expect(offset("list")[1]).toBe(-700)
+      expect(offset("outer")).toEqual([-20, -30])
     } finally {
       unmount()
     }
