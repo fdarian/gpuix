@@ -524,7 +524,7 @@ mod tests {
             assert_eq!(side(&format!("2px {keyword} red")).style, expected, "{keyword}");
             assert_eq!(side(&format!("2px {} red", keyword.to_uppercase())).style, expected);
         }
-        assert_eq!(side("2px hidden red").width, 0.0);
+        assert_eq!(side("2px hidden red").width, LinearLength::px(0.0));
     }
 
     #[test]
@@ -557,7 +557,12 @@ mod tests {
         let desc: StyleDesc = serde_json::from_str(json).expect("a style");
         let colors = ColorContext::root(Scheme::Light);
         cx.draw(point(px(0.), px(0.)), size(px(200.), px(200.)), |_, _| {
-            crate::renderer::apply_styles(gpui::div().w(px(60.)).h(px(40.)), &desc, &colors)
+            crate::renderer::apply_styles(
+                gpui::div().w(px(60.)).h(px(40.)),
+                &desc,
+                &colors,
+                &LengthContext::initial(800.0, 600.0),
+            )
         });
         cx.update(|window, _| {
             window

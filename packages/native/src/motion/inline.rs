@@ -321,7 +321,9 @@ mod tests {
         let runs = page.runs(&middle);
         let text = gpui::Rgba::from(runs[0].color.expect("the run is coloured"));
         assert!((text.b - rgb(&shown.color)[2]).abs() < 0.01);
-        let line = gpui::Rgba::from(runs[0].underline.expect("the run is underlined").color);
+        let line = gpui::Rgba::from(
+            runs[0].underline.expect("the run is underlined").color.expect("the line is coloured"),
+        );
         assert!((line.g - green).abs() < 0.01);
     }
 

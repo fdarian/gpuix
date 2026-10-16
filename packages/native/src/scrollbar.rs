@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
+use gpui::{StatefulInteractiveElement as _, Styled as _};
 use web_time::Instant;
 
 use crate::scroll::Overflow;
