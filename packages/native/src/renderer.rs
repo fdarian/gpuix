@@ -8150,6 +8150,17 @@ fn paragraph_content(
             &states,
             &insets,
         ),
+        inline_regions: if ctx.inherited.frameless {
+            crate::text::inline_region::of(
+                ctx.tree,
+                paragraph,
+                ctx.inherited.app_region,
+                &states,
+                &insets,
+            )
+        } else {
+            Vec::new()
+        },
         inline_insets: insets.takes_space_along_the_line().then(|| insets.clone()),
         ..crate::text::SelectableText::new(
             paragraph.container,

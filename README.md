@@ -883,13 +883,16 @@ holds the point wins**: `"drag"` adds, `"no-drag"` cuts. Z-order,
 overlay without a value that covers part of the bar does not stop it dragging
 there, and a rounded or clipped child still drags over its full box.
 
-Three cases have no region. A `<virtual-list>`'s own box registers none, so
+Two cases have no region. A `<virtual-list>`'s own box registers none, so
 a `"drag"` on it marks nothing itself: its rows do, by inheritance, so the
-region is the rows' boxes and not the list's. An inline `<span>` that is laid
-out as part of a paragraph's text has no box either, so `appRegion` on it
-registers nothing; put it on the paragraph's container, or on a span that is a
-flex or grid item. And a fullscreen window has no drag regions at all, as in
-Electron: nothing drags, and the cursor and hover are the page's.
+region is the rows' boxes and not the list's. And a fullscreen window has no
+drag regions at all, as in Electron: nothing drags, and the cursor and hover
+are the page's.
+
+An inline `<span>` laid out as part of a paragraph's text has no box of its
+own, so its region is one rectangle per line it wraps over: the border box of
+each line fragment. It inherits and cuts like any other box, so a `"drag"` span
+in a `"no-drag"` paragraph drags on its text, on every line, and nowhere else.
 
 What the page sees inside a drag region:
 

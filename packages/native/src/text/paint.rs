@@ -259,6 +259,9 @@ pub struct SelectableText {
     /// The bytes of a paragraph whose inline boxes ask for a `cursor`, see
     /// [`super::inline_cursor`].
     pub inline_cursors: Vec<super::inline_cursor::CursorBox>,
+    /// The inline boxes of a paragraph whose `appRegion` differs from the one around them, see
+    /// [`super::inline_region`].
+    pub inline_regions: Vec<super::inline_region::RegionBox>,
     /// The margin, border and padding of the paragraph's inline boxes along the
     /// line, see [`super::inline_insets`].
     pub inline_insets: Option<std::rc::Rc<super::inline_insets::InsetSpec>>,
@@ -297,6 +300,7 @@ impl SelectableText {
             inline_targets: None,
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
+            inline_regions: Vec::new(),
             inline_insets: None,
             inline_focus: Vec::new(),
             inline_decorations: Vec::new(),
@@ -324,6 +328,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_targets,
         inline_boxes,
         inline_cursors,
+        inline_regions,
         inline_insets,
         inline_focus,
         inline_decorations,
@@ -366,6 +371,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .then(|| super::inline_decoration::overlay(layout.clone(), rings));
     let cursor_hitboxes = (!inline_cursors.is_empty())
         .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
+    let region_hitboxes = (!inline_regions.is_empty())
+        .then(|| super::inline_region::regions(layout.clone(), inline_regions));
     let press_focus: Vec<_> = inline_focus
         .iter()
         .map(|focusable| (focusable.id, focusable.handle.clone()))
@@ -451,6 +458,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .child(glyphs)
         .children(decorations)
         .children(cursor_hitboxes)
+        .children(region_hitboxes)
         .children(super::inline_focus::anchors(inline_focus))
         .into_any_element()
 }
