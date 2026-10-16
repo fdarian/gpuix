@@ -77,6 +77,47 @@ describe.skipIf(!hasNativeTestRenderer)("Solid form", () => {
     expect(submits).toEqual([1])
   })
 
+  it("validates on Enter in the input: invalid at it, focus on it, no submit", () => {
+    const submits: number[] = []
+    const invalids: string[] = []
+    const { type, focused, idOf } = setup(() => (
+      <form onSubmit={() => submits.push(1)} onInvalid={() => invalids.push("form")}>
+        <input
+          testId="a"
+          name="a"
+          required
+          style={field}
+          onInvalid={(event) => invalids.push(`a:${event.target === idOf("a")}`)}
+        />
+      </form>
+    ))
+    type("a", "enter")
+    expect(submits).toEqual([])
+    expect(invalids).toEqual(["a:true"])
+    expect(focused()).toBe("a")
+  })
+
+  it("moves focus on Enter to the first invalid control, which may be a textarea", () => {
+    const submits: number[] = []
+    const invalids: string[] = []
+    const { type, focused, idOf } = setup(() => (
+      <form onSubmit={() => submits.push(1)}>
+        <textarea
+          testId="area"
+          name="notes"
+          required
+          style={field}
+          onInvalid={(event) => invalids.push(`area:${event.target === idOf("area")}`)}
+        />
+        <input testId="a" name="a" style={field} onInvalid={() => invalids.push("a")} />
+      </form>
+    ))
+    type("a", "enter")
+    expect(submits).toEqual([])
+    expect(invalids).toEqual(["area:true"])
+    expect(focused()).toBe("area")
+  })
+
   it("requestSubmit() validates, then submits", () => {
     let form!: HostElement
     const submits: string[][][] = []

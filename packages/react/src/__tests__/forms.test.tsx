@@ -260,6 +260,46 @@ describeNative("form", () => {
       expect(focusedTestId()).toBe("b")
     })
 
+    it("validates on Enter in the input: invalid at it, focus on it, no submit", () => {
+      mountForm(
+        <input
+          testId="a"
+          name="a"
+          required
+          style={field}
+          onInvalid={(event) => invalids.push(`a:${event.target}`)}
+        />,
+      )
+      type("a", "enter")
+      expect(submits).toEqual([])
+      expect(invalids).toEqual([`a:${idOf("a")}`])
+      expect(focusedTestId()).toBe("a")
+    })
+
+    it("moves focus on Enter to the first invalid control, which may be a textarea", () => {
+      mountForm(
+        <>
+          <textarea
+            testId="area"
+            name="notes"
+            required
+            style={field}
+            onInvalid={(event) => invalids.push(`area:${event.target}`)}
+          />
+          <input
+            testId="a"
+            name="a"
+            style={field}
+            onInvalid={(event) => invalids.push(`a:${event.target}`)}
+          />
+        </>,
+      )
+      type("a", "enter")
+      expect(submits).toEqual([])
+      expect(invalids).toEqual([`area:${idOf("area")}`])
+      expect(focusedTestId()).toBe("area")
+    })
+
     it("submits once the required controls have a value", () => {
       mountForm(<input testId="a" name="a" required style={field} />)
       type("a", "enter")
