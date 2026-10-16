@@ -11,12 +11,21 @@ use gpui::{
     ShapeRadius,
 };
 
+use super::cache::Cache;
 use super::position::{parse_box, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
+
+thread_local! {
+    static CACHE: Cache<Option<Option<ClipPath>>> = Cache::new();
+}
 
 /// `None` when the declaration is invalid. `Some(None)` is the valid `none`,
 /// which a state style needs in order to clear the base clip path.
 pub(crate) fn parse(value: &str) -> Option<Option<ClipPath>> {
+    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value)))
+}
+
+fn parse_uncached(value: &str) -> Option<Option<ClipPath>> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
         return Some(None);
@@ -191,6 +200,21 @@ fn parse_polygon(args: &str) -> Option<ClipShape> {
 mod tests {
     use super::*;
     use gpui::{px, BackgroundPositionAxis};
+
+    #[test]
+    fn a_cached_parse_equals_the_uncached_one() {
+        for value in [
+            "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+            "circle(40% at 50% 50%) padding-box",
+            "inset(10px round 4px)",
+            "none",
+            "polygon(1px)",
+            "url(#clip)",
+        ] {
+            assert_eq!(parse(value), parse_uncached(value), "{value}");
+            assert_eq!(parse(value), parse_uncached(value), "{value} on a hit");
+        }
+    }
 
     fn shape(value: &str) -> ClipShape {
         parse(value).unwrap().unwrap().shape

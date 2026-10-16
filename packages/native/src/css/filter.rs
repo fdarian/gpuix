@@ -1,6 +1,7 @@
 //! The CSS `filter` and `backdrop-filter` strings: a list of filter functions,
 //! parsed into a typed list and resolved into gpui's `FilterFunction`s.
 
+use super::cache::Cache;
 use super::dimension::{parse_length, parse_number_or_percentage, split_dimension};
 use super::syntax::{function_args, split_whitespace};
 use crate::color::ColorContext;
@@ -29,9 +30,17 @@ pub(crate) enum Filter {
     },
 }
 
+thread_local! {
+    static CACHE: Cache<Option<Vec<Filter>>> = Cache::new();
+}
+
 /// `None` when the declaration is invalid, which CSS ignores as a whole. An
 /// empty list is the valid `none`.
 pub(crate) fn parse(value: &str) -> Option<Vec<Filter>> {
+    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value)))
+}
+
+fn parse_uncached(value: &str) -> Option<Vec<Filter>> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
         return Some(Vec::new());
@@ -192,6 +201,31 @@ fn parse_angle(token: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cached_parse_equals_the_uncached_one() {
+        for value in [
+            "blur(4px) brightness(1.1) drop-shadow(0 2px 4px rgba(0, 0, 0, .3))",
+            "drop-shadow(1px 2px currentColor)",
+            "none",
+            "blur(-1px)",
+            "sparkle(1)",
+        ] {
+            assert_eq!(parse(value), parse_uncached(value), "{value}");
+            assert_eq!(parse(value), parse_uncached(value), "{value} on a hit");
+        }
+    }
+
+    #[test]
+    fn a_cached_drop_shadow_colour_still_follows_the_context() {
+        let value = "drop-shadow(1px 2px currentColor)";
+        let mut context = ColorContext::root(crate::color::Scheme::Light);
+        let black = parse_resolved(value, &context).unwrap();
+        context.current = gpui::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+        let white = parse_resolved(value, &context).unwrap();
+        assert_ne!(black, white);
+        assert_eq!(white, resolve(&parse_uncached(value).unwrap(), &context).unwrap());
+    }
 
     fn shadow(offset_x: f64, offset_y: f64, blur: f64, color: &str) -> Filter {
         Filter::DropShadow {

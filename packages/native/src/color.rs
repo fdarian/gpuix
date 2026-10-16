@@ -191,6 +191,13 @@ impl ColorContext {
     pub(crate) fn resolve(&self, value: &str) -> Option<gpui::Rgba> {
         resolve_color(value, self)
     }
+
+    /// Whether every colour resolves the same in both. `resolve_unclamped` reads
+    /// `current` and `scheme` and nothing else: keep this in step with it, because
+    /// the parse caches treat contexts that agree here as one.
+    pub(crate) fn resolves_like(&self, other: &Self) -> bool {
+        self.current == other.current && self.scheme == other.scheme
+    }
 }
 
 /// Resolve any CSS colour for an element: everything `parse_color_rgba` takes,

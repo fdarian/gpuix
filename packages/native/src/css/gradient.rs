@@ -6,11 +6,12 @@ use gpui::{
     LengthPercentage, LinearDirection, RadialShape, RadialSize, StopPosition,
 };
 
+use super::cache::ColorCache;
 use super::position::{parse_angle, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
 use crate::color::ColorContext;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GradientError {
     /// Not a valid gradient. CSS ignores the whole declaration.
     Invalid,
@@ -42,9 +43,17 @@ pub(crate) fn is_gradient(value: &str) -> bool {
         .any(|(name, _, _)| function_args(value, name).is_some())
 }
 
+thread_local! {
+    static CACHE: ColorCache<Result<Gradient, GradientError>> = ColorCache::new();
+}
+
 /// Parses one gradient. Colours resolve against `colors`, so `currentColor`,
 /// `light-dark()` and `color-mix()` work in stops.
 pub(crate) fn parse(value: &str, colors: &ColorContext) -> Result<Gradient, GradientError> {
+    CACHE.with(|cache| cache.get_or_parse(value, colors, || parse_uncached(value, colors)))
+}
+
+pub(super) fn parse_uncached(value: &str, colors: &ColorContext) -> Result<Gradient, GradientError> {
     let (args, kind, repeating) = FUNCTIONS
         .iter()
         .find_map(|(name, kind, repeating)| {
@@ -395,6 +404,63 @@ fn parse_stops(
 mod tests {
     use super::*;
     use crate::color::Scheme;
+
+    fn colors(scheme: Scheme, current: f32) -> ColorContext {
+        let mut context = ColorContext::root(scheme);
+        context.scheme = scheme;
+        context.current = gpui::Rgba { r: current, g: current, b: current, a: 1.0 };
+        context
+    }
+
+    #[test]
+    fn a_cached_parse_equals_the_uncached_one() {
+        let context = colors(Scheme::Light, 0.0);
+        for value in [
+            "linear-gradient(135deg, #ff7e5f 0%, rgba(10, 20, 30, 0.8) 100%)",
+            "radial-gradient(circle at 30% 20%, red, 20%, blue)",
+            "repeating-conic-gradient(from 90deg, red, blue 30deg)",
+            "linear-gradient(in oklch, red, blue)",
+            "linear-gradient(red)",
+            "not-a-gradient(red, blue)",
+        ] {
+            let uncached = parse_uncached(value, &context);
+            assert_eq!(parse(value, &context), uncached, "{value}");
+            assert_eq!(parse(value, &context), uncached, "{value} on a hit");
+        }
+    }
+
+    #[test]
+    fn a_cached_gradient_is_not_shared_across_colour_contexts() {
+        for value in [
+            "linear-gradient(currentColor, blue)",
+            "linear-gradient(light-dark(red, lime), blue)",
+            "linear-gradient(color-mix(in srgb, currentColor, red), blue)",
+            "linear-gradient(red 0%, light-dark(red, lime) 50%, blue)",
+        ] {
+            let contexts = [
+                colors(Scheme::Light, 0.0),
+                colors(Scheme::Light, 1.0),
+                colors(Scheme::Dark, 0.0),
+                colors(Scheme::Dark, 1.0),
+            ];
+            // Twice, so every context is also read back from a hit.
+            for _ in 0..2 {
+                for context in &contexts {
+                    assert_eq!(parse(value, context), parse_uncached(value, context), "{value}");
+                }
+            }
+            let distinct = contexts
+                .iter()
+                .map(|context| parse(value, context).unwrap())
+                .fold(Vec::<Gradient>::new(), |mut seen, gradient| {
+                    if !seen.contains(&gradient) {
+                        seen.push(gradient);
+                    }
+                    seen
+                });
+            assert!(distinct.len() >= 2, "{value} resolved alike in every context");
+        }
+    }
 
     fn parsed(value: &str) -> Gradient {
         parse(value, &ColorContext::root(Scheme::Light)).unwrap_or_else(|error| panic!("{value}: {error:?}"))
