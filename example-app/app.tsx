@@ -210,6 +210,7 @@ function Checkbox({
         borderRadius: 10,
         borderWidth: 1.5,
         borderColor: done ? C.accent : C.ghost,
+        borderStyle: 'solid',
         backgroundColor: done ? C.accent : undefined,
         display: 'flex',
         alignItems: 'center',
@@ -309,6 +310,7 @@ function Composer({ onAdd }: { onAdd: (title: string) => void }) {
         borderRadius: 12,
         borderWidth: 1,
         borderColor: C.border,
+        borderStyle: 'solid',
         backgroundColor: C.raised,
       }}
     >
@@ -439,6 +441,7 @@ export function TodoApp() {
             backgroundColor: C.sidebar,
             borderRightWidth: 1,
             borderColor: C.sidebarBorder,
+            borderRightStyle: 'solid',
           }}
         >
           <div

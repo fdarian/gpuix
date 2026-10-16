@@ -20,6 +20,7 @@ function Row({ index, body }: { index: number; body: string }) {
         backgroundColor: index % 2 === 0 ? '#1e1e2e' : '#181825',
         borderWidth: 1,
         borderColor: '#313244',
+        borderStyle: 'solid',
         hover: { backgroundColor: '#313244' },
       }}
     >

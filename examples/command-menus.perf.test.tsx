@@ -182,6 +182,7 @@ function Card({ menu, variant, far }: { menu: number; variant: Variant; far: boo
         borderRadius: 12,
         borderWidth: 1,
         borderColor: C.border,
+        borderStyle: 'solid',
         backgroundColor: C.surface,
         flexShrink: 0,
       }}
@@ -199,6 +200,7 @@ function Card({ menu, variant, far }: { menu: number; variant: Variant; far: boo
           paddingLeft: 16,
           borderTopWidth: 1,
           borderColor: C.border,
+          borderTopStyle: 'solid',
         }}
       >
         <text style={{ fontSize: 14, color: C.muted }}>{`Command menu ${menu}`}</text>

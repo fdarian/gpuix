@@ -104,6 +104,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         borderRadius: 10,
         borderWidth: 1,
         borderColor: '#ffffff1f',
+        borderStyle: 'solid',
         backgroundColor: '#ffffff09',
         overflow: 'hidden',
       }}
@@ -116,6 +117,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           paddingRight: 12,
           borderBottomWidth: 1,
           borderColor: '#ffffff1f',
+          borderBottomStyle: 'solid',
           backgroundColor: '#ffffff05',
         }}
       >

@@ -144,6 +144,7 @@ function Pill({ children }: { children: ReactNode }) {
         backgroundColor: C.pill,
         borderWidth: 1,
         borderColor: C.border,
+        borderStyle: 'solid',
       }}
     >
       {children}
@@ -746,6 +747,7 @@ function DayDivider({ label }: { label: string }) {
           borderRadius: 12,
           borderWidth: 1,
           borderColor: C.border,
+          borderStyle: 'solid',
         }}
       >
         <text style={{ fontSize: 12, color: C.muted, fontFamily: FONT }}>{label}</text>
@@ -909,6 +911,7 @@ export function MailApp() {
           flexShrink: 0,
           borderBottomWidth: 1,
           borderColor: C.divider,
+          borderBottomStyle: 'solid',
         }}
       >
         <div
@@ -943,6 +946,8 @@ export function MailApp() {
               borderLeftWidth: 1,
               borderRightWidth: threadPane === 'split' ? 1 : 0,
               borderColor: C.divider,
+              borderLeftStyle: 'solid',
+              borderRightStyle: 'solid',
             }}
           >
             <Pill>
@@ -1023,6 +1028,7 @@ export function MailApp() {
             flexDirection: 'column',
             borderRightWidth: 1,
             borderColor: C.divider,
+            borderRightStyle: 'solid',
             userSelect: 'none',
           }}
         >
@@ -1136,6 +1142,7 @@ export function MailApp() {
               height: '100%',
               borderRightWidth: threadPane === 'split' ? 1 : 0,
               borderColor: C.divider,
+              borderRightStyle: 'solid',
               overflowY: 'scroll',
               paddingLeft: 8,
               paddingRight: 8,
@@ -1202,6 +1209,7 @@ export function MailApp() {
                 backgroundColor: C.raised,
                 borderWidth: 1,
                 borderColor: C.borderStrong,
+                borderStyle: 'solid',
                 pointerEvents: 'auto',
               }}
             >

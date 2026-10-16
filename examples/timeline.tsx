@@ -514,6 +514,7 @@ const TrackHeaders = memo(function TrackHeaders({
             paddingRight: 10,
             borderBottomWidth: 1,
             borderColor: C.borderSoft,
+            borderBottomStyle: 'solid',
             backgroundColor: C.chrome,
             cursor: 'pointer',
             userSelect: 'none',
@@ -632,6 +633,7 @@ const ClipView = memo(function ClipView({
         backgroundColor: color.fill,
         borderWidth: selected ? 2 : 1,
         borderColor: selected ? C.selection : '#00000059',
+        borderStyle: 'solid',
         opacity: ghost ? 0.35 : 1,
         overflow: 'hidden',
         cursor: 'grab',
@@ -716,6 +718,7 @@ const ClipLayer = memo(function ClipLayer({
             backgroundColor: index % 2 === 0 ? C.rowEven : C.rowOdd,
             borderBottomWidth: 1,
             borderColor: C.borderSoft,
+            borderBottomStyle: 'solid',
             // Rows must not take hits, or they would block the marquee that
             // starts on the empty grid behind them.
             pointerEvents: 'none',
@@ -803,6 +806,7 @@ const MediaBin = memo(function MediaBin() {
         borderRadius: 8,
         borderWidth: 1,
         borderColor: C.border,
+        borderStyle: 'solid',
         backgroundColor: C.panel,
       }}
     >
@@ -1181,6 +1185,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
             backgroundColor: '#0B0B0E',
             borderWidth: 1,
             borderColor: C.border,
+            borderStyle: 'solid',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1202,6 +1207,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
           flexShrink: 0,
           borderTopWidth: 1,
           borderColor: C.border,
+          borderTopStyle: 'solid',
           backgroundColor: C.panel,
         }}
         onWheel={onWheel}
@@ -1222,6 +1228,8 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               borderRightWidth: 1,
               borderBottomWidth: 1,
               borderColor: C.border,
+              borderRightStyle: 'solid',
+              borderBottomStyle: 'solid',
             }}
           >
             <Label size={11}>Timeline</Label>
@@ -1240,6 +1248,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               backgroundColor: C.chrome,
               borderBottomWidth: 1,
               borderColor: C.border,
+              borderBottomStyle: 'solid',
               cursor: 'col-resize',
             }}
             ref={rulerGrab.ref}
@@ -1290,6 +1299,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
               backgroundColor: C.chrome,
               borderRightWidth: 1,
               borderColor: C.border,
+              borderRightStyle: 'solid',
             }}
           >
             <div
@@ -1395,6 +1405,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
                   backgroundColor: C.marquee,
                   borderWidth: 1,
                   borderColor: C.accent,
+                  borderStyle: 'solid',
                   pointerEvents: 'none',
                 }}
               />
@@ -1414,6 +1425,7 @@ export function TimelineApp(props: TimelineAppProps = {}) {
             paddingRight: 10,
             borderTopWidth: 1,
             borderColor: C.border,
+            borderTopStyle: 'solid',
             backgroundColor: C.chrome,
           }}
         >

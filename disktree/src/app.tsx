@@ -271,6 +271,7 @@ function PlainButton({
         backgroundColor: primary ? '#F75407E6' : CONTROL,
         borderWidth: primary ? 0 : 1,
         borderColor: '#1F153014',
+        borderStyle: 'solid',
         boxShadow: CONTROL_SHADOW,
         hover: { backgroundColor: primary ? '#FF6A20E6' : '#F4F2F8E6' },
         active: { backgroundColor: primary ? '#DE4A05E6' : '#E9E6F0E6' },
@@ -301,6 +302,7 @@ function Checkbox({ label, checked, onToggle, testId }: { label: string; checked
           backgroundColor: checked ? '#0496E8E6' : CONTROL,
           borderWidth: checked ? 0 : 1,
           borderColor: '#1F153033',
+          borderStyle: 'solid',
         }}
       >
         {checked ? <text style={{ fontSize: 10, fontWeight: 700, color: '#FFFFFF' }}>✓</text> : null}
@@ -559,6 +561,7 @@ const TileLayer = memo(function TileLayer({ tiles }: { tiles: TileDeco[] }) {
             backgroundColor: tile.fill,
             borderTopWidth: tile.strip ? 2 : 0,
             borderColor: tile.strip ?? tile.fill,
+            borderTopStyle: 'solid',
           }}
         >
           {tile.hatch ? (
@@ -593,6 +596,7 @@ function Outline({ rect, width, color }: { rect: Rect; width: number; color: str
         height: rect.h,
         borderWidth: width,
         borderColor: color,
+        borderStyle: 'solid',
         pointerEvents: 'none',
       }}
     />
@@ -665,6 +669,7 @@ function SidePanel({ state, tree, target, current, metric, insights, onOpen, onS
         backgroundColor: CARD,
         borderWidth: 1,
         borderColor: '#1F15300D',
+        borderStyle: 'solid',
         boxShadow: { offsetX: 0, offsetY: 1, blurRadius: 14, spreadRadius: 0, color: '#1F15300C' },
       }}
     >

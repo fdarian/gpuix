@@ -692,6 +692,7 @@ const CODE_CARD_STYLE = {
   borderRadius: 10,
   borderWidth: 1,
   borderColor: C.border,
+  borderStyle: "solid",
   backgroundColor: "#FFFFFF09",
   overflow: "hidden",
 } as const
@@ -702,6 +703,7 @@ const CODE_HEADER_STYLE = {
   paddingBottom: 5,
   borderBottomWidth: 1,
   borderColor: C.border,
+  borderBottomStyle: "solid",
   backgroundColor: "#FFFFFF05",
 } as const
 const CODE_BODY_STYLE = {
@@ -805,6 +807,7 @@ function Inspector(props: {
         backgroundColor: C.sidebar,
         borderLeftWidth: 1,
         borderColor: C.sidebarBorder,
+        borderLeftStyle: "solid",
         paddingTop: 14,
         paddingLeft: 14,
         paddingRight: 14,
@@ -850,6 +853,7 @@ function OverlayCard(props: {
             borderRadius: 12,
             borderWidth: 1,
             borderColor: C.borderStrong,
+            borderStyle: "solid",
             padding: 16,
             display: "flex",
             flexDirection: "column",
@@ -996,6 +1000,7 @@ const MENU = {
   backgroundColor: C.raised,
   borderWidth: 1,
   borderColor: C.borderStrong,
+  borderStyle: "solid",
   borderRadius: 12,
 } satisfies StyleDesc
 
@@ -1362,6 +1367,7 @@ function Composer(props: {
           borderRadius: 13,
           borderWidth: 1,
           borderColor: C.border,
+          borderStyle: "solid",
           paddingTop: 10,
           paddingBottom: 10,
         }}

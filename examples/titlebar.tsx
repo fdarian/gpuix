@@ -33,6 +33,7 @@ export function TitlebarApp() {
           backgroundColor: '#1D232C',
           borderBottomWidth: 1,
           borderColor: '#FFFFFF1F',
+          borderBottomStyle: 'solid',
         }}
       >
         <div

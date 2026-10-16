@@ -8,6 +8,7 @@ const glass = {
   backgroundColor: '#FFFFFF0D',
   borderWidth: 1,
   borderColor: '#FFFFFF1F',
+  borderStyle: 'solid',
   borderRadius: 16,
 }
 

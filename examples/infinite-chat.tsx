@@ -592,6 +592,7 @@ export function InfiniteChatApp({
           paddingRight: 24,
           borderBottomWidth: 1,
           borderColor: C.border,
+          borderBottomStyle: 'solid',
         }}
       >
         <text style={{ color: C.text, fontSize: 14, fontWeight: 700 }}>Infinite history</text>
@@ -632,6 +633,7 @@ export function InfiniteChatApp({
                 backgroundColor: C.raised,
                 borderWidth: 1,
                 borderColor: C.border,
+                borderStyle: 'solid',
               }}
             >
               <text style={{ color: C.secondary, fontSize: 12 }}>● Jumping to message…</text>
