@@ -134,7 +134,7 @@ pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &mut Window, cx:
         };
         // An inline box has no layout node: its padding and border are its style's.
         let insets = inline.edges.layout_insets(layout);
-        record_bounds(inline.id, bounds, insets);
+        record_bounds(window.window_handle().window_id(), inline.id, bounds, insets);
         if let Some(report) = &inline.report {
             report(bounds, insets, window, cx);
         }

@@ -311,6 +311,7 @@ mod tests {
             modifiers: Default::default(),
             hits: Vec::new(),
             over_drag_region,
+            window: gpui::WindowId::from(1),
         }
     }
 

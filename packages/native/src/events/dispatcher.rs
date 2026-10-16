@@ -29,7 +29,7 @@
 
 use std::path::PathBuf;
 
-use gpui::{Bounds, Pixels};
+use gpui::{Bounds, Pixels, WindowId};
 
 use crate::element_tree::{DroppedFile, EventModifiers, EventPayload};
 use crate::retained_tree::RetainedTree;
@@ -107,6 +107,9 @@ pub struct PointerSample {
     /// The pointer is over a window drag region (`appRegion: "drag"`). The dispatcher decides
     /// whether that hides it from the page; see `app_region::hides_pointer`.
     pub over_drag_region: bool,
+    /// The window the input came from. Painted boxes are looked up in it, because element ids
+    /// repeat across windows.
+    pub window: WindowId,
 }
 
 /// One event to deliver. The pointer position, modifiers and held buttons are
@@ -233,6 +236,7 @@ pub(super) struct Emitter<'a> {
     /// Boxes of the chain under the pointer now, and of the chain it left.
     hits: &'a [Hit],
     previous_hits: &'a [Hit],
+    window: WindowId,
     requests: PointerRequests,
     pub events: Vec<DomEvent>,
 }
@@ -249,6 +253,7 @@ impl<'a> Emitter<'a> {
             position: sample.position,
             hits: &sample.hits,
             previous_hits,
+            window: sample.window,
             requests,
             events: Vec::new(),
         }
@@ -387,7 +392,7 @@ impl<'a> Emitter<'a> {
 
     fn offset(&self, target: u64) -> Option<(f64, f64)> {
         let origin = self.origin(target)?;
-        let border = crate::automation::get_bounds(target)?;
+        let border = crate::automation::get_bounds(self.window, target)?;
         Some((
             self.position.0 - origin.0 - border.client_left,
             self.position.1 - origin.1 - border.client_top,
@@ -402,7 +407,7 @@ impl<'a> Emitter<'a> {
             .chain(self.previous_hits)
             .find(|hit| hit.id == id)
             .map(|hit| hit_origin(hit.bounds))
-            .or_else(|| crate::automation::get_bounds(id).map(|bounds| (bounds.x, bounds.y)))
+            .or_else(|| crate::automation::get_bounds(self.window, id).map(|bounds| (bounds.x, bounds.y)))
     }
 }
 
@@ -1060,6 +1065,7 @@ mod tests {
             modifiers: EventModifiers::default(),
             hits,
             over_drag_region: false,
+            window: WindowId::from(1),
         }
     }
 
@@ -1710,6 +1716,7 @@ mod tests {
     /// What the painted frame left for `id`: a box with the given border widths.
     fn painted_with_border(id: u64, border: f32) {
         crate::automation::record_bounds(
+            WindowId::from(1),
             id,
             Bounds::default(),
             gpui::LayoutInsets { border: gpui::Edges::all(gpui::px(border)), ..Default::default() },
@@ -1841,6 +1848,37 @@ mod tests {
         assert_eq!(output.events[0].path, [4, 1]);
         let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["mouseup@4"]);
+    }
+
+    fn painted_at(window: u64, id: u64, x: f32, y: f32) {
+        crate::automation::record_bounds(
+            WindowId::from(window),
+            id,
+            Bounds::new(point(px(x), px(y)), size(px(50.0), px(50.0))),
+            gpui::LayoutInsets::default(),
+        );
+    }
+
+    #[test]
+    fn a_captured_elements_offset_reads_the_bounds_of_its_own_window() {
+        let tree = tree(&listening_everywhere(&["pointermove"]));
+        // Both windows paint an element 4, as two renderers would: ids are per renderer.
+        painted_at(1, 4, 100.0, 100.0);
+        painted_at(2, 4, 500.0, 400.0);
+        // The pointer is over 3, not over the capturer 4, so its box is the only source.
+        let moved = |window: u64| PointerSample {
+            window: WindowId::from(window),
+            ..drag_move(chain_of(&[3, 2, 1]))
+        };
+        let mut offsets = Vec::new();
+        for window in [1, 2] {
+            let mut state = pressed_with_capture_on_c(&tree);
+            let output = dispatch(&mut state, &tree, &moved(window));
+            assert_eq!(names(&output), ["pointermove@4"]);
+            offsets.push(output.events[0].offset);
+        }
+        // The pointer is at (15, 30).
+        assert_eq!(offsets, [Some((-85.0, -70.0)), Some((-485.0, -370.0))]);
     }
 
     #[test]

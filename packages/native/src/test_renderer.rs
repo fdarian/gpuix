@@ -193,10 +193,17 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
 
 /// Lays out and paints a pending change before a bounds or scroll read, as the live renderer does.
 /// From a handler of the input being dispatched that is a measure pass, not a draw.
-fn draw_pending_changes() -> Result<()> {
+///
+/// Returns the window that was drawn, which is where its painted boxes are.
+fn draw_pending_changes() -> Result<gpui::WindowId> {
     window_call(|window, cx| {
         window.draw_if_dirty(cx);
+        window.window_handle().window_id()
     })
+}
+
+fn test_window_id() -> Result<gpui::WindowId> {
+    window_call(|window, _cx| window.window_handle().window_id())
 }
 
 thread_local! {
@@ -679,7 +686,7 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             return self.flush();
         }
-        draw_pending_changes()
+        draw_pending_changes().map(|_| ())
     }
 
     /// Simulate a click at the given window coordinates.
@@ -1350,7 +1357,7 @@ impl TestGpuixRenderer {
                 .map_err(Error::from_reason)?;
         self.flush()?;
         update_view_or_defer(move |view, window, cx| {
-            if view.scroll_element_into_view(id, options) {
+            if view.scroll_element_into_view(window, id, options) {
                 cx.notify();
                 window.refresh();
             }
@@ -1611,8 +1618,8 @@ impl TestGpuixRenderer {
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         self.flush()?;
-        draw_pending_changes()?;
-        Ok(crate::renderer::scroll_metrics(id).map(|metrics| metrics.to_vec()))
+        let window = draw_pending_changes()?;
+        Ok(crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec()))
     }
 
     /// The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
@@ -1753,8 +1760,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_automation_tree(&self) -> Result<String> {
         self.flush()?;
+        let window = test_window_id()?;
         let tree = self.tree.lock().unwrap();
-        let json = tree.to_automation_json(&crate::automation::all_bounds());
+        let json = tree.to_automation_json(&crate::automation::all_bounds(window));
         serde_json::to_string(&json)
             .map_err(|e| Error::from_reason(format!("JSON serialization failed: {}", e)))
     }
@@ -1766,17 +1774,19 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             self.flush()?;
         }
-        draw_pending_changes()?;
-        Ok(crate::automation::get_bounds(id).map(crate::renderer::ElementBounds::from_painted))
+        let window = draw_pending_changes()?;
+        Ok(crate::automation::get_bounds(window, id)
+            .map(crate::renderer::ElementBounds::from_painted))
     }
 
     /// Ids under the window point, topmost first. See the live renderer.
     #[napi]
     pub fn get_elements_at(&self, x: f64, y: f64) -> Result<Vec<f64>> {
         self.flush()?;
+        let window = test_window_id()?;
         let tree = self.tree.lock().unwrap();
         Ok(tree
-            .elements_at(x, y, &crate::automation::get_bounds)
+            .elements_at(x, y, &|id| crate::automation::get_bounds(window, id))
             .into_iter()
             .map(|id| id as f64)
             .collect())

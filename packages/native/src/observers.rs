@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled};
+use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled, WindowId};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
 
@@ -211,11 +211,11 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<C
 
 /// The clip edge is the padding box: the border is outside it. The border is the
 /// one the ancestor painted with, so a state style that changes it moves the clip.
-fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
+fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
     ancestors
         .iter()
         .filter_map(|ancestor| {
-            let painted = crate::automation::get_bounds(ancestor.id)?;
+            let painted = crate::automation::get_bounds(window, ancestor.id)?;
             let (x, y) = (painted.x as f32, painted.y as f32);
             let (width, height) = (painted.width as f32, painted.height as f32);
             let (left, right) = if ancestor.clip_x {
@@ -280,7 +280,7 @@ pub(crate) fn reporter(
             report_resize(id, bounds, padding, border, &reports, &callback, cx);
         }
         if intersection {
-            let clips = clip_rects(&ancestors);
+            let clips = clip_rects(window.window_handle().window_id(), &ancestors);
             report_intersection(id, bounds, border, clips, viewport, &reports, &callback, cx);
         }
     }))
@@ -453,13 +453,14 @@ pub(crate) fn frame_sweep(
 ) -> impl IntoElement {
     canvas(
         |_, _, _| (),
-        move |_, _, _, cx| {
+        move |_, _, window, cx| {
             if !reports.borrow().observers.is_observing() {
                 return;
             }
             let reports = reports.clone();
             let callback = callback.clone();
-            cx.defer(move |cx| sweep(&reports, &callback, cx));
+            let window = window.window_handle().window_id();
+            cx.defer(move |cx| sweep(window, &reports, &callback, cx));
         },
     )
     .absolute()
@@ -467,7 +468,12 @@ pub(crate) fn frame_sweep(
     .h(px(0.0))
 }
 
-fn sweep(reports: &SharedPaintReports, callback: &Option<EventCallback>, cx: &mut App) {
+fn sweep(
+    window: WindowId,
+    reports: &SharedPaintReports,
+    callback: &Option<EventCallback>,
+    cx: &mut App,
+) {
     let Some(callback) = callback else {
         return;
     };
@@ -476,13 +482,13 @@ fn sweep(reports: &SharedPaintReports, callback: &Option<EventCallback>, cx: &mu
     {
         let mut reports = reports.borrow_mut();
         for (id, last) in reports.observers.resize.iter_mut() {
-            if crate::automation::get_bounds(*id).is_none() && *last != ResizeSample::default() {
+            if crate::automation::get_bounds(window, *id).is_none() && *last != ResizeSample::default() {
                 *last = ResizeSample::default();
                 gone_resize.push(*id);
             }
         }
         for (id, last) in reports.observers.intersection.iter_mut() {
-            if last.present && crate::automation::get_bounds(*id).is_none() {
+            if last.present && crate::automation::get_bounds(window, *id).is_none() {
                 last.present = false;
                 gone_intersection.push(*id);
             }
@@ -546,6 +552,7 @@ mod tests {
         };
         // The element's style says 2px; a state style made it 6px at paint.
         crate::automation::record_bounds(
+            gpui::WindowId::from(1),
             1,
             bounds,
             LayoutInsets {
@@ -556,7 +563,7 @@ mod tests {
 
         let ancestors = clipping_ancestors(&tree, 2, None);
         assert_eq!(ancestors.len(), 1);
-        let clips = clip_rects(&ancestors);
+        let clips = clip_rects(gpui::WindowId::from(1), &ancestors);
         assert_eq!(clips.len(), 1);
         assert_eq!(clips[0].0, 1);
         assert_eq!(

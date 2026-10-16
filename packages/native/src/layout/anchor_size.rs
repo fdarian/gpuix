@@ -10,6 +10,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use gpui::WindowId;
+
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::{AnchorAxis, DimensionValue, StyleDesc};
 
@@ -62,10 +64,10 @@ pub(crate) fn record(anchored_id: u64, size: (i32, i32)) -> bool {
 /// Starts a build of the layer. When no placement has measured the trigger yet, the
 /// trigger's size from the last paint stands in, so a layer mounted under a trigger on
 /// screen builds at the right size in its first frame.
-pub(crate) fn begin_build(tree: &RetainedTree, anchored: &RetainedElement) {
+pub(crate) fn begin_build(window: WindowId, tree: &RetainedTree, anchored: &RetainedElement) {
     let painted = ANCHORS
         .with(|anchors| anchors.borrow().get(&anchored.id).is_none_or(|info| info.size.is_none()))
-        .then(|| painted_trigger_size(tree, anchored))
+        .then(|| painted_trigger_size(window, tree, anchored))
         .flatten();
     ANCHORS.with(|anchors| {
         let mut anchors = anchors.borrow_mut();
@@ -79,7 +81,11 @@ pub(crate) fn begin_build(tree: &RetainedTree, anchored: &RetainedElement) {
 
 /// The layout parent of an `<anchored>` is the trigger: its nearest ancestor that is
 /// not `display: contents`.
-fn painted_trigger_size(tree: &RetainedTree, anchored: &RetainedElement) -> Option<(i32, i32)> {
+fn painted_trigger_size(
+    window: WindowId,
+    tree: &RetainedTree,
+    anchored: &RetainedElement,
+) -> Option<(i32, i32)> {
     let mut parent = anchored.parent?;
     while let Some(element) = tree.elements.get(&parent) {
         if !crate::layout::contents::is_display_contents(element) {
@@ -87,7 +93,7 @@ fn painted_trigger_size(tree: &RetainedTree, anchored: &RetainedElement) -> Opti
         }
         parent = element.parent?;
     }
-    let bounds = crate::automation::get_bounds(parent)?;
+    let bounds = crate::automation::get_bounds(window, parent)?;
     Some((bounds.width.round() as i32, bounds.height.round() as i32))
 }
 
@@ -156,6 +162,7 @@ mod tests {
 
     fn paint(id: u64, width: f32, height: f32) {
         crate::automation::record_bounds(
+            WindowId::from(1),
             id,
             gpui::Bounds::new(
                 gpui::point(gpui::px(10.0), gpui::px(10.0)),
@@ -191,7 +198,7 @@ mod tests {
         assert!(uses_anchor_size(901));
         let mut tree = RetainedTree::new();
         tree.create_element(901, "anchored".to_string());
-        begin_build(&tree, &tree.elements[&901]);
+        begin_build(WindowId::from(1), &tree, &tree.elements[&901]);
         assert!(!uses_anchor_size(901));
         forget(901);
     }
@@ -256,7 +263,7 @@ mod tests {
     fn the_first_build_starts_from_the_trigger_painted_last_frame() {
         let tree = mounted(911, None);
         paint(910, 140.4, 29.6);
-        begin_build(&tree, &tree.elements[&911]);
+        begin_build(WindowId::from(1), &tree, &tree.elements[&911]);
         let resolved = resolve(911, &style_with(anchor(AnchorAxis::Width), anchor(AnchorAxis::Height))).unwrap();
         assert_eq!(resolved.width, Some(DimensionValue::Pixels(140.0)));
         assert_eq!(resolved.min_height, Some(DimensionValue::Pixels(30.0)));
@@ -271,7 +278,7 @@ mod tests {
         let tree = mounted(921, None);
         record(921, (200, 50));
         paint(920, 140.0, 30.0);
-        begin_build(&tree, &tree.elements[&921]);
+        begin_build(WindowId::from(1), &tree, &tree.elements[&921]);
         let resolved = resolve(921, &style_with(anchor(AnchorAxis::Width), None)).unwrap();
         assert_eq!(resolved.width, Some(DimensionValue::Pixels(200.0)));
         forget(921);
@@ -284,7 +291,7 @@ mod tests {
         tree.append_child(929, 930);
         paint(929, 77.0, 20.0);
         paint(930, 5.0, 5.0);
-        begin_build(&tree, &tree.elements[&931]);
+        begin_build(WindowId::from(1), &tree, &tree.elements[&931]);
         let resolved = resolve(931, &style_with(anchor(AnchorAxis::Width), None)).unwrap();
         assert_eq!(resolved.width, Some(DimensionValue::Pixels(77.0)));
         forget(931);
@@ -293,7 +300,7 @@ mod tests {
     #[test]
     fn stays_transparent_when_the_trigger_has_not_painted() {
         let tree = mounted(941, None);
-        begin_build(&tree, &tree.elements[&941]);
+        begin_build(WindowId::from(1), &tree, &tree.elements[&941]);
         let resolved = resolve(941, &style_with(anchor(AnchorAxis::Width), None)).unwrap();
         assert_eq!(resolved.opacity, Some(0.0));
         forget(941);

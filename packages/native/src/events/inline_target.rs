@@ -85,6 +85,7 @@ mod tests {
             modifiers: EventModifiers::default(),
             hits,
             over_drag_region: false,
+            window: gpui::WindowId::from(1),
         }
     }
 
@@ -197,7 +198,7 @@ mod tests {
     fn the_offset_is_measured_from_the_first_fragment_of_the_span() {
         let tree = paragraph(&[(4, "mousedown")]);
         // A span is recorded by its paragraph, with the padding and border it has.
-        crate::automation::record_bounds(4, Bounds::default(), gpui::LayoutInsets::default());
+        crate::automation::record_bounds(gpui::WindowId::from(1), 4, Bounds::default(), gpui::LayoutInsets::default());
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &down(over(4)));
         assert_eq!(output.events[0].offset, Some((5.0, 10.0)));

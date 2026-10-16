@@ -261,8 +261,8 @@ fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Beha
 ///
 /// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a
 /// window command) so the layout is never older than the tree.
-pub(crate) fn scroll_metrics(id: u64) -> Option<[f64; 6]> {
-    let painted = crate::automation::get_bounds(id).map(|b| (b.width as f32, b.height as f32));
+pub(crate) fn scroll_metrics(window: gpui::WindowId, id: u64) -> Option<[f64; 6]> {
+    let painted = crate::automation::get_bounds(window, id).map(|b| (b.width as f32, b.height as f32));
     SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
 }
 
@@ -787,7 +787,7 @@ async fn run_ui_commands(
                 gpui::AnyWindowHandle::from(window)
                     .update(cx, |_view, window, cx| window.draw_if_dirty(cx))?;
                 window.update(cx, move |view, window, cx| {
-                    if view.scroll_element_into_view(id, options) {
+                    if view.scroll_element_into_view(window, id, options) {
                         cx.notify();
                         window.refresh();
                     }
@@ -796,7 +796,7 @@ async fn run_ui_commands(
             UiCommand::GetScrollMetrics { id, response } => {
                 gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
                     window.draw_if_dirty(cx);
-                    response.send(scroll_metrics(id)).ok();
+                    response.send(scroll_metrics(window.window_handle().window_id(), id)).ok();
                 })
             }
             UiCommand::ScrollByKey { key, shift, response } => {
@@ -889,13 +889,13 @@ async fn run_ui_commands(
             UiCommand::GetAutomationBounds { response } => {
                 gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
                     window.draw_if_dirty(cx);
-                    response.send(crate::automation::all_bounds()).ok();
+                    response.send(crate::automation::all_bounds(window.window_handle().window_id())).ok();
                 })
             }
             UiCommand::GetElementBounds { id, response } => {
                 gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
                     window.draw_if_dirty(cx);
-                    response.send(crate::automation::get_bounds(id)).ok();
+                    response.send(crate::automation::get_bounds(window.window_handle().window_id(), id)).ok();
                 })
             }
             UiCommand::FocusElement(id) => window.update(cx, move |view, window, cx| {
@@ -1298,19 +1298,28 @@ impl GpuixRenderer {
     /// not exist yet right after a commit. Call it before locking `tree`: the
     /// draw builds the view from it. The display-link step that follows only
     /// presents.
+    ///
+    /// Returns the window that was drawn, which is where its painted boxes are. `None` before
+    /// `init`: nothing was painted.
     #[cfg(target_os = "macos")]
-    fn draw_pending_changes(&self) -> Result<()> {
+    fn draw_pending_changes(&self) -> Result<Option<gpui::WindowId>> {
         if !*self.initialized.lock().unwrap() {
-            return Ok(());
+            return Ok(None);
         }
-        update_window_without_view(|window, cx| window.draw_if_dirty(cx)).map(|_| ())
+        update_window_without_view(|window, cx| {
+            window.draw_if_dirty(cx);
+            window.window_handle().window_id()
+        })
+        .map(Some)
     }
 
     fn automation_bounds(&self) -> Result<HashMap<u64, crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
         {
-            self.draw_pending_changes()?;
-            return Ok(crate::automation::all_bounds());
+            return Ok(self
+                .draw_pending_changes()?
+                .map(crate::automation::all_bounds)
+                .unwrap_or_default());
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1332,9 +1341,11 @@ impl GpuixRenderer {
     fn elements_at(&self, x: f64, y: f64) -> Result<Vec<u64>> {
         #[cfg(target_os = "macos")]
         {
-            self.draw_pending_changes()?;
+            let window = self.draw_pending_changes()?;
             let tree = self.tree.lock().unwrap();
-            return Ok(tree.elements_at(x, y, &crate::automation::get_bounds));
+            return Ok(tree.elements_at(x, y, &|id| {
+                window.and_then(|window| crate::automation::get_bounds(window, id))
+            }));
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1359,8 +1370,9 @@ impl GpuixRenderer {
     fn element_bounds(&self, id: u64) -> Result<Option<crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
         {
-            self.draw_pending_changes()?;
-            return Ok(crate::automation::get_bounds(id));
+            return Ok(self
+                .draw_pending_changes()?
+                .and_then(|window| crate::automation::get_bounds(window, id)));
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -3030,7 +3042,7 @@ impl GpuixRenderer {
             // Before `update_window_or_defer`, which leases the view the draw needs.
             self.draw_pending_changes()?;
             update_window_or_defer(move |view, window, cx| {
-                if view.scroll_element_into_view(id, options) {
+                if view.scroll_element_into_view(window, id, options) {
                     cx.notify();
                     window.refresh();
                 }
@@ -3092,8 +3104,10 @@ impl GpuixRenderer {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
         {
-            self.draw_pending_changes()?;
-            return Ok(scroll_metrics(id).map(|metrics| metrics.to_vec()));
+            return Ok(self
+                .draw_pending_changes()?
+                .and_then(|window| scroll_metrics(window, id))
+                .map(|metrics| metrics.to_vec()));
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -3947,6 +3961,12 @@ fn start_web_app(
     Ok(())
 }
 
+/// The web window, where its painted boxes are. `None` before it exists: nothing was painted.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn web_window_id() -> Option<gpui::WindowId> {
+    WEB_WINDOW.with(|window| window.borrow().as_ref().map(|window| window.window_id()))
+}
+
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn web_element_id(id: f64) -> Result<u64, wasm_bindgen::JsValue> {
     raw_element_id(id).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
@@ -4389,7 +4409,7 @@ impl WebGpuixRenderer {
         )
         .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
         update_web_window(move |view, window, cx| {
-            if view.scroll_element_into_view(id, options) {
+            if view.scroll_element_into_view(window, id, options) {
                 cx.notify();
                 window.refresh();
             }
@@ -4601,7 +4621,9 @@ impl WebGpuixRenderer {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = getAutomationTree)]
     pub fn get_automation_tree(&self) -> Result<String, wasm_bindgen::JsValue> {
         notify_web();
-        let bounds = crate::automation::all_bounds();
+        let bounds = web_window_id()
+            .map(crate::automation::all_bounds)
+            .unwrap_or_default();
         let tree = self.tree.lock().unwrap();
         serde_json::to_string(&tree.to_automation_json(&bounds)).map_err(|error| {
             wasm_bindgen::JsValue::from_str(&format!("JSON serialization failed: {error}"))
@@ -4613,7 +4635,9 @@ impl WebGpuixRenderer {
         &self,
         element_id: f64,
     ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
-        let Some(bounds) = crate::automation::get_bounds(web_element_id(element_id)?) else {
+        let id = web_element_id(element_id)?;
+        let Some(bounds) = web_window_id().and_then(|window| crate::automation::get_bounds(window, id))
+        else {
             return Ok(wasm_bindgen::JsValue::NULL);
         };
         element_bounds_js(bounds)
@@ -5484,8 +5508,14 @@ impl GpuixView {
     /// box rather than its index among its siblings, so a descendant of any depth works.
     /// An element that has not been painted has no box to align, which only a virtual list's row
     /// can do without (it goes to the top). False if nothing scrolled.
-    pub(crate) fn scroll_element_into_view(&self, id: u64, options: crate::scroll::IntoView) -> bool {
-        let mut target = crate::automation::get_bounds(id).map(|painted| crate::scroll::Rect {
+    pub(crate) fn scroll_element_into_view(
+        &self,
+        window: &gpui::Window,
+        id: u64,
+        options: crate::scroll::IntoView,
+    ) -> bool {
+        let window_id = window.window_handle().window_id();
+        let mut target = crate::automation::get_bounds(window_id, id).map(|painted| crate::scroll::Rect {
             x: painted.x as f32,
             y: painted.y as f32,
             width: painted.width as f32,
@@ -5500,7 +5530,7 @@ impl GpuixView {
             if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
                 if let Some(index) = entry.logical_index_of(child) {
                     let viewport = entry.state.viewport_bounds();
-                    let row = crate::automation::get_bounds(child);
+                    let row = crate::automation::get_bounds(window_id, child);
                     let offset = crate::scroll::virtual_list_offset(
                         options.block,
                         row.map(|row| (row.y as f32, row.height as f32)),
@@ -6595,7 +6625,7 @@ impl GpuixView {
         let Some(id) = self.focused_element_id(window) else {
             return;
         };
-        if self.scroll_element_into_view(id, crate::scroll::IntoView::NEAREST) {
+        if self.scroll_element_into_view(window, id, crate::scroll::IntoView::NEAREST) {
             cx.notify();
             window.refresh();
         }
@@ -7408,7 +7438,7 @@ pub(crate) fn build_element(
                 .flatten();
             let style = sized_style.as_ref().or(style);
             if custom_type == "anchored" {
-                crate::layout::anchor_size::begin_build(tree, element);
+                crate::layout::anchor_size::begin_build(window.window_handle().window_id(), tree, element);
             }
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = if is_svg {
@@ -10564,7 +10594,7 @@ mod font_size_cascade_tests {
         }
 
         fn height(&self, id: u64) -> f64 {
-            crate::automation::get_bounds(id)
+            crate::automation::get_bounds(self.window.window_id(), id)
                 .unwrap_or_else(|| panic!("element {id} was not painted"))
                 .height
         }
@@ -10701,7 +10731,7 @@ mod font_size_cascade_tests {
             ],
         );
         page.assert_font_sizes(&[(2, 20.0), (3, 30.0)]);
-        let bounds = crate::automation::get_bounds(2).unwrap();
+        let bounds = crate::automation::get_bounds(page.window.window_id(), 2).unwrap();
         let inside = gpui::point(
             gpui::px((bounds.x + bounds.width / 2.0) as f32),
             gpui::px((bounds.y + 1.0) as f32),
@@ -10821,7 +10851,7 @@ mod font_size_cascade_tests {
             ],
         );
         assert_line_heights(&page, &[(2, 20.0)]);
-        let bounds = crate::automation::get_bounds(2).unwrap();
+        let bounds = crate::automation::get_bounds(page.window.window_id(), 2).unwrap();
         let inside = gpui::point(
             gpui::px((bounds.x + bounds.width / 2.0) as f32),
             gpui::px((bounds.y + 1.0) as f32),
@@ -10839,8 +10869,8 @@ mod font_size_cascade_tests {
         Node { id, element_type, parent: Some(parent), style }
     }
 
-    fn element_height(id: u64) -> f64 {
-        crate::automation::get_bounds(id)
+    fn element_height(page: &Page, id: u64) -> f64 {
+        crate::automation::get_bounds(page.window.window_id(), id)
             .unwrap_or_else(|| panic!("element {id} was not painted"))
             .height
     }
@@ -10860,9 +10890,9 @@ mod font_size_cascade_tests {
             page.tree.lock().unwrap().set_custom_prop(id, "code".to_owned(), serde_json::json!("a\nb"));
         }
         page.draw(cx);
-        assert_eq!(element_height(2), 40.0);
-        assert_eq!(element_height(3), 60.0);
-        assert_eq!(element_height(4), 60.0);
+        assert_eq!(element_height(&page, 2), 40.0);
+        assert_eq!(element_height(&page, 3), 60.0);
+        assert_eq!(element_height(&page, 4), 60.0);
     }
 
     #[gpui::test]
@@ -10878,10 +10908,10 @@ mod font_size_cascade_tests {
                 custom(6, 1, "textarea", r#"{"fontSize": 10, "lineHeight": "normal"}"#),
             ],
         );
-        assert_eq!(element_height(2), 20.0);
-        assert_eq!(element_height(3), 30.0);
-        assert_eq!(element_height(4), 30.0);
-        assert_eq!(element_height(6), element_height(5));
+        assert_eq!(element_height(&page, 2), 20.0);
+        assert_eq!(element_height(&page, 3), 30.0);
+        assert_eq!(element_height(&page, 4), 30.0);
+        assert_eq!(element_height(&page, 6), element_height(&page, 5));
     }
 
     #[gpui::test]
@@ -10986,7 +11016,7 @@ mod dimension_length_tests {
         }
 
         fn bounds(&self, id: u64) -> crate::automation::ElementBounds {
-            crate::automation::get_bounds(id).unwrap_or_else(|| panic!("element {id} was not painted"))
+            crate::automation::get_bounds(self.window.window_id(), id).unwrap_or_else(|| panic!("element {id} was not painted"))
         }
 
         /// `(width, height)` of `id`.
@@ -12215,7 +12245,7 @@ mod inline_run_size_tests {
             window.draw(app).clear(app);
         })
         .unwrap();
-        crate::automation::get_bounds(1).expect("the container was painted").height
+        crate::automation::get_bounds(window.window_id(), 1).expect("the container was painted").height
     }
 
     const CONTAINER: &str = r#"{"width": 120, "fontSize": 10, "lineHeight": 1.5}"#;
@@ -12321,10 +12351,10 @@ mod inline_run_size_tests {
             })
             .unwrap();
         Spans {
-            container: crate::automation::get_bounds(1).expect("the container was painted"),
+            container: crate::automation::get_bounds(window.window_id(), 1).expect("the container was painted"),
             spans: (0..spans.len())
                 .map(|ix| {
-                    crate::automation::get_bounds(10 + 2 * ix as u64)
+                    crate::automation::get_bounds(window.window_id(), 10 + 2 * ix as u64)
                         .expect("the span was painted")
                 })
                 .collect(),
@@ -12392,7 +12422,7 @@ mod inline_run_size_tests {
     /// layout the paragraph was painted in.
     fn hits_over(
         cx: &mut gpui::TestAppContext,
-        probe: impl Fn(&gpui::TextLayout) -> Vec<gpui::Point<gpui::Pixels>>,
+        probe: impl Fn(&gpui::TextLayout, gpui::WindowId) -> Vec<gpui::Point<gpui::Pixels>>,
     ) -> (gpui::TextLayout, Vec<Vec<u64>>) {
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
         {
@@ -12430,7 +12460,7 @@ mod inline_run_size_tests {
             window.draw(app).clear(app);
             let id = window.window_handle().window_id();
             let layout = crate::text::inline_hit::painted_layout(id, 1);
-            let hits = probe(&layout)
+            let hits = probe(&layout, id)
                 .into_iter()
                 .map(|point| {
                     crate::text::inline_hit::boxes_under(id, 1, point)
@@ -12448,25 +12478,25 @@ mod inline_run_size_tests {
     fn the_pointer_is_on_the_span_of_the_row_it_is_in_when_rows_differ_in_height(
         cx: &mut gpui::TestAppContext,
     ) {
-        let top = |span: u64| crate::automation::get_bounds(span).unwrap().y as f32;
-        let height = |span: u64| crate::automation::get_bounds(span).unwrap().height as f32;
+        let top = |window, span: u64| crate::automation::get_bounds(window, span).unwrap().y as f32;
+        let height = |window, span: u64| crate::automation::get_bounds(window, span).unwrap().height as f32;
         // The pointer over the first glyph of a row, `y` below the top of the window.
         let at = |layout: &gpui::TextLayout, y: f32| {
             gpui::point(layout.bounds().left() + gpui::px(3.0), gpui::px(y))
         };
-        let (layout, hits) = hits_over(cx, |layout| {
+        let (layout, hits) = hits_over(cx, |layout, window| {
             vec![
                 // The large span's content area is in the first, 45px, row. Under
                 // rows of 15px, these points are in the rows that follow it.
-                at(layout, top(3) + height(3) / 2.0),
-                at(layout, top(3) + height(3) - 1.0),
+                at(layout, top(window, 3) + height(window, 3) / 2.0),
+                at(layout, top(window, 3) + height(window, 3) - 1.0),
                 // Under the content area of the large span, in the line box of its row.
                 at(layout, 44.0),
                 // The content area of the span of the next row, just past the end of the
                 // tall one, and the line box over it.
-                at(layout, top(5) + 0.5),
-                at(layout, top(5) - 0.5),
-                at(layout, top(7) + height(7) / 2.0),
+                at(layout, top(window, 5) + 0.5),
+                at(layout, top(window, 5) - 0.5),
+                at(layout, top(window, 7) + height(window, 7) / 2.0),
             ]
         });
         let text = layout.text();

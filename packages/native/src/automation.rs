@@ -16,7 +16,7 @@ use std::time::Duration;
 use gpui::{
     canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, LayoutInsets,
     Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput,
-    Styled, Window,
+    Styled, Window, WindowId,
 };
 use web_time::Instant;
 
@@ -51,7 +51,9 @@ impl ElementBounds {
 }
 
 thread_local! {
-    static BOUNDS: RefCell<HashMap<u64, ElementBounds>> = RefCell::new(HashMap::new());
+    /// Keyed by window as well as element id: element ids are only unique within one renderer,
+    /// so two windows would otherwise read each other's boxes.
+    static BOUNDS: RefCell<HashMap<(WindowId, u64), ElementBounds>> = RefCell::new(HashMap::new());
 }
 
 /// Zero-size canvas. Keep it ahead of the app subtree under the root.
@@ -63,8 +65,9 @@ thread_local! {
 pub fn bounds_frame_reset() -> impl IntoElement {
     canvas(
         |_, _, _| (),
-        move |_, _, _, _| {
-            BOUNDS.with(|cell| cell.borrow_mut().clear());
+        move |_, _, window, _| {
+            let window = window.window_handle().window_id();
+            BOUNDS.with(|cell| cell.borrow_mut().retain(|key, _| key.0 != window));
         },
     )
     .absolute()
@@ -85,7 +88,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 ) -> E {
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
-        record_bounds(id, bounds, insets);
+        record_bounds(window.window_handle().window_id(), id, bounds, insets);
         if let Some(report) = &report {
             report(bounds, insets, window, cx);
         }
@@ -119,7 +122,7 @@ where
 {
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
-        record_bounds(id, bounds, insets);
+        record_bounds(window.window_handle().window_id(), id, bounds, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(bounds, selectable);
@@ -137,19 +140,25 @@ where
 /// painted under.
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
-pub fn record_bounds(id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
+pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
     BOUNDS.with(|cell| {
         cell.borrow_mut()
-            .insert(id, ElementBounds::from_gpui(bounds, insets));
+            .insert((window, id), ElementBounds::from_gpui(bounds, insets));
     });
 }
 
-pub fn get_bounds(id: u64) -> Option<ElementBounds> {
-    BOUNDS.with(|cell| cell.borrow().get(&id).copied())
+pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
+    BOUNDS.with(|cell| cell.borrow().get(&(window, id)).copied())
 }
 
-pub fn all_bounds() -> HashMap<u64, ElementBounds> {
-    BOUNDS.with(|cell| cell.borrow().clone())
+pub fn all_bounds(window: WindowId) -> HashMap<u64, ElementBounds> {
+    BOUNDS.with(|cell| {
+        cell.borrow()
+            .iter()
+            .filter(|(key, _)| key.0 == window)
+            .map(|(key, bounds)| (key.1, *bounds))
+            .collect()
+    })
 }
 
 enum ClockMode {

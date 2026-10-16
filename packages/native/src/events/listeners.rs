@@ -80,6 +80,7 @@ fn sample(
         modifiers: EventModifiers::from(modifiers),
         hits: refine(window.window_handle().window_id(), host_hit_chain(window), position),
         over_drag_region: app_region::in_drag_region(window, position),
+        window: window.window_handle().window_id(),
     }
 }
 
