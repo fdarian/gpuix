@@ -39,4 +39,22 @@ describe.skipIf(!hasNativeTestRenderer)("Solid pointer lock", () => {
     expect(targets[1]).toBeNull()
     expect(targets[2]).toBe(box)
   })
+
+  it("reads movementX and movementY as 0 on every mouse event but a move", () => {
+    const seen: string[] = []
+    const app = createTestRoot()
+    app.render(() => (
+      <div
+        style={{ width: 100, height: 100 }}
+        onMouseMove={(event) => seen.push(`${event.type}:${event.movementX},${event.movementY}`)}
+        onMouseDown={(event) => seen.push(`${event.type}:${event.movementX},${event.movementY}`)}
+        onClick={(event) => seen.push(`${event.type}:${event.movementX},${event.movementY}`)}
+      />
+    ))
+
+    app.renderer.nativeSimulateMouseMove(20, 30, undefined, { x: 6, y: -2 })
+    app.renderer.nativeSimulateClick(20, 30)
+
+    expect(seen).toEqual(["mousemove:6,-2", "mousedown:0,0", "click:0,0"])
+  })
 })

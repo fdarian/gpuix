@@ -191,8 +191,9 @@ impl Output {
                 client_y: Some(position.1),
                 offset_x: event.offset.map(|offset| offset.0),
                 offset_y: event.offset.map(|offset| offset.1),
-                movement_x: event.movement.map(|movement| movement.0),
-                movement_y: event.movement.map(|movement| movement.1),
+                // Only a move has motion; the DOM reads 0 on every other mouse event.
+                movement_x: Some(event.movement.map_or(0.0, |movement| movement.0)),
+                movement_y: Some(event.movement.map_or(0.0, |movement| movement.1)),
                 button: event.button,
                 is_right_click: event.button.map(|button| button == SECONDARY_BUTTON),
                 buttons: Some(buttons),
@@ -2769,7 +2770,45 @@ mod tests {
 
         let pressed = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
         let payloads = pressed.into_payloads();
-        assert_eq!((payloads[0].movement_x, payloads[0].movement_y), (None, None));
+        assert_eq!((payloads[0].movement_x, payloads[0].movement_y), (Some(0.0), Some(0.0)));
+    }
+
+    #[test]
+    fn every_pointer_and_mouse_event_but_a_move_reads_zero_motion() {
+        let tree = tree(&listening_everywhere(&[
+            "pointerover",
+            "mouseenter",
+            "pointerdown",
+            "mousedown",
+            "pointerup",
+            "mouseup",
+            "click",
+            "wheel",
+        ]));
+        let mut state = PointerState::default();
+        let hits = chain_of(&[3, 2, 1]);
+        // A move that enters the chain: its boundary events are not moves.
+        let entered = PointerSample {
+            movement: (5.0, -1.0),
+            ..mv(hits.clone())
+        };
+        let mut payloads = dispatch(&mut state, &tree, &entered).into_payloads();
+        payloads.extend(dispatch(&mut state, &tree, &down(0, 1, hits.clone())).into_payloads());
+        payloads.extend(dispatch(&mut state, &tree, &up(0, 1, hits.clone())).into_payloads());
+        payloads.extend(dispatch(&mut state, &tree, &wheel((0.0, 8.0), hits)).into_payloads());
+
+        let types: Vec<&str> = payloads.iter().map(|payload| payload.event_type.as_str()).collect();
+        for expected in ["pointerover", "mouseenter", "pointerdown", "mouseup", "click", "wheel"] {
+            assert!(types.contains(&expected), "{expected} in {types:?}");
+        }
+        for payload in &payloads {
+            assert_eq!(
+                (payload.movement_x, payload.movement_y),
+                (Some(0.0), Some(0.0)),
+                "{}",
+                payload.event_type
+            );
+        }
     }
 
     #[test]

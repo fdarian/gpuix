@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import type { EventPayload } from "@gpuix/native"
 import { ReorderController, createReorderDrag } from "@gpuix/native/host"
-import type { HostPointerEvent, HostPointerMoveEvent, ReorderAxis } from "@gpuix/native/host"
+import type { HostPointerEvent, ReorderAxis } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import type { SolidHostProps } from "../jsx-runtime.js"
@@ -121,7 +121,7 @@ function Item<Value>(props: ReorderItemProps<Value>): JSX.Element {
         own.onPointerDown?.(event)
         controller.pointerDown(own.value, asPayload(event))
       },
-      onPointerMove(event: HostPointerMoveEvent) {
+      onPointerMove(event: HostPointerEvent) {
         own.onPointerMove?.(event)
         controller.pointerMove(asPayload(event))
       },

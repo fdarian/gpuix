@@ -307,6 +307,38 @@ describeNative("pointer lock", () => {
       ])
     })
 
+    it("reads 0 on every other mouse event, even in the input that moved", () => {
+      const seen: Array<[string, number, number]> = []
+      const track = (event: Moved) => seen.push([event.type, event.movementX, event.movementY])
+      testRoot.render(
+        <div
+          style={{ width: 200, height: 200 }}
+          onPointerOver={track}
+          onMouseEnter={track}
+          onPointerDown={track}
+          onMouseDown={track}
+          onPointerUp={track}
+          onMouseUp={track}
+          onClick={track}
+          onWheel={track}
+          onPointerMove={track}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseMove(30, 40, undefined, { x: 4, y: -3 })
+      testRoot.renderer.nativeSimulateMouseDown(30, 40)
+      testRoot.renderer.nativeSimulateMouseUp(30, 40)
+      testRoot.renderer.nativeSimulateScrollWheel(30, 40, 0, -10)
+
+      const moved = seen.filter(([type]) => type === "pointermove")
+      expect(moved).toEqual([["pointermove", 4, -3]])
+      const others = seen.filter(([type]) => type !== "pointermove")
+      expect(others.map(([type]) => type)).toEqual(
+        expect.arrayContaining(["pointerover", "mouseenter", "pointerdown", "mouseup", "click", "wheel"]),
+      )
+      for (const [, movementX, movementY] of others) expect([movementX, movementY]).toEqual([0, 0])
+    })
+
     it("keeps reporting motion while the pointer is locked and clientX is frozen", () => {
       const moves: Moved[] = []
       testRoot.render(

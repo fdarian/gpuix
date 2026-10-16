@@ -227,8 +227,9 @@ pub struct EventPayload {
     pub offset_y: Option<f64>,
 
     /// Pointer motion since the previous move, in logical pixels, the DOM
-    /// `movementX`/`movementY`. Populated for: pointermove, mousemove. Zero where
-    /// the platform reports no relative motion.
+    /// `movementX`/`movementY`. Set on every pointer, mouse, wheel and drag
+    /// event: the motion on pointermove and mousemove, 0 on the rest. Zero on a
+    /// move too where the platform reports no relative motion.
     pub movement_x: Option<f64>,
     pub movement_y: Option<f64>,
 

@@ -26,6 +26,8 @@ pub fn click_payload(path: Vec<u64>) -> EventPayload {
         button: Some(0),
         is_right_click: Some(false),
         buttons: Some(0),
+        movement_x: Some(0.0),
+        movement_y: Some(0.0),
         detail: Some(0),
         click_count: Some(0),
         pointer_id: Some(NON_POINTER_ID),
@@ -60,6 +62,7 @@ mod tests {
         assert_eq!(payload.pointer_type.as_deref(), Some(""));
         assert_eq!(payload.button, Some(0));
         assert_eq!(payload.buttons, Some(0));
+        assert_eq!((payload.movement_x, payload.movement_y), (Some(0.0), Some(0.0)));
     }
 
     fn control_tree(control_type: &str, disabled: bool) -> RetainedTree {

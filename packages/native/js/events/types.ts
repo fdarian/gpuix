@@ -83,6 +83,15 @@ export interface HostMouseEvent extends HostDomEvent {
   clientY?: number
   offsetX?: number
   offsetY?: number
+  /**
+   * How far the pointer moved since the previous move, in logical pixels: the
+   * real motion while the pointer is locked (`requestPointerLock()`), when
+   * `clientX`/`clientY` stand still. `0` on every event but `mousemove` and
+   * `pointermove`, as in the DOM, and on a platform that reports no relative
+   * motion (everything but macOS).
+   */
+  movementX: number
+  movementY: number
   /** Buttons held right now, as a bitmask: 1 primary, 2 secondary, 4 auxiliary. */
   buttons?: number
   /** Consecutive clicks: 1 single, 2 double. */
@@ -94,23 +103,6 @@ export interface HostMouseEvent extends HostDomEvent {
 }
 
 export interface HostPointerEvent extends HostMouseEvent {}
-
-/**
- * `mousemove`. `movementX`/`movementY` are how far the pointer moved since the
- * previous move, in logical pixels: the real motion while the pointer is locked
- * (`requestPointerLock()`), when `clientX`/`clientY` stand still. `0` on a
- * platform that reports no relative motion (everything but macOS).
- */
-export interface HostMouseMoveEvent extends HostMouseEvent {
-  movementX: number
-  movementY: number
-}
-
-/** `pointermove`. See `HostMouseMoveEvent`. */
-export interface HostPointerMoveEvent extends HostPointerEvent {
-  movementX: number
-  movementY: number
-}
 
 /**
  * A drag fires `dragenter`, `dragover`, `dragleave` and `drop` at what is under
@@ -154,7 +146,7 @@ export interface PointerEventHandlerProps {
   onContextMenu?: (event: HostPointerEvent) => void
   onMouseDown?: (event: HostMouseEvent) => void
   onMouseUp?: (event: HostMouseEvent) => void
-  onMouseMove?: (event: HostMouseMoveEvent) => void
+  onMouseMove?: (event: HostMouseEvent) => void
   /** Does not bubble: fires on each element the pointer enters. */
   onMouseEnter?: (event: HostMouseEvent) => void
   /** Does not bubble: fires on each element the pointer leaves. */
@@ -162,7 +154,7 @@ export interface PointerEventHandlerProps {
   onMouseOver?: (event: HostMouseEvent) => void
   onMouseOut?: (event: HostMouseEvent) => void
   onPointerDown?: (event: HostPointerEvent) => void
-  onPointerMove?: (event: HostPointerMoveEvent) => void
+  onPointerMove?: (event: HostPointerEvent) => void
   onPointerUp?: (event: HostPointerEvent) => void
   onPointerEnter?: (event: HostPointerEvent) => void
   onPointerLeave?: (event: HostPointerEvent) => void
