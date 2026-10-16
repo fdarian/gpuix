@@ -229,6 +229,43 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     ])
   })
 
+  describe("DialogBackdrop dismissal", () => {
+    // A click closes it, so the press and the release must both land on the backdrop.
+    const press = (down: "backdrop" | "popup", up: "backdrop" | "popup") => {
+      const closed: boolean[] = []
+      const app = createTestRoot()
+      app.render(() => (
+        <Dialog defaultOpen onOpenChange={(open) => closed.push(!open)}>
+          <DialogPortal>
+            <DialogBackdrop style={{ backgroundColor: "#00000080" }} />
+            <DialogPopup testId="popup" style={{ width: 200, height: 100, backgroundColor: "#1e293b" }} />
+          </DialogPortal>
+        </Dialog>
+      ))
+      const popup = app.renderer.getElementBounds(app.renderer.findByTestId("popup")!.id)!
+      const at = {
+        backdrop: { x: 4, y: 4 },
+        popup: { x: popup.x + popup.width / 2, y: popup.y + popup.height / 2 },
+      }
+      app.renderer.nativeSimulateMouseDown(at[down].x, at[down].y)
+      const afterDown = closed.length
+      app.renderer.nativeSimulateMouseUp(at[up].x, at[up].y)
+      return { closedOnPress: afterDown > 0, closed: closed.length > 0 }
+    }
+
+    it("closes when the press and the release are both on the backdrop", () => {
+      expect(press("backdrop", "backdrop")).toEqual({ closedOnPress: false, closed: true })
+    })
+
+    it("stays open when the press is on the backdrop and the release on the popup", () => {
+      expect(press("backdrop", "popup")).toEqual({ closedOnPress: false, closed: false })
+    })
+
+    it("stays open when the press is in the popup and the release on the backdrop", () => {
+      expect(press("popup", "backdrop")).toEqual({ closedOnPress: false, closed: false })
+    })
+  })
+
   it("focuses initialFocus on open and returns focus without a Trigger", () => {
     const [open, setOpen] = createSignal(false)
     let field!: HostElement

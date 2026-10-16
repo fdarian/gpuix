@@ -3808,7 +3808,7 @@ import * as Dialog from '@gpuix/react/dialog'
 | `Root` | `open`, `defaultOpen`, `onOpenChange`, `modal` (default `true`), `disablePointerDismissal` |
 | `Trigger` | Tab stop. Click, Enter, or Space opens |
 | `Portal` | Full-window deferred layer (`<anchored fill="window">`). Follows a resize in the same frame. Paints over `<virtual-list>`. Centers its children by default. Modal: blocks clicks and the wheel behind it |
-| `Backdrop` | Press closes the dialog |
+| `Backdrop` | A click closes the dialog. The press and the release both land on it, so a press that starts or ends in the popup does not |
 | `Popup` | Moves focus in on open and out on close. Modal: Tab and Shift+Tab stay inside |
 | `Close` | Tab stop. Click, Enter, or Space closes |
 

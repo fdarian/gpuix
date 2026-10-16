@@ -1161,6 +1161,43 @@ describeNative("floating controls", () => {
     `)
   })
 
+  describe("Dialog Backdrop dismissal", () => {
+    // A click closes it, so the press and the release must both land on the backdrop.
+    const press = (down, up) => {
+      const closed = []
+      testRoot.render(
+        <DialogPrimitive.Root defaultOpen onOpenChange={(open) => closed.push(!open)}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Backdrop testId="backdrop" style={{ backgroundColor: "#00000080" }} />
+            <DialogPrimitive.Popup testId="popup" style={{ width: 200, height: 100, backgroundColor: "#1e293b" }} />
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+      )
+      const renderer = testRoot.renderer
+      const popup = renderer.getElementBounds(renderer.findByTestId("popup").id)
+      const at = {
+        backdrop: { x: 4, y: 4 },
+        popup: { x: popup.x + popup.width / 2, y: popup.y + popup.height / 2 },
+      }
+      renderer.nativeSimulateMouseDown(at[down].x, at[down].y)
+      const afterDown = closed.length
+      renderer.nativeSimulateMouseUp(at[up].x, at[up].y)
+      return { closedOnPress: afterDown > 0, closed: closed.length > 0 }
+    }
+
+    it("closes when the press and the release are both on the backdrop", () => {
+      expect(press("backdrop", "backdrop")).toEqual({ closedOnPress: false, closed: true })
+    })
+
+    it("stays open when the press is on the backdrop and the release on the popup", () => {
+      expect(press("backdrop", "popup")).toEqual({ closedOnPress: false, closed: false })
+    })
+
+    it("stays open when the press is in the popup and the release on the backdrop", () => {
+      expect(press("popup", "backdrop")).toEqual({ closedOnPress: false, closed: false })
+    })
+  })
+
   it("sizes the Dialog portal to the window natively", () => {
     // No component reads the window size: native must fill the actual viewport.
     const root = createTestRoot({ width: 900, height: 500 })

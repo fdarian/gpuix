@@ -9,7 +9,7 @@ import React, {
 } from "react"
 import type { ReactElement, ReactNode } from "react"
 import { resolveFocusTarget } from "@gpuix/native/host"
-import type { FocusTarget, HostMouseEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
+import type { FocusTarget, HostPointerEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
 import { useGpuix, useGpuixRequired } from "../hooks/use-gpuix.js"
 import { buttonProps } from "./button.js"
 import {
@@ -147,17 +147,20 @@ export const DialogPortal = forwardRef<PublicInstance, DialogPortalProps>(
 
 export interface DialogBackdropProps extends Props {}
 
-/** Covers the window behind the popup. A press on it closes the dialog. */
+/**
+ * Covers the window behind the popup. A click on it closes the dialog: a click
+ * only reaches the backdrop when the press and the release were both on it.
+ */
 export const DialogBackdrop = forwardRef<PublicInstance, DialogBackdropProps>(
-  function DialogBackdrop({ style, onMouseDown, ...props }, ref) {
+  function DialogBackdrop({ style, onClick, ...props }, ref) {
     const context = useDialogContext("DialogBackdrop")
     return (
       <div
         {...props}
         ref={ref}
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, ...style }}
-        onMouseDown={(event: HostMouseEvent) => {
-          onMouseDown?.(event)
+        onClick={(event: HostPointerEvent) => {
+          onClick?.(event)
           if (!context.disablePointerDismissal) context.setOpen(false)
         }}
       />

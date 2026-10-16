@@ -10,7 +10,7 @@ import {
   type JSX,
 } from "solid-js"
 import { resolveFocusTarget } from "@gpuix/native/host"
-import type { FocusTarget, HostMouseEvent, HostProps, KeyEvent } from "@gpuix/native/host"
+import type { FocusTarget, HostPointerEvent, HostProps, KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"
@@ -141,7 +141,10 @@ export interface DialogBackdropProps extends HostProps {
   children?: JSX.Element
 }
 
-/** Covers the window behind the popup. A press on it closes the dialog. */
+/**
+ * Covers the window behind the popup. A click on it closes the dialog: a click
+ * only reaches the backdrop when the press and the release were both on it.
+ */
 export function DialogBackdrop(props: DialogBackdropProps): JSX.Element {
   const state = context("DialogBackdrop")
   return jsx("div", {
@@ -149,8 +152,8 @@ export function DialogBackdrop(props: DialogBackdropProps): JSX.Element {
     get style() {
       return { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, ...props.style }
     },
-    onMouseDown(event: HostMouseEvent) {
-      props.onMouseDown?.(event)
+    onClick(event: HostPointerEvent) {
+      props.onClick?.(event)
       if (state.pointerDismissal()) state.setOpen(false)
     },
   })
