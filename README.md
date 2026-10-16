@@ -5681,6 +5681,38 @@ dashed side follows the border's width on that side. A side whose style no
 declaration names is `solid`, unlike CSS, where the initial style is `none`:
 `{ borderWidth: 1, borderColor: 'red' }` draws a border.
 
+#### Rounded corners
+
+`borderRadius` takes a number (px) or the CSS string: one to four lengths or
+percentages for top-left, top-right, bottom-right and bottom-left (the `margin`
+expansion), then optionally `/` and one to four vertical radii. The four corner
+longhands (`borderTopLeftRadius` ...) take a number or `"<horizontal>
+[<vertical>]"` and win over the shorthand.
+
+```tsx
+<div style={{ borderRadius: 8 }} />
+<div style={{ borderRadius: '10px 20px 30px 40px' }} />
+<div style={{ borderRadius: '50%' }} />                    {/* an ellipse on a wide box */}
+<div style={{ borderRadius: '10px 20px / 5px' }} />
+<div style={{ borderRadius: '50% / 10px 20px' }} />
+<div style={{ borderTopLeftRadius: '50% 20px' }} />
+```
+
+A percentage is of the border box, the width for a horizontal radius and the
+height for a vertical one, and is resolved when the box is laid out. A single
+percentage rounds both axes by it, so `"50%"` on a 200x100 box is an ellipse;
+`"50px"` is a circle. A zero in either radius makes the corner square, and radii
+that add up to more than a side are scaled down together (CSS Backgrounds 3
+section 5.5). Lengths are `px` or a bare `0`, or a `calc()` of them; `em`, `rem`
+and the viewport units are not supported. A negative or invalid value, in a
+state style too, throws instead of being ignored. The radius cuts the background,
+the border, the shadow, the `overflow` clip and the hit area. The `round` of
+`clipPath` `inset()`, `rect()` and `xywh()` takes the same `a / b` form.
+
+A radius in `motion` is still a number: it animates a circular radius in px, and
+a style that sets a percentage or elliptical corner has no number to start from,
+so that animation starts at `0`.
+
 ### Layout like CSS
 
 - **Text nodes.** An empty text node produces no box, and neither does a
@@ -6051,8 +6083,8 @@ ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
 `border-box`.
 
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
-(one to four insets and `round` radii), `rect()` and `xywh()` (a box, with the
-same `round`), `circle()` and `ellipse()` (a radius, `closest-side` or
+(one to four insets and `round` radii, with `/` for the vertical ones), `rect()`
+and `xywh()` (a box, with the same `round`), `circle()` and `ellipse()` (a radius, `closest-side` or
 `farthest-side`, and `at <position>`), `polygon()` (an optional `nonzero` or
 `evenodd`, then points), `path()` (an optional fill rule, then SVG path data in a
 string), or `none`. Lengths are any [length](#lengths) or `%`. Write a `border-box` (the default),

@@ -177,6 +177,13 @@ export type MotionStyleTargets = Pick<
   minHeight?: MotionLength
   maxWidth?: MotionLength
   maxHeight?: MotionLength
+  /** A radius moves as a circular number of px, so a percentage or elliptical
+   *  `borderRadius` is not a target. */
+  borderRadius?: number
+  borderTopLeftRadius?: number
+  borderTopRightRadius?: number
+  borderBottomLeftRadius?: number
+  borderBottomRightRadius?: number
 }
 
 /** Pixels, or a percentage string such as `"50%"`. */
@@ -618,11 +625,22 @@ export interface StyleDesc {
   borderRight?: string
   borderBottom?: string
   borderLeft?: string
-  borderRadius?: number
-  borderTopLeftRadius?: number
-  borderTopRightRadius?: number
-  borderBottomLeftRadius?: number
-  borderBottomRightRadius?: number
+  /** A number (px) or the CSS string: one to four lengths or percentages in the
+   *  order top-left, top-right, bottom-right, bottom-left (`"8px"`, `"50%"`,
+   *  `"10px 20px"`), then optionally `/` and one to four vertical radii
+   *  (`"10px 20px / 5px"`, `"50% / 10px 20px"`). A percentage is of the border
+   *  box, the width for the horizontal radius and the height for the vertical
+   *  one, so `"50%"` on a wide box is an ellipse. Lengths are `px` (or a bare
+   *  `0`); `em`, `rem` and the viewport units are not supported. A negative or
+   *  invalid value throws. Radii that add up to more than a side are scaled down
+   *  together, as in CSS. The corner longhands win over it. */
+  borderRadius?: number | string
+  /** A number (px), or `"<horizontal> [<vertical>]"`: `"20px"`, `"20px 10px"`,
+   *  `"50%"`, `"50% 20px"`. A zero in either radius makes the corner square. */
+  borderTopLeftRadius?: number | string
+  borderTopRightRadius?: number | string
+  borderBottomLeftRadius?: number | string
+  borderBottomRightRadius?: number | string
   /** One shadow, a list painted in the order given, or the CSS string
    *  (`"0 1px 2px rgba(0,0,0,.2), inset 0 0 0 1px red"`). In the string, lengths
    *  are `px` (or a bare `0`), `inset` and the colour may lead or trail the
