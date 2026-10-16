@@ -145,12 +145,12 @@ impl Slot {
 
     fn into_layer(self) -> Option<BackgroundLayer> {
         Some(BackgroundLayer {
-            image: self.image?.image,
             size: self.size,
             position: self.position,
             repeat: self.repeat,
             origin: self.origin,
             clip: self.clip,
+            ..BackgroundLayer::new(self.image?.image)
         })
     }
 }
