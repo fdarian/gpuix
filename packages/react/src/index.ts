@@ -176,7 +176,7 @@ export type {
 } from "./hooks/use-window-size.js"
 
 // Re-export types
-export type { MotionDivProps, MotionShapeProps } from "./components/index.js"
+export type { MotionDivProps, MotionShapeProps, MotionSpanProps } from "./components/index.js"
 export type {
   AnchoredProps,
   CodeProps,
@@ -205,11 +205,15 @@ export type {
   MotionCurve,
   MotionEase,
   MotionProps,
+  MotionSpanStyle,
+  MotionSpanVariant,
+  MotionSpanVariants,
   MotionSpringTransition,
   MotionStyle,
   MotionTransition,
   MotionTweenTransition,
   MotionValueStyle,
+  MotionVariantLabels,
   MutationHost,
   NativeRenderer,
   NativeWindowInsets,

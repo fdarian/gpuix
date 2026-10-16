@@ -3,18 +3,23 @@
 import { createElement, forwardRef, useContext, useEffect, useLayoutEffect, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
 import {
+  assertMotionSpanProps,
   layoutDescription,
   reduceMotionValues,
   resolveExit,
+  resolveSpanMotion,
   scopeLayoutId,
   withoutLayoutTransition,
   wireMotionTransition,
 } from "@gpuix/native/host"
+import type { StyleDesc } from "@gpuix/native/host"
 import type {
   ExitTarget,
   LayoutDrag,
   MotionLayoutProps,
   MotionProps,
+  MotionSpanAnimation,
+  MotionSpanUnsupportedProps,
   MotionTransition,
   MotionValueStyle,
   Props,
@@ -102,11 +107,25 @@ export interface MotionDivProps extends WithExitFunction<MotionProps>, MotionLay
   autoFocus?: boolean
 }
 
+/**
+ * Props of a `motion.span`: an inline span animates its colours (`animate`,
+ * `initial`, `exit`, or the `variants` they name) and takes the props of a
+ * `<span>`. It has no box to measure or drag, so `layout`, `layoutId`, `drag*`
+ * and `while*` are errors.
+ */
+export interface MotionSpanProps
+  extends Omit<Props, "style" | keyof MotionSpanAnimation | keyof MotionSpanUnsupportedProps>,
+    MotionSpanAnimation,
+    MotionSpanUnsupportedProps {
+  style?: StyleDesc
+}
+
 /** What every `motion.*` component takes, whatever it animates. */
 interface MotionSource<Style, Transition> {
-  initial?: Style | false
-  animate?: Style
-  exit?: ExitTarget<NonNullable<Style>>
+  initial?: Style | MotionSpanAnimation["initial"] | false
+  animate?: Style | MotionSpanAnimation["animate"]
+  exit?: ExitTarget<NonNullable<Style>> | MotionSpanAnimation["exit"]
+  variants?: MotionSpanAnimation["variants"]
   custom?: unknown
   transition?: Transition
   layout?: MotionLayoutProps["layout"]
@@ -117,24 +136,38 @@ interface MotionSource<Style, Transition> {
 }
 
 export function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
+  const inline = tag === "span"
   return forwardRef<PublicInstance, Source>(function Motion(
-    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, layoutDrag, onMotionComplete, ...props },
+    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, layoutDrag, variants, onMotionComplete, ...props },
     ref
   ): ReactElement {
+    if (inline) assertMotionSpanProps({ ...props, layout, layoutId, layoutDrag })
+    else if (variants !== undefined) throw new Error("variants is only supported by motion.span")
     const presence = useContext(PresenceContext)
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = config !== undefined && config.reduced
-    const resolvedTransition = wireMotionTransition(transition ?? config?.transition)
-    const motionTransition = withoutLayoutTransition(resolvedTransition)
     const [isPresent, safeToRemove] = usePresence()
     // An `exit` function has nothing to leave from outside an `AnimatePresence`.
-    const exit =
+    const exitResolved =
       typeof exitTarget === "function" && presence === null
         ? undefined
-        : resolveExit(exitTarget, presence?.custom ?? custom)
-    const resolvedInitial = presence?.initial === false ? false : initial
-    const resolvedAnimate = !isPresent && exit ? exit : animate
+        : resolveExit(exitTarget as ExitTarget<object> | undefined, presence?.custom ?? custom)
+    const span = inline
+      ? resolveSpanMotion({
+          initial: presence?.initial === false ? false : (initial as MotionSpanAnimation["initial"]),
+          animate: animate as MotionSpanAnimation["animate"],
+          exit: exitResolved as Parameters<typeof resolveSpanMotion>[0]["exit"],
+          variants,
+          custom: presence?.custom ?? custom,
+        })
+      : undefined
+    const exit = span ? span.exit : exitResolved
+    const resolvedInitial = span ? span.initial : presence?.initial === false ? false : initial
+    const resolvedAnimate = !isPresent && exit ? exit : span ? span.animate : animate
+    const variantTransition = !isPresent && exit ? span?.exitTransition : span?.animateTransition
+    const resolvedTransition = wireMotionTransition(variantTransition ?? transition ?? config?.transition)
+    const motionTransition = withoutLayoutTransition(resolvedTransition)
 
     useEffect(() => {
       if (!isPresent && !exit) safeToRemove?.()
@@ -183,6 +216,7 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
 }
 
 const MotionDiv = createMotionComponent<MotionDivProps>("div")
+const MotionSpan = createMotionComponent<MotionSpanProps>("span")
 
 /** `motion.div` plus the drag values `Reorder.Item` hands it, for the element type it is `as`. */
 export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
@@ -204,6 +238,7 @@ function motionShape<Shape>(tag: string) {
  */
 export const motion = {
   div: MotionDiv,
+  span: MotionSpan,
   g: motionShape<SvgGroupProps>("g"),
   path: motionShape<SvgPathProps>("path"),
   circle: motionShape<SvgCircleProps>("circle"),

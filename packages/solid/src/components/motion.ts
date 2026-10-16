@@ -1,9 +1,11 @@
 import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
-import type { DomEvent } from "@gpuix/native/host"
+import type { DomEvent, StyleDesc } from "@gpuix/native/host"
 import {
+  assertMotionSpanProps,
   layoutDescription,
   reduceMotionValues,
   resolveExit,
+  resolveSpanMotion,
   scopeLayoutId,
   withoutLayoutTransition,
   wireMotionTransition,
@@ -13,6 +15,8 @@ import type {
   LayoutDrag,
   MotionLayoutProps,
   MotionProps,
+  MotionSpanAnimation,
+  MotionSpanUnsupportedProps,
   MotionTransition,
   SvgMotionTransition,
   SvgCircleProps,
@@ -41,13 +45,27 @@ import { MotionConfigContext } from "./motion-config.js"
 
 export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionProps>, MotionLayoutProps {}
 
+/**
+ * Props of a `motion.span`: an inline span animates its colours (`animate`,
+ * `initial`, `exit`, or the `variants` they name) and takes the props of a
+ * `<span>`. It has no box to measure or drag, so `layout`, `layoutId`, `drag*`
+ * and `while*` are errors.
+ */
+export type MotionSpanProps = Omit<
+  SolidHostProps,
+  "style" | keyof MotionSpanAnimation | keyof MotionSpanUnsupportedProps
+> &
+  MotionSpanAnimation &
+  MotionSpanUnsupportedProps & { style?: StyleDesc }
+
 /** A `motion.path`, `motion.circle`, ...: the shape's own props plus the animation. */
 export type MotionShapeProps<Shape> = SolidHostProps<Shape> & WithExitFunction<SvgMotionProps>
 
 interface MotionSource {
-  initial?: object | false
-  animate?: object
-  exit?: ExitTarget<object>
+  initial?: object | MotionSpanAnimation["initial"]
+  animate?: object | MotionSpanAnimation["animate"]
+  exit?: ExitTarget<object> | MotionSpanAnimation["exit"]
+  variants?: MotionSpanAnimation["variants"]
   custom?: unknown
   transition?: MotionTransition | SvgMotionTransition
   layout?: MotionLayoutProps["layout"]
@@ -60,11 +78,15 @@ interface MotionSource {
 export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
 
 export function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
+  const inline = tag === "span"
   return function Motion(props: Props): JSX.Element {
+    if (inline) assertMotionSpanProps(props as Record<string, unknown>)
+    else if ((props as MotionSource).variants !== undefined) throw new Error("variants is only supported by motion.span")
     const [motionProps, hostProps] = splitProps(props as MotionSource & Record<string, unknown>, [
       "initial",
       "animate",
       "exit",
+      "variants",
       "custom",
       "transition",
       "layout",
@@ -77,10 +99,19 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
     const layoutGroupId = useContext(LayoutGroupContext)
     const reduced = () => config !== undefined && config.reduced()
     // An `exit` function has nothing to leave from outside an `AnimatePresence`.
-    const exit = () =>
+    const declaredExit = () =>
       typeof motionProps.exit === "function" && !group
         ? undefined
-        : resolveExit(motionProps.exit, group?.custom() ?? motionProps.custom)
+        : resolveExit(motionProps.exit as ExitTarget<object> | undefined, group?.custom() ?? motionProps.custom)
+    const span = () =>
+      resolveSpanMotion({
+        initial: presence?.initial === false ? false : (motionProps.initial as MotionSpanAnimation["initial"]),
+        animate: motionProps.animate as MotionSpanAnimation["animate"],
+        exit: declaredExit() as Parameters<typeof resolveSpanMotion>[0]["exit"],
+        variants: motionProps.variants,
+        custom: group?.custom() ?? motionProps.custom,
+      })
+    const exit = () => (inline ? span().exit : declaredExit())
     createRenderEffect(() => {
       if (!reduced()) return
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
@@ -94,8 +125,10 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
     const element = createElement(tag)
     let generation = 0
     let targetKey: string | undefined
-    const resolvedTransition = () =>
-      wireMotionTransition(motionProps.transition !== undefined ? motionProps.transition : config?.transition())
+    const resolvedTransition = (variantTransition?: MotionTransition) =>
+      wireMotionTransition(
+        variantTransition ?? (motionProps.transition !== undefined ? motionProps.transition : config?.transition())
+      )
     spread(element, mergeProps(hostProps, {
       get layout() {
         return layoutDescription({
@@ -108,10 +141,13 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       },
       get motion() {
         const isExit = Boolean(presence && !presence.isPresent() && exit())
-        const initial = presence?.initial === false ? false : motionProps.initial
-        const animate = isExit ? exit()! : motionProps.animate
+        const resolved = inline ? span() : undefined
+        const initial = resolved ? resolved.initial : presence?.initial === false ? false : motionProps.initial
+        const animate = isExit ? exit()! : resolved ? resolved.animate : motionProps.animate
         if (animate === undefined) return undefined
-        const transition = withoutLayoutTransition(resolvedTransition())
+        const transition = withoutLayoutTransition(
+          resolvedTransition(isExit ? resolved?.exitTransition : resolved?.animateTransition)
+        )
         const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
         if (nextKey !== targetKey) {
           targetKey = nextKey
@@ -138,6 +174,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
 }
 
 const MotionDiv = createMotionComponent<MotionDivProps>("div")
+const MotionSpan = createMotionComponent<MotionSpanProps>("span")
 
 /**
  * Native animations. `motion.path`, `motion.circle` and the other SVG shapes
@@ -146,6 +183,7 @@ const MotionDiv = createMotionComponent<MotionDivProps>("div")
  */
 export const motion = {
   div: MotionDiv,
+  span: MotionSpan,
   g: createMotionComponent<MotionShapeProps<SvgGroupProps>>("g"),
   path: createMotionComponent<MotionShapeProps<SvgPathProps>>("path"),
   circle: createMotionComponent<MotionShapeProps<SvgCircleProps>>("circle"),

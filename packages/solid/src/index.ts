@@ -124,7 +124,7 @@ export * from "@gpuix/native/host"
 export { GpuixRenderer } from "@gpuix/native"
 export type { EventModifiers, EventPayload, WindowOptions } from "@gpuix/native"
 export type { JSX, SolidHostProps } from "./jsx-runtime.js"
-export type { MotionDivProps, MotionShapeProps } from "./components/motion.js"
+export type { MotionDivProps, MotionShapeProps, MotionSpanProps } from "./components/motion.js"
 export type {
   SelectContentProps,
   SelectItemData,
