@@ -164,7 +164,11 @@ pub fn chrome_text(text: SharedString, runs: Option<Vec<TextRun>>) -> gpui::AnyE
     };
     let log = canvas(
         |_, _, _| (),
-        move |_, _, _, _| PAINTED.with(|p| p.borrow_mut().push(text.clone())),
+        move |_, _, window, _| {
+            if window.visibility() == gpui::Visibility::Visible {
+                PAINTED.with(|p| p.borrow_mut().push(text.clone()))
+            }
+        },
     )
     .absolute()
     .w(px(0.0))
@@ -290,6 +294,11 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
     let underlay = canvas(
         |_, _, _| (),
         move |_, _, window, _| {
+            // Hidden text is not on screen: it takes no part in selection, links, search washes
+            // or the painted-text log.
+            if window.visibility() == gpui::Visibility::Hidden {
+                return;
+            }
             if let Some(paint) = &extra_wash {
                 paint(&layout, window);
             }

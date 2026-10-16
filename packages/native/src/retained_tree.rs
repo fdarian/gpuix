@@ -102,6 +102,16 @@ impl RetainedElement {
         }
     }
 
+    /// What this element's own style says about `visibility`: `Some(true)` for hidden,
+    /// `Some(false)` for visible, `None` when it inherits.
+    pub fn declared_hidden(&self) -> Option<bool> {
+        match self.style.as_deref()?.visibility.as_deref()? {
+            "hidden" => Some(true),
+            "visible" => Some(false),
+            _ => None,
+        }
+    }
+
     /// Whether this element itself carries `inert`. Its subtree is inert too;
     /// `RetainedTree::is_inert` answers for an element and its ancestors.
     pub fn has_inert_prop(&self) -> bool {
@@ -306,6 +316,8 @@ pub struct RetainedTree {
     /// How many elements carry `inert`. While it is zero, no mutation has to
     /// look at ancestors to decide what is focusable.
     inert_count: usize,
+    /// Elements whose style declares a `visibility`, so a tree without any skips the ancestor walk.
+    visibility_count: usize,
     /// How many `anchored` elements exist. Without any, an `elements_at` walk
     /// can drop a clipped subtree whole.
     anchored_count: usize,
@@ -333,6 +345,7 @@ impl RetainedTree {
             motion_value_ids: HashSet::new(),
             focusable_ids: Default::default(),
             inert_count: 0,
+            visibility_count: 0,
             anchored_count: 0,
             styles: StyleTable::default(),
             root_id: None,
@@ -400,6 +413,24 @@ impl RetainedTree {
         false
     }
 
+    /// Whether `id` ends up `visibility: hidden`: the nearest declaration at or above it wins.
+    pub fn is_visibility_hidden(&self, id: u64) -> bool {
+        if self.visibility_count == 0 {
+            return false;
+        }
+        let mut current = Some(id);
+        while let Some(current_id) = current {
+            let Some(element) = self.elements.get(&current_id) else {
+                return false;
+            };
+            if let Some(hidden) = element.declared_hidden() {
+                return hidden;
+            }
+            current = element.parent;
+        }
+        false
+    }
+
     /// Whether the nearest form control at or above `id` is disabled. HTML
     /// dispatches no `click`, `auxclick` or `dblclick` for such a target.
     pub fn in_disabled_form_control(&self, id: u64) -> bool {
@@ -423,6 +454,7 @@ impl RetainedTree {
     /// reads has changed.
     fn track_focusable(&mut self, id: u64) {
         if !self.is_inert(id)
+            && !self.is_visibility_hidden(id)
             && self
                 .elements
                 .get(&id)
@@ -438,20 +470,19 @@ impl RetainedTree {
     /// `inert` ancestor appears, goes away, or the subtree is moved under or
     /// out from under one.
     fn track_focusable_subtree(&mut self, id: u64) {
-        let inherited = self
-            .elements
-            .get(&id)
-            .and_then(|element| element.parent)
-            .is_some_and(|parent| self.is_inert(parent));
-        self.track_focusable_below(id, inherited);
+        let parent = self.elements.get(&id).and_then(|element| element.parent);
+        let inert = parent.is_some_and(|parent| self.is_inert(parent));
+        let hidden = parent.is_some_and(|parent| self.is_visibility_hidden(parent));
+        self.track_focusable_below(id, inert, hidden);
     }
 
-    fn track_focusable_below(&mut self, id: u64, inherited_inert: bool) {
+    fn track_focusable_below(&mut self, id: u64, inherited_inert: bool, inherited_hidden: bool) {
         let Some(element) = self.elements.get(&id) else {
             return;
         };
         let inert = inherited_inert || element.has_inert_prop();
-        let focusable = !inert && element.needs_focus();
+        let hidden = element.declared_hidden().unwrap_or(inherited_hidden);
+        let focusable = !inert && !hidden && element.needs_focus();
         let children = element.children.clone();
         if focusable {
             self.focusable_ids.insert(id);
@@ -459,7 +490,7 @@ impl RetainedTree {
             self.focusable_ids.remove(&id);
         }
         for child in children {
-            self.track_focusable_below(child, inert);
+            self.track_focusable_below(child, inert, hidden);
         }
     }
 
@@ -548,6 +579,7 @@ impl RetainedTree {
             self.motion_value_ids.remove(&id);
             self.focusable_ids.remove(&id);
             self.inert_count -= usize::from(element.has_inert_prop());
+            self.visibility_count -= usize::from(element.declared_hidden().is_some());
             self.anchored_count -= usize::from(element.element_type == "anchored");
             destroyed.push(id);
             for child_id in element.children {
@@ -572,7 +604,7 @@ impl RetainedTree {
         if let Some(parent) = self.elements.get_mut(&parent_id) {
             parent.children.push(child_id);
         }
-        if self.inert_count > 0 {
+        if self.inert_count > 0 || self.visibility_count > 0 {
             self.track_focusable_subtree(child_id);
         }
         if let Some(old_parent_id) = old_parent_id {
@@ -602,7 +634,7 @@ impl RetainedTree {
                 .unwrap_or(parent.children.len());
             parent.children.insert(pos, child_id);
         }
-        if self.inert_count > 0 {
+        if self.inert_count > 0 || self.visibility_count > 0 {
             self.track_focusable_subtree(child_id);
         }
         if let Some(old_parent_id) = old_parent_id {
@@ -621,7 +653,9 @@ impl RetainedTree {
         let mut changed = false;
         let mut regrouped = false;
         let mut text_reprocessed = false;
+        let mut declared = None;
         if let Some(element) = self.elements.get_mut(&id) {
+            let was_declared = element.declared_hidden();
             let same = element
                 .style
                 .as_ref()
@@ -643,7 +677,13 @@ impl RetainedTree {
                 }
                 element.style = Some(style);
                 changed = true;
+                declared = Some((was_declared, element.declared_hidden()));
             }
+        }
+        if let Some((was, now)) = declared.filter(|(was, now)| was != now) {
+            self.visibility_count = self.visibility_count + usize::from(now.is_some())
+                - usize::from(was.is_some());
+            self.track_focusable_subtree(id);
         }
         if text_reprocessed {
             // `white-space` is inherited and decides what text is left of a
@@ -833,8 +873,10 @@ impl RetainedTree {
     /// clip of the elements around it: its hits come first.
     ///
     /// `painted_box` is the last frame's box. An element that was not painted
-    /// (hidden, or outside a virtual list's window) has none and is never hit,
-    /// though its descendants are still visited. What clips matches what is
+    /// (outside a virtual list's window) has none and is never hit, though its
+    /// descendants are still visited. A `visibility: hidden` element has its box
+    /// and is skipped the same way, and `visibility: visible` on a descendant
+    /// brings it back. What clips matches what is
     /// drawn: `overflow` of `hidden` or `scroll`, per axis, hides whatever lies
     /// outside the clipping box. `pointer-events: none` is inherited, like in
     /// CSS, and `auto` restores it.
@@ -852,7 +894,7 @@ impl RetainedTree {
         };
         let mut hits = Vec::new();
         if let Some(root_id) = self.root_id {
-            self.collect_hits(root_id, false, false, false, &mut walk, &mut hits);
+            self.collect_hits(root_id, false, false, false, false, &mut walk, &mut hits);
         }
         // Stable, so layers of one priority stay topmost first.
         walk.layers.sort_by(|a, b| b.0.cmp(&a.0));
@@ -864,13 +906,15 @@ impl RetainedTree {
     /// `none` is the inherited `pointer-events: none`. `inert` is stronger: no
     /// `pointer-events: auto` below an `inert` element restores hits. `clipped`
     /// means an ancestor's clip excludes the point, so only deferred layers
-    /// below can still be hit.
+    /// below can still be hit. `hidden` is the inherited `visibility`.
+    #[allow(clippy::too_many_arguments)]
     fn collect_hits(
         &self,
         id: u64,
         none: bool,
         inert: bool,
         clipped: bool,
+        hidden: bool,
         walk: &mut HitWalk,
         hits: &mut Vec<u64>,
     ) {
@@ -904,6 +948,11 @@ impl RetainedTree {
         };
         let inert = inert || element.has_inert_prop();
         let none = none || inert;
+        let hidden = match style.and_then(|style| style.visibility.as_deref()) {
+            Some("hidden") => true,
+            Some("visible") => false,
+            _ => hidden,
+        };
 
         if element.element_type == "anchored" {
             let deferred = element
@@ -919,7 +968,7 @@ impl RetainedTree {
                     .unwrap_or(1);
                 let mut layer = Vec::new();
                 for &child in element.children.iter().rev() {
-                    self.collect_hits(child, none, inert, false, walk, &mut layer);
+                    self.collect_hits(child, none, inert, false, hidden, walk, &mut layer);
                 }
                 walk.layers.push((priority, layer));
                 return;
@@ -927,9 +976,9 @@ impl RetainedTree {
         }
 
         for &child in element.children.iter().rev() {
-            self.collect_hits(child, none, inert, clipped, walk, hits);
+            self.collect_hits(child, none, inert, clipped, hidden, walk, hits);
         }
-        if !clipped && !none && own_box.is_some_and(|bounds| inside(&bounds, true, true)) {
+        if !clipped && !none && !hidden && own_box.is_some_and(|bounds| inside(&bounds, true, true)) {
             hits.push(id);
         }
     }
@@ -1359,6 +1408,45 @@ mod tests {
     }
 
     #[test]
+    fn visibility_hidden_takes_an_element_out_of_focusable_ids_until_a_descendant_shows() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=4 {
+            tree.create_element(id, "div".to_string());
+        }
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        tree.append_child(1, 4);
+        for id in [2, 3, 4] {
+            tree.set_custom_prop(id, "tabIndex".to_string(), serde_json::json!(0));
+        }
+        let focusable =
+            |tree: &RetainedTree| tree.focusable_ids.iter().copied().collect::<Vec<_>>();
+        let visibility = |value: &str| {
+            Arc::new(StyleDesc {
+                visibility: Some(value.to_string()),
+                ..Default::default()
+            })
+        };
+        assert_eq!(focusable(&tree), vec![2, 3, 4]);
+
+        tree.set_style(2, visibility("hidden"));
+        assert_eq!(focusable(&tree), vec![4], "the element and its descendants");
+
+        tree.set_style(3, visibility("visible"));
+        assert_eq!(focusable(&tree), vec![3, 4]);
+
+        // Moving a subtree under a hidden element, or out of one, follows the new ancestors.
+        tree.append_child(2, 4);
+        assert_eq!(focusable(&tree), vec![3]);
+        tree.append_child(1, 4);
+        assert_eq!(focusable(&tree), vec![3, 4]);
+
+        tree.set_style(2, Arc::new(StyleDesc::default()));
+        assert_eq!(focusable(&tree), vec![2, 3, 4]);
+        assert!(!tree.is_visibility_hidden(3));
+    }
+
+    #[test]
     fn an_inert_ancestor_takes_its_subtree_out_of_focusable_ids() {
         let mut tree = RetainedTree::new();
         for id in 1..=5 {
@@ -1491,6 +1579,26 @@ mod tests {
         let (tree, painted) = hit_test_tree();
         let without_the_sibling = |id: u64| if id == 4 { None } else { painted(id) };
         assert_eq!(tree.elements_at(45.0, 10.0, &without_the_sibling), vec![2, 1]);
+    }
+
+    #[test]
+    fn elements_at_skips_visibility_hidden_until_a_descendant_shows_again() {
+        let (mut tree, painted) = hit_test_tree();
+        let visibility = |value: &str| {
+            Arc::new(StyleDesc {
+                visibility: Some(value.to_string()),
+                ..Default::default()
+            })
+        };
+        // The sibling and the scroller are hidden, so the pointer reaches the root under them.
+        tree.set_style(4, visibility("hidden"));
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![2, 1]);
+        tree.set_style(2, visibility("hidden"));
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![1]);
+        // The row inherits it, and `visible` undoes it for the row alone.
+        assert_eq!(tree.elements_at(10.0, 45.0, &painted), vec![1]);
+        tree.set_style(3, visibility("visible"));
+        assert_eq!(tree.elements_at(10.0, 45.0, &painted), vec![3, 1]);
     }
 
     fn boxed(

@@ -41,8 +41,9 @@ const EPSILON: f32 = 0.01;
 )]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct Observation {
-    /// False when the element did not paint this frame (`visibility: hidden`, a
-    /// virtual list row outside its window, removed). Every number is then 0.
+    /// False when the element did not paint this frame (a virtual list row outside
+    /// its window, removed). Every number is then 0. A `visibility: hidden`
+    /// element keeps its box and is present.
     pub present: bool,
     /// Size of the content box: the border box minus border and padding.
     pub content_width: f64,
@@ -413,9 +414,9 @@ pub(crate) fn prune(
 }
 
 /// A zero-size child that runs once per frame, after the frame has painted,
-/// and reports the observed elements that did not paint: `visibility: hidden`, a
-/// virtual list row outside its window, an element that was removed. Nothing
-/// paints for them, so only a sweep can tell they went away.
+/// and reports the observed elements that did not paint: a virtual list row
+/// outside its window, an element that was removed. Nothing paints for them, so
+/// only a sweep can tell they went away.
 ///
 /// Paint runs first-to-last under the root, so this must stay a child of the
 /// root next to `bounds_frame_reset`; the sweep itself is deferred until the

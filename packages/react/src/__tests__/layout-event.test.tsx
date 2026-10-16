@@ -134,7 +134,30 @@ describeNative("onLayout", () => {
     }
   })
 
-  it("is silent while the element is hidden, and reports once it shows", () => {
+  it("is silent while the element has no box, and reports once it has one", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      const sizes: unknown[] = []
+      const app = (display: "none" | "flex") => (
+        <div
+          style={{ width: 64, height: 24, display }}
+          onLayout={(event) => sizes.push(size(event))}
+        />
+      )
+
+      render(app("none"))
+      renderer.dispatchNativeEvents()
+      expect(sizes).toEqual([])
+
+      render(app("flex"))
+      renderer.dispatchNativeEvents()
+      expect(sizes).toEqual([[64, 24]])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("reports a visibility: hidden element's box, and nothing more when it shows", () => {
     const { render, renderer, unmount } = createTestRoot()
     try {
       const sizes: unknown[] = []
@@ -147,11 +170,11 @@ describeNative("onLayout", () => {
 
       render(app("hidden"))
       renderer.dispatchNativeEvents()
-      expect(sizes, "gpui paints nothing for a hidden element").toEqual([])
+      expect(sizes).toEqual([[64, 24]])
 
       render(app("visible"))
       renderer.dispatchNativeEvents()
-      expect(sizes).toEqual([[64, 24]])
+      expect(sizes, "the size did not change").toEqual([[64, 24]])
     } finally {
       unmount()
     }

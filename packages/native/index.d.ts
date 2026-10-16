@@ -1229,8 +1229,9 @@ export interface MediaFeatures {
  */
 export interface Observation {
   /**
-   * False when the element did not paint this frame (`visibility: hidden`, a
-   * virtual list row outside its window, removed). Every number is then 0.
+   * False when the element did not paint this frame (a virtual list row outside
+   * its window, removed). Every number is then 0. A `visibility: hidden`
+   * element keeps its box and is present.
    */
   present: boolean
   /** Size of the content box: the border box minus border and padding. */

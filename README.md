@@ -3785,8 +3785,9 @@ useEffect(() => {
 `observe()` for an element that is not 0 by 0, then one per change of the
 observed box (`"content-box"`, the default, or `"border-box"`). The content box
 is the border box minus the element's own `padding` and `borderWidth`; `hover`
-and `active` overrides of those are not counted. An element that stops painting
-(`visibility: "hidden"`, a virtual list row outside its window) reports 0 by 0.
+and `active` overrides of those are not counted. An element that has no box
+(`display: "none"`, a virtual list row outside its window) reports 0 by 0. A
+`visibility: "hidden"` element keeps its box and reports its size.
 `device-pixel-content-box` throws a `TypeError`.
 
 `IntersectionObserver` takes `{ root, rootMargin, threshold }`. `root` is a host
@@ -3797,7 +3798,8 @@ that never paints reports not intersecting) and then one per threshold crossing
 or `isIntersecting` flip. The intersection is the target's border box clipped by
 every ancestor's `overflow` between it and the root, then by the root.
 `rootMargin` takes 1 to 4 lengths in `px` or `%`, and with no `root` it can reach
-past the window edge, which does not clip the target.
+past the window edge, which does not clip the target. The test is geometry only, so
+a `visibility: "hidden"` target still intersects.
 
 Callbacks run once per batch of a frame's reports, after the frame, so state set
 in one paints a frame later. `observe()` reads no layout: every observation
@@ -3806,7 +3808,7 @@ of observers started by one commit cost one draw. Each observer gets its own
 initial entry for a target, also when another observer already watches it. Observing an element that is not mounted yet is
 allowed, as in the DOM: it reports once it has a box, and an `IntersectionObserver`
 first reports it as not intersecting. An element that is removed behaves like one
-that stopped painting: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`
+that lost its box: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`
 reports `isIntersecting: false`, once, and nothing after that. Call `unobserve` or
 `disconnect` to release it.
 
@@ -3824,8 +3826,10 @@ works on the live `GpuixRenderer` and on the test renderer.
 const [topmost] = renderer.getElementsAt?.(event.x, event.y) ?? []
 ```
 
-It answers from the last frame, so an element that did not paint (hidden, or
-outside a virtual list's window) is never listed. `overflow: hidden` and
+It answers from the last frame, so an element that did not paint (outside a
+virtual list's window) is never listed, and neither is one with
+`visibility: "hidden"` (a descendant with `visibility: "visible"` is).
+`overflow: hidden` and
 `scroll` clip what lies outside them, `pointer-events: none` is skipped (and
 inherited, until a child sets `auto`), and a deferred
 [`<anchored>`](#overlay-menus) layer comes first, ordered by `priority`,
@@ -4787,7 +4791,8 @@ that has the listener and again each time the element's **size** changes, with
 its border box: `width` and `height`, and `x` and `y` in window pixels. Moving
 without resizing, as a row does when a list scrolls, fires nothing. Removing the
 listener and adding it back reports the size again. An element with
-`visibility: "hidden"` is not painted, so it reports nothing until it is shown.
+`display: "none"` has no box, so it reports nothing until it is shown. One with
+`visibility: "hidden"` keeps its box and reports it.
 
 ```tsx
 <div onLayout={(event) => setWidth(event.width ?? 0)} style={{ flex: 1 }} />
@@ -5037,6 +5042,16 @@ draws one: a `dashed` anywhere makes every side dashed.
   children, and `getElementBounds` returns `null` for it. Its own pointer
   handlers never fire, as it has no hitbox. The `inline-*` values and `table`
   are not supported (the layout engine has no such box types).
+- **`visibility: "hidden"`** keeps the layout box and every report of it
+  (`getBoundingClientRect`, `onLayout`, `ResizeObserver`, `IntersectionObserver`),
+  and paints nothing of its own: no background, border, shadow, outline or text.
+  The value inherits, so the descendants are hidden too until one sets
+  `visibility: "visible"`, which paints on its own box. A hidden element is never
+  the target of the pointer (events go to what lies under it, with no hover), cannot
+  be focused (Tab skips it, `focus()` is ignored and a focused element blurs when it
+  hides), has no accessibility node, and is left out of `getElementsAt`.
+  A `visible` descendant is all of those again, and an event on it still bubbles
+  through the hidden ancestors.
 - **Static position.** An unpositioned box ignores `top`/`left` and is not a
   containing block. Known difference from CSS: an `overflow: "hidden"` static
   ancestor still clips an absolute descendant whose containing block is further

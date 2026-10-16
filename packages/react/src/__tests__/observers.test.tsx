@@ -156,31 +156,63 @@ describeNative("ResizeObserver", () => {
     }
   })
 
-  it("reports 0 by 0 when the element stops painting", () => {
+  it("reports 0 by 0 when the element stops having a box", () => {
     const { render, renderer, ref, element, unmount } = setup()
     try {
       const sizes: number[][] = []
-      const app = (visibility: "visible" | "hidden") => (
+      const app = (display: "flex" | "none") => (
         <div style={{ flexDirection: "column" }}>
-          <div ref={ref("a")} style={{ visibility, width: 40, height: 20 }} />
+          <div ref={ref("a")} style={{ display, width: 40, height: 20 }} />
         </div>
       )
-      render(app("visible"))
+      render(app("flex"))
       new ResizeObserver((entries) => {
         for (const entry of entries) sizes.push([entry.contentRect.width, entry.contentRect.height])
       }).observe(element("a"))
       renderer.dispatchNativeEvents()
 
-      render(app("hidden"))
+      render(app("none"))
       renderer.dispatchNativeEvents()
       expect(sizes).toEqual([
         [40, 20],
         [0, 0],
       ])
 
-      render(app("visible"))
+      render(app("flex"))
       renderer.dispatchNativeEvents()
       expect(sizes.at(-1)).toEqual([40, 20])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("keeps reporting the real box of a visibility: hidden element", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const entries: ResizeObserverEntry[] = []
+      const app = (visibility: "visible" | "hidden", width: number) => (
+        <div style={{ flexDirection: "column" }}>
+          <div
+            ref={ref("a")}
+            style={{ visibility, width, height: 20, padding: 4, borderWidth: 1, borderColor: "#fff" }}
+          />
+        </div>
+      )
+      render(app("hidden", 40))
+      new ResizeObserver((batch) => entries.push(...batch)).observe(element("a"))
+      renderer.dispatchNativeEvents()
+
+      expect(entries).toHaveLength(1)
+      expect(entries[0]!.borderBoxSize).toEqual([{ inlineSize: 40, blockSize: 20 }])
+      expect(entries[0]!.contentRect).toMatchObject({ x: 4, y: 4, width: 30, height: 10 })
+
+      render(app("hidden", 60))
+      renderer.dispatchNativeEvents()
+      expect(entries.at(-1)!.borderBoxSize).toEqual([{ inlineSize: 60, blockSize: 20 }])
+
+      render(app("visible", 60))
+      renderer.dispatchNativeEvents()
+      expect(entries, "showing it changes no size").toHaveLength(2)
     } finally {
       unmount()
     }
@@ -280,6 +312,29 @@ describeNative("IntersectionObserver", () => {
         rootBounds: { x: 0, y: 0, width: size.width, height: size.height },
       })
       expect(entries[0]!.time).toBeGreaterThan(0)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("reports a visibility: hidden target by its geometry, as intersecting", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const { entries, callback } = collect()
+      render(
+        <div style={{ flexDirection: "column", padding: 8 }}>
+          <div ref={ref("a")} style={{ visibility: "hidden", width: 50, height: 30 }} />
+        </div>
+      )
+      new IntersectionObserver(callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({
+        isIntersecting: true,
+        intersectionRatio: 1,
+        boundingClientRect: { x: 8, y: 8, width: 50, height: 30 },
+      })
     } finally {
       unmount()
     }

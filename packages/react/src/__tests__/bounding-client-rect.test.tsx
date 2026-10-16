@@ -119,12 +119,43 @@ describeNative("getBoundingClientRect", () => {
           ref={(instance) => {
             hidden = instance
           }}
-          style={{ visibility: "hidden", width: 50, height: 50 }}
+          style={{ display: "none", width: 50, height: 50 }}
         />
       )
 
       expect(hidden!.getBoundingClientRect()).toEqual(ZERO)
       expect(renderer.getElementBounds(hidden!.id)).toBeNull()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("reports the layout box of a visibility: hidden element and of its descendants", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      let hidden: PublicInstance | null = null
+      let inner: PublicInstance | null = null
+      render(
+        <div style={{ padding: 10 }}>
+          <div
+            ref={(instance) => {
+              hidden = instance
+            }}
+            style={{ visibility: "hidden", width: 50, height: 40, padding: 5 }}
+          >
+            <div
+              ref={(instance) => {
+                inner = instance
+              }}
+              style={{ width: 20, height: 10 }}
+            />
+          </div>
+        </div>
+      )
+
+      expect(hidden!.getBoundingClientRect()).toMatchObject({ x: 10, y: 10, width: 50, height: 40 })
+      expect(inner!.getBoundingClientRect()).toMatchObject({ x: 15, y: 15, width: 20, height: 10 })
+      expect(renderer.getElementBounds(hidden!.id)).toMatchObject({ width: 50, height: 40 })
     } finally {
       unmount()
     }

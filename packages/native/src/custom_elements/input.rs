@@ -2161,7 +2161,9 @@ impl gpui::Element for EditorTextElement {
                         display,
                     )
                 });
-            crate::text::log_painted_text(display);
+            if window.visibility() == gpui::Visibility::Visible {
+                crate::text::log_painted_text(display);
+            }
             let mut y = bounds.top() - px(scroll_top);
             for line in &lines {
                 let height = line.size(line_height).height;

@@ -111,9 +111,9 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// nothing to the tree. A canvas child per element would double the number of
 /// nodes gpui lays out, prepaints and paints.
 ///
-/// gpui paints nothing for `visibility: hidden`, not the element and not its
-/// children, so a hidden element reports no box and fires no `onLayout`. A
-/// canvas child cannot work around that: it is never painted either.
+/// A `visibility: hidden` element paints nothing but keeps its box, so it is
+/// recorded and reports like any other. What is not recorded for it is what a
+/// reader of the screen would see: the selection-start region.
 ///
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
 /// reports.
@@ -132,7 +132,8 @@ where
     let border = BorderOrigin::of(&mut el);
     el.on_painted(move |bounds, window, cx| {
         record_bounds(id, bounds, border, window.rem_size());
-        if let Some(selectable) = selection_start {
+        let visible = window.visibility() == gpui::Visibility::Visible;
+        if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(bounds, selectable);
         }
         if let Some(report) = &report {

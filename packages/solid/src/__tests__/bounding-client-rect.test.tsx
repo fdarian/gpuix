@@ -81,11 +81,23 @@ describe.skipIf(!hasNativeTestRenderer)("getBoundingClientRect", () => {
     expect([input.getBoundingClientRect().width, input.getBoundingClientRect().height]).toEqual([100, 30])
   })
 
+  it("reports the layout box of a visibility: hidden element", () => {
+    const app = createTestRoot()
+    let hidden!: HostElement
+    app.render(() => (
+      <div style={{ padding: 10 }}>
+        <div ref={(host) => (hidden = host)} style={{ visibility: "hidden", width: 50, height: 40 }} />
+      </div>
+    ))
+    expect(hidden.getBoundingClientRect()).toMatchObject({ x: 10, y: 10, width: 50, height: 40 })
+    expect(app.renderer.getElementBounds(hidden.id)).toMatchObject({ width: 50, height: 40 })
+  })
+
   it("reports a zero rect for an element without a box", () => {
     const app = createTestRoot()
     let hidden!: HostElement
     app.render(() => (
-      <div ref={(host) => (hidden = host)} style={{ visibility: "hidden", width: 50, height: 50 }} />
+      <div ref={(host) => (hidden = host)} style={{ display: "none", width: 50, height: 50 }} />
     ))
     expect(hidden.getBoundingClientRect()).toEqual({
       x: 0,
