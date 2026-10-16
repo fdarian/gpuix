@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use gpui::{
     canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
-    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled, Window,
+    LayoutInsets, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Styled, Window,
 };
 use web_time::Instant;
 
@@ -28,36 +29,21 @@ pub struct ElementBounds {
     /// The DOM's `clientLeft`: the left border's width, so the padding box starts at `x + client_left`.
     pub client_left: f64,
     pub client_top: f64,
-}
-
-/// The left and top border widths an element was laid out with, as written on the element
-/// before paint. A `hover` or `active` override applies at paint and is not in them.
-#[derive(Clone, Copy)]
-pub struct BorderOrigin {
-    left: gpui::AbsoluteLength,
-    top: gpui::AbsoluteLength,
-}
-
-impl BorderOrigin {
-    pub fn of<E: gpui::Styled>(el: &mut E) -> Self {
-        let widths = &el.style().border_widths;
-        let zero = gpui::AbsoluteLength::Pixels(px(0.0));
-        Self {
-            left: widths.left.unwrap_or(zero),
-            top: widths.top.unwrap_or(zero),
-        }
-    }
+    pub border_right: f64,
+    pub border_bottom: f64,
 }
 
 impl ElementBounds {
-    fn from_gpui(bounds: Bounds<Pixels>, border: BorderOrigin, rem_size: Pixels) -> Self {
+    fn from_gpui(bounds: Bounds<Pixels>, insets: LayoutInsets) -> Self {
         Self {
             x: f64::from(f32::from(bounds.origin.x)),
             y: f64::from(f32::from(bounds.origin.y)),
             width: f64::from(f32::from(bounds.size.width)),
             height: f64::from(f32::from(bounds.size.height)),
-            client_left: f64::from(f32::from(border.left.to_pixels(rem_size))),
-            client_top: f64::from(f32::from(border.top.to_pixels(rem_size))),
+            client_left: f64::from(f32::from(insets.border.left)),
+            client_top: f64::from(f32::from(insets.border.top)),
+            border_right: f64::from(f32::from(insets.border.right)),
+            border_bottom: f64::from(f32::from(insets.border.bottom)),
         }
     }
 }
@@ -91,15 +77,15 @@ pub fn bounds_frame_reset() -> impl IntoElement {
 /// would become the flex item and the image would lose intrinsic sizing and
 /// corner clipping.
 pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
-    mut el: E,
+    el: E,
     id: u64,
     report: Option<PaintReporter>,
 ) -> E {
-    let border = BorderOrigin::of(&mut el);
-    el.on_painted(move |bounds, window, cx| {
-        record_bounds(id, bounds, border, window.rem_size());
+    el.on_painted_layout(move |bounds, layout_id, window, cx| {
+        let insets = window.layout_insets(layout_id);
+        record_bounds(id, bounds, insets);
         if let Some(report) = &report {
-            report(bounds, window, cx);
+            report(bounds, insets, window, cx);
         }
     })
 }
@@ -107,7 +93,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// Record a host element's painted box, and its selection-start region, for
 /// automation and text selection.
 ///
-/// The element reports its own box through `on_painted`, so tracking it adds
+/// The element reports its own box through `on_painted_layout`, so tracking it adds
 /// nothing to the tree. A canvas child per element would double the number of
 /// nodes gpui lays out, prepaints and paints.
 ///
@@ -129,29 +115,30 @@ pub fn track_host_bounds<E>(
 where
     E: gpui::InteractiveElement + gpui::Styled,
 {
-    let border = BorderOrigin::of(&mut el);
-    el.on_painted(move |bounds, window, cx| {
-        record_bounds(id, bounds, border, window.rem_size());
+    el.on_painted_layout(move |bounds, layout_id, window, cx| {
+        let insets = window.layout_insets(layout_id);
+        record_bounds(id, bounds, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(bounds, selectable);
         }
         if let Some(report) = &report {
-            report(bounds, window, cx);
+            report(bounds, insets, window, cx);
         }
     })
 }
 
-/// Called with an element's painted box on every paint, from inside paint. It
-/// is how `onLayout`, `onScroll` and the observers see what the frame
-/// produced. The window is the one being painted, so a reporter can read the
-/// content mask the element was painted under.
-pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
+/// Called with an element's painted box and the padding and border it was laid
+/// out with, on every paint, from inside paint. It is how `onLayout`,
+/// `onScroll` and the observers see what the frame produced. The window is the
+/// one being painted, so a reporter can read the content mask the element was
+/// painted under.
+pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
-pub fn record_bounds(id: u64, bounds: Bounds<Pixels>, border: BorderOrigin, rem_size: Pixels) {
+pub fn record_bounds(id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
     BOUNDS.with(|cell| {
         cell.borrow_mut()
-            .insert(id, ElementBounds::from_gpui(bounds, border, rem_size));
+            .insert(id, ElementBounds::from_gpui(bounds, insets));
     });
 }
 

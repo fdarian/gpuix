@@ -7200,7 +7200,6 @@ pub(crate) fn build_element(
                 observe: crate::observers::reporter(
                     id,
                     element.events(),
-                    style,
                     ctx.tree,
                     ctx.paint_reports,
                     ctx.event_callback,
@@ -7499,7 +7498,7 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
-        paint_reporter(element.id, element.events(), style, ctx),
+        paint_reporter(element.id, element.events(), ctx),
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
@@ -8198,7 +8197,6 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
 fn paint_reporter(
     id: u64,
     events: &HashSet<String>,
-    style: Option<&StyleDesc>,
     ctx: &BuildCtx,
 ) -> Option<crate::automation::PaintReporter> {
     let layout = events.contains("layout");
@@ -8209,7 +8207,6 @@ fn paint_reporter(
     let observe = crate::observers::reporter(
         id,
         events,
-        style,
         ctx.tree,
         ctx.paint_reports,
         ctx.event_callback,
@@ -8219,7 +8216,7 @@ fn paint_reporter(
     }
     let callback = ctx.event_callback.clone()?;
     let reports = ctx.paint_reports.clone();
-    Some(Rc::new(move |bounds, window, cx| {
+    Some(Rc::new(move |bounds, insets, window, cx| {
         if layout {
             report_layout(id, bounds, &reports, &callback, cx);
         }
@@ -8227,7 +8224,7 @@ fn paint_reporter(
             report_scroll(id, handle.offset(), &reports, &callback, cx);
         }
         if let Some(observe) = &observe {
-            observe(bounds, window, cx);
+            observe(bounds, insets, window, cx);
         }
     }))
 }

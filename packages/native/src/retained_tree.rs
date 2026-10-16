@@ -1543,6 +1543,8 @@ mod tests {
                     height: *height,
                     client_left: 0.0,
                     client_top: 0.0,
+                    border_right: 0.0,
+                    border_bottom: 0.0,
                 })
         };
         (tree, lookup)
@@ -1615,6 +1617,8 @@ mod tests {
                     height: *height,
                     client_left: 0.0,
                     client_top: 0.0,
+                    border_right: 0.0,
+                    border_bottom: 0.0,
                 })
         }
     }

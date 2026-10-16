@@ -3784,8 +3784,9 @@ useEffect(() => {
 `borderBoxSize`, `contentBoxSize`) and the observer. The first callback follows
 `observe()` for an element that is not 0 by 0, then one per change of the
 observed box (`"content-box"`, the default, or `"border-box"`). The content box
-is the border box minus the element's own `padding` and `borderWidth`; `hover`
-and `active` overrides of those are not counted. An element that has no box
+is the border box minus the element's computed `padding` and `borderWidth`, so a
+`hover`, `active` or focus style (or a transition) that changes them reports
+too. An element that has no box
 (`display: "none"`, a virtual list row outside its window) reports 0 by 0. A
 `visibility: "hidden"` element keeps its box and reports its size.
 `device-pixel-content-box` throws a `TypeError`.

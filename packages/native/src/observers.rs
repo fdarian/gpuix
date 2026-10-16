@@ -13,13 +13,13 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled, Window};
+use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
 
+use crate::automation::PaintReporter;
 use crate::retained_tree::RetainedTree;
 use crate::renderer::{emit_event_full, EventCallback, SharedPaintReports};
-use crate::style::StyleDesc;
 
 pub(crate) const RESIZE_EVENT: &str = "resizeObserve";
 pub(crate) const INTERSECTION_EVENT: &str = "intersectObserve";
@@ -114,6 +114,30 @@ struct ResizeSample {
     content: (f32, f32),
 }
 
+impl ResizeSample {
+    /// The content box is the border box minus the padding and border the element
+    /// has now. Padding alone can move it while the border box stays put, as with
+    /// a fixed `box-sizing: border-box` size.
+    fn of(border_box: (f32, f32), padding: Insets, border: Insets) -> Self {
+        Self {
+            border: border_box,
+            content: (
+                (border_box.0 - padding.left - padding.right - border.left - border.right)
+                    .max(0.0),
+                (border_box.1 - padding.top - padding.bottom - border.top - border.bottom)
+                    .max(0.0),
+            ),
+        }
+    }
+
+    fn is_same_as(&self, other: &Self) -> bool {
+        near(self.border.0, other.border.0)
+            && near(self.border.1, other.border.1)
+            && near(self.content.0, other.content.0)
+            && near(self.content.1, other.content.1)
+    }
+}
+
 #[derive(Clone)]
 struct IntersectionSample {
     present: bool,
@@ -123,10 +147,7 @@ struct IntersectionSample {
     viewport: gpui::Size<Pixels>,
 }
 
-/// Border and padding of one element, in px, from its own style.
-///
-/// Mirrors how `apply_styles` reads `padding*` and `border*Width`. Not
-/// included: `hover` and `active` overrides, which change at paint time.
+/// Border or padding widths of one element, in px.
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 struct Insets {
     left: f32,
@@ -135,24 +156,15 @@ struct Insets {
     bottom: f32,
 }
 
-fn insets(style: Option<&StyleDesc>) -> (Insets, Insets) {
-    let Some(style) = style else {
-        return (Insets::default(), Insets::default());
-    };
-    let side = |all: Option<f64>, one: Option<f64>| one.or(all).unwrap_or(0.0).max(0.0) as f32;
-    let padding = Insets {
-        left: side(style.padding, style.padding_left),
-        top: side(style.padding, style.padding_top),
-        right: side(style.padding, style.padding_right),
-        bottom: side(style.padding, style.padding_bottom),
-    };
-    let border = Insets {
-        left: side(style.border_width, style.border_left_width),
-        top: side(style.border_width, style.border_top_width),
-        right: side(style.border_width, style.border_right_width),
-        bottom: side(style.border_width, style.border_bottom_width),
-    };
-    (padding, border)
+impl Insets {
+    fn of(edges: gpui::Edges<Pixels>) -> Self {
+        Self {
+            left: f32::from(edges.left),
+            top: f32::from(edges.top),
+            right: f32::from(edges.right),
+            bottom: f32::from(edges.bottom),
+        }
+    }
 }
 
 /// An ancestor that clips its descendants, as gpui's `overflow_mask` does.
@@ -160,8 +172,6 @@ struct ClippingAncestor {
     id: u64,
     clip_x: bool,
     clip_y: bool,
-    /// The clip edge is the padding box: the border is outside it.
-    border: Insets,
 }
 
 fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
@@ -185,7 +195,6 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
                 id: ancestor,
                 clip_x,
                 clip_y,
-                border: insets(style).1,
             });
         }
         next = element.parent;
@@ -193,6 +202,8 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
     found
 }
 
+/// The clip edge is the padding box: the border is outside it. The border is the
+/// one the ancestor painted with, so a state style that changes it moves the clip.
 fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
     ancestors
         .iter()
@@ -201,12 +212,18 @@ fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
             let (x, y) = (painted.x as f32, painted.y as f32);
             let (width, height) = (painted.width as f32, painted.height as f32);
             let (left, right) = if ancestor.clip_x {
-                (x + ancestor.border.left, x + width - ancestor.border.right)
+                (
+                    x + painted.client_left as f32,
+                    x + width - painted.border_right as f32,
+                )
             } else {
                 (-UNCLIPPED, UNCLIPPED)
             };
             let (top, bottom) = if ancestor.clip_y {
-                (y + ancestor.border.top, y + height - ancestor.border.bottom)
+                (
+                    y + painted.client_top as f32,
+                    y + height - painted.border_bottom as f32,
+                )
             } else {
                 (-UNCLIPPED, UNCLIPPED)
             };
@@ -221,18 +238,15 @@ fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
         .collect()
 }
 
-pub(crate) type ObserverReporter = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
-
 /// The reporter for an element that has an observer listener, or `None` for
 /// every other element.
 pub(crate) fn reporter(
     id: u64,
     events: &HashSet<String>,
-    style: Option<&StyleDesc>,
     tree: &RetainedTree,
     reports: &SharedPaintReports,
     callback: &Option<EventCallback>,
-) -> Option<ObserverReporter> {
+) -> Option<PaintReporter> {
     let resize = events.contains(RESIZE_EVENT);
     let intersection = events.contains(INTERSECTION_EVENT);
     if !resize && !intersection {
@@ -240,14 +254,15 @@ pub(crate) fn reporter(
     }
     let callback = callback.clone()?;
     let reports = reports.clone();
-    let (padding, border) = insets(style);
     let ancestors = if intersection {
         clipping_ancestors(tree, id)
     } else {
         Vec::new()
     };
-    Some(Rc::new(move |bounds, window, cx| {
+    Some(Rc::new(move |bounds, layout_insets, window, cx| {
         let viewport = window.viewport_size();
+        let padding = Insets::of(layout_insets.padding);
+        let border = Insets::of(layout_insets.border);
         if resize {
             report_resize(id, bounds, padding, border, &reports, &callback, cx);
         }
@@ -282,22 +297,11 @@ fn report_resize(
     callback: &EventCallback,
     cx: &mut App,
 ) {
-    let border_box = size_of(bounds);
-    let sample = ResizeSample {
-        border: border_box,
-        content: (
-            (border_box.0 - padding.left - padding.right - border.left - border.right).max(0.0),
-            (border_box.1 - padding.top - padding.bottom - border.top - border.bottom).max(0.0),
-        ),
-    };
+    let sample = ResizeSample::of(size_of(bounds), padding, border);
     {
         let mut reports = reports.borrow_mut();
         let last = reports.observers.resize.entry(id).or_default();
-        if near(last.border.0, sample.border.0)
-            && near(last.border.1, sample.border.1)
-            && near(last.content.0, sample.content.0)
-            && near(last.content.1, sample.content.1)
-        {
+        if last.is_same_as(&sample) {
             return;
         }
         *last = sample;
@@ -484,26 +488,33 @@ fn sweep(reports: &SharedPaintReports, callback: &Option<EventCallback>, cx: &mu
 mod tests {
     use std::sync::Arc;
 
-    use super::*;
+    use gpui::LayoutInsets;
 
-    #[test]
-    fn border_insets_read_the_shorthand_and_the_per_side_override() {
-        let style = StyleDesc {
-            border_width: Some(10.0),
-            border_left_width: Some(2.0),
-            padding: Some(4.0),
-            ..StyleDesc::default()
-        };
-        let (padding, border) = insets(Some(&style));
-        assert_eq!(
-            border,
-            Insets { left: 2.0, top: 10.0, right: 10.0, bottom: 10.0 }
-        );
-        assert_eq!(padding, Insets { left: 4.0, top: 4.0, right: 4.0, bottom: 4.0 });
+    use super::*;
+    use crate::style::StyleDesc;
+
+    fn insets(width: f32) -> Insets {
+        Insets { left: width, top: width, right: width, bottom: width }
     }
 
     #[test]
-    fn an_ancestor_clips_at_the_padding_box_whatever_its_border_colour() {
+    fn the_content_box_is_the_border_box_minus_padding_and_border() {
+        let sample = ResizeSample::of((100.0, 60.0), insets(10.0), insets(2.0));
+        assert_eq!(sample.content, (76.0, 36.0));
+        let squeezed = ResizeSample::of((10.0, 10.0), insets(10.0), insets(2.0));
+        assert_eq!(squeezed.content, (0.0, 0.0));
+    }
+
+    #[test]
+    fn padding_alone_is_a_change_while_the_border_box_stays_put() {
+        let rest = ResizeSample::of((100.0, 60.0), insets(4.0), insets(0.0));
+        let hovered = ResizeSample::of((100.0, 60.0), insets(10.0), insets(0.0));
+        assert!(!rest.is_same_as(&hovered));
+        assert!(rest.is_same_as(&ResizeSample::of((100.0, 60.0), insets(4.0), insets(0.0))));
+    }
+
+    #[test]
+    fn an_ancestor_clips_at_the_border_it_painted_with() {
         let mut tree = RetainedTree::new();
         tree.create_element(1, "div".to_string());
         tree.create_element(2, "div".to_string());
@@ -511,17 +522,36 @@ mod tests {
         tree.set_style(
             1,
             Arc::new(StyleDesc {
-                border_width: Some(6.0),
+                border_width: Some(2.0),
                 overflow: Some("hidden".into()),
                 ..StyleDesc::default()
             }),
         );
+        let bounds = gpui::Bounds {
+            origin: gpui::point(px(10.0), px(20.0)),
+            size: gpui::size(px(100.0), px(80.0)),
+        };
+        // The element's style says 2px; a state style made it 6px at paint.
+        crate::automation::record_bounds(
+            1,
+            bounds,
+            LayoutInsets {
+                padding: gpui::Edges::default(),
+                border: gpui::Edges::all(px(6.0)),
+            },
+        );
 
         let ancestors = clipping_ancestors(&tree, 2);
         assert_eq!(ancestors.len(), 1);
+        let clips = clip_rects(&ancestors);
+        assert_eq!(clips.len(), 1);
+        assert_eq!(clips[0].0, 1);
         assert_eq!(
-            ancestors[0].border,
-            Insets { left: 6.0, top: 6.0, right: 6.0, bottom: 6.0 }
+            clips[0].1,
+            gpui::Bounds {
+                origin: gpui::point(px(16.0), px(26.0)),
+                size: gpui::size(px(88.0), px(68.0)),
+            }
         );
     }
 }

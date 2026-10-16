@@ -218,6 +218,176 @@ describeNative("ResizeObserver", () => {
     }
   })
 
+  describe("a state style that changes padding or border", () => {
+    // A border-box fixed size keeps the border box still, so only the content
+    // box tells the observer.
+    const hovered = (
+      ref: ReturnType<typeof setup>["ref"],
+      style: Record<string, unknown>,
+      hover: Record<string, unknown>
+    ) => (
+      <div style={{ flexDirection: "column" }}>
+        <div ref={ref("box")} style={{ width: 100, height: 60, ...style, hover }} />
+      </div>
+    )
+
+    const pointerOver = (renderer: ReturnType<typeof setup>["renderer"], element: PublicInstance) => {
+      const bounds = renderer.getElementBounds(element.id)
+      return {
+        enter: () => renderer.nativeSimulateMouseMove(bounds.x + 2, bounds.y + 2),
+        leave: () => renderer.nativeSimulateMouseMove(bounds.x + 500, bounds.y + 300),
+      }
+    }
+
+    it("reports the hover padding, and again when the pointer leaves", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const entries: ResizeObserverEntry[] = []
+        render(hovered(ref, { padding: 4 }, { padding: 10 }))
+        new ResizeObserver((batch) => entries.push(...batch)).observe(element("box"))
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(1)
+        expect(entries[0]!.contentRect).toMatchObject({ x: 4, y: 4, width: 92, height: 52 })
+
+        const pointer = pointerOver(renderer, element("box"))
+        pointer.enter()
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(2)
+        expect(entries[1]!.borderBoxSize).toEqual([{ inlineSize: 100, blockSize: 60 }])
+        expect(entries[1]!.contentBoxSize).toEqual([{ inlineSize: 80, blockSize: 40 }])
+        expect(entries[1]!.contentRect).toMatchObject({ x: 10, y: 10, width: 80, height: 40 })
+
+        pointer.leave()
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(3)
+        expect(entries[2]!.contentRect).toMatchObject({ x: 4, y: 4, width: 92, height: 52 })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("reports the hover padding of an element that has none at rest", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const entries: ResizeObserverEntry[] = []
+        render(hovered(ref, {}, { paddingLeft: 12, paddingTop: 6 }))
+        new ResizeObserver((batch) => entries.push(...batch)).observe(element("box"))
+        renderer.dispatchNativeEvents()
+        expect(entries[0]!.contentRect).toMatchObject({ x: 0, y: 0, width: 100, height: 60 })
+
+        pointerOver(renderer, element("box")).enter()
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(2)
+        expect(entries[1]!.contentRect).toMatchObject({ x: 12, y: 6, width: 88, height: 54 })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("reports the hover border width", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const entries: ResizeObserverEntry[] = []
+        render(hovered(ref, { borderWidth: 1, borderColor: "#fff" }, { borderWidth: 5 }))
+        new ResizeObserver((batch) => entries.push(...batch)).observe(element("box"))
+        renderer.dispatchNativeEvents()
+        expect(entries[0]!.contentRect).toMatchObject({ width: 98, height: 58 })
+
+        pointerOver(renderer, element("box")).enter()
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(2)
+        expect(entries[1]!.contentRect).toMatchObject({ width: 90, height: 50 })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("gives clientLeft the hover border width", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        render(hovered(ref, { borderWidth: 1, borderColor: "#fff" }, { borderWidth: 5 }))
+        expect(renderer.getElementBounds(element("box").id).clientLeft).toBe(1)
+
+        pointerOver(renderer, element("box")).enter()
+        renderer.flush()
+        expect(renderer.getElementBounds(element("box").id).clientLeft).toBe(5)
+      } finally {
+        unmount()
+      }
+    })
+
+    it("reports the focusVisible padding, and focusWithin on an ancestor", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const own: ResizeObserverEntry[] = []
+        const outer: ResizeObserverEntry[] = []
+        render(
+          <div style={{ flexDirection: "column" }}>
+            <div
+              ref={ref("outer")}
+              style={{ width: 100, height: 60, focusWithin: { padding: 8 } }}
+            >
+              <div
+                ref={ref("own")}
+                tabIndex={0}
+                style={{ width: 40, height: 20, focusVisible: { padding: 5 } }}
+              />
+            </div>
+          </div>
+        )
+        new ResizeObserver((batch) => own.push(...batch)).observe(element("own"))
+        new ResizeObserver((batch) => outer.push(...batch)).observe(element("outer"))
+        renderer.dispatchNativeEvents()
+        expect([own.length, outer.length]).toEqual([1, 1])
+
+        renderer.simulateKeystrokes("Tab")
+        renderer.dispatchNativeEvents()
+        expect(own.at(-1)!.contentRect).toMatchObject({ x: 5, y: 5, width: 30, height: 10 })
+        expect(outer.at(-1)!.contentRect).toMatchObject({ x: 8, y: 8, width: 84, height: 44 })
+        expect([own.length, outer.length]).toEqual([2, 2])
+      } finally {
+        unmount()
+      }
+    })
+
+    it("follows a padding transition frame by frame", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        renderer.clockPause()
+        const entries: ResizeObserverEntry[] = []
+        render(
+          <div style={{ flexDirection: "column" }}>
+            <div
+              ref={ref("box")}
+              style={{
+                width: 100,
+                height: 60,
+                padding: 0,
+                transition: "padding 1s linear",
+                hover: { padding: 20 },
+              }}
+            />
+          </div>
+        )
+        new ResizeObserver((batch) => entries.push(...batch)).observe(element("box"))
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(1)
+
+        pointerOver(renderer, element("box")).enter()
+        renderer.clockFastForward(500)
+        renderer.dispatchNativeEvents()
+        expect(entries.at(-1)!.contentRect.x).toBeCloseTo(10, 0)
+        expect(entries.at(-1)!.contentRect.width).toBeCloseTo(80, 0)
+
+        renderer.clockFastForward(1000)
+        renderer.dispatchNativeEvents()
+        expect(entries.at(-1)!.contentRect).toMatchObject({ x: 20, y: 20, width: 60, height: 20 })
+      } finally {
+        unmount()
+      }
+    })
+  })
+
   it("reports 0 by 0 once when the element is removed, then stays quiet", () => {
     const { render, renderer, ref, element, unmount } = setup()
     try {
