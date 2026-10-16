@@ -7,7 +7,7 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 import type { HostMouseEvent, HostPointerEvent, HostProps } from "@gpuix/native/host"
 import { jsx } from "../jsx-runtime.js"
 import {
@@ -135,8 +135,8 @@ export function TooltipTrigger(props: TooltipTriggerProps): JSX.Element {
       onMouseLeave(event: HostMouseEvent) { props.onMouseLeave?.(event); state.scheduleClose() },
       onMouseDown(event: HostMouseEvent) { props.onMouseDown?.(event); state.close() },
       onClick(event: HostPointerEvent) { props.onClick?.(event); state.close() },
-      onFocus(event: EventPayload) { props.onFocus?.(event); state.openNow() },
-      onBlur(event: EventPayload) { props.onBlur?.(event); state.close() },
+      onFocus(event: DomEvent) { props.onFocus?.(event); state.openNow() },
+      onBlur(event: DomEvent) { props.onBlur?.(event); state.close() },
     }, ["children"]),
     defaultTabIndex: 0,
   })

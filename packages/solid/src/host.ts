@@ -47,7 +47,7 @@ import type {
   StyleDesc,
   TextControlHost,
 } from "@gpuix/native/host"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 
 export type HostNode = HostElement | HostText
 export type HostParent = HostRoot | HostElement
@@ -56,7 +56,7 @@ export type HostPropertyValue =
   | string
   | number
   | boolean
-  | ((event: EventPayload) => void)
+  | ((event: DomEvent) => void)
   | null
   | undefined
 
@@ -517,7 +517,7 @@ export function isHostElement(value: unknown): value is HostElement {
 
 function isEventHandler(
   value: HostPropertyValue
-): value is (event: EventPayload) => void {
+): value is (event: DomEvent) => void {
   return typeof value === "function"
 }
 

@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 import { preventEventDefault } from "@gpuix/native/host"
 import type {
   HostMouseEvent,
@@ -253,17 +253,17 @@ export const ComboboxInput = forwardRef<PublicInstance, ComboboxInputProps>(
           onClick?.(event)
           if (!disabled) context.setOpen(true)
         }}
-        onFocus={(event: EventPayload) => {
+        onFocus={(event: DomEvent) => {
           onFocus?.(event)
           if (!disabled) context.setOpen(true)
         }}
         // Focus leaving the input closes the popup, like Base UI. Tab moves
         // focus only when no handler prevented it, so a kept Tab keeps it open.
-        onBlur={(event: EventPayload) => {
+        onBlur={(event: DomEvent) => {
           onBlur?.(event)
           context.setOpen(false)
         }}
-        onChange={(event: EventPayload) => {
+        onChange={(event: DomEvent) => {
           onChange?.(event)
           context.setInputValue(event.value ?? "")
           if (!disabled) context.setOpen(true)

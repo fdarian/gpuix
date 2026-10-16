@@ -1,5 +1,5 @@
 import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 import {
   layoutDescription,
   reduceMotionValues,
@@ -120,9 +120,9 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
           ...(reduced() ? { reducedMotion: true } : {}),
         }
       },
-      onMotionComplete(event: EventPayload) {
+      onMotionComplete(event: DomEvent) {
         if (event.motionGeneration !== generation) return
-        ;(hostProps as { onMotionComplete?: (event: EventPayload) => void }).onMotionComplete?.(event)
+        ;(hostProps as { onMotionComplete?: (event: DomEvent) => void }).onMotionComplete?.(event)
         if (presence && !presence.isPresent()) presence.safeToRemove()
       },
     }))

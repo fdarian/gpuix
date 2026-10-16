@@ -3,7 +3,7 @@ import type { EventPayload } from "@gpuix/native"
 import {
   createMutationQueue,
   createRendererState,
-  installActiveElementSource,
+  installElementSource,
   runMotionReleases,
   syncWindowEventListeners,
   unregisterEventHandlers,
@@ -13,6 +13,7 @@ import type {
   Appearance,
   NativeRenderer,
   RendererRootBinding,
+  RootEvent,
   SyncDispatchResult,
   RootEventHandlers,
 } from "@gpuix/native/host"
@@ -76,10 +77,10 @@ export function createRoot(
   })
   let binding: RendererRootBinding | undefined
   let stopWindowEventListeners: (() => void) | undefined
-  let stopActiveElement: (() => void) | undefined
+  let stopElementSource: (() => void) | undefined
   let dispose: (() => void) | undefined
   const selectionListeners = new Set<(text: string | null) => void>()
-  const onSelectionChange = (event: EventPayload, currentRenderer: NativeRenderer) => {
+  const onSelectionChange = (event: RootEvent, currentRenderer: NativeRenderer) => {
     rootHandlers.onSelectionChange?.(event, currentRenderer)
     for (const listener of selectionListeners) listener(event.value ?? null)
   }
@@ -92,7 +93,7 @@ export function createRoot(
   }
 
   const appearanceListeners = new Set<(appearance: Appearance) => void>()
-  const onAppearanceChange = (event: EventPayload, currentRenderer: NativeRenderer) => {
+  const onAppearanceChange = (event: RootEvent, currentRenderer: NativeRenderer) => {
     rootHandlers.onAppearanceChange?.(event, currentRenderer)
     const appearance = toAppearance(event.value)
     for (const listener of appearanceListeners) listener(appearance)
@@ -125,7 +126,7 @@ export function createRoot(
       binding.windowKeyEventId
     )
     stopWindowEventListeners = syncWindowEventListeners(renderer)
-    stopActiveElement = installActiveElementSource(renderer, (id) => container.elements.get(id))
+    stopElementSource = installElementSource(renderer, (id) => container.elements.get(id))
     // Sent on every attach, so a remount without the option restores the default.
     mutations.setKeyboardFocusDim(rootHandlers.keyboardFocusDim !== false)
     syncSelection()
@@ -137,8 +138,8 @@ export function createRoot(
     renderer.setWindowKeyEvents?.(false, false, binding.windowKeyEventId)
     stopWindowEventListeners?.()
     stopWindowEventListeners = undefined
-    stopActiveElement?.()
-    stopActiveElement = undefined
+    stopElementSource?.()
+    stopElementSource = undefined
     renderer.setWindowSelectionChange?.(false, binding.windowSelectionEventId)
     renderer.setWindowAppearanceChange?.(false, binding.windowAppearanceEventId)
     binding = undefined

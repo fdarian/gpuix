@@ -229,7 +229,7 @@ describeNative("synchronous key dispatch", () => {
       testRoot.render(<Focusable />)
       listen(window, "keydown", (event) => keys.push(`${event.key}:${event.target}`))
       testRoot.renderer.simulateKeystrokes("x")
-      expect(keys).toEqual(["x:undefined"])
+      expect(keys).toEqual(["x:null"])
     })
 
     it("stops at stopPropagation, in capture and on the element", () => {
@@ -319,18 +319,29 @@ describeNative("focus events on window", () => {
     )
   }
 
-  it("bubbles focusin and focusout with target and relatedTarget", () => {
-    const log: string[] = []
-    testRoot.render(<Pair />)
-    listen(window, "focusin", (event) => log.push(`in ${event.target}<-${event.relatedTarget}`))
-    listen(window, "focusout", (event) => log.push(`out ${event.target}->${event.relatedTarget}`))
+  it("bubbles focusin and focusout with the elements as target and relatedTarget", () => {
+    const refs: Record<string, unknown> = {}
+    const log: Array<[string, unknown, unknown]> = []
+    testRoot.render(
+      <div style={{ width: 200, height: 100 }}>
+        <div ref={(el) => (refs.a = el)} testId="a" tabIndex={0} style={{ width: 40, height: 20 }} />
+        <div ref={(el) => (refs.b = el)} testId="b" tabIndex={0} style={{ width: 40, height: 20 }} />
+      </div>
+    )
+    listen(window, "focusin", (event) => log.push(["in", event.target, event.relatedTarget]))
+    listen(window, "focusout", (event) => log.push(["out", event.target, event.relatedTarget]))
     testRoot.renderer.focusElement(idOf("a"))
     testRoot.renderer.focusElement(idOf("b"))
-    expect(log).toEqual([
-      `in ${idOf("a")}<-undefined`,
-      `out ${idOf("a")}->${idOf("b")}`,
-      `in ${idOf("b")}<-${idOf("a")}`,
-    ])
+    expect(log).toHaveLength(3)
+    expect(log[0][0]).toBe("in")
+    expect(log[0][1]).toBe(refs.a)
+    expect(log[0][2]).toBeNull()
+    expect(log[1][0]).toBe("out")
+    expect(log[1][1]).toBe(refs.a)
+    expect(log[1][2]).toBe(refs.b)
+    expect(log[2][0]).toBe("in")
+    expect(log[2][1]).toBe(refs.b)
+    expect(log[2][2]).toBe(refs.a)
   })
 
   it("does not bubble focus and blur, but captures them", () => {

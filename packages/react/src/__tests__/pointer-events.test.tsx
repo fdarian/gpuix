@@ -11,7 +11,7 @@ import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./te
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
-type Seen = { type: string; target: number; currentTarget: number | null; phase: number }
+type Seen = { type: string; target: object; currentTarget: object | null; phase: number }
 
 describeNative("pointer events", () => {
   let testRoot: ReturnType<typeof createTestRoot>
@@ -21,14 +21,6 @@ describeNative("pointer events", () => {
     testRoot = createTestRoot()
     log = []
   })
-
-  function idOfWidth(width: number): number {
-    const found = testRoot.renderer
-      .findByType("div")
-      .find((element) => element.style.width === width)
-    if (!found) throw new Error(`No div with width ${width}`)
-    return found.id
-  }
 
   /** Records `name:type` for each event, so a test reads as an ordered list. */
   function record(name: string) {
@@ -61,24 +53,53 @@ describeNative("pointer events", () => {
       ])
     })
 
-    it("reports the target and the path, target first", () => {
-      const seen: { target: number; path: number[] | undefined }[] = []
+    it("reports the target element and the path, target first", () => {
+      let inner: unknown
+      let outer: unknown
+      const seen: { target: object; path: object[] }[] = []
       testRoot.render(
         <div
+          ref={(element) => (outer = element)}
           style={{ width: 400, height: 300 }}
-          onClick={(event: { target: number; path?: number[] }) =>
-            seen.push({ target: event.target, path: event.path })
+          onClick={(event: { target: object; composedPath(): object[] }) =>
+            seen.push({ target: event.target, path: event.composedPath() })
           }
         >
-          <div style={{ width: 100, height: 100 }} />
+          <div ref={(element) => (inner = element)} style={{ width: 100, height: 100 }} />
         </div>,
       )
-      const inner = idOfWidth(100)
-      const outer = idOfWidth(400)
 
       testRoot.renderer.nativeSimulateClick(50, 50)
 
-      expect(seen).toEqual([{ target: inner, path: [inner, outer] }])
+      expect(seen).toHaveLength(1)
+      expect(seen[0].target).toBe(inner)
+      expect(seen[0].path).toEqual([inner, outer])
+      expect(seen[0].path[0]).toBe(inner)
+      expect(seen[0].path[1]).toBe(outer)
+    })
+
+    it("keeps target fixed and moves currentTarget up the path while a click bubbles", () => {
+      let inner: unknown
+      let outer: unknown
+      const seen: Array<{ at: string; target: unknown; currentTarget: unknown; phase: number }> = []
+      const record = (at: string) => (event: { target: unknown; currentTarget: unknown; eventPhase: number }) =>
+        seen.push({ at, target: event.target, currentTarget: event.currentTarget, phase: event.eventPhase })
+      testRoot.render(
+        <div ref={(element) => (outer = element)} style={{ width: 400, height: 300 }} onClick={record("outer")}>
+          <div ref={(element) => (inner = element)} style={{ width: 100, height: 100 }} onClick={record("inner")} />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateClick(50, 50)
+
+      expect(seen.map((entry) => [entry.at, entry.phase])).toEqual([
+        ["inner", 2],
+        ["outer", 3],
+      ])
+      expect(seen[0].target).toBe(inner)
+      expect(seen[0].currentTarget).toBe(inner)
+      expect(seen[1].target).toBe(inner)
+      expect(seen[1].currentTarget).toBe(outer)
     })
 
     it("stops propagation at the handler that asks", () => {
@@ -100,26 +121,29 @@ describeNative("pointer events", () => {
     })
 
     it("targets a virtual-list where no row is, and bubbles from it", () => {
-      const seen: { target: number; path: number[] }[] = []
+      let list: unknown
+      let root: unknown
+      const seen: { target: object; path: object[] }[] = []
       testRoot.render(
         <div
+          ref={(element) => (root = element)}
           style={{ width: 400, height: 300 }}
-          onClick={(event: { target: number; path: number[] }) =>
-            seen.push({ target: event.target, path: event.path })
+          onClick={(event: { target: object; composedPath(): object[] }) =>
+            seen.push({ target: event.target, path: event.composedPath() })
           }
         >
-          <virtual-list estimatedItemHeight={20} style={{ width: 200, height: 160 }}>
+          <virtual-list ref={(element) => (list = element)} estimatedItemHeight={20} style={{ width: 200, height: 160 }}>
             <div style={{ width: 200, height: 20, flexShrink: 0 }} />
             <div style={{ width: 200, height: 20, flexShrink: 0 }} />
           </virtual-list>
         </div>,
       )
-      const list = testRoot.renderer.findByType("virtual-list")[0]!.id
-      const root = idOfWidth(400)
 
       testRoot.renderer.nativeSimulateClick(100, 120)
 
-      expect(seen).toEqual([{ target: list, path: [list, root] }])
+      expect(seen).toHaveLength(1)
+      expect(seen[0].target).toBe(list)
+      expect(seen[0].path).toEqual([list, root])
     })
 
     it("hits an element with no listener and no fill, and bubbles from it", () => {
@@ -186,32 +210,39 @@ describeNative("pointer events", () => {
 
   describe("anchored layers", () => {
     it("bubbles from an anchored layer to the element it is declared under", () => {
-      const seen: { target: number; path: number[] }[] = []
+      let content: unknown
+      let trigger: unknown
+      let anchored: unknown
+      let root: unknown
+      const seen: { target: object; path: object[] }[] = []
       testRoot.render(
         <div
+          ref={(element) => (root = element)}
           style={{ width: 600, height: 400 }}
-          onClick={(event: { target: number; path: number[] }) =>
-            seen.push({ target: event.target, path: event.path })
+          onClick={(event: { target: object; composedPath(): object[] }) =>
+            seen.push({ target: event.target, path: event.composedPath() })
           }
         >
-          <div style={{ width: 100, height: 100 }}>
-            <anchored position={{ x: 400, y: 250 }} anchor="topLeft" deferred priority={1}>
-              <div style={{ width: 120, height: 60 }} />
+          <div ref={(element) => (trigger = element)} style={{ width: 100, height: 100 }}>
+            <anchored
+              ref={(element) => (anchored = element)}
+              position={{ x: 400, y: 250 }}
+              anchor="topLeft"
+              deferred
+              priority={1}
+            >
+              <div ref={(element) => (content = element)} style={{ width: 120, height: 60 }} />
             </anchored>
           </div>
         </div>,
       )
-      const content = idOfWidth(120)
-      const trigger = idOfWidth(100)
-      const anchored = testRoot.renderer.findByType("anchored")[0]!.id
-      const root = idOfWidth(600)
 
       // Far from the trigger, over the layer.
       testRoot.renderer.nativeSimulateClick(430, 270)
 
-      expect(seen).toEqual([
-        { target: content, path: [content, anchored, trigger, root] },
-      ])
+      expect(seen).toHaveLength(1)
+      expect(seen[0].target).toBe(content)
+      expect(seen[0].path).toEqual([content, anchored, trigger, root])
     })
   })
 
@@ -319,23 +350,64 @@ describeNative("pointer events", () => {
       ])
     })
 
-    it("sets relatedTarget to the element the pointer came from", () => {
-      const related: (number | undefined)[] = []
+    it("sets relatedTarget to the element the pointer came from, and null when it came from outside", () => {
+      let first: unknown
+      let second: unknown
+      const related: Array<[unknown, unknown]> = []
       testRoot.render(
         <div style={{ width: 600, height: 400 }}>
-          <div style={{ width: 200, height: 100 }} />
+          <div ref={(element) => (first = element)} style={{ width: 200, height: 100 }} />
           <div
+            ref={(element) => (second = element)}
             style={{ width: 300, height: 100 }}
-            onMouseEnter={(event: { relatedTarget?: number }) => related.push(event.relatedTarget)}
+            onMouseEnter={(event: { target: unknown; relatedTarget: unknown }) =>
+              related.push([event.target, event.relatedTarget])
+            }
           />
         </div>,
       )
-      const first = idOfWidth(200)
 
       testRoot.renderer.nativeSimulateMouseMove(50, 50)
       testRoot.renderer.nativeSimulateMouseMove(50, 150)
 
-      expect(related).toEqual([first])
+      expect(related).toHaveLength(1)
+      expect(related[0][0]).toBe(second)
+      expect(related[0][1]).toBe(first)
+    })
+
+    it("gives pointerover and pointerout the element on the other side as relatedTarget", () => {
+      let first: unknown
+      let second: unknown
+      const seen: Array<[string, unknown, unknown]> = []
+      const record = (event: { type: string; target: unknown; relatedTarget: unknown }) =>
+        seen.push([event.type, event.target, event.relatedTarget])
+      testRoot.render(
+        <div style={{ width: 600, height: 400 }}>
+          <div
+            ref={(element) => (first = element)}
+            style={{ width: 200, height: 100 }}
+            onPointerOver={record}
+            onPointerOut={record}
+          />
+          <div
+            ref={(element) => (second = element)}
+            style={{ width: 300, height: 100 }}
+            onPointerOver={record}
+            onPointerOut={record}
+          />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      testRoot.renderer.nativeSimulateMouseMove(50, 150)
+
+      expect(seen.map((entry) => entry[0])).toEqual(["pointerover", "pointerout", "pointerover"])
+      expect(seen[0][1]).toBe(first)
+      expect(seen[0][2]).toBeNull()
+      expect(seen[1][1]).toBe(first)
+      expect(seen[1][2]).toBe(second)
+      expect(seen[2][1]).toBe(second)
+      expect(seen[2][2]).toBe(first)
     })
   })
 
@@ -350,8 +422,8 @@ describeNative("pointer events", () => {
     }
 
     it("clicks from a host ref like HTMLElement.click(): detail 0, no pointer, bubbles", () => {
-      const seen: Array<{ at: string; detail: number; pointerId: number; pointerType: string; target: number }> = []
-      const record = (at: string) => (event: { detail: number; pointerId: number; pointerType: string; target: number }) =>
+      const seen: Array<{ at: string; detail: number; pointerId: number; pointerType: string; target: unknown }> = []
+      const record = (at: string) => (event: { detail: number; pointerId: number; pointerType: string; target: unknown }) =>
         seen.push({ at, detail: event.detail, pointerId: event.pointerId, pointerType: event.pointerType, target: event.target })
       let row: { id: number; click(): void } | undefined
       testRoot.render(
@@ -370,10 +442,12 @@ describeNative("pointer events", () => {
       row!.click()
       testRoot.renderer.dispatchNativeEvents()
 
-      expect(seen).toEqual([
-        { at: "row", detail: 0, pointerId: -1, pointerType: "", target: row!.id },
-        { at: "list", detail: 0, pointerId: -1, pointerType: "", target: row!.id },
+      expect(seen.map((entry) => [entry.at, entry.detail, entry.pointerId, entry.pointerType])).toEqual([
+        ["row", 0, -1, ""],
+        ["list", 0, -1, ""],
       ])
+      expect(seen[0].target).toBe(row)
+      expect(seen[1].target).toBe(row)
     })
 
     it("does nothing from click() on a disabled form control, and clicks it again once enabled", () => {
@@ -676,11 +750,11 @@ describeNative("pointer events", () => {
     }
 
     it("sends pointer events to the capturing element wherever the pointer is", () => {
-      const targets: number[] = []
+      const targets: object[] = []
       testRoot.render(
         <div
           style={{ width: 600, height: 400 }}
-          onPointerMoveCapture={(event: { target: number }) => targets.push(event.target)}
+          onPointerMoveCapture={(event: { target: object }) => targets.push(event.target)}
         >
           <Boxes onFirstDown={() => second.setPointerCapture(1)} />
         </div>,
@@ -689,15 +763,16 @@ describeNative("pointer events", () => {
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
       testRoot.renderer.nativeSimulateMouseMove(50, 20)
 
-      expect(targets).toEqual([second.id])
+      expect(targets).toHaveLength(1)
+      expect(targets[0]).toBe(second)
     })
 
     it("keeps delivering to the capturer on moves that name no button", () => {
-      const moves: { target: number; pressedButton?: number }[] = []
+      const moves: { target: object; pressedButton?: number }[] = []
       testRoot.render(
         <div
           style={{ width: 600, height: 400 }}
-          onPointerMoveCapture={(event: { target: number; pressedButton?: number }) =>
+          onPointerMoveCapture={(event: { target: object; pressedButton?: number }) =>
             moves.push({ target: event.target, pressedButton: event.pressedButton })
           }
         >
@@ -709,10 +784,8 @@ describeNative("pointer events", () => {
       testRoot.renderer.nativeSimulateMouseMove(300, 300)
       testRoot.renderer.nativeSimulateMouseMove(500, 380)
 
-      expect(moves).toEqual([
-        { target: first.id, pressedButton: 0 },
-        { target: first.id, pressedButton: 0 },
-      ])
+      expect(moves.map((move) => move.pressedButton)).toEqual([0, 0])
+      for (const move of moves) expect(move.target).toBe(first)
     })
 
     it("ends the press and the capture when the release was lost", () => {

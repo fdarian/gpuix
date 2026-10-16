@@ -330,7 +330,7 @@ export function dispatchDomEvent(
  * for an event that did not come through `dispatchDomEvent`, where there is no
  * default to cancel.
  */
-export function preventEventDefault(event: EventPayload): void {
+export function preventEventDefault(event: PublicEventFields): void {
   const cancelable = event as Partial<DomEvent>
   if (!cancelable.preventDefault) {
     throw new Error(`Event "${event.eventType}" cannot be cancelled: it was not dispatched through the DOM walk.`)

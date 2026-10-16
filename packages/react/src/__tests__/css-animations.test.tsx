@@ -224,16 +224,18 @@ describeNative("CSS animations", () => {
   it("bubbles a child's animation events to its parent with the child as target, and stopPropagation ends it", () => {
     const { render, renderer } = createTestRoot()
     const seen: string[] = []
+    let child: unknown
     const tree = (stop: boolean) => (
       <div
         testId="parent"
         onAnimationStartCapture={() => seen.push("parent capture")}
         onAnimationStart={(event) => {
-          seen.push(`parent ${event.animationName} ${event.target === renderer.findByTestId("child").id}`)
+          seen.push(`parent ${event.animationName} ${event.target === child}`)
         }}
         onAnimationEnd={() => seen.push("parent end")}
       >
         <div
+          ref={(element) => (child = element)}
           testId="child"
           onAnimationStart={(event) => {
             seen.push(`child ${event.bubbles} ${event.cancelable}`)

@@ -58,6 +58,7 @@ export type {
   Clipboard,
   DismissLayer,
   DomEvent,
+  RootEvent,
   WindowEventListener,
   IntersectionObserverCallback,
   IntersectionObserverEntry,

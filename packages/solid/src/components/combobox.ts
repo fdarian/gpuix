@@ -8,7 +8,7 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 import { preventEventDefault, type HostMouseEvent, type HostPointerEvent, type HostProps, type InputProps, type KeyEvent } from "@gpuix/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
@@ -182,17 +182,17 @@ export function ComboboxInput(props: ComboboxInputProps): JSX.Element {
       props.onClick?.(event)
       if (!disabled()) state.setOpen(true)
     },
-    onFocus(event: EventPayload) {
+    onFocus(event: DomEvent) {
       props.onFocus?.(event)
       if (!disabled()) state.setOpen(true)
     },
     // Focus leaving the input closes the popup, like Base UI. Tab moves focus
     // only when no handler prevented it, so a kept Tab keeps it open.
-    onBlur(event: EventPayload) {
+    onBlur(event: DomEvent) {
       props.onBlur?.(event)
       state.setOpen(false)
     },
-    onChange(event: EventPayload) {
+    onChange(event: DomEvent) {
       props.onChange?.(event)
       state.setInput(event.value ?? "")
       if (!disabled()) state.setOpen(true)

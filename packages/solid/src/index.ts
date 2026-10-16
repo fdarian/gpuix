@@ -22,6 +22,7 @@ export const document = sharedDocument as GpuixDocument<HostElement>
 export type {
   AddEventListenerOptions,
   DomEvent,
+  RootEvent,
   WindowEventListener,
 } from "@gpuix/native/host"
 export { createRenderer, render, resetRender } from "./renderer.js"

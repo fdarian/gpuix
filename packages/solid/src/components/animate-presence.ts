@@ -11,7 +11,7 @@ import {
   type JSX,
   type Signal,
 } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent } from "@gpuix/native/host"
 import { measurePopLayout } from "@gpuix/native/host"
 import type { MotionProps, PresenceMode, StyleDesc } from "@gpuix/native/host"
 import { HostElement, setHostProperty } from "../host.js"
@@ -146,7 +146,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
         continue
       }
       const previous = item.props.get("onMotionComplete") as
-        | ((event: EventPayload) => void)
+        | ((event: DomEvent) => void)
         | undefined
       setHostProperty(item, "motion", {
         ...motion,
@@ -157,7 +157,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       setHostProperty(
         item,
         "onMotionComplete",
-        (event: EventPayload) => {
+        (event: DomEvent) => {
           const active = item.props.get("motion") as NativeMotionProps | undefined
           if (
             active?.generation !== undefined &&

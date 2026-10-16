@@ -13,7 +13,8 @@
 /// dispatched later (Windows, Linux) a move that came in before the handler
 /// ran goes to whatever is under the pointer, and the drag starts at the next.
 
-import type { ElementBounds, EventPayload } from "../index.js"
+import type { ElementBounds } from "../index.js"
+import type { PublicEventFields } from "./events/dispatch.js"
 import type { LayoutDrag } from "./layout-animation.js"
 import { motionValue } from "./motion-value.js"
 
@@ -41,7 +42,7 @@ export type ReorderItem = {
 }
 
 /** The `pointerdown` that starts a drag. */
-export type ReorderPress = EventPayload & { pointerId: number }
+export type ReorderPress = PublicEventFields & { pointerId: number }
 
 export function createReorderDrag(): LayoutDrag {
   return { x: motionValue(0), y: motionValue(0), active: motionValue(0) }
@@ -214,7 +215,7 @@ export class ReorderController<Value> {
   }
 
   /** The pointer moved. Does nothing unless an item is held. */
-  pointerMove(event: EventPayload): void {
+  pointerMove(event: PublicEventFields): void {
     const held = this.#held
     if (held === undefined) return
     // A release the window never saw: the button is no longer down.
@@ -279,7 +280,7 @@ export class ReorderController<Value> {
     return item
   }
 
-  #axisPoint(event: EventPayload): number {
+  #axisPoint(event: PublicEventFields): number {
     const point = this.#configured().axis === "y" ? event.y : event.x
     if (point === undefined) throw new Error("Reorder.Item: the pointer event has no position")
     return point

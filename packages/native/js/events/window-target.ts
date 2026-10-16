@@ -137,11 +137,25 @@ type ElementSource = {
 
 type ElementSourceEntry = {
   source: ElementSource
+  /** The renderer's window was replaced: it can still name elements but no longer reports focus. */
+  focusStale: boolean
   /** Order in which the roots last heard a focus event; higher is more recent. */
   focusedAt: number
 }
 
-const elementSources = new Map<object, ElementSourceEntry>()
+/**
+ * Kept on `globalThis`, like the renderer states: under `bun --hot` this module
+ * is evaluated again while a renderer's state, which asks it for elements on
+ * every event, stays from the first evaluation.
+ */
+const ELEMENT_SOURCES_KEY = Symbol.for("@gpuix/native/element-sources")
+const elementSources: Map<object, ElementSourceEntry> = (() => {
+  const existing = Reflect.get(globalThis, ELEMENT_SOURCES_KEY) as Map<object, ElementSourceEntry> | undefined
+  if (existing) return existing
+  const created = new Map<object, ElementSourceEntry>()
+  Reflect.set(globalThis, ELEMENT_SOURCES_KEY, created)
+  return created
+})()
 let focusClock = 0
 
 /**
@@ -160,6 +174,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
   get activeElement(): Element | null {
     let chosen: { entry: ElementSourceEntry; id: number } | undefined
     for (const entry of elementSources.values()) {
+      if (entry.focusStale) continue
       const id = entry.source.focusedId()
       if (id === null) continue
       if (!chosen || entry.focusedAt > chosen.entry.focusedAt) chosen = { entry, id }
@@ -194,6 +209,7 @@ export function installElementSource(
       focusedId: () => (getFocusedElementId ? getFocusedElementId.call(renderer) : null),
       elementById,
     },
+    focusStale: false,
     focusedAt: 0,
   }
   elementSources.set(renderer, entry)
@@ -205,6 +221,16 @@ export function installElementSource(
 /** Drops the root of `renderer` whose window is gone, so nothing asks it for elements. */
 export function forgetElementSource(renderer: object): void {
   elementSources.delete(renderer)
+}
+
+/**
+ * Stops asking `renderer` what is focused, for a renderer whose window another
+ * took over: its root still names its elements, but the window it would ask
+ * about is not its own any more.
+ */
+export function forgetFocusSource(renderer: object): void {
+  const entry = elementSources.get(renderer)
+  if (entry) entry.focusStale = true
 }
 
 /**

@@ -24,9 +24,12 @@ describeNative("wheel events", () => {
 
   describe("target and path", () => {
     it("bubbles from the element under the pointer to an ancestor's onWheel", () => {
-      const seen: { target: number; currentTarget: number | null; phase: number; path: number[] }[] = []
+      let inner: unknown
+      let outer: unknown
+      const seen: { target: object; currentTarget: object | null; phase: number; path: object[] }[] = []
       testRoot.render(
         <div
+          ref={(element) => (outer = element)}
           testId="outer"
           style={{ width: 300, height: 300 }}
           onWheel={(event: HostWheelEvent) =>
@@ -34,23 +37,21 @@ describeNative("wheel events", () => {
               target: event.target,
               currentTarget: event.currentTarget,
               phase: event.eventPhase,
-              path: event.path!,
+              path: event.composedPath(),
             })
           }
         >
-          <div testId="inner" style={{ width: 100, height: 100 }} />
+          <div ref={(element) => (inner = element)} testId="inner" style={{ width: 100, height: 100 }} />
         </div>
       )
 
       testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(seen).toHaveLength(1)
-      expect(seen[0]).toMatchObject({
-        target: id("inner"),
-        currentTarget: id("outer"),
-        phase: 3,
-      })
-      expect(seen[0]!.path.slice(0, 2)).toEqual([id("inner"), id("outer")])
+      expect(seen[0].target).toBe(inner)
+      expect(seen[0].currentTarget).toBe(outer)
+      expect(seen[0].phase).toBe(3)
+      expect(seen[0].path.slice(0, 2)).toEqual([inner, outer])
     })
 
     it("does not reach an element the pointer is not over", () => {
@@ -162,9 +163,11 @@ describeNative("wheel events", () => {
   describe("payload", () => {
     it("carries the pointer fields, the DOM-signed delta and the gesture phase", () => {
       const seen: HostWheelEvent[] = []
+      let target: unknown
       testRoot.render(
         <div style={{ position: "absolute", left: 20, top: 10, width: 200, height: 200 }}>
           <div
+            ref={(element) => (target = element)}
             testId="target"
             style={{ position: "absolute", left: 10, top: 5, width: 100, height: 100 }}
             onWheel={(event: HostWheelEvent) => seen.push(event)}
@@ -178,7 +181,6 @@ describeNative("wheel events", () => {
       const event = seen[0]!
       expect(event).toMatchObject({
         type: "wheel",
-        target: id("target"),
         deltaX: 7,
         deltaY: 50,
         deltaMode: 0,
@@ -191,6 +193,7 @@ describeNative("wheel events", () => {
         precise: true,
         touchPhase: "moved",
       })
+      expect(event.target).toBe(target)
       expect(event.modifiers?.shift).toBe(true)
     })
 

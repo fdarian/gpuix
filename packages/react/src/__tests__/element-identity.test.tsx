@@ -90,6 +90,7 @@ describeNative("text element identity", () => {
   it("is the target of a click and hides an unrelated element under it", () => {
     const under = vi.fn()
     const ancestor = vi.fn()
+    let label: unknown
     testRoot.render(
       <div style={{ width: 600, height: 400 }} onClick={ancestor}>
         <div
@@ -97,6 +98,7 @@ describeNative("text element identity", () => {
           onClick={under}
         />
         <text
+          ref={(element) => (label = element)}
           style={{
             position: "absolute",
             top: 0,
@@ -110,12 +112,11 @@ describeNative("text element identity", () => {
         </text>
       </div>,
     )
-    const label = testRoot.renderer.findByType("text").find((t) => t.style.width === 200)!
 
     testRoot.renderer.nativeSimulateClick(100, 50)
     expect(under).not.toHaveBeenCalled()
     expect(ancestor).toHaveBeenCalledTimes(1)
-    expect(ancestor.mock.calls[0][0].target).toBe(label.id)
+    expect(ancestor.mock.calls[0][0].target).toBe(label)
 
     testRoot.renderer.nativeSimulateClick(400, 300)
     expect(ancestor).toHaveBeenCalledTimes(2)

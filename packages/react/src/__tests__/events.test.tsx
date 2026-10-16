@@ -625,7 +625,15 @@ describeNative("events", () => {
   })
 
   describe("mouseDownOutside and the logical tree", () => {
-    function Probe({ log, overlay }: { log: Array<[number, number | undefined]>; overlay?: boolean }) {
+    function Probe({
+      log,
+      overlay,
+      overlayRef,
+    }: {
+      log: Array<[number, unknown]>
+      overlay?: boolean
+      overlayRef?: (element: unknown) => void
+    }) {
       return (
         <div style={{ width: 600, height: 400, position: "relative" }}>
           <div
@@ -642,6 +650,7 @@ describeNative("events", () => {
           </div>
           {overlay && (
             <div
+              ref={overlayRef}
               testId="overlay"
               style={{ position: "absolute", top: 0, left: 0, width: 200, height: 100, backgroundColor: "#222" }}
             />
@@ -651,7 +660,7 @@ describeNative("events", () => {
     }
 
     it("does not fire for a press inside an anchored popup declared under the element", () => {
-      const log: Array<[number, number | undefined]> = []
+      const log: Array<[number, unknown]> = []
       testRoot.render(<Probe log={log} />)
       testRoot.renderer.nativeSimulateClick(10, 10)
       expect(log).toEqual([])
@@ -662,19 +671,21 @@ describeNative("events", () => {
     })
 
     it("fires for a press on an overlay above the element, with the overlay as target", () => {
-      const log: Array<[number, number | undefined]> = []
-      testRoot.render(<Probe log={log} overlay />)
+      const log: Array<[number, unknown]> = []
+      let overlay: unknown
+      testRoot.render(<Probe log={log} overlay overlayRef={(element) => (overlay = element)} />)
       testRoot.renderer.nativeSimulateClick(10, 10)
-      const overlay = testRoot.renderer.findByTestId("overlay")
       expect(overlay).toBeDefined()
-      expect(log).toEqual([[0, overlay!.id]])
+      expect(log).toHaveLength(1)
+      expect(log[0][0]).toBe(0)
+      expect(log[0][1]).toBe(overlay)
     })
 
     it("fires for a non-primary button press", () => {
-      const log: Array<[number, number | undefined]> = []
+      const log: Array<[number, unknown]> = []
       testRoot.render(<Probe log={log} />)
       testRoot.renderer.nativeSimulateMouseDown(500, 350, 2)
-      expect(log).toEqual([[2, expect.any(Number)]])
+      expect(log).toEqual([[2, expect.any(Object)]])
     })
 
     it("fires for every listener, the root's included, when the press hits no element", () => {
@@ -1155,7 +1166,7 @@ describeNative("events", () => {
       // Nothing is left to leave.
       testRoot.renderer.nativeSimulateFileDragExit()
 
-      expect(log).toEqual(["enter:undefined", "leave:undefined"])
+      expect(log).toEqual(["enter:null", "leave:null"])
     })
 
     it("enters the element dragged onto before leaving the one dragged off", () => {
@@ -1181,24 +1192,26 @@ describeNative("events", () => {
     })
 
     it("bubbles drag events to ancestors and the drop to the ancestor of a child", () => {
-      const log: string[] = []
+      let parent: unknown
+      let child: unknown
+      const log: Array<[unknown, unknown]> = []
 
       testRoot.render(
         <div
+          ref={(element) => (parent = element)}
           style={{ width: 200, height: 200, display: "flex", flexDirection: "column" }}
           onDragOver={acceptDrops}
-          onDrop={(event) => log.push(`drop:${event.target}->${event.currentTarget}`)}
+          onDrop={(event) => log.push([event.target, event.currentTarget])}
         >
-          <div style={{ width: 100, height: 100 }} />
+          <div ref={(element) => (child = element)} style={{ width: 100, height: 100 }} />
         </div>,
       )
 
       testRoot.renderer.nativeSimulateFileDrop(40, 40, [textFile])
 
       expect(log).toHaveLength(1)
-      expect(log[0]).toMatch(/^drop:\d+->\d+$/)
-      const [target, currentTarget] = log[0]!.slice(5).split("->")
-      expect(target).not.toBe(currentTarget)
+      expect(log[0][0]).toBe(child)
+      expect(log[0][1]).toBe(parent)
     })
 
     it("does not deliver a drop whose last dragover was not cancelled", () => {
@@ -1215,7 +1228,7 @@ describeNative("events", () => {
 
       testRoot.renderer.nativeSimulateFileDrop(100, 100, [textFile])
 
-      expect(log).toEqual(["over", "leave:undefined"])
+      expect(log).toEqual(["over", "leave:null"])
     })
 
     it("does not deliver a drop when a target without dragover follows an accepting one", () => {

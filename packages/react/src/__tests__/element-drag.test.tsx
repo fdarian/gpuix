@@ -100,31 +100,36 @@ describeNative("draggable elements", () => {
     })
 
     it("takes the nearest draggable ancestor of the press target as the source", () => {
-      const seen: { target: number; currentTarget: number | null }[] = []
+      let outer: unknown
+      let inner: unknown
+      const seen: { target: object; currentTarget: object | null }[] = []
       testRoot.render(
         column({
           source: {
+            ref: (element: unknown) => (outer = element),
             onDragStart: (event: HostDragEvent) =>
               seen.push({ target: event.target, currentTarget: event.currentTarget }),
           },
-          sourceChild: <div style={{ width: 60, height: 60 }} />,
+          sourceChild: <div ref={(element) => (inner = element)} style={{ width: 60, height: 60 }} />,
         }),
       )
-      const inner = testRoot.renderer.findByType("div").find((div) => div.style.width === 60)!
-      const outer = testRoot.renderer.findByType("div").find((div) => div.style.width === 100)!
 
       press(30, 30)
       move(90, 30)
 
-      expect(seen).toEqual([{ target: outer.id, currentTarget: outer.id }])
-      expect(inner.id).not.toBe(outer.id)
+      expect(seen).toHaveLength(1)
+      expect(seen[0].target).toBe(outer)
+      expect(seen[0].currentTarget).toBe(outer)
+      expect(inner).not.toBe(outer)
     })
 
     it("lets a draggable child be its own source inside a draggable parent", () => {
-      const sources: number[] = []
+      let child: unknown
+      const sources: object[] = []
       testRoot.render(
         <div style={{ width: 200, height: 200 }} draggable onDragStart={(event) => sources.push(event.target)}>
           <div
+            ref={(element) => (child = element)}
             style={{ width: 100, height: 100 }}
             draggable
             onDragStart={(event) => {
@@ -134,12 +139,12 @@ describeNative("draggable elements", () => {
           />
         </div>,
       )
-      const child = testRoot.renderer.findByType("div").find((div) => div.style.width === 100)!
 
       press(50, 50)
       move(100, 50)
 
-      expect(sources).toEqual([child.id])
+      expect(sources).toHaveLength(1)
+      expect(sources[0]).toBe(child)
     })
 
     it("cancels the pointer first, then starts the drag on the source", () => {
@@ -458,7 +463,7 @@ describeNative("draggable elements", () => {
           target: {
             onDragOver: accept,
             onDragLeave: (event: HostDragEvent) =>
-              log.push(`leave:${event.relatedTarget === undefined ? "nowhere" : "element"}`),
+              log.push(`leave:${event.relatedTarget === null ? "nowhere" : "element"}`),
             onDrop: note("target"),
           },
         }),

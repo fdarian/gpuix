@@ -14,7 +14,7 @@ const field = { width: 200, height: 30 }
 
 describeNative("form", () => {
   let testRoot: ReturnType<typeof createTestRoot>
-  let submits: Array<{ entries: string[][]; target: number; submitter: unknown }>
+  let submits: Array<{ entries: string[][]; target: object; submitter: unknown }>
   let invalids: string[]
   let keyDownPrevented: boolean
   let formRef: { current: { requestSubmit(): void } }
@@ -30,6 +30,7 @@ describeNative("form", () => {
   const focusedTestId = () =>
     testRoot.renderer.getElement(testRoot.renderer.getFocusedElementId())?.testId ?? null
   const idOf = (testId: string) => testRoot.renderer.findByTestId(testId).id
+  const testIdOf = (element: { id: number }) => testRoot.renderer.getElement(element.id).testId
   const type = (testId: string, keys: string) =>
     testRoot.renderer.nativeSimulateKeystrokes(idOf(testId), keys)
 
@@ -67,17 +68,17 @@ describeNative("form", () => {
     type("a", "j o")
     expect(submits).toEqual([])
     type("a", "Enter")
-    expect(submits).toEqual([
+    expect(submits.map((submit) => ({ entries: submit.entries, submitter: submit.submitter }))).toEqual([
       {
         entries: [
           ["first", "jo"],
           ["notes", "hi"],
           ["third", "x"],
         ],
-        target: idOf("form"),
         submitter: null,
       },
     ])
+    expect(submits[0].target).toBe(formRef.current)
   })
 
   it("leaves out controls with no name and disabled controls", () => {
@@ -98,12 +99,13 @@ describeNative("form", () => {
   })
 
   it("bubbles submit to the ancestors of the form", () => {
-    const heard: number[] = []
+    const heard: object[] = []
     mountForm(<input testId="a" name="n" style={field} />, {
       onWrapperSubmit: (event) => heard.push(event.target),
     })
     type("a", "Enter")
-    expect(heard).toEqual([idOf("form")])
+    expect(heard).toHaveLength(1)
+    expect(heard[0]).toBe(formRef.current)
   })
 
   it("does not submit when keydown is prevented", () => {
@@ -200,7 +202,8 @@ describeNative("form", () => {
         </>,
       )
       type("a", "Enter")
-      expect(submits.map((submit) => submit.target)).toEqual([idOf("form")])
+      expect(submits).toHaveLength(1)
+      expect(submits[0].target).toBe(formRef.current)
     })
   })
 
@@ -242,21 +245,21 @@ describeNative("form", () => {
             name="b"
             required
             style={field}
-            onInvalid={(event) => invalids.push(`b:${event.target}`)}
+            onInvalid={(event) => invalids.push(`b:${testIdOf(event.target)}`)}
           />
           <input
             testId="c"
             name="c"
             required
             style={field}
-            onInvalid={(event) => invalids.push(`c:${event.target}`)}
+            onInvalid={(event) => invalids.push(`c:${testIdOf(event.target)}`)}
           />
         </>,
       )
       formRef.current.requestSubmit()
       expect(submits).toEqual([])
       // invalid does not bubble, so the form never hears it.
-      expect(invalids).toEqual([`b:${idOf("b")}`, `c:${idOf("c")}`])
+      expect(invalids).toEqual(["b:b", "c:c"])
       expect(focusedTestId()).toBe("b")
     })
 
@@ -267,12 +270,12 @@ describeNative("form", () => {
           name="a"
           required
           style={field}
-          onInvalid={(event) => invalids.push(`a:${event.target}`)}
+          onInvalid={(event) => invalids.push(`a:${testIdOf(event.target)}`)}
         />,
       )
       type("a", "Enter")
       expect(submits).toEqual([])
-      expect(invalids).toEqual([`a:${idOf("a")}`])
+      expect(invalids).toEqual(["a:a"])
       expect(focusedTestId()).toBe("a")
     })
 
@@ -284,19 +287,19 @@ describeNative("form", () => {
             name="notes"
             required
             style={field}
-            onInvalid={(event) => invalids.push(`area:${event.target}`)}
+            onInvalid={(event) => invalids.push(`area:${testIdOf(event.target)}`)}
           />
           <input
             testId="a"
             name="a"
             style={field}
-            onInvalid={(event) => invalids.push(`a:${event.target}`)}
+            onInvalid={(event) => invalids.push(`a:${testIdOf(event.target)}`)}
           />
         </>,
       )
       type("a", "Enter")
       expect(submits).toEqual([])
-      expect(invalids).toEqual([`area:${idOf("area")}`])
+      expect(invalids).toEqual(["area:area"])
       expect(focusedTestId()).toBe("area")
     })
 
@@ -375,11 +378,13 @@ describeNative("form", () => {
   it("belongs a control to its nearest form", () => {
     const outer: string[][][] = []
     const inner: string[][][] = []
+    let outerForm
     testRoot.render(
       <form
+        ref={(element) => (outerForm = element)}
         testId="outerForm"
         onSubmit={(event) => {
-          if (event.target === idOf("outerForm")) outer.push(Array.from(event.formData.entries()))
+          if (event.target === outerForm) outer.push(Array.from(event.formData.entries()))
         }}
       >
         <input testId="outer" name="outer" value="1" onChange={() => {}} style={field} />

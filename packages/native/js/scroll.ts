@@ -1,4 +1,5 @@
 import type { EventPayload } from "../index.js"
+import type { DomEvent } from "./events/dispatch.js"
 import { flushPendingMutations } from "./bounds.js"
 import type { HostWheelEvent } from "./events/types.js"
 import type { NativeRenderer } from "./host.js"
@@ -27,7 +28,7 @@ export interface ScrollIntoViewOptions {
 export type WheelEvent = HostWheelEvent
 
 /** `onScroll`: the element's scroll offset changed, whatever moved it. */
-export interface ScrollEvent extends EventPayload {
+export interface ScrollEvent extends DomEvent {
   /** Pixels scrolled from the start, as on the DOM element. */
   scrollTop: number
   scrollLeft: number

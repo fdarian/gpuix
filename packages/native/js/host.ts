@@ -1024,13 +1024,13 @@ export interface HostProps extends AriaProps, PointerEventProps, AnimationEventP
   // React DOM: `onFocus` and `onBlur` bubble (they listen to `focusin` and
   // `focusout`), and there is no `onFocusIn`/`onFocusOut`.
   /** `focus`. Does not bubble. */
-  onFocus?: (event: EventPayload) => void
+  onFocus?: (event: DomEvent) => void
   /** `blur`. Does not bubble. */
-  onBlur?: (event: EventPayload) => void
+  onBlur?: (event: DomEvent) => void
   /** `focusin`. Bubbles to ancestors. Solid only. */
-  onFocusIn?: (event: EventPayload) => void
+  onFocusIn?: (event: DomEvent) => void
   /** `focusout`. Bubbles to ancestors. Solid only. */
-  onFocusOut?: (event: EventPayload) => void
+  onFocusOut?: (event: DomEvent) => void
 
   // ── Scroll events ──────────────────────────────────────────────
   /**
@@ -1048,36 +1048,36 @@ export interface HostProps extends AriaProps, PointerEventProps, AnimationEventP
    * size changes: `width` and `height`, plus `x` and `y` in window coordinates.
    * Moving without resizing reports nothing. Supported on `div` and `text`.
    */
-  onLayout?: (event: EventPayload) => void
+  onLayout?: (event: DomEvent) => void
 
   // ── Image loading (`<img>`) ──────────────────────────────────────
   /** The `src` decoded. Fires once per `src` change, with `naturalWidth` and
    *  `naturalHeight` in pixels. An empty `src` fires nothing. */
-  onLoad?: (event: EventPayload) => void
+  onLoad?: (event: DomEvent) => void
   /** The `src` could not be read or decoded. Fires once per `src` change, with
    *  the reason in `value`. */
-  onError?: (event: EventPayload) => void
+  onError?: (event: DomEvent) => void
 
   // ── Text editor events ─────────────────────────────────────────
-  onChange?: (event: EventPayload) => void
+  onChange?: (event: DomEvent) => void
   /** The DOM `submit` event of a descendant `<form>`, bubbling: see
    *  `FormProps.onSubmit`. Not available on `<input>` or `<textarea>`: handle
    *  Enter in `onKeyDown` and call `preventDefault()` to keep it from submitting
    *  the form (`<input>`) or inserting a newline (`<textarea>`). */
-  onSubmit?: (event: EventPayload) => void
+  onSubmit?: (event: DomEvent) => void
   /** A `required` control is empty when its form is submitted. Does not bubble. */
-  onInvalid?: (event: EventPayload) => void
+  onInvalid?: (event: DomEvent) => void
 
   // ── Native component events ─────────────────────────────────────
-  onToggleFile?: (event: EventPayload) => void
-  onShowMore?: (event: EventPayload) => void
-  onLineClick?: (event: EventPayload) => void
-  onLinkClick?: (event: EventPayload) => void
-  onVisibleRange?: (event: EventPayload) => void
+  onToggleFile?: (event: DomEvent) => void
+  onShowMore?: (event: DomEvent) => void
+  onLineClick?: (event: DomEvent) => void
+  onLinkClick?: (event: DomEvent) => void
+  onVisibleRange?: (event: DomEvent) => void
   /** Match count changed for this element's `highlight`. See `matchCount`. */
-  onHighlight?: (event: EventPayload) => void
+  onHighlight?: (event: DomEvent) => void
   /** A native `motion` track reached its current target. */
-  onMotionComplete?: (event: EventPayload) => void
+  onMotionComplete?: (event: DomEvent) => void
 
   // ── CSS transition and animation events ──────────────────────────
   // See `AnimationEventProps`: DOM `TransitionEvent` and `AnimationEvent`, which
@@ -1085,10 +1085,10 @@ export interface HostProps extends AriaProps, PointerEventProps, AnimationEventP
 
   // ── Layout animation ───────────────────────────────────────────
   /** A `layout` glide began: the box moved, or took over a `layoutId`. */
-  onLayoutAnimationStart?: (event: EventPayload) => void
+  onLayoutAnimationStart?: (event: DomEvent) => void
   /** A `layout` glide reached the box's layout position. Not fired for one a
    *  newer glide replaced. */
-  onLayoutAnimationComplete?: (event: EventPayload) => void
+  onLayoutAnimationComplete?: (event: DomEvent) => void
 
   // ── Highlight ──────────────────────────────────────────────────
   /**
@@ -1207,7 +1207,7 @@ export interface TextareaProps extends TextControlProps {
 }
 
 /** The `submit` event of a `<form>`. */
-export type SubmitEvent = EventPayload & {
+export type SubmitEvent = DomEvent & {
   /** The `name` and `value` of every named, enabled `<input>` and `<textarea>`
    *  in the form, in document order. */
   formData: FormData
@@ -1251,7 +1251,7 @@ export type VirtualListShared = AriaProps & {
   alignment?: "top" | "bottom"
   followTail?: boolean
   overdraw?: number
-  onVisibleRange?: (event: EventPayload) => void
+  onVisibleRange?: (event: DomEvent) => void
   role?: string
   id?: string
   testId?: string
@@ -1516,12 +1516,12 @@ export interface DiffProps extends HostProps {
   maxLines?: number
   theme?: GpuixTheme
   /** Fires when a file header is clicked. `event.value` is the file path. */
-  onToggleFile?: (event: EventPayload) => void
+  onToggleFile?: (event: DomEvent) => void
   /** Fires when Show more is clicked. `event.value` is the hidden line count. */
-  onShowMore?: (event: EventPayload) => void
+  onShowMore?: (event: DomEvent) => void
   /** Fires when a diff line is clicked. `event.value` is the line text,
    *  `event.oldLine` / `event.newLine` are its line numbers. */
-  onLineClick?: (event: EventPayload) => void
+  onLineClick?: (event: DomEvent) => void
 }
 
 // Props for the <markdown> custom element.
@@ -1530,11 +1530,11 @@ export interface MarkdownProps extends HostProps {
   source?: string
   theme?: GpuixTheme
   /** Fires when a block containing links is clicked. `event.value` is the URL. */
-  onLinkClick?: (event: EventPayload) => void
+  onLinkClick?: (event: DomEvent) => void
 }
 
 /** Payload of `<anchored onPlacement>`. */
-export interface AnchoredPlacementEvent extends EventPayload {
+export interface AnchoredPlacementEvent extends DomEvent {
   side: "top" | "right" | "bottom" | "left"
   align: "start" | "center" | "end"
   /** Width the layer can take without leaving the window, minus `snapMargin`. */

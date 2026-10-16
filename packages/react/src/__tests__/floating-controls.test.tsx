@@ -1483,19 +1483,24 @@ describeNative("floating controls", () => {
         target: event.target,
         currentTarget: event.currentTarget,
       })
+    let buttonElement
+    let wrapperElement
     testRoot.render(
-      <div testId="wrapper" style={{ display: "flex" }} onClick={record("wrapper")}>
-        <Button testId="save" autoFocus onClick={record("button")} style={{ width: 60, height: 24 }}>Save</Button>
+      <div ref={(element) => (wrapperElement = element)} testId="wrapper" style={{ display: "flex" }} onClick={record("wrapper")}>
+        <Button ref={(element) => (buttonElement = element)} testId="save" autoFocus onClick={record("button")} style={{ width: 60, height: 24 }}>Save</Button>
       </div>
     )
     const renderer = testRoot.renderer
     const button = renderer.findByTestId("save").id
-    const wrapper = renderer.findByTestId("wrapper").id
     renderer.nativeSimulateKeyDown(button, "Enter")
-    expect(seen).toEqual([
-      { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
-      { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
+    expect(seen.map((entry) => [entry.at, entry.detail, entry.pointerId, entry.pointerType])).toEqual([
+      ["button", 0, -1, ""],
+      ["wrapper", 0, -1, ""],
     ])
+    expect(seen[0].target).toBe(buttonElement)
+    expect(seen[0].currentTarget).toBe(buttonElement)
+    expect(seen[1].target).toBe(buttonElement)
+    expect(seen[1].currentTarget).toBe(wrapperElement)
     seen.length = 0
     renderer.nativeSimulateKeyDown(button, "Space")
     expect(seen).toEqual([])

@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { RootEvent } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -18,19 +18,27 @@ describeNative("pointer lock", () => {
 
   let testRoot: ReturnType<typeof createTestRoot>
   let log: string[]
+  /** The `target` of each lock event, in the order they fired. */
+  let targets: Array<object | null>
   let first: Lockable
   let second: Lockable
 
   /** Names the lock events by type, with the element they name. */
   const lockEvents = () => ({
-    onPointerLockChange: (event: EventPayload) =>
-      log.push(`change:${event.target ?? "none"}`),
-    onPointerLockError: (event: EventPayload) => log.push(`error:${event.target}`),
+    onPointerLockChange: (event: RootEvent) => {
+      targets.push(event.target)
+      log.push(`change:${event.target === null ? "none" : "element"}`)
+    },
+    onPointerLockError: (event: RootEvent) => {
+      targets.push(event.target)
+      log.push(`error:${event.target === null ? "none" : "element"}`)
+    },
   })
 
   beforeEach(() => {
     testRoot = createTestRoot(lockEvents())
     log = []
+    targets = []
   })
 
   /** `first` at (0..100, 0..100), `second` at (0..100, 100..200). */
@@ -72,7 +80,8 @@ describeNative("pointer lock", () => {
 
     first.requestPointerLock()
 
-    expect(log).toEqual([`change:${first.id}`])
+    expect(log).toEqual(["change:element"])
+    expect(targets[0]).toBe(first)
     expect(testRoot.renderer.pointerLockElement()).toBe(first.id)
   })
 
@@ -82,7 +91,8 @@ describeNative("pointer lock", () => {
 
     first.requestPointerLock()
 
-    expect(log).toEqual([`error:${first.id}`])
+    expect(log).toEqual(["error:element"])
+    expect(targets[0]).toBe(first)
     expect(testRoot.renderer.pointerLockElement()).toBeNull()
   })
 
@@ -93,7 +103,9 @@ describeNative("pointer lock", () => {
 
     removed.requestPointerLock()
 
-    expect(log).toEqual([`error:${removed.id}`])
+    // The element is gone from the tree, so the event has nothing to name.
+    expect(log).toEqual(["error:none"])
+    expect(targets).toEqual([null])
     expect(testRoot.renderer.pointerLockElement()).toBeNull()
   })
 
@@ -132,7 +144,8 @@ describeNative("pointer lock", () => {
 
     second.requestPointerLock()
 
-    expect(log).toEqual([`change:${second.id}`])
+    expect(log).toEqual(["change:element"])
+    expect(targets.at(-1)).toBe(second)
     expect(testRoot.renderer.pointerLockElement()).toBe(second.id)
   })
 

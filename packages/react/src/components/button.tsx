@@ -3,7 +3,7 @@
 import { forwardRef } from "react"
 import type { ReactElement, ReactNode } from "react"
 import { createElementMethods } from "@gpuix/native/host"
-import type { HostDomEvent, NativeRenderer } from "@gpuix/native/host"
+import type { NativeRenderer } from "@gpuix/native/host"
 import { useGpuixRequired } from "../hooks/use-gpuix.js"
 import type { HostPointerEvent, KeyEvent, Props, PublicInstance, StyleDesc } from "../types/host.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
@@ -42,10 +42,7 @@ export function buttonProps(
 ): Props {
   // Only the element the key was aimed at acts: a key bubbling from a nested
   // buttonProps element must not click this one too, like Base UI's useButton.
-  const isTarget = (event: KeyEvent) => {
-    const keyEvent = event as KeyEvent & Pick<HostDomEvent, "target" | "currentTarget">
-    return keyEvent.target === keyEvent.currentTarget
-  }
+  const isTarget = (event: KeyEvent) => event.target === event.currentTarget
   const click = (event: KeyEvent) => {
     event.preventDefault()
     createElementMethods(renderer, event.elementId).click()

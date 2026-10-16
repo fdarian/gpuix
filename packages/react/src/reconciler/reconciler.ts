@@ -5,7 +5,7 @@ import type { OpaqueRoot } from "react-reconciler"
 import { ConcurrentRoot } from "react-reconciler/constants.js"
 import {
   createMutationQueue,
-  installActiveElementSource,
+  installElementSource,
   syncWindowEventListeners,
 } from "@gpuix/native/host"
 import { GpuixContext, type GpuixContextValue } from "../hooks/use-gpuix.js"
@@ -105,7 +105,7 @@ export function createRoot(
   const windowSelectionEventId = gpuixContainer.windowSelectionEventId
   const windowAppearanceEventId = gpuixContainer.windowAppearanceEventId
   let stopWindowEventListeners: (() => void) | undefined
-  let stopActiveElement: (() => void) | undefined
+  let stopElementSource: (() => void) | undefined
   try {
     renderer.setWindowKeyEvents?.(
       // Always on: the Tab and Escape defaults run on the key event, and
@@ -123,7 +123,7 @@ export function createRoot(
       windowAppearanceEventId
     )
     stopWindowEventListeners = syncWindowEventListeners(renderer)
-    stopActiveElement = installActiveElementSource(renderer, (id) =>
+    stopElementSource = installElementSource(renderer, (id) =>
       publicInstanceById(gpuixContainer, id)
     )
   } catch (error) {
@@ -142,7 +142,7 @@ export function createRoot(
     if (detachRoot(renderer, gpuixContainer)) {
       renderer.setWindowKeyEvents?.(false, false, windowKeyEventId)
       stopWindowEventListeners?.()
-      stopActiveElement?.()
+      stopElementSource?.()
       renderer.setWindowSelectionChange?.(false, windowSelectionEventId)
       renderer.setWindowAppearanceChange?.(false, windowAppearanceEventId)
     }

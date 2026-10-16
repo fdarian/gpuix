@@ -874,7 +874,12 @@ export interface EventModifiers {
 
 /** Event payload sent back to JS when a user interacts with an element. */
 export interface EventPayload {
-  /** Numeric element ID (matches the ID assigned in JS via createElement). */
+  /**
+   * Numeric element ID (matches the ID assigned in JS via createElement).
+   * This payload is what native sends: `target`, `path` and `related_target`
+   * are ids. JS turns them into elements before a handler sees the event, and
+   * `elementId` stays the id on the event a handler gets.
+   */
   elementId: number
   /**
    * Event type string — matches the key used in EVENT_PROPS on the JS side.
@@ -1033,19 +1038,22 @@ export interface EventPayload {
    */
   formEntries?: Array<Array<string>>
   /**
-   * Element the event was aimed at (the DOM `event.target`). Absent means
-   * `element_id` is the target. Ids are `f64` like `element_id`: `u64` would
-   * reach JS as a `bigint` and never match the `number` keys of the handler map.
+   * Id of the element the event was aimed at (JS makes it `event.target`, the
+   * element itself). Absent means `element_id` is the target. Ids are `f64`
+   * like `element_id`: `u64` would reach JS as a `bigint` and never match the
+   * `number` keys of the handler map.
    */
   target?: number
   /**
    * Propagation path, target first and then each ancestor up to the root.
-   * JS runs capture over it root to target and bubble target to root. Absent
-   * means the event is handled at `element_id` only.
+   * JS runs capture over it root to target and bubble target to root, and
+   * gives handlers the elements as `composedPath()`. Absent means the event is
+   * handled at `element_id` only.
    */
   path?: Array<number>
   /**
-   * The other element of a boundary or focus event (the DOM `event.relatedTarget`).
+   * Id of the other element of a boundary or focus event (JS makes it
+   * `event.relatedTarget`, the element itself, or `null` when absent).
    * Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents,
    * the drag enter and leave events, and the focus events: the element gaining focus on
    * blur and focusout, the one losing it on focus and focusin. Absent when focus came

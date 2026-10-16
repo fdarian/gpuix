@@ -1,4 +1,4 @@
-import type { EventPayload } from "../index.js"
+import type { DomEvent, RootEvent } from "./events/dispatch.js"
 import type {
   Appearance,
   AppearanceHost,
@@ -188,7 +188,7 @@ export function observeWindowInsets(
 
 export function observeSelectedText(
   renderer: SelectionHost,
-  subscribe: (listener: (event: EventPayload) => void) => () => void,
+  subscribe: (listener: (event: RootEvent) => void) => () => void,
   callback: (text: string | null) => void
 ): () => void {
   callback(renderer.getSelectedText() ?? null)
@@ -202,7 +202,7 @@ export function toAppearance(value: string | undefined): Appearance {
 
 export function observeAppearance(
   renderer: AppearanceHost,
-  subscribe: (listener: (event: EventPayload) => void) => () => void,
+  subscribe: (listener: (event: RootEvent) => void) => () => void,
   callback: (appearance: Appearance) => void
 ): () => void {
   callback(toAppearance(renderer.getAppearance()))
@@ -296,7 +296,7 @@ export function createTextSearchController(): TextSearchController {
   const emit = () => listeners.forEach((listener) => listener())
   const total = () => latest.query.length === 0 ? 0 : (latest.matches?.total ?? reported)
   const active = () => total() === 0 ? 0 : Math.min(requested, total() - 1)
-  const onHighlight = (event: EventPayload) => {
+  const onHighlight = (event: DomEvent) => {
     const next = event.matchCount ?? 0
     if (reported === next) return
     reported = next

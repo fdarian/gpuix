@@ -13,7 +13,7 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode, Ref } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent, RootEvent } from "@gpuix/native/host"
 import { EVENT_PROP_NAMES, pushDismissLayer } from "@gpuix/native/host"
 import type {
   DismissLayer,
@@ -212,7 +212,7 @@ function getElementRef(element: ReactElement<Props>): Ref<PublicInstance> | unde
   return descriptor?.value
 }
 
-function composeHandlers<Event extends EventPayload>(
+function composeHandlers<Event extends RootEvent>(
   first?: (event: Event) => void,
   second?: (event: Event) => void
 ): ((event: Event) => void) | undefined {
@@ -231,8 +231,8 @@ function composeEventHandlers(merged: Props, childProps: Props, props: Props): v
   const part = props as Record<string, unknown>
   for (const propName of EVENT_PROP_NAMES) {
     const composed = composeHandlers(
-      own[propName] as ((event: EventPayload) => void) | undefined,
-      part[propName] as ((event: EventPayload) => void) | undefined
+      own[propName] as ((event: DomEvent) => void) | undefined,
+      part[propName] as ((event: DomEvent) => void) | undefined
     )
     if (composed) target[propName] = composed
   }

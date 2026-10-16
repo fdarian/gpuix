@@ -59,7 +59,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid window and document pointer liste
     const listener = (event: any) => seen.push({ type: event.type, target: event.target, path: event.path })
     window.addEventListener("pointermove", listener)
     outsideRoot()
-    expect(seen).toEqual([{ type: "pointermove", target: undefined, path: undefined }])
+    expect(seen).toEqual([{ type: "pointermove", target: null, path: [] }])
     expect(rootMoves).toEqual([])
 
     window.removeEventListener("pointermove", listener)
@@ -72,7 +72,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid window and document pointer liste
     const listener = (event: any) => seen.push(`${event.type}:${event.target}`)
     document.addEventListener("mousemove", listener)
     outsideRoot()
-    expect(seen).toEqual(["mousemove:undefined"])
+    expect(seen).toEqual(["mousemove:null"])
     expect(rootMoves).toEqual([])
     document.removeEventListener("mousemove", listener)
   })

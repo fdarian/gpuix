@@ -1,5 +1,5 @@
 import { createComponent, createContext, onCleanup, onMount, useContext, type JSX } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { DomEvent, RootEvent } from "@gpuix/native/host"
 import { pushDismissLayer } from "@gpuix/native/host"
 import type { DismissLayer, HostProps, KeyEvent, StyleDesc } from "@gpuix/native/host"
 import { useGpuixRequired } from "../root.js"
@@ -96,7 +96,7 @@ export function DismissableLayer(props: DismissableLayerProps): JSX.Element {
   })
 }
 
-export function composeHandlers<Event extends EventPayload>(
+export function composeHandlers<Event extends RootEvent>(
   first?: (event: Event) => void,
   second?: (event: Event) => void
 ) {
@@ -150,7 +150,7 @@ export function renderSlot(args: {
     if (!key.startsWith("on") || typeof own !== "function") continue
     const slotHandler = descriptor.value
     if (typeof slotHandler !== "function") continue
-    descriptor.value = (event: EventPayload) => {
+    descriptor.value = (event: DomEvent) => {
       own(event)
       slotHandler(event)
     }

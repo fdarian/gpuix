@@ -2,7 +2,7 @@
 
 import { splitProps, type JSX } from "solid-js"
 import { createElementMethods } from "@gpuix/native/host"
-import type { HostDomEvent, HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
+import type { HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
 import { useGpuixRequired } from "../root.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 
@@ -33,10 +33,7 @@ export function buttonProps(
 ): Record<string, unknown> {
   // Only the element the key was aimed at acts: a key bubbling from a nested
   // buttonProps element must not click this one too, like Base UI's useButton.
-  const isTarget = (event: KeyEvent) => {
-    const keyEvent = event as KeyEvent & Pick<HostDomEvent, "target" | "currentTarget">
-    return keyEvent.target === keyEvent.currentTarget
-  }
+  const isTarget = (event: KeyEvent) => event.target === event.currentTarget
   const click = (event: KeyEvent) => {
     event.preventDefault()
     createElementMethods(renderer, event.elementId).click()

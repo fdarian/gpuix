@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { document, installElementSource, noteFocusEvent } from "../events/window-target.js"
+import {
+  document,
+  elementOf,
+  forgetFocusSource,
+  installElementSource,
+  noteFocusEvent,
+} from "../events/window-target.js"
 
 function root(elements: Record<number, object>) {
   const state = { focused: null as number | null }
@@ -54,5 +60,16 @@ describe("document.activeElement across roots", () => {
     const remove = installElementSource({}, () => ({}))
     expect(document.activeElement).toBeNull()
     remove()
+  })
+
+  it("keeps naming elements for events after its window was taken over, but stops reporting focus", () => {
+    const element = {}
+    const only = root({ 1: element })
+    only.state.focused = 1
+    forgetFocusSource(only.renderer)
+    expect(document.activeElement).toBeNull()
+    expect(elementOf(only.renderer, 1)).toBe(element)
+    only.remove()
+    expect(() => elementOf(only.renderer, 1)).toThrow("No element source")
   })
 })

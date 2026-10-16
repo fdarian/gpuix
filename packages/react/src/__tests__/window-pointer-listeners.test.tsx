@@ -59,10 +59,10 @@ describeNative("window and document pointer listeners", () => {
 
   it("hear a move inside the window but outside the root, with no target", () => {
     const seen: Array<{ type: string; target: unknown; path: unknown }> = []
-    const listener = (event) => seen.push({ type: event.type, target: event.target, path: event.path })
+    const listener = (event) => seen.push({ type: event.type, target: event.target, path: event.composedPath() })
     window.addEventListener("pointermove", listener)
     outsideRoot()
-    expect(seen).toEqual([{ type: "pointermove", target: undefined, path: undefined }])
+    expect(seen).toEqual([{ type: "pointermove", target: null, path: [] }])
     expect(rootMoves).toEqual([])
 
     window.removeEventListener("pointermove", listener)
@@ -75,7 +75,7 @@ describeNative("window and document pointer listeners", () => {
     const listener = (event) => seen.push(`${event.type}:${event.target}`)
     document.addEventListener("mousemove", listener)
     outsideRoot()
-    expect(seen).toEqual(["mousemove:undefined"])
+    expect(seen).toEqual(["mousemove:null"])
     expect(rootMoves).toEqual([])
     document.removeEventListener("mousemove", listener)
   })

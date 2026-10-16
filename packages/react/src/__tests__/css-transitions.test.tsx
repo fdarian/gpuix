@@ -474,15 +474,17 @@ describeNative("CSS transitions", () => {
   it("bubbles a child's transition events to its parent with the child as target", () => {
     const { render, renderer } = createTestRoot()
     const seen: string[] = []
+    let child: unknown
     const parent = (width: number, stop = false) => (
       <div
         testId="parent"
-        onTransitionEndCapture={(event) => seen.push(`capture ${event.target === child() ? "child" : "?"}`)}
+        onTransitionEndCapture={(event) => seen.push(`capture ${event.target === child ? "child" : "?"}`)}
         onTransitionEnd={(event) => {
           seen.push(`parent ${event.propertyName} ${event.eventPhase} ${event.cancelable}`)
         }}
       >
         <div
+          ref={(element) => (child = element)}
           testId="child"
           onTransitionEnd={(event) => {
             seen.push(`child ${event.target === event.currentTarget ? "target" : "?"}`)
@@ -492,7 +494,6 @@ describeNative("CSS transitions", () => {
         />
       </div>
     )
-    const child = () => renderer.findByTestId("child").id
 
     renderer.clockPause()
     render(parent(100))
@@ -511,17 +512,19 @@ describeNative("CSS transitions", () => {
 
   it("reaches a listener on an ancestor only when the child has no listener of its own", () => {
     const { render, renderer } = createTestRoot()
-    const targets: number[] = []
+    const targets: object[] = []
+    let child: unknown
     const tree = (width: number) => (
       <div onTransitionRun={(event) => targets.push(event.target)}>
-        <div testId="child" style={{ width, height: 20, transition: "width 1s linear" }} />
+        <div ref={(element) => (child = element)} testId="child" style={{ width, height: 20, transition: "width 1s linear" }} />
       </div>
     )
     renderer.clockPause()
     render(tree(100))
     render(tree(200))
     renderer.dispatchNativeEvents()
-    expect(targets).toEqual([renderer.findByTestId("child").id])
+    expect(targets).toHaveLength(1)
+    expect(targets[0]).toBe(child)
   })
 
   it("treats a colour scheme flip as a change of light-dark(), and a new color as none of currentColor", () => {

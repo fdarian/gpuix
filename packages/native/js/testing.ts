@@ -29,7 +29,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
-import { forgetElementSource } from "./events/window-target.js"
+import { forgetElementSource, forgetFocusSource } from "./events/window-target.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
@@ -378,7 +378,7 @@ export class TestRenderer implements NativeRenderer {
     }
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options)
-    if (latestRenderer) forgetElementSource(latestRenderer)
+    if (latestRenderer) forgetFocusSource(latestRenderer)
     latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)
     registerKeyframesHost(this.native)
