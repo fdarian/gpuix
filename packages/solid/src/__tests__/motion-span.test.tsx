@@ -133,6 +133,27 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
     page.app.unmount()
   })
 
+  it("fades a span in with opacity, and it paints no more than that fraction of the text", () => {
+    const page = setup()
+    page.app.render(() => (
+      <div style={PAGE}>
+        <text testId="p" style={{ ...TEXT, fontSize: 64, lineHeight: "70px" }}>
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={LINEAR}>
+            MM
+          </motion.span>
+        </text>
+      </div>
+    ))
+    expect(page.ink()).toEqual([255, 255, 255])
+    page.renderer.clockFastForward(500)
+    const middle = page.ink()
+    expect(middle[0]).toBeGreaterThan(90)
+    expect(middle[0]).toBeLessThan(165)
+    page.renderer.clockFastForward(1000)
+    expect(page.ink()).toEqual([0, 0, 0])
+    page.app.unmount()
+  })
+
   it("looks its variants up by name, and a variant brings its own transition", () => {
     const page = setup()
     page.app.render(() => (
@@ -250,7 +271,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
     const animating: Array<[string, Record<string, unknown>, string]> = [
       ["animate", { animate: { width: 100 } }, 'cannot animate "width" in animate'],
       ["initial", { initial: { paddingLeft: 4 }, animate: { color: RED } }, 'cannot animate "paddingLeft" in initial'],
-      ["exit", { exit: { opacity: 0 } }, 'cannot animate "opacity" in exit'],
+      ["exit", { exit: { width: 10 } }, 'cannot animate "width" in exit'],
       [
         "variants",
         { variants: { big: { fontSize: 20 } }, animate: { color: RED } },

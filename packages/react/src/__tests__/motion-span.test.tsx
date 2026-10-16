@@ -134,6 +134,27 @@ describeNative("motion.span", () => {
     page.testRoot.unmount()
   })
 
+  it("fades a span in with opacity, and it paints no more than that fraction of the text", () => {
+    const page = setup()
+    page.testRoot.render(
+      <div style={PAGE}>
+        <text testId="p" style={{ ...TEXT, fontSize: 64, lineHeight: "70px" }}>
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={LINEAR}>
+            MM
+          </motion.span>
+        </text>
+      </div>
+    )
+    expect(page.ink(), "nothing is painted on the first frame").toEqual([255, 255, 255])
+    page.renderer.clockFastForward(500)
+    const middle = page.ink()
+    expect(middle[0], `${middle}`).toBeGreaterThan(90)
+    expect(middle[0], `${middle}`).toBeLessThan(165)
+    page.renderer.clockFastForward(1000)
+    expect(page.ink()).toEqual([0, 0, 0])
+    page.testRoot.unmount()
+  })
+
   it("shows animate at once when there is no initial", () => {
     const page = setup()
     page.testRoot.render(
@@ -350,7 +371,7 @@ describeNative("motion.span", () => {
     it.each([
       ["animate", { animate: { width: 100 } }, 'cannot animate "width" in animate'],
       ["initial", { initial: { paddingLeft: 4 }, animate: { color: RED } }, 'cannot animate "paddingLeft" in initial'],
-      ["exit", { exit: { opacity: 0 } }, 'cannot animate "opacity" in exit'],
+      ["exit", { exit: { width: 10 } }, 'cannot animate "width" in exit'],
       [
         "variants",
         { variants: { big: { fontSize: 20 } }, animate: { color: RED } },
