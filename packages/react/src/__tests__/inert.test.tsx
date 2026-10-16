@@ -112,6 +112,8 @@ describeNative("inert", () => {
       node.children?.some((child) => tree.nodes?.[child]?.aria?.label === "inside")
     )
     expect(parent?.aria?.hidden).toBe(true)
+    const inside = nodes.find((node) => node.aria?.label === "inside")
+    expect(inside?.aria?.hidden).toBe(true)
   })
 
   it("does not deliver clicks to the subtree, and lets them reach what is behind it", () => {

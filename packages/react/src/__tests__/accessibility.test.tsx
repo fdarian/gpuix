@@ -407,12 +407,13 @@ describeNative("accessibility", () => {
     )
 
     const tree = testRoot.renderer.getA11yTree()
+    expect(typeof tree.frame?.node_count).toBe("number")
     const hidden = ariaOf(tree).filter((aria) => aria.hidden)
-    expect(hidden).toHaveLength(1)
+    expect(hidden).toHaveLength(2)
     const inside = Object.values(tree.nodes ?? {}).find(
       (node) => node.aria?.label === "inside",
     )
-    expect(inside).toBeDefined()
+    expect(inside?.aria?.hidden).toBe(true)
     const parent = Object.values(tree.nodes ?? {}).find((node) =>
       node.children?.some((child) => tree.nodes?.[child]?.aria?.label === "inside"),
     )

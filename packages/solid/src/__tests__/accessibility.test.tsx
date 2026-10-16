@@ -101,6 +101,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid accessibility", () => {
 
     const nodes = Object.values(app.renderer.getA11yTree().nodes ?? {})
     expect(nodes.some((node) => node.aria?.hidden)).toBe(true)
+    const button = nodes.find((node) => node.aria?.role === "Button")
+    expect(button?.aria?.hidden).toBe(true)
   })
 
   it("names an <input> from <label htmlFor> and forwards the click", () => {

@@ -69,10 +69,13 @@ describe.skipIf(!hasNativeTestRenderer)("Solid inert", () => {
       </div>
     ))
     const tree = renderer.getA11yTree()
-    const parent = Object.values(tree.nodes ?? {}).find((node) =>
+    const nodes = Object.values(tree.nodes ?? {})
+    const parent = nodes.find((node) =>
       node.children?.some((child) => tree.nodes?.[child]?.aria?.label === "inside")
     )
     expect(parent?.aria?.hidden).toBe(true)
+    const inside = nodes.find((node) => node.aria?.label === "inside")
+    expect(inside?.aria?.hidden).toBe(true)
   })
 
   it("does not deliver clicks to the subtree, and lets them reach what is behind it", () => {

@@ -313,6 +313,20 @@ export interface A11yTreeNode {
 
 export interface A11yTreeDump {
   root?: string
+  /** Null when the window has no focused node. */
+  gpui_focus?: string | null
+  /** Null when no active descendant is claimed. */
+  active_descendant_focus?: string | null
+  /** Absent only when the dump is the empty `{}` fallback (no a11y tree yet). */
+  frame?: {
+    rendered_at: string
+    frame_number: number
+    window_title: string | null
+    node_count: number
+    tab_stop_count: number
+    viewport_size: { width: number; height: number }
+    scale_factor: number
+  }
   nodes?: Record<string, A11yTreeNode>
 }
 
