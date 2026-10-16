@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { captureHandlerKey } from "../events/dispatch.js"
+import { captureHandlerKey, eventBubbles, eventIsCancelable } from "../events/dispatch.js"
 import { DOM_DISPATCHED_EVENT_TYPES, POINTER_EVENT_TYPES } from "../events/event-props.js"
 import {
   EVENT_PROP_NAMES,
@@ -59,6 +59,18 @@ describe("EVENT_PROPS", () => {
     expect(EVENT_TYPE_BY_PROP.get(`${prop}Capture`)).toBe(captureHandlerKey(type))
     expect(DOM_DISPATCHED_EVENT_TYPES.has(type)).toBe(true)
     expect(POINTER_EVENT_TYPES.has(type)).toBe(false)
+  })
+
+  it.each([
+    ["onCompositionStart", "compositionstart"],
+    ["onCompositionUpdate", "compositionupdate"],
+    ["onCompositionEnd", "compositionend"],
+  ])("%s listens for %s, has a capture twin, bubbles and cannot be cancelled", (prop, type) => {
+    expect(EVENT_TYPE_BY_PROP.get(prop)).toBe(type)
+    expect(EVENT_TYPE_BY_PROP.get(`${prop}Capture`)).toBe(captureHandlerKey(type))
+    expect(DOM_DISPATCHED_EVENT_TYPES.has(type)).toBe(true)
+    expect(eventBubbles(type)).toBe(true)
+    expect(eventIsCancelable(type)).toBe(false)
   })
 
   it("keeps onMouseDownOutside as the gpuix type, without a capture variant", () => {

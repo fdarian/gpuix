@@ -10,7 +10,11 @@ import type {
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
 import type { DomEvent, RootEvent } from "./events/dispatch.js"
-import type { AnimationEventProps, PointerEventProps } from "./events/types.js"
+import type {
+  AnimationEventProps,
+  CompositionEventProps,
+  PointerEventProps,
+} from "./events/types.js"
 import type { ScrollEvent } from "./scroll.js"
 import type { MotionValue } from "./motion-value.js"
 
@@ -1077,7 +1081,11 @@ export interface HighlightSpec {
 // Props passed to elements.
 // Element IDs are auto-generated numeric IDs (not user-settable).
 // Framework adapters add their own children, key, and ref fields.
-export interface HostProps extends AriaProps, PointerEventProps, AnimationEventProps {
+export interface HostProps
+  extends AriaProps,
+    PointerEventProps,
+    AnimationEventProps,
+    CompositionEventProps {
   style?: StyleDesc
 
   // Pointer, mouse and drag events, with `on…Capture` twins: see PointerEventProps.
@@ -1146,6 +1154,9 @@ export interface HostProps extends AriaProps, PointerEventProps, AnimationEventP
   onError?: (event: DomEvent) => void
 
   // ── Text editor events ─────────────────────────────────────────
+  // `onCompositionStart`, `onCompositionUpdate` and `onCompositionEnd`, with
+  // `on…Capture` twins: see CompositionEventProps. They bubble from the
+  // `<input>` or `<textarea>` being composed in.
   onChange?: (event: DomEvent) => void
   /** The DOM `submit` event of a descendant `<form>`, bubbling: see
    *  `FormProps.onSubmit`. Not available on `<input>` or `<textarea>`: handle

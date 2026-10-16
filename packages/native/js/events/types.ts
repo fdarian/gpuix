@@ -230,6 +230,26 @@ export interface AnimationEventHandlerProps {
   onAnimationCancel?: (event: HostAnimationEvent) => void
 }
 
+/**
+ * `compositionstart`, `compositionupdate` and `compositionend`: an input method
+ * composing text in an `<input>` or `<textarea>`. They bubble from the text
+ * input (`target`) and cannot be cancelled. `data` is the text the composition
+ * replaces on start (the selection, usually `""`), the composition's current
+ * text on update and the text it ended with on end. Only macOS composes.
+ */
+export interface HostCompositionEvent extends HostDomEvent {
+  data: string
+}
+
+export interface CompositionEventHandlerProps {
+  /** A composition began. Fires before its first `compositionupdate`. */
+  onCompositionStart?: (event: HostCompositionEvent) => void
+  /** The composition's text changed. Fires before the `onChange` of that edit. */
+  onCompositionUpdate?: (event: HostCompositionEvent) => void
+  /** The composition ended, committed or cancelled. Fires before the `onChange` of its final edit. */
+  onCompositionEnd?: (event: HostCompositionEvent) => void
+}
+
 type CaptureProps<Props> = {
   [Name in keyof Props & string as `${Name}Capture`]: Props[Name]
 }
@@ -241,3 +261,7 @@ export type PointerEventProps = PointerEventHandlerProps &
 /** Each transition and animation handler, plus its capture-phase `on…Capture` twin. */
 export type AnimationEventProps = AnimationEventHandlerProps &
   Partial<CaptureProps<AnimationEventHandlerProps>>
+
+/** Each composition handler, plus its capture-phase `on…Capture` twin. */
+export type CompositionEventProps = CompositionEventHandlerProps &
+  Partial<CaptureProps<CompositionEventHandlerProps>>

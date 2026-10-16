@@ -58,6 +58,9 @@ const NON_CANCELABLE_TYPES: ReadonlySet<string> = new Set([
   "animationiteration",
   "animationend",
   "animationcancel",
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
 ])
 
 export function eventBubbles(eventType: string): boolean {

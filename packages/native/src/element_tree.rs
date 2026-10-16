@@ -87,6 +87,13 @@ pub struct EventPayload {
     /// Populated for: keydown, keyup.
     pub is_composing: Option<bool>,
 
+    // ── Composition ──────────────────────────────────────────────────
+    /// DOM `CompositionEvent.data`: the text the composition replaces on
+    /// compositionstart (the selection), the composition's current text on
+    /// compositionupdate and the text it ended with on compositionend.
+    /// Populated for: compositionstart, compositionupdate, compositionend.
+    pub data: Option<String>,
+
     /// DOM `shiftKey`, `ctrlKey`, `altKey`, `metaKey`: the booleans of
     /// `modifiers`, under the DOM names.
     /// Populated for: keydown, keyup.
@@ -288,6 +295,7 @@ impl Default for EventPayload {
             is_held: None,
             repeat: None,
             is_composing: None,
+            data: None,
             shift_key: None,
             ctrl_key: None,
             alt_key: None,

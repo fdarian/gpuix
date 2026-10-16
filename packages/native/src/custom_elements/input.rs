@@ -10,6 +10,7 @@
 
 use std::collections::VecDeque;
 use std::ops::Range;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::{
@@ -31,7 +32,8 @@ use super::text_selection::{
     describe, resolve, utf16_len, SelectionRequest, TextSelection,
 };
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
-use crate::renderer::{emit_event_full, EventCallback, GpuixView};
+use crate::renderer::{emit_bubbling_event, emit_event_full, EventCallback, GpuixView};
+use crate::retained_tree::RetainedTree;
 use crate::theme::Theme;
 
 actions!(
@@ -412,6 +414,7 @@ impl CustomElement for TextEditorElement {
         };
         let emits_change = ctx.events.contains("change");
         let callback = ctx.event_callback.clone();
+        let tree = ctx.activation.tree.clone();
         let view = cx.weak_entity();
 
         let state = self
@@ -432,6 +435,7 @@ impl CustomElement for TextEditorElement {
                 let max_rows = self.max_rows;
                 let caret_color = self.theme.caret;
                 let callback = callback.clone();
+                let tree = tree.clone();
                 let view = view.clone();
                 let id = ctx.id;
                 let cursor = value.len();
@@ -449,6 +453,7 @@ impl CustomElement for TextEditorElement {
                     element_id: id,
                     view,
                     callback,
+                    tree,
                     emits_change,
                     focus_handle: state_focus_handle,
                     content: value,
@@ -793,6 +798,9 @@ struct TextEditorState {
     element_id: u64,
     view: gpui::WeakEntity<GpuixView>,
     callback: Option<EventCallback>,
+    /// For the propagation path of a composition event. Never locked from the
+    /// code that builds the frame, which holds it: only input handlers emit.
+    tree: Arc<Mutex<RetainedTree>>,
     emits_change: bool,
     focus_handle: FocusHandle,
     content: String,
@@ -949,6 +957,13 @@ impl TextEditorState {
         self.redo_stack.clear();
         self.last_edit = None;
         cx.notify();
+    }
+
+    fn emit_composition(&self, event_type: &str, data: &str) {
+        let tree = self.tree.lock().unwrap();
+        emit_bubbling_event(&self.callback, &tree, self.element_id, event_type, |payload| {
+            payload.data = Some(data.to_string());
+        });
     }
 
     fn emit_change(&mut self) {
@@ -1363,7 +1378,8 @@ impl TextEditorState {
         if range.is_empty() && replacement.is_empty() {
             return;
         }
-        if self.marked_range.is_none() {
+        let ends_composition = self.marked_range.is_some();
+        if !ends_composition {
             self.record_edit(&range, &replacement, cx.background_executor().now());
         }
         self.content =
@@ -1374,6 +1390,9 @@ impl TextEditorState {
         self.marked_range = None;
         self.follow_cursor = true;
         self.reset_blink(cx);
+        if ends_composition {
+            self.emit_composition("compositionend", &replacement);
+        }
         self.emit_change();
         cx.notify();
     }
@@ -1825,7 +1844,10 @@ impl EntityInputHandler for TextEditorState {
     }
 
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.marked_range = None;
+        if let Some(marked) = self.marked_range.take() {
+            let text = self.content[marked].to_string();
+            self.emit_composition("compositionend", &text);
+        }
         cx.notify();
     }
 
@@ -1867,7 +1889,10 @@ impl EntityInputHandler for TextEditorState {
         let Some(replacement) = self.fit_max_length(&range, replacement) else {
             return;
         };
-        if self.marked_range.is_none() {
+        let was_composing = self.marked_range.is_some();
+        // What compositionstart reports: the text the composition takes over.
+        let replaced = self.content[range.clone()].to_string();
+        if !was_composing {
             let snapshot = self.snapshot();
             push_undo_snapshot(&mut self.undo_stack, snapshot);
             self.redo_stack.clear();
@@ -1886,6 +1911,16 @@ impl EntityInputHandler for TextEditorState {
             .unwrap_or_else(|| range.start + replacement.len()..range.start + replacement.len());
         self.follow_cursor = true;
         self.reset_blink(cx);
+        match (was_composing, self.marked_range.is_some()) {
+            (false, true) => {
+                self.emit_composition("compositionstart", &replaced);
+                self.emit_composition("compositionupdate", &replacement);
+            }
+            (true, true) => self.emit_composition("compositionupdate", &replacement),
+            // Marking nothing cancels the composition.
+            (true, false) => self.emit_composition("compositionend", ""),
+            (false, false) => {}
+        }
         self.emit_change();
         cx.notify();
     }

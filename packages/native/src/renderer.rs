@@ -5087,7 +5087,7 @@ fn sync_motion_states(
 
 /// Emits a DOM event that bubbles and cannot be cancelled, aimed at `id`, when
 /// the element or an ancestor listens for it.
-fn emit_bubbling_event(
+pub(crate) fn emit_bubbling_event(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     id: u64,
