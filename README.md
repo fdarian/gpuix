@@ -5681,7 +5681,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Lengths
 
@@ -6089,9 +6089,9 @@ fetched there once per URL, wherever a style, its state styles included, names
 it, and the bytes are handed to native. A revoked URL paints nothing. This needs a
 renderer that has `setStyleImage`: the native one and the test renderer do.
 
-Limits: `image-set()` is not drawn, and neither is a `url()` in `mask` or
-`maskImage`, which is valid but skipped. An inline `<span>` box paints
-`backgroundColor` only.
+Limits: `image-set()` is not drawn. An inline `<span>` box paints
+`backgroundColor` only. A `url()` in `mask` and `maskImage` loads the same way
+(see `maskImage`, below).
 
 #### Gradient text
 
@@ -6272,12 +6272,14 @@ each other.
 <div style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,.4))' }} />
 ```
 
-`maskImage` multiplies the element and everything in it by the alpha of a comma
-list of gradients (the same forms as `backgroundImage`, first on top), so
-`transparent` hides and any opaque colour shows. `maskSize`, `maskPosition`,
+`maskImage` multiplies the element and everything in it by a comma list of
+layers, first on top: gradients (the same forms as `backgroundImage`) and `url()`
+images. With the default `maskMode` a layer's alpha is what counts, so `transparent`
+hides and any opaque colour shows. `maskSize`, `maskPosition`,
 `maskRepeat`, `maskOrigin` and `maskClip` are comma lists that repeat to cover the
-layers, and `mask` is the shorthand (layers, `position / size`, repeat, and origin
-and clip boxes). The longhands win over it. `maskOrigin` and `maskClip` start at
+layers, and `mask` is the shorthand (layers, `position / size`, repeat, origin
+and clip boxes, a mode and a composite keyword). The longhands win over it.
+`maskOrigin` and `maskClip` start at
 `border-box`, not at the `padding-box` a background starts from. A layer that does
 not cover an area leaves it hidden, so a non-repeating mask hides what it does not
 reach. A mask composites the element as a group, like `opacity` and `filter`.
@@ -6286,13 +6288,44 @@ reach. A mask composites the element as a group, like `opacity` and `filter`.
 // Fade the top and bottom edge of a scroller.
 <div style={{ overflow: 'scroll', maskImage: 'linear-gradient(to bottom, transparent, black 20px, black 80%, transparent)' }} />
 <div style={{ mask: 'radial-gradient(circle, black 60%, transparent 61%) center / 24px 24px' }} />
+<div style={{ mask: 'url(/assets/blob.svg) center / contain no-repeat' }} />
 ```
 
-Limits: `url(...)` masks are valid but not drawn, so that layer is skipped.
-`maskMode` and `maskComposite` have no props, and only the alpha of a gradient is
-used. `no-clip` and `margin-box` are not supported, so a value using them is
-ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
-`border-box`.
+A `url()` mask layer is written and loaded like a [`url()` background](#image-backgrounds):
+the same quoting, the same sources (a path, `file://`, `data:`, `http(s):` and
+`blob:`), and the same natural size, tiling and caching. Until its image has loaded
+a layer is transparent, and it stays transparent if the load fails (a missing file,
+bad data), as in CSS. So an element masked by an image that is not there is hidden
+whole, not drawn unmasked; with several layers the missing one combines like any
+other empty layer. A `data:` image is ready in the first frame, so a mask does not
+flash.
+
+`maskMode` is a comma list of `alpha`, `luminance` and `match-source` (the
+default), one entry per layer. `alpha` reads a layer's alpha channel, `luminance`
+its luminance scaled by its alpha, so black hides and white shows. `match-source`
+is `alpha` for a gradient and an image alike.
+
+`maskComposite` is a comma list of `add` (the default), `subtract`, `intersect` and
+`exclude`, one entry per layer: how that layer combines with all the layers below
+it. `add` lays it over them, `subtract` keeps it only where they are not,
+`intersect` only where they are, and `exclude` where exactly one of the two is. The
+bottom layer has nothing below it, so its entry is ignored. Both lists repeat to
+cover the layers, and a list with an invalid entry is ignored, like the other mask
+longhands. The `mask` shorthand takes a mode and a composite keyword in any layer,
+in any order among the other parts, and resets both longhands.
+
+```tsx
+// Punch the shape of an icon out of a rectangle.
+<div style={{ maskImage: 'linear-gradient(#000, #000), url(/assets/icon.svg)', maskComposite: 'exclude' }} />
+<div style={{ mask: 'url(/assets/photo-mask.png) luminance center / cover no-repeat' }} />
+```
+
+Limits: `image-set()` is not drawn (that layer is skipped, as in `backgroundImage`).
+`mask-border` and the legacy `-webkit-mask-composite` keywords (`source-over`,
+`source-in`, ...) are not supported. `no-clip` and `margin-box` are not supported, so
+a value using them is ignored. `fill-box` is `content-box` and `stroke-box` and
+`view-box` are `border-box`. Masks, like the other effect groups, are drawn only on
+macOS.
 
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
 (one to four insets and `round` radii, with `/` for the vertical ones), `rect()`
