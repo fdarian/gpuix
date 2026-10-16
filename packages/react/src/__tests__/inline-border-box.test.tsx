@@ -23,6 +23,8 @@ const SPACE = {
   borderRightWidth: 1,
   paddingRight: 3,
 } as const
+/** What a span is tall: the content area of Menlo at 16px, not the 20px line. */
+const CONTENT = 18.625
 const LEADING = 16
 const TRAILING = 10
 
@@ -90,7 +92,7 @@ describeNative("border box of an inline element", () => {
       expect(span.x).toBeCloseTo(text.x + 3 * column + 10, 1)
       expect(span.width).toBeCloseTo(2 * column + 2 + 4 + 1 + 3, 1)
       expect(span.right).toBeCloseTo(text.x + 5 * column + LEADING + TRAILING - 6, 1)
-      expect(span.height).toBeCloseTo(LINE, 1)
+      expect(span.height).toBeCloseTo(CONTENT, 1)
     } finally {
       t.unmount()
     }

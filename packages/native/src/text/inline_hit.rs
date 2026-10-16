@@ -10,7 +10,13 @@
 //! a line, between two lines, or under a short paragraph belongs to the container.
 //! The cell of a box's first and last glyph holds the box's margin, border and
 //! padding, and the pointer is on the box only inside its border box: in the
-//! margin it is on the boxes around it.
+//! margin it is on the boxes around it. A border box is as tall as the content
+//! area of the font plus the box's vertical padding and border, not the line box
+//! ([`super::inline_bounds::border_box_rows`]), so the part of a tall line above
+//! or below its text belongs to the boxes around the span, or the container.
+//! A point is looked up by the glyph cell it is in, so vertical padding that
+//! reaches into the next line is on the span only where that line's glyph cell is
+//! one of the span's.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -353,6 +359,58 @@ mod tests {
         // Span 3 ends with 5, but 5's margin is inside it.
         assert_eq!(ids(targets.around(3, point(px(36.0), px(10.0)), rows)), vec![3]);
         assert_eq!(ids(targets.around(3, point(px(32.0), px(10.0)), rows)), vec![5, 3]);
+    }
+
+    /// The same ten pixels to a byte, but a line box of 40 around a font of 12 above
+    /// the baseline and 4 below: the content area is y 12 to 28.
+    fn tall_rows(range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
+        crate::text::inline_bounds::border_box(
+            vec![crate::text::inline_bounds::Row {
+                line: Bounds::new(
+                    point(px(range.start as f32 * 10.0), px(0.0)),
+                    size(px(range.len() as f32 * 10.0), px(40.0)),
+                ),
+                ascent: px(12.0),
+                descent: px(4.0),
+            }],
+            edges,
+        )
+    }
+
+    fn insets_of(tree: &RetainedTree) -> Insets {
+        let plan = crate::text::inline::plan_children(tree, &tree.elements[&1]);
+        let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        Insets::of(tree, paragraph, &|_, _| Default::default())
+    }
+
+    #[test]
+    fn the_line_box_above_and_below_the_content_area_is_not_on_the_box() {
+        let targets = targets_of(&fixture(&[]));
+        let at = |y: f32| ids(targets.around(2, point(px(25.0), px(y)), tall_rows));
+        assert!(at(5.0).is_empty(), "above the text");
+        assert!(at(35.0).is_empty(), "below the text");
+        assert_eq!(at(20.0), vec![3]);
+        assert_eq!(at(12.5), vec![3], "the first pixel of the content area");
+        assert_eq!(at(27.5), vec![3], "the last pixel of it");
+        assert!(at(28.5).is_empty());
+    }
+
+    #[test]
+    fn vertical_padding_and_border_are_on_the_box() {
+        let tree = fixture(&[(3, serde_json::json!({"paddingTop": 6, "borderTopWidth": 2, "paddingBottom": 10}))]);
+        let insets = insets_of(&tree);
+        let plan = crate::text::inline::plan_children(&tree, &tree.elements[&1]);
+        let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
+        let at = |y: f32| ids(targets.around(2, point(px(25.0), px(y)), tall_rows));
+        assert!(at(3.0).is_empty(), "above the border");
+        assert_eq!(at(4.5), vec![3], "on the border, 8 above the content area");
+        assert_eq!(at(37.0), vec![3], "10 below the content area");
+        assert!(at(38.5).is_empty());
     }
 
     #[test]

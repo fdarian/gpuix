@@ -244,8 +244,9 @@ pub struct SelectableText {
     /// The inline boxes of a paragraph that can take focus, in tree order, see
     /// [`super::inline_focus`].
     pub inline_focus: Vec<super::inline_focus::FocusableBox>,
-    /// What the inline boxes of a paragraph paint around their text, over the
-    /// glyphs, see [`super::inline_decoration`].
+    /// What the inline boxes of a paragraph paint around their text: background
+    /// and border behind the glyphs, outline over them, see
+    /// [`super::inline_decoration`].
     pub inline_decorations: Vec<super::inline_decoration::BoxDecoration>,
 }
 
@@ -325,8 +326,17 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         (inline.layout().clone(), inline.into_any_element())
     };
 
-    let decorations = (!inline_decorations.is_empty())
-        .then(|| super::inline_decoration::overlay(layout.clone(), inline_decorations));
+    let behind: Vec<_> = inline_decorations
+        .iter()
+        .filter(|decoration| decoration.paint.paints())
+        .cloned()
+        .collect();
+    let rings: Vec<_> = inline_decorations
+        .into_iter()
+        .filter(|decoration| decoration.outline.is_some())
+        .collect();
+    let decorations = (!rings.is_empty())
+        .then(|| super::inline_decoration::overlay(layout.clone(), rings));
     let cursor_hitboxes = (!inline_cursors.is_empty())
         .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
     let press_focus: Vec<_> = inline_focus
@@ -341,6 +351,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             if window.visibility() == gpui::Visibility::Hidden {
                 return;
             }
+            super::inline_decoration::paint_behind(&layout, &behind, window, cx);
             if let Some(paint) = &extra_wash {
                 paint(&layout, window);
             }
@@ -773,6 +784,19 @@ pub fn range_rects(
     )
 }
 
+/// [`range_rects`] without padding, and with the byte each row starts at, which
+/// is where its line's metrics are found.
+pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<(Bounds<gpui::Pixels>, usize)> {
+    range_rows_with_positions(
+        layout.bounds(),
+        layout.line_height(),
+        range,
+        0.0,
+        0.0,
+        |index| layout.position_for_index(index),
+    )
+}
+
 fn range_rects_with_positions(
     bounds: Bounds<gpui::Pixels>,
     line_height: gpui::Pixels,
@@ -781,6 +805,20 @@ fn range_rects_with_positions(
     inset_y: f32,
     position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
 ) -> Vec<Bounds<gpui::Pixels>> {
+    range_rows_with_positions(bounds, line_height, range, pad_x, inset_y, position_for_index)
+        .into_iter()
+        .map(|(rect, _)| rect)
+        .collect()
+}
+
+fn range_rows_with_positions(
+    bounds: Bounds<gpui::Pixels>,
+    line_height: gpui::Pixels,
+    range: &Range<usize>,
+    pad_x: f32,
+    inset_y: f32,
+    position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
+) -> Vec<(Bounds<gpui::Pixels>, usize)> {
     let mut rects = Vec::new();
     let mut cur = range.start;
     // Walk the range one visual row at a time: binary search for the furthest
@@ -814,12 +852,15 @@ fn range_rects_with_positions(
         };
         if let Some(p2) = position_for_index(seg_end) {
             if p2.x > p1.x {
-                rects.push(Bounds::new(
-                    point(p1.x - px(pad_x), p1.y + px(inset_y)),
-                    size(
-                        p2.x - p1.x + px(2.0 * pad_x),
-                        line_height - px(2.0 * inset_y),
+                rects.push((
+                    Bounds::new(
+                        point(p1.x - px(pad_x), p1.y + px(inset_y)),
+                        size(
+                            p2.x - p1.x + px(2.0 * pad_x),
+                            line_height - px(2.0 * inset_y),
+                        ),
                     ),
+                    cur,
                 ));
             }
         }
@@ -865,6 +906,19 @@ mod tests {
         assert_eq!(rects.len(), 1);
         assert_eq!(rects[0].origin, point(px(0.0), px(22.0)));
         assert_eq!(rects[0].size, size(px(40.0), px(22.0)));
+    }
+
+    #[test]
+    fn a_row_names_the_byte_it_starts_at() {
+        let rows = range_rows_with_positions(
+            Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
+            px(22.0),
+            &(2..9),
+            0.0,
+            0.0,
+            wrapped_position,
+        );
+        assert_eq!(rows.iter().map(|(_, start)| *start).collect::<Vec<_>>(), vec![2, 5]);
     }
 
     #[test]

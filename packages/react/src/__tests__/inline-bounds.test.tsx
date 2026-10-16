@@ -11,6 +11,10 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+/** What the box of a span is tall: the content area of Menlo at 16px (its ascent
+ *  plus its descent), centred in the line box, not the 20px line. */
+const CONTENT = 18.625
+const INSET = (LINE - CONTENT) / 2
 
 let measuredColumn: number | undefined
 
@@ -61,8 +65,8 @@ describeNative("bounds of an inline element", () => {
 
       expect(span.x).toBeCloseTo(text.x + 6 * column, 2)
       expect(span.width).toBeCloseTo(5 * column, 2)
-      expect(span.y).toBeCloseTo(text.y, 2)
-      expect(span.height).toBeCloseTo(LINE, 2)
+      expect(span.y, "the content area is centred in the line").toBeCloseTo(text.y + INSET, 2)
+      expect(span.height, "as tall as the font, not the line").toBeCloseTo(CONTENT, 2)
       expect(span.right).toBeCloseTo(span.x + span.width, 2)
       expect(span.bottom).toBeCloseTo(span.y + span.height, 2)
     } finally {
@@ -85,9 +89,9 @@ describeNative("bounds of an inline element", () => {
       const text = element("text").getBoundingClientRect()
       const span = element("span").getBoundingClientRect()
 
-      expect(span.height, "two lines").toBeCloseTo(2 * LINE, 2)
+      expect(span.height, "two lines").toBeCloseTo(LINE + CONTENT, 2)
       expect(span.x, "starts at the left edge of the second line").toBeCloseTo(text.x, 2)
-      expect(span.y).toBeCloseTo(text.y, 2)
+      expect(span.y).toBeCloseTo(text.y + INSET, 2)
       // The first line's fragment is "bbbbbb", plus the space that hangs at the wrap.
       expect(span.width, "reaches the end of the first line").toBeGreaterThanOrEqual(9 * column - 0.01)
       expect(span.width).toBeLessThanOrEqual(10 * column + 0.01)
@@ -168,12 +172,12 @@ describeNative("observing an inline element", () => {
       expect(entries).toHaveLength(1)
       expect(entries[0]!.target).toBe(element("span"))
       expect(entries[0]!.borderBoxSize[0]!.inlineSize).toBeCloseTo(13 * column, 2)
-      expect(entries[0]!.borderBoxSize[0]!.blockSize).toBeCloseTo(LINE, 2)
+      expect(entries[0]!.borderBoxSize[0]!.blockSize).toBeCloseTo(CONTENT, 2)
 
       render(app(12))
       renderer.dispatchNativeEvents()
       expect(entries).toHaveLength(2)
-      expect(entries[1]!.borderBoxSize[0]!.blockSize).toBeCloseTo(2 * LINE, 2)
+      expect(entries[1]!.borderBoxSize[0]!.blockSize).toBeCloseTo(LINE + CONTENT, 2)
     } finally {
       unmount()
     }

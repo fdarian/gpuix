@@ -6,19 +6,24 @@
 //! like every other element's bounds, and so are the observers' reports, which
 //! is why a span can be observed and reads as gone when it stops painting.
 //!
-//! The box is the border box, as in CSS: the rows the layout gives for a range
-//! are margin box rows at the first and last fragment, and
-//! [`border_box_rows`] takes the span's margin off them
-//! ([`super::inline_insets`] has the model).
+//! The box is the border box, as in CSS, and [`border_box_rows`] is the one place
+//! that works it out for every consumer (bounds, hit testing, cursor hitboxes,
+//! the outline and the painted background and border). Horizontally the rows
+//! the layout gives for a range are margin box rows at the first and last
+//! fragment, and the span's margin comes off them ([`super::inline_insets`] has
+//! the model). Vertically a row is a line box, but an inline box is as tall as
+//! the content area of its font, whatever the `lineHeight`: the font's ascent and
+//! descent, centred in the line box as gpui paints the glyphs, plus the box's
+//! vertical padding and border.
 
 use std::ops::Range;
 
-use gpui::{App, Bounds, LayoutInsets, Pixels, TextLayout, Window};
+use gpui::{point, size, App, Bounds, LayoutInsets, Pixels, TextLayout, Window};
 
 use crate::automation::{record_bounds, PaintReporter};
 
 use super::inline_insets::Edges;
-use super::paint::range_rects;
+use super::paint::range_rows;
 
 /// An inline element of a paragraph that has a box of its own.
 pub struct InlineBox {
@@ -30,18 +35,69 @@ pub struct InlineBox {
     pub report: Option<PaintReporter>,
 }
 
-/// The rect of each line `range` covers, in window coordinates. A range that
-/// wraps has one per line, and one that covers no glyph has none.
-pub fn fragments(layout: &TextLayout, range: &Range<usize>) -> Vec<Bounds<Pixels>> {
-    range_rects(layout, range, 0.0, 0.0)
+/// One line fragment of a box: the line box it is on, and the font metrics of the
+/// line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Row {
+    pub line: Bounds<Pixels>,
+    pub ascent: Pixels,
+    pub descent: Pixels,
 }
 
-/// `fragments` of `range` as the border box of a box with these `edges`: the
-/// first fragment starts after the margin, and the last ends before it. A
-/// fragment in the middle, or one that continues onto another line, is as it
-/// was.
+impl Row {
+    /// The band of the line the font's glyphs occupy. gpui centres `ascent` plus
+    /// `descent` in the line box (`paint_line`), so a `lineHeight` taller than the
+    /// font leaves the same space above and below it. A `lineHeight` shorter than
+    /// the font puts the band beyond the line box, as the content area is in CSS.
+    pub fn content_area(&self) -> Bounds<Pixels> {
+        let height = self.ascent + self.descent;
+        Bounds::new(
+            point(self.line.origin.x, self.line.origin.y + (self.line.size.height - height) / 2.0),
+            size(self.line.size.width, height),
+        )
+    }
+}
+
+/// The line box of each line `range` covers, in window coordinates, with the
+/// metrics of that line. A range that wraps has one per line, and one that covers
+/// no glyph has none.
+pub fn rows(layout: &TextLayout, range: &Range<usize>) -> Vec<Row> {
+    range_rows(layout, range)
+        .into_iter()
+        .map(|(line, start)| {
+            let metrics = layout
+                .line_layout_for_index(start)
+                .expect("a row of the layout starts on a line of it");
+            Row {
+                line,
+                ascent: metrics.unwrapped_layout.ascent,
+                descent: metrics.unwrapped_layout.descent,
+            }
+        })
+        .collect()
+}
+
+/// The border box of a box with these `edges`, one rect for each line fragment of
+/// `range`: the content area of the line grown by the box's vertical padding and
+/// border, the first fragment starting after the margin and the last ending
+/// before it. A fragment in the middle, or one that continues onto another line,
+/// is as wide as its line's part of the range.
 pub fn border_box_rows(layout: &TextLayout, range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
-    inside(fragments(layout, range), edges)
+    border_box(rows(layout, range), edges)
+}
+
+/// [`border_box_rows`] of `rows`.
+pub fn border_box(rows: Vec<Row>, edges: Edges) -> Vec<Bounds<Pixels>> {
+    let grown = rows
+        .iter()
+        .map(|row| {
+            let mut area = row.content_area();
+            area.origin.y -= edges.top;
+            area.size.height += edges.top + edges.bottom;
+            area
+        })
+        .collect();
+    inside(grown, edges)
 }
 
 /// `rows`, the margin box fragments of a box, moved in by its `edges`.
@@ -120,7 +176,79 @@ mod tests {
         Edges {
             start: px(start),
             end: px(end),
+            ..Edges::default()
         }
+    }
+
+    fn reaching(top: f32, bottom: f32) -> Edges {
+        Edges {
+            top: px(top),
+            bottom: px(bottom),
+            ..Edges::default()
+        }
+    }
+
+    /// A 40px line box at `y` for a font of 12 above the baseline and 4 below.
+    fn row(x: f32, y: f32, width: f32) -> Row {
+        Row {
+            line: rect(x, y, width, 40.0),
+            ascent: px(12.0),
+            descent: px(4.0),
+        }
+    }
+
+    #[test]
+    fn the_content_area_is_the_font_centred_in_the_line_box_whatever_its_height() {
+        assert_eq!(row(10.0, 0.0, 50.0).content_area(), rect(10.0, 12.0, 50.0, 16.0));
+        assert_eq!(row(10.0, 40.0, 50.0).content_area(), rect(10.0, 52.0, 50.0, 16.0));
+        let tight = Row {
+            line: rect(0.0, 0.0, 30.0, 10.0),
+            ..row(0.0, 0.0, 30.0)
+        };
+        assert_eq!(
+            tight.content_area(),
+            rect(0.0, -3.0, 30.0, 16.0),
+            "a line shorter than the font is overflowed on both sides"
+        );
+    }
+
+    #[test]
+    fn the_border_box_is_the_content_area_not_the_line_box() {
+        let rows = border_box(vec![row(10.0, 0.0, 50.0)], Edges::default());
+        assert_eq!(rows, vec![rect(10.0, 12.0, 50.0, 16.0)]);
+    }
+
+    #[test]
+    fn vertical_padding_and_border_grow_the_border_box_beyond_the_line_box() {
+        let rows = border_box(vec![row(10.0, 0.0, 50.0)], reaching(15.0, 20.0));
+        assert_eq!(rows, vec![rect(10.0, -3.0, 50.0, 51.0)]);
+    }
+
+    #[test]
+    fn every_fragment_of_a_wrapped_box_grows_and_only_the_ends_are_cut() {
+        let edges = Edges {
+            start: px(4.0),
+            end: px(6.0),
+            top: px(2.0),
+            bottom: px(3.0),
+        };
+        let rows = border_box(
+            vec![row(60.0, 0.0, 40.0), row(0.0, 40.0, 100.0), row(0.0, 80.0, 30.0)],
+            edges,
+        );
+        assert_eq!(
+            rows,
+            vec![
+                rect(64.0, 10.0, 36.0, 21.0),
+                rect(0.0, 50.0, 100.0, 21.0),
+                rect(0.0, 90.0, 24.0, 21.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_box_with_no_row_has_no_border_box() {
+        assert!(border_box(Vec::new(), reaching(2.0, 2.0)).is_empty());
     }
 
     #[test]

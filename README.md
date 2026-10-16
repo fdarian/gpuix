@@ -2710,10 +2710,11 @@ and copies as one line, and is searched by `highlight` as one piece of text.
 </text>
 ```
 
-An inline box can set `color`, `backgroundColor` (a `<mark>`-style wash),
-`fontWeight`, `fontStyle`, `fontFamily`, `textDecoration` (see below),
-`fontVariantNumeric` and `fontFeatureSettings`, and an `outline` drawn round each
-line of its text (see [Focus on an inline box](#focus-on-an-inline-box)). A box inherits from the box
+An inline box can set `color`, `fontWeight`, `fontStyle`, `fontFamily`,
+`textDecoration` (see below), `fontVariantNumeric` and `fontFeatureSettings`; its
+`backgroundColor` (a `<mark>`-style wash), border and `borderRadius`, painted round
+each line of its text (see [Painting an inline box](#painting-an-inline-box)); and
+an `outline` (see [Focus on an inline box](#focus-on-an-inline-box)). A box inherits from the box
 around it, as in CSS. A `display: contents` span inside a span adds no box: its
 children join the paragraph and inherit from it.
 
@@ -2740,8 +2741,7 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 - White space is processed as in CSS, see [White space](#white-space).
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
-size), the vertical margin, padding and border of an inline box (they move no
-line, as in CSS) and `fontStyle` (there is no `fontStyle` style yet). A `<span>`
+size) and `fontStyle` (there is no `fontStyle` style yet). A `<span>`
 with a style that needs a box of its own (`position: absolute`, `display: block`,
 `flex` or `grid`) is laid out as a block instead.
 
@@ -2762,9 +2762,9 @@ shorthand. `hover`, `active` and the other state styles change the space too.
 </text>
 ```
 
-- The box is not painted around its space yet: a border is not drawn, and a
-  span's `backgroundColor` is still its text run's, which fills the whole space,
-  margin included.
+- Only the inline axis takes space. A vertical margin does nothing, and a vertical
+  padding or border moves no line: it reaches above and below the text, over the
+  lines around it, as in CSS (see [Painting an inline box](#painting-an-inline-box)).
 - A span that wraps has its leading space (margin, border and padding) on its first
   line and its trailing space on its last, as `box-decoration-break: slice` does.
   The first line of the box can be the start of a wrapped line; the leading space
@@ -2787,6 +2787,57 @@ shorthand. `hover`, `active` and the other state styles change the space too.
   after white space processing, or none of whose glyphs are painted, is lost: it
   has no glyph to attach to. A span cut by `text-overflow` or `lineClamp` at its
   end loses its space with the cut.
+
+### Painting an inline box
+
+A `<span>` or nested `<text>` paints its `backgroundColor`, its border (`border`,
+`borderWidth`, `borderColor` and the per-side forms) and its `borderRadius` (and
+the four corner longhands) around each line of its text, as a CSS inline box does
+by default (`box-decoration-break: slice`). They are painted behind the glyphs, by
+the same code that paints an element's, so a `hover` or `focusVisible` style can
+change them, a nested box paints over the box around it, and a selection or a
+search match lies over them.
+
+```tsx
+<text style={{ lineHeight: 28 }}>
+  Press{' '}
+  <span style={{ paddingLeft: 6, paddingRight: 6, paddingTop: 2, paddingBottom: 2,
+    backgroundColor: '#2a2a35', border: '1px solid #44445a', borderRadius: 4 }}>
+    Enter
+  </span>{' '}
+  to go on
+</text>
+```
+
+- **A box is as tall as the content area of its font, not the line.** Its border
+  box is the font's ascent and descent, centred in the line as the glyphs are, plus
+  the `paddingTop` / `paddingBottom` and the `borderTopWidth` / `borderBottomWidth`
+  of the span. A `lineHeight` taller than the font leaves the background short of
+  the line box, and a `lineHeight` shorter than the font lets the background reach
+  out of it. `getBoundingClientRect().height` is that height. A vertical padding or
+  border moves no line, so it overlaps the lines above and below, and the
+  container's height does not change.
+- **A box that wraps is cut at the break.** Each line of the span is painted as a
+  fragment: the left border and the rounded left corners are on the first fragment
+  only, the right border and the rounded right corners on the last only, and the
+  top and bottom border run along every fragment. The side where a fragment is cut
+  is open, with no border and a square corner. The lines in between have neither
+  side. The padding follows the same rule, because it is only on the first and
+  last lines (see [Space around an inline box](#space-around-an-inline-box)).
+  `box-decoration-break: clone` is not available.
+- The border is read like a `div`'s: `border` and the side shorthands need a line
+  style, a missing `borderColor` is `currentColor` for a shorthand and clear for
+  `borderWidth` alone, and `solid` and `dashed` are the only styles (`dashed` makes
+  every side dashed, as GPUI has one line style per element). A radius is circular
+  and in px, and a corner is the corner longhand, else `borderRadius`.
+- The `outline` ring follows the corners of the fragment. The pointer, the cursor
+  and the rect that `ResizeObserver` and `IntersectionObserver` report use the same
+  border box, so a point in the padding above the text of a span is on the span and
+  a point in the line box above the padding is not.
+- Only `backgroundColor` paints on an inline box: `backgroundImage` and gradients,
+  `boxShadow`, `opacity` and `filter` are not read there. The metrics are the
+  line's, so a span in a font whose ascent and descent differ from the rest of the
+  line has the line's content area, not its own.
 
 ### Events on inline boxes
 
@@ -2840,8 +2891,11 @@ rects of its lines, in window coordinates: the smallest rect that holds every li
 it covers. Each is a line of its border box, so the margin of the span is outside
 it and its padding and border are in (see
 [Space around an inline box](#space-around-an-inline-box)). A span on one line is
-as wide as its glyphs and one line tall. A span that wraps is as tall as the lines
-it covers, and it spans from the leftmost
+as wide as its glyphs and as tall as the content area of its font plus its
+vertical padding and border, which is not the line height (see
+[Painting an inline box](#painting-an-inline-box)). A span that wraps is as tall as the lines
+it covers, from the top of the first line's content area to the bottom of the last one's,
+and it spans from the leftmost
 start to the rightmost end of its lines, so it also covers the part of those lines
 that is not the span's. There is no `getClientRects()`. A space that hangs at a
 wrap belongs to the line it ends. A span with no text left (only collapsible white
@@ -2911,7 +2965,7 @@ draw a focus ring. The base style, `hover` and `active` can declare an outline t
 - The ring of a nested span is its own: focusing the span inside another one
   rings the inner span only, unless the outer one declares `focusWithin`.
 - An outline needs a colour, as on an element: `outlineWidth` alone draws nothing.
-  The ring is square, as a span has no `borderRadius`, and there is no `outline`
+  The ring follows the span's `borderRadius`, and there is no `outline`
   shorthand.
 - **Deviation: a span is never dimmed.** While a control has keyboard focus the
   other focusables dim ([Focus styles](#focus-styles)). A focused span starts that

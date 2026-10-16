@@ -25,14 +25,13 @@ use super::inline::Paragraph;
 /// What one run changes about the text style it inherits.
 ///
 /// A box's run inherits from its parent box as in CSS, so the entry for a
-/// nested box already holds everything the boxes around it declared. A
-/// background is carried the same way: the parent's shows behind the child's
-/// text unless the child paints its own.
+/// nested box already holds everything the boxes around it declared. A box's
+/// background and border are not here: they are painted around its line
+/// fragments by [`super::inline_decoration`], so that its padding is inside them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RunStyle {
     pub len: usize,
     pub color: Option<Hsla>,
-    pub background: Option<Hsla>,
     pub weight: Option<FontWeight>,
     pub font_style: Option<gpui::FontStyle>,
     pub family: Option<SharedString>,
@@ -101,15 +100,6 @@ pub fn run_styles(
             let has_box = declared.display.as_deref() != Some("contents");
             if let Some(color) = colors.declared {
                 style.color = Some(color.into());
-            }
-            if has_box {
-                if let Some(background) = declared
-                    .background_color
-                    .as_deref()
-                    .and_then(|value| colors.resolve(value))
-                {
-                    style.background = Some(background.into());
-                }
             }
             if let Some(weight) = declared.font_weight.as_ref() {
                 style.weight = Some(crate::renderer::parse_font_weight(weight));
@@ -197,9 +187,6 @@ impl InlineText {
                 let mut run = base.to_run(style.len);
                 if let Some(color) = style.color {
                     run.color = color;
-                }
-                if style.background.is_some() {
-                    run.background_color = style.background;
                 }
                 if let Some(weight) = style.weight {
                     run.font.weight = weight;
@@ -375,7 +362,7 @@ mod tests {
                     "hover": {"color": "#0000ff", "fontWeight": 700}
                 }),
             ),
-            (5, serde_json::json!({"backgroundColor": "#ffff00"})),
+            (5, serde_json::json!({"fontStyle": "italic"})),
         ]);
         let rest = runs_of(&tree);
         let hovered = runs_with(&tree, &|id, _| PointerStates {
@@ -404,7 +391,7 @@ mod tests {
                 3,
                 serde_json::json!({"color": "#ff0000", "fontWeight": 700}),
             ),
-            (5, serde_json::json!({"backgroundColor": "#ffff00"})),
+            (5, serde_json::json!({"fontStyle": "italic"})),
         ]);
         let runs = runs_of(&tree);
         let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
@@ -417,10 +404,10 @@ mod tests {
             }
         );
         assert_eq!(runs[1].weight, Some(FontWeight(700.0)));
-        assert_eq!(runs[1].background, None);
+        assert_eq!(runs[1].font_style, None);
         assert_eq!(runs[2].weight, Some(FontWeight(700.0)));
         assert_eq!(runs[2].color, runs[1].color);
-        assert!(runs[2].background.is_some());
+        assert_eq!(runs[2].font_style, Some(gpui::FontStyle::Italic));
         assert_eq!(
             runs[3],
             RunStyle {
@@ -431,17 +418,22 @@ mod tests {
     }
 
     #[test]
-    fn a_child_colour_wins_and_current_color_means_the_parents() {
+    fn a_child_colour_wins_over_its_parents() {
         let tree = tree_with(&[
             (3, serde_json::json!({"color": "#ff0000"})),
-            (
-                5,
-                serde_json::json!({"color": "#0000ff", "backgroundColor": "currentColor"}),
-            ),
+            (5, serde_json::json!({"color": "#0000ff"})),
         ]);
         let runs = runs_of(&tree);
         assert_ne!(runs[1].color, runs[2].color);
-        assert_eq!(runs[2].background, runs[2].color);
+    }
+
+    #[test]
+    fn a_background_is_not_part_of_the_run() {
+        let tree = tree_with(&[(
+            5,
+            serde_json::json!({"backgroundColor": "#ffff00", "borderTopWidth": 2, "paddingLeft": 4}),
+        )]);
+        assert!(runs_of(&tree).is_empty(), "the box paints it around its fragments");
     }
 
     #[test]
@@ -509,7 +501,6 @@ mod tests {
         let runs = runs_of(&tree);
         assert_eq!(runs[1].weight, Some(FontWeight(700.0)));
         assert!(runs[1].color.is_some());
-        assert_eq!(runs[1].background, None);
         assert_eq!(runs[1].underline, None);
     }
 

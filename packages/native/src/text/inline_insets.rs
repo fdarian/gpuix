@@ -23,9 +23,11 @@
 //! fragment that begins a soft-wrapped row still has its leading inset, because
 //! the inset belongs to the glyph and goes where the glyph goes.
 //!
-//! Only the inline axis is read. The top and bottom margin, padding and border
-//! of an inline box do not move a line in CSS. An inset on a box that holds no
-//! glyph has nothing to attach to and is lost.
+//! The inline axis is the only one that takes space. The top and bottom margin,
+//! padding and border of an inline box do not move a line in CSS; the padding and
+//! border still grow the border box above and below the content area of the line
+//! ([`Edges::top`] and [`Edges::bottom`]), where they overlap whatever is there.
+//! An inset on a box that holds no glyph has nothing to attach to and is lost.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -39,12 +41,18 @@ use crate::style::{DimensionValue, StyleDesc};
 
 use super::inline::Paragraph;
 
-/// How far a box's border box is inside the margin box rectangles of its first
-/// and last line fragments.
+/// Where a box's border box is: inside the margin box rectangles of its first
+/// and last line fragments, and around the content area of its lines.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Edges {
+    /// How far the border box starts after the margin box of the first fragment.
     pub start: Pixels,
+    /// How far it ends before the margin box of the last fragment.
     pub end: Pixels,
+    /// How far it reaches above the content area of a line: padding and border.
+    pub top: Pixels,
+    /// How far it reaches below the content area of a line.
+    pub bottom: Pixels,
 }
 
 /// The inline-axis space of one box: its own, with the margin kept apart because
@@ -58,9 +66,13 @@ struct BoxInset {
     /// Margin, border and padding before the first glyph.
     leading: f32,
     trailing: f32,
+    /// Padding and border above and below the content area. They take no space.
+    top: f32,
+    bottom: f32,
 }
 
 impl BoxInset {
+    /// Whether it takes no space along the line.
     fn is_empty(&self) -> bool {
         self.leading == 0.0 && self.trailing == 0.0
     }
@@ -83,7 +95,7 @@ impl Insets {
         paragraph: &Paragraph,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     ) -> Self {
-        let boxes: Vec<BoxInset> = paragraph
+        let all: Vec<BoxInset> = paragraph
             .boxes
             .iter()
             .filter_map(|(id, range)| {
@@ -93,11 +105,18 @@ impl Insets {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                let inset = of_style(&declared, *id, range);
-                (!inset.is_empty()).then_some(inset)
+                Some(of_style(&declared, *id, range))
             })
             .collect();
-        let edges = edges_of(&paragraph.boxes, &boxes);
+        let boxes: Vec<BoxInset> = all.iter().filter(|inset| !inset.is_empty()).cloned().collect();
+        let mut edges = edges_of(&paragraph.boxes, &boxes);
+        for inset in &all {
+            if inset.top != 0.0 || inset.bottom != 0.0 {
+                let own = edges.entry(inset.id).or_default();
+                own.top = px(inset.top);
+                own.bottom = px(inset.bottom);
+            }
+        }
         Self { boxes, edges }
     }
 
@@ -123,10 +142,9 @@ impl Insets {
 fn of_style(style: &StyleDesc, id: u64, range: &Range<usize>) -> BoxInset {
     let margin_start = margin(style.margin_left.as_ref().or(style.margin.as_ref()));
     let margin_end = margin(style.margin_right.as_ref().or(style.margin.as_ref()));
-    let start = border_width(style, style.border_left_width, style.border_left.as_deref())
-        + padding(style.padding_left.or(style.padding));
-    let end = border_width(style, style.border_right_width, style.border_right.as_deref())
-        + padding(style.padding_right.or(style.padding));
+    let widths = border_widths(style);
+    let start = widths.left + padding(style.padding_left.or(style.padding));
+    let end = widths.right + padding(style.padding_right.or(style.padding));
     BoxInset {
         id,
         range: range.clone(),
@@ -134,6 +152,26 @@ fn of_style(style: &StyleDesc, id: u64, range: &Range<usize>) -> BoxInset {
         margin_end,
         leading: margin_start + start,
         trailing: margin_end + end,
+        top: widths.top + padding(style.padding_top.or(style.padding)),
+        bottom: widths.bottom + padding(style.padding_bottom.or(style.padding)),
+    }
+}
+
+/// The width of each border side of a box in px.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct BorderWidths {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+pub(super) fn border_widths(style: &StyleDesc) -> BorderWidths {
+    BorderWidths {
+        top: border_width(style, style.border_top_width, style.border_top.as_deref()),
+        right: border_width(style, style.border_right_width, style.border_right.as_deref()),
+        bottom: border_width(style, style.border_bottom_width, style.border_bottom.as_deref()),
+        left: border_width(style, style.border_left_width, style.border_left.as_deref()),
     }
 }
 
@@ -197,6 +235,7 @@ fn edges_of(all: &[(u64, Range<usize>)], insets: &[BoxInset]) -> HashMap<u64, Ed
             Edges {
                 start: px(before + this.map_or(0.0, |inset| inset.margin_start)),
                 end: px(after + this.map_or(0.0, |inset| inset.margin_end)),
+                ..Edges::default()
             },
         );
         around.push(entry);
@@ -382,6 +421,59 @@ mod tests {
                 "borderTopWidth": 2, "borderBottomWidth": 2}),
         )]);
         assert!(resting(&tree).text().is_empty());
+    }
+
+    fn vertical(insets: &Insets, id: u64) -> (f32, f32) {
+        let edges = insets.edges(id);
+        (f32::from(edges.top), f32::from(edges.bottom))
+    }
+
+    #[test]
+    fn vertical_padding_and_border_reach_around_the_content_area() {
+        let tree = fixture(&[(
+            3,
+            serde_json::json!({"paddingTop": 5, "paddingBottom": 6, "borderTopWidth": 2, "borderBottomWidth": 1}),
+        )]);
+        let insets = resting(&tree);
+        assert_eq!(vertical(&insets, 3), (7.0, 7.0));
+        assert!(insets.text().is_empty(), "and they take no space along the line");
+        assert_eq!(vertical(&insets, 5), (0.0, 0.0), "a box inside it has none of its own");
+    }
+
+    #[test]
+    fn vertical_reach_reads_the_shorthands_like_the_horizontal_space() {
+        let tree = fixture(&[(
+            3,
+            serde_json::json!({
+                "padding": 4, "paddingBottom": 9,
+                "border": "3px solid red", "borderTop": "1px solid red",
+            }),
+        )]);
+        assert_eq!(vertical(&resting(&tree), 3), (1.0 + 4.0, 3.0 + 9.0));
+    }
+
+    #[test]
+    fn vertical_reach_ignores_margin_and_a_negative_padding() {
+        let tree = fixture(&[(
+            3,
+            serde_json::json!({"marginTop": 8, "marginBottom": 8, "paddingTop": -3, "borderBottomWidth": -1}),
+        )]);
+        assert_eq!(vertical(&resting(&tree), 3), (0.0, 0.0));
+    }
+
+    #[test]
+    fn vertical_reach_goes_with_horizontal_space_on_the_same_box() {
+        let tree = fixture(&[(3, serde_json::json!({"paddingLeft": 3, "paddingTop": 5}))]);
+        let insets = resting(&tree);
+        assert_eq!(texts(&insets), vec![(2..4, 3.0, 0.0)]);
+        assert_eq!(vertical(&insets, 3), (5.0, 0.0));
+        assert_eq!(edges(&insets, 3), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_display_contents_box_reaches_nowhere() {
+        let tree = fixture(&[(3, serde_json::json!({"display": "contents", "paddingTop": 6}))]);
+        assert_eq!(vertical(&resting(&tree), 3), (0.0, 0.0));
     }
 
     #[test]
