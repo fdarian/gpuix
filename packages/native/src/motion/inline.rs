@@ -130,6 +130,7 @@ fn step(
 ) -> StyleDesc {
     let declared = resolve_declared_style(
         transitions_wanted.then_some(transitions),
+        animations_wanted.then_some((&mut *animations, keyframes)),
         before,
         colors,
         font,
@@ -151,7 +152,6 @@ fn step(
                 &declared.style,
                 colors,
                 font,
-                keyframes,
                 None,
                 InterpolateSize::default(),
                 Scope::InlineBox,
@@ -396,6 +396,33 @@ mod tests {
         let again = page.frame(1250);
         let [red, _, blue] = rgb(&page.shown(&again, 3).background_color);
         assert!(red > blue, "the second lap is a quarter in: {red} {blue}");
+    }
+
+    #[test]
+    fn a_colour_change_under_a_running_animation_of_it_starts_no_transition() {
+        let mut page = Page::new();
+        page.keyframes
+            .define(
+                "wash",
+                r#"{ "from": { "backgroundColor": "red" }, "to": { "backgroundColor": "red" } }"#,
+            )
+            .unwrap();
+        let style = |color: &str| {
+            format!(
+                r#"{{ "backgroundColor": "{color}", "transition": "background-color 1s linear", "animation": "wash 10s linear" }}"#
+            )
+        };
+        page.style(3, &style("lime"));
+        page.frame(0);
+        page.style(3, &style("blue"));
+        for millis in [0, 500, 5000] {
+            let frame = page.frame(millis);
+            is(&page.shown(&frame, 3).background_color, "red");
+        }
+        assert!(page.transitions.take_events().is_empty());
+        let ended = page.frame(10_500);
+        is(&page.shown(&ended, 3).background_color, "blue");
+        assert!(page.transitions.take_events().is_empty());
     }
 
     #[test]

@@ -215,6 +215,7 @@ mod tests {
             let wanted = self.transitions.wants(id, Some(style));
             crate::motion::resolve_declared_style(
                 wanted.then_some(&mut self.transitions),
+                None,
                 element.style_before_transition(),
                 &self.window,
                 &crate::motion::ParentFont::initial(),

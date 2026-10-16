@@ -800,6 +800,9 @@ struct Run {
     running: bool,
     phase: Phase,
     iteration: u64,
+    /// The keyframe progress `CssAnimations::advance` found this frame, `None`
+    /// while the animation has no effect.
+    progress: Option<f64>,
     plan: Option<Plan>,
     frozen: BTreeMap<AnimProp, f64>,
 }
@@ -816,6 +819,7 @@ impl Run {
             running: params.play_state == PlayState::Running,
             phase: Phase::Before,
             iteration: 0,
+            progress: None,
             plan: None,
             frozen: BTreeMap::new(),
         }
@@ -1120,8 +1124,38 @@ impl CssAnimations {
             })
     }
 
-    /// Feeds one frame. `declared` is the element's style with its state styles
-    /// folded in, which holds the `animation*` values; `underlying` is the
+    /// The first half of a frame: brings the animations of `declared` (the
+    /// element's style with its state styles folded in, which holds the
+    /// `animation*` values) up to `now`, and returns the properties they
+    /// currently drive, running or filling. Transitions need these before they
+    /// look at the style: a property an animation drives has the same
+    /// before-change and after-change value, so a declared change starts no
+    /// transition on it. [`update`](Self::update) finishes the frame.
+    pub(crate) fn advance(
+        &mut self,
+        id: u64,
+        declared: &StyleDesc,
+        registry: &KeyframesRegistry,
+        scope: Scope,
+        now: Instant,
+    ) -> Vec<AnimProp> {
+        let state = self.states.entry(id).or_insert_with(ElementState::new);
+        state.sync_config(id, declared);
+        state.reconcile(id, registry, now, &mut self.events);
+
+        let mut covered = Vec::new();
+        for run in &mut state.runs {
+            run.progress = run.advance(id, now, &mut self.events).progress;
+            if run.progress.is_some() {
+                covered.extend(run.properties.iter().copied().filter(|prop| scope.animates(*prop)));
+            }
+        }
+        covered
+    }
+
+    /// The second half of a frame, after [`advance`](Self::advance): the values
+    /// of the animations. `declared` is the style [`advance`](Self::advance) read
+    /// the `animation*` values from, plus the transitions; `underlying` is the
     /// style the animations lay over, transitions and motion included, which
     /// supplies the endpoints a keyframe set leaves out. `inherited` is the
     /// `interpolateSize` of the parent.
@@ -1133,23 +1167,18 @@ impl CssAnimations {
         underlying: &StyleDesc,
         parent_colors: &ColorContext,
         parent_font: &ParentFont,
-        registry: &KeyframesRegistry,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         scope: Scope,
         now: Instant,
     ) -> Option<AnimationStyle> {
-        let state = self.states.entry(id).or_insert_with(ElementState::new);
-        state.sync_config(id, declared);
-        state.reconcile(id, registry, now, &mut self.events);
-
+        let state = self.states.get_mut(&id).expect("advance made the state of this frame");
         let allow_keywords = InterpolateSize::declared(declared)
             .unwrap_or(inherited)
             .allows_keywords();
         let mut values: BTreeMap<AnimProp, Option<AnimValue>> = BTreeMap::new();
         for run in &mut state.runs {
-            let evaluation = run.advance(id, now, &mut self.events);
-            if let Some(progress) = evaluation.progress {
+            if let Some(progress) = run.progress {
                 // Later in the list is higher in the cascade.
                 values.extend(run.values(
                     progress,
@@ -1487,13 +1516,13 @@ mod tests {
         ) -> StyleDesc {
             let mut resolved = underlying.clone();
             let now = self.at(millis);
+            self.animations.advance(1, declared, &self.registry, Scope::Element, now);
             if let Some(values) = self.animations.update(
                 1,
                 declared,
                 underlying,
                 &self.parent_colors,
                 &self.parent_font,
-                &self.registry,
                 measurement,
                 self.inherited,
                 Scope::Element,
@@ -1513,6 +1542,7 @@ mod tests {
             declared: &StyleDesc,
         ) -> StyleDesc {
             let now = self.at(millis);
+            let covered = self.animations.advance(1, declared, &self.registry, Scope::Element, now);
             let running = transitions.update(
                 1,
                 declared,
@@ -1522,6 +1552,7 @@ mod tests {
                 None,
                 self.inherited,
                 Scope::Element,
+                &covered,
                 now,
             );
             let mut resolved = declared.clone();
@@ -1535,7 +1566,6 @@ mod tests {
                 &underlying,
                 &self.parent_colors,
                 &self.parent_font,
-                &self.registry,
                 None,
                 self.inherited,
                 Scope::Element,
@@ -1595,26 +1625,141 @@ mod tests {
         near(opacity(&frames.frame(2500, &animated)), 0.5);
     }
 
-    fn dimmed(opacity: f64, transition: &str) -> StyleDesc {
+    fn dimmed(opacity: f64, animation: &str) -> StyleDesc {
         style(&format!(
-            r#"{{ "opacity": {opacity}, "transition": "{transition}", "animation": "dim 10s linear" }}"#
+            r#"{{ "opacity": {opacity}, "transition": "opacity 1s linear", "animation": "{animation}" }}"#
         ))
     }
 
+    const DIM: &str = r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#;
+
+    fn transition_events(transitions: &mut CssTransitions) -> Vec<String> {
+        transitions
+            .take_events()
+            .into_iter()
+            .map(|event| format!("{} {}", event.kind.event_type(), event.property_name()))
+            .collect()
+    }
+
     #[test]
-    fn a_running_transition_beats_an_animation_on_the_same_property() {
+    fn a_running_transition_beats_an_animation_that_started_after_it() {
         let mut frames = Frames::new();
         let mut transitions = CssTransitions::default();
-        frames.define("dim", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#);
-        near(opacity(&frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "opacity 1s linear"))), 0.2);
+        frames.define("dim", DIM);
+        frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "none"));
 
-        let target = dimmed(0.6, "opacity 1s linear");
+        let moving = dimmed(0.6, "none");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 100, &moving)), 1.0);
+        let dimming = dimmed(0.6, "dim 10s linear");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 600, &dimming)), 0.8);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1000, &dimming)), 0.64);
+
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1100, &dimming)), 0.2);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1200, &dimming)), 0.2);
+    }
+
+    #[test]
+    fn a_declared_change_under_a_running_animation_starts_no_transition() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "dim 10s linear"))), 0.2);
+        transition_events(&mut transitions);
+
+        let target = dimmed(0.6, "dim 10s linear");
+        for millis in [100, 600, 5000] {
+            near(opacity(&frames.frame_with_transitions(&mut transitions, millis, &target)), 0.2);
+        }
+        assert!(transition_events(&mut transitions).is_empty());
+        assert!(!transitions.take_active());
+
+        // The declared value shows when the animation ends, with no transition from
+        // the value the animation showed.
+        for millis in [10_000, 10_100, 10_600] {
+            near(opacity(&frames.frame_with_transitions(&mut transitions, millis, &target)), 0.6);
+        }
+        assert!(transition_events(&mut transitions).is_empty());
+        assert!(!transitions.take_active());
+    }
+
+    #[test]
+    fn an_animation_added_with_the_change_covers_it() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "none"));
+        let target = dimmed(0.6, "dim 10s linear");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 100, &target)), 0.2);
+        assert!(transition_events(&mut transitions).is_empty());
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 10_200, &target)), 0.6);
+    }
+
+    #[test]
+    fn an_animation_still_in_its_delay_does_not_cover() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "dim 10s linear 5s"));
+        let target = dimmed(0.6, "dim 10s linear 5s");
         near(opacity(&frames.frame_with_transitions(&mut transitions, 100, &target)), 1.0);
         near(opacity(&frames.frame_with_transitions(&mut transitions, 600, &target)), 0.8);
-        near(opacity(&frames.frame_with_transitions(&mut transitions, 1000, &target)), 0.64);
+        assert_eq!(transition_events(&mut transitions), ["transitionrun opacity", "transitionstart opacity"]);
+    }
 
-        near(opacity(&frames.frame_with_transitions(&mut transitions, 1100, &target)), 0.2);
-        near(opacity(&frames.frame_with_transitions(&mut transitions, 1200, &target)), 0.2);
+    #[test]
+    fn a_change_after_the_animation_ended_transitions() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        let animation = "dim 1s linear";
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, animation))), 0.2);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1500, &dimmed(1.0, animation))), 1.0);
+
+        let target = dimmed(0.6, animation);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 2000, &target)), 1.0);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 2500, &target)), 0.8);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 3000, &target)), 0.6);
+    }
+
+    #[test]
+    fn a_forwards_fill_keeps_covering_the_property() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        let animation = "dim 1s linear forwards";
+        frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, animation));
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1500, &dimmed(1.0, animation))), 0.2);
+        transition_events(&mut transitions);
+
+        let target = dimmed(0.6, animation);
+        for millis in [2000, 2500, 3000] {
+            near(opacity(&frames.frame_with_transitions(&mut transitions, millis, &target)), 0.2);
+        }
+        assert!(transition_events(&mut transitions).is_empty());
+
+        // Dropping the animation uncovers the property: the declared value shows, as
+        // the before-change style already had it.
+        let released = dimmed(0.6, "none");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 3100, &released)), 0.6);
+        assert!(transition_events(&mut transitions).is_empty());
+    }
+
+    #[test]
+    fn a_declared_change_cancels_the_transition_it_made_stale_under_an_animation() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", DIM);
+        frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "none"));
+        frames.frame_with_transitions(&mut transitions, 100, &dimmed(0.6, "none"));
+        let dimming = dimmed(0.6, "dim 10s linear");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 300, &dimming)), 0.92);
+        transition_events(&mut transitions);
+
+        let changed = dimmed(0.3, "dim 10s linear");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 400, &changed)), 0.2);
+        assert_eq!(transition_events(&mut transitions), ["transitioncancel opacity"]);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 11_000, &changed)), 0.3);
+        assert!(transition_events(&mut transitions).is_empty());
     }
 
     #[test]
@@ -1631,6 +1776,9 @@ mod tests {
         let resolved = frames.frame_with_transitions(&mut transitions, 500, &sized(100.0));
         near(opacity(&resolved), 0.2);
         assert!(matches!(resolved.width, Some(DimensionValue::Pixels(_))));
+        let halfway = frames.frame_with_transitions(&mut transitions, 1000, &sized(100.0));
+        assert!(matches!(halfway.width, Some(DimensionValue::Pixels(px)) if (px - 50.0).abs() < 1e-6));
+        assert_eq!(transition_events(&mut transitions), ["transitionrun width", "transitionstart width"]);
     }
 
     #[test]
@@ -1638,7 +1786,7 @@ mod tests {
         let mut frames = Frames::new();
         let mut transitions = CssTransitions::default();
         frames.define("dim", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#);
-        let declared = dimmed(1.0, "opacity 1s linear");
+        let declared = dimmed(1.0, "dim 10s linear");
         for millis in [0, 100, 500, 900] {
             frames.frame_with_transitions(&mut transitions, millis, &declared);
         }
@@ -2003,13 +2151,13 @@ mod tests {
         let later = fading("fade 1s linear");
         let sample = |frames: &mut Frames, id: u64, millis: u64, declared: &StyleDesc| {
             let now = frames.at(millis);
+            frames.animations.advance(id, declared, &frames.registry, Scope::Element, now);
             let values = frames.animations.update(
                 id,
                 declared,
                 declared,
                 &frames.parent_colors,
                 &frames.parent_font,
-                &frames.registry,
                 None,
                 frames.inherited,
                 Scope::Element,

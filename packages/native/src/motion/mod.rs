@@ -740,8 +740,13 @@ pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDe
 ///
 /// `before` is the style the element had before it first declared a transition:
 /// the change that adds the declaration transitions from it.
+///
+/// `animations` is the element's CSS animations when it has any: they advance
+/// here, as the first half of their frame, because a property they drive starts no
+/// transition. `CssAnimations::update` finishes the frame.
 pub(crate) fn resolve_declared_style(
     mut transitions: Option<&mut CssTransitions>,
+    animations: Option<(&mut CssAnimations, &KeyframesRegistry)>,
     before: Option<&StyleDesc>,
     parent_colors: &crate::color::ColorContext,
     parent_font: &ParentFont,
@@ -759,8 +764,13 @@ pub(crate) fn resolve_declared_style(
         transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors, parent_font);
     }
     let mut after = fold_state_styles(style, focus_visible, pointer);
+    let covered = animations
+        .map(|(animations, registry)| animations.advance(id, &after, registry, scope, now))
+        .unwrap_or_default();
     let running = transitions.and_then(|transitions| {
-        transitions.update(id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, scope, now)
+        transitions.update(
+            id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, scope, &covered, now,
+        )
     });
     if let Some(running) = &running {
         running.apply_to(&mut after);

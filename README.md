@@ -6493,6 +6493,13 @@ render per frame.
   `motion`'s `initial` is the way to animate an element in
 - **`motion`.** A property `animate` names belongs to `motion` and is not
   transitioned
+- **CSS animations.** A property a running [CSS animation](#css-animations)
+  drives, or fills with `forwards` / `both`, starts no transition when its
+  declared value changes: the value before the change and the one after it are
+  both the animated one. When the animation ends the declared value shows, with
+  no transition from what the animation showed, and a change declared after it
+  ended transitions as usual. A transition already running on the property when
+  the animation starts keeps beating it, and a declared change cancels it
 - **Events.** `onTransitionRun`, `onTransitionStart` (after the delay),
   `onTransitionEnd` and `onTransitionCancel` carry `propertyName` (`"width"`,
   `"background-color"`), `elapsedTime` in seconds and `pseudoElement: ""`. They
@@ -6576,10 +6583,9 @@ Differences from a browser:
 - A missing `from` or `to` of a property whose own value gpuix cannot read from
   the element's style (an inherited one such as `fontSize`) holds the nearest
   keyframe instead of using the computed value
-- A transition compares the style beneath the animations, so it starts from
-  the declared value, never from a value an animation drove, and a declared
-  change starts one even on a property an animation overrides. A browser compares
-  the animated values and starts none there
+- A property the keyframes name counts as driven by the animation for as long as
+  it runs or fills, so a declared change on it starts no transition even where
+  the animation cannot produce a value for it (it waits for layout)
 - Only the properties `motion` can animate are animatable, so `transform` and
   discrete properties such as `display` cannot be keyframed
 - `animation-composition`, `animation-timeline` and `animation-range` are not

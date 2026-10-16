@@ -7285,6 +7285,7 @@ pub(crate) fn build_element(
             && window.last_input_was_keyboard();
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
+            animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
             element.style_before_transition(),
             &ctx.inherited.colors,
             &ctx.inherited.parent_font(),
@@ -7352,7 +7353,6 @@ pub(crate) fn build_element(
                     underlying_style.unwrap_or(&EMPTY_STYLE),
                     &ctx.inherited.colors,
                     &ctx.inherited.parent_font(),
-                    ctx.keyframes,
                     measurement.as_ref(),
                     ctx.inherited.interpolate_size,
                     crate::motion::Scope::Element,

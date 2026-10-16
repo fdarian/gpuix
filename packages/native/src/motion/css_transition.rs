@@ -819,7 +819,7 @@ impl ElementState {
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
-        scope: Scope,
+        (scope, covered): (Scope, &[AnimProp]),
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -861,6 +861,7 @@ impl ElementState {
                     motion,
                     measurement,
                     interpolate_size,
+                    covered,
                     now,
                     events,
                 );
@@ -954,6 +955,7 @@ impl ElementState {
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
+        covered: &[AnimProp],
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -976,6 +978,21 @@ impl ElementState {
             }
         }
         let has_duration = entry.duration + entry.delay > 0.0;
+
+        // A running animation drives the property, so its before-change and
+        // after-change values are both the animated one and nothing starts. A
+        // transition that ran toward the old declared value is cancelled by the
+        // change; one the style still agrees with keeps running over the animation.
+        if covered.contains(&prop) {
+            if self
+                .running
+                .get(&prop)
+                .is_some_and(|old| after_computed.as_ref() != Some(&old.end_computed))
+            {
+                self.cancel(id, prop, now, events);
+            }
+            return;
+        }
 
         let Some(old) = self.running.get(&prop) else {
             if self.completed.contains_key(&prop) || !has_duration {
@@ -1123,6 +1140,7 @@ impl CssTransitions {
     /// Feeds one frame's after-change style. The first style an element is seen
     /// with never transitions: there is nothing before it. `inherited` is the
     /// `interpolateSize` of the parent, which `after` overrides when it sets one.
+    /// `covered` are the properties a CSS animation drives right now.
     pub(crate) fn update(
         &mut self,
         id: u64,
@@ -1133,6 +1151,7 @@ impl CssTransitions {
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         scope: Scope,
+        covered: &[AnimProp],
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
@@ -1149,7 +1168,7 @@ impl CssTransitions {
             motion,
             measurement,
             interpolate_size,
-            scope,
+            (scope, covered),
             now,
             &mut self.events,
         );
@@ -1527,6 +1546,7 @@ mod tests {
                         measurement,
                         self.inherited,
                         Scope::Element,
+                        &[],
                         self.at(millis),
                     )
             {

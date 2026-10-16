@@ -56,30 +56,111 @@ describeNative("CSS transitions", () => {
     expect(widthOf(renderer, "box")).toBe(300)
   })
 
-  it("shows a running transition over a CSS animation on the same property, then the animation", () => {
+  const grower = (width: number, animation: string, seen?: string[]) => (
+    <div
+      testId="box"
+      style={{
+        width,
+        height: 20,
+        transition: "width 1s linear",
+        animation,
+      }}
+      onTransitionRun={(event) => seen?.push(`run ${event.propertyName}`)}
+      onTransitionCancel={(event) => seen?.push(`cancel ${event.propertyName}`)}
+    />
+  )
+
+  it("shows a running transition over a CSS animation that started after it, then the animation", () => {
     const { render, renderer } = createTestRoot()
-    const box = (width: number) => (
-      <div
-        testId="box"
-        style={{
-          width,
-          height: 20,
-          transition: "width 1s linear",
-          animation: "transition-cascade-grow 10s linear",
-        }}
-      />
-    )
-
     renderer.clockPause()
-    render(box(50))
-    expect(widthOf(renderer, "box")).toBe(100)
-
-    render(box(300))
+    render(grower(50, "none"))
+    render(grower(300, "none"))
     renderer.clockFastForward(500)
     expect(widthOf(renderer, "box")).toBeCloseTo(175, 0)
 
+    render(grower(300, "transition-cascade-grow 10s linear"))
+    expect(widthOf(renderer, "box")).toBeCloseTo(175, 0)
+    // The animation began 1s ago, 10% in.
     renderer.clockFastForward(1000)
-    expect(widthOf(renderer, "box")).toBeCloseTo(115, 0)
+    expect(widthOf(renderer, "box")).toBeCloseTo(110, 0)
+  })
+
+  it("starts no transition on a property a running CSS animation covers", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const animation = "transition-cascade-grow 10s linear"
+    renderer.clockPause()
+    render(grower(50, animation, seen))
+    expect(widthOf(renderer, "box")).toBe(100)
+
+    render(grower(300, animation, seen))
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(105, 0)
+    expect(seen).toEqual([])
+
+    // The animation ended: the declared value shows, with no transition from the
+    // value the animation showed.
+    renderer.clockFastForward(10_000)
+    expect(widthOf(renderer, "box")).toBe(300)
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBe(300)
+    expect(seen).toEqual([])
+  })
+
+  it("transitions a change declared after the CSS animation ended", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const animation = "transition-cascade-grow 1s linear"
+    renderer.clockPause()
+    render(grower(50, animation, seen))
+    renderer.clockFastForward(1500)
+    expect(widthOf(renderer, "box")).toBe(50)
+
+    render(grower(250, animation, seen))
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(150, 0)
+    expect(seen).toEqual(["run width"])
+  })
+
+  it("keeps a forwards-filling CSS animation covering the property", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const animation = "transition-cascade-grow 1s linear forwards"
+    renderer.clockPause()
+    render(grower(50, animation, seen))
+    renderer.clockFastForward(1500)
+    expect(widthOf(renderer, "box")).toBe(200)
+
+    render(grower(300, animation, seen))
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBe(200)
+    expect(seen).toEqual([])
+  })
+
+  it("still transitions a property the running CSS animation does not cover", () => {
+    const { render, renderer } = createTestRoot()
+    const seen: string[] = []
+    const box = (height: number) => (
+      <div
+        testId="box"
+        style={{
+          width: 50,
+          height,
+          transition: "height 1s linear",
+          animation: "transition-cascade-grow 10s linear",
+        }}
+        onTransitionRun={(event) => seen.push(`run ${event.propertyName}`)}
+      />
+    )
+    renderer.clockPause()
+    render(box(20))
+    render(box(120))
+    renderer.clockFastForward(500)
+    renderer.dispatchNativeEvents()
+    const bounds = renderer.getElementBounds(renderer.findByTestId("box").id)
+    expect(bounds.height).toBeCloseTo(70, 0)
+    expect(bounds.width).toBeCloseTo(105, 0)
+    expect(seen).toEqual(["run height"])
   })
 
   it("runs a transition declared in the same render as the value change", () => {

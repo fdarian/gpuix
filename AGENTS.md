@@ -86,7 +86,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 
 Adapters: `packages/react/src` (`reconciler/`, `components/`, `hooks/`) and `packages/solid/src` (`host.ts`, `primitives.ts`, `components/`). The rest of the repo: `cli/` (`gpuix new`), `examples/`, `example-app/`, `disktree/`, `docs/`.
 
-**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` / `groupFocusWithin` fold from `PointerState` and the focus state, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations (which skip a property a CSS transition is running on, as a transition beats an animation), then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
+**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` / `groupFocusWithin` fold from `PointerState` and the focus state, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations (which skip a property a CSS transition is running on, as a transition beats an animation; they advance first, inside `resolve_declared_style`, so a property one drives starts no transition), then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
 
 ## Shared JavaScript runtime
 
