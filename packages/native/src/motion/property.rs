@@ -389,7 +389,10 @@ properties! {
     BorderRightWidth "borderRightWidth" Number NonNegative Number(0.0), border_right_width | border_width;
     BorderBottomWidth "borderBottomWidth" Number NonNegative Number(0.0), border_bottom_width | border_width;
     BorderLeftWidth "borderLeftWidth" Number NonNegative Number(0.0), border_left_width | border_width;
-    BorderColor "borderColor" Color None CurrentColor, border_color;
+    BorderTopColor "borderTopColor" Color None CurrentColor, border_top_color | border_color;
+    BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
+    BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
+    BorderLeftColor "borderLeftColor" Color None CurrentColor, border_left_color | border_color;
     BorderTopLeftRadius "borderTopLeftRadius" Number NonNegative Number(0.0), border_top_left_radius | border_radius;
     BorderTopRightRadius "borderTopRightRadius" Number NonNegative Number(0.0), border_top_right_radius | border_radius;
     BorderBottomLeftRadius "borderBottomLeftRadius" Number NonNegative Number(0.0), border_bottom_left_radius | border_radius;
@@ -399,6 +402,7 @@ properties! {
 
     OutlineWidth "outlineWidth" Number NonNegative Number(0.0), outline_width;
     OutlineColor "outlineColor" Color None CurrentColor, outline_color;
+    TextDecorationColor "textDecorationColor" Color None CurrentColor, text_decoration_color;
     OutlineOffset "outlineOffset" Number None Number(0.0), outline_offset;
 
     FontSize "fontSize" Number NonNegative Initial::FontSize, font_size;
@@ -421,6 +425,35 @@ properties! {
     JustifySelf "justifySelf" Keyword None Unset, justify_self;
 }
 
+/// What a style is the style of, which decides the properties its transitions and
+/// animations may move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Scope {
+    Element,
+    /// A `<span>`, or a `<text>` inside text: it has no layout node of its own,
+    /// so only what its paragraph paints around and in its text can move.
+    InlineBox,
+}
+
+impl Scope {
+    pub(super) fn animates(self, prop: AnimProp) -> bool {
+        match self {
+            Self::Element => true,
+            Self::InlineBox => matches!(
+                prop,
+                AnimProp::Color
+                    | AnimProp::BackgroundColor
+                    | AnimProp::TextDecorationColor
+                    | AnimProp::BorderTopColor
+                    | AnimProp::BorderRightColor
+                    | AnimProp::BorderBottomColor
+                    | AnimProp::BorderLeftColor
+                    | AnimProp::OutlineColor
+            ),
+        }
+    }
+}
+
 /// CSS shorthands, expanded to longhands when a description is parsed so
 /// animating `padding` beats a side set in the base style.
 pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
@@ -439,6 +472,12 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
             BorderTopRightRadius,
             BorderBottomLeftRadius,
             BorderBottomRightRadius,
+        ],
+        "borderColor" => &[
+            BorderTopColor,
+            BorderRightColor,
+            BorderBottomColor,
+            BorderLeftColor,
         ],
         "gap" => &[RowGap, ColumnGap],
         _ => return None,
@@ -1144,13 +1183,13 @@ mod tests {
         };
         let colors = Colors::of(&ColorContext::root(Scheme::Light), Some(&style));
         assert_eq!(
-            AnimProp::BorderColor.initial(&colors),
+            AnimProp::BorderTopColor.initial(&colors),
             AnimProp::Color.read(&style, &colors)
         );
         // With no `color` of its own it is the inherited one.
         let inherited = Colors::of(&ColorContext::root(Scheme::Light), None);
         assert_eq!(
-            AnimProp::BorderColor.initial(&inherited),
+            AnimProp::BorderTopColor.initial(&inherited),
             Some(AnimValue::Color(Color::from_rgba(gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }, false)))
         );
     }

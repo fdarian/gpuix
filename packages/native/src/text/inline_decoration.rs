@@ -32,7 +32,8 @@ use gpui::{
 use crate::color::ColorContext;
 use crate::css::border;
 use crate::css::length::LengthContext;
-use crate::events::state_styles::{folded, PointerStates};
+use crate::events::state_styles::PointerStates;
+use crate::motion::InlineStyles;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
@@ -224,7 +225,8 @@ pub fn quads(rows: &[Bounds<Pixels>], paint: &BoxPaint) -> Vec<QuadSpec> {
 /// so that a box nested in another paints over it.
 ///
 /// `colors` and `lengths` are the container's, as its children inherit them, and
-/// `states` says which states apply to a box, as it does for
+/// `states` says which states apply to a box, and `motion` holds the boxes whose
+/// colours a transition or an animation moves, as they do for
 /// [`super::paragraph::run_styles`].
 /// A `display: contents` box has no box to decorate.
 pub fn of(
@@ -233,6 +235,7 @@ pub fn of(
     colors: &ColorContext,
     lengths: &LengthContext,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    motion: &InlineStyles,
     insets: &Rc<InsetSpec>,
 ) -> Vec<BoxDecoration> {
     // A box is declared the same way around every piece of text it holds, so the
@@ -249,7 +252,7 @@ pub fn of(
             else {
                 continue;
             };
-            let declared = folded(base, states(*id, base));
+            let declared = motion.declared(*id, base, states(*id, base));
             colors = colors.descend(&declared);
             lengths = lengths.descend(declared.font_size.as_ref(), false);
             if declared.display.as_deref() == Some("contents") || looks.contains_key(id) {
@@ -362,6 +365,7 @@ mod tests {
             &ColorContext::root(Scheme::Light),
             &LengthContext::initial(800.0, 600.0),
             states,
+            &InlineStyles::default(),
             &InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states),
         )
     }
@@ -509,7 +513,7 @@ mod tests {
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
         let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
-        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &insets);
+        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &InlineStyles::default(), &insets);
         assert_eq!(found.len(), 1);
         let edges = found[0].edges.for_width(None);
         assert_eq!((f32::from(edges.start), f32::from(edges.end)), (4.0, 6.0));
@@ -673,7 +677,7 @@ mod tests {
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
         let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
-        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &insets);
+        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &InlineStyles::default(), &insets);
         let edges = found[0].edges.for_width(None);
         assert_eq!(edges.start, px(3.0));
         assert_eq!(edges.top, px(2.0));

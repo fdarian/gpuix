@@ -9,6 +9,7 @@ pub(crate) mod containing;
 mod css_animation;
 mod css_transition;
 mod curve;
+mod inline;
 mod keyframes;
 mod layout_flip;
 pub(crate) mod measure;
@@ -25,6 +26,7 @@ use web_time::Instant;
 
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
+pub(crate) use inline::{InlineStyles, Timeline};
 use css_animation::animates_width;
 pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimations};
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
@@ -38,6 +40,7 @@ use css_transition::transitions_width;
 use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
+pub(crate) use property::Scope;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
 pub(crate) use value::{Colors, ParentFont, INITIAL_FONT_WEIGHT};
@@ -749,6 +752,7 @@ pub(crate) fn resolve_declared_style(
     focus_visible: bool,
     measurement: Option<&Measurement>,
     interpolate_size: InterpolateSize,
+    scope: Scope,
     now: Instant,
 ) -> DeclaredStyle {
     if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
@@ -756,7 +760,7 @@ pub(crate) fn resolve_declared_style(
     }
     let mut after = fold_state_styles(style, focus_visible, pointer);
     let running = transitions.and_then(|transitions| {
-        transitions.update(id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, now)
+        transitions.update(id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, scope, now)
     });
     if let Some(running) = &running {
         running.apply_to(&mut after);
@@ -2123,7 +2127,11 @@ mod tests {
         let style = style_at(&state, started);
         assert_eq!(style.top, Some(DimensionValue::Pixels(12.0)));
         // A colour has a start without layout: `currentColor`, inherited black.
-        assert_eq!(rgba(style.border_color.as_deref().unwrap()), rgba("#000000"));
+        assert_eq!(rgba(style.border_top_color.as_deref().unwrap()), rgba("#000000"));
+        // `borderColor` is the shorthand of the four sides, and animates each.
+        for side in [&style.border_right_color, &style.border_bottom_color, &style.border_left_color] {
+            assert_eq!(side, &style.border_top_color);
+        }
     }
 
     #[test]
@@ -2141,7 +2149,7 @@ mod tests {
         let colors = Colors::of(&crate::color::ColorContext::root(crate::color::Scheme::Light), Some(&base));
         let state = MotionState::new(&description, Some(&base), colors, None, 0, started).unwrap();
         let style = style_at(&state, started);
-        assert_eq!(rgba(style.border_color.as_deref().unwrap()), rgba("#0000ff"));
+        assert_eq!(rgba(style.border_top_color.as_deref().unwrap()), rgba("#0000ff"));
     }
 
     #[test]
@@ -4155,7 +4163,7 @@ mod tests {
         fn channels(style: &StyleDesc) -> ([f64; 4], [f64; 4], [f64; 4]) {
             (
                 rgba(style.background_color.as_deref().unwrap()),
-                rgba(style.border_color.as_deref().unwrap()),
+                rgba(style.border_top_color.as_deref().unwrap()),
                 rgba(style.color.as_deref().unwrap()),
             )
         }
@@ -4243,7 +4251,7 @@ mod tests {
             let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
             let style = end_of(&state, started);
             near(rgba(style.background_color.as_deref().unwrap()), "#800080");
-            near(rgba(style.border_color.as_deref().unwrap()), "#00ff00");
+            near(rgba(style.border_top_color.as_deref().unwrap()), "#00ff00");
         }
 
         #[test]

@@ -23,6 +23,8 @@ use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
+use crate::motion::InlineStyles;
+
 use super::inline::Paragraph;
 
 /// What one run changes about the text style it inherits.
@@ -80,6 +82,7 @@ impl RunStyle {
 /// `colors`, `lengths` and `font_state` are the container's, as its children
 /// inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
 /// `focusWithin` and `focusVisible` styles are folded into the run it paints.
+/// `motion` holds the boxes whose colours a transition or an animation moves.
 pub fn run_styles(
     tree: &RetainedTree,
     paragraph: &Paragraph,
@@ -87,6 +90,7 @@ pub fn run_styles(
     lengths: &LengthContext,
     font_state: &FontFeatureState,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    motion: &InlineStyles,
 ) -> Vec<RunStyle> {
     let mut runs: Vec<RunStyle> = Vec::with_capacity(paragraph.pieces.len());
     for piece in &paragraph.pieces {
@@ -105,7 +109,7 @@ pub fn run_styles(
             else {
                 continue;
             };
-            let declared = &*folded(base, states(*id, base));
+            let declared = &*motion.declared(*id, base, states(*id, base));
             colors = colors.descend(declared);
             // A `display: contents` box has a font size too, and its children
             // inherit it.
@@ -441,6 +445,7 @@ mod tests {
             &container_lengths(),
             &FontFeatureState::default(),
             states,
+            &InlineStyles::default(),
         )
     }
 
@@ -473,6 +478,7 @@ mod tests {
             &container_lengths(),
             &FontFeatureState::default(),
             &|_, _| PointerStates::default(),
+            &InlineStyles::default(),
         );
         InlineText::new(paragraph.text.clone().into(), styles).runs(&base, px(16.0), |height| height)
     }

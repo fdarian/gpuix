@@ -5966,23 +5966,63 @@ impl BuildCtx<'_> {
         style: &StyleDesc,
         inert: bool,
     ) -> crate::events::state_styles::PointerStates {
-        if inert || self.inherited.inert {
-            return Default::default();
-        }
-        let followed = |refinement: &Option<Box<StyleDesc>>| {
-            refinement
-                .as_deref()
-                .map(|refinement| self.inherited.group_state(&refinement.followed_group()))
+        pointer_states_of(&self.inherited, self.pointer, id, style, inert)
+    }
+
+    /// The transitions and animations of the colours of the inline boxes of
+    /// `paragraph`, stepped to this frame.
+    fn inline_styles(&mut self, paragraph: &crate::text::inline::Paragraph) -> crate::motion::InlineStyles {
+        // Field by field: the closure reads what the timeline does not borrow.
+        let tree = self.tree;
+        let inherited = &self.inherited;
+        let pointer = self.pointer;
+        let focus_styles = &self.focus_styles;
+        let states = |id: u64, style: &StyleDesc| {
+            let inert = tree
+                .elements
+                .get(&id)
+                .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+            focus_styles.states_of(id, style, pointer_states_of(inherited, pointer, id, style, inert))
         };
-        crate::events::state_styles::PointerStates {
-            hovered: style.hover.is_some() && self.pointer.is_hovered(id),
-            active: style.active.is_some() && self.pointer.is_active(id),
-            group_hovered: followed(&style.group_hover).is_some_and(|group| group.hovered),
-            group_active: followed(&style.group_active).is_some_and(|group| group.active),
-            group_focused_within: followed(&style.group_focus_within)
-                .is_some_and(|group| group.focused_within),
-            ..Default::default()
-        }
+        crate::motion::InlineStyles::resolve(
+            tree,
+            paragraph,
+            &inherited.colors,
+            &inherited.parent_font(),
+            &states,
+            crate::motion::Timeline {
+                transitions: &mut *self.css_transitions,
+                animations: &mut *self.css_animations,
+                keyframes: self.keyframes,
+                now: self.now,
+            },
+        )
+    }
+}
+
+fn pointer_states_of(
+    inherited: &Inherited,
+    pointer: &crate::events::state::PointerState,
+    id: u64,
+    style: &StyleDesc,
+    inert: bool,
+) -> crate::events::state_styles::PointerStates {
+    if inert || inherited.inert {
+        return Default::default();
+    }
+    let followed = |refinement: &Option<Box<StyleDesc>>| {
+        refinement
+            .as_deref()
+            .map(|refinement| inherited.group_state(&refinement.followed_group()))
+    };
+    crate::events::state_styles::PointerStates {
+        hovered: style.hover.is_some() && pointer.is_hovered(id),
+        active: style.active.is_some() && pointer.is_active(id),
+        group_hovered: followed(&style.group_hover).is_some_and(|group| group.hovered),
+        group_active: followed(&style.group_active).is_some_and(|group| group.active),
+        group_focused_within: followed(&style.group_focus_within)
+            .is_some_and(|group| group.focused_within),
+        ..Default::default()
     }
 }
 
@@ -7102,6 +7142,7 @@ pub(crate) fn build_element(
             focus_visible,
             measurement.as_ref(),
             ctx.inherited.interpolate_size,
+            crate::motion::Scope::Element,
             ctx.now,
         )
     });
@@ -7161,6 +7202,7 @@ pub(crate) fn build_element(
                     ctx.keyframes,
                     measurement.as_ref(),
                     ctx.inherited.interpolate_size,
+                    crate::motion::Scope::Element,
                     ctx.now,
                 )
                 .map(|values| {
@@ -7911,8 +7953,10 @@ fn text_content(
 /// paragraphs never join into one copied line.
 fn paragraph_content(
     paragraph: &crate::text::inline::Paragraph,
-    ctx: &BuildCtx,
+    ctx: &mut BuildCtx,
 ) -> gpui::AnyElement {
+    let motion = ctx.inline_styles(paragraph);
+    let ctx = &*ctx;
     let states = |id: u64, style: &StyleDesc| {
         let inert = ctx
             .tree
@@ -7943,6 +7987,7 @@ fn paragraph_content(
             &ctx.inherited.lengths,
             &ctx.inherited.font_state,
             &states,
+            &motion,
         ),
         inline_targets: crate::text::inline_hit::Targets::of(
             ctx.tree,
@@ -7960,6 +8005,7 @@ fn paragraph_content(
             &ctx.inherited.colors,
             &ctx.inherited.lengths,
             &states,
+            &motion,
             &insets,
         ),
         inline_cursors: crate::text::inline_cursor::of(

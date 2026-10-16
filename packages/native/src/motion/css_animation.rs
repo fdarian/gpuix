@@ -24,7 +24,7 @@ use super::css_transition::{
 use super::curve::{ease, parse_timing_function, Curve, Ease, Repeat, Transition};
 use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
-use super::property::AnimProp;
+use super::property::{AnimProp, Scope};
 use super::track::{Goal, Track};
 use super::value::{AnimValue, Colors, Interpolation, ParentFont};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
@@ -1136,6 +1136,7 @@ impl CssAnimations {
         registry: &KeyframesRegistry,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
+        scope: Scope,
         now: Instant,
     ) -> Option<AnimationStyle> {
         let state = self.states.entry(id).or_insert_with(ElementState::new);
@@ -1168,6 +1169,7 @@ impl CssAnimations {
         }
         let values: Vec<(AnimProp, AnimValue)> = values
             .into_iter()
+            .filter(|(prop, _)| scope.animates(*prop))
             .filter_map(|(prop, value)| Some((prop, value?)))
             .collect();
         (!values.is_empty()).then_some(AnimationStyle(values))
@@ -1494,6 +1496,7 @@ mod tests {
                 &self.registry,
                 measurement,
                 self.inherited,
+                Scope::Element,
                 now,
             ) {
                 values.apply_to(&mut resolved, None);
@@ -1518,6 +1521,7 @@ mod tests {
                 None,
                 None,
                 self.inherited,
+                Scope::Element,
                 now,
             );
             let mut resolved = declared.clone();
@@ -1534,6 +1538,7 @@ mod tests {
                 &self.registry,
                 None,
                 self.inherited,
+                Scope::Element,
                 now,
             ) {
                 values.apply_to(&mut resolved, running.as_ref());
@@ -2007,6 +2012,7 @@ mod tests {
                 &frames.registry,
                 None,
                 frames.inherited,
+                Scope::Element,
                 now,
             );
             let mut resolved = declared.clone();

@@ -12,7 +12,7 @@ use web_time::Instant;
 
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
-use super::property::{expand_shorthand, AnimProp};
+use super::property::{expand_shorthand, AnimProp, Scope};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentFont};
 use super::MotionState;
 use crate::color::ColorContext;
@@ -419,9 +419,13 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
             BorderRightWidth,
             BorderBottomWidth,
             BorderLeftWidth,
-            BorderColor,
+            BorderTopColor,
+            BorderRightColor,
+            BorderBottomColor,
+            BorderLeftColor,
         ],
         "outline" => vec![OutlineWidth, OutlineColor],
+        "textDecoration" | "text-decoration" => vec![TextDecorationColor],
         "flex" => vec![FlexGrow, FlexShrink, FlexBasis],
         "background" => vec![BackgroundColor],
         _ => {
@@ -815,6 +819,7 @@ impl ElementState {
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
+        scope: Scope,
         now: Instant,
         events: &mut Vec<TransitionEvent>,
     ) {
@@ -839,7 +844,7 @@ impl ElementState {
         let style_changed = self.previous != *after;
         if style_changed || config_changed || colors_changed {
             let props: Vec<AnimProp> = if style_changed || colors_changed {
-                AnimProp::ALL.to_vec()
+                AnimProp::ALL.iter().copied().filter(|prop| scope.animates(*prop)).collect()
             } else {
                 self.running
                     .keys()
@@ -1127,6 +1132,7 @@ impl CssTransitions {
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
+        scope: Scope,
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
@@ -1143,6 +1149,7 @@ impl CssTransitions {
             motion,
             measurement,
             interpolate_size,
+            scope,
             now,
             &mut self.events,
         );
@@ -1310,10 +1317,16 @@ mod tests {
             assert!(padding.matching(prop).is_some());
         }
         assert!(padding.matching(AnimProp::MarginTop).is_none());
+        let colours = list(r#"{ "transition": "border-color 1s, text-decoration 1s" }"#);
+        for prop in [AnimProp::BorderTopColor, AnimProp::BorderLeftColor, AnimProp::TextDecorationColor] {
+            assert!(colours.matching(prop).is_some(), "{prop:?}");
+        }
+        assert!(colours.matching(AnimProp::OutlineColor).is_none());
         let border = list(r#"{ "transition": "border 1s, border-radius 1s, inset 1s, flex 1s" }"#);
         for prop in [
             AnimProp::BorderLeftWidth,
-            AnimProp::BorderColor,
+            AnimProp::BorderTopColor,
+            AnimProp::BorderLeftColor,
             AnimProp::BorderTopLeftRadius,
             AnimProp::Left,
             AnimProp::FlexBasis,
@@ -1513,6 +1526,7 @@ mod tests {
                         motion,
                         measurement,
                         self.inherited,
+                        Scope::Element,
                         self.at(millis),
                     )
             {
