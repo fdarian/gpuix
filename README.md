@@ -5746,7 +5746,10 @@ invalid style value.
 
 `cursor: 'none'` hides the cursor while it is over the element, as in CSS. It is
 implemented on macOS. The Windows backend hides it too but has not been
-tested; on Linux (X11 and Wayland) the default cursor stays visible.
+tested; on Linux (X11 and Wayland) the default cursor stays visible. On macOS the
+hide belongs to its window: it ends when the pointer leaves the window, the
+window stops being the key window or it closes, and it never hides the cursor
+over another window.
 
 ### Colors
 
