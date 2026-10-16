@@ -56,7 +56,7 @@ describeNative("display: contents", () => {
 
     it("passes its text style down to its text", () => {
       testRoot.render(
-        <div style={{ display: "contents", color: "#ff0000", fontSize: 16, lineHeight: 20 }}>
+        <div style={{ display: "contents", color: "#ff0000", fontSize: 16, lineHeight: "20px" }}>
           <div testId="box" style={{ width: 200, backgroundColor: "#ffffff" }}>
             redredred
           </div>

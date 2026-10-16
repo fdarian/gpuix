@@ -10,7 +10,7 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 /** What the box of a span is tall: the content area of Menlo at 16px (its ascent
  *  plus its descent), centred in the line box, not the 20px line. */
 const CONTENT = 18.625

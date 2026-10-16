@@ -10,7 +10,7 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 
 /** Margin 10 + border 2 + padding 4 before the text, margin 6 + border 1 + padding 3
  *  after it. */

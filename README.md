@@ -3020,9 +3020,10 @@ so search, selection and copy see `\t`, and it advances to the next tab stop.
 ```
 
 - A number is that many spaces, each as wide as a space in the font of the run
-  that holds the tab. A string is a CSS length: `px` and the absolute units
-  (`in`, `cm`, `mm`, `pt`, `pc`) and `calc()` of them. `em`, `rem`, `ch`, a
-  percentage and a negative value throw, like any style that cannot be parsed.
+  that holds the tab. A string is a CSS [length](#lengths) without a percentage:
+  `px`, the absolute units, `em`, `rem`, `vw`, `vh`, `vmin`, `vmax` and `calc()` of
+  them (`em` is the container's font size). `ch`, a percentage and a negative value
+  throw, like any style that cannot be parsed.
 - The stops are measured from the start of the line of text the tab is on, not
   from the box: a newline starts a new count, and so does a soft wrap. Where a
   line breaks therefore decides where its tabs end, and a tab that pushes a word
@@ -3115,13 +3116,6 @@ Deviations, where GPUI's text layout cannot build the DOM model:
 
 - In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
   where CSS removes it, so selection and copy see it.
-- The min-content width of a text is the width of its whole line, where CSS makes it
-  the longest word (one character for `overflowWrap: 'anywhere'` and `wordBreak:
-  'break-all'`). A text in a flex item therefore does not shrink below its text
-  without `minWidth: 0`, and `anywhere` and `break-all` do not change that. GPUI
-  measures `MinContent` as `MaxContent` for text; a probe at wrap width 0 that
-  bypasses the cached layout would fix it, but it needs a flag to keep Zed's text
-  sizing as it is, and it resizes every text in a flex or grid item.
 
 #### Truncating text
 

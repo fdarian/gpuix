@@ -12,7 +12,7 @@ import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 /** The content area of Menlo at 16px: its ascent plus its descent. */
 const CONTENT = 18.625
 const PAGE = { width: 300, height: 120, padding: 20, backgroundColor: "#ffffff" } as const
@@ -108,7 +108,7 @@ describeNative("background and border on inline boxes", () => {
   it("fills only the content area when the line is taller than the font", () => {
     const { testRoot, shoot } = setup(
       <div style={PAGE}>
-        <text testId="p" style={{ ...TEXT, lineHeight: 40 }}>
+        <text testId="p" style={{ ...TEXT, lineHeight: "40px" }}>
           aa <span style={{ backgroundColor: "#00ff00" }}>bbbb</span> cc
         </text>
       </div>
@@ -127,7 +127,7 @@ describeNative("background and border on inline boxes", () => {
   it("is as tall as the font plus the vertical padding and border, whatever the line height", () => {
     const { testRoot, bounds } = setup(
       <div style={PAGE}>
-        <text testId="p" style={{ ...TEXT, lineHeight: 40 }}>
+        <text testId="p" style={{ ...TEXT, lineHeight: "40px" }}>
           aa{" "}
           <span testId="s" style={{ paddingTop: 4, paddingBottom: 3, borderTopWidth: 2, borderBottomWidth: 1 }}>
             bbbb
@@ -284,7 +284,7 @@ describeNative("background and border on inline boxes", () => {
     }
     const { testRoot, renderer, paragraph } = setup(
       <div style={PAGE}>
-        <text testId="p" style={{ ...TEXT, lineHeight: 40 }} onClick={hear("text")}>
+        <text testId="p" style={{ ...TEXT, lineHeight: "40px" }} onClick={hear("text")}>
           aa{" "}
           <span style={{ paddingTop: 6, paddingBottom: 6, cursor: "pointer" }} onClick={hear("span")}>
             bbbb

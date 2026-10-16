@@ -9,7 +9,7 @@ import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 const PAGE = { width: 300, height: 100, padding: 20, backgroundColor: "#ffffff" } as const
 const RING = { outlineWidth: 4, outlineColor: "#ff0000" } as const
 const RED: [number, number, number, number] = [255, 0, 0, 255]

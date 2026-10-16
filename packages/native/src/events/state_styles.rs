@@ -877,11 +877,11 @@ mod tests {
         assert_eq!(within.color.as_deref(), Some("#222222"), "beats hover");
         assert_eq!(within.width, style(r##"{"width":4}"##).width, "beats groupFocusWithin");
         assert_eq!(within.opacity, Some(0.2), "leaves what it does not set");
-        assert_eq!(within.outline_width, Some(1.0));
+        assert_eq!(within.outline_width, Some(LinearLength::px(1.0)));
 
         let visible = fold(PointerStates { focus_within: true, focus_visible: true, ..hovered });
         assert_eq!(visible.color.as_deref(), Some("#333333"), "focusVisible is last");
-        assert_eq!(visible.outline_width, Some(3.0));
+        assert_eq!(visible.outline_width, Some(LinearLength::px(3.0)));
         assert_eq!(visible.width, within.width);
 
         let rest = fold(PointerStates::default());

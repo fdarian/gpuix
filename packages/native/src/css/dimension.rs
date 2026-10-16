@@ -156,6 +156,14 @@ pub(crate) enum LengthPercentage {
     Calc { px: f64, percent: f64 },
 }
 
+/// A bare number: no unit, no percentage, and a `calc()` that comes to one.
+pub(crate) fn parse_number(token: &str) -> Option<f64> {
+    match parse_quantity(token)? {
+        Quantity::Number(value) => Some(value),
+        Quantity::Linear(..) => None,
+    }
+}
+
 /// A number, or a percentage as a fraction. A length has no place here, so
 /// there is nothing for a context to resolve.
 pub(crate) fn parse_number_or_percentage(token: &str) -> Option<f64> {

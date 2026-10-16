@@ -8213,7 +8213,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
         el = el.white_space(white_space);
     }
     if let Some(tab_size) = style.tab_size {
-        el.text_style().tab_size = Some(tab_size.to_gpui());
+        el.text_style().tab_size = Some(tab_size.to_gpui(lengths));
     }
     crate::css::word_break::apply(el.text_style(), style.word_break, style.overflow_wrap);
     match style.text_overflow.as_deref() {

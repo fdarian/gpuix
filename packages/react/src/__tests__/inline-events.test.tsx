@@ -11,7 +11,7 @@ import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 
 let measuredColumn: number | undefined
 

@@ -554,7 +554,7 @@ mod tests {
             },
         );
 
-        let ancestors = clipping_ancestors(&tree, 2);
+        let ancestors = clipping_ancestors(&tree, 2, None);
         assert_eq!(ancestors.len(), 1);
         let clips = clip_rects(&ancestors);
         assert_eq!(clips.len(), 1);

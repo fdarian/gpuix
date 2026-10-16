@@ -9,7 +9,7 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 const shots = fs.mkdtempSync(path.join(os.tmpdir(), "gpuix-solid-inline-events-"))
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 
 type App = ReturnType<typeof createTestRoot>
 
