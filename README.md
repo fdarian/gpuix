@@ -5222,10 +5222,16 @@ or `""`. A file that is not valid UTF-8 or cannot be read is left out, and a
 drag with no readable file fires no event. `types` is `["Files"]`; `getData`
 returns `""` and `setData` does nothing, as in a browser while a drag is
 protected. `dropEffect` starts as `"copy"` on each `dragenter` and `dragover`
-and can be set to `"none"`. The cursor badge the OS draws cannot reflect whether
-the drop will be accepted. Unlike other pointer events, these four are sent to
+and can be set to `"none"`, `"move"` or `"link"`. On macOS the `dragover` also
+answers the app the files come from: the drag cursor shows the `dropEffect` of a
+cancelled `dragover`, and a drop the page would not take (not cancelled, or
+`"none"`) is refused at the OS, so the files slide back. The effect is limited
+to what the source allows (holding a modifier narrows it), and a drag with no
+readable file is refused. Unlike other pointer events, these four are sent to
 JS whether or not something listens, since JS needs every `dragover` to know
-whether the drop was accepted.
+whether the drop was accepted. They are also delivered synchronously on macOS,
+where the handler runs inside the OS drag callback; a handler that takes long
+holds up the drag cursor.
 
 **Dragging an element.** `draggable` makes an element a drag source, like the DOM attribute. A primary press
 on it, or on anything inside it that is not itself `draggable`, followed by a move of
@@ -6764,6 +6770,9 @@ handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,
 `nativeSimulateFileDragMove(x, y)` moves it, and it ends with
 `nativeSimulateFileDragSubmit(x, y)` (a drop), `nativeSimulateFileDragExit()`
 (the files left) or both, then `nativeSimulateFileDragEnd()`.
+`nativeSimulateFileDragEnter` and `nativeSimulateFileDragMove` return the
+operation macOS would answer the dragging app with: `"copy"`, `"move"` or
+`"link"` for a cancelled `dragover`, `"none"` for a refused drop.
 `nativeSimulateFileDrop(x, y, paths)` is the whole sequence of a drop: enter,
 submit, exit, end. The paths must exist, since native reads their metadata.
 
