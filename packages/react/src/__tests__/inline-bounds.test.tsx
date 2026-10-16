@@ -15,6 +15,9 @@ const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color
  *  plus its descent), centred in the line box, not the 20px line. */
 const CONTENT = 18.625
 const INSET = (LINE - CONTENT) / 2
+/** Menlo's ascent and descent in em: 1901 and 483 units of 2048. */
+const ASCENT = 1901 / 2048
+const DESCENT = 483 / 2048
 
 let measuredColumn: number | undefined
 
@@ -123,6 +126,36 @@ describeNative("bounds of an inline element", () => {
       expect(outer.width).toBeCloseTo(6 * column, 2)
       expect(inner.width).toBeCloseTo(2 * column, 2)
       expect(inner.x).toBeCloseTo(outer.x + 2 * column, 2)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("is the content area of its own font size, on the baseline it shares with the text around it", () => {
+    const { render, ref, element, unmount } = setup()
+    try {
+      const column = columnWidth()
+      render(
+        <div style={{ width: 400 }}>
+          <text ref={ref("text")} style={TEXT}>
+            ab<span ref={ref("small")}>cd</span>
+            <span ref={ref("big")} style={{ fontSize: 32 }}>
+              ef
+            </span>
+          </text>
+        </div>
+      )
+      const text = element("text").getBoundingClientRect()
+      const small = element("small").getBoundingClientRect()
+      const big = element("big").getBoundingClientRect()
+
+      expect(small.height).toBeCloseTo(CONTENT, 2)
+      expect(big.height, "twice the size is twice the content area").toBeCloseTo(2 * CONTENT, 2)
+      expect(big.width).toBeCloseTo(2 * 2 * column, 2)
+      expect(big.x).toBeCloseTo(small.right, 2)
+      expect(small.y - big.y, "the tops differ by the difference of the ascents").toBeCloseTo(16 * ASCENT, 0)
+      expect(big.bottom - small.bottom, "the bottoms by that of the descents").toBeCloseTo(16 * DESCENT, 0)
+      expect(text.height, "the larger text grows its line").toBeGreaterThan(LINE)
     } finally {
       unmount()
     }
