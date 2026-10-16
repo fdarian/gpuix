@@ -2727,11 +2727,9 @@ and not drawn; `double`, `dotted` and `dashed` draw solid, a wavy
 line-through draws solid, and a thickness is accepted and the line stays 1px.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
-- A nested `<text>` that needs to react is a block too, because an inline box
-  cannot take events yet: one with an event listener, a `tabIndex`, a `hover`,
-  `active`, `focusVisible`, `groupHover`, `groupActive` or `groupFocusWithin` style, or a `group`.
-  It splits the paragraph around it. A `<span>` is always inline, so give it
-  none of these; use a `<text>` when the run needs to be clickable.
+- A nested `<text>` with a `tabIndex` is a block too, because an inline box has
+  no focus handle. It splits the paragraph around it. A `<span>` is always
+  inline and never takes focus.
 - In a `display: flex` or `grid` container each run of raw strings is one item
   and every `<span>` or nested `<text>` is an item of its own, with its content as
   a paragraph.
@@ -2742,9 +2740,46 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
 size), padding, border and margin on an inline box, `fontStyle` (there is no
-`fontStyle` style yet), and events or hit testing on a `<span>`. A `<span>` with
-a style that needs a box of its own (`position: absolute`, `display: block`,
-`flex` or `grid`) is laid out as a block instead.
+`fontStyle` style yet), `cursor` on a `<span>` (the cursor is the container's)
+and `tabIndex` on a `<span>`. A `<span>` with a style that needs a box of its own
+(`position: absolute`, `display: block`, `flex` or `grid`) is laid out as a block
+instead.
+
+### Events on inline boxes
+
+A `<span>`, and a nested `<text>`, take the pointer events of an element
+(`onClick`, `onPointerDown`, `onMouseEnter`, `onContextMenu`, `onDragStart`, ...)
+and stay inline. An inline box has no box of its own, so the pointer is on it when
+it is on one of its glyphs, and the span is then the event's `target`. The path
+runs from the span through the spans around it to the paragraph's container and
+its ancestors, so the container's `onClick` hears a click on the span as it
+bubbles up, and `stopPropagation()` on the span keeps it from there.
+
+```tsx
+<text onClick={() => console.log('line')}>
+  Read the <span onClick={(event) => open(event.target)} style={{ color: '#7ee787' }}>docs</span> first
+</text>
+```
+
+- Every span under the pointer is the target, listening or not: a click on a
+  span with no handler reaches the text's `onClick` with the span as `target`.
+- A span that wraps is on both lines. The blank area is not on it: after the end
+  of a line, below the last line, and the padding of the container belong to the
+  container.
+- Moving between two spans of a paragraph sends `mouseleave` and `mouseenter` (and
+  `mouseout` and `mouseover`) to those spans only. The container is still hovered,
+  so it hears nothing.
+- `hover`, `active`, `groupHover` and `groupActive` on a span change the run it
+  paints: `color`, `backgroundColor`, `fontWeight`, `fontFamily`, `textDecoration`
+  and the other properties an inline box can set. A `groupHover` follows the
+  `group` of the container or of an element above it.
+- `pointerEvents: "none"` and `inert` on a span, or above it, keep the pointer
+  off it, as on an element.
+- A press on a span still starts a text selection, unless a `mousedown` handler
+  calls `preventDefault()`.
+- `offsetX` and `offsetY` are measured from where the span's first line begins.
+- A span has no bounds, so `getElementBounds` is `null` for it, and
+  `click()` on its ref, or `renderer.clickElement(id)`, clicks it by id, with the same path.
 
 ### White space
 
@@ -3833,6 +3868,10 @@ is also not a target until one sets **`pointerEvents: "auto"`**, which is how a
 clickable control sits inside a `none` layer. An element with `none` stays in
 the path of an event whose target is one of its descendants, so its own
 listeners still hear it.
+
+Text is hit by its glyphs. A paragraph is one painted string, so the topmost
+element over it is the `<text>` or `<div>` that holds it, and the inline `<span>`
+under a glyph is the target instead (see [Events on inline boxes](#events-on-inline-boxes)).
 
 A filled child of a click target (switch thumb, radio dot, check icon) needs no
 special care: a click on it bubbles to the parent's `onClick` like any child's.
@@ -5758,7 +5797,8 @@ Nesting is one level deep. A `hover` object cannot contain another `hover` or
 `active`.
 
 They work on **every** element, including `<text>`, `<code>`, `<markdown>`,
-`<diff>`, `<img>`, `<svg>` and the editors. The one exception is
+`<diff>`, `<img>`, `<svg>`, the editors and an inline `<span>` (see
+[Events on inline boxes](#events-on-inline-boxes)). The one exception is
 `<virtual-list>`, whose `style` type rejects them: gpui's list has no
 interactive identity to hold a hovered or pressed state, so put them on a
 wrapping `<div>`.
