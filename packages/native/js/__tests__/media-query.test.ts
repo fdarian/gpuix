@@ -186,14 +186,6 @@ describe("media query evaluation", () => {
     )
   })
 
-  it("reports whether a result can depend on the window size", () => {
-    expect(parseMediaQueryList("(min-width: 100px)").usesSize).toBe(true)
-    expect(parseMediaQueryList("(orientation: landscape)").usesSize).toBe(true)
-    expect(parseMediaQueryList("(hover), not (max-height: 5px)").usesSize).toBe(true)
-    expect(parseMediaQueryList("(prefers-reduced-motion: reduce)").usesSize).toBe(false)
-    expect(parseMediaQueryList("screen and (prefers-color-scheme: dark)").usesSize).toBe(false)
-  })
-
   it("reads the environment lazily", () => {
     let reads = 0
     const env = {

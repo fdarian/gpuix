@@ -1027,14 +1027,15 @@ and change events arrive from its notification. Windows, Linux and FreeBSD have
 no OS read yet and report no preference. `prefers-color-scheme` changes arrive
 on every desktop platform that reports appearance changes.
 
-The renderer has no resize event, so while a `change` listener is attached to a
-query that reads the size, the window size is sampled every 100 ms
-(`MEDIA_SIZE_POLL_MS`). Queries that do not read the size cost nothing while idle,
-and a `MediaQueryList` with no listener is not subscribed to anything.
+Resizing the window re-evaluates the size queries (`width`, `height`,
+`aspect-ratio`, `orientation`) with no timer: the renderer reports each change of
+the window's content size, and `change` fires when a list's result flips. A
+`MediaQueryList` with no listener is not subscribed to anything.
 
 Under test, the OS settings start as "no preference" regardless of the machine.
 `TestRenderer.setMediaFeatures({ reducedMotion: true })` changes them and
-delivers the `change` events. `prefers-color-scheme` reports the system
+delivers the `change` events, and `TestRenderer.setWindowSize(width, height)`
+resizes the window the same way. `prefers-color-scheme` reports the system
 appearance and cannot be flipped, for the reason given under Appearance.
 
 ### File picker

@@ -271,6 +271,60 @@ fn window_dimension(value: Option<f64>, default: f64, label: &str) -> Result<f32
     Ok(pixels)
 }
 
+/// `Window::resize` asks the platform to resize from the main queue, which nothing runs
+/// under Node, so the test window resizes through AppKit directly.
+#[cfg(target_os = "macos")]
+mod appkit {
+    use napi::{Error, Result};
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl, Encode, Encoding};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    #[repr(C)]
+    struct NSSize {
+        width: f64,
+        height: f64,
+    }
+
+    // SAFETY: the layout and encoding of CGSize.
+    unsafe impl Encode for NSSize {
+        fn encode() -> Encoding {
+            unsafe { Encoding::from_str("{CGSize=dd}") }
+        }
+    }
+
+    pub(super) fn ns_view(window: &gpui::Window) -> Result<*mut Object> {
+        let handle = HasWindowHandle::window_handle(window)
+            .map_err(|error| Error::from_reason(error.to_string()))?;
+        match handle.as_raw() {
+            RawWindowHandle::AppKit(appkit) => Ok(appkit.ns_view.as_ptr().cast()),
+            other => Err(Error::from_reason(format!(
+                "The test window is not an AppKit window: {other:?}"
+            ))),
+        }
+    }
+
+    pub(super) fn set_content_size(ns_view: *mut Object, width: f64, height: f64) {
+        // SAFETY: `ns_view` is the live content view of the test window, and napi calls
+        // run on the main thread that created it.
+        unsafe {
+            let ns_window: *mut Object = msg_send![ns_view, window];
+            let _: () = msg_send![ns_window, setContentSize: NSSize { width, height }];
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod appkit {
+    use napi::{Error, Result};
+
+    pub(super) fn ns_view(_window: &gpui::Window) -> Result<*mut ()> {
+        Err(Error::from_reason("setWindowSize is only implemented on macOS"))
+    }
+
+    pub(super) fn set_content_size(_ns_view: *mut (), _width: f64, _height: f64) {}
+}
+
 /// Convert JS button number (0=left, 1=middle, 2=right) to GPUI MouseButton.
 fn u32_to_mouse_button(button: u32) -> gpui::MouseButton {
     match button {
@@ -474,6 +528,7 @@ impl TestGpuixRenderer {
                             pointer_requests_clone,
                         );
                         view.observe_appearance(window, cx);
+                        view.observe_viewport(window, cx);
                         view.simulate_platform_pointer_lock(simulated_platform_clone);
                         view.simulate_window_actions(window_actions_clone);
                         view.set_frameless(frameless);
@@ -1890,6 +1945,24 @@ impl TestGpuixRenderer {
         Ok(crate::renderer::WindowSize {
             width: f32::from(size.width) as f64,
             height: f32::from(size.height) as f64,
+        })
+    }
+
+    /// Resize the offscreen window's content to `width` x `height`, as a user dragging its
+    /// edge would: the size queries of `matchMedia` and `useWindowSize` see it, and a
+    /// listening window queues a `mediaChange` event.
+    #[napi]
+    pub fn set_window_size(&self, width: f64, height: f64) -> Result<()> {
+        let width = window_dimension(Some(width), DEFAULT_WINDOW_WIDTH, "width")?;
+        let height = window_dimension(Some(height), DEFAULT_WINDOW_HEIGHT, "height")?;
+        with_test_state(|cx, window, _view| {
+            // Outside any window update: AppKit calls back into the window synchronously.
+            let ns_view = cx
+                .update_window(window, |_, window, _| appkit::ns_view(window))
+                .map_err(|error| Error::from_reason(error.to_string()))??;
+            appkit::set_content_size(ns_view, f64::from(width), f64::from(height));
+            cx.run_until_parked();
+            Ok(())
         })
     }
 

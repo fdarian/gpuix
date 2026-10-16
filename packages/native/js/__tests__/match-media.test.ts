@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
-  MEDIA_SIZE_POLL_MS,
   MediaQueryList,
   MediaQueryListEvent,
   createRendererState,
@@ -234,7 +233,7 @@ describe("matchMedia", () => {
     expect(events).toEqual([])
   })
 
-  it("detects a resize by polling, only while a size query is listened to", () => {
+  it("re-evaluates size queries on mediaChange, with no timer", () => {
     const window = fakeWindow()
     window.height = 300
     const matcher = matchMediaFor(window)
@@ -246,37 +245,28 @@ describe("matchMedia", () => {
     landscape.addEventListener("change", (event) =>
       orientation.push((event as MediaQueryListEvent).matches)
     )
+    expect(vi.getTimerCount()).toBe(0)
 
-    vi.advanceTimersByTime(MEDIA_SIZE_POLL_MS * 3)
+    window.emitMediaChange()
     expect(events).toEqual([])
 
     window.width = 400
-    vi.advanceTimersByTime(MEDIA_SIZE_POLL_MS)
+    window.emitMediaChange()
     expect(events).toEqual([true])
     expect(orientation).toEqual([])
 
     window.width = 250
-    vi.advanceTimersByTime(MEDIA_SIZE_POLL_MS)
+    window.emitMediaChange()
     expect(events).toEqual([true])
     expect(orientation).toEqual([false])
   })
 
-  it("does not poll for queries that do not read the size", () => {
+  it("reads the window size only when the window says something changed", () => {
     const window = fakeWindow()
     const spy = vi.spyOn(window, "getWindowSize")
-    matchMediaFor(window)("(prefers-reduced-motion: reduce)").onchange = () => {}
-    vi.advanceTimersByTime(MEDIA_SIZE_POLL_MS * 5)
-    expect(spy).not.toHaveBeenCalled()
-  })
-
-  it("stops polling when the last size listener goes away", () => {
-    const window = fakeWindow()
-    const spy = vi.spyOn(window, "getWindowSize")
-    const list = matchMediaFor(window)("(max-width: 500px)")
-    list.onchange = () => {}
+    matchMediaFor(window)("(max-width: 500px)").onchange = () => {}
     spy.mockClear()
-    list.onchange = null
-    vi.advanceTimersByTime(MEDIA_SIZE_POLL_MS * 5)
+    vi.advanceTimersByTime(10_000)
     expect(spy).not.toHaveBeenCalled()
   })
 
@@ -343,20 +333,18 @@ describe("matchMedia", () => {
   })
 
   describe("teardown when the renderer throws", () => {
-    it("stops the size poll even if unsubscribing from the window throws", () => {
+    it("surfaces a renderer error from unsubscribing", () => {
       const window = fakeWindow()
       const list = matchMediaFor(window)("(min-width: 1px)")
       const listener = () => {}
       list.addEventListener("change", listener)
-      expect(vi.getTimerCount()).toBe(1)
       window.setWindowMediaChange = (enabled: boolean) => {
         if (!enabled) throw new Error("window closed")
       }
       expect(() => list.removeEventListener("change", listener)).toThrow(/window closed/)
-      expect(vi.getTimerCount()).toBe(0)
     })
 
-    it("leaves no entry or poll behind when subscribing throws", () => {
+    it("leaves no entry behind when subscribing throws", () => {
       const window = fakeWindow()
       const setWindowMediaChange = window.setWindowMediaChange.bind(window)
       window.setWindowMediaChange = () => {
@@ -364,7 +352,6 @@ describe("matchMedia", () => {
       }
       const list = matchMediaFor(window)("(min-width: 1px)")
       expect(() => list.addEventListener("change", () => {})).toThrow(/window closed/)
-      expect(vi.getTimerCount()).toBe(0)
       window.setWindowMediaChange = setWindowMediaChange
       const other = matchMediaFor(window)("(min-width: 1px)")
       const listener = () => {}

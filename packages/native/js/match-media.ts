@@ -2,9 +2,8 @@
 /// with the DOM shape, backed by the renderer that owns the window.
 ///
 /// The environment is read live from the renderer (`getWindowSize`,
-/// `getAppearance`, `getMediaFeatures`). Changes arrive as the renderer's
-/// `mediaChange` event, plus a size poll while a size-dependent query has a
-/// listener: the renderer has no resize event.
+/// `getAppearance`, `getMediaFeatures`). Every change, a resize included,
+/// arrives as the renderer's `mediaChange` event.
 
 import type { MediaFeatures } from "../index.js"
 import { toAppearance } from "./host-runtime.js"
@@ -15,9 +14,6 @@ import { createRendererState, mountedRenderer } from "./renderer-state.js"
 
 export type { MediaEnvironment } from "./media-query.js"
 export type { MediaFeatures }
-
-/** How often window size is sampled while a size query has a change listener. */
-export const MEDIA_SIZE_POLL_MS = 100
 
 /** Platforms with no OS read have no preference set. */
 const NO_PREFERENCES: MediaFeatures = {
@@ -75,7 +71,6 @@ function readEnvironment(host: NativeRenderer): MediaEnvironment {
 
 export interface MediaSourceEntry {
   notify(): void
-  usesSize: boolean
 }
 
 /** Shared by every `MediaQueryList` of one window. */
@@ -87,52 +82,20 @@ export interface MediaQueryListSource {
 function createMediaQueryListSource(host: NativeRenderer): MediaQueryListSource {
   const entries = new Set<MediaSourceEntry>()
   let unsubscribeHost: (() => void) | undefined
-  let timer: ReturnType<typeof setInterval> | undefined
-  let lastSize: { width: number; height: number } | undefined
 
-  const notify = (filter: (entry: MediaSourceEntry) => boolean) => {
+  const notify = () => {
     for (const entry of [...entries]) {
-      if (entries.has(entry) && filter(entry)) entry.notify()
-    }
-  }
-
-  const pollSize = () => {
-    const environment = readEnvironment(host)
-    const next = { width: environment.width, height: environment.height }
-    if (lastSize && lastSize.width === next.width && lastSize.height === next.height) return
-    lastSize = next
-    notify((entry) => entry.usesSize)
-  }
-
-  const syncPoll = () => {
-    const polling = [...entries].some((entry) => entry.usesSize)
-    if (polling && !timer) {
-      const environment = readEnvironment(host)
-      lastSize = { width: environment.width, height: environment.height }
-      const interval = setInterval(pollSize, MEDIA_SIZE_POLL_MS)
-      // A pending poll must not keep the process alive.
-      ;(interval as { unref?: () => void }).unref?.()
-      timer = interval
-    } else if (!polling && timer) {
-      clearInterval(timer)
-      timer = undefined
-      lastSize = undefined
+      if (entries.has(entry)) entry.notify()
     }
   }
 
   const sync = () => {
-    // The poll is settled in `finally`: the renderer can throw while a window
-    // subscription changes, and that must not leave a timer running.
-    try {
-      if (entries.size > 0 && !unsubscribeHost) {
-        unsubscribeHost = createRendererState(host).subscribeMedia(() => notify(() => true))
-      } else if (entries.size === 0 && unsubscribeHost) {
-        const unsubscribe = unsubscribeHost
-        unsubscribeHost = undefined
-        unsubscribe()
-      }
-    } finally {
-      syncPoll()
+    if (entries.size > 0 && !unsubscribeHost) {
+      unsubscribeHost = createRendererState(host).subscribeMedia(notify)
+    } else if (entries.size === 0 && unsubscribeHost) {
+      const unsubscribe = unsubscribeHost
+      unsubscribeHost = undefined
+      unsubscribe()
     }
   }
 
@@ -145,7 +108,6 @@ function createMediaQueryListSource(host: NativeRenderer): MediaQueryListSource 
       } catch (error) {
         // The caller never gets the unsubscribe function, so nothing else would remove the entry.
         entries.delete(entry)
-        syncPoll()
         throw error
       }
       return () => {
@@ -196,10 +158,7 @@ export class MediaQueryList {
   constructor(query: string, source: MediaQueryListSource) {
     this.#parsed = parseMediaQueryList(query)
     this.#source = source
-    this.#reevaluate = {
-      usesSize: this.#parsed.usesSize,
-      notify: () => this.#notify(),
-    }
+    this.#reevaluate = { notify: () => this.#notify() }
   }
 
   get media(): string {

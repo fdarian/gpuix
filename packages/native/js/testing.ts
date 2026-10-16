@@ -78,6 +78,7 @@ interface NativeTestRendererApi
   getWindowTitle(): string
   setWindowMediaChange(enabled: boolean): void
   getMediaFeatures(): MediaFeatures
+  setWindowSize(width: number, height: number): void
   setMediaFeatures(
     reducedMotion?: boolean,
     increasedContrast?: boolean,
@@ -978,6 +979,14 @@ export class TestRenderer implements NativeRenderer {
       features.increasedContrast,
       features.forcedColors
     )
+    this.dispatchNativeEvents()
+  }
+
+  /** Resize the offscreen window's content, as dragging its edge would: `getWindowSize()`
+   *  and the size queries of `matchMedia` see the new size, and their `change` events are
+   *  delivered. */
+  setWindowSize(width: number, height: number): void {
+    this.native.setWindowSize(width, height)
     this.dispatchNativeEvents()
   }
 

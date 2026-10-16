@@ -42,15 +42,12 @@ type MediaCondition =
 
 interface MediaQueryItem {
   readonly text: string
-  readonly usesSize: boolean
   matches(env: MediaEnvironment): boolean
 }
 
 export interface ParsedMediaQueryList {
   /** Canonical serialization, as `MediaQueryList.media` reports it. */
   readonly media: string
-  /** True when a result can change as the window is resized. */
-  readonly usesSize: boolean
   matches(env: MediaEnvironment): boolean
 }
 
@@ -67,8 +64,6 @@ type FeatureType =
       falsy: string | undefined
       read(env: MediaEnvironment): string
     }
-
-const SIZE_FEATURES = new Set(["width", "height", "aspect-ratio", "orientation"])
 
 /** There is no touch input or hover-less pointer on the platforms GPUIX targets. */
 const FEATURES: Record<string, FeatureType> = {
@@ -558,18 +553,6 @@ function evaluate(condition: MediaCondition, env: MediaEnvironment): boolean {
   }
 }
 
-function usesSize(condition: MediaCondition): boolean {
-  switch (condition.kind) {
-    case "not":
-      return usesSize(condition.child)
-    case "and":
-    case "or":
-      return condition.children.some(usesSize)
-    default:
-      return SIZE_FEATURES.has(condition.feature)
-  }
-}
-
 // ── Serializer ───────────────────────────────────────────────────────
 
 function serializeValue(value: MediaValue): string {
@@ -608,7 +591,6 @@ function serializeCondition(condition: MediaCondition, nested: boolean): string 
 
 const NEVER: MediaQueryItem = {
   text: "not all",
-  usesSize: false,
   matches: () => false,
 }
 
@@ -637,7 +619,6 @@ function compileItem(tokens: Token[]): MediaQueryItem {
     }
     return {
       text: parts.join(" "),
-      usesSize: condition ? usesSize(condition) : false,
       matches(env) {
         const result = typeMatches && (condition ? evaluate(condition, env) : true)
         return negate ? !result : result
@@ -671,7 +652,6 @@ export function parseMediaQueryList(text: string): ParsedMediaQueryList {
   const items = tokens.length === 0 ? [] : splitTopLevel(tokens).map(compileItem)
   return {
     media: items.map((item) => item.text).join(", "),
-    usesSize: items.some((item) => item.usesSize),
     matches: (env) => items.length === 0 || items.some((item) => item.matches(env)),
   }
 }

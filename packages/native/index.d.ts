@@ -794,6 +794,12 @@ export declare class TestGpuixRenderer {
    * under test as in a real window instead of falling back to a default.
    */
   getWindowSize(): WindowSize
+  /**
+   * Resize the offscreen window's content to `width` x `height`, as a user dragging its
+   * edge would: the size queries of `matchMedia` and `useWindowSize` see it, and a
+   * listening window queues a `mediaChange` event.
+   */
+  setWindowSize(width: number, height: number): void
 }
 
 /**

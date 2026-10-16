@@ -29,6 +29,7 @@ const NOT_CALLABLE_FROM_A_HANDLER = new Set([
   "dispatchSyncEvent",
   "dragSelect",
   "promptForPaths",
+  "setWindowSize",
   "simulateKeystrokes",
   "nativeSimulateClick",
   "nativeSimulateFileDragEnd",

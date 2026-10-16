@@ -31,6 +31,15 @@ pub struct MediaFeatures {
     pub forced_colors: bool,
 }
 
+/// Records `now` as the window's content size and says whether it differs from
+/// the last one. Bounds observers also fire for a move, which is no size change.
+pub(crate) fn viewport_resized(
+    last: &mut gpui::Size<gpui::Pixels>,
+    now: gpui::Size<gpui::Pixels>,
+) -> bool {
+    std::mem::replace(last, now) != now
+}
+
 pub(crate) fn emit_media_change(callback: &Option<EventCallback>, reason: &str) {
     emit_event_full(callback, 0, MEDIA_CHANGE_EVENT, |payload| {
         payload.value = Some(reason.to_string());
@@ -152,6 +161,23 @@ impl TestMedia {
             value: Some("test".to_string()),
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod viewport_tests {
+    use super::*;
+
+    #[test]
+    fn a_move_or_repeated_size_is_not_a_resize() {
+        let mut last = gpui::size(gpui::px(800.0), gpui::px(600.0));
+        assert!(!viewport_resized(&mut last, gpui::size(gpui::px(800.0), gpui::px(600.0))));
+        assert!(viewport_resized(&mut last, gpui::size(gpui::px(900.0), gpui::px(600.0))));
+        assert!(
+            !viewport_resized(&mut last, gpui::size(gpui::px(900.0), gpui::px(600.0))),
+            "the new size is the baseline"
+        );
+        assert!(viewport_resized(&mut last, gpui::size(gpui::px(900.0), gpui::px(500.0))));
     }
 }
 

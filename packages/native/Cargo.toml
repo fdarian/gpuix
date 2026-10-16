@@ -91,6 +91,8 @@ core-graphics = "=0.24.0"
 # accessibility reads in media.rs.
 objc = "0.2"
 block = "0.1"
+# The offscreen test window's NSView, to resize its NSWindow (`TestGpuixRenderer.setWindowSize`).
+raw-window-handle = "0.6"
 tar = "0.4"
 flate2 = "1"
 # Production uses the embedded AppKit loop; tests use the native Metal renderer.

@@ -1,5 +1,5 @@
 import React from "react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   MediaQueryList,
   matchMedia,
@@ -97,5 +97,61 @@ describe("matchMedia", () => {
     render(<text>x</text>)
     expect(matchMedia("screen and (hover: hover) and (pointer: fine)").matches).toBe(true)
     unmount()
+  })
+
+  describe("resizing the window", () => {
+    function listen(query: string, seen: boolean[]): MediaQueryList {
+      const list = matchMedia(query)
+      list.addEventListener("change", (event) => seen.push((event as { matches: boolean }).matches))
+      return list
+    }
+
+    it("fires change when a size query flips, and not when the size changes but the result does not", () => {
+      const interval = vi.spyOn(globalThis, "setInterval")
+      const { render, renderer, unmount } = createTestRoot()
+      render(<text>x</text>)
+      renderer.setWindowSize(1280, 800)
+      const seen: boolean[] = []
+      const list = listen("(max-width: 1000px)", seen)
+      expect(list.matches).toBe(false)
+
+      renderer.setWindowSize(900, 800)
+      expect(seen).toEqual([true])
+      expect(list.matches).toBe(true)
+
+      renderer.setWindowSize(800, 700)
+      expect(seen).toEqual([true])
+
+      renderer.setWindowSize(1100, 700)
+      expect(seen).toEqual([true, false])
+      expect(interval).not.toHaveBeenCalled()
+      interval.mockRestore()
+      unmount()
+    })
+
+    it("re-evaluates orientation and aspect-ratio from the new size", () => {
+      const { render, renderer, unmount } = createTestRoot()
+      render(<text>x</text>)
+      renderer.setWindowSize(1280, 800)
+      const portrait: boolean[] = []
+      const square: boolean[] = []
+      listen("(orientation: portrait)", portrait)
+      listen("(aspect-ratio: 1/1)", square)
+
+      renderer.setWindowSize(600, 900)
+      expect(portrait).toEqual([true])
+      expect(square).toEqual([])
+
+      renderer.setWindowSize(700, 700)
+      expect(square).toEqual([true])
+      unmount()
+    })
+
+    it("a window opened at a size reports it in matches before any resize", () => {
+      const { render, unmount } = createTestRoot()
+      render(<text>x</text>)
+      expect(matchMedia("(width: 1280px) and (height: 800px)").matches).toBe(true)
+      unmount()
+    })
   })
 })

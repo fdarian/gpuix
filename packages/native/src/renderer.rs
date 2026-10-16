@@ -1569,6 +1569,7 @@ impl GpuixRenderer {
                             pointer_requests.clone(),
                         );
                         view.observe_appearance(window, cx);
+                        view.observe_viewport(window, cx);
                         view.set_frameless(window_options.frameless());
                         crate::events::enable_dom_hit_testing(window);
                         view.install_key_interception(window, cx);
@@ -1719,6 +1720,7 @@ impl GpuixRenderer {
                                             pointer_requests,
                                         );
                                         view.observe_appearance(window, cx);
+                                        view.observe_viewport(window, cx);
                                         view.set_frameless(window_options.frameless());
                                         crate::events::enable_dom_hit_testing(window);
                                         view.install_key_interception(window, cx);
@@ -4780,6 +4782,8 @@ pub(crate) struct GpuixView {
     window_appearance_change: bool,
     window_appearance_event_id: u64,
     appearance_subscription: Option<gpui::Subscription>,
+    bounds_subscription: Option<gpui::Subscription>,
+    media_viewport: gpui::Size<gpui::Pixels>,
     /// Stands in for the platform's pointer lock in the test renderer, whose
     /// offscreen window is never key and so can never take a real one.
     simulated_platform: Option<crate::events::pointer_lock::SimulatedPlatform>,
@@ -5235,6 +5239,8 @@ impl GpuixView {
             window_appearance_change: false,
             window_appearance_event_id: 0,
             appearance_subscription: None,
+            bounds_subscription: None,
+            media_viewport: gpui::Size::default(),
             simulated_platform: None,
             simulated_window_actions: None,
             frameless: false,
@@ -5525,6 +5531,24 @@ impl GpuixView {
                     },
                 );
             }));
+    }
+
+    /// Emits `mediaChange` when the content size changes, which is what the size features of
+    /// `matchMedia` read. The size is tracked whether or not anyone listens, so enabling the
+    /// listener later does not report a resize that already happened.
+    pub(crate) fn observe_viewport(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        self.media_viewport = window.viewport_size();
+        self.bounds_subscription = Some(cx.observe_window_bounds(window, |view, window, _cx| {
+            if crate::media::viewport_resized(&mut view.media_viewport, window.viewport_size())
+                && view.window_media_change
+            {
+                crate::media::emit_media_change(&view.event_callback, "resize");
+            }
+        }));
     }
 
     pub(crate) fn set_frameless(&mut self, frameless: bool) {
