@@ -5499,7 +5499,10 @@ impl GpuixView {
             if key.activates_controls && element.events().contains("click") {
                 return false;
             }
-            let reaching = crate::layout::containing_block::reaching_ancestors(&tree, focused);
+            let window_id = window.window_handle().window_id();
+            let reaching = crate::layout::containing_block::reaching_ancestors(&tree, focused, &|id| {
+                crate::automation::get_bounds(window_id, id).and_then(|bounds| bounds.position)
+            });
             for id in std::iter::once(focused).chain(reaching) {
                 if let Some(handle) = self.scroll_handles.get(&id) {
                     scrollers.push((id, handle));
@@ -5546,7 +5549,8 @@ impl GpuixView {
         let mut child = id;
         // Only the ancestors that move the element: an absolute one stays put under a static
         // scroller, and a fixed one under all of them.
-        for ancestor_id in crate::layout::containing_block::reaching_ancestors(&tree, id) {
+        let painted_position = |ancestor| crate::automation::get_bounds(window_id, ancestor).and_then(|bounds| bounds.position);
+        for ancestor_id in crate::layout::containing_block::reaching_ancestors(&tree, id, &painted_position) {
             if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
                 if let Some(index) = entry.logical_index_of(child) {
                     let viewport = entry.state.viewport_bounds();
@@ -7824,6 +7828,7 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
+        style.map(|style| ctx.focus_styles.position(element.id, style, ctx.focus_handles.contains_key(&element.id))),
         paint_reporter(element.id, element.events(), None, ctx),
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
@@ -12702,6 +12707,199 @@ mod stacking_build_tests {
         let lifted = Scene::new(cx, ROOT, FLEX_A, ITEM, C);
         let after = crate::automation::get_bounds(lifted.window.window_id(), 3).unwrap();
         assert_eq!((before.x, before.y, before.width, before.height), (after.x, after.y, after.width, after.height));
+    }
+}
+
+/// A `position` that only a state refinement declares escapes the overflow clip of the ancestors
+/// before its containing block, as a base `position` does. Painted through a real view.
+#[cfg(test)]
+mod state_position_escape_tests {
+    use super::*;
+
+    const RED: u32 = 0xff0000;
+
+    /// `nodes` are `(id, parent, style)`; the first is the root, a positioned 400 box.
+    struct Page {
+        window: gpui::WindowHandle<GpuixView>,
+        tree: Arc<Mutex<RetainedTree>>,
+    }
+
+    impl Page {
+        fn new(cx: &mut gpui::TestAppContext, nodes: &[(u64, Option<u64>, &str)]) -> Self {
+            let tree = Arc::new(Mutex::new(RetainedTree::new()));
+            let view_tree = tree.clone();
+            {
+                let mut tree = tree.lock().unwrap();
+                for (id, parent, style) in nodes {
+                    let style: StyleDesc = serde_json::from_str(style).unwrap();
+                    tree.create_element(*id, "div".to_owned());
+                    tree.set_style(*id, Arc::new(style));
+                    if let Some(parent) = parent {
+                        tree.append_child(*parent, *id);
+                    }
+                }
+                tree.set_root(nodes[0].0);
+            }
+            let window = cx.add_window(|window, _| {
+                crate::events::enable_dom_hit_testing(window);
+                GpuixView::new(
+                    view_tree,
+                    None,
+                    "test".to_owned(),
+                    SharedSelection::default(),
+                    crate::events::state::PointerRequests::default(),
+                )
+            });
+            let page = Self { window, tree };
+            page.draw(cx);
+            page
+        }
+
+        fn draw(&self, cx: &mut gpui::TestAppContext) {
+            cx.update_window(self.window.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+            })
+            .unwrap();
+        }
+
+        fn move_mouse(&self, cx: &mut gpui::TestAppContext, x: f32, y: f32) {
+            gpui::VisualTestContext::from_window(self.window.into(), cx).simulate_mouse_move(
+                gpui::point(gpui::px(x), gpui::px(y)),
+                None,
+                Default::default(),
+            );
+            self.draw(cx);
+        }
+
+        /// How far right the red quad reaches and how far right its clip lets it, in px.
+        fn red_extent(&self, cx: &mut gpui::TestAppContext) -> (f32, f32) {
+            cx.update_window(self.window.into(), |_, window, _| {
+                let scale = window.scale_factor();
+                let red: gpui::Hsla = gpui::rgb(RED).into();
+                let quad = window
+                    .painted_quads()
+                    .into_iter()
+                    .find(|quad| quad.background.as_solid().is_some_and(|color| color == red))
+                    .expect("the red box was painted");
+                (quad.bounds.right().0 / scale, quad.content_mask.bounds.right().0 / scale)
+            })
+            .unwrap()
+        }
+
+        fn assert_unclipped(&self, cx: &mut gpui::TestAppContext) {
+            let (right, clip) = self.red_extent(cx);
+            assert_eq!(right, 400.0);
+            assert!(clip >= right, "the box reaches {right} but is clipped at {clip}");
+        }
+
+        fn assert_clipped_at_the_card(&self, cx: &mut gpui::TestAppContext) {
+            let (right, clip) = self.red_extent(cx);
+            assert_eq!(clip, 200.0, "the card ends at 200 (box reaches {right})");
+        }
+    }
+
+    const ROOT: &str = r#"{"position": "relative", "width": 400, "height": 400}"#;
+    const CARD: &str = r#"{"marginLeft": 100, "width": 100, "height": 100, "overflow": "hidden"}"#;
+    const CARD_GROUP: &str = r#"{"group": true, "marginLeft": 100, "width": 100, "height": 100, "overflow": "hidden"}"#;
+    const BOX: &str = r##""width": 50, "height": 50, "backgroundColor": "#ff0000""##;
+
+    fn card_with(cx: &mut gpui::TestAppContext, card: &str, child: &str) -> Page {
+        Page::new(cx, &[(1, None, ROOT), (2, Some(1), card), (3, Some(2), child)])
+    }
+
+    #[gpui::test]
+    fn a_hover_only_absolute_box_escapes_a_static_overflow_clip(cx: &mut gpui::TestAppContext) {
+        let child = format!(
+            r#"{{{BOX}, "hover": {{"position": "absolute", "left": 100, "top": 0, "width": 300}}}}"#
+        );
+        let page = card_with(cx, CARD, &child);
+        page.assert_clipped_at_the_card(cx);
+        page.move_mouse(cx, 102.0, 2.0);
+        page.assert_unclipped(cx);
+    }
+
+    #[gpui::test]
+    fn a_group_hover_only_absolute_box_escapes_a_static_overflow_clip(cx: &mut gpui::TestAppContext) {
+        let child = format!(
+            r#"{{{BOX}, "groupHover": {{"position": "absolute", "left": 100, "top": 0, "width": 300}}}}"#
+        );
+        let page = card_with(cx, CARD_GROUP, &child);
+        page.move_mouse(cx, 190.0, 90.0);
+        page.assert_unclipped(cx);
+    }
+
+    #[gpui::test]
+    fn a_hover_only_fixed_box_escapes_a_positioned_overflow_clip(cx: &mut gpui::TestAppContext) {
+        let card = r#"{"position": "relative", "marginLeft": 100, "width": 100, "height": 100, "overflow": "hidden"}"#;
+        let child = format!(
+            r#"{{{BOX}, "hover": {{"position": "fixed", "left": 100, "top": 0, "width": 300}}}}"#
+        );
+        let page = card_with(cx, card, &child);
+        page.assert_clipped_at_the_card(cx);
+        page.move_mouse(cx, 102.0, 2.0);
+        page.assert_unclipped(cx);
+    }
+
+    #[gpui::test]
+    fn a_hover_that_makes_the_box_static_puts_the_clip_back(cx: &mut gpui::TestAppContext) {
+        let child = r##"{"width": 300, "height": 50, "backgroundColor": "#ff0000", "position": "absolute", "left": 100, "top": 0,
+            "hover": {"position": "static"}}"##;
+        let page = card_with(cx, CARD, child);
+        page.assert_unclipped(cx);
+        page.move_mouse(cx, 102.0, 2.0);
+        page.assert_clipped_at_the_card(cx);
+    }
+
+    #[gpui::test]
+    fn a_focus_within_only_absolute_box_escapes_a_static_overflow_clip(cx: &mut gpui::TestAppContext) {
+        let child = format!(
+            r#"{{{BOX}, "focusWithin": {{"position": "absolute", "left": 100, "top": 0, "width": 300}}}}"#
+        );
+        let page = card_with(cx, CARD, &child);
+        page.tree.lock().unwrap().set_custom_prop(3, "tabIndex".to_owned(), serde_json::json!(0));
+        page.draw(cx);
+        page.assert_clipped_at_the_card(cx);
+        assert_eq!(hit_outside_the_card(&page, cx), [1]);
+        page.window.update(cx, |_, window, _| window.activate_window()).unwrap();
+        cx.run_until_parked();
+        page.window.update(cx, |view, window, cx| view.request_focus(3, window, cx)).unwrap();
+        page.draw(cx);
+        page.draw(cx);
+        page.assert_unclipped(cx);
+        assert_eq!(hit_outside_the_card(&page, cx), [3, 1]);
+    }
+
+    /// The hit test of the retained tree, at a point outside the card.
+    fn hit_outside_the_card(page: &Page, _cx: &mut gpui::TestAppContext) -> Vec<u64> {
+        let window = page.window.window_id();
+        page.tree
+            .lock()
+            .unwrap()
+            .elements_at(350.0, 20.0, &|id| crate::automation::get_bounds(window, id))
+    }
+
+    #[gpui::test]
+    fn the_retained_hit_test_follows_a_position_a_state_sets(cx: &mut gpui::TestAppContext) {
+        let child = format!(
+            r#"{{{BOX}, "groupHover": {{"position": "absolute", "left": 100, "top": 0, "width": 300}}}}"#
+        );
+        let page = card_with(cx, CARD_GROUP, &child);
+        assert_eq!(hit_outside_the_card(&page, cx), [1]);
+        page.move_mouse(cx, 190.0, 90.0);
+        assert_eq!(hit_outside_the_card(&page, cx), [3, 1]);
+        page.move_mouse(cx, 390.0, 390.0);
+        assert_eq!(hit_outside_the_card(&page, cx), [1]);
+    }
+
+    #[gpui::test]
+    fn the_retained_hit_test_clips_a_box_a_state_makes_static(cx: &mut gpui::TestAppContext) {
+        let child = r##"{"width": 300, "height": 50, "backgroundColor": "#ff0000", "position": "absolute", "left": 100, "top": 0,
+            "groupHover": {"position": "static"}}"##;
+        let page = card_with(cx, CARD_GROUP, child);
+        assert_eq!(hit_outside_the_card(&page, cx), [3, 1]);
+        page.move_mouse(cx, 190.0, 90.0);
+        assert_eq!(hit_outside_the_card(&page, cx), [1]);
     }
 }
 

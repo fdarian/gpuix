@@ -176,7 +176,14 @@ pub(crate) fn custom_surface(
         el.style().position = Some(gpui::Position::Static);
     }
     el = crate::layout::stacking::apply_context(el, ctx.style, ctx.stacking_root, &ctx.colors, &ctx.lengths);
-    el = crate::automation::track_host_bounds(el, ctx.id, None, ctx.observe.clone());
+    el = crate::automation::track_host_bounds(
+        el,
+        ctx.id,
+        None,
+        ctx.style
+            .map(|style| ctx.focus_styles.position(ctx.id, style, ctx.focus_handle.is_some())),
+        ctx.observe.clone(),
+    );
     el = match ctx.focus_handle {
         Some(handle) => crate::focus::apply_focus_styles(
             el.track_focus(handle),

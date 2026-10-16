@@ -21,6 +21,7 @@ use gpui::{
 use web_time::Instant;
 
 use crate::events::key_names::Press;
+use crate::layout::containing_block::Position;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ElementBounds {
@@ -33,6 +34,9 @@ pub struct ElementBounds {
     pub client_top: f64,
     pub border_right: f64,
     pub border_bottom: f64,
+    /// The `position` the element was built with once its state styles were folded in. `None`
+    /// when the builder did not say, and the declared one stands.
+    pub position: Option<Position>,
 }
 
 impl ElementBounds {
@@ -46,6 +50,7 @@ impl ElementBounds {
             client_top: f64::from(f32::from(insets.border.top)),
             border_right: f64::from(f32::from(insets.border.right)),
             border_bottom: f64::from(f32::from(insets.border.bottom)),
+            position: None,
         }
     }
 }
@@ -109,12 +114,16 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
 /// reports.
 ///
+/// `position` is the `position` the element is built with, state styles folded in; `None` leaves
+/// the declared one to stand for a reader of the retained tree.
+///
 /// `report` sees the painted box right after it is recorded. `on_painted_layout`
 /// takes one listener, so the paint-driven events share this one.
 pub fn track_host_bounds<E>(
     el: E,
     id: u64,
     selection_start: Option<bool>,
+    position: Option<Position>,
     report: Option<PaintReporter>,
 ) -> E
 where
@@ -124,6 +133,9 @@ where
         let insets = window.layout_insets(layout_id);
         let window_id = window.window_handle().window_id();
         record_bounds(window_id, id, bounds, insets);
+        if let Some(position) = position {
+            record_position(window_id, id, position);
+        }
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(window_id, bounds, selectable);
@@ -145,6 +157,14 @@ pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: 
     BOUNDS.with(|cell| {
         cell.borrow_mut()
             .insert((window, id), ElementBounds::from_gpui(bounds, insets));
+    });
+}
+
+fn record_position(window: WindowId, id: u64, position: Position) {
+    BOUNDS.with(|cell| {
+        if let Some(bounds) = cell.borrow_mut().get_mut(&(window, id)) {
+            bounds.position = Some(position);
+        }
     });
 }
 

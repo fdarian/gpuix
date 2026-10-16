@@ -410,7 +410,8 @@ pub struct RetainedTree {
     /// How many `anchored` elements exist. Without any (and without an absolute or fixed
     /// element), an `elements_at` walk can drop a clipped subtree whole.
     anchored_count: usize,
-    /// How many elements are `position: absolute` or `fixed`, which a clip above may not reach.
+    /// How many elements are `position: absolute` or `fixed` in some state, which a clip above may
+    /// not reach.
     escaping_count: usize,
     pub styles: StyleTable,
     /// The style layer under every element's own style, a CSS `* { ... }` rule.
@@ -688,7 +689,7 @@ impl RetainedTree {
             self.inert_count -= usize::from(element.has_inert_prop());
             self.visibility_count -= usize::from(element.declared_hidden().is_some());
             self.anchored_count -= usize::from(element.element_type == "anchored");
-            self.escaping_count -= usize::from(containing_block::escape(&element).is_some());
+            self.escaping_count -= usize::from(containing_block::may_escape(&element));
             destroyed.push(id);
             for child_id in element.children {
                 self.destroy_element_recursive(child_id, destroyed);
@@ -849,7 +850,7 @@ impl RetainedTree {
             !crate::text::inline::same_paragraphs(element.style.as_deref(), style.as_deref());
         let text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
             != style.as_deref().and_then(|new| new.white_space.as_deref());
-        let escaped_before = containing_block::escape(element).is_some();
+        let escaped_before = containing_block::may_escape(element);
         let before = element.style.take().filter(|old| {
             !crate::motion::declares_transitions(old)
                 && style.as_deref().is_some_and(crate::motion::declares_transitions)
@@ -861,7 +862,7 @@ impl RetainedTree {
             element.release_empty_extras();
         }
         element.style = style;
-        let escaped_after = containing_block::escape(element).is_some();
+        let escaped_after = containing_block::may_escape(element);
         self.escaping_count += usize::from(escaped_after);
         self.escaping_count -= usize::from(escaped_before);
         let now_declared = element.declared_hidden();
@@ -1090,7 +1091,9 @@ impl RetainedTree {
     /// CSS, and `auto` restores it.
     ///
     /// Styles are the declared ones: a `hover` state or a motion value that moves a box into
-    /// or out of a context is not seen.
+    /// or out of a context is not seen. The exception is `position`, which the clips follow as
+    /// painted (`ElementBounds::position`): a dropdown that a state makes `absolute` is hit
+    /// outside a static `overflow: hidden` card, and one that a state makes `static` is not.
     pub fn elements_at(
         &self,
         x: f64,
@@ -1151,7 +1154,9 @@ impl RetainedTree {
                 && (!vertical || (y >= bounds.y && y < bounds.y + bounds.height))
         };
 
-        let mut clipped = match containing_block::escape(element) {
+        let painted_box = walk.painted_box;
+        let painted_position = |id| painted_box(id).and_then(|bounds| bounds.position);
+        let mut clipped = match containing_block::escape(element, &painted_position) {
             None => clipped,
             Some(gpui::Escape::Viewport) => false,
             Some(gpui::Escape::ContainingBlock) => walk.frames.last().copied().unwrap_or(false),
@@ -1216,7 +1221,7 @@ impl RetainedTree {
             None => context,
         };
 
-        let opens_frame = containing_block::is_positioned(element) || element.element_type == "virtual-list";
+        let opens_frame = containing_block::is_positioned(element, &painted_position) || element.element_type == "virtual-list";
         if opens_frame {
             walk.frames.push(clipped);
         }
@@ -1860,6 +1865,7 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    position: None,
                 })
         };
         (tree, lookup)
@@ -1917,6 +1923,7 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    position: None,
                 })
         };
         (tree, lookup)
@@ -2020,6 +2027,7 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    position: None,
                 })
         }
     }
@@ -2120,6 +2128,7 @@ mod tests {
                 client_top: 0.0,
                 border_right: 0.0,
                 border_bottom: 0.0,
+                position: None,
             })
         };
         (tree, lookup)

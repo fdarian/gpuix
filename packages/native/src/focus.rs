@@ -16,6 +16,7 @@ use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
 use crate::events::state_styles::PointerStates;
 use crate::events::sync_dispatch;
+use crate::layout::containing_block::Position;
 use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -57,6 +58,20 @@ pub(crate) struct FocusStyles {
 }
 
 impl FocusStyles {
+    /// The `position` of element `id` once `apply_focus_styles` (`focusable`) or
+    /// `apply_focus_within` has applied its focus variants over `style`, which already has the
+    /// pointer states folded in.
+    pub fn position(&self, id: u64, style: &StyleDesc, focusable: bool) -> Position {
+        fn variant(variant: &Option<Box<StyleDesc>>, applies: bool) -> Option<&str> {
+            variant.as_deref().filter(|_| applies)?.position.as_deref()
+        }
+        Position::parse(
+            variant(&style.focus_visible, focusable && self.visible == Some(id))
+                .or_else(|| variant(&style.focus_within, self.within.contains(&id)))
+                .or(style.position.as_deref()),
+        )
+    }
+
     /// `states` with the focus variants of `style` that apply to element `id`.
     /// For an inline box, which has no element to apply them to.
     pub fn states_of(&self, id: u64, style: &StyleDesc, states: PointerStates) -> PointerStates {
@@ -719,6 +734,24 @@ mod tests {
 
         let hovered = PointerStates { hovered: true, ..Default::default() };
         assert!(styles.states_of(9, &none, hovered).hovered);
+    }
+
+    #[test]
+    fn a_focus_variant_decides_position_where_it_applies_and_visible_wins_over_within() {
+        let styles = FocusStyles {
+            visible: Some(3),
+            within: Arc::from([3, 2, 1]),
+            ..Default::default()
+        };
+        let style = serde_json::from_str::<StyleDesc>(
+            r#"{"position":"relative","focusWithin":{"position":"absolute"},"focusVisible":{"position":"fixed"}}"#,
+        )
+        .unwrap();
+        assert_eq!(styles.position(3, &style, true), Position::Fixed);
+        // An element that does not track focus gets no focus-visible variant.
+        assert_eq!(styles.position(3, &style, false), Position::Absolute);
+        assert_eq!(styles.position(2, &style, true), Position::Absolute);
+        assert_eq!(styles.position(9, &style, true), Position::Relative);
     }
 
     #[test]

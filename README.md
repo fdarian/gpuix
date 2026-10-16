@@ -5821,7 +5821,12 @@ so that animation starts at `0`.
   the ancestors at or inside its containing block, so a static
   `overflow: "hidden"` card or scroller between them does neither, and a `fixed`
   box is clipped by the window alone and scrolls with nothing. Give the card a
-  `position` to make it the containing block and clip its dropdown. Known
+  `position` to make it the containing block and clip its dropdown. A
+  `position` that only a state style sets (`hover`, `active`, `focusVisible`,
+  `focusWithin`, the group variants) escapes the same way while the state
+  applies, and a state that sets it back to `static` puts the clip back.
+  `getElementsAt` and `scrollIntoView` follow the position as painted;
+  `IntersectionObserver` reads the declared one. Known
   difference: an `opacity` or `filter` group clips its composite to the clip in
   force where the group starts, so an escaped box inside one on a clipped
   element is still cut by it.

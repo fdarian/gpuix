@@ -179,10 +179,13 @@ struct ClippingAncestor {
 /// is not its parent, an inline element's paragraph container, which clips it and what reaches it.
 fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
+    // Built before this frame paints, so the painted positions are the last frame's: the
+    // declared ones decide, and a state that moves an observed box out of a clip is not seen.
+    let declared = |_| None;
     let reaching = match first {
-        None => crate::layout::containing_block::reaching_ancestors(tree, id),
+        None => crate::layout::containing_block::reaching_ancestors(tree, id, &declared),
         Some(first) => std::iter::once(first)
-            .chain(crate::layout::containing_block::reaching_ancestors(tree, first))
+            .chain(crate::layout::containing_block::reaching_ancestors(tree, first, &declared))
             .collect(),
     };
     for ancestor in reaching {
