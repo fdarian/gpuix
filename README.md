@@ -2780,16 +2780,43 @@ left of the spaces, tabs and newlines of a string before it is painted, and
 <text style={{ whiteSpace: 'pre', fontFamily: 'Menlo' }}>{source}</text>
 ```
 
+#### Tab stops
+
+A tab that `pre` and `pre-wrap` keep stays a tab character in the painted text,
+so search, selection and copy see `\t`, and it advances to the next tab stop.
+`tabSize` sets how far apart the stops are. It is inherited and is 8 by default.
+
+```tsx
+<text style={{ whiteSpace: 'pre', tabSize: 4 }}>{"name\tvalue"}</text>
+<text style={{ whiteSpace: 'pre', tabSize: '40px' }}>{"name\tvalue"}</text>
+```
+
+- A number is that many spaces, each as wide as a space in the font of the run
+  that holds the tab. A string is a CSS length: `px` and the absolute units
+  (`in`, `cm`, `mm`, `pt`, `pc`) and `calc()` of them. `em`, `rem`, `ch`, a
+  percentage and a negative value throw, like any style that cannot be parsed.
+- The stops are measured from the start of the line of text the tab is on, not
+  from the box: a newline starts a new count, and so does a soft wrap. Where a
+  line breaks therefore decides where its tabs end, and a tab that pushes a word
+  past the edge sends the word to the next line.
+- A tab to a stop it already sits on goes to the next one, so a tab always has
+  width (except with `tabSize: 0`, which makes it empty).
+- Only a container sets it. A `tabSize` on a `<span>` or on a `<text>` inside a
+  paragraph does nothing, because a paragraph is one string with one tab size.
+  A `<text>` that is a block of its own, and a `<div>`, set it for their text.
+- The text of `<code>` and `<diff>` inherits it too, so a tab there gets a stop
+  where it used to get the font's own tab.
+
 Deviations, where GPUI's text layout cannot build the DOM model:
 
-- A tab in `pre` and `pre-wrap` is expanded to spaces, up to the next multiple
-  of 8 columns (`tab-size: 8`). A proportional font does not line up on those
-  stops, and copying gives spaces.
 - A space that wraps with a line stays at the end of that line, where CSS removes
   it (`normal`, `pre-line`) or hangs it (`pre-wrap`). It paints nothing but it
   counts in the line's width, so `textAlign: 'center'` and `'right'` can be off
   by a space.
-- `break-spaces`, `tab-size`, `word-break` and `overflow-wrap` are not supported.
+- `break-spaces`, `word-break` and `overflow-wrap` are not supported.
+- `textOverflow` with `lineClamp` or a fixed width decides where to cut by the
+  font's own width of a tab, not by the tab stop, so a line with tabs can be cut
+  a little early or late. `<input>` and `<textarea>` have no tab stops.
 
 ## Text input
 
@@ -5207,7 +5234,7 @@ draws one: a `dashed` anywhere makes every side dashed.
   flex or grid items (and are sorted by `order` with them). The element's own box
   styles (size, padding, background, border) do not apply, its inheritable text
   style (`color`, `fontSize`, `fontFamily`, `fontWeight`, `textAlign`,
-  `lineHeight`, `whiteSpace`, `cursor`, `visibility`, `userSelect`) passes to the
+  `lineHeight`, `whiteSpace`, `tabSize`, `cursor`, `visibility`, `userSelect`) passes to the
   children, and `getElementBounds` returns `null` for it. As a root, or as a
   `<virtual-list>` row (a list lays out one measured item per row), it has no
   parent to splice into, so its children lay out in an anonymous block in its
@@ -5582,7 +5609,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
