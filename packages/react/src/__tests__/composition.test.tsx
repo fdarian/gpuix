@@ -64,6 +64,14 @@ describeNative("input method composition", () => {
       .filter((event) => event.type === "keydown")
       .map((event) => [event.key, event.code, event.isComposing])
 
+  it("a Process keydown has keyCode 229, and the keyup keeps the real key's", () => {
+    compose({ key: "k", action: "mark", text: "k" })
+    const [down] = events.filter((event) => event.type === "keydown")
+    expect([down.key, down.keyCode, down.which]).toEqual(["Process", 229, 229])
+    const [up] = events.filter((event) => event.type === "keyup")
+    expect([up.key, up.keyCode, up.which]).toEqual(["k", 75, 75])
+  })
+
   it("a key the input method takes is a Process keydown, composing once a composition is open", () => {
     compose(
       { key: "k", action: "mark", text: "k" },

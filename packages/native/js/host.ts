@@ -2164,6 +2164,10 @@ export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
  * `"Digit1"`), assuming a US QWERTY layout for printable keys. The mapping from
  * GPUI key names lives in `events/key_names.rs`.
  *
+ * `keyCode` and `which` are the legacy Windows virtual-key codes Chrome on
+ * macOS reports (65 for `a`, 13 for Enter, 229 for `"Process"`); `charCode`
+ * does not exist because there is no `keypress` event.
+ *
  * On macOS a key the input method takes first has `key` `"Process"` and cannot
  * be cancelled: `preventDefault()` does not stop the input method. `isComposing`
  * is true while it has text marked.

@@ -412,6 +412,48 @@ pub(crate) fn dom_key_of_event(keystroke: &gpui::Keystroke, native_key: &gpui::N
     }
 }
 
+/// Whether Chrome takes the legacy `keyCode` from the physical key alone: the
+/// digit row and the keypad, so a digit is 48-57 on a layout that types
+/// something else there, and a keypad digit is 96-105.
+fn is_digit_or_keypad(code: &str) -> bool {
+    code.starts_with("Digit") || code.starts_with("Numpad") || code == "NumLock"
+}
+
+/// The legacy `KeyboardEvent.keyCode` of one key event, as Chrome on macOS
+/// computes it (`KeyboardCodeFromNSEvent`): the character the key types decides
+/// a letter, digit or punctuation key, so Dvorak's `s` is 83 and AZERTY's `q`
+/// on the A key is 81, and a layout whose characters are none of those (Cyrillic)
+/// falls back to the physical key's US-layout code. `dom_key` is what
+/// `dom_key_of_event` returned for the same event.
+pub(crate) fn legacy_key_code(
+    keystroke: &gpui::Keystroke,
+    native_key: &gpui::NativeKey,
+    dom_key: &DomKey,
+) -> u32 {
+    if is_digit_or_keypad(&dom_key.code) {
+        return key_codes::virtual_key(&dom_key.code);
+    }
+    // The key's own name only says a character for a printable key.
+    let key_name = Some(keystroke.key.as_str()).filter(|name| name.chars().count() == 1);
+    let typed = [
+        native_key.layout_char.as_deref(),
+        keystroke.key_char.as_deref(),
+        key_name,
+    ];
+    let by_character = typed
+        .into_iter()
+        .flatten()
+        .filter_map(|text| text.chars().next())
+        .find_map(key_codes::character_virtual_key);
+    if let Some(virtual_key) = by_character {
+        return virtual_key;
+    }
+    if dom_key.code.is_empty() {
+        return key_codes::modifier_virtual_key(&dom_key.key);
+    }
+    key_codes::virtual_key(&dom_key.code)
+}
+
 /// `key`, `key_char` and `shift` are the fields of `gpui::Keystroke`.
 fn dom_key(key: &str, key_char: Option<&str>, shift: bool) -> DomKey {
     if let Some(named) = named_key(key) {
@@ -704,6 +746,150 @@ mod tests {
         assert_eq!(typed_on("left", 0x7b, None), ("ArrowLeft".into(), "ArrowLeft".into()));
         assert_eq!(typed_on("f5", 0x60, None), ("F5".into(), "F5".into()));
         assert_eq!(typed_on("home", 0x73, None), ("Home".into(), "Home".into()));
+    }
+
+    fn legacy(keystroke: &gpui::Keystroke, native_key: &gpui::NativeKey) -> u32 {
+        legacy_key_code(keystroke, native_key, &dom_key_of_event(keystroke, native_key))
+    }
+
+    /// `keyCode` of a key a platform reported: `key` is GPUI's name (what the
+    /// key types ignoring option and control), `layout_char` what the layout
+    /// types on it with shift and option.
+    fn legacy_on(key: &str, key_code: u16, layout_char: Option<&str>) -> u32 {
+        let keystroke = gpui::Keystroke {
+            modifiers: gpui::Modifiers::default(),
+            key: key.to_string(),
+            key_char: layout_char.map(str::to_string),
+        };
+        let native_key = gpui::NativeKey {
+            key_code: Some(key_code),
+            layout_char: layout_char.map(str::to_string),
+        };
+        legacy(&keystroke, &native_key)
+    }
+
+    fn legacy_of_press(source: &str) -> u32 {
+        let press = parse_press(source).unwrap();
+        legacy(&press.keystroke, &press.native_key)
+    }
+
+    #[test]
+    fn a_latin_layout_decides_the_letter_code_by_the_character() {
+        assert_eq!(legacy_on("a", 0x00, Some("a")), 65);
+        assert_eq!(legacy_on("a", 0x00, Some("A")), 65);
+        // AZERTY: the key that types "a" is in the Q position.
+        assert_eq!(legacy_on("a", 0x0c, Some("a")), 65);
+        // Dvorak: the S position types "o".
+        assert_eq!(legacy_on("o", 0x01, Some("o")), 79);
+        // Option+s types "ß"; the key ignoring modifiers says "s".
+        assert_eq!(legacy_on("s", 0x01, Some("ß")), 83);
+    }
+
+    #[test]
+    fn a_non_latin_layout_uses_the_physical_keys_us_code() {
+        assert_eq!(legacy_on("ф", 0x00, Some("ф")), 65);
+        assert_eq!(legacy_on("с", 0x08, Some("с")), 67);
+        // The Cyrillic key in the semicolon position types "ж".
+        assert_eq!(legacy_on("ж", 0x29, Some("ж")), 186);
+    }
+
+    #[test]
+    fn the_digit_row_and_the_keypad_follow_the_physical_key() {
+        assert_eq!(legacy_on("1", 0x12, Some("1")), 49);
+        assert_eq!(legacy_on("1", 0x12, Some("!")), 49);
+        // AZERTY types "&" on the 1 key.
+        assert_eq!(legacy_on("&", 0x12, Some("&")), 49);
+        assert_eq!(legacy_on("0", 0x1d, Some("0")), 48);
+        assert_eq!(legacy_on("1", 0x53, Some("1")), 97);
+        assert_eq!(legacy_on("enter", 0x4c, None), 13);
+        assert_eq!(legacy_on("+", 0x45, Some("+")), 107);
+    }
+
+    #[test]
+    fn punctuation_follows_the_character_it_types() {
+        assert_eq!(legacy_on(";", 0x29, Some(";")), 186);
+        assert_eq!(legacy_on(";", 0x29, Some(":")), 186);
+        assert_eq!(legacy_on("-", 0x1b, Some("-")), 189);
+        assert_eq!(legacy_on("=", 0x18, Some("=")), 187);
+        assert_eq!(legacy_on("`", 0x32, Some("`")), 192);
+        assert_eq!(legacy_on("[", 0x21, Some("[")), 219);
+        assert_eq!(legacy_on("\\", 0x2a, Some("\\")), 220);
+        assert_eq!(legacy_on("]", 0x1e, Some("]")), 221);
+        assert_eq!(legacy_on("'", 0x27, Some("'")), 222);
+        // German types "ö" where QWERTY has ";".
+        assert_eq!(legacy_on("ö", 0x29, Some("ö")), 186);
+    }
+
+    #[test]
+    fn named_keys_and_modifiers_follow_the_physical_key() {
+        for (key, key_code, expected) in [
+            ("enter", 0x24, 13),
+            ("backspace", 0x33, 8),
+            ("tab", 0x30, 9),
+            ("escape", 0x35, 27),
+            ("space", 0x31, 32),
+            ("left", 0x7b, 37),
+            ("up", 0x7e, 38),
+            ("right", 0x7c, 39),
+            ("down", 0x7d, 40),
+            ("delete", 0x75, 46),
+            ("insert", 0x72, 45),
+            ("home", 0x73, 36),
+            ("end", 0x77, 35),
+            ("pageup", 0x74, 33),
+            ("pagedown", 0x79, 34),
+            ("f1", 0x7a, 112),
+            ("f12", 0x6f, 123),
+            ("f13", 0x69, 124),
+            ("shift", 0x38, 16),
+            ("shift", 0x3c, 16),
+            ("control", 0x3b, 17),
+            ("alt", 0x3a, 18),
+            ("alt", 0x3d, 18),
+            ("platform", 0x37, 91),
+            ("platform", 0x36, 93),
+            ("caps_lock", 0x39, 20),
+            ("function", 0x3f, 0),
+        ] {
+            assert_eq!(legacy_on(key, key_code, None), expected, "{key} {key_code:#x}");
+        }
+    }
+
+    #[test]
+    fn a_simulated_press_has_the_same_code_as_the_native_one() {
+        for (source, expected) in [
+            ("Enter", 13),
+            ("KeyA", 65),
+            ("a", 65),
+            ("A", 65),
+            ("Shift+a", 65),
+            ("Shift+KeyA", 65),
+            ("1", 49),
+            ("Shift+1", 49),
+            ("Digit1", 49),
+            ("Numpad1", 97),
+            ("NumpadEnter", 13),
+            ("NumpadAdd", 107),
+            ("Space", 32),
+            (" ", 32),
+            ("Tab", 9),
+            ("Escape", 27),
+            ("ArrowDown", 40),
+            ("F5", 116),
+            (";", 186),
+            ("Shift+;", 186),
+            ("Control+c", 67),
+            ("Meta+Shift+KeyC", 67),
+            ("Shift", 16),
+            ("ShiftLeft", 16),
+            ("Control", 17),
+            ("Alt", 18),
+            ("Meta", 91),
+            ("MetaLeft", 91),
+            ("MetaRight", 93),
+        ] {
+            assert_eq!(legacy_of_press(source), expected, "{source}");
+        }
     }
 
     #[test]

@@ -69,6 +69,18 @@ pub struct EventPayload {
     /// Populated for: keydown, keyup.
     pub code: Option<String>,
 
+    /// Legacy `KeyboardEvent.keyCode`, a Windows virtual-key code with the
+    /// numbers Chrome on macOS reports: 65-90 for letters, 48-57 for the digit
+    /// row, 13 for Enter, 37-40 for the arrows, 229 for a key the input method
+    /// took ("Process"), and 0 for a key Chrome gives no code. See
+    /// `events/key_codes.rs`.
+    /// Populated for: keydown, keyup.
+    pub key_code: Option<u32>,
+
+    /// Legacy `KeyboardEvent.which`, equal to `key_code`.
+    /// Populated for: keydown, keyup.
+    pub which: Option<u32>,
+
     /// The character produced by the key press (e.g. "ß" for option-s).
     /// May differ from `key` when modifiers are active.
     /// Populated for: keydown, keyup.
@@ -292,6 +304,8 @@ impl Default for EventPayload {
             pressed_button: None,
             key: None,
             code: None,
+            key_code: None,
+            which: None,
             key_char: None,
             is_held: None,
             repeat: None,

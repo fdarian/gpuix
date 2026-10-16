@@ -5,6 +5,11 @@
 //! layout: the key that types `a` on QWERTY and `q` on AZERTY is `KeyA` on both.
 //! The table is plain data keyed by the raw `u16`, so it is tested and used by
 //! the simulated keyboard on every platform.
+//!
+//! It also holds the legacy `KeyboardEvent.keyCode` (a Windows virtual-key
+//! code) that Chrome on macOS reports for each physical key, from Chromium's
+//! `KeyboardCodeFromKeyCode` and `KeyboardCodeFromCharCode`
+//! (`keyboard_code_conversion_mac.mm`).
 
 const MAC_KEY_CODES: &[(u16, &str)] = &[
     (0x00, "KeyA"),
@@ -146,6 +151,219 @@ pub(crate) fn key_code(code: &str) -> Option<u16> {
         .iter()
         .find(|(_, candidate)| *candidate == code)
         .map(|(key_code, _)| *key_code)
+}
+
+/// What `KeyboardEvent.keyCode` holds for a key with no legacy code: Chromium's
+/// `VKEY_UNKNOWN`.
+pub(crate) const VKEY_UNKNOWN: u32 = 0;
+
+/// `KeyboardEvent.keyCode` sent for a key an input method took first, whatever
+/// key it was.
+pub(crate) const VKEY_PROCESSKEY: u32 = 229;
+
+/// `(DOM code, keyCode)` of the physical key, as Chrome on macOS reports it
+/// when the layout's character does not decide the code (see `key_names`).
+/// Left and right modifiers share a code, except that the right Command key is
+/// the "apps" key (93). The keypad's Clear key, which Chromium names NumLock,
+/// is `VKEY_CLEAR` (12) on a Mac, and the keypad's equals sign is `=` (187).
+/// Keys Chromium maps to nothing are listed with `VKEY_UNKNOWN`.
+const VIRTUAL_KEYS: &[(&str, u32)] = &[
+    ("KeyA", 65),
+    ("KeyB", 66),
+    ("KeyC", 67),
+    ("KeyD", 68),
+    ("KeyE", 69),
+    ("KeyF", 70),
+    ("KeyG", 71),
+    ("KeyH", 72),
+    ("KeyI", 73),
+    ("KeyJ", 74),
+    ("KeyK", 75),
+    ("KeyL", 76),
+    ("KeyM", 77),
+    ("KeyN", 78),
+    ("KeyO", 79),
+    ("KeyP", 80),
+    ("KeyQ", 81),
+    ("KeyR", 82),
+    ("KeyS", 83),
+    ("KeyT", 84),
+    ("KeyU", 85),
+    ("KeyV", 86),
+    ("KeyW", 87),
+    ("KeyX", 88),
+    ("KeyY", 89),
+    ("KeyZ", 90),
+    ("Digit0", 48),
+    ("Digit1", 49),
+    ("Digit2", 50),
+    ("Digit3", 51),
+    ("Digit4", 52),
+    ("Digit5", 53),
+    ("Digit6", 54),
+    ("Digit7", 55),
+    ("Digit8", 56),
+    ("Digit9", 57),
+    ("Numpad0", 96),
+    ("Numpad1", 97),
+    ("Numpad2", 98),
+    ("Numpad3", 99),
+    ("Numpad4", 100),
+    ("Numpad5", 101),
+    ("Numpad6", 102),
+    ("Numpad7", 103),
+    ("Numpad8", 104),
+    ("Numpad9", 105),
+    ("F1", 112),
+    ("F2", 113),
+    ("F3", 114),
+    ("F4", 115),
+    ("F5", 116),
+    ("F6", 117),
+    ("F7", 118),
+    ("F8", 119),
+    ("F9", 120),
+    ("F10", 121),
+    ("F11", 122),
+    ("F12", 123),
+    ("F13", 124),
+    ("F14", 125),
+    ("F15", 126),
+    ("F16", 127),
+    ("F17", 128),
+    ("F18", 129),
+    ("F19", 130),
+    ("F20", 131),
+    ("F21", 132),
+    ("F22", 133),
+    ("F23", 134),
+    ("F24", 135),
+    ("Enter", 13),
+    ("NumpadEnter", 13),
+    ("Escape", 27),
+    ("Tab", 9),
+    ("Backspace", 8),
+    ("Space", 32),
+    ("Delete", 46),
+    ("Insert", 45),
+    ("Home", 36),
+    ("End", 35),
+    ("PageUp", 33),
+    ("PageDown", 34),
+    ("ArrowLeft", 37),
+    ("ArrowUp", 38),
+    ("ArrowRight", 39),
+    ("ArrowDown", 40),
+    ("Minus", 189),
+    ("Equal", 187),
+    ("BracketLeft", 219),
+    ("BracketRight", 221),
+    ("Backslash", 220),
+    ("Semicolon", 186),
+    ("Quote", 222),
+    ("Comma", 188),
+    ("Period", 190),
+    ("Slash", 191),
+    ("Backquote", 192),
+    ("IntlBackslash", 192),
+    ("ShiftLeft", 16),
+    ("ShiftRight", 16),
+    ("ControlLeft", 17),
+    ("ControlRight", 17),
+    ("AltLeft", 18),
+    ("AltRight", 18),
+    ("MetaLeft", 91),
+    ("MetaRight", 93),
+    ("ContextMenu", 93),
+    ("CapsLock", 20),
+    ("NumpadMultiply", 106),
+    ("NumpadAdd", 107),
+    ("NumpadSubtract", 109),
+    ("NumpadDecimal", 110),
+    ("NumpadDivide", 111),
+    ("NumpadEqual", 187),
+    ("AudioVolumeUp", 175),
+    ("AudioVolumeDown", 174),
+    ("AudioVolumeMute", 173),
+    ("ScrollLock", 145),
+    ("PrintScreen", 44),
+    ("Pause", 19),
+    ("BrowserBack", 166),
+    ("BrowserForward", 167),
+    ("NumLock", 12),
+    ("Fn", VKEY_UNKNOWN),
+    ("NumpadComma", VKEY_UNKNOWN),
+    ("IntlYen", VKEY_UNKNOWN),
+    ("IntlRo", VKEY_UNKNOWN),
+    ("Lang1", VKEY_UNKNOWN),
+    ("Lang2", VKEY_UNKNOWN),
+];
+
+/// `keyCode` of a modifier named by `key` alone, which is how a simulated press
+/// of `"Shift"` arrives: no physical key, so no side.
+const MODIFIER_VIRTUAL_KEYS: &[(&str, u32)] = &[
+    ("Shift", 16),
+    ("Control", 17),
+    ("Alt", 18),
+    ("Meta", 91),
+];
+
+/// `keyCode` of the printable characters Chromium recognises by what they
+/// type, shifted and unshifted, on a US layout.
+const CHARACTER_VIRTUAL_KEYS: &[(char, u32)] = &[
+    (';', 186),
+    (':', 186),
+    ('=', 187),
+    ('+', 187),
+    (',', 188),
+    ('<', 188),
+    ('-', 189),
+    ('_', 189),
+    ('.', 190),
+    ('>', 190),
+    ('/', 191),
+    ('?', 191),
+    ('`', 192),
+    ('~', 192),
+    ('[', 219),
+    ('{', 219),
+    ('\\', 220),
+    ('|', 220),
+    (']', 221),
+    ('}', 221),
+    ('\'', 222),
+    ('"', 222),
+];
+
+/// The `keyCode` of a physical key by its DOM `code`.
+pub(crate) fn virtual_key(code: &str) -> u32 {
+    VIRTUAL_KEYS
+        .iter()
+        .find(|(candidate, _)| *candidate == code)
+        .map_or(VKEY_UNKNOWN, |(_, virtual_key)| *virtual_key)
+}
+
+/// The `keyCode` of a modifier given only its DOM `key`.
+pub(crate) fn modifier_virtual_key(key: &str) -> u32 {
+    MODIFIER_VIRTUAL_KEYS
+        .iter()
+        .find(|(candidate, _)| *candidate == key)
+        .map_or(VKEY_UNKNOWN, |(_, virtual_key)| *virtual_key)
+}
+
+/// The `keyCode` of a character a key types, for the letters, digits and
+/// punctuation Chromium maps by character; `None` for any other character.
+pub(crate) fn character_virtual_key(character: char) -> Option<u32> {
+    if character.is_ascii_alphabetic() {
+        return Some(u32::from(character.to_ascii_uppercase()));
+    }
+    if character.is_ascii_digit() {
+        return Some(u32::from(character));
+    }
+    CHARACTER_VIRTUAL_KEYS
+        .iter()
+        .find(|(candidate, _)| *candidate == character)
+        .map(|(_, virtual_key)| *virtual_key)
 }
 
 #[cfg(test)]
@@ -302,6 +520,128 @@ mod tests {
         for (key_code_value, code_value) in MAC_KEY_CODES {
             assert_eq!(code(*key_code_value), Some(*code_value));
             assert_eq!(key_code(code_value), Some(*key_code_value));
+        }
+    }
+
+    #[test]
+    fn letters_and_digits_have_their_ascii_codes() {
+        assert_eq!(virtual_key("KeyA"), 65);
+        assert_eq!(virtual_key("KeyZ"), 90);
+        assert_eq!(virtual_key("Digit0"), 48);
+        assert_eq!(virtual_key("Digit9"), 57);
+        assert_eq!(character_virtual_key('a'), Some(65));
+        assert_eq!(character_virtual_key('Q'), Some(81));
+        assert_eq!(character_virtual_key('7'), Some(55));
+    }
+
+    #[test]
+    fn punctuation_keys_have_the_oem_codes() {
+        for (code, character, shifted, expected) in [
+            ("Semicolon", ';', ':', 186),
+            ("Equal", '=', '+', 187),
+            ("Comma", ',', '<', 188),
+            ("Minus", '-', '_', 189),
+            ("Period", '.', '>', 190),
+            ("Slash", '/', '?', 191),
+            ("Backquote", '`', '~', 192),
+            ("BracketLeft", '[', '{', 219),
+            ("Backslash", '\\', '|', 220),
+            ("BracketRight", ']', '}', 221),
+            ("Quote", '\'', '"', 222),
+        ] {
+            assert_eq!(virtual_key(code), expected, "{code}");
+            assert_eq!(character_virtual_key(character), Some(expected), "{character}");
+            assert_eq!(character_virtual_key(shifted), Some(expected), "{shifted}");
+        }
+        assert_eq!(virtual_key("IntlBackslash"), 192);
+        assert_eq!(character_virtual_key('é'), None);
+        assert_eq!(character_virtual_key('ф'), None);
+    }
+
+    #[test]
+    fn the_numpad_has_its_own_codes() {
+        assert_eq!(virtual_key("Numpad0"), 96);
+        assert_eq!(virtual_key("Numpad9"), 105);
+        assert_eq!(virtual_key("NumpadMultiply"), 106);
+        assert_eq!(virtual_key("NumpadAdd"), 107);
+        assert_eq!(virtual_key("NumpadSubtract"), 109);
+        assert_eq!(virtual_key("NumpadDecimal"), 110);
+        assert_eq!(virtual_key("NumpadDivide"), 111);
+        assert_eq!(virtual_key("NumpadEnter"), 13);
+        assert_eq!(virtual_key("NumpadEqual"), 187);
+        assert_eq!(virtual_key("Enter"), 13);
+        // The keypad's Clear key, which Chromium reports as NumLock.
+        assert_eq!(virtual_key("NumLock"), 12);
+    }
+
+    #[test]
+    fn function_keys_count_from_112() {
+        assert_eq!(virtual_key("F1"), 112);
+        assert_eq!(virtual_key("F12"), 123);
+        assert_eq!(virtual_key("F13"), 124);
+        assert_eq!(virtual_key("F20"), 131);
+        assert_eq!(virtual_key("F24"), 135);
+        assert_eq!(virtual_key("F25"), VKEY_UNKNOWN);
+    }
+
+    #[test]
+    fn modifiers_share_a_code_across_sides_except_the_right_command_key() {
+        for (code, expected) in [
+            ("ShiftLeft", 16),
+            ("ShiftRight", 16),
+            ("ControlLeft", 17),
+            ("ControlRight", 17),
+            ("AltLeft", 18),
+            ("AltRight", 18),
+            ("MetaLeft", 91),
+            ("MetaRight", 93),
+            ("CapsLock", 20),
+        ] {
+            assert_eq!(virtual_key(code), expected, "{code}");
+        }
+        assert_eq!(modifier_virtual_key("Shift"), 16);
+        assert_eq!(modifier_virtual_key("Meta"), 91);
+        assert_eq!(modifier_virtual_key("Enter"), VKEY_UNKNOWN);
+    }
+
+    #[test]
+    fn editing_and_navigation_keys_have_their_codes() {
+        for (code, expected) in [
+            ("Backspace", 8),
+            ("Tab", 9),
+            ("Enter", 13),
+            ("Escape", 27),
+            ("Space", 32),
+            ("PageUp", 33),
+            ("PageDown", 34),
+            ("End", 35),
+            ("Home", 36),
+            ("ArrowLeft", 37),
+            ("ArrowUp", 38),
+            ("ArrowRight", 39),
+            ("ArrowDown", 40),
+            ("Insert", 45),
+            ("Delete", 46),
+            ("ContextMenu", 93),
+        ] {
+            assert_eq!(virtual_key(code), expected, "{code}");
+        }
+    }
+
+    #[test]
+    fn a_key_without_a_legacy_code_is_vkey_unknown() {
+        for code in ["Fn", "IntlYen", "IntlRo", "NumpadComma", "Lang1", "Lang2", "Unknown", ""] {
+            assert_eq!(virtual_key(code), VKEY_UNKNOWN, "{code}");
+        }
+    }
+
+    #[test]
+    fn every_physical_key_of_the_mac_table_has_a_row() {
+        for (_, code_value) in MAC_KEY_CODES {
+            assert!(
+                VIRTUAL_KEYS.iter().any(|(candidate, _)| candidate == code_value),
+                "{code_value} has no keyCode row"
+            );
         }
     }
 }

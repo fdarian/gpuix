@@ -118,4 +118,35 @@ describeNative("DOM-shaped key events", () => {
     expect(events.every((event) => event.isComposing === false)).toBe(true)
     expect(events.find((event) => event.type === "keyup").repeat).toBe(false)
   })
+
+  /** `[keyCode, which]` of each keydown, in order. */
+  const legacyCodes = () =>
+    events.filter((event) => event.type === "keydown").map((event) => [event.keyCode, event.which])
+
+  it("carries Chrome's legacy keyCode and which, equal, on keydown and keyup", () => {
+    press("Enter KeyA a Shift+a 1 Shift+1 Space Tab Escape Backspace Delete ArrowLeft ArrowDown F1 F12")
+    expect(legacyCodes()).toEqual(
+      [13, 65, 65, 65, 49, 49, 32, 9, 27, 8, 46, 37, 40, 112, 123].map((code) => [code, code])
+    )
+    const keyups = events.filter((event) => event.type === "keyup")
+    expect(keyups.map((event) => [event.keyCode, event.which])).toEqual(legacyCodes())
+  })
+
+  it("uses the OEM numbers for punctuation and the 96-111 range for the keypad", () => {
+    press("; = , - . / ` [ \\ ] ' Numpad0 Numpad9 NumpadMultiply NumpadAdd NumpadSubtract NumpadDecimal NumpadDivide NumpadEnter")
+    expect(legacyCodes().map(([code]) => code)).toEqual([
+      186, 187, 188, 189, 190, 191, 192, 219, 220, 221, 222, 96, 105, 106, 107, 109, 110, 111, 13,
+    ])
+  })
+
+  it("tells the left Command key (91) from the right one (93) and numbers the other modifiers", () => {
+    press("ShiftLeft ControlRight AltLeft MetaLeft MetaRight CapsLock Shift Meta")
+    expect(legacyCodes().map(([code]) => code)).toEqual([16, 17, 18, 91, 93, 20, 16, 91])
+  })
+
+  it("keeps the code of the key with a modifier held", () => {
+    press("Shift+a Control+c Meta+Shift+KeyC")
+    expect(legacyCodes().map(([code]) => code)).toEqual([65, 67, 67])
+    expect(events[0].key).toBe("A")
+  })
 })

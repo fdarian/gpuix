@@ -20,7 +20,7 @@ use gpui::{App, WeakFocusHandle, Window};
 
 use crate::element_tree::{EventModifiers, EventPayload};
 use crate::events::state::PointerState;
-use crate::events::{key_names, sync_dispatch};
+use crate::events::{key_codes, key_names, sync_dispatch};
 use crate::renderer::EventCallback;
 use crate::retained_tree::RetainedTree;
 
@@ -144,10 +144,13 @@ fn key_payload(
         return None;
     }
     let dom_key = key_names::dom_key_of_event(keystroke, native_key);
+    let key_code = key_names::legacy_key_code(keystroke, native_key, &dom_key);
     let mut payload = EventPayload {
         event_type: event_type.to_string(),
         key: Some(dom_key.key),
         code: Some(dom_key.code),
+        key_code: Some(key_code),
+        which: Some(key_code),
         key_char: keystroke.key_char.clone(),
         is_held,
         repeat: Some(is_held.unwrap_or(false)),
@@ -253,6 +256,8 @@ pub(crate) fn install_key_down(
         // What the key types is the input method's to decide, so the page is
         // told it was processed, as Chrome does.
         payload.key = Some(PROCESS_KEY.to_string());
+        payload.key_code = Some(key_codes::VKEY_PROCESSKEY);
+        payload.which = Some(key_codes::VKEY_PROCESSKEY);
         payload.key_char = None;
         // The input method has the key whatever a handler says, so the outcome
         // (`preventDefault`) is not read.
@@ -467,6 +472,49 @@ mod tests {
             sent,
             [("keydown".into(), "ArrowLeft".into(), "ArrowLeft".into(), None, true)]
         );
+    }
+
+    /// `(keyCode, which)` of everything the window sent for `input`.
+    fn legacy_codes_for(
+        cx: &mut gpui::TestAppContext,
+        input: impl FnOnce(&mut Window, &mut App) + 'static,
+    ) -> Vec<(Option<u32>, Option<u32>)> {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let callback: Option<EventCallback> = Some({
+            let sent = sent.clone();
+            Arc::new(move |payload: EventPayload| {
+                sent.lock().unwrap().push((payload.key_code, payload.which));
+            })
+        });
+        let routing = InputRouting::default();
+        routing.set_window_keys(true, false, 1);
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        let window = cx.add_window(|_, _| Blank);
+        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing, Rc::default()));
+        cx.update_window(window.into(), |_, window, cx| input(window, cx)).unwrap();
+        let sent = sent.lock().unwrap().clone();
+        sent
+    }
+
+    #[gpui::test]
+    fn a_key_the_input_method_takes_has_key_code_229(cx: &mut gpui::TestAppContext) {
+        let sent = legacy_codes_for(cx, |window, cx| {
+            let key = key_down("a", native(0x00, Some("a")), true);
+            window.dispatch_event(gpui::PlatformInput::ImeKeyDown(key), cx);
+        });
+        assert_eq!(sent, [(Some(229), Some(229))]);
+    }
+
+    #[gpui::test]
+    fn an_ordinary_key_has_its_chrome_key_code_and_which(cx: &mut gpui::TestAppContext) {
+        let sent = legacy_codes_for(cx, |window, cx| {
+            // Cyrillic layout, the key at the A position
+            let cyrillic = gpui::Keystroke { key: "ф".into(), key_char: Some("ф".into()), ..Default::default() };
+            window.dispatch_native_keystroke(cyrillic, native(0x00, Some("ф")), cx);
+            let left = key_down("left", native(0x7b, None), false);
+            window.dispatch_event(gpui::PlatformInput::KeyDown(left), cx);
+        });
+        assert_eq!(sent, [(Some(65), Some(65)), (Some(37), Some(37))]);
     }
 
     fn pointer_sample(

@@ -3670,6 +3670,27 @@ auto-repeat, `isComposing` is true while an input method composition is open
 and `press()` test helpers take these same names (`"Enter"`,
 `"Shift+Tab"`), see [Simulating keys](#simulating-keys).
 
+The legacy `event.keyCode` and `event.which` are on `keydown` and `keyup`, equal
+to each other, with the numbers Chrome on macOS reports: `65`-`90` for letters
+(`"a"` and `"A"` are both `65`), `48`-`57` for the digit row, `13` for Enter and
+NumpadEnter, `8` Backspace, `9` Tab, `27` Escape, `32` Space, `37`-`40` the
+arrows, `33`/`34` PageUp/PageDown, `35`/`36` End/Home, `45` Insert, `46`
+Delete, `112`-`123` F1-F12 (`124`+ for F13 and up), `16` Shift, `17` Control,
+`18` Alt, `91` left Command and `93` right Command, `20` CapsLock, `96`-`105`
+Numpad0-9, `106` `107` `109` `110` `111` for the keypad's `*` `+` `-` `.` `/`,
+and for punctuation `186` `;`, `187` `=`, `188` `,`, `189` `-`, `190` `.`,
+`191` `/`, `192` `` ` ``, `219` `[`, `220` `\`, `221` `]`, `222` `'`. A letter or
+punctuation key takes its number from the character the layout types on it
+(Dvorak's `o` in the S position is `79`), and the digit row and keypad from the
+physical key; a layout with no Latin letters (Cyrillic) falls back to the
+US-layout number of the physical key. A key an input method took (`key`
+`"Process"`) is `229`, and a key Chrome gives no number (Fn) is `0`. They are
+legacy: prefer `key` and `code`. There is no `keypress` event, so there is no
+`charCode`.
+
+The `simulateKeystrokes` and `press()` test helpers take these same names
+(`"Enter"`, `"Shift+Tab"`), see [Simulating keys](#simulating-keys).
+
 An element still needs a `tabIndex` to be focused, so a bare `div` with
 `onKeyDown` only hears keys that bubble up from a focused descendant.
 
@@ -3714,7 +3735,7 @@ an `<input>` or `<textarea>`, and the events follow Chrome's:
 
 Windows and Linux report `isComposing` false and fire no composition events.
 A value an app sets while a composition is open ends it without a
-`compositionend`. `change` has no `inputType`, and events carry no `keyCode`.
+`compositionend`. `change` has no `inputType`.
 In the test renderer, [`simulateComposition`](#simulating-keys) runs the
 sequence.
 
