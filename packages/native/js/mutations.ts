@@ -88,6 +88,9 @@ export function createMutationQueue(
     setKeyboardFocusDim(enabled) {
       enqueue(["setKeyboardFocusDim", enabled])
     },
+    setUniversalStyle(style) {
+      enqueue(["setUniversalStyle", style])
+    },
     setCustomProp(id, key, value) {
       blobImages.prop(id, key, value)
       enqueue(["setCustomProp", id, key, value])
@@ -114,7 +117,11 @@ export function createMutationQueue(
           // so a second rejection names its index in the shortened batch.
           const index = rejectedStyleIndex(error)
           const mutation = index === undefined ? undefined : queue[index]
-          if (index === undefined || mutation === undefined || mutation[0] !== "setStyle") {
+          if (
+            index === undefined ||
+            mutation === undefined ||
+            (mutation[0] !== "setStyle" && mutation[0] !== "setUniversalStyle")
+          ) {
             throw error
           }
           rejection ??= error
@@ -128,9 +135,9 @@ export function createMutationQueue(
   return mutations
 }
 
-/** The batch index native names when it rejects a `setStyle` payload. */
+/** The batch index native names when it rejects a `setStyle` or `setUniversalStyle` payload. */
 function rejectedStyleIndex(error: unknown): number | undefined {
-  const match = /^Batch op (\d+) setStyle parse error/.exec(
+  const match = /^Batch op (\d+) set(?:Universal)?Style parse error/.exec(
     error instanceof Error ? error.message : String(error)
   )
   return match ? Number(match[1]) : undefined

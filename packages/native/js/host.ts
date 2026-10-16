@@ -57,6 +57,7 @@ export * from "./text-selection.js"
 export * from "./scroll.js"
 export * from "./reorder.js"
 export * from "./svg.js"
+export * from "./universal-style.js"
 
 /**
  * A number is px. A string is a CSS length: `px`, `in`, `cm`, `mm`, `q`, `pt`, `pc`, `%`,
@@ -2077,6 +2078,12 @@ export interface MutationRenderer {
   setEventListener(id: number, eventType: string, hasHandler: boolean): void
   setRoot(id: number): void
   setKeyboardFocusDim(enabled: boolean): void
+  /**
+   * The style layer under every element's own style, a CSS `* { ... }` rule, or
+   * `null` for none. Use `pushUniversalStyle` rather than this, which lets
+   * several components share the one layer.
+   */
+  setUniversalStyle(style: StyleDesc | null): void
   setCustomProp(id: number, key: string, value: object | string | number | boolean | null): void
   /**
    * Schedule the flush a queued mutation would have scheduled. An adapter that
