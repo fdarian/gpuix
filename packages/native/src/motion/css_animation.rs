@@ -26,7 +26,7 @@ use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::AnimProp;
 use super::track::{Goal, Track};
-use super::value::{AnimValue, Colors};
+use super::value::{AnimValue, Colors, Interpolation};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -767,7 +767,7 @@ impl Planner<'_> {
         };
         let name = prop.name();
         let built = Goal::keyframes(name, literal.iter().cloned().map(Some).collect()).and_then(|goal| {
-            Track::keyframed(name, goal, literal.clone(), &resolved, transition, self.now)
+            Track::keyframed(name, goal, literal.clone(), &resolved, Interpolation::Css, transition, self.now)
         });
         match built {
             Ok(track) => Some(PropPlan::Continuous { prop, track, measured: literal != resolved, literal }),
@@ -2099,17 +2099,58 @@ mod tests {
         );
     }
 
+    fn background(style: &StyleDesc) -> [f32; 3] {
+        let color = crate::color::parse_color_rgba(style.background_color.as_deref().unwrap()).unwrap();
+        [color.r, color.g, color.b]
+    }
+
+    fn assert_colour(actual: [f32; 3], expected: &str) {
+        let expected = crate::color::parse_color_rgba(expected).unwrap();
+        for (actual, expected) in actual.into_iter().zip([expected.r, expected.g, expected.b]) {
+            assert!((actual - expected).abs() < 0.01, "{actual:?} vs {expected:?}");
+        }
+    }
+
     #[test]
-    fn colours_interpolate_like_motion_does() {
+    fn legacy_keyframe_colours_interpolate_in_srgb() {
         let mut frames = Frames::new();
         frames.define(
             "tint",
-            r##"{ "from": { "backgroundColor": "#000000" }, "to": { "backgroundColor": "#ffffff" } }"##,
+            r##"{ "from": { "backgroundColor": "red" }, "to": { "backgroundColor": "hsl(240 100% 50%)" } }"##,
         );
         let animated = fading("tint 1s linear");
-        let sample = frames.frame(500, &animated);
-        assert!(sample.background_color.is_some());
-        assert_ne!(sample.background_color.as_deref(), Some("#000000"));
+        frames.frame(0, &animated);
+        assert_colour(background(&frames.frame(500, &animated)), "#800080");
+    }
+
+    #[test]
+    fn a_modern_keyframe_colour_interpolates_in_oklab() {
+        let mut frames = Frames::new();
+        frames.define(
+            "tint",
+            r##"{ "from": { "backgroundColor": "oklch(0.62796 0.25768 29.234)" }, "to": { "backgroundColor": "blue" } }"##,
+        );
+        let animated = fading("tint 1s linear");
+        frames.frame(0, &animated);
+        assert_colour(background(&frames.frame(500, &animated)), "oklab(0.539985 0.096200 -0.092840)");
+    }
+
+    #[test]
+    fn each_pair_of_neighbouring_keyframes_picks_its_own_space() {
+        let mut frames = Frames::new();
+        frames.define(
+            "tint",
+            r##"{
+                "0%": { "backgroundColor": "red" },
+                "50%": { "backgroundColor": "blue" },
+                "100%": { "backgroundColor": "oklch(0.7 0.15 150)" }
+            }"##,
+        );
+        let animated = fading("tint 1s linear");
+        frames.frame(0, &animated);
+        // Legacy to legacy, then legacy to modern.
+        assert_colour(background(&frames.frame(250, &animated)), "#800080");
+        assert_colour(background(&frames.frame(750, &animated)), "oklab(0.576005 -0.081182 -0.118265)");
     }
 
     #[test]

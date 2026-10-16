@@ -24,7 +24,7 @@ use web_time::Instant;
 
 use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, Transition};
 use super::track::{Goal, Track};
-use super::value::{pair, AnimValue, Layout, Pair};
+use super::value::{pair, AnimValue, Interpolation, Layout, Pair};
 
 const NAME: &str = "motion value";
 
@@ -521,7 +521,7 @@ impl Source {
                     (None, None) => from.clone(),
                 });
             }
-            Track::keyframed(NAME, goal, literal.clone(), &literal, transition, now)?
+            Track::keyframed(NAME, goal, literal.clone(), &literal, Interpolation::Oklab, transition, now)?
         };
         // A track that opens on a keyframe of its own does not start at the
         // speed the value had.

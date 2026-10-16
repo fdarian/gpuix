@@ -37,7 +37,7 @@ use property::AnimProp;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
 pub(crate) use value::Colors;
-use value::AnimValue;
+use value::{AnimValue, Interpolation};
 
 /// The animated properties' current values, ready to lay over a style.
 pub(crate) struct MotionStyle(Vec<(AnimProp, AnimValue)>);
@@ -962,8 +962,16 @@ fn begin_keyframes(
         (_, true, None) => return Ok(wait(literal.first().cloned())),
         _ => literal.clone(),
     };
-    Track::keyframed(name, goal.clone(), literal, &resolved, transition.clone(), now)
-        .map(Begun::Track)
+    Track::keyframed(
+        name,
+        goal.clone(),
+        literal,
+        &resolved,
+        Interpolation::Oklab,
+        transition.clone(),
+        now,
+    )
+    .map(Begun::Track)
 }
 
 /// Whether the keyframes have to go through px: `auto` has no number of its

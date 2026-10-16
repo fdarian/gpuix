@@ -7,6 +7,7 @@
 use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
+use crate::css::color_space::Space;
 use crate::style::StyleDesc;
 
 /// The colour contexts an element's animated colours resolve in, so
@@ -55,28 +56,43 @@ impl Colors {
 /// A colour in Oklab with straight (not premultiplied) alpha. Channels are
 /// premultiplied while interpolating, as CSS Color 4 requires, so fading to
 /// `transparent` does not drag the hue through grey.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct Color {
     lab: [f64; 3],
     alpha: f64,
+    /// Written in a legacy syntax (hex, a name, `rgb()`, `hsl()`), which CSS
+    /// interpolates in sRGB against another legacy colour. See [`Interpolation`].
+    legacy: bool,
+}
+
+// The syntax is not part of the value: `red` and `#ff0000` are no change, and
+// a style that still computes to the same colour must not restart a transition.
+impl PartialEq for Color {
+    fn eq(&self, other: &Self) -> bool {
+        self.lab == other.lab && self.alpha == other.alpha
+    }
 }
 
 impl Color {
     pub(super) const TRANSPARENT: Self = Self {
         lab: [0.0; 3],
         alpha: 0.0,
+        legacy: true,
     };
 
     pub(super) fn parse(value: &str, colors: &ColorContext) -> Option<Self> {
-        colors.resolve(value).map(Self::from_rgba)
+        colors
+            .resolve(value)
+            .map(|rgba| Self::from_rgba(rgba, crate::color::is_legacy_syntax(value, colors)))
     }
 
-    pub(super) fn from_rgba(rgba: gpui::Rgba) -> Self {
+    pub(super) fn from_rgba(rgba: gpui::Rgba, legacy: bool) -> Self {
         let [l, a, b, alpha] =
             csscolorparser::Color::new(rgba.r, rgba.g, rgba.b, rgba.a).to_oklaba();
         Self {
             lab: [l as f64, a as f64, b as f64],
             alpha: alpha as f64,
+            legacy,
         }
     }
 
@@ -90,10 +106,13 @@ impl Color {
         ]
     }
 
-    fn from_channels(channels: &[f64]) -> Self {
+    fn from_channels(channels: &[f64], legacy: bool) -> Self {
         let alpha = channels[3];
         if alpha <= 0.0 {
-            return Self::TRANSPARENT;
+            return Self {
+                legacy,
+                ..Self::TRANSPARENT
+            };
         }
         Self {
             lab: [
@@ -102,6 +121,7 @@ impl Color {
                 channels[2] / alpha,
             ],
             alpha: alpha.min(1.0),
+            legacy,
         }
     }
 
@@ -149,19 +169,79 @@ impl Shadow {
         channels.extend(self.color.channels());
     }
 
-    fn from_channels(channels: &[f64], inset: bool) -> Self {
+    fn from_channels(channels: &[f64], inset: bool, legacy: bool) -> Self {
         Self {
             offset_x: channels[0],
             offset_y: channels[1],
             blur: channels[2],
             spread: channels[3],
-            color: Color::from_channels(&channels[4..8]),
+            color: Color::from_channels(&channels[SHADOW_COLOUR..SHADOW_CHANNELS], legacy),
             inset,
         }
     }
 }
 
 const SHADOW_CHANNELS: usize = 8;
+/// Where a layer's colour channels start: after its offsets, blur and spread.
+const SHADOW_COLOUR: usize = 4;
+
+/// The space two colours blend in. Channels are stored in premultiplied Oklab
+/// whatever the blend, so a retarget or a spring reads them the same way.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Blend {
+    Oklab,
+    Srgb,
+}
+
+/// How a colour pair picks its [`Blend`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Interpolation {
+    /// Oklab for every pair. `motion` springs carry a velocity per channel and
+    /// Framer has no notion of colour syntax, so they never change space.
+    Oklab,
+    /// CSS Color 4: sRGB when both colours are written in a legacy syntax,
+    /// Oklab otherwise. For CSS transitions and CSS animations.
+    Css,
+}
+
+impl Interpolation {
+    fn blend(self, from: &Color, to: &Color) -> Blend {
+        if self == Self::Css && from.legacy && to.legacy {
+            Blend::Srgb
+        } else {
+            Blend::Oklab
+        }
+    }
+}
+
+/// `to` sits `progress` of the way from `from` (both premultiplied Oklab) when
+/// the pair blends in premultiplied sRGB. The sRGB channels are not clamped, so
+/// an overshooting easing extrapolates past the gamut and `Color::to_css`
+/// clips once, at the end.
+fn blend_in_srgb(out: &mut [f64], from: &[f64], to: &[f64], progress: f64) {
+    let from = premultiplied_srgb(from);
+    let to = premultiplied_srgb(to);
+    let mixed: [f64; 4] = std::array::from_fn(|index| from[index] + (to[index] - from[index]) * progress);
+    out.copy_from_slice(&premultiplied_oklab(mixed));
+}
+
+fn premultiplied_srgb(oklab: &[f64]) -> [f64; 4] {
+    let alpha = oklab[3];
+    if alpha <= 0.0 {
+        return [0.0; 4];
+    }
+    let [r, g, b] = Space::Oklab.to_srgb([oklab[0] / alpha, oklab[1] / alpha, oklab[2] / alpha]);
+    [r * alpha, g * alpha, b * alpha, alpha]
+}
+
+fn premultiplied_oklab(srgb: [f64; 4]) -> [f64; 4] {
+    let alpha = srgb[3];
+    if alpha <= 0.0 {
+        return [0.0; 4];
+    }
+    let [l, a, b] = Space::Oklab.from_srgb([srgb[0] / alpha, srgb[1] / alpha, srgb[2] / alpha]);
+    [l * alpha, a * alpha, b * alpha, alpha]
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum AnimValue {
@@ -203,9 +283,14 @@ impl AnimValue {
 pub(super) enum Layout {
     Number,
     Percent,
-    Color,
-    /// One entry per layer, giving its `inset`.
-    Shadows(Vec<bool>),
+    /// The [`Blend`] of each segment between two keyframes.
+    Color(Vec<Blend>),
+    Shadows {
+        /// One entry per layer.
+        insets: Vec<bool>,
+        /// The blend of each layer's colour, per segment.
+        blends: Vec<Vec<Blend>>,
+    },
     /// Shadow lists whose `inset` flags differ at some index cannot be
     /// interpolated: one channel runs from option to option and the value
     /// flips at the halfway point between them.
@@ -275,12 +360,16 @@ impl Layout {
         match self {
             Self::Number => AnimValue::Number(channels[0]),
             Self::Percent => AnimValue::Percent(channels[0]),
-            Self::Color => AnimValue::Color(Color::from_channels(channels)),
-            Self::Shadows(insets) => AnimValue::Shadows(
+            Self::Color(blends) => AnimValue::Color(Color::from_channels(channels, all_srgb(blends))),
+            Self::Shadows { insets, blends } => AnimValue::Shadows(
                 insets
                     .iter()
                     .zip(channels.chunks(SHADOW_CHANNELS))
-                    .map(|(inset, layer)| Shadow::from_channels(layer, *inset))
+                    .enumerate()
+                    .map(|(index, (inset, layer))| {
+                        let legacy = blends.iter().all(|segment| segment[index] == Blend::Srgb);
+                        Shadow::from_channels(layer, *inset, legacy)
+                    })
                     .collect(),
             ),
             Self::DiscreteShadows(options) => {
@@ -303,12 +392,45 @@ impl Layout {
         match (self, other) {
             (Self::Number, Self::Number)
             | (Self::Percent, Self::Percent)
-            | (Self::Color, Self::Color) => true,
-            (Self::Shadows(a), Self::Shadows(b)) => a.len() == b.len(),
+            | (Self::Color(_), Self::Color(_)) => true,
+            (Self::Shadows { insets: a, .. }, Self::Shadows { insets: b, .. }) => a.len() == b.len(),
             (Self::Numbers, Self::Numbers) => true,
             (Self::Path(a), Self::Path(b)) => a.same_structure(b),
             _ => false,
         }
+    }
+}
+
+fn all_srgb(blends: &[Blend]) -> bool {
+    blends.iter().all(|blend| *blend == Blend::Srgb)
+}
+
+impl Layout {
+    /// The channels `progress` of the way from `from` to `to`, the keyframes of
+    /// segment number `segment`. Linear except where a colour blends in sRGB,
+    /// which is not linear in the stored Oklab channels. Progress outside 0..=1
+    /// extrapolates, which is how an overshooting easing is applied.
+    pub(super) fn blend(&self, segment: usize, from: &[f64], to: &[f64], progress: f64) -> Vec<f64> {
+        let mut channels: Vec<f64> = from
+            .iter()
+            .zip(to)
+            .map(|(from, to)| from + (to - from) * progress)
+            .collect();
+        match self {
+            Self::Color(blends) if blends[segment] == Blend::Srgb => {
+                blend_in_srgb(&mut channels, from, to, progress);
+            }
+            Self::Shadows { blends, .. } => {
+                for (layer, blend) in blends[segment].iter().enumerate() {
+                    if *blend == Blend::Srgb {
+                        let colour = layer * SHADOW_CHANNELS + SHADOW_COLOUR..(layer + 1) * SHADOW_CHANNELS;
+                        blend_in_srgb(&mut channels[colour.clone()], &from[colour.clone()], &to[colour], progress);
+                    }
+                }
+            }
+            _ => {}
+        }
+        channels
     }
 }
 
@@ -323,13 +445,7 @@ impl Pair {
     /// The value `progress` of the way from `from` to `to`. Progress outside
     /// 0..=1 extrapolates, which is how an overshooting easing is applied.
     pub(super) fn at(&self, progress: f64) -> AnimValue {
-        let channels: Vec<f64> = self
-            .from
-            .iter()
-            .zip(&self.to)
-            .map(|(from, to)| from + (to - from) * progress)
-            .collect();
-        self.layout.decode(&channels)
+        self.layout.decode(&self.layout.blend(0, &self.from, &self.to, progress))
     }
 
     /// Values that flip at half instead of blending (shadow lists that differ
@@ -343,8 +459,18 @@ impl Pair {
     }
 }
 
+/// [`pair_in`] with colours always in Oklab.
 pub(super) fn pair(name: &str, from: &AnimValue, to: &AnimValue) -> Result<Pair, String> {
-    let mut aligned = align(name, &[from, to])?;
+    pair_in(name, from, to, Interpolation::Oklab)
+}
+
+pub(super) fn pair_in(
+    name: &str,
+    from: &AnimValue,
+    to: &AnimValue,
+    interpolation: Interpolation,
+) -> Result<Pair, String> {
+    let mut aligned = align_in(name, &[from, to], interpolation)?;
     let to = aligned.frames.pop().expect("two values were aligned");
     let from = aligned.frames.pop().expect("two values were aligned");
     Ok(Pair {
@@ -361,8 +487,18 @@ pub(super) struct Aligned {
     pub(super) frames: Vec<Vec<f64>>,
 }
 
-/// [`pair`] for any number of values, such as the keyframes of one track.
+/// [`align_in`] with colours always in Oklab.
 pub(super) fn align(name: &str, values: &[&AnimValue]) -> Result<Aligned, String> {
+    align_in(name, values, Interpolation::Oklab)
+}
+
+/// [`pair_in`] for any number of values, such as the keyframes of one track.
+/// Each pair of neighbouring colours picks its own blend.
+pub(super) fn align_in(
+    name: &str,
+    values: &[&AnimValue],
+    interpolation: Interpolation,
+) -> Result<Aligned, String> {
     for window in values.windows(2) {
         if std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
             return Err(format!(
@@ -381,14 +517,27 @@ pub(super) fn align(name: &str, values: &[&AnimValue]) -> Result<Aligned, String
             AnimValue::Percent(fraction) => vec![*fraction],
             _ => unreachable!("kinds were checked"),
         })),
-        AnimValue::Color(_) => Ok(simple(Layout::Color, values, |value| match value {
-            AnimValue::Color(color) => color.channels().to_vec(),
-            _ => unreachable!("kinds were checked"),
-        })),
-        AnimValue::Shadows(_) => Ok(align_shadows(&unwrap_each(values, |value| match value {
-            AnimValue::Shadows(shadows) => shadows.as_slice(),
-            _ => unreachable!("kinds were checked"),
-        }))),
+        AnimValue::Color(_) => {
+            let colors = unwrap_each(values, |value| match value {
+                AnimValue::Color(color) => color,
+                _ => unreachable!("kinds were checked"),
+            });
+            let blends = colors
+                .windows(2)
+                .map(|window| interpolation.blend(window[0], window[1]))
+                .collect();
+            Ok(simple(Layout::Color(blends), values, |value| match value {
+                AnimValue::Color(color) => color.channels().to_vec(),
+                _ => unreachable!("kinds were checked"),
+            }))
+        }
+        AnimValue::Shadows(_) => Ok(align_shadows(
+            &unwrap_each(values, |value| match value {
+                AnimValue::Shadows(shadows) => shadows.as_slice(),
+                _ => unreachable!("kinds were checked"),
+            }),
+            interpolation,
+        )),
         AnimValue::Numbers(_) => align_numbers(
             name,
             &unwrap_each(values, |value| match value {
@@ -474,7 +623,7 @@ fn align_paths(paths: &[&PathData]) -> Aligned {
     }
 }
 
-fn align_shadows(lists: &[&[Shadow]]) -> Aligned {
+fn align_shadows(lists: &[&[Shadow]], interpolation: Interpolation) -> Aligned {
     let layers = lists.iter().map(|list| list.len()).max().unwrap_or_default();
     // A layer a list lacks is a transparent one that takes the `inset` of the
     // first list that has it.
@@ -508,8 +657,21 @@ fn align_shadows(lists: &[&[Shadow]]) -> Aligned {
         };
     }
 
+    let blends = padded
+        .windows(2)
+        .map(|window| {
+            window[0]
+                .iter()
+                .zip(&window[1])
+                .map(|(from, to)| interpolation.blend(&from.color, &to.color))
+                .collect()
+        })
+        .collect();
     Aligned {
-        layout: Layout::Shadows(padded[0].iter().map(|layer| layer.inset).collect()),
+        layout: Layout::Shadows {
+            insets: padded[0].iter().map(|layer| layer.inset).collect(),
+            blends,
+        },
         frames: padded
             .iter()
             .map(|layers| {
@@ -575,6 +737,168 @@ mod tests {
         assert!((midpoint[0] - 128.0 / 255.0).abs() > 0.02, "not the sRGB midpoint");
     }
 
+    /// `from` to `to` `progress` of the way, the way a CSS transition blends it.
+    fn css_mix(from: &str, to: &str, progress: f64) -> Color {
+        let pair = pair_in(
+            "color",
+            &AnimValue::Color(color(from)),
+            &AnimValue::Color(color(to)),
+            Interpolation::Css,
+        )
+        .unwrap();
+        match pair.at(progress) {
+            AnimValue::Color(color) => color,
+            other => panic!("expected a colour, got {other:?}"),
+        }
+    }
+
+    fn assert_srgb_midpoint(from: &str, to: &str) {
+        assert_close(
+            rgba(css_mix(from, to, 0.5)),
+            [128.0 / 255.0, 0.0, 128.0 / 255.0, 1.0],
+            1.0 / 255.0,
+        );
+    }
+
+    #[test]
+    fn two_legacy_colours_blend_in_srgb_under_css() {
+        for (from, to) in [
+            ("red", "blue"),
+            ("#ff0000", "#0000ff"),
+            ("#f00", "rgb(0, 0, 255)"),
+            ("rgba(255 0 0 / 100%)", "hsl(240 100% 50%)"),
+            ("#ff0000", "hsla(240, 100%, 50%, 1)"),
+            ("red", "light-dark(blue, green)"),
+        ] {
+            assert_srgb_midpoint(from, to);
+        }
+    }
+
+    #[test]
+    fn a_modern_syntax_on_either_end_blends_in_oklab_under_css() {
+        let oklch_blue = "oklch(0.45201 0.31321 264.052)";
+        for (from, to) in [
+            ("#ff0000", oklch_blue),
+            (oklch_blue, "#ff0000"),
+            ("oklch(0.62796 0.25768 29.234)", oklch_blue),
+            ("oklab(0.62796 0.22486 0.12585)", "oklab(0.45201 -0.03246 -0.31153)"),
+            ("lab(54.29 80.8 69.89)", "#0000ff"),
+            ("color(display-p3 1 0 0)", "blue"),
+            ("hwb(0deg 0% 0%)", "blue"),
+            ("color-mix(in srgb, red, red)", "blue"),
+            ("currentColor", "blue"),
+        ] {
+            let css = rgba(css_mix(from, to, 0.5));
+            let oklab = rgba(mix(from, to, 0.5));
+            assert_close(css, oklab, 1e-9);
+        }
+        let oklab_mid = rgba(css_mix("#ff0000", oklch_blue, 0.5));
+        assert!((oklab_mid[1] - 0.0).abs() > 0.1, "not the sRGB midpoint: {oklab_mid:?}");
+    }
+
+    #[test]
+    fn light_dark_has_the_syntax_of_the_side_it_picks() {
+        let mut dark = Colors::root().element;
+        dark.scheme = crate::color::Scheme::Dark;
+        let parse = |value: &str| Color::parse(value, &dark).unwrap();
+        assert!(parse("light-dark(oklch(0.5 0.1 20), red)").legacy);
+        assert!(!parse("light-dark(red, oklch(0.5 0.1 20))").legacy);
+    }
+
+    #[test]
+    fn transparent_is_a_legacy_colour_and_blends_premultiplied() {
+        // Premultiplied, transparent contributes nothing, so the midpoint is
+        // the full red at half alpha. Straight-alpha channels would give a
+        // darker red, (127.5, 0, 0).
+        let halfway = css_mix("transparent", "#ff0000", 0.5);
+        assert_close(rgba(halfway), [1.0, 0.0, 0.0, 0.5], 1.0 / 255.0);
+        assert_close(rgba(css_mix("#ff0000", "transparent", 0.5)), [1.0, 0.0, 0.0, 0.5], 1.0 / 255.0);
+    }
+
+    #[test]
+    fn alpha_blends_premultiplied_in_srgb() {
+        // (0.2, 0, 0, 0.2) and (0, 0, 0.8, 0.8) average to (0.1, 0, 0.4, 0.5).
+        let halfway = css_mix("rgba(255, 0, 0, 0.2)", "rgba(0, 0, 255, 0.8)", 0.5);
+        assert_close(rgba(halfway), [0.2, 0.0, 0.8, 0.5], 1.0 / 255.0);
+    }
+
+    #[test]
+    fn css_pairs_end_on_their_endpoints_and_extrapolate_in_srgb() {
+        assert_close(rgba(css_mix("#102030", "#c0d0e0", 0.0)), rgba(color("#102030")), 1e-4);
+        assert_close(rgba(css_mix("#102030", "#c0d0e0", 1.0)), rgba(color("#c0d0e0")), 1e-4);
+        // An overshooting easing carries red past blue's red channel, which
+        // `to_css` clips to the gamut.
+        let past = rgba(css_mix("#ff0000", "#0000ff", 1.5));
+        assert_close(past, [0.0, 0.0, 1.0, 1.0], 1e-4);
+    }
+
+    #[test]
+    fn the_blended_value_keeps_the_syntax_the_pair_used() {
+        assert!(css_mix("red", "blue", 0.3).legacy);
+        assert!(!css_mix("red", "oklch(0.5 0.1 20)", 0.3).legacy);
+        assert!(!mix("red", "blue", 0.3).legacy, "an Oklab pair never claims a legacy syntax");
+    }
+
+    #[test]
+    fn the_syntax_is_not_part_of_equality() {
+        assert_eq!(color("red"), color("#ff0000"));
+        assert_eq!(color("red"), color("rgb(255 0 0)"));
+    }
+
+    #[test]
+    fn keyframes_pick_a_blend_per_neighbouring_pair() {
+        let values = ["red", "blue", "oklch(0.7 0.15 150)", "green"]
+            .map(|value| AnimValue::Color(color(value)));
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let css = align_in("color", &refs, Interpolation::Css).unwrap();
+        assert_eq!(css.layout, Layout::Color(vec![Blend::Srgb, Blend::Oklab, Blend::Oklab]));
+        let oklab = align_in("color", &refs, Interpolation::Oklab).unwrap();
+        assert_eq!(oklab.layout, Layout::Color(vec![Blend::Oklab; 3]));
+        assert_eq!(css.frames, oklab.frames, "the stored channels do not depend on the blend");
+
+        let at = |segment: usize, progress: f64| match css.layout.decode(&css.layout.blend(
+            segment,
+            &css.frames[segment],
+            &css.frames[segment + 1],
+            progress,
+        )) {
+            AnimValue::Color(color) => rgba(color),
+            other => panic!("expected a colour, got {other:?}"),
+        };
+        assert_close(at(0, 0.5), [128.0 / 255.0, 0.0, 128.0 / 255.0, 1.0], 1.0 / 255.0);
+        let oklab_middle = |segment: usize| match oklab.layout.decode(&oklab.layout.blend(
+            segment,
+            &oklab.frames[segment],
+            &oklab.frames[segment + 1],
+            0.5,
+        )) {
+            AnimValue::Color(color) => rgba(color),
+            other => panic!("expected a colour, got {other:?}"),
+        };
+        assert_close(at(1, 0.5), oklab_middle(1), 1e-9);
+        assert_close(at(2, 0.5), oklab_middle(2), 1e-9);
+    }
+
+    #[test]
+    fn shadow_colours_blend_per_layer() {
+        let from = AnimValue::Shadows(vec![
+            shadow(0.0, 4.0, "red", false),
+            shadow(0.0, 4.0, "red", false),
+        ]);
+        let to = AnimValue::Shadows(vec![
+            shadow(0.0, 4.0, "blue", false),
+            shadow(0.0, 4.0, "oklch(0.45201 0.31321 264.052)", false),
+        ]);
+        let css = pair_in("boxShadow", &from, &to, Interpolation::Css).unwrap();
+        let oklab = pair("boxShadow", &from, &to).unwrap();
+        let (AnimValue::Shadows(css), AnimValue::Shadows(oklab)) = (css.at(0.5), oklab.at(0.5)) else {
+            panic!("shadows decode to shadows");
+        };
+        assert_close(rgba(css[0].color), [128.0 / 255.0, 0.0, 128.0 / 255.0, 1.0], 1.0 / 255.0);
+        assert_close(rgba(css[1].color), rgba(oklab[1].color), 1e-9);
+        assert!(css[0].color.legacy && !css[1].color.legacy);
+    }
+
     #[test]
     fn colour_endpoints_round_trip() {
         for value in ["#ff0000", "#1e1e2e", "rgba(10, 200, 30, 0.4)", "transparent"] {
@@ -603,12 +927,12 @@ mod tests {
 
     #[test]
     fn colour_output_is_clamped_to_srgb() {
-        let overshoot = Color::from_channels(&[1.4, 0.4, 0.3, 1.0]);
+        let overshoot = Color::from_channels(&[1.4, 0.4, 0.3, 1.0], false);
         let [r, g, b, a] = rgba(overshoot);
         for channel in [r, g, b, a] {
             assert!((0.0..=1.0).contains(&channel));
         }
-        let beyond = Color::from_channels(&[0.5, 0.0, 0.0, 1.3]);
+        let beyond = Color::from_channels(&[0.5, 0.0, 0.0, 1.3], false);
         assert_eq!(rgba(beyond)[3], 1.0);
     }
 

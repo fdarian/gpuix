@@ -13,7 +13,7 @@ use web_time::Instant;
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp};
-use super::value::{pair, AnimValue, Colors, Pair};
+use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair};
 use super::MotionState;
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -594,7 +594,7 @@ impl Running {
         now: Instant,
     ) -> Option<Self> {
         let (from, to) = common_unit(prop, from, to, measurement)?;
-        let segment = pair(prop.name(), &from, &to)
+        let segment = pair_in(prop.name(), &from, &to, Interpolation::Css)
             .ok()
             .filter(|pair| entry.allow_discrete || !pair.is_discrete())?;
         Some(Self {
@@ -1173,7 +1173,6 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::motion::value::Color;
     use crate::events::state_styles::resolve_state_styles;
     use crate::style::DimensionValue;
 
@@ -1698,27 +1697,75 @@ mod tests {
         assert_eq!(resolved.opacity, Some(1.0), "opacity is not motion's, so it runs");
     }
 
+    /// A background that moves from `from` to `to` over a second, linearly, and
+    /// the colour it shows after `millis`.
+    fn background_at(from: &str, to: &str, millis: u64) -> String {
+        let styled = |color: &str| {
+            style(&format!(
+                r#"{{ "backgroundColor": "{color}", "transition": "background-color 1s linear" }}"#
+            ))
+        };
+        let mut clock = Clock::new();
+        clock.frame(0, &styled(from));
+        let after = styled(to);
+        clock.frame(0, &after);
+        clock.frame(millis, &after).background_color.unwrap()
+    }
+
     #[test]
-    fn a_colour_blends_through_oklab_and_ends_exact() {
+    fn legacy_colours_transition_through_srgb_and_end_exact() {
         let mut clock = Clock::new();
         let red = style(r##"{ "backgroundColor": "#ff0000", "transition": "background-color 1s linear" }"##);
         let blue = style(r##"{ "backgroundColor": "#0000ff", "transition": "background-color 1s linear" }"##);
         clock.frame(0, &red);
         clock.frame(0, &blue);
-        let middle = clock.frame(500, &blue).background_color.unwrap();
-        assert_ne!(middle, "#ff0000");
-        assert_ne!(middle, "#0000ff");
-        let blend = pair(
-            "backgroundColor",
-            &AnimValue::Color(Color::parse("#ff0000", &Colors::root().element).unwrap()),
-            &AnimValue::Color(Color::parse("#0000ff", &Colors::root().element).unwrap()),
-        )
-        .unwrap();
-        let AnimValue::Color(expected) = blend.at(0.5) else {
-            panic!("a colour pair decodes to a colour");
-        };
-        assert_eq!(middle, expected.to_css());
+        near(&clock.frame(500, &blue).background_color.unwrap(), "#800080");
         assert_eq!(clock.frame(1000, &blue).background_color.as_deref(), Some("#0000ff"));
+        near(&background_at("red", "blue", 500), "#800080");
+        near(&background_at("#ff0000", "hsl(240 100% 50%)", 500), "#800080");
+        near(&background_at("rgb(255 0 0)", "hsla(240, 100%, 50%, 1)", 250), "#bf0040");
+    }
+
+    #[test]
+    fn a_modern_syntax_makes_the_transition_blend_in_oklab() {
+        let oklab_middle = "oklab(0.539985 0.096200 -0.092840)";
+        near(&background_at("oklab(0.62796 0.22486 0.12585)", "blue", 500), oklab_middle);
+        near(&background_at("red", "oklch(0.45201 0.31321 264.052)", 500), oklab_middle);
+        near(&background_at("oklch(0.62796 0.25768 29.234)", "oklch(0.45201 0.31321 264.052)", 500), oklab_middle);
+        // Black to blue: `currentColor` counts as a modern syntax.
+        near(&background_at("currentColor", "blue", 500), "oklab(0.22601 -0.01623 -0.15577)");
+    }
+
+    #[test]
+    fn transparent_and_alpha_blend_premultiplied_in_srgb() {
+        let halfway = crate::color::parse_color_rgba(&background_at("transparent", "#ff0000", 500)).unwrap();
+        assert_eq!([halfway.r, halfway.g, halfway.b], [1.0, 0.0, 0.0]);
+        assert!((halfway.a - 0.5).abs() < 0.01, "{}", halfway.a);
+
+        let mixed = crate::color::parse_color_rgba(&background_at(
+            "rgba(255, 0, 0, 0.2)",
+            "rgba(0, 0, 255, 0.8)",
+            500,
+        ))
+        .unwrap();
+        near(&format!("rgb({} {} {})", mixed.r * 255.0, mixed.g * 255.0, mixed.b * 255.0), "#3300cc");
+        assert!((mixed.a - 0.5).abs() < 0.01, "{}", mixed.a);
+    }
+
+    #[test]
+    fn an_interrupted_legacy_transition_continues_in_srgb() {
+        let styled = |color: &str| {
+            style(&format!(
+                r#"{{ "backgroundColor": "{color}", "transition": "background-color 1s linear" }}"#
+            ))
+        };
+        let mut clock = Clock::new();
+        clock.frame(0, &styled("#ff0000"));
+        clock.frame(0, &styled("#0000ff"));
+        near(&clock.frame(500, &styled("#0000ff")).background_color.unwrap(), "#800080");
+        // Back to green from the purple it reached: sRGB again, not Oklab.
+        clock.frame(500, &styled("#00ff00"));
+        near(&clock.frame(1000, &styled("#00ff00")).background_color.unwrap(), "#408040");
     }
 
     fn near(text: &str, expected: &str) {

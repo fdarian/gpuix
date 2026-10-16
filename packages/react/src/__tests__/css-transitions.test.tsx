@@ -340,7 +340,7 @@ describeNative("CSS transitions", () => {
     expect(seen).toEqual(["run", "cancel 0.5", "run"])
   })
 
-  it("animates a colour change through Oklab", () => {
+  const halfwayColour = (from: string, to: string) => {
     const { render, renderer } = createTestRoot()
     fs.mkdirSync(SHOTS_DIR, { recursive: true })
     const file = path.join(SHOTS_DIR, "css-transition-background-color.png")
@@ -361,22 +361,31 @@ describeNative("CSS transitions", () => {
     }
 
     renderer.clockPause()
-    render(box("#ff0000"))
-    render(box("#0000ff"))
+    render(box(from))
+    render(box(to))
     renderer.clockFastForward(500)
-    const [red, green, blue] = sample()
-    // The Oklab midpoint of red and blue is rgb(140, 83, 162); the sRGB one
-    // would be (128, 0, 128).
-    expect(red).toBeGreaterThan(135)
-    expect(red).toBeLessThan(146)
-    expect(green).toBeGreaterThan(78)
-    expect(green).toBeLessThan(88)
-    expect(blue).toBeGreaterThan(157)
-    expect(blue).toBeLessThan(168)
-
+    const middle = sample().slice(0, 3)
     renderer.clockFastForward(1000)
-    expect(sample().slice(0, 3)).toEqual([0, 0, 255])
+    return { middle, end: sample().slice(0, 3) }
+  }
+
+  it("animates between legacy colours through sRGB", () => {
+    const { middle, end } = halfwayColour("#ff0000", "hsl(240 100% 50%)")
+    // The sRGB midpoint of red and blue is #800080; Oklab would give (140, 83, 162).
+    expect(Math.abs(middle[0] - 128)).toBeLessThan(4)
+    expect(middle[1]).toBeLessThan(4)
+    expect(Math.abs(middle[2] - 128)).toBeLessThan(4)
+    expect(end).toEqual([0, 0, 255])
   })
+
+  it("animates to or from a modern colour through Oklab", () => {
+    const { middle, end } = halfwayColour("#ff0000", "oklch(0.45201 0.31321 264.052)")
+    expect(Math.abs(middle[0] - 140)).toBeLessThan(6)
+    expect(Math.abs(middle[1] - 83)).toBeLessThan(6)
+    expect(Math.abs(middle[2] - 162)).toBeLessThan(6)
+    expect(end[2]).toBeGreaterThan(250)
+  })
+
   describe("lengths layout resolves", () => {
     const boundsOf = (
       renderer: ReturnType<typeof createTestRoot>["renderer"],

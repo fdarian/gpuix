@@ -218,6 +218,40 @@ pub(crate) fn is_contextual(value: &str) -> bool {
         || starts("color(")
 }
 
+/// Whether CSS Color 4 calls the syntax of a colour that resolved legacy: hex,
+/// a name (`transparent` included), `rgb()`, `rgba()`, `hsl()` or `hsla()`. Two
+/// legacy colours interpolate in sRGB, any other pair in Oklab. `light-dark()`
+/// has the syntax of the side it picks. `currentColor` and `color-mix()` count
+/// as modern: the context keeps the resolved colour, not how it was written.
+pub(crate) fn is_legacy_syntax(value: &str, context: &ColorContext) -> bool {
+    use crate::css::syntax::{function_args, split_commas};
+
+    let value = value.trim();
+    if let Some(args) = function_args(value, "light-dark") {
+        let sides = split_commas(args);
+        let picked = match context.scheme {
+            Scheme::Light => sides.first(),
+            Scheme::Dark => sides.get(1),
+        };
+        return picked.is_some_and(|side| is_legacy_syntax(side, context));
+    }
+    if is_contextual(value) {
+        return false;
+    }
+    let Some(open) = value.find('(') else {
+        return true;
+    };
+    let name = &value[..open];
+    let relative = value[open + 1..]
+        .trim_start()
+        .get(..5)
+        .is_some_and(|head| head.eq_ignore_ascii_case("from "));
+    !relative
+        && ["rgb", "rgba", "hsl", "hsla"]
+            .iter()
+            .any(|legacy| name.eq_ignore_ascii_case(legacy))
+}
+
 /// Same as `resolve_color` but keeps out-of-gamut channels, for the operands of
 /// `color-mix()`.
 pub(crate) fn resolve_unclamped(value: &str, context: &ColorContext) -> Option<Srgba> {
@@ -302,6 +336,34 @@ mod tests {
         for (input, expected) in cases {
             assert_same(input, expected);
         }
+    }
+
+    #[test]
+    fn legacy_syntax_is_hex_names_rgb_and_hsl() {
+        let context = ColorContext::root(Scheme::Light);
+        for value in [
+            "#f00", "#ff0000", "#ff000080", "red", "RebeccaPurple", "transparent",
+            "rgb(255 0 0)", "rgba(255, 0, 0, 0.5)", "RGB(255 0 0 / 50%)",
+            "hsl(0 100% 50%)", "hsla(0, 100%, 50%, 1)",
+        ] {
+            assert!(is_legacy_syntax(value, &context), "{value}");
+        }
+        for value in [
+            "hwb(0 0% 0%)", "lab(54% 80 70)", "lch(54% 100 40)", "oklab(0.6 0.2 0.1)",
+            "oklch(0.6 0.2 30)", "color(srgb 1 0 0)", "color-mix(in srgb, red, blue)",
+            "currentColor", "rgb(from red r g b)", "hsl(from #f00 h s l)",
+        ] {
+            assert!(!is_legacy_syntax(value, &context), "{value}");
+        }
+    }
+
+    #[test]
+    fn light_dark_is_legacy_when_the_picked_side_is() {
+        let mut context = ColorContext::root(Scheme::Light);
+        assert!(is_legacy_syntax("light-dark(red, oklch(0.6 0.2 30))", &context));
+        assert!(!is_legacy_syntax("light-dark(oklch(0.6 0.2 30), red)", &context));
+        context.scheme = Scheme::Dark;
+        assert!(!is_legacy_syntax("light-dark(red, oklch(0.6 0.2 30))", &context));
     }
 
     #[test]

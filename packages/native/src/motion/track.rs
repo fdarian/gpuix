@@ -8,7 +8,7 @@ use web_time::Instant;
 use super::curve::{
     ease, ease_slope, seconds, Curve, RepeatCount, RepeatType, Spring, Transition,
 };
-use super::value::{align, pair, AnimValue, Layout};
+use super::value::{align, align_in, pair, AnimValue, Interpolation, Layout};
 
 /// What a description asks one property to animate to: a single target, or
 /// keyframes. A `None` keyframe repeats the one before it, and a leading `None`
@@ -165,12 +165,13 @@ impl Track {
         goal: Goal,
         literal: Vec<AnimValue>,
         resolved: &[AnimValue],
+        interpolation: Interpolation,
         transition: Transition,
         now: Instant,
     ) -> Result<Self, String> {
         transition.check_keyframes(name, resolved.len())?;
         let values: Vec<&AnimValue> = resolved.iter().collect();
-        let aligned = align(name, &values)?;
+        let aligned = align_in(name, &values, interpolation)?;
         let measured = if resolved.len() == 2 && !transition.repeat.repeats() {
             literal.last() != resolved.last()
         } else {
@@ -493,11 +494,15 @@ impl Track {
         let easing = self.transition.segment_ease(segment);
         let progress = ease(local.clamp(0.0, 1.0), easing);
         let progress_rate = ease_slope(local, easing) / span;
-        frame(segment)
+        let (from, to) = (frame(segment), frame(segment + 1));
+        // The layout knows segments in the keyframes' own order.
+        let blended = if mirrored { count - 2 - segment } else { segment };
+        let rate = from
             .iter()
-            .zip(frame(segment + 1))
-            .map(|(from, to)| (from + (to - from) * progress, (to - from) * progress_rate))
-            .unzip()
+            .zip(to)
+            .map(|(from, to)| (to - from) * progress_rate)
+            .collect();
+        (self.layout.blend(blended, from, to, progress), rate)
     }
 
     fn sample_spring(&self, elapsed: Duration, delay: Duration, spring: &Spring) -> Sample {

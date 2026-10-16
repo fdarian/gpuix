@@ -122,12 +122,15 @@ impl SvgAttr {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
-            Initial::Black => Some(AnimValue::Color(Color::from_rgba(gpui::Rgba {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            }))),
+            Initial::Black => Some(AnimValue::Color(Color::from_rgba(
+                gpui::Rgba {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                },
+                true,
+            ))),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
         }
     }

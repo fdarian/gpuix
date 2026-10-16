@@ -1483,9 +1483,19 @@ error, not a silent no-op.
 - `width: "auto"` is an error: the width of the content needs a second layout
   pass to measure. Name a pixel width instead.
 
-**Colours** interpolate in Oklab with premultiplied alpha, like CSS
-`color-mix(in oklab, ...)`, so a fade to `transparent` keeps its hue and a red
-to blue move does not pass through a dull purple. Overshoot is clamped to sRGB.
+**Colours** interpolate with premultiplied alpha, so a fade to `transparent`
+keeps its hue. The space depends on who animates. In `motion` (`animate`,
+springs, motion values) every pair blends in Oklab, like
+`color-mix(in oklab, ...)`: a red to blue move does not pass through a dull
+purple. CSS transitions and CSS animations follow CSS Color 4 instead: when both
+colours of a pair are written in a legacy syntax (hex, a name including
+`transparent`, `rgb()`, `rgba()`, `hsl()`, `hsla()`) they blend in sRGB, so
+`red` to `blue` passes through `#800080`; any other pair (`oklch()`, `lab()`,
+`oklab()`, `hwb()`, `color()`, `color-mix()`, or a legacy colour against one of
+those) blends in Oklab. Each pair of neighbouring keyframes picks its own space,
+`light-dark()` has the syntax of the side it picks, and `currentColor` counts as
+a modern syntax. A transition interrupted midway continues in the space its
+current colour was blended in. Overshoot is clamped to sRGB.
 Targets and keyframes take any colour a style does, and they resolve in the
 element's colour context: `currentColor` is the element's own `color` (the
 parent's for `color` itself), `light-dark()` follows its `colorScheme`, and
@@ -1672,7 +1682,7 @@ shape inside an `<svg>`. They take the same `initial`, `animate`, `exit` and
 | `pathLength`, `pathOffset`, `pathSpacing` | Numbers, Framer's normalised draw: `pathLength` is the stroked fraction of the outline (default 1), `pathOffset` moves where the stroke starts, `pathSpacing` is the gap after it (default 1, one dash). They set the dash for you, so do not combine them with `strokeDasharray` |
 | `strokeDasharray`, `strokeDashoffset` | A number, a list or `"4 2"`, and a number. Lists of different lengths are repeated to a common length |
 | `strokeWidth`, `opacity`, `fillOpacity`, `strokeOpacity` | Numbers. Opacities are `0..1` |
-| `fill`, `stroke` | Colours, interpolated in Oklab with premultiplied alpha like `backgroundColor`. `none` counts as transparent |
+| `fill`, `stroke` | Colours, interpolated like `backgroundColor` (premultiplied alpha, Oklab in `motion`). `none` counts as transparent |
 | `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `width`, `height`, `x1`, `y1`, `x2`, `y2` | Numbers in user units |
 | `d` | Path data. Both paths are made absolute first; with the same commands every number is interpolated, otherwise the value switches halfway through the progress (or when a spring passes halfway) |
 

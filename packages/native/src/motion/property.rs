@@ -444,7 +444,7 @@ impl AnimProp {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
-            Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current))),
+            Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, false))),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
             Initial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
             Initial::Unset => Some(AnimValue::Keyword(None)),
@@ -715,7 +715,7 @@ mod tests {
         let inherited = Colors::of(&ColorContext::root(Scheme::Light), None);
         assert_eq!(
             AnimProp::BorderColor.initial(&inherited),
-            Some(AnimValue::Color(Color::from_rgba(gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 })))
+            Some(AnimValue::Color(Color::from_rgba(gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }, false)))
         );
     }
 
