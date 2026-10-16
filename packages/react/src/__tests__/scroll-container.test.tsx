@@ -36,8 +36,8 @@ describeNative("scrollable extent follows CSS scrollable overflow", () => {
       // 20 padding above the content, the content, 20 padding below it.
       expect(metrics(renderer, "scroller").scrollHeight).toBe(340)
       const id = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(id, 0, -10_000)
-      expect(renderer.getScrollOffset(id)).toEqual([0, -240])
+      renderer.scrollTo(id, 0, 10_000)
+      expect(renderer.getScrollOffset(id)).toEqual([0, 240])
     } finally {
       unmount()
     }
@@ -240,7 +240,7 @@ describeNative("absolute children of a scroller", () => {
     )
     try {
       const before = bounds(renderer, "pinned").y
-      renderer.scrollTo(renderer.findByTestId("scroller")!.id, 0, -50)
+      renderer.scrollTo(renderer.findByTestId("scroller")!.id, 0, 50)
       expect(bounds(renderer, "pinned").y).toBe(before - 50)
     } finally {
       unmount()
@@ -291,7 +291,7 @@ describeNative("overflow values", () => {
     try {
       const id = renderer.findByTestId("scroller")!.id
       renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
-      expect(renderer.getScrollOffset(id)).toEqual([0, -40])
+      expect(renderer.getScrollOffset(id)).toEqual([0, 40])
       expect(metrics(renderer, "scroller").scrollHeight).toBe(400)
     } finally {
       unmount()
@@ -310,7 +310,7 @@ describeNative("overflow values", () => {
     try {
       const id = renderer.findByTestId("scroller")!.id
       renderer.nativeSimulateScrollWheel(100, 50, 30, 40)
-      expect(renderer.getScrollOffset(id)).toEqual([0, -40])
+      expect(renderer.getScrollOffset(id)).toEqual([0, 40])
     } finally {
       unmount()
     }
@@ -352,10 +352,10 @@ describeNative("overflow values", () => {
       renderer.nativeSimulateKeystrokes(id, "PageDown")
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
 
-      renderer.scrollTo(id, 0, -60)
-      expect(renderer.getScrollOffset(id)).toEqual([0, -60])
-      renderer.scrollTo(id, 0, -10_000)
-      expect(renderer.getScrollOffset(id)).toEqual([0, -320])
+      renderer.scrollTo(id, 0, 60)
+      expect(renderer.getScrollOffset(id)).toEqual([0, 60])
+      renderer.scrollTo(id, 0, 10_000)
+      expect(renderer.getScrollOffset(id)).toEqual([0, 320])
     } finally {
       unmount()
     }
@@ -372,7 +372,7 @@ describeNative("overflow values", () => {
     )
     try {
       renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
-      expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, -40])
+      expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, 40])
     } finally {
       unmount()
     }
@@ -387,7 +387,7 @@ describeNative("overflow values", () => {
     )
     try {
       renderer.scrollIntoView(renderer.findByTestId("target")!.id, "start")
-      expect(renderer.getScrollOffset(renderer.findByTestId("scroller")!.id)).toEqual([0, -220])
+      expect(renderer.getScrollOffset(renderer.findByTestId("scroller")!.id)).toEqual([0, 220])
     } finally {
       unmount()
     }

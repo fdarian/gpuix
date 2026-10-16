@@ -115,7 +115,7 @@ function calls(r, ids) {
     resetDebugFrameOverlayStats: () => r.resetDebugFrameOverlayStats(),
     scrollByKey: () => r.scrollByKey("down", false),
     scrollIntoView: () => r.scrollIntoView(ids.box),
-    scrollTo: () => r.scrollTo(ids.scroller, 0, -10),
+    scrollTo: () => r.scrollTo(ids.scroller, 0, 10),
     scrollToItem: () => r.scrollToItem(ids.scroller, 0),
     selectText: () => r.selectText(ids.field),
     setAppearance: () => r.setAppearance("dark"),

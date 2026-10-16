@@ -223,7 +223,7 @@ describe("<diff>", () => {
     renderer.nativeSimulateScrollWheel(200, 60, 0, 80)
     const offset = renderer.getScrollOffset(container!.id)
     expect(offset).not.toBeNull()
-    expect(offset![1]).toBeLessThan(0)
+    expect(offset![1]).toBeGreaterThan(0)
   })
 
   it("virtualizes only when scroll is on", () => {

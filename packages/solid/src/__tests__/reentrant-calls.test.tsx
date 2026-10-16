@@ -34,12 +34,12 @@ describe.skipIf(!hasNativeTestRenderer)("renderer calls from a keydown handler",
     const seen: unknown[] = []
     const { app, press } = mount((renderer) => {
       const id = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(id, 0, -40)
+      renderer.scrollTo(id, 0, 40)
       seen.push(renderer.getScrollOffset(id))
     })
     press()
-    expect(seen).toEqual([[0, -40]])
-    expect(app.renderer.getScrollOffset(app.renderer.findByTestId("scroller")!.id)).toEqual([0, -40])
+    expect(seen).toEqual([[0, 40]])
+    expect(app.renderer.getScrollOffset(app.renderer.findByTestId("scroller")!.id)).toEqual([0, 40])
   })
 
   describe("an error a handler throws", () => {

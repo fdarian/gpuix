@@ -133,7 +133,7 @@ function scrollTo(
   const current = readScrollMetrics(renderer, id)
   const left = options.left === undefined ? current.scrollLeft : options.left + (relative ? current.scrollLeft : 0)
   const top = options.top === undefined ? current.scrollTop : options.top + (relative ? current.scrollTop : 0)
-  renderer.scrollTo(id, 0 - left, 0 - top, options.behavior)
+  renderer.scrollTo(id, left, top, options.behavior)
 }
 
 /** The members a host element exposes next to `scrollIntoView`. */

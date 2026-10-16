@@ -44,8 +44,8 @@ function scroller(
     ...root,
     renderer,
     id,
-    top: () => 0 - renderer.getScrollOffset(id)![1],
-    scrollTo: (top: number) => renderer.scrollTo(id, 0, -top),
+    top: () => renderer.getScrollOffset(id)![1],
+    scrollTo: (top: number) => renderer.scrollTo(id, 0, top),
     /** Moves the clock on and draws the frame it lands on, as the display link would. */
     advance(milliseconds: number) {
       renderer.clockFastForward(milliseconds)
@@ -235,7 +235,7 @@ describeNative("overlay scrollbars", () => {
       <div style={{ width: 300, height: 300, backgroundColor: "#202020" }} />
     )
     try {
-      renderer.scrollTo(id, -50, -50)
+      renderer.scrollTo(id, 50, 50)
       const pixels = shoot()
       const across: number[] = []
       for (let x = 0; x < 100; x++) if (isRed(pixels.at(x, 94))) across.push(x)
@@ -252,7 +252,7 @@ describeNative("overlay scrollbars", () => {
     for (const overflow of ["hidden", "clip"]) {
       const { renderer, id, shoot, unmount } = scroller({ overflow })
       try {
-        renderer.scrollTo(id, 0, -50)
+        renderer.scrollTo(id, 0, 50)
         expect(anyBar(shoot()), overflow).toBe(false)
       } finally {
         unmount()
@@ -445,7 +445,7 @@ describeNative("scrollbars on a <virtual-list>", () => {
       renderer.nativeSimulateMouseDown(94, 20)
       renderer.nativeSimulateMouseMove(94, 100)
       renderer.nativeSimulateMouseUp(94, 100)
-      expect(0 - renderer.getScrollOffset(id)![1]).toBeGreaterThan(300)
+      expect(renderer.getScrollOffset(id)![1]).toBeGreaterThan(300)
     } finally {
       unmount()
     }

@@ -29,10 +29,10 @@ describeNative("onScroll", () => {
       expect(offsets, "a first paint is not a scroll").toEqual([])
 
       const id = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(id, 0, -100)
+      renderer.scrollTo(id, 0, 100)
       renderer.dispatchNativeEvents()
       expect(offsets).toEqual([[0, 100]])
-      expect(renderer.getScrollOffset(id)).toEqual([0, -100])
+      expect(renderer.getScrollOffset(id)).toEqual([0, 100])
     } finally {
       unmount()
     }
@@ -47,9 +47,7 @@ describeNative("onScroll", () => {
 
       expect(offsets).toHaveLength(1)
       const id = renderer.findByTestId("scroller")!.id
-      expect(offsets[0]).toEqual(
-        renderer.getScrollOffset(id)!.map((value) => 0 - value)
-      )
+      expect(offsets[0]).toEqual(renderer.getScrollOffset(id))
       expect(offsets[0]![1]).toBeGreaterThan(0)
     } finally {
       unmount()
@@ -63,12 +61,12 @@ describeNative("onScroll", () => {
       const app = () => scroller((event) => offsets.push(offset(event)))
       render(app())
       const id = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(id, 0, -30)
+      renderer.scrollTo(id, 0, 30)
       renderer.dispatchNativeEvents()
       expect(offsets).toHaveLength(1)
 
       render(app())
-      renderer.scrollTo(id, 0, -30.004)
+      renderer.scrollTo(id, 0, 30.004)
       renderer.dispatchNativeEvents()
       expect(offsets).toHaveLength(1)
     } finally {
@@ -82,13 +80,13 @@ describeNative("onScroll", () => {
       const offsets: unknown[] = []
       render(scroller())
       const id = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(id, 0, -80)
+      renderer.scrollTo(id, 0, 80)
 
       render(scroller((event) => offsets.push(offset(event))))
       renderer.dispatchNativeEvents()
       expect(offsets).toEqual([])
 
-      renderer.scrollTo(id, 0, -120)
+      renderer.scrollTo(id, 0, 120)
       renderer.dispatchNativeEvents()
       expect(offsets).toEqual([[0, 120]])
     } finally {

@@ -222,9 +222,22 @@ pub(crate) fn queue_virtual_list_scroll(id: u64, index: usize, offset_in_item: f
     });
 }
 
-/// Scrolls the virtual list or scroll container `id` to an offset (zero, then negative).
-fn scroll_element_to(id: u64, x: f32, y: f32, behavior: crate::scroll::Behavior) {
-    let offset = gpui::point(gpui::px(x), gpui::px(y));
+/// The DOM scroll position `[scrollLeft, scrollTop]` of the virtual list or scroll container
+/// `id`, or `None` for anything else.
+fn scroll_element_position(id: u64) -> Option<[f64; 2]> {
+    VIRTUAL_LIST_STATES
+        .with(|cell| {
+            cell.borrow()
+                .get(&id)
+                .map(|state| state.scroll_px_offset_for_scrollbar())
+        })
+        .or_else(|| SCROLL_HANDLES.with(|cell| cell.borrow().get(&id).map(|handle| handle.offset())))
+        .map(crate::scroll::dom_position)
+}
+
+/// Scrolls the virtual list or scroll container `id` to the DOM scroll position `left`, `top`.
+fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Behavior) {
+    let offset = crate::scroll::gpui_offset(left, top);
     if VIRTUAL_LIST_STATES.with(|cell| {
         let states = cell.borrow();
         let Some(state) = states.get(&id) else {
@@ -519,8 +532,8 @@ enum UiCommand {
     ResetDebugFrameOverlayStats,
     ScrollTo {
         id: u64,
-        x: f32,
-        y: f32,
+        left: f64,
+        top: f64,
         behavior: crate::scroll::Behavior,
     },
     ScrollToItem {
@@ -742,8 +755,13 @@ async fn run_ui_commands(
             UiCommand::ResetDebugFrameOverlayStats => window.update(cx, |_view, window, _cx| {
                 window.reset_debug_frame_overlay_stats();
             }),
-            UiCommand::ScrollTo { id, x, y, behavior } => {
-                scroll_element_to(id, x, y, behavior);
+            UiCommand::ScrollTo {
+                id,
+                left,
+                top,
+                behavior,
+            } => {
+                scroll_element_to(id, left, top, behavior);
                 refresh_ui_window(window, cx)
             }
             UiCommand::ScrollToItem { id, index, offset } => {
@@ -836,28 +854,7 @@ async fn run_ui_commands(
                 })
             }
             UiCommand::GetScrollOffset { id, response } => {
-                let offset = VIRTUAL_LIST_STATES
-                    .with(|cell| {
-                        cell.borrow().get(&id).map(|state| {
-                            let offset = state.scroll_px_offset_for_scrollbar();
-                            [
-                                f64::from(f32::from(offset.x)),
-                                f64::from(f32::from(offset.y)),
-                            ]
-                        })
-                    })
-                    .or_else(|| {
-                        SCROLL_HANDLES.with(|cell| {
-                            cell.borrow().get(&id).map(|handle| {
-                                let offset = handle.offset();
-                                [
-                                    f64::from(f32::from(offset.x)),
-                                    f64::from(f32::from(offset.y)),
-                                ]
-                            })
-                        })
-                    });
-                response.send(offset).ok();
+                response.send(scroll_element_position(id)).ok();
                 Ok(())
             }
             UiCommand::GetListScrollTop { id, response } => {
@@ -2822,8 +2819,8 @@ impl GpuixRenderer {
     // ── Scroll API ───────────────────────────────────────────────────
     // GpuixView syncs scroll handles and virtual list states to thread-local maps.
 
-    /// Set the scroll offset of a scrollable element.
-    /// x and y are negative pixel values (scroll down = more negative y).
+    /// Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
+    /// `scrollTop`, zero or more, so scrolling down is a larger `top`.
     ///
     /// `behavior` is `"instant"`, `"smooth"` or `"auto"` (the default), which follows the
     /// element's `scrollBehavior` style. A smooth scroll animates over the next frames.
@@ -2831,8 +2828,8 @@ impl GpuixRenderer {
     pub fn scroll_to(
         &self,
         element_id: f64,
-        x: f64,
-        y: f64,
+        left: f64,
+        top: f64,
         behavior: Option<String>,
     ) -> Result<()> {
         let id = to_element_id(element_id)?;
@@ -2840,15 +2837,15 @@ impl GpuixRenderer {
             crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
         #[cfg(target_os = "macos")]
         {
-            scroll_element_to(id, x as f32, y as f32, behavior);
+            scroll_element_to(id, left, top, behavior);
             return invalidate_window();
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::ScrollTo {
             id,
-            x: x as f32,
-            y: y as f32,
+            left,
+            top,
             behavior,
         });
 
@@ -2950,34 +2947,13 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
-    /// Get the current scroll offset of a scrollable element.
-    /// Returns [x, y] or null if the element has no scroll handle.
+    /// The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
+    /// more), or null if it is not a scroll container or a `<virtual-list>`.
     #[napi]
     pub fn get_scroll_offset(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
-        return Ok(VIRTUAL_LIST_STATES
-            .with(|cell| {
-                cell.borrow().get(&id).map(|state| {
-                    let offset = state.scroll_px_offset_for_scrollbar();
-                    vec![
-                        f64::from(f32::from(offset.x)),
-                        f64::from(f32::from(offset.y)),
-                    ]
-                })
-            })
-            .or_else(|| {
-                SCROLL_HANDLES.with(|cell| {
-                    let handles = cell.borrow();
-                    handles.get(&id).map(|handle| {
-                        let offset = handle.offset();
-                        vec![
-                            f64::from(f32::from(offset.x)),
-                            f64::from(f32::from(offset.y)),
-                        ]
-                    })
-                })
-            }));
+        return Ok(scroll_element_position(id).map(|position| position.to_vec()));
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
@@ -4318,7 +4294,7 @@ impl WebGpuixRenderer {
         let id = web_element_id(element_id)?;
         let behavior = crate::scroll::Behavior::parse(behavior.as_deref())
             .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
-        scroll_element_to(id, x as f32, y as f32, behavior);
+        scroll_element_to(id, x, y, behavior);
         notify_web();
         Ok(())
     }
@@ -4568,27 +4544,7 @@ impl WebGpuixRenderer {
         element_id: f64,
     ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
-        let offset = VIRTUAL_LIST_STATES
-            .with(|states| {
-                states.borrow().get(&id).map(|state| {
-                    let offset = state.scroll_px_offset_for_scrollbar();
-                    [
-                        f64::from(f32::from(offset.x)),
-                        f64::from(f32::from(offset.y)),
-                    ]
-                })
-            })
-            .or_else(|| {
-                SCROLL_HANDLES.with(|handles| {
-                    handles.borrow().get(&id).map(|handle| {
-                        let offset = handle.offset();
-                        [
-                            f64::from(f32::from(offset.x)),
-                            f64::from(f32::from(offset.y)),
-                        ]
-                    })
-                })
-            });
+        let offset = scroll_element_position(id);
         let Some([x, y]) = offset else {
             return Ok(wasm_bindgen::JsValue::NULL);
         };
@@ -5818,26 +5774,25 @@ impl GpuixView {
         ])
     }
 
-    pub(crate) fn set_virtual_list_offset(&self, id: u64, x: f32, y: f32) -> bool {
+    pub(crate) fn set_virtual_list_offset(
+        &self,
+        id: u64,
+        offset: gpui::Point<gpui::Pixels>,
+    ) -> bool {
         let Some(entry) = self.virtual_lists.get(&id) else {
             return false;
         };
-        entry
-            .state
-            .set_offset_from_scrollbar(gpui::point(gpui::px(x), gpui::px(y)));
+        entry.state.set_offset_from_scrollbar(offset);
         true
     }
 
-    pub(crate) fn virtual_list_offset(&self, id: u64) -> Option<[f64; 2]> {
-        let offset = self
-            .virtual_lists
-            .get(&id)?
-            .state
-            .scroll_px_offset_for_scrollbar();
-        Some([
-            f64::from(f32::from(offset.x)),
-            f64::from(f32::from(offset.y)),
-        ])
+    pub(crate) fn virtual_list_offset(&self, id: u64) -> Option<gpui::Point<gpui::Pixels>> {
+        Some(
+            self.virtual_lists
+                .get(&id)?
+                .state
+                .scroll_px_offset_for_scrollbar(),
+        )
     }
 
     pub(crate) fn reveal_virtual_list_ancestor(&self, id: u64) -> bool {

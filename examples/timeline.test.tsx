@@ -261,8 +261,8 @@ describeNative('timeline example', () => {
 
     const offset = root.renderer.getScrollOffset(bin.id)
     expect(offset).not.toBeNull()
-    expect(offset![0]).toBeLessThan(0)
-    expect(offset![1]).toBeLessThan(0)
+    expect(offset![0]).toBeGreaterThan(0)
+    expect(offset![1]).toBeGreaterThan(0)
     await app.close()
   })
 

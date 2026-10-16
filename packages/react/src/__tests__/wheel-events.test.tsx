@@ -139,7 +139,7 @@ describeNative("wheel events", () => {
       testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(log).toEqual(["scroller:wheel"])
-      expect(offset("scroller")).toEqual([0, -30])
+      expect(offset("scroller")).toEqual([0, 30])
     })
 
     it("fires whether or not anything can scroll", () => {
@@ -228,7 +228,7 @@ describeNative("wheel events", () => {
 
       prevent = false
       testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
-      expect(offset("scroller")).toEqual([0, -30])
+      expect(offset("scroller")).toEqual([0, 30])
     })
 
     it("is cancelled by an ancestor's preventDefault in either phase", () => {
@@ -267,7 +267,7 @@ describeNative("wheel events", () => {
         </div>
       )
       testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
-      expect(offset("scroller")).toEqual([0, -30])
+      expect(offset("scroller")).toEqual([0, 30])
     })
 
     it("keeps scroll on the scroller: it does not bubble to an ancestor's onScroll", () => {

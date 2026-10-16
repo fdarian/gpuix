@@ -1105,31 +1105,27 @@ impl TestGpuixRenderer {
 
     // ── Scroll API ─────────────────────────────────────────────────────
 
-    /// Set the scroll offset of a scrollable element.
-    /// x and y are negative pixel values (scroll down = more negative y).
+    /// Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
+    /// `scrollTop`, zero or more, so scrolling down is a larger `top`.
     /// Call flush() after to apply the offset and re-render.
     #[napi]
     pub fn scroll_to(
         &self,
         element_id: f64,
-        x: f64,
-        y: f64,
+        left: f64,
+        top: f64,
         behavior: Option<String>,
     ) -> Result<()> {
         let id = to_element_id(element_id)?;
         let behavior =
             crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
+        let offset = crate::scroll::gpui_offset(left, top);
         update_view_or_defer(move |view, _window, _cx| {
-            if view.set_virtual_list_offset(id, x as f32, y as f32) {
+            if view.set_virtual_list_offset(id, offset) {
                 return;
             }
             if let Some(handle) = view.scroll_handles.get(&id) {
-                crate::scroll::scroll_to(
-                    id,
-                    handle,
-                    gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
-                    behavior,
-                );
+                crate::scroll::scroll_to(id, handle, offset, behavior);
             }
         })
     }
@@ -1435,22 +1431,15 @@ impl TestGpuixRenderer {
         Ok(crate::renderer::scroll_metrics(id).map(|metrics| metrics.to_vec()))
     }
 
-    /// Get the current scroll offset of a scrollable element.
-    /// Returns [x, y] or null if the element has no scroll handle.
+    /// The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
+    /// more), or null if it is not a scroll container or a `<virtual-list>`.
     #[napi]
     pub fn get_scroll_offset(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         update_view(|view, _window, _cx| {
-            if let Some(offset) = view.virtual_list_offset(id) {
-                return Some(offset.to_vec());
-            }
-            view.scroll_handles.get(&id).map(|handle| {
-                let offset = handle.offset();
-                vec![
-                    f64::from(f32::from(offset.x)),
-                    f64::from(f32::from(offset.y)),
-                ]
-            })
+            view.virtual_list_offset(id)
+                .or_else(|| view.scroll_handles.get(&id).map(|handle| handle.offset()))
+                .map(|offset| crate::scroll::dom_position(offset).to_vec())
         })
     }
 

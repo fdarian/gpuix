@@ -212,13 +212,13 @@ export declare class GpuixRenderer {
   /** Drop the current selection and request a repaint. */
   clearSelection(): void
   /**
-   * Set the scroll offset of a scrollable element.
-   * x and y are negative pixel values (scroll down = more negative y).
+   * Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
+   * `scrollTop`, zero or more, so scrolling down is a larger `top`.
    *
    * `behavior` is `"instant"`, `"smooth"` or `"auto"` (the default), which follows the
    * element's `scrollBehavior` style. A smooth scroll animates over the next frames.
    */
-  scrollTo(elementId: number, x: number, y: number, behavior?: string | undefined | null): void
+  scrollTo(elementId: number, left: number, top: number, behavior?: string | undefined | null): void
   /**
    * Scroll a child into view by its index in the children list.
    *
@@ -239,8 +239,8 @@ export declare class GpuixRenderer {
    */
   getListScrollTop(elementId: number): Array<number> | null
   /**
-   * Get the current scroll offset of a scrollable element.
-   * Returns [x, y] or null if the element has no scroll handle.
+   * The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
+   * more), or null if it is not a scroll container or a `<virtual-list>`.
    */
   getScrollOffset(elementId: number): Array<number> | null
   /**
@@ -587,11 +587,11 @@ export declare class TestGpuixRenderer {
    */
   dragSelect(x1: number, y1: number, x2: number, y2: number): void
   /**
-   * Set the scroll offset of a scrollable element.
-   * x and y are negative pixel values (scroll down = more negative y).
+   * Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
+   * `scrollTop`, zero or more, so scrolling down is a larger `top`.
    * Call flush() after to apply the offset and re-render.
    */
-  scrollTo(elementId: number, x: number, y: number, behavior?: string | undefined | null): void
+  scrollTo(elementId: number, left: number, top: number, behavior?: string | undefined | null): void
   /**
    * Scroll a child into view by its index in the children list.
    * Call flush() after to apply and re-render. For a `<virtual-list>` the
@@ -687,8 +687,8 @@ export declare class TestGpuixRenderer {
    */
   getScrollMetrics(elementId: number): Array<number> | null
   /**
-   * Get the current scroll offset of a scrollable element.
-   * Returns [x, y] or null if the element has no scroll handle.
+   * The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
+   * more), or null if it is not a scroll container or a `<virtual-list>`.
    */
   getScrollOffset(elementId: number): Array<number> | null
   /**

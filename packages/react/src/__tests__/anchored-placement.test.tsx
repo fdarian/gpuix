@@ -174,7 +174,7 @@ describeNative("<anchored> placement", () => {
         expect(events.at(-1)).toMatchObject({ side: "top" })
         expect(box(renderer, "popup").y).toBe(450 - 4 - 200)
 
-        renderer.scrollTo(scroller, 0, -300)
+        renderer.scrollTo(scroller, 0, 300)
         renderer.flush()
         renderer.dispatchNativeEvents()
         expect(events.at(-1)).toMatchObject({ side: "bottom" })

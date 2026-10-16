@@ -19,7 +19,7 @@ function setup(tree: ReactNode) {
     /** Where `testId` is within the scroller, so the answer does not depend on the window. */
     y: (testId: string) => origin(testId).y - origin("scroller").y,
     x: (testId: string) => origin(testId).x - origin("scroller").x,
-    scrollTo: (left: number, top: number) => renderer.scrollTo(id("scroller"), -left, -top),
+    scrollTo: (left: number, top: number) => renderer.scrollTo(id("scroller"), left, top),
   }
 }
 
@@ -173,7 +173,7 @@ describeNative("position: sticky", () => {
       </div>
     )
     try {
-      renderer.scrollTo(renderer.findByTestId("outer")!.id, 0, -10)
+      renderer.scrollTo(renderer.findByTestId("outer")!.id, 0, 10)
       scrollTo(0, 50)
       expect(y("header")).toBe(0)
     } finally {
@@ -196,7 +196,7 @@ describeNative("position: sticky is positioned", () => {
           <div style={{ height: 400 }} />
         </div>
       )
-      renderer.scrollTo(renderer.findByTestId("scroller")!.id, 0, -50)
+      renderer.scrollTo(renderer.findByTestId("scroller")!.id, 0, 50)
       renderer.nativeSimulateClick(10, 10)
       renderer.dispatchNativeEvents()
       expect(hit).toBe("header")
@@ -238,7 +238,7 @@ describeNative("position: sticky is positioned", () => {
       )
       const renderer = root.renderer
       const scroller = renderer.findByTestId("scroller")!.id
-      renderer.scrollTo(scroller, 0, -50)
+      renderer.scrollTo(scroller, 0, 50)
       renderer.flush()
       const file = path.join(SHOTS_DIR, `sticky-paint-${process.pid}.png`)
       renderer.captureScreenshot(file)

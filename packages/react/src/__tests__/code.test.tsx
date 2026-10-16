@@ -285,6 +285,6 @@ describe("<code>", () => {
     renderer.nativeSimulateScrollWheel(80, 50, 0, 80)
     const offset = renderer.getScrollOffset(container!.id)
     expect(offset).not.toBeNull()
-    expect(offset![1]).toBeLessThan(0)
+    expect(offset![1]).toBeGreaterThan(0)
   })
 })

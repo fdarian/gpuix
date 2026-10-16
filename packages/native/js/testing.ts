@@ -966,12 +966,12 @@ export class TestRenderer implements NativeRenderer {
 
   // ── Scroll API ──────────────────────────────────────────────────
 
-  /** Set the scroll offset of a scrollable element (overflow: "scroll").
-   *  x and y are negative pixel values (scroll down = more negative y).
-   *  Call flush() internally to apply. */
-  scrollTo(elementId: number, x: number, y: number, behavior?: string): void {
+  /** Scroll an element (overflow: "scroll", or a `<virtual-list>`) to a DOM scroll
+   *  position: `left` and `top` are `scrollLeft` and `scrollTop`, zero or more, so
+   *  scrolling down is a larger `top`. Call flush() internally to apply. */
+  scrollTo(elementId: number, left: number, top: number, behavior?: string): void {
     this.native.flush()
-    this.native.scrollTo(elementId, x, y, behavior)
+    this.native.scrollTo(elementId, left, top, behavior)
     // Flush again to re-render with the new offset
     this.native.flush()
   }
@@ -1128,7 +1128,8 @@ export class TestRenderer implements NativeRenderer {
     this.native.flush()
   }
 
-  /** Get the current scroll offset [x, y] or null if element is not scrollable. */
+  /** The DOM scroll position `[scrollLeft, scrollTop]` (zero or more, like `element.scrollLeft`
+   *  and the `onScroll` event), or null if the element is not scrollable. */
   getScrollOffset(elementId: number): [number, number] | null {
     this.native.flush()
     const result = this.native.getScrollOffset(elementId)

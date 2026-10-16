@@ -2326,10 +2326,10 @@ describeNative("events", () => {
       // Simulate scrolling down 50px (positive deltaY = scroll down)
       testRoot.renderer.nativeSimulateScrollWheel(150, 100, 0, 50)
 
-      // Scroll offset should have changed (y becomes more negative as we scroll down)
+      // scrollTop grows as we scroll down
       const afterScrollOffset = testRoot.renderer.getScrollOffset(scrollContainer.id)
       expect(afterScrollOffset).not.toBeNull()
-      expect(afterScrollOffset![1]).toBeLessThan(0) // scrolled down
+      expect(afterScrollOffset![1]).toBeGreaterThan(0) // scrolled down
     })
 
     it("does not remap a vertical wheel onto overflow-x", () => {
@@ -2365,7 +2365,7 @@ describeNative("events", () => {
       const parentOffset = testRoot.renderer.getScrollOffset(parent.id)
       const innerOffset = testRoot.renderer.getScrollOffset(inner.id)
       expect(parentOffset).not.toBeNull()
-      expect(parentOffset![1]).toBeLessThan(0)
+      expect(parentOffset![1]).toBeGreaterThan(0)
       expect(innerOffset).toEqual([0, 0])
     })
 
@@ -2392,7 +2392,7 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateScrollWheel(80, 40, 80, 0)
       const offset = testRoot.renderer.getScrollOffset(scroller.id)
       expect(offset).not.toBeNull()
-      expect(offset![0]).toBeLessThan(0)
+      expect(offset![0]).toBeGreaterThan(0)
     })
 
     it("lets a parent scroller take a vertical wheel over a filled child", () => {
@@ -2416,7 +2416,7 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateScrollWheel(80, 40, 0, 80)
       const offset = testRoot.renderer.getScrollOffset(parent.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0)
+      expect(offset![1]).toBeGreaterThan(0)
     })
 
     it("lets an ancestor take the wheel over an absolutely placed child", () => {
@@ -2490,7 +2490,7 @@ describeNative("events", () => {
 
       testRoot.render(<OverlayOverScroller passThrough />)
       testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, 80)
-      expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBeLessThan(0)
+      expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBeGreaterThan(0)
     })
 
     it("does not stop the wheel at a child with pointerEvents auto", () => {
@@ -2572,7 +2572,7 @@ describeNative("events", () => {
       testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, 80)
       const offset = testRoot.renderer.getScrollOffset(container.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0) // scrolled down vertically
+      expect(offset![1]).toBeGreaterThan(0) // scrolled down vertically
     })
 
     it("should support programmatic scrollTo", () => {
@@ -2595,12 +2595,12 @@ describeNative("events", () => {
       // Initially at 0,0
       expect(testRoot.renderer.getScrollOffset(container.id)).toEqual([0, 0])
 
-      // Scroll programmatically to y=-100
-      testRoot.renderer.scrollTo(container.id, 0, -100)
+      // Scroll programmatically to scrollTop 100
+      testRoot.renderer.scrollTo(container.id, 0, 100)
 
       const offset = testRoot.renderer.getScrollOffset(container.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBe(-100)
+      expect(offset![1]).toBe(100)
     })
 
     it("should support programmatic scrollToItem", () => {
@@ -2638,7 +2638,7 @@ describeNative("events", () => {
       // After scrolling to item, offset should have changed
       const offset = testRoot.renderer.getScrollOffset(container.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0) // scrolled down to reveal item
+      expect(offset![1]).toBeGreaterThan(0) // scrolled down to reveal item
     })
 
     it("should render scrollable container with visible screenshot diff", () => {
@@ -2746,7 +2746,7 @@ describeNative("events", () => {
         .find((d) => d.style.overflow === "scroll")!
       const offset = testRoot.renderer.getScrollOffset(container.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0)
+      expect(offset![1]).toBeGreaterThan(0)
     })
 
     it("should expose element id via ref for programmatic scroll", () => {
@@ -2790,10 +2790,10 @@ describeNative("events", () => {
       expect(testRoot.renderer.getScrollOffset(elementId)).toEqual([0, 0])
 
       // Programmatic scroll via ref id
-      testRoot.renderer.scrollTo(elementId, 0, -60)
+      testRoot.renderer.scrollTo(elementId, 0, 60)
       const offset = testRoot.renderer.getScrollOffset(elementId)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBe(-60)
+      expect(offset![1]).toBe(60)
     })
 
     it("scrolls a child into view from the host ref", () => {
@@ -2831,7 +2831,7 @@ describeNative("events", () => {
       childRef!.scrollIntoView?.()
       const offset = testRoot.renderer.getScrollOffset(scroller.id)
       expect(offset).not.toBeNull()
-      expect(offset![1]).toBeLessThan(0)
+      expect(offset![1]).toBeGreaterThan(0)
     })
   })
 })

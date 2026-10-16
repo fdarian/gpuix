@@ -23,7 +23,7 @@ function setup(style: StyleDesc = {}, onScroll?: (event: ScrollEvent) => void) {
   return {
     ...root,
     id,
-    top: () => 0 - renderer.getScrollOffset(id)![1],
+    top: () => renderer.getScrollOffset(id)![1],
     /** Moves the clock and draws the frame it lands on, as the display link would. */
     advance(milliseconds: number) {
       renderer.clockFastForward(milliseconds)
@@ -37,7 +37,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("animates a scrollTo that names no behavior", () => {
     const { renderer, id, top, advance, unmount } = setup({ scrollBehavior: "smooth" })
     try {
-      renderer.scrollTo(id, 0, -300)
+      renderer.scrollTo(id, 0, 300)
       expect(top(), "the first frame starts the animation").toBe(0)
 
       advance(100)
@@ -54,7 +54,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("takes between 300 and 450 ms", () => {
     const { renderer, id, top, advance, unmount } = setup({ scrollBehavior: "smooth" })
     try {
-      renderer.scrollTo(id, 0, -300)
+      renderer.scrollTo(id, 0, 300)
       advance(250)
       expect(top(), "not done before the shortest duration").toBeLessThan(300)
       advance(250)
@@ -67,7 +67,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("lets an explicit instant behavior win", () => {
     const { renderer, id, top, unmount } = setup({ scrollBehavior: "smooth" })
     try {
-      renderer.scrollTo(id, 0, -300, "instant")
+      renderer.scrollTo(id, 0, 300, "instant")
       expect(top()).toBe(300)
     } finally {
       unmount()
@@ -77,7 +77,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("lets an explicit smooth behavior win over the default", () => {
     const { renderer, id, top, advance, unmount } = setup()
     try {
-      renderer.scrollTo(id, 0, -300, "smooth")
+      renderer.scrollTo(id, 0, 300, "smooth")
       advance(100)
       expect(top()).toBeGreaterThan(0)
       expect(top()).toBeLessThan(300)
@@ -89,7 +89,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("scrolls instantly without the style or a behavior", () => {
     const { renderer, id, top, unmount } = setup()
     try {
-      renderer.scrollTo(id, 0, -300)
+      renderer.scrollTo(id, 0, 300)
       expect(top()).toBe(300)
     } finally {
       unmount()
@@ -102,7 +102,7 @@ describeNative("scrollBehavior: smooth", () => {
       tops.push(event.scrollTop)
     )
     try {
-      renderer.scrollTo(id, 0, -300)
+      renderer.scrollTo(id, 0, 300)
       for (let frame = 0; frame < 8; frame++) advance(50)
       expect(tops.length).toBeGreaterThan(2)
       expect(tops).toEqual([...tops].sort((a, b) => a - b))
@@ -115,7 +115,7 @@ describeNative("scrollBehavior: smooth", () => {
   it("ends when the wheel takes over", () => {
     const { renderer, id, top, advance, unmount } = setup({ scrollBehavior: "smooth" })
     try {
-      renderer.scrollTo(id, 0, -300)
+      renderer.scrollTo(id, 0, 300)
       advance(100)
       renderer.nativeSimulateScrollWheel(50, 50, 0, -10)
       const afterWheel = top()
@@ -154,8 +154,8 @@ describeNative("scrollBehavior: smooth", () => {
     )
     try {
       const id = root.renderer.findByTestId("plain")!.id
-      root.renderer.scrollTo(id, 0, -300)
-      expect(root.renderer.getScrollOffset(id)).toEqual([0, -300])
+      root.renderer.scrollTo(id, 0, 300)
+      expect(root.renderer.getScrollOffset(id)).toEqual([0, 300])
     } finally {
       root.unmount()
     }

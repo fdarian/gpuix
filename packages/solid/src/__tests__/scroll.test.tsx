@@ -87,7 +87,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid wheel events", () => {
 
     prevent = false
     app.renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
-    expect(app.renderer.getScrollOffset(scroller)).toEqual([0, -40])
+    expect(app.renderer.getScrollOffset(scroller)).toEqual([0, 40])
   })
 })
 

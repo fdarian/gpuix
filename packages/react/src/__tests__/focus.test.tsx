@@ -757,7 +757,7 @@ describeNative("focus model", () => {
       expect(scrollTop()).toBe(0)
       near.focus()
       far.focus()
-      expect(scrollTop()).toBeLessThan(0)
+      expect(scrollTop()).toBeGreaterThan(0)
     })
   })
 })

@@ -2259,13 +2259,13 @@ function ProgrammaticScroll() {
 
 `behavior` is `"instant"`, `"smooth"` or `"auto"`. With `"auto"`, or nothing, a scroller follows its `scrollBehavior` style. `scrollBehavior: "smooth"` makes `scrollTo` and `scrollIntoView` animate over about 300 to 450 ms (longer for longer distances), firing `onScroll` each frame. A wheel tick, another `scrollTo` or a drag ends the animation. An explicit `behavior` always wins.
 
-The same calls exist on the renderer for code that holds an id. `scrollTo` takes a negative offset there, the way GPUI keeps it:
+The same calls exist on the renderer for code that holds an id. They speak the DOM's scroll positions, the same numbers as `element.scrollLeft` and `scrollTop` and the `onScroll` event (zero or more, a larger `top` is further down), on the test renderer, the live renderer and the automation protocol alike:
 
 ```tsx
-renderer.scrollTo(elementId, x, y, behavior?)             // set the offset directly
+renderer.scrollTo(elementId, left, top, behavior?)         // scroll to a position
 renderer.scrollToItem(elementId, index)                    // a virtual list's row
 renderer.scrollIntoView(elementId, block?, inline?, behavior?)
-renderer.getScrollOffset(elementId)                        // [x, y], or null
+renderer.getScrollOffset(elementId)                        // [scrollLeft, scrollTop], or null
 renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]
 ```
 
@@ -2484,7 +2484,9 @@ function Results({ rows }: { rows: Result[] }) {
 }
 ```
 
-`scrollTo`, `scrollToItem`, and `getScrollOffset` all support virtual lists.
+`scrollTo`, `scrollToItem`, and `getScrollOffset` all support virtual lists. A list's
+`scrollTop` is its pixel offset into the content, from estimated row heights while
+rows are unmeasured; `getListScrollTop` below is exact.
 
 On a virtual list, `scrollToItem` takes an optional **pixel offset** and the
 list reports its logical anchor:

@@ -177,6 +177,7 @@ export const methods = {
     result: okSchema,
   },
   scrollTo: {
+    // The DOM's scroll position (`scrollLeft`, `scrollTop`, zero or more), not GPUI's offset.
     params: z.object({
       elementId: z.number(),
       x: z.number(),
@@ -185,6 +186,7 @@ export const methods = {
     result: okSchema,
   },
   getScrollOffset: {
+    // `[scrollLeft, scrollTop]`, zero or more.
     params: z.object({ elementId: z.number() }),
     result: z.object({
       offset: z.tuple([z.number(), z.number()]).nullable(),

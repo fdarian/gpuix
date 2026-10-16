@@ -47,12 +47,12 @@ describeNative("renderer calls from a keydown handler", () => {
     const seen: unknown[] = []
     const { testRoot, press } = mount((_event, { renderer }) => {
       const id = renderer.findByTestId("scroller").id
-      renderer.scrollTo(id, 0, -40)
+      renderer.scrollTo(id, 0, 40)
       seen.push(renderer.getScrollOffset(id))
     })
     press()
-    expect(seen).toEqual([[0, -40]])
-    expect(testRoot.renderer.getScrollOffset(testRoot.renderer.findByTestId("scroller").id)).toEqual([0, -40])
+    expect(seen).toEqual([[0, 40]])
+    expect(testRoot.renderer.getScrollOffset(testRoot.renderer.findByTestId("scroller").id)).toEqual([0, 40])
   })
 
   it("scrolls to an item and changes window key events", () => {

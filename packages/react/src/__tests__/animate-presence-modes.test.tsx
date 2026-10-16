@@ -240,7 +240,7 @@ describeNative('AnimatePresence mode="popLayout"', () => {
       </div>
     )
     render(app(["a", "b", "c", "d"]))
-    renderer.scrollTo(renderer.findByTestId("scroller").id, 0, -30)
+    renderer.scrollTo(renderer.findByTestId("scroller").id, 0, 30)
     const before = boundsOf(renderer, "b")
 
     renderer.clockPause()

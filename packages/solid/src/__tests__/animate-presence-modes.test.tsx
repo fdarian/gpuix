@@ -207,7 +207,7 @@ describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="popLayout"'
         </div>
       </div>
     ))
-    app.renderer.scrollTo(app.renderer.findByTestId("scroller")!.id, 0, -30)
+    app.renderer.scrollTo(app.renderer.findByTestId("scroller")!.id, 0, 30)
     const before = boundsOf(app.renderer, "b")
 
     app.renderer.clockPause()

@@ -211,12 +211,12 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
         <div ref={far} tabIndex={0} style={{ width: 100, height: 40 }} />
       </div>
     ))
-    const scrollY = () => renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0
+    const scrollTop = () => renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0
     far.focus({ preventScroll: true })
-    expect(scrollY()).toBe(0)
+    expect(scrollTop()).toBe(0)
     far.blur()
     far.focus()
-    expect(scrollY()).toBeLessThan(0)
+    expect(scrollTop()).toBeGreaterThan(0)
   })
 
   it("scrolls Tab and focus() to the nearest edge, and only if needed", () => {
@@ -233,7 +233,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
         <div testId="i5" tabIndex={0} style={item} />
       </div>
     ))
-    const scrollTop = () => 0 - (renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0)
+    const scrollTop = () => renderer.getScrollOffset(idOf("scroller"))?.[1] ?? 0
     renderer.simulateKeystrokes("Tab Tab")
     expect(focused()).toBe("i1")
     expect(scrollTop()).toBe(0)

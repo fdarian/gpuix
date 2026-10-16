@@ -218,6 +218,22 @@ fn is_smooth(id: u64, behavior: Behavior) -> bool {
     }
 }
 
+/// The scroll offset GPUI keeps (how far the content moved: zero, then negative) for a DOM scroll
+/// position (`scrollLeft`, `scrollTop`: zero or more). `0.0 - v`, not `-v`, so a position of
+/// zero stays `+0`. Every renderer method that takes a scroll position goes through here and
+/// through [`dom_position`]: this pair is the only place the sign flips.
+pub(crate) fn gpui_offset(left: f64, top: f64) -> gpui::Point<gpui::Pixels> {
+    gpui::point(gpui::px((0.0 - left) as f32), gpui::px((0.0 - top) as f32))
+}
+
+/// The DOM scroll position `[scrollLeft, scrollTop]` of a GPUI scroll offset.
+pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>) -> [f64; 2] {
+    [
+        0.0 - f64::from(f32::from(offset.x)),
+        0.0 - f64::from(f32::from(offset.y)),
+    ]
+}
+
 /// Moves a scroller to `target` (an offset: zero, then negative), instantly or by a smooth
 /// animation. A new call replaces the animation in flight. The offset is not clamped here: the
 /// next layout clamps it against the content as it is by then, which a caller that has just
@@ -582,6 +598,15 @@ mod tests {
         assert_eq!(virtual_list_offset(Align::End, row, (20.0, 80.0)), Some(-60.0));
         assert_eq!(virtual_list_offset(Align::Nearest, Some((40.0, 20.0)), (20.0, 80.0)), None);
         assert_eq!(virtual_list_offset(Align::Start, None, (20.0, 80.0)), Some(0.0));
+    }
+
+    #[test]
+    fn a_dom_scroll_position_is_the_negated_gpui_offset_and_back() {
+        let offset = gpui_offset(12.0, 80.0);
+        assert_eq!((f32::from(offset.x), f32::from(offset.y)), (-12.0, -80.0));
+        assert_eq!(dom_position(offset), [12.0, 80.0]);
+        let origin = dom_position(gpui_offset(0.0, 0.0));
+        assert!(origin.iter().all(|value| value.is_sign_positive() && *value == 0.0));
     }
 
     fn style(overflow: Option<&str>, x: Option<&str>, y: Option<&str>) -> StyleDesc {

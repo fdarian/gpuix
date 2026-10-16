@@ -14,7 +14,7 @@ function shoot(name: string, tree: ReactNode, scrollTo?: { testId: string; y: nu
     render(tree)
     renderer.dispatchNativeEvents()
     if (scrollTo) {
-      renderer.scrollTo(renderer.findByTestId(scrollTo.testId)!.id, 0, -scrollTo.y)
+      renderer.scrollTo(renderer.findByTestId(scrollTo.testId)!.id, 0, scrollTo.y)
       renderer.flush()
     }
     const file = path.join(SHOTS_DIR, `paint-clip-${name}.png`)

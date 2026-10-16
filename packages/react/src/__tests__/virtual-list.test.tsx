@@ -108,7 +108,7 @@ describe("<virtual-list>", () => {
     const list = renderer.findByType("virtual-list")[0]
     expect(list.children).toHaveLength(100)
     renderer.scrollToItem(list.id, 99)
-    expect(renderer.getScrollOffset(list.id)?.[1]).toBeLessThan(-100)
+    expect(renderer.getScrollOffset(list.id)?.[1]).toBeGreaterThan(100)
 
     const painted = renderer.getPaintedText()
     expect(painted).toContain("row-99")
@@ -358,7 +358,7 @@ describe("<virtual-list>", () => {
     renderer.scrollToItem(list.id, 80)
 
     const offset = renderer.getScrollOffset(list.id)?.[1] ?? 0
-    expect(offset).toBeCloseTo(-80 * 40, 0)
+    expect(offset).toBeCloseTo(80 * 40, 0)
   })
 
   it("paints a newly mounted window after a jump past unmounted rows", () => {
@@ -506,7 +506,7 @@ describe("<virtual-list>", () => {
     const listOffset = renderer.getScrollOffset(list.id)
     const rowOffset = renderer.getScrollOffset(scroller.id)
     expect(listOffset?.[1] ?? 0, `list ${JSON.stringify(listOffset)}`).toBeCloseTo(0)
-    expect(rowOffset?.[0], `row ${JSON.stringify(rowOffset)}`).toBeLessThan(0)
+    expect(rowOffset?.[0], `row ${JSON.stringify(rowOffset)}`).toBeGreaterThan(0)
   })
 
   it("scrolls and keeps selecting when the anchor row unmounts", () => {
@@ -529,7 +529,7 @@ describe("<virtual-list>", () => {
     }
 
     const selected = renderer.getSelectedText()
-    expect(renderer.getScrollOffset(list.id)?.[1]).toBeLessThan(-40)
+    expect(renderer.getScrollOffset(list.id)?.[1]).toBeGreaterThan(40)
     expect(selected).toContain("row-0")
     expect(selected).toMatch(/row-[5-9]/)
 

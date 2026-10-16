@@ -17,7 +17,7 @@ function setup(element: React.ReactElement) {
   const { renderer } = root
   const idOf = (testId: string) => renderer.findByTestId(testId).id
   const focused = () => renderer.getElement(renderer.getFocusedElementId())?.testId ?? null
-  const scrollTop = (testId: string) => 0 - (renderer.getScrollOffset(idOf(testId))?.[1] ?? 0)
+  const scrollTop = (testId: string) => renderer.getScrollOffset(idOf(testId))?.[1] ?? 0
   return { root, renderer, idOf, focused, scrollTop }
 }
 
@@ -47,7 +47,7 @@ describeNative("focus scrolls into view if needed", () => {
     it("scrolls back to the nearest edge on Shift+Tab", () => {
       const { renderer, focused, scrollTop, idOf } = setup(list())
       renderer.focusElement(idOf("i3"))
-      renderer.scrollTo(idOf("scroller"), 0, -60)
+      renderer.scrollTo(idOf("scroller"), 0, 60)
       renderer.simulateKeystrokes("Shift+Tab")
       expect(focused()).toBe("i2")
       expect(scrollTop("scroller")).toBe(60)
@@ -60,7 +60,7 @@ describeNative("focus scrolls into view if needed", () => {
     it("does not scroll to a visible item", () => {
       const { renderer, focused, scrollTop, idOf } = setup(list())
       renderer.focusElement(idOf("i0"))
-      renderer.scrollTo(idOf("scroller"), 0, -20)
+      renderer.scrollTo(idOf("scroller"), 0, 20)
       renderer.simulateKeystrokes("Tab")
       expect(focused()).toBe("i1")
       // i1 spans 40..80 and the port is 20..120.

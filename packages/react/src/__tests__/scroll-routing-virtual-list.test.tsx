@@ -43,7 +43,7 @@ describeNative("a virtual list in wheel routing", () => {
     const { renderer, offset, unmount } = listInScroller()
     try {
       renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
-      expect(offset("list")[1]).toBe(-30)
+      expect(offset("list")[1]).toBe(30)
       expect(offset("outer")).toEqual([0, 0])
     } finally {
       unmount()
@@ -53,10 +53,10 @@ describeNative("a virtual list in wheel routing", () => {
   it("chains to the scroller around it at its limit", () => {
     const { renderer, offset, scrollTo, unmount } = listInScroller()
     try {
-      scrollTo("list", 0, -700)
+      scrollTo("list", 0, 700)
       renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
-      expect(offset("list")[1]).toBe(-700)
-      expect(offset("outer")).toEqual([0, -30])
+      expect(offset("list")[1]).toBe(700)
+      expect(offset("outer")).toEqual([0, 30])
     } finally {
       unmount()
     }
@@ -65,13 +65,13 @@ describeNative("a virtual list in wheel routing", () => {
   it("drops what it could not use, and the axis it does not scroll, until the next gesture", () => {
     const { renderer, offset, scrollTo, unmount } = listInScroller()
     try {
-      scrollTo("list", 0, -690)
+      scrollTo("list", 0, 690)
       renderer.nativeSimulateScrollWheel(50, 150, 20, 30)
-      expect(offset("list")[1]).toBe(-700)
+      expect(offset("list")[1]).toBe(700)
       expect(offset("outer")).toEqual([0, 0])
       renderer.nativeSimulateScrollWheel(50, 150, 20, 30, undefined, "started")
-      expect(offset("list")[1]).toBe(-700)
-      expect(offset("outer")).toEqual([-20, -30])
+      expect(offset("list")[1]).toBe(700)
+      expect(offset("outer")).toEqual([20, 30])
     } finally {
       unmount()
     }
@@ -80,12 +80,12 @@ describeNative("a virtual list in wheel routing", () => {
   it("keeps a gesture and its momentum on the list", () => {
     const { renderer, offset, scrollTo, unmount } = listInScroller()
     try {
-      scrollTo("list", 0, -690)
+      scrollTo("list", 0, 690)
       renderer.nativeSimulateScrollWheel(50, 150, 0, 5, undefined, "started")
       for (let frame = 0; frame < 10; frame++) {
         renderer.nativeSimulateScrollWheel(50, 150, 0, 60, undefined, "moved")
       }
-      expect(offset("list")[1]).toBe(-700)
+      expect(offset("list")[1]).toBe(700)
       expect(offset("outer")).toEqual([0, 0])
     } finally {
       unmount()
@@ -97,7 +97,7 @@ describeNative("a virtual list in wheel routing", () => {
       list: { overscrollBehavior: "contain" },
     })
     try {
-      scrollTo("list", 0, -700)
+      scrollTo("list", 0, 700)
       renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -113,7 +113,7 @@ describeNative("a virtual list in wheel routing", () => {
       renderer.dispatchScrollWheel(50, 150, 0, 10)
       renderer.dispatchScrollWheel(50, 150, 0, 10)
       renderer.flush()
-      expect(offset("list")[1]).toBe(-30)
+      expect(offset("list")[1]).toBe(30)
     } finally {
       unmount()
     }

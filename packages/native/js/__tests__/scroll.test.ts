@@ -24,10 +24,10 @@ class FakeScroller {
     return [this.left, this.top, 1000, 500, 200, 100]
   }
 
-  scrollTo = (id: number, x: number, y: number, behavior?: string) => {
-    this.calls.push(`scrollTo ${id} ${x} ${y} ${behavior}`)
-    this.left = -x
-    this.top = -y
+  scrollTo = (id: number, left: number, top: number, behavior?: string) => {
+    this.calls.push(`scrollTo ${id} ${left} ${top} ${behavior}`)
+    this.left = left
+    this.top = top
   }
 
   scrollIntoView = (id: number, block?: string, inline?: string, behavior?: string) => {
@@ -136,7 +136,7 @@ describe("scroll members", () => {
     const scroller = new FakeScroller()
     scroller.left = 25
     element(scroller).scrollTop = 80
-    expect(scroller.calls.at(-1)).toBe("scrollTo 7 -25 -80 instant")
+    expect(scroller.calls.at(-1)).toBe("scrollTo 7 25 80 instant")
   })
 
   it("keeps the axis scrollTo does not name, and passes the behavior", () => {
@@ -144,14 +144,14 @@ describe("scroll members", () => {
     scroller.left = 25
     scroller.top = 10
     element(scroller).scrollTo({ top: 60, behavior: "smooth" })
-    expect(scroller.calls.at(-1)).toBe("scrollTo 7 -25 -60 smooth")
+    expect(scroller.calls.at(-1)).toBe("scrollTo 7 25 60 smooth")
   })
 
   it("takes scrollTo(x, y) and rejects half a coordinate pair", () => {
     const scroller = new FakeScroller()
     const target = element(scroller)
     target.scrollTo(3, 4)
-    expect(scroller.calls.at(-1)).toBe("scrollTo 7 -3 -4 undefined")
+    expect(scroller.calls.at(-1)).toBe("scrollTo 7 3 4 undefined")
     expect(() => (target.scrollTo as (x: number) => void)(3)).toThrow("both coordinates")
   })
 
@@ -159,7 +159,7 @@ describe("scroll members", () => {
     const scroller = new FakeScroller()
     scroller.top = 40
     element(scroller).scrollBy({ top: 15 })
-    expect(scroller.calls.at(-1)).toBe("scrollTo 7 0 -55 undefined")
+    expect(scroller.calls.at(-1)).toBe("scrollTo 7 0 55 undefined")
   })
 
   it("maps scrollIntoView arguments", () => {
