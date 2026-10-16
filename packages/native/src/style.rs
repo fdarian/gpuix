@@ -152,6 +152,113 @@ impl BoxShadowValues {
     }
 }
 
+/// `borderRadius`: a number of px or a CSS string, parsed when the style arrives
+/// so an invalid one is an error at the commit and not a missing corner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BorderRadiusValue(pub gpui::Corners<gpui::CornerRadius>);
+
+/// A corner longhand such as `borderTopLeftRadius`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CornerRadiusValue(pub gpui::CornerRadius);
+
+impl StyleDesc {
+    /// The four corners once the corner longhands are laid over `borderRadius`;
+    /// a corner neither sets is square.
+    pub(crate) fn corner_radii(&self) -> gpui::Corners<gpui::CornerRadius> {
+        let mut corners = self.border_radius.map(|radii| radii.0).unwrap_or_default();
+        if let Some(radius) = self.border_top_left_radius {
+            corners.top_left = radius.0;
+        }
+        if let Some(radius) = self.border_top_right_radius {
+            corners.top_right = radius.0;
+        }
+        if let Some(radius) = self.border_bottom_right_radius {
+            corners.bottom_right = radius.0;
+        }
+        if let Some(radius) = self.border_bottom_left_radius {
+            corners.bottom_left = radius.0;
+        }
+        corners
+    }
+}
+
+impl BorderRadiusValue {
+    /// A circular radius of `value` px on every corner.
+    pub fn px(value: f64) -> Self {
+        Self(gpui::CornerRadius::from(gpui::px(value as f32)).on_all_corners())
+    }
+}
+
+impl CornerRadiusValue {
+    /// A circular radius of `value` px.
+    pub fn px(value: f64) -> Self {
+        Self(gpui::CornerRadius::from(gpui::px(value as f32)))
+    }
+}
+
+/// A number or a string, handed to the parser that knows the property.
+struct RadiusVisitor<T> {
+    from_number: fn(f64) -> Result<T, String>,
+    from_css: fn(&str) -> Result<T, String>,
+}
+
+impl<'de, T> serde::de::Visitor<'de> for RadiusVisitor<T> {
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a number or a CSS border-radius string")
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<T, E> {
+        (self.from_number)(value).map_err(E::custom)
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<T, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<T, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<T, E> {
+        (self.from_css)(value).map_err(E::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for BorderRadiusValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(RadiusVisitor {
+            from_number: |value| {
+                crate::css::border_radius::corner_from_number(value)
+                    .map(|corner| Self(corner.on_all_corners()))
+            },
+            from_css: |value| crate::css::border_radius::parse_border_radius(value).map(Self),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for CornerRadiusValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(RadiusVisitor {
+            from_number: |value| crate::css::border_radius::corner_from_number(value).map(Self),
+            from_css: |value| crate::css::border_radius::parse_corner(value).map(Self),
+        })
+    }
+}
+
+impl Serialize for BorderRadiusValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        crate::css::border_radius::border_radius_to_json(&self.0).serialize(serializer)
+    }
+}
+
+impl Serialize for CornerRadiusValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        crate::css::border_radius::corner_to_json(&self.0).serialize(serializer)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinearGradientStopValue {
@@ -490,11 +597,15 @@ pub struct StyleDesc {
     pub border_right: Option<String>,
     pub border_bottom: Option<String>,
     pub border_left: Option<String>,
-    pub border_radius: Option<f64>,
-    pub border_top_left_radius: Option<f64>,
-    pub border_top_right_radius: Option<f64>,
-    pub border_bottom_left_radius: Option<f64>,
-    pub border_bottom_right_radius: Option<f64>,
+    /// CSS `border-radius`: a number (px) or a string of one to four lengths or
+    /// percentages, optionally followed by `/` and one to four vertical radii. The
+    /// corner longhands win over it.
+    pub border_radius: Option<BorderRadiusValue>,
+    /// A number (px) or `"<horizontal> [<vertical>]"`.
+    pub border_top_left_radius: Option<CornerRadiusValue>,
+    pub border_top_right_radius: Option<CornerRadiusValue>,
+    pub border_bottom_left_radius: Option<CornerRadiusValue>,
+    pub border_bottom_right_radius: Option<CornerRadiusValue>,
     #[serde(default, deserialize_with = "deserialize_box_shadow")]
     pub box_shadow: Option<BoxShadowValues>,
     /// CSS `filter`, e.g. `"blur(4px) brightness(1.2)"`. Applied to the element and
@@ -1233,6 +1344,68 @@ mod tests {
             serde_json::from_str(r##"{"boxShadow":"4 4 red","color":"red"}"##).unwrap();
         assert_eq!(style.box_shadow, None);
         assert_eq!(style.color.as_deref(), Some("red"));
+    }
+
+    fn radius(json: &str) -> StyleDesc {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn circle(radius: f32) -> gpui::CornerRadius {
+        gpui::CornerRadius::from(gpui::px(radius))
+    }
+
+    #[test]
+    fn a_radius_is_a_number_or_a_css_string() {
+        let style = radius(
+            r##"{"borderRadius":"10px 20px / 5px","borderTopLeftRadius":"50% 20px","borderTopRightRadius":8,"borderBottomLeftRadius":0}"##,
+        );
+        let corners = style.border_radius.unwrap().0;
+        assert_eq!(corners.top_right, gpui::CornerRadius { x: gpui::px(20.).into(), y: gpui::px(5.).into() });
+        assert_eq!(
+            style.border_top_left_radius.unwrap().0,
+            gpui::CornerRadius { x: gpui::DefiniteLength::Fraction(0.5), y: gpui::px(20.).into() }
+        );
+        assert_eq!(style.border_top_right_radius, Some(CornerRadiusValue::px(8.0)));
+        assert_eq!(style.border_bottom_left_radius, Some(CornerRadiusValue::px(0.0)));
+        assert_eq!(radius(r##"{"borderRadius":12}"##).border_radius, Some(BorderRadiusValue::px(12.0)));
+    }
+
+    #[test]
+    fn an_invalid_radius_is_an_error_naming_the_value_even_in_a_state_style() {
+        for json in [
+            r##"{"borderRadius":"1em"}"##,
+            r##"{"borderRadius":"-4px"}"##,
+            r##"{"borderRadius":-4}"##,
+            r##"{"borderRadius":"10px / "}"##,
+            r##"{"borderTopLeftRadius":"1px 2px 3px"}"##,
+            r##"{"borderBottomRightRadius":"10px / 5px"}"##,
+            r##"{"hover":{"borderRadius":"bogus"}}"##,
+            r##"{"borderRadius":true}"##,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r##"{"borderRadius":"1em"}"##).unwrap_err().to_string();
+        assert!(error.contains("\"1em\""), "{error}");
+    }
+
+    #[test]
+    fn corner_longhands_are_laid_over_the_shorthand() {
+        let style = radius(r##"{"borderRadius":"10px 20px","borderBottomRightRadius":"50%"}"##);
+        let corners = style.corner_radii();
+        assert_eq!(corners.top_left, circle(10.0));
+        assert_eq!(corners.top_right, circle(20.0));
+        assert_eq!(corners.bottom_left, circle(20.0));
+        assert_eq!(corners.bottom_right, gpui::CornerRadius::from(gpui::DefiniteLength::Fraction(0.5)));
+        assert_eq!(StyleDesc::default().corner_radii(), gpui::Corners::default());
+    }
+
+    #[test]
+    fn a_radius_serializes_for_the_inspector() {
+        let style = radius(r##"{"borderRadius":"10px 20px / 5px","borderTopLeftRadius":4}"##);
+        let json = serde_json::to_value(&style).unwrap();
+        assert_eq!(json["borderRadius"], "10px 20px 10px 20px / 5px 5px 5px 5px");
+        assert_eq!(json["borderTopLeftRadius"], 4.0);
+        assert!(json["borderTopRightRadius"].is_null());
     }
 
     #[test]

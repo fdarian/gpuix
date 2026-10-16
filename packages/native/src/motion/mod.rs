@@ -2138,7 +2138,7 @@ mod tests {
     fn a_shorthand_beats_the_corners_of_the_base_style() {
         let started = Instant::now();
         let base = StyleDesc {
-            border_top_left_radius: Some(20.0),
+            border_top_left_radius: Some(crate::style::CornerRadiusValue::px(20.0)),
             ..Default::default()
         };
         let description = serde_json::json!({
@@ -2153,8 +2153,8 @@ mod tests {
             .visible_style(at(started, 0.5))
             .unwrap()
             .apply_to(&mut style);
-        assert_eq!(style.border_top_left_radius, Some(5.0));
-        assert_eq!(style.border_bottom_right_radius, Some(5.0));
+        assert_eq!(style.border_top_left_radius, Some(crate::style::CornerRadiusValue::px(5.0)));
+        assert_eq!(style.border_bottom_right_radius, Some(crate::style::CornerRadiusValue::px(5.0)));
     }
 
     #[test]

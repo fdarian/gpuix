@@ -8313,21 +8313,25 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(line_height) = &style.line_height {
         el.text_style().line_height = Some(line_height.text_style_value(lengths));
     }
-    if let Some(radius) = style.border_radius {
-        el = el.rounded(gpui::px(radius as f32));
+    if let Some(radii) = style.border_radius {
+        el = el
+            .rounded_tl(radii.0.top_left)
+            .rounded_tr(radii.0.top_right)
+            .rounded_br(radii.0.bottom_right)
+            .rounded_bl(radii.0.bottom_left);
     }
     // Apply corner longhands after the shorthand so the explicit corner wins.
     if let Some(radius) = style.border_top_left_radius {
-        el = el.rounded_tl(gpui::px(radius as f32));
+        el = el.rounded_tl(radius.0);
     }
     if let Some(radius) = style.border_top_right_radius {
-        el = el.rounded_tr(gpui::px(radius as f32));
+        el = el.rounded_tr(radius.0);
     }
     if let Some(radius) = style.border_bottom_left_radius {
-        el = el.rounded_bl(gpui::px(radius as f32));
+        el = el.rounded_bl(radius.0);
     }
     if let Some(radius) = style.border_bottom_right_radius {
-        el = el.rounded_br(gpui::px(radius as f32));
+        el = el.rounded_br(radius.0);
     }
     el = crate::css::border::apply_shorthands(el, style, colors, lengths);
     // `borderWidth: 0` must clear a border, not be ignored: an element that

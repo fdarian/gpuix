@@ -277,10 +277,10 @@ impl CustomElement for DiffElement {
         let wants_toggle = ctx.events.contains("toggleFile") && !ctx.inert;
         let wants_line_click = ctx.events.contains("lineClick") && !ctx.inert;
         let wants_show_more = ctx.events.contains("showMore") && !ctx.inert;
-        let radius = ctx
+        let corner_radii = ctx
             .style
-            .and_then(|style| style.border_radius)
-            .unwrap_or(0.0) as f32;
+            .map(|style| style.corner_radii())
+            .unwrap_or_default();
         let row_theme = theme.clone();
 
         let body = if self.scroll {
@@ -336,7 +336,7 @@ impl CustomElement for DiffElement {
                         wants_line_click,
                         wants_show_more,
                         theme: &row_theme,
-                        radius,
+                        corner_radii,
                     },
                 )
             })
@@ -362,7 +362,7 @@ impl CustomElement for DiffElement {
                         wants_line_click,
                         wants_show_more,
                         theme: &row_theme,
-                        radius,
+                        corner_radii,
                     },
                 ));
             }
@@ -446,14 +446,15 @@ struct RowContext<'a> {
     /// Applied while rendering, never baked into `DiffData`, so a theme change
     /// repaints without reparsing the patch.
     theme: &'a Theme,
-    /// The element's own `borderRadius`, echoed onto the first row.
+    /// The element's own top corners, echoed onto the first row. A percentage is of the
+    /// header, not of the whole element.
     ///
     /// GPUI clips a scroll container to its BOUNDS RECTANGLE, never to a
     /// rounded path, so a row that paints a background covers the parent's
     /// rounded corners. The file header is row 0 and is the only row that
     /// paints at the top edge, so it carries the radius itself. Below it the
     /// square edge is correct: it reads as "content continues".
-    radius: f32,
+    corner_radii: gpui::Corners<gpui::CornerRadius>,
 }
 
 impl RowContext<'_> {
@@ -641,8 +642,10 @@ fn file_header_row(
         .cursor_pointer()
         .hover(|s| s.bg(ink(theme, 0.05)));
 
-    if first && ctx.radius > 0.0 {
-        header = header.rounded_tl(px(ctx.radius)).rounded_tr(px(ctx.radius));
+    if first {
+        header = header
+            .rounded_tl(ctx.corner_radii.top_left)
+            .rounded_tr(ctx.corner_radii.top_right);
     }
 
     if ctx.wants_toggle {

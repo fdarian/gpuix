@@ -13,7 +13,10 @@ use crate::color::ColorContext;
 use crate::css::length::LinearLength;
 use crate::css::line_height::LineHeight;
 use crate::layout::aspect_ratio::AspectRatio;
-use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
+use crate::style::{
+    BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue,
+    StyleDesc,
+};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
@@ -80,6 +83,57 @@ impl Field for Option<f64> {
             AnimValue::Number(value) => *self = Some(value),
             other => unreachable!("a number field was given {other:?}"),
         }
+    }
+}
+
+/// Motion moves a corner between circular px radii. A percentage or an
+/// elliptical corner has no number to start from, and a written one replaces it.
+impl Field for Option<CornerRadiusValue> {
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+        use gpui::{AbsoluteLength, DefiniteLength};
+        let corner = self.as_ref()?.0;
+        match corner.x {
+            DefiniteLength::Absolute(AbsoluteLength::Pixels(pixels))
+                if corner.y == corner.x || corner.y == DefiniteLength::default() =>
+            {
+                Some(AnimValue::Number(f32::from(pixels) as f64))
+            }
+            _ => None,
+        }
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Number(value) => *self = Some(CornerRadiusValue::px(value)),
+            other => unreachable!("a radius field was given {other:?}"),
+        }
+    }
+}
+
+/// The shorthand seen from one corner, which is what a longhand reads when it
+/// is unset.
+trait ShorthandCorners {
+    fn top_left(&self) -> Option<CornerRadiusValue>;
+    fn top_right(&self) -> Option<CornerRadiusValue>;
+    fn bottom_left(&self) -> Option<CornerRadiusValue>;
+    fn bottom_right(&self) -> Option<CornerRadiusValue>;
+}
+
+impl ShorthandCorners for Option<BorderRadiusValue> {
+    fn top_left(&self) -> Option<CornerRadiusValue> {
+        self.map(|radii| CornerRadiusValue(radii.0.top_left))
+    }
+
+    fn top_right(&self) -> Option<CornerRadiusValue> {
+        self.map(|radii| CornerRadiusValue(radii.0.top_right))
+    }
+
+    fn bottom_left(&self) -> Option<CornerRadiusValue> {
+        self.map(|radii| CornerRadiusValue(radii.0.bottom_left))
+    }
+
+    fn bottom_right(&self) -> Option<CornerRadiusValue> {
+        self.map(|radii| CornerRadiusValue(radii.0.bottom_right))
     }
 }
 
@@ -287,7 +341,7 @@ fn shadows_from(
 macro_rules! properties {
     ($(
         $variant:ident $name:literal $kind:ident $clamp:ident $initial:expr,
-        $field:ident $(| $fallback:ident)?;
+        $field:ident $(| $fallback:ident $(. $corner:ident ())?)?;
     )*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub(super) enum AnimProp {
@@ -329,13 +383,18 @@ macro_rules! properties {
             }
 
             /// The value the style declares, resolving a longhand through the
-            /// shorthand the renderer would apply beneath it.
+            /// shorthand the renderer would apply beneath it. A longhand that is
+            /// set but has no number (a percentage radius) does not fall through.
             pub(super) fn read(self, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
                 let colors = self.colors(colors);
                 match self {
                     $(Self::$variant => {
                         let value = read_field!($kind, style.$field, colors);
-                        $(let value = value.or_else(|| read_field!($kind, style.$fallback, colors));)?
+                        $(let value = if style.$field.is_none() {
+                            read_field!($kind, style.$fallback$(.$corner())?, colors)
+                        } else {
+                            value
+                        };)?
                         value
                     }),*
                 }
@@ -393,10 +452,10 @@ properties! {
     BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
     BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
     BorderLeftColor "borderLeftColor" Color None CurrentColor, border_left_color | border_color;
-    BorderTopLeftRadius "borderTopLeftRadius" Number NonNegative Number(0.0), border_top_left_radius | border_radius;
-    BorderTopRightRadius "borderTopRightRadius" Number NonNegative Number(0.0), border_top_right_radius | border_radius;
-    BorderBottomLeftRadius "borderBottomLeftRadius" Number NonNegative Number(0.0), border_bottom_left_radius | border_radius;
-    BorderBottomRightRadius "borderBottomRightRadius" Number NonNegative Number(0.0), border_bottom_right_radius | border_radius;
+    BorderTopLeftRadius "borderTopLeftRadius" Number NonNegative Number(0.0), border_top_left_radius | border_radius.top_left();
+    BorderTopRightRadius "borderTopRightRadius" Number NonNegative Number(0.0), border_top_right_radius | border_radius.top_right();
+    BorderBottomLeftRadius "borderBottomLeftRadius" Number NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
+    BorderBottomRightRadius "borderBottomRightRadius" Number NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
@@ -1117,7 +1176,7 @@ mod tests {
         let style = StyleDesc {
             padding: Some(LinearLength::px(8.0)),
             padding_left: Some(LinearLength::px(20.0)),
-            border_radius: Some(6.0),
+            border_radius: Some(BorderRadiusValue::px(6.0)),
             ..Default::default()
         };
         assert_eq!(
@@ -1133,6 +1192,32 @@ mod tests {
             Some(AnimValue::Number(6.0))
         );
         assert_eq!(AnimProp::MarginTop.read(&style, &colors), None);
+    }
+
+    #[test]
+    fn a_radius_is_a_start_value_only_when_it_is_a_circular_px_corner() {
+        let colors = Colors::root();
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::BorderTopLeftRadius.read(&style, &colors)
+        };
+        assert_eq!(read(r##"{"borderTopLeftRadius":"9px"}"##), Some(AnimValue::Number(9.0)));
+        assert_eq!(read(r##"{"borderRadius":"4px 8px"}"##), Some(AnimValue::Number(4.0)));
+        assert_eq!(read(r##"{"borderRadius":"50%"}"##), None);
+        assert_eq!(read(r##"{"borderTopLeftRadius":"10px 20px"}"##), None);
+        assert_eq!(read(r##"{"borderRadius":"10px","borderTopLeftRadius":"30%"}"##), None);
+    }
+
+    #[test]
+    fn a_motion_radius_is_a_number_and_writes_a_circular_corner() {
+        let colors = Colors::root();
+        let error = AnimProp::BorderTopLeftRadius
+            .parse(&serde_json::json!("50%"), &colors)
+            .unwrap_err();
+        assert!(error.contains("borderTopLeftRadius must be a number"), "{error}");
+        let mut style: StyleDesc = serde_json::from_str(r##"{"borderTopLeftRadius":"50% 20px"}"##).unwrap();
+        AnimProp::BorderTopLeftRadius.write(&mut style, AnimValue::Number(7.0));
+        assert_eq!(style.border_top_left_radius, Some(CornerRadiusValue::px(7.0)));
     }
 
     #[test]

@@ -568,6 +568,27 @@ mod tests {
     }
 
     #[test]
+    fn a_state_radius_replaces_the_elliptical_corners_of_the_base() {
+        let base = style(
+            r##"{
+                "borderTopLeftRadius": "50% 20px", "borderRadius": "4px / 8px",
+                "hover": { "borderRadius": "10px", "borderBottomRightRadius": "30% 5px" }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert!(at_rest.border_top_left_radius.is_some());
+
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_top_left_radius, None);
+        let corners = hovered.corner_radii();
+        assert_eq!(corners.top_left, gpui::CornerRadius::from(gpui::px(10.)));
+        assert_eq!(
+            corners.bottom_right,
+            gpui::CornerRadius { x: gpui::DefiniteLength::Fraction(0.3), y: gpui::px(5.).into() }
+        );
+    }
+
+    #[test]
     fn state_longhand_beats_state_shorthand_and_base_shorthand() {
         let base = style(
             r##"{ "padding": 8, "hover": { "paddingTop": 1 }, "active": { "padding": 3, "paddingTop": 2 } }"##,
