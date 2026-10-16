@@ -550,7 +550,9 @@ impl CustomElement for TextEditorElement {
             .and_then(|style| style.position.as_deref())
             .is_none()
         {
-            editor = editor.relative();
+            // A containing block for the editor's own parts, not an author's `position`: it must
+            // not rise above its later siblings.
+            editor = editor.relative().unlifted();
         }
         let default_role = if self.multiline {
             gpui::Role::MultilineTextInput

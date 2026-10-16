@@ -642,6 +642,11 @@ impl gpui::Element for FlipOffset {
         (self.child.request_layout(window, cx), ())
     }
 
+    // A positioned `layout` box is lifted into its stacking context as the wrapper, glide and all.
+    fn lift_z(&self) -> Option<i32> {
+        self.child.lift_z()
+    }
+
     fn prepaint(
         &mut self,
         _: Option<&gpui::GlobalElementId>,

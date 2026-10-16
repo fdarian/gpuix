@@ -219,6 +219,11 @@ impl Element for Measured {
         self.child.escapes_to()
     }
 
+    // The stacking context takes the wrapper, not the child, so the wrapper must say the child's z.
+    fn lift_z(&self) -> Option<i32> {
+        self.child.lift_z()
+    }
+
     fn prepaint(
         &mut self,
         _: Option<&GlobalElementId>,

@@ -171,9 +171,10 @@ pub fn chrome_text(text: SharedString, runs: Option<Vec<TextRun>>) -> gpui::AnyE
         },
     )
     .absolute()
+    .unlifted()
     .w(px(0.0))
     .h(px(0.0));
-    div().relative().child(log).child(styled).into_any_element()
+    div().relative().unlifted().child(log).child(styled).into_any_element()
 }
 
 /// Selection key for an element. `sub` distinguishes multiple text runs painted
@@ -346,10 +347,14 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         },
     )
     .absolute()
+    .unlifted()
     .size_full();
 
+    // Positioned only to hold the underlay. Lifted, every text run would rise above the
+    // later boxes of its context.
     div()
         .relative()
+        .unlifted()
         .child(underlay)
         .child(glyphs)
         .into_any_element()

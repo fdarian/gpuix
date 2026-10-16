@@ -201,10 +201,12 @@ export const DialogPopup = forwardRef<PublicInstance, DialogPopupProps>(
           }}
           role={role}
           tabIndex={tabIndex}
-          // A press inside the popup must never reach the backdrop behind it.
+          // A press inside the popup must never reach the backdrop behind it:
+          // the backdrop is positioned, so the popup is too, and being later in
+          // the tree it paints above it.
           // The popup is focused so the first Tab enters it; it is a surface,
           // not a control, so it gets no focus look of its own.
-          style={{ pointerEvents: "auto", keyboardFocusDim: false, ...style }}
+          style={{ position: "relative", pointerEvents: "auto", keyboardFocusDim: false, ...style }}
           onKeyDown={(event: KeyEvent) => {
             onKeyDown?.(event)
             if (!context.modal || event.key !== "Tab" || event.defaultPrevented) return

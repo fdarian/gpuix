@@ -259,9 +259,12 @@ impl AnchoredElement {
     fn wrap_at_trigger(&self, layer: gpui::AnyElement) -> gpui::AnyElement {
         use gpui::prelude::*;
 
+        // These boxes are absolute to place the layer at its trigger, not to rise above the
+        // trigger's later siblings, so none of them is lifted.
         match (self.side, self.align) {
             (Side::Top, Alignment::Start) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .left_0()
                 .size_0()
@@ -269,6 +272,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Top, Alignment::Center) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .left(gpui::relative(0.5))
                 .size_0()
@@ -276,6 +280,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Top, Alignment::End) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .right_0()
                 .size_0()
@@ -283,6 +288,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Right, Alignment::Start) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .right_0()
                 .size_0()
@@ -290,6 +296,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Right, Alignment::Center) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top(gpui::relative(0.5))
                 .right_0()
                 .size_0()
@@ -297,6 +304,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Right, Alignment::End) => gpui::div()
                 .absolute()
+                .unlifted()
                 .bottom_0()
                 .right_0()
                 .size_0()
@@ -304,6 +312,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Bottom, Alignment::Start) => gpui::div()
                 .absolute()
+                .unlifted()
                 .bottom_0()
                 .left_0()
                 .size_0()
@@ -311,6 +320,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Bottom, Alignment::Center) => gpui::div()
                 .absolute()
+                .unlifted()
                 .bottom_0()
                 .left(gpui::relative(0.5))
                 .size_0()
@@ -318,6 +328,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Bottom, Alignment::End) => gpui::div()
                 .absolute()
+                .unlifted()
                 .bottom_0()
                 .right_0()
                 .size_0()
@@ -325,6 +336,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Left, Alignment::Start) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .left_0()
                 .size_0()
@@ -332,6 +344,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Left, Alignment::Center) => gpui::div()
                 .absolute()
+                .unlifted()
                 .top(gpui::relative(0.5))
                 .left_0()
                 .size_0()
@@ -339,6 +352,7 @@ impl AnchoredElement {
                 .into_any_element(),
             (Side::Left, Alignment::End) => gpui::div()
                 .absolute()
+                .unlifted()
                 .bottom_0()
                 .left_0()
                 .size_0()
@@ -370,6 +384,9 @@ impl CustomElement for AnchoredElement {
         if let Some(style) = ctx.style {
             content = crate::renderer::apply_interactive_styles(content, style, &ctx.colors, &ctx.lengths);
         }
+        // A deferred layer is prepainted with no context around it, so z-index inside the
+        // popup needs this one.
+        content = content.stacking_context();
         if self.fill_window {
             // `anchored()` is absolute and sized by its content, so a percentage
             // size has nothing to resolve against. A resize runs gpui's
@@ -494,6 +511,7 @@ impl CustomElement for AnchoredElement {
             // Covers the trigger, so placement can measure the box it flips around.
             gpui::div()
                 .absolute()
+                .unlifted()
                 .top_0()
                 .left_0()
                 .size_full()

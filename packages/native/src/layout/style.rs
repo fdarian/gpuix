@@ -270,7 +270,7 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthConte
     if let Some(value) = &style.left {
         el.style().inset.left = Some(length(value, lengths));
     }
-    el
+    super::stacking::apply_z_index(el, style)
 }
 
 fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {

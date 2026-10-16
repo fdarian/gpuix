@@ -5785,6 +5785,7 @@ impl GpuixView {
             pointer: &pointer,
             contents_overlay: None,
             anchor_scope: None,
+            stacking_root: true,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -5940,6 +5941,9 @@ pub(crate) struct BuildCtx<'a> {
     /// Set to an `<anchored>` element's id while building its direct children, taken by
     /// `build_element` to resolve `anchor-size()`.
     pub anchor_scope: Option<u64>,
+    /// Set while building the first element of a build (the window root, a virtual-list row),
+    /// which has no stacking context around it. Taken by `build_element`.
+    pub stacking_root: bool,
 }
 
 impl BuildCtx<'_> {
@@ -6891,6 +6895,7 @@ impl gpui::Render for GpuixView {
                     pointer: &pointer,
                     contents_overlay: None,
                     anchor_scope: None,
+                    stacking_root: true,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7011,6 +7016,7 @@ pub(crate) fn build_element(
     // Copy the tree reference out of `ctx`, so `element` borrows the tree and
     // not the build context, which the children below need mutably.
     let tree = ctx.tree;
+    let stacking_root = std::mem::take(&mut ctx.stacking_root);
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
@@ -7214,9 +7220,9 @@ pub(crate) fn build_element(
         host if crate::text::inline::is_host_type(host) => {
             ctx.custom_registry.destroy(id);
             if crate::layout::contents::is_display_contents(element) {
-                build_contents_container(element, style, ctx, window, cx)
+                build_contents_container(element, style, stacking_root, ctx, window, cx)
             } else {
-                build_host_container(element, style, ctx, window, cx)
+                build_host_container(element, style, stacking_root, ctx, window, cx)
             }
         }
         "virtual-list" => {
@@ -7283,6 +7289,7 @@ pub(crate) fn build_element(
                 props: element.custom_props(),
                 pointer_events_none: inherited.pointer_events_none,
                 app_region: inherited.app_region,
+                stacking_root,
                 // Built from every listener: the registry hands the element only
                 // the events it declares support for.
                 observe: crate::observers::reporter(
@@ -7527,6 +7534,7 @@ fn is_text_node(element: &crate::retained_tree::RetainedElement) -> bool {
 pub(crate) fn build_host_container(
     element: &crate::retained_tree::RetainedElement,
     style: Option<&StyleDesc>,
+    stacking_root: bool,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -7572,6 +7580,13 @@ pub(crate) fn build_host_container(
     if style.and_then(|style| style.position.as_deref()).is_none() {
         el.style().position = Some(gpui::Position::Static);
     }
+    el = crate::layout::stacking::apply_context(
+        el,
+        style,
+        stacking_root,
+        &ctx.inherited.colors,
+        &ctx.inherited.lengths,
+    );
     // The inert root claims its box as a non-selectable start region; below it,
     // a descendant's `userSelect: "text"` must not reopen one.
     let selection_start = if element.has_inert_prop() {
@@ -7713,6 +7728,7 @@ fn build_content(
 fn build_contents_container(
     element: &crate::retained_tree::RetainedElement,
     style: Option<&StyleDesc>,
+    stacking_root: bool,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -7721,6 +7737,9 @@ fn build_contents_container(
 
     let mut el = gpui::div();
     el.style().position = Some(gpui::Position::Static);
+    if stacking_root {
+        el = el.stacking_context();
+    }
     if let Some(style) = style {
         el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors);
     }
@@ -7786,6 +7805,11 @@ impl gpui::Element for ListWithScrollbar {
     // The scrollbar is placed by this wrapper's bounds, which must be the list's.
     fn escapes_to(&self) -> Option<gpui::Escape> {
         self.list.escapes_to()
+    }
+
+    // The stacking context takes the wrapper, not the list, so the wrapper must say the list's z.
+    fn lift_z(&self) -> Option<i32> {
+        self.list.lift_z()
     }
 
     fn prepaint(
@@ -11828,5 +11852,68 @@ mod dimension_length_tests {
             step(&page, cx, 600.0);
             near(page.size(2), (120.0, 100.0));
         }
+    }
+}
+
+/// The flags `build_element` sets for stacking, through a real build and paint: the order the
+/// text of each box is painted in is the paint order.
+#[cfg(test)]
+mod stacking_build_tests {
+    use super::*;
+
+    fn labelled(tree: &mut RetainedTree, id: u64, parent: u64, style: &str, label: &str) {
+        let style: StyleDesc = serde_json::from_str(style).unwrap();
+        tree.create_element(id, "div".to_owned());
+        tree.set_style(id, Arc::new(style));
+        tree.append_child(parent, id);
+        tree.create_element(id + 100, "text".to_owned());
+        tree.set_text(id + 100, label.to_owned());
+        tree.append_child(id, id + 100);
+    }
+
+    /// `1` is the window root with `a`, a static 200 box holding `b`, and `c` after it.
+    fn paint_order(cx: &mut gpui::TestAppContext, root: &str, b: &str, c: &str) -> Vec<String> {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            let root: StyleDesc = serde_json::from_str(root).unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(root));
+            tree.set_root(1);
+            labelled(&mut tree, 2, 1, r#"{"width": 200, "height": 200}"#, "a");
+            labelled(&mut tree, 3, 2, b, "b");
+            labelled(&mut tree, 4, 1, c, "c");
+        }
+        let window = cx.add_window(|window, _| {
+            crate::events::enable_dom_hit_testing(window);
+            GpuixView::new(
+                tree,
+                None,
+                "test".to_owned(),
+                SharedSelection::default(),
+                crate::events::state::PointerRequests::default(),
+            )
+        });
+        cx.update_window(window.into(), |_, window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+        })
+        .unwrap();
+        crate::text::painted_text()
+    }
+
+    const ROOT: &str = r#"{"width": 400, "height": 400}"#;
+    const C: &str = r#"{"width": 200, "height": 200, "marginTop": -100, "marginLeft": 100}"#;
+
+    #[gpui::test]
+    fn a_z_indexed_descendant_paints_after_a_later_sibling(cx: &mut gpui::TestAppContext) {
+        let b = r#"{"position": "absolute", "zIndex": 5, "left": 120, "top": 120, "width": 100, "height": 100}"#;
+        assert_eq!(paint_order(cx, ROOT, b, C), ["a", "c", "b"]);
+    }
+
+    #[gpui::test]
+    fn a_static_box_with_a_z_index_stays_in_tree_order(cx: &mut gpui::TestAppContext) {
+        let b = r#"{"zIndex": 5, "width": 100, "height": 100}"#;
+        assert_eq!(paint_order(cx, ROOT, b, C), ["a", "b", "c"]);
     }
 }
