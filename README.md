@@ -5626,7 +5626,8 @@ defineKeyframes('pulse', {
   value, plus `animationTimingFunction`, which eases from that keyframe to the
   next. Blocks at the same offset merge, the later key winning. A property a
   definition leaves out of `from` or `to` starts or ends at the element's own
-  value, as in CSS. Redefining a name changes the animations already running on
+  value, as in CSS, and that value is read every frame, so it follows the
+  declared style as it changes. Redefining a name changes the animations already running on
   it from the next frame, and they keep their start time, iteration, direction
   and fill. A bad definition throws from `defineKeyframes` and keeps the earlier
   one
@@ -5666,6 +5667,9 @@ defineKeyframes('pulse', {
 
 Differences from a browser:
 
+- A missing `from` or `to` of a property whose own value gpuix cannot read from
+  the element's style (an inherited one such as `fontSize`) holds the nearest
+  keyframe instead of using the computed value
 - A transition compares the style beneath the animations, so it starts from
   the declared value, never from a value an animation drove, and a declared
   change starts one even on a property an animation overrides. A browser compares

@@ -2076,6 +2076,72 @@ mod tests {
     }
 
     #[test]
+    fn a_to_only_animation_starts_from_the_underlying_value() {
+        let mut frames = Frames::new();
+        frames.define("rise", r#"{ "to": { "opacity": 1 } }"#);
+        let animated = style(r#"{ "animation": "rise 1s linear", "opacity": 0.2 }"#);
+        near(opacity(&frames.frame(0, &animated)), 0.2);
+        near(opacity(&frames.frame(500, &animated)), 0.6);
+        near(opacity(&frames.frame(999, &animated)), 0.9992);
+    }
+
+    #[test]
+    fn a_property_in_only_the_middle_interpolates_from_and_back_to_the_underlying_value() {
+        let mut frames = Frames::new();
+        frames.define(
+            "dip",
+            r#"{ "40%": { "opacity": 0.2, "animationTimingFunction": "linear" }, "to": { "width": 100 } }"#,
+        );
+        let animated = style(r#"{ "animation": "dip 1s linear", "opacity": 0.6, "width": 20 }"#);
+        near(opacity(&frames.frame(0, &animated)), 0.6);
+        near(opacity(&frames.frame(200, &animated)), 0.4);
+        near(opacity(&frames.frame(400, &animated)), 0.2);
+        near(opacity(&frames.frame(700, &animated)), 0.4);
+        near(opacity(&frames.frame(1000, &animated)), 0.6);
+    }
+
+    #[test]
+    fn properties_take_their_own_underlying_values_independently() {
+        let mut frames = Frames::new();
+        frames.define(
+            "mix",
+            r#"{ "from": { "opacity": 0 }, "50%": { "width": 100 }, "to": { "opacity": 1, "width": 0 } }"#,
+        );
+        let animated = style(r#"{ "animation": "mix 1s linear", "opacity": 0.5, "width": 20 }"#);
+        let width = |sample: &StyleDesc| match sample.width {
+            Some(DimensionValue::Pixels(width)) => width,
+            ref other => panic!("{other:?}"),
+        };
+        // Opacity has no 50% keyframe; width has no 0% one.
+        let start = frames.frame(0, &animated);
+        near(opacity(&start), 0.0);
+        near(width(&start), 20.0);
+        let middle = frames.frame(500, &animated);
+        near(opacity(&middle), 0.5);
+        near(width(&middle), 100.0);
+        let late = frames.frame(750, &animated);
+        near(opacity(&late), 0.75);
+        near(width(&late), 50.0);
+    }
+
+    #[test]
+    fn implicit_endpoints_follow_the_iteration_and_the_direction() {
+        let mut frames = Frames::new();
+        frames.define("rise", r#"{ "to": { "opacity": 1 } }"#);
+        let animated = style(r#"{ "animation": "rise 1s linear 2 alternate", "opacity": 0.2 }"#);
+        near(opacity(&frames.frame(0, &animated)), 0.2);
+        near(opacity(&frames.frame(500, &animated)), 0.6);
+        // The second iteration runs backwards, from the explicit 1 to the implicit 0.2.
+        near(opacity(&frames.frame(1250, &animated)), 0.8);
+        near(opacity(&frames.frame(1750, &animated)), 0.4);
+        let reversed = style(r#"{ "animation": "rise 1s linear reverse", "opacity": 0.2 }"#);
+        let mut frames = Frames::new();
+        frames.define("rise", r#"{ "to": { "opacity": 1 } }"#);
+        near(opacity(&frames.frame(0, &reversed)), 1.0);
+        near(opacity(&frames.frame(250, &reversed)), 0.8);
+    }
+
+    #[test]
     fn a_missing_endpoint_follows_the_underlying_value_as_it_changes() {
         let mut frames = Frames::new();
         frames.define("fade", r#"{ "from": { "opacity": 0 } }"#);

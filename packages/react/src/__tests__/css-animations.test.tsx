@@ -335,4 +335,14 @@ describeNative("CSS animations", () => {
     expect(widthOf(renderer)).toBeCloseTo(325, 0)
     expect(events).toEqual(["start"])
   })
+
+  it("starts a missing endpoint from the declared value", () => {
+    defineKeyframes("react-to-only", { to: { width: 200 } })
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    render(<div testId="box" style={{ width: 50, height: 20, animation: "react-to-only 1s linear" }} />)
+    expect(widthOf(renderer)).toBe(50)
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer)).toBeCloseTo(125, 0)
+  })
 })
