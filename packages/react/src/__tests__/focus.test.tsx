@@ -5,6 +5,7 @@ import fs from "node:fs"
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { document } from "../index"
+import { flushSync } from "../reconciler/reconciler"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { isCI, SHOTS_DIR } from "./test-utils.js"
 
@@ -432,6 +433,64 @@ describeNative("focus model", () => {
         expect(focusEvents()).toEqual(["focus:a", "focusin:a"])
         expect(document.activeElement).toBe(refs.a)
         expect(queued()).toEqual([])
+      })
+
+      it("delivers the focus events of autoFocus in the commit that mounts it", () => {
+        const log: string[] = []
+        const refs = { auto: null }
+        const root = createTestRoot({ width: 300, height: 200 })
+        const { renderer } = root
+        const { sync, queued } = watch(renderer)
+        // No flush between the render and the reads below: `renderer.flush()` is
+        // the test wrapper's, and the render calls it, so go below it too.
+        const flush = renderer.native.flush
+        renderer.native.flush = () => {}
+        try {
+          flushSync(() =>
+            root.root.render(
+              <div style={{ width: 200, height: 100 }}>
+                <div
+                  ref={(value) => {
+                    refs.auto = value
+                    log.push("ref")
+                  }}
+                  testId="auto"
+                  tabIndex={0}
+                  autoFocus
+                  style={box}
+                  onFocus={() => log.push("auto:focus")}
+                />
+              </div>
+            )
+          )
+          expect(sync).toEqual(["focus:auto", "focusin:auto"])
+          // The commit applies its batch before it attaches refs: the handler
+          // ran inside that batch, not after the render.
+          expect(log).toEqual(["auto:focus", "ref"])
+          expect(document.activeElement).toBe(refs.auto)
+          expect(queued()).toEqual([])
+        } finally {
+          renderer.native.flush = flush
+        }
+      })
+
+      it("lets an autoFocus handler change state without losing the batch's own mutations", () => {
+        function Scene() {
+          const [label, setLabel] = React.useState("before")
+          return (
+            <div style={{ width: 200, height: 100 }}>
+              <div testId="auto" tabIndex={0} autoFocus style={box} onFocus={() => setLabel("after")} />
+              <div testId="label" style={box}>
+                {label}
+              </div>
+            </div>
+          )
+        }
+        const root = createTestRoot({ width: 300, height: 200 })
+        root.render(<Scene />)
+        expect(root.renderer.findByText("after")).toBeDefined()
+        expect(root.renderer.findByText("before")).toBeUndefined()
+        root.unmount()
       })
 
       it("delivers the events of a focus change a frame notices before the frame returns", () => {

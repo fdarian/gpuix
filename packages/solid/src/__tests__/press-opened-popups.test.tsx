@@ -89,33 +89,45 @@ describe.skipIf(!hasNativeTestRenderer)("a Select opened by a press on its trigg
     }
   })
 
-  it("opens when the trigger opens it from onMouseDown", () => {
-    const errors: unknown[] = []
-    const app = createTestRoot({ onError: (error) => errors.push(error) })
-    try {
-      const [open, setOpen] = createSignal(false)
-      app.render(() => (
-        <Select open={open()} onOpenChange={setOpen} defaultValue="a">
-          <SelectTrigger testId="trigger" style={triggerStyle} onMouseDown={() => setOpen(true)}>
-            <text>open</text>
-          </SelectTrigger>
-          <SelectContent testId="content" style={{ width: 120, backgroundColor: "#222222" }}>
-            <SelectItem value="a"><text>A</text></SelectItem>
-          </SelectContent>
-        </Select>
-      ))
-      const point = center(app, "trigger")
+  // As in the DOM: the popup's autoFocus already ran at commit, so the press's own
+  // focus default would move focus back to the trigger unless mousedown cancels it.
+  for (const cancelsDefault of [true, false]) {
+    it(`opens when the trigger opens it from onMouseDown and ${cancelsDefault ? "cancels the press default, so the popup keeps focus" : "does not cancel it, so the trigger takes focus"}`, () => {
+      const errors: unknown[] = []
+      const app = createTestRoot({ onError: (error) => errors.push(error) })
+      try {
+        const [open, setOpen] = createSignal(false)
+        app.render(() => (
+          <Select open={open()} onOpenChange={setOpen} defaultValue="a">
+            <SelectTrigger
+              testId="trigger"
+              style={triggerStyle}
+              onMouseDown={(event) => {
+                if (cancelsDefault) event.preventDefault()
+                setOpen(true)
+              }}
+            >
+              <text>open</text>
+            </SelectTrigger>
+            <SelectContent testId="content" style={{ width: 120, backgroundColor: "#222222" }}>
+              <SelectItem value="a"><text>A</text></SelectItem>
+            </SelectContent>
+          </Select>
+        ))
+        const point = center(app, "trigger")
 
-      app.renderer.nativeSimulateMouseDown(point.x, point.y)
+        app.renderer.nativeSimulateMouseDown(point.x, point.y)
 
-      expect(errors).toEqual([])
-      const content = app.renderer.findByTestId("content")
-      expect(content).toBeDefined()
-      expect(app.renderer.getFocusedElementId()).toBe(content!.id)
-    } finally {
-      app.unmount()
-    }
-  })
+        expect(errors).toEqual([])
+        const content = app.renderer.findByTestId("content")
+        expect(content).toBeDefined()
+        const focused = cancelsDefault ? content! : app.renderer.findByTestId("trigger")!
+        expect(app.renderer.getFocusedElementId()).toBe(focused.id)
+      } finally {
+        app.unmount()
+      }
+    })
+  }
 })
 
 describe.skipIf(!hasNativeTestRenderer)("a Combobox opened by a press", () => {

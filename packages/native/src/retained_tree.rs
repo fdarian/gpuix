@@ -425,6 +425,8 @@ pub struct RetainedTree {
     /// leaves it false, so the window is not asked to rebuild its element tree
     /// for a frame that would come out identical.
     dirty: bool,
+    /// An element was given `autoFocus` since the last `take_auto_focus_request`.
+    auto_focus_requested: bool,
 }
 
 impl RetainedTree {
@@ -447,6 +449,7 @@ impl RetainedTree {
             keyboard_focus_dim: true,
             next_revision: 1,
             dirty: false,
+            auto_focus_requested: false,
         }
     }
 
@@ -458,6 +461,12 @@ impl RetainedTree {
     /// answer. Call once per applied batch.
     pub fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
+    }
+
+    /// Whether an element was given `autoFocus` since the last call. Call once
+    /// per applied batch, to focus it at commit.
+    pub fn take_auto_focus_request(&mut self) -> bool {
+        std::mem::take(&mut self.auto_focus_requested)
     }
 
     pub fn keyboard_focus_dim(&self) -> bool {
@@ -957,6 +966,7 @@ impl RetainedTree {
             if key == "autoFocus" {
                 let auto_focus = value.as_bool().unwrap_or(false);
                 self.dirty |= element.auto_focus != auto_focus;
+                self.auto_focus_requested |= auto_focus && !element.auto_focus;
                 element.auto_focus = auto_focus;
                 return;
             }

@@ -1809,6 +1809,7 @@ impl GpuixRenderer {
         let destroyed =
             apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)?;
         let dirty = tree.take_dirty();
+        let auto_focus = tree.take_auto_focus_request();
         drop(tree);
         // A re-render that changed nothing sends a batch of identical resends.
         // Waking the window for it makes it rebuild and diff the whole element
@@ -1816,7 +1817,25 @@ impl GpuixRenderer {
         if dirty {
             self.request_invalidate()?;
         }
+        if auto_focus {
+            self.commit_auto_focus()?;
+        }
         Ok(destroyed)
+    }
+
+    /// Windows and Linux render on their own thread, which cannot call JS
+    /// synchronously; there the next frame focuses the element.
+    fn commit_auto_focus(&self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window_without_view(|window, cx| {
+            crate::focus::change_focus(window, cx, |view, window, cx| {
+                view.commit_auto_focus(window, cx)
+            })
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(not(target_os = "macos"))]
+        Ok(())
     }
 
     // ── Frame loop ───────────────────────────────────────────────────
@@ -6704,6 +6723,46 @@ impl GpuixView {
         self.schedule_selection_scroll(cx);
     }
 
+    /// Creates the focus handle of a focusable element that has none. Focus
+    /// goes to it once, here, if it asks for `autoFocus`: re-focusing every
+    /// frame would steal focus back from whatever the user clicked next.
+    fn create_focus_handle(
+        &mut self,
+        id: u64,
+        element: &crate::retained_tree::RetainedElement,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let (tab_index, tab_stop) = focus_handle_tab(element);
+        let handle = cx.focus_handle().tab_index(tab_index).tab_stop(tab_stop);
+        if element.auto_focus {
+            self.focus.note_programmatic();
+            handle.focus(window, cx);
+        }
+        self.focus_handles.insert(id, handle);
+    }
+
+    /// Focuses the elements that mounted with `autoFocus` in the batch that was
+    /// just applied, as React DOM does in its commit. The next frame would find
+    /// them too, but only after JS has run on with nothing focused.
+    pub(crate) fn commit_auto_focus(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        for &id in &tree.focusable_ids {
+            let Some(element) = tree.elements.get(&id) else {
+                continue;
+            };
+            if element.auto_focus && !self.focus_handles.contains_key(&id) {
+                self.create_focus_handle(id, element, window, cx);
+            }
+        }
+        cx.notify();
+    }
+
     /// Give every DOM-focusable element a gpui focus handle in tab order, report
     /// focus changes, and drop the handles of elements that are no longer
     /// focusable.
@@ -6726,23 +6785,12 @@ impl GpuixView {
             let Some(element) = tree.elements.get(&id) else {
                 continue;
             };
-            // A text control without a `tabIndex` is a tab stop at 0.
-            let (tab_index, tab_stop) = element
-                .tab_index()
-                .map_or((0, true), crate::focus::gpui_tab_stop);
-
             if let Some(handle) = self.focus_handles.get(&id) {
+                let (tab_index, tab_stop) = focus_handle_tab(element);
                 handle.clone().tab_index(tab_index).tab_stop(tab_stop);
                 continue;
             }
-            let handle = cx.focus_handle().tab_index(tab_index).tab_stop(tab_stop);
-            // Focus once, at creation. Re-focusing every frame would
-            // steal focus back from whatever the user clicked next.
-            if element.auto_focus {
-                self.focus.note_programmatic();
-                handle.focus(window, cx);
-            }
-            self.focus_handles.insert(id, handle);
+            self.create_focus_handle(id, element, window, cx);
         }
 
         // Keep the request until the handle exists. A frame can render before
@@ -6781,6 +6829,13 @@ impl GpuixView {
                 .map(|(id, handle)| (*id, handle.downgrade())),
         );
     }
+}
+
+/// A text control without a `tabIndex` is a tab stop at 0.
+fn focus_handle_tab(element: &crate::retained_tree::RetainedElement) -> (isize, bool) {
+    element
+        .tab_index()
+        .map_or((0, true), crate::focus::gpui_tab_stop)
 }
 
 /// A `focusElement` request for an element whose focus handle does not exist
@@ -9714,6 +9769,22 @@ mod batch_tests {
         ["setCustomProp",3,"testId","row"],
         ["setCustomProp",3,"autoFocus",true]
     ]"##;
+
+    #[test]
+    fn giving_an_element_autofocus_is_requested_once_per_batch() {
+        let mut tree = RetainedTree::new();
+        apply(&mut tree, MOUNT).expect("valid batch");
+        assert!(tree.take_auto_focus_request());
+        assert!(!tree.take_auto_focus_request());
+
+        // A re-render resends the prop; only a prop that turns on is a request.
+        apply(&mut tree, r#"[["setCustomProp",3,"autoFocus",true]]"#).expect("valid batch");
+        assert!(!tree.take_auto_focus_request());
+        apply(&mut tree, r#"[["setCustomProp",3,"autoFocus",false]]"#).expect("valid batch");
+        assert!(!tree.take_auto_focus_request());
+        apply(&mut tree, r#"[["setCustomProp",3,"autoFocus",true]]"#).expect("valid batch");
+        assert!(tree.take_auto_focus_request());
+    }
 
     #[test]
     fn mounting_marks_the_tree_dirty() {

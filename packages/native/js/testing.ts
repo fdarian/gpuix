@@ -496,9 +496,9 @@ export class TestRenderer implements NativeRenderer {
    *  the only way to test that `autoFocus` (or a click) actually moved focus. */
   simulateKeystrokes(keystrokes: string): void {
     this.native.flushIfDirty()
-    // Events already queued (the focus of an `autoFocus` element) reach JS
-    // before a key does, as on a live window. Delivered after it, they would
-    // undo what the key's own synchronous focus events did.
+    // Events already queued reach JS before a key does, as on a live window.
+    // Delivered after it, they would undo what the key's own synchronous focus
+    // events did.
     this.dispatchNativeEvents()
     this.native.simulateKeystrokes(keystrokes)
     this.dispatchNativeEvents()

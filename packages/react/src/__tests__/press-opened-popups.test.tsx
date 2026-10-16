@@ -43,7 +43,7 @@ function center(app, testId: string) {
 const triggerStyle = { width: 120, height: 32, backgroundColor: "#333333" }
 const contentStyle = { width: 120, backgroundColor: "#222222" }
 
-function SelectScene({ opensOnMouseDown = false }) {
+function SelectScene({ opensOnMouseDown = false, keepsFocusOnTrigger = false }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ width: 400, height: 300 }}>
@@ -56,7 +56,16 @@ function SelectScene({ opensOnMouseDown = false }) {
         <SelectTrigger
           testId="trigger"
           style={triggerStyle}
-          onMouseDown={opensOnMouseDown ? () => setOpen(true) : undefined}
+          onMouseDown={
+            opensOnMouseDown
+              ? (event) => {
+                  // As in the DOM: the popup's autoFocus already ran at commit, so the
+                  // press's own focus default would move focus back to the trigger.
+                  if (!keepsFocusOnTrigger) event.preventDefault()
+                  setOpen(true)
+                }
+              : undefined
+          }
         >
           <SelectValue />
         </SelectTrigger>
@@ -124,6 +133,24 @@ describeNative("a Select opened by a press on its trigger", () => {
       const content = app.renderer.findByTestId("content")
       expect(content).toBeDefined()
       expect(app.renderer.getFocusedElementId()).toBe(content.id)
+    } finally {
+      app.unmount()
+    }
+  })
+})
+
+describeNative("a Select opened by mousedown without preventDefault", () => {
+  it("gives focus to the trigger, because the press default runs after the popup's autoFocus", () => {
+    const { app, errors } = createApp()
+    try {
+      app.render(<SelectScene opensOnMouseDown keepsFocusOnTrigger />)
+      const point = center(app, "trigger")
+
+      app.renderer.nativeSimulateMouseDown(point.x, point.y)
+
+      expect(errors).toEqual([])
+      expect(app.renderer.findByTestId("content")).toBeDefined()
+      expect(app.renderer.getFocusedElementId()).toBe(app.renderer.findByTestId("trigger").id)
     } finally {
       app.unmount()
     }

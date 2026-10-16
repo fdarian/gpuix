@@ -95,6 +95,29 @@ describe("shared host runtime", () => {
     })
   })
 
+  it("keeps what is enqueued while a batch is applied for the next batch", () => {
+    // Applying a batch can run JS: the focus events of an `autoFocus` element.
+    const batches: unknown[][] = []
+    let mutations!: ReturnType<typeof createMutationQueue>
+    const renderer: MutationHost = {
+      applyBatch(json) {
+        batches.push(JSON.parse(json))
+        if (batches.length === 1) mutations.setText(1, "after the focus event")
+        return []
+      },
+    }
+    mutations = createMutationQueue(renderer)
+    mutations.createElement(1, "div")
+    mutations.flushMutations()
+    expect(mutations.pending).toBe(1)
+
+    mutations.flushMutations()
+    expect(batches).toEqual([
+      [["createElement", 1, "div"]],
+      [["setText", 1, "after the focus event"]],
+    ])
+  })
+
   it("retains failed mutations and cleans handlers after success", () => {
     const renderer = new RecordingRenderer()
     const removed: number[] = []

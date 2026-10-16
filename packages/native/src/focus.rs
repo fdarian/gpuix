@@ -307,8 +307,10 @@ pub(crate) fn change_focus(
 /// handler of the keystroke that moved it sees them before it ends. They are
 /// sent with the root view released, so a handler may read it.
 ///
-/// A move nobody here asked for (a press, Tab in a window's own bindings,
-/// `autoFocus`) is noticed by the next frame, which queues its events instead
+/// A move nobody asked JS's call for is settled by whoever made it: the default
+/// of a press (`defer_mouse_down_default`) and `autoFocus` at commit
+/// (`GpuixView::commit_auto_focus`). What is left, GPUI moving focus on its
+/// own, is noticed by the next frame, which schedules this
 /// (`GpuixView::sync_focus_handles`).
 pub(crate) fn settle_focus(window: &mut Window, cx: &mut App) -> Result<(), String> {
     let view = sync_dispatch::root_view(window)?;

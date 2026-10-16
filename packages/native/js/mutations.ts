@@ -100,33 +100,42 @@ export function createMutationQueue(
       flushScheduled = false
       if (queue.length === 0) return
       appliedBatches++
+      // Taken before the call: applying a batch can run JS (the focus events of
+      // an `autoFocus` element), and what that enqueues belongs to the next batch.
+      const batch = queue
+      queue = []
       let rejection: unknown
-      for (;;) {
-        try {
-          const destroyed = renderer.applyBatch(JSON.stringify(queue))
-          onDestroyed(destroyed)
-          queue = []
-          break
-        } catch (error) {
-          // A style native rejects is rejected the same way on every retry, so
-          // keeping it would fail every later batch too. Native is atomic, so
-          // the rest of the batch is intact: resend it without that op. It must
-          // be dropped, not blanked: `set_style` replaces the whole style, so an
-          // empty one would wipe the element's last valid style. Native numbers
-          // ops by position in what it was sent, which is the queue as spliced,
-          // so a second rejection names its index in the shortened batch.
-          const index = rejectedStyleIndex(error)
-          const mutation = index === undefined ? undefined : queue[index]
-          if (
-            index === undefined ||
-            mutation === undefined ||
-            (mutation[0] !== "setStyle" && mutation[0] !== "setUniversalStyle")
-          ) {
-            throw error
+      let applied = false
+      try {
+        for (;;) {
+          try {
+            const destroyed = renderer.applyBatch(JSON.stringify(batch))
+            onDestroyed(destroyed)
+            applied = true
+            break
+          } catch (error) {
+            // A style native rejects is rejected the same way on every retry, so
+            // keeping it would fail every later batch too. Native is atomic, so
+            // the rest of the batch is intact: resend it without that op. It must
+            // be dropped, not blanked: `set_style` replaces the whole style, so an
+            // empty one would wipe the element's last valid style. Native numbers
+            // ops by position in what it was sent, which is the batch as spliced,
+            // so a second rejection names its index in the shortened batch.
+            const index = rejectedStyleIndex(error)
+            const mutation = index === undefined ? undefined : batch[index]
+            if (
+              index === undefined ||
+              mutation === undefined ||
+              (mutation[0] !== "setStyle" && mutation[0] !== "setUniversalStyle")
+            ) {
+              throw error
+            }
+            rejection ??= error
+            batch.splice(index, 1)
           }
-          rejection ??= error
-          queue.splice(index, 1)
         }
+      } finally {
+        if (!applied) queue = batch.concat(queue)
       }
       if (rejection !== undefined) throw rejection
     },

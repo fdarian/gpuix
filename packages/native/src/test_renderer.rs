@@ -635,6 +635,7 @@ impl TestGpuixRenderer {
         let destroyed =
             apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)?;
         let dirty = tree.take_dirty();
+        let auto_focus = tree.take_auto_focus_request();
         drop(tree);
         // Like the live renderer, a change made from a handler marks the window dirty at once, so
         // that a read in the same handler draws it. Outside a handler `flush()` does.
@@ -643,6 +644,14 @@ impl TestGpuixRenderer {
         }
         if dirty && crate::events::sync_dispatch::in_sync_call() {
             crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason)?;
+        }
+        if auto_focus {
+            window_call(|window, cx| {
+                crate::focus::change_focus(window, cx, |view, window, cx| {
+                    view.commit_auto_focus(window, cx)
+                })
+            })?
+            .map_err(Error::from_reason)?;
         }
         Ok(destroyed)
     }

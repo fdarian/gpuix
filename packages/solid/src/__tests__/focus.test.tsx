@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { createSignal } from "solid-js"
 import { document } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { HostElement } from "../host.js"
@@ -368,6 +369,38 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
       expect(sync.filter((event) => /^(focus|blur)/.test(event))).toEqual(["focus:a", "focusin:a"])
       expect(document.activeElement).toBe(scene.refs.a)
       expect(queued()).toEqual([])
+    })
+
+    it("delivers the focus events of autoFocus in the commit that mounts it", () => {
+      const app = createTestRoot({ width: 300, height: 200 })
+      const { sync, queued } = watch(app.renderer)
+      let auto!: HostElement
+      // `app.render` also draws a frame, which would deliver them too: commit only.
+      app.root.render(() => (
+        <div style={{ width: 200, height: 100 }}>
+          <div ref={auto} testId="auto" tabIndex={0} autoFocus style={box} onFocus={() => {}} />
+        </div>
+      ))
+      expect(sync).toEqual(["focus:auto", "focusin:auto"])
+      expect(document.activeElement).toBe(auto)
+      expect(queued()).toEqual([])
+      app.unmount()
+    })
+
+    it("lets an autoFocus handler change state without losing the batch's own mutations", () => {
+      const app = createTestRoot({ width: 300, height: 200 })
+      const [label, setLabel] = createSignal("before")
+      app.render(() => (
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="auto" tabIndex={0} autoFocus style={box} onFocus={() => setLabel("after")} />
+          <div testId="label" style={box}>
+            <text>{label()}</text>
+          </div>
+        </div>
+      ))
+      expect(app.renderer.findByText("after")).toBeDefined()
+      expect(app.renderer.findByText("before")).toBeUndefined()
+      app.unmount()
     })
 
     it("delivers the events of a focus change a frame notices before the frame returns", () => {
