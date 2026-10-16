@@ -3818,11 +3818,11 @@ press) therefore loses its focus to the pressed element, as on the web: the pres
 takes focus after the handlers. Call `preventDefault()` on the `mousedown` to keep
 it where the popup put it.
 
-`focusNext()` and `focusPrevious()` map directly to GPUI's
-`window.focus_next()` and `window.focus_prev()`.
-`focusNextWithin(id)` / `focusPreviousWithin(id)` wrap inside that subtree.
-`getFocusedElementId()` returns the host id, or `null`. These renderer methods do
-not scroll; Tab and `element.focus()` do. Browser focus requests made
+`focusNext()` and `focusPrevious()` move along GPUI's tab order and scroll the new
+focus into view like Tab does: every scrolling ancestor moves to the nearest edge,
+and only if the element is not already in view.
+`focusNextWithin(id)` / `focusPreviousWithin(id)` wrap inside that subtree and do
+not scroll. `getFocusedElementId()` returns the host id, or `null`. Browser focus requests made
 while WebGPU opens are queued and applied after the first focus handles exist. If
 several requests arrive before that render, the latest request wins.
 
