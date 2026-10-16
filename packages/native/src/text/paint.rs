@@ -241,6 +241,9 @@ pub struct SelectableText {
     /// The inline boxes of a paragraph that can take focus, in tree order, see
     /// [`super::inline_focus`].
     pub inline_focus: Vec<super::inline_focus::FocusableBox>,
+    /// What the inline boxes of a paragraph paint around their text, over the
+    /// glyphs, see [`super::inline_decoration`].
+    pub inline_decorations: Vec<super::inline_decoration::BoxDecoration>,
 }
 
 impl SelectableText {
@@ -270,6 +273,7 @@ impl SelectableText {
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
             inline_focus: Vec::new(),
+            inline_decorations: Vec::new(),
         }
     }
 }
@@ -295,6 +299,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_boxes,
         inline_cursors,
         inline_focus,
+        inline_decorations,
     } = opts;
     let key = selection_key(element_id, sub);
 
@@ -313,6 +318,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         (inline.layout().clone(), inline.into_any_element())
     };
 
+    let decorations = (!inline_decorations.is_empty())
+        .then(|| super::inline_decoration::overlay(layout.clone(), inline_decorations));
     let cursor_hitboxes = (!inline_cursors.is_empty())
         .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
     let press_focus: Vec<_> = inline_focus
@@ -394,6 +401,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .unlifted()
         .child(underlay)
         .child(glyphs)
+        .children(decorations)
         .children(cursor_hitboxes)
         .children(super::inline_focus::anchors(inline_focus))
         .into_any_element()

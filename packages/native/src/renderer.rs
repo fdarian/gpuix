@@ -7946,6 +7946,13 @@ fn paragraph_content(
         .map(Arc::new),
         inline_boxes: inline_boxes(paragraph, ctx),
         inline_focus: focusable_inline_boxes(paragraph, ctx),
+        inline_decorations: crate::text::inline_decoration::of(
+            ctx.tree,
+            paragraph,
+            &ctx.inherited.colors,
+            &ctx.inherited.lengths,
+            &states,
+        ),
         inline_cursors: crate::text::inline_cursor::of(
             ctx.tree,
             paragraph,

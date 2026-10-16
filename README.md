@@ -2712,7 +2712,8 @@ and copies as one line, and is searched by `highlight` as one piece of text.
 
 An inline box can set `color`, `backgroundColor` (a `<mark>`-style wash),
 `fontWeight`, `fontStyle`, `fontFamily`, `textDecoration` (see below),
-`fontVariantNumeric` and `fontFeatureSettings`. A box inherits from the box
+`fontVariantNumeric` and `fontFeatureSettings`, and an `outline` drawn round each
+line of its text (see [Focus on an inline box](#focus-on-an-inline-box)). A box inherits from the box
 around it, as in CSS. A `display: contents` span inside a span adds no box: its
 children join the paragraph and inherit from it.
 
@@ -2770,8 +2771,9 @@ bubbles up, and `stopPropagation()` on the span keeps it from there.
   so it hears nothing.
 - `hover`, `active`, `groupHover` and `groupActive` on a span change the run it
   paints: `color`, `backgroundColor`, `fontWeight`, `fontFamily`, `textDecoration`
-  and the other properties an inline box can set. A `groupHover` follows the
-  `group` of the container or of an element above it.
+  and the other properties an inline box can set, and they can ring it with an
+  `outline` (see [Focus on an inline box](#focus-on-an-inline-box)). A
+  `groupHover` follows the `group` of the container or of an element above it.
 - `pointerEvents: "none"` and `inert` on a span, or above it, keep the pointer
   off it, as on an element.
 - `cursor` on a span shows over its glyphs, as in a browser: it inherits, so the
@@ -2844,16 +2846,25 @@ A `<span>` with a `tabIndex` is focusable like any element, and stays inline:
 `:focus-visible`) and `focusWithin` (while it or a span inside it has focus) are
 style variants of a span like of any element, and `focusVisible` wins over
 `focusWithin`, which wins over `hover` and `active`. The properties an inline box
-can set change its run:
+can set change its run, and `outlineWidth`, `outlineColor` and `outlineOffset`
+draw a focus ring. The base style, `hover` and `active` can declare an outline too:
 
 ```tsx
-<span tabIndex={0} style={{ focusVisible: { color: '#89b4fa', textDecoration: 'underline' } }}>
+<span tabIndex={0} style={{ focusVisible: { outlineWidth: 2, outlineColor: '#89b4fa', outlineOffset: 2 } }}>
   docs
 </span>
 ```
 
-- A nested span is styled for itself: focusing the span inside another one applies
-  the inner span's `focusVisible` only, and the outer span's `focusWithin`.
+- The ring is drawn around each line fragment of the span's text, so a span that
+  wraps has one ring on each line, not one box round both. `outlineOffset` moves
+  it out from the fragment (a negative one draws it inside), it takes no layout
+  space, and it is painted over the text of the span, as an outline is. It is cut
+  by the clip of the paragraph (an `overflow` above it) and nothing else.
+- The ring of a nested span is its own: focusing the span inside another one
+  rings the inner span only, unless the outer one declares `focusWithin`.
+- An outline needs a colour, as on an element: `outlineWidth` alone draws nothing.
+  The ring is square, as a span has no `borderRadius`, and there is no `outline`
+  shorthand.
 - **Deviation: a span is never dimmed.** While a control has keyboard focus the
   other focusables dim ([Focus styles](#focus-styles)). A focused span starts that
   dim for the elements, like any control, but a span is not dimmed when another
