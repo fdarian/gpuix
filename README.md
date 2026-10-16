@@ -1480,6 +1480,15 @@ error, not a silent no-op.
   padding box in layout, but motion measures the parent's content box, so the two
   differ by the padding of that parent (and by the ancestor, when the parent is
   not positioned).
+- A `%` `height` follows CSS when the parent's height is not definite: it behaves
+  as `auto`, so the animation runs to the content height (and the style settles on
+  the `%`, which lays out as `auto`). A height is definite when it is in px, a `%`
+  that itself resolves, an absolute box with `top` and `bottom`, or a flex item
+  its definite container sizes (the main size of a column, the stretched cross
+  size of a single-line row). Grid items are never counted as definite, so a `%`
+  height in a grid cell with fixed rows runs to the content height. An absolute
+  or fixed box always resolves its `%` height. `minHeight` and `maxHeight` keep
+  their share of the parent's height.
 - `padding` and `flexBasis` take numbers only, so they have no `%` to animate.
 - `height: "auto"` is the height the content wants. The target follows the
   content while it grows (a spring keeps its velocity), the end is rounded up to

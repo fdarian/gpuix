@@ -2279,6 +2279,7 @@ mod tests {
                 natural_height: gpui::px(natural),
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
+                percent_height_resolves: true,
             }
         }
 
@@ -2640,6 +2641,24 @@ mod tests {
             clock.frame_measured(0, &tall("0"), None, Some(&parent));
             clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
             assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 20.0);
+        }
+
+        #[test]
+        fn a_percentage_height_in_an_auto_parent_runs_to_the_natural_height() {
+            let mut clock = Clock::new();
+            let parent = Measurement {
+                percent_height_resolves: false,
+                natural_height: gpui::px(60.0),
+                ..in_parent(200.0, 80.0)
+            };
+            let tall = |height: &str| {
+                style(&format!(r#"{{ "height": {height}, "transition": "height 1s linear" }}"#))
+            };
+            clock.frame_measured(0, &tall("0"), None, Some(&parent));
+            clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
+            assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 30.0);
+            let ended = clock.frame_measured(1000, &tall(r#""50%""#), None, Some(&parent));
+            assert_eq!(ended.height, Some(DimensionValue::Percentage(0.5)));
         }
 
         #[test]

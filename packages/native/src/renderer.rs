@@ -5946,6 +5946,9 @@ pub(crate) struct Inherited {
     pub font_features: Option<gpui::FontFeatures>,
     /// The nearest ancestor's `interpolateSize`.
     pub interpolate_size: crate::motion::InterpolateSize,
+    /// What the parent is as a containing block, which decides whether a
+    /// percentage `height` of a child has anything to resolve against.
+    pub container: crate::motion::containing::Container,
     /// The `group` declarations above this element, nearest first, with the
     /// state their `groupHover` / `groupActive` / `groupFocusWithin` followers read.
     pub groups: Option<Arc<GroupScope>>,
@@ -5995,6 +5998,7 @@ impl Inherited {
             font_state: Default::default(),
             font_features: None,
             interpolate_size: Default::default(),
+            container: crate::motion::containing::Container::WINDOW,
             groups: None,
         }
     }
@@ -6002,6 +6006,7 @@ impl Inherited {
     /// Apply the inheritable parts of `style` for the subtree below it.
     fn descend(mut self, style: Option<&StyleDesc>, inert: bool) -> Self {
         self.font_features = None;
+        self.container = self.container.within(style.unwrap_or(&EMPTY_STYLE));
         self.inert |= inert;
         if self.inert {
             self.selectable = false;
@@ -7188,8 +7193,12 @@ pub(crate) fn build_element(
     // element here, because the custom ones and `virtual-list` build their
     // GPUI element out of reach of `build_host_container`.
     let built = if measured {
-        ctx.measurements
-            .wrap(id, crate::motion::measure::VerticalBorder::of(style), built)
+        ctx.measurements.wrap(
+            id,
+            crate::motion::measure::VerticalBorder::of(style),
+            ctx.inherited.container.resolves_percent_height(style),
+            built,
+        )
     } else {
         built
     };

@@ -5,6 +5,7 @@
 //! transition changed, so the rest keep running undisturbed.
 
 mod bindings;
+pub(crate) mod containing;
 mod css_animation;
 mod css_transition;
 mod curve;
@@ -2455,6 +2456,7 @@ mod tests {
                 natural_height: gpui::px(natural),
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
+                percent_height_resolves: true,
             }
         }
 
@@ -2939,6 +2941,64 @@ mod tests {
             let end = at(started, 1.5);
             state.sync(&grow_to_half(), None, Colors::root(), Some(&resized), 0, end).unwrap();
             assert_eq!(width(&state, end), Some(DimensionValue::Percentage(0.5)));
+        }
+
+        fn in_auto_parent(measurement: Measurement) -> Measurement {
+            Measurement {
+                percent_height_resolves: false,
+                ..in_parent(measurement, 200.0, 80.0)
+            }
+        }
+
+        fn grow_to_half_height() -> serde_json::Value {
+            linear(
+                serde_json::json!({ "height": "50%" }),
+                serde_json::json!({ "height": 0.0 }),
+            )
+        }
+
+        #[test]
+        fn a_percentage_height_in_an_auto_parent_runs_to_the_natural_height_and_settles_to_the_percentage() {
+            let started = Instant::now();
+            let measured = in_auto_parent(measurement(100.0, 0.0, 90.0));
+            let description = grow_to_half_height();
+            let mut state =
+                MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
+            // The parent's 80px is not what 50% is here.
+            assert_eq!(pixels(height(&state, at(started, 0.5))), 45.0);
+            let end = at(started, 1.0);
+            state.sync(&description, None, Colors::root(), Some(&measured), 0, end).unwrap();
+            assert_eq!(height(&state, end), Some(DimensionValue::Percentage(0.5)));
+        }
+
+        #[test]
+        fn the_natural_height_end_follows_the_content_of_an_auto_parent() {
+            let started = Instant::now();
+            let description = grow_to_half_height();
+            let mut state = MotionState::new(
+                &description,
+                None, Colors::root(),
+                Some(&in_auto_parent(measurement(100.0, 0.0, 80.0))),
+                0,
+                started,
+            )
+            .unwrap();
+            let now = at(started, 0.5);
+            let grown = in_auto_parent(measurement(100.0, 40.0, 160.0));
+            state.sync(&description, None, Colors::root(), Some(&grown), 0, now).unwrap();
+            assert_eq!(pixels(height(&state, now)), 40.0, "the value showing does not jump");
+            assert_eq!(pixels(height(&state, at(started, 1.0))), 100.0, "halfway from 40 to the new 160");
+        }
+
+        #[test]
+        fn a_percentage_height_in_a_definite_parent_is_a_share_of_it() {
+            let started = Instant::now();
+            let measured = in_parent(measurement(100.0, 0.0, 90.0), 200.0, 80.0);
+            let state = MotionState::new(
+                &grow_to_half_height(), None, Colors::root(), Some(&measured), 0, started,
+            )
+            .unwrap();
+            assert_eq!(pixels(height(&state, at(started, 0.5))), 20.0);
         }
 
         /// Runs `property` from 0 to `"50%"` for a second, linear, in a parent
@@ -3536,6 +3596,7 @@ mod tests {
                 natural_height: gpui::px(natural),
                 parent_content: gpui::size(gpui::px(parent_width), gpui::px(600.0)),
                 scale_factor: 1.0,
+                percent_height_resolves: true,
             }
         }
 

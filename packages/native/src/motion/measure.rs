@@ -31,6 +31,9 @@ pub(crate) struct Measurement {
     pub parent_content: Size<Pixels>,
     /// Device pixels per layout pixel.
     pub scale_factor: f32,
+    /// Whether a percentage `height` of the element has a definite height to
+    /// resolve against. CSS treats one that has not as `auto`.
+    pub percent_height_resolves: bool,
 }
 
 impl Measurement {
@@ -46,12 +49,17 @@ impl Measurement {
 
     /// What a percentage of `prop` is in px: a fraction of the parent's content
     /// box along the axis CSS resolves it against (`AnimProp::percent_axis`).
-    /// `None` for a property that takes no percentage.
+    /// `None` for a property that takes no percentage. A `height` with nothing
+    /// definite to resolve against is the natural height, as `height: auto`.
     ///
     /// The parent stands in for the containing block, which an absolute box
     /// resolves against its nearest positioned ancestor's padding box instead.
     pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
-        let length = match prop.percent_axis()? {
+        let axis = prop.percent_axis()?;
+        if prop == AnimProp::Height && !self.percent_height_resolves {
+            return Some(self.natural_height_px());
+        }
+        let length = match axis {
             Axis::Width => self.parent_content.width,
             Axis::Height => self.parent_content.height,
         };
@@ -111,16 +119,24 @@ impl Measurements {
     }
 
     /// `child` wrapped so each paint of it keeps `id` measured. `border` is the
-    /// vertical border of the style the element is built with.
+    /// vertical border of the style the element is built with, and
+    /// `percent_height_resolves` what `Container::resolves_percent_height` said.
     ///
     /// A wrapper rather than `on_painted_layout` on the element: that listener
     /// lives on GPUI's `Interactivity`, which `<img>`, `<svg>`, `<input>` and
     /// the other custom elements build behind an `AnyElement`.
-    pub(crate) fn wrap(&self, id: u64, border: VerticalBorder, child: AnyElement) -> AnyElement {
+    pub(crate) fn wrap(
+        &self,
+        id: u64,
+        border: VerticalBorder,
+        percent_height_resolves: bool,
+        child: AnyElement,
+    ) -> AnyElement {
         self.wrapped.borrow_mut().insert(id);
         Measured {
             id,
             border,
+            percent_height_resolves,
             measurements: self.clone(),
             child,
         }
@@ -131,6 +147,7 @@ impl Measurements {
         &self,
         id: u64,
         border: VerticalBorder,
+        percent_height_resolves: bool,
         bounds: Bounds<Pixels>,
         layout_id: LayoutId,
         window: &mut Window,
@@ -143,6 +160,7 @@ impl Measurements {
                 .layout_parent_content_size(layout_id)
                 .unwrap_or_else(|| window.viewport_size()),
             scale_factor: window.scale_factor(),
+            percent_height_resolves,
         };
         self.by_element.borrow_mut().insert(id, measurement);
     }
@@ -151,6 +169,7 @@ impl Measurements {
 struct Measured {
     id: u64,
     border: VerticalBorder,
+    percent_height_resolves: bool,
     measurements: Measurements,
     child: AnyElement,
 }
@@ -211,8 +230,14 @@ impl Element for Measured {
         cx: &mut App,
     ) {
         self.child.paint(window, cx);
-        self.measurements
-            .record(self.id, self.border, bounds, *layout_id, window);
+        self.measurements.record(
+            self.id,
+            self.border,
+            self.percent_height_resolves,
+            bounds,
+            *layout_id,
+            window,
+        );
     }
 }
 
@@ -273,6 +298,7 @@ mod tests {
             natural_height: gpui::px(natural_height),
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor,
+            percent_height_resolves: true,
         }
     }
 
@@ -308,6 +334,21 @@ mod tests {
         assert_eq!(nested.percent_px(AnimProp::MinHeight, 1.0), Some(80.0));
         assert_eq!(nested.percent_px(AnimProp::Opacity, 0.5), None);
         assert_eq!(nested.percent_px(AnimProp::RowGap, 0.5), None);
+    }
+
+    #[test]
+    fn a_height_percentage_with_no_definite_height_is_the_natural_height() {
+        let indefinite = Measurement {
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+            percent_height_resolves: false,
+            ..measurement(50.0, 1.0)
+        };
+        assert_eq!(indefinite.percent_px(AnimProp::Height, 0.5), Some(50.0));
+        assert_eq!(indefinite.percent_px(AnimProp::Height, 1.0), Some(50.0));
+        // Only `height` is auto then: widths and the other height properties keep their share.
+        assert_eq!(indefinite.percent_px(AnimProp::Width, 0.5), Some(100.0));
+        assert_eq!(indefinite.percent_px(AnimProp::Top, 0.5), Some(40.0));
+        assert_eq!(indefinite.percent_px(AnimProp::MinHeight, 0.5), Some(40.0));
     }
 
     #[test]
@@ -367,11 +408,17 @@ mod tests {
             natural_height: gpui::px(2.0),
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
+            percent_height_resolves: true,
         }
     }
 
     fn wrap_empty(measurements: &Measurements, id: u64) {
-        measurements.wrap(id, VerticalBorder::default(), gpui::Empty.into_any_element());
+        measurements.wrap(
+            id,
+            VerticalBorder::default(),
+            true,
+            gpui::Empty.into_any_element(),
+        );
     }
 
     #[test]

@@ -274,6 +274,67 @@ describeNative("motion properties", () => {
       expect(done.y).toBe(100)
     })
 
+    describe("a percentage height", () => {
+      const Panel = (props: { parent: { height?: number; flexGrow?: number }; content?: number }) => (
+        <div style={{ display: "flex", flexDirection: "column", width: 400, ...props.parent }}>
+          <motion.div
+            testId="panel"
+            initial={{ height: 0 }}
+            animate={{ height: "50%" }}
+            transition={linear}
+          >
+            <div style={{ width: 40, height: props.content ?? 80 }} />
+          </motion.div>
+        </div>
+      )
+
+      it("is the content height against a parent whose height is auto, as in CSS", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(<Panel parent={{}} />)
+        expect(boundsOf(renderer, "panel").height).toBe(0)
+
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "panel").height).toBeCloseTo(40, 0)
+
+        // 50% of an auto parent is auto, so it ends at the content.
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "panel").height).toBe(80)
+      })
+
+      it("is a share of the parent when the parent has a height", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(<Panel parent={{ height: 200 }} />)
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "panel").height).toBeCloseTo(50, 0)
+
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "panel").height).toBe(100)
+      })
+
+      it("is a share of a flex item that its container sizes", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(
+          <div style={{ display: "flex", flexDirection: "column", width: 400, height: 200 }}>
+            <Panel parent={{ flexGrow: 1 }} />
+          </div>
+        )
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "panel").height).toBeCloseTo(50, 0)
+
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "panel").height).toBe(100)
+      })
+    })
+
     it("starts from the laid-out size when the style leaves it unset", () => {
       const { render: mount, renderer } = createTestRoot({ width: 400, height: 300 })
       const render = (node: ReactNode) => settled(mount, renderer, node)

@@ -2238,6 +2238,7 @@ mod tests {
             natural_height: gpui::px(natural),
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
+            percent_height_resolves: true,
         }
     }
 
