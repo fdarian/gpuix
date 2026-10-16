@@ -647,7 +647,12 @@ export interface StyleDesc {
   /** CSS `font-style`, inherited. Applies to the element and to inline runs. */
   fontStyle?: "normal" | "italic" | "oblique"
   textAlign?: string
-  lineHeight?: number
+  /** CSS `line-height`, inherited. A number multiplies the element's font size, as in CSS and React DOM:
+   *  `1.5` is one and a half times the font size, and a child with another `fontSize` gets its own multiple.
+   *  `"normal"` is the font's default leading. A string with a unit is a length (see `DimensionValue`),
+   *  where `%` and `em` are of this element's font size: `"24px"`, `"150%"`, `"1.5em"`. A length is
+   *  resolved here and inherited as px. Negative is an error. Motion animates only a number. */
+  lineHeight?: number | string
   /** CSS `white-space`, inherited. `normal` and `nowrap` collapse spaces and turn
    *  a newline into a space, `pre-line` collapses spaces and keeps newlines,
    *  `pre-wrap` and `pre` keep both. `nowrap` and `pre` do not wrap. */

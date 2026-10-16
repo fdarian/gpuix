@@ -686,7 +686,7 @@ function SidePanel({ state, tree, target, current, metric, insights, onOpen, onS
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
-            <text testId="selection-size" style={{ fontSize: TEXT.display, fontWeight: 300, color: INK, lineHeight: 44 }}>
+            <text testId="selection-size" style={{ fontSize: TEXT.display, fontWeight: 300, color: INK, lineHeight: "44px" }}>
               {number}
             </text>
             <text style={{ fontSize: TEXT.title + 2, color: INK_2, paddingBottom: 6 }}>{unit}</text>
@@ -779,7 +779,7 @@ function SidePanel({ state, tree, target, current, metric, insights, onOpen, onS
         {disk ? (
           <>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
-              <text style={{ fontSize: TEXT.figure, fontWeight: 300, color: INK, lineHeight: 30 }}>
+              <text style={{ fontSize: TEXT.figure, fontWeight: 300, color: INK, lineHeight: "30px" }}>
                 {humanBytes(disk.available).split(' ')[0]}
               </text>
               <text style={{ fontSize: TEXT.body + 1, color: INK_2, paddingBottom: 4 }}>

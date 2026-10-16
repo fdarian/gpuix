@@ -28,7 +28,7 @@ function Row({ index, body }: { index: number; body: string }) {
         <text style={{ color: '#cdd6f4', fontWeight: 600, fontSize: 13 }}>user {index}</text>
         <text style={{ color: '#6c7086', fontSize: 11 }}>12:{String(index % 60).padStart(2, '0')}</text>
       </div>
-      <text style={{ color: '#cdd6f4', fontSize: 13, lineHeight: 20 }}>{body}</text>
+      <text style={{ color: '#cdd6f4', fontSize: 13, lineHeight: "20px" }}>{body}</text>
       <div style={{ flexDirection: 'row', gap: 6 }}>
         <div
           onClick={() => {}}

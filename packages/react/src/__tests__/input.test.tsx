@@ -582,14 +582,14 @@ describeNative("native text editors", () => {
 
   it("sizes a row from style.lineHeight", () => {
     testRoot.render(
-      <textarea value="one" minRows={1} maxRows={8} style={{ width: 300, lineHeight: 30 }} />,
+      <textarea value="one" minRows={1} maxRows={8} style={{ width: 300, lineHeight: "30px" }} />,
     )
     expect(editorBounds("textarea").height).toBe(30)
   })
 
   it("multiplies lineHeight by minRows", () => {
     testRoot.render(
-      <textarea value="one" minRows={3} maxRows={8} style={{ width: 300, lineHeight: 30 }} />,
+      <textarea value="one" minRows={3} maxRows={8} style={{ width: 300, lineHeight: "30px" }} />,
     )
     expect(editorBounds("textarea").height).toBe(90)
   })
@@ -601,7 +601,7 @@ describeNative("native text editors", () => {
   })
 
   it("uses lineHeight on a single-line input", () => {
-    testRoot.render(<input value="one" style={{ width: 300, lineHeight: 22 }} />)
+    testRoot.render(<input value="one" style={{ width: 300, lineHeight: "22px" }} />)
     expect(editorBounds("input").height).toBe(22)
   })
 })

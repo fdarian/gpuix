@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo" } as const
 
 type App = ReturnType<typeof createTestRoot>
 

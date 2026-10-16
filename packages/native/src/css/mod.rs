@@ -14,6 +14,7 @@ pub(crate) mod filter;
 pub(crate) mod font_features;
 pub(crate) mod gradient;
 pub(crate) mod length;
+pub(crate) mod line_height;
 pub(crate) mod mask;
 #[cfg(test)]
 mod parse_cost;

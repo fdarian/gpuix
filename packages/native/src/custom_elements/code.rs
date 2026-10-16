@@ -30,7 +30,8 @@ use std::sync::Arc;
 use gpui::{px, Font, Hsla, SharedString};
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
-use crate::css::length::LengthContext;
+use crate::css::length::{LengthContext, LinearLength};
+use crate::css::line_height::LineHeight;
 use crate::style::StyleDesc;
 use crate::syntax::{cache::highlight_cached, HighlightedDocument};
 use crate::text::runs::runs_for_spans;
@@ -120,6 +121,9 @@ fn typography(
         .then_some(lengths.font_size as f32)
         .filter(|size| *size > 0.0)
         .unwrap_or(m.code_text_size);
+    // The row is painted at `text_size`, which is the theme's when the style sets
+    // none, so a multiplier or `em` means that size and not the inherited one.
+    let painted = lengths.descend(Some(&LinearLength::px(f64::from(text_size))), false);
     Typography {
         family: style
             .and_then(|style| style.font_family.clone())
@@ -135,9 +139,9 @@ fn typography(
         // A zero `codeTextSize` metric would divide by zero and hand Taffy an
         // infinity, which paints nothing at all, so guard the ratio.
         line_height: style
-            .and_then(|style| style.line_height)
+            .and_then(|style| style.line_height.as_ref())
+            .and_then(|line_height| line_height.resolve_px(&painted))
             .map(|height| height as f32)
-            .filter(|height| *height > 0.0)
             .unwrap_or_else(|| {
                 if m.code_text_size > 0.0 {
                     m.code_line_height * text_size / m.code_text_size
@@ -299,7 +303,6 @@ mod tests {
         assert_eq!(gutter_width(9, &m), 64.0);
     }
 
-    use crate::css::length::LinearLength;
 
     fn lengths_of(style: Option<&StyleDesc>) -> LengthContext {
         LengthContext::initial(800.0, 600.0)
@@ -322,7 +325,7 @@ mod tests {
         let style = StyleDesc {
             font_family: Some("Fira Code".to_string()),
             font_size: Some(LinearLength::px(20.0)),
-            line_height: Some(30.0),
+            line_height: Some(LineHeight::Length(LinearLength::px(30.0))),
             color: Some("#ff0000".to_string()),
             ..Default::default()
         };
@@ -337,16 +340,50 @@ mod tests {
     }
 
     #[test]
-    fn typography_ignores_a_zero_size_or_line_height() {
+    fn typography_ignores_a_zero_size() {
         let theme = Theme::dark();
         let style = StyleDesc {
             font_size: Some(LinearLength::px(0.0)),
-            line_height: Some(0.0),
             ..Default::default()
         };
         let resolved = typography(Some(&style), &lengths_of(Some(&style)), &theme, &theme.metrics);
         assert_eq!(resolved.text_size, theme.metrics.code_text_size);
-        assert_eq!(resolved.line_height, theme.metrics.code_line_height);
+    }
+
+    fn line_height_of(style: &StyleDesc) -> f32 {
+        let theme = Theme::dark();
+        typography(Some(style), &lengths_of(Some(style)), &theme, &theme.metrics).line_height
+    }
+
+    #[test]
+    fn a_line_height_number_multiplies_the_font_size_the_code_is_painted_at() {
+        let theme = Theme::dark();
+        let multiplier = StyleDesc { line_height: Some(LineHeight::Multiplier(2.0)), ..Default::default() };
+        assert_eq!(line_height_of(&multiplier), theme.metrics.code_text_size * 2.0);
+        let sized = StyleDesc { font_size: Some(LinearLength::px(10.0)), ..multiplier };
+        assert_eq!(line_height_of(&sized), 20.0);
+    }
+
+    #[test]
+    fn a_line_height_length_resolves_against_the_painted_font_size() {
+        let theme = Theme::dark();
+        let style = |line_height: &str| StyleDesc {
+            font_size: Some(LinearLength::px(10.0)),
+            line_height: Some(serde_json::from_str(line_height).unwrap()),
+            ..Default::default()
+        };
+        assert_eq!(line_height_of(&style(r#""24px""#)), 24.0);
+        assert_eq!(line_height_of(&style(r#""1.5em""#)), 15.0);
+        assert_eq!(line_height_of(&style(r#""150%""#)), 15.0);
+        let unsized_style = StyleDesc { line_height: Some(LineHeight::Length(LinearLength { em: 1.5, ..Default::default() })), ..Default::default() };
+        assert_eq!(line_height_of(&unsized_style), theme.metrics.code_text_size * 1.5);
+    }
+
+    #[test]
+    fn a_normal_line_height_keeps_the_themes_ratio() {
+        let theme = Theme::dark();
+        let style = StyleDesc { line_height: Some(LineHeight::Normal), ..Default::default() };
+        assert_eq!(line_height_of(&style), theme.metrics.code_line_height);
     }
 
     #[test]

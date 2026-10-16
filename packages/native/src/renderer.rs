@@ -8076,12 +8076,8 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(decoration) = crate::css::text_decoration::of(style) {
         el = apply_text_decoration(el, &decoration, colors);
     }
-    // `line_height` was accepted by the style type but never applied, so
-    // multi-line text always used gpui's default leading.
-    if let Some(line_height) = style.line_height {
-        if line_height > 0.0 {
-            el = el.line_height(gpui::px(line_height as f32));
-        }
+    if let Some(line_height) = &style.line_height {
+        el.text_style().line_height = Some(line_height.text_style_value(lengths));
     }
     if let Some(radius) = style.border_radius {
         el = el.rounded(gpui::px(radius as f32));
@@ -10366,6 +10362,175 @@ mod font_size_cascade_tests {
         );
         page.draw(cx);
         page.assert_font_sizes(&[(2, 40.0), (3, 60.0)]);
+    }
+
+    /// The height of node `id`'s one-line probe, which is its line height.
+    fn assert_line_heights(page: &Page, expected: &[(u64, f64)]) {
+        for (id, height) in expected {
+            let measured = page.height(probe(*id));
+            assert!(
+                (measured - height).abs() <= TOLERANCE,
+                "node {id} should have a {height}px line height but measures {measured}px"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn a_line_height_number_multiplies_the_font_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                node(2, Some(1), r#"{"fontSize": 10, "lineHeight": 2}"#),
+                node(3, Some(1), r#"{"fontSize": 10, "lineHeight": "1.5"}"#),
+                node(4, Some(1), r#"{"fontSize": 10, "lineHeight": 0.5}"#),
+            ],
+        );
+        assert_line_heights(&page, &[(2, 20.0), (3, 15.0), (4, 5.0)]);
+    }
+
+    #[gpui::test]
+    fn a_line_height_length_resolves_against_the_elements_own_font_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": 40}"#),
+                node(2, Some(1), r#"{"fontSize": 10, "lineHeight": "24px"}"#),
+                node(3, Some(1), r#"{"fontSize": 10, "lineHeight": "150%"}"#),
+                node(4, Some(1), r#"{"fontSize": 10, "lineHeight": "1.5em"}"#),
+                node(5, Some(1), r#"{"fontSize": "0.5em", "lineHeight": "2em"}"#),
+                node(6, Some(1), r#"{"fontSize": "0.5em", "lineHeight": "200%"}"#),
+                node(7, Some(1), r#"{"lineHeight": "1.5em"}"#),
+                node(8, Some(1), r#"{"fontSize": 10, "lineHeight": "calc(1em + 2rem)"}"#),
+            ],
+        );
+        assert_line_heights(&page, &[(2, 24.0), (3, 15.0), (4, 15.0), (5, 40.0), (6, 40.0), (7, 60.0), (8, 90.0)]);
+    }
+
+    #[gpui::test]
+    fn a_multiplier_is_inherited_as_a_multiplier_and_a_length_as_px(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                node(2, Some(1), r#"{"fontSize": 10, "lineHeight": 2}"#),
+                node(3, Some(2), r#"{"fontSize": 20}"#),
+                node(4, Some(1), r#"{"fontSize": 10, "lineHeight": "24px"}"#),
+                node(5, Some(4), r#"{"fontSize": 20}"#),
+                node(6, Some(1), r#"{"fontSize": 10, "lineHeight": "150%"}"#),
+                node(7, Some(6), r#"{"fontSize": 20}"#),
+                node(8, Some(1), r#"{"fontSize": 10, "lineHeight": "1.5em"}"#),
+                node(9, Some(8), r#"{"fontSize": "3em"}"#),
+            ],
+        );
+        assert_line_heights(&page, &[(3, 40.0), (5, 24.0), (7, 15.0), (9, 15.0)]);
+    }
+
+    #[gpui::test]
+    fn a_normal_line_height_undoes_what_a_parent_set(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, r#"{"fontSize": 10}"#),
+                node(2, Some(1), r#"{"lineHeight": "24px"}"#),
+                node(3, Some(2), r#"{"lineHeight": "normal"}"#),
+                node(4, Some(1), "{}"),
+                node(5, Some(1), r#"{"lineHeight": 3}"#),
+                node(6, Some(5), r#"{"lineHeight": "normal"}"#),
+            ],
+        );
+        let default = page.height(probe(4));
+        assert_line_heights(&page, &[(2, 24.0), (3, default), (5, 30.0), (6, default)]);
+    }
+
+    #[gpui::test]
+    fn changing_a_line_height_relays_the_text_out(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[node(1, None, "{}"), node(2, Some(1), r#"{"fontSize": 10, "lineHeight": 2}"#)],
+        );
+        assert_line_heights(&page, &[(2, 20.0)]);
+        page.set_style(cx, 2, r#"{"fontSize": 10, "lineHeight": "30px"}"#);
+        assert_line_heights(&page, &[(2, 30.0)]);
+        page.set_style(cx, 2, r#"{"fontSize": 10}"#);
+        assert_line_heights(&page, &[(2, 16.0)]);
+    }
+
+    #[gpui::test]
+    fn a_hover_line_height_applies_while_hovered(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                node(
+                    2,
+                    Some(1),
+                    r#"{"fontSize": 10, "lineHeight": 2, "hover": {"lineHeight": "3em"}}"#,
+                ),
+            ],
+        );
+        assert_line_heights(&page, &[(2, 20.0)]);
+        let bounds = crate::automation::get_bounds(2).unwrap();
+        let inside = gpui::point(
+            gpui::px((bounds.x + bounds.width / 2.0) as f32),
+            gpui::px((bounds.y + 1.0) as f32),
+        );
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            inside,
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        assert_line_heights(&page, &[(2, 30.0)]);
+    }
+
+    fn custom(id: u64, parent: u64, element_type: &'static str, style: &'static str) -> Node {
+        Node { id, element_type, parent: Some(parent), style }
+    }
+
+    fn element_height(id: u64) -> f64 {
+        crate::automation::get_bounds(id)
+            .unwrap_or_else(|| panic!("element {id} was not painted"))
+            .height
+    }
+
+    #[gpui::test]
+    fn a_code_block_rows_follow_the_line_height(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                custom(2, 1, "code", r#"{"fontSize": 10, "lineHeight": 2}"#),
+                custom(3, 1, "code", r#"{"fontSize": 10, "lineHeight": "30px"}"#),
+                custom(4, 1, "code", r#"{"fontSize": 10, "lineHeight": "3em"}"#),
+            ],
+        );
+        for id in [2, 3, 4] {
+            page.tree.lock().unwrap().set_custom_prop(id, "code".to_owned(), serde_json::json!("a\nb"));
+        }
+        page.draw(cx);
+        assert_eq!(element_height(2), 40.0);
+        assert_eq!(element_height(3), 60.0);
+        assert_eq!(element_height(4), 60.0);
+    }
+
+    #[gpui::test]
+    fn a_textarea_row_follows_the_line_height(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                node(1, None, "{}"),
+                custom(2, 1, "textarea", r#"{"fontSize": 10, "lineHeight": 2}"#),
+                custom(3, 1, "textarea", r#"{"fontSize": 10, "lineHeight": "30px"}"#),
+                custom(4, 1, "textarea", r#"{"fontSize": 10, "lineHeight": "3em"}"#),
+                custom(5, 1, "textarea", r#"{"fontSize": 10}"#),
+                custom(6, 1, "textarea", r#"{"fontSize": 10, "lineHeight": "normal"}"#),
+            ],
+        );
+        assert_eq!(element_height(2), 20.0);
+        assert_eq!(element_height(3), 30.0);
+        assert_eq!(element_height(4), 30.0);
+        assert_eq!(element_height(6), element_height(5));
     }
 
     #[gpui::test]

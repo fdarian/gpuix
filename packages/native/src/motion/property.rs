@@ -11,6 +11,7 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::LinearLength;
+use crate::css::line_height::LineHeight;
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightValue, StyleDesc};
 
@@ -107,6 +108,24 @@ impl Field for Option<LinearLength> {
         match value {
             AnimValue::Number(value) => *self = Some(LinearLength::px(value)),
             other => unreachable!("a length field was given {other:?}"),
+        }
+    }
+}
+
+impl Field for Option<LineHeight> {
+    /// Only a multiplier is a number a track can run from: `normal` has no value
+    /// and a length needs the element's font size.
+    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+        match self.as_ref()? {
+            LineHeight::Multiplier(multiplier) => Some(AnimValue::Number(*multiplier)),
+            LineHeight::Normal | LineHeight::Length(_) => None,
+        }
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Number(value) => *self = Some(LineHeight::Multiplier(value)),
+            other => unreachable!("a line height field was given {other:?}"),
         }
     }
 }
@@ -540,6 +559,13 @@ impl AnimProp {
         let name = self.name();
         let colors = self.colors(colors);
         let parsed = match self.kind() {
+            Kind::Number if self == Self::LineHeight && value.is_string() => {
+                return Err(format!(
+                    "motion cannot animate {name} to or from normal or a CSS length: only a number, a multiple of \
+                     the font size, because normal and lengths are resolved against the element when \
+                     the tree is applied"
+                ));
+            }
             Kind::Number if self.is_css_length() && value.is_string() => {
                 return Err(format!(
                     "motion cannot animate {name} to or from a CSS length: only a number of px, \
@@ -765,6 +791,36 @@ mod tests {
         let error = AnimProp::FontSize.parse(&serde_json::json!("2em"), &colors).unwrap_err();
         assert!(error.starts_with("motion cannot animate fontSize to or from a CSS length"), "{error}");
         assert!(AnimProp::FontSize.parse(&serde_json::json!(-1), &colors).is_err());
+    }
+
+    #[test]
+    fn a_line_height_animates_as_a_multiplier_and_a_string_says_why_it_cannot() {
+        let colors = Colors::root();
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::LineHeight.read(&style, &colors)
+        };
+        assert_eq!(read(r#"{ "lineHeight": 1.5 }"#), Some(AnimValue::Number(1.5)));
+        assert_eq!(read(r#"{ "lineHeight": "1.5" }"#), Some(AnimValue::Number(1.5)));
+        assert_eq!(read(r#"{ "lineHeight": "24px" }"#), None);
+        assert_eq!(read(r#"{ "lineHeight": "normal" }"#), None);
+
+        let mut style = StyleDesc::default();
+        AnimProp::LineHeight.write(&mut style, AnimValue::Number(2.0));
+        assert_eq!(style.line_height, Some(LineHeight::Multiplier(2.0)));
+
+        assert_eq!(
+            AnimProp::LineHeight.parse(&serde_json::json!(1.4), &colors).unwrap(),
+            AnimValue::Number(1.4)
+        );
+        for target in ["24px", "1.5em", "150%", "normal", "1.5"] {
+            let error = AnimProp::LineHeight.parse(&serde_json::json!(target), &colors).unwrap_err();
+            assert!(
+                error.starts_with("motion cannot animate lineHeight to or from normal or a CSS length"),
+                "{target}: {error}"
+            );
+        }
+        assert!(AnimProp::LineHeight.parse(&serde_json::json!(-1), &colors).is_err());
     }
 
     #[test]

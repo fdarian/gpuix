@@ -447,7 +447,9 @@ pub struct StyleDesc {
     /// CSS `font-style`: `normal`, `italic` or `oblique`. Inherited.
     pub font_style: Option<String>,
     pub text_align: Option<String>,
-    pub line_height: Option<f64>,
+    /// CSS `line-height`: a number multiplies the element's font size, `"normal"`,
+    /// or a length where `%` is of the font size. Inherited.
+    pub line_height: Option<crate::css::line_height::LineHeight>,
     pub white_space: Option<String>,
     pub text_overflow: Option<String>,
     pub line_clamp: Option<f64>,

@@ -86,7 +86,7 @@ export function TitlebarApp() {
         <text testId="last-event" style={{ color: '#FFFFFF', fontSize: 22, fontWeight: 600 }}>
           {lastEvent}
         </text>
-        <text style={{ color: muted, fontSize: 13, lineHeight: 20 }}>
+        <text style={{ color: muted, fontSize: 13, lineHeight: "20px" }}>
           Drag the bar to move the window. Presses and moves over a drag region never reach the page, so
           this stays put; the button and the input are no-drag and get theirs.
         </text>

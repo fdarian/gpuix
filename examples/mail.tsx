@@ -719,7 +719,7 @@ function TimelineRow({
         <text
           style={{
             fontSize: 12.5,
-            lineHeight: 16,
+            lineHeight: "16px",
             color: C.muted,
             fontFamily: FONT,
             whiteSpace: 'nowrap',
@@ -766,7 +766,7 @@ function DirectHeader({ thread }: { thread: MailThread }) {
           <text style={{ fontSize: 13, color: C.muted, fontFamily: FONT }}>{thread.subject}</text>
         </div>
       </div>
-      <text style={{ fontSize: 13.5, lineHeight: 20, color: C.secondary, fontFamily: FONT }}>
+      <text style={{ fontSize: 13.5, lineHeight: "20px", color: C.secondary, fontFamily: FONT }}>
         This conversation is only between you and {thread.senders}.
       </text>
     </div>
@@ -789,7 +789,7 @@ function MessageRow({ message }: { message: Message }) {
             {`To ${message.to}`}
           </text>
         ) : null}
-        <text style={{ fontSize: 13.5, lineHeight: 20, color: C.secondary, fontFamily: FONT }}>{message.body}</text>
+        <text style={{ fontSize: 13.5, lineHeight: "20px", color: C.secondary, fontFamily: FONT }}>{message.body}</text>
         {message.image ? (
           <img
             src={message.image}

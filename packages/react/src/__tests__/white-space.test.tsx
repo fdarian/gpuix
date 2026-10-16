@@ -9,7 +9,7 @@ import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo" } as const
 
 function lines(testRoot: TestRoot, testId: string) {
   const element = testRoot.renderer.findByTestId(testId)

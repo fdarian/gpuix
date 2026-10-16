@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px` } as const
 
 function boundsOf(app: ReturnType<typeof createTestRoot>, testId: string) {
   const element = app.renderer.findByTestId(testId)

@@ -12,7 +12,7 @@ import { readLogicalPixels, SHOTS_DIR, type Pixels } from "./test-utils.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px` } as const
 
 function bounds(testRoot: TestRoot, testId: string) {
   const element = testRoot.renderer.findByTestId(testId)

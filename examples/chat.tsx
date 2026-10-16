@@ -504,7 +504,7 @@ function ConversationRow({
       <text
         style={{
           fontSize: 13.5,
-          lineHeight: 18,
+          lineHeight: "18px",
           color: C.text,
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
@@ -517,7 +517,7 @@ function ConversationRow({
         <text
           style={{
             fontSize: 13,
-            lineHeight: 15,
+            lineHeight: "15px",
             color: C.tertiary,
             flexGrow: 1,
             minWidth: 0,
@@ -736,7 +736,7 @@ function UserTurn({ text }: { text: string }) {
           paddingRight: 12,
         }}
       >
-        <text style={{ fontSize: 14, lineHeight: 20, color: C.text, minWidth: 0, maxWidth: '100%' }}>{text}</text>
+        <text style={{ fontSize: 14, lineHeight: "20px", color: C.text, minWidth: 0, maxWidth: '100%' }}>{text}</text>
       </div>
     </div>
   )
@@ -769,7 +769,7 @@ function WorkedFor({ duration }: { duration: string }) {
             flexShrink: 0,
           }}
         >
-          <text style={{ fontSize: 13.5, lineHeight: 18, fontWeight: 500, color: C.tertiary }}>
+          <text style={{ fontSize: 13.5, lineHeight: "18px", fontWeight: 500, color: C.tertiary }}>
             {duration}
           </text>
           <Icon name={open ? 'chevronDown' : 'chevronRight'} size={11.5} color={C.tertiary} />
@@ -777,7 +777,7 @@ function WorkedFor({ duration }: { duration: string }) {
         <div style={{ height: 1, flexGrow: 1, backgroundColor: C.border }} />
       </Button>
       {open && (
-        <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
+        <text style={{ fontSize: 13, lineHeight: "18px", color: C.secondary }}>
           Demo reasoning. No model ran. The fold is here so the chrome has something to open.
         </text>
       )}
@@ -1236,7 +1236,7 @@ const MenuRow = React.forwardRef<PublicInstance, MenuRowProps>(function MenuRow(
           {label}
         </text>
         {description && (
-          <text style={{ fontSize: 12.5, lineHeight: 14, color: C.tertiary, paddingTop: 2 }}>
+          <text style={{ fontSize: 12.5, lineHeight: "14px", color: C.tertiary, paddingTop: 2 }}>
             {description}
           </text>
         )}
@@ -1293,7 +1293,7 @@ function ChipSelect({
           <text
             style={{
               fontSize: 13,
-              lineHeight: 16,
+              lineHeight: "16px",
               color: accent ? C.accent : C.secondary,
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
@@ -1554,7 +1554,7 @@ function ModeToggle({
       onClick={() => onChange(plan ? 'build' : 'plan')}
     >
       <Icon name={plan ? 'list' : 'wrench'} size={12} color={plan ? C.accent : C.tertiary} />
-      <text style={{ fontSize: 13, lineHeight: 16, color: plan ? C.accent : C.secondary }}>
+      <text style={{ fontSize: 13, lineHeight: "16px", color: plan ? C.accent : C.secondary }}>
         {plan ? 'Plan' : 'Build'}
       </text>
     </Button>
@@ -1642,7 +1642,7 @@ function Composer({
             width: '100%',
             minWidth: 0,
             fontSize: 14,
-            lineHeight: 20,
+            lineHeight: "20px",
             color: C.text,
             backgroundColor: '#00000000',
             borderWidth: 0,
@@ -1904,7 +1904,7 @@ function MdxCell({ children, header }: MdxChildren & { header?: boolean }) {
         whiteSpace: 'nowrap',
         backgroundColor: C.canvas,
         fontSize: 15,
-        lineHeight: 26,
+        lineHeight: "26px",
         fontWeight: header ? 700 : 400,
         color: C.text,
       }}
@@ -1924,7 +1924,7 @@ function MdxBlock({ children }: MdxChildren) {
 
 const MD_TEXT = {
   fontSize: 15,
-  lineHeight: 26,
+  lineHeight: "26px",
   color: C.text,
   maxWidth: '100%',
   minWidth: 0,
@@ -1957,7 +1957,7 @@ function MdxParagraph({ children }: MdxChildren) {
         width: '100%',
         minWidth: 0,
         fontSize: 15,
-        lineHeight: 26,
+        lineHeight: "26px",
         color: C.text,
         // Each piece is a flex item, so the space between two pieces lives at
         // the edge of one. Collapsing would strip it as it does at the edge of
@@ -1978,17 +1978,17 @@ function MdxParagraph({ children }: MdxChildren) {
 
 const SAFE_MDX_COMPONENTS = {
   h1: ({ children }: MdxChildren) => (
-    <text style={{ fontSize: 22, lineHeight: 30, fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
+    <text style={{ fontSize: 22, lineHeight: "30px", fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
       {children}
     </text>
   ),
   h2: ({ children }: MdxChildren) => (
-    <text style={{ fontSize: 18, lineHeight: 26, fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
+    <text style={{ fontSize: 18, lineHeight: "26px", fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
       {children}
     </text>
   ),
   h3: ({ children }: MdxChildren) => (
-    <text style={{ fontSize: 16, lineHeight: 24, fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
+    <text style={{ fontSize: 16, lineHeight: "24px", fontWeight: 700, color: C.text, maxWidth: '100%', minWidth: 0 }}>
       {children}
     </text>
   ),
@@ -2014,7 +2014,7 @@ const SAFE_MDX_COMPONENTS = {
     const only = mdxStringChild(children)
     return (
       <div style={{ display: 'flex', flexDirection: 'row', gap: 9, width: '100%', minWidth: 0 }}>
-        <text style={{ fontSize: 15, lineHeight: 26, color: C.secondary, flexShrink: 0 }}>
+        <text style={{ fontSize: 15, lineHeight: "26px", color: C.secondary, flexShrink: 0 }}>
           {checked === undefined ? '•' : checked ? '✓' : '○'}
         </text>
         <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
@@ -2453,7 +2453,7 @@ export function ChatApp({
         </div>
       </OverlayCard>
       <OverlayCard title="Settings" open={overlay === 'settings'} onClose={() => setOverlay(null)}>
-        <text style={{ fontSize: 13, lineHeight: 18, color: C.secondary }}>
+        <text style={{ fontSize: 13, lineHeight: "18px", color: C.secondary }}>
           This is the GPUIX chat demo. Threads, drafts, and replies stay in this window.
         </text>
         <Button

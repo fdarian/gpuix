@@ -91,7 +91,7 @@ describe("<code>", () => {
 
   it("takes the line height and font size from the style prop", () => {
     const { render, renderer } = createTestRoot()
-    render(<code code={"a\nb\nc"} language="ts" style={{ fontSize: 20, lineHeight: 30 }} />)
+    render(<code code={"a\nb\nc"} language="ts" style={{ fontSize: 20, lineHeight: "30px" }} />)
 
     // The row height follows style.lineHeight, so tall glyphs are never clipped.
     expect(codeBounds(renderer).height).toBe(3 * 30)

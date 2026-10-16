@@ -2836,7 +2836,7 @@ that height. An explicit `height` still overrides both.
   value={draft}
   minRows={1}
   maxRows={8}
-  style={{ fontSize: 14, lineHeight: 20 }}
+  style={{ fontSize: 14, lineHeight: "20px" }}
   onChange={(event) => setDraft(event.value ?? '')}
 />
 ```

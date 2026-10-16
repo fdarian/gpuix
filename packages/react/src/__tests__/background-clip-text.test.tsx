@@ -8,7 +8,7 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const WIDTH = 300
 const HEIGHT = 100
-const GLYPHS = { fontSize: 80, lineHeight: 90, fontWeight: 900 } as const
+const GLYPHS = { fontSize: 80, lineHeight: "90px", fontWeight: 900 } as const
 
 function shoot(name: string, tree: ReactNode) {
   const { render, renderer, unmount } = createTestRoot()

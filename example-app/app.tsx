@@ -262,7 +262,7 @@ function TodoRow({
           flexGrow: 1,
           fontSize: 14,
           fontFamily: FONT,
-          lineHeight: 20,
+          lineHeight: "20px",
           color: todo.done ? C.ghost : C.text,
         }}
       >
