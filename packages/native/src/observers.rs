@@ -174,10 +174,11 @@ struct ClippingAncestor {
     clip_y: bool,
 }
 
+/// Only the ancestors that reach `id` clip it: an absolute element is clipped by its containing
+/// block and what clips that, a fixed one by nothing.
 fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
-    let mut next = tree.elements.get(&id).and_then(|element| element.parent);
-    while let Some(ancestor) = next {
+    for ancestor in crate::layout::containing_block::reaching_ancestors(tree, id) {
         let Some(element) = tree.elements.get(&ancestor) else {
             break;
         };
@@ -197,7 +198,6 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
                 clip_y,
             });
         }
-        next = element.parent;
     }
     found
 }

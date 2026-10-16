@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, LazyLock};
 
+use crate::layout::containing_block;
 use crate::style::StyleDesc;
 
 /// What one `elements_at` walk carries along.
@@ -19,6 +20,10 @@ struct HitWalk<'a> {
     painted_box: &'a dyn Fn(u64) -> Option<crate::automation::ElementBounds>,
     /// Deferred `anchored` layers met so far, each with its priority and hits.
     layers: Vec<(u64, Vec<u64>)>,
+    /// For each positioned element above (and each `<virtual-list>`, whose rows are layout
+    /// roots), whether its clip excludes the point from what is inside it. An absolute
+    /// descendant takes the innermost one in place of the clip of the static boxes in between.
+    frames: Vec<bool>,
 }
 
 pub struct RetainedElement {
@@ -318,9 +323,11 @@ pub struct RetainedTree {
     inert_count: usize,
     /// Elements whose style declares a `visibility`, so a tree without any skips the ancestor walk.
     visibility_count: usize,
-    /// How many `anchored` elements exist. Without any, an `elements_at` walk
-    /// can drop a clipped subtree whole.
+    /// How many `anchored` elements exist. Without any (and without an absolute or fixed
+    /// element), an `elements_at` walk can drop a clipped subtree whole.
     anchored_count: usize,
+    /// How many elements are `position: absolute` or `fixed`, which a clip above may not reach.
+    escaping_count: usize,
     pub styles: StyleTable,
     /// The root element ID set by appendChildToContainer.
     pub root_id: Option<u64>,
@@ -347,6 +354,7 @@ impl RetainedTree {
             inert_count: 0,
             visibility_count: 0,
             anchored_count: 0,
+            escaping_count: 0,
             styles: StyleTable::default(),
             root_id: None,
             keyboard_focus_dim: true,
@@ -581,6 +589,7 @@ impl RetainedTree {
             self.inert_count -= usize::from(element.has_inert_prop());
             self.visibility_count -= usize::from(element.declared_hidden().is_some());
             self.anchored_count -= usize::from(element.element_type == "anchored");
+            self.escaping_count -= usize::from(containing_block::escape(&element).is_some());
             destroyed.push(id);
             for child_id in element.children {
                 self.destroy_element_recursive(child_id, destroyed);
@@ -665,6 +674,7 @@ impl RetainedTree {
                     !crate::text::inline::same_paragraphs(element.style.as_deref(), &style);
                 text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
                     != style.white_space.as_deref();
+                let escaped_before = containing_block::escape(element).is_some();
                 let before = element.style.take().filter(|old| {
                     !crate::motion::declares_transitions(old)
                         && crate::motion::declares_transitions(&style)
@@ -676,6 +686,9 @@ impl RetainedTree {
                     element.release_empty_extras();
                 }
                 element.style = Some(style);
+                let escaped_after = containing_block::escape(element).is_some();
+                self.escaping_count += usize::from(escaped_after);
+                self.escaping_count -= usize::from(escaped_before);
                 changed = true;
                 declared = Some((was_declared, element.declared_hidden()));
             }
@@ -891,6 +904,7 @@ impl RetainedTree {
             y,
             painted_box,
             layers: Vec::new(),
+            frames: Vec::new(),
         };
         let mut hits = Vec::new();
         if let Some(root_id) = self.root_id {
@@ -929,12 +943,16 @@ impl RetainedTree {
                 && (!vertical || (y >= bounds.y && y < bounds.y + bounds.height))
         };
 
-        let mut clipped = clipped;
+        let mut clipped = match containing_block::escape(element) {
+            None => clipped,
+            Some(gpui::Escape::Viewport) => false,
+            Some(gpui::Escape::ContainingBlock) => walk.frames.last().copied().unwrap_or(false),
+        };
         if let (Some(style), Some(bounds)) = (style, &own_box) {
             let axes = crate::scroll::Axes::of(style);
             let (clip_x, clip_y) = (axes.x.clips(), axes.y.clips());
             if (clip_x || clip_y) && !inside(bounds, clip_x, clip_y) {
-                if self.anchored_count == 0 {
+                if self.anchored_count == 0 && self.escaping_count == 0 {
                     return;
                 }
                 clipped = true;
@@ -967,16 +985,25 @@ impl RetainedTree {
                     .and_then(|value| value.as_u64())
                     .unwrap_or(1);
                 let mut layer = Vec::new();
+                walk.frames.push(false);
                 for &child in element.children.iter().rev() {
                     self.collect_hits(child, none, inert, false, hidden, walk, &mut layer);
                 }
+                walk.frames.pop();
                 walk.layers.push((priority, layer));
                 return;
             }
         }
 
+        let opens_frame = containing_block::is_positioned(element) || element.element_type == "virtual-list";
+        if opens_frame {
+            walk.frames.push(clipped);
+        }
         for &child in element.children.iter().rev() {
             self.collect_hits(child, none, inert, clipped, hidden, walk, hits);
+        }
+        if opens_frame {
+            walk.frames.pop();
         }
         if !clipped && !none && !hidden && own_box.is_some_and(|bounds| inside(&bounds, true, true)) {
             hits.push(id);
@@ -1558,6 +1585,92 @@ mod tests {
         // A descendant is above its ancestor.
         assert_eq!(tree.elements_at(10.0, 45.0, &painted), vec![3, 2, 1]);
         assert_eq!(tree.elements_at(500.0, 500.0, &painted), Vec::<u64>::new());
+    }
+
+    /// `1` (relative, the whole page) holds `2`, a 50 square clip at (100, 100), which holds `3`,
+    /// a 40 square at (10, 10) of the page, far outside the clip. `clip` and `box_position` are
+    /// their `position`.
+    fn escaping_tree(
+        clip_position: Option<&str>,
+        box_position: &str,
+    ) -> (RetainedTree, impl Fn(u64) -> Option<crate::automation::ElementBounds>) {
+        let mut tree = RetainedTree::new();
+        for id in 1..=3 {
+            tree.create_element(id, "div".to_string());
+        }
+        tree.set_root(1);
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        let styled = |position: Option<&str>, overflow: Option<&str>| {
+            Arc::new(StyleDesc {
+                position: position.map(str::to_string),
+                overflow: overflow.map(str::to_string),
+                ..Default::default()
+            })
+        };
+        tree.set_style(1, styled(Some("relative"), None));
+        tree.set_style(2, styled(clip_position, Some("hidden")));
+        tree.set_style(3, styled(Some(box_position), None));
+        let boxes = [
+            (1, (0.0, 0.0, 200.0, 200.0)),
+            (2, (100.0, 100.0, 50.0, 50.0)),
+            (3, (10.0, 10.0, 40.0, 40.0)),
+        ];
+        let lookup = move |id: u64| {
+            boxes
+                .iter()
+                .find(|(candidate, _)| *candidate == id)
+                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds {
+                    x: *x,
+                    y: *y,
+                    width: *width,
+                    height: *height,
+                    client_left: 0.0,
+                    client_top: 0.0,
+                    client_right: 0.0,
+                    client_bottom: 0.0,
+                })
+        };
+        (tree, lookup)
+    }
+
+    #[test]
+    fn elements_at_hits_an_absolute_box_outside_a_static_clip() {
+        let (tree, painted) = escaping_tree(None, "absolute");
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![3, 1]);
+    }
+
+    #[test]
+    fn elements_at_clips_an_absolute_box_by_a_positioned_clip() {
+        let (tree, painted) = escaping_tree(Some("relative"), "absolute");
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![1]);
+    }
+
+    #[test]
+    fn elements_at_hits_a_fixed_box_outside_a_positioned_clip() {
+        let (tree, painted) = escaping_tree(Some("relative"), "fixed");
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![3, 1]);
+    }
+
+    #[test]
+    fn elements_at_clips_an_in_flow_box_by_a_static_clip_again_when_it_stops_escaping() {
+        let (mut tree, painted) = escaping_tree(None, "absolute");
+        let in_flow = Arc::new(StyleDesc {
+            position: Some("static".to_string()),
+            ..Default::default()
+        });
+        tree.set_style(3, in_flow);
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![1]);
+    }
+
+    #[test]
+    fn the_count_of_escaping_elements_follows_styles_and_destruction() {
+        let (mut tree, _) = escaping_tree(None, "fixed");
+        assert_eq!(tree.escaping_count, 1);
+        tree.set_style(2, Arc::new(StyleDesc { position: Some("absolute".into()), ..Default::default() }));
+        assert_eq!(tree.escaping_count, 2);
+        tree.destroy_element(2);
+        assert_eq!(tree.escaping_count, 0);
     }
 
     #[test]

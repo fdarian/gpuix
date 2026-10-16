@@ -214,6 +214,11 @@ impl Element for Measured {
         (layout_id, layout_id)
     }
 
+    // `record` reads this wrapper's bounds, which must be the child's.
+    fn escapes_to(&self) -> Option<gpui::Escape> {
+        self.child.escapes_to()
+    }
+
     fn prepaint(
         &mut self,
         _: Option<&GlobalElementId>,

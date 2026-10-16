@@ -793,7 +793,7 @@ describeNative("IntersectionObserver", () => {
       const { entries, callback } = collect()
       render(
         <div style={{ flexDirection: "column" }}>
-          <div style={{ width: 100, height: 100, overflow: "hidden" }}>
+          <div style={{ position: "relative", width: 100, height: 100, overflow: "hidden" }}>
             <div
               ref={ref("a")}
               style={{ position: "absolute", top: 150, left: 0, width: 40, height: 40 }}
@@ -859,7 +859,7 @@ describeNative("IntersectionObserver", () => {
         const { entries, callback } = collect()
         render(
           <div style={{ flexDirection: "column" }}>
-            <div style={{ width: 100, height: 100, overflow }}>
+            <div style={{ position: "relative", width: 100, height: 100, overflow }}>
               <div
                 ref={ref("a")}
                 style={{ position: "absolute", top: 150, left: 0, width: 40, height: 40 }}
@@ -875,6 +875,118 @@ describeNative("IntersectionObserver", () => {
       }
     }
   )
+
+  describe("an absolute or fixed target", () => {
+    /** A 100 by 100 clip at (200, 100) holding a dropdown that hangs out of it at (10, 10). */
+    const dropdownIn = (
+      clip: Record<string, unknown>,
+      dropdown: Record<string, unknown>,
+      ref: (instance: PublicInstance | null) => void
+    ) => (
+      <div style={{ position: "relative", width: 600, height: 400, paddingLeft: 200, paddingTop: 100 }}>
+        <div style={{ width: 100, height: 100, overflow: "hidden", ...clip }}>
+          <div ref={ref} style={{ position: "absolute", left: 10, top: 10, width: 50, height: 50, ...dropdown }} />
+        </div>
+      </div>
+    )
+
+    it.each(["hidden", "scroll", "clip"])(
+      "is not clipped by a static overflow: %s ancestor before its containing block",
+      (overflow) => {
+        const { render, renderer, ref, element, unmount } = setup()
+        try {
+          const { entries, callback } = collect()
+          render(dropdownIn({ overflow }, {}, ref("a")))
+          new IntersectionObserver(callback).observe(element("a"))
+          renderer.dispatchNativeEvents()
+          expect(entries.map((entry) => entry.isIntersecting)).toEqual([true])
+          expect(entries[0]!.boundingClientRect).toMatchObject({ x: 10, y: 10, width: 50, height: 50 })
+          expect(entries[0]!.intersectionRatio).toBe(1)
+        } finally {
+          unmount()
+        }
+      }
+    )
+
+    it("is clipped by an overflow ancestor that is its containing block", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        // Hangs out of the positioned clip, which spans (200, 100) to (300, 200).
+        render(dropdownIn({ position: "relative" }, { left: 150, top: 150 }, ref("a")))
+        new IntersectionObserver(callback).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([false])
+      } finally {
+        unmount()
+      }
+    })
+
+    it.each([
+      // Past the static 50 wide clip, which does not reach it, and inside the 100 wide one.
+      [60, true],
+      // Past the 100 wide clip around the containing block, which clips it.
+      [150, false],
+    ])("is clipped by the overflow around its containing block, at left %i", (left, visible) => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(
+          <div style={{ width: 100, height: 100, overflow: "hidden" }}>
+            <div style={{ position: "relative", width: 300, height: 300 }}>
+              <div style={{ width: 50, height: 50, overflow: "hidden" }}>
+                <div ref={ref("a")} style={{ position: "absolute", left, top: 10, width: 30, height: 30 }} />
+              </div>
+            </div>
+          </div>
+        )
+        new IntersectionObserver(callback).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([visible])
+      } finally {
+        unmount()
+      }
+    })
+
+    it("is not clipped by a positioned overflow ancestor when it is fixed", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(dropdownIn({ position: "relative" }, { position: "fixed" }, ref("a")))
+        new IntersectionObserver(callback).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([true])
+      } finally {
+        unmount()
+      }
+    })
+
+    it("follows its containing block's scroll, not a static scroller's", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(
+          <div style={{ position: "relative", width: 400, height: 300 }}>
+            <div testId="scroller" style={{ width: 100, height: 100, overflow: "scroll" }}>
+              <div style={{ height: 1000 }} />
+              <div ref={ref("a")} style={{ position: "absolute", left: 200, top: 10, width: 40, height: 40 }} />
+            </div>
+          </div>
+        )
+        new IntersectionObserver(callback).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([true])
+
+        renderer.scrollTo(renderer.findByTestId("scroller")!.id, 0, 40)
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+        expect(element("a").getBoundingClientRect().y, "it did not move").toBe(10)
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([true])
+      } finally {
+        unmount()
+      }
+    })
+  })
 
   it("gives a second observer of the same target its own initial entry", () => {
     const { render, renderer, ref, element, unmount } = setup()

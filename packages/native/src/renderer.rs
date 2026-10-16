@@ -5405,12 +5405,11 @@ impl GpuixView {
             if key.activates_controls && element.events().contains("click") {
                 return false;
             }
-            let mut current = Some(focused);
-            while let Some(id) = current {
+            let reaching = crate::layout::containing_block::reaching_ancestors(&tree, focused);
+            for id in std::iter::once(focused).chain(reaching) {
                 if let Some(handle) = self.scroll_handles.get(&id) {
                     scrollers.push((id, handle));
                 }
-                current = tree.elements.get(&id).and_then(|element| element.parent);
             }
         } else {
             let pointer = window.mouse_position();
@@ -5445,8 +5444,9 @@ impl GpuixView {
         let tree = self.tree.lock().unwrap();
         let mut scrolled = false;
         let mut child = id;
-        let mut current = tree.elements.get(&id).and_then(|element| element.parent);
-        while let Some(ancestor_id) = current {
+        // Only the ancestors that move the element: an absolute one stays put under a static
+        // scroller, and a fixed one under all of them.
+        for ancestor_id in crate::layout::containing_block::reaching_ancestors(&tree, id) {
             if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
                 if let Some(index) = entry.logical_index_of(child) {
                     let viewport = entry.state.viewport_bounds();
@@ -5469,7 +5469,6 @@ impl GpuixView {
                 scrolled |= crate::scroll::scroll_into_view(ancestor_id, handle, target, options);
             }
             child = ancestor_id;
-            current = tree.elements.get(&ancestor_id).and_then(|element| element.parent);
         }
         scrolled
     }
@@ -7782,6 +7781,11 @@ impl gpui::Element for ListWithScrollbar {
         cx: &mut gpui::App,
     ) -> (gpui::LayoutId, ()) {
         (self.list.request_layout(window, cx), ())
+    }
+
+    // The scrollbar is placed by this wrapper's bounds, which must be the list's.
+    fn escapes_to(&self) -> Option<gpui::Escape> {
+        self.list.escapes_to()
     }
 
     fn prepaint(

@@ -3834,8 +3834,9 @@ element or `null` for the window. Entries have `isIntersecting`,
 `time` and `target`. Each target gets an entry after `observe()` (an element
 that never paints reports not intersecting) and then one per threshold crossing
 or `isIntersecting` flip. The intersection is the target's border box clipped by
-every ancestor's `overflow` between it and the root, then by the root. As in the
-DOM, an element root and an `overflow` ancestor clip at their padding box: a
+every ancestor's `overflow` between it and the root, then by the root. For an
+`absolute` target those are the ancestors from its containing block up, and a
+`fixed` one is clipped by none. As in the DOM, an element root and an `overflow` ancestor clip at their padding box: a
 target that lies entirely under their border does not intersect, and `rootBounds`
 is the root's padding box.
 `rootMargin` takes 1 to 4 lengths in `px` or `%` (a percentage is of the padding
@@ -3872,7 +3873,8 @@ It answers from the last frame, so an element that did not paint (outside a
 virtual list's window) is never listed, and neither is one with
 `visibility: "hidden"` (a descendant with `visibility: "visible"` is).
 `overflow: hidden` and
-`scroll` clip what lies outside them, `pointer-events: none` is skipped (and
+`scroll` clip what lies outside them (not an `absolute` or `fixed` descendant whose
+containing block is outside), `pointer-events: none` is skipped (and
 inherited, until a child sets `auto`), and a deferred
 [`<anchored>`](#overlay-menus) layer comes first, ordered by `priority`,
 because gpui paints it after the tree and outside the clip of its ancestors.
@@ -5222,9 +5224,14 @@ draws one: a `dashed` anywhere makes every side dashed.
   A `visible` descendant is all of those again, and an event on it still bubbles
   through the hidden ancestors.
 - **Static position.** An unpositioned box ignores `top`/`left` and is not a
-  containing block. Known difference from CSS: an `overflow: "hidden"` static
-  ancestor still clips an absolute descendant whose containing block is further
-  up, and a scroller scrolls it.
+  containing block. As in CSS, an `absolute` box is clipped and scrolled only by
+  the ancestors at or inside its containing block, so a static
+  `overflow: "hidden"` card or scroller between them does neither, and a `fixed`
+  box is clipped by the window alone and scrolls with nothing. Give the card a
+  `position` to make it the containing block and clip its dropdown. Known
+  difference: an `opacity` or `filter` group clips its composite to the clip in
+  force where the group starts, so an escaped box inside one on a clipped
+  element is still cut by it.
 - **`<img>`** is a replaced element. A missing dimension comes from the other
   one and the image's intrinsic ratio (or `aspectRatio`), a percentage of an
   indefinite parent counts as `auto`, and with neither set it takes its

@@ -230,7 +230,7 @@ describeNative("overflow never changes display", () => {
 describeNative("absolute children of a scroller", () => {
   it("scroll with the content", () => {
     const { renderer, unmount } = setup(
-      <div testId="scroller" style={{ width: 200, height: 100, overflow: "scroll" }}>
+      <div testId="scroller" style={{ position: "relative", width: 200, height: 100, overflow: "scroll" }}>
         <div style={{ height: 400 }} />
         <div
           testId="pinned"
