@@ -260,13 +260,12 @@ export function ComboboxContent(props: FloatingContentProps): JSX.Element {
       return createComponent(DismissableLayer, {
         onEscapeKeyDown: () => state.setOpen(false),
         get children() {
-          return FloatingLayer({
-            ...props,
+          return createComponent(FloatingLayer, overrideProps(props, {
             onMouseDownOutside(event) {
               props.onMouseDownOutside?.(event)
               state.setOpen(false)
             },
-          })
+          }))
         },
       })
     },

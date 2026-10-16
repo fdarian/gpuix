@@ -163,18 +163,20 @@ export function renderSlot(args: {
 }
 
 export function FloatingLayer(props: FloatingContentProps): JSX.Element {
-  const side = props.side ?? "bottom"
-  const align = props.align ?? "start"
-  const alignOffset = props.alignOffset ?? 0
-  const offset = side === "top" || side === "bottom"
-    ? { x: alignOffset, y: 0 }
-    : { x: 0, y: alignOffset }
+  // Getters, so a caller that reads this inside a tracked scope does not
+  // subscribe to the placement props and rebuild the layer on a change.
+  const side = () => props.side ?? "bottom"
+  const alignOffset = () => props.alignOffset ?? 0
   return jsx("anchored", {
-    side,
-    align,
-    gap: props.sideOffset ?? 0,
-    offset,
-    snapMargin: props.collisionPadding ?? 8,
+    get side() { return side() },
+    get align() { return props.align ?? "start" },
+    get gap() { return props.sideOffset ?? 0 },
+    get offset() {
+      return side() === "top" || side() === "bottom"
+        ? { x: alignOffset(), y: 0 }
+        : { x: 0, y: alignOffset() }
+    },
+    get snapMargin() { return props.collisionPadding ?? 8 },
     deferred: true,
     priority: 1,
     // The anchored surface is hit where it paints, so a layer that must not take
@@ -186,7 +188,7 @@ export function FloatingLayer(props: FloatingContentProps): JSX.Element {
     },
     get children() {
       return jsx("div", overrideProps(props, {
-        style: mergeStyles({ backgroundColor: "#1A1A1A" }, props.style),
+        get style() { return mergeStyles({ backgroundColor: "#1A1A1A" }, props.style) },
         get children() { return props.children },
       }))
     },

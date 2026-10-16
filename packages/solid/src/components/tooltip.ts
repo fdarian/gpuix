@@ -152,10 +152,9 @@ export function TooltipContent(props: TooltipContentProps): JSX.Element {
       return createComponent(DismissableLayer, {
         onEscapeKeyDown: state.close,
         get children() {
-          return FloatingLayer({
-            ...props,
-            side: props.side ?? "top",
-            align: props.align ?? "center",
+          return createComponent(FloatingLayer, overrideProps(props, {
+            get side() { return props.side ?? "top" },
+            get align() { return props.align ?? "center" },
             onMouseEnter(event) {
               props.onMouseEnter?.(event)
               if (state.hoverable) state.cancelClose()
@@ -164,7 +163,7 @@ export function TooltipContent(props: TooltipContentProps): JSX.Element {
               props.onMouseLeave?.(event)
               state.scheduleClose()
             },
-          })
+          }))
         },
       })
     },

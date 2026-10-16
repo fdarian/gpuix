@@ -184,8 +184,7 @@ export function DialogPopup(allProps: DialogPopupProps): JSX.Element {
         finalFocus: (previous) =>
           resolveFocusTarget(focus.finalFocus, () => state.trigger.current?.id ?? previous),
         get children() {
-          return jsx("div", {
-            ...props,
+          return jsx("div", overrideProps(props, {
             ref(element: HostElement) {
               popup = element
               props.ref?.(element)
@@ -203,7 +202,7 @@ export function DialogPopup(allProps: DialogPopupProps): JSX.Element {
               if (event.modifiers?.shift) renderer.focusPreviousWithin?.(popup.id)
               else renderer.focusNextWithin?.(popup.id)
             },
-          })
+          }))
         },
       })
     },

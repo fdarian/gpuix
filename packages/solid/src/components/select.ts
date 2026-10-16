@@ -231,13 +231,12 @@ export function SelectContent(props: SelectContentProps): JSX.Element {
           state.setOpen(false)
         },
         get children() {
-          return FloatingLayer({
-            ...props,
+          return createComponent(FloatingLayer, overrideProps(props, {
             // Focused only to receive keys; the highlighted item shows where
             // the user is, so the popup gets no focus look of its own.
             get style() { return { keyboardFocusDim: false, ...props.style } },
             autoFocus: true,
-            tabIndex: props.tabIndex ?? -1,
+            get tabIndex() { return props.tabIndex ?? -1 },
             onMouseDownOutside(event) {
               props.onMouseDownOutside?.(event)
               state.dismissedByOutsidePress.current = true
@@ -261,7 +260,7 @@ export function SelectContent(props: SelectContentProps): JSX.Element {
                 state.select(state.active()!)
               }
             },
-          })
+          }))
         },
       })
     },

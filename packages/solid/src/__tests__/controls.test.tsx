@@ -266,6 +266,69 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
     })
   })
 
+  it("keeps the DialogPopup element and its focus when a prop it renders changes", () => {
+    const [mark, setMark] = createSignal("a")
+    const [color, setColor] = createSignal("#1e293b")
+    const refs: HostElement[] = []
+    const app = createTestRoot()
+    app.render(() => (
+      <Dialog defaultOpen>
+        <DialogPortal>
+          <DialogPopup
+            testId="popup"
+            data-mark={mark()}
+            ref={(element: HostElement) => refs.push(element)}
+            style={{ width: 200, padding: 8, backgroundColor: color() }}
+          >
+            <input testId="field" style={{ width: 100, height: 24 }} />
+          </DialogPopup>
+        </DialogPortal>
+      </Dialog>
+    ))
+    const field = app.renderer.findByTestId("field")!.id
+    const popup = app.renderer.findByTestId("popup")!.id
+    app.renderer.focusElement(field)
+    app.flushSync(() => setMark("b"))
+    app.flushSync(() => setColor("#ff0000"))
+    expect({
+      popup: app.renderer.findByTestId("popup")!.id,
+      field: app.renderer.findByTestId("field")!.id,
+      focused: app.renderer.getFocusedElementId(),
+      built: refs.length,
+    }).toEqual({ popup, field, focused: field, built: 1 })
+  })
+
+  it("keeps an open Select, Combobox and Tooltip content element when a prop it renders changes", () => {
+    const [color, setColor] = createSignal("#222222")
+    const style = () => ({ width: 120, backgroundColor: color() })
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 400, height: 400 }}>
+        <Select defaultOpen defaultValue="a">
+          <SelectTrigger style={{ width: 120, height: 32 }}><text>pick</text></SelectTrigger>
+          <SelectContent testId="select-content" style={style()}>
+            <SelectItem value="a"><text>A</text></SelectItem>
+          </SelectContent>
+        </Select>
+        <Combobox defaultOpen items={["alpha"]}>
+          <ComboboxInput style={{ width: 120, height: 32 }} />
+          <ComboboxContent testId="combobox-content" style={style()}>
+            <ComboboxList>{(item: string) => <ComboboxItem value={item}><text>{item}</text></ComboboxItem>}</ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+        <Tooltip defaultOpen>
+          <TooltipTrigger style={{ width: 60, height: 24 }}><text>tip</text></TooltipTrigger>
+          <TooltipContent testId="tooltip-content" style={style()}><text>hint</text></TooltipContent>
+        </Tooltip>
+      </div>
+    ))
+    const ids = () => ["select-content", "combobox-content", "tooltip-content"]
+      .map((testId) => app.renderer.findByTestId(testId)!.id)
+    const before = ids()
+    app.flushSync(() => setColor("#ff0000"))
+    expect(ids()).toEqual(before)
+  })
+
   it("focuses initialFocus on open and returns focus without a Trigger", () => {
     const [open, setOpen] = createSignal(false)
     let field!: HostElement
