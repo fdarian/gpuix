@@ -195,7 +195,8 @@ pub enum DimensionValue {
     /// deserialized.
     Intrinsic(IntrinsicKeyword),
     /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
-    /// `<anchored>`. Only the six size properties of its direct children resolve it.
+    /// `<anchored>`. A direct child's sizes, margins and insets resolve it (`layout/anchor_size.rs`);
+    /// no other property does.
     AnchorSize(AnchorAxis),
 }
 
