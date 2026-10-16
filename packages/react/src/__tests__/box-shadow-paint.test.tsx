@@ -83,4 +83,63 @@ describeNative("boxShadow painting", () => {
     expect(coverageAt(pixels, -40)).toBeLessThan(0.05)
     expect(coverageAt(pixels, -40)).toBeGreaterThan(0.005)
   })
+
+  // CSS Backgrounds 3 7.1.1: an outer shadow is clipped to the outside of the border box, so
+  // a translucent fill shows the page and not the shadow under it.
+  describe("under a translucent box", () => {
+    function translucent(style: Record<string, unknown>) {
+      return (
+        <div style={{ padding: EDGE, backgroundColor: "#ffffff" }}>
+          <div style={{ width: SIZE, height: SIZE, backgroundColor: "#ff000080", ...style }} />
+        </div>
+      )
+    }
+    const FILL = [255, 127, 127]
+    const near = (actual: number[], expected: number[]) =>
+      expect(actual.slice(0, 3).map((value, i) => Math.abs(value - expected[i]!))).toSatisfy(
+        (diffs: number[]) => diffs.every((diff) => diff <= 2)
+      )
+
+    it("keeps the fill's colour where an offset shadow lies under the box", () => {
+      const pixels = capture("translucent-offset", translucent({ boxShadow: "30px 30px 0 #000000" }))
+      // Inside both the box and the shadow's rect.
+      near(pixels.at(EDGE + SIZE - 10, EDGE + SIZE - 10), FILL)
+      near(pixels.at(EDGE + SIZE / 2, EDGE + SIZE / 2), FILL)
+      // The shadow still shows outside the box.
+      expect(pixels.at(EDGE + SIZE + 10, EDGE + SIZE + 10)).toEqual([0, 0, 0, 255])
+      expect(pixels.at(EDGE + SIZE + 10, EDGE + 40)).toEqual([0, 0, 0, 255])
+    })
+
+    it("keeps the fill's colour under a blurred shadow, and the shadow outside", () => {
+      const pixels = capture("translucent-blur", translucent({ boxShadow: "0 0 30px 10px #000000" }))
+      near(pixels.at(EDGE + 5, EDGE + SIZE / 2), FILL)
+      near(pixels.at(EDGE + SIZE / 2, EDGE + 5), FILL)
+      expect(coverageAt(pixels, 5)).toBeGreaterThan(0.5)
+    })
+
+    it("cuts out the box's rounded corners, not its bounding rectangle", () => {
+      const rounded = translucent({ borderRadius: 50, boxShadow: "0 0 0 20px #000000" })
+      const pixels = capture("translucent-rounded", rounded)
+      // The corner of the bounding rectangle lies outside the rounded box.
+      expect(pixels.at(EDGE + 3, EDGE + 3)).toEqual([0, 0, 0, 255])
+      near(pixels.at(EDGE + SIZE / 2, EDGE + SIZE / 2), FILL)
+      near(pixels.at(EDGE + 20, EDGE + SIZE / 2), FILL)
+    })
+
+    it("keeps an inset shadow inside the padding box, off a translucent border", () => {
+      const pixels = capture(
+        "translucent-border",
+        translucent({
+          backgroundColor: "#ffffff",
+          border: "10px solid #0000ff80",
+          boxShadow: "inset 0 0 0 5px #000000",
+        })
+      )
+      // Blue at half opacity over the white fill; the shadow does not darken it.
+      near(pixels.at(EDGE + 2, EDGE + SIZE / 2), [127, 127, 255])
+      // The ring starts at the padding edge.
+      expect(pixels.at(EDGE + 12, EDGE + SIZE / 2)).toEqual([0, 0, 0, 255])
+      expect(pixels.at(EDGE + SIZE / 2, EDGE + SIZE / 2)).toEqual([255, 255, 255, 255])
+    })
+  })
 })

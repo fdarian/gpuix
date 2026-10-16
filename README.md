@@ -5947,7 +5947,10 @@ lengths, the colour can be any [colour form](#colors) and defaults to
 ```
 
 The structured form's fields are `offsetX`, `offsetY`, `blurRadius`, `spreadRadius`,
-`color`, and `inset`, which draws inside the border box:
+`color`, and `inset`. As in CSS, a shadow that is not `inset` is only painted outside
+the border box, so a translucent `backgroundColor` shows the page behind the element
+and not the shadow, and an `inset` shadow is only painted inside the padding box,
+never over the border:
 
 ```tsx
 <div
