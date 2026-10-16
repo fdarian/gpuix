@@ -2,7 +2,7 @@
 
 import { splitProps, type JSX } from "solid-js"
 import { createElementMethods } from "@gpuix/native/host"
-import type { HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
+import type { HostDomEvent, HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
 import { useGpuixRequired } from "../root.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 
@@ -31,7 +31,16 @@ export function buttonProps(
   behavior: ButtonBehavior,
   renderer: NativeRenderer
 ): Record<string, unknown> {
-  const click = (event: KeyEvent) => createElementMethods(renderer, event.elementId).click()
+  // Only the element the key was aimed at acts: a key bubbling from a nested
+  // buttonProps element must not click this one too, like Base UI's useButton.
+  const isTarget = (event: KeyEvent) => {
+    const keyEvent = event as KeyEvent & Pick<HostDomEvent, "target" | "currentTarget">
+    return keyEvent.target === keyEvent.currentTarget
+  }
+  const click = (event: KeyEvent) => {
+    event.preventDefault()
+    createElementMethods(renderer, event.elementId).click()
+  }
   const disabled = () => behavior.disabled ?? false
   return {
     role: "button",
@@ -44,14 +53,14 @@ export function buttonProps(
     },
     onKeyDown(event: KeyEvent) {
       behavior.onKeyDown?.(event)
-      if (disabled() || event.defaultPrevented) return
+      if (disabled() || event.defaultPrevented || !isTarget(event)) return
       if (event.key === "Enter" && !event.repeat) click(event)
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === " ") event.preventDefault()
     },
     onKeyUp(event: KeyEvent) {
       behavior.onKeyUp?.(event)
-      if (!disabled() && !event.defaultPrevented && event.key === " ") {
+      if (!disabled() && !event.defaultPrevented && isTarget(event) && event.key === " ") {
         click(event)
       }
     },

@@ -3,7 +3,7 @@
 import { forwardRef } from "react"
 import type { ReactElement, ReactNode } from "react"
 import { createElementMethods } from "@gpuix/native/host"
-import type { NativeRenderer } from "@gpuix/native/host"
+import type { HostDomEvent, NativeRenderer } from "@gpuix/native/host"
 import { useGpuixRequired } from "../hooks/use-gpuix.js"
 import type { HostPointerEvent, KeyEvent, Props, PublicInstance, StyleDesc } from "../types/host.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
@@ -40,7 +40,16 @@ export function buttonProps(
   }: ButtonBehavior,
   renderer: NativeRenderer
 ): Props {
-  const click = (event: KeyEvent) => createElementMethods(renderer, event.elementId).click()
+  // Only the element the key was aimed at acts: a key bubbling from a nested
+  // buttonProps element must not click this one too, like Base UI's useButton.
+  const isTarget = (event: KeyEvent) => {
+    const keyEvent = event as KeyEvent & Pick<HostDomEvent, "target" | "currentTarget">
+    return keyEvent.target === keyEvent.currentTarget
+  }
+  const click = (event: KeyEvent) => {
+    event.preventDefault()
+    createElementMethods(renderer, event.elementId).click()
+  }
   return {
     role: "button",
     // Unset keeps an `asChild` child's own tabIndex; renderSlot defaults to 0.
@@ -50,14 +59,14 @@ export function buttonProps(
     },
     onKeyDown: (event: KeyEvent) => {
       onKeyDown?.(event)
-      if (disabled || event.defaultPrevented) return
+      if (disabled || event.defaultPrevented || !isTarget(event)) return
       if (event.key === "Enter" && !event.repeat) click(event)
       // Space would otherwise scroll or type; it fires on release.
       if (event.key === " ") event.preventDefault()
     },
     onKeyUp: (event: KeyEvent) => {
       onKeyUp?.(event)
-      if (!disabled && !event.defaultPrevented && event.key === " ") click(event)
+      if (!disabled && !event.defaultPrevented && isTarget(event) && event.key === " ") click(event)
     },
   }
 }

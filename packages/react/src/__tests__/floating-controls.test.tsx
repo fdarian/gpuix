@@ -1465,4 +1465,21 @@ describeNative("floating controls", () => {
     renderer.nativeSimulateKeyUp(button, "space")
     expect(seen.map((entry) => entry.at)).toEqual(["button", "wrapper"])
   })
+
+  it("clicks a nested Button once on Enter and Space, and its ancestor by bubbling only", () => {
+    const seen = []
+    testRoot.render(
+      <Button testId="outer" onClick={() => seen.push("outer")} style={{ padding: 8 }}>
+        <Button testId="inner" autoFocus onClick={() => seen.push("inner")} style={{ width: 60, height: 24 }}>Inner</Button>
+      </Button>
+    )
+    const renderer = testRoot.renderer
+    const inner = renderer.findByTestId("inner").id
+    renderer.nativeSimulateKeyDown(inner, "enter")
+    expect(seen).toEqual(["inner", "outer"])
+    seen.length = 0
+    renderer.nativeSimulateKeyDown(inner, "space")
+    renderer.nativeSimulateKeyUp(inner, "space")
+    expect(seen).toEqual(["inner", "outer"])
+  })
 })

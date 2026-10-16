@@ -13,6 +13,7 @@ import {
   DialogTrigger,
   ComboboxInput,
   ComboboxItem,
+  ComboboxList,
   Select,
   SelectContent,
   SelectItem,
@@ -315,6 +316,25 @@ describe.skipIf(!hasNativeTestRenderer)("Solid controls", () => {
       { at: "button", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: button },
       { at: "wrapper", detail: 0, pointerId: -1, pointerType: "", target: button, currentTarget: wrapper },
     ])
+  })
+
+  it("clicks a nested Button once on Enter and Space, and its ancestor by bubbling only", () => {
+    const seen: string[] = []
+    const app = createTestRoot()
+    app.render(() => (
+      <Button testId="outer" onClick={() => seen.push("outer")} style={{ padding: 8 }}>
+        <Button testId="inner" autoFocus onClick={() => seen.push("inner")} style={{ width: 60, height: 24 }}>
+          <text>Inner</text>
+        </Button>
+      </Button>
+    ))
+    const inner = app.renderer.findByTestId("inner")!.id
+    app.renderer.nativeSimulateKeyDown(inner, "enter")
+    expect(seen).toEqual(["inner", "outer"])
+    seen.length = 0
+    app.renderer.nativeSimulateKeyDown(inner, "space")
+    app.renderer.nativeSimulateKeyUp(inner, "space")
+    expect(seen).toEqual(["inner", "outer"])
   })
 
   it("clicks from a host ref like HTMLElement.click()", () => {
