@@ -19,7 +19,7 @@ use web_time::Instant;
 
 use super::css_transition::{
     check_seconds, is_timing_function, parse_delay, parse_duration, parse_list, parse_time,
-    split_outside_parens, split_whitespace_outside_parens,
+    split_outside_parens, split_whitespace_outside_parens, TransitionStyle,
 };
 use super::curve::{ease, parse_timing_function, Curve, Ease, Repeat, Transition};
 use super::keyframes::{Keyframes, KeyframesRegistry};
@@ -1044,8 +1044,14 @@ impl ElementState {
 pub(crate) struct AnimationStyle(Vec<(AnimProp, AnimValue)>);
 
 impl AnimationStyle {
-    pub(crate) fn apply_to(self, style: &mut StyleDesc) {
+    /// Lays the animated values over `style`, except the properties a running
+    /// transition holds: `style` already has the transition's value for them,
+    /// and a transition beats an animation in the cascade.
+    pub(crate) fn apply_to(self, style: &mut StyleDesc, transitions: Option<&TransitionStyle>) {
         for (prop, value) in self.0 {
+            if transitions.is_some_and(|transitions| transitions.runs(prop)) {
+                continue;
+            }
             prop.write(style, value);
         }
     }
@@ -1385,6 +1391,7 @@ mod tests {
 
     // ── Runtime ──────────────────────────────────────────────────────
 
+    use crate::motion::CssTransitions;
     use crate::style::DimensionValue;
     use AnimationEventKind::{Cancel, End, Iteration, Start};
 
@@ -1451,7 +1458,45 @@ mod tests {
                 self.inherited,
                 now,
             ) {
-                values.apply_to(&mut resolved);
+                values.apply_to(&mut resolved, None);
+            }
+            resolved
+        }
+
+        /// One frame the way `build_element` stacks it: the transitions on
+        /// `declared`, then the animations over the result.
+        fn frame_with_transitions(
+            &mut self,
+            transitions: &mut CssTransitions,
+            millis: u64,
+            declared: &StyleDesc,
+        ) -> StyleDesc {
+            let now = self.at(millis);
+            let running = transitions.update(
+                1,
+                declared,
+                &self.parent_colors,
+                None,
+                None,
+                self.inherited,
+                now,
+            );
+            let mut resolved = declared.clone();
+            if let Some(running) = &running {
+                running.apply_to(&mut resolved);
+            }
+            let underlying = resolved.clone();
+            if let Some(values) = self.animations.update(
+                1,
+                declared,
+                &underlying,
+                &self.parent_colors,
+                &self.registry,
+                None,
+                self.inherited,
+                now,
+            ) {
+                values.apply_to(&mut resolved, running.as_ref());
             }
             resolved
         }
@@ -1503,6 +1548,57 @@ mod tests {
         near(opacity(&frames.frame(2000, &animated)), 0.0);
         assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
         near(opacity(&frames.frame(2500, &animated)), 0.5);
+    }
+
+    fn dimmed(opacity: f64, transition: &str) -> StyleDesc {
+        style(&format!(
+            r#"{{ "opacity": {opacity}, "transition": "{transition}", "animation": "dim 10s linear" }}"#
+        ))
+    }
+
+    #[test]
+    fn a_running_transition_beats_an_animation_on_the_same_property() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 0, &dimmed(1.0, "opacity 1s linear"))), 0.2);
+
+        let target = dimmed(0.6, "opacity 1s linear");
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 100, &target)), 1.0);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 600, &target)), 0.8);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1000, &target)), 0.64);
+
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1100, &target)), 0.2);
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 1200, &target)), 0.2);
+    }
+
+    #[test]
+    fn a_transition_on_another_property_leaves_the_animation_alone() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.2 } }"#);
+        let sized = |width: f64| {
+            style(&format!(
+                r#"{{ "width": {width}, "transition": "width 1s linear", "animation": "dim 10s linear" }}"#
+            ))
+        };
+        frames.frame_with_transitions(&mut transitions, 0, &sized(0.0));
+        let resolved = frames.frame_with_transitions(&mut transitions, 500, &sized(100.0));
+        near(opacity(&resolved), 0.2);
+        assert!(matches!(resolved.width, Some(DimensionValue::Pixels(_))));
+    }
+
+    #[test]
+    fn an_animation_alone_never_starts_a_transition() {
+        let mut frames = Frames::new();
+        let mut transitions = CssTransitions::default();
+        frames.define("dim", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#);
+        let declared = dimmed(1.0, "opacity 1s linear");
+        for millis in [0, 100, 500, 900] {
+            frames.frame_with_transitions(&mut transitions, millis, &declared);
+        }
+        near(opacity(&frames.frame_with_transitions(&mut transitions, 5000, &declared)), 0.5);
+        assert!(!transitions.take_active());
     }
 
     #[test]

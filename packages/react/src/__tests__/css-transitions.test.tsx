@@ -3,10 +3,16 @@ import path from "path"
 import type { ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "@gpuix/native"
+import { defineKeyframes } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
+
+defineKeyframes("transition-cascade-grow", {
+  from: { width: 100 },
+  to: { width: 200 },
+})
 
 describeNative("CSS transitions", () => {
   function widthOf(
@@ -48,6 +54,32 @@ describeNative("CSS transitions", () => {
 
     renderer.clockFastForward(2000)
     expect(widthOf(renderer, "box")).toBe(300)
+  })
+
+  it("shows a running transition over a CSS animation on the same property, then the animation", () => {
+    const { render, renderer } = createTestRoot()
+    const box = (width: number) => (
+      <div
+        testId="box"
+        style={{
+          width,
+          height: 20,
+          transition: "width 1s linear",
+          animation: "transition-cascade-grow 10s linear",
+        }}
+      />
+    )
+
+    renderer.clockPause()
+    render(box(50))
+    expect(widthOf(renderer, "box")).toBe(100)
+
+    render(box(300))
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(175, 0)
+
+    renderer.clockFastForward(1000)
+    expect(widthOf(renderer, "box")).toBeCloseTo(115, 0)
   })
 
   it("runs a transition declared in the same render as the value change", () => {

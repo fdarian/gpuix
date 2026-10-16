@@ -5649,8 +5649,10 @@ defineKeyframes('pulse', {
   cancelled when it ends
 - **`display: none`.** Going `display: none` cancels the element's animations and
   those of its descendants, and they start over when it shows again
-- **Cascade.** Animations win over the element's style, its state styles, running
-  CSS transitions and `motion`, as animations do over normal declarations in CSS
+- **Cascade.** Animations win over the element's style, its state styles and
+  `motion`, as animations do over normal declarations in CSS. A running CSS
+  transition wins over an animation on the same property, as in CSS Cascade 4:
+  the animation shows through again when the transition ends
 - **Events.** `onAnimationStart` (after the delay), `onAnimationIteration` (each
   iteration after the first, not at the end), `onAnimationEnd` and
   `onAnimationCancel` carry `animationName`, `elapsedTime` in seconds and
@@ -5664,9 +5666,10 @@ Differences from a browser:
 
 - Redefining a name affects animations that start afterwards. One already running
   keeps the keyframes it started with, where a browser re-resolves it live
-- A running CSS transition does not beat an animation on the same property. The
-  animation always wins, and a transition never starts from a value an animation
-  drove, because transitions compare the style beneath the animations
+- A transition compares the style beneath the animations, so it starts from
+  the declared value, never from a value an animation drove, and a declared
+  change starts one even on a property an animation overrides. A browser compares
+  the animated values and starts none there
 - Only the properties `motion` can animate are animatable, so `transform` and
   discrete properties such as `display` cannot be keyframed
 - `animation-composition`, `animation-timeline` and `animation-range` are not

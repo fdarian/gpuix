@@ -29,6 +29,7 @@ pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
 pub(crate) use css_transition::{
     declares_transitions, validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
+    TransitionStyle,
 };
 pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
 use curve::Transition;
@@ -693,19 +694,30 @@ pub(crate) fn resolve_declared_style(
     measurement: Option<&Measurement>,
     interpolate_size: InterpolateSize,
     now: Instant,
-) -> StyleDesc {
+) -> DeclaredStyle {
     if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
         transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors);
     }
     let mut after = fold_state_styles(style, focus_visible, pointer);
-    if let Some(running) = transitions
-        .and_then(|transitions| {
-            transitions.update(id, &after, parent_colors, motion, measurement, interpolate_size, now)
-        })
-    {
+    let running = transitions.and_then(|transitions| {
+        transitions.update(id, &after, parent_colors, motion, measurement, interpolate_size, now)
+    });
+    if let Some(running) = &running {
         running.apply_to(&mut after);
     }
-    after
+    DeclaredStyle {
+        style: after,
+        transitions: running,
+    }
+}
+
+/// What [`resolve_declared_style`] resolved.
+pub(crate) struct DeclaredStyle {
+    pub(crate) style: StyleDesc,
+    /// The transitions running on `style`. A CSS animation on the same
+    /// properties does not apply: a transition beats an animation in the
+    /// cascade.
+    pub(crate) transitions: Option<TransitionStyle>,
 }
 
 fn fold_state_styles(

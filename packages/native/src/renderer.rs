@@ -6940,7 +6940,8 @@ pub(crate) fn build_element(
 
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition. CSS animations come last of
-    // all, as animations beat every normal declaration in CSS.
+    // all, as animations beat every normal declaration in CSS, except on a
+    // property a transition is running on: a transition beats an animation.
     let props = element.custom_props();
     let has_motion = props.contains_key("motion");
     let motion_binding = props.get("motionValues");
@@ -6975,13 +6976,16 @@ pub(crate) fn build_element(
     if crate::layout::box_generation::declares_display_none(element)
         && transitioned
             .as_ref()
-            .is_none_or(|style| style.display.as_deref() == Some("none"))
+            .is_none_or(|declared| declared.style.display.as_deref() == Some("none"))
     {
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
         return gpui::Empty.into_any_element();
     }
-    let declared_style = transitioned.as_ref().or(base_style);
+    let declared_style = transitioned
+        .as_ref()
+        .map(|declared| &declared.style)
+        .or(base_style);
     let animated_style = if has_motion {
         ctx.motion_states
             .get(&id)
@@ -7027,7 +7031,12 @@ pub(crate) fn build_element(
                 )
                 .map(|values| {
                     let mut resolved = underlying_style.cloned().unwrap_or_default();
-                    values.apply_to(&mut resolved);
+                    values.apply_to(
+                        &mut resolved,
+                        transitioned
+                            .as_ref()
+                            .and_then(|declared| declared.transitions.as_ref()),
+                    );
                     resolved
                 })
         })

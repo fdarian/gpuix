@@ -1038,10 +1038,14 @@ impl ElementState {
 pub(crate) struct TransitionStyle(Vec<(AnimProp, AnimValue)>);
 
 impl TransitionStyle {
-    pub(crate) fn apply_to(self, style: &mut StyleDesc) {
-        for (prop, value) in self.0 {
-            prop.write(style, value);
+    pub(crate) fn apply_to(&self, style: &mut StyleDesc) {
+        for (prop, value) in &self.0 {
+            prop.write(style, value.clone());
         }
+    }
+
+    pub(super) fn runs(&self, prop: AnimProp) -> bool {
+        self.0.iter().any(|(running, _)| *running == prop)
     }
 }
 
