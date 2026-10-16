@@ -49,7 +49,7 @@ export {
   window,
   ResizeObserver,
 } from "@gpuix/native/host"
-/** `activeElement` is the focused element as a `ref` gives it. */
+/** `activeElement` and `pointerLockElement` are elements as a `ref` gives them. */
 export const document = sharedDocument as GpuixDocument<PublicInstance>
 export type {
   Appearance,

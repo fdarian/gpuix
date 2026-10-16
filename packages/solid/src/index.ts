@@ -17,7 +17,7 @@ import { document as sharedDocument, window } from "@gpuix/native/host"
 import type { GpuixDocument } from "@gpuix/native/host"
 import type { HostElement } from "./host.js"
 export { window }
-/** `activeElement` is the focused `HostElement`, the object a `ref` gives. */
+/** `activeElement` and `pointerLockElement` are `HostElement`s, the objects a `ref` gives. */
 export const document = sharedDocument as GpuixDocument<HostElement>
 export type {
   AddEventListenerOptions,

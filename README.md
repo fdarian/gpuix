@@ -2169,10 +2169,9 @@ group.
   drawn last, after the rest of the window.
 - A drag follows the pointer after it leaves the item: the item calls
   [`setPointerCapture`](#pointer-capture) on `pointerdown`, and the drag ends on
-  `pointerup`, `pointercancel` or `lostpointercapture`. The capture applies at
-  the next native pointer input, so on Windows and Linux, where `pointerdown`
-  reaches JavaScript after native has moved on, a move that arrives before the
-  handler runs can be lost. A release outside the window is not seen; the next
+  `pointerup`, `pointercancel` or `lostpointercapture`. On Windows and Linux,
+  where `pointerdown` reaches JavaScript after native has moved on, a move that
+  arrives before the handler runs is not captured. A release outside the window is not seen; the next
   move with no button down ends the drag.
 
 Differences from Motion for React:
@@ -5124,10 +5123,10 @@ text imports no longer need a runtime flag.
 | Double click | `onDoubleClick` | as `onClick`, after the click whose `detail` is 2 |
 | Context menu | `onContextMenu` | as `onClick`, on the secondary button **press**, and on macOS on a ctrl+primary press (`button` 0) |
 | Mouse down / up | `onMouseDown`, `onMouseUp` | the mouse fields below, `button`, `detail` |
-| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`, `movementX`, `movementY` |
+| Mouse move | `onMouseMove` | the mouse fields below, `pressedButton`; `movementX` and `movementY` carry the motion |
 | Mouse enter / leave | `onMouseEnter`, `onMouseLeave` | `relatedTarget` — do not bubble, fire per element in DOM order |
 | Mouse over / out | `onMouseOver`, `onMouseOut` | `relatedTarget` — bubble |
-| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` also has `movementX` and `movementY`. `onPointerCancel` fires on the press target when a `draggable` drag starts. As in the DOM, `pointerdown` fires when the first button goes down and `pointerup` when the last comes up; a button pressed or released in between is a `pointermove` with that `button` and the updated `buttons` (the mouse events still fire for every button). Boundary events come as all four pointer ones, then all four mouse ones |
+| Pointer events | `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerEnter`, `onPointerLeave`, `onPointerOver`, `onPointerOut` | the mouse fields, plus `pointerId` (1) and `pointerType` (`"mouse"`); `onPointerMove` carries the motion in `movementX` and `movementY`, which are `0` on every other mouse and pointer event. `onPointerCancel` fires on the press target when a `draggable` drag starts. As in the DOM, `pointerdown` fires when the first button goes down and `pointerup` when the last comes up; a button pressed or released in between is a `pointermove` with that `button` and the updated `buttons` (the mouse events still fire for every button). Boundary events come as all four pointer ones, then all four mouse ones |
 | Drag target | `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop` | the mouse fields, `dataTransfer` — for files dragged in from the OS and for `draggable` elements; `relatedTarget` on enter and leave. All bubble |
 | Drag source | `onDragStart`, `onDrag`, `onDragEnd` | the mouse fields, `dataTransfer` — on a `draggable` element. All bubble |
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element, `currentTarget` the listening one |
@@ -5149,8 +5148,8 @@ text imports no longer need a runtime flag.
 | Link click | `onLinkClick` | `value` (URL) — `<markdown>` only |
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
 | Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
-| Pointer lock change | `onPointerLockChange` | `target` (the locked element, `null` once released) — window-level on `render()` |
-| Pointer lock error | `onPointerLockError` | `target` (the element that was asked, `null` if it left the tree) — window-level on `render()` |
+| Pointer lock change | `onPointerLockChange`, `document` `pointerlockchange` | `target` (the locked element, `null` once released) — window-level on `render()`. Bubbles, not cancelable |
+| Pointer lock error | `onPointerLockError`, `document` `pointerlockerror` | `target` (the element that was asked, `null` if it left the tree) — window-level on `render()`. Bubbles, not cancelable |
 
 Every pointer, mouse, drag and composition handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
@@ -5378,11 +5377,13 @@ ends once the last button is up, in the Pointer Events order: `pointerup`, then
 `lostpointercapture`, then `mouseup`, then `click`. Removing the element ends the
 capture with no event.
 
-The call crosses from JS to the UI thread without waiting for it, so the capture
-**applies from the next native pointer event**, not within the handler that asked
-for it. `hasPointerCapture` answers for the request, so it is `true` right after
-`setPointerCapture`. Calling `setPointerCapture` with no button down does
-nothing, as in Chrome. `renderer.setPointerCapture(elementId, pointerId)`,
+The call is in force when it returns: `hasPointerCapture` is `true` right after
+`setPointerCapture`, and the next native pointer input is already aimed at the
+element. `gotpointercapture` (and `lostpointercapture` after a release) fires
+with that input, before its other events, which is when the DOM fires it. On
+Windows and Linux a `pointerdown` handler runs after native has moved on, so a
+move that arrives before it is not captured. Calling `setPointerCapture` with no
+button down does nothing, as in Chrome. `renderer.setPointerCapture(elementId, pointerId)`,
 `releasePointerCapture` and `hasPointerCapture` are the same calls on the
 renderer.
 
@@ -5419,11 +5420,22 @@ position the pointer had when the lock began. The motion is in `movementX` and
 `renderer.pointerLockElement()` returns the locked element's id or `null`.
 `renderer.requestPointerLock(elementId)` is the same call as the ref's.
 
-Like the DOM's, the request is asynchronous. It returns at once and the next
-frame applies it, so `pointerLockElement()` is still `null` right after the
-call. The outcome arrives as one of two **window-level** callbacks on
-`render()` / `createRoot()`, the same attachment as `onAppearanceChange`, because
-in the DOM they fire at `document`:
+On macOS the lock is taken inside the call, from an input handler too:
+`renderer.pointerLockElement()` and `document.pointerLockElement` are the
+element as soon as `requestPointerLock()` returns, and the next pointer event is
+already aimed at it. (The DOM sets `pointerLockElement` a task later.) The
+outcome arrives afterwards, as events, so a handler never hears it inside the
+call that asked. Elsewhere the next frame applies the request.
+
+`pointerlockchange` and `pointerlockerror` are DOM events at `document`: listen
+with `document.addEventListener('pointerlockchange', ...)`, the `document` and
+`window` objects `@gpuix/react` and `@gpuix/solid` export. They run the window
+propagation (window capture, document capture, document bubble, window bubble),
+bubble and cannot be cancelled. `event.target` is the element, not `document`
+as in the DOM: the locked element for a change (`null` once released) and the
+element that was asked for an error, which `document.pointerLockElement` could
+not tell you. The same two events reach **window-level** callbacks on
+`render()` / `createRoot()`, the same attachment as `onAppearanceChange`:
 
 - `onPointerLockChange` fires when the lock element changes: the lock was
   granted, moved to another element, or ended. The event's `target` is the
@@ -5441,16 +5453,16 @@ Only macOS can lock the pointer (`CGAssociateMouseAndMouseCursorPosition`), and
 only for the active window. On Windows and Linux every request fails with
 `onPointerLockError`.
 
-`movementX` and `movementY` are on every `pointermove` and `mousemove`, locked or
-not: how far the pointer moved since the previous move, in logical pixels, from
-the platform's own relative motion. Required in the types of `onMouseMove` and
-`onPointerMove` (`HostMouseMoveEvent`, `HostPointerMoveEvent`); other pointer
-events do not carry them. They are `0` where the platform reports no relative
-motion (everything but macOS).
+`movementX` and `movementY` are on every pointer, mouse, wheel and drag event.
+On `pointermove` and `mousemove`, locked or not, they are how far the pointer
+moved since the previous move, in logical pixels, from the platform's own
+relative motion; on every other event they are `0`, as in the DOM. They are
+`0` on a move too where the platform reports no relative motion (everything but
+macOS). They are required fields of `HostMouseEvent`.
 
 Under test the offscreen window is never active, so a real lock is always
 refused. `TestRenderer` runs a simulated platform instead: `requestPointerLock`
-and `exitPointerLock` draw the frame they ask for and deliver the events,
+and `exitPointerLock` take the lock in the call, from a handler too, and deliver the events,
 `simulatePointerLockGranting(false)` makes the platform refuse, and
 `simulatePointerLockLost()` drops the lock as a deactivation does. The
 simulated platform reports no motion unless a move says so:
