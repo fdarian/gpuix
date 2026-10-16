@@ -83,7 +83,10 @@ impl Field for Option<DimensionValue> {
         match self.as_ref()? {
             DimensionValue::Pixels(value) => Some(AnimValue::Number(*value)),
             DimensionValue::Percentage(value) => Some(AnimValue::Percent(*value)),
-            DimensionValue::Calc(_) | DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
+            DimensionValue::Calc(_)
+            | DimensionValue::Auto
+            | DimensionValue::Intrinsic(_)
+            | DimensionValue::AnchorSize(_) => None,
         }
     }
 
@@ -592,6 +595,12 @@ impl AnimProp {
                     DimensionValue::AnchorSize(_) => {
                         return Err(format!("motion cannot animate {name} to or from anchor-size()"));
                     }
+                    DimensionValue::Intrinsic(keyword) => {
+                        return Err(format!(
+                            "motion cannot animate {name} to or from {keyword}: only a number of px or a \
+                             percentage, because the size of the content is measured by layout"
+                        ));
+                    }
                     DimensionValue::Calc(_) => {
                         return Err(format!(
                             "motion cannot animate {name} to or from a CSS length: only a number of px or a \
@@ -966,6 +975,27 @@ mod tests {
         let mut style = StyleDesc::default();
         AnimProp::FlexBasis.write(&mut style, AnimValue::Percent(0.5));
         assert_eq!(style.flex_basis, Some(DimensionValue::Percentage(0.5)));
+    }
+
+    #[test]
+    fn an_intrinsic_size_keyword_is_not_a_start_value_or_a_target() {
+        let colors = Colors::root();
+        for (prop, field) in [
+            (AnimProp::Width, "width"),
+            (AnimProp::Height, "height"),
+            (AnimProp::MinWidth, "minWidth"),
+            (AnimProp::MaxHeight, "maxHeight"),
+        ] {
+            let style = serde_json::from_str::<StyleDesc>(&format!(r#"{{ "{field}": "fit-content(10px)" }}"#)).unwrap();
+            assert_eq!(prop.read(&style, &colors), None, "{field}");
+            for target in ["min-content", "max-content", "fit-content", "fit-content(50%)"] {
+                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
+                assert!(
+                    error.starts_with(&format!("motion cannot animate {field} to or from {target}")),
+                    "{error}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -62,7 +62,8 @@ export * from "./svg.js"
  * A number is px. A string is a CSS length: `px`, `in`, `cm`, `mm`, `q`, `pt`, `pc`, `%`,
  * `em` (this element's font size), `rem` (the root's), `vw`, `vh`, `vmin`, `vmax`, or a
  * `calc()` of them with `+`, `-` and `*` or `/` by numbers (`"calc(100% - 20px)"`), plus
- * `"auto"` and `"anchor-size(...)"` where the property accepts them. Resolved natively on
+ * `"auto"`, `"anchor-size(...)"` and the size keywords (`"min-content"`, `"max-content"`,
+ * `"fit-content"`) where the property accepts them. Resolved natively on
  * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates only
  * a number of px or a percentage (a number of px alone for `fontSize`, `padding`, `gap`, the border widths and the outline).
  */
@@ -78,7 +79,7 @@ export type DimensionValue = number | string
  * the parent's content box, or of the window for a root), and settle on the
  * unit they were given. `height` also takes `"auto"`, the height the content
  * wants. `width: "auto"` is an error: the content's width needs a second layout
- * pass to measure.
+ * pass to measure, and so are the size keywords.
  *
  * Each property takes a target or keyframes (`opacity: [0, 1, 0.5]`); see
  * `MotionKeyframes`.
@@ -472,7 +473,17 @@ export interface StyleDesc {
   /** A length (see `DimensionValue`; a percentage is of the containing block), `"auto"`, or on a
    *  direct child of `<anchored>` the trigger's border box:
    *  `"anchor-size(width)"` / `"anchor-size(height)"`. Margins and `top` / `right` / `bottom` /
-   *  `left` take it too. Resolved natively on every layout. */
+   *  `left` take it too. Resolved natively on every layout.
+   *
+   *  `width`, `minWidth` and `maxWidth` also take `"min-content"` (the widest word of the text, with
+   *  the space after it), `"max-content"` (the content on one line), `"fit-content"`
+   *  (`min(max-content, max(min-content, available width))`) and `"fit-content(<length>)"` (a
+   *  length or percentage in place of the available width, never negative). As `minWidth`,
+   *  `fit-content` is `min-content`; as `maxWidth` it is `max-content`. Each keyword node costs an
+   *  extra layout of its subtree every frame, so put it on the few boxes that need it. A later
+   *  style (`hover`, `focusVisible`) replaces the keyword with a length or `auto` and the other
+   *  way round. The same keywords on `height`, `minHeight` and `maxHeight` are `auto`, as in
+   *  CSS. Margins, insets and `flexBasis` reject them. */
   width?: DimensionValue
   height?: DimensionValue
   minWidth?: DimensionValue

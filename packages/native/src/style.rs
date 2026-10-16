@@ -104,6 +104,37 @@ macro_rules! length_field {
     };
 }
 
+/// A `DimensionValue` field that is not a size: an intrinsic size keyword is not a valid
+/// margin, inset or flex basis.
+macro_rules! dimension_field {
+    ($name:ident, $property:literal, $reason:literal) => {
+        fn $name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<DimensionValue>, D::Error> {
+            match Option::<DimensionValue>::deserialize(deserializer)? {
+                Some(DimensionValue::Intrinsic(keyword)) => {
+                    Err(serde::de::Error::custom(format!("invalid {} \"{keyword}\": {}", $property, $reason)))
+                }
+                other => Ok(other),
+            }
+        }
+    };
+}
+
+dimension_field!(
+    deserialize_flex_basis,
+    "flexBasis",
+    "min-content, max-content and fit-content are not supported there yet"
+);
+dimension_field!(
+    deserialize_margin,
+    "margin",
+    "only width, height and their min and max take min-content, max-content and fit-content"
+);
+dimension_field!(
+    deserialize_inset,
+    "inset",
+    "only width, height and their min and max take min-content, max-content and fit-content"
+);
+
 length_field!(
     deserialize_border_width,
     "border width",
@@ -164,9 +195,62 @@ pub enum DimensionValue {
     /// applied, so motion cannot run from or to it.
     Calc(LinearLength),
     Auto,
+    /// `min-content`, `max-content`, `fit-content` and `fit-content(<length>)`. Only the
+    /// six size properties take one; the others reject it when they are deserialized.
+    Intrinsic(IntrinsicKeyword),
     /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
     /// `<anchored>`. Only the six size properties of its direct children resolve it.
     AnchorSize(AnchorAxis),
+}
+
+/// An intrinsic size keyword of CSS Sizing 3.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IntrinsicKeyword {
+    MinContent,
+    MaxContent,
+    FitContent,
+    /// `fit-content(<length-percentage>)`: never negative.
+    FitContentLimit(LinearLength),
+}
+
+impl IntrinsicKeyword {
+    /// `None` when `text` is not one of the keywords; an `Err` when it is
+    /// `fit-content(...)` with an argument that is not a non-negative length.
+    fn parse(text: &str) -> Option<Result<Self, String>> {
+        let text = text.trim();
+        let lower = text.to_ascii_lowercase();
+        Some(match lower.as_str() {
+            "min-content" => Ok(Self::MinContent),
+            "max-content" => Ok(Self::MaxContent),
+            "fit-content" => Ok(Self::FitContent),
+            _ => {
+                let argument = lower.strip_prefix("fit-content(")?.strip_suffix(')')?;
+                match parse_linear_length(argument.trim()) {
+                    Some(limit) if !limit.is_negative() => Ok(Self::FitContentLimit(limit)),
+                    _ => Err(format!(
+                        "invalid fit-content: {text}: the limit is a non-negative length or percentage"
+                    )),
+                }
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for IntrinsicKeyword {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MinContent => formatter.write_str("min-content"),
+            Self::MaxContent => formatter.write_str("max-content"),
+            Self::FitContent => formatter.write_str("fit-content"),
+            Self::FitContentLimit(limit) => write!(formatter, "fit-content({limit})"),
+        }
+    }
+}
+
+impl Serialize for IntrinsicKeyword {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -216,7 +300,8 @@ impl<'de> Deserialize<'de> for DimensionValue {
             type Value = DimensionValue;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a number of px or a CSS length string like '100%', '2em' or 'calc(100% - 20px)', or 'auto'")
+                formatter.write_str("a number of px or a CSS length string like '100%', '2em' or 'calc(100% - 20px)', or 'auto', \
+                     'min-content', 'max-content' or 'fit-content'")
             }
 
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
@@ -246,6 +331,8 @@ impl<'de> Deserialize<'de> for DimensionValue {
             {
                 if v == "auto" {
                     Ok(DimensionValue::Auto)
+                } else if let Some(keyword) = IntrinsicKeyword::parse(v) {
+                    keyword.map(DimensionValue::Intrinsic).map_err(de::Error::custom)
                 } else if let Some(axis) = v
                     .strip_prefix("anchor-size(")
                     .and_then(|rest| rest.strip_suffix(')'))
@@ -288,6 +375,7 @@ pub struct StyleDesc {
     pub flex_grow: Option<f64>,
     pub flex_shrink: Option<f64>,
     /// A length (px, `%` of the container's main size, `em`, `calc()`, ...) or `auto`.
+    #[serde(default, deserialize_with = "deserialize_flex_basis")]
     pub flex_basis: Option<DimensionValue>,
     pub align_items: Option<String>,
     pub align_self: Option<String>,
@@ -319,7 +407,8 @@ pub struct StyleDesc {
     pub grid_row_start: Option<GridLineValue>,
     pub grid_row_end: Option<GridLineValue>,
 
-    // Sizing - now supports both numbers and strings like "100%" or "auto"
+    // Sizing: a number or a CSS length, `auto`, or an intrinsic size keyword. The keywords
+    // apply to the width axis only: `height`, `minHeight` and `maxHeight` take them as `auto`.
     pub width: Option<DimensionValue>,
     pub height: Option<DimensionValue>,
     pub min_width: Option<DimensionValue>,
@@ -335,19 +424,28 @@ pub struct StyleDesc {
     pub padding_left: Option<LinearLength>,
 
     // Spacing (margin): px, a percentage of the containing block width, or "auto".
+    #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_top: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_right: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_bottom: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_left: Option<DimensionValue>,
 
     // Position
     pub position: Option<String>,
     /// Paint order among positioned siblings. Only applies when `position` is set.
     pub z_index: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_inset")]
     pub top: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_inset")]
     pub right: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_inset")]
     pub bottom: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_inset")]
     pub left: Option<DimensionValue>,
 
     // Background & Colors
@@ -916,6 +1014,104 @@ mod tests {
         assert_eq!(dimension("\"anchor-size(width)\"").unwrap(), DimensionValue::AnchorSize(AnchorAxis::Width));
         assert_eq!(dimension("\"anchor-size( height )\"").unwrap(), DimensionValue::AnchorSize(AnchorAxis::Height));
         assert!(dimension("\"anchor-size(depth)\"").unwrap_err().to_string().contains("invalid anchor-size"));
+    }
+
+    fn intrinsic(text: &str) -> DimensionValue {
+        DimensionValue::Intrinsic(IntrinsicKeyword::parse(text).unwrap().unwrap())
+    }
+
+    #[test]
+    fn the_intrinsic_size_keywords_have_their_own_variant() {
+        assert_eq!(dimension("\"min-content\"").unwrap(), DimensionValue::Intrinsic(IntrinsicKeyword::MinContent));
+        assert_eq!(dimension("\"max-content\"").unwrap(), DimensionValue::Intrinsic(IntrinsicKeyword::MaxContent));
+        assert_eq!(dimension("\"fit-content\"").unwrap(), DimensionValue::Intrinsic(IntrinsicKeyword::FitContent));
+        for (text, limit) in [
+            ("fit-content(100px)", "100px"),
+            ("fit-content(50%)", "50%"),
+            ("fit-content(2em)", "2em"),
+            ("fit-content(calc(100% - 2rem))", "calc(100% - 2rem)"),
+            ("fit-content( 10vw )", "10vw"),
+            ("fit-content(0)", "0"),
+        ] {
+            assert_eq!(
+                dimension(&format!("\"{text}\"")).unwrap(),
+                DimensionValue::Intrinsic(IntrinsicKeyword::FitContentLimit(parse_linear_length(limit).unwrap())),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_intrinsic_size_keywords_are_case_insensitive() {
+        assert_eq!(dimension("\"MIN-CONTENT\"").unwrap(), intrinsic("min-content"));
+        assert_eq!(dimension("\"Max-Content\"").unwrap(), intrinsic("max-content"));
+        assert_eq!(dimension("\" fit-content \"").unwrap(), intrinsic("fit-content"));
+        assert_eq!(dimension("\"FIT-CONTENT(10PX)\"").unwrap(), intrinsic("fit-content(10px)"));
+    }
+
+    #[test]
+    fn a_bad_fit_content_limit_is_an_error() {
+        for text in ["fit-content()", "fit-content(10)", "fit-content(-5px)", "fit-content(auto)", "fit-content(min-content)", "fit-content(1px 2px)", "fit-content(calc(1px * 2px))"] {
+            let error = dimension(&format!("\"{text}\"")).unwrap_err().to_string();
+            assert!(error.contains("invalid fit-content"), "{text}: {error}");
+        }
+        for text in ["fit-content(10px", "fit-content 10px", "min-content()", "content", "min content", "intrinsic"] {
+            assert!(dimension(&format!("\"{text}\"")).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_intrinsic_size_keywords_serialize_as_css() {
+        for text in ["min-content", "max-content", "fit-content", "fit-content(100px)", "fit-content(50%)", "fit-content(calc(100% - 2rem))"] {
+            let value = intrinsic(text);
+            let json = serde_json::to_string(&value).unwrap();
+            assert_eq!(json, format!("\"{text}\""));
+            assert_eq!(dimension(&json).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn the_six_size_properties_take_the_intrinsic_size_keywords() {
+        let style: StyleDesc = serde_json::from_str(
+            r#"{"width":"max-content","height":"min-content","minWidth":"fit-content","minHeight":"fit-content(10px)",
+                "maxWidth":"MAX-CONTENT","maxHeight":"fit-content(50%)"}"#,
+        )
+        .unwrap();
+        assert_eq!(style.width, Some(intrinsic("max-content")));
+        assert_eq!(style.height, Some(intrinsic("min-content")));
+        assert_eq!(style.min_width, Some(intrinsic("fit-content")));
+        assert_eq!(style.min_height, Some(intrinsic("fit-content(10px)")));
+        assert_eq!(style.max_width, Some(intrinsic("max-content")));
+        assert_eq!(style.max_height, Some(intrinsic("fit-content(50%)")));
+        assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+    }
+
+    #[test]
+    fn margins_insets_and_flex_basis_reject_the_intrinsic_size_keywords() {
+        for field in ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"] {
+            for value in ["min-content", "max-content", "fit-content", "fit-content(10px)"] {
+                let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"{field}": "{value}"}}"#))
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains(&format!("invalid margin \"{value}\"")), "{field} {value}: {error}");
+            }
+        }
+        for field in ["top", "right", "bottom", "left"] {
+            let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"{field}": "max-content"}}"#)).unwrap_err().to_string();
+            assert!(error.contains("invalid inset \"max-content\""), "{field}: {error}");
+        }
+        for value in ["min-content", "max-content", "fit-content", "fit-content(50%)"] {
+            let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"flexBasis": "{value}"}}"#)).unwrap_err().to_string();
+            assert!(error.contains(&format!("invalid flexBasis \"{value}\"")), "{value}: {error}");
+        }
+        assert_eq!(style_of(r#"{"margin": null, "top": 3, "flexBasis": "auto"}"#).top, Some(DimensionValue::Pixels(3.0)));
+    }
+
+    #[test]
+    fn padding_and_gap_are_not_dimensions_and_reject_the_keywords() {
+        for json in [r#"{"padding": "min-content"}"#, r#"{"gap": "max-content"}"#, r#"{"paddingLeft": "fit-content"}"#] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
     }
 
     #[test]

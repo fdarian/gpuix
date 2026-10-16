@@ -4,7 +4,7 @@
 use gpui::Styled;
 
 use crate::css::length::{LengthContext, LinearLength};
-use crate::style::{DimensionValue, StyleDesc};
+use crate::style::{DimensionValue, IntrinsicKeyword, StyleDesc};
 
 use super::grid_values::GridTemplateValue;
 
@@ -19,13 +19,15 @@ fn linear(value: &LinearLength, lengths: &LengthContext) -> gpui::DefiniteLength
     }
 }
 
-/// `None` for `auto` and `anchor-size()`, which leave the property to layout.
+/// `None` for `auto`, `anchor-size()` and the intrinsic size keywords, which leave the
+/// property to layout. A keyword reaches `length` only from a field that rejects it when
+/// it is deserialized, so those arms are never taken for a style that came from JS.
 fn definite(value: &DimensionValue, lengths: &LengthContext) -> Option<gpui::DefiniteLength> {
     match value {
         DimensionValue::Pixels(pixels) => Some(gpui::px(*pixels as f32).into()),
         DimensionValue::Percentage(fraction) => Some(gpui::relative(*fraction as f32)),
         DimensionValue::Calc(value) => Some(linear(value, lengths)),
-        DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
+        DimensionValue::Auto | DimensionValue::AnchorSize(_) | DimensionValue::Intrinsic(_) => None,
     }
 }
 
@@ -33,10 +35,43 @@ fn length(value: &DimensionValue, lengths: &LengthContext) -> gpui::Length {
     definite(value, lengths).map_or(gpui::Length::Auto, gpui::Length::Definite)
 }
 
-/// `auto` and `anchor-size()` leave `slot` as it is.
-fn set_size(slot: &mut Option<gpui::Length>, value: &Option<DimensionValue>, lengths: &LengthContext) {
-    if let Some(definite) = value.as_ref().and_then(|value| definite(value, lengths)) {
-        *slot = Some(gpui::Length::Definite(definite));
+fn intrinsic_size(keyword: &IntrinsicKeyword, lengths: &LengthContext) -> gpui::IntrinsicSize {
+    match keyword {
+        IntrinsicKeyword::MinContent => gpui::IntrinsicSize::MinContent,
+        IntrinsicKeyword::MaxContent => gpui::IntrinsicSize::MaxContent,
+        IntrinsicKeyword::FitContent => gpui::IntrinsicSize::FitContent,
+        IntrinsicKeyword::FitContentLimit(limit) => gpui::IntrinsicSize::FitContentLimit(linear(limit, lengths)),
+    }
+}
+
+/// Sets one of the six size properties. `anchor-size()` leaves `slot` as it is.
+///
+/// A keyword is a separate gpui field that outranks `slot`, so every other value clears
+/// `keyword`: a hover or focus refinement that sets a length or `auto` must replace the
+/// keyword of the base style.
+fn set_size(
+    slot: &mut Option<gpui::Length>,
+    keyword: Option<&mut Option<Option<gpui::IntrinsicSize>>>,
+    value: &Option<DimensionValue>,
+    lengths: &LengthContext,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    match (value, keyword) {
+        (DimensionValue::AnchorSize(_), _) => {}
+        (DimensionValue::Intrinsic(value), Some(keyword)) => {
+            *slot = Some(gpui::Length::Auto);
+            *keyword = Some(Some(intrinsic_size(value, lengths)));
+        }
+        // CSS Sizing 3: in the block axis the keywords behave as `auto`.
+        (DimensionValue::Intrinsic(_), None) => *slot = Some(gpui::Length::Auto),
+        (value, keyword) => {
+            *slot = Some(length(value, lengths));
+            if let Some(keyword) = keyword {
+                *keyword = Some(None);
+            }
+        }
     }
 }
 
@@ -114,12 +149,13 @@ fn apply_flex_direction<E: Styled>(mut el: E, style: &StyleDesc) -> E {
 
 fn apply_size<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     let refinement = el.style();
-    set_size(&mut refinement.size.width, &style.width, lengths);
-    set_size(&mut refinement.size.height, &style.height, lengths);
-    set_size(&mut refinement.min_size.width, &style.min_width, lengths);
-    set_size(&mut refinement.min_size.height, &style.min_height, lengths);
-    set_size(&mut refinement.max_size.width, &style.max_width, lengths);
-    set_size(&mut refinement.max_size.height, &style.max_height, lengths);
+    let widths = &mut refinement.intrinsic_widths;
+    set_size(&mut refinement.size.width, Some(&mut widths.width), &style.width, lengths);
+    set_size(&mut refinement.size.height, None, &style.height, lengths);
+    set_size(&mut refinement.min_size.width, Some(&mut widths.min_width), &style.min_width, lengths);
+    set_size(&mut refinement.min_size.height, None, &style.min_height, lengths);
+    set_size(&mut refinement.max_size.width, Some(&mut widths.max_width), &style.max_width, lengths);
+    set_size(&mut refinement.max_size.height, None, &style.max_height, lengths);
     el
 }
 

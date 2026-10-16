@@ -10623,6 +10623,17 @@ mod dimension_length_tests {
             self.draw(cx);
         }
 
+        /// A text node `id` with `content` inside `parent`.
+        fn add_text(&self, cx: &mut gpui::TestAppContext, id: u64, parent: u64, content: &str) {
+            {
+                let mut tree = self.tree.lock().unwrap();
+                tree.create_element(id, "text".to_owned());
+                tree.set_text(id, content.to_owned());
+                tree.append_child(parent, id);
+            }
+            self.draw(cx);
+        }
+
         fn bounds(&self, id: u64) -> crate::automation::ElementBounds {
             crate::automation::get_bounds(id).unwrap_or_else(|| panic!("element {id} was not painted"))
         }
@@ -11249,4 +11260,259 @@ mod dimension_length_tests {
             (100.0 - 21.0 - 10.0 - 10.0, 100.0 - 20.0 - 10.0)
         );
     }
+
+    // The test renderer's font is monospace: a character is 0.6em wide, so 9.6px at the default
+    // 16px, and a line is 26px high. `min-content` is the widest word with the space after it,
+    // which is what the line wrapper counts.
+    const CHAR: f64 = 9.6;
+    const LINE: f64 = 26.0;
+    const HELLO_WORLD: &str = "hello world";
+    const LONG: &str = "hello wonderful world";
+    const COLUMN: &str = r#"{"width": 600}"#;
+
+    fn text_width(characters: usize) -> f64 {
+        (characters as f64 * CHAR).ceil()
+    }
+
+    /// Element 1 is `parent`, 2 a child with `style` holding the text `content`.
+    fn text_box(cx: &mut gpui::TestAppContext, parent: &str, style: &str, content: &str) -> Page {
+        let page = Page::new(cx, &[(1, None, parent), (2, Some(1), style)]);
+        page.add_text(cx, 3, 2, content);
+        page
+    }
+
+    fn hover(page: &Page, cx: &mut gpui::TestAppContext, id: u64) {
+        let bounds = page.bounds(id);
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            gpui::point(gpui::px((bounds.x + 2.0) as f32), gpui::px((bounds.y + 2.0) as f32)),
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+    }
+
+    #[gpui::test]
+    fn max_content_is_the_text_on_one_line_in_a_wider_column(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"width": "max-content"}"#, LONG);
+        near(page.size(2), (text_width(21), LINE));
+        page.set_style(cx, 2, "{}");
+        near(page.size(2), (600.0, LINE));
+    }
+
+    #[gpui::test]
+    fn min_content_is_the_widest_word(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"width": "min-content"}"#, LONG);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn fit_content_is_the_available_width_between_min_and_max_content(cx: &mut gpui::TestAppContext) {
+        let short = text_box(cx, r#"{"width": 300}"#, r#"{"width": "fit-content"}"#, HELLO_WORLD);
+        near(short.size(2), (text_width(11), LINE));
+        let long = text_box(cx, r#"{"width": 150}"#, r#"{"width": "fit-content"}"#, LONG);
+        near(long.size(2), (150.0, 2.0 * LINE));
+        let narrow = text_box(cx, r#"{"width": 40}"#, r#"{"width": "fit-content"}"#, LONG);
+        near(narrow.size(2), (text_width(10), 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn fit_content_with_a_limit_clamps_it_between_min_and_max_content(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"width": "fit-content(100px)"}"#, LONG);
+        near(page.size(2), (100.0, 3.0 * LINE));
+        page.set_style(cx, 2, r#"{"width": "fit-content(10px)"}"#);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+        page.set_style(cx, 2, r#"{"width": "fit-content(500px)"}"#);
+        near(page.size(2), (text_width(21), LINE));
+        page.set_style(cx, 2, r#"{"width": "fit-content(calc(50px + 50px))"}"#);
+        near(page.size(2), (100.0, 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn a_fit_content_limit_in_percent_is_of_the_containing_block(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, r#"{"width": 300}"#, r#"{"width": "fit-content(50%)"}"#, LONG);
+        near(page.size(2), (150.0, 2.0 * LINE));
+        page.set_style(cx, 1, r#"{"width": 500}"#);
+        near(page.size(2), (text_width(21), LINE));
+    }
+
+    #[gpui::test]
+    fn a_fit_content_limit_in_em_follows_the_elements_font_size(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"fontSize": 20, "width": "fit-content(15em)"}"#, LONG);
+        // 20px: a character is 12px, min-content 120px, max-content 252px, and 15em is 300px.
+        near(page.size(2), (252.0, 32.5));
+        page.set_style(cx, 2, r#"{"fontSize": 20, "width": "fit-content(10em)"}"#);
+        near(page.size(2), (200.0, 65.0));
+        page.set_style(cx, 2, r#"{"fontSize": 10, "width": "fit-content(10em)"}"#);
+        near(page.size(2), (100.0, 32.0));
+    }
+
+    #[gpui::test]
+    fn min_width_min_content_keeps_a_narrow_box_from_squeezing_its_text(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"width": 50, "minWidth": "min-content"}"#, LONG);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn max_width_max_content_caps_a_stretched_block(cx: &mut gpui::TestAppContext) {
+        let page = text_box(cx, COLUMN, r#"{"maxWidth": "max-content"}"#, LONG);
+        near(page.size(2), (text_width(21), LINE));
+        let narrower = text_box(cx, r#"{"width": 100}"#, r#"{"maxWidth": "max-content"}"#, LONG);
+        near(narrower.size(2), (100.0, 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn the_keywords_are_auto_in_the_block_axis(cx: &mut gpui::TestAppContext) {
+        let plain = text_box(cx, COLUMN, r#"{"width": 120}"#, LONG);
+        let expected = plain.size(2);
+        for style in [
+            r#"{"width": 120, "height": "max-content"}"#,
+            r#"{"width": 120, "height": "min-content"}"#,
+            r#"{"width": 120, "height": "fit-content(10px)"}"#,
+            r#"{"width": 120, "minHeight": "max-content"}"#,
+            r#"{"width": 120, "maxHeight": "fit-content"}"#,
+        ] {
+            let page = text_box(cx, COLUMN, style, LONG);
+            near(page.size(2), expected);
+        }
+    }
+
+    #[gpui::test]
+    fn a_hover_width_replaces_a_base_keyword_and_a_hover_keyword_replaces_a_base_width(cx: &mut gpui::TestAppContext) {
+        let page = text_box(
+            cx,
+            COLUMN,
+            r#"{"width": "max-content", "hover": {"width": 50}}"#,
+            LONG,
+        );
+        near(page.size(2), (text_width(21), LINE));
+        hover(&page, cx, 2);
+        assert_eq!(page.size(2).0, 50.0);
+
+        let reverse = text_box(
+            cx,
+            COLUMN,
+            r#"{"width": 50, "hover": {"width": "max-content"}}"#,
+            LONG,
+        );
+        assert_eq!(reverse.size(2).0, 50.0);
+        hover(&reverse, cx, 2);
+        near(reverse.size(2), (text_width(21), LINE));
+
+        let auto = text_box(
+            cx,
+            COLUMN,
+            r#"{"width": "max-content", "hover": {"width": "auto"}}"#,
+            LONG,
+        );
+        hover(&auto, cx, 2);
+        assert_eq!(auto.size(2).0, 600.0);
+    }
+
+    fn refine(styles: &[&str]) -> gpui::StyleRefinement {
+        let lengths = LengthContext::initial(800.0, 600.0);
+        let colors = crate::color::ColorContext::root(crate::color::Scheme::Light);
+        styles.iter().fold(gpui::StyleRefinement::default(), |refinement, style| {
+            let style: StyleDesc = serde_json::from_str(style).unwrap();
+            apply_styles(refinement, &style, &colors, &lengths)
+        })
+    }
+
+    #[test]
+    fn a_later_apply_replaces_a_keyword_in_the_same_slot_either_way() {
+        let keyword = refine(&[r#"{"width": "max-content", "minWidth": "fit-content(2em)", "maxWidth": "min-content"}"#]);
+        assert_eq!(keyword.intrinsic_widths.width, Some(Some(gpui::IntrinsicSize::MaxContent)));
+        assert_eq!(
+            keyword.intrinsic_widths.min_width,
+            Some(Some(gpui::IntrinsicSize::FitContentLimit(gpui::px(32.0).into())))
+        );
+        assert_eq!(keyword.intrinsic_widths.max_width, Some(Some(gpui::IntrinsicSize::MinContent)));
+
+        let definite = refine(&[
+            r#"{"width": "max-content", "minWidth": "max-content", "maxWidth": "max-content"}"#,
+            r#"{"width": 50, "minWidth": "10%", "maxWidth": "calc(1em + 1px)"}"#,
+        ]);
+        assert_eq!(definite.intrinsic_widths.width, Some(None));
+        assert_eq!(definite.intrinsic_widths.min_width, Some(None));
+        assert_eq!(definite.intrinsic_widths.max_width, Some(None));
+        assert_eq!(definite.size.width, Some(gpui::px(50.0).into()));
+
+        let auto = refine(&[r#"{"width": "min-content"}"#, r#"{"width": "auto"}"#]);
+        assert_eq!(auto.intrinsic_widths.width, Some(None));
+        assert_eq!(auto.size.width, Some(gpui::Length::Auto));
+
+        let back = refine(&[r#"{"width": 50}"#, r#"{"width": "min-content"}"#]);
+        assert_eq!(back.intrinsic_widths.width, Some(Some(gpui::IntrinsicSize::MinContent)));
+        assert_eq!(back.size.width, Some(gpui::Length::Auto));
+
+        let untouched = refine(&[r#"{"width": "max-content"}"#, r#"{"height": 5}"#]);
+        assert_eq!(untouched.intrinsic_widths.width, Some(Some(gpui::IntrinsicSize::MaxContent)));
+    }
+
+    #[test]
+    fn a_height_keyword_applies_as_auto() {
+        let height = refine(&[r#"{"height": "max-content", "minHeight": "min-content", "maxHeight": "fit-content"}"#]);
+        assert_eq!(height.size.height, Some(gpui::Length::Auto));
+        assert_eq!(height.min_size.height, Some(gpui::Length::Auto));
+        assert_eq!(height.max_size.height, Some(gpui::Length::Auto));
+        assert_eq!(height.intrinsic_widths, Default::default());
+    }
+
+    #[gpui::test]
+    fn a_keyword_node_in_a_grid_cell_sizes_to_its_content(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"width": 600, "display": "grid", "gridTemplateColumns": "300px 300px", "alignItems": "start"}"#),
+                (2, Some(1), r#"{"width": "max-content"}"#),
+                (4, Some(1), r#"{"width": "min-content"}"#),
+            ],
+        );
+        page.add_text(cx, 3, 2, LONG);
+        page.add_text(cx, 5, 4, LONG);
+        near(page.size(2), (text_width(21), LINE));
+        near(page.size(4), (text_width(10), 3.0 * LINE));
+        near(page.offset(4, 1), (300.0, 0.0));
+    }
+
+    #[gpui::test]
+    fn a_keyword_node_in_a_flex_row_leaves_the_rest_to_its_sibling(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"width": 600, "display": "flex", "flexDirection": "row"}"#),
+                (2, Some(1), r#"{"width": "max-content", "flexShrink": 0}"#),
+                (4, Some(1), r#"{"flexGrow": 1}"#),
+            ],
+        );
+        page.add_text(cx, 3, 2, HELLO_WORLD);
+        near(page.size(2), (text_width(11), LINE));
+        near(page.size(4), (600.0 - text_width(11), LINE));
+        near(page.offset(4, 1), (text_width(11), 0.0));
+    }
+
+    #[gpui::test]
+    fn a_resize_observer_and_the_bounds_report_the_resolved_keyword_width(cx: &mut gpui::TestAppContext) {
+        let payloads = Arc::new(Mutex::new(Vec::<EventPayload>::new()));
+        let sink = payloads.clone();
+        let page = Page::with_events(
+            cx,
+            &[(1, None, COLUMN), (2, Some(1), r#"{"width": "max-content", "padding": 5}"#)],
+            &[(2, crate::observers::RESIZE_EVENT)],
+            Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))),
+        );
+        page.add_text(cx, 3, 2, LONG);
+        cx.run_until_parked();
+        near(page.size(2), (text_width(21) + 10.0, LINE + 10.0));
+        let payloads = payloads.lock().unwrap();
+        let observation = payloads
+            .iter()
+            .rev()
+            .find_map(|payload| payload.observation.as_ref())
+            .expect("the observer reported");
+        assert_eq!(
+            (observation.content_width, observation.content_height),
+            (text_width(21), LINE)
+        );
+    }
+
 }
