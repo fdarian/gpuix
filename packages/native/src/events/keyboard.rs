@@ -23,6 +23,9 @@ use crate::events::{key_names, sync_dispatch};
 use crate::renderer::EventCallback;
 use crate::retained_tree::RetainedTree;
 
+/// DOM `KeyboardEvent.key` of a key the input method consumed.
+const PROCESS_KEY: &str = "Process";
+
 #[derive(Default)]
 struct RoutingState {
     window_key_down: Cell<bool>,
@@ -171,8 +174,12 @@ fn key_payload(
 /// Tab never reaches GPUI's bindings or the platform text input when the JS
 /// default will move focus (no ctrl, alt or cmd held, and a JS root attached):
 /// it is a navigation key, never text, as in a browser field. That default
-/// already ran by the time the outcome is back. The subscription ends the
-/// interception when dropped.
+/// already ran by the time the outcome is back.
+///
+/// A key the platform's input method takes first (it is composing, or an IME
+/// source takes printable keys) is sent too, before the input method gets it, as
+/// a `keydown` whose `key` is `"Process"`. Nothing a handler does to it reaches
+/// the input method or GPUI. The subscription ends both when dropped.
 ///
 /// Interceptors belong to the `App`, not to a window, so with two views on one
 /// app each would see the other's keys and send them again. This one answers
@@ -184,7 +191,10 @@ pub(crate) fn install_key_down(
     callback: Option<EventCallback>,
     routing: InputRouting,
 ) -> gpui::Subscription {
-    cx.intercept_keystrokes(move |event, window, cx| {
+    let ime_routing = routing.clone();
+    let ime_tree = tree.clone();
+    let ime_callback = callback.clone();
+    let interception = cx.intercept_keystrokes(move |event, window, cx| {
         if window.window_handle().window_id() != window_id {
             return;
         }
@@ -212,7 +222,34 @@ pub(crate) fn install_key_down(
         if prevented || tab_default_runs {
             cx.stop_propagation();
         }
-    })
+    });
+    let ime_keys = cx.observe_ime_keystrokes(move |event, window, cx| {
+        if window.window_handle().window_id() != window_id {
+            return;
+        }
+        ime_routing.note_user_input();
+        let Some(mut payload) = key_payload(
+            &ime_routing,
+            &ime_tree,
+            window,
+            cx,
+            "keydown",
+            &event.keystroke,
+            &event.native_key,
+            Some(event.is_held),
+            event.is_composing,
+        ) else {
+            return;
+        };
+        // What the key types is the input method's to decide, so the page is
+        // told it was processed, as Chrome does.
+        payload.key = Some(PROCESS_KEY.to_string());
+        payload.key_char = None;
+        // The input method has the key whatever a handler says, so the outcome
+        // (`preventDefault`) is not read.
+        sync_dispatch::emit(window, cx, &ime_callback, payload);
+    });
+    gpui::Subscription::join(interception, ime_keys)
 }
 
 /// The window-level listeners: `keyup`. The focus default of a mouse press is
@@ -355,5 +392,71 @@ mod tests {
         assert_eq!(typed(cx, "left", none, native(0x7b, None)), [row("ArrowLeft", "ArrowLeft")]);
         // No native key: derived from the keystroke, as on a platform without one
         assert_eq!(typed(cx, "a", none, gpui::NativeKey::default()), [row("a", "KeyA")]);
+    }
+
+    fn key_down(keystroke: &str, native_key: gpui::NativeKey, is_composing: bool) -> gpui::KeyDownEvent {
+        gpui::KeyDownEvent {
+            keystroke: gpui::Keystroke::parse(keystroke).unwrap(),
+            is_held: false,
+            prefer_character_input: false,
+            native_key,
+            is_composing,
+        }
+    }
+
+    /// `(type, key, code, keyChar, isComposing)` of everything the window sent for `input`.
+    fn sent_for(
+        cx: &mut gpui::TestAppContext,
+        input: impl FnOnce(&mut Window, &mut App) + 'static,
+    ) -> Vec<(String, String, String, Option<String>, bool)> {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let callback: Option<EventCallback> = Some({
+            let sent = sent.clone();
+            Arc::new(move |payload: EventPayload| {
+                sent.lock().unwrap().push((
+                    payload.event_type,
+                    payload.key.unwrap(),
+                    payload.code.unwrap(),
+                    payload.key_char,
+                    payload.is_composing.unwrap(),
+                ));
+            })
+        });
+        let routing = InputRouting::default();
+        routing.set_window_keys(true, false, 1);
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        let window = cx.add_window(|_, _| Blank);
+        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing));
+        cx.update_window(window.into(), |_, window, cx| input(window, cx)).unwrap();
+        let sent = sent.lock().unwrap().clone();
+        sent
+    }
+
+    #[gpui::test]
+    fn a_key_the_input_method_takes_is_sent_as_process_with_its_physical_key(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let sent = sent_for(cx, |window, cx| {
+            let key = key_down("a", native(0x00, Some("a")), true);
+            window.dispatch_event(gpui::PlatformInput::ImeKeyDown(key), cx);
+        });
+        assert_eq!(
+            sent,
+            [("keydown".into(), "Process".into(), "KeyA".into(), None, true)]
+        );
+    }
+
+    #[gpui::test]
+    fn a_key_the_input_method_declined_is_an_ordinary_keydown_that_says_it_is_composing(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let sent = sent_for(cx, |window, cx| {
+            let key = key_down("left", native(0x7b, None), true);
+            window.dispatch_event(gpui::PlatformInput::KeyDown(key), cx);
+        });
+        assert_eq!(
+            sent,
+            [("keydown".into(), "ArrowLeft".into(), "ArrowLeft".into(), None, true)]
+        );
     }
 }

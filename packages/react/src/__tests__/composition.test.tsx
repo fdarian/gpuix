@@ -9,11 +9,13 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 describeNative("input method composition", () => {
   let events: any[]
+  let preventKeyDown = false
   let renderer: ReturnType<typeof createTestRoot>["renderer"]
   let inputId: number
 
   beforeEach(() => {
     events = []
+    preventKeyDown = false
     const testRoot = createTestRoot()
     renderer = testRoot.renderer
     const record = (event: any) => events.push(event)
@@ -23,6 +25,10 @@ describeNative("input method composition", () => {
           testId="field"
           style={{ width: 200, height: 30 }}
           onChange={record}
+          onKeyDown={(event) => {
+            record(event)
+            if (preventKeyDown) event.preventDefault()
+          }}
           onKeyUp={record}
         />
       </div>
@@ -51,6 +57,55 @@ describeNative("input method composition", () => {
       ["a", true],
       ["Enter", false],
     ])
+  })
+
+  const keyDowns = () =>
+    events
+      .filter((event) => event.type === "keydown")
+      .map((event) => [event.key, event.code, event.isComposing])
+
+  it("a key the input method takes is a Process keydown, composing once a composition is open", () => {
+    compose(
+      { key: "k", action: "mark", text: "k" },
+      { key: "a", action: "mark", text: "か" },
+      { key: "Enter", action: "commit", text: "か" }
+    )
+    expect(keyDowns()).toEqual([
+      ["Process", "KeyK", false],
+      ["Process", "KeyA", true],
+      ["Process", "Enter", true],
+    ])
+    expect(events.filter((event) => event.type === "keydown").map((event) => event.keyChar)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
+  })
+
+  it("the keydown comes before the edit it causes and the keyup after", () => {
+    compose({ key: "a", action: "mark", text: "あ" })
+    expect(events.map((event) => event.type)).toEqual(["keydown", "change", "keyup"])
+  })
+
+  it("preventDefault on a Process keydown does not stop the input method", () => {
+    preventKeyDown = true
+    compose(
+      { key: "a", action: "mark", text: "あ" },
+      { key: "Enter", action: "commit", text: "あ" }
+    )
+    expect(keyDowns().map(([key]) => key)).toEqual(["Process", "Process"])
+    expect(events.filter((event) => event.type === "change").map((event) => event.value)).toEqual([
+      "あ",
+      "あ",
+    ])
+    expect(renderer.getPaintedText()).toContain("あ")
+  })
+
+  it("a key typed after the composition ended is an ordinary keydown", () => {
+    compose({ key: "a", action: "mark", text: "あ" }, { key: "Enter", action: "commit", text: "あ" })
+    events.length = 0
+    renderer.nativeSimulateKeystrokes(inputId, "x")
+    expect(keyDowns()).toEqual([["x", "KeyX", false]])
   })
 
   it("a keyup with nothing marked is not composing", () => {
