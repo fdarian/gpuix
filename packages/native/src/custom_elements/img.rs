@@ -878,8 +878,8 @@ impl CustomElement for SvgElement {
             surface = surface.child(
                 gpui::canvas(
                     |_, _, _| (),
-                    move |bounds, _, window, _| {
-                        paint_svg(&paint, &renderer, &bytes, bounds, color, window);
+                    move |bounds, _, window, cx| {
+                        paint_svg(&paint, &renderer, &bytes, bounds, color, window, cx);
                     },
                 )
                 // In flow, not absolute: an absolute child is sized against the padding box.
@@ -929,6 +929,7 @@ fn paint_svg(
     bounds: gpui::Bounds<gpui::Pixels>,
     color: gpui::Rgba,
     window: &mut gpui::Window,
+    cx: &mut gpui::App,
 ) {
     let scale = window.scale_factor();
     if bounds.size.width <= gpui::px(0.0) || bounds.size.height <= gpui::px(0.0) {
@@ -936,7 +937,7 @@ fn paint_svg(
     }
     let Some(image) = paint
         .borrow_mut()
-        .image(window, renderer, bytes, bounds.size, scale, color)
+        .image(window, cx, renderer, bytes, bounds.size, scale, color)
     else {
         return;
     };

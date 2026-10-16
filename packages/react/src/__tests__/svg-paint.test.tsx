@@ -158,6 +158,28 @@ describeNative("svg paints its own colours", () => {
     }
   }, 30_000)
 
+  // Over the size a raster in paint is kept for, so the raster is made on a worker: the test
+  // renderer waits for it, with no sleep, before a render or a screenshot returns.
+  it("shows a large svg's raster once the render returns, and a new colour or size the same way", () => {
+    const testRoot = createTestRoot({ width: 500, height: 500 })
+    try {
+      const shot = (tree: ReactElement) => {
+        testRoot.render(tree)
+        const file = `${SHOTS_DIR}/svg-paint-large.png`
+        fs.rmSync(file, { force: true })
+        testRoot.renderer.captureScreenshot(file)
+        return readLogicalPixels(file, testRoot.renderer).at
+      }
+      near(shot(<svg source={TWO_TONE} style={{ width: 300, height: 300, color: "#ff0000" }} />)(75, 150), RED)
+      near(shot(<svg source={TWO_TONE} style={{ width: 300, height: 300, color: "#0000ff" }} />)(75, 150), BLUE)
+      // 450 px wide: the half boundary moved from 150 to 225.
+      near(shot(<svg source={TWO_TONE} style={{ width: 450, height: 450, color: "#0000ff" }} />)(200, 225), BLUE)
+      near(shot(<svg source={TWO_TONE} style={{ width: 450, height: 450, color: "#0000ff" }} />)(250, 225), GREEN)
+    } finally {
+      testRoot.unmount()
+    }
+  }, 30_000)
+
   it("paints nothing for markup that is not an svg, without throwing", () => {
     const at = paint(<svg source="not svg" style={{ width: 40, height: 40 }} />).at
     expect(at(20, 20)).toEqual(paint(<div style={{ width: 40, height: 40 }} />).at(20, 20))

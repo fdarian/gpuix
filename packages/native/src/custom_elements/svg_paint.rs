@@ -7,49 +7,79 @@
 //! the element's computed `color`.
 //!
 //! [`SvgPaint::image`] is the one entry point. It holds the single image it last
-//! made and, when any input changes, drops that image from the sprite atlas
-//! before making the next one, so an SVG that changes every frame (an animation
-//! feeding serialised children) keeps the atlas at one image.
+//! made and drops it from the sprite atlas when a newer one replaces it, so an
+//! SVG that changes every frame (an animation feeding serialised children) keeps
+//! the atlas at one image.
 //!
-//! A box that changes size every frame (a transition, a window drag) would
-//! rasterise every frame. The first change after a pause rasterises at once, so
-//! a one-off resize is sharp. When the next change comes within [`SETTLE`], the
-//! last raster is drawn stretched until the size has been still for [`SETTLE`],
-//! and then it is rasterised again. A raster more than twice off the target
-//! size is replaced at once, so a stretch never gets that blurry.
+//! A small document at a small size ([`Key::is_inline`]) rasterises in paint: it
+//! costs less than the frame it would otherwise miss. Anything bigger is
+//! rasterised on the background executor, one job at a time per `<svg>`, and the
+//! previous image keeps being drawn (the caller stretches it to the box) until
+//! the job lands and repaints the view. The first paint of a big SVG draws
+//! nothing. A job cannot be cancelled once it runs, so a key that changes while
+//! one runs waits for it, and only the newest key asked for is rasterised next:
+//! the ones in between are dropped.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use gpui::{DevicePixels, Pixels, RenderImage, Rgba, Size, SvgRenderer, SvgSize};
-
-/// How long the box must hold one size before a stretched raster is replaced.
-const SETTLE: Duration = Duration::from_millis(100);
+use gpui::{DevicePixels, Pixels, RenderImage, Rgba, Size, SvgRenderer, SvgSize, Task};
 
 /// Widest request for the first, cheap render that measures the SVG's aspect ratio.
 const PROBE_WIDTH: i32 = 256;
 
+/// A document up to this many bytes, drawn up to [`INLINE_PIXELS`], is rasterised in paint.
+const INLINE_BYTES: usize = 4096;
+const INLINE_PIXELS: i64 = 128 * 128;
+
+type Raster = Result<Arc<RenderImage>, String>;
+
 #[derive(Default)]
 pub struct SvgPaint {
-    cached: Option<Cached>,
-    resize: Option<Resize>,
+    shown: Option<Shown>,
+    running: Option<Running>,
+    /// Where the running job leaves its result for the next paint to pick up.
+    inbox: Rc<RefCell<Option<Raster>>>,
+    /// Bumped when something newer than the running job is installed, so its result is dropped.
+    epoch: u64,
 }
 
-/// The box size last asked for, and when it moved there.
-struct Resize {
-    target: (i32, i32),
-    changed_at: Instant,
-    /// The move came within [`SETTLE`] of the one before it.
-    in_burst: bool,
-}
-
-struct Cached {
+struct Shown {
     key: Key,
-    /// `None` when rasterising these inputs failed. The failure is cached under
+    /// `None` when rasterising these inputs failed. The failure is kept under
     /// the same key so bad markup is parsed and reported once, not per repaint.
     image: Option<Arc<RenderImage>>,
 }
 
+struct Running {
+    key: Key,
+    epoch: u64,
+    /// Dropping it stops the repaint request that follows the job, not the job.
+    task: Option<Task<()>>,
+}
+
+/// A job to start: rasterise `key` and hand the result to [`Job::finish`].
+struct Job {
+    key: Key,
+    inbox: Rc<RefCell<Option<Raster>>>,
+}
+
+impl Job {
+    fn finish(self, result: Raster) {
+        *self.inbox.borrow_mut() = Some(result);
+    }
+}
+
+/// What a paint needs to do after [`SvgPaint::resolve`].
+struct Outcome {
+    image: Option<Arc<RenderImage>>,
+    /// Images this `<svg>` no longer holds, to drop from the sprite atlas.
+    stale: Vec<Arc<RenderImage>>,
+    job: Option<Job>,
+}
+
+#[derive(Clone)]
 struct Key {
     bytes: Arc<[u8]>,
     width: i32,
@@ -59,21 +89,15 @@ struct Key {
 
 impl Key {
     fn same_as(&self, other: &Key) -> bool {
-        self.width == other.width && self.height == other.height && self.same_content(other)
-    }
-
-    /// Same document and colour, whatever the size.
-    fn same_content(&self, other: &Key) -> bool {
-        self.color == other.color
+        self.width == other.width
+            && self.height == other.height
+            && self.color == other.color
             && (Arc::ptr_eq(&self.bytes, &other.bytes) || self.bytes == other.bytes)
     }
 
-    /// Whether a raster of this key's size is close enough to stretch to `other`'s.
-    fn within_twice(&self, other: &Key) -> bool {
-        let ratio = |a: i32, b: i32| a as f32 / b as f32;
-        [ratio(self.width, other.width), ratio(self.height, other.height)]
-            .iter()
-            .all(|ratio| (0.5..=2.0).contains(ratio))
+    fn is_inline(&self) -> bool {
+        self.bytes.len() <= INLINE_BYTES
+            && i64::from(self.width) * i64::from(self.height) <= INLINE_PIXELS
     }
 }
 
@@ -86,15 +110,17 @@ impl SvgPaint {
     /// image's size divided by `scale_factor`. It is in the BGRA layout
     /// `Window::paint_image` takes as it is.
     ///
-    /// The previous image is dropped from the atlas when the inputs changed. While
-    /// the size is changing every frame it is kept instead, and the caller draws
-    /// it stretched (see the module docs); a frame is requested to replace it.
+    /// While a job for a big SVG runs, the image returned is the previous one,
+    /// made for another size, colour or document, and `None` before the first.
+    /// The view is repainted when the job lands.
     ///
-    /// `None` means the SVG could not be rasterised; that is logged once and
+    /// `None` also means the SVG could not be rasterised; that is logged once and
     /// retried only when the bytes, size, scale or colour change.
+    #[allow(clippy::too_many_arguments)]
     pub fn image(
         &mut self,
         window: &mut gpui::Window,
+        cx: &mut gpui::App,
         renderer: &SvgRenderer,
         bytes: &Arc<[u8]>,
         size: Size<Pixels>,
@@ -113,90 +139,91 @@ impl SvgPaint {
                 current_color.a.to_bits(),
             ],
         };
-        let mut pending = false;
-        let image = self.resolve(
-            key,
-            Instant::now(),
-            &mut pending,
-            |key| rasterize(renderer, bytes, key.width, key.height, current_color),
-            |stale| {
-                window.drop_image(stale).ok();
-            },
-        );
-        if pending {
-            window.request_animation_frame();
+        let outcome = self.resolve(key, |key| {
+            rasterize(renderer, bytes, key.width, key.height, current_color)
+        });
+        for stale in outcome.stale {
+            window.drop_image(stale).ok();
         }
-        image
+        if let Some(job) = outcome.job {
+            let renderer = renderer.clone();
+            let bytes = bytes.clone();
+            let (width, height) = (job.key.width, job.key.height);
+            let raster = cx
+                .background_executor()
+                .spawn(async move { rasterize(&renderer, &bytes, width, height, current_color) });
+            let view = window.current_view();
+            let task = window.spawn(cx, async move |cx| {
+                job.finish(raster.await);
+                cx.update(|_, cx| cx.notify(view)).ok();
+            });
+            self.running
+                .as_mut()
+                .expect("resolve tracks the job it returns")
+                .task = Some(task);
+        }
+        outcome.image
     }
 
-    /// `pending` is set when the image returned is a stale raster that a later
-    /// frame must replace.
-    fn resolve(
-        &mut self,
-        key: Key,
-        now: Instant,
-        pending: &mut bool,
-        rasterize: impl FnOnce(&Key) -> Result<Arc<RenderImage>, String>,
-        drop_image: impl FnOnce(Arc<RenderImage>),
-    ) -> Option<Arc<RenderImage>> {
-        if let Some(cached) = &self.cached {
-            if cached.key.same_as(&key) {
-                return cached.image.clone();
-            }
-            if cached.key.same_content(&key) && cached.image.is_some() {
-                let target = (key.width, key.height);
-                match &mut self.resize {
-                    Some(resize) if resize.target == target => {}
-                    resize => {
-                        let in_burst = resize
-                            .as_ref()
-                            .is_some_and(|last| now.duration_since(last.changed_at) < SETTLE);
-                        *resize = Some(Resize {
-                            target,
-                            changed_at: now,
-                            in_burst,
-                        });
-                    }
-                }
-                let resize = self.resize.as_ref().expect("set above");
-                if resize.in_burst
-                    && now.duration_since(resize.changed_at) < SETTLE
-                    && cached.key.within_twice(&key)
-                {
-                    *pending = true;
-                    return cached.image.clone();
-                }
-            }
+    fn resolve(&mut self, key: Key, rasterize: impl FnOnce(&Key) -> Raster) -> Outcome {
+        let mut stale = Vec::new();
+        self.land(&mut stale);
+        let current = |paint: &Self| paint.shown.as_ref().and_then(|shown| shown.image.clone());
+        if self.shown.as_ref().is_some_and(|shown| shown.key.same_as(&key)) {
+            return Outcome { image: current(self), stale, job: None };
         }
-        // Drop first: if rasterising fails the stale image must not linger.
-        if let Some(stale) = self.cached.take().and_then(|cached| cached.image) {
-            drop_image(stale);
+        if key.is_inline() {
+            self.epoch += 1;
+            self.install(key.clone(), rasterize(&key), &mut stale);
+            return Outcome { image: current(self), stale, job: None };
         }
-        let image = match rasterize(&key) {
+        if self.running.is_some() {
+            return Outcome { image: current(self), stale, job: None };
+        }
+        self.running = Some(Running { key: key.clone(), epoch: self.epoch, task: None });
+        let job = Job { key, inbox: self.inbox.clone() };
+        Outcome { image: current(self), stale, job: Some(job) }
+    }
+
+    /// Installs what the running job left, unless something newer was installed since.
+    fn land(&mut self, stale: &mut Vec<Arc<RenderImage>>) {
+        let Some(result) = self.inbox.borrow_mut().take() else {
+            return;
+        };
+        // No running job: `clear` dropped it while its result was on the way.
+        let Some(running) = self.running.take() else {
+            return;
+        };
+        if running.epoch == self.epoch {
+            self.install(running.key, result, stale);
+        }
+    }
+
+    fn install(&mut self, key: Key, result: Raster, stale: &mut Vec<Arc<RenderImage>>) {
+        // Drop first: if rasterising failed the previous image must not linger.
+        stale.extend(self.shown.take().and_then(|shown| shown.image));
+        let image = match result {
             Ok(image) => Some(image),
             Err(error) => {
                 log::warn!("<svg> could not be rasterised: {error}");
                 None
             }
         };
-        self.cached = Some(Cached {
-            key,
-            image: image.clone(),
-        });
-        image
+        self.shown = Some(Shown { key, image });
     }
 
     /// Drops the image held, for an `<svg>` that has nothing left to paint.
     pub fn clear(&mut self, drop_image: impl FnOnce(Arc<RenderImage>)) {
-        self.resize = None;
-        if let Some(stale) = self.cached.take().and_then(|cached| cached.image) {
+        self.running = None;
+        self.inbox.borrow_mut().take();
+        if let Some(stale) = self.shown.take().and_then(|shown| shown.image) {
             drop_image(stale);
         }
     }
 
     /// The image currently held, so the owner can drop it from the atlas on teardown.
     pub fn held(&self) -> Option<Arc<RenderImage>> {
-        self.cached.as_ref().and_then(|cached| cached.image.clone())
+        self.shown.as_ref().and_then(|shown| shown.image.clone())
     }
 }
 
@@ -442,75 +469,151 @@ mod tests {
         assert!(size.1 <= 601, "{size:?}");
     }
 
-    fn resized(paint: &mut SvgPaint, bytes: &Arc<[u8]>, width: i32, at: Instant) -> (bool, i32) {
-        let mut pending = false;
-        let image = paint
-            .resolve(
-                key(bytes, width, RED),
-                at,
-                &mut pending,
-                |key| {
-                    let height = key.height as u32;
-                    gpui::RenderImage::from_bgra(key.width as u32, height, vec![0; key.width as usize * height as usize * 4])
-                        .map(Arc::new)
-                        .ok_or_else(|| "bad".to_string())
-                },
-                |_| {},
-            )
-            .unwrap();
-        (pending, image.size(0).width.0)
+    fn fake_raster(key: &Key) -> Raster {
+        let (width, height) = (key.width as u32, key.height as u32);
+        gpui::RenderImage::from_bgra(width, height, vec![0; width as usize * height as usize * 4])
+            .map(Arc::new)
+            .ok_or_else(|| "bad".to_string())
+    }
+
+    fn never_in_paint(_: &Key) -> Raster {
+        panic!("rasterised in paint");
+    }
+
+    /// Wider than [`INLINE_PIXELS`] allows, so it takes the background path.
+    fn big(bytes: &Arc<[u8]>, width: i32) -> Key {
+        Key { height: width, ..key(bytes, width, RED) }
+    }
+
+    fn small(bytes: &Arc<[u8]>, width: i32) -> Key {
+        key(bytes, width, RED)
+    }
+
+    fn width_of(outcome: &Outcome) -> Option<i32> {
+        outcome.image.as_ref().map(|image| image.size(0).width.0)
+    }
+
+    fn doc() -> Arc<[u8]> {
+        Arc::from(&b"x"[..])
     }
 
     #[test]
-    fn a_resize_after_a_pause_is_sharp_at_once() {
-        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+    fn a_small_svg_is_rasterised_in_paint() {
+        let bytes = doc();
         let mut paint = SvgPaint::default();
-        let start = Instant::now();
-        assert_eq!(resized(&mut paint, &bytes, 100, start), (false, 100));
-        let later = start + SETTLE * 5;
-        assert_eq!(resized(&mut paint, &bytes, 120, later), (false, 120));
+        let outcome = paint.resolve(small(&bytes, 24), fake_raster);
+        assert_eq!(width_of(&outcome), Some(24));
+        assert!(outcome.job.is_none());
+        let outcome = paint.resolve(small(&bytes, 40), fake_raster);
+        assert_eq!(width_of(&outcome), Some(40));
+        assert_eq!(outcome.stale.len(), 1, "the 24 px image left the atlas");
     }
 
     #[test]
-    fn a_size_that_changes_every_frame_reuses_the_raster_until_it_settles() {
-        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+    fn a_big_svg_draws_nothing_on_its_first_paint_and_starts_one_job() {
+        let bytes = doc();
         let mut paint = SvgPaint::default();
-        let start = Instant::now();
-        let frame = Duration::from_millis(16);
-        assert_eq!(resized(&mut paint, &bytes, 100, start), (false, 100));
-        // The first change rasterises, the ones right after it do not.
-        assert_eq!(resized(&mut paint, &bytes, 104, start + frame), (false, 104));
-        for step in 2..6 {
-            let at = start + frame * step;
-            let (pending, width) = resized(&mut paint, &bytes, 100 + 4 * step as i32, at);
-            assert!(pending);
-            assert_eq!(width, 104);
+        let outcome = paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert!(outcome.image.is_none());
+        assert_eq!(outcome.job.as_ref().map(|job| job.key.width), Some(1200));
+        let again = paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert!(again.image.is_none());
+        assert!(again.job.is_none(), "the same key is already running");
+    }
+
+    #[test]
+    fn the_previous_raster_is_drawn_while_a_slow_job_is_pending() {
+        let bytes = doc();
+        let mut paint = SvgPaint::default();
+        paint.resolve(small(&bytes, 100), fake_raster);
+        let outcome = paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert_eq!(width_of(&outcome), Some(100));
+        assert!(outcome.job.is_some());
+        assert!(outcome.stale.is_empty(), "the previous image stays in the atlas until the new one lands");
+        let job = outcome.job.unwrap();
+        // Every paint while the job runs still draws the old one.
+        for width in [1100, 1000, 900] {
+            let outcome = paint.resolve(big(&bytes, width), never_in_paint);
+            assert_eq!(width_of(&outcome), Some(100));
+            assert!(outcome.job.is_none());
         }
-        // Still at 120 a frame after the last change: waiting.
-        let last = start + frame * 5;
-        assert_eq!(resized(&mut paint, &bytes, 120, last + frame), (true, 104));
-        // Settled: the next frame rasterises at the final size.
-        assert_eq!(resized(&mut paint, &bytes, 120, last + SETTLE), (false, 120));
-        assert_eq!(resized(&mut paint, &bytes, 120, last + SETTLE * 2), (false, 120));
+        let landed = fake_raster(&job.key);
+        job.finish(landed);
+        let outcome = paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert_eq!(width_of(&outcome), Some(1200));
+        assert_eq!(outcome.stale.len(), 1, "the 100 px image left the atlas");
+        assert!(outcome.job.is_none());
     }
 
     #[test]
-    fn a_raster_more_than_twice_off_is_replaced_during_a_resize() {
-        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+    fn a_superseded_job_is_dropped_and_only_the_newest_request_is_rasterised_next() {
+        let bytes = doc();
         let mut paint = SvgPaint::default();
-        let start = Instant::now();
-        let frame = Duration::from_millis(16);
-        resized(&mut paint, &bytes, 100, start);
-        resized(&mut paint, &bytes, 110, start + frame);
-        assert_eq!(resized(&mut paint, &bytes, 150, start + frame * 2), (true, 110));
-        assert_eq!(resized(&mut paint, &bytes, 300, start + frame * 3), (false, 300));
+        let first = paint.resolve(big(&bytes, 1000), never_in_paint).job.unwrap();
+        for width in [1100, 1200, 1300] {
+            assert!(paint.resolve(big(&bytes, width), never_in_paint).job.is_none());
+        }
+        let landed = fake_raster(&first.key);
+        first.finish(landed);
+        // The first job's raster is the newest thing there is: it is drawn, then the
+        // latest size is started, without 1100 or 1200 ever being rasterised.
+        let outcome = paint.resolve(big(&bytes, 1300), never_in_paint);
+        assert_eq!(width_of(&outcome), Some(1000));
+        assert_eq!(outcome.job.as_ref().map(|job| job.key.width), Some(1300));
+    }
+
+    #[test]
+    fn a_job_that_lands_after_a_newer_raster_was_installed_is_dropped() {
+        let bytes = doc();
+        let mut paint = SvgPaint::default();
+        let slow = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
+        // The box shrank to an icon, which rasterises in paint.
+        let outcome = paint.resolve(small(&bytes, 24), fake_raster);
+        assert_eq!(width_of(&outcome), Some(24));
+        let landed = fake_raster(&slow.key);
+        slow.finish(landed);
+        let outcome = paint.resolve(small(&bytes, 24), never_in_paint);
+        assert_eq!(width_of(&outcome), Some(24), "the 1200 px raster did not overwrite it");
+        assert!(outcome.stale.is_empty());
+        assert_eq!(paint.held().unwrap().size(0).width.0, 24);
+        // The dropped job freed the slot: a big request starts again.
+        assert!(paint.resolve(big(&bytes, 1200), never_in_paint).job.is_some());
+    }
+
+    #[test]
+    fn a_job_that_lands_after_clear_is_dropped() {
+        let bytes = doc();
+        let mut paint = SvgPaint::default();
+        let job = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
+        paint.clear(|_| {});
+        let landed = fake_raster(&job.key);
+        job.finish(landed);
+        let outcome = paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert!(outcome.image.is_none());
+        assert!(outcome.job.is_some());
+        assert!(paint.held().is_none());
+    }
+
+    #[test]
+    fn a_colour_change_on_a_big_svg_keeps_the_old_colours_until_the_job_lands() {
+        let bytes = doc();
+        let mut paint = SvgPaint::default();
+        let job = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
+        let landed = fake_raster(&job.key);
+        job.finish(landed);
+        paint.resolve(big(&bytes, 1200), never_in_paint);
+        let recoloured = Key { color: [0; 4], ..big(&bytes, 1200) };
+        let outcome = paint.resolve(recoloured, never_in_paint);
+        assert_eq!(width_of(&outcome), Some(1200));
+        assert!(outcome.job.is_some());
+        assert!(outcome.stale.is_empty());
     }
 
     #[test]
     fn clear_drops_the_held_image_once() {
-        let bytes: Arc<[u8]> = Arc::from(&b"x"[..]);
+        let bytes = doc();
         let mut paint = SvgPaint::default();
-        resized(&mut paint, &bytes, 100, Instant::now());
+        paint.resolve(small(&bytes, 100), fake_raster);
         let dropped = std::cell::Cell::new(0);
         paint.clear(|_| dropped.set(dropped.get() + 1));
         paint.clear(|_| dropped.set(dropped.get() + 1));
@@ -537,18 +640,12 @@ mod tests {
         let bad: Arc<[u8]> = Arc::from(&b"not svg"[..]);
         let mut paint = SvgPaint::default();
         let attempts = std::cell::Cell::new(0);
-        let mut attempt = |paint: &mut SvgPaint, key: Key| {
-            let found = paint.resolve(
-                key,
-                Instant::now(),
-                &mut false,
-                |key| {
-                    attempts.set(attempts.get() + 1);
-                    rasterize(&renderer(), &bad, key.width, key.height, RED)
-                },
-                |_| {},
-            );
-            assert!(found.is_none());
+        let attempt = |paint: &mut SvgPaint, key: Key| {
+            let found = paint.resolve(key, |key| {
+                attempts.set(attempts.get() + 1);
+                rasterize(&renderer(), &bad, key.width, key.height, RED)
+            });
+            assert!(found.image.is_none());
         };
         attempt(&mut paint, key(&bad, 4, RED));
         attempt(&mut paint, key(&bad, 4, RED));
@@ -572,13 +669,11 @@ mod tests {
         let mut paint = SvgPaint::default();
         let dropped = std::cell::Cell::new(0);
         let run = |paint: &mut SvgPaint, bytes: &Arc<[u8]>| {
-            paint.resolve(
-                key(bytes, 2, RED),
-                Instant::now(),
-                &mut false,
-                |key| rasterize(&renderer(), bytes, key.width, key.height, RED),
-                |_| dropped.set(dropped.get() + 1),
-            )
+            let outcome = paint.resolve(key(bytes, 2, RED), |key| {
+                rasterize(&renderer(), bytes, key.width, key.height, RED)
+            });
+            dropped.set(dropped.get() + outcome.stale.len());
+            outcome.image
         };
         assert!(run(&mut paint, &good).is_some());
         assert!(run(&mut paint, &bad).is_none());
@@ -599,18 +694,78 @@ mod tests {
                 )
                 .into_bytes(),
             );
-            let image = paint.resolve(
-                key(&bytes, 2, RED),
-                Instant::now(),
-                &mut false,
-                |key| rasterize(&renderer(), &bytes, key.width, key.height, RED),
-                |_| dropped.set(dropped.get() + 1),
-            );
-            assert!(image.is_some());
+            let outcome = paint.resolve(key(&bytes, 2, RED), |key| {
+                rasterize(&renderer(), &bytes, key.width, key.height, RED)
+            });
+            dropped.set(dropped.get() + outcome.stale.len());
+            assert!(outcome.image.is_some());
         }
         // Each new image replaced the one before it, which went out of the atlas.
         assert_eq!(dropped.get(), 29);
         assert!(paint.held().is_some());
+    }
+
+    struct Painted {
+        paint: Rc<RefCell<SvgPaint>>,
+        bytes: Arc<[u8]>,
+        size: Rc<std::cell::Cell<f32>>,
+        drawn: Rc<RefCell<Vec<Option<i32>>>>,
+    }
+
+    impl gpui::Render for Painted {
+        fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+            use gpui::Styled;
+            let (paint, bytes, size, drawn) =
+                (self.paint.clone(), self.bytes.clone(), self.size.clone(), self.drawn.clone());
+            gpui::canvas(
+                |_, _, _| (),
+                move |_, _, window, cx| {
+                    let side = gpui::px(size.get());
+                    let image = paint.borrow_mut().image(
+                        window,
+                        cx,
+                        &renderer(),
+                        &bytes,
+                        gpui::size(side, side),
+                        1.0,
+                        RED,
+                    );
+                    drawn.borrow_mut().push(image.map(|image| image.size(0).width.0));
+                },
+            )
+            .size_full()
+        }
+    }
+
+    #[gpui::test]
+    fn a_landed_raster_repaints_the_view_and_a_resize_draws_the_old_one_until_then(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let drawn = Rc::new(RefCell::new(Vec::new()));
+        let size = Rc::new(std::cell::Cell::new(300.0));
+        let view = Painted {
+            paint: Rc::default(),
+            bytes: Arc::from(
+                &br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>"##[..],
+            ),
+            size: size.clone(),
+            drawn: drawn.clone(),
+        };
+        let window = cx.add_window(|_, _| view);
+        let last = |drawn: &Rc<RefCell<Vec<Option<i32>>>>| *drawn.borrow().last().unwrap();
+        assert_eq!(last(&drawn), None, "the first paint does not wait for the raster");
+        let painted_before = drawn.borrow().len();
+
+        cx.run_until_parked();
+        assert!(drawn.borrow().len() > painted_before, "the landing repainted the view");
+        assert_eq!(last(&drawn), Some(300));
+
+        size.set(400.0);
+        window.update(cx, |_, window, _| window.refresh()).unwrap();
+        // The job for 400 px has not run yet: the 300 px raster is still what is drawn.
+        assert_eq!(last(&drawn), Some(300));
+        cx.run_until_parked();
+        assert_eq!(last(&drawn), Some(400));
     }
 
     #[test]

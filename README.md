@@ -1725,7 +1725,8 @@ not in the table, or a style such as `backgroundColor`, is an error.
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
 the texture atlas when it makes the next one, so an animation holds one atlas
-entry per `<svg>`, not one per frame. The cost is one rasterisation per frame.
+entry per `<svg>`, not one per frame. The cost is one rasterisation per frame, in the
+frame for a small `<svg>` and on a background thread for a large one.
 
 ### Animate a sidebar
 
@@ -4529,11 +4530,14 @@ device resolution, so fills, strokes, gradients and opacity all paint. Raw
 `src` path. The drawing keeps its aspect ratio inside the box, centred, like
 `preserveAspectRatio="xMidYMid meet"`.
 
-The raster is made once per size, colour and document. A box that changes size
-every frame (a transition, a window drag) keeps drawing the last raster,
-stretched to fit, and is rasterised again 100 ms after the size stops changing;
-the first change after a pause is sharp at once. Rasterising happens on the
-paint thread, so a very large SVG costs a frame when its size changes.
+The raster is made once per size, colour and document. A small SVG (up to about 4 KB of
+markup, drawn at up to about 128 x 128 device pixels) is rasterised while the frame paints,
+so an icon is there on its first paint. A bigger one is rasterised on a background thread,
+one job at a time per `<svg>`, and never holds up a frame. Until the job lands the `<svg>`
+keeps drawing its previous raster, stretched to fit the box, and draws nothing on its first
+paint. The view repaints when the new raster is ready, and a size, colour or document that
+changed again while a job ran is rasterised once the job is done, skipping the ones in between.
+The test renderer waits for these jobs before `render()` and `flush()` return.
 
 `currentColor` in the SVG is the element's computed `color`, inherited like in
 the DOM, so `style.color` recolours an icon drawn with `fill="currentColor"` and a
