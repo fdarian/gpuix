@@ -238,6 +238,9 @@ pub struct SelectableText {
     /// The bytes of a paragraph whose inline boxes ask for a `cursor`, see
     /// [`super::inline_cursor`].
     pub inline_cursors: Vec<(Range<usize>, gpui::CursorStyle)>,
+    /// The margin, border and padding of the paragraph's inline boxes along the
+    /// line, see [`super::inline_insets`].
+    pub inline_insets: Vec<gpui::TextInset>,
     /// The inline boxes of a paragraph that can take focus, in tree order, see
     /// [`super::inline_focus`].
     pub inline_focus: Vec<super::inline_focus::FocusableBox>,
@@ -272,6 +275,7 @@ impl SelectableText {
             inline_targets: None,
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
+            inline_insets: Vec::new(),
             inline_focus: Vec::new(),
             inline_decorations: Vec::new(),
         }
@@ -298,6 +302,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_targets,
         inline_boxes,
         inline_cursors,
+        inline_insets,
         inline_focus,
         inline_decorations,
     } = opts;
@@ -312,9 +317,11 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             Some(runs) => StyledText::new(text.clone()).with_runs(runs),
             None => StyledText::new(text.clone()),
         };
+        let styled = styled.with_insets(inline_insets);
         (styled.layout().clone(), styled.into_any_element())
     } else {
-        let inline = super::paragraph::InlineText::new(text.clone(), run_styles);
+        let inline = super::paragraph::InlineText::new(text.clone(), run_styles)
+            .with_insets(inline_insets);
         (inline.layout().clone(), inline.into_any_element())
     };
 
@@ -353,7 +360,9 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 .then(|| selection.lock().wash_range(&key))
                 .flatten()
             {
-                for rect in range_rects(&layout, &range, 0.0, 0.0) {
+                let mut rects = range_rects(&layout, &range, 0.0, 0.0);
+                super::inline_insets::trim_wash(&layout, &text, &range, &mut rects);
+                for rect in rects {
                     window.paint_quad(quad(
                         rect,
                         px(0.0),
@@ -417,7 +426,8 @@ fn paint_highlight_washes(
     window: &mut Window,
 ) {
     for wash in washes {
-        let rects = range_rects(layout, &wash.range, 0.0, 0.0);
+        let mut rects = range_rects(layout, &wash.range, 0.0, 0.0);
+        super::inline_insets::trim_wash(layout, text, &wash.range, &mut rects);
         if rects.is_empty() {
             continue;
         }

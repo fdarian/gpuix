@@ -14,6 +14,7 @@ pub mod inline_cursor;
 pub mod inline_decoration;
 pub mod inline_focus;
 pub mod inline_hit;
+pub mod inline_insets;
 pub mod paint;
 pub mod paragraph;
 pub mod runs;

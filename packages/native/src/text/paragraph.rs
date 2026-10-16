@@ -9,8 +9,8 @@
 //! only gpui knows once the element is in the tree.
 
 use gpui::{
-    px, FontWeight, Hsla, SharedString, StrikethroughStyle, StyledText, TextLayout, TextRun,
-    UnderlineStyle,
+    px, FontWeight, Hsla, SharedString, StrikethroughStyle, StyledText, TextInset, TextLayout,
+    TextRun, UnderlineStyle,
 };
 
 use crate::color::ColorContext;
@@ -177,6 +177,13 @@ impl InlineText {
             styled: StyledText::new(text),
             styles,
         }
+    }
+
+    /// Lays the text out with the space `insets` put around ranges of it, see
+    /// [`super::inline_insets`].
+    pub fn with_insets(mut self, insets: Vec<TextInset>) -> Self {
+        self.styled = self.styled.with_insets(insets);
+        self
     }
 
     pub fn layout(&self) -> &TextLayout {

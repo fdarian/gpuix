@@ -7922,6 +7922,7 @@ fn paragraph_content(
         ctx.focus_styles
             .states_of(id, style, ctx.pointer_states(id, style, inert))
     };
+    let insets = crate::text::inline_insets::Insets::of(ctx.tree, paragraph, &states);
     selectable_text(crate::text::SelectableText {
         group: None,
         selectable: ctx.inherited.selectable,
@@ -7960,6 +7961,7 @@ fn paragraph_content(
             ctx.inherited.inert,
             &states,
         ),
+        inline_insets: insets.text(),
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,

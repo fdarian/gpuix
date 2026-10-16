@@ -2740,10 +2740,48 @@ line-through draws solid, and a thickness is accepted and the line stays 1px.
 - White space is processed as in CSS, see [White space](#white-space).
 
 Not supported inside a paragraph: `fontSize` on a run (GPUI's text runs have no
-size), padding, border and margin on an inline box and `fontStyle` (there is no
-`fontStyle` style yet). A `<span>` with a style that needs a box of its own
-(`position: absolute`, `display: block`, `flex` or `grid`) is laid out as a block
-instead.
+size), the vertical margin, padding and border of an inline box (they move no
+line, as in CSS) and `fontStyle` (there is no `fontStyle` style yet). A `<span>`
+with a style that needs a box of its own (`position: absolute`, `display: block`,
+`flex` or `grid`) is laid out as a block instead.
+
+### Space around an inline box
+
+`marginLeft`, `marginRight`, `paddingLeft`, `paddingRight`, `borderLeftWidth` and
+`borderRightWidth` on a `<span>` or a nested `<text>` take space along the line, as
+on a CSS inline box: the text after the box moves right by their sum, the line
+and the container that wraps around it grow by it, and wrapping counts it, so a
+word followed by the closing padding of its span moves to the next line when the
+padding does not fit. The shorthands `margin`, `padding`, `borderWidth`, `border`,
+`borderLeft` and `borderRight` set the same sides, and a longhand wins over its
+shorthand. `hover`, `active` and the other state styles change the space too.
+
+```tsx
+<text>
+  Press <span style={{ paddingLeft: 6, paddingRight: 6, marginRight: 4 }}>Enter</span> to go on
+</text>
+```
+
+- The box is not painted around its space yet: a border is not drawn, and a
+  span's `backgroundColor` is still its text run's, which fills the whole space,
+  margin included.
+- A span that wraps has its leading space (margin, border and padding) on its first
+  line and its trailing space on its last, as `box-decoration-break: slice` does.
+  The first line of the box can be the start of a wrapped line; the leading space
+  goes with it. The lines in between have none.
+- Boxes nested in each other add up: an inner box that starts where its parent
+  does has the parent's leading space first, then its own.
+- A text selection or a search match that starts or ends on the first or last
+  glyph of a span leaves the space off the end of its wash. A selection that runs
+  across a span washes the space inside it, so it has no holes.
+- Deviations: a `%`, `auto` or `anchor-size()` margin counts as 0 (there is no
+  containing block width to take a percentage of), a negative `marginLeft` or
+  `marginRight` pulls the text as in CSS, and a negative padding or border width
+  counts as 0. A border width that comes from a `border` shorthand needs a line
+  style, as it does on a `div`. The space of a span that holds no text left
+  after white space processing, or none of whose glyphs are painted, is lost: it
+  has no glyph to attach to. A span cut by `text-overflow` or `lineClamp` at its
+  end loses its space with the cut.
 
 ### Events on inline boxes
 
