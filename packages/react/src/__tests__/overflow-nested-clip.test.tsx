@@ -261,3 +261,37 @@ describeNative("nested overflow clips", () => {
     expect(white(sample(150, 150))).toBe(true)
   })
 })
+
+describeNative("a clip beside a visible axis", () => {
+  /** A 60x60 box with rounded corners at (20, 20) holding a red 150x150 square. */
+  const spill = (overflow: Record<string, string>) =>
+    stage(
+      <div style={{ width: 60, height: 60, borderRadius: 24, ...overflow }}>
+        <div style={{ width: 150, height: 150, backgroundColor: RED }} />
+      </div>,
+    )
+
+  it("cuts only x for overflowX clip, and does not round the clip", () => {
+    const sample = paint(spill({ overflowX: "clip", overflowY: "visible" }))
+    expect(red(sample(50, 150))).toBe(true)
+    expect(red(sample(21, 21))).toBe(true)
+    expect(white(sample(100, 50))).toBe(true)
+    expect(white(sample(100, 150))).toBe(true)
+  })
+
+  it("cuts only y for overflowY clip, and does not round the clip", () => {
+    const sample = paint(spill({ overflowX: "visible", overflowY: "clip" }))
+    expect(red(sample(150, 50))).toBe(true)
+    expect(red(sample(21, 21))).toBe(true)
+    expect(white(sample(50, 100))).toBe(true)
+    expect(white(sample(150, 100))).toBe(true)
+  })
+
+  it("cuts both axes for hidden beside visible, since visible computes to auto", () => {
+    const sample = paint(spill({ overflowX: "hidden", overflowY: "visible" }))
+    expect(red(sample(50, 50))).toBe(true)
+    expect(white(sample(100, 50))).toBe(true)
+    expect(white(sample(50, 100))).toBe(true)
+    expect(white(sample(21, 21))).toBe(true)
+  })
+})

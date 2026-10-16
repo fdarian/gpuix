@@ -58,8 +58,28 @@ pub(crate) struct Axes {
 }
 
 impl Axes {
-    /// `overflowX` and `overflowY` override the `overflow` shorthand.
+    /// The computed overflow of a style: `overflowX` and `overflowY` override the `overflow`
+    /// shorthand, and `visible` beside `hidden`, `scroll` or `auto` computes to `auto`, so that
+    /// axis is clipped and scrolls too. Beside `clip` it stays `visible` (CSS Overflow 3).
     pub(crate) fn of(style: &StyleDesc) -> Self {
+        let declared = Self::declared(style);
+        let scroll_container = declared.x.has_offset() || declared.y.has_offset();
+        let computed = |overflow: Overflow| {
+            if scroll_container && overflow == Overflow::Visible {
+                Overflow::Auto
+            } else {
+                overflow
+            }
+        };
+        Self {
+            x: computed(declared.x),
+            y: computed(declared.y),
+        }
+    }
+
+    /// What the style says, before `visible` is resolved against the other axis. A state style
+    /// that declares one axis is read with this, since the other axis is the base style's.
+    pub(crate) fn declared(style: &StyleDesc) -> Self {
         Self {
             x: Overflow::parse(style.overflow_x.as_deref().or(style.overflow.as_deref())),
             y: Overflow::parse(style.overflow_y.as_deref().or(style.overflow.as_deref())),
@@ -663,6 +683,29 @@ mod tests {
         assert!(axes.scrolls());
         assert!(Axes::of(&style(Some("hidden"), None, None)).scrolls());
         assert!(!Axes::of(&style(Some("clip"), None, None)).scrolls());
+    }
+
+    #[test]
+    fn visible_beside_a_scroll_container_axis_computes_to_auto() {
+        for scrolling in ["hidden", "scroll", "auto"] {
+            let axes = Axes::of(&style(None, Some(scrolling), Some("visible")));
+            assert_eq!(axes.x, Overflow::parse(Some(scrolling)));
+            assert_eq!(axes.y, Overflow::Auto);
+            let axes = Axes::of(&style(None, None, Some(scrolling)));
+            assert_eq!(axes.x, Overflow::Auto);
+            assert_eq!(axes.y, Overflow::parse(Some(scrolling)));
+        }
+        let declared = Axes::declared(&style(None, Some("hidden"), None));
+        assert_eq!((declared.x, declared.y), (Overflow::Hidden, Overflow::Visible));
+    }
+
+    #[test]
+    fn visible_beside_clip_stays_visible() {
+        let axes = Axes::of(&style(None, Some("clip"), Some("visible")));
+        assert_eq!((axes.x, axes.y), (Overflow::Clip, Overflow::Visible));
+        assert!(!axes.scrolls());
+        let axes = Axes::of(&style(None, Some("visible"), Some("clip")));
+        assert_eq!((axes.x, axes.y), (Overflow::Visible, Overflow::Clip));
     }
 
     #[test]

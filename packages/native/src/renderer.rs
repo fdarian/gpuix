@@ -8528,15 +8528,17 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     // `hidden` and `clip` are on the Styled trait; scrolling needs a stateful
     // element and is applied by `scroll::apply_container`.
     {
-        let axes = crate::scroll::Axes::of(style);
-        let hides = |overflow| {
-            matches!(
-                overflow,
-                crate::scroll::Overflow::Clip | crate::scroll::Overflow::Hidden
-            )
-        };
+        use crate::scroll::Overflow;
+        let axes = crate::scroll::Axes::declared(style);
+        let hides = |overflow| matches!(overflow, Overflow::Clip | Overflow::Hidden);
         if hides(axes.x) && hides(axes.y) {
             el = el.overflow_hidden();
+        } else if axes.x == Overflow::Clip && axes.y == Overflow::Visible {
+            // `clip` beside `visible` leaves the visible axis visible, which GPUI's `Hidden`
+            // does not: it computes the visible axis to `auto`, as CSS does for `hidden`.
+            el = el.overflow_x_clip();
+        } else if axes.y == Overflow::Clip && axes.x == Overflow::Visible {
+            el = el.overflow_y_clip();
         } else if hides(axes.x) {
             el = el.overflow_x_hidden();
         } else if hides(axes.y) {

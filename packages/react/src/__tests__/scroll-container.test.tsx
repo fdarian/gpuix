@@ -412,6 +412,61 @@ describeNative("overflow values", () => {
   })
 })
 
+describeNative("overflow beside a visible axis", () => {
+  const hitsAt = (renderer: TestRenderer, dx: number, dy: number) => {
+    const clip = bounds(renderer, "clip")
+    return renderer.getElementsAt(clip.x + dx, clip.y + dy)
+  }
+
+  function spill(style: Record<string, string>) {
+    return setup(
+      <div style={{ width: 400, height: 400 }}>
+        <div testId="clip" style={{ width: 100, height: 100, ...style }}>
+          <div testId="inside" style={{ width: 300, height: 300 }} />
+        </div>
+      </div>
+    )
+  }
+
+  it("clips only x for overflowX clip: the child is hit below the box, not beside it", () => {
+    const { renderer, unmount } = spill({ overflowX: "clip", overflowY: "visible" })
+    try {
+      const inside = renderer.findByTestId("inside")!.id
+      expect(hitsAt(renderer, 50, 200)).toContain(inside)
+      expect(hitsAt(renderer, 200, 50)).not.toContain(inside)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("clips only y for overflowY clip: the child is hit beside the box, not below it", () => {
+    const { renderer, unmount } = spill({ overflowX: "visible", overflowY: "clip" })
+    try {
+      const inside = renderer.findByTestId("inside")!.id
+      expect(hitsAt(renderer, 200, 50)).toContain(inside)
+      expect(hitsAt(renderer, 50, 200)).not.toContain(inside)
+    } finally {
+      unmount()
+    }
+  })
+
+  it.each(["hidden", "scroll", "auto"])(
+    "clips both axes for %s beside visible, which computes to auto",
+    (scrolling) => {
+      const { renderer, unmount } = spill({ overflowX: scrolling, overflowY: "visible" })
+      try {
+        const inside = renderer.findByTestId("inside")!.id
+        expect(hitsAt(renderer, 200, 50)).not.toContain(inside)
+        expect(hitsAt(renderer, 50, 200)).not.toContain(inside)
+        // The visible axis became a scroll container axis too.
+        expect(metrics(renderer, "clip").scrollHeight).toBe(300)
+      } finally {
+        unmount()
+      }
+    }
+  )
+})
+
 describeNative("simulated wheel sign", () => {
   it("scrolls down on a positive deltaY and right on a positive deltaX, like WheelEvent", () => {
     const { renderer, unmount } = setup(
