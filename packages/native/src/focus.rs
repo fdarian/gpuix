@@ -106,6 +106,10 @@ impl FocusState {
         self.outbox.pop_front()
     }
 
+    pub fn has_unsent_events(&self) -> bool {
+        !self.outbox.is_empty()
+    }
+
     /// Record where window focus is now, and report the move if there was one.
     ///
     /// `:focus-visible` follows the browser heuristic. A text control always
@@ -504,15 +508,18 @@ impl GpuixView {
         }
     }
 
-    /// Sends the focus events noticed so far through the ordinary queue. What a
-    /// frame notices has no call of JS's to answer to, so it cannot be sent
-    /// synchronously.
-    pub(crate) fn queue_focus_events(&mut self) {
-        while let Some(payload) = self.focus.pop_event() {
-            if let Some(callback) = &self.event_callback {
-                callback(payload);
-            }
+    /// Sends the focus events a frame noticed once the frame is over. They
+    /// cannot go out from inside `render`, which holds the root view and is
+    /// part of a draw that a handler must not re-enter.
+    pub(crate) fn settle_focus_after_frame(&self, window: &gpui::Window, cx: &mut gpui::App) {
+        if !self.focus.has_unsent_events() {
+            return;
         }
+        window.defer(cx, |window, cx| {
+            if let Err(error) = settle_focus(window, cx) {
+                sync_dispatch::report_deferred_error(error);
+            }
+        });
     }
 }
 
@@ -674,6 +681,32 @@ mod tests {
 
         let hovered = PointerStates { hovered: true, ..Default::default() };
         assert!(styles.states_of(9, &none, hovered).hovered);
+    }
+
+    #[test]
+    fn a_noticed_move_waits_in_the_outbox_until_sent() {
+        let tree = tree_with(&[(1, "div"), (2, "div")]);
+        let mut state = FocusState::default();
+        assert!(!state.has_unsent_events());
+
+        let change = state.observe(Some(1), &tree, false, true, true).unwrap();
+        state.push_change(&tree, &change);
+        assert!(state.has_unsent_events());
+
+        // Noticing the same focus again adds nothing, so a later frame cannot
+        // send a move twice.
+        assert!(state.observe(Some(1), &tree, false, true, true).is_none());
+
+        let change = state.observe(Some(2), &tree, false, true, true).unwrap();
+        state.push_change(&tree, &change);
+        let types: Vec<_> = std::iter::from_fn(|| state.pop_event())
+            .map(|event| event.event_type)
+            .collect();
+        assert_eq!(
+            types,
+            ["focus", "focusin", "blur", "focusout", "focus", "focusin"]
+        );
+        assert!(!state.has_unsent_events());
     }
 
     #[test]

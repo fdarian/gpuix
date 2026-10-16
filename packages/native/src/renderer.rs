@@ -6770,7 +6770,7 @@ impl GpuixView {
         }
 
         self.observe_focus_in(tree, window);
-        self.queue_focus_events();
+        self.settle_focus_after_frame(window, cx);
 
         // Clean up handles for elements that no longer exist.
         self.focus_handles

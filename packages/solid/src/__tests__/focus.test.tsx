@@ -370,5 +370,24 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
       expect(queued()).toEqual([])
     })
 
+    it("delivers the events of a focus change a frame notices before the frame returns", () => {
+      const { renderer, idOf } = setup(() => (
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="a" tabIndex={0} style={box} onFocus={() => {}} onBlur={() => {}} />
+        </div>
+      ))
+      renderer.focusElement(idOf("a"))
+      const { sync, queued } = watch(renderer)
+
+      // The window going inactive is GPUI's doing, and the frame reports it.
+      renderer.native.setWindowActive(false)
+      renderer.native.flush()
+      expect(sync).toEqual(["blur:a", "focusout:a"])
+
+      renderer.native.setWindowActive(true)
+      renderer.native.flush()
+      expect(sync.slice(2)).toEqual(["focus:a", "focusin:a"])
+      expect(queued()).toEqual([])
+    })
   })
 })
