@@ -3084,8 +3084,8 @@ mod tests {
             let Some(crate::style::BoxShadowValues::Many(layers)) = middle.box_shadow else {
                 panic!("expected a shadow list");
             };
-            assert_eq!(layers[0].offset_y, 2.0);
-            assert_eq!(layers[0].blur_radius, 4.0);
+            assert_eq!(layers[0].offset_y, crate::css::length::LinearLength::px(2.0));
+            assert_eq!(layers[0].blur_radius, crate::css::length::LinearLength::px(4.0));
         }
 
         fn colour_after(clock: &mut Clock, millis: u64, after: &StyleDesc) -> String {

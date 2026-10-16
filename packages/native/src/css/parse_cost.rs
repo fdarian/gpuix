@@ -6,6 +6,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use crate::color::{ColorContext, Scheme};
+use crate::css::length::LengthContext;
 use crate::style::StyleDesc;
 
 const BACKGROUND_IMAGE: &str = "linear-gradient(135deg, #ff7e5f 0%, #feb47b 50%, rgba(10, 20, 30, 0.8) 100%), \
@@ -43,6 +44,7 @@ fn time(label: &str, mut run: impl FnMut()) {
 #[ignore = "a measurement, not a check"]
 fn parse_cost() {
     let colors = ColorContext::root(Scheme::Light);
+    let lengths = LengthContext::for_tests();
     let style: StyleDesc = serde_json::from_value(serde_json::json!({
         "backgroundImage": BACKGROUND_IMAGE,
         "maskImage": MASK_IMAGE,
@@ -50,19 +52,19 @@ fn parse_cost() {
     .unwrap();
 
     time("background-image (3 layers)", || {
-        black_box(style.resolved_fill(black_box(&colors)));
+        black_box(style.resolved_fill(black_box(&colors), black_box(&lengths)));
     });
     time("box-shadow (3 layers)", || {
         black_box(super::box_shadow::parse(black_box(BOX_SHADOW)));
     });
     time("filter (4 functions)", || {
-        black_box(super::filter::parse_resolved(black_box(FILTER), black_box(&colors)));
+        black_box(super::filter::parse_resolved(black_box(FILTER), black_box(&colors), black_box(&lengths)));
     });
     time("mask-image (1 gradient)", || {
-        black_box(style.resolved_mask(black_box(&colors)));
+        black_box(style.resolved_mask(black_box(&colors), black_box(&lengths)));
     });
     time("clip-path (polygon)", || {
-        black_box(super::clip_path::parse(black_box(CLIP_PATH)));
+        black_box(super::clip_path::parse(black_box(CLIP_PATH), black_box(&lengths)));
     });
 }
 
@@ -72,16 +74,17 @@ fn parse_cost() {
 #[ignore = "a measurement, not a check"]
 fn parse_cost_of_a_string_that_never_repeats() {
     let colors = ColorContext::root(Scheme::Light);
+    let lengths = LengthContext::for_tests();
     let texts: Vec<String> = (0..4096)
         .map(|index| format!("linear-gradient({index}deg, #ff7e5f 0%, #feb47b 50%, rgba(10, 20, 30, 0.8) 100%)"))
         .collect();
     let mut next = 0;
     time("fresh gradient, cached", || {
         next = (next + 1) % texts.len();
-        black_box(super::gradient::parse(black_box(&texts[next]), black_box(&colors)).ok());
+        black_box(super::gradient::parse(black_box(&texts[next]), black_box(&colors), black_box(&lengths)).ok());
     });
     time("fresh gradient, uncached", || {
         next = (next + 1) % texts.len();
-        black_box(super::gradient::parse_uncached(black_box(&texts[next]), black_box(&colors)).ok());
+        black_box(super::gradient::parse_uncached(black_box(&texts[next]), black_box(&colors), black_box(&lengths)).ok());
     });
 }

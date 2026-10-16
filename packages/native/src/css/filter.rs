@@ -2,7 +2,6 @@
 //! parsed into a typed list and resolved into gpui's `FilterFunction`s.
 
 use super::cache::Cache;
-use super::dimension::{parse_length, parse_number_or_percentage, split_dimension};
 use super::dimension::{parse_length, parse_non_negative_length, parse_number_or_percentage, split_dimension};
 use super::length::LengthContext;
 use super::syntax::{function_args, split_whitespace};

@@ -1711,7 +1711,7 @@ mod tests {
         crate::automation::record_bounds(
             id,
             Bounds::default(),
-            gpui::Edges::all(gpui::px(border)),
+            gpui::LayoutInsets { border: gpui::Edges::all(gpui::px(border)), ..Default::default() },
         );
     }
 

@@ -212,14 +212,14 @@ mod tests {
     fn a_box_less_element_hands_its_stand_in_only_the_inherited_properties() {
         let style = StyleDesc {
             color: Some("red".to_string()),
-            font_size: Some(12.0),
+            font_size: Some(crate::css::length::LinearLength::px(12.0)),
             width: Some(crate::style::DimensionValue::Pixels(40.0)),
             background_color: Some("blue".to_string()),
             ..Default::default()
         };
         let part = style.inheritable_part();
         assert_eq!(part.color.as_deref(), Some("red"));
-        assert_eq!(part.font_size, Some(12.0));
+        assert_eq!(part.font_size, Some(crate::css::length::LinearLength::px(12.0)));
         assert!(part.width.is_none());
         assert!(part.background_color.is_none());
     }

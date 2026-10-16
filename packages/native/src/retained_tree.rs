@@ -1051,8 +1051,8 @@ impl RetainedTree {
         let mut own_context = (crate::layout::stacking::is_forced_context(self, element)
             || crate::layout::stacking::creates_context(style, &walk.colors, &walk.lengths))
         .then(Context::default);
-        // Nothing under a hidden element is painted, so nothing is lifted out of it.
-        let hidden = style.and_then(|style| style.visibility.as_deref()) == Some("hidden");
+        // Nothing under a hidden element is painted by a context above it: a `visible`
+        // descendant is, in place, by `paint_rank`.
         let children_context = match own_context.as_mut() {
             Some(own) => Some(own),
             None if hidden => None,
@@ -1750,8 +1750,8 @@ mod tests {
                     height: *height,
                     client_left: 0.0,
                     client_top: 0.0,
-                    client_right: 0.0,
-                    client_bottom: 0.0,
+                    border_right: 0.0,
+                    border_bottom: 0.0,
                 })
         };
         (tree, lookup)
@@ -1953,8 +1953,8 @@ mod tests {
                 height: 100.0,
                 client_left: 0.0,
                 client_top: 0.0,
-                client_right: 0.0,
-                client_bottom: 0.0,
+                border_right: 0.0,
+                border_bottom: 0.0,
             })
         };
         (tree, lookup)

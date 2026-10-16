@@ -73,7 +73,7 @@ impl Measurement {
     pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
         let axis = prop.percent_axis()?;
         if prop == AnimProp::Height && !self.percent_height_resolves {
-            return Some(self.natural_height_px());
+            return self.natural_px(AnimProp::Height);
         }
         let length = match axis {
             Axis::Width => self.parent_content.width,

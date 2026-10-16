@@ -7741,7 +7741,7 @@ fn build_contents_container(
         el = el.stacking_context();
     }
     if let Some(style) = style {
-        el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors);
+        el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors, &ctx.inherited.lengths);
     }
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
@@ -11094,7 +11094,7 @@ mod dimension_length_tests {
 
     fn border_of(page: &Page, id: u64) -> (f64, f64, f64, f64) {
         let bounds = page.bounds(id);
-        (bounds.client_left, bounds.client_top, bounds.client_right, bounds.client_bottom)
+        (bounds.client_left, bounds.client_top, bounds.border_right, bounds.border_bottom)
     }
 
     #[gpui::test]
