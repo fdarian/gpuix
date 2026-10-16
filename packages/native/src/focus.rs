@@ -191,7 +191,7 @@ impl FocusState {
             })
             .any(|ancestor| ancestor == id)),
             other => Err(format!(
-                "matches() supports only :focus, :focus-visible and :focus-within, got `{other}`"
+                "matches() supports only :focus, :focus-visible, :focus-within, :hover and :active, got `{other}`"
             )),
         }
     }
@@ -261,9 +261,8 @@ fn event_payload(
 }
 
 /// Runs a focus change a script asked for (`focus()`, `blur()`, the `within`
-/// moves), then tells JS about it before returning. Waits for the input being
-/// dispatched when it holds the root view, like every state change a handler
-/// makes.
+/// moves), then tells JS about it before returning. When the root view is being
+/// updated it waits for that update, like every state change a handler makes.
 pub(crate) fn change_focus(
     window: &mut Window,
     cx: &mut App,
@@ -422,13 +421,18 @@ impl GpuixView {
         cx.notify();
     }
 
-    /// `element.matches(':focus' | ':focus-visible' | ':focus-within')`.
+    /// `element.matches(selector)` for the focus selectors, `:hover` and `:active`.
     pub(crate) fn matches_focus(
         &mut self,
         id: u64,
         selector: &str,
         window: &gpui::Window,
     ) -> std::result::Result<bool, String> {
+        match selector.trim() {
+            ":hover" => return Ok(self.pointer.borrow().is_hovered(id)),
+            ":active" => return Ok(self.pointer.borrow().is_active(id)),
+            _ => {}
+        }
         self.observe_focus(window);
         let tree = self.tree.lock().unwrap();
         self.focus.matches(&tree, id, selector)

@@ -75,6 +75,8 @@ export class HostRoot implements MotionBindingHost {
   readonly motionReleases: Array<() => void> = []
   /** Nodes taken out of the tree whose element is destroyed at the next flush, unless they are inserted again first. */
   readonly removals = new Set<HostNode>()
+  /** Mounted elements by id, for `document.activeElement`. */
+  readonly elements = new Map<number, HostElement>()
 
   readonly mutations: MutationRenderer
   readonly nativeRenderer: NativeRenderer
@@ -396,6 +398,7 @@ function mount(root: HostRoot, node: HostNode): void {
   if (!node.id) node.id = root.allocateId()
   if (node.mounted) return
   node.mounted = true
+  if (node.kind === "element") root.elements.set(node.id, node)
   root.mutations.createElement(node.id, node.kind === "text" ? "text" : node.type)
   if (node.kind === "text") {
     root.mutations.setText(node.id, node.text)
@@ -462,6 +465,7 @@ export function insertHostNode(
 function markUnmounted(node: HostNode): void {
   node.mounted = false
   if (node.root) {
+    node.root.elements.delete(node.id)
     unregisterEventHandlers(node.root.eventHandlers, node.id)
     // Retired now, released after the batch: an element mounted again before
     // the flush binds its values afresh, and a shared value is never freed between.

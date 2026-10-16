@@ -9,7 +9,7 @@ export interface FocusOptions {
 export interface FocusableElement {
   focus(options?: FocusOptions): void
   blur(): void
-  /** Only `:focus`, `:focus-visible` and `:focus-within`; any other selector throws. */
+  /** Only `:focus`, `:focus-visible`, `:focus-within`, `:hover` and `:active`; any other selector throws. */
   matches(selector: string): boolean
 }
 

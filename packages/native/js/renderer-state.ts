@@ -2,7 +2,7 @@ import type { EventPayload } from "../index.js"
 import { reportUncaught, type DomDispatchResult } from "./events/dispatch.js"
 import { createDragDispatcher } from "./events/drag.js"
 import { handlesEvent, normalizeEventType, runRootEvent } from "./events/keyboard-defaults.js"
-import { GpuixEventTarget } from "./events/window-target.js"
+import { GpuixEventTarget, noteFocusEvent } from "./events/window-target.js"
 import { deliverObservation } from "./observers.js"
 import type {
   ElementIdAllocator,
@@ -293,6 +293,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       }
       const root = active
       if (!root) return false
+      if (received.eventType === "focusin") noteFocusEvent(renderer)
       const event = shapeScrollEvent(normalizeEventType(received))
       if (deliverObservation(renderer, event)) return true
       if (!handlesEvent(root, event)) return false
@@ -306,6 +307,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
     },
     dispatchSync(received) {
       const root = active
+      if (received.eventType === "focusin") noteFocusEvent(renderer)
       const event = normalizeEventType(received)
       if (!root || !handlesEvent(root, event)) {
         return { defaultPrevented: false, propagationStopped: false }

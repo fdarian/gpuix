@@ -723,7 +723,7 @@ describeNative("focus model", () => {
       expect(focused()).toBe(null)
       expect(node.matches(":focus")).toBe(false)
       expect(log).toEqual(["focus", "blur"])
-      expect(() => node.matches(":hover")).toThrow(/:focus/)
+      expect(() => node.matches(":visited")).toThrow(/:focus/)
       expect(() => node.matches("div")).toThrow()
     })
 

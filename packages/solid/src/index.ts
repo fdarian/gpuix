@@ -13,7 +13,12 @@ export {
 } from "./universal.js"
 export { createRoot, GpuixContext, useGpuix, useGpuixRequired } from "./root.js"
 export type { HostElement } from "./host.js"
-export { document, window } from "@gpuix/native/host"
+import { document as sharedDocument, window } from "@gpuix/native/host"
+import type { GpuixDocument } from "@gpuix/native/host"
+import type { HostElement } from "./host.js"
+export { window }
+/** `activeElement` is the focused `HostElement`, the object a `ref` gives. */
+export const document = sharedDocument as GpuixDocument<HostElement>
 export type {
   AddEventListenerOptions,
   DomEvent,

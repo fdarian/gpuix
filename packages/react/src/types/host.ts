@@ -154,6 +154,8 @@ export interface Container {
   motionBindings: Map<number, MotionBinding>
   /** Releases waiting for the mutation batch that stops the elements from reading the value. */
   motionReleases: Array<() => void>
+  /** Mounted host elements by id, for `document.activeElement`. A portal container shares its root's. */
+  instances: Map<number, Instance>
   windowKeyEventHandlers: WindowKeyEventHandlers
   windowKeyEventId: number
   windowSelectionEventId: number

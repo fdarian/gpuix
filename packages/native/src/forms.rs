@@ -205,8 +205,8 @@ fn implicit_submission_allowed(tree: &RetainedTree, form: u64) -> bool {
 }
 
 /// Enter in an `<input>`: submit its form, if it has one and the form's fields
-/// allow it. Runs once the key dispatch is over, because the root view is
-/// leased while a key is dispatched.
+/// allow it. Runs once the key dispatch is over, so the form is read after the
+/// keydown handlers have changed it.
 pub(crate) fn implicit_submission(
     view: gpui::WeakEntity<GpuixView>,
     control: u64,

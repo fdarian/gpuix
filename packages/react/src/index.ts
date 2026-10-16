@@ -1,4 +1,7 @@
 // GPUIX React - React bindings for GPUI
+import { document as sharedDocument } from "@gpuix/native/host"
+import type { GpuixDocument } from "@gpuix/native/host"
+import type { PublicInstance } from "./types/host.js"
 export { createRoot, flushSync } from "./reconciler/index.js"
 export { createPortal } from "./reconciler/portal.js"
 export {
@@ -34,7 +37,6 @@ export {
   MediaQueryList,
   MediaQueryListEvent,
   createTextSearchController,
-  document,
   IntersectionObserver,
   matchMedia,
   observeAppearance,
@@ -47,6 +49,8 @@ export {
   window,
   ResizeObserver,
 } from "@gpuix/native/host"
+/** `activeElement` is the focused element as a `ref` gives it. */
+export const document = sharedDocument as GpuixDocument<PublicInstance>
 export type {
   Appearance,
   AddEventListenerOptions,

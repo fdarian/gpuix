@@ -327,8 +327,8 @@ fn recv_ui_response<T>(receiver: std::sync::mpsc::Receiver<T>, operation: &str) 
     }
 }
 
-/// `update_window` for a change that returns nothing. When it is called from a
-/// handler of an input that holds the root view, it runs after that input.
+/// `update_window` for a change that returns nothing. When it is called while the
+/// root view is already being updated, it runs once that update has returned.
 #[cfg(target_os = "macos")]
 fn update_window_or_defer(
     update: impl FnOnce(&mut GpuixView, &mut gpui::Window, &mut gpui::Context<GpuixView>) + 'static,
@@ -372,7 +372,8 @@ fn update_window<R>(
 }
 
 #[cfg(target_os = "macos")]
-// Input handlers can update GpuixView, so dispatch without leasing the root view.
+// A sync input handler can reach the view through its own renderer calls, so the work that
+// only needs the window runs without leasing the root view.
 fn update_window_without_view<R>(
     update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
 ) -> Result<R> {
@@ -884,8 +885,8 @@ async fn run_ui_commands(
                         .ok();
                 })
             }
-            // Not `window.update`: drawing builds the root view, which that
-            // call has leased.
+            // Not `window.update`: that call leases the root view, and drawing
+            // builds it.
             UiCommand::GetAutomationBounds { response } => {
                 gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
                     window.draw_if_dirty(cx);
@@ -1381,31 +1382,6 @@ impl GpuixRenderer {
         let (response, receiver) = sync_channel(1);
         self.send_ui_command(UiCommand::ControlClock { control, response })?;
         recv_ui_response(receiver, "the automation clock command")
-    }
-
-    /// `with_motion_values` for a write. A handler of an input that holds the
-    /// root view cannot reach the values, so its write lands once that input is
-    /// done. Only macOS runs handlers synchronously.
-    fn write_motion_values(
-        &self,
-        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<(), String>
-            + Send
-            + 'static,
-    ) -> Result<()> {
-        #[cfg(target_os = "macos")]
-        if crate::events::sync_dispatch::in_sync_call() {
-            return update_window_or_defer(move |view, window, cx| {
-                let now = view.clock.now();
-                view.motion_values
-                    .set_appearance(color_scheme_of(window.appearance()));
-                if let Err(message) = run(&mut view.motion_values, now) {
-                    crate::events::sync_dispatch::report_deferred_error(message);
-                }
-                cx.notify();
-                window.refresh();
-            });
-        }
-        self.with_motion_values(true, run)
     }
 
     /// Runs `run` on the UI thread against the window's motion values at the
@@ -2368,8 +2344,8 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
-    /// `element.matches(selector)` for `:focus`, `:focus-visible` and
-    /// `:focus-within`. Any other selector is an error.
+    /// `element.matches(selector)` for `:focus`, `:focus-visible`,
+    /// `:focus-within`, `:hover` and `:active`. Any other selector is an error.
     #[napi]
     pub fn matches_focus(&self, element_id: f64, selector: String) -> Result<bool> {
         let id = to_element_id(element_id)?;
@@ -2778,13 +2754,13 @@ impl GpuixRenderer {
     /// call `stopMotionValue` first to take the value from the animation.
     #[napi]
     pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.write_motion_values(move |values, now| values.set(id, &value, now))
+        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
     }
 
     /// Writes the value, ending any animation and dropping its velocity.
     #[napi]
     pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.write_motion_values(move |values, now| values.jump(id, &value, now))
+        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
     }
 
     /// Animates a value from where it is, with the speed it has. `transition`
@@ -2796,7 +2772,7 @@ impl GpuixRenderer {
         target: serde_json::Value,
         transition: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.write_motion_values(move |values, now| {
+        self.with_motion_values(true, move |values, now| {
             values.animate(id, &target, transition.as_ref(), now)
         })
     }
@@ -2804,7 +2780,7 @@ impl GpuixRenderer {
     /// Ends an animation where it is, keeping the speed for the next one.
     #[napi]
     pub fn stop_motion_value(&self, id: f64) -> Result<()> {
-        self.write_motion_values(move |values, now| values.stop(id, now))
+        self.with_motion_values(true, move |values, now| values.stop(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
@@ -3066,8 +3042,8 @@ impl GpuixRenderer {
     /// ancestor of the focused element, or the scroller under the pointer if nothing is focused.
     /// A focused text input or control keeps its keys.
     ///
-    /// Called from a key handler it runs once the input has returned the root view. That is why
-    /// it reports nothing: whether anything scrolled is not known yet at that point.
+    /// It reports nothing: called while the root view is being updated, it runs once that update
+    /// has returned, and whether anything scrolled is not known yet at that point.
     #[napi]
     pub fn scroll_by_key(&self, key: String, shift: bool) -> Result<()> {
         #[cfg(target_os = "macos")]
@@ -4906,7 +4882,7 @@ pub(crate) struct GpuixView {
     paint_reports: SharedPaintReports,
     /// Where the pointer is and what it is pressing.
     /// Shared with the window's mouse-down listener, which dispatches a press
-    /// while AppKit and the test renderer hold this view leased.
+    /// without reaching the view.
     pub(crate) pointer: Rc<RefCell<crate::events::state::PointerState>>,
 }
 
@@ -6895,8 +6871,8 @@ impl gpui::Render for GpuixView {
                 .child(selection_frame_reset(
                     self.selection.clone(),
                     move |position, app| {
-                        // AppKit (and a11y clicks) dispatch with GpuixView leased.
-                        // Defer until that lease returns or a nested update panics.
+                        // This listener can run inside an update of GpuixView (an
+                        // accessibility activation does). A nested update panics, so wait.
                         let drag_move_view = drag_move_view.clone();
                         app.defer(move |app| {
                             drag_move_view

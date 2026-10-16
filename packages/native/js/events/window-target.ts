@@ -123,8 +123,87 @@ const notifyTypeSubscribers = () => {
   for (const subscriber of [...typeSubscribers]) subscriber()
 }
 
+/** What `document` asks a root so that `activeElement` can name its focused element. */
+type ActiveElementSource = {
+  /** Id of the element that holds focus in the root's window, or `null`. */
+  focusedId(): number | null
+  /** The object the adapter hands out for that element (a ref's value), or `undefined` once the root has dropped it. */
+  elementById(id: number): unknown
+}
+
+type ActiveElementEntry = {
+  source: ActiveElementSource
+  /** Order in which the roots last heard a focus event; higher is more recent. */
+  focusedAt: number
+}
+
+const activeElementEntries = new Map<object, ActiveElementEntry>()
+let focusClock = 0
+
+/**
+ * The `document` of a GPUIX app: the `window` target plus `activeElement`.
+ *
+ * `Element` is what the adapter hands out for an element: React's host
+ * instance, Solid's element.
+ */
+export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
+  /**
+   * The focused element, the same object a `ref` gives, or `null` when nothing
+   * is focused. With several windows (one root each), the window that holds
+   * focus decides: of the roots that have a focused element, the one that heard
+   * a focus event last.
+   */
+  get activeElement(): Element | null {
+    let chosen: { entry: ActiveElementEntry; id: number } | undefined
+    for (const entry of activeElementEntries.values()) {
+      const id = entry.source.focusedId()
+      if (id === null) continue
+      if (!chosen || entry.focusedAt > chosen.entry.focusedAt) chosen = { entry, id }
+    }
+    if (!chosen) return null
+    const element = chosen.entry.source.elementById(chosen.id)
+    if (element === undefined) {
+      throw new Error(`Element ${chosen.id} holds focus but its root has no element for it`)
+    }
+    return element as Element
+  }
+}
+
 export const window = new GpuixEventTarget(notifyTypeSubscribers)
-export const document = new GpuixEventTarget(notifyTypeSubscribers)
+export const document = new GpuixDocument(notifyTypeSubscribers)
+
+/**
+ * Lets `document.activeElement` see the root that drives `renderer`, through
+ * `elementById`: the object the adapter gives for an element id, as a `ref`
+ * does. The returned function takes the root out again. A renderer that cannot
+ * report focus is not listed.
+ */
+export function installActiveElementSource(
+  renderer: { getFocusedElementId?: () => number | null },
+  elementById: (id: number) => unknown
+): () => void {
+  const getFocusedElementId = renderer.getFocusedElementId
+  if (!getFocusedElementId) return () => {}
+  const entry: ActiveElementEntry = {
+    source: { focusedId: () => getFocusedElementId.call(renderer), elementById },
+    focusedAt: 0,
+  }
+  activeElementEntries.set(renderer, entry)
+  return () => {
+    if (activeElementEntries.get(renderer) === entry) activeElementEntries.delete(renderer)
+  }
+}
+
+/** Drops the root of `renderer` whose window is gone, so `activeElement` never asks it. */
+export function forgetActiveElementSource(renderer: object): void {
+  activeElementEntries.delete(renderer)
+}
+
+/** @internal Records that `owner`'s window just moved focus, for the tie-break of `activeElement`. */
+export function noteFocusEvent(owner: object): void {
+  const entry = activeElementEntries.get(owner)
+  if (entry) entry.focusedAt = ++focusClock
+}
 
 /**
  * Keeps `renderer` told which event types `window` or `document` listens for,

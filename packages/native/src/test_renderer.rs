@@ -171,7 +171,7 @@ fn update_view<R>(
     })
 }
 
-/// Runs `update` on the window alone, which a leased root view does not block.
+/// Runs `update` on the window alone, without touching the root view.
 fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -> Result<R> {
     crate::events::sync_dispatch::native_call(|| {
         crate::events::sync_dispatch::route(
@@ -195,14 +195,7 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
 /// From a handler of the input being dispatched that is a measure pass, not a draw.
 fn draw_pending_changes() -> Result<()> {
     window_call(|window, cx| {
-        // A draw builds the root view, which an input dispatched with the lease holds.
-        let leased = window
-            .root::<GpuixView>()
-            .flatten()
-            .is_some_and(|view| view.is_updating(cx));
-        if !leased {
-            window.draw_if_dirty(cx);
-        }
+        window.draw_if_dirty(cx);
     })
 }
 
@@ -212,8 +205,6 @@ thread_local! {
     /// first read after a change still notifies, which is what lets an image that finished
     /// loading since the last frame change its layout.
     static UNFLUSHED_MUTATIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// Whether simulated pointer input holds the root view for its whole dispatch.
-    static LEASE_ROOT_VIEW: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
 }
 
 /// `update_view` for a change that returns nothing. When it is called from a
@@ -262,30 +253,6 @@ fn u32_to_mouse_button(button: u32) -> gpui::MouseButton {
         2 => gpui::MouseButton::Right,
         _ => gpui::MouseButton::Left,
     }
-}
-
-/// Dispatch input the way AppKit does: `WindowHandle<GpuixView>::update` leases
-/// the root view for the whole event. `AnyWindowHandle::update` does not, so a
-/// nested `GpuixView` update would pass here and abort a live window.
-fn simulate_event_with_view_lease(
-    cx: &mut gpui::VisualTestAppContext,
-    window: gpui::AnyWindowHandle,
-    event: impl gpui::InputEvent,
-) {
-    if !LEASE_ROOT_VIEW.with(|lease| lease.get()) {
-        cx.simulate_event(window, event);
-        return;
-    }
-    cx.update_window(window, |root_view, window, cx| {
-        let view = root_view
-            .downcast::<GpuixView>()
-            .expect("test window root is GpuixView");
-        view.update(cx, |_view, cx| {
-            window.dispatch_event(event.to_platform_input(), cx);
-        });
-    })
-    .ok();
-    cx.run_until_parked();
 }
 
 fn file_drag_position(x: f64, y: f64) -> gpui::Point<gpui::Pixels> {
@@ -507,7 +474,7 @@ impl TestGpuixRenderer {
     /// compares this before and after.
     #[napi]
     pub fn get_painted_frame_count(&self) -> Result<f64> {
-        with_test_state(|cx, _window, view| Ok(cx.read(|app| view.read(app).painted_frame_count()) as f64))
+        update_view(|view, _window, _cx| view.painted_frame_count() as f64)
     }
 
     /// Apply a batch of mutations in a single FFI call.
@@ -561,13 +528,10 @@ impl TestGpuixRenderer {
         let button = button.unwrap_or(0);
         with_test_state(|cx, window, _view| {
             // Not `cx.simulate_click`: that helper hard-codes the left button,
-            // so a right click silently became a left click. Lease GpuixView
-            // the same way AppKit does, or this path cannot catch a nested
-            // root-view update.
+            // so a right click silently became a left click.
             let position = gpui::point(gpui::px(x as f32), gpui::px(y as f32));
             let gpui_button = u32_to_mouse_button(button);
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseDownEvent {
                     position,
@@ -577,8 +541,7 @@ impl TestGpuixRenderer {
                     first_mouse: false,
                 },
             );
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseUpEvent {
                     position,
@@ -664,8 +627,7 @@ impl TestGpuixRenderer {
         with_test_state(|cx, window, _view| {
             let button: Option<gpui::MouseButton> = pressed_button.map(u32_to_mouse_button);
 
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseMoveEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -683,8 +645,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn simulate_mouse_exit(&self, x: f64, y: f64) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseExitEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -776,14 +737,6 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_focused_element_id(&self) -> Result<Option<f64>> {
         update_view(|view, window, _cx| view.focused_element_id(window).map(|id| id as f64))
-    }
-
-    /// Whether simulated pointer input holds the root view while it is dispatched, which is the
-    /// default. Without the lease a handler may read layout, which draws, and so the input is
-    /// dispatched the way a window's own input callback does it.
-    #[napi]
-    pub fn set_root_view_lease(&self, lease: bool) {
-        LEASE_ROOT_VIEW.with(|cell| cell.set(lease));
     }
 
     /// Makes the offscreen window key or not, as when the user switches apps.
@@ -905,8 +858,7 @@ impl TestGpuixRenderer {
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseDownEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -934,8 +886,7 @@ impl TestGpuixRenderer {
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::MouseUpEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -990,8 +941,7 @@ impl TestGpuixRenderer {
         with_test_state(|cx, window, _view| {
             let paths =
                 gpui::ExternalPaths(paths.into_iter().map(std::path::PathBuf::from).collect());
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::FileDropEvent::Entered {
                     position: file_drag_position(x, y),
@@ -1006,8 +956,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn simulate_file_drag_move(&self, x: f64, y: f64) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::FileDropEvent::Pending {
                     position: file_drag_position(x, y),
@@ -1021,8 +970,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn simulate_file_drag_submit(&self, x: f64, y: f64) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(
-                cx,
+            cx.simulate_event(
                 window,
                 gpui::FileDropEvent::Submit {
                     position: file_drag_position(x, y),
@@ -1036,7 +984,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn simulate_file_drag_exit(&self) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(cx, window, gpui::FileDropEvent::Exited);
+            cx.simulate_event(window, gpui::FileDropEvent::Exited);
             Ok(())
         })
     }
@@ -1045,7 +993,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn simulate_file_drag_end(&self) -> Result<()> {
         with_test_state(|cx, window, _view| {
-            simulate_event_with_view_lease(cx, window, gpui::FileDropEvent::Ended);
+            cx.simulate_event(window, gpui::FileDropEvent::Ended);
             Ok(())
         })
     }
@@ -1326,16 +1274,10 @@ impl TestGpuixRenderer {
         let format = crate::custom_elements::img::PixelFormat::parse(format.as_deref())
             .map_err(Error::from_reason)?;
         let bytes = pixels.to_vec();
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| {
-                    view.set_image_pixels(id, width, height, bytes, format, window, cx)
-                })
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
-            .map_err(Error::from_reason)
-        })
+        update_view(move |view, window, cx| {
+            view.set_image_pixels(id, width, height, bytes, format, window, cx)
+        })?
+        .map_err(Error::from_reason)
     }
 
     /// Encoded image bytes onto an `<img>` host node.
@@ -1343,14 +1285,8 @@ impl TestGpuixRenderer {
     pub fn set_image(&self, element_id: f64, bytes: Buffer) -> Result<()> {
         let id = to_element_id(element_id)?;
         let bytes = bytes.to_vec();
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| view.set_encoded_image(id, bytes, window, cx))
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
+        update_view(move |view, window, cx| view.set_encoded_image(id, bytes, window, cx))?
             .map_err(Error::from_reason)
-        })
     }
 
     /// `select()` on an `<input>` or `<textarea>`.
@@ -1403,14 +1339,8 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn register_font(&self, data: Buffer) -> Result<()> {
         let bytes = data.to_vec();
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            cx.update_window(window, |_, window, app| {
-                view.update(app, |view, cx| view.register_font(bytes, window, cx))
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?
+        update_view(move |view, window, cx| view.register_font(bytes, window, cx))?
             .map_err(Error::from_reason)
-        })
     }
 
     /// The logical scroll anchor of a `<virtual-list>`:
@@ -1426,58 +1356,38 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn set_debug_frame_overlay(&self, mode: String) -> Result<String> {
         let mode = parse_debug_frame_overlay_mode(&mode)?;
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _app| {
-                window.set_debug_frame_overlay_mode(mode);
-                debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
+        window_call(move |window, _cx| {
+            window.set_debug_frame_overlay_mode(mode);
+            debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
         })
     }
 
     /// Hidden → minimal → full → hidden.
     #[napi]
     pub fn cycle_debug_frame_overlay(&self) -> Result<String> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _app| {
-                window.cycle_debug_frame_overlay_mode();
-                debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
+        window_call(|window, _cx| {
+            window.cycle_debug_frame_overlay_mode();
+            debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
         })
     }
 
     #[napi]
     pub fn get_debug_frame_overlay(&self) -> Result<String> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _app| {
-                debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
+        window_call(|window, _cx| {
+            debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
         })
     }
 
     /// Clears the last 1000 draw samples. Frame count stays.
     #[napi]
     pub fn reset_debug_frame_overlay_stats(&self) -> Result<()> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _app| {
-                window.reset_debug_frame_overlay_stats();
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-            Ok(())
-        })
+        window_call(|window, _cx| window.reset_debug_frame_overlay_stats())
     }
 
     /// Same numbers as the on-screen overlay: current, p90, p99, max, frames.
     #[napi]
     pub fn get_debug_frame_overlay_stats(&self) -> Result<DebugFrameOverlayStats> {
-        with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _app| {
-                debug_frame_overlay_stats_js(window.debug_frame_overlay_stats())
-            })
-            .map_err(|e| Error::from_reason(e.to_string()))
-        })
+        window_call(|window, _cx| debug_frame_overlay_stats_js(window.debug_frame_overlay_stats()))
     }
 
     /// The default action of a scrolling key. See `GpuixRenderer::scroll_by_key`.
@@ -1667,73 +1577,37 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn clock_pause(&self) -> Result<f64> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let now_ms = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, cx| {
-                        let now_ms = view.clock.pause();
-                        cx.notify();
-                        now_ms
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            cx.run_until_parked();
-            Ok(now_ms)
+        update_view(move |view, _window, cx| {
+            let now_ms = view.clock.pause();
+            cx.notify();
+            now_ms
         })
     }
 
     #[napi]
     pub fn clock_set(&self, now_ms: f64) -> Result<f64> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let now_ms = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, cx| {
-                        let now_ms = view.clock.set_ms(now_ms);
-                        cx.notify();
-                        now_ms
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            cx.run_until_parked();
-            Ok(now_ms)
+        update_view(move |view, _window, cx| {
+            let now_ms = view.clock.set_ms(now_ms);
+            cx.notify();
+            now_ms
         })
     }
 
     #[napi]
     pub fn clock_fast_forward(&self, delta_ms: f64) -> Result<f64> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let now_ms = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, cx| {
-                        let now_ms = view.clock.fast_forward_ms(delta_ms);
-                        cx.notify();
-                        now_ms
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            cx.run_until_parked();
-            Ok(now_ms)
+        update_view(move |view, _window, cx| {
+            let now_ms = view.clock.fast_forward_ms(delta_ms);
+            cx.notify();
+            now_ms
         })
     }
 
     #[napi]
     pub fn clock_resume(&self) -> Result<f64> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let now_ms = cx
-                .update_window(window, |_, _window, app| {
-                    view.update(app, |view, cx| {
-                        let now_ms = view.clock.resume();
-                        cx.notify();
-                        now_ms
-                    })
-                })
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-            cx.run_until_parked();
-            Ok(now_ms)
+        update_view(move |view, _window, cx| {
+            let now_ms = view.clock.resume();
+            cx.notify();
+            now_ms
         })
     }
 
@@ -1823,13 +1697,13 @@ impl TestGpuixRenderer {
     /// call `stopMotionValue` first to take the value from the animation.
     #[napi]
     pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.write_motion_values(move |values, now| values.set(id, &value, now))
+        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
     }
 
     /// Writes the value, ending any animation and dropping its velocity.
     #[napi]
     pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.write_motion_values(move |values, now| values.jump(id, &value, now))
+        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
     }
 
     /// Animates a value from where it is, with the speed it has. `transition`
@@ -1841,7 +1715,7 @@ impl TestGpuixRenderer {
         target: serde_json::Value,
         transition: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.write_motion_values(move |values, now| {
+        self.with_motion_values(true, move |values, now| {
             values.animate(id, &target, transition.as_ref(), now)
         })
     }
@@ -1849,7 +1723,7 @@ impl TestGpuixRenderer {
     /// Ends an animation where it is, keeping the speed for the next one.
     #[napi]
     pub fn stop_motion_value(&self, id: f64) -> Result<()> {
-        self.write_motion_values(move |values, now| values.stop(id, now))
+        self.with_motion_values(true, move |values, now| values.stop(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
@@ -1866,26 +1740,6 @@ impl TestGpuixRenderer {
     pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
         self.with_motion_state(false, move |view, _now| {
             view.keyframes.define(&name, &frames_json)
-        })
-    }
-
-    /// `with_motion_values` for a write. A handler of an input that holds the
-    /// root view cannot reach the values, so its write lands once that input is done.
-    fn write_motion_values(
-        &self,
-        run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<(), String> + 'static,
-    ) -> Result<()> {
-        if !crate::events::sync_dispatch::in_sync_call() {
-            return self.with_motion_values(true, run);
-        }
-        update_view_or_defer(move |view, window, cx| {
-            let now = view.clock.now();
-            view.motion_values
-                .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
-            if let Err(message) = run(&mut view.motion_values, now) {
-                crate::events::sync_dispatch::report_deferred_error(message);
-            }
-            cx.notify();
         })
     }
 
@@ -1906,25 +1760,17 @@ impl TestGpuixRenderer {
         repaint: bool,
         run: impl FnOnce(&mut GpuixView, web_time::Instant) -> std::result::Result<R, String>,
     ) -> Result<R> {
-        with_test_state(|cx, window, view| {
-            let view = view.clone();
-            let result = cx
-                .update_window(window, |_, window, app| {
-                    let appearance = crate::renderer::color_scheme_of(window.appearance());
-                    view.update(app, |view, cx| {
-                        let now = view.clock.now();
-                        view.motion_values.set_appearance(appearance);
-                        let result = run(view, now);
-                        if repaint {
-                            cx.notify();
-                        }
-                        result
-                    })
-                })
-                .map_err(|error| Error::from_reason(error.to_string()))?;
-            cx.run_until_parked();
-            result.map_err(Error::from_reason)
-        })
+        update_view(move |view, window, cx| {
+            view.motion_values
+                .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
+            let now = view.clock.now();
+            let result = run(view, now);
+            if repaint {
+                cx.notify();
+            }
+            result
+        })?
+        .map_err(Error::from_reason)
     }
 
     /// Advance GPUI's deterministic test executor and run due timers.

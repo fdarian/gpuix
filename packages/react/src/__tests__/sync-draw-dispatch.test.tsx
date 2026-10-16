@@ -154,8 +154,6 @@ describeNative("layout reads inside an input handler", () => {
         )
       }
       render(<App />)
-      // A window's own input callback does not hold the root view, so a handler may draw.
-      renderer.setRootViewLease(false)
       const field = renderer.findByTestId("field")
       const bounds = renderer.getElementBounds(field.id)!
       expect(renderer.getFocusedElementId()).toBeNull()
@@ -168,7 +166,6 @@ describeNative("layout reads inside an input handler", () => {
       renderer.simulateKeystrokes("a")
       expect(renderer.getTextSelection(field.id)).toMatchObject({ start: 1, end: 1 })
     } finally {
-      renderer.setRootViewLease(true)
       unmount()
     }
   })

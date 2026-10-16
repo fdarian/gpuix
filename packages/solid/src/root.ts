@@ -3,6 +3,7 @@ import type { EventPayload } from "@gpuix/native"
 import {
   createMutationQueue,
   createRendererState,
+  installActiveElementSource,
   runMotionReleases,
   syncWindowEventListeners,
   unregisterEventHandlers,
@@ -75,6 +76,7 @@ export function createRoot(
   })
   let binding: RendererRootBinding | undefined
   let stopWindowEventListeners: (() => void) | undefined
+  let stopActiveElement: (() => void) | undefined
   let dispose: (() => void) | undefined
   const selectionListeners = new Set<(text: string | null) => void>()
   const onSelectionChange = (event: EventPayload, currentRenderer: NativeRenderer) => {
@@ -123,6 +125,7 @@ export function createRoot(
       binding.windowKeyEventId
     )
     stopWindowEventListeners = syncWindowEventListeners(renderer)
+    stopActiveElement = installActiveElementSource(renderer, (id) => container.elements.get(id))
     // Sent on every attach, so a remount without the option restores the default.
     mutations.setKeyboardFocusDim(rootHandlers.keyboardFocusDim !== false)
     syncSelection()
@@ -134,6 +137,8 @@ export function createRoot(
     renderer.setWindowKeyEvents?.(false, false, binding.windowKeyEventId)
     stopWindowEventListeners?.()
     stopWindowEventListeners = undefined
+    stopActiveElement?.()
+    stopActiveElement = undefined
     renderer.setWindowSelectionChange?.(false, binding.windowSelectionEventId)
     renderer.setWindowAppearanceChange?.(false, binding.windowAppearanceEventId)
     binding = undefined

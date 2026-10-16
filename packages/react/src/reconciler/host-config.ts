@@ -348,6 +348,7 @@ function materialize(node: HostNode): HostNodeState {
   const renderer = state.container.renderer
   if ("type" in node) {
     renderer.createElement(node.id, node.type)
+    state.container.instances.set(node.id, node)
     if (state.hidden) renderer.setStyle(node.id, hiddenStyle(node.props.style))
     else sendStyle(renderer, node.id, node.props)
     syncMotionBindings(state.container, node.id, node.props.style)
@@ -367,6 +368,12 @@ function materialize(node: HostNode): HostNodeState {
     state.initialChildren = undefined
   }
   return state
+}
+
+/** What a `ref` gives for the mounted element `id`, or `undefined` once it is gone. */
+export function publicInstanceById(container: Container, id: number): PublicInstance | undefined {
+  const instance = container.instances.get(id)
+  return instance && attachHostMethods(instance)
 }
 
 const portalContainers = new WeakMap<Instance, Container>()

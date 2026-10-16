@@ -28,6 +28,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
+import { forgetActiveElementSource } from "./events/window-target.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
@@ -63,7 +64,6 @@ interface NativeTestRendererApi
   focusNext(): void
   focusPrevious(): void
   getFocusedElementId(): number | null
-  setRootViewLease(lease: boolean): void
   setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
@@ -334,6 +334,9 @@ export interface A11yTreeDump {
 
 // ── TestRenderer ─────────────────────────────────────────────────────
 
+/** The test window is one per thread: making a renderer tears down the one before it. */
+let latestRenderer: TestRenderer | undefined
+
 export class TestRenderer implements NativeRenderer {
   /** Native TestGpuixRenderer — all state lives here in Rust's RetainedTree. */
   private native: NativeTestRendererApi
@@ -370,6 +373,8 @@ export class TestRenderer implements NativeRenderer {
     }
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options.width, options.height)
+    if (latestRenderer) forgetActiveElementSource(latestRenderer)
+    latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)
     registerKeyframesHost(this.native)
     this.applyBatch = this.native.applyBatch.bind(this.native)
@@ -409,6 +414,7 @@ export class TestRenderer implements NativeRenderer {
    *  throw afterwards; the retained tree stays readable. Without it the window is leaked
    *  when the thread exits. */
   dispose(): void {
+    forgetActiveElementSource(this)
     this.native.setSyncEventHandler(null)
     this.native.dispose()
   }
@@ -893,11 +899,6 @@ export class TestRenderer implements NativeRenderer {
   getFocusedElementId(): number | null {
     this.native.flush()
     return this.native.getFocusedElementId()
-  }
-
-  /** Dispatch pointer input without holding the root view, so a handler can read layout. */
-  setRootViewLease(lease: boolean): void {
-    this.native.setRootViewLease(lease)
   }
 
   /** Makes the offscreen window key (`true`, the default) or not, as when the user switches apps. */

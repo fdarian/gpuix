@@ -123,8 +123,8 @@ export declare class GpuixRenderer {
   /** `element.blur()`: clear focus when `element_id` is the focused element. */
   blurElement(elementId: number): void
   /**
-   * `element.matches(selector)` for `:focus`, `:focus-visible` and
-   * `:focus-within`. Any other selector is an error.
+   * `element.matches(selector)` for `:focus`, `:focus-visible`,
+   * `:focus-within`, `:hover` and `:active`. Any other selector is an error.
    */
   matchesFocus(elementId: number, selector: string): boolean
   /** Move focus to the next GPUI tab stop. */
@@ -255,8 +255,8 @@ export declare class GpuixRenderer {
    * ancestor of the focused element, or the scroller under the pointer if nothing is focused.
    * A focused text input or control keeps its keys.
    *
-   * Called from a key handler it runs once the input has returned the root view. That is why
-   * it reports nothing: whether anything scrolled is not known yet at that point.
+   * It reports nothing: called while the root view is being updated, it runs once that update
+   * has returned, and whether anything scrolled is not known yet at that point.
    */
   scrollByKey(key: string, shift: boolean): void
   /**
@@ -482,12 +482,6 @@ export declare class TestGpuixRenderer {
   writeClipboardText(text: string): void
   readClipboardText(): string | null
   getFocusedElementId(): number | null
-  /**
-   * Whether simulated pointer input holds the root view while it is dispatched, which is the
-   * default. Without the lease a handler may read layout, which draws, and so the input is
-   * dispatched the way a window's own input callback does it.
-   */
-  setRootViewLease(lease: boolean): void
   /** Makes the offscreen window key or not, as when the user switches apps. */
   setWindowActive(active: boolean): void
   focusNextWithin(elementId: number): void

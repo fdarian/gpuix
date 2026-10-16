@@ -3,7 +3,11 @@ import type { ReactNode } from "react"
 import ReactReconciler from "react-reconciler"
 import type { OpaqueRoot } from "react-reconciler"
 import { ConcurrentRoot } from "react-reconciler/constants.js"
-import { createMutationQueue, syncWindowEventListeners } from "@gpuix/native/host"
+import {
+  createMutationQueue,
+  installActiveElementSource,
+  syncWindowEventListeners,
+} from "@gpuix/native/host"
 import { GpuixContext, type GpuixContextValue } from "../hooks/use-gpuix.js"
 import type {
   Container,
@@ -16,7 +20,7 @@ import {
   idAllocatorFor,
   unregisterEventHandlers,
 } from "./event-registry.js"
-import { hostConfig } from "./host-config.js"
+import { hostConfig, publicInstanceById } from "./host-config.js"
 import { releaseMotionBindings } from "./motion-bindings.js"
 
 // Cast to any because @types/react-reconciler is out of date with react-reconciler 0.31.0
@@ -75,6 +79,7 @@ export function createRoot(
   const batchedRenderer = createMutationQueue(renderer, (destroyedIds) => {
     for (const id of destroyedIds) {
       unregisterEventHandlers(gpuixContainer.eventHandlers, id)
+      gpuixContainer.instances.delete(id)
     }
     releaseMotionBindings(gpuixContainer, destroyedIds)
   })
@@ -85,6 +90,7 @@ export function createRoot(
     eventHandlers: new Map(),
     motionBindings: new Map(),
     motionReleases: [],
+    instances: new Map(),
     windowKeyEventHandlers: rootEventHandlers,
     windowKeyEventId: 0,
     windowSelectionEventId: 0,
@@ -99,6 +105,7 @@ export function createRoot(
   const windowSelectionEventId = gpuixContainer.windowSelectionEventId
   const windowAppearanceEventId = gpuixContainer.windowAppearanceEventId
   let stopWindowEventListeners: (() => void) | undefined
+  let stopActiveElement: (() => void) | undefined
   try {
     renderer.setWindowKeyEvents?.(
       // Always on: the Tab and Escape defaults run on the key event, and
@@ -116,6 +123,9 @@ export function createRoot(
       windowAppearanceEventId
     )
     stopWindowEventListeners = syncWindowEventListeners(renderer)
+    stopActiveElement = installActiveElementSource(renderer, (id) =>
+      publicInstanceById(gpuixContainer, id)
+    )
   } catch (error) {
     detachRoot(renderer, gpuixContainer)
     throw error
@@ -132,6 +142,7 @@ export function createRoot(
     if (detachRoot(renderer, gpuixContainer)) {
       renderer.setWindowKeyEvents?.(false, false, windowKeyEventId)
       stopWindowEventListeners?.()
+      stopActiveElement?.()
       renderer.setWindowSelectionChange?.(false, windowSelectionEventId)
       renderer.setWindowAppearanceChange?.(false, windowAppearanceEventId)
     }

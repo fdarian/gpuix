@@ -28,7 +28,10 @@ export type { AriaProps }
 export * from "./clipboard.js"
 export {
   document,
+  GpuixDocument,
+  forgetActiveElementSource,
   GpuixEventTarget,
+  installActiveElementSource,
   syncWindowEventListeners,
   window,
   type AddEventListenerOptions,

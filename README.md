@@ -3237,6 +3237,12 @@ pointer is outside the window or over an `appRegion` drag area. Native produces
 only the types that have a listener on `window`, `document` or an element on the
 path, so adding the first listener of a type is what turns it on.
 
+`document.activeElement` is the focused element, the same object a `ref` gives
+(a React instance, a Solid `HostElement`), and `null` when nothing is focused.
+It is current inside a `mousedown` handler, where it is still the element the
+press is about to take focus from. With several windows (one root each), it is
+the focused element of the window that heard a focus event last.
+
 ### Tab and Escape are defaults
 
 **Tab** and **Shift+Tab** move focus through the tab order, like a browser, and
@@ -3282,10 +3288,16 @@ run against the window being dispatched. A handler that throws is reported like
 any other event error and the next handler still runs.
 
 `mousedown`, `pointerdown`, `mouseup`, `pointerup`, `click` and `wheel` handlers
-run the same way on macOS, but the input usually holds the root view while they
-run. A call that only changes state (`focusElement`, `blurElement`, selection,
-motion-value writes) is deferred until the input returns. A call that reads the
-view, such as `getFocusedElementId`, throws; read it from a microtask instead.
+run the same way on macOS and in the test renderer. The input does not hold the
+root view, so a handler can read anything (`getFocusedElementId`, `matches()`,
+`getBoundingClientRect()` after a change made earlier in the same handler,
+scroll metrics, motion values) and gets the current value, and a write
+(`focusElement`, selection, motion-value writes, `setImage`, `setWindowTitle`)
+applies at once. A press moves focus after its `mousedown` handlers have run, so
+focus reads in them still name the element that held it before the press. Only
+the calls that start another input, or drive the test app itself
+(`nativeSimulate*`, `advanceTime`, `captureScreenshot`), cannot be made from a
+handler.
 
 ### Imperative focus
 
@@ -3318,8 +3330,8 @@ buttonRef.current.matches(':focus-visible')
 <div ref={buttonRef} tabIndex={-1}>Focused on demand</div>
 ```
 
-`matches()` supports `:focus`, `:focus-visible` and `:focus-within`; any other
-selector throws. Removing `tabIndex` removes the element from the focus order and
+`matches()` supports `:focus`, `:focus-visible`, `:focus-within`, `:hover` and
+`:active`; any other selector throws. Removing `tabIndex` removes the element from the focus order and
 blurs it if it was focused.
 
 Programmatic focus is the one place `:focus-visible` is inherited: `focus()`
@@ -5850,6 +5862,14 @@ const text = renderer.getAllText()
 ```
 
 `createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
+
+Simulated input is dispatched the way a window's own input callback does it, so a
+handler it runs can read and write the renderer: `getFocusedElementId()`,
+`matches()`, `getBoundingClientRect()` and `document.activeElement` answer
+current values inside an `onMouseDown`, and a `DismissableLayer` (Dialog,
+Popover) can open from one. Only another `nativeSimulate*` call, `advanceTime` or
+`captureScreenshot` throws there. The test window is one per thread: making a
+`TestRenderer` tears down the previous one.
 
 A file drag is simulated in steps, each a native event that reaches your
 handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,

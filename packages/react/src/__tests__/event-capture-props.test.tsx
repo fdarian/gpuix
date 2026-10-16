@@ -30,6 +30,7 @@ function setup() {
     windowSelectionEventId: 0,
     motionBindings: new Map(),
     motionReleases: [],
+    instances: new Map(),
   }
   const create = (props: Props) => {
     const instance = hostConfig.createInstance(

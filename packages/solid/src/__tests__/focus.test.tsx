@@ -201,7 +201,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid focus model", () => {
     target.blur()
     expect(focused()).toBe(null)
     expect(log).toEqual(["focus", "blur"])
-    expect(() => target.matches(":hover")).toThrow(":focus")
+    expect(() => target.matches(":visited")).toThrow(":focus")
   })
 
   it("scrolls into view unless preventScroll is set", () => {
