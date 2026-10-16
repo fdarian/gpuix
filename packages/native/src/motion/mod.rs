@@ -196,7 +196,7 @@ impl Transitions {
         }
     }
 
-    /// `reduced` replaces the transition of every position and size property
+    /// `reduced` replaces the transition of `width`, `height` and the insets
     /// with a jump, whatever the description names for it.
     fn parse(source: Option<&Value>, target: Target, reduced: bool) -> Result<Self, String> {
         let mut fields = match source {
@@ -235,7 +235,7 @@ impl Transitions {
             }
         }
         if reduced && target == Target::Style {
-            for prop in AnimProp::ALL.iter().filter(|prop| prop.is_layout()) {
+            for prop in AnimProp::ALL.iter().filter(|prop| prop.is_positional()) {
                 per_prop.insert(PropKey::Style(*prop), Transition::instant());
             }
         }
@@ -1438,13 +1438,13 @@ mod tests {
     }
 
     #[test]
-    fn reduced_motion_jumps_position_and_size_but_still_animates_the_rest() {
+    fn reduced_motion_jumps_width_but_still_animates_padding_and_opacity() {
         let started = Instant::now();
         let mut state = MotionState::new(&reduced_description(true), None, Colors::root(), None, 0, started).unwrap();
         let mut style = StyleDesc::default();
         state.visible_style(started).unwrap().apply_to(&mut style);
         assert_eq!(style.width, Some(DimensionValue::Pixels(100.0)));
-        assert_eq!(style.padding_left, Some(LinearLength::px(40.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(0.0)));
         assert_eq!(style.opacity, Some(0.0));
 
         let middle = started + Duration::from_millis(500);
@@ -1452,6 +1452,7 @@ mod tests {
         assert!(frame.active);
         assert_eq!(state.applied(middle).unwrap().opacity, Some(0.5));
         assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
+        assert_eq!(style_at(&state, middle).padding_left, Some(LinearLength::px(20.0)));
 
         let end = started + Duration::from_secs(1);
         let frame = state.frame(end);
@@ -1460,25 +1461,101 @@ mod tests {
     }
 
     #[test]
-    fn reduced_motion_on_layout_alone_settles_on_the_first_frame() {
+    fn reduced_motion_on_width_height_and_insets_alone_settles_on_the_first_frame() {
         let started = Instant::now();
         let source = serde_json::json!({
             "generation": 1,
             "reducedMotion": true,
-            "initial": { "height": 0.0, "marginTop": 0.0, "gap": 0.0 },
-            "animate": { "height": 50.0, "marginTop": 8.0, "gap": 4.0 },
+            "initial": { "width": 0.0, "height": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0, "left": 0.0 },
+            "animate": { "width": 10.0, "height": 50.0, "top": 1.0, "right": 2.0, "bottom": 3.0, "left": 4.0 },
             "transition": { "type": "spring" }
         });
         let mut state = MotionState::new(&source, None, Colors::root(), None, 0, started).unwrap();
-        let mut style = StyleDesc::default();
-        state.visible_style(started).unwrap().apply_to(&mut style);
+        let style = style_at(&state, started);
+        assert_eq!(style.width, Some(DimensionValue::Pixels(10.0)));
         assert_eq!(style.height, Some(DimensionValue::Pixels(50.0)));
-        assert_eq!(style.margin_top, Some(DimensionValue::Pixels(8.0)));
-        assert_eq!(style.row_gap, Some(LinearLength::px(4.0)));
+        assert_eq!(style.top, Some(DimensionValue::Pixels(1.0)));
+        assert_eq!(style.right, Some(DimensionValue::Pixels(2.0)));
+        assert_eq!(style.bottom, Some(DimensionValue::Pixels(3.0)));
+        assert_eq!(style.left, Some(DimensionValue::Pixels(4.0)));
         let frame = state.frame(started);
         assert!(!frame.active);
         assert!(frame.just_settled);
         assert_eq!(frame.generation, 1);
+    }
+
+    #[test]
+    fn reduced_motion_keeps_animating_everything_but_width_height_and_the_insets() {
+        let started = Instant::now();
+        let source = serde_json::json!({
+            "reducedMotion": true,
+            "initial": {
+                "padding": 0.0, "margin": 0.0, "gap": 0.0, "flexBasis": 0.0, "minWidth": 0.0, "maxHeight": 0.0,
+                "opacity": 0.0, "backgroundColor": "#000000",
+                "width": 0.0, "height": 0.0, "top": 0.0, "left": 0.0, "right": 0.0, "bottom": 0.0
+            },
+            "animate": {
+                "padding": 10.0, "margin": 10.0, "gap": 10.0, "flexBasis": 10.0, "minWidth": 10.0, "maxHeight": 10.0,
+                "opacity": 1.0, "backgroundColor": "#ffffff",
+                "width": 10.0, "height": 10.0, "top": 10.0, "left": 10.0, "right": 10.0, "bottom": 10.0
+            },
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let state = MotionState::new(&source, None, Colors::root(), None, 0, started).unwrap();
+        let middle = style_at(&state, at(started, 0.5));
+        let px = |value: Option<LinearLength>| value.unwrap().as_px().unwrap();
+        let dimension = |value: Option<DimensionValue>| match value {
+            Some(DimensionValue::Pixels(pixels)) => pixels,
+            other => panic!("expected px, got {other:?}"),
+        };
+        for animating in [
+            px(middle.padding_top),
+            px(middle.padding_left),
+            px(middle.row_gap),
+            px(middle.column_gap),
+            dimension(middle.margin_top),
+            dimension(middle.margin_left),
+            dimension(middle.flex_basis),
+            dimension(middle.min_width),
+            dimension(middle.max_height),
+        ] {
+            assert_eq!(animating, 5.0);
+        }
+        assert_eq!(middle.opacity, Some(0.5));
+        assert_ne!(rgba(middle.background_color.as_deref().unwrap()), rgba("#000000"));
+        assert_ne!(rgba(middle.background_color.as_deref().unwrap()), rgba("#ffffff"));
+        for jumped in [
+            dimension(middle.width),
+            dimension(middle.height),
+            dimension(middle.top),
+            dimension(middle.left),
+            dimension(middle.right),
+            dimension(middle.bottom),
+        ] {
+            assert_eq!(jumped, 10.0);
+        }
+    }
+
+    #[test]
+    fn a_transition_naming_the_padding_shorthand_still_animates_under_reduced_motion_and_one_naming_width_still_jumps() {
+        let started = Instant::now();
+        let source = serde_json::json!({
+            "reducedMotion": true,
+            "initial": { "padding": 0.0, "gap": 0.0, "width": 0.0 },
+            "animate": { "padding": 10.0, "gap": 10.0, "width": 10.0 },
+            "transition": {
+                "duration": 1.0,
+                "ease": "linear",
+                "padding": { "duration": 2.0, "ease": "linear" },
+                "gap": { "duration": 2.0, "ease": "linear" },
+                "width": { "duration": 2.0, "ease": "linear" }
+            }
+        });
+        let state = MotionState::new(&source, None, Colors::root(), None, 0, started).unwrap();
+        let middle = style_at(&state, at(started, 1.0));
+        assert_eq!(middle.padding_right, Some(LinearLength::px(5.0)));
+        assert_eq!(middle.column_gap, Some(LinearLength::px(5.0)));
+        assert_eq!(middle.width, Some(DimensionValue::Pixels(10.0)));
     }
 
     #[test]
@@ -3858,12 +3935,17 @@ mod tests {
         }
 
         #[test]
-        fn reduced_motion_jumps_layout_keyframes_to_the_last_one_and_still_animates_the_rest() {
+        fn reduced_motion_jumps_width_keyframes_to_the_last_one_and_still_animates_the_rest() {
             let started = Instant::now();
             let description = json!({
                 "reducedMotion": true,
-                "initial": { "width": 0.0, "opacity": 0.0 },
-                "animate": { "width": [0.0, 300.0, 100.0], "opacity": [0.0, 1.0, 0.5] },
+                "initial": { "width": 0.0, "left": 0.0, "paddingLeft": 0.0, "opacity": 0.0 },
+                "animate": {
+                    "width": [0.0, 300.0, 100.0],
+                    "left": [0.0, 30.0, 10.0],
+                    "paddingLeft": [0.0, 20.0, 40.0],
+                    "opacity": [0.0, 1.0, 0.5]
+                },
                 "transition": { "duration": 1.0, "ease": "linear", "repeat": "Infinity" }
             });
             let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
@@ -3872,6 +3954,11 @@ mod tests {
             assert!(state.frame(middle).active);
             assert_eq!(state.applied(middle).unwrap().width, Some(100.0));
             near(state.applied(middle).unwrap().opacity.unwrap(), 0.5);
+
+            let mut style = StyleDesc::default();
+            state.visible_style(middle).unwrap().apply_to(&mut style);
+            assert_eq!(style.left, Some(DimensionValue::Pixels(10.0)));
+            assert_eq!(style.padding_left, Some(LinearLength::px(10.0)));
         }
 
         fn measurement(parent_width: f32, natural: f32) -> Measurement {

@@ -48,7 +48,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid MotionConfig", () => {
     expect(widthOf(app.renderer, "box")).toBeCloseTo(50, 0)
   })
 
-  it("jumps position and size under reducedMotion always, and completes", () => {
+  it("jumps width under reducedMotion always, and completes", () => {
     const app = createTestRoot()
     app.renderer.clockPause()
     const completions: string[] = []
@@ -62,6 +62,51 @@ describe.skipIf(!hasNativeTestRenderer)("Solid MotionConfig", () => {
     expect(widthOf(app.renderer, "box")).toBe(100)
     frame(app.renderer, 16)
     expect(completions).toEqual(["done"])
+  })
+
+  it("keeps animating padding and gap while width and height jump", () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    app.render(() => (
+      <MotionConfig reducedMotion="always">
+        <div style={columnStyle}>
+          <motion.div
+            testId="padded"
+            style={{ height: 10 }}
+            initial={{ paddingLeft: 0 }}
+            animate={{ paddingLeft: 100 }}
+            transition={linear}
+          />
+          <motion.div
+            testId="spaced"
+            style={{ display: "flex", flexDirection: "row" }}
+            initial={{ gap: 0 }}
+            animate={{ gap: 100 }}
+            transition={linear}
+          >
+            <div style={{ width: 10, height: 10 }} />
+            <div style={{ width: 10, height: 10 }} />
+          </motion.div>
+          <motion.div
+            testId="sized"
+            initial={{ width: 0, height: 0 }}
+            animate={{ width: 300, height: 20 }}
+            transition={linear}
+          />
+        </div>
+      </MotionConfig>
+    ))
+    const sized = app.renderer.getElementBounds(app.renderer.findByTestId("sized")!.id)!
+    expect(sized.width).toBe(300)
+    expect(sized.height).toBe(20)
+    expect(widthOf(app.renderer, "padded")).toBe(0)
+    expect(widthOf(app.renderer, "spaced")).toBe(20)
+    frame(app.renderer, 500)
+    expect(widthOf(app.renderer, "padded")).toBeCloseTo(50, 0)
+    expect(widthOf(app.renderer, "spaced")).toBeCloseTo(70, 0)
+    frame(app.renderer, 600)
+    expect(widthOf(app.renderer, "padded")).toBe(100)
+    expect(widthOf(app.renderer, "spaced")).toBe(120)
   })
 
   it("still animates opacity", () => {
@@ -240,6 +285,23 @@ describe.skipIf(!hasNativeTestRenderer)("Solid MotionConfig", () => {
       expect(widthOf(app.renderer, "box")).toBe(200)
       expect(width.isAnimating()).toBe(false)
       await controls.finished
+    })
+
+    it("keeps animating a value bound to padding", () => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      const padding = motionValue(0)
+      app.render(() => (
+        <MotionConfig reducedMotion="always">
+          <div style={columnStyle}>
+            <motion.div testId="box" animate={{ height: 10 }} style={{ paddingLeft: padding, height: 10 }} />
+          </div>
+        </MotionConfig>
+      ))
+      animate(padding, 100, linear)
+      frame(app.renderer, 500)
+      expect(widthOf(app.renderer, "box")).toBeCloseTo(50, 0)
+      expect(padding.isAnimating()).toBe(true)
     })
 
     it("keeps animating a value bound to opacity", () => {

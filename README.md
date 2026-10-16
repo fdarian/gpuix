@@ -2024,25 +2024,26 @@ import { MotionConfig, motion } from '@gpuix/react'
   `"always"`, or `"user"`, which follows `prefers-reduced-motion` and changes
   with the OS setting (see [`matchMedia`](#matchmedia)).
 
-Reduced, the position and size properties jump to their target instead of
-animating: `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`,
-`top`, `right`, `bottom`, `left`, the margins, the paddings, `gap`, `rowGap`,
-`columnGap` and `flexBasis`. Opacity, colours, shadows, radii, borders and the
-rest still animate with their transition. The jump still counts as the
-animation settling: `onMotionComplete` fires, and `AnimatePresence` exits
-complete. Flipping the setting while an animation runs finishes the reduced
-properties at once.
+Reduced, `width`, `height`, `top`, `right`, `bottom` and `left` jump to their
+target instead of animating, and so do [layout animations](#layout-animations).
+Nothing else changes: padding, margin, `gap`, min and max sizes, `flexBasis`,
+opacity, colours, shadows, radii and borders still animate with their
+transition. This is Motion for React's rule, less the transforms GPUI does not
+have. The jump still counts as the animation settling: `onMotionComplete`
+fires, and `AnimatePresence` exits complete. Flipping the setting while an
+animation runs finishes the jumping properties at once.
 
 `animate()` on a motion value follows the same rule when the value is bound,
-through `style` of a `motion.*` component under the config, to one of those
-properties: the value jumps and `finished` resolves. A value bound to opacity,
-bound to a plain `div`, or not bound to any element animates normally.
+through `style` of a `motion.*` component under the config, to `width`,
+`height`, `top`, `right`, `bottom` or `left`: the value jumps and `finished`
+resolves. Motion for React does not reduce a bare `animate(value)`; gpuix does,
+so a bound size follows the setting. A value bound to padding or opacity, bound
+to a plain `div`, or not bound to any element animates normally.
 
 CSS `transition` is not affected, as in the DOM. `useReducedMotionConfig()`
 (`createReducedMotionConfig()` in Solid, returning an accessor) reports whether
 the nearest `MotionConfig` is reduced right now, for animation you drive
-yourself. [Layout animations](#layout-animations) follow the setting: a reduced
-`layout` or `layoutId` box jumps to its new position.
+yourself.
 
 ### Layout animations
 

@@ -1,6 +1,6 @@
 /// What `MotionConfig` means to the adapters, shared by React and Solid: the
 /// reduced-motion setting, how nested configs combine, and the reduction of
-/// motion values that an element binds to a position or size property.
+/// motion values that an element binds to `width`, `height` or an inset.
 
 import type { MotionTransition } from "./host.js"
 import { isMotionValue } from "./motion-value.js"
@@ -40,38 +40,15 @@ export function isReducedMotion(
   }
 }
 
-/** Style keys whose animation reduced motion replaces with a jump. Mirrors `AnimProp::is_layout` and the shorthands that expand to it. */
-const REDUCED_STYLE_KEYS: ReadonlySet<string> = new Set([
-  "flexBasis",
-  "gap",
-  "rowGap",
-  "columnGap",
-  "width",
-  "height",
-  "minWidth",
-  "minHeight",
-  "maxWidth",
-  "maxHeight",
-  "padding",
-  "paddingTop",
-  "paddingRight",
-  "paddingBottom",
-  "paddingLeft",
-  "margin",
-  "marginTop",
-  "marginRight",
-  "marginBottom",
-  "marginLeft",
-  "top",
-  "right",
-  "bottom",
-  "left",
-])
+/** Style keys whose animation reduced motion replaces with a jump. Mirrors `AnimProp::is_positional`. */
+const REDUCED_STYLE_KEYS: ReadonlySet<string> = new Set(["width", "height", "top", "right", "bottom", "left"])
 
 /**
- * Makes `animate()` jump on the motion values `style` binds to a position or
- * size property. Returns the release. A value bound only to opacity, a colour
- * and the like keeps animating, and so does one that no element binds.
+ * Makes `animate()` jump on the motion values `style` binds to `width`,
+ * `height`, `top`, `right`, `bottom` or `left`. Returns the release. A value
+ * bound to padding, opacity, a colour and the like keeps animating, and so
+ * does one that no element binds. Framer leaves a bare `animate(mv)` alone;
+ * gpuix reduces it so a bound size or inset follows the setting.
  */
 export function reduceMotionValues(style: unknown): () => void {
   if (typeof style !== "object" || style === null) return () => {}

@@ -27,11 +27,10 @@ export type MotionConfigProps = MotionConfigValue & {
  * Defaults for the `motion.*` components below it. A nested config overrides
  * only what it sets.
  *
- * `reducedMotion` is `"never"` unless set. Reduced, position and size
- * properties (`width`, `height`, min/max, insets, margin, padding, gap,
- * `flexBasis`) jump to their target instead of animating, and so do motion
- * values bound to them; opacity, colours, shadows and radii still animate.
- * `"user"` follows the OS setting.
+ * `reducedMotion` is `"never"` unless set. Reduced, layout animations and
+ * `width`, `height`, `top`, `right`, `bottom` and `left` jump to their target
+ * instead of animating, and so do motion values bound to those style keys;
+ * nothing else changes. `"user"` follows the OS setting.
  */
 export function MotionConfig(props: MotionConfigProps): JSX.Element {
   const parent = useContext(MotionConfigContext)

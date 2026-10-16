@@ -51,7 +51,7 @@ describeNative("MotionConfig", () => {
     expect(widthOf(renderer, "box")).toBeCloseTo(50, 0)
   })
 
-  it("jumps position and size under reducedMotion always, and completes", () => {
+  it("jumps width under reducedMotion always, and completes", () => {
     const { render, renderer } = createTestRoot()
     renderer.clockPause()
     const completions: string[] = []
@@ -65,6 +65,51 @@ describeNative("MotionConfig", () => {
     expect(widthOf(renderer, "box")).toBe(100)
     frame(renderer, 16)
     expect(completions).toEqual(["done"])
+  })
+
+  it("keeps animating padding and gap while width and height jump", () => {
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    render(
+      <MotionConfig reducedMotion="always">
+        <div style={column}>
+          <motion.div
+            testId="padded"
+            style={{ height: 10 }}
+            initial={{ paddingLeft: 0 }}
+            animate={{ paddingLeft: 100 }}
+            transition={linear}
+          />
+          <motion.div
+            testId="spaced"
+            style={{ display: "flex", flexDirection: "row" }}
+            initial={{ gap: 0 }}
+            animate={{ gap: 100 }}
+            transition={linear}
+          >
+            <div style={{ width: 10, height: 10 }} />
+            <div style={{ width: 10, height: 10 }} />
+          </motion.div>
+          <motion.div
+            testId="sized"
+            initial={{ width: 0, height: 0 }}
+            animate={{ width: 300, height: 20 }}
+            transition={linear}
+          />
+        </div>
+      </MotionConfig>
+    )
+    const sized = renderer.getElementBounds(renderer.findByTestId("sized").id)
+    expect(sized.width).toBe(300)
+    expect(sized.height).toBe(20)
+    expect(widthOf(renderer, "padded")).toBe(0)
+    expect(widthOf(renderer, "spaced")).toBe(20)
+    frame(renderer, 500)
+    expect(widthOf(renderer, "padded")).toBeCloseTo(50, 0)
+    expect(widthOf(renderer, "spaced")).toBeCloseTo(70, 0)
+    frame(renderer, 600)
+    expect(widthOf(renderer, "padded")).toBe(100)
+    expect(widthOf(renderer, "spaced")).toBe(120)
   })
 
   it("still animates opacity", () => {
@@ -229,13 +274,19 @@ describeNative("MotionConfig", () => {
   })
 
   describe("motion values", () => {
-    function Bound(props: { property: "width" | "opacity"; value: MotionValue<number> }) {
+    function Bound(props: { property: "width" | "paddingLeft" | "opacity"; value: MotionValue<number> }) {
       return (
         <div style={column}>
           <motion.div
             testId="box"
             animate={{ height: 10 }}
-            style={{ width: 40, height: 10, [props.property]: props.value } as never}
+            style={
+              {
+                height: 10,
+                ...(props.property === "paddingLeft" ? {} : { width: 40 }),
+                [props.property]: props.value,
+              } as never
+            }
           />
         </div>
       )
@@ -255,6 +306,21 @@ describeNative("MotionConfig", () => {
       expect(widthOf(renderer, "box")).toBe(200)
       expect(width.isAnimating()).toBe(false)
       await controls.finished
+    })
+
+    it("keeps animating a value bound to padding", () => {
+      const { render, renderer } = createTestRoot()
+      renderer.clockPause()
+      const padding = motionValue(0)
+      render(
+        <MotionConfig reducedMotion="always">
+          <Bound property="paddingLeft" value={padding} />
+        </MotionConfig>
+      )
+      animate(padding, 100, linear)
+      frame(renderer, 500)
+      expect(widthOf(renderer, "box")).toBeCloseTo(50, 0)
+      expect(padding.isAnimating()).toBe(true)
     })
 
     it("keeps animating a value bound to opacity", () => {

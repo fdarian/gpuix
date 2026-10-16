@@ -543,33 +543,13 @@ impl AnimProp {
         }
     }
 
-    /// Whether the property moves or resizes boxes, which reduced motion
-    /// replaces with a jump (Framer disables its layout animations). Colours,
-    /// opacity, shadows and radii are not among them.
-    pub(super) fn is_layout(self) -> bool {
+    /// Whether reduced motion replaces the property's animation with a jump.
+    /// Framer's `positionalKeys` less the transforms GPUI does not have; padding,
+    /// margin, gap, min/max sizes and `flexBasis` keep animating there.
+    pub(super) fn is_positional(self) -> bool {
         matches!(
             self,
-            Self::FlexBasis
-                | Self::RowGap
-                | Self::ColumnGap
-                | Self::Width
-                | Self::Height
-                | Self::MinWidth
-                | Self::MinHeight
-                | Self::MaxWidth
-                | Self::MaxHeight
-                | Self::PaddingTop
-                | Self::PaddingRight
-                | Self::PaddingBottom
-                | Self::PaddingLeft
-                | Self::MarginTop
-                | Self::MarginRight
-                | Self::MarginBottom
-                | Self::MarginLeft
-                | Self::Top
-                | Self::Right
-                | Self::Bottom
-                | Self::Left
+            Self::Width | Self::Height | Self::Top | Self::Right | Self::Bottom | Self::Left
         )
     }
 

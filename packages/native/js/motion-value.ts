@@ -247,7 +247,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #state: MotionData | undefined
   #attachment: Attachment | undefined
   #bindings = 0
-  /** Elements that bind this value to a position or size property under reduced motion. */
+  /** Elements that bind this value to `width`, `height` or an inset under reduced motion. */
   #reducers = 0
   #destroyed = false
   #animation: Animation | undefined
@@ -388,7 +388,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
    * Makes `animate()` jump to its target, finishing on the next frame as a
    * zero-length animation does, for as long as the returned release is not
    * called. The adapters call it for a value that a reduced-motion
-   * `motion.*` element binds to a position or size property.
+   * `motion.*` element binds to `width`, `height` or an inset.
    */
   reduceMotion(): () => void {
     this.#reducers += 1
