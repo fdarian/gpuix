@@ -8315,23 +8315,23 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     }
     if let Some(radii) = style.border_radius {
         el = el
-            .rounded_tl(radii.0.top_left)
-            .rounded_tr(radii.0.top_right)
-            .rounded_br(radii.0.bottom_right)
-            .rounded_bl(radii.0.bottom_left);
+            .rounded_tl(radii.0.top_left.resolve(lengths))
+            .rounded_tr(radii.0.top_right.resolve(lengths))
+            .rounded_br(radii.0.bottom_right.resolve(lengths))
+            .rounded_bl(radii.0.bottom_left.resolve(lengths));
     }
     // Apply corner longhands after the shorthand so the explicit corner wins.
     if let Some(radius) = style.border_top_left_radius {
-        el = el.rounded_tl(radius.0);
+        el = el.rounded_tl(radius.resolve(lengths));
     }
     if let Some(radius) = style.border_top_right_radius {
-        el = el.rounded_tr(radius.0);
+        el = el.rounded_tr(radius.resolve(lengths));
     }
     if let Some(radius) = style.border_bottom_left_radius {
-        el = el.rounded_bl(radius.0);
+        el = el.rounded_bl(radius.resolve(lengths));
     }
     if let Some(radius) = style.border_bottom_right_radius {
-        el = el.rounded_br(radius.0);
+        el = el.rounded_br(radius.resolve(lengths));
     }
     el = crate::css::border::apply_shorthands(el, style, colors, lengths);
     // `borderWidth: 0` must clear a border, not be ignored: an element that
@@ -12501,5 +12501,117 @@ mod stacking_build_tests {
     fn a_static_box_with_a_z_index_stays_in_tree_order(cx: &mut gpui::TestAppContext) {
         let b = r#"{"zIndex": 5, "width": 100, "height": 100}"#;
         assert_eq!(paint_order(cx, ROOT, b, C), ["a", "b", "c"]);
+    }
+}
+
+/// Border radii in the units of lane 3, painted.
+#[cfg(test)]
+mod paint_integration_tests {
+    use super::*;
+
+    /// A container with `style`, holding `a ` and then a `<span>` of `span_style` around `b`.
+    pub(super) fn painted(
+        cx: &mut gpui::TestAppContext,
+        container_style: &str,
+        span_style: &str,
+    ) -> gpui::WindowHandle<GpuixView> {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            let container: StyleDesc = serde_json::from_str(container_style).unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(container));
+            tree.set_root(1);
+            tree.create_element(2, "text".to_owned());
+            tree.set_text(2, "a ".to_owned());
+            tree.append_child(1, 2);
+            tree.create_element(3, "span".to_owned());
+            let span: StyleDesc = serde_json::from_str(span_style).unwrap();
+            tree.set_style(3, Arc::new(span));
+            tree.append_child(1, 3);
+            tree.create_element(4, "text".to_owned());
+            tree.set_text(4, "bbbbbbbb".to_owned());
+            tree.append_child(3, 4);
+        }
+        let window = cx.add_window(|window, _| {
+            crate::events::enable_dom_hit_testing(window);
+            GpuixView::new(
+                tree,
+                None,
+                "test".to_owned(),
+                SharedSelection::default(),
+                crate::events::state::PointerRequests::default(),
+            )
+        });
+        cx.update_window(window.into(), |_, window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+        })
+        .unwrap();
+        window
+    }
+
+    fn quads(window: gpui::WindowHandle<GpuixView>, cx: &mut gpui::TestAppContext) -> Vec<gpui::Quad> {
+        cx.update_window(window.into(), |_, window, _| window.painted_quads()).unwrap()
+    }
+
+    /// The radii of the first quad of the container, in px.
+    fn container_radii(cx: &mut gpui::TestAppContext, style: &str) -> ([f32; 4], [f32; 4]) {
+        let window = painted(cx, style, "{}");
+        let scale = cx.update_window(window.into(), |_, window, _| window.scale_factor()).unwrap();
+        let quad = quads(window, cx)
+            .into_iter()
+            .find(|quad| quad.background.as_solid().is_some())
+            .expect("the container paints a background");
+        let corners = |radii: gpui::Corners<gpui::ScaledPixels>| {
+            [radii.top_left, radii.top_right, radii.bottom_right, radii.bottom_left].map(|radius| radius.0 / scale)
+        };
+        (corners(quad.corner_radii), corners(quad.corner_radii_y))
+    }
+
+    const BOX: &str = r#""width": 400, "height": 400, "fontSize": 20, "backgroundColor": "red""#;
+
+    #[gpui::test]
+    fn a_border_radius_in_em_rem_and_viewport_units_resolves_against_the_element(cx: &mut gpui::TestAppContext) {
+        let (x, y) = container_radii(cx, &format!(r#"{{{BOX}, "borderRadius": "1em 0.5rem 1vh 1vmax"}}"#));
+        let viewport = cx
+            .update_window(cx.windows()[0], |_, window, _| window.viewport_size())
+            .unwrap();
+        let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
+        assert_eq!(x[0], 20.0);
+        // The container is the root, so its rem is its own font size.
+        assert_eq!(x[1], 10.0);
+        assert!((x[2] - height * 0.01).abs() < 0.01, "{x:?}");
+        assert!((x[3] - width.max(height) * 0.01).abs() < 0.01, "{x:?}");
+        // A corner without a vertical radius is circular: the same on both axes, or zero for "same".
+        assert!(y.iter().zip(x).all(|(y, x)| *y == 0.0 || *y == x), "{y:?} {x:?}");
+    }
+
+    #[gpui::test]
+    fn a_calc_radius_mixing_a_length_and_a_percentage_keeps_the_percentage_per_axis(cx: &mut gpui::TestAppContext) {
+        // 1em is 20px; the box is 400 wide and 200 high.
+        let (x, y) = container_radii(
+            cx,
+            r#"{"width": 400, "height": 200, "fontSize": 20, "backgroundColor": "red", "borderRadius": "calc(1em + 10%)"}"#,
+        );
+        assert_eq!(x, [60.0; 4]);
+        assert_eq!(y, [40.0; 4]);
+    }
+
+    #[gpui::test]
+    fn an_elliptical_radius_with_font_relative_units_paints_the_ellipse(cx: &mut gpui::TestAppContext) {
+        let (x, y) = container_radii(cx, &format!(r#"{{{BOX}, "borderRadius": "2em / 0.5em"}}"#));
+        assert_eq!(x, [40.0; 4]);
+        assert_eq!(y, [10.0; 4]);
+    }
+
+    #[gpui::test]
+    fn a_larger_font_makes_the_same_em_radius_larger(cx: &mut gpui::TestAppContext) {
+        let (small, _) = container_radii(cx, &format!(r#"{{{BOX}, "borderTopLeftRadius": "1em"}}"#));
+        let (large, _) = container_radii(
+            cx,
+            r#"{"width": 400, "height": 400, "fontSize": 30, "backgroundColor": "red", "borderTopLeftRadius": "1em"}"#,
+        );
+        assert_eq!((small[0], large[0]), (20.0, 30.0));
     }
 }

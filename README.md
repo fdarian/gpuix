@@ -2858,9 +2858,9 @@ search match lies over them.
   `box-decoration-break: clone` is not available.
 - The border is read like a `div`'s: `border` and the side shorthands need a line
   style, a missing `borderColor` is `currentColor` for a shorthand and clear for
-  `borderWidth` alone, and `solid` and `dashed` are the only styles (`dashed` makes
-  every side dashed, as GPUI has one line style per element). A radius is circular
-  and in px, and a corner is the corner longhand, else `borderRadius`.
+  `borderWidth` alone, and every [line style](#borders) is drawn, on each side as it
+  is declared. A radius is the one a `div` has, elliptical and in any length, and a
+  corner is the corner longhand, else `borderRadius`.
 - The `outline` ring follows the corners of the fragment. The pointer, the cursor
   and the rect that `ResizeObserver` and `IntersectionObserver` report use the same
   border box, so a point in the padding above the text of a span is on the span and
@@ -5683,8 +5683,8 @@ declaration names is `solid`, unlike CSS, where the initial style is `none`:
 
 #### Rounded corners
 
-`borderRadius` takes a number (px) or the CSS string: one to four lengths or
-percentages for top-left, top-right, bottom-right and bottom-left (the `margin`
+`borderRadius` takes a number (px) or the CSS string: one to four [lengths](#lengths)
+or percentages for top-left, top-right, bottom-right and bottom-left (the `margin`
 expansion), then optionally `/` and one to four vertical radii. The four corner
 longhands (`borderTopLeftRadius` ...) take a number or `"<horizontal>
 [<vertical>]"` and win over the shorthand.
@@ -5696,6 +5696,8 @@ longhands (`borderTopLeftRadius` ...) take a number or `"<horizontal>
 <div style={{ borderRadius: '10px 20px / 5px' }} />
 <div style={{ borderRadius: '50% / 10px 20px' }} />
 <div style={{ borderTopLeftRadius: '50% 20px' }} />
+<div style={{ borderRadius: '0.5em' }} />                   {/* em, rem, vw, vh, vmin and vmax work */}
+<div style={{ borderRadius: 'calc(1em + 10%)' }} />         {/* a length and a percentage in one */}
 ```
 
 A percentage is of the border box, the width for a horizontal radius and the
@@ -5703,9 +5705,12 @@ height for a vertical one, and is resolved when the box is laid out. A single
 percentage rounds both axes by it, so `"50%"` on a 200x100 box is an ellipse;
 `"50px"` is a circle. A zero in either radius makes the corner square, and radii
 that add up to more than a side are scaled down together (CSS Backgrounds 3
-section 5.5). Lengths are `px` or a bare `0`, or a `calc()` of them; `em`, `rem`
-and the viewport units are not supported. A negative or invalid value, in a
-state style too, throws instead of being ignored. The radius cuts the background,
+section 5.5). Lengths are any [length](#lengths), including a `calc()` that mixes a
+length and a percentage: the length part resolves against the element's font size,
+the root's and the window when the style is applied, and the percentage stays per
+axis. A radius that is negative whatever the units are, or invalid, in a state style
+too, throws instead of being ignored; one that only comes out negative
+(`calc(1em - 20px)`) is zero. The radius cuts the background,
 the border, the shadow, the `overflow` clip and the hit area. The `round` of
 `clipPath` `inset()`, `rect()` and `xywh()` takes the same `a / b` form.
 

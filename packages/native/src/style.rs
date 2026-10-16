@@ -153,46 +153,74 @@ impl BoxShadowValues {
 }
 
 /// `borderRadius`: a number of px or a CSS string, parsed when the style arrives
-/// so an invalid one is an error at the commit and not a missing corner.
+/// so an invalid one is an error at the commit and not a missing corner. The lengths
+/// resolve when the style is applied ([`CornerRadiusValue::resolve`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BorderRadiusValue(pub gpui::Corners<gpui::CornerRadius>);
+pub struct BorderRadiusValue(pub gpui::Corners<CornerRadiusValue>);
 
-/// A corner longhand such as `borderTopLeftRadius`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CornerRadiusValue(pub gpui::CornerRadius);
+/// A corner longhand such as `borderTopLeftRadius`: the horizontal radius and, for an
+/// elliptical corner, the vertical one. A percentage is of the border box on its own axis.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CornerRadiusValue {
+    pub x: LinearLength,
+    /// `None` is the same as `x`.
+    pub y: Option<LinearLength>,
+}
 
 impl StyleDesc {
     /// The four corners once the corner longhands are laid over `borderRadius`;
     /// a corner neither sets is square.
-    pub(crate) fn corner_radii(&self) -> gpui::Corners<gpui::CornerRadius> {
+    pub(crate) fn corner_radii(&self) -> gpui::Corners<CornerRadiusValue> {
         let mut corners = self.border_radius.map(|radii| radii.0).unwrap_or_default();
         if let Some(radius) = self.border_top_left_radius {
-            corners.top_left = radius.0;
+            corners.top_left = radius;
         }
         if let Some(radius) = self.border_top_right_radius {
-            corners.top_right = radius.0;
+            corners.top_right = radius;
         }
         if let Some(radius) = self.border_bottom_right_radius {
-            corners.bottom_right = radius.0;
+            corners.bottom_right = radius;
         }
         if let Some(radius) = self.border_bottom_left_radius {
-            corners.bottom_left = radius.0;
+            corners.bottom_left = radius;
         }
         corners
+    }
+
+    /// [`Self::corner_radii`] for an element with `lengths`.
+    pub(crate) fn resolved_corner_radii(
+        &self,
+        lengths: &crate::css::length::LengthContext,
+    ) -> gpui::Corners<gpui::CornerRadius> {
+        let corners = self.corner_radii();
+        gpui::Corners {
+            top_left: corners.top_left.resolve(lengths),
+            top_right: corners.top_right.resolve(lengths),
+            bottom_right: corners.bottom_right.resolve(lengths),
+            bottom_left: corners.bottom_left.resolve(lengths),
+        }
     }
 }
 
 impl BorderRadiusValue {
     /// A circular radius of `value` px on every corner.
     pub fn px(value: f64) -> Self {
-        Self(gpui::CornerRadius::from(gpui::px(value as f32)).on_all_corners())
+        Self(CornerRadiusValue::px(value).on_all_corners())
     }
 }
 
 impl CornerRadiusValue {
     /// A circular radius of `value` px.
     pub fn px(value: f64) -> Self {
-        Self(gpui::CornerRadius::from(gpui::px(value as f32)))
+        Self::circular(LinearLength::px(value))
+    }
+
+    pub(crate) fn circular(radius: LinearLength) -> Self {
+        Self { x: radius, y: None }
+    }
+
+    fn on_all_corners(self) -> gpui::Corners<Self> {
+        gpui::Corners { top_left: self, top_right: self, bottom_right: self, bottom_left: self }
     }
 }
 
@@ -230,8 +258,7 @@ impl<'de> Deserialize<'de> for BorderRadiusValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(RadiusVisitor {
             from_number: |value| {
-                crate::css::border_radius::corner_from_number(value)
-                    .map(|corner| Self(corner.on_all_corners()))
+                crate::css::border_radius::corner_from_number(value).map(|corner| Self(corner.on_all_corners()))
             },
             from_css: |value| crate::css::border_radius::parse_border_radius(value).map(Self),
         })
@@ -241,8 +268,8 @@ impl<'de> Deserialize<'de> for BorderRadiusValue {
 impl<'de> Deserialize<'de> for CornerRadiusValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(RadiusVisitor {
-            from_number: |value| crate::css::border_radius::corner_from_number(value).map(Self),
-            from_css: |value| crate::css::border_radius::parse_corner(value).map(Self),
+            from_number: crate::css::border_radius::corner_from_number,
+            from_css: crate::css::border_radius::parse_corner,
         })
     }
 }
@@ -255,7 +282,7 @@ impl Serialize for BorderRadiusValue {
 
 impl Serialize for CornerRadiusValue {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        crate::css::border_radius::corner_to_json(&self.0).serialize(serializer)
+        self.to_json().serialize(serializer)
     }
 }
 
@@ -1350,8 +1377,12 @@ mod tests {
         serde_json::from_str(json).unwrap()
     }
 
-    fn circle(radius: f32) -> gpui::CornerRadius {
-        gpui::CornerRadius::from(gpui::px(radius))
+    fn circle(radius: f32) -> CornerRadiusValue {
+        CornerRadiusValue::px(radius as f64)
+    }
+
+    fn ellipse(x: LinearLength, y: LinearLength) -> CornerRadiusValue {
+        CornerRadiusValue { x, y: Some(y) }
     }
 
     #[test]
@@ -1360,10 +1391,10 @@ mod tests {
             r##"{"borderRadius":"10px 20px / 5px","borderTopLeftRadius":"50% 20px","borderTopRightRadius":8,"borderBottomLeftRadius":0}"##,
         );
         let corners = style.border_radius.unwrap().0;
-        assert_eq!(corners.top_right, gpui::CornerRadius { x: gpui::px(20.).into(), y: gpui::px(5.).into() });
+        assert_eq!(corners.top_right, ellipse(LinearLength::px(20.0), LinearLength::px(5.0)));
         assert_eq!(
-            style.border_top_left_radius.unwrap().0,
-            gpui::CornerRadius { x: gpui::DefiniteLength::Fraction(0.5), y: gpui::px(20.).into() }
+            style.border_top_left_radius.unwrap(),
+            ellipse(LinearLength::percent(0.5), LinearLength::px(20.0))
         );
         assert_eq!(style.border_top_right_radius, Some(CornerRadiusValue::px(8.0)));
         assert_eq!(style.border_bottom_left_radius, Some(CornerRadiusValue::px(0.0)));
@@ -1373,8 +1404,9 @@ mod tests {
     #[test]
     fn an_invalid_radius_is_an_error_naming_the_value_even_in_a_state_style() {
         for json in [
-            r##"{"borderRadius":"1em"}"##,
+            r##"{"borderRadius":"1ch"}"##,
             r##"{"borderRadius":"-4px"}"##,
+            r##"{"borderRadius":"calc(-1em - 2px)"}"##,
             r##"{"borderRadius":-4}"##,
             r##"{"borderRadius":"10px / "}"##,
             r##"{"borderTopLeftRadius":"1px 2px 3px"}"##,
@@ -1384,8 +1416,8 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
         }
-        let error = serde_json::from_str::<StyleDesc>(r##"{"borderRadius":"1em"}"##).unwrap_err().to_string();
-        assert!(error.contains("\"1em\""), "{error}");
+        let error = serde_json::from_str::<StyleDesc>(r##"{"borderRadius":"1ch"}"##).unwrap_err().to_string();
+        assert!(error.contains("\"1ch\""), "{error}");
     }
 
     #[test]
@@ -1395,8 +1427,33 @@ mod tests {
         assert_eq!(corners.top_left, circle(10.0));
         assert_eq!(corners.top_right, circle(20.0));
         assert_eq!(corners.bottom_left, circle(20.0));
-        assert_eq!(corners.bottom_right, gpui::CornerRadius::from(gpui::DefiniteLength::Fraction(0.5)));
+        assert_eq!(corners.bottom_right, CornerRadiusValue::circular(LinearLength::percent(0.5)));
         assert_eq!(StyleDesc::default().corner_radii(), gpui::Corners::default());
+    }
+
+    #[test]
+    fn a_radius_resolves_against_the_lengths_of_the_element() {
+        use crate::css::length::LengthContext;
+        use gpui::{AbsoluteLength, CornerRadius, DefiniteLength};
+        let style = radius(
+            r##"{"borderRadius":"1em 2rem 10vw 5vh / 50% calc(100% - 1em) calc(1em + 25%) 4vmin","borderTopLeftRadius":"1rem"}"##,
+        );
+        // `1em` is 20px, `1rem` 10px and the viewport 800 by 600.
+        let corners = style.resolved_corner_radii(&LengthContext::for_tests());
+        let length = |pixels: f32| DefiniteLength::Absolute(AbsoluteLength::Pixels(gpui::px(pixels)));
+        assert_eq!(corners.top_left, CornerRadius::from(length(10.0)));
+        assert_eq!(
+            corners.top_right,
+            CornerRadius { x: length(20.0), y: DefiniteLength::calc(gpui::px(-20.0), 1.0) }
+        );
+        assert_eq!(
+            corners.bottom_right,
+            CornerRadius { x: length(80.0), y: DefiniteLength::calc(gpui::px(20.0), 0.25) }
+        );
+        assert_eq!(corners.bottom_left, CornerRadius { x: length(30.0), y: length(24.0) });
+        // The units follow the element: the same style on a larger font.
+        let large = LengthContext::for_tests().descend(Some(&LinearLength::px(40.0)), false);
+        assert_eq!(style.resolved_corner_radii(&large).top_right.y, DefiniteLength::calc(gpui::px(-40.0), 1.0));
     }
 
     #[test]

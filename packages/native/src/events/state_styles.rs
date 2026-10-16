@@ -581,10 +581,10 @@ mod tests {
         let hovered = resolve_state_styles(&base, true, false);
         assert_eq!(hovered.border_top_left_radius, None);
         let corners = hovered.corner_radii();
-        assert_eq!(corners.top_left, gpui::CornerRadius::from(gpui::px(10.)));
+        assert_eq!(corners.top_left, crate::style::CornerRadiusValue::px(10.0));
         assert_eq!(
             corners.bottom_right,
-            gpui::CornerRadius { x: gpui::DefiniteLength::Fraction(0.3), y: gpui::px(5.).into() }
+            crate::style::CornerRadiusValue { x: LinearLength::percent(0.3), y: Some(LinearLength::px(5.0)) }
         );
     }
 

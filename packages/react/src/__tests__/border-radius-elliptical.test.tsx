@@ -95,6 +95,25 @@ describeNative("elliptical border radius, painted", () => {
     expect(painted(percent, 10, 10)).toBe(false)
   })
 
+  it("em and a calc() of a length and a percentage resolve against the element, a percentage per axis", () => {
+    // 1em is 20px on the box, and the box is 200 by 100: 2em + 10% is 60px across and 1em + 20% is 40px down.
+    const units = shoot(
+      "units",
+      boxed(200, 100, { fontSize: 20, borderRadius: "calc(2em + 10%) / calc(1em + 20%)" }),
+    )
+    const lengths = shoot("units-lengths", boxed(200, 100, { borderRadius: "60px / 40px" }))
+    let compared = 0
+    for (let y = 0; y < 100; y += 3) {
+      for (let x = 0; x < 200; x += 3) {
+        expect(units.at(MARGIN + x, MARGIN + y), `(${x}, ${y})`).toEqual(lengths.at(MARGIN + x, MARGIN + y))
+        compared++
+      }
+    }
+    expect(compared).toBeGreaterThan(2000)
+    expect(painted(units, 5, 5)).toBe(false)
+    expect(painted(units, 100, 50)).toBe(true)
+  })
+
   it("`a / b` gives each corner its own horizontal and vertical radius", () => {
     const pixels = shoot("asymmetric", boxed(100, 100, { borderRadius: ASYMMETRIC }))
     for (const [x, y] of ASYMMETRIC_INSIDE) expect(painted(pixels, x!, y!), `(${x}, ${y}) inside`).toBe(true)
@@ -229,7 +248,7 @@ describeNative("an invalid border radius is an uncaught error", () => {
   }
 
   it("names the property and the value", () => {
-    expect(errorsOf({ borderRadius: "1em" })).toMatch(/border-radius "1em": "1em" is not a non-negative px length/)
+    expect(errorsOf({ borderRadius: "1ch" })).toMatch(/border-radius "1ch": "1ch" is not a non-negative length/)
     expect(errorsOf({ borderRadius: "-4px" })).toMatch(/"-4px" is negative/)
     expect(errorsOf({ borderRadius: "10px /" })).toMatch(/border-radius "10px \/"/)
     expect(errorsOf({ borderTopLeftRadius: "1px 2px 3px" })).toMatch(/border-radius "1px 2px 3px"/)
@@ -245,8 +264,8 @@ describeNative("an invalid border radius is an uncaught error", () => {
     const { render, renderer, unmount } = createTestRoot({ onUncaughtError: (error) => errors.push(error) })
     try {
       render(<div testId="box" style={{ width: 50, height: 20, borderRadius: "50%" }} />)
-      render(<div testId="box" style={{ width: 80, height: 20, borderRadius: "5em" }} />)
-      expect(errors.map((error) => error.message).join()).toMatch(/border-radius "5em"/)
+      render(<div testId="box" style={{ width: 80, height: 20, borderRadius: "5ch" }} />)
+      expect(errors.map((error) => error.message).join()).toMatch(/border-radius "5ch"/)
       expect(renderer.getElementBounds(renderer.findByTestId("box")!.id)?.width).toBe(50)
     } finally {
       unmount()

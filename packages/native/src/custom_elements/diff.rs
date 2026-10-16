@@ -279,7 +279,7 @@ impl CustomElement for DiffElement {
         let wants_show_more = ctx.events.contains("showMore") && !ctx.inert;
         let corner_radii = ctx
             .style
-            .map(|style| style.corner_radii())
+            .map(|style| style.resolved_corner_radii(&ctx.lengths))
             .unwrap_or_default();
         let row_theme = theme.clone();
 

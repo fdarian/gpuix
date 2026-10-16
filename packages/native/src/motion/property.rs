@@ -90,16 +90,7 @@ impl Field for Option<f64> {
 /// elliptical corner has no number to start from, and a written one replaces it.
 impl Field for Option<CornerRadiusValue> {
     fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
-        use gpui::{AbsoluteLength, DefiniteLength};
-        let corner = self.as_ref()?.0;
-        match corner.x {
-            DefiniteLength::Absolute(AbsoluteLength::Pixels(pixels))
-                if corner.y == corner.x || corner.y == DefiniteLength::default() =>
-            {
-                Some(AnimValue::Number(f32::from(pixels) as f64))
-            }
-            _ => None,
-        }
+        self.as_ref()?.circular_px().map(AnimValue::Number)
     }
 
     fn write(&mut self, value: AnimValue) {
@@ -121,19 +112,19 @@ trait ShorthandCorners {
 
 impl ShorthandCorners for Option<BorderRadiusValue> {
     fn top_left(&self) -> Option<CornerRadiusValue> {
-        self.map(|radii| CornerRadiusValue(radii.0.top_left))
+        self.map(|radii| radii.0.top_left)
     }
 
     fn top_right(&self) -> Option<CornerRadiusValue> {
-        self.map(|radii| CornerRadiusValue(radii.0.top_right))
+        self.map(|radii| radii.0.top_right)
     }
 
     fn bottom_left(&self) -> Option<CornerRadiusValue> {
-        self.map(|radii| CornerRadiusValue(radii.0.bottom_left))
+        self.map(|radii| radii.0.bottom_left)
     }
 
     fn bottom_right(&self) -> Option<CornerRadiusValue> {
-        self.map(|radii| CornerRadiusValue(radii.0.bottom_right))
+        self.map(|radii| radii.0.bottom_right)
     }
 }
 

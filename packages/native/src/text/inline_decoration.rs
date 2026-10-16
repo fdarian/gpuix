@@ -25,8 +25,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    canvas, prelude::*, px, AbsoluteLength, App, BorderStyle, Bounds, Corners, Fill, Hsla, Outline,
-    Pixels, Refineable, Style, StyleRefinement, TextLayout, Window,
+    canvas, prelude::*, px, AbsoluteLength, App, BorderStyle, Bounds, CornerRadius, Corners, Fill, Hsla,
+    Outline, Pixels, Refineable, Style, StyleRefinement, TextLayout, Window,
 };
 
 use crate::color::ColorContext;
@@ -57,8 +57,8 @@ pub struct BoxPaint {
     pub background: Option<Hsla>,
     pub widths: gpui::Edges<Pixels>,
     pub colors: gpui::Edges<Hsla>,
-    pub dashed: bool,
-    pub radii: Corners<Pixels>,
+    pub styles: gpui::Edges<BorderStyle>,
+    pub radii: Corners<CornerRadius>,
 }
 
 impl BoxPaint {
@@ -67,11 +67,10 @@ impl BoxPaint {
     ///
     /// The widths are the ones that took space along the line, and the colours and
     /// the line style are read the way a `div` does, so a border looks the same on
-    /// both. `gpui` has one line style for all the sides, `dashed` or not.
+    /// both, with a line style of its own on each side.
     fn of(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> Self {
         let widths = border_widths(style, lengths);
-        let (border_colors, border_style) = border_look(style, colors, lengths);
-        let radius = |corner: Option<f64>| px(corner.or(style.border_radius).unwrap_or(0.0).max(0.0) as f32);
+        let (border_colors, border_styles) = border_look(style, colors, lengths);
         Self {
             background: style
                 .background_color
@@ -86,13 +85,8 @@ impl BoxPaint {
                 left: px(widths.left),
             },
             colors: border_colors,
-            dashed: border_style == BorderStyle::Dashed,
-            radii: Corners {
-                top_left: radius(style.border_top_left_radius),
-                top_right: radius(style.border_top_right_radius),
-                bottom_right: radius(style.border_bottom_right_radius),
-                bottom_left: radius(style.border_bottom_left_radius),
-            },
+            styles: border_styles,
+            radii: style.resolved_corner_radii(lengths),
         }
     }
 
@@ -124,24 +118,20 @@ impl gpui::Styled for Probe {
     }
 }
 
-/// The side colours and the line style `style` gives a border, in the order the
+/// The side colours and the line styles `style` gives a border, in the order the
 /// element builder applies them.
 fn border_look(
     style: &StyleDesc,
     colors: &ColorContext,
     lengths: &LengthContext,
-) -> (gpui::Edges<Hsla>, BorderStyle) {
+) -> (gpui::Edges<Hsla>, gpui::Edges<BorderStyle>) {
     let mut probe = Probe(StyleRefinement::default());
     probe = border::apply_shorthands(probe, style, colors, lengths);
     probe = border::apply_colors(probe, style, colors);
-    match style.border_style.as_deref() {
-        Some("dashed") => probe = gpui::Styled::border_dashed(probe),
-        Some("solid") => probe.0.border_style = Some(BorderStyle::Solid),
-        _ => {}
-    }
+    probe = border::apply_styles(probe, style, colors);
     let mut resolved = Style::default();
     resolved.refine(&probe.0);
-    (resolved.border_colors, resolved.border_style)
+    (resolved.border_colors, resolved.border_styles)
 }
 
 /// One quad of a box: its border box in a line, with the background, border and
@@ -152,8 +142,8 @@ pub struct QuadSpec {
     pub background: Option<Hsla>,
     pub widths: gpui::Edges<Pixels>,
     pub colors: gpui::Edges<Hsla>,
-    pub dashed: bool,
-    pub radii: Corners<Pixels>,
+    pub styles: gpui::Edges<BorderStyle>,
+    pub radii: Corners<CornerRadius>,
 }
 
 impl QuadSpec {
@@ -163,12 +153,8 @@ impl QuadSpec {
             background: self.background.map(Fill::from),
             border_widths: self.widths.map(|width| AbsoluteLength::Pixels(*width)),
             border_colors: self.colors,
-            border_style: if self.dashed {
-                BorderStyle::Dashed
-            } else {
-                BorderStyle::Solid
-            },
-            corner_radii: self.corner_radii(),
+            border_styles: self.styles,
+            corner_radii: self.radii,
             ..Style::default()
         }
     }
@@ -176,14 +162,10 @@ impl QuadSpec {
     /// The style of an element with this shape and nothing but an `outline`.
     fn ring(&self, outline: Outline) -> Style {
         Style {
-            corner_radii: self.corner_radii(),
+            corner_radii: self.radii,
             outline: Some(outline),
             ..Style::default()
         }
-    }
-
-    fn corner_radii(&self) -> Corners<AbsoluteLength> {
-        self.radii.map(|radius| AbsoluteLength::Pixels(*radius))
     }
 }
 
@@ -201,20 +183,20 @@ pub fn quads(rows: &[Bounds<Pixels>], paint: &BoxPaint) -> Vec<QuadSpec> {
             let mut radii = paint.radii;
             if index > 0 {
                 widths.left = Pixels::ZERO;
-                radii.top_left = Pixels::ZERO;
-                radii.bottom_left = Pixels::ZERO;
+                radii.top_left = CornerRadius::default();
+                radii.bottom_left = CornerRadius::default();
             }
             if index < last {
                 widths.right = Pixels::ZERO;
-                radii.top_right = Pixels::ZERO;
-                radii.bottom_right = Pixels::ZERO;
+                radii.top_right = CornerRadius::default();
+                radii.bottom_right = CornerRadius::default();
             }
             QuadSpec {
                 bounds: *bounds,
                 background: paint.background,
                 widths,
                 colors: paint.colors,
-                dashed: paint.dashed,
+                styles: paint.styles,
                 radii,
             }
         })
@@ -612,7 +594,7 @@ mod tests {
         assert_eq!(paint.colors.right, rgb(0.0, 0.0, 1.0));
         assert_eq!(paint.colors.bottom, rgb(0.0, 1.0, 0.0));
         assert_eq!(paint.colors.left, rgb(0.0, 0.0, 1.0));
-        assert!(!paint.dashed);
+        assert_eq!(paint.styles, gpui::Edges::all(BorderStyle::Solid));
     }
 
     #[test]
@@ -623,15 +605,28 @@ mod tests {
         assert_eq!(paint.widths.right, px(1.0));
         assert_eq!(paint.colors.left, rgb(0.0, 1.0, 0.0));
         assert_eq!(paint.colors.right, rgb(1.0, 0.0, 0.0));
-        assert!(paint.dashed, "gpui has one line style for all sides");
+        assert_eq!(
+            [paint.styles.top, paint.styles.right, paint.styles.bottom, paint.styles.left],
+            [BorderStyle::Solid, BorderStyle::Dashed, BorderStyle::Solid, BorderStyle::Solid],
+            "each side has the line style it declares"
+        );
     }
 
     #[test]
     fn border_style_picks_the_line() {
         let tree = fixture(&[(3, serde_json::json!({"border": "2px dashed red", "borderStyle": "solid"}))]);
-        assert!(!only(&tree).paint.dashed);
+        assert_eq!(only(&tree).paint.styles, gpui::Edges::all(BorderStyle::Solid));
         let tree = fixture(&[(3, serde_json::json!({"borderWidth": 2, "borderColor": "red", "borderStyle": "dashed"}))]);
-        assert!(only(&tree).paint.dashed);
+        assert_eq!(only(&tree).paint.styles, gpui::Edges::all(BorderStyle::Dashed));
+        let tree = fixture(&[(
+            3,
+            serde_json::json!({"borderWidth": 2, "borderColor": "red", "borderStyle": "dotted double", "borderLeftStyle": "groove"}),
+        )]);
+        let styles = only(&tree).paint.styles;
+        assert_eq!(
+            [styles.top, styles.right, styles.bottom, styles.left],
+            [BorderStyle::Dotted, BorderStyle::Double, BorderStyle::Dotted, BorderStyle::Groove]
+        );
     }
 
     #[test]
@@ -655,14 +650,30 @@ mod tests {
         let radii = only(&tree).paint.radii;
         assert_eq!(
             [radii.top_left, radii.top_right, radii.bottom_right, radii.bottom_left],
-            [px(6.0), px(0.0), px(6.0), px(12.0)]
+            [circle(6.0), circle(0.0), circle(6.0), circle(12.0)]
         );
     }
 
     #[test]
-    fn a_negative_radius_is_square() {
-        let tree = fixture(&[(3, serde_json::json!({"backgroundColor": "red", "borderRadius": -4}))]);
-        assert_eq!(only(&tree).paint.radii, Corners::default());
+    fn a_radius_may_be_elliptical_and_in_the_units_of_the_element() {
+        let tree = fixture(&[(
+            3,
+            serde_json::json!({"backgroundColor": "red", "borderRadius": "1em 50% / 2rem", "borderBottomLeftRadius": "10px 5%"}),
+        )]);
+        let radii = only(&tree).paint.radii;
+        let corner = |x: gpui::DefiniteLength, y: gpui::DefiniteLength| CornerRadius { x, y };
+        let length = |pixels: f32| gpui::DefiniteLength::Absolute(AbsoluteLength::Pixels(px(pixels)));
+        let fraction = gpui::DefiniteLength::Fraction;
+        // The fixture's inherited font size is the initial 16px.
+        assert_eq!(radii.top_left, corner(length(16.0), length(32.0)));
+        assert_eq!(radii.top_right, corner(fraction(0.5), length(32.0)));
+        assert_eq!(radii.bottom_left, corner(length(10.0), fraction(0.05)));
+    }
+
+    #[test]
+    fn a_negative_radius_is_rejected_with_the_style() {
+        let error = serde_json::from_value::<StyleDesc>(serde_json::json!({"borderRadius": -4})).unwrap_err();
+        assert!(error.to_string().contains("-4"), "{error}");
     }
 
     #[test]
@@ -683,13 +694,22 @@ mod tests {
         assert_eq!(edges.top, px(2.0));
     }
 
+    fn circle(radius: f32) -> CornerRadius {
+        CornerRadius::from(px(radius))
+    }
+
     fn full_look() -> BoxPaint {
         BoxPaint {
             background: Some(rgb(1.0, 1.0, 0.0)),
             widths: gpui::Edges { top: px(1.0), right: px(2.0), bottom: px(3.0), left: px(4.0) },
             colors: gpui::Edges::all(rgb(0.0, 0.0, 0.0)),
-            dashed: false,
-            radii: Corners { top_left: px(5.0), top_right: px(6.0), bottom_right: px(7.0), bottom_left: px(8.0) },
+            styles: gpui::Edges::all(BorderStyle::Solid),
+            radii: Corners {
+                top_left: circle(5.0),
+                top_right: circle(6.0),
+                bottom_right: circle(7.0),
+                bottom_left: circle(8.0),
+            },
         }
     }
 
@@ -698,7 +718,8 @@ mod tests {
     }
 
     fn radii(quad: &QuadSpec) -> [f32; 4] {
-        [quad.radii.top_left, quad.radii.top_right, quad.radii.bottom_right, quad.radii.bottom_left].map(f32::from)
+        [quad.radii.top_left, quad.radii.top_right, quad.radii.bottom_right, quad.radii.bottom_left]
+            .map(|corner| f32::from(corner.x.to_pixels(AbsoluteLength::Pixels(px(0.0)), px(16.0))))
     }
 
     #[test]
