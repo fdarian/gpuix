@@ -6020,11 +6020,11 @@ that property; they do not reject the full style object.
 
 ### Gradients and background layers
 
-`backgroundImage` takes a comma list of CSS gradients, the first on top:
-`linear-gradient()`, `radial-gradient()`, `conic-gradient()` and their
-`repeating-` forms, with any number of stops, colour hints, `in srgb` / `in
-oklab`, and `none`. Colours are any [colour form](#colors), including
-`currentColor`. `backgroundSize`, `backgroundPosition`, `backgroundRepeat`
+`backgroundImage` takes a comma list of CSS gradients and [`url()`
+images](#image-backgrounds), the first on top: `linear-gradient()`,
+`radial-gradient()`, `conic-gradient()` and their `repeating-` forms, with any
+number of stops, colour hints, `in srgb` / `in oklab`, and `none`. Colours are
+any [colour form](#colors), including `currentColor`. `backgroundSize`, `backgroundPosition`, `backgroundRepeat`
 (including `space` and `round`), `backgroundOrigin` and `backgroundClip` are comma
 lists that repeat to cover the layers, as in CSS. `background` is the shorthand:
 layers, `position / size`, repeat, origin and clip boxes, and a final colour.
@@ -6045,18 +6045,59 @@ layers, `position / size`, repeat, origin and clip boxes, and a final colour.
 ```
 
 Longhands win over the shorthand. Limits:
-- `url(...)` images are valid but not drawn: that layer is skipped and the others
-  still paint.
+- `image-set()` is valid but not drawn: that layer is skipped and the others still
+  paint.
 - Interpolation spaces other than `srgb` and `oklab` skip the layer.
-- `backgroundOrigin` and `backgroundClip` move the gradient layers only. The
-  background *colour* fills the border box, or the glyphs under `text` (below).
+- `backgroundOrigin` and `backgroundClip` move the layers only. The background
+  *colour* fills the border box, or the glyphs under `text` (below).
 - `backgroundAttachment` has no meaning here and is ignored in the shorthand.
+
+#### Image backgrounds
+
+`url()` is a layer like a gradient: in `backgroundImage` or anywhere in a
+`background` layer, mixed with gradients, with the same `position / size`, repeat,
+origin and clip. The address can be bare, `"double"` or `'single'` quoted (a
+quoted one can hold `)`, `,` and spaces, and `\"` escapes), with space inside the
+parentheses. A bare `url(a.png)` layer takes the CSS initial values.
+
+```tsx
+<div style={{ backgroundImage: 'url(/assets/dots.png)', backgroundSize: '16px', backgroundRepeat: 'round' }} />
+<div style={{ background: 'url("hero.jpg") center / cover no-repeat, linear-gradient(#0008, #0000)' }} />
+<div style={{ backgroundImage: `url(${URL.createObjectURL(blob)})` }} />
+```
+
+The address is read as an [`<img>` `src`](#img) is, and loads the same formats: a
+path (relative ones to the process's working directory, there is no document base
+URL), a `file://` URL, `data:`, `http:` / `https:`, and `blob:` (see below). The
+image's own size is its natural size in CSS px (an SVG's `width` and `height`),
+which `auto`, `cover`, `contain` and `round` work from. An animated image draws its
+first frame.
+
+A layer paints nothing until its image has loaded, and nothing if it cannot (a
+missing file, a failed request, bad data; the reason is logged once as a warning),
+while the other layers and the colour paint. A `data:` address is decoded when the
+element is built, so it paints in the first frame; a path, `file:` and `http:`
+image paints from the frame after its load ends. The address is the identity: a
+new one loads the new image, and an element built again with the same one shares
+it. An address in a state style (`hover`) is read when that state first applies.
+At most 128 images are kept; the ones not asked for longest are dropped and loaded
+again if a layer wants them. A layer draws at most 4096 tiles, so a tiny image
+repeated over a huge box stops early.
+
+`blob:` URLs only exist in the JS process, so `URL.createObjectURL(...)` is
+fetched there once per URL, wherever a style, its state styles included, names
+it, and the bytes are handed to native. A revoked URL paints nothing. This needs a
+renderer that has `setStyleImage`: the native one and the test renderer do.
+
+Limits: `image-set()` is not drawn, and neither is a `url()` in `mask` or
+`maskImage`, which is valid but skipped. An inline `<span>` box paints
+`backgroundColor` only.
 
 #### Gradient text
 
 `backgroundClip: 'text'` (or `text` in the `background` shorthand) paints a layer
-only through the glyphs of the element and its descendants, nested inline spans
-included. The gradient is laid out on the element's box, as in CSS, so it spans
+(an `url()` image too) only through the glyphs of the element and its descendants,
+nested inline spans included. The gradient is laid out on the element's box, as in CSS, so it spans
 the whole block even when the text is shorter. The background colour follows the
 last layer's clip, so with `text` there it is confined to the glyphs too. Set
 `color: 'transparent'` to hide the text's own fill.
