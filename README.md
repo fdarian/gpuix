@@ -2408,6 +2408,8 @@ function MessageList({ messages }: { messages: Message[] }) {
 
 The list needs a **bounded height** or bounded flex space. Its direct children are rows and can contain any GPUIX host or custom element.
 
+The list paints its own box style like a `<div>`: `backgroundColor`, borders, `borderRadius`, `boxShadow`, `opacity`, `filter`, `mask` and `clipPath` apply to it and its rows, and a `borderRadius` or `clipPath` cuts what the pointer can hit.
+
 | Prop | Default | Purpose |
 |---|---:|---|
 | `alignment` | `"top"` | Use `"bottom"` for chat-style initial positioning |

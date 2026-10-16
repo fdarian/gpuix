@@ -7678,23 +7678,15 @@ fn build_virtual_list(
             list = list.font_features(features);
         }
     }
-    let list = apply_accessibility(list, element.id, element.custom_props(), None).into_any_element();
-    let look = element
-        .style
-        .as_deref()
-        .map(|style| crate::scrollbar::Look::of(style, &ctx.inherited.colors))
-        .unwrap_or_else(|| {
-            crate::scrollbar::Look::of(&StyleDesc::default(), &ctx.inherited.colors)
-        });
-    if look.hidden() {
-        return list;
-    }
-    ListWithScrollbar {
+    let list = apply_accessibility(list, element.id, element.custom_props(), None);
+    let default_style = StyleDesc::default();
+    crate::scrollbar::attach_to_list(
         list,
-        source: crate::scrollbar::Source::List(scroll_state),
-        look,
-        state: crate::scrollbar::state_for(element.id),
-    }
+        element.id,
+        crate::scrollbar::Source::List(scroll_state),
+        element.style.as_deref().unwrap_or(&default_style),
+        &ctx.inherited.colors,
+    )
     .into_any_element()
 }
 
@@ -7954,87 +7946,6 @@ fn build_contents_container(
         el = el.paint_ranks(paint_ranks);
     }
     el.into_any_element()
-}
-
-/// A virtual list with its scrollbar.
-///
-/// A list element takes no children, and wrapping it in a box would change the layout its style
-/// asks for. This lays out, prepaints and paints as the list does (it answers with the list's
-/// own layout node), and puts the bar over it from what its `ListState` has measured: the same
-/// totals the list scrolls by, so the thumb and the scroll position cannot disagree.
-struct ListWithScrollbar {
-    list: gpui::AnyElement,
-    source: crate::scrollbar::Source,
-    look: crate::scrollbar::Look,
-    state: std::rc::Rc<std::cell::RefCell<crate::scrollbar::State>>,
-}
-
-impl gpui::IntoElement for ListWithScrollbar {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
-impl gpui::Element for ListWithScrollbar {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<gpui::ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> (gpui::LayoutId, ()) {
-        (self.list.request_layout(window, cx), ())
-    }
-
-    // The scrollbar is placed by this wrapper's bounds, which must be the list's.
-    fn escapes_to(&self) -> Option<gpui::Escape> {
-        self.list.escapes_to()
-    }
-
-    // The stacking context takes the wrapper, not the list, so the wrapper must say the list's z.
-    fn lift_z(&self) -> Option<i32> {
-        self.list.lift_z()
-    }
-
-    fn prepaint(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        bounds: gpui::Bounds<gpui::Pixels>,
-        _: &mut (),
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) {
-        self.list.prepaint(window, cx);
-        crate::scrollbar::prepaint(&self.state, &self.source, self.look, bounds, window);
-    }
-
-    fn paint(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        bounds: gpui::Bounds<gpui::Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) {
-        self.list.paint(window, cx);
-        crate::scrollbar::paint(&self.state, &self.source, self.look, bounds, window, cx);
-    }
 }
 
 /// A selectable text run owned by `element`. Runs are left to gpui so the

@@ -407,3 +407,155 @@ describeNative("a rounded overflow clip clips the pointer", () => {
     expect(clickAt(100, 52)).toEqual(["child"])
   })
 })
+
+const SVG_DATA_URL = `data:image/svg+xml;base64,${Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#00aa00"/></svg>'
+).toString("base64")}`
+
+describeNative("clipPath clips the pointer on every kind of element", () => {
+  type Box = Record<string, unknown>
+  type Factory = (box: Box, onClick: () => void) => ReactNode
+
+  /** What the 100x100 box at (50, 50) is: every host element that has a box of its own. */
+  const elements: Array<[string, Factory]> = [
+    ["div", (box, onClick) => <div style={box} onClick={onClick} />],
+    ["scrolling div", (box, onClick) => (
+      <div style={{ ...box, overflow: "scroll" }} onClick={onClick}>
+        <div style={{ width: 100, height: 300 }} />
+      </div>
+    )],
+    ["text", (box, onClick) => <text style={box} onClick={onClick}>clipped text</text>],
+    ["img", (box, onClick) => <img src={SVG_DATA_URL} style={box} onClick={onClick} />],
+    ["img without a source", (box, onClick) => <img style={box} onClick={onClick} />],
+    ["svg", (box, onClick) => (
+      <svg viewBox="0 0 10 10" style={box} onClick={onClick}>
+        <rect width="10" height="10" fill="#00aa00" />
+      </svg>
+    )],
+    ["input", (box, onClick) => <input style={box} onClick={onClick} />],
+    ["textarea", (box, onClick) => <textarea style={box} onClick={onClick} />],
+    ["markdown", (box, onClick) => <markdown source={"# Title\n\nBody"} style={box} onClick={onClick} />],
+    ["code", (box, onClick) => <code code={"const a = 1"} style={box} onClick={onClick} />],
+    ["diff", (box, onClick) => <diff patch="" style={box} onClick={onClick} />],
+    ["anchored", (box, onClick) => (
+      <div style={{ width: 1, height: 1 }}>
+        <anchored
+          position={{ x: 50, y: 50 }}
+          anchor="topLeft"
+          style={{ width: box.width, height: box.height, clipPath: box.clipPath }}
+          onClick={onClick}
+        >
+          <div style={{ width: 100, height: 100 }} />
+        </anchored>
+      </div>
+    )],
+    ["virtual-list", (box, onClick) => (
+      <virtual-list overdraw={0} estimatedItemHeight={40} style={box}>
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} style={{ height: 40, flexShrink: 0 }} onClick={onClick} />
+        ))}
+      </virtual-list>
+    )],
+  ]
+
+  /** Clicks (x, y) on a stage that holds `element`, circle-clipped, over a clicked sibling. */
+  function clickAt(factory: Factory, x: number, y: number) {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <div style={{ position: "absolute", width: 200, height: 200 }} onClick={() => log.push("under")} />
+          {factory(
+            { position: "absolute", left: 50, top: 50, width: 100, height: 100, clipPath: "circle()" },
+            () => log.push("clipped")
+          )}
+        </div>
+      )
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      renderer.nativeSimulateClick(x, y)
+      return log
+    } finally {
+      unmount()
+    }
+  }
+
+  for (const [name, factory] of elements) {
+    it(`${name}: a press in the corner the circle cuts off falls through`, () => {
+      expect(clickAt(factory, 52, 52)).toEqual(["under"])
+      expect(clickAt(factory, 148, 148)).toEqual(["under"])
+    })
+
+    it(`${name}: a press inside the circle hits it`, () => {
+      expect(clickAt(factory, 100, 100)[0]).toBe("clipped")
+    })
+  }
+
+  it("a virtual list paints clipped, with its rows", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      render(
+        <div style={{ position: "relative", width: 200, height: 200, backgroundColor: "#ffffff" }}>
+          <virtual-list
+            overdraw={0}
+            estimatedItemHeight={40}
+            style={{
+              position: "absolute",
+              left: 50,
+              top: 50,
+              width: 100,
+              height: 100,
+              backgroundColor: "#ff0000",
+              clipPath: "circle()",
+            }}
+          >
+            <div style={{ height: 20, flexShrink: 0, backgroundColor: "#0000ff" }} />
+            <div style={{ height: 80, flexShrink: 0 }} />
+          </virtual-list>
+        </div>
+      )
+      renderer.dispatchNativeEvents()
+      const file = path.join(SHOTS_DIR, "clip-path-virtual-list.png")
+      renderer.captureScreenshot(file)
+      const pixels = readLogicalPixels(file, renderer)
+      // The first row is cut by the circle at the top left, and the list background shows below it.
+      expect(pixels.at(100, 60)).toEqual([0, 0, 255, 255])
+      expect(pixels.at(53, 53)).toEqual([255, 255, 255, 255])
+      expectRed(pixels, 100, 120)
+      expect(pixels.at(53, 147)).toEqual([255, 255, 255, 255])
+    } finally {
+      unmount()
+    }
+  })
+
+  it("a virtual list's scrollbar is cut with it", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <div style={{ position: "absolute", width: 200, height: 200 }} onClick={() => log.push("under")} />
+          <virtual-list
+            testId="list"
+            overdraw={0}
+            estimatedItemHeight={40}
+            style={{ position: "absolute", left: 50, top: 50, width: 100, height: 100, clipPath: "circle()" }}
+          >
+            {Array.from({ length: 10 }, (_, index) => (
+              <div key={index} style={{ height: 40, flexShrink: 0 }} />
+            ))}
+          </virtual-list>
+        </div>
+      )
+      renderer.dispatchNativeEvents()
+      renderer.nativeSimulateScrollWheel(100, 100, 0, 40)
+      // The bar runs along the right edge of the list, which the circle cuts away near the top.
+      renderer.nativeSimulateClick(144, 54)
+      expect(log).toEqual(["under"])
+    } finally {
+      unmount()
+    }
+  })
+})
+

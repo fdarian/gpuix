@@ -19,7 +19,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gpui::prelude::*;
 use web_time::Instant;
 
 use crate::scroll::Overflow;
@@ -478,6 +477,32 @@ pub(crate) fn attach(
     }
     let state = state_for(id);
     let el = reserve(el, &state, look, overflow);
+    overlay(el, state, source, look)
+}
+
+/// [`attach`] for a virtual list, which keeps the size its style gives it: its bars are drawn over
+/// it and take no room.
+pub(crate) fn attach_to_list<E: gpui::StatefulInteractiveElement>(
+    el: E,
+    id: u64,
+    source: Source,
+    style: &StyleDesc,
+    colors: &crate::color::ColorContext,
+) -> E {
+    let look = Look::of(style, colors);
+    if look.hidden() {
+        return el;
+    }
+    overlay(el, state_for(id), source, look)
+}
+
+/// The bars are the element's overlay, so its `clipPath` and its hitbox parent chain cut them too.
+fn overlay<E: gpui::StatefulInteractiveElement>(
+    el: E,
+    state: Rc<RefCell<State>>,
+    source: Source,
+    look: Look,
+) -> E {
     el.prepaint_overlay({
         let (state, source) = (state.clone(), source.clone());
         move |bounds, window, _| prepaint(&state, &source, look, bounds, window)
@@ -524,7 +549,7 @@ fn axis_of(bounds: gpui::Bounds<gpui::Pixels>, vertical: bool) -> (f32, f32) {
 
 /// Works out whether and where the bars show, and inserts their hitboxes. Prepaint, because a
 /// hitbox can only be inserted there.
-pub(crate) fn prepaint(
+fn prepaint(
     state: &Rc<RefCell<State>>,
     source: &Source,
     look: Look,
@@ -682,7 +707,7 @@ fn scroll_axis_to(source: &Source, axis: usize, position: f32, max: f32) {
 }
 
 /// Draws the bars and listens for the pointer.
-pub(crate) fn paint(
+fn paint(
     state: &Rc<RefCell<State>>,
     source: &Source,
     look: Look,

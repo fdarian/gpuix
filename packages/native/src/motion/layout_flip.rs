@@ -600,8 +600,8 @@ impl LayoutFlips {
 
 /// Prepaints its child shifted by the glide.
 ///
-/// It answers layout with the child's own node, as `ListWithScrollbar` does,
-/// so wrapping changes nothing the style asked for.
+/// It answers layout with the child's own node, so wrapping changes nothing the style
+/// asked for.
 struct FlipOffset {
     id: u64,
     flips: LayoutFlips,
