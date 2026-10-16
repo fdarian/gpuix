@@ -1453,6 +1453,17 @@ impl GpuixRenderer {
         }
     }
 
+    /// Applies the pointer lock request now where the window is on this thread,
+    /// else at the next frame. `Window::request_pointer_lock` is a platform call
+    /// that only macOS implements, and there GPUI runs on the JS thread.
+    fn settle_pointer_lock(&self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window_or_defer(|view, window, cx| view.apply_pointer_lock(window, cx));
+
+        #[cfg(not(target_os = "macos"))]
+        self.request_invalidate()
+    }
+
     fn request_invalidate(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
         return invalidate_window();
@@ -3107,9 +3118,10 @@ impl GpuixRenderer {
         self.pointer_requests.set_window_events(types);
     }
 
-    /// Capture the mouse for `element_id`. Takes effect at the next pointer
-    /// input, not before: the dispatcher applies it then and fires
-    /// `gotpointercapture`. Ignored while no button is down.
+    /// Capture the mouse for `element_id`. The request is recorded before this
+    /// returns, so `hasPointerCapture` answers true and the next pointer input
+    /// is already aimed at the element; that input fires `gotpointercapture`
+    /// before its own events, as the DOM does. Ignored while no button is down.
     #[napi]
     pub fn set_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
@@ -3119,7 +3131,8 @@ impl GpuixRenderer {
             .map_err(Error::from_reason)
     }
 
-    /// End `element_id`'s capture, if it holds one, at the next pointer input.
+    /// End `element_id`'s capture, if it holds one: recorded now, and the next
+    /// pointer input fires `lostpointercapture`.
     #[napi]
     pub fn release_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
@@ -3139,33 +3152,35 @@ impl GpuixRenderer {
     }
 
     /// End the element drag in progress, without a `dragend`: JS calls it when
-    /// `dragstart` was cancelled. Applies at the next pointer input, so a move
-    /// or two may already have been delivered.
+    /// `dragstart` was cancelled. Recorded now and read first by the next
+    /// pointer input, before it builds an event; the moves delivered since
+    /// `dragstart` were already queued, and JS drops them.
     #[napi]
     pub fn cancel_drag(&self) {
         self.pointer_requests.cancel_drag();
     }
 
     /// Lock the pointer to `element_id`: the cursor hides and stops, and
-    /// movement is reported as `movementX`/`movementY`. Applies at the next
-    /// frame, which this asks for; that frame fires `pointerlockchange` or, when
-    /// the element is not connected or the platform refuses, `pointerlockerror`.
+    /// movement is reported as `movementX`/`movementY`. On macOS the lock is
+    /// taken before this returns, from a handler too, and it fires
+    /// `pointerlockchange` or, when the element is not connected or the platform
+    /// refuses, `pointerlockerror`. Elsewhere the next frame applies it.
     #[napi]
     pub fn request_pointer_lock(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         self.pointer_requests.request_lock(id);
-        self.request_invalidate()
+        self.settle_pointer_lock()
     }
 
-    /// Release the pointer lock, if held, at the next frame.
+    /// Release the pointer lock, if held. Applied like `requestPointerLock`.
     #[napi]
     pub fn exit_pointer_lock(&self) -> Result<()> {
         self.pointer_requests.exit_lock();
-        self.request_invalidate()
+        self.settle_pointer_lock()
     }
 
-    /// The element that holds the pointer lock, or null. Follows the frames: it
-    /// is still null right after `requestPointerLock`.
+    /// The element that holds the pointer lock, or null. On macOS it is the
+    /// element right after `requestPointerLock`.
     #[napi]
     pub fn pointer_lock_element(&self) -> Option<f64> {
         self.pointer_requests.locked_element().map(|id| id as f64)
@@ -5643,7 +5658,7 @@ impl GpuixView {
     /// Applies the pointer lock JS asked for and reports what came of it as
     /// `pointerlockchange` and `pointerlockerror`. Document-level events: the
     /// element, when there is one, is the payload's `target`.
-    fn apply_pointer_lock(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) {
+    pub(crate) fn apply_pointer_lock(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) {
         use crate::events::pointer_lock::{apply, GpuiLock};
         let events = {
             let tree = self.tree.lock().unwrap();

@@ -269,33 +269,39 @@ export declare class GpuixRenderer {
   /** The event types `window` or `document` listens for. Replaces the set. */
   setWindowEventListeners(types: Array<string>): void
   /**
-   * Capture the mouse for `element_id`. Takes effect at the next pointer
-   * input, not before: the dispatcher applies it then and fires
-   * `gotpointercapture`. Ignored while no button is down.
+   * Capture the mouse for `element_id`. The request is recorded before this
+   * returns, so `hasPointerCapture` answers true and the next pointer input
+   * is already aimed at the element; that input fires `gotpointercapture`
+   * before its own events, as the DOM does. Ignored while no button is down.
    */
   setPointerCapture(elementId: number, pointerId: number): void
-  /** End `element_id`'s capture, if it holds one, at the next pointer input. */
+  /**
+   * End `element_id`'s capture, if it holds one: recorded now, and the next
+   * pointer input fires `lostpointercapture`.
+   */
   releasePointerCapture(elementId: number, pointerId: number): void
   /** Whether `element_id` holds, or has been asked to hold, the mouse capture. */
   hasPointerCapture(elementId: number, pointerId: number): boolean
   /**
    * End the element drag in progress, without a `dragend`: JS calls it when
-   * `dragstart` was cancelled. Applies at the next pointer input, so a move
-   * or two may already have been delivered.
+   * `dragstart` was cancelled. Recorded now and read first by the next
+   * pointer input, before it builds an event; the moves delivered since
+   * `dragstart` were already queued, and JS drops them.
    */
   cancelDrag(): void
   /**
    * Lock the pointer to `element_id`: the cursor hides and stops, and
-   * movement is reported as `movementX`/`movementY`. Applies at the next
-   * frame, which this asks for; that frame fires `pointerlockchange` or, when
-   * the element is not connected or the platform refuses, `pointerlockerror`.
+   * movement is reported as `movementX`/`movementY`. On macOS the lock is
+   * taken before this returns, from a handler too, and it fires
+   * `pointerlockchange` or, when the element is not connected or the platform
+   * refuses, `pointerlockerror`. Elsewhere the next frame applies it.
    */
   requestPointerLock(elementId: number): void
-  /** Release the pointer lock, if held, at the next frame. */
+  /** Release the pointer lock, if held. Applied like `requestPointerLock`. */
   exitPointerLock(): void
   /**
-   * The element that holds the pointer lock, or null. Follows the frames: it
-   * is still null right after `requestPointerLock`.
+   * The element that holds the pointer lock, or null. On macOS it is the
+   * element right after `requestPointerLock`.
    */
   pointerLockElement(): number | null
   /**
@@ -633,20 +639,21 @@ export declare class TestGpuixRenderer {
   /** The event types `window` or `document` listens for. Replaces the set. */
   setWindowEventListeners(types: Array<string>): void
   /**
-   * Capture the mouse for `element_id`; takes effect at the next simulated
-   * pointer input. Ignored while no button is down.
+   * Capture the mouse for `element_id`; recorded before this returns, and the
+   * next simulated pointer input fires `gotpointercapture`. Ignored while no
+   * button is down.
    */
   setPointerCapture(elementId: number, pointerId: number): void
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
   /**
-   * Ends the element drag in progress without a `dragend`; applies at the
-   * next simulated pointer input.
+   * Ends the element drag in progress without a `dragend`; recorded now and
+   * read first by the next simulated pointer input.
    */
   cancelDrag(): void
   /**
-   * Lock the pointer to `element_id`. The frame it asks for is drawn here,
-   * so the outcome is in `drainEvents` when this returns.
+   * Lock the pointer to `element_id`. The simulated platform answers before
+   * this returns, from a handler too, so the outcome is in `drainEvents`.
    */
   requestPointerLock(elementId: number): void
   exitPointerLock(): void

@@ -194,6 +194,98 @@ describeNative("pointer lock", () => {
     ])
   })
 
+  describe("from an input handler", () => {
+    type Press = { type: string; clientX: number; clientY: number }
+
+    it("a pointerdown handler holds the lock when the call returns, and the next move is aimed at it", () => {
+      const seen: Seen[] = []
+      let lockInHandler: number | null | undefined
+      testRoot.render(
+        <div style={{ width: 400, height: 400 }}>
+          <div
+            ref={(instance) => {
+              if (instance) first = instance as unknown as Lockable
+            }}
+            style={{ width: 100, height: 100 }}
+            onPointerMove={(event: Press) =>
+              seen.push({ name: "first", type: event.type, x: event.clientX, y: event.clientY })
+            }
+          />
+          <div
+            ref={(instance) => {
+              if (instance) second = instance as unknown as Lockable
+            }}
+            style={{ width: 100, height: 100 }}
+            onPointerDown={() => {
+              second.requestPointerLock()
+              lockInHandler = testRoot.renderer.pointerLockElement()
+            }}
+            onPointerMove={(event: Press) =>
+              seen.push({ name: "second", type: event.type, x: event.clientX, y: event.clientY })
+            }
+          />
+        </div>,
+      )
+      testRoot.renderer.nativeSimulateMouseMove(30, 150)
+      seen.length = 0
+
+      testRoot.renderer.nativeSimulateMouseDown(30, 150)
+      testRoot.renderer.nativeSimulateMouseMove(60, 40)
+
+      expect(lockInHandler).toBe(second.id)
+      expect(log).toEqual(["change:element"])
+      expect(targets[0]).toBe(second)
+      expect(seen).toEqual([{ name: "second", type: "pointermove", x: 30, y: 150 }])
+    })
+
+    it("exitPointerLock from a handler is over when the call returns", () => {
+      let lockIdAfterExit: number | null | undefined
+      testRoot.render(
+        <div style={{ width: 400, height: 400 }}>
+          <div
+            ref={(instance) => {
+              if (instance) first = instance as unknown as Lockable
+            }}
+            style={{ width: 100, height: 100 }}
+            onPointerDown={() => {
+              testRoot.renderer.exitPointerLock()
+              lockIdAfterExit = testRoot.renderer.pointerLockElement()
+            }}
+          />
+        </div>,
+      )
+      first.requestPointerLock()
+      log.length = 0
+
+      testRoot.renderer.nativeSimulateMouseDown(30, 40)
+
+      expect(lockIdAfterExit).toBeNull()
+      expect(log).toEqual(["change:none"])
+    })
+
+    it("a request the platform refuses fires pointerlockerror and leaves no lock", () => {
+      let lockId: number | null | undefined
+      testRoot.render(
+        <div
+          ref={(instance) => {
+            if (instance) first = instance as unknown as Lockable
+          }}
+          style={{ width: 100, height: 100 }}
+          onPointerDown={() => {
+            first.requestPointerLock()
+            lockId = testRoot.renderer.pointerLockElement()
+          }}
+        />,
+      )
+      testRoot.renderer.simulatePointerLockGranting(false)
+
+      testRoot.renderer.nativeSimulateMouseDown(30, 40)
+
+      expect(lockId).toBeNull()
+      expect(log).toEqual(["error:element"])
+    })
+  })
+
   describe("movement", () => {
     type Moved = { type: string; movementX: number; movementY: number; clientX: number }
 

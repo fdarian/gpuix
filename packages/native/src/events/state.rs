@@ -28,9 +28,9 @@ pub const MOUSE_POINTER_ID: f64 = 1.0;
 /// applies at the next native pointer input, which is when `gotpointercapture`
 /// and `lostpointercapture` fire; `has` reads the request, as Chrome's
 /// `hasPointerCapture` reads the pending capture, so it is true right after
-/// `set`. A pointer lock request applies at the next frame (`pointer_lock::apply`),
-/// and `locked_element` reads what that frame granted, as `pointerLockElement`
-/// is null until the lock is.
+/// `set`. A pointer lock request is applied by `pointer_lock::apply`, which the
+/// renderer runs in the call on macOS and at the next frame elsewhere;
+/// `locked_element` reads what it granted, so it is null until the lock is.
 #[derive(Clone, Default)]
 pub struct PointerRequests(Arc<Mutex<Requested>>);
 

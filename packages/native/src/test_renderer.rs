@@ -1363,8 +1363,9 @@ impl TestGpuixRenderer {
         self.pointer_requests.set_window_events(types);
     }
 
-    /// Capture the mouse for `element_id`; takes effect at the next simulated
-    /// pointer input. Ignored while no button is down.
+    /// Capture the mouse for `element_id`; recorded before this returns, and the
+    /// next simulated pointer input fires `gotpointercapture`. Ignored while no
+    /// button is down.
     #[napi]
     pub fn set_pointer_capture(&self, element_id: f64, pointer_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
@@ -1391,26 +1392,30 @@ impl TestGpuixRenderer {
             .map_err(Error::from_reason)
     }
 
-    /// Ends the element drag in progress without a `dragend`; applies at the
-    /// next simulated pointer input.
+    /// Ends the element drag in progress without a `dragend`; recorded now and
+    /// read first by the next simulated pointer input.
     #[napi]
     pub fn cancel_drag(&self) {
         self.pointer_requests.cancel_drag();
     }
 
-    /// Lock the pointer to `element_id`. The frame it asks for is drawn here,
-    /// so the outcome is in `drainEvents` when this returns.
+    /// Lock the pointer to `element_id`. The simulated platform answers before
+    /// this returns, from a handler too, so the outcome is in `drainEvents`.
     #[napi]
     pub fn request_pointer_lock(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         self.pointer_requests.request_lock(id);
-        self.flush()
+        self.settle_pointer_lock()
     }
 
     #[napi]
     pub fn exit_pointer_lock(&self) -> Result<()> {
         self.pointer_requests.exit_lock();
-        self.flush()
+        self.settle_pointer_lock()
+    }
+
+    fn settle_pointer_lock(&self) -> Result<()> {
+        update_view_or_defer(|view, window, cx| view.apply_pointer_lock(window, cx))
     }
 
     #[napi]

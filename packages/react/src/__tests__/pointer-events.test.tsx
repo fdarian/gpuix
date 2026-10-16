@@ -859,6 +859,29 @@ describeNative("pointer events", () => {
       expect(log).toEqual(["second:pointermove"])
     })
 
+    it("answers for the capture inside the handler that asked, and aims the next move at it", () => {
+      const answers: boolean[] = []
+      testRoot.render(
+        <Boxes
+          onFirstDown={() => {
+            second.setPointerCapture(1)
+            answers.push(second.hasPointerCapture(1))
+            second.releasePointerCapture(1)
+            answers.push(second.hasPointerCapture(1))
+            second.setPointerCapture(1)
+          }}
+        />,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50)
+      log.length = 0
+      testRoot.renderer.nativeSimulateMouseMove(300, 300)
+
+      expect(answers).toEqual([true, false])
+      expect(log.slice(0, 2)).toEqual(["second:gotpointercapture", "first:pointerout"])
+      expect(log.at(-1)).toBe("second:pointermove")
+    })
+
     it("releases from JS at the next native event", () => {
       testRoot.render(<Boxes onFirstDown={() => first.setPointerCapture(1)} />)
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
