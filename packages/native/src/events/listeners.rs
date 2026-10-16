@@ -78,7 +78,7 @@ fn sample(
             f64::from(f32::from(movement.y)),
         ),
         modifiers: EventModifiers::from(modifiers),
-        hits: refine(host_hit_chain(window), position),
+        hits: refine(window.window_handle().window_id(), host_hit_chain(window), position),
         over_drag_region: app_region::in_drag_region(window, position),
     }
 }

@@ -10,11 +10,11 @@
 //! a line, between two lines, or under a short paragraph belongs to the container.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
-use gpui::{Bounds, Pixels, Point, TextLayout};
+use gpui::{Bounds, Pixels, Point, TextLayout, WindowId};
 
 use crate::retained_tree::RetainedTree;
 
@@ -108,32 +108,45 @@ struct Entry {
 }
 
 thread_local! {
-    /// The paragraphs painted this frame, in paint order. Rebuilt every frame
-    /// like the selection registry, because a list decides at paint time which
-    /// rows exist.
-    static PARAGRAPHS: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
+    /// The paragraphs painted this frame, in paint order, by window. Rebuilt every
+    /// frame like the selection registry, because a list decides at paint time
+    /// which rows exist. A window has its own, because every renderer numbers its
+    /// containers from the same start and a window's frame must not clear another's.
+    static PARAGRAPHS: RefCell<HashMap<WindowId, Vec<Entry>>> = RefCell::new(HashMap::new());
 }
 
-pub fn frame_reset() {
-    PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().clear());
+pub fn frame_reset(window: WindowId) {
+    PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().insert(window, Vec::new()));
 }
 
-pub fn register(container: u64, layout: TextLayout, targets: Arc<Targets>) {
+pub fn register(window: WindowId, container: u64, layout: TextLayout, targets: Arc<Targets>) {
     PARAGRAPHS.with(|paragraphs| {
-        paragraphs.borrow_mut().push(Entry {
-            container,
-            layout,
-            targets,
-        })
+        paragraphs
+            .borrow_mut()
+            .entry(window)
+            .or_default()
+            .push(Entry {
+                container,
+                layout,
+                targets,
+            })
     });
 }
 
-/// The inline boxes of a paragraph of `container` that have a glyph under
-/// `position`, innermost first. Empty when the point is in no glyph's cell.
-pub fn boxes_under(container: u64, position: Point<Pixels>) -> Vec<(u64, Bounds<Pixels>)> {
+/// The inline boxes of a paragraph of `container` in `window` that have a glyph
+/// under `position`, innermost first. Empty when the point is in no glyph's cell.
+pub fn boxes_under(
+    window: WindowId,
+    container: u64,
+    position: Point<Pixels>,
+) -> Vec<(u64, Bounds<Pixels>)> {
     PARAGRAPHS.with(|paragraphs| {
+        let paragraphs = paragraphs.borrow();
+        let Some(entries) = paragraphs.get(&window) else {
+            return Vec::new();
+        };
         // A later paragraph is painted over an earlier one.
-        for entry in paragraphs.borrow().iter().rev() {
+        for entry in entries.iter().rev() {
             if entry.container != container || !entry.layout.bounds().contains(&position) {
                 continue;
             }
@@ -264,5 +277,27 @@ mod tests {
         let targets = targets_of(&tree);
         assert_eq!(ids(targets.around(3, rect)), vec![5]);
         assert!(targets.around(2, rect).is_empty());
+    }
+
+    fn painted(window: WindowId) -> usize {
+        PARAGRAPHS.with(|paragraphs| paragraphs.borrow().get(&window).map_or(0, Vec::len))
+    }
+
+    #[test]
+    fn a_window_resetting_its_frame_leaves_the_paragraphs_of_another() {
+        let targets = Arc::new(targets_of(&fixture(&[])));
+        let layout = gpui::StyledText::new("a bc d").layout().clone();
+        let (a, b) = (WindowId::from(1), WindowId::from(2));
+        for window in [a, b] {
+            frame_reset(window);
+            register(window, 1, layout.clone(), targets.clone());
+        }
+        register(a, 1, layout.clone(), targets.clone());
+        assert_eq!((painted(a), painted(b)), (2, 1));
+
+        frame_reset(b);
+        assert_eq!((painted(a), painted(b)), (2, 0));
+        frame_reset(a);
+        assert_eq!(painted(a), 0);
     }
 }

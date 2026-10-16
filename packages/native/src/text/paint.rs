@@ -101,7 +101,7 @@ pub fn selection_frame_reset(
             START_REGIONS.with(|r| r.borrow_mut().clear());
             PAINTED.with(|p| p.borrow_mut().clear());
             HIGHLIGHTS.with(|h| h.borrow_mut().clear());
-            super::inline_hit::frame_reset();
+            super::inline_hit::frame_reset(window.window_handle().window_id());
             super::search::ordinal_frame_reset();
             register_copy_listener(window, &selection);
             register_down_listener(window, &selection);
@@ -348,7 +348,12 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             }
             PAINTED.with(|p| p.borrow_mut().push(text.clone()));
             if let Some(targets) = &inline_targets {
-                super::inline_hit::register(element_id, layout.clone(), targets.clone());
+                super::inline_hit::register(
+                    window.window_handle().window_id(),
+                    element_id,
+                    layout.clone(),
+                    targets.clone(),
+                );
             }
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);

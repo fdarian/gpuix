@@ -7,7 +7,7 @@
 //! to name the boxes and where the first line fragment of each starts, which is
 //! what `offsetX` is measured from.
 
-use gpui::{Pixels, Point};
+use gpui::{Pixels, Point, WindowId};
 
 use super::ids::Hit;
 use crate::text::inline_hit;
@@ -16,11 +16,11 @@ use crate::text::inline_hit;
 /// inline boxes around the glyph under it put in front, innermost first. The
 /// chain is returned as it came when its target is not a paragraph's container,
 /// something is painted over the text, or the point is in no glyph's cell.
-pub fn refine(mut chain: Vec<Hit>, position: Point<Pixels>) -> Vec<Hit> {
+pub fn refine(window: WindowId, mut chain: Vec<Hit>, position: Point<Pixels>) -> Vec<Hit> {
     let Some(container) = chain.first().map(|hit| hit.id) else {
         return chain;
     };
-    let inside = inline_hit::boxes_under(container, position);
+    let inside = inline_hit::boxes_under(window, container, position);
     chain.splice(
         0..0,
         inside.into_iter().map(|(id, bounds)| Hit { id, bounds }),
@@ -232,6 +232,6 @@ mod tests {
 
     #[test]
     fn nothing_is_put_in_front_of_a_chain_with_no_target() {
-        assert!(refine(Vec::new(), point(px(1.0), px(1.0))).is_empty());
+        assert!(refine(WindowId::from(1), Vec::new(), point(px(1.0), px(1.0))).is_empty());
     }
 }
