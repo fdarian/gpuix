@@ -307,7 +307,19 @@ impl MotionState {
         painted: u64,
         now: Instant,
     ) -> Result<Self, String> {
-        Self::mount(source, Base::Style(base, &colors), measurement, painted, now)
+        Self::mount(source, Base::Style(base, &colors), Scope::Element, measurement, painted, now)
+    }
+
+    /// The state of an inline box (`<span>`), which only moves what its paragraph
+    /// repaints without a layout: a key of any other property is an error, not a
+    /// no-op ([`Scope::InlineBox`]).
+    pub(crate) fn new_inline(
+        source: &Value,
+        base: Option<&StyleDesc>,
+        colors: Colors,
+        now: Instant,
+    ) -> Result<Self, String> {
+        Self::mount(source, Base::Style(base, &colors), Scope::InlineBox, None, 0, now)
     }
 
     /// The state of an SVG shape, whose animated keys are attributes.
@@ -319,17 +331,19 @@ impl MotionState {
         colors: Colors,
         now: Instant,
     ) -> Result<Self, String> {
-        Self::mount(source, Base::Svg(attributes, &colors), None, 0, now)
+        Self::mount(source, Base::Svg(attributes, &colors), Scope::Element, None, 0, now)
     }
 
     fn mount(
         source: &Value,
         base: Base,
+        scope: Scope,
         measurement: Option<&Measurement>,
         painted: u64,
         now: Instant,
     ) -> Result<Self, String> {
         let description = parse_description(source, base.target(), base.colors())?;
+        check_scope(&description, scope)?;
         let (tracks, pending) = mount_tracks(&description, base, measurement, painted, now)?;
         Ok(Self {
             source: source.clone(),
@@ -365,7 +379,17 @@ impl MotionState {
         painted: u64,
         now: Instant,
     ) -> Result<(), String> {
-        self.retarget(source, Base::Style(base, &colors), measurement, painted, now)
+        self.retarget(source, Base::Style(base, &colors), Scope::Element, measurement, painted, now)
+    }
+
+    pub(crate) fn sync_inline(
+        &mut self,
+        source: &Value,
+        base: Option<&StyleDesc>,
+        colors: Colors,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.retarget(source, Base::Style(base, &colors), Scope::InlineBox, None, 0, now)
     }
 
     pub(crate) fn sync_svg(
@@ -375,13 +399,14 @@ impl MotionState {
         colors: Colors,
         now: Instant,
     ) -> Result<(), String> {
-        self.retarget(source, Base::Svg(attributes, &colors), None, 0, now)
+        self.retarget(source, Base::Svg(attributes, &colors), Scope::Element, None, 0, now)
     }
 
     fn retarget(
         &mut self,
         source: &Value,
         base: Base,
+        scope: Scope,
         measurement: Option<&Measurement>,
         painted: u64,
         now: Instant,
@@ -393,7 +418,9 @@ impl MotionState {
 
         let previous_generation = self.generation;
         self.colors = *base.colors();
-        let description = match parse_description(source, base.target(), base.colors()) {
+        let description = match parse_description(source, base.target(), base.colors())
+            .and_then(|description| check_scope(&description, scope).map(|()| description))
+        {
             Ok(description) => description,
             Err(error) => {
                 self.source = source.clone();
@@ -1194,6 +1221,28 @@ fn parse_description(
         animate,
         transition: Transitions::parse(fields.get("transition"), target, reduced)?,
     })
+}
+
+/// A property `scope` cannot move would be left at its declared value by
+/// whatever paints, so naming it is an error.
+fn check_scope(description: &Description, scope: Scope) -> Result<(), String> {
+    let named = description
+        .initial
+        .iter()
+        .flat_map(|initial| initial.keys().map(|key| ("initial", key)))
+        .chain(description.animate.keys().map(|key| ("animate", key)));
+    for (context, key) in named {
+        if let PropKey::Style(prop) = key {
+            if !scope.animates(*prop) {
+                return Err(format!(
+                    "motion {context} cannot animate {} on a span: an inline box moves only {}",
+                    prop.name(),
+                    Scope::INLINE_BOX_PROPERTIES,
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// `initial` holds a value per property, never keyframes.

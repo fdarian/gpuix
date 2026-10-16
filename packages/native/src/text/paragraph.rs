@@ -128,11 +128,7 @@ pub fn run_styles(
         let mut lengths = *lengths;
         let mut font_state = font_state.clone();
         for id in &piece.boxes {
-            let Some(base) = tree
-                .elements
-                .get(id)
-                .and_then(|element| element.style.as_deref())
-            else {
+            let Some(base) = motion.declared_by(tree, *id) else {
                 continue;
             };
             let declared = &*motion.declared(*id, base, states(*id, base));

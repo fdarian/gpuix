@@ -486,6 +486,10 @@ pub(crate) enum Scope {
 }
 
 impl Scope {
+    /// What an error names as the properties of [`Scope::InlineBox`].
+    pub(super) const INLINE_BOX_PROPERTIES: &'static str = "colours (color, backgroundColor, textDecorationColor, \
+         outlineColor, borderColor and the four border side colours)";
+
     pub(super) fn animates(self, prop: AnimProp) -> bool {
         match self {
             Self::Element => true,

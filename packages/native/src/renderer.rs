@@ -5127,6 +5127,7 @@ fn sync_motion_states(
         // An SVG shape animates its attributes, not a style.
         let svg_attributes = crate::custom_elements::svg_tree::is_svg_element(tree, element)
             .then(|| element.custom_props());
+        let inline = element.element_type == "span";
         let state = match states.entry(id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -5134,6 +5135,7 @@ fn sync_motion_states(
                     Some(attributes) => {
                         crate::motion::MotionState::new_svg(source, attributes, colors, now)
                     }
+                    None if inline => crate::motion::MotionState::new_inline(source, base, colors, now),
                     None => crate::motion::MotionState::new(
                         source,
                         base,
@@ -5154,6 +5156,7 @@ fn sync_motion_states(
         };
         let synced = match svg_attributes {
             Some(attributes) => state.sync_svg(source, attributes, colors, now),
+            None if inline => state.sync_inline(source, base, colors, now),
             None => state.sync(source, base, colors, measurement.as_ref(), painted, now),
         };
         if let Err(error) = synced {
@@ -6092,6 +6095,7 @@ impl BuildCtx<'_> {
                 transitions: &mut *self.css_transitions,
                 animations: &mut *self.css_animations,
                 keyframes: self.keyframes,
+                motion: &*self.motion_states,
                 now: self.now,
             },
         )

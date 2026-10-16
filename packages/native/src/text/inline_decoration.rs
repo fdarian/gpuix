@@ -222,11 +222,7 @@ pub fn of(
         let mut colors = *colors;
         let mut lengths = *lengths;
         for id in &piece.boxes {
-            let Some(base) = tree
-                .elements
-                .get(id)
-                .and_then(|element| element.style.as_deref())
-            else {
+            let Some(base) = motion.declared_by(tree, *id) else {
                 continue;
             };
             let declared = motion.declared(*id, base, states(*id, base));
