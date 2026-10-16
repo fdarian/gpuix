@@ -18,12 +18,48 @@ struct HitWalk<'a> {
     x: f64,
     y: f64,
     painted_box: &'a dyn Fn(u64) -> Option<crate::automation::ElementBounds>,
-    /// Deferred `anchored` layers met so far, each with its priority and hits.
-    layers: Vec<(u64, Vec<u64>)>,
+    /// Deferred `anchored` layers met so far, each with its priority, the order it was met in
+    /// and its hits from the bottom up.
+    layers: Vec<(u64, usize, Vec<u64>)>,
     /// For each positioned element above (and each `<virtual-list>`, whose rows are layout
     /// roots), whether its clip excludes the point from what is inside it. An absolute
     /// descendant takes the innermost one in place of the clip of the static boxes in between.
     frames: Vec<bool>,
+    /// Only tell whether an `opacity`, `filter`, `mask` or `clip-path` value makes an effect
+    /// group, which does not depend on the element's own `color` or font size.
+    colors: crate::color::ColorContext,
+    lengths: crate::css::length::LengthContext,
+}
+
+/// A stacking context being collected: the positioned descendants it was handed, with the
+/// `z-index` and the place in tree order that `Window::end_stacking_context` sorts them by.
+#[derive(Default)]
+struct Context {
+    next_ordinal: u32,
+    lifted: Vec<(i32, u32, Vec<u64>)>,
+}
+
+impl Context {
+    /// The tree order of a lifted element is the one it has before the elements inside it, so
+    /// the ordinal is taken before they are visited.
+    fn take_ordinal(&mut self) -> u32 {
+        let ordinal = self.next_ordinal;
+        self.next_ordinal += 1;
+        ordinal
+    }
+
+    /// What the context paints, from the bottom up: its own box, the lifted elements with a
+    /// negative index, its in-flow content, then the other lifted elements.
+    fn paint_order(mut self, own: Option<u64>, in_flow: Vec<u64>) -> Vec<u64> {
+        self.lifted.sort_by_key(|(z, ordinal, _)| (*z, *ordinal));
+        let first_above = self.lifted.partition_point(|(z, _, _)| *z < 0);
+        let above = self.lifted.split_off(first_above);
+        let mut order: Vec<u64> = own.into_iter().collect();
+        order.extend(self.lifted.into_iter().flat_map(|(_, _, hits)| hits));
+        order.extend(in_flow);
+        order.extend(above.into_iter().flat_map(|(_, _, hits)| hits));
+        order
+    }
 }
 
 pub struct RetainedElement {
@@ -879,11 +915,15 @@ impl RetainedTree {
     /// The elements whose painted box holds the point, topmost first: the DOM's
     /// `elementsFromPoint`.
     ///
-    /// There is no z-index, so tree order is paint order. Walking each
-    /// element's children last to first, and the element after them, yields
-    /// the topmost element first. The exception is a deferred `anchored`
-    /// layer, which gpui paints after the tree by `priority` and without the
-    /// clip of the elements around it: its hits come first.
+    /// The order is the one gpui paints and hit tests in, and `layout::stacking` decides it for
+    /// both. An element that forms a stacking context (the window root, a virtual-list row, an
+    /// `anchored` layer, or one whose style says so) paints its own box, then the positioned
+    /// descendants it was handed with a negative `z-index`, then its in-flow content in tree
+    /// order, then the other positioned descendants by `(z-index, tree order)`. A positioned
+    /// element goes to the nearest context around it however many static boxes sit between.
+    /// Where no context is active (below a `visibility: hidden` element) the children of one
+    /// parent are ordered by `paint_rank`. A deferred `anchored` layer is drawn after the tree
+    /// by `priority`, without the clip of the elements around it: its hits come first.
     ///
     /// `painted_box` is the last frame's box. An element that was not painted
     /// (outside a virtual list's window) has none and is never hit, though its
@@ -893,6 +933,9 @@ impl RetainedTree {
     /// drawn: `overflow` of `hidden` or `scroll`, per axis, hides whatever lies
     /// outside the clipping box. `pointer-events: none` is inherited, like in
     /// CSS, and `auto` restores it.
+    ///
+    /// Styles are the declared ones: a `hover` state or a motion value that moves a box into
+    /// or out of a context is not seen.
     pub fn elements_at(
         &self,
         x: f64,
@@ -905,24 +948,34 @@ impl RetainedTree {
             painted_box,
             layers: Vec::new(),
             frames: Vec::new(),
+            colors: crate::color::ColorContext::root(crate::color::Scheme::Light),
+            lengths: crate::css::length::LengthContext::initial(0.0, 0.0),
         };
-        let mut hits = Vec::new();
-        if let Some(root_id) = self.root_id {
-            self.collect_hits(root_id, false, false, false, false, &mut walk, &mut hits);
-        }
-        // Stable, so layers of one priority stay topmost first.
-        walk.layers.sort_by(|a, b| b.0.cmp(&a.0));
-        let mut ordered: Vec<u64> = walk.layers.into_iter().flat_map(|(_, layer)| layer).collect();
+        let mut hits = match self.root_id {
+            Some(root_id) => self.paint_order(root_id, false, false, false, false, &mut walk, None),
+            None => Vec::new(),
+        };
+        hits.reverse();
+        // A layer met later is drawn over an earlier one of the same priority, and one inside
+        // another is drawn over it.
+        walk.layers.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+        let mut ordered: Vec<u64> = walk
+            .layers
+            .into_iter()
+            .flat_map(|(_, _, layer)| layer.into_iter().rev())
+            .collect();
         ordered.extend(hits);
         ordered
     }
 
-    /// `none` is the inherited `pointer-events: none`. `inert` is stronger: no
-    /// `pointer-events: auto` below an `inert` element restores hits. `clipped`
-    /// means an ancestor's clip excludes the point, so only deferred layers
-    /// below can still be hit. `hidden` is the inherited `visibility`.
+    /// The hits of `id` and what it paints, from the bottom up. `none` is the inherited
+    /// `pointer-events: none`. `inert` is stronger: no `pointer-events: auto` below an `inert`
+    /// element restores hits. `clipped` means an ancestor's clip excludes the point, so only
+    /// deferred layers below can still be hit. `hidden` is the inherited `visibility`. `context` is the stacking context `id` is
+    /// painted in, which collects the positioned elements below it, or none where nothing is
+    /// lifted.
     #[allow(clippy::too_many_arguments)]
-    fn collect_hits(
+    fn paint_order(
         &self,
         id: u64,
         none: bool,
@@ -930,10 +983,10 @@ impl RetainedTree {
         clipped: bool,
         hidden: bool,
         walk: &mut HitWalk,
-        hits: &mut Vec<u64>,
-    ) {
+        context: Option<&mut Context>,
+    ) -> Vec<u64> {
         let Some(element) = self.elements.get(&id) else {
-            return;
+            return Vec::new();
         };
         let style = element.style.as_deref();
         let own_box = (walk.painted_box)(id);
@@ -953,7 +1006,7 @@ impl RetainedTree {
             let (clip_x, clip_y) = (axes.x.clips(), axes.y.clips());
             if (clip_x || clip_y) && !inside(bounds, clip_x, clip_y) {
                 if self.anchored_count == 0 && self.escaping_count == 0 {
-                    return;
+                    return Vec::new();
                 }
                 clipped = true;
             }
@@ -984,30 +1037,100 @@ impl RetainedTree {
                     .get("priority")
                     .and_then(|value| value.as_u64())
                     .unwrap_or(1);
-                let mut layer = Vec::new();
+                let met = walk.layers.len();
+                walk.layers.push((priority, met, Vec::new()));
+                let mut layer = Context::default();
                 walk.frames.push(false);
-                for &child in element.children.iter().rev() {
-                    self.collect_hits(child, none, inert, false, hidden, walk, &mut layer);
-                }
+                let in_flow = self.paint_children(element, none, inert, false, hidden, walk, Some(&mut layer));
                 walk.frames.pop();
-                walk.layers.push((priority, layer));
-                return;
+                walk.layers[met].2 = layer.paint_order(None, in_flow);
+                return Vec::new();
             }
         }
+
+        let mut own_context = (crate::layout::stacking::is_forced_context(self, element)
+            || crate::layout::stacking::creates_context(style, &walk.colors, &walk.lengths))
+        .then(Context::default);
+        // Nothing under a hidden element is painted, so nothing is lifted out of it.
+        let hidden = style.and_then(|style| style.visibility.as_deref()) == Some("hidden");
+        let children_context = match own_context.as_mut() {
+            Some(own) => Some(own),
+            None if hidden => None,
+            None => context,
+        };
 
         let opens_frame = containing_block::is_positioned(element) || element.element_type == "virtual-list";
         if opens_frame {
             walk.frames.push(clipped);
         }
-        for &child in element.children.iter().rev() {
-            self.collect_hits(child, none, inert, clipped, hidden, walk, hits);
-        }
+        let in_flow = self.paint_children(element, none, inert, clipped, hidden, walk, children_context);
         if opens_frame {
             walk.frames.pop();
         }
-        if !clipped && !none && !hidden && own_box.is_some_and(|bounds| inside(&bounds, true, true)) {
-            hits.push(id);
+        let own = (!clipped && !none && !hidden && own_box.is_some_and(|bounds| inside(&bounds, true, true))).then_some(id);
+        match own_context {
+            Some(own_context) => own_context.paint_order(own, in_flow),
+            None => own.into_iter().chain(in_flow).collect(),
         }
+    }
+
+    /// The in-flow hits of the children of `element`, from the bottom up. A positioned child
+    /// that `context` takes is registered in it instead, and a child met with no context is
+    /// placed among its siblings by its paint rank.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_children(
+        &self,
+        element: &RetainedElement,
+        none: bool,
+        inert: bool,
+        clipped: bool,
+        hidden: bool,
+        walk: &mut HitWalk,
+        context: Option<&mut Context>,
+    ) -> Vec<u64> {
+        let mut in_flow = Vec::new();
+        match context {
+            Some(context) => {
+                for &child in &element.children {
+                    let lifted = self
+                        .elements
+                        .get(&child)
+                        .and_then(|child| crate::layout::stacking::lifted_z(self, child));
+                    match lifted {
+                        Some(z) => {
+                            let ordinal = context.take_ordinal();
+                            let hits =
+                                self.paint_order(child, none, inert, clipped, hidden, walk, Some(&mut *context));
+                            context.lifted.push((z, ordinal, hits));
+                        }
+                        None => in_flow.extend(self.paint_order(
+                            child,
+                            none,
+                            inert,
+                            clipped,
+                            hidden,
+                            walk,
+                            Some(&mut *context),
+                        )),
+                    }
+                }
+            }
+            None => {
+                let mut ranked: Vec<(i32, u64)> = element
+                    .children
+                    .iter()
+                    .map(|&child| {
+                        let style = self.elements.get(&child).and_then(|child| child.style.as_deref());
+                        (crate::layout::stacking::paint_rank(style), child)
+                    })
+                    .collect();
+                ranked.sort_by_key(|(rank, _)| *rank);
+                for (_, child) in ranked {
+                    in_flow.extend(self.paint_order(child, none, inert, clipped, hidden, walk, None));
+                }
+            }
+        }
+        in_flow
     }
 
     fn to_json_detail(
@@ -1803,6 +1926,216 @@ mod tests {
         // Not deferred: painted in place, in tree order, under the clip.
         tree.set_custom_prop(2, "deferred".to_string(), serde_json::json!(false));
         assert_eq!(tree.elements_at(10.0, 10.0, &boxed(&boxes)), vec![5, 3, 1]);
+    }
+
+    /// A tree from `(id, parent, type, style)`, the first node being the root. Every box is the
+    /// whole 100 square, so the order of the hits is the paint order.
+    fn stacked(
+        nodes: Vec<(u64, u64, &str, StyleDesc)>,
+    ) -> (RetainedTree, impl Fn(u64) -> Option<crate::automation::ElementBounds>) {
+        let mut tree = RetainedTree::new();
+        for (id, _, kind, style) in &nodes {
+            tree.create_element(*id, kind.to_string());
+            tree.set_style(*id, Arc::new(style.clone()));
+        }
+        tree.set_root(nodes[0].0);
+        for (id, parent, _, _) in &nodes {
+            if *parent != 0 {
+                tree.append_child(*parent, *id);
+            }
+        }
+        let ids: Vec<u64> = nodes.iter().map(|(id, ..)| *id).collect();
+        let lookup = move |id: u64| {
+            ids.contains(&id).then_some(crate::automation::ElementBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                client_left: 0.0,
+                client_top: 0.0,
+                client_right: 0.0,
+                client_bottom: 0.0,
+            })
+        };
+        (tree, lookup)
+    }
+
+    fn flow() -> StyleDesc {
+        StyleDesc::default()
+    }
+
+    fn at(position: &str, z_index: Option<f64>) -> StyleDesc {
+        StyleDesc {
+            position: Some(position.to_string()),
+            z_index,
+            ..Default::default()
+        }
+    }
+
+    fn hits(nodes: Vec<(u64, u64, &str, StyleDesc)>) -> Vec<u64> {
+        let (tree, painted) = stacked(nodes);
+        tree.elements_at(50.0, 50.0, &painted)
+    }
+
+    #[test]
+    fn elements_at_puts_a_z_indexed_descendant_above_the_later_sibling_of_its_ancestor() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", at("relative", Some(5.0))),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [3, 4, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_keeps_tree_order_between_positioned_elements_of_different_parents() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", at("absolute", Some(1.0))),
+            (4, 1, "div", flow()),
+            (5, 4, "div", at("absolute", Some(1.0))),
+        ]);
+        assert_eq!(order, [5, 3, 4, 2, 1]);
+
+        // A higher index in the earlier parent wins, and z-index 0 ties with auto.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", at("absolute", Some(2.0))),
+            (4, 1, "div", flow()),
+            (5, 4, "div", at("absolute", Some(1.0))),
+        ]);
+        assert_eq!(order, [3, 5, 4, 2, 1]);
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", at("absolute", None)),
+            (3, 1, "div", at("absolute", Some(0.0))),
+            (4, 1, "div", at("absolute", None)),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_puts_a_negative_index_above_the_context_and_below_its_content() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", at("absolute", Some(-1.0))),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 2, 3, 1]);
+    }
+
+    #[test]
+    fn elements_at_lets_a_positioned_ancestor_with_auto_z_hand_its_descendants_to_the_context() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", at("relative", None)),
+            (3, 2, "div", at("absolute", Some(5.0))),
+            (4, 1, "div", at("absolute", Some(2.0))),
+        ]);
+        assert_eq!(order, [3, 4, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_traps_the_z_index_inside_a_context() {
+        // 2 is a context by its z-index, 3 inside it cannot rise above 4.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", at("relative", Some(1.0))),
+            (3, 2, "div", at("absolute", Some(100.0))),
+            (4, 1, "div", at("absolute", Some(2.0))),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+
+        // So does an effect group on a static box.
+        let faded = StyleDesc { opacity: Some(0.5), ..Default::default() };
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", faded),
+            (3, 2, "div", at("absolute", Some(100.0))),
+            (4, 1, "div", at("absolute", Some(2.0))),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+
+        // A positioned element with a z-index is itself ordered in the context around it, and
+        // its negative child is above its own box.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", at("relative", Some(3.0))),
+            (3, 2, "div", at("absolute", Some(-1.0))),
+            (4, 1, "div", at("absolute", Some(2.0))),
+        ]);
+        assert_eq!(order, [3, 2, 4, 1]);
+    }
+
+    #[test]
+    fn elements_at_orders_the_children_of_a_hidden_element_by_paint_rank() {
+        // Nothing is lifted out of a `visibility: hidden` element: 3 stays among its siblings.
+        let hidden = StyleDesc { visibility: Some("hidden".to_string()), ..Default::default() };
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", hidden),
+            (3, 2, "div", at("absolute", Some(-1.0))),
+            (4, 2, "div", flow()),
+            (5, 2, "div", at("relative", None)),
+            (6, 1, "div", at("absolute", Some(2.0))),
+        ]);
+        // From the bottom: 1, 2, 3 (negative), 4, 5 (positioned), then 6 in the context.
+        assert_eq!(order, [6, 5, 4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_keeps_the_z_index_of_a_virtual_list_row_inside_the_row() {
+        // The rows are layout roots: 5 does not rise above the later row 4.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "virtual-list", flow()),
+            (3, 2, "div", flow()),
+            (5, 3, "div", at("absolute", Some(9.0))),
+            (4, 2, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 5, 3, 2, 1]);
+
+        // Inside a row z-index works.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "virtual-list", flow()),
+            (3, 2, "div", flow()),
+            (4, 3, "div", flow()),
+            (5, 3, "div", at("absolute", Some(9.0))),
+            (6, 4, "div", at("absolute", Some(10.0))),
+        ]);
+        assert_eq!(order, [6, 5, 4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_orders_by_z_index_inside_a_deferred_layer() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "anchored", flow()),
+            (3, 2, "div", flow()),
+            (4, 3, "div", at("absolute", Some(7.0))),
+            (5, 2, "div", flow()),
+            (6, 1, "div", at("absolute", Some(99.0))),
+        ]);
+        // The layer is above the tree whatever 6 asks for, and 4 rises above 5 inside it.
+        assert_eq!(order, [4, 5, 3, 6, 1]);
+    }
+
+    #[test]
+    fn elements_at_lifts_a_fixed_box_and_makes_it_a_context() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", at("fixed", None)),
+            (4, 3, "div", at("absolute", Some(-1.0))),
+            (5, 1, "div", flow()),
+        ]);
+        // 3 is above 5 and its negative child is above 3's own box.
+        assert_eq!(order, [4, 3, 5, 2, 1]);
     }
 
     #[test]
