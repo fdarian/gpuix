@@ -2813,8 +2813,8 @@ shorthand. `hover`, `active` and the other state styles change the space too.
 - Deviations: an `auto` or `anchor-size()` margin counts as 0, as `auto` does on an
   inline box in CSS, a negative `marginLeft` or `marginRight` pulls the text as in
   CSS, and a negative padding or border width counts as 0 (a `calc()` of a padding
-  is clamped as a whole). A border width that comes from a `border` shorthand needs a line
-  style, as it does on a `div`. The space of a span that holds no text left
+  is clamped as a whole). A border side needs a line style, as on a `div`: without
+  one its width is 0. The space of a span that holds no text left
   after white space processing, or none of whose glyphs are painted, is lost: it
   has no glyph to attach to. A span cut by `text-overflow` or `lineClamp` at its
   end loses its space with the cut.
@@ -2856,10 +2856,10 @@ search match lies over them.
   side. The padding follows the same rule, because it is only on the first and
   last lines (see [Space around an inline box](#space-around-an-inline-box)).
   `box-decoration-break: clone` is not available.
-- The border is read like a `div`'s: `border` and the side shorthands need a line
-  style, a missing `borderColor` is `currentColor` for a shorthand and clear for
-  `borderWidth` alone, and every [line style](#borders) is drawn, on each side as it
-  is declared. A radius is the one a `div` has, elliptical and in any length, and a
+- The border is read like a `div`'s: a side needs a [line style](#borders) to have
+  any width (`borderWidth` and `borderColor` alone draw nothing), a missing
+  `borderColor` is `currentColor` for a shorthand and clear for `borderWidth` alone,
+  and every line style is drawn, on each side as it is declared. A radius is the one a `div` has, elliptical and in any length, and a
   corner is the corner longhand, else `borderRadius`.
 - The `outline` ring follows the corners of the fragment. The pointer, the cursor
   and the rect that `ResizeObserver` and `IntersectionObserver` report use the same
@@ -3389,6 +3389,7 @@ Set `padding` on the input style or on a parent wrapper. When the input has
   borderRadius: 16,
   backgroundColor: '#1a1a22',
   borderWidth: 1,
+  borderStyle: 'solid',
   borderColor: '#ffffff14',
 }}>
   <input
@@ -4761,6 +4762,7 @@ header. `style` is the surface, so the card look is yours.
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: '#ffffff1f',
     backgroundColor: '#ffffff09',
   }}
@@ -5704,8 +5706,8 @@ and `width: "auto"` in a state style replaces the base `width`, as in CSS.
 Widths, colours and corners can differ per side:
 
 ```tsx
-<div style={{ borderBottomWidth: 2, borderBottomColor: '#89b4fa' }} />
-<div style={{ borderWidth: 4, borderColor: 'red blue' }} />   {/* top/bottom red, left/right blue */}
+<div style={{ borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: '#89b4fa' }} />
+<div style={{ borderWidth: 4, borderStyle: 'solid', borderColor: 'red blue' }} />   {/* top/bottom red, left/right blue */}
 <div style={{ border: '1px solid rgba(0,0,0,.2)', borderTop: '2px dashed currentColor' }} />
 ```
 
@@ -5719,6 +5721,17 @@ set one side. `border` and `borderTop` / `borderRight` / `borderBottom` /
 works. `border` is applied first, then the side shorthands, then `borderStyle`,
 then the longhands (`borderWidth`, `borderTopColor`, `borderTopStyle`, ...). An
 invalid value, such as a style that is not in the list below, is ignored.
+
+As in CSS, a side's style starts as `none`, and a `none` or `hidden` side has no
+width: nothing is drawn and no space is taken. So a border needs a style, from
+`borderStyle`, a side's `borderTopStyle` or a shorthand: `{ borderWidth: 1,
+borderColor: 'red' }` and `{ border: '1px red' }` draw nothing, and `{ borderWidth:
+1, borderStyle: 'solid', borderColor: 'red' }` does. The other way round, a side
+with a visible style and no width is `medium` (3px). Only the sides that name a
+style have a border, so `{ borderBottomWidth: 2, borderBottomStyle: 'solid' }` is a
+bottom border and the other sides stay at 0. A motion animation or a
+[CSS transition](#css-transitions) of a border width shows the width a side has,
+so a side with no style stays at 0.
 
 The line styles are drawn like Chrome draws them, each side with its own:
 
@@ -5738,13 +5751,12 @@ The line styles are drawn like Chrome draws them, each side with its own:
   that is already as dark as it gets is not darkened, and black and white take
   Chrome's fixed greys. The transparency of the colour is kept.
 - `none` and `hidden` take the side's width, whatever `borderWidth` says: it is
-  0 and nothing is drawn. `border: "2px red"` has no style, so it is `none` too.
+  0 and nothing is drawn. A side no declaration gives a style is `none` too, and
+  so is `border: "2px red"`.
 
 Where two sides with different styles meet at a corner, each style is drawn up
 to the line that already separates their colours. The pattern of a dotted or
-dashed side follows the border's width on that side. A side whose style no
-declaration names is `solid`, unlike CSS, where the initial style is `none`:
-`{ borderWidth: 1, borderColor: 'red' }` draws a border.
+dashed side follows the border's width on that side.
 
 #### Rounded corners
 
@@ -6049,6 +6061,7 @@ light, so its default text stays black even when the system is dark.
     colorScheme: 'light dark',
     color: 'light-dark(#1f2328, #e6edf3)',
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: 'color-mix(in srgb, currentColor 20%, transparent)',
     backgroundColor: 'light-dark(#fff, #0d1117)',
   }}
