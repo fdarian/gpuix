@@ -517,8 +517,14 @@ pub struct StyleDesc {
     /// CSS `clip-path`: `inset()`, `circle()`, `ellipse()` or `polygon()` and an
     /// optional reference box, or `none`. An invalid string is ignored.
     pub clip_path: Option<String>,
-    /// `"solid"` or `"dashed"`, for every side.
+    /// CSS `border-style`: one to four of `none`, `hidden`, `dotted`, `dashed`, `solid`,
+    /// `double`, `groove`, `ridge`, `inset` and `outset`, for the sides like `border-color`.
+    /// `none` and `hidden` leave the side without a width. An invalid string is ignored.
     pub border_style: Option<String>,
+    pub border_top_style: Option<String>,
+    pub border_right_style: Option<String>,
+    pub border_bottom_style: Option<String>,
+    pub border_left_style: Option<String>,
     /// Width divided by height, applied to whichever axis is not definite.
     /// A number or a CSS ratio string such as `"16 / 9"`.
     pub aspect_ratio: Option<crate::layout::aspect_ratio::AspectRatio>,

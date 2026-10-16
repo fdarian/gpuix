@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::color::{ColorContext, Scheme};
 use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
-use crate::css::border::{parse_border, parse_color_sides, LineStyle};
+use crate::css::border::{parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
 use crate::css::{clip_path, filter, text_decoration};
 use crate::style::{BackgroundValue, StyleDesc};
@@ -147,7 +147,8 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         border_width, border_top_width, border_right_width, border_bottom_width,
         border_left_width, border_color, border_radius, border_top_left_radius,
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
-        box_shadow, border_style, aspect_ratio, outline_width, outline_color, outline_offset,
+        box_shadow, border_style, border_top_style, border_right_style, border_bottom_style,
+        border_left_style, aspect_ratio, outline_width, outline_color, outline_offset,
         font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
         text_decoration_color, text_decoration_thickness,
@@ -233,39 +234,58 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
 /// drops these per-side values again, as it should.
 fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
     let sides = [
-        (over.border_top.as_deref(), &mut base.border_top_width, &mut base.border_top_color),
-        (over.border_right.as_deref(), &mut base.border_right_width, &mut base.border_right_color),
-        (over.border_bottom.as_deref(), &mut base.border_bottom_width, &mut base.border_bottom_color),
-        (over.border_left.as_deref(), &mut base.border_left_width, &mut base.border_left_color),
+        (
+            over.border_top.as_deref(),
+            &mut base.border_top_width,
+            &mut base.border_top_color,
+            &mut base.border_top_style,
+        ),
+        (
+            over.border_right.as_deref(),
+            &mut base.border_right_width,
+            &mut base.border_right_color,
+            &mut base.border_right_style,
+        ),
+        (
+            over.border_bottom.as_deref(),
+            &mut base.border_bottom_width,
+            &mut base.border_bottom_color,
+            &mut base.border_bottom_style,
+        ),
+        (
+            over.border_left.as_deref(),
+            &mut base.border_left_width,
+            &mut base.border_left_color,
+            &mut base.border_left_style,
+        ),
     ];
     if sides.iter().all(|(shorthand, ..)| shorthand.is_none()) {
         return;
     }
     let all_width = base.border_width.take();
-    // An invalid `borderColor` paints nothing, so it spreads nothing.
+    // An invalid `borderColor` or `borderStyle` paints nothing, so it spreads nothing.
     let all_colors = base
         .border_color
         .take()
         .and_then(|value| parse_color_sides(&value).map(|sides| sides.map(str::to_owned)));
-    let mut resets_style = false;
-    for (index, (shorthand, width, color)) in sides.into_iter().enumerate() {
-        let Some(shorthand) = shorthand else {
-            // A side's own longhand already beats the all-sides value.
-            if let Some(all_width) = all_width {
-                width.get_or_insert(all_width);
-            }
-            if let Some(all_colors) = &all_colors {
-                color.get_or_insert_with(|| all_colors[index].clone());
-            }
+    let all_styles = base
+        .border_style
+        .take()
+        .and_then(|value| parse_style_sides(&value).map(|sides| sides.map(str::to_owned)));
+    for (index, (shorthand, width, color, style)) in sides.into_iter().enumerate() {
+        if shorthand.is_some() {
             continue;
-        };
-        resets_style |= parse_border(shorthand).is_some_and(|parsed| parsed.style != LineStyle::None);
-    }
-    // gpui keeps one line style per element, so it cannot be spread per side.
-    // The state's shorthand is the later declaration, and the last drawn style
-    // wins, as `apply_shorthands` documents.
-    if resets_style {
-        base.border_style = None;
+        }
+        // A side's own longhand already beats the all-sides value.
+        if let Some(all_width) = all_width {
+            width.get_or_insert(all_width);
+        }
+        if let Some(all_colors) = &all_colors {
+            color.get_or_insert_with(|| all_colors[index].clone());
+        }
+        if let Some(all_styles) = &all_styles {
+            style.get_or_insert_with(|| all_styles[index].clone());
+        }
     }
 }
 
@@ -348,8 +368,8 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.grid_row_end = None;
     }
     // `border` covers every side's width, colour and style, and a side
-    // shorthand its own width and colour. The width and colour longhands win
-    // over the shorthands, so a base longhand would beat a state's shorthand.
+    // shorthand its own. The longhands win over the shorthands, so a base
+    // longhand would beat a state's shorthand.
     if over.border.is_some() {
         base.border_top = None;
         base.border_right = None;
@@ -357,7 +377,6 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.border_left = None;
         base.border_width = None;
         base.border_color = None;
-        base.border_style = None;
     }
     if over.border.is_some() || over.border_width.is_some() {
         base.border_top_width = None;
@@ -371,21 +390,32 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.border_bottom_color = None;
         base.border_left_color = None;
     }
+    if over.border.is_some() || over.border_style.is_some() {
+        base.border_style = None;
+        base.border_top_style = None;
+        base.border_right_style = None;
+        base.border_bottom_style = None;
+        base.border_left_style = None;
+    }
     if over.border_top.is_some() {
         base.border_top_width = None;
         base.border_top_color = None;
+        base.border_top_style = None;
     }
     if over.border_right.is_some() {
         base.border_right_width = None;
         base.border_right_color = None;
+        base.border_right_style = None;
     }
     if over.border_bottom.is_some() {
         base.border_bottom_width = None;
         base.border_bottom_color = None;
+        base.border_bottom_style = None;
     }
     if over.border_left.is_some() {
         base.border_left_width = None;
         base.border_left_color = None;
+        base.border_left_style = None;
     }
     // The `mask` shorthand resets every layer longhand, as `background` does.
     if over.mask.is_some() {
@@ -778,16 +808,57 @@ mod tests {
     }
 
     #[test]
-    fn a_state_side_shorthand_with_a_line_style_replaces_the_base_border_style() {
+    fn a_state_side_shorthand_replaces_the_base_border_style_on_its_side_only() {
         let base = style(
-            r##"{"borderStyle":"dashed","hover":{"borderTop":"1px solid blue"},"active":{"borderTop":"none"}}"##,
+            r##"{"borderStyle":"dashed","borderRightStyle":"dotted",
+                "hover":{"borderTop":"1px solid blue"},"active":{"borderTop":"none"}}"##,
         );
-        assert_eq!(resolve_state_styles(&base, true, false).border_style, None);
-        assert_eq!(
-            resolve_state_styles(&base, false, true).border_style.as_deref(),
-            Some("dashed"),
-            "none draws no style"
+        for (hovered, pressed) in [(true, false), (false, true)] {
+            let resolved = resolve_state_styles(&base, hovered, pressed);
+            assert_eq!(resolved.border_style, None);
+            assert_eq!(resolved.border_top_style, None, "the shorthand names its own style");
+            assert_eq!(resolved.border_right_style.as_deref(), Some("dotted"));
+            assert_eq!(resolved.border_bottom_style.as_deref(), Some("dashed"));
+            assert_eq!(resolved.border_left_style.as_deref(), Some("dashed"));
+        }
+    }
+
+    #[test]
+    fn a_state_side_shorthand_splits_a_multi_value_base_border_style() {
+        let base = style(
+            r##"{"borderStyle":"solid dashed double","hover":{"borderLeft":"1px solid black"}}"##,
         );
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_style, None);
+        assert_eq!(hovered.border_top_style.as_deref(), Some("solid"));
+        assert_eq!(hovered.border_right_style.as_deref(), Some("dashed"));
+        assert_eq!(hovered.border_bottom_style.as_deref(), Some("double"));
+        assert_eq!(hovered.border_left_style, None);
+    }
+
+    #[test]
+    fn a_state_border_style_resets_the_base_side_styles() {
+        let base = style(
+            r##"{"borderStyle":"dashed","borderTopStyle":"dotted","borderLeftStyle":"groove",
+                "hover":{"borderStyle":"solid"},"active":{"border":"2px inset red"}}"##,
+        );
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_style.as_deref(), Some("solid"));
+        assert_eq!(hovered.border_top_style, None);
+        assert_eq!(hovered.border_left_style, None);
+
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.border_style, None);
+        assert_eq!(pressed.border_top_style, None);
+        assert_eq!(pressed.border_left_style, None);
+    }
+
+    #[test]
+    fn a_state_side_style_longhand_leaves_the_other_base_styles() {
+        let base = style(r##"{"borderStyle":"dashed","hover":{"borderTopStyle":"double"}}"##);
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_style.as_deref(), Some("dashed"));
+        assert_eq!(hovered.border_top_style.as_deref(), Some("double"));
     }
 
     #[test]

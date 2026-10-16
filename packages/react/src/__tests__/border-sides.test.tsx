@@ -152,10 +152,11 @@ describeNative("border shorthands", () => {
     }
   })
 
-  it("ignores an unsupported line style or a missing style", () => {
+  it("ignores an unknown line style and treats a missing style as none", () => {
     const none = sides("unstyled", {})
-    expect(sides("dotted", { border: "10px dotted red" })).toEqual(none)
+    expect(sides("wavy", { border: "10px wavy red" })).toEqual(none)
     expect(sides("no-style", { border: "10px red" })).toEqual(none)
+    expect(sides("hidden", { border: "10px hidden red" })).toEqual(none)
   })
 
   it("repaints currentColor borders when a hover changes color", () => {

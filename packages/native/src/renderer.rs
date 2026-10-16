@@ -8438,11 +8438,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
         el = el.border_l(width(value));
     }
     el = crate::css::border::apply_colors(el, style, colors);
-    match style.border_style.as_deref() {
-        Some("dashed") => el = el.border_dashed(),
-        Some("solid") => el.style().border_style = Some(gpui::BorderStyle::Solid),
-        _ => {}
-    }
+    el = crate::css::border::apply_styles(el, style, colors);
     if let Some(ref shadows) = style.box_shadow {
         // A shadow whose colour does not parse is dropped on its own, so one
         // bad entry does not take the rest of a list with it.

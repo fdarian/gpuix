@@ -5538,7 +5538,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer, positioned elements only) orders a positioned element in its stacking context, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
 ### Lengths
 
@@ -5640,16 +5640,42 @@ Widths, colours and corners can differ per side:
 <div style={{ border: '1px solid rgba(0,0,0,.2)', borderTop: '2px dashed currentColor' }} />
 ```
 
-`borderColor` takes one to four colours with the CSS meaning. `border` and
-`borderTop` / `borderRight` / `borderBottom` / `borderLeft` take
-`<width> <style> <color>` in any order, with `solid` or `dashed` as the style.
-No style means no border, a missing colour is `currentColor`, and a missing width
-is 3px (`medium`; `thin` is 1px and `thick` 5px). A width is any [length](#lengths)
-without a `%`, so `border: '0.1em solid red'` works. Other line styles (`dotted`,
-`double`, ...) make the value invalid, so it is ignored. `border` is applied
-first, then the side shorthands, then the longhands (`borderWidth`,
-`borderTopColor`, ...). The line style is one for the whole element, because GPUI
-draws one: a `dashed` anywhere makes every side dashed.
+`borderColor` and `borderStyle` take one to four values with the CSS meaning
+(`"dotted dashed"` is dotted top and bottom, dashed left and right), and
+`borderTopStyle`, `borderRightStyle`, `borderBottomStyle` and `borderLeftStyle`
+set one side. `border` and `borderTop` / `borderRight` / `borderBottom` /
+`borderLeft` take `<width> <style> <color>` in any order. A missing colour is
+`currentColor`, and a missing width is 3px (`medium`; `thin` is 1px and `thick`
+5px). A width is any [length](#lengths) without a `%`, so `border: '0.1em solid red'`
+works. `border` is applied first, then the side shorthands, then `borderStyle`,
+then the longhands (`borderWidth`, `borderTopColor`, `borderTopStyle`, ...). An
+invalid value, such as a style that is not in the list below, is ignored.
+
+The line styles are drawn like Chrome draws them, each side with its own:
+
+- `solid`, and `dashed` (dashes two widths long with a gap of one, spread to
+  fit the side).
+- `dotted`: round dots one width across and two apart. They are laid out along
+  each side and, on a rounded corner, round it.
+- `double`: two lines with a gap between them, a third of the width each,
+  rounded to whole device pixels with the rest as the gap. A border under three
+  device pixels wide is drawn solid.
+- `groove` and `ridge`: the border is split along its middle into two halves
+  that are shaded in opposite tones, the outer half like `inset` and the inner
+  half like `outset` for a `groove`, and the other way round for a `ridge`.
+- `inset` and `outset`: the colour is darkened on two sides and lightened on the
+  other two, with Blink's formula, so `outset` has the colour at the top and left
+  and a darker shade at the bottom and right, and `inset` the reverse. A colour
+  that is already as dark as it gets is not darkened, and black and white take
+  Chrome's fixed greys. The transparency of the colour is kept.
+- `none` and `hidden` take the side's width, whatever `borderWidth` says: it is
+  0 and nothing is drawn. `border: "2px red"` has no style, so it is `none` too.
+
+Where two sides with different styles meet at a corner, each style is drawn up
+to the line that already separates their colours. The pattern of a dotted or
+dashed side follows the border's width on that side. A side whose style no
+declaration names is `solid`, unlike CSS, where the initial style is `none`:
+`{ borderWidth: 1, borderColor: 'red' }` draws a border.
 
 ### Layout like CSS
 

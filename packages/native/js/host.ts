@@ -74,6 +74,19 @@ export * from "./universal-style.js"
  */
 export type DimensionValue = number | string
 
+/** A CSS `<line-style>`, the value of `borderStyle` and its per-side longhands. */
+export type LineStyle =
+  | "none"
+  | "hidden"
+  | "dotted"
+  | "dashed"
+  | "solid"
+  | "double"
+  | "groove"
+  | "ridge"
+  | "inset"
+  | "outset"
+
 /**
  * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
  * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
@@ -595,12 +608,11 @@ export interface StyleDesc {
   borderBottomColor?: string
   borderLeftColor?: string
   /** CSS shorthands: `"1px solid red"`, `"2px dashed"`, `"none"`. Width, style
-   *  (`solid`, `dashed`, `none`) and colour in any order; no style means no border,
-   *  a missing colour is `currentColor`, a missing width is `medium` (3px). Other
-   *  line styles (`dotted`, `double`, ...) make the value invalid. `border` sets all
-   *  sides, then `borderTop` ... `borderLeft` override one, then the longhands
-   *  (`borderWidth`, `borderColor`, ...) override those. The line style is shared
-   *  by every side, because GPUI has one. */
+   *  (any `LineStyle`) and colour in any order; no style means `none`, which has no
+   *  width, a missing colour is `currentColor`, a missing width is `medium` (3px).
+   *  `border` sets all sides, then `borderTop` ... `borderLeft` override one, then
+   *  `borderStyle`, then the longhands (`borderWidth`, `borderColor`,
+   *  `borderTopStyle`, ...) override those. */
   border?: string
   borderTop?: string
   borderRight?: string
@@ -655,8 +667,14 @@ export interface StyleDesc {
    *  `content-box`. `url()`, `path()` and a box with no shape are invalid, so the
    *  value is ignored. Hit testing is not clipped yet. */
   clipPath?: string
-  /** Applies to every side. */
-  borderStyle?: "solid" | "dashed"
+  /** One to four line styles, like `borderColor`: `"dotted"`, `"dotted dashed"` (top-bottom,
+   *  left-right), ... A `none` or `hidden` side has no width. One invalid keyword ignores the
+   *  whole value. A side that no `border*` value gives a style is `solid`. */
+  borderStyle?: LineStyle | (string & {})
+  borderTopStyle?: LineStyle
+  borderRightStyle?: LineStyle
+  borderBottomStyle?: LineStyle
+  borderLeftStyle?: LineStyle
   /** Width divided by height, as a number or a CSS ratio (`"16 / 9"`, `"1"`). Fills in
    *  whichever axis has no definite size. An `<img>` uses its intrinsic ratio unless this is set. */
   aspectRatio?: number | string
