@@ -28,6 +28,10 @@ macro_rules! overlay_fields {
 /// Which states apply to an element: its own pointer states, and those of the
 /// nearest ancestor `group` that its `groupHover` / `groupActive` /
 /// `groupFocusWithin` follow.
+///
+/// `focus_within` and `focus_visible` are set only for an inline box. Any other
+/// element applies its focus styles where it tracks focus
+/// ([`crate::focus::apply_focus_styles`]), which an inline box has no element for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PointerStates {
     pub hovered: bool,
@@ -35,6 +39,8 @@ pub struct PointerStates {
     pub group_hovered: bool,
     pub group_active: bool,
     pub group_focused_within: bool,
+    pub focus_within: bool,
+    pub focus_visible: bool,
 }
 
 impl PointerStates {
@@ -44,6 +50,17 @@ impl PointerStates {
             || self.group_hovered
             || self.group_active
             || self.group_focused_within
+            || self.focus_within
+            || self.focus_visible
+    }
+}
+
+/// `style` as `states` declare it: borrowed when no state applies.
+pub fn folded(style: &StyleDesc, states: PointerStates) -> Cow<'_, StyleDesc> {
+    if states.any() {
+        Cow::Owned(resolve_pointer_states(style, states))
+    } else {
+        Cow::Borrowed(style)
     }
 }
 
@@ -66,13 +83,14 @@ pub fn resolve_state_styles(style: &StyleDesc, hovered: bool, active: bool) -> S
 
 /// `style` with the refinements of `states` folded in and every state style
 /// cleared. Later wins: `groupHover`, `hover`, `groupActive`, `active`,
-/// `groupFocusWithin`. A group refinement is one more variant of the element, so
+/// `groupFocusWithin`, `focusWithin`, `focusVisible`. A group refinement is one more variant of the element, so
 /// the element's own `hover` beats a `groupHover` that sets the same field (as in
 /// Tailwind).
 ///
-/// `groupFocusWithin` comes last because focus styles sit above the pointer ones:
-/// `focusWithin` and `focusVisible` are applied to the element after this fold,
-/// so they beat every layer here, `groupFocusWithin` included.
+/// Focus styles sit above the pointer ones, so `groupFocusWithin` comes after
+/// them, and `focusWithin` and `focusVisible` after that. They are in the fold
+/// only for an inline box; an element with a focus handle applies them after it,
+/// so they beat every layer here either way.
 pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> StyleDesc {
     let mut resolved = overlay(style, &StyleDesc::default());
     let layers = [
@@ -85,6 +103,8 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
             style.group_focus_within.as_deref(),
             true,
         ),
+        (states.focus_within, style.focus_within.as_deref(), false),
+        (states.focus_visible, style.focus_visible.as_deref(), false),
     ];
     for (applies, refinement, names_group) in layers {
         let Some(refinement) = refinement.filter(|_| applies) else {
@@ -808,7 +828,7 @@ mod tests {
             active,
             group_hovered,
             group_active,
-            group_focused_within: false,
+            ..Default::default()
         };
         let fold = |states| resolve_pointer_states(&base, states);
 
@@ -840,6 +860,36 @@ mod tests {
     }
 
     #[test]
+    fn focus_variants_fold_after_every_pointer_layer_and_focus_visible_last() {
+        let base = style(
+            r##"{
+                "color": "#000000", "opacity": 0.1, "width": 1,
+                "hover": { "color": "#111111", "opacity": 0.2, "width": 2 },
+                "groupFocusWithin": { "width": 3 },
+                "focusWithin": { "color": "#222222", "width": 4, "outlineWidth": 1 },
+                "focusVisible": { "color": "#333333", "outlineWidth": 3 }
+            }"##,
+        );
+        let fold = |states| folded(&base, states).into_owned();
+        let hovered = PointerStates { hovered: true, group_focused_within: true, ..Default::default() };
+
+        let within = fold(PointerStates { focus_within: true, ..hovered });
+        assert_eq!(within.color.as_deref(), Some("#222222"), "beats hover");
+        assert_eq!(within.width, style(r##"{"width":4}"##).width, "beats groupFocusWithin");
+        assert_eq!(within.opacity, Some(0.2), "leaves what it does not set");
+        assert_eq!(within.outline_width, Some(1.0));
+
+        let visible = fold(PointerStates { focus_within: true, focus_visible: true, ..hovered });
+        assert_eq!(visible.color.as_deref(), Some("#333333"), "focusVisible is last");
+        assert_eq!(visible.outline_width, Some(3.0));
+        assert_eq!(visible.width, within.width);
+
+        let rest = fold(PointerStates::default());
+        assert_eq!(rest.color.as_deref(), Some("#000000"));
+        assert_eq!(rest.outline_width, None);
+    }
+
+    #[test]
     fn group_focus_within_folds_after_the_pointer_layers() {
         let base = style(
             r##"{
@@ -868,6 +918,7 @@ mod tests {
                 group_hovered: true,
                 group_active: true,
                 group_focused_within: true,
+                ..Default::default()
             },
         );
         assert_eq!(all.width, style(r##"{"width":9}"##).width, "beats groupHover");

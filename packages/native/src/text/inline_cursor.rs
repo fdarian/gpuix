@@ -16,7 +16,7 @@ use std::ops::Range;
 
 use gpui::{canvas, prelude::*, CursorStyle, HitboxBehavior, TextLayout};
 
-use crate::events::state_styles::{resolve_pointer_states, PointerStates};
+use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
@@ -57,14 +57,7 @@ pub fn of(
             else {
                 continue;
             };
-            let pointer_states = states(*id, base);
-            let folded;
-            let declared = if pointer_states.any() {
-                folded = resolve_pointer_states(base, pointer_states);
-                &folded
-            } else {
-                base
-            };
+            let declared = folded(base, states(*id, base));
             if let Some(cursor) = declared.cursor.as_deref().and_then(crate::style::parse_cursor)
             {
                 inherited = Some(cursor);

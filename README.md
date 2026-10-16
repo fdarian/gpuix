@@ -2837,8 +2837,28 @@ A `<span>` with a `tabIndex` is focusable like any element, and stays inline:
   has no size, so a screen reader finds it at the top-left of the paragraph, not
   over its glyphs.
 - A span with no text left, or with `display: none`, has no box and no tab stop.
-  Like a `display: none` element, it still takes `focus()`. `focusVisible` and
-  `focusWithin` styles of a span are not applied.
+  Like a `display: none` element, it still takes `focus()`, and its `focusVisible`
+  and `focusWithin` styles are not painted.
+
+**Focus styles on a span.** `focusVisible` (while the span matches
+`:focus-visible`) and `focusWithin` (while it or a span inside it has focus) are
+style variants of a span like of any element, and `focusVisible` wins over
+`focusWithin`, which wins over `hover` and `active`. The properties an inline box
+can set change its run:
+
+```tsx
+<span tabIndex={0} style={{ focusVisible: { color: '#89b4fa', textDecoration: 'underline' } }}>
+  docs
+</span>
+```
+
+- A nested span is styled for itself: focusing the span inside another one applies
+  the inner span's `focusVisible` only, and the outer span's `focusWithin`.
+- **Deviation: a span is never dimmed.** While a control has keyboard focus the
+  other focusables dim ([Focus styles](#focus-styles)). A focused span starts that
+  dim for the elements, like any control, but a span is not dimmed when another
+  control has focus, and `keyboardFocusDim` is not read on one: a dim is an
+  opacity, and a span has no element to set it on.
 
 ### White space
 
@@ -5893,7 +5913,8 @@ than from the live input device:
 ```
 
 `focusVisible` needs a **focusable** element: `tabIndex`, `<input>`,
-`<textarea>`, or a primitive such as `Button`.
+`<textarea>`, or a primitive such as `Button`. A `<span>` with a `tabIndex`
+takes both variants too, see [Focus on an inline box](#focus-on-an-inline-box).
 
 **Default: everything else dims.** GPUIX draws no ring. While a control
 (`Button`, a `tabIndex` div) has keyboard focus, every **other** focusable

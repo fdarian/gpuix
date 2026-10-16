@@ -16,7 +16,7 @@ use gpui::{
 use crate::color::ColorContext;
 use crate::css::font_features::FontFeatureState;
 use crate::css::text_decoration;
-use crate::events::state_styles::{resolve_pointer_states, PointerStates};
+use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
@@ -69,8 +69,8 @@ impl RunStyle {
 /// restyles anything, so the caller can paint it as plain text.
 ///
 /// `colors` and `font_state` are the container's, as its children inherit them.
-/// `states` says which pointer states apply to a box, so that its `hover` and
-/// `active` styles are folded into the run it paints.
+/// `states` says which states apply to a box, so that its `hover`, `active`,
+/// `focusWithin` and `focusVisible` styles are folded into the run it paints.
 pub fn run_styles(
     tree: &RetainedTree,
     paragraph: &Paragraph,
@@ -94,14 +94,7 @@ pub fn run_styles(
             else {
                 continue;
             };
-            let pointer_states = states(*id, base);
-            let folded;
-            let declared = if pointer_states.any() {
-                folded = resolve_pointer_states(base, pointer_states);
-                &folded
-            } else {
-                base
-            };
+            let declared = &*folded(base, states(*id, base));
             colors = colors.descend(declared);
             // It has no box, so what it declares reaches the text only as far as
             // it is inherited.
@@ -539,6 +532,57 @@ mod tests {
         let runs = runs_of(&tree);
         assert_eq!(runs[1].font_style, Some(gpui::FontStyle::Italic));
         assert_eq!(runs[2].font_style, Some(gpui::FontStyle::Normal));
+    }
+
+    #[test]
+    fn a_focused_box_paints_its_focus_styles_and_an_ancestor_only_its_focus_within() {
+        use crate::focus::FocusStyles;
+
+        let ring = |color: &str| {
+            serde_json::json!({
+                "color": color,
+                "focusVisible": {"color": "#ff0000"},
+                "focusWithin": {"fontWeight": 700}
+            })
+        };
+        let tree = tree_with(&[(3, ring("#000000")), (5, ring("#00ff00"))]);
+        let rest = runs_of(&tree);
+        let focus = FocusStyles {
+            visible: Some(5),
+            within: Arc::from([5, 3, 1]),
+            ..Default::default()
+        };
+        let focused = runs_with(&tree, &|id, style| {
+            focus.states_of(id, style, PointerStates::default())
+        });
+
+        assert_eq!(focused[1].weight, Some(FontWeight(700.0)), "the box around it is focus-within");
+        assert_eq!(focused[1].color, rest[1].color, "but not focus-visible");
+        assert_eq!(focused[2].weight, Some(FontWeight(700.0)));
+        assert_ne!(focused[2].color, rest[2].color);
+        assert_eq!(focused[0], rest[0]);
+        assert_eq!(focused[3], rest[3], "the text after them is untouched");
+    }
+
+    #[test]
+    fn focus_beats_hover_on_the_same_field() {
+        let tree = tree_with(&[(
+            3,
+            serde_json::json!({
+                "hover": {"color": "#0000ff"},
+                "focusVisible": {"color": "#ff0000"}
+            }),
+        )]);
+        let both = runs_with(&tree, &|_, _| PointerStates {
+            hovered: true,
+            focus_visible: true,
+            ..Default::default()
+        });
+        let focus_only = runs_with(&tree, &|_, _| PointerStates {
+            focus_visible: true,
+            ..Default::default()
+        });
+        assert_eq!(both[1].color, focus_only[1].color);
     }
 
     #[test]

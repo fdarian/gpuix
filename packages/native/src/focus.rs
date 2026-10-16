@@ -14,9 +14,11 @@ use gpui::{App, Window};
 
 use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
+use crate::events::state_styles::PointerStates;
 use crate::events::sync_dispatch;
 use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
+use crate::style::StyleDesc;
 
 pub(crate) fn is_text_control(element_type: &str) -> bool {
     matches!(element_type, "input" | "textarea")
@@ -52,6 +54,18 @@ pub(crate) struct FocusStyles {
     pub visible: Option<u64>,
     /// The focused element and its ancestors, which match `:focus-within`.
     pub within: Arc<[u64]>,
+}
+
+impl FocusStyles {
+    /// `states` with the focus variants of `style` that apply to element `id`.
+    /// For an inline box, which has no element to apply them to.
+    pub fn states_of(&self, id: u64, style: &StyleDesc, states: PointerStates) -> PointerStates {
+        PointerStates {
+            focus_within: style.focus_within.is_some() && self.within.contains(&id),
+            focus_visible: style.focus_visible.is_some() && self.visible == Some(id),
+            ..states
+        }
+    }
 }
 
 pub(crate) struct FocusChange {
@@ -631,6 +645,29 @@ mod tests {
         tree.destroy_element(2);
         let change = state.observe(None, &tree, false, true, true).unwrap();
         assert_eq!((change.from, change.to), (None, None));
+    }
+
+    #[test]
+    fn focus_variants_apply_to_the_focused_box_and_focus_within_to_its_ancestors() {
+        let styles = FocusStyles {
+            visible: Some(3),
+            within: Arc::from([3, 2, 1]),
+            ..Default::default()
+        };
+        let declares = |json: &str| serde_json::from_str::<StyleDesc>(json).unwrap();
+        let both = declares(r#"{"focusVisible":{"color":"red"},"focusWithin":{"color":"blue"}}"#);
+        let none = declares(r#"{"color":"red"}"#);
+        let of = |id, style: &StyleDesc| styles.states_of(id, style, PointerStates::default());
+
+        let focused = of(3, &both);
+        assert!(focused.focus_visible && focused.focus_within);
+        let ancestor = of(2, &both);
+        assert!(!ancestor.focus_visible && ancestor.focus_within);
+        assert!(!of(9, &both).any());
+        assert!(!of(3, &none).any(), "a style with no focus variant folds nothing");
+
+        let hovered = PointerStates { hovered: true, ..Default::default() };
+        assert!(styles.states_of(9, &none, hovered).hovered);
     }
 
     #[test]

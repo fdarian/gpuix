@@ -5981,6 +5981,7 @@ impl BuildCtx<'_> {
             group_active: followed(&style.group_active).is_some_and(|group| group.active),
             group_focused_within: followed(&style.group_focus_within)
                 .is_some_and(|group| group.focused_within),
+            ..Default::default()
         }
     }
 }
@@ -7918,7 +7919,8 @@ fn paragraph_content(
             .elements
             .get(&id)
             .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-        ctx.pointer_states(id, style, inert)
+        ctx.focus_styles
+            .states_of(id, style, ctx.pointer_states(id, style, inert))
     };
     selectable_text(crate::text::SelectableText {
         group: None,
