@@ -241,7 +241,7 @@ mod tests {
     }
 
     fn spec_of(paragraph: &Paragraph, tree: &RetainedTree) -> Rc<InsetSpec> {
-        InsetSpec::of(tree, paragraph, &crate::css::length::LengthContext::initial(800.0, 600.0), &|_, _| Default::default())
+        InsetSpec::of(tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &crate::css::length::LengthContext::initial(800.0, 600.0), &|_, _| Default::default())
     }
 
     fn plan_targets(tree: &RetainedTree, none: bool, inert: bool) -> Option<Targets> {
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn vertical_padding_and_border_are_on_the_box() {
-        let tree = fixture(&[(3, serde_json::json!({"paddingTop": 6, "borderTopWidth": 2, "paddingBottom": 10}))]);
+        let tree = fixture(&[(3, serde_json::json!({"paddingTop": 6, "borderTopWidth": 2, "borderTopStyle": "solid", "paddingBottom": 10}))]);
         let insets = insets_of(&tree);
         let plan = crate::text::inline::plan_children(&tree, &tree.elements[&1]);
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {

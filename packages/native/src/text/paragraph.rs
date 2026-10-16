@@ -691,7 +691,7 @@ mod tests {
     fn a_background_is_not_part_of_the_run() {
         let tree = tree_with(&[(
             5,
-            serde_json::json!({"backgroundColor": "#ffff00", "borderTopWidth": 2, "paddingLeft": 4}),
+            serde_json::json!({"backgroundColor": "#ffff00", "borderTopWidth": 2, "borderTopStyle": "solid", "paddingLeft": 4}),
         )]);
         assert!(runs_of(&tree).is_empty(), "the box paints it around its fragments");
     }

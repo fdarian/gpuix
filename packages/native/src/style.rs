@@ -939,7 +939,8 @@ impl StyleDesc {
                 .as_deref()
                 .filter(|value| {
                     crate::css::border::parse_border(value).is_some_and(|parsed| {
-                        !parsed.width.is_zero() && parsed.color.to_ascii_lowercase().contains("currentcolor")
+                        parsed.style != crate::css::border::LineStyle::None
+                            && parsed.color.to_ascii_lowercase().contains("currentcolor")
                     })
                 })
                 .map(str::to_owned)

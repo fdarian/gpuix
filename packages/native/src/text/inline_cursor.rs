@@ -165,7 +165,7 @@ mod tests {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, "a bc d");
-        let insets = InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states);
+        let insets = InsetSpec::of(tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &LengthContext::initial(800.0, 600.0), states);
         of(tree, paragraph, none, inert, states, &insets)
             .into_iter()
             .map(|inline| (inline.range, inline.cursor))
@@ -282,7 +282,7 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default());
+        let insets = InsetSpec::of(&tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default());
         let boxes = of(&tree, paragraph, false, false, &|_, _| PointerStates::default(), &insets);
         let edges: Vec<_> = boxes
             .iter()

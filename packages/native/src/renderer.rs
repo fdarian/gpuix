@@ -8047,6 +8047,7 @@ fn paragraph_content(
     let insets = crate::text::inline_insets::InsetSpec::of(
         ctx.tree,
         paragraph,
+        &ctx.inherited.colors,
         &ctx.inherited.lengths,
         &states,
     );
@@ -8213,7 +8214,13 @@ pub(crate) fn apply_state_styles<E: gpui::Styled>(
     if let Some(followers) = base.colors_following_current(state, lengths) {
         refinement = apply_styles(refinement, &followers, colors, lengths);
     }
-    apply_styles(refinement, state, colors, lengths)
+    let fill = state.resolved_fill(colors, lengths);
+    if crate::css::border::declares_widths(state, colors) {
+        let merged = crate::events::state_styles::overlay(base, state);
+        apply_styles_taking_borders_from(refinement, state, &merged, colors, lengths, fill)
+    } else {
+        apply_styles_with_fill(refinement, state, colors, lengths, fill)
+    }
 }
 
 /// `colors` and `lengths` are the context of the element `style` belongs to: its
@@ -8232,8 +8239,22 @@ pub(crate) fn apply_styles<E: gpui::Styled>(
 
 /// `fill` must be `style.resolved_fill(colors, lengths)`.
 pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
+    el: E,
+    style: &StyleDesc,
+    colors: &crate::color::ColorContext,
+    lengths: &LengthContext,
+    fill: crate::style::Fill,
+) -> E {
+    apply_styles_taking_borders_from(el, style, style, colors, lengths, fill)
+}
+
+/// [`apply_styles_with_fill`] with the border widths read from `widths_from`. A state
+/// refinement has to size its border from the base it sits on: the used width of a
+/// side needs its style, which the state may leave to the base.
+fn apply_styles_taking_borders_from<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
+    widths_from: &StyleDesc,
     colors: &crate::color::ColorContext,
     lengths: &LengthContext,
     fill: crate::style::Fill,
@@ -8378,26 +8399,8 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(radius) = style.border_bottom_right_radius {
         el = el.rounded_br(radius.resolve(lengths));
     }
-    el = crate::css::border::apply_shorthands(el, style, colors, lengths);
-    // `borderWidth: 0` must clear a border, not be ignored: an element that
-    // draws its own border needs a way for the caller to remove it.
-    let width = |width: &crate::css::length::LinearLength| crate::css::border::resolve_width(width, lengths);
-    if let Some(value) = &style.border_width {
-        el = el.border(width(value));
-    }
-    if let Some(value) = &style.border_top_width {
-        el = el.border_t(width(value));
-    }
-    if let Some(value) = &style.border_right_width {
-        el = el.border_r(width(value));
-    }
-    if let Some(value) = &style.border_bottom_width {
-        el = el.border_b(width(value));
-    }
-    if let Some(value) = &style.border_left_width {
-        el = el.border_l(width(value));
-    }
     el = crate::css::border::apply_colors(el, style, colors);
+    el = crate::css::border::apply_widths(el, widths_from, colors, lengths);
     el = crate::css::border::apply_styles(el, style, colors);
     if let Some(ref shadows) = style.box_shadow {
         // A shadow whose colour does not parse is dropped on its own, so one
@@ -11390,7 +11393,7 @@ mod dimension_length_tests {
 
     #[gpui::test]
     fn a_border_width_in_em_shrinks_the_content_box_by_the_font_size(cx: &mut gpui::TestAppContext) {
-        let page = bordered(cx, r#""fontSize": 20, "borderWidth": "0.5em""#);
+        let page = bordered(cx, r#""fontSize": 20, "borderWidth": "0.5em", "borderStyle": "solid""#);
         near(page.offset(3, 2), (10.0, 10.0));
         near(page.size(2), (100.0, 100.0));
         assert_eq!(border_of(&page, 2), (10.0, 10.0, 10.0, 10.0));
@@ -11401,7 +11404,7 @@ mod dimension_length_tests {
         let page = bordered(
             cx,
             r#""fontSize": 10, "borderWidth": "1in", "borderTopWidth": "calc(1px + 1rem)", "borderLeftWidth": 2,
-               "borderRightWidth": "2em", "borderBottomWidth": "calc(1em - 2px)""#,
+               "borderRightWidth": "2em", "borderBottomWidth": "calc(1em - 2px)", "borderStyle": "solid""#,
         );
         assert_eq!(border_of(&page, 2), (2.0, 17.0, 20.0, 8.0));
         near(page.offset(3, 2), (2.0, 17.0));
@@ -11409,7 +11412,7 @@ mod dimension_length_tests {
 
     #[gpui::test]
     fn a_negative_border_width_is_none(cx: &mut gpui::TestAppContext) {
-        let page = bordered(cx, r#""borderWidth": 3, "borderTopWidth": "-1em", "borderLeftWidth": -2"#);
+        let page = bordered(cx, r#""borderWidth": 3, "borderTopWidth": "-1em", "borderLeftWidth": -2, "borderStyle": "solid""#);
         assert_eq!(border_of(&page, 2), (0.0, 0.0, 3.0, 3.0));
     }
 
@@ -11417,7 +11420,7 @@ mod dimension_length_tests {
     fn the_keywords_are_one_three_and_five_px(cx: &mut gpui::TestAppContext) {
         let page = bordered(
             cx,
-            r#""borderLeftWidth": "thin", "borderTopWidth": "medium", "borderRightWidth": "thick", "borderBottomWidth": "Thick""#,
+            r#""borderLeftWidth": "thin", "borderTopWidth": "medium", "borderRightWidth": "thick", "borderBottomWidth": "Thick", "borderStyle": "solid""#,
         );
         assert_eq!(border_of(&page, 2), (1.0, 3.0, 5.0, 5.0));
         page.set_style(cx, 2, r#"{"width": 100, "height": 100, "border": "thick solid red", "borderTop": "thin dashed blue"}"#);
@@ -11454,7 +11457,7 @@ mod dimension_length_tests {
     fn a_hover_border_width_in_em_replaces_the_base_one(cx: &mut gpui::TestAppContext) {
         let page = bordered(
             cx,
-            r#""fontSize": 20, "borderLeftWidth": "0.5em", "borderWidth": 1, "hover": {"borderWidth": "1em"}"#,
+            r#""fontSize": 20, "borderLeftWidth": "0.5em", "borderWidth": 1, "borderStyle": "solid", "hover": {"borderWidth": "1em"}"#,
         );
         assert_eq!(border_of(&page, 2), (10.0, 1.0, 1.0, 1.0));
         let bounds = page.bounds(2);
@@ -11465,6 +11468,87 @@ mod dimension_length_tests {
         );
         page.draw(cx);
         assert_eq!(border_of(&page, 2), (20.0, 20.0, 20.0, 20.0));
+    }
+
+    #[gpui::test]
+    fn a_border_with_no_style_takes_no_space(cx: &mut gpui::TestAppContext) {
+        for style in [
+            r#""borderWidth": 4"#,
+            r#""borderWidth": 4, "borderColor": "red""#,
+            r#""borderLeftWidth": 4, "borderTopWidth": "1em""#,
+            r#""border": "4px red""#,
+            r#""borderLeft": "thick", "borderBottom": "2px red""#,
+            r#""borderWidth": 4, "borderStyle": "none""#,
+            r#""borderWidth": 4, "borderStyle": "hidden""#,
+        ] {
+            let page = bordered(cx, style);
+            assert_eq!(border_of(&page, 2), (0.0, 0.0, 0.0, 0.0), "{style}");
+            near(page.offset(3, 2), (0.0, 0.0));
+        }
+    }
+
+    #[gpui::test]
+    fn a_border_style_gives_the_width_its_space_side_by_side(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""borderWidth": 4, "borderStyle": "solid""#);
+        assert_eq!(border_of(&page, 2), (4.0, 4.0, 4.0, 4.0));
+        near(page.offset(3, 2), (4.0, 4.0));
+
+        let page = bordered(cx, r#""borderBottomWidth": 2, "borderBottomStyle": "solid""#);
+        assert_eq!(border_of(&page, 2), (0.0, 0.0, 0.0, 2.0));
+
+        let page = bordered(cx, r#""borderWidth": 4, "borderStyle": "solid none""#);
+        assert_eq!(border_of(&page, 2), (0.0, 4.0, 0.0, 4.0));
+    }
+
+    #[gpui::test]
+    fn a_visible_border_style_without_a_width_is_medium(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""borderStyle": "solid""#);
+        assert_eq!(border_of(&page, 2), (3.0, 3.0, 3.0, 3.0));
+        let page = bordered(cx, r#""borderTopStyle": "dashed""#);
+        assert_eq!(border_of(&page, 2), (0.0, 3.0, 0.0, 0.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_width_sizes_the_border_the_base_style_makes_visible(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""borderStyle": "solid", "borderWidth": 1, "hover": {"borderWidth": 3}"#);
+        assert_eq!(border_of(&page, 2), (1.0, 1.0, 1.0, 1.0));
+        hover(&page, cx, 2);
+        assert_eq!(border_of(&page, 2), (3.0, 3.0, 3.0, 3.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_style_makes_a_border_visible_or_not(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""borderWidth": 2, "hover": {"borderStyle": "solid"}"#);
+        assert_eq!(border_of(&page, 2), (0.0, 0.0, 0.0, 0.0));
+        hover(&page, cx, 2);
+        assert_eq!(border_of(&page, 2), (2.0, 2.0, 2.0, 2.0));
+
+        let page = bordered(cx, r#""border": "2px solid red", "hover": {"borderStyle": "none"}"#);
+        assert_eq!(border_of(&page, 2), (2.0, 2.0, 2.0, 2.0));
+        hover(&page, cx, 2);
+        assert_eq!(border_of(&page, 2), (0.0, 0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_state_refinement_sizes_its_border_from_the_base_it_sits_on() {
+        fn widths(base: &str, state: &str) -> [Option<f32>; 4] {
+            let base: StyleDesc = serde_json::from_str(base).unwrap();
+            let state: StyleDesc = serde_json::from_str(state).unwrap();
+            let colors = crate::color::ColorContext::root(crate::color::Scheme::Light);
+            let lengths = LengthContext::initial(800.0, 600.0);
+            let refinement = apply_state_styles(gpui::StyleRefinement::default(), &base, &state, &colors, &lengths);
+            let edges = refinement.border_widths;
+            [edges.top, edges.right, edges.bottom, edges.left]
+                .map(|width| width.map(|width| f32::from(width.to_pixels(gpui::px(16.0)))))
+        }
+        assert_eq!(widths(r#"{"borderStyle": "solid"}"#, r#"{"borderWidth": 2}"#), [Some(2.0); 4]);
+        assert_eq!(widths(r#"{"borderWidth": 1}"#, r#"{"borderWidth": 2}"#), [Some(0.0); 4]);
+        assert_eq!(widths(r#"{"borderWidth": 1}"#, r#"{"borderStyle": "solid"}"#), [Some(1.0); 4]);
+        assert_eq!(
+            widths(r#"{"border": "4px solid red"}"#, r#"{"borderLeftStyle": "none"}"#),
+            [Some(4.0), Some(4.0), Some(4.0), Some(0.0)]
+        );
+        assert_eq!(widths(r#"{"border": "4px solid red"}"#, r#"{"borderColor": "blue"}"#), [None; 4]);
     }
 
     #[test]
@@ -11575,7 +11659,7 @@ mod dimension_length_tests {
             cx,
             &[
                 (1, None, PARENT),
-                (2, Some(1), r#"{"width": 100, "height": 100, "fontSize": 20, "borderWidth": "0.5em", "borderLeftWidth": "calc(1em + 1px)", "padding": 5}"#),
+                (2, Some(1), r#"{"width": 100, "height": 100, "fontSize": 20, "borderWidth": "0.5em", "borderLeftWidth": "calc(1em + 1px)", "borderStyle": "solid", "padding": 5}"#),
             ],
             &[(2, crate::observers::RESIZE_EVENT)],
             Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))),

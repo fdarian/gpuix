@@ -45,7 +45,8 @@ use std::rc::Rc;
 
 use gpui::{px, Bounds, LayoutInsets, Pixels, TextInset, TextLayout};
 
-use crate::css::border::{parse_border, resolve_width};
+use crate::color::ColorContext;
+use crate::css::border::used_widths;
 use crate::css::length::{LengthContext, LinearLength};
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
@@ -206,12 +207,14 @@ pub struct InsetSpec {
 impl InsetSpec {
     /// What `paragraph`'s boxes put around their text.
     ///
-    /// `lengths` are the container's, from which each box gets its own, and
-    /// `states` says which states apply to a box, as it does for
-    /// [`super::paragraph::run_styles`], so a `hover` padding is folded in.
+    /// `lengths` are the container's, from which each box gets its own, and `states`
+    /// says which states apply to a box, as it does for
+    /// [`super::paragraph::run_styles`], so a `hover` padding is folded in. `colors`
+    /// only tell a border shorthand that is valid from one that is not.
     pub fn of(
         tree: &RetainedTree,
         paragraph: &Paragraph,
+        colors: &ColorContext,
         lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     ) -> Rc<Self> {
@@ -226,7 +229,7 @@ impl InsetSpec {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                Some(space_of(&declared, *id, range, &box_lengths[id]))
+                Some(space_of(&declared, *id, range, colors, &box_lengths[id]))
             })
             .collect();
         let font_sizes = box_lengths
@@ -349,7 +352,13 @@ impl Insets {
     }
 }
 
-fn space_of(style: &StyleDesc, id: u64, range: &Range<usize>, lengths: &LengthContext) -> BoxSpace {
+fn space_of(
+    style: &StyleDesc,
+    id: u64,
+    range: &Range<usize>,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> BoxSpace {
     let padding = |side: Option<LinearLength>| {
         side.or(style.padding).map_or_else(Extent::default, |length| Extent::of(&length, lengths))
     };
@@ -365,7 +374,7 @@ fn space_of(style: &StyleDesc, id: u64, range: &Range<usize>, lengths: &LengthCo
         padding_end: padding(style.padding_right),
         padding_top: padding(style.padding_top),
         padding_bottom: padding(style.padding_bottom),
-        border: border_widths(style, lengths),
+        border: border_widths(style, colors, lengths),
     }
 }
 
@@ -378,29 +387,9 @@ pub(super) struct BorderWidths {
     pub left: f32,
 }
 
-pub(super) fn border_widths(style: &StyleDesc, lengths: &LengthContext) -> BorderWidths {
-    BorderWidths {
-        top: border_width(style, style.border_top_width, style.border_top.as_deref(), lengths),
-        right: border_width(style, style.border_right_width, style.border_right.as_deref(), lengths),
-        bottom: border_width(style, style.border_bottom_width, style.border_bottom.as_deref(), lengths),
-        left: border_width(style, style.border_left_width, style.border_left.as_deref(), lengths),
-    }
-}
-
-/// The width of one border side as the element builder applies it: the
-/// `borderWidth` and side longhands win over the shorthands, and a side
-/// shorthand over `border`.
-fn border_width(
-    style: &StyleDesc,
-    side: Option<LinearLength>,
-    side_shorthand: Option<&str>,
-    lengths: &LengthContext,
-) -> f32 {
-    let shorthand = |value: Option<&str>| value.and_then(parse_border).map(|parsed| parsed.width);
-    side.or(style.border_width)
-        .or_else(|| shorthand(side_shorthand))
-        .or_else(|| shorthand(style.border.as_deref()))
-        .map_or(0.0, |width| f32::from(resolve_width(&width, lengths)))
+pub(super) fn border_widths(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> BorderWidths {
+    let [top, right, bottom, left] = used_widths(style, colors, lengths).map(f32::from);
+    BorderWidths { top, right, bottom, left }
 }
 
 /// The border box edges of every box of `all`, given the `insets` of those that
@@ -512,7 +501,7 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states).at(None)
+        InsetSpec::of(tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &LengthContext::initial(800.0, 600.0), states).at(None)
     }
 
     fn resting(tree: &RetainedTree) -> Rc<Insets> {
@@ -544,6 +533,7 @@ mod tests {
         let tree = fixture(&[(
             3,
             serde_json::json!({
+                "borderStyle": "solid",
                 "marginLeft": 3, "borderLeftWidth": 2, "paddingLeft": 5,
                 "marginRight": 7, "borderRightWidth": 1, "paddingRight": 4,
             }),
@@ -560,7 +550,7 @@ mod tests {
             serde_json::json!({
                 "padding": 4, "paddingLeft": 9,
                 "margin": 2, "marginRight": 6,
-                "borderWidth": 1, "borderRightWidth": 3,
+                "borderWidth": 1, "borderRightWidth": 3, "borderStyle": "solid",
             }),
         )]);
         assert_eq!(texts(&resting(&tree)), vec![(2..4, 2.0 + 1.0 + 9.0, 6.0 + 3.0 + 4.0)]);
@@ -579,12 +569,25 @@ mod tests {
 
         let tree = fixture(&[(
             3,
-            serde_json::json!({"borderLeft": "5px solid blue", "borderWidth": 1}),
+            serde_json::json!({"borderLeft": "5px solid blue", "borderWidth": 1, "borderStyle": "solid"}),
         )]);
         assert_eq!(texts(&resting(&tree)), vec![(2..4, 1.0, 1.0)]);
+    }
 
-        let tree = fixture(&[(3, serde_json::json!({"border": "2px red"}))]);
-        assert!(resting(&tree).text().is_empty(), "no line style, no border");
+    #[test]
+    fn a_side_without_a_line_style_has_no_border() {
+        for style in [
+            serde_json::json!({"border": "2px red"}),
+            serde_json::json!({"borderWidth": 2}),
+            serde_json::json!({"borderLeftWidth": 2, "borderRightWidth": 2, "borderStyle": "none"}),
+            serde_json::json!({"border": "2px solid red", "borderStyle": "hidden"}),
+        ] {
+            assert!(resting(&fixture(&[(3, style.clone())])).text().is_empty(), "{style}");
+        }
+        let tree = fixture(&[(3, serde_json::json!({"borderWidth": 4, "borderLeftStyle": "solid"}))]);
+        assert_eq!(texts(&resting(&tree)), vec![(2..4, 4.0, 0.0)], "only the side that has one");
+        let tree = fixture(&[(3, serde_json::json!({"borderRightStyle": "dashed"}))]);
+        assert_eq!(texts(&resting(&tree)), vec![(2..4, 0.0, 3.0)], "medium with no width");
     }
 
     #[test]
@@ -607,7 +610,7 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        InsetSpec::of(tree, paragraph, lengths, &|_, _| PointerStates::default())
+        InsetSpec::of(tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), lengths, &|_, _| PointerStates::default())
     }
 
     /// 1em is 20px, 1rem 10px and the viewport 800x600.
@@ -620,6 +623,7 @@ mod tests {
     fn lengths_resolve_in_the_units_of_the_box() {
         assert_eq!(
             texts_in_units(serde_json::json!({
+                "borderStyle": "solid",
                 "marginLeft": "1em", "paddingLeft": "0.5rem", "borderLeftWidth": "2px",
                 "marginRight": "10vw", "paddingRight": "calc(1em - 5px)", "borderRightWidth": "0.25em",
             })),
@@ -644,7 +648,7 @@ mod tests {
 
         let tree = fixture(&[
             (3, style(serde_json::json!(30))),
-            (5, serde_json::json!({"fontSize": "0.5em", "paddingLeft": "2em", "borderLeftWidth": "1em"})),
+            (5, serde_json::json!({"fontSize": "0.5em", "paddingLeft": "2em", "borderLeftWidth": "1em", "borderLeftStyle": "solid"})),
         ]);
         let found = texts(&spec(&tree, &LengthContext::for_tests()).at(None));
         assert_eq!(found[1].1, 15.0 + 30.0, "a 15px border and a 30px padding: 1em and 2em of 0.5em of 30");
@@ -665,7 +669,7 @@ mod tests {
     #[test]
     fn vertical_reach_takes_units_too() {
         let spec = spec(
-            &fixture(&[(3, serde_json::json!({"paddingTop": "1em", "borderBottomWidth": "0.5em"}))]),
+            &fixture(&[(3, serde_json::json!({"paddingTop": "1em", "borderBottomWidth": "0.5em", "borderBottomStyle": "solid"}))]),
             &LengthContext::for_tests(),
         );
         assert_eq!(vertical(&spec.at(None), 3), (20.0, 10.0));
@@ -755,7 +759,8 @@ mod tests {
     fn vertical_padding_and_border_reach_around_the_content_area() {
         let tree = fixture(&[(
             3,
-            serde_json::json!({"paddingTop": 5, "paddingBottom": 6, "borderTopWidth": 2, "borderBottomWidth": 1}),
+            serde_json::json!({"paddingTop": 5, "paddingBottom": 6, "borderTopWidth": 2, "borderBottomWidth": 1,
+                "borderTopStyle": "solid", "borderBottomStyle": "solid"}),
         )]);
         let insets = resting(&tree);
         assert_eq!(vertical(&insets, 3), (7.0, 7.0));
@@ -833,7 +838,7 @@ mod tests {
         tree.set_text(6, "c".to_string());
         let styles = [
             (3, serde_json::json!({"marginLeft": 1, "paddingLeft": 2, "paddingRight": 20, "marginRight": 10})),
-            (5, serde_json::json!({"marginLeft": 4, "borderLeftWidth": 8, "paddingRight": 5, "marginRight": 6})),
+            (5, serde_json::json!({"marginLeft": 4, "borderLeftWidth": 8, "borderLeftStyle": "solid", "paddingRight": 5, "marginRight": 6})),
         ];
         for (id, style) in styles {
             tree.set_style(id, Arc::new(serde_json::from_value(style).expect("a style")));
@@ -852,7 +857,7 @@ mod tests {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, text);
-        InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default()).at(None)
+        InsetSpec::of(tree, paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default()).at(None)
     }
 
     #[test]

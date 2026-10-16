@@ -56,7 +56,7 @@ impl LineStyle {
 /// its CSS initial value: `medium` width, `none` style, `currentColor`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BorderSide<'a> {
-    /// Zero when the style is `none`.
+    /// As written: a `none` style takes the used width to zero, not this one.
     pub width: LinearLength,
     pub style: LineStyle,
     /// Colour text, still to be resolved against the element.
@@ -85,14 +85,9 @@ pub(crate) fn parse_border(value: &str) -> Option<BorderSide<'_>> {
     if width.is_none() && style.is_none() && color.is_none() {
         return None;
     }
-    let style = style.unwrap_or(LineStyle::None);
-    let width = match style {
-        LineStyle::None => LinearLength::default(),
-        _ => width.unwrap_or(MEDIUM),
-    };
     Some(BorderSide {
-        width,
-        style,
+        width: width.unwrap_or(MEDIUM),
+        style: style.unwrap_or(LineStyle::None),
         color: color.unwrap_or("currentColor"),
     })
 }
@@ -173,13 +168,12 @@ enum Side {
 /// The order of `[top, right, bottom, left]` arrays.
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
 
-fn set_width<E: gpui::Styled>(el: E, side: Option<Side>, width: gpui::Pixels) -> E {
+fn set_width<E: gpui::Styled>(el: E, side: Side, width: gpui::Pixels) -> E {
     match side {
-        None => el.border(width),
-        Some(Side::Top) => el.border_t(width),
-        Some(Side::Right) => el.border_r(width),
-        Some(Side::Bottom) => el.border_b(width),
-        Some(Side::Left) => el.border_l(width),
+        Side::Top => el.border_t(width),
+        Side::Right => el.border_r(width),
+        Side::Bottom => el.border_b(width),
+        Side::Left => el.border_l(width),
     }
 }
 
@@ -221,37 +215,10 @@ fn shorthands(style: &StyleDesc) -> [(&Option<String>, Option<Side>); 5] {
 fn valid_shorthand<'a>(
     value: &'a Option<String>,
     colors: &ColorContext,
-) -> Option<(BorderSide<'a>, Option<gpui::Rgba>)> {
+) -> Option<(BorderSide<'a>, gpui::Rgba)> {
     let parsed = parse_border(value.as_deref()?)?;
-    match parsed.style {
-        LineStyle::None => Some((parsed, None)),
-        _ => {
-            let color = colors.resolve(parsed.color)?;
-            Some((parsed, Some(color)))
-        }
-    }
-}
-
-/// `border` and `borderTop/Right/Bottom/Left`, in that order, so a side
-/// overrides the whole-element value. Call before the width and colour
-/// longhands, which override these. `lengths` is the element's, which a width in
-/// `em` resolves against. The line style is [`apply_styles`]'s.
-pub(crate) fn apply_shorthands<E: gpui::Styled>(
-    mut el: E,
-    style: &StyleDesc,
-    colors: &ColorContext,
-    lengths: &LengthContext,
-) -> E {
-    for (value, side) in shorthands(style) {
-        let Some((parsed, color)) = valid_shorthand(value, colors) else {
-            continue;
-        };
-        el = set_width(el, side, resolve_width(&parsed.width, lengths));
-        if let Some(color) = color {
-            el = set_color(el, side, color);
-        }
-    }
-    el
+    let color = colors.resolve(parsed.color)?;
+    Some((parsed, color))
 }
 
 /// The outline `style` declares, or `None` when it declares no width or colour.
@@ -278,12 +245,20 @@ pub(crate) fn outline(style: &StyleDesc, colors: &ColorContext, lengths: &Length
     })
 }
 
-/// `borderColor` (one to four values) and then the per-side colours.
+/// The colour of `border` and `borderTop/Right/Bottom/Left`, in that order so a side
+/// overrides the whole-element value, then `borderColor` (one to four values) and
+/// the per-side colours, which override the shorthands.
 pub(crate) fn apply_colors<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
     colors: &ColorContext,
 ) -> E {
+    for (value, side) in shorthands(style) {
+        let Some((_, color)) = valid_shorthand(value, colors) else {
+            continue;
+        };
+        el = set_color(el, side, color);
+    }
     if let Some(sides) = style.border_color.as_deref().and_then(parse_color_sides) {
         let resolved = sides.map(|color| colors.resolve(color));
         // One invalid colour invalidates the declaration, as in CSS.
@@ -307,23 +282,50 @@ pub(crate) fn apply_colors<E: gpui::Styled>(
     el
 }
 
-/// The line style each side declares as `[top, right, bottom, left]`, `None` for a
-/// side nothing names. From weakest to strongest: the shorthands, `borderStyle`
-/// (one to four values) and the per-side longhands.
-fn declared_styles(style: &StyleDesc, colors: &ColorContext) -> [Option<LineStyle>; 4] {
-    let mut declared = [None; 4];
+/// What the declarations of a style say about each side, as `[top, right, bottom, left]`.
+/// `None` is a side nothing names. From weakest to strongest: the shorthands, then
+/// `borderWidth` and `borderStyle` (one to four values), then the per-side longhands.
+struct Declared {
+    widths: [Option<LinearLength>; 4],
+    styles: [Option<LineStyle>; 4],
+}
+
+fn declare(style: &StyleDesc, colors: &ColorContext) -> Declared {
+    let mut declared = Declared {
+        widths: [None; 4],
+        styles: [None; 4],
+    };
     for (value, only) in shorthands(style) {
         let Some((parsed, _)) = valid_shorthand(value, colors) else {
             continue;
         };
         match only {
-            None => declared = [Some(parsed.style); 4],
-            Some(side) => declared[side as usize] = Some(parsed.style),
+            None => {
+                declared.widths = [Some(parsed.width); 4];
+                declared.styles = [Some(parsed.style); 4];
+            }
+            Some(side) => {
+                declared.widths[side as usize] = Some(parsed.width);
+                declared.styles[side as usize] = Some(parsed.style);
+            }
         }
+    }
+    if let Some(width) = style.border_width {
+        declared.widths = [Some(width); 4];
     }
     if let Some(sides) = style.border_style.as_deref().and_then(parse_style_sides) {
         for (index, keyword) in sides.into_iter().enumerate() {
-            declared[index] = LineStyle::parse(keyword);
+            declared.styles[index] = LineStyle::parse(keyword);
+        }
+    }
+    for (value, side) in [
+        (style.border_top_width, Side::Top),
+        (style.border_right_width, Side::Right),
+        (style.border_bottom_width, Side::Bottom),
+        (style.border_left_width, Side::Left),
+    ] {
+        if value.is_some() {
+            declared.widths[side as usize] = value;
         }
     }
     for (value, side) in [
@@ -333,29 +335,71 @@ fn declared_styles(style: &StyleDesc, colors: &ColorContext) -> [Option<LineStyl
         (&style.border_left_style, Side::Left),
     ] {
         if let Some(line_style) = value.as_deref().and_then(LineStyle::parse) {
-            declared[side as usize] = Some(line_style);
+            declared.styles[side as usize] = Some(line_style);
         }
     }
     declared
 }
 
-/// The line style of every side. A side that is `none` or `hidden` has no width,
-/// whatever the width longhands say, so call after them. A side no declaration
-/// names stays solid: unlike CSS there is no `border-style: none` initial value
-/// to start from.
+impl Declared {
+    /// The used width of a side. As in CSS, a side with no style declared is `none`
+    /// and takes no width whatever the width says, and a visible style with no
+    /// width is `medium`.
+    fn used_width(&self, side: Side, lengths: &LengthContext) -> gpui::Pixels {
+        match self.styles[side as usize] {
+            None | Some(LineStyle::None) => gpui::px(0.0),
+            Some(_) => resolve_width(&self.widths[side as usize].unwrap_or(MEDIUM), lengths),
+        }
+    }
+
+    fn names(&self, side: Side) -> bool {
+        self.widths[side as usize].is_some() || self.styles[side as usize].is_some()
+    }
+}
+
+/// The used width of every side as `[top, right, bottom, left]`: what a box lays out
+/// with and what an inline box takes along the line. `lengths` is the element's.
+pub(crate) fn used_widths(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> [gpui::Pixels; 4] {
+    let declared = declare(style, colors);
+    SIDES.map(|side| declared.used_width(side, lengths))
+}
+
+/// Whether `style` declares a border width, style or shorthand on any side.
+pub(crate) fn declares_widths(style: &StyleDesc, colors: &ColorContext) -> bool {
+    let declared = declare(style, colors);
+    SIDES.into_iter().any(|side| declared.names(side))
+}
+
+/// The border widths of the sides `style` names. A side it leaves out is not
+/// touched, not set to zero: the element may bring a border of its own, such as
+/// the fallback of an `<img>`.
+pub(crate) fn apply_widths<E: gpui::Styled>(
+    mut el: E,
+    style: &StyleDesc,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> E {
+    let declared = declare(style, colors);
+    for side in SIDES {
+        if declared.names(side) {
+            el = set_width(el, side, declared.used_width(side, lengths));
+        }
+    }
+    el
+}
+
+/// The line style of every side that declares a visible one. A side with none has
+/// no width, which [`apply_widths`] sees to.
 pub(crate) fn apply_styles<E: gpui::Styled>(
     mut el: E,
     style: &StyleDesc,
     colors: &ColorContext,
 ) -> E {
-    for (side, declared) in SIDES.into_iter().zip(declared_styles(style, colors)) {
-        let Some(declared) = declared else {
-            continue;
-        };
-        el = match declared.painted() {
-            Some(painted) => set_style(el, side, painted),
-            None => set_width(el, Some(side), gpui::px(0.0)),
-        };
+    let declared = declare(style, colors);
+    for side in SIDES {
+        if let Some(painted) = declared.styles[side as usize].and_then(LineStyle::painted) {
+            el = set_style(el, side, painted);
+        }
     }
     el
 }
@@ -392,14 +436,15 @@ mod tests {
         assert_eq!((solid_only.width, solid_only.color), (LinearLength::px(3.0), "currentColor"));
         assert_eq!(side("thin solid").width, LinearLength::px(1.0));
         assert_eq!(side("thick solid").width, LinearLength::px(5.0));
-        // No style means no border, whatever width was written.
-        assert_eq!(side("2px red").width, LinearLength::default());
+        // No style is `none`, which takes the used width to zero; the written one stays.
+        assert_eq!(side("2px red").width, LinearLength::px(2.0));
         assert_eq!(side("2px red").style, LineStyle::None);
+        assert_eq!(side("red").width, LinearLength::px(3.0));
     }
 
     #[test]
     fn none_and_zero_clear_the_border() {
-        assert_eq!(side("none").width, LinearLength::default());
+        assert_eq!(side("none").style, LineStyle::None);
         assert_eq!(side("hidden").style, LineStyle::None);
         assert_eq!(side("0 solid red").width, LinearLength::default());
     }
@@ -524,7 +569,6 @@ mod tests {
             assert_eq!(side(&format!("2px {keyword} red")).style, expected, "{keyword}");
             assert_eq!(side(&format!("2px {} red", keyword.to_uppercase())).style, expected);
         }
-        assert_eq!(side("2px hidden red").width, LinearLength::px(0.0));
     }
 
     #[test]
@@ -675,31 +719,156 @@ mod tests {
     }
 
     #[gpui::test]
-    fn an_invalid_style_leaves_the_border_as_it_was(cx: &mut gpui::TestAppContext) {
+    fn an_invalid_style_is_ignored_and_leaves_the_one_before_it(cx: &mut gpui::TestAppContext) {
         use gpui::BorderStyle::*;
+        let cx = cx.add_empty_window();
+        for json in [
+            r#"{"border":"4px dashed red","borderStyle":"wavy"}"#,
+            r#"{"border":"4px dashed red","borderStyle":"dotted wavy"}"#,
+            r#"{"border":"4px dashed red","borderTopStyle":"solid solid"}"#,
+            // The colour does not resolve, so the whole shorthand is dropped, its style too.
+            r#"{"border":"4px dotted not-a-colour","borderTop":"4px dashed red","borderRight":"4px dashed red",
+                "borderBottom":"4px dashed red","borderLeft":"4px dashed red"}"#,
+        ] {
+            let quad = border_quad(cx, json).expect(json);
+            assert_eq!(styles(&quad), [Dashed; 4], "{json}");
+        }
+    }
+
+    #[gpui::test]
+    fn an_invalid_style_leaves_no_style_declared(cx: &mut gpui::TestAppContext) {
         let cx = cx.add_empty_window();
         for json in [
             r#"{"borderWidth":4,"borderColor":"red","borderStyle":"wavy"}"#,
             r#"{"borderWidth":4,"borderColor":"red","borderStyle":"dotted wavy"}"#,
             r#"{"borderWidth":4,"borderColor":"red","borderTopStyle":"solid solid"}"#,
-            // The colour does not resolve, so the whole shorthand is dropped, its style too.
             r#"{"border":"4px dotted not-a-colour","borderWidth":4,"borderColor":"red"}"#,
         ] {
-            let quad = border_quad(cx, json).expect(json);
-            assert_eq!(styles(&quad), [Solid; 4], "{json}");
+            assert!(border_quad(cx, json).is_none(), "{json}");
         }
     }
 
     #[gpui::test]
-    fn a_style_alone_still_paints_the_longhand_width_and_colour(cx: &mut gpui::TestAppContext) {
+    fn a_style_alone_paints_with_the_longhand_width_and_colour(cx: &mut gpui::TestAppContext) {
         use gpui::BorderStyle::*;
         let cx = cx.add_empty_window();
         let quad = border_quad(cx, r#"{"borderWidth":4,"borderColor":"red","borderStyle":"dashed"}"#)
             .expect("a border");
         assert_eq!(styles(&quad), [Dashed; 4]);
         assert_eq!(widths(&quad), [true; 4]);
+    }
 
-        let quad = border_quad(cx, r#"{"borderWidth":4,"borderColor":"red"}"#).expect("a border");
-        assert_eq!(styles(&quad), [Solid; 4]);
+    fn used(json: &str, font_size: f64) -> [f32; 4] {
+        let style: StyleDesc = serde_json::from_str(json).unwrap();
+        let lengths = LengthContext::initial(800.0, 600.0).descend(Some(&LinearLength::px(font_size)), true);
+        used_widths(&style, &ColorContext::root(crate::color::Scheme::Light), &lengths).map(f32::from)
+    }
+
+    #[test]
+    fn a_side_with_no_style_declared_has_no_width() {
+        for json in [
+            r#"{"borderWidth":4}"#,
+            r#"{"borderWidth":4,"borderColor":"red"}"#,
+            r#"{"borderTopWidth":4,"borderLeftWidth":"2em"}"#,
+            r#"{"border":"4px red"}"#,
+            r#"{"borderTop":"4px","borderBottom":"thick"}"#,
+            r#"{"borderWidth":4,"borderStyle":"none"}"#,
+            r#"{"borderWidth":4,"borderStyle":"hidden"}"#,
+        ] {
+            assert_eq!(used(json, 16.0), [0.0; 4], "{json}");
+        }
+    }
+
+    #[test]
+    fn a_visible_style_gives_the_width_the_declarations_name() {
+        assert_eq!(used(r#"{"borderWidth":4,"borderStyle":"solid"}"#, 16.0), [4.0; 4]);
+        assert_eq!(used(r#"{"border":"2px solid red"}"#, 16.0), [2.0; 4]);
+        assert_eq!(used(r#"{"borderWidth":"0.5em","borderStyle":"dashed"}"#, 20.0), [10.0; 4]);
+        // The style can come after the shorthand that left it out, as in CSS.
+        assert_eq!(used(r#"{"border":"2px red","borderStyle":"solid"}"#, 16.0), [2.0; 4]);
+    }
+
+    #[test]
+    fn each_side_needs_its_own_style() {
+        assert_eq!(
+            used(r#"{"borderBottomWidth":2,"borderBottomStyle":"solid"}"#, 16.0),
+            [0.0, 0.0, 2.0, 0.0]
+        );
+        assert_eq!(
+            used(r#"{"borderWidth":4,"borderStyle":"solid none"}"#, 16.0),
+            [4.0, 0.0, 4.0, 0.0]
+        );
+        assert_eq!(
+            used(r#"{"borderWidth":4,"borderLeftStyle":"dotted"}"#, 16.0),
+            [0.0, 0.0, 0.0, 4.0]
+        );
+        // A side shorthand without a style resets the style `border` gave the side.
+        assert_eq!(
+            used(r#"{"border":"4px solid red","borderLeft":"4px red"}"#, 16.0),
+            [4.0, 4.0, 4.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn a_visible_style_with_no_width_is_medium() {
+        assert_eq!(used(r#"{"borderStyle":"solid"}"#, 16.0), [3.0; 4]);
+        assert_eq!(used(r#"{"borderColor":"red","borderStyle":"dashed double"}"#, 16.0), [3.0; 4]);
+        assert_eq!(used(r#"{"borderTopStyle":"solid"}"#, 16.0), [3.0, 0.0, 0.0, 0.0]);
+        assert_eq!(used(r#"{"border":"solid"}"#, 16.0), [3.0; 4]);
+        // The shorthand named no width, so it is the initial one for the sides it covers.
+        assert_eq!(used(r#"{"borderWidth":6,"border":"solid"}"#, 16.0), [6.0; 4]);
+        assert_eq!(used(r#"{"borderWidth":6,"borderTop":"solid"}"#, 16.0), [6.0, 0.0, 0.0, 0.0]);
+        assert_eq!(used(r#"{"borderTopWidth":0,"borderStyle":"solid"}"#, 16.0), [0.0, 3.0, 3.0, 3.0]);
+    }
+
+    #[gpui::test]
+    fn a_width_alone_paints_nothing_and_a_style_gives_it_a_quad(cx: &mut gpui::TestAppContext) {
+        use gpui::BorderStyle::*;
+        let cx = cx.add_empty_window();
+        for json in [
+            r#"{"borderWidth":4}"#,
+            r#"{"borderWidth":4,"borderColor":"red"}"#,
+            r#"{"borderTopWidth":4,"borderColor":"red"}"#,
+            r#"{"border":"2px red"}"#,
+            r#"{"borderTop":"2px red"}"#,
+        ] {
+            assert!(border_quad(cx, json).is_none(), "{json}");
+        }
+        let quad = border_quad(cx, r#"{"borderWidth":4,"borderColor":"red","borderStyle":"solid"}"#).expect("a border");
+        assert_eq!((widths(&quad), styles(&quad)), ([true; 4], [Solid; 4]));
+    }
+
+    #[gpui::test]
+    fn only_the_side_that_names_a_style_paints(cx: &mut gpui::TestAppContext) {
+        let cx = cx.add_empty_window();
+        let quad = border_quad(
+            cx,
+            r#"{"borderBottomWidth":2,"borderBottomStyle":"solid","borderColor":"red"}"#,
+        )
+        .expect("the bottom border");
+        assert_eq!(widths(&quad), [false, false, true, false]);
+
+        let quad = border_quad(cx, r#"{"borderColor":"red","borderTopStyle":"solid"}"#).expect("a medium top border");
+        assert_eq!(widths(&quad), [true, false, false, false]);
+    }
+
+    #[gpui::test]
+    fn a_side_that_declares_nothing_keeps_the_border_the_element_came_with(cx: &mut gpui::TestAppContext) {
+        use gpui::{point, px, size, Styled as _};
+        let cx = cx.add_empty_window();
+        let desc: StyleDesc = serde_json::from_str(r#"{"borderTopWidth":0,"opacity":1}"#).unwrap();
+        let colors = ColorContext::root(crate::color::Scheme::Light);
+        cx.draw(point(px(0.), px(0.)), size(px(200.), px(200.)), |_, _| {
+            crate::renderer::apply_styles(
+                gpui::div().w(px(60.)).h(px(40.)).border(px(1.)).border_color(gpui::red()),
+                &desc,
+                &colors,
+                &LengthContext::initial(800.0, 600.0),
+            )
+        });
+        let quad = cx
+            .update(|window, _| window.painted_quads().into_iter().find(|quad| quad.border_widths.any(|width| width.0 > 0.)))
+            .expect("the element's own border");
+        assert_eq!(widths(&quad), [false, true, true, true]);
     }
 }

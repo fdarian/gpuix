@@ -69,8 +69,8 @@ impl BoxPaint {
     /// the line style are read the way a `div` does, so a border looks the same on
     /// both, with a line style of its own on each side.
     fn of(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> Self {
-        let widths = border_widths(style, lengths);
-        let (border_colors, border_styles) = border_look(style, colors, lengths);
+        let widths = border_widths(style, colors, lengths);
+        let (border_colors, border_styles) = border_look(style, colors);
         Self {
             background: style
                 .background_color
@@ -120,13 +120,8 @@ impl gpui::Styled for Probe {
 
 /// The side colours and the line styles `style` gives a border, in the order the
 /// element builder applies them.
-fn border_look(
-    style: &StyleDesc,
-    colors: &ColorContext,
-    lengths: &LengthContext,
-) -> (gpui::Edges<Hsla>, gpui::Edges<BorderStyle>) {
+fn border_look(style: &StyleDesc, colors: &ColorContext) -> (gpui::Edges<Hsla>, gpui::Edges<BorderStyle>) {
     let mut probe = Probe(StyleRefinement::default());
-    probe = border::apply_shorthands(probe, style, colors, lengths);
     probe = border::apply_colors(probe, style, colors);
     probe = border::apply_styles(probe, style, colors);
     let mut resolved = Style::default();
@@ -348,7 +343,7 @@ mod tests {
             &LengthContext::initial(800.0, 600.0),
             states,
             &InlineStyles::default(),
-            &InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states),
+            &InsetSpec::of(tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), states),
         )
     }
 
@@ -494,7 +489,7 @@ mod tests {
             panic!("a paragraph")
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
+        let insets = InsetSpec::of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states);
         let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &InlineStyles::default(), &insets);
         assert_eq!(found.len(), 1);
         let edges = found[0].edges.for_width(None);
@@ -583,7 +578,7 @@ mod tests {
     fn a_border_has_the_widths_and_colours_a_div_gives_it() {
         let tree = fixture(&[(
             3,
-            serde_json::json!({"borderWidth": 2, "borderLeftWidth": 5, "borderColor": "#ff0000 #0000ff", "borderBottomColor": "#00ff00"}),
+            serde_json::json!({"borderWidth": 2, "borderLeftWidth": 5, "borderStyle": "solid", "borderColor": "#ff0000 #0000ff", "borderBottomColor": "#00ff00"}),
         )]);
         let paint = only(&tree).paint;
         assert_eq!(
@@ -632,13 +627,38 @@ mod tests {
     #[test]
     fn a_width_without_a_visible_colour_paints_no_border() {
         for style in [
-            serde_json::json!({"borderWidth": 2}),
-            serde_json::json!({"borderWidth": 2, "borderColor": "transparent"}),
-            serde_json::json!({"borderWidth": 0, "borderColor": "red"}),
-            serde_json::json!({"border": "2px red"}),
+            serde_json::json!({"borderWidth": 2, "borderStyle": "solid"}),
+            serde_json::json!({"borderWidth": 2, "borderStyle": "solid", "borderColor": "transparent"}),
+            serde_json::json!({"borderWidth": 0, "borderStyle": "solid", "borderColor": "red"}),
+            serde_json::json!({"border": "2px solid transparent"}),
         ] {
             assert_eq!(resting(&fixture(&[(3, style.clone())])), vec![], "{style}");
         }
+    }
+
+    #[test]
+    fn a_border_with_no_style_paints_no_border() {
+        for style in [
+            serde_json::json!({"borderWidth": 2, "borderColor": "red"}),
+            serde_json::json!({"border": "2px red"}),
+            serde_json::json!({"borderWidth": 2, "borderColor": "red", "borderStyle": "none"}),
+            serde_json::json!({"borderWidth": 2, "borderColor": "red", "borderTopStyle": "hidden"}),
+        ] {
+            assert_eq!(resting(&fixture(&[(3, style.clone())])), vec![], "{style}");
+        }
+    }
+
+    #[test]
+    fn a_border_takes_the_sides_that_have_a_style_and_medium_without_a_width() {
+        let paint = only(&fixture(&[(
+            3,
+            serde_json::json!({"borderColor": "red", "borderBottomWidth": 2, "borderBottomStyle": "solid", "borderLeftStyle": "dashed"}),
+        )]))
+        .paint;
+        assert_eq!(
+            [paint.widths.top, paint.widths.right, paint.widths.bottom, paint.widths.left],
+            [px(0.0), px(0.0), px(2.0), px(3.0)]
+        );
     }
 
     #[test]
@@ -687,7 +707,7 @@ mod tests {
             panic!("a paragraph")
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
+        let insets = InsetSpec::of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states);
         let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &InlineStyles::default(), &insets);
         let edges = found[0].edges.for_width(None);
         assert_eq!(edges.start, px(3.0));

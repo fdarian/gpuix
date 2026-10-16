@@ -480,9 +480,16 @@ pub(crate) fn apply_focus_styles<E: gpui::Styled>(
         if let Some((base, declared)) =
             style.and_then(|base| Some((base, base.focus_visible.as_deref()?)))
         {
+            // `focusWithin` is below it, so a border it declared is part of what
+            // `focusVisible` sits on.
+            let within = base
+                .focus_within
+                .as_deref()
+                .filter(|_| focus.within.contains(&id))
+                .map(|within| crate::events::state_styles::overlay(base, within));
             el = crate::renderer::apply_state_styles(
                 el,
-                base,
+                within.as_ref().unwrap_or(base),
                 declared,
                 &colors.for_state(declared),
                 &lengths.for_state(declared.font_size.as_ref()),

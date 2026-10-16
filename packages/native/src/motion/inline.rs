@@ -332,7 +332,7 @@ mod tests {
         let mut page = Page::new();
         let style = |all: &str, left: &str| {
             format!(
-                r#"{{ "borderWidth": 2, "borderColor": "{all}", "borderLeftColor": "{left}",
+                r#"{{ "borderWidth": 2, "borderStyle": "solid", "borderColor": "{all}", "borderLeftColor": "{left}",
                     "transition": "border-color 1s linear" }}"#
             )
         };
@@ -459,7 +459,7 @@ mod tests {
         let mut page = Page::new();
         let style = |colour: &str| {
             format!(
-                r#"{{ "backgroundColor": "{colour}", "borderWidth": 2, "borderColor": "{colour}",
+                r#"{{ "backgroundColor": "{colour}", "borderWidth": 2, "borderStyle": "solid", "borderColor": "{colour}",
                     "outlineWidth": 1, "outlineColor": "{colour}",
                     "transition": "background-color 1s linear, border-color 1s linear, outline-color 1s linear" }}"#
             )
@@ -473,7 +473,7 @@ mod tests {
         let paragraph = page.paragraph();
         let lengths = LengthContext::initial(800.0, 600.0);
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = InsetSpec::of(&page.tree, &paragraph, &lengths, &states);
+        let insets = InsetSpec::of(&page.tree, &paragraph, &crate::color::ColorContext::root(crate::color::Scheme::Light), &lengths, &states);
         let decorations = of(
             &page.tree,
             &paragraph,
