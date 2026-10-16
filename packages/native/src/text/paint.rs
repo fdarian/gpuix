@@ -240,7 +240,7 @@ pub struct SelectableText {
     pub inline_cursors: Vec<super::inline_cursor::CursorBox>,
     /// The margin, border and padding of the paragraph's inline boxes along the
     /// line, see [`super::inline_insets`].
-    pub inline_insets: Vec<gpui::TextInset>,
+    pub inline_insets: Option<std::rc::Rc<super::inline_insets::InsetSpec>>,
     /// The inline boxes of a paragraph that can take focus, in tree order, see
     /// [`super::inline_focus`].
     pub inline_focus: Vec<super::inline_focus::FocusableBox>,
@@ -276,7 +276,7 @@ impl SelectableText {
             inline_targets: None,
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
-            inline_insets: Vec::new(),
+            inline_insets: None,
             inline_focus: Vec::new(),
             inline_decorations: Vec::new(),
         }
@@ -318,11 +318,17 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             Some(runs) => StyledText::new(text.clone()).with_runs(runs),
             None => StyledText::new(text.clone()),
         };
-        let styled = styled.with_insets(inline_insets);
+        let styled = match inline_insets {
+            Some(spec) => styled.with_insets_for_width(move |width| spec.at(width).text()),
+            None => styled,
+        };
         (styled.layout().clone(), styled.into_any_element())
     } else {
-        let inline = super::paragraph::InlineText::new(text.clone(), run_styles)
-            .with_insets(inline_insets);
+        let inline = super::paragraph::InlineText::new(text.clone(), run_styles);
+        let inline = match inline_insets {
+            Some(spec) => inline.with_insets_for_width(move |width| spec.at(width).text()),
+            None => inline,
+        };
         (inline.layout().clone(), inline.into_any_element())
     };
 

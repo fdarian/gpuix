@@ -15,9 +15,11 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 
 use gpui::{canvas, prelude::*, CursorStyle, HitboxBehavior, TextLayout};
 
+use crate::css::length::LengthContext;
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -25,14 +27,14 @@ use crate::style::StyleDesc;
 use super::inline::Paragraph;
 use super::inline_bounds::border_box_rows;
 use super::inline_hit::{boxes_with_a_box, piece_targets};
-use super::inline_insets::{Edges, Insets};
+use super::inline_insets::{BoxEdges, InsetSpec};
 
 /// A box that asks for a cursor over its border box.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CursorBox {
     pub range: Range<usize>,
     pub cursor: CursorStyle,
-    pub edges: Edges,
+    pub edges: BoxEdges,
 }
 
 /// The boxes of `paragraph` that ask for a cursor, outermost first, with the
@@ -49,7 +51,7 @@ pub fn of(
     pointer_events_none: bool,
     inert: bool,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
-    insets: &Insets,
+    insets: &Rc<InsetSpec>,
 ) -> Vec<CursorBox> {
     if pointer_events_none || inert {
         return Vec::new();
@@ -96,7 +98,7 @@ pub fn of(
             boxes.push(CursorBox {
                 range: range.clone(),
                 cursor,
-                edges: insets.edges(*id),
+                edges: insets.edges_of(*id),
             });
         }
     }
@@ -111,7 +113,7 @@ pub fn hitboxes(layout: TextLayout, boxes: Vec<CursorBox>) -> impl IntoElement {
         move |_, window, _| {
             let mut hitboxes = Vec::new();
             for inline in &boxes {
-                for row in border_box_rows(&layout, &inline.range, inline.edges) {
+                for row in border_box_rows(&layout, &inline.range, inline.edges.at(&layout)) {
                     hitboxes.push((window.insert_hitbox(row, HitboxBehavior::Normal), inline.cursor));
                 }
             }
@@ -163,7 +165,8 @@ mod tests {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, "a bc d");
-        of(tree, paragraph, none, inert, states, &Insets::default())
+        let insets = InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states);
+        of(tree, paragraph, none, inert, states, &insets)
             .into_iter()
             .map(|inline| (inline.range, inline.cursor))
             .collect()
@@ -279,11 +282,11 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let insets = Insets::of(&tree, paragraph, &|_, _| PointerStates::default());
+        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default());
         let boxes = of(&tree, paragraph, false, false, &|_, _| PointerStates::default(), &insets);
         let edges: Vec<_> = boxes
             .iter()
-            .map(|inline| (inline.range.clone(), f32::from(inline.edges.start), f32::from(inline.edges.end)))
+            .map(|inline| (inline.range.clone(), f32::from(inline.edges.for_width(None).start), f32::from(inline.edges.for_width(None).end)))
             .collect();
         // Span 5 ends where 3 does, so 3's margin is after it.
         assert_eq!(edges, vec![(2..4, 3.0, 5.0), (3..4, 0.0, 5.0)]);

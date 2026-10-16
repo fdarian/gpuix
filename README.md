@@ -2779,10 +2779,16 @@ shorthand. `hover`, `active` and the other state styles change the space too.
 - A text selection or a search match that starts or ends on the first or last
   glyph of a span leaves the space off the end of its wash. A selection that runs
   across a span washes the space inside it, so it has no holes.
-- Deviations: a `%`, `auto` or `anchor-size()` margin counts as 0 (there is no
-  containing block width to take a percentage of), a negative `marginLeft` or
-  `marginRight` pulls the text as in CSS, and a negative padding or border width
-  counts as 0. A border width that comes from a `border` shorthand needs a line
+- The lengths are CSS [lengths](#lengths). `em` is the container's font size (a span
+  cannot set its own `fontSize`), and a percentage margin or padding is of the width
+  the paragraph is laid out in, which is the containing block's width when the
+  paragraph fills its container. While the paragraph is measured for its content
+  (`width: "min-content"`, a flex item without a width) a percentage counts as 0, as
+  CSS treats it in intrinsic sizes.
+- Deviations: an `auto` or `anchor-size()` margin counts as 0, as `auto` does on an
+  inline box in CSS, a negative `marginLeft` or `marginRight` pulls the text as in
+  CSS, and a negative padding or border width counts as 0 (a `calc()` of a padding
+  is clamped as a whole). A border width that comes from a `border` shorthand needs a line
   style, as it does on a `div`. The space of a span that holds no text left
   after white space processing, or none of whose glyphs are painted, is lost: it
   has no glyph to attach to. A span cut by `text-overflow` or `lineClamp` at its
@@ -5501,8 +5507,12 @@ a `%` skips the special case for a zero-length repeat.
 `width`, `minWidth`, `maxWidth` and `flexBasis` take `min-content`, `max-content`,
 `fit-content` and `fit-content(<length-percentage>)`, with the CSS Sizing
 meaning. `minWidth: "fit-content"` is `min-content` and `maxWidth: "fit-content"`
-is `max-content`. Text wraps at its widest unbreakable stretch for `min-content`,
-counting the trailing space of each word, so it is one space wider than a browser.
+is `max-content`. Text wraps at its widest unbreakable stretch for `min-content`, found by the
+rules the text breaks lines by: its longest word, without the spaces that hang
+after it, or one letter with `overflowWrap: 'anywhere'` or `wordBreak: 'break-all'`
+(`overflowWrap: 'break-word'` does not shrink it, as in CSS), and the tab stops
+and the space of the inline boxes in it count. A text in a flex item therefore
+does not shrink below its longest word without `minWidth: 0`.
 
 ```tsx
 <div style={{ display: 'flex' }}>

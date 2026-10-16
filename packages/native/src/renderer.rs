@@ -7922,7 +7922,12 @@ fn paragraph_content(
         ctx.focus_styles
             .states_of(id, style, ctx.pointer_states(id, style, inert))
     };
-    let insets = crate::text::inline_insets::Insets::of(ctx.tree, paragraph, &states);
+    let insets = crate::text::inline_insets::InsetSpec::of(
+        ctx.tree,
+        paragraph,
+        &ctx.inherited.lengths,
+        &states,
+    );
     selectable_text(crate::text::SelectableText {
         group: None,
         selectable: ctx.inherited.selectable,
@@ -7964,7 +7969,7 @@ fn paragraph_content(
             &states,
             &insets,
         ),
-        inline_insets: insets.text(),
+        inline_insets: insets.takes_space_along_the_line().then(|| insets.clone()),
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
@@ -7980,7 +7985,7 @@ fn paragraph_content(
 fn inline_boxes(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &BuildCtx,
-    insets: &crate::text::inline_insets::Insets,
+    insets: &Rc<crate::text::inline_insets::InsetSpec>,
 ) -> Vec<crate::text::inline_bounds::InlineBox> {
     paragraph
         .boxes
@@ -7988,7 +7993,7 @@ fn inline_boxes(
         .map(|(id, range)| crate::text::inline_bounds::InlineBox {
             id: *id,
             range: range.clone(),
-            edges: insets.edges(*id),
+            edges: insets.edges_of(*id),
             report: ctx.tree.elements.get(id).and_then(|element| {
                 paint_reporter(*id, element.events(), Some(paragraph.container), ctx)
             }),

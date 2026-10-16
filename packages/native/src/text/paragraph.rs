@@ -169,10 +169,13 @@ impl InlineText {
         }
     }
 
-    /// Lays the text out with the space `insets` put around ranges of it, see
-    /// [`super::inline_insets`].
-    pub fn with_insets(mut self, insets: Vec<TextInset>) -> Self {
-        self.styled = self.styled.with_insets(insets);
+    /// Lays the text out with the space `insets` put around ranges of it at the
+    /// width the text is laid out in, see [`super::inline_insets`].
+    pub fn with_insets_for_width(
+        mut self,
+        insets: impl Fn(Option<gpui::Pixels>) -> Vec<TextInset> + 'static,
+    ) -> Self {
+        self.styled = self.styled.with_insets_for_width(insets);
         self
     }
 

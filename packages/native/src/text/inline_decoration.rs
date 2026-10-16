@@ -22,6 +22,7 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 
 use gpui::{
     canvas, prelude::*, px, AbsoluteLength, App, BorderStyle, Bounds, Corners, Fill, Hsla, Outline,
@@ -37,13 +38,13 @@ use crate::style::StyleDesc;
 
 use super::inline::Paragraph;
 use super::inline_bounds::border_box_rows;
-use super::inline_insets::{border_widths, Edges, Insets};
+use super::inline_insets::{border_widths, BoxEdges, InsetSpec};
 
 /// The decorations of one inline box.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoxDecoration {
     pub range: Range<usize>,
-    pub edges: Edges,
+    pub edges: BoxEdges,
     pub outline: Option<Outline>,
     pub paint: BoxPaint,
 }
@@ -66,9 +67,9 @@ impl BoxPaint {
     /// The widths are the ones that took space along the line, and the colours and
     /// the line style are read the way a `div` does, so a border looks the same on
     /// both. `gpui` has one line style for all the sides, `dashed` or not.
-    fn of(style: &StyleDesc, colors: &ColorContext) -> Self {
-        let widths = border_widths(style);
-        let (border_colors, border_style) = border_look(style, colors);
+    fn of(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> Self {
+        let widths = border_widths(style, lengths);
+        let (border_colors, border_style) = border_look(style, colors, lengths);
         let radius = |corner: Option<f64>| px(corner.or(style.border_radius).unwrap_or(0.0).max(0.0) as f32);
         Self {
             background: style
@@ -124,9 +125,13 @@ impl gpui::Styled for Probe {
 
 /// The side colours and the line style `style` gives a border, in the order the
 /// element builder applies them.
-fn border_look(style: &StyleDesc, colors: &ColorContext) -> (gpui::Edges<Hsla>, BorderStyle) {
+fn border_look(
+    style: &StyleDesc,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> (gpui::Edges<Hsla>, BorderStyle) {
     let mut probe = Probe(StyleRefinement::default());
-    probe = border::apply_shorthands(probe, style, colors);
+    probe = border::apply_shorthands(probe, style, colors, lengths);
     probe = border::apply_colors(probe, style, colors);
     match style.border_style.as_deref() {
         Some("dashed") => probe = gpui::Styled::border_dashed(probe),
@@ -229,7 +234,7 @@ pub fn of(
     colors: &ColorContext,
     lengths: &LengthContext,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
-    insets: &Insets,
+    insets: &Rc<InsetSpec>,
 ) -> Vec<BoxDecoration> {
     // A box is declared the same way around every piece of text it holds, so the
     // first one decides.
@@ -250,7 +255,7 @@ pub fn of(
                 continue;
             }
             let outline = border::outline(&declared, &colors, lengths).filter(is_visible);
-            let paint = BoxPaint::of(&declared, &colors);
+            let paint = BoxPaint::of(&declared, &colors, lengths);
             looks.insert(*id, (outline.is_some() || paint.paints()).then_some((outline, paint)));
         }
     }
@@ -261,7 +266,7 @@ pub fn of(
             let (outline, paint) = looks.get(id)?.clone()?;
             Some(BoxDecoration {
                 range: range.clone(),
-                edges: insets.edges(*id),
+                edges: insets.edges_of(*id),
                 outline,
                 paint,
             })
@@ -284,7 +289,7 @@ pub fn paint_behind(
     cx: &mut App,
 ) {
     for decoration in decorations {
-        let rows = border_box_rows(layout, &decoration.range, decoration.edges);
+        let rows = border_box_rows(layout, &decoration.range, decoration.edges.at(layout));
         for quad in quads(&rows, &decoration.paint) {
             // The element's own painter, so the quad has the geometry and
             // colour handling of an element's background and border.
@@ -304,7 +309,7 @@ pub fn overlay(layout: TextLayout, decorations: Vec<BoxDecoration>) -> impl Into
                 let Some(outline) = decoration.outline else {
                     continue;
                 };
-                let rows = border_box_rows(&layout, &decoration.range, decoration.edges);
+                let rows = border_box_rows(&layout, &decoration.range, decoration.edges.at(&layout));
                 for quad in quads(&rows, &decoration.paint) {
                     // The element's own painter, so the ring has the geometry and
                     // colour handling of an element's outline.
@@ -356,7 +361,7 @@ mod tests {
             &ColorContext::root(Scheme::Light),
             &LengthContext::initial(800.0, 600.0),
             states,
-            &Insets::default(),
+            &InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states),
         )
     }
 
@@ -482,10 +487,11 @@ mod tests {
             panic!("a paragraph")
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = Insets::of(&tree, paragraph, &states);
-        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &states, &insets);
+        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
+        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &insets);
         assert_eq!(found.len(), 1);
-        assert_eq!((f32::from(found[0].edges.start), f32::from(found[0].edges.end)), (4.0, 6.0));
+        let edges = found[0].edges.for_width(None);
+        assert_eq!((f32::from(edges.start), f32::from(edges.end)), (4.0, 6.0));
     }
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<Pixels> {
@@ -645,10 +651,11 @@ mod tests {
             panic!("a paragraph")
         };
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = Insets::of(&tree, paragraph, &states);
-        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &states, &insets);
-        assert_eq!(found[0].edges.start, px(3.0));
-        assert_eq!(found[0].edges.top, px(2.0));
+        let insets = InsetSpec::of(&tree, paragraph, &LengthContext::initial(800.0, 600.0), &states);
+        let found = of(&tree, paragraph, &ColorContext::root(Scheme::Light), &LengthContext::initial(800.0, 600.0), &states, &insets);
+        let edges = found[0].edges.for_width(None);
+        assert_eq!(edges.start, px(3.0));
+        assert_eq!(edges.top, px(2.0));
     }
 
     fn full_look() -> BoxPaint {

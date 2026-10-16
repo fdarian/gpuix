@@ -28,13 +28,25 @@
 //! border still grow the border box above and below the content area of the line
 //! ([`Edges::top`] and [`Edges::bottom`]), where they overlap whatever is there.
 //! An inset on a box that holds no glyph has nothing to attach to and is lost.
+//!
+//! The lengths are CSS lengths (`em`, `rem`, the viewport units, `calc()`), resolved
+//! with the container's [`LengthContext`]: a span cannot set its own `fontSize`, so
+//! its `em` is the container's. A percentage margin or padding is of the width of
+//! the paragraph's containing block, as in CSS, which is the width the paragraph
+//! is laid out in and is not known until it is measured. [`InsetSpec`] therefore
+//! keeps the lengths as they were written, and [`InsetSpec::at`] resolves them for
+//! a width. While the paragraph is measured for its content there is no width, and
+//! a percentage counts as 0, as CSS does for the intrinsic sizes.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 
-use gpui::{px, Bounds, Pixels, TextInset, TextLayout};
+use gpui::{px, Bounds, LayoutInsets, Pixels, TextInset, TextLayout};
 
-use crate::css::border::parse_border;
+use crate::css::border::{parse_border, resolve_width};
+use crate::css::length::{LengthContext, LinearLength};
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
@@ -55,8 +67,8 @@ pub struct Edges {
     pub bottom: Pixels,
 }
 
-/// The inline-axis space of one box: its own, with the margin kept apart because
-/// the border box starts after it.
+/// The inline-axis space of one box at a width: its own, with the margin kept
+/// apart because the border box starts after it.
 #[derive(Clone, Debug, PartialEq)]
 struct BoxInset {
     id: u64,
@@ -69,6 +81,8 @@ struct BoxInset {
     /// Padding and border above and below the content area. They take no space.
     top: f32,
     bottom: f32,
+    /// The padding and the border on each side, as an element reports them.
+    layout: LayoutInsets,
 }
 
 impl BoxInset {
@@ -78,24 +92,127 @@ impl BoxInset {
     }
 }
 
-/// The insets of the boxes of one paragraph, and where each box's border box is.
-#[derive(Debug, Default, PartialEq)]
-pub struct Insets {
-    boxes: Vec<BoxInset>,
-    edges: HashMap<u64, Edges>,
+/// A length along an inline box that is not resolved yet: px plus a fraction of
+/// the width of the paragraph's containing block.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Extent {
+    px: f64,
+    percent: f64,
 }
 
-impl Insets {
+impl Extent {
+    fn of(length: &LinearLength, lengths: &LengthContext) -> Self {
+        let (px, percent) = lengths.split(length);
+        Self { px, percent }
+    }
+
+    /// A percentage, `auto` and `anchor-size()`: `auto` is zero on an inline box in
+    /// CSS, and `anchor-size()` is only resolved for a direct child of `<anchored>`.
+    fn of_margin(value: Option<&DimensionValue>, lengths: &LengthContext) -> Self {
+        match value {
+            Some(DimensionValue::Pixels(pixels)) => Self { px: *pixels, percent: 0.0 },
+            Some(DimensionValue::Percentage(fraction)) => Self { px: 0.0, percent: *fraction },
+            Some(DimensionValue::Calc(length)) => Self::of(length, lengths),
+            _ => Self::default(),
+        }
+    }
+
+    /// With no `width`, a percentage is 0.
+    fn at(self, width: Option<f32>) -> f32 {
+        (self.px + self.percent * f64::from(width.unwrap_or(0.0))) as f32
+    }
+
+    /// A padding is never negative: the sum it comes to is clamped, as CSS clamps a
+    /// `calc()` to the range of its property.
+    fn at_non_negative(self, width: Option<f32>) -> f32 {
+        self.at(width).max(0.0)
+    }
+
+    fn is_zero(self) -> bool {
+        self.px == 0.0 && self.percent == 0.0
+    }
+}
+
+/// What a box declares along the line and around its content area, as written.
+#[derive(Clone, Debug, PartialEq)]
+struct BoxSpace {
+    id: u64,
+    range: Range<usize>,
+    margin_start: Extent,
+    margin_end: Extent,
+    padding_start: Extent,
+    padding_end: Extent,
+    padding_top: Extent,
+    padding_bottom: Extent,
+    border: BorderWidths,
+}
+
+impl BoxSpace {
+    fn resolve(&self, width: Option<f32>) -> BoxInset {
+        let margin_start = self.margin_start.at(width);
+        let margin_end = self.margin_end.at(width);
+        let padding = gpui::Edges {
+            top: px(self.padding_top.at_non_negative(width)),
+            right: px(self.padding_end.at_non_negative(width)),
+            bottom: px(self.padding_bottom.at_non_negative(width)),
+            left: px(self.padding_start.at_non_negative(width)),
+        };
+        let border = gpui::Edges {
+            top: px(self.border.top),
+            right: px(self.border.right),
+            bottom: px(self.border.bottom),
+            left: px(self.border.left),
+        };
+        let start = self.border.left + f32::from(padding.left);
+        let end = self.border.right + f32::from(padding.right);
+        BoxInset {
+            id: self.id,
+            range: self.range.clone(),
+            margin_start,
+            margin_end,
+            leading: margin_start + start,
+            trailing: margin_end + end,
+            top: self.border.top + f32::from(padding.top),
+            bottom: self.border.bottom + f32::from(padding.bottom),
+            layout: LayoutInsets { padding, border },
+        }
+    }
+
+    /// Whether any of it can take space along the line.
+    fn takes_space_along_the_line(&self) -> bool {
+        !(self.margin_start.is_zero()
+            && self.margin_end.is_zero()
+            && self.padding_start.is_zero()
+            && self.padding_end.is_zero()
+            && self.border.left == 0.0
+            && self.border.right == 0.0)
+    }
+}
+
+/// The space the boxes of one paragraph declare. It is resolved for a width with
+/// [`Self::at`], which the paragraph's layout asks for and so do the things that
+/// find the boxes in it afterwards.
+#[derive(Debug)]
+pub struct InsetSpec {
+    boxes: Vec<(u64, Range<usize>)>,
+    spaces: Vec<BoxSpace>,
+    /// The last width asked for, as the layout and the paint ask for the same one.
+    memo: RefCell<Option<(Option<Pixels>, Rc<Insets>)>>,
+}
+
+impl InsetSpec {
     /// What `paragraph`'s boxes put around their text.
     ///
-    /// `states` says which states apply to a box, as it does for
-    /// [`super::paragraph::run_styles`], so a `hover` padding is folded in.
+    /// `lengths` are the container's, and `states` says which states apply to a
+    /// box, as it does for [`super::paragraph::run_styles`], so a `hover` padding
+    /// is folded in.
     pub fn of(
         tree: &RetainedTree,
         paragraph: &Paragraph,
+        lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
-    ) -> Self {
-        let all: Vec<BoxInset> = paragraph
+    ) -> Rc<Self> {
+        let spaces = paragraph
             .boxes
             .iter()
             .filter_map(|(id, range)| {
@@ -105,11 +222,45 @@ impl Insets {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                Some(of_style(&declared, *id, range))
+                Some(space_of(&declared, *id, range, lengths))
             })
             .collect();
+        Rc::new(Self {
+            boxes: paragraph.boxes.clone(),
+            spaces,
+            memo: RefCell::new(None),
+        })
+    }
+
+    /// Whether a box can take space along the line, so the paragraph has insets to
+    /// lay out with.
+    pub fn takes_space_along_the_line(&self) -> bool {
+        self.spaces.iter().any(BoxSpace::takes_space_along_the_line)
+    }
+
+    /// The space resolved for a paragraph laid out `width` wide, or measured for
+    /// its content when there is none.
+    pub fn at(&self, width: Option<Pixels>) -> Rc<Insets> {
+        if let Some((memoized, insets)) = &*self.memo.borrow() {
+            if *memoized == width {
+                return insets.clone();
+            }
+        }
+        let insets = Rc::new(self.resolve(width.map(f32::from)));
+        *self.memo.borrow_mut() = Some((width, insets.clone()));
+        insets
+    }
+
+    /// Where the border box of `id` is, once the layout says which width it was
+    /// laid out in.
+    pub fn edges_of(self: &Rc<Self>, id: u64) -> BoxEdges {
+        BoxEdges { spec: self.clone(), id }
+    }
+
+    fn resolve(&self, width: Option<f32>) -> Insets {
+        let all: Vec<BoxInset> = self.spaces.iter().map(|space| space.resolve(width)).collect();
         let boxes: Vec<BoxInset> = all.iter().filter(|inset| !inset.is_empty()).cloned().collect();
-        let mut edges = edges_of(&paragraph.boxes, &boxes);
+        let mut edges = edges_of(&self.boxes, &boxes);
         for inset in &all {
             if inset.top != 0.0 || inset.bottom != 0.0 {
                 let own = edges.entry(inset.id).or_default();
@@ -117,9 +268,49 @@ impl Insets {
                 own.bottom = px(inset.bottom);
             }
         }
-        Self { boxes, edges }
+        let layouts = all.iter().map(|inset| (inset.id, inset.layout)).collect();
+        Insets { boxes, edges, layouts }
+    }
+}
+
+/// Where the border box of one box is, asked for with the layout it is in.
+#[derive(Clone, Debug)]
+pub struct BoxEdges {
+    spec: Rc<InsetSpec>,
+    id: u64,
+}
+
+impl BoxEdges {
+    pub fn at(&self, layout: &TextLayout) -> Edges {
+        self.for_width(layout.inset_width())
     }
 
+    pub fn for_width(&self, width: Option<Pixels>) -> Edges {
+        self.spec.at(width).edges(self.id)
+    }
+
+    /// The padding and border of the box, as an element reports them.
+    pub fn layout_insets(&self, layout: &TextLayout) -> LayoutInsets {
+        self.spec.at(layout.inset_width()).layout_insets(self.id)
+    }
+}
+
+impl PartialEq for BoxEdges {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && Rc::ptr_eq(&self.spec, &other.spec)
+    }
+}
+
+/// The insets of the boxes of one paragraph at a width, and where each box's
+/// border box is.
+#[derive(Debug, Default, PartialEq)]
+pub struct Insets {
+    boxes: Vec<BoxInset>,
+    edges: HashMap<u64, Edges>,
+    layouts: HashMap<u64, LayoutInsets>,
+}
+
+impl Insets {
     /// The insets to lay the paragraph's text out with.
     pub fn text(&self) -> Vec<TextInset> {
         self.boxes
@@ -137,23 +328,30 @@ impl Insets {
     pub fn edges(&self, id: u64) -> Edges {
         self.edges.get(&id).copied().unwrap_or_default()
     }
+
+    /// The padding and border of `id`, which are inside its border box.
+    pub fn layout_insets(&self, id: u64) -> LayoutInsets {
+        self.layouts.get(&id).copied().unwrap_or_default()
+    }
 }
 
-fn of_style(style: &StyleDesc, id: u64, range: &Range<usize>) -> BoxInset {
-    let margin_start = margin(style.margin_left.as_ref().or(style.margin.as_ref()));
-    let margin_end = margin(style.margin_right.as_ref().or(style.margin.as_ref()));
-    let widths = border_widths(style);
-    let start = widths.left + padding(style.padding_left.or(style.padding));
-    let end = widths.right + padding(style.padding_right.or(style.padding));
-    BoxInset {
+fn space_of(style: &StyleDesc, id: u64, range: &Range<usize>, lengths: &LengthContext) -> BoxSpace {
+    let padding = |side: Option<LinearLength>| {
+        side.or(style.padding).map_or_else(Extent::default, |length| Extent::of(&length, lengths))
+    };
+    let margin = |side: &Option<DimensionValue>| {
+        Extent::of_margin(side.as_ref().or(style.margin.as_ref()), lengths)
+    };
+    BoxSpace {
         id,
         range: range.clone(),
-        margin_start,
-        margin_end,
-        leading: margin_start + start,
-        trailing: margin_end + end,
-        top: widths.top + padding(style.padding_top.or(style.padding)),
-        bottom: widths.bottom + padding(style.padding_bottom.or(style.padding)),
+        margin_start: margin(&style.margin_left),
+        margin_end: margin(&style.margin_right),
+        padding_start: padding(style.padding_left),
+        padding_end: padding(style.padding_right),
+        padding_top: padding(style.padding_top),
+        padding_bottom: padding(style.padding_bottom),
+        border: border_widths(style, lengths),
     }
 }
 
@@ -166,39 +364,29 @@ pub(super) struct BorderWidths {
     pub left: f32,
 }
 
-pub(super) fn border_widths(style: &StyleDesc) -> BorderWidths {
+pub(super) fn border_widths(style: &StyleDesc, lengths: &LengthContext) -> BorderWidths {
     BorderWidths {
-        top: border_width(style, style.border_top_width, style.border_top.as_deref()),
-        right: border_width(style, style.border_right_width, style.border_right.as_deref()),
-        bottom: border_width(style, style.border_bottom_width, style.border_bottom.as_deref()),
-        left: border_width(style, style.border_left_width, style.border_left.as_deref()),
+        top: border_width(style, style.border_top_width, style.border_top.as_deref(), lengths),
+        right: border_width(style, style.border_right_width, style.border_right.as_deref(), lengths),
+        bottom: border_width(style, style.border_bottom_width, style.border_bottom.as_deref(), lengths),
+        left: border_width(style, style.border_left_width, style.border_left.as_deref(), lengths),
     }
-}
-
-/// A percentage, `auto` and `anchor-size()` are not resolved: there is no
-/// containing block width to take a percentage of, and an inline box's `auto`
-/// margin is zero in CSS anyway. They are 0 here (README documents it).
-fn margin(value: Option<&DimensionValue>) -> f32 {
-    match value {
-        Some(DimensionValue::Pixels(pixels)) => *pixels as f32,
-        _ => 0.0,
-    }
-}
-
-fn padding(value: Option<f64>) -> f32 {
-    value.unwrap_or(0.0).max(0.0) as f32
 }
 
 /// The width of one border side as the element builder applies it: the
 /// `borderWidth` and side longhands win over the shorthands, and a side
 /// shorthand over `border`.
-fn border_width(style: &StyleDesc, side: Option<f64>, side_shorthand: Option<&str>) -> f32 {
+fn border_width(
+    style: &StyleDesc,
+    side: Option<LinearLength>,
+    side_shorthand: Option<&str>,
+    lengths: &LengthContext,
+) -> f32 {
     let shorthand = |value: Option<&str>| value.and_then(parse_border).map(|parsed| parsed.width);
     side.or(style.border_width)
         .or_else(|| shorthand(side_shorthand))
         .or_else(|| shorthand(style.border.as_deref()))
-        .unwrap_or(0.0)
-        .max(0.0) as f32
+        .map_or(0.0, |width| f32::from(resolve_width(&width, lengths)))
 }
 
 /// The border box edges of every box of `all`, given the `insets` of those that
@@ -305,15 +493,15 @@ mod tests {
     fn insets_with(
         tree: &RetainedTree,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
-    ) -> Insets {
+    ) -> Rc<Insets> {
         let plan = plan_children(tree, &tree.elements[&1]);
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        Insets::of(tree, paragraph, states)
+        InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), states).at(None)
     }
 
-    fn resting(tree: &RetainedTree) -> Insets {
+    fn resting(tree: &RetainedTree) -> Rc<Insets> {
         insets_with(tree, &|_, _| PointerStates::default())
     }
 
@@ -392,12 +580,110 @@ mod tests {
     }
 
     #[test]
-    fn a_margin_that_is_not_pixels_is_zero() {
+    fn auto_is_zero_on_an_inline_box() {
         let tree = fixture(&[(
             3,
-            serde_json::json!({"marginLeft": "10%", "marginRight": "auto", "paddingLeft": 2}),
+            serde_json::json!({"marginLeft": "auto", "marginRight": "auto", "paddingLeft": 2}),
         )]);
         assert_eq!(texts(&resting(&tree)), vec![(2..4, 2.0, 0.0)]);
+    }
+
+    fn spec(tree: &RetainedTree, lengths: &LengthContext) -> Rc<InsetSpec> {
+        let plan = plan_children(tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        InsetSpec::of(tree, paragraph, lengths, &|_, _| PointerStates::default())
+    }
+
+    /// 1em is 20px, 1rem 10px and the viewport 800x600.
+    fn texts_in_units(style: serde_json::Value) -> Vec<(Range<usize>, f32, f32)> {
+        let spec = spec(&fixture(&[(3, style)]), &LengthContext::for_tests());
+        texts(&spec.at(None))
+    }
+
+    #[test]
+    fn lengths_resolve_in_the_units_of_the_container() {
+        assert_eq!(
+            texts_in_units(serde_json::json!({
+                "marginLeft": "1em", "paddingLeft": "0.5rem", "borderLeftWidth": "2px",
+                "marginRight": "10vw", "paddingRight": "calc(1em - 5px)", "borderRightWidth": "0.25em",
+            })),
+            vec![(2..4, 20.0 + 5.0 + 2.0, 80.0 + 15.0 + 5.0)]
+        );
+    }
+
+    #[test]
+    fn the_border_and_padding_shorthands_take_units_too() {
+        assert_eq!(
+            texts_in_units(serde_json::json!({"padding": "1em", "border": "0.5rem solid red"})),
+            vec![(2..4, 25.0, 25.0)]
+        );
+        assert_eq!(
+            texts_in_units(serde_json::json!({"borderLeft": "calc(1em + 1px) solid red"})),
+            vec![(2..4, 21.0, 0.0)]
+        );
+    }
+
+    #[test]
+    fn vertical_reach_takes_units_too() {
+        let spec = spec(
+            &fixture(&[(3, serde_json::json!({"paddingTop": "1em", "borderBottomWidth": "0.5em"}))]),
+            &LengthContext::for_tests(),
+        );
+        assert_eq!(vertical(&spec.at(None), 3), (20.0, 10.0));
+    }
+
+    /// The margin and padding of span 3 in a paragraph `width` wide.
+    fn texts_at(style: serde_json::Value, width: Option<f32>) -> Vec<(Range<usize>, f32, f32)> {
+        let spec = spec(&fixture(&[(3, style)]), &LengthContext::for_tests());
+        texts(&spec.at(width.map(px)))
+    }
+
+    #[test]
+    fn a_percentage_is_of_the_width_of_the_paragraph() {
+        let style = serde_json::json!({
+            "marginLeft": "10%", "paddingLeft": "5%", "paddingRight": "calc(50% - 1em)", "marginRight": "calc(10% + 4px)",
+        });
+        assert_eq!(texts_at(style.clone(), Some(200.0)), vec![(2..4, 20.0 + 10.0, 80.0 + 24.0)]);
+        assert_eq!(texts_at(style, Some(400.0)), vec![(2..4, 40.0 + 20.0, 180.0 + 44.0)]);
+    }
+
+    #[test]
+    fn a_percentage_is_zero_while_the_paragraph_is_measured_for_its_content() {
+        let style = serde_json::json!({"marginLeft": "10%", "paddingLeft": "5%", "paddingRight": "calc(50% + 3px)"});
+        assert_eq!(texts_at(style, None), vec![(2..4, 0.0, 3.0)]);
+    }
+
+    #[test]
+    fn a_percentage_padding_that_comes_out_negative_is_zero_and_a_margin_may_be_negative() {
+        let style = serde_json::json!({
+            "paddingLeft": "calc(10px - 50%)", "marginLeft": "calc(10px - 50%)", "paddingRight": 2
+        });
+        assert_eq!(texts_at(style, Some(100.0)), vec![(2..4, -40.0, 2.0)]);
+    }
+
+    #[test]
+    fn the_edges_of_a_box_follow_the_width_the_paragraph_was_laid_out_in() {
+        let spec = spec(
+            &fixture(&[(3, serde_json::json!({"marginLeft": "10%", "paddingTop": "5%"}))]),
+            &LengthContext::for_tests(),
+        );
+        let edges = spec.edges_of(3);
+        assert_eq!(edges.for_width(Some(px(200.0))).start, px(20.0));
+        assert_eq!(edges.for_width(Some(px(200.0))).top, px(10.0));
+        assert_eq!(edges.for_width(Some(px(100.0))).start, px(10.0));
+        assert_eq!(edges.for_width(None).start, px(0.0));
+        // The last width asked for is kept, so the layout and the paint share it.
+        assert!(Rc::ptr_eq(&spec.at(Some(px(100.0))), &spec.at(Some(px(100.0)))));
+    }
+
+    #[test]
+    fn a_paragraph_takes_space_along_the_line_only_if_a_box_can() {
+        let tree = fixture(&[(3, serde_json::json!({"paddingTop": 4, "marginTop": 4, "color": "red"}))]);
+        assert!(!spec(&tree, &LengthContext::for_tests()).takes_space_along_the_line());
+        let tree = fixture(&[(3, serde_json::json!({"paddingLeft": "10%"}))]);
+        assert!(spec(&tree, &LengthContext::for_tests()).takes_space_along_the_line());
     }
 
     #[test]
@@ -523,13 +809,13 @@ mod tests {
         assert_eq!(edges(&insets, 5), (3.0 + 4.0, 30.0 + 6.0));
     }
 
-    fn resting_paragraph(tree: &RetainedTree, text: &str) -> Insets {
+    fn resting_paragraph(tree: &RetainedTree, text: &str) -> Rc<Insets> {
         let plan = plan_children(tree, &tree.elements[&1]);
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, text);
-        Insets::of(tree, paragraph, &|_, _| PointerStates::default())
+        InsetSpec::of(tree, paragraph, &LengthContext::initial(800.0, 600.0), &|_, _| PointerStates::default()).at(None)
     }
 
     #[test]

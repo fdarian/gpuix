@@ -11,7 +11,7 @@ import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
-const TEXT = { fontSize: 16, lineHeight: LINE, fontFamily: "Menlo", color: "#000000" } as const
+const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 
 /** Margin 10 + border 2 + padding 4 before the text, margin 6 + border 1 + padding 3
  *  after it. */
@@ -317,6 +317,74 @@ describeNative("border box of an inline element", () => {
       expect(pixel(3 * column - 2), "where a ring round the margin would be").toEqual([255, 255, 255, 255])
     } finally {
       t.unmount()
+    }
+  })
+})
+
+describeNative("lengths of an inline element", () => {
+  function setup() {
+    columnWidth()
+    const refs = new Map<string, PublicInstance>()
+    const ref = (name: string) => (instance: PublicInstance | null) => {
+      if (instance) refs.set(name, instance)
+    }
+    const root = createTestRoot({ width: 500, height: 200 })
+    return { ...root, ref, rect: (name: string) => refs.get(name)!.getBoundingClientRect() }
+  }
+
+  it("takes em from the font size of its text, rem from the root and calc() of them", () => {
+    const column = columnWidth()
+    const t = setup()
+    try {
+      t.render(
+        <div style={{ width: 400 }}>
+          <text style={{ ...TEXT, fontSize: 20, lineHeight: "24px" }}>
+            aa{" "}
+            <span
+              ref={t.ref("em")}
+              style={{ paddingLeft: "1em", paddingRight: "0.5em", marginRight: "calc(1em + 2px)" }}
+            >
+              bb
+            </span>{" "}
+            <span ref={t.ref("rem")} style={{ paddingLeft: "2rem", borderLeftWidth: "0.25em" }}>
+              cc
+            </span>
+          </text>
+        </div>
+      )
+      const wide = (column * 20) / 16
+      expect(t.rect("em").width).toBeCloseTo(2 * wide + 20 + 10, 1)
+      // The margin takes space but is outside the box: the next word starts after it.
+      const em = t.rect("em")
+      const rem = t.rect("rem")
+      expect(rem.x - em.right).toBeCloseTo(22 + wide, 1)
+      expect(rem.width).toBeCloseTo(2 * wide + 32 + 5, 1)
+    } finally {
+      t.unmount()
+    }
+  })
+
+  it("takes a percentage of the width the paragraph is laid out in", () => {
+    const column = columnWidth()
+    for (const width of [400, 200]) {
+      const t = setup()
+      try {
+        t.render(
+          <div style={{ width }}>
+            <text style={TEXT}>
+              aa{" "}
+              <span ref={t.ref("span")} style={{ paddingLeft: "10%", marginRight: "calc(5% + 1px)" }}>
+                bb
+              </span>
+              cc
+            </text>
+          </div>
+        )
+        const span = t.rect("span")
+        expect(span.width, `in ${width}`).toBeCloseTo(2 * column + width / 10, 1)
+      } finally {
+        t.unmount()
+      }
     }
   })
 })

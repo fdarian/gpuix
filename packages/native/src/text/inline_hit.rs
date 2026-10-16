@@ -29,7 +29,9 @@ use crate::retained_tree::RetainedTree;
 
 use super::inline::{Paragraph, Piece};
 use super::inline_bounds::border_box_rows;
-use super::inline_insets::{Edges, Insets};
+use std::rc::Rc;
+
+use super::inline_insets::{BoxEdges, InsetSpec};
 
 /// The inline boxes of one paragraph that can be a target, by the bytes they
 /// cover.
@@ -37,7 +39,7 @@ use super::inline_insets::{Edges, Insets};
 pub struct Targets {
     /// The boxes around each text piece, outermost first.
     pieces: Vec<(Range<usize>, Vec<u64>)>,
-    ranges: Vec<(u64, Range<usize>, Edges)>,
+    ranges: Vec<(u64, Range<usize>, BoxEdges)>,
 }
 
 impl Targets {
@@ -52,7 +54,7 @@ impl Targets {
         paragraph: &Paragraph,
         pointer_events_none: bool,
         inert: bool,
-        insets: &Insets,
+        insets: &Rc<InsetSpec>,
     ) -> Option<Self> {
         let with_box = boxes_with_a_box(paragraph);
         let pieces: Vec<_> = paragraph
@@ -69,7 +71,7 @@ impl Targets {
             ranges: paragraph
                 .boxes
                 .iter()
-                .map(|(id, range)| (*id, range.clone(), insets.edges(*id)))
+                .map(|(id, range)| (*id, range.clone(), insets.edges_of(*id)))
                 .collect(),
         })
     }
@@ -83,7 +85,7 @@ impl Targets {
         &self,
         byte: usize,
         position: Point<Pixels>,
-        border_box: impl Fn(&Range<usize>, Edges) -> Vec<Bounds<Pixels>>,
+        border_box: impl Fn(&Range<usize>, &BoxEdges) -> Vec<Bounds<Pixels>>,
     ) -> Vec<(u64, Bounds<Pixels>)> {
         let Some((_, boxes)) = self.pieces.iter().find(|(range, _)| range.contains(&byte)) else {
             return Vec::new();
@@ -93,7 +95,7 @@ impl Targets {
             .rev()
             .filter_map(|id| {
                 let (_, range, edges) = self.ranges.iter().find(|(boxed, ..)| boxed == id)?;
-                let rows = border_box(range, *edges);
+                let rows = border_box(range, edges);
                 rows.iter().any(|row| row.contains(&position)).then_some(())?;
                 Some((*id, *rows.first()?))
             })
@@ -193,7 +195,7 @@ pub fn boxes_under(
                 continue;
             };
             return entry.targets.around(byte, position, |range, edges| {
-                border_box_rows(&entry.layout, range, edges)
+                border_box_rows(&entry.layout, range, edges.at(&entry.layout))
             });
         }
         Vec::new()
@@ -224,23 +226,27 @@ mod tests {
         tree
     }
 
+    fn spec_of(paragraph: &Paragraph, tree: &RetainedTree) -> Rc<InsetSpec> {
+        InsetSpec::of(tree, paragraph, &crate::css::length::LengthContext::initial(800.0, 600.0), &|_, _| Default::default())
+    }
+
     fn plan_targets(tree: &RetainedTree, none: bool, inert: bool) -> Option<Targets> {
         let plan = crate::text::inline::plan_children(tree, &tree.elements[&1]);
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
         assert_eq!(paragraph.text, "a bc d");
-        Targets::of(tree, paragraph, none, inert, &Insets::default())
+        Targets::of(tree, paragraph, none, inert, &spec_of(paragraph, tree))
     }
 
     /// Ten pixels to a byte, one line.
-    fn rows(range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
+    fn rows(range: &Range<usize>, edges: &BoxEdges) -> Vec<Bounds<Pixels>> {
         crate::text::inline_bounds::inside(
             vec![Bounds::new(
                 point(px(range.start as f32 * 10.0), px(0.0)),
                 size(px(range.len() as f32 * 10.0), px(20.0)),
             )],
-            edges,
+            edges.for_width(None),
         )
     }
 
@@ -264,7 +270,7 @@ mod tests {
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        assert_eq!(Targets::of(&tree, paragraph, false, false, &Insets::default()), None);
+        assert_eq!(Targets::of(&tree, paragraph, false, false, &spec_of(paragraph, &tree)), None);
     }
 
     #[test]
@@ -336,7 +342,7 @@ mod tests {
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let insets = spec_of(paragraph, &tree);
         let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
         let at = |byte: usize, x: f32| ids(targets.around(byte, point(px(x), px(10.0)), rows));
 
@@ -354,7 +360,7 @@ mod tests {
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let insets = spec_of(paragraph, &tree);
         let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
         // Span 3 ends with 5, but 5's margin is inside it.
         assert_eq!(ids(targets.around(3, point(px(36.0), px(10.0)), rows)), vec![3]);
@@ -363,7 +369,7 @@ mod tests {
 
     /// The same ten pixels to a byte, but a line box of 40 around a font of 12 above
     /// the baseline and 4 below: the content area is y 12 to 28.
-    fn tall_rows(range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
+    fn tall_rows(range: &Range<usize>, edges: &BoxEdges) -> Vec<Bounds<Pixels>> {
         crate::text::inline_bounds::border_box(
             vec![crate::text::inline_bounds::Row {
                 line: Bounds::new(
@@ -373,16 +379,16 @@ mod tests {
                 ascent: px(12.0),
                 descent: px(4.0),
             }],
-            edges,
+            edges.for_width(None),
         )
     }
 
-    fn insets_of(tree: &RetainedTree) -> Insets {
+    fn insets_of(tree: &RetainedTree) -> Rc<InsetSpec> {
         let plan = crate::text::inline::plan_children(tree, &tree.elements[&1]);
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        Insets::of(tree, paragraph, &|_, _| Default::default())
+        spec_of(paragraph, tree)
     }
 
     #[test]
@@ -420,7 +426,7 @@ mod tests {
         let crate::text::inline::Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let insets = Insets::of(&tree, paragraph, &|_, _| Default::default());
+        let insets = spec_of(paragraph, &tree);
         let targets = Targets::of(&tree, paragraph, false, false, &insets).unwrap();
         let around = targets.around(2, over(2), rows);
         assert_eq!(around[0].1.origin.x, px(24.0));

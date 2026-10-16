@@ -18,18 +18,18 @@
 
 use std::ops::Range;
 
-use gpui::{point, size, App, Bounds, LayoutInsets, Pixels, TextLayout, Window};
+use gpui::{point, size, App, Bounds, Pixels, TextLayout, Window};
 
 use crate::automation::{record_bounds, PaintReporter};
 
-use super::inline_insets::Edges;
+use super::inline_insets::{BoxEdges, Edges};
 use super::paint::range_rows;
 
 /// An inline element of a paragraph that has a box of its own.
 pub struct InlineBox {
     pub id: u64,
     pub range: Range<usize>,
-    pub edges: Edges,
+    pub edges: BoxEdges,
     /// Paint-driven events and observers on the element, see
     /// [`crate::automation::PaintReporter`].
     pub report: Option<PaintReporter>,
@@ -125,13 +125,14 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
 /// belongs to and reports it to the element's listeners. Call it from paint.
 pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &mut Window, cx: &mut App) {
     for inline in boxes {
-        let Some(bounds) = union(&border_box_rows(layout, &inline.range, inline.edges)) else {
+        let Some(bounds) = union(&border_box_rows(layout, &inline.range, inline.edges.at(layout))) else {
             continue;
         };
-        // An inline box has no layout node, so no padding or border to report.
-        record_bounds(inline.id, bounds, LayoutInsets::default());
+        // An inline box has no layout node: its padding and border are its style's.
+        let insets = inline.edges.layout_insets(layout);
+        record_bounds(inline.id, bounds, insets);
         if let Some(report) = &inline.report {
-            report(bounds, LayoutInsets::default(), window, cx);
+            report(bounds, insets, window, cx);
         }
     }
 }
