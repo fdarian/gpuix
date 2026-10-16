@@ -770,9 +770,9 @@ mod tests {
         let paragraph = page.paragraph();
         let lengths = LengthContext::initial(800.0, 600.0);
         let states = |_: u64, _: &StyleDesc| PointerStates::default();
-        let insets = InsetSpec::of(&page.tree, &paragraph, &lengths, &states);
-        let decorations =
-            of(&page.tree, &paragraph, &ColorContext::root(Scheme::Light), &lengths, &states, &end, &insets);
+        let colors = ColorContext::root(Scheme::Light);
+        let insets = InsetSpec::of(&page.tree, &paragraph, &colors, &lengths, &states);
+        let decorations = of(&page.tree, &paragraph, &colors, &lengths, &states, &end, &insets);
         let background = gpui::Rgba::from(decorations[0].paint.background.expect("a background"));
         assert!(background.b > 0.99 && background.r < 0.01, "{background:?}");
     }
