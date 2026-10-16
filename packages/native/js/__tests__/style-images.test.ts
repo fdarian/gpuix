@@ -76,6 +76,24 @@ describe("style images from blob: URLs", () => {
     URL.revokeObjectURL(second)
   })
 
+  it("finds a blob in maskImage, in the mask shorthand and in a hover mask", async () => {
+    const { images, mutations } = setup()
+    const urls = ["a", "b", "c"].map((text) => URL.createObjectURL(new Blob([text])))
+    expect(blobUrls({ maskImage: `linear-gradient(red, blue), url(${urls[0]})`, mask: `url("${urls[1]}") luminance` })).toEqual([
+      urls[0],
+      urls[1],
+    ])
+    mutations.createElement(1, "div")
+    mutations.setStyle(1, {
+      maskImage: `url(${urls[0]})`,
+      mask: `url('${urls[1]}') no-repeat center / 20px`,
+      hover: { maskImage: `url(${urls[2]}), url(${urls[0]})` },
+    })
+    await settle()
+    expect(images.map((image) => image.url).sort()).toEqual([...urls].sort())
+    for (const url of urls) URL.revokeObjectURL(url)
+  })
+
   it("reports a revoked blob through failStyleImage", async () => {
     const { images, failures, mutations } = setup()
     const url = URL.createObjectURL(new Blob(["x"]))
