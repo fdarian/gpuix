@@ -26,7 +26,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid draggable elements", () => {
     ))
 
     app.renderer.nativeSimulateMouseDown(50, 50)
-    app.renderer.nativeSimulateMouseMove(60, 150, 0)
+    app.renderer.nativeSimulateMouseMove(60, 150)
     app.renderer.nativeSimulateMouseUp(60, 150)
 
     expect(log).toEqual(["dragstart", "drop:solid", "dragend:copy"])
@@ -49,15 +49,15 @@ describe.skipIf(!hasNativeTestRenderer)("Solid draggable elements", () => {
     ))
 
     app.renderer.nativeSimulateMouseDown(50, 50)
-    app.renderer.nativeSimulateMouseMove(80, 50, 0)
+    app.renderer.nativeSimulateMouseMove(80, 50)
     app.renderer.nativeSimulateMouseUp(80, 50)
     expect(log).toEqual(["pointermove"])
 
     log.length = 0
     app.flushSync(() => setDraggable(true))
     app.renderer.nativeSimulateMouseDown(50, 50)
-    app.renderer.nativeSimulateMouseMove(80, 50, 0)
-    app.renderer.nativeSimulateMouseMove(81, 50, 0)
+    app.renderer.nativeSimulateMouseMove(80, 50)
+    app.renderer.nativeSimulateMouseMove(81, 50)
     app.renderer.nativeSimulateMouseUp(81, 50)
     expect(log).toEqual(["dragstart", "pointermove"])
   })

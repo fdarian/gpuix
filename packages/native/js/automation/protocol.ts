@@ -134,7 +134,6 @@ export const methods = {
   },
   mouseMove: {
     params: pointSchema.extend({
-      pressedButton: buttonSchema,
       modifiers: modifiersSchema,
     }),
     result: okSchema,

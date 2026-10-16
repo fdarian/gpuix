@@ -4876,7 +4876,7 @@ and `exitPointerLock` draw the frame they ask for and deliver the events,
 `simulatePointerLockGranting(false)` makes the platform refuse, and
 `simulatePointerLockLost()` drops the lock as a deactivation does. The
 simulated platform reports no motion unless a move says so:
-`nativeSimulateMouseMove(x, y, pressedButton, modifiers, { x: 4, y: -3 })`.
+`nativeSimulateMouseMove(x, y, modifiers, { x: 4, y: -3 })`.
 
 `onClick` fires on primary-button mouse-up. Use **`onAuxClick`** for the others,
 and read `event.isRightClick`. `onMouseDown` and `onMouseUp` see every
@@ -5913,6 +5913,25 @@ handlers. `nativeSimulateFileDragEnter(x, y, paths)` starts it,
 (the files left) or both, then `nativeSimulateFileDragEnd()`.
 `nativeSimulateFileDrop(x, y, paths)` is the whole sequence of a drop: enter,
 submit, exit, end. The paths must exist, since native reads their metadata.
+
+### Simulating the mouse
+
+The test renderer remembers the buttons held by `nativeSimulateMouseDown` and
+not yet released by `nativeSimulateMouseUp`, and every `nativeSimulateMouseMove`
+and `nativeSimulateMouseExit` reports them (`pressedButton`, and the pointer
+capture and drag rules that read it), as a real OS puts the held buttons on
+every move. A drag is a down, moves, and an up: there is no `pressedButton`
+argument. `nativeSimulateMouseMove(x, y, modifiers, movement)` and
+`dispatchMouseMove(x, y, modifiers, movement)` take the modifiers and the
+motion the platform reports. `nativeSimulateClick` is a down and an up, so it
+leaves its button released.
+
+A release that never arrives (the pointer let go outside the window and the OS
+sent nothing) is `simulateLostMouseUp(button?)`: the renderer forgets that
+button as held and dispatches nothing, so the next move carries no button and
+the page sees a lost release, which cancels the press. `button` is `0` (left,
+the default), `1` or `2`. The live automation client does the same:
+`app.mouse.move` reports what `app.mouse.down` left held.
 
 ### Testing native elements
 

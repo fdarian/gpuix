@@ -20,7 +20,7 @@ describeNative("draggable elements", () => {
   })
 
   const press = (x: number, y: number) => testRoot.renderer.nativeSimulateMouseDown(x, y)
-  const move = (x: number, y: number) => testRoot.renderer.nativeSimulateMouseMove(x, y, 0)
+  const move = (x: number, y: number) => testRoot.renderer.nativeSimulateMouseMove(x, y)
   const release = (x: number, y: number) => testRoot.renderer.nativeSimulateMouseUp(x, y)
 
   const accept = (event: HostDragEvent) => event.preventDefault()

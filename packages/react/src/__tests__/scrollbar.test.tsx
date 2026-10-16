@@ -270,7 +270,7 @@ describeNative("scrollbar pointer input", () => {
       // The thumb runs from about y 17 to 50. Take it at 30 and pull it 33px down.
       renderer.nativeSimulateMouseMove(94, 30)
       renderer.nativeSimulateMouseDown(94, 30)
-      renderer.nativeSimulateMouseMove(94, 63, 0)
+      renderer.nativeSimulateMouseMove(94, 63)
       renderer.nativeSimulateMouseUp(94, 63)
       expect(top()).toBeGreaterThan(146)
       expect(top()).toBeLessThan(152)
@@ -286,12 +286,12 @@ describeNative("scrollbar pointer input", () => {
       scrollTo(50)
       renderer.nativeSimulateMouseMove(94, 30)
       renderer.nativeSimulateMouseDown(94, 30)
-      renderer.nativeSimulateMouseMove(30, 500, 0)
+      renderer.nativeSimulateMouseMove(30, 500)
       expect(top()).toBe(200)
-      renderer.nativeSimulateMouseMove(30, -500, 0)
+      renderer.nativeSimulateMouseMove(30, -500)
       expect(top()).toBe(0)
       renderer.nativeSimulateMouseUp(30, -500)
-      renderer.nativeSimulateMouseMove(30, 90, 0)
+      renderer.nativeSimulateMouseMove(30, 90)
       expect(top(), "released").toBe(0)
     } finally {
       unmount()
@@ -443,7 +443,7 @@ describeNative("scrollbars on a <virtual-list>", () => {
       renderer.nativeSimulateScrollWheel(50, 50, 0, 60)
       renderer.nativeSimulateMouseMove(94, 20)
       renderer.nativeSimulateMouseDown(94, 20)
-      renderer.nativeSimulateMouseMove(94, 100, 0)
+      renderer.nativeSimulateMouseMove(94, 100)
       renderer.nativeSimulateMouseUp(94, 100)
       expect(0 - renderer.getScrollOffset(id)![1]).toBeGreaterThan(300)
     } finally {

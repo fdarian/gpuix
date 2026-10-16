@@ -523,7 +523,7 @@ describe("<virtual-list>", () => {
     const list = renderer.findByType("virtual-list")[0]
 
     renderer.nativeSimulateMouseDown(1, 20)
-    renderer.nativeSimulateMouseMove(1, 158, 0)
+    renderer.nativeSimulateMouseMove(1, 158)
     for (let tick = 0; tick < 8; tick += 1) {
       renderer.advanceTime(24)
     }

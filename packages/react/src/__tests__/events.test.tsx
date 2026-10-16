@@ -1648,7 +1648,8 @@ describeNative("events", () => {
 
       // Move with left button pressed (simulating drag)
       receivedEvents.length = 0
-      testRoot.renderer.nativeSimulateMouseMove(50, 50, 0)
+      testRoot.renderer.nativeSimulateMouseDown(10, 10)
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
       const dragEvent = receivedEvents.find((e) => e.eventType === "mousemove")!
       expect(dragEvent.pressedButton).toBe(0)
     })
@@ -1708,7 +1709,7 @@ describeNative("events", () => {
 
       testRoot.render(<Handle />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(200, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(200, 20)
       testRoot.renderer.nativeSimulateMouseUp(200, 20, 0)
 
       expect(received).toEqual(["down", "move:200,0", "up"])
@@ -1732,8 +1733,8 @@ describeNative("events", () => {
 
       testRoot.render(<Handle />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(30, 20, 0)
-      testRoot.renderer.nativeSimulateMouseMove(200, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(30, 20)
+      testRoot.renderer.nativeSimulateMouseMove(200, 20)
       testRoot.renderer.nativeSimulateMouseUp(200, 20, 0)
 
       expect(received).toEqual(["down", "move"])
@@ -1834,7 +1835,7 @@ describeNative("events", () => {
 
       testRoot.render(<OverlayDrag />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(200, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(200, 20)
       testRoot.renderer.nativeSimulateMouseUp(200, 20, 0)
 
       expect(received).toEqual(["clip-down", "overlay-move", "overlay-up"])
@@ -1863,7 +1864,7 @@ describeNative("events", () => {
 
       testRoot.render(<Handle />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(30, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(30, 20)
       testRoot.renderer.nativeSimulateMouseUp(30, 20, 0)
 
       expect(received).toEqual(["down", "move", "up"])
@@ -1901,7 +1902,7 @@ describeNative("events", () => {
 
       testRoot.render(<Pair />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(160, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(160, 20)
       testRoot.renderer.nativeSimulateMouseUp(160, 20, 0)
 
       expect(received).toEqual(["handle-down", "handle-move", "handle-up"])
@@ -1943,7 +1944,7 @@ describeNative("events", () => {
 
       testRoot.render(<Drag />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(20, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(20, 20)
       testRoot.renderer.nativeSimulateMouseUp(20, 20, 0)
 
       expect(received).toEqual(["down", "replacement-move", "replacement-up"])
@@ -1980,7 +1981,7 @@ describeNative("events", () => {
 
       testRoot.render(<Pair />)
       testRoot.renderer.nativeSimulateMouseDown(20, 20)
-      testRoot.renderer.nativeSimulateMouseMove(160, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(160, 20)
       expect(received).toEqual(["handle-down", "handle-move"])
       testRoot.renderer.nativeSimulateMouseUp(160, 20, 0)
       expect(received.slice(0, 3)).toEqual([

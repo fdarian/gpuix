@@ -78,7 +78,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const proposals: string[][] = []
     const renderer = mount({ initial: ["a", "b", "c"], proposals })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(10, 18, 0)
+    renderer.nativeSimulateMouseMove(10, 18)
     expect(boundsOf(renderer, "a").y).toBe(8)
     expect(boundsOf(renderer, "b").y).toBe(20)
     expect(proposals).toEqual([])
@@ -88,9 +88,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const proposals: string[][] = []
     const renderer = mount({ initial: ["a", "b", "c"], proposals })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(10, 29, 0)
+    renderer.nativeSimulateMouseMove(10, 29)
     expect(proposals).toEqual([])
-    renderer.nativeSimulateMouseMove(10, 31, 0)
+    renderer.nativeSimulateMouseMove(10, 31)
     expect(proposals).toEqual([["b", "a", "c"]])
 
     expect(boundsOf(renderer, "a").y).toBe(21)
@@ -105,7 +105,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
   it("lets the item glide to its slot on release", () => {
     const renderer = mount({ initial: ["a", "b", "c"] })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(10, 38, 0)
+    renderer.nativeSimulateMouseMove(10, 38)
     expect(boundsOf(renderer, "a").y).toBe(28)
     renderer.nativeSimulateMouseUp(10, 38, 0)
     expect(boundsOf(renderer, "a").y).toBeCloseTo(28, 1)
@@ -119,9 +119,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const proposals: string[][] = []
     const renderer = mount({ initial: ["a", "b", "c"], proposals })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(10, 55, 0)
+    renderer.nativeSimulateMouseMove(10, 55)
     expect(proposals).toEqual([["b", "c", "a"]])
-    renderer.nativeSimulateMouseMove(10, 25, 0)
+    renderer.nativeSimulateMouseMove(10, 25)
     expect(proposals.at(-1)).toEqual(["b", "a", "c"])
   })
 
@@ -129,8 +129,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const proposals: string[][] = []
     const renderer = mount({ initial: ["a", "b", "c"], proposals, accept: false })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(10, 35, 0)
-    renderer.nativeSimulateMouseMove(10, 36, 0)
+    renderer.nativeSimulateMouseMove(10, 35)
+    renderer.nativeSimulateMouseMove(10, 36)
     expect(proposals).toEqual([["b", "a", "c"]])
     expect(boundsOf(renderer, "b").y).toBe(20)
     expect(boundsOf(renderer, "a").y).toBe(26)
@@ -141,7 +141,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     const renderer = mount({ initial: ["a", "b"], axis: "x", proposals })
     expect(boundsOf(renderer, "b").x).toBe(50)
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(70, 40, 0)
+    renderer.nativeSimulateMouseMove(70, 40)
     expect(proposals).toEqual([["b", "a"]])
     expect(boundsOf(renderer, "a").x).toBe(60)
     expect(boundsOf(renderer, "a").y).toBe(0)
@@ -150,7 +150,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
   it("keeps the drag after the pointer leaves the item and ends it on release outside", () => {
     const renderer = mount({ initial: ["a", "b", "c"] })
     renderer.nativeSimulateMouseDown(10, 10)
-    renderer.nativeSimulateMouseMove(300, 18, 0)
+    renderer.nativeSimulateMouseMove(300, 18)
     expect(boundsOf(renderer, "a").y).toBe(8)
     renderer.nativeSimulateMouseUp(300, 18, 0)
     frame(renderer, 1100)
@@ -163,11 +163,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
     renderer.nativeSimulateMouseDown(10, 10)
     renderer.nativeSimulateMouseUp(10, 10, 0)
     renderer.nativeSimulateMouseDown(10, 30)
-    renderer.nativeSimulateMouseMove(10, 33, 0)
+    renderer.nativeSimulateMouseMove(10, 33)
     expect(boundsOf(renderer, "b").y).toBe(23)
 
     app.root.dispatch({ elementId: renderer.findByTestId("a")!.id, eventType: "lostpointercapture", pointerId: 1 })
-    renderer.nativeSimulateMouseMove(10, 35, 0)
+    renderer.nativeSimulateMouseMove(10, 35)
     expect(boundsOf(renderer, "b").y).toBe(25)
 
     renderer.nativeSimulateMouseUp(10, 35, 0)
@@ -194,13 +194,13 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
       const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
       const renderer = app.renderer
       renderer.nativeSimulateMouseDown(10, 10)
-      renderer.nativeSimulateMouseMove(10, 18, 0)
+      renderer.nativeSimulateMouseMove(10, 18)
       setItemsTo(app, setItems, ["a", "b", "c", "d"])
-      renderer.nativeSimulateMouseMove(10, 20, 0)
-      renderer.nativeSimulateMouseMove(10, 20, 0)
+      renderer.nativeSimulateMouseMove(10, 20)
+      renderer.nativeSimulateMouseMove(10, 20)
       expect(boundsOf(renderer, "a").y).toBe(10)
       expect(proposals).toEqual([])
-      renderer.nativeSimulateMouseMove(10, 75, 0)
+      renderer.nativeSimulateMouseMove(10, 75)
       expect(proposals).toEqual([["b", "c", "d", "a"]])
     })
 
@@ -210,11 +210,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
       const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
       const renderer = app.renderer
       renderer.nativeSimulateMouseDown(10, 10)
-      renderer.nativeSimulateMouseMove(10, 18, 0)
+      renderer.nativeSimulateMouseMove(10, 18)
       setItemsTo(app, setItems, ["a", "c"])
-      renderer.nativeSimulateMouseMove(10, 20, 0)
-      renderer.nativeSimulateMouseMove(10, 20, 0)
-      renderer.nativeSimulateMouseMove(10, 35, 0)
+      renderer.nativeSimulateMouseMove(10, 20)
+      renderer.nativeSimulateMouseMove(10, 20)
+      renderer.nativeSimulateMouseMove(10, 35)
       expect(proposals).toEqual([["c", "a"]])
     })
 
@@ -224,9 +224,9 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Reorder", () => {
       const app = mountApp({ initial: ["a", "b", "c"], proposals, setItems })
       const renderer = app.renderer
       renderer.nativeSimulateMouseDown(10, 10)
-      renderer.nativeSimulateMouseMove(10, 18, 0)
+      renderer.nativeSimulateMouseMove(10, 18)
       setItemsTo(app, setItems, ["b", "c"])
-      renderer.nativeSimulateMouseMove(10, 60, 0)
+      renderer.nativeSimulateMouseMove(10, 60)
       renderer.nativeSimulateMouseUp(10, 60, 0)
       expect(proposals).toEqual([])
       expect(boundsOf(renderer, "b").y).toBe(0)

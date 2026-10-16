@@ -191,7 +191,7 @@ describeNative("pointer lock", () => {
         <div style={{ width: 200, height: 200 }} onPointerMove={track} onMouseMove={track} />,
       )
 
-      testRoot.renderer.nativeSimulateMouseMove(30, 40, undefined, undefined, { x: 4, y: -3 })
+      testRoot.renderer.nativeSimulateMouseMove(30, 40, undefined, { x: 4, y: -3 })
       testRoot.renderer.nativeSimulateMouseMove(30, 40)
 
       expect(moves.map((event) => [event.type, event.movementX, event.movementY])).toEqual([
@@ -217,8 +217,8 @@ describeNative("pointer lock", () => {
       first.requestPointerLock()
       moves.length = 0
 
-      testRoot.renderer.nativeSimulateMouseMove(90, 100, undefined, undefined, { x: 12, y: 5 })
-      testRoot.renderer.nativeSimulateMouseMove(150, 160, undefined, undefined, { x: -9, y: 1 })
+      testRoot.renderer.nativeSimulateMouseMove(90, 100, undefined, { x: 12, y: 5 })
+      testRoot.renderer.nativeSimulateMouseMove(150, 160, undefined, { x: -9, y: 1 })
 
       expect(moves.map((event) => [event.clientX, event.movementX, event.movementY])).toEqual([
         [30, 12, 5],

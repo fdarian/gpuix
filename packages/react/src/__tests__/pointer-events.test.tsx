@@ -647,6 +647,7 @@ describeNative("pointer events", () => {
         onPointerOut: record(name),
         onPointerMove: record(name),
         onPointerUp: record(name),
+        onPointerCancel: record(name),
         onMouseUp: record(name),
         onGotPointerCapture: record(name),
         onLostPointerCapture: record(name),
@@ -686,9 +687,52 @@ describeNative("pointer events", () => {
       )
 
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
-      testRoot.renderer.nativeSimulateMouseMove(50, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 20)
 
       expect(targets).toEqual([second.id])
+    })
+
+    it("keeps delivering to the capturer on moves that name no button", () => {
+      const moves: { target: number; pressedButton?: number }[] = []
+      testRoot.render(
+        <div
+          style={{ width: 600, height: 400 }}
+          onPointerMoveCapture={(event: { target: number; pressedButton?: number }) =>
+            moves.push({ target: event.target, pressedButton: event.pressedButton })
+          }
+        >
+          <Boxes onFirstDown={() => first.setPointerCapture(1)} />
+        </div>,
+      )
+
+      testRoot.renderer.nativeSimulateMouseDown(50, 50)
+      testRoot.renderer.nativeSimulateMouseMove(300, 300)
+      testRoot.renderer.nativeSimulateMouseMove(500, 380)
+
+      expect(moves).toEqual([
+        { target: first.id, pressedButton: 0 },
+        { target: first.id, pressedButton: 0 },
+      ])
+    })
+
+    it("ends the press and the capture when the release was lost", () => {
+      testRoot.render(<Boxes onFirstDown={() => first.setPointerCapture(1)} />)
+      testRoot.renderer.nativeSimulateMouseDown(50, 50)
+      testRoot.renderer.nativeSimulateMouseMove(50, 125)
+      log.length = 0
+
+      testRoot.renderer.simulateLostMouseUp()
+      expect(log).toEqual([])
+      testRoot.renderer.nativeSimulateMouseMove(60, 125)
+
+      expect(log).toEqual([
+        "first:pointercancel",
+        "first:lostpointercapture",
+        "first:pointerout",
+        "second:pointerover",
+        "second:pointermove",
+      ])
+      expect(first.hasPointerCapture(1)).toBe(false)
     })
 
     it("applies from the next native event: got first, boundary events, then the move", () => {
@@ -699,7 +743,7 @@ describeNative("pointer events", () => {
       expect(first.hasPointerCapture(1)).toBe(true)
 
       log.length = 0
-      testRoot.renderer.nativeSimulateMouseMove(50, 125, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 125)
       expect(log).toEqual(["first:gotpointercapture", "first:pointermove"])
     })
 
@@ -708,7 +752,7 @@ describeNative("pointer events", () => {
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
       log.length = 0
 
-      testRoot.renderer.nativeSimulateMouseMove(50, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 20)
       expect(log).toEqual([
         "second:gotpointercapture",
         "first:pointerout",
@@ -717,14 +761,14 @@ describeNative("pointer events", () => {
       ])
 
       log.length = 0
-      testRoot.renderer.nativeSimulateMouseMove(50, 70, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 70)
       expect(log).toEqual(["second:pointermove"])
     })
 
     it("releases after pointerup: lostpointercapture comes before mouseup", () => {
       testRoot.render(<Boxes onFirstDown={() => first.setPointerCapture(1)} />)
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
-      testRoot.renderer.nativeSimulateMouseMove(50, 125, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 125)
       log.length = 0
 
       testRoot.renderer.nativeSimulateMouseUp(50, 125)
@@ -745,12 +789,12 @@ describeNative("pointer events", () => {
     it("releases from JS at the next native event", () => {
       testRoot.render(<Boxes onFirstDown={() => first.setPointerCapture(1)} />)
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
-      testRoot.renderer.nativeSimulateMouseMove(50, 125, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 125)
       log.length = 0
 
       first.releasePointerCapture(1)
       expect(first.hasPointerCapture(1)).toBe(false)
-      testRoot.renderer.nativeSimulateMouseMove(60, 125, 0)
+      testRoot.renderer.nativeSimulateMouseMove(60, 125)
       expect(log).toEqual([
         "first:lostpointercapture",
         "first:pointerout",
@@ -762,11 +806,11 @@ describeNative("pointer events", () => {
     it("releases without an event when the capturing element is removed", () => {
       testRoot.render(<Boxes onFirstDown={() => second.setPointerCapture(1)} />)
       testRoot.renderer.nativeSimulateMouseDown(50, 50)
-      testRoot.renderer.nativeSimulateMouseMove(50, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 20)
       log.length = 0
 
       testRoot.render(<Boxes second={false} />)
-      testRoot.renderer.nativeSimulateMouseMove(50, 30, 0)
+      testRoot.renderer.nativeSimulateMouseMove(50, 30)
 
       expect(log).not.toContain("second:lostpointercapture")
       expect(log).toEqual(["first:pointerover", "first:pointermove"])

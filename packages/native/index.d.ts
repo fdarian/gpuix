@@ -455,18 +455,23 @@ export declare class TestGpuixRenderer {
    */
   simulateKeyUp(keystroke: string): void
   /**
-   * Simulate a mouse move to the given coordinates.
-   * pressed_button: optional mouse button held during move (0=left, 1=middle, 2=right).
-   * Used to simulate drag events.
+   * Simulate a mouse move to the given coordinates. It reports the buttons held by
+   * `simulate_mouse_down` that no `simulate_mouse_up` released, as a real OS does.
    * movement_x, movement_y: the motion the platform reports for this move, which
    * becomes `movementX`/`movementY`. Zero when not given.
    */
-  simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null, modifiers?: string | undefined | null, movementX?: number | undefined | null, movementY?: number | undefined | null): void
+  simulateMouseMove(x: number, y: number, modifiers?: string | undefined | null, movementX?: number | undefined | null, movementY?: number | undefined | null): void
   /**
    * Simulate the pointer leaving the window, as the platform reports it when
    * the cursor crosses the window edge: there is no final mouse move.
    */
   simulateMouseExit(x: number, y: number): void
+  /**
+   * The OS ate the release of `button` (left when not given): forget it as held without
+   * dispatching anything. The next move then reports no button, the way a pointer that
+   * let go outside the window does, and the page sees a lost release.
+   */
+  simulateLostMouseUp(button?: number | undefined | null): void
   /**
    * Focus an element by its numeric ID.
    * The element must be DOM-focusable (an enabled input or textarea, or an

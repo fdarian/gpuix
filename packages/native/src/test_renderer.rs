@@ -320,9 +320,34 @@ pub struct TestGpuixRenderer {
     /// What `getMediaFeatures` reports. The test window never receives OS
     /// notifications, so `setMediaFeatures` is the only way it changes.
     media: Arc<Mutex<crate::media::TestMedia>>,
+    /// The buttons held by simulated presses, left, middle, right. A real OS puts the held
+    /// button on every move it reports, so every simulated move and exit does too.
+    held_buttons: Mutex<[bool; 3]>,
 }
 
 impl TestGpuixRenderer {
+    fn set_button_held(&self, button: u32, held: bool) {
+        let slot = match u32_to_mouse_button(button) {
+            gpui::MouseButton::Left => 0,
+            gpui::MouseButton::Middle => 1,
+            _ => 2,
+        };
+        self.held_buttons.lock().unwrap()[slot] = held;
+    }
+
+    /// The held button a move reports: the lowest, since GPUI carries one.
+    fn pressed_button(&self) -> Option<gpui::MouseButton> {
+        let held = self.held_buttons.lock().unwrap();
+        [
+            gpui::MouseButton::Left,
+            gpui::MouseButton::Middle,
+            gpui::MouseButton::Right,
+        ]
+        .into_iter()
+        .zip(*held)
+        .find_map(|(button, held)| held.then_some(button))
+    }
+
     fn apply_text_selection(
         &self,
         id: u64,
@@ -451,6 +476,7 @@ impl TestGpuixRenderer {
             platform: simulated_platform,
             window_actions,
             media: Arc::new(Mutex::new(crate::media::TestMedia::default())),
+            held_buttons: Mutex::new([false; 3]),
         })
     }
 
@@ -540,6 +566,8 @@ impl TestGpuixRenderer {
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         let button = button.unwrap_or(0);
+        // The release leaves the button up, whatever an earlier press left held.
+        self.set_button_held(button, false);
         with_test_state(|cx, window, _view| {
             // Not `cx.simulate_click`: that helper hard-codes the left button,
             // so a right click silently became a left click.
@@ -595,9 +623,8 @@ impl TestGpuixRenderer {
         self.key_input(|window, cx| crate::automation::dispatch_key_up(window, cx, &keystroke))
     }
 
-    /// Simulate a mouse move to the given coordinates.
-    /// pressed_button: optional mouse button held during move (0=left, 1=middle, 2=right).
-    /// Used to simulate drag events.
+    /// Simulate a mouse move to the given coordinates. It reports the buttons held by
+    /// `simulate_mouse_down` that no `simulate_mouse_up` released, as a real OS does.
     /// movement_x, movement_y: the motion the platform reports for this move, which
     /// becomes `movementX`/`movementY`. Zero when not given.
     #[napi]
@@ -605,7 +632,6 @@ impl TestGpuixRenderer {
         &self,
         x: f64,
         y: f64,
-        pressed_button: Option<u32>,
         modifiers: Option<String>,
         movement_x: Option<f64>,
         movement_y: Option<f64>,
@@ -613,15 +639,14 @@ impl TestGpuixRenderer {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
         self.platform
             .set_movement((movement_x.unwrap_or(0.0), movement_y.unwrap_or(0.0)));
+        let pressed_button = self.pressed_button();
         with_test_state(|cx, window, _view| {
-            let button: Option<gpui::MouseButton> = pressed_button.map(u32_to_mouse_button);
-
             cx.simulate_event(
                 window,
                 gpui::MouseMoveEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
                     modifiers,
-                    pressed_button: button,
+                    pressed_button,
                 },
             );
 
@@ -633,17 +658,26 @@ impl TestGpuixRenderer {
     /// the cursor crosses the window edge: there is no final mouse move.
     #[napi]
     pub fn simulate_mouse_exit(&self, x: f64, y: f64) -> Result<()> {
+        let pressed_button = self.pressed_button();
         with_test_state(|cx, window, _view| {
             cx.simulate_event(
                 window,
                 gpui::MouseExitEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
-                    pressed_button: None,
+                    pressed_button,
                     modifiers: Default::default(),
                 },
             );
             Ok(())
         })
+    }
+
+    /// The OS ate the release of `button` (left when not given): forget it as held without
+    /// dispatching anything. The next move then reports no button, the way a pointer that
+    /// let go outside the window does, and the page sees a lost release.
+    #[napi]
+    pub fn simulate_lost_mouse_up(&self, button: Option<u32>) {
+        self.set_button_held(button.unwrap_or(0), false);
     }
 
     /// Focus an element by its numeric ID.
@@ -846,6 +880,7 @@ impl TestGpuixRenderer {
         click_count: Option<u32>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        self.set_button_held(button.unwrap_or(0), true);
         with_test_state(|cx, window, _view| {
             cx.simulate_event(
                 window,
@@ -874,6 +909,7 @@ impl TestGpuixRenderer {
         click_count: Option<u32>,
     ) -> Result<()> {
         let modifiers = crate::automation::parse_modifiers(modifiers.as_deref());
+        self.set_button_held(button.unwrap_or(0), false);
         with_test_state(|cx, window, _view| {
             cx.simulate_event(
                 window,
@@ -1060,7 +1096,7 @@ impl TestGpuixRenderer {
         self.flush()?;
         self.simulate_mouse_down(x1, y1, None, None, None)?;
         self.flush()?;
-        self.simulate_mouse_move(x2, y2, Some(0), None, None, None)?;
+        self.simulate_mouse_move(x2, y2, None, None, None)?;
         self.flush()?;
         self.simulate_mouse_up(x2, y2, None, None, None)?;
         self.flush()?;

@@ -79,12 +79,7 @@ export interface TestAutomationRenderer {
     button?: number,
     modifiers?: string
   ): void
-  nativeSimulateMouseMove(
-    x: number,
-    y: number,
-    pressedButton?: number,
-    modifiers?: string
-  ): void
+  nativeSimulateMouseMove(x: number, y: number, modifiers?: string): void
   nativeSimulateScrollWheel(
     x: number,
     y: number,
@@ -180,12 +175,7 @@ export class InProcessBackend extends ValidatedAutomationBackend {
       return { ok: true as const }
     },
     mouseMove: (params) => {
-      this.renderer.nativeSimulateMouseMove(
-        params.x,
-        params.y,
-        params.pressedButton,
-        params.modifiers
-      )
+      this.renderer.nativeSimulateMouseMove(params.x, params.y, params.modifiers)
       return { ok: true as const }
     },
     scrollWheel: (params) => {
@@ -607,10 +597,8 @@ export class App {
    * that end outside every hitbox.
    */
   readonly mouse: {
-    move: (
-      target: PointTarget,
-      options?: MouseOptions & { pressedButton?: number }
-    ) => Promise<void>
+    /** Reports the buttons `down` left held, like every move a real OS sends. */
+    move: (target: PointTarget, options?: MouseOptions) => Promise<void>
     down: (target: PointTarget, options?: MouseOptions) => Promise<void>
     up: (target: PointTarget, options?: MouseOptions) => Promise<void>
     click: (target: PointTarget, options?: MouseOptions) => Promise<void>
@@ -634,7 +622,6 @@ export class App {
         const point = await this.resolvePoint(target)
         await this.call("mouseMove", {
           ...point,
-          pressedButton: options.pressedButton,
           modifiers: options.modifiers,
         })
       },
@@ -677,7 +664,6 @@ export class App {
           await this.call("mouseMove", {
             x: start.x + (end.x - start.x) * t,
             y: start.y + (end.y - start.y) * t,
-            pressedButton: button,
             modifiers,
           })
         }
@@ -761,6 +747,7 @@ export interface LiveAutomationRenderer {
     modifiers?: string
   ): void
   simulateMouseUp(x: number, y: number, button?: number, modifiers?: string): void
+  /** The live renderer takes the held button as an argument; `liveRendererAsTest` supplies it. */
   simulateMouseMove(
     x: number,
     y: number,
@@ -801,20 +788,27 @@ export function liveRendererAsTest(
   const afterInput = (): void => {
     renderer.tick?.()
   }
+  // The live renderer's move takes the held button as an argument; the buttons held by
+  // simulated presses are kept here so that every move reports them, as the test renderer's does.
+  const held = new Set<number>()
   return {
     nativeSimulateClick(x, y, button, modifiers) {
+      held.delete(button ?? 0)
       renderer.simulateClick(x, y, button, modifiers)
       afterInput()
     },
     nativeSimulateMouseDown(x, y, button, modifiers) {
+      held.add(button ?? 0)
       renderer.simulateMouseDown(x, y, button, modifiers)
       afterInput()
     },
     nativeSimulateMouseUp(x, y, button, modifiers) {
+      held.delete(button ?? 0)
       renderer.simulateMouseUp(x, y, button, modifiers)
       afterInput()
     },
-    nativeSimulateMouseMove(x, y, pressedButton, modifiers) {
+    nativeSimulateMouseMove(x, y, modifiers) {
+      const pressedButton = held.size === 0 ? undefined : Math.min(...held)
       renderer.simulateMouseMove(x, y, pressedButton, modifiers)
       afterInput()
     },

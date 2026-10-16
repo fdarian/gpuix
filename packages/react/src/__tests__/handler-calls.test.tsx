@@ -133,6 +133,7 @@ function calls(r, ids) {
     setWindowKeyEvents: () => r.setWindowKeyEvents(true, true, 1),
     setWindowMediaChange: () => r.setWindowMediaChange(false),
     setWindowSelectionChange: () => r.setWindowSelectionChange(false, 1),
+    simulateLostMouseUp: () => r.simulateLostMouseUp(),
     simulatePointerLockGranting: () => r.simulatePointerLockGranting(true),
     simulatePointerLockLost: () => r.simulatePointerLockLost(),
     stopMotionValue: () => r.stopMotionValue(910),

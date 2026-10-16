@@ -192,7 +192,7 @@ describeNative('timeline performance', () => {
     for (let index = 0; index < WARMUP + SAMPLES; index += 1) {
       const started = performance.now()
       // One flush per sample, same as the pan, so the two are comparable.
-      root.renderer.dispatchMouseMove(startX + index * 3, startY, 0)
+      root.renderer.dispatchMouseMove(startX + index * 3, startY)
       root.renderer.flush()
       const elapsed = performance.now() - started
       if (index >= WARMUP) samples.push(elapsed)

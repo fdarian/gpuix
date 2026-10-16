@@ -94,12 +94,12 @@ interface NativeTestRendererApi
   simulateMouseMove(
     x: number,
     y: number,
-    pressedButton?: number,
     modifiers?: string,
     movementX?: number,
     movementY?: number
   ): void
   simulateMouseExit(x: number, y: number): void
+  simulateLostMouseUp(button?: number): void
   simulateMouseDown(
     x: number,
     y: number,
@@ -589,29 +589,28 @@ export class TestRenderer implements NativeRenderer {
   dispatchMouseMove(
     x: number,
     y: number,
-    pressedButton?: number,
     modifiers?: string,
     movement?: MouseMovement
   ): void {
-    this.native.simulateMouseMove(x, y, pressedButton, modifiers, movement?.x, movement?.y)
+    this.native.simulateMouseMove(x, y, modifiers, movement?.x, movement?.y)
     this.dispatchNativeEvents()
   }
 
   /** End-to-end: simulate mouse move through GPUI →
-   *  dispatch resulting events to the framework.
-   *  @param pressedButton - optional button held during move (0=left, 1=middle, 2=right) for drag simulation
+   *  dispatch resulting events to the framework. The move reports the buttons held by
+   *  `nativeSimulateMouseDown` and not yet released by `nativeSimulateMouseUp`, as a real
+   *  OS does on every move, so a drag is a down, moves, an up.
    *  @param movement - what the platform reports as this move's motion, which becomes
    *    `movementX`/`movementY`. A real platform reports the delta from the last position;
    *    the simulation reports `{ x: 0, y: 0 }` unless told otherwise. */
   nativeSimulateMouseMove(
     x: number,
     y: number,
-    pressedButton?: number,
     modifiers?: string,
     movement?: MouseMovement
   ): void {
     this.native.flush()
-    this.native.simulateMouseMove(x, y, pressedButton, modifiers, movement?.x, movement?.y)
+    this.native.simulateMouseMove(x, y, modifiers, movement?.x, movement?.y)
     this.dispatchNativeEvents()
     // Flush again after framework state updates so hover styles are applied
     // and the Rust tree is current before any screenshot.
@@ -625,6 +624,14 @@ export class TestRenderer implements NativeRenderer {
     this.native.simulateMouseExit(x, y)
     this.dispatchNativeEvents()
     this.native.flush()
+  }
+
+  /** The OS ate the release of `button` (0=left, the default, 1=middle, 2=right): the
+   *  renderer forgets it as held and dispatches nothing. The next move reports no button,
+   *  which is how a page sees a release it never got (the pointer let go outside the
+   *  window), and the press is cancelled. */
+  simulateLostMouseUp(button?: number): void {
+    this.native.simulateLostMouseUp(button)
   }
 
   /** End-to-end: simulate mouse down through GPUI hit testing →

@@ -266,7 +266,7 @@ describeRegions("appRegion", () => {
       testRoot.renderer.nativeSimulateMouseDown(200, 100)
       log.length = 0
 
-      testRoot.renderer.nativeSimulateMouseMove(350, 20, 0)
+      testRoot.renderer.nativeSimulateMouseMove(350, 20)
       expect(log).toContain("bar:mousemove")
       expect(windowActions()).toEqual([])
 
@@ -279,7 +279,7 @@ describeRegions("appRegion", () => {
       testRoot.render(<Page />)
 
       testRoot.renderer.nativeSimulateMouseDown(350, 20)
-      testRoot.renderer.nativeSimulateMouseMove(200, 100, 0)
+      testRoot.renderer.nativeSimulateMouseMove(200, 100)
 
       expect(log).toEqual([])
     })
