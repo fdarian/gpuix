@@ -230,6 +230,11 @@ pub struct PointerState {
 }
 
 impl PointerState {
+    /// Whether an element is being dragged: `dragstart` has fired and `dragend` has not.
+    pub fn element_drag_active(&self) -> bool {
+        self.element_drag.is_some()
+    }
+
     /// Whether `id` is the hover target or one of its ancestors.
     pub fn is_hovered(&self, id: u64) -> bool {
         self.hovered.contains(&id)

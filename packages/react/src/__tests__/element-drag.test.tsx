@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
 import type { HostDragEvent, HostMouseEvent } from "@gpuix/native"
+import { document, window } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -478,6 +479,53 @@ describeNative("draggable elements", () => {
       release(60, 150)
       move(70, 150)
       expect(log).toEqual(["leave:nowhere", "end:none"])
+    })
+
+    it("swallows the Escape that cancels a drag: no keydown reaches the element, window or document", () => {
+      const keys = (name: string) => () => log.push(`${name}:keydown`)
+      const cleanups: Array<() => void> = []
+      const listen = (target: typeof window | typeof document, name: string, options?: { capture: boolean }) => {
+        const listener = keys(name)
+        target.addEventListener("keydown", listener, options)
+        cleanups.push(() => target.removeEventListener("keydown", listener, options))
+      }
+      listen(window, "window capture", { capture: true })
+      listen(window, "window")
+      listen(document, "document capture", { capture: true })
+      listen(document, "document")
+      try {
+        testRoot.render(
+          column({
+            source: {
+              tabIndex: 0,
+              onKeyDown: keys("source"),
+              onDragEnd: (event: HostDragEvent) => log.push(`end:${event.dataTransfer!.dropEffect}`),
+            },
+            target: { onDragOver: accept, onDrop: note("target") },
+          }),
+        )
+        const source = testRoot.renderer
+          .findByType("div")
+          .find((div) => div.style.width === 100 && div.events.has("dragend"))!
+
+        press(50, 50)
+        move(60, 150)
+        testRoot.renderer.nativeSimulateKeyDown(source.id, "Escape")
+        expect(log).toEqual(["end:none"])
+
+        // The same key with no drag in progress is an ordinary keydown again.
+        log.length = 0
+        testRoot.renderer.nativeSimulateKeyDown(source.id, "Escape")
+        expect(log).toEqual([
+          "window capture:keydown",
+          "document capture:keydown",
+          "source:keydown",
+          "document:keydown",
+          "window:keydown",
+        ])
+      } finally {
+        for (const cleanup of cleanups) cleanup()
+      }
     })
 
     it("is cancelled by preventDefault in dragstart: no more drag events, pointer events return", () => {

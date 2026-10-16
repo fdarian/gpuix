@@ -5713,6 +5713,7 @@ impl GpuixView {
             self.tree.clone(),
             self.event_callback.clone(),
             self.routing.clone(),
+            self.pointer.clone(),
         ));
     }
 

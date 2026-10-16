@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use gpui::{App, WeakFocusHandle, Window};
 
 use crate::element_tree::{EventModifiers, EventPayload};
+use crate::events::state::PointerState;
 use crate::events::{key_names, sync_dispatch};
 use crate::renderer::EventCallback;
 use crate::retained_tree::RetainedTree;
@@ -181,6 +182,10 @@ fn key_payload(
 /// a `keydown` whose `key` is `"Process"`. Nothing a handler does to it reaches
 /// the input method or GPUI. The subscription ends both when dropped.
 ///
+/// Escape while an element is being dragged is not sent: it cancels the drag and no page
+/// handler hears it, as in Chrome. GPUI still gets it, and the cancel runs from there
+/// (`listeners::pointer_frame`).
+///
 /// Interceptors belong to the `App`, not to a window, so with two views on one
 /// app each would see the other's keys and send them again. This one answers
 /// to `window_id` only.
@@ -190,6 +195,7 @@ pub(crate) fn install_key_down(
     tree: Arc<Mutex<RetainedTree>>,
     callback: Option<EventCallback>,
     routing: InputRouting,
+    pointer: Rc<RefCell<PointerState>>,
 ) -> gpui::Subscription {
     let ime_routing = routing.clone();
     let ime_tree = tree.clone();
@@ -199,6 +205,9 @@ pub(crate) fn install_key_down(
             return;
         }
         routing.note_user_input();
+        if event.keystroke.key == "escape" && pointer.borrow().element_drag_active() {
+            return;
+        }
         let prevented = key_payload(
             &routing,
             &tree,
@@ -326,7 +335,7 @@ mod tests {
             routing.set_window_keys(true, false, event_id);
             let tree = Arc::new(Mutex::new(RetainedTree::new()));
             let window = cx.add_window(|_, _| Blank);
-            cx.update(|cx| subscriptions.push(install_key_down(cx, window.window_id(), tree, callback, routing)));
+            cx.update(|cx| subscriptions.push(install_key_down(cx, window.window_id(), tree, callback, routing, Rc::default())));
             windows.push(window);
         }
         cx.simulate_keystrokes(windows[0].into(), "x");
@@ -354,7 +363,7 @@ mod tests {
         routing.set_window_keys(true, false, 1);
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
         let window = cx.add_window(|_, _| Blank);
-        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing));
+        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing, Rc::default()));
         cx.update_window(window.into(), |_, window, cx| {
             let keystroke = gpui::Keystroke {
                 modifiers,
@@ -426,7 +435,7 @@ mod tests {
         routing.set_window_keys(true, false, 1);
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
         let window = cx.add_window(|_, _| Blank);
-        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing));
+        let _keys = cx.update(|cx| install_key_down(cx, window.window_id(), tree, callback, routing, Rc::default()));
         cx.update_window(window.into(), |_, window, cx| input(window, cx)).unwrap();
         let sent = sent.lock().unwrap().clone();
         sent
@@ -458,5 +467,75 @@ mod tests {
             sent,
             [("keydown".into(), "ArrowLeft".into(), "ArrowLeft".into(), None, true)]
         );
+    }
+
+    fn pointer_sample(
+        action: crate::events::dispatcher::PointerAction,
+        position: (f64, f64),
+    ) -> crate::events::dispatcher::PointerSample {
+        use crate::events::ids::Hit;
+        crate::events::dispatcher::PointerSample {
+            action,
+            position,
+            movement: (0.0, 0.0),
+            modifiers: Default::default(),
+            hits: vec![
+                Hit { id: 2, bounds: Default::default() },
+                Hit { id: 1, bounds: Default::default() },
+            ],
+            over_drag_region: false,
+            window: gpui::WindowId::from(1),
+        }
+    }
+
+    /// Element 2 of a tree is draggable; the pointer pressed it and moved away, so it is dragged.
+    fn dragging_pointer() -> (Rc<RefCell<PointerState>>, Arc<Mutex<RetainedTree>>) {
+        use crate::events::dispatcher::{dispatch, PointerAction};
+
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.set_root(1);
+        tree.append_child(1, 2);
+        tree.set_custom_prop(2, "draggable".to_string(), serde_json::json!(true));
+        let mut state = PointerState::default();
+        let press = PointerAction::Down { button: 0, click_count: 1 };
+        dispatch(&mut state, &tree, &pointer_sample(press, (0.0, 0.0)));
+        let drag = PointerAction::Move { pressed_button: Some(0) };
+        dispatch(&mut state, &tree, &pointer_sample(drag, (20.0, 0.0)));
+        assert!(state.element_drag_active());
+        (Rc::new(RefCell::new(state)), Arc::new(Mutex::new(tree)))
+    }
+
+    #[gpui::test]
+    fn escape_during_an_element_drag_is_not_sent_to_the_page(cx: &mut gpui::TestAppContext) {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let callback: Option<EventCallback> = Some({
+            let sent = sent.clone();
+            Arc::new(move |payload: EventPayload| {
+                sent.lock().unwrap().push(payload.key.unwrap());
+            })
+        });
+        let routing = InputRouting::default();
+        routing.set_window_keys(true, false, 1);
+        let (pointer, tree) = dragging_pointer();
+        let window = cx.add_window(|_, _| Blank);
+        let _keys = cx.update(|cx| {
+            install_key_down(cx, window.window_id(), tree.clone(), callback, routing, pointer.clone())
+        });
+
+        cx.simulate_keystrokes(window.into(), "escape");
+        cx.simulate_keystrokes(window.into(), "x");
+        assert_eq!(*sent.lock().unwrap(), ["x"], "Escape was swallowed, other keys are not");
+
+        // Once the drag is over, Escape is an ordinary key again.
+        crate::events::dispatcher::dispatch(
+            &mut pointer.borrow_mut(),
+            &tree.lock().unwrap(),
+            &pointer_sample(crate::events::dispatcher::PointerAction::CancelDrag, (20.0, 0.0)),
+        );
+        assert!(!pointer.borrow().element_drag_active());
+        cx.simulate_keystrokes(window.into(), "escape");
+        assert_eq!(*sent.lock().unwrap(), ["x", "Escape"]);
     }
 }

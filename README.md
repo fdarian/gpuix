@@ -5262,7 +5262,9 @@ more than 4px (logical pixels, from the press) starts a drag:
   `effectAllowed`; otherwise the target gets `dragleave` instead. `dragend` reports
   `dropEffect`: the effect the drop took, or `"none"` if nothing was dropped.
 - Escape cancels the drag: `dragleave` at the target, then `dragend` at the source with
-  `dropEffect` `"none"`. Escape still reaches the window's key handlers and layers.
+  `dropEffect` `"none"`. As in Chrome the key is swallowed: no `keydown` for that Escape reaches
+  an element, `window` or `document` listener, and no layer (a dialog) closes on it. Escape
+  with no drag in progress is an ordinary key.
 - `event.preventDefault()` in `onDragStart` cancels the drag. The drag has
   already started when JS runs, so a move or two may already have been
   sent; JS drops them, and pointer events carry on from the next input.
