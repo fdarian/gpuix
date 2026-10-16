@@ -3226,12 +3226,16 @@ document bubble, window bubble. The `onKeyDown` and `onKeyUp` options of
 `render()` are window bubble listeners that also receive the renderer.
 
 A `window` or `document` listener hears every event that bubbles to the top of
-the tree (pointer, mouse, click, wheel), whether or not any element on the path listens.
-`window.addEventListener('pointermove', fn)` fires while the pointer is over
-bare background, where the event's `target` is the root element. Nothing fires
-while the pointer is outside the window. Native produces only the types that
-have a listener on `window`, `document` or an element on the path, so adding the
-first listener of a type is what turns it on.
+the tree (pointer, mouse, click, wheel), whether or not any element on the path
+listens. `window.addEventListener('pointermove', fn)` fires while the pointer is
+over bare background, where the event's `target` is the root element. A
+`pointermove` or `mousemove` inside the window but outside the root element's box
+has no element under it: it is aimed at the window, like a key with nothing
+focused, so `event.target` is `undefined` and only the `window` and `document`
+listeners run (no element handler, the root's included). Nothing fires while the
+pointer is outside the window or over an `appRegion` drag area. Native produces
+only the types that have a listener on `window`, `document` or an element on the
+path, so adding the first listener of a type is what turns it on.
 
 ### Tab and Escape are defaults
 

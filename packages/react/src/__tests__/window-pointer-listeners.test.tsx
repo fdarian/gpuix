@@ -1,8 +1,9 @@
 /**
  * A `window` or `document` listener hears every event that reaches the top of
- * the tree, so native must produce it even when nothing on the path listens:
- * the pointer over bare background targets the root element, which has no
- * handler.
+ * the tree, so native must produce it even when nothing on the path listens.
+ * The pointer over bare background targets the root element, and a move inside
+ * the window but outside the root's box has no target at all: it is aimed at
+ * the window, as a key with nothing focused is.
  */
 import React from "react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -13,28 +14,31 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 describeNative("window and document pointer listeners", () => {
   let testRoot: ReturnType<typeof createTestRoot>
+  let rootMoves: string[]
 
   beforeEach(() => {
+    rootMoves = []
     testRoot = createTestRoot()
-    testRoot.render(<div style={{ width: "100%", height: "100%" }} />)
+    testRoot.render(<div style={{ width: 200, height: 200 }} onPointerMove={() => rootMoves.push("root")} />)
   })
 
   afterEach(() => {
     testRoot.unmount()
   })
 
-  const overBackground = () => testRoot.renderer.nativeSimulateMouseMove(300, 300)
+  const overRootBackground = () => testRoot.renderer.nativeSimulateMouseMove(100, 100)
+  const outsideRoot = () => testRoot.renderer.nativeSimulateMouseMove(600, 500)
 
   it("hear a pointermove over bare background, until removed", () => {
     const seen: string[] = []
     const listener = (event) => seen.push(`${event.type}@${event.clientX},${event.clientY}`)
     window.addEventListener("pointermove", listener)
-    overBackground()
-    testRoot.renderer.nativeSimulateMouseMove(310, 300)
-    expect(seen).toEqual(["pointermove@300,300", "pointermove@310,300"])
+    overRootBackground()
+    testRoot.renderer.nativeSimulateMouseMove(110, 100)
+    expect(seen).toEqual(["pointermove@100,100", "pointermove@110,100"])
 
     window.removeEventListener("pointermove", listener)
-    overBackground()
+    overRootBackground()
     expect(seen).toHaveLength(2)
   })
 
@@ -44,22 +48,45 @@ describeNative("window and document pointer listeners", () => {
     const capture = () => seen.push("capture")
     document.addEventListener("mousemove", bubble)
     document.addEventListener("mousemove", capture, { capture: true })
-    overBackground()
+    overRootBackground()
     expect(seen).toEqual(["capture", "bubble"])
 
     document.removeEventListener("mousemove", bubble)
     document.removeEventListener("mousemove", capture, { capture: true })
-    overBackground()
+    overRootBackground()
     expect(seen).toHaveLength(2)
+  })
+
+  it("hear a move inside the window but outside the root, with no target", () => {
+    const seen: Array<{ type: string; target: unknown; path: unknown }> = []
+    const listener = (event) => seen.push({ type: event.type, target: event.target, path: event.path })
+    window.addEventListener("pointermove", listener)
+    outsideRoot()
+    expect(seen).toEqual([{ type: "pointermove", target: undefined, path: undefined }])
+    expect(rootMoves).toEqual([])
+
+    window.removeEventListener("pointermove", listener)
+    outsideRoot()
+    expect(seen).toHaveLength(1)
+  })
+
+  it("hear a document mousemove outside the root, and the root hears nothing", () => {
+    const seen: string[] = []
+    const listener = (event) => seen.push(`${event.type}:${event.target}`)
+    document.addEventListener("mousemove", listener)
+    outsideRoot()
+    expect(seen).toEqual(["mousemove:undefined"])
+    expect(rootMoves).toEqual([])
+    document.removeEventListener("mousemove", listener)
   })
 
   it("hear only the types they listen for", () => {
     const seen: string[] = []
     const listener = (event) => seen.push(event.type)
     window.addEventListener("mousedown", listener)
-    overBackground()
+    overRootBackground()
     expect(seen).toEqual([])
-    testRoot.renderer.nativeSimulateMouseDown(300, 300)
+    testRoot.renderer.nativeSimulateMouseDown(100, 100)
     expect(seen).toEqual(["mousedown"])
     window.removeEventListener("mousedown", listener)
   })

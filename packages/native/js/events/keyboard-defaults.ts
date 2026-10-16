@@ -28,6 +28,13 @@ function hasCommandModifier(event: EventPayload): boolean {
 
 const KEY_EVENT_TYPES: ReadonlySet<string> = new Set(["keydown", "keyup"])
 
+const MOVE_EVENT_TYPES: ReadonlySet<string> = new Set(["pointermove", "mousemove"])
+
+/** A move over no element: it has no path, and only `window` and `document` hear it. */
+function isWindowMove(event: EventPayload): boolean {
+  return event.path == null && MOVE_EVENT_TYPES.has(event.eventType)
+}
+
 /**
  * Native may still emit the old camelCase pointer names; handlers are
  * registered under the DOM's lowercase ones.
@@ -55,6 +62,9 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
     return event.path != null || event.elementId === root.windowKeyEventId
   }
   if (isDragEvent(event)) return true
+  if (isWindowMove(event)) {
+    return window.hasListeners(event.eventType) || document.hasListeners(event.eventType)
+  }
   if (event.path == null || isOutsidePress(event.eventType)) {
     return root.eventHandlers.get(event.elementId)?.has(event.eventType) === true
   }
@@ -98,7 +108,7 @@ export function runRootEvent(
     }
     return notHandled
   }
-  if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType)) {
+  if (event.path == null && !KEY_EVENT_TYPES.has(event.eventType) && !isWindowMove(event)) {
     // Aimed at one element, with no path to walk, but still cancelable.
     return dispatchDomEvent(root, event)
   }

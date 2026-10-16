@@ -113,7 +113,9 @@ pub struct PointerSample {
 /// the same for every event of an input, so `Output` carries them once.
 pub struct DomEvent {
     pub event_type: &'static str,
-    /// Target first, then each retained ancestor.
+    /// Target first, then each retained ancestor. Empty for an event aimed at
+    /// the window: the pointer was over no element, so only `window` and
+    /// `document` hear it.
     pub path: Vec<u64>,
     /// The one element the event is delivered to, when it does not go to the
     /// target and its ancestors: `mousedownoutside` runs at the element that
@@ -133,8 +135,8 @@ pub struct DomEvent {
 }
 
 impl DomEvent {
-    pub fn target(&self) -> u64 {
-        self.path[0]
+    pub fn target(&self) -> Option<u64> {
+        self.path.first().copied()
     }
 }
 
@@ -176,10 +178,12 @@ impl Output {
         self.events
             .into_iter()
             .map(|event| EventPayload {
-                element_id: event.listener.unwrap_or(event.target()) as f64,
+                element_id: event.listener.or(event.target()).unwrap_or(0) as f64,
                 event_type: event.event_type.to_string(),
-                target: Some(event.target() as f64),
-                path: Some(event.path.iter().map(|id| *id as f64).collect()),
+                target: event.target().map(|target| target as f64),
+                path: event
+                    .target()
+                    .map(|_| event.path.iter().map(|id| *id as f64).collect()),
                 related_target: event.related_target.map(|id| id as f64),
                 x: Some(position.0),
                 y: Some(position.1),
@@ -255,6 +259,29 @@ impl<'a> Emitter<'a> {
             return;
         }
         self.push(event_type, target, fields);
+    }
+
+    /// A move that landed on no element, inside the window: the DOM's viewport
+    /// is always under the pointer, so `window` and `document` hear it. The
+    /// event has no target and no path, and no element listener sees it.
+    fn emit_to_window(&mut self, event_type: &'static str, fields: Fields) {
+        if !self.requests.window_listens(event_type) {
+            return;
+        }
+        self.events.push(DomEvent {
+            event_type,
+            path: Vec::new(),
+            listener: None,
+            related_target: None,
+            button: None,
+            detail: None,
+            offset: None,
+            movement: fields.movement,
+            pressed_button: fields.pressed_button,
+            hovered: None,
+            files: None,
+            wheel: None,
+        });
     }
 
     /// A `click`, which also has to reach a label with no listener: whether
@@ -417,9 +444,10 @@ fn lowest_held_button(buttons: u32) -> Option<u32> {
 
 pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
     // Over a drag region the page sees the pointer outside the window: nothing is under it, so
-    // hover leaves and no move is delivered.
+    // hover leaves and no move is delivered, not even to `window`.
     let hidden;
-    let sample = if app_region::hides_pointer(state, sample) {
+    let pointer_hidden = app_region::hides_pointer(state, sample);
+    let sample = if pointer_hidden {
         hidden = PointerSample {
             hits: Vec::new(),
             ..sample.clone()
@@ -430,17 +458,22 @@ pub fn dispatch(state: &mut PointerState, tree: &RetainedTree, sample: &PointerS
     };
     let position = state.position_for(sample.position);
     if position == sample.position {
-        return dispatch_at(state, tree, sample);
+        return dispatch_at(state, tree, sample, pointer_hidden);
     }
     // A locked pointer reports the position it was locked at, whatever the platform says.
     let frozen = PointerSample {
         position,
         ..sample.clone()
     };
-    dispatch_at(state, tree, &frozen)
+    dispatch_at(state, tree, &frozen, pointer_hidden)
 }
 
-fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSample) -> Output {
+fn dispatch_at(
+    state: &mut PointerState,
+    tree: &RetainedTree,
+    sample: &PointerSample,
+    pointer_hidden: bool,
+) -> Output {
     let geometric = sample
         .hits
         .iter()
@@ -529,6 +562,14 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
                 };
                 emitter.emit("pointermove", target, fields);
                 emitter.emit("mousemove", target, fields);
+            } else if !pointer_hidden {
+                let fields = Fields {
+                    pressed_button,
+                    movement: Some(sample.movement),
+                    ..Default::default()
+                };
+                emitter.emit_to_window("pointermove", fields);
+                emitter.emit_to_window("mousemove", fields);
             }
         }
         PointerAction::Down {
@@ -1072,7 +1113,7 @@ mod tests {
         output
             .events
             .iter()
-            .map(|event| format!("{}@{}", event.event_type, event.target()))
+            .map(|event| format!("{}@{}", event.event_type, event.target().expect("an element event")))
             .collect()
     }
 
@@ -1125,13 +1166,39 @@ mod tests {
     }
 
     #[test]
+    fn a_move_over_no_element_goes_to_the_window_listeners_alone() {
+        let tree = tree(&[(1, "mousemove"), (1, "pointermove")]);
+        let mut state = PointerState::default();
+        let output = dispatch(&mut state, &tree, &mv(Vec::new()));
+        assert!(output.events.is_empty());
+
+        state.requests.set_window_events(vec!["pointermove".to_string()]);
+        let output = dispatch(&mut state, &tree, &mv(Vec::new()));
+        assert_eq!(output.events.len(), 1);
+        assert_eq!(output.events[0].event_type, "pointermove");
+        assert!(output.events[0].path.is_empty());
+        let payload = &output.into_payloads()[0];
+        assert_eq!((payload.target, payload.path.as_ref()), (None, None));
+        assert_eq!((payload.client_x, payload.client_y), (Some(15.0), Some(30.0)));
+    }
+
+    #[test]
+    fn a_move_under_a_drag_region_is_not_the_windows_either() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        state.requests.set_window_events(vec!["mousemove".to_string()]);
+        let output = dispatch(&mut state, &tree, &in_drag_region(mv(Vec::new())));
+        assert!(output.events.is_empty());
+    }
+
+    #[test]
     fn an_event_carries_the_target_and_its_retained_ancestors() {
         let tree = tree(&[(1, "mousedown")]);
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
         assert_eq!(output.events.len(), 1);
         assert_eq!(output.events[0].path, [3, 2, 1]);
-        assert_eq!(output.events[0].target(), 3);
+        assert_eq!(output.events[0].target(), Some(3));
     }
 
     #[test]
@@ -1538,7 +1605,7 @@ mod tests {
                 format!(
                     "{}<-{}",
                     event.listener.expect("an outside press has a listener"),
-                    event.target()
+                    event.target().expect("an outside press has a target")
                 )
             })
             .collect()
