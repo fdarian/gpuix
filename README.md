@@ -1880,7 +1880,11 @@ has none. An `exit` function is only called inside an `AnimatePresence`.
 Variants do not exist in GPUIX, so `exit` is either a target or a function of
 `custom` that returns one. `useIsPresent()` and `usePresence()` work in React. In
 Solid, `AnimatePresence` drives the exit from outside the child, so a descendant
-component reads them as present.
+component reads them as present: Solid disposes the scope of a child that leaves
+(its `Show`, `For` item or `{cond && <Item/>}` re-runs), and with it every effect
+the descendant created, so an accessor could never report the change. Use the
+`exit` of a `motion.*` for leaving animations; React is the only adapter whose
+descendants see presence.
 
 `motion.div` accepts **`onMotionComplete`**. It runs when the current native
 target settles. If React changes the target before an older completion reaches

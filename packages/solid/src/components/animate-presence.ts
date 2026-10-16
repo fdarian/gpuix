@@ -35,6 +35,12 @@ export interface PresenceGroupContextValue {
 
 export const PresenceGroupContext = createContext<PresenceGroupContextValue>()
 
+/**
+ * Always present outside a `motion.*`'s own `PresenceContext`: a leaving child's
+ * owner is disposed when it leaves, which disposes every effect a descendant
+ * made, so a descendant could not observe `isPresent` flipping. React's
+ * `usePresence` parity would need `AnimatePresence` to own each child's scope.
+ */
 export function usePresence(): [Accessor<boolean>, () => void] {
   const context = useContext(PresenceContext)
   return context
