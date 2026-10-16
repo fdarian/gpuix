@@ -2748,7 +2748,7 @@ a style that needs a box of its own (`position: absolute`, `display: block`,
 
 ### White space
 
-`whiteSpace` (`normal`, `nowrap`, `pre`, `pre-wrap`, `pre-line`) is inherited, so
+`whiteSpace` (`normal`, `nowrap`, `pre`, `pre-wrap`, `pre-line`, `break-spaces`) is inherited, so
 it can be set on a container, on a `<span>` or on a `<text>`. It decides what is
 left of the spaces, tabs and newlines of a string before it is painted, and
 `getPaintedText()`, search, selection and copy all see that text.
@@ -2759,6 +2759,7 @@ left of the spaces, tabs and newlines of a string before it is painted, and
 | `nowrap` | collapse | a space | no |
 | `pre-line` | collapse | line break | yes |
 | `pre-wrap` | kept | line break | yes |
+| `break-spaces` | kept | line break | yes, after every space |
 | `pre` | kept | line break | no |
 
 - A run of collapsible spaces becomes one space, and the collapsing crosses text
@@ -2766,7 +2767,7 @@ left of the spaces, tabs and newlines of a string before it is painted, and
   in the first run.
 - A collapsible space at the start of a paragraph, at the end of one, before a
   block child and next to a line break is removed.
-- A newline in `pre`, `pre-wrap` and `pre-line` is a forced break. One final
+- A newline in `pre`, `pre-wrap`, `break-spaces` and `pre-line` is a forced break. One final
   newline ends the last line and does not start another, as in a browser.
 - The no-break space (U+00A0) is content and never collapses.
 - Text with nothing but collapsible white space makes no box in a `normal`,
@@ -2782,7 +2783,7 @@ left of the spaces, tabs and newlines of a string before it is painted, and
 
 #### Tab stops
 
-A tab that `pre` and `pre-wrap` keep stays a tab character in the painted text,
+A tab that `pre`, `pre-wrap` and `break-spaces` keep stays a tab character in the painted text,
 so search, selection and copy see `\t`, and it advances to the next tab stop.
 `tabSize` sets how far apart the stops are. It is inherited and is 8 by default.
 
@@ -2824,13 +2825,30 @@ in aligning it.
 - The size of a box that shrinks to its text still contains the spaces at the end
   of its last line.
 - `pre` and `nowrap` do not hang anything: in `pre` the spaces are content and
-  count in the alignment.
+  count in the alignment. Nor does `break-spaces`, see below.
+
+#### Break spaces
+
+`break-spaces` is `pre-wrap` where the spaces and tabs always take up room: a line
+may break after every one of them, and none hangs.
+
+```tsx
+<text style={{ whiteSpace: 'break-spaces', width: 120 }}>{"a      b"}</text>
+```
+
+- A space that does not fit moves to the next line and starts it, so a run of
+  spaces breaks between any two of them, and a line of nothing but spaces wraps.
+- The spaces at the end of a line are measured: they count when the line is fitted
+  and `textAlign: 'center'` and `'right'` include them, as do the spaces at the end
+  of the text or before a line break.
+- A word with no earlier place to break still breaks inside, as in the other
+  values.
 
 Deviations, where GPUI's text layout cannot build the DOM model:
 
 - In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
   where CSS removes it, so selection and copy see it.
-- `break-spaces`, `word-break` and `overflow-wrap` are not supported.
+- `word-break` and `overflow-wrap` are not supported.
 - `textOverflow` with `lineClamp` or a fixed width decides where to cut by the
   font's own width of a tab, not by the tab stop, so a line with tabs can be cut
   a little early or late. `<input>` and `<textarea>` have no tab stops.
@@ -5626,7 +5644,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
