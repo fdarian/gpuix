@@ -1570,6 +1570,7 @@ impl GpuixRenderer {
                         );
                         view.observe_appearance(window, cx);
                         view.observe_viewport(window, cx);
+                        view.observe_scroller_style(cx);
                         view.set_frameless(window_options.frameless());
                         crate::events::enable_dom_hit_testing(window);
                         view.install_key_interception(window, cx);
@@ -1721,6 +1722,7 @@ impl GpuixRenderer {
                                         );
                                         view.observe_appearance(window, cx);
                                         view.observe_viewport(window, cx);
+                                        view.observe_scroller_style(cx);
                                         view.set_frameless(window_options.frameless());
                                         crate::events::enable_dom_hit_testing(window);
                                         view.install_key_interception(window, cx);
@@ -4795,6 +4797,12 @@ pub(crate) struct GpuixView {
     window_media_change: bool,
     #[cfg(target_os = "macos")]
     media_observer: Option<crate::media::MediaChangeObserver>,
+    /// Rebuilds the window when the "Show scroll bars" setting changes.
+    #[cfg(target_os = "macos")]
+    scroller_style_observer: Option<crate::scrollbar::ScrollerStyleObserver>,
+    /// The scrollbar style to use instead of the OS setting, which the test renderer sets so a
+    /// test does not depend on the machine's.
+    scroller_style: Option<crate::scrollbar::ScrollerStyle>,
     /// Last identity delivered through `selectionChange`. Only written once an
     /// event is really queued, so adding the listener later still reports.
     reported_selection: Option<u64>,
@@ -5247,6 +5255,9 @@ impl GpuixView {
             window_media_change: false,
             #[cfg(target_os = "macos")]
             media_observer: None,
+            #[cfg(target_os = "macos")]
+            scroller_style_observer: None,
+            scroller_style: None,
             reported_selection: None,
             focus_handles: HashMap::new(),
             pending_focus_element: None,
@@ -5549,6 +5560,31 @@ impl GpuixView {
                 crate::media::emit_media_change(&view.event_callback, "resize");
             }
         }));
+    }
+
+    /// Rebuilds the window when the OS "Show scroll bars" setting changes, since the style
+    /// decides whether bars take layout space.
+    pub(crate) fn observe_scroller_style(&mut self, cx: &mut gpui::Context<Self>) {
+        #[cfg(target_os = "macos")]
+        {
+            let view = cx.weak_entity();
+            let app = cx.to_async();
+            self.scroller_style_observer =
+                Some(crate::scrollbar::ScrollerStyleObserver::new(move || {
+                    if let Err(error) = view.update(&mut app.clone(), |_, cx| cx.notify()) {
+                        eprintln!("gpuix: could not rebuild after the scroll bar style changed: {error}");
+                    }
+                }));
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = cx;
+    }
+
+    /// Uses `style` instead of the OS setting, for a renderer that must not depend on the
+    /// machine it runs on.
+    #[cfg(feature = "test-support")]
+    pub(crate) fn force_scroller_style(&mut self, style: crate::scrollbar::ScrollerStyle) {
+        self.scroller_style = Some(style);
     }
 
     pub(crate) fn set_frameless(&mut self, frameless: bool) {
@@ -6751,7 +6787,11 @@ impl gpui::Render for GpuixView {
         let theme = Theme::dark();
         let now = self.clock.now();
         crate::scroll::begin_frame();
-        crate::scrollbar::begin_frame(now);
+        crate::scrollbar::begin_frame(
+            now,
+            self.scroller_style
+                .unwrap_or_else(|| crate::scrollbar::ScrollerStyle::of_system(cx)),
+        );
         let scroll_animating = crate::scroll::advance_animations(now);
         // Before the motion sync reads them, so an element that stopped being
         // measured does not seed its motion from a size laid out long ago.

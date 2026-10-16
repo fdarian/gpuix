@@ -159,7 +159,7 @@ Not in the dispatcher: keys (`events/keyboard.rs`), focus events (`GpuixView::ob
 
 ## Scrolling: native routing, and nested scrollers work
 
-Overflow follows CSS (`scroll.rs`): `scroll` and `auto` scroll, `hidden` scrolls only from code, `clip` does not scroll, and overflow never changes `display` or wraps children. `scroll::apply_container` turns a div into a scroll container and attaches the overlay scrollbar (`scrollbar.rs`).
+Overflow follows CSS (`scroll.rs`): `scroll` and `auto` scroll, `hidden` scrolls only from code, `clip` does not scroll, and overflow never changes `display` or wraps children. `scroll::apply_container` turns a div into a scroll container and attaches the scrollbar (`scrollbar.rs`), which is an overlay or, when macOS "Show scroll bars" is Always (`ScrollerStyle::Classic`), a bar in a gutter the container reserves through the `scrollbar_width` and `without_scrollbar` styles in zed. `ScrollHandle::padding_box` is the scrollport less that gutter. `TestRenderer.setScrollbarStyle` forces the style under test.
 
 The wheel is two separate things.
 

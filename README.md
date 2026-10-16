@@ -1037,6 +1037,8 @@ Under test, the OS settings start as "no preference" regardless of the machine.
 delivers the `change` events, and `TestRenderer.setWindowSize(width, height)`
 resizes the window the same way. `prefers-color-scheme` reports the system
 appearance and cannot be flipped, for the reason given under Appearance.
+The "Show scroll bars" setting (see [Scrollbars](#scrollbars)) works the same way:
+`TestRenderer.setScrollbarStyle("classic" | "overlay")`.
 
 ### File picker
 
@@ -2192,7 +2194,7 @@ await app.clock.resume()
 
 ## Scrolling
 
-A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. Scrollbars are overlays, so the two values differ in nothing. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
+A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. The two values differ only when scrollbars take layout space (see [Scrollbars](#scrollbars)): `"scroll"` always reserves the bar and `"auto"` only once there is something to scroll. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis.
 
 Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its descendants' boxes, and its own padding and border, reach, measured from where the padding box starts. This is CSS scrollable overflow: a descendant counts down to one that clips itself (`overflow` other than `visible`), whose box counts but whose own overflow does not. An absolute descendant counts only when the scroller is its containing block, so give the scroller a `position` for that. `position: fixed` boxes and anchored or deferred layers (popovers, tooltips) never count. Content that fits never scrolls, and neither does an empty scroller.
 
@@ -2293,7 +2295,7 @@ function ProgrammaticScroll() {
 |---|---|
 | `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range. |
 | `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. |
-| `clientWidth`, `clientHeight` | The padding box. Overlay scrollbars take nothing from it. |
+| `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. |
 | `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. |
 | `scrollBy({ top, left, behavior })`, `scrollBy(dx, dy)` | Relative to the current position. |
 | `scrollIntoView({ block, inline, behavior })` | `block` defaults to `"start"` and `inline` to `"nearest"`; each takes `"start"`, `"center"`, `"end"` or `"nearest"`. `scrollIntoView(false)` aligns the end. |
@@ -2888,16 +2890,32 @@ long leaves the text and the selection as they were.
 ### Scrollbars
 
 Every container with scrollable `overflow` (`"scroll"` or `"auto"`), and every `<virtual-list>`,
-gets a macOS-style overlay scrollbar. It is hidden at rest and appears when the scroll offset
-changes for any reason (the wheel, `scrollTo`, a key, a drag). It fades out after about a second
-without movement, over 200 ms. While the pointer is over the bar it stays, the thumb thickens
-from 7 to 11 px, and a faint track shows behind it.
+gets a macOS-style scrollbar, in whichever style the system's "Show scroll bars" setting asks
+for. macOS also switches to the second style while a mouse is attached, as a browser's bars do.
 
-The thumb drags, and that scrolls the container and fires `onScroll`. Pressing the track pages
-toward the pointer, by 90% of the viewport. The bar's hitbox exists only where a bar is visible,
-so at rest nothing blocks the content under the edge. The bar is an overlay: it never changes
-what the container can scroll, and it sits on the right edge, and the bottom for sideways
-scrolling, leaving the corner free when both show.
+**Automatically or When scrolling** (overlay bars). The bar is hidden at rest and appears when the
+scroll offset changes for any reason (the wheel, `scrollTo`, a key, a drag). It fades out after
+about a second without movement, over 200 ms. While the pointer is over the bar it stays, a faint
+track shows behind it, and the thumb thickens from 7 to 11 px over 150 ms. The bar is an overlay:
+it takes no layout space and never changes what the container can scroll.
+
+**Always** (classic bars). The bar is always there, a solid track and a thumb that neither fades nor
+thickens, in a 15 px gutter (11 with `scrollbarWidth: "thin"`) that the container reserves out of its
+own box, as in a browser. `clientWidth` and `clientHeight`, the content box that percentages and
+`flex` lay children out in, and the range that `scrollIntoView` and the scrolling keys work against
+all shrink by the gutter, while `getBoundingClientRect` still reports the border box. The vertical
+bar takes width and the horizontal bar takes height, and the corner is filled when both show.
+`overflow: "scroll"` always reserves its gutter and shows an empty track when nothing scrolls;
+`overflow: "auto"` reserves it once the content scrolls, which takes one more frame to settle.
+`scrollbarWidth: "none"` takes no room. A `<virtual-list>` cannot give up room: its classic bar is
+always visible but sits over its rows. The setting is read when the window is built and again when
+it changes. Under test the window starts with overlay bars regardless of the machine, and
+`TestRenderer.setScrollbarStyle("classic")` switches it (`"overlay"` switches back).
+
+On both styles the thumb drags, and that scrolls the container and fires `onScroll`. Pressing the
+track pages toward the pointer, by 90% of the viewport. The bar's hitbox exists only where a bar is
+visible, so an overlay bar at rest blocks nothing under the edge. The bar sits on the right edge,
+and the bottom for sideways scrolling.
 
 Two CSS properties style it:
 
@@ -2909,11 +2927,11 @@ Two CSS properties style it:
 
 | Property | |
 |---|---|
-| `scrollbarWidth` | `"auto"` (default, 7 px, 11 under the pointer), `"thin"` (4 px, 7 under the pointer), or `"none"`, which draws no bar and leaves the container scrollable. |
-| `scrollbarColor` | `"auto"` (default), or `"<thumb> <track>"`: two CSS colours, the thumb and the faint track that shows under the pointer. A value that is not two colours is ignored, as in CSS. |
+| `scrollbarWidth` | `"auto"` (default; overlay: 7 px, 11 under the pointer; classic: a 15 px gutter), `"thin"` (overlay: 4 px, 7 under the pointer; classic: an 11 px gutter), or `"none"`, which draws no bar, takes no room and leaves the container scrollable. |
+| `scrollbarColor` | `"auto"` (default), or `"<thumb> <track>"`: two CSS colours, the thumb and the track (faint under the pointer on an overlay bar, solid on a classic one). A value that is not two colours is ignored, as in CSS. |
 
 By default the thumb is 50% black on a light window and 50% white on a dark one, following the
-system appearance. A list's bar comes from the heights the list has measured (and
+system appearance, and a classic track is a solid light or dark grey. A list's bar comes from the heights the list has measured (and
 `estimatedItemHeight` for rows it has not reached), the same totals it scrolls by, so its length
 settles as rows are measured. `padding` on a `<virtual-list>` insets its rows on all four sides,
 and the bar stays at the list's own edge.

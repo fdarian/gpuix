@@ -74,6 +74,7 @@ interface NativeTestRendererApi
   setWindowSelectionChange(enabled: boolean, eventId: number): void
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
   setAppearance(appearance: string): void
+  setScrollbarStyle(style: string): void
   getAppearance(): string
   getWindowTitle(): string
   setWindowMediaChange(enabled: boolean): void
@@ -956,6 +957,17 @@ export class TestRenderer implements NativeRenderer {
     this.native.setAppearance(appearance)
     this.native.flush()
     this.dispatchNativeEvents()
+  }
+
+  /** `"overlay"` (macOS "Show scroll bars" Automatically or When scrolling, which the test
+   *  window starts with) or `"classic"` (Always, which macOS also picks while a mouse is
+   *  attached). Classic bars are always drawn and take 15px (11 with `scrollbarWidth: "thin"`)
+   *  out of the container, so its `clientWidth` and content box shrink by it. The test window
+   *  never hears from the OS, so this is how a test flips the setting. */
+  setScrollbarStyle(style: "overlay" | "classic"): void {
+    this.native.flush()
+    this.native.setScrollbarStyle(style)
+    this.native.flush()
   }
 
   /** The window's title, as the platform window has it: the `title` option, or `"GPUIX"`. */

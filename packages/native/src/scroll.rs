@@ -18,14 +18,18 @@ pub(crate) enum Overflow {
     Clip,
     /// `hidden`: cut off, but a scroll container that only code scrolls, as in a browser.
     Hidden,
-    /// `scroll` and `auto`. Scrollbars are overlays, so the two differ in nothing.
     Scroll,
+    /// Scrolls like `scroll`. It differs only when scrollbars take layout space (see
+    /// [`crate::scrollbar::ScrollerStyle::Classic`]): `auto` reserves the room once there is
+    /// something to scroll.
+    Auto,
 }
 
 impl Overflow {
     pub(crate) fn parse(value: Option<&str>) -> Self {
         match value {
-            Some("scroll" | "auto") => Self::Scroll,
+            Some("scroll") => Self::Scroll,
+            Some("auto") => Self::Auto,
             Some("hidden") => Self::Hidden,
             Some("clip") => Self::Clip,
             _ => Self::Visible,
@@ -38,7 +42,12 @@ impl Overflow {
 
     /// Whether the element has a scroll offset: `scroll`, `auto` and `hidden`.
     pub(crate) fn has_offset(self) -> bool {
-        matches!(self, Self::Scroll | Self::Hidden)
+        matches!(self, Self::Scroll | Self::Auto | Self::Hidden)
+    }
+
+    /// Whether the user scrolls it, which is what gets a scrollbar.
+    pub(crate) fn scrolls_for_user(self) -> bool {
+        matches!(self, Self::Scroll | Self::Auto)
     }
 }
 
@@ -124,7 +133,7 @@ pub(crate) fn apply_container(
     });
     let handle = handles.entry(id).or_insert_with(gpui::ScrollHandle::new);
     el = el.track_scroll(handle);
-    if axes.x == Overflow::Scroll || axes.y == Overflow::Scroll {
+    if axes.x.scrolls_for_user() || axes.y.scrolls_for_user() {
         el = crate::scrollbar::attach(
             el,
             id,
@@ -134,6 +143,7 @@ pub(crate) fn apply_container(
             },
             style,
             colors,
+            [axes.x, axes.y],
         );
     }
     el
@@ -620,7 +630,9 @@ mod tests {
 
     #[test]
     fn auto_scrolls_like_scroll_and_hidden_is_a_scroll_container_the_wheel_ignores() {
-        assert_eq!(Overflow::parse(Some("auto")), Overflow::Scroll);
+        assert_eq!(Overflow::parse(Some("auto")), Overflow::Auto);
+        assert!(Overflow::Auto.has_offset() && Overflow::Auto.scrolls_for_user());
+        assert!(!Overflow::Hidden.scrolls_for_user());
         assert_eq!(Overflow::parse(Some("scroll")), Overflow::Scroll);
         assert_eq!(Overflow::parse(Some("clip")), Overflow::Clip);
         assert_eq!(Overflow::parse(Some("hidden")), Overflow::Hidden);

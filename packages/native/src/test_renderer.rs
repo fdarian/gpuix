@@ -529,6 +529,7 @@ impl TestGpuixRenderer {
                         );
                         view.observe_appearance(window, cx);
                         view.observe_viewport(window, cx);
+                        view.force_scroller_style(crate::scrollbar::ScrollerStyle::Overlay);
                         view.simulate_platform_pointer_lock(simulated_platform_clone);
                         view.simulate_window_actions(window_actions_clone);
                         view.set_frameless(frameless);
@@ -972,6 +973,19 @@ impl TestGpuixRenderer {
         if let Some(event) = event {
             self.events.lock().unwrap().push(event);
         }
+    }
+
+    /// Sets the macOS "Show scroll bars" setting this window reports: `"overlay"` (Automatically
+    /// or When scrolling, the default here) or `"classic"` (Always). The test window never
+    /// hears from the OS, so this is how a test flips it.
+    #[napi]
+    pub fn set_scrollbar_style(&self, style: String) -> Result<()> {
+        let style =
+            crate::scrollbar::ScrollerStyle::parse(&style).map_err(Error::from_reason)?;
+        update_view_or_defer(move |view, _window, cx| {
+            view.force_scroller_style(style);
+            cx.notify();
+        })
     }
 
     /// `"system"` follows the platform's light/dark setting, `"light"` and `"dark"` force

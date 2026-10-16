@@ -520,6 +520,12 @@ export declare class TestGpuixRenderer {
    */
   setMediaFeatures(reducedMotion?: boolean | undefined | null, increasedContrast?: boolean | undefined | null, forcedColors?: boolean | undefined | null): void
   /**
+   * Sets the macOS "Show scroll bars" setting this window reports: `"overlay"` (Automatically
+   * or When scrolling, the default here) or `"classic"` (Always). The test window never
+   * hears from the OS, so this is how a test flips it.
+   */
+  setScrollbarStyle(style: string): void
+  /**
    * `"system"` follows the platform's light/dark setting, `"light"` and `"dark"` force
    * it, as on the live renderer. The override is the platform's (on macOS the process's
    * `NSApplication.appearance`), so it outlives this renderer until a window is made

@@ -128,6 +128,7 @@ function calls(r, ids) {
     setMotionValue: () => r.setMotionValue(910, 3),
     setMotionValueListener: () => r.setMotionValueListener(910, true, true),
     setPointerCapture: () => r.setPointerCapture(ids.box, 1),
+    setScrollbarStyle: () => r.setScrollbarStyle("overlay"),
     setSelectionRange: () => r.setSelectionRange(ids.field, 0, 1),
     setWindowActive: () => r.setWindowActive(true),
     setWindowAppearanceChange: () => r.setWindowAppearanceChange(false, 1),

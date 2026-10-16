@@ -1,12 +1,18 @@
-//! Overlay scrollbars, painted the way macOS does.
+//! Scrollbars, painted the way macOS does, in either of its two styles.
 //!
-//! A scroll container's bar is hidden at rest, appears whenever its scroll offset changes, and
-//! fades out after a second without movement. While the pointer is over the bar it stays, the
-//! thumb thickens and a faint track shows. The thumb drags, and pressing the track pages toward
-//! the pointer.
+//! With "Show scroll bars" on Automatically or When scrolling (`ScrollerStyle::Overlay`), a scroll
+//! container's bar is hidden at rest, appears whenever its scroll offset changes, and fades out
+//! after a second without movement. While the pointer is over the bar it stays, and the thumb
+//! thickens over 150 ms and a faint track shows. The bar takes no layout space.
 //!
-//! The bar is an overlay (`paint_overlay`), so it never takes part in what the container can
-//! scroll. Its hitbox exists only where the bar is visible, so it blocks nothing otherwise.
+//! With it on Always (`ScrollerStyle::Classic`, which macOS also picks while a mouse is
+//! attached), the bar is always there: an opaque track and a thumb that does not change, in a
+//! gutter the container reserves out of its own box, so `clientWidth` and the content box shrink
+//! by it.
+//!
+//! In both styles the thumb drags, and pressing the track pages toward the pointer. The bar is
+//! an overlay (`paint_overlay`), so it never takes part in what the container can scroll. Its
+//! hitbox exists only where the bar is visible, so it blocks nothing otherwise.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -16,7 +22,62 @@ use std::time::Duration;
 use gpui::prelude::*;
 use web_time::Instant;
 
+use crate::scroll::Overflow;
 use crate::style::StyleDesc;
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)] // objc 0.2's msg_send! expands to cfg(feature = "cargo-clippy")
+mod observer {
+    use block::ConcreteBlock;
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    #[link(name = "AppKit", kind = "framework")]
+    extern "C" {
+        static NSPreferredScrollerStyleDidChangeNotification: *mut Object;
+    }
+
+    /// Calls back when "Show scroll bars" changes, and stops when dropped.
+    pub(crate) struct ScrollerStyleObserver {
+        token: *mut Object,
+    }
+
+    impl ScrollerStyleObserver {
+        /// `on_change` runs on the main queue, which is the thread GPUI runs on.
+        pub(crate) fn new(on_change: impl Fn() + 'static) -> Self {
+            // SAFETY: the block is copied to the heap, so the center keeps it alive until
+            // `removeObserver:`. `token` is retained until drop.
+            unsafe {
+                let center: *mut Object = msg_send![class!(NSNotificationCenter), defaultCenter];
+                let main_queue: *mut Object = msg_send![class!(NSOperationQueue), mainQueue];
+                let block = ConcreteBlock::new(move |_notification: *mut Object| on_change());
+                let block = block.copy();
+                let token: *mut Object = msg_send![center,
+                    addObserverForName: NSPreferredScrollerStyleDidChangeNotification
+                    object: std::ptr::null_mut::<Object>()
+                    queue: main_queue
+                    usingBlock: block
+                ];
+                let token: *mut Object = msg_send![token, retain];
+                Self { token }
+            }
+        }
+    }
+
+    impl Drop for ScrollerStyleObserver {
+        fn drop(&mut self) {
+            // SAFETY: `token` came from `addObserverForName:` and was retained in `new`.
+            unsafe {
+                let center: *mut Object = msg_send![class!(NSNotificationCenter), defaultCenter];
+                let _: () = msg_send![center, removeObserver: self.token];
+                let _: () = msg_send![self.token, release];
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) use observer::ScrollerStyleObserver;
 
 /// How long a bar stays fully visible after the offset last moved.
 const IDLE: Duration = Duration::from_millis(1000);
@@ -28,6 +89,44 @@ const EDGE_INSET: f32 = 2.0;
 const MIN_THUMB: f32 = 20.0;
 /// How much of the viewport pressing the track pages by.
 const PAGE_FRACTION: f32 = 0.9;
+/// How long the thumb takes to thicken under the pointer, and to thin again.
+const HOVER_GROW: Duration = Duration::from_millis(150);
+/// The width of a classic bar's gutter: `auto`, and `thin`.
+const CLASSIC_GUTTER: f32 = 15.0;
+const CLASSIC_GUTTER_THIN: f32 = 11.0;
+/// How many times in a row an `overflow: auto` scroller may add or drop its gutter, so content
+/// that only fits with the gutter dropped (and overflows with it) cannot flip for ever.
+const MAX_GUTTER_FLIPS: u8 = 4;
+
+/// The macOS "Show scroll bars" setting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScrollerStyle {
+    /// Automatically based on mouse or trackpad (with a trackpad), or When scrolling.
+    Overlay,
+    /// Always, and what Automatically gives while a mouse is attached.
+    Classic,
+}
+
+impl ScrollerStyle {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "overlay" => Ok(Self::Overlay),
+            "classic" => Ok(Self::Classic),
+            other => Err(format!(
+                "Unknown scrollbar style \"{other}\", expected \"overlay\" or \"classic\""
+            )),
+        }
+    }
+
+    /// What the OS asks for. Only macOS has the setting; elsewhere bars are overlays.
+    pub(crate) fn of_system(cx: &gpui::App) -> Self {
+        if cfg!(target_os = "macos") && !cx.should_auto_hide_scrollbars() {
+            Self::Classic
+        } else {
+            Self::Overlay
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Width {
@@ -42,6 +141,7 @@ pub(crate) struct Look {
     width: Width,
     /// `None` follows the system appearance.
     colors: Option<(gpui::Rgba, gpui::Rgba)>,
+    scroller: ScrollerStyle,
 }
 
 impl Look {
@@ -57,18 +157,53 @@ impl Look {
             .scrollbar_color
             .as_deref()
             .and_then(|value| parse_colors(value, context));
-        Self { width, colors }
+        Self { width, colors, scroller: SCROLLER.get() }
     }
 
     pub(crate) fn hidden(self) -> bool {
         self.width == Width::None
     }
 
-    /// Thumb thickness at rest and under the pointer.
+    fn classic(self) -> bool {
+        self.scroller == ScrollerStyle::Classic && !self.hidden()
+    }
+
+    /// The room a classic bar takes from its container, zero for an overlay.
+    pub(crate) fn gutter(self) -> f32 {
+        match (self.classic(), self.width) {
+            (false, _) => 0.0,
+            (true, Width::Thin) => CLASSIC_GUTTER_THIN,
+            (true, _) => CLASSIC_GUTTER,
+        }
+    }
+
+    /// Gap between the thumb and the edge of its bar.
+    fn inset(self) -> f32 {
+        match (self.classic(), self.width) {
+            (false, _) => EDGE_INSET,
+            (true, Width::Thin) => 2.0,
+            (true, _) => 3.0,
+        }
+    }
+
+    /// Thumb thickness at rest and under the pointer. A classic thumb does not change.
     fn thickness(self) -> (f32, f32) {
+        if self.classic() {
+            let thumb = self.gutter() - 2.0 * self.inset();
+            return (thumb, thumb);
+        }
         match self.width {
             Width::Thin => (4.0, 7.0),
             _ => (7.0, 11.0),
+        }
+    }
+
+    /// How far across the container the bar's hit area and track reach.
+    fn bar(self) -> f32 {
+        if self.classic() {
+            self.gutter()
+        } else {
+            self.thickness().1 + EDGE_INSET
         }
     }
 }
@@ -106,16 +241,66 @@ fn parse_colors(
     Some((context.resolve(thumb)?, context.resolve(track)?))
 }
 
-fn default_colors(window: &gpui::Window) -> (gpui::Rgba, gpui::Rgba) {
+fn default_colors(window: &gpui::Window, classic: bool) -> (gpui::Rgba, gpui::Rgba) {
     let dark = matches!(
         window.appearance(),
         gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
     );
     let (shade, thumb, track) = if dark { (1.0, 0.5, 0.08) } else { (0.0, 0.5, 0.06) };
-    (
-        gpui::Rgba { r: shade, g: shade, b: shade, a: thumb },
-        gpui::Rgba { r: shade, g: shade, b: shade, a: track },
-    )
+    let thumb = gpui::Rgba { r: shade, g: shade, b: shade, a: thumb };
+    if classic {
+        // A classic track covers whatever scrolls under it, so it is solid.
+        let ground = if dark { 0.16 } else { 0.97 };
+        return (thumb, gpui::Rgba { r: ground, g: ground, b: ground, a: 1.0 });
+    }
+    (thumb, gpui::Rgba { r: shade, g: shade, b: shade, a: track })
+}
+
+fn ease_in_out(progress: f32) -> f32 {
+    progress * progress * (3.0 - 2.0 * progress)
+}
+
+/// How far the pointer has thickened one bar, between 0 (at rest) and 1 (under the pointer).
+#[derive(Clone, Copy, Default)]
+struct Grow {
+    from: f32,
+    target: f32,
+    started: Option<Instant>,
+}
+
+impl Grow {
+    fn value(self, now: Instant) -> f32 {
+        let Some(started) = self.started else {
+            return self.target;
+        };
+        let progress = now.saturating_duration_since(started).as_secs_f32()
+            / HOVER_GROW.as_secs_f32();
+        self.from + (self.target - self.from) * ease_in_out(progress.min(1.0))
+    }
+
+    /// Heads for `target` from wherever it is now, starting at `now`.
+    fn aim(&mut self, target: f32, now: Instant) {
+        if target != self.target {
+            self.from = self.value(now);
+            self.target = target;
+            self.started = Some(now);
+        }
+    }
+
+    fn animating(self, now: Instant) -> bool {
+        self.started
+            .is_some_and(|started| now.saturating_duration_since(started) < HOVER_GROW)
+    }
+}
+
+/// Whether a classic scroller reserves a gutter on an axis. `overflow: auto` does once something
+/// scrolls, which `needed` says it did when last laid out.
+fn wants_gutter(overflow: Overflow, needed: bool) -> bool {
+    match overflow {
+        Overflow::Scroll => true,
+        Overflow::Auto => needed,
+        _ => false,
+    }
 }
 
 /// The thumb of a bar along one axis: where it starts and how long it is, in the track's own
@@ -176,6 +361,14 @@ impl Source {
         }
     }
 
+    /// The room the container reserved for its bars: a list's are overlays.
+    fn gutter(&self) -> gpui::Size<gpui::Pixels> {
+        match self {
+            Source::Container { handle, .. } => handle.scrollbar_size(),
+            Source::List(_) => gpui::size(gpui::px(0.0), gpui::px(0.0)),
+        }
+    }
+
     fn set_offset(&self, offset: gpui::Point<gpui::Pixels>) {
         match self {
             Source::Container { id, handle } => {
@@ -214,6 +407,7 @@ struct AxisLayout {
     thumb_len: f32,
     max: f32,
     port_len: f32,
+    inset: f32,
 }
 
 #[derive(Default)]
@@ -223,21 +417,34 @@ pub(crate) struct State {
     hover: [bool; 2],
     drag: Option<Drag>,
     layout: [Option<AxisLayout>; 2],
+    /// Tracks with no thumb: a classic bar with nothing to scroll, and the corner where two meet.
+    empty_tracks: Vec<gpui::Bounds<gpui::Pixels>>,
     hitboxes: [Option<gpui::Hitbox>; 2],
+    grow: [Grow; 2],
     alpha: f32,
     seen: u64,
+    /// Per axis, whether the content scrolled when last laid out. An `overflow: auto` scroller
+    /// reserves its gutter from it, one frame later.
+    needed: [bool; 2],
+    /// Per axis, whether the scroller was built with a gutter.
+    reserved: [bool; 2],
+    /// Per axis, whether the gutter follows `needed`.
+    follows_need: [bool; 2],
+    flips: u8,
 }
 
 thread_local! {
     static STATES: RefCell<HashMap<u64, Rc<RefCell<State>>>> = RefCell::new(HashMap::new());
     static FRAME: Cell<u64> = const { Cell::new(0) };
     static NOW: Cell<Option<Instant>> = const { Cell::new(None) };
+    static SCROLLER: Cell<ScrollerStyle> = const { Cell::new(ScrollerStyle::Overlay) };
 }
 
-/// Call before building a frame, with the time its animations run on. Drops the bars of
-/// scrollers that were not built last frame.
-pub(crate) fn begin_frame(now: Instant) {
+/// Call before building a frame, with the time its animations run on and the style the bars
+/// take. Drops the bars of scrollers that were not built last frame.
+pub(crate) fn begin_frame(now: Instant, scroller: ScrollerStyle) {
     NOW.set(Some(now));
+    SCROLLER.set(scroller);
     let frame = FRAME.get() + 1;
     FRAME.set(frame);
     STATES.with(|states| {
@@ -255,24 +462,56 @@ pub(crate) fn state_for(id: u64) -> Rc<RefCell<State>> {
     STATES.with(|states| states.borrow_mut().entry(id).or_default().clone())
 }
 
-/// Gives a scroll container its bars, if its style does not turn them off.
+/// Gives a scroll container its bars, if its style does not turn them off, and the room for them
+/// that a classic bar takes. `overflow` is the container's, per axis (x, then y).
 pub(crate) fn attach(
     el: gpui::Stateful<gpui::Div>,
     id: u64,
     source: Source,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
+    overflow: [Overflow; 2],
 ) -> gpui::Stateful<gpui::Div> {
     let look = Look::of(style, colors);
     if look.hidden() {
         return el;
     }
     let state = state_for(id);
+    let el = reserve(el, &state, look, overflow);
     el.prepaint_overlay({
         let (state, source) = (state.clone(), source.clone());
         move |bounds, window, _| prepaint(&state, &source, look, bounds, window)
     })
     .paint_overlay(move |bounds, window, cx| paint(&state, &source, look, bounds, window, cx))
+}
+
+/// Makes the container leave room for its classic bars. A bar for the vertical axis takes width
+/// and one for the horizontal axis takes height, and a bar the user cannot move (`hidden`) takes
+/// nothing.
+fn reserve(
+    el: gpui::Stateful<gpui::Div>,
+    state: &Rc<RefCell<State>>,
+    look: Look,
+    overflow: [Overflow; 2],
+) -> gpui::Stateful<gpui::Div> {
+    let mut st = state.borrow_mut();
+    let gutter = look.gutter();
+    if gutter == 0.0 {
+        st.reserved = [false; 2];
+        st.follows_need = [false; 2];
+        return el;
+    }
+    let wanted = [0, 1].map(|axis| wants_gutter(overflow[axis], st.needed[axis]));
+    if wanted == st.reserved {
+        st.flips = 0;
+    } else if st.flips < MAX_GUTTER_FLIPS {
+        st.flips += 1;
+        st.reserved = wanted;
+    }
+    st.follows_need = [0, 1].map(|axis| overflow[axis] == Overflow::Auto);
+    let reserved = st.reserved;
+    el.scrollbar_width(gpui::px(gutter))
+        .without_scrollbar(!reserved[0], !reserved[1])
 }
 
 fn axis_of(bounds: gpui::Bounds<gpui::Pixels>, vertical: bool) -> (f32, f32) {
@@ -307,39 +546,54 @@ pub(crate) fn prepaint(
     st.last_offset = Some(offset);
 
     let port = source.port(bounds);
-    let (_, hover_thickness) = look.thickness();
-    let bar = hover_thickness + EDGE_INSET;
+    let gutter = source.gutter();
+    let classic = look.classic();
+    let bar = look.bar();
     let [user_x, user_y] = source.axes();
-    let show_x = user_x && f32::from(max.x) > 0.5;
-    let show_y = user_y && f32::from(max.y) > 0.5;
-    let corner = if show_x && show_y { bar } else { 0.0 };
+    let scrolls = [user_x && f32::from(max.x) > 0.5, user_y && f32::from(max.y) > 0.5];
+    st.needed = scrolls;
+    // The bar of the x axis lies along the bottom, so it takes the gutter's height.
+    let room = [f32::from(gutter.height), f32::from(gutter.width)];
+    let shown = [scrolls[0] || room[0] > 0.0, scrolls[1] || room[1] > 0.0];
+    let corner = if shown[0] && shown[1] && room == [0.0, 0.0] { bar } else { 0.0 };
 
     let mut layout: [Option<AxisLayout>; 2] = [None, None];
+    let mut empty_tracks = Vec::new();
     for (index, vertical) in [(0, false), (1, true)] {
-        if !(if vertical { show_y } else { show_x }) {
+        if !shown[index] {
             continue;
         }
         let (port_start, port_len) = axis_of(port, vertical);
         let track_len = port_len - corner;
+        let strip = match (vertical, room[index] > 0.0) {
+            (true, true) => gpui::Bounds::new(
+                gpui::point(port.right(), port.top()),
+                gpui::size(gutter.width, gpui::px(track_len)),
+            ),
+            (false, true) => gpui::Bounds::new(
+                gpui::point(port.left(), port.bottom()),
+                gpui::size(gpui::px(track_len), gutter.height),
+            ),
+            (true, false) => gpui::Bounds::new(
+                gpui::point(port.right() - gpui::px(bar), port.top()),
+                gpui::size(gpui::px(bar), gpui::px(track_len)),
+            ),
+            (false, false) => gpui::Bounds::new(
+                gpui::point(port.left(), port.bottom() - gpui::px(bar)),
+                gpui::size(gpui::px(track_len), gpui::px(bar)),
+            ),
+        };
         let (max_scroll, scrolled) = if vertical {
             (f32::from(max.y), f32::from(offset.y))
         } else {
             (f32::from(max.x), f32::from(offset.x))
         };
-        let Some((thumb_start, thumb_len)) = scrollbar_thumb(track_len, max_scroll, scrolled)
-        else {
+        let thumb = scrollbar_thumb(track_len, max_scroll, scrolled).filter(|_| scrolls[index]);
+        let Some((thumb_start, thumb_len)) = thumb else {
+            if room[index] > 0.0 {
+                empty_tracks.push(strip);
+            }
             continue;
-        };
-        let strip = if vertical {
-            gpui::Bounds::new(
-                gpui::point(port.right() - gpui::px(bar), port.top()),
-                gpui::size(gpui::px(bar), gpui::px(track_len)),
-            )
-        } else {
-            gpui::Bounds::new(
-                gpui::point(port.left(), port.bottom() - gpui::px(bar)),
-                gpui::size(gpui::px(track_len), gpui::px(bar)),
-            )
         };
         layout[index] = Some(AxisLayout {
             strip,
@@ -349,28 +603,40 @@ pub(crate) fn prepaint(
             thumb_len,
             max: max_scroll,
             port_len,
+            inset: look.inset(),
         });
+    }
+    if room[0] > 0.0 && room[1] > 0.0 {
+        empty_tracks.push(gpui::Bounds::new(
+            gpui::point(port.right(), port.bottom()),
+            gpui::size(gutter.width, gutter.height),
+        ));
     }
 
     let held = st.hover.iter().any(|hovered| *hovered) || st.drag.is_some();
     if held {
         st.last_active = Some(now);
     }
-    let alpha = match st.last_active {
-        None => 0.0,
-        Some(active) => {
-            let elapsed = now.saturating_duration_since(active);
-            if elapsed <= IDLE {
-                1.0
-            } else if elapsed < IDLE + FADE {
-                1.0 - (elapsed - IDLE).as_secs_f32() / FADE.as_secs_f32()
-            } else {
-                0.0
+    let alpha = if classic {
+        1.0
+    } else {
+        match st.last_active {
+            None => 0.0,
+            Some(active) => {
+                let elapsed = now.saturating_duration_since(active);
+                if elapsed <= IDLE {
+                    1.0
+                } else if elapsed < IDLE + FADE {
+                    1.0 - (elapsed - IDLE).as_secs_f32() / FADE.as_secs_f32()
+                } else {
+                    0.0
+                }
             }
         }
     };
 
     st.layout = layout;
+    st.empty_tracks = empty_tracks;
     st.alpha = alpha;
     for index in 0..2 {
         st.hitboxes[index] = match layout[index] {
@@ -382,8 +648,15 @@ pub(crate) fn prepaint(
         if st.hitboxes[index].is_none() {
             st.hover[index] = false;
         }
+        let dragged = st.drag.is_some_and(|drag| drag.axis == index);
+        let thickened = !classic && (st.hover[index] || dragged);
+        st.grow[index].aim(if thickened { 1.0 } else { 0.0 }, now);
     }
-    if alpha > 0.0 {
+    let growing = st.grow.iter().any(|grow| grow.animating(now));
+    // An `overflow: auto` gutter follows the layout it caused, so it takes one more frame to settle.
+    let settling = st.flips < MAX_GUTTER_FLIPS
+        && (0..2).any(|axis| st.follows_need[axis] && st.needed[axis] != st.reserved[axis]);
+    if (alpha > 0.0 && !classic) || growing || settling {
         window.request_animation_frame();
     }
 }
@@ -417,38 +690,53 @@ pub(crate) fn paint(
     window: &mut gpui::Window,
     _cx: &mut gpui::App,
 ) {
-    let (layout, hitboxes, alpha) = {
+    let (layout, empty_tracks, hitboxes, alpha) = {
         let mut st = state.borrow_mut();
         for index in 0..2 {
             if let Some(hitbox) = &st.hitboxes[index] {
                 st.hover[index] = hitbox.is_hovered(window);
             }
         }
-        (st.layout, st.hitboxes.clone(), st.alpha)
+        (st.layout, st.empty_tracks.clone(), st.hitboxes.clone(), st.alpha)
     };
     if alpha <= 0.0 {
         return;
     }
 
+    let classic = look.classic();
     let (thumb_color, track_color) = look
         .colors
-        .unwrap_or_else(|| default_colors(window));
+        .unwrap_or_else(|| default_colors(window, classic));
     let (rest, hover) = look.thickness();
-    let scaled = |color: gpui::Rgba| -> gpui::Hsla {
-        gpui::Rgba { a: color.a * alpha, ..color }.into()
+    let scaled = |color: gpui::Rgba, share: f32| -> gpui::Hsla {
+        gpui::Rgba { a: color.a * alpha * share, ..color }.into()
     };
+    let paint_rect = |window: &mut gpui::Window, bounds, radius: f32, color| {
+        window.paint_quad(gpui::quad(
+            bounds,
+            gpui::px(radius),
+            color,
+            gpui::px(0.0),
+            gpui::transparent_black(),
+            gpui::BorderStyle::default(),
+        ));
+    };
+    for track in &empty_tracks {
+        paint_rect(window, *track, 0.0, scaled(track_color, 1.0));
+    }
     {
         let st = state.borrow();
+        let now = now();
         for (index, vertical) in [(0, false), (1, true)] {
             let Some(axis) = layout[index] else { continue };
-            let hovered = st.hover[index] || st.drag.is_some_and(|drag| drag.axis == index);
-            let thickness = if hovered { hover } else { rest };
+            let grown = st.grow[index].value(now);
+            let thickness = rest + (hover - rest) * grown;
             let strip = axis.strip;
             let rect = |start: f32, len: f32, thickness: f32| {
                 if vertical {
                     gpui::Bounds::new(
                         gpui::point(
-                            strip.right() - gpui::px(EDGE_INSET + thickness),
+                            strip.right() - gpui::px(axis.inset + thickness),
                             gpui::px(axis.track_start + start),
                         ),
                         gpui::size(gpui::px(thickness), gpui::px(len)),
@@ -457,30 +745,27 @@ pub(crate) fn paint(
                     gpui::Bounds::new(
                         gpui::point(
                             gpui::px(axis.track_start + start),
-                            strip.bottom() - gpui::px(EDGE_INSET + thickness),
+                            strip.bottom() - gpui::px(axis.inset + thickness),
                         ),
                         gpui::size(gpui::px(len), gpui::px(thickness)),
                     )
                 }
             };
-            let paint_rect = |window: &mut gpui::Window, bounds, thickness: f32, color| {
-                window.paint_quad(gpui::quad(
-                    bounds,
-                    gpui::px(thickness / 2.0),
-                    color,
-                    gpui::px(0.0),
-                    gpui::transparent_black(),
-                    gpui::BorderStyle::default(),
-                ));
-            };
-            if hovered {
-                paint_rect(window, rect(0.0, axis.track_len, hover), hover, scaled(track_color));
+            if classic {
+                paint_rect(window, strip, 0.0, scaled(track_color, 1.0));
+            } else if grown > 0.0 {
+                paint_rect(
+                    window,
+                    rect(0.0, axis.track_len, hover),
+                    hover / 2.0,
+                    scaled(track_color, grown),
+                );
             }
             paint_rect(
                 window,
                 rect(axis.thumb_start, axis.thumb_len, thickness),
-                thickness,
-                scaled(thumb_color),
+                thickness / 2.0,
+                scaled(thumb_color, 1.0),
             );
         }
     }
@@ -630,5 +915,80 @@ mod tests {
         assert!(look("none").hidden());
         assert_eq!(look("auto").thickness(), (7.0, 11.0));
         assert_eq!(look("nonsense").thickness(), (7.0, 11.0));
+    }
+
+    fn classic_look(width: Option<&str>) -> Look {
+        let mut look = Look::of(
+            &StyleDesc { scrollbar_width: width.map(str::to_string), ..Default::default() },
+            &crate::color::ColorContext::root(crate::color::Scheme::Light),
+        );
+        look.scroller = ScrollerStyle::Classic;
+        look
+    }
+
+    #[test]
+    fn a_classic_bar_takes_15_pixels_or_11_when_thin_and_an_overlay_takes_none() {
+        assert_eq!(classic_look(None).gutter(), 15.0);
+        assert_eq!(classic_look(Some("thin")).gutter(), 11.0);
+        assert_eq!(classic_look(Some("none")).gutter(), 0.0);
+        let overlay = Look::of(
+            &StyleDesc::default(),
+            &crate::color::ColorContext::root(crate::color::Scheme::Light),
+        );
+        assert_eq!(overlay.gutter(), 0.0);
+    }
+
+    #[test]
+    fn a_classic_thumb_fills_its_gutter_less_the_inset_and_does_not_thicken() {
+        assert_eq!(classic_look(None).thickness(), (9.0, 9.0));
+        assert_eq!(classic_look(Some("thin")).thickness(), (7.0, 7.0));
+        assert_eq!(classic_look(None).bar(), 15.0);
+    }
+
+    #[test]
+    fn the_scrollbar_style_is_overlay_or_classic() {
+        assert_eq!(ScrollerStyle::parse("overlay"), Ok(ScrollerStyle::Overlay));
+        assert_eq!(ScrollerStyle::parse("classic"), Ok(ScrollerStyle::Classic));
+        assert!(ScrollerStyle::parse("always").is_err());
+    }
+
+    #[test]
+    fn scroll_reserves_a_gutter_and_auto_only_once_something_scrolls() {
+        assert!(wants_gutter(Overflow::Scroll, false));
+        assert!(!wants_gutter(Overflow::Auto, false));
+        assert!(wants_gutter(Overflow::Auto, true));
+        assert!(!wants_gutter(Overflow::Hidden, true));
+        assert!(!wants_gutter(Overflow::Visible, true));
+    }
+
+    #[test]
+    fn thickening_eases_over_150_ms_from_wherever_it_was() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut grow = Grow::default();
+        assert_eq!(grow.value(at(0)), 0.0);
+        grow.aim(1.0, at(0));
+        assert_eq!(grow.value(at(0)), 0.0);
+        assert!((grow.value(at(75)) - 0.5).abs() < 0.001);
+        assert!(grow.value(at(30)) < 0.2, "eases in");
+        assert_eq!(grow.value(at(150)), 1.0);
+        assert_eq!(grow.value(at(10_000)), 1.0);
+        assert!(grow.animating(at(149)) && !grow.animating(at(150)));
+
+        // The pointer leaves halfway: it thins from where it got to, not from fully grown.
+        let mut grow = Grow::default();
+        grow.aim(1.0, at(0));
+        grow.aim(0.0, at(75));
+        assert!((grow.value(at(75)) - 0.5).abs() < 0.001);
+        assert_eq!(grow.value(at(225)), 0.0);
+    }
+
+    #[test]
+    fn aiming_at_the_same_target_does_not_restart_the_ease() {
+        let start = Instant::now();
+        let mut grow = Grow::default();
+        grow.aim(1.0, start);
+        grow.aim(1.0, start + Duration::from_millis(100));
+        assert_eq!(grow.value(start + Duration::from_millis(150)), 1.0);
     }
 }
