@@ -8,6 +8,7 @@ use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
 use crate::css::color_space::Space;
+use crate::css::length::LengthContext;
 use crate::style::StyleDesc;
 
 /// The colour contexts an element's animated colours resolve in, so
@@ -20,7 +21,57 @@ pub(crate) struct Colors {
     pub(super) element: ColorContext,
     /// What `color` resolves in: `currentColor` is the parent's colour.
     pub(super) text: ColorContext,
+    /// The element's computed font, which an unset `fontSize` or `fontWeight` is.
+    pub(super) font: Font,
 }
+
+/// A computed `font-size` in px and `font-weight`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Font {
+    pub(super) size: f64,
+    pub(super) weight: f64,
+}
+
+/// The font an element inherits, with what its own `font-size` needs to resolve:
+/// `em` and `%` are of the parent's size, `rem` of the root's, `vw` of the window.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ParentFont {
+    /// The parent's context, as `LengthContext::descend` takes it.
+    pub(crate) lengths: LengthContext,
+    /// The element is the root, whose `rem` is its own computed size.
+    pub(crate) above_root: bool,
+    pub(crate) weight: f64,
+}
+
+impl ParentFont {
+    /// The font above everything: the initial size and weight, in a window of unknown size.
+    pub(crate) fn initial() -> Self {
+        Self { lengths: LengthContext::initial(0.0, 0.0), above_root: true, weight: INITIAL_FONT_WEIGHT }
+    }
+
+    /// What children of an element styled by `style` inherit.
+    pub(crate) fn descend(&self, style: Option<&StyleDesc>) -> Self {
+        let font = self.of(style);
+        Self {
+            lengths: self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root),
+            above_root: false,
+            weight: font.weight,
+        }
+    }
+
+    fn of(&self, style: Option<&StyleDesc>) -> Font {
+        let lengths = self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root);
+        Font {
+            size: lengths.font_size,
+            weight: style
+                .and_then(|style| style.font_weight.as_ref())
+                .map_or(self.weight, super::property::font_weight),
+        }
+    }
+}
+
+/// CSS `font-weight: normal`.
+pub(crate) const INITIAL_FONT_WEIGHT: f64 = 400.0;
 
 static NO_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(StyleDesc::default);
 
@@ -31,12 +82,18 @@ impl Colors {
         Self::of(&ColorContext::root(crate::color::Scheme::Light), None)
     }
 
-    /// `parent` is the context the element inherits, `style` what it declares.
+    /// `parent` is the context the element inherits, `style` what it declares. The font
+    /// is the initial one: an element whose font may differ goes through [`Self::inheriting`].
     pub(crate) fn of(parent: &ColorContext, style: Option<&StyleDesc>) -> Self {
-        let style = style.unwrap_or(&NO_STYLE);
+        Self::inheriting(parent, &ParentFont::initial(), style)
+    }
+
+    pub(crate) fn inheriting(parent: &ColorContext, font: &ParentFont, style: Option<&StyleDesc>) -> Self {
+        let declared = style.unwrap_or(&NO_STYLE);
         Self {
-            element: parent.descend(style),
-            text: parent.for_color_property(style),
+            element: parent.descend(declared),
+            text: parent.for_color_property(declared),
+            font: font.of(style),
         }
     }
 

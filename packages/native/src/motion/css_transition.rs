@@ -13,7 +13,7 @@ use web_time::Instant;
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp};
-use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair};
+use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentFont};
 use super::MotionState;
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -811,6 +811,7 @@ impl ElementState {
         id: u64,
         after: &StyleDesc,
         parent_colors: &ColorContext,
+        parent_font: &ParentFont,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
@@ -832,7 +833,7 @@ impl ElementState {
         // while `light-dark()` computes to the colour its scheme picks, so a flip
         // is a change like any other. The before-change style is the last
         // frame's, in the colours of the last frame.
-        let colors = Colors::of(parent_colors, Some(after));
+        let colors = Colors::inheriting(parent_colors, parent_font, Some(after));
         let previous_colors = std::mem::replace(&mut self.colors, colors);
         let colors_changed = colors != previous_colors;
         let style_changed = self.previous != *after;
@@ -1107,9 +1108,9 @@ impl CssTransitions {
     /// declared a transition. The transitions of a change come from the style
     /// after it, so a change that also adds the declaration must not be the
     /// first style the element is seen with.
-    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext) {
+    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext, parent_font: &ParentFont) {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.states.entry(id) {
-            let colors = Colors::of(parent_colors, Some(before));
+            let colors = Colors::inheriting(parent_colors, parent_font, Some(before));
             slot.insert(ElementState::new(id, before, colors));
         }
     }
@@ -1122,13 +1123,14 @@ impl CssTransitions {
         id: u64,
         after: &StyleDesc,
         parent_colors: &ColorContext,
+        parent_font: &ParentFont,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
-            let colors = Colors::of(parent_colors, Some(after));
+            let colors = Colors::inheriting(parent_colors, parent_font, Some(after));
             self.states.insert(id, ElementState::new(id, after, colors));
             return None;
         };
@@ -1137,6 +1139,7 @@ impl CssTransitions {
             id,
             after,
             parent_colors,
+            parent_font,
             motion,
             measurement,
             interpolate_size,
@@ -1449,6 +1452,7 @@ mod tests {
         /// The `interpolateSize` an ancestor gives the element.
         inherited: InterpolateSize,
         parent_colors: ColorContext,
+        parent_font: ParentFont,
     }
 
     impl Clock {
@@ -1458,6 +1462,7 @@ mod tests {
                 transitions: CssTransitions::default(),
                 inherited: InterpolateSize::default(),
                 parent_colors: ColorContext::root(crate::color::Scheme::Light),
+                parent_font: ParentFont::initial(),
             }
         }
 
@@ -1504,6 +1509,7 @@ mod tests {
                         id,
                         after,
                         &self.parent_colors,
+                        &self.parent_font,
                         motion,
                         measurement,
                         self.inherited,
@@ -1713,7 +1719,7 @@ mod tests {
     fn an_element_seeded_with_the_style_before_its_declaration_transitions_the_change_that_adds_it() {
         let mut clock = Clock::new();
         let before = style(r#"{ "width": 0 }"#);
-        clock.transitions.seed(1, &before, &clock.parent_colors);
+        clock.transitions.seed(1, &before, &clock.parent_colors, &clock.parent_font);
         assert_eq!(width_of(&clock.frame(0, &sized(100.0, "width 1s linear"))), 0.0);
         assert_eq!(clock.events(), [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0)]);
         assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
@@ -1724,7 +1730,7 @@ mod tests {
         let mut clock = Clock::new();
         clock.frame(0, &sized(0.0, "width 1s linear"));
         clock.frame(0, &sized(100.0, "width 1s linear"));
-        clock.transitions.seed(1, &style(r#"{ "width": 7 }"#), &clock.parent_colors);
+        clock.transitions.seed(1, &style(r#"{ "width": 7 }"#), &clock.parent_colors, &clock.parent_font);
         assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
     }
 
@@ -2288,6 +2294,7 @@ mod tests {
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
+                flex_main: crate::motion::property::Axis::Width,
             }
         }
 
@@ -2770,6 +2777,56 @@ mod tests {
         }
 
         #[test]
+        fn a_padding_percentage_resolves_against_the_parent_width_on_every_side() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            let padded = |padding: &str| {
+                style(&format!(
+                    r#"{{ "paddingTop": {padding}, "paddingLeft": {padding}, "transition": "padding-top 1s linear, padding-left 1s linear" }}"#
+                ))
+            };
+            clock.frame_measured(0, &padded("0"), None, Some(&parent));
+            clock.frame_measured(0, &padded(r#""50%""#), None, Some(&parent));
+            let middle = clock.frame_measured(500, &padded(r#""50%""#), None, Some(&parent));
+            assert_eq!(middle.padding_top, Some(LinearLength::px(50.0)));
+            assert_eq!(middle.padding_left, Some(LinearLength::px(50.0)));
+            let ended = clock.frame_measured(1000, &padded(r#""50%""#), None, Some(&parent));
+            assert_eq!(ended.padding_top, Some(LinearLength::percent(0.5)));
+        }
+
+        #[test]
+        fn a_padding_percentage_meeting_a_percentage_interpolates_as_a_percentage() {
+            let mut clock = Clock::new();
+            let parent = in_parent(200.0, 80.0);
+            let padded = |padding: &str| {
+                style(&format!(r#"{{ "padding": {padding}, "transition": "padding 1s linear" }}"#))
+            };
+            clock.frame_measured(0, &padded(r#""10%""#), None, Some(&parent));
+            clock.frame_measured(0, &padded(r#""30%""#), None, Some(&parent));
+            let middle = clock.frame_measured(500, &padded(r#""30%""#), None, Some(&parent));
+            assert_eq!(middle.padding_left, Some(LinearLength::percent(0.2)));
+        }
+
+        #[test]
+        fn a_flex_basis_percentage_is_of_the_width_in_a_row_and_the_height_in_a_column() {
+            let basis = |value: &str| {
+                style(&format!(r#"{{ "flexBasis": {value}, "transition": "flex-basis 1s linear" }}"#))
+            };
+            let middle_in = |parent: &Measurement| {
+                let mut clock = Clock::new();
+                clock.frame_measured(0, &basis("0"), None, Some(parent));
+                clock.frame_measured(0, &basis(r#""50%""#), None, Some(parent));
+                clock.frame_measured(500, &basis(r#""50%""#), None, Some(parent)).flex_basis
+            };
+            let row = in_parent(200.0, 80.0);
+            assert_eq!(middle_in(&row), Some(DimensionValue::Pixels(50.0)));
+            let column = Measurement { flex_main: crate::motion::property::Axis::Height, ..in_parent(200.0, 80.0) };
+            assert_eq!(middle_in(&column), Some(DimensionValue::Pixels(20.0)));
+            let auto_column = Measurement { percent_height_resolves: false, natural_height: gpui::px(60.0), ..column };
+            assert_eq!(middle_in(&auto_column), Some(DimensionValue::Pixels(30.0)));
+        }
+
+        #[test]
         fn an_inset_percentage_resolves_against_the_parent_height_for_top_and_the_width_for_left() {
             let mut clock = Clock::new();
             let parent = in_parent(200.0, 80.0);
@@ -3161,6 +3218,39 @@ mod tests {
                 assert_eq!(prop.read(&at_once, &Colors::root()), Some(target), "{declaration}");
                 assert!(clock.events().is_empty(), "{declaration}: {:?}", clock.events());
             }
+        }
+
+        /// A parent whose computed font is 20px at weight 700, in a window of 800 by 600.
+        fn inside_a_large_bold_parent(clock: &mut Clock) {
+            clock.parent_font = ParentFont {
+                lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
+                    .descend(Some(&LinearLength::px(20.0)), true),
+                above_root: false,
+                weight: 700.0,
+            };
+        }
+
+        #[test]
+        fn an_unset_font_size_and_weight_leave_from_the_inherited_ones() {
+            let mut clock = Clock::new();
+            inside_a_large_bold_parent(&mut clock);
+            clock.frame(0, &with_transition(""));
+            let target = with_transition(r#""fontSize": 40, "fontWeight": 300,"#);
+            clock.frame(0, &target);
+            let middle = clock.frame(500, &target);
+            assert_eq!(AnimProp::FontSize.read(&middle, &Colors::root()), Some(AnimValue::Number(30.0)));
+            assert_eq!(AnimProp::FontWeight.read(&middle, &Colors::root()), Some(AnimValue::Number(500.0)));
+        }
+
+        #[test]
+        fn a_font_size_in_em_computes_against_the_inherited_size_for_the_start_of_a_transition() {
+            let mut clock = Clock::new();
+            inside_a_large_bold_parent(&mut clock);
+            clock.frame(0, &with_transition(r#""fontSize": "2em","#));
+            let target = with_transition(r#""fontSize": 20,"#);
+            clock.frame(0, &target);
+            let middle = clock.frame(500, &target);
+            assert_eq!(AnimProp::FontSize.read(&middle, &Colors::root()), Some(AnimValue::Number(30.0)));
         }
 
         #[test]

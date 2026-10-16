@@ -4980,29 +4980,31 @@ fn emit_motion_value_events(
     }
 }
 
-/// The colour context `id`'s parent hands it, from the styles the tree
-/// declares. Motion resolves its colours before the build, which is where a
-/// context is otherwise made, so a state style (`hover`) that sets an ancestor's
-/// `color` is not in it. `known` holds the contexts already made this frame.
-fn parent_color_context(
+/// What `id`'s parent hands it, from the styles the tree declares: the colour
+/// context and the font. Motion resolves its values before the build, which is
+/// where these are otherwise made, so a state style (`hover`) that sets an
+/// ancestor's `color` or `fontSize` is not in them. `known` holds what was already
+/// made this frame, for the element each entry belongs to.
+fn parent_inherited(
     tree: &crate::retained_tree::RetainedTree,
     id: u64,
-    root: &crate::color::ColorContext,
-    known: &mut HashMap<u64, crate::color::ColorContext>,
-) -> crate::color::ColorContext {
+    root: &(crate::color::ColorContext, crate::motion::ParentFont),
+    known: &mut HashMap<u64, (crate::color::ColorContext, crate::motion::ParentFont)>,
+) -> (crate::color::ColorContext, crate::motion::ParentFont) {
     let Some(parent) = tree.elements.get(&id).and_then(|element| element.parent) else {
         return *root;
     };
-    if let Some(context) = known.get(&parent) {
-        return *context;
+    if let Some(inherited) = known.get(&parent) {
+        return *inherited;
     }
-    let above = parent_color_context(tree, parent, root, known);
-    let context = match tree.elements.get(&parent).and_then(|element| element.style.as_deref()) {
-        Some(style) => above.descend(style),
-        None => above,
+    let above = parent_inherited(tree, parent, root, known);
+    let style = tree.elements.get(&parent).and_then(|element| element.style.as_deref());
+    let inherited = match style {
+        Some(style) => (above.0.descend(style), above.1.descend(Some(style))),
+        None => (above.0, above.1.descend(None)),
     };
-    known.insert(parent, context);
-    context
+    known.insert(parent, inherited);
+    inherited
 }
 
 fn sync_motion_states(
@@ -5010,10 +5012,16 @@ fn sync_motion_states(
     states: &mut HashMap<u64, crate::motion::MotionState>,
     measurements: &crate::motion::measure::Measurements,
     appearance: gpui::WindowAppearance,
+    viewport: gpui::Size<gpui::Pixels>,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
-    let root = crate::color::ColorContext::root(color_scheme_of(appearance));
+    let mut root_font = crate::motion::ParentFont::initial();
+    root_font.lengths = LengthContext::initial(
+        f64::from(f32::from(viewport.width)),
+        f64::from(f32::from(viewport.height)),
+    );
+    let root = (crate::color::ColorContext::root(color_scheme_of(appearance)), root_font);
     let mut known_colors = HashMap::new();
     states.retain(|id, _| tree.motion_ids.contains(id));
     let mut active = false;
@@ -5027,8 +5035,8 @@ fn sync_motion_states(
             continue;
         };
         let base = element.style.as_deref();
-        let parent_colors = parent_color_context(tree, id, &root, &mut known_colors);
-        let colors = crate::motion::Colors::of(&parent_colors, base);
+        let (parent_colors, parent_font) = parent_inherited(tree, id, &root, &mut known_colors);
+        let colors = crate::motion::Colors::inheriting(&parent_colors, &parent_font, base);
         let measurement = measurements.get(id);
         // An SVG shape animates its attributes, not a style.
         let svg_attributes = crate::custom_elements::svg_tree::is_svg_element(tree, element)
@@ -5719,6 +5727,7 @@ impl GpuixView {
                 &mut self.motion_states,
                 &self.measurements,
                 window.appearance(),
+                window.viewport_size(),
                 now,
             );
         let motion_values_active =
@@ -6011,6 +6020,8 @@ pub(crate) struct Inherited {
     /// the viewport units resolve against. The viewport is read again on every
     /// build, including a virtual list's rows.
     pub lengths: LengthContext,
+    /// Computed `font-weight`, which an unset one of a transition or motion starts from.
+    pub font_weight: f64,
     /// No element has been built yet: the next one is the root, whose computed
     /// font size becomes the `rem`.
     above_root: bool,
@@ -6045,6 +6056,11 @@ struct GroupState {
 }
 
 impl Inherited {
+    /// The font the element being built inherits.
+    fn parent_font(&self) -> crate::motion::ParentFont {
+        crate::motion::ParentFont { lengths: self.lengths, above_root: self.above_root, weight: self.font_weight }
+    }
+
     /// The state of the nearest ancestor `group` called `name`; all false when
     /// no ancestor declares it.
     fn group_state(&self, name: &gpui::SharedString) -> GroupState {
@@ -6079,6 +6095,7 @@ impl Inherited {
                 f64::from(f32::from(viewport.width)),
                 f64::from(f32::from(viewport.height)),
             ),
+            font_weight: crate::motion::INITIAL_FONT_WEIGHT,
             above_root: true,
             font_state: Default::default(),
             font_features: None,
@@ -6102,6 +6119,9 @@ impl Inherited {
             self.pointer_events_none = true;
         }
         let Some(style) = style else { return self };
+        if let Some(weight) = &style.font_weight {
+            self.font_weight = f64::from(parse_font_weight(weight).0);
+        }
         (self.font_state, self.font_features) = self.font_state.descend(
             style.font_variant_numeric.as_deref(),
             style.font_feature_settings.as_deref(),
@@ -6832,6 +6852,7 @@ impl gpui::Render for GpuixView {
                 &mut self.motion_states,
                 &self.measurements,
                 window.appearance(),
+                window.viewport_size(),
                 now,
             );
         self.motion_values
@@ -7067,6 +7088,7 @@ pub(crate) fn build_element(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             element.style_before_transition(),
             &ctx.inherited.colors,
+            &ctx.inherited.parent_font(),
             pointer_states,
             ctx.motion_states.get(&id),
             id,
@@ -7129,6 +7151,7 @@ pub(crate) fn build_element(
                     declared,
                     underlying_style.unwrap_or(&EMPTY_STYLE),
                     &ctx.inherited.colors,
+                    &ctx.inherited.parent_font(),
                     ctx.keyframes,
                     measurement.as_ref(),
                     ctx.inherited.interpolate_size,
@@ -7313,7 +7336,10 @@ pub(crate) fn build_element(
     let built = if measured {
         ctx.measurements.wrap(
             id,
-            ctx.inherited.container.resolves_percent_height(style),
+            crate::motion::measure::Containment {
+                percent_height_resolves: ctx.inherited.container.resolves_percent_height(style),
+                flex_main: ctx.inherited.container.flex_main(),
+            },
             built,
         )
     } else {

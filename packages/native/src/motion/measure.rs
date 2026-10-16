@@ -17,6 +17,16 @@ use gpui::{
 
 use super::property::{AnimProp, Axis};
 
+/// What an element's container says about the percentages of the element, as
+/// `containing::Container` knows it from the styles above.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Containment {
+    /// `Container::resolves_percent_height` for the element.
+    pub percent_height_resolves: bool,
+    /// `Container::flex_main` of the element's parent.
+    pub flex_main: Axis,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Measurement {
     /// The painted border box.
@@ -37,6 +47,9 @@ pub(crate) struct Measurement {
     /// Whether a percentage `height` of the element has a definite height to
     /// resolve against. CSS treats one that has not as `auto`.
     pub percent_height_resolves: bool,
+    /// The main axis of the element's flex container, which a `flexBasis`
+    /// percentage is a share of (the width where the parent is no flex container).
+    pub flex_main: Axis,
 }
 
 impl Measurement {
@@ -71,8 +84,9 @@ impl Measurement {
     /// The parent stands in for the containing block, which an absolute box
     /// resolves against its nearest positioned ancestor's padding box instead.
     pub(super) fn percent_px(&self, prop: AnimProp, fraction: f64) -> Option<f64> {
-        let axis = prop.percent_axis()?;
-        if prop == AnimProp::Height && !self.percent_height_resolves {
+        let axis = prop.percent_axis(self.flex_main)?;
+        let height_share = prop == AnimProp::Height || (prop == AnimProp::FlexBasis && axis == Axis::Height);
+        if height_share && !self.percent_height_resolves {
             return self.natural_px(AnimProp::Height);
         }
         let length = match axis {
@@ -134,17 +148,16 @@ impl Measurements {
         move |_, _, _| painted_frames.set(painted_frames.get() + 1)
     }
 
-    /// `child` wrapped so each paint of it keeps `id` measured. `percent_height_resolves` is
-    /// what `Container::resolves_percent_height` said.
+    /// `child` wrapped so each paint of it keeps `id` measured.
     ///
     /// A wrapper rather than `on_painted_layout` on the element: that listener
     /// lives on GPUI's `Interactivity`, which `<img>`, `<svg>`, `<input>` and
     /// the other custom elements build behind an `AnyElement`.
-    pub(crate) fn wrap(&self, id: u64, percent_height_resolves: bool, child: AnyElement) -> AnyElement {
+    pub(crate) fn wrap(&self, id: u64, container: Containment, child: AnyElement) -> AnyElement {
         self.wrapped.borrow_mut().insert(id);
         Measured {
             id,
-            percent_height_resolves,
+            container,
             measurements: self.clone(),
             child,
         }
@@ -154,7 +167,7 @@ impl Measurements {
     fn record(
         &self,
         id: u64,
-        percent_height_resolves: bool,
+        container: Containment,
         bounds: Bounds<Pixels>,
         layout_id: LayoutId,
         window: &mut Window,
@@ -168,7 +181,8 @@ impl Measurements {
                 .layout_parent_content_size(layout_id)
                 .unwrap_or_else(|| window.viewport_size()),
             scale_factor: window.scale_factor(),
-            percent_height_resolves,
+            percent_height_resolves: container.percent_height_resolves,
+            flex_main: container.flex_main,
         };
         self.by_element.borrow_mut().insert(id, measurement);
     }
@@ -176,7 +190,7 @@ impl Measurements {
 
 struct Measured {
     id: u64,
-    percent_height_resolves: bool,
+    container: Containment,
     measurements: Measurements,
     child: AnyElement,
 }
@@ -248,7 +262,7 @@ impl Element for Measured {
     ) {
         self.child.paint(window, cx);
         self.measurements
-            .record(self.id, self.percent_height_resolves, bounds, *layout_id, window);
+            .record(self.id, self.container, bounds, *layout_id, window);
     }
 }
 
@@ -281,6 +295,7 @@ mod tests {
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor,
             percent_height_resolves: true,
+            flex_main: Axis::Width,
         }
     }
 
@@ -362,6 +377,37 @@ mod tests {
     }
 
     #[test]
+    fn a_padding_percentage_is_a_share_of_the_width_on_every_side() {
+        let nested = Measurement {
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+            ..measurement(50.0, 1.0)
+        };
+        for padding in [
+            AnimProp::PaddingTop,
+            AnimProp::PaddingRight,
+            AnimProp::PaddingBottom,
+            AnimProp::PaddingLeft,
+        ] {
+            assert_eq!(nested.percent_px(padding, 0.25), Some(50.0), "{padding:?}");
+        }
+    }
+
+    #[test]
+    fn a_flex_basis_percentage_is_a_share_of_the_main_size_of_the_container() {
+        let row = Measurement {
+            parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+            ..measurement(50.0, 1.0)
+        };
+        assert_eq!(row.percent_px(AnimProp::FlexBasis, 0.5), Some(100.0));
+        let column = Measurement { flex_main: Axis::Height, ..row };
+        assert_eq!(column.percent_px(AnimProp::FlexBasis, 0.5), Some(40.0));
+        // A column with no definite height has the content to size by, as `height: auto`.
+        let indefinite = Measurement { percent_height_resolves: false, ..column };
+        assert_eq!(indefinite.percent_px(AnimProp::FlexBasis, 0.5), Some(50.0));
+        assert_eq!(Measurement { percent_height_resolves: false, ..row }.percent_px(AnimProp::FlexBasis, 0.5), Some(100.0));
+    }
+
+    #[test]
     fn a_margin_percentage_is_a_share_of_the_width_on_every_side() {
         let nested = Measurement {
             parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
@@ -397,11 +443,16 @@ mod tests {
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
             percent_height_resolves: true,
+            flex_main: Axis::Width,
         }
     }
 
     fn wrap_empty(measurements: &Measurements, id: u64) {
-        measurements.wrap(id, true, gpui::Empty.into_any_element());
+        measurements.wrap(
+            id,
+            Containment { percent_height_resolves: true, flex_main: Axis::Width },
+            gpui::Empty.into_any_element(),
+        );
     }
 
     #[test]

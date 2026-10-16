@@ -26,7 +26,7 @@ use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::AnimProp;
 use super::track::{Goal, Track};
-use super::value::{AnimValue, Colors, Interpolation};
+use super::value::{AnimValue, Colors, Interpolation, ParentFont};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -938,12 +938,13 @@ impl Run {
         progress: f64,
         underlying: &StyleDesc,
         parent_colors: &ColorContext,
+        parent_font: &ParentFont,
         measurement: Option<&Measurement>,
         allow_keywords: bool,
         now: Instant,
     ) -> Vec<(AnimProp, Option<AnimValue>)> {
         let reads_layout = self.plan.as_ref().is_none_or(|plan| plan.reads_layout);
-        let colors = Colors::of(parent_colors, Some(underlying));
+        let colors = Colors::inheriting(parent_colors, parent_font, Some(underlying));
         let key = PlanKey {
             timing: self.params.timing.clone(),
             colors,
@@ -1131,6 +1132,7 @@ impl CssAnimations {
         declared: &StyleDesc,
         underlying: &StyleDesc,
         parent_colors: &ColorContext,
+        parent_font: &ParentFont,
         registry: &KeyframesRegistry,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
@@ -1152,6 +1154,7 @@ impl CssAnimations {
                     progress,
                     underlying,
                     parent_colors,
+                    parent_font,
                     measurement,
                     allow_keywords,
                     now,
@@ -1433,6 +1436,7 @@ mod tests {
         registry: KeyframesRegistry,
         inherited: InterpolateSize,
         parent_colors: ColorContext,
+        parent_font: ParentFont,
     }
 
     type Seen = Vec<(AnimationEventKind, String, f64)>;
@@ -1445,6 +1449,7 @@ mod tests {
                 registry: KeyframesRegistry::default(),
                 inherited: InterpolateSize::default(),
                 parent_colors: ColorContext::root(crate::color::Scheme::Light),
+                parent_font: ParentFont::initial(),
             }
         }
 
@@ -1485,6 +1490,7 @@ mod tests {
                 declared,
                 underlying,
                 &self.parent_colors,
+                &self.parent_font,
                 &self.registry,
                 measurement,
                 self.inherited,
@@ -1508,6 +1514,7 @@ mod tests {
                 1,
                 declared,
                 &self.parent_colors,
+                &self.parent_font,
                 None,
                 None,
                 self.inherited,
@@ -1523,6 +1530,7 @@ mod tests {
                 declared,
                 &underlying,
                 &self.parent_colors,
+                &self.parent_font,
                 &self.registry,
                 None,
                 self.inherited,
@@ -1995,6 +2003,7 @@ mod tests {
                 declared,
                 declared,
                 &frames.parent_colors,
+                &frames.parent_font,
                 &frames.registry,
                 None,
                 frames.inherited,
@@ -2188,10 +2197,28 @@ mod tests {
     #[test]
     fn an_endpoint_that_cannot_be_resolved_holds_the_nearest_keyframe() {
         let mut frames = Frames::new();
-        frames.define("grow", r#"{ "to": { "fontSize": 20 } }"#);
+        frames.define("grow", r#"{ "to": { "lineHeight": 2 } }"#);
+        let animated = fading("grow 1s linear");
+        let multiplier = Some(crate::css::line_height::LineHeight::Multiplier(2.0));
+        assert_eq!(frames.frame(0, &animated).line_height, multiplier);
+        assert_eq!(frames.frame(500, &animated).line_height, multiplier);
+    }
+
+    #[test]
+    fn a_missing_font_size_endpoint_is_the_inherited_size() {
+        let mut frames = Frames::new();
+        frames.parent_font = ParentFont {
+            lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
+                .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
+            above_root: false,
+            weight: 700.0,
+        };
+        frames.define("grow", r#"{ "to": { "fontSize": 40, "fontWeight": 300 } }"#);
         let animated = fading("grow 1s linear");
         assert_eq!(frames.frame(0, &animated).font_size, Some(crate::css::length::LinearLength::px(20.0)));
-        assert_eq!(frames.frame(500, &animated).font_size, Some(crate::css::length::LinearLength::px(20.0)));
+        let middle = frames.frame(500, &animated);
+        assert_eq!(middle.font_size, Some(crate::css::length::LinearLength::px(30.0)));
+        assert_eq!(AnimProp::FontWeight.read(&middle, &Colors::root()), Some(AnimValue::Number(500.0)));
     }
 
     #[test]
@@ -2279,6 +2306,7 @@ mod tests {
             parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
             scale_factor: 1.0,
             percent_height_resolves: true,
+            flex_main: crate::motion::property::Axis::Width,
         }
     }
 

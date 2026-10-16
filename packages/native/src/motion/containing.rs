@@ -12,6 +12,7 @@
 //! with both `top` and `bottom`, and a flex item the container sizes. A grid
 //! item is never taken as definite, though a grid with fixed rows sizes it.
 
+use super::property::Axis;
 use crate::style::{DimensionValue, StyleDesc};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +66,16 @@ impl Container {
     /// resolve against, which always has a height.
     pub(crate) fn resolves_percent_height(self, style: Option<&StyleDesc>) -> bool {
         self.height_definite || style.is_some_and(is_out_of_flow)
+    }
+
+    /// The axis a `flexBasis` percentage of a child is a share of: the main axis
+    /// of a flex container. A child of anything else has no flex basis in effect, and
+    /// its percentage is taken of the width.
+    pub(crate) fn flex_main(self) -> Axis {
+        match self.layout {
+            Layout::Flex { column: true, .. } => Axis::Height,
+            Layout::Flex { .. } | Layout::Other => Axis::Width,
+        }
     }
 
     /// The container an element of `style` makes for its children.
@@ -201,5 +212,17 @@ mod tests {
     #[test]
     fn a_block_child_of_a_definite_parent_is_not_definite() {
         assert!(!resolves(below(&[r#"{ "height": 200 }"#, "{}"]), "{}"));
+    }
+
+    #[test]
+    fn the_flex_main_axis_is_the_direction_of_a_flex_container_and_the_width_of_anything_else() {
+        let main = |container: &str| below(&[container]).flex_main();
+        assert_eq!(main(r#"{ "display": "flex" }"#), Axis::Width);
+        assert_eq!(main(r#"{ "display": "flex", "flexDirection": "row-reverse" }"#), Axis::Width);
+        assert_eq!(main(r#"{ "display": "flex", "flexDirection": "column" }"#), Axis::Height);
+        assert_eq!(main(r#"{ "display": "flex", "flexDirection": "column-reverse" }"#), Axis::Height);
+        // `flex-direction` means nothing on a block.
+        assert_eq!(main(r#"{ "flexDirection": "column" }"#), Axis::Width);
+        assert_eq!(Container::WINDOW.flex_main(), Axis::Width);
     }
 }

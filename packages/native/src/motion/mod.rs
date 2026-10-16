@@ -40,7 +40,7 @@ use measure::Measurement;
 use property::AnimProp;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
-pub(crate) use value::Colors;
+pub(crate) use value::{Colors, ParentFont, INITIAL_FONT_WEIGHT};
 use value::{AnimValue, Interpolation};
 
 /// The animated properties' current values, ready to lay over a style.
@@ -741,6 +741,7 @@ pub(crate) fn resolve_declared_style(
     mut transitions: Option<&mut CssTransitions>,
     before: Option<&StyleDesc>,
     parent_colors: &crate::color::ColorContext,
+    parent_font: &ParentFont,
     pointer: crate::events::state_styles::PointerStates,
     motion: Option<&MotionState>,
     id: u64,
@@ -751,11 +752,11 @@ pub(crate) fn resolve_declared_style(
     now: Instant,
 ) -> DeclaredStyle {
     if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
-        transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors);
+        transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors, parent_font);
     }
     let mut after = fold_state_styles(style, focus_visible, pointer);
     let running = transitions.and_then(|transitions| {
-        transitions.update(id, &after, parent_colors, motion, measurement, interpolate_size, now)
+        transitions.update(id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, now)
     });
     if let Some(running) = &running {
         running.apply_to(&mut after);
@@ -2559,6 +2560,7 @@ mod tests {
                 parent_content: gpui::size(gpui::px(800.0), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
+                flex_main: crate::motion::property::Axis::Width,
             }
         }
 
@@ -3299,6 +3301,36 @@ mod tests {
         }
 
         #[test]
+        fn a_padding_percentage_is_a_share_of_the_parent_width_on_every_side_and_settles_on_the_percentage() {
+            for property in ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] {
+                let (state, started, _) = halfway_to_half(property);
+                let padding = |style: StyleDesc| match property {
+                    "paddingTop" => style.padding_top,
+                    "paddingRight" => style.padding_right,
+                    "paddingBottom" => style.padding_bottom,
+                    _ => style.padding_left,
+                };
+                let middle = padding(style_at(&state, at(started, 0.5)));
+                assert_eq!(middle, Some(crate::css::length::LinearLength::px(50.0)), "{property}");
+                let settled = padding(style_at(&state, at(started, 1.0)));
+                assert_eq!(settled, Some(crate::css::length::LinearLength::percent(0.5)), "{property}");
+            }
+        }
+
+        #[test]
+        fn a_flex_basis_percentage_is_a_share_of_the_main_size_of_the_container() {
+            let started = Instant::now();
+            let description = linear(serde_json::json!({ "flexBasis": "50%" }), serde_json::json!({ "flexBasis": 0.0 }));
+            let halfway = |measured: Measurement| {
+                let state = MotionState::new(&description, None, Colors::root(), Some(&measured), 0, started).unwrap();
+                pixels(style_at(&state, at(started, 0.5)).flex_basis)
+            };
+            let row = in_parent(measurement(0.0, 10.0, 10.0), 200.0, 80.0);
+            assert_eq!(halfway(row), 50.0);
+            assert_eq!(halfway(Measurement { flex_main: crate::motion::property::Axis::Height, ..row }), 20.0);
+        }
+
+        #[test]
         fn a_margin_percentage_end_follows_the_parent_width_while_it_runs() {
             let (mut state, started, description) = halfway_to_half("marginLeft");
             let now = at(started, 0.5);
@@ -3842,6 +3874,7 @@ mod tests {
                 parent_content: gpui::size(gpui::px(parent_width), gpui::px(600.0)),
                 scale_factor: 1.0,
                 percent_height_resolves: true,
+                flex_main: crate::motion::property::Axis::Width,
             }
         }
 
@@ -4160,6 +4193,40 @@ mod tests {
             let canvas = Colors::of(&ColorContext::root(Scheme::Light), Some(&base));
             let state = MotionState::new(&description, Some(&base), canvas, None, 0, started).unwrap();
             near(rgba(style_at(&state, started).color.as_deref().unwrap()), "#ffffff");
+        }
+
+        #[test]
+        fn an_unset_font_size_and_weight_start_from_the_computed_ones() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "opacity": 1.0 },
+                "animate": { "fontSize": 40, "fontWeight": 300 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let parent_font = ParentFont {
+                lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
+                    .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
+                above_root: false,
+                weight: 700.0,
+            };
+            let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
+            let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
+            let font_at = |at_time: Instant| {
+                let style = style_at(&state, at_time);
+                (
+                    AnimProp::FontSize.read(&style, &colors),
+                    AnimProp::FontWeight.read(&style, &colors),
+                )
+            };
+            assert_eq!(font_at(started), (Some(AnimValue::Number(20.0)), Some(AnimValue::Number(700.0))));
+            assert_eq!(font_at(at(started, 0.5)), (Some(AnimValue::Number(30.0)), Some(AnimValue::Number(500.0))));
+            assert_eq!(font_at(at(started, 1.0)), (Some(AnimValue::Number(40.0)), Some(AnimValue::Number(300.0))));
+
+            // A declared `em` size is relative to the parent's, whatever the style says.
+            let base = StyleDesc { font_size: Some(crate::css::length::LinearLength { em: 2.0, ..Default::default() }), ..Default::default() };
+            let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, Some(&base));
+            let state = MotionState::new(&description, Some(&base), colors, None, 0, started).unwrap();
+            assert_eq!(AnimProp::FontSize.read(&style_at(&state, started), &colors), Some(AnimValue::Number(40.0)));
         }
 
         #[test]

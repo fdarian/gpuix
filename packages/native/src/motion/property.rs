@@ -18,6 +18,8 @@ use crate::style::{BoxShadowValue, BoxShadowValues, DimensionValue, FontWeightVa
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Number,
+    /// A `LinearLength` that is a number of px or a percentage.
+    PercentLength,
     Dimension,
     Color,
     FontWeight,
@@ -41,10 +43,13 @@ enum Clamp {
 #[derive(Clone, Copy)]
 enum Initial {
     /// `auto`, `none`, `normal`: CSS does not interpolate these with a length,
-    /// number or colour, so nothing animates from them. Inherited `fontSize` and
-    /// `fontWeight` also sit here until the renderer carries their computed value.
+    /// number or colour, so nothing animates from them.
     Unresolved,
     Number(f64),
+    /// The element's computed `font-size`, inherited when it declares none.
+    FontSize,
+    /// The element's computed `font-weight`, inherited when it declares none.
+    FontWeight,
     Transparent,
     /// The element's own `color`.
     CurrentColor,
@@ -202,9 +207,28 @@ fn keyword_write(slot: &mut Option<String>, value: AnimValue) {
 
 /// `Option<String>` holds both colours and keywords, so the kind of the row
 /// picks the conversion.
+fn percent_length_read(slot: &Option<LinearLength>) -> Option<AnimValue> {
+    let length = slot.as_ref()?;
+    length
+        .as_px()
+        .map(AnimValue::Number)
+        .or_else(|| length.as_percent().map(AnimValue::Percent))
+}
+
+fn percent_length_write(slot: &mut Option<LinearLength>, value: AnimValue) {
+    match value {
+        AnimValue::Number(value) => *slot = Some(LinearLength::px(value)),
+        AnimValue::Percent(fraction) => *slot = Some(LinearLength::percent(fraction)),
+        other => unreachable!("a length field was given {other:?}"),
+    }
+}
+
 macro_rules! read_field {
     (Keyword, $slot:expr, $colors:expr) => {
         keyword_read(&$slot)
+    };
+    (PercentLength, $slot:expr, $colors:expr) => {
+        percent_length_read(&$slot)
     };
     ($kind:ident, $slot:expr, $colors:expr) => {
         Field::read(&$slot, $colors)
@@ -215,12 +239,15 @@ macro_rules! write_field {
     (Keyword, $slot:expr, $value:expr) => {
         keyword_write(&mut $slot, $value)
     };
+    (PercentLength, $slot:expr, $value:expr) => {
+        percent_length_write(&mut $slot, $value)
+    };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
     };
 }
 
-fn font_weight(value: &FontWeightValue) -> f64 {
+pub(super) fn font_weight(value: &FontWeightValue) -> f64 {
     crate::renderer::parse_font_weight(value).0 as f64
 }
 
@@ -339,10 +366,10 @@ properties! {
     MaxWidth "maxWidth" Dimension NonNegative Unresolved, max_width;
     MaxHeight "maxHeight" Dimension NonNegative Unresolved, max_height;
 
-    PaddingTop "paddingTop" Number NonNegative Number(0.0), padding_top | padding;
-    PaddingRight "paddingRight" Number NonNegative Number(0.0), padding_right | padding;
-    PaddingBottom "paddingBottom" Number NonNegative Number(0.0), padding_bottom | padding;
-    PaddingLeft "paddingLeft" Number NonNegative Number(0.0), padding_left | padding;
+    PaddingTop "paddingTop" PercentLength NonNegative Number(0.0), padding_top | padding;
+    PaddingRight "paddingRight" PercentLength NonNegative Number(0.0), padding_right | padding;
+    PaddingBottom "paddingBottom" PercentLength NonNegative Number(0.0), padding_bottom | padding;
+    PaddingLeft "paddingLeft" PercentLength NonNegative Number(0.0), padding_left | padding;
 
     MarginTop "marginTop" Dimension None Number(0.0), margin_top | margin;
     MarginRight "marginRight" Dimension None Number(0.0), margin_right | margin;
@@ -374,8 +401,8 @@ properties! {
     OutlineColor "outlineColor" Color None CurrentColor, outline_color;
     OutlineOffset "outlineOffset" Number None Number(0.0), outline_offset;
 
-    FontSize "fontSize" Number NonNegative Unresolved, font_size;
-    FontWeight "fontWeight" FontWeight Weight Number(400.0), font_weight;
+    FontSize "fontSize" Number NonNegative Initial::FontSize, font_size;
+    FontWeight "fontWeight" FontWeight Weight Initial::FontWeight, font_weight;
     LineHeight "lineHeight" Number NonNegative Unresolved, line_height;
 
     ScrollbarColor "scrollbarColor" Color None Unresolved, scrollbar_color;
@@ -421,7 +448,7 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
 /// The axis of a box: the side of the border box a size property measures, or
 /// the side of the containing block a percentage resolves against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Axis {
+pub(crate) enum Axis {
     Width,
     Height,
 }
@@ -455,18 +482,24 @@ impl AnimProp {
     }
 
     /// The axis of the containing block a percentage of this property is a
-    /// share of. Margins take the width on every side, as CSS does; insets take
-    /// the height for `top` and `bottom`. `None` for a property that takes no
+    /// share of. Margins and padding take the width on every side, as CSS does;
+    /// insets take the height for `top` and `bottom`; `flexBasis` the main size
+    /// of its flex container, `flex_main`. `None` for a property that takes no
     /// percentage here.
-    pub(super) fn percent_axis(self) -> Option<Axis> {
+    pub(super) fn percent_axis(self, flex_main: Axis) -> Option<Axis> {
         match self {
             Self::MarginTop
             | Self::MarginRight
             | Self::MarginBottom
             | Self::MarginLeft
+            | Self::PaddingTop
+            | Self::PaddingRight
+            | Self::PaddingBottom
+            | Self::PaddingLeft
             | Self::Left
             | Self::Right => Some(Axis::Width),
             Self::Top | Self::Bottom => Some(Axis::Height),
+            Self::FlexBasis => Some(flex_main),
             _ => self.size_axis(),
         }
     }
@@ -508,10 +541,6 @@ impl AnimProp {
             Self::FontSize
                 | Self::RowGap
                 | Self::ColumnGap
-                | Self::PaddingTop
-                | Self::PaddingRight
-                | Self::PaddingBottom
-                | Self::PaddingLeft
                 | Self::BorderTopWidth
                 | Self::BorderRightWidth
                 | Self::BorderBottomWidth
@@ -538,6 +567,8 @@ impl AnimProp {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Number(value) => Some(AnimValue::Number(value)),
+            Initial::FontSize => Some(AnimValue::Number(colors.font.size)),
+            Initial::FontWeight => Some(AnimValue::Number(colors.font.weight)),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
             Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, false))),
             // The context keeps the resolved colour, not the syntax it was
@@ -577,6 +608,21 @@ impl AnimProp {
                 ));
             }
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
+            Kind::PercentLength => {
+                let length: LinearLength = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be a number or a percentage: {error}"))?;
+                match (length.as_px(), length.as_percent()) {
+                    (Some(px), _) => AnimValue::Number(check_finite(name, px)?),
+                    (None, Some(fraction)) => AnimValue::Percent(check_finite(name, fraction)?),
+                    (None, None) => {
+                        return Err(format!(
+                            "motion cannot animate {name} to or from a CSS length: only a number of px or a \
+                             percentage, because calc(), em, rem and the viewport units are resolved against \
+                             the element and the window when the tree is applied"
+                        ));
+                    }
+                }
+            }
             Kind::FontWeight => {
                 let weight: FontWeightValue = serde_json::from_value(value.clone())
                     .map_err(|_| format!("motion {name} must be a number or a font weight"))?;
@@ -659,7 +705,7 @@ impl AnimProp {
         matches!(
             (self.kind(), value),
             (Kind::Number | Kind::FontWeight, AnimValue::Number(_))
-                | (Kind::Dimension, AnimValue::Number(_) | AnimValue::Percent(_))
+                | (Kind::Dimension | Kind::PercentLength, AnimValue::Number(_) | AnimValue::Percent(_))
                 | (Kind::Color, AnimValue::Color(_))
                 | (Kind::Shadow, AnimValue::Shadows(_))
         )
@@ -885,11 +931,9 @@ mod tests {
     }
 
     #[test]
-    fn only_a_px_padding_or_gap_is_animatable() {
+    fn only_a_px_gap_is_animatable() {
         let colors = Colors::root();
         let props = [
-            (AnimProp::PaddingTop, "paddingTop"),
-            (AnimProp::PaddingLeft, "paddingLeft"),
             (AnimProp::RowGap, "rowGap"),
             (AnimProp::ColumnGap, "columnGap"),
         ];
@@ -913,10 +957,59 @@ mod tests {
         }
 
         let mut style = StyleDesc::default();
-        AnimProp::PaddingTop.write(&mut style, AnimValue::Number(9.0));
         AnimProp::RowGap.write(&mut style, AnimValue::Number(3.0));
-        assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
         assert_eq!(style.row_gap, Some(LinearLength::px(3.0)));
+    }
+
+    #[test]
+    fn padding_is_a_px_length_or_a_percentage() {
+        let colors = Colors::root();
+        for (prop, name) in [(AnimProp::PaddingTop, "paddingTop"), (AnimProp::PaddingLeft, "paddingLeft")] {
+            let read = |json: &str| prop.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors);
+            assert_eq!(read(&format!(r#"{{ "{name}": 6 }}"#)), Some(AnimValue::Number(6.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "6px" }}"#)), Some(AnimValue::Number(6.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "25%" }}"#)), Some(AnimValue::Percent(0.25)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), None);
+            assert_eq!(read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)), None);
+
+            assert_eq!(prop.parse(&serde_json::json!(12), &colors).unwrap(), AnimValue::Number(12.0));
+            assert_eq!(prop.parse(&serde_json::json!("12px"), &colors).unwrap(), AnimValue::Number(12.0));
+            assert_eq!(prop.parse(&serde_json::json!("10%"), &colors).unwrap(), AnimValue::Percent(0.1));
+            assert!(prop.parse(&serde_json::json!(-1), &colors).is_err());
+            assert!(prop.parse(&serde_json::json!("-10%"), &colors).is_err());
+            for target in ["calc(10% + 4px)", "2em", "1vw"] {
+                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
+                assert!(
+                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
+                    "{error}"
+                );
+            }
+        }
+
+        let mut style = StyleDesc::default();
+        AnimProp::PaddingTop.write(&mut style, AnimValue::Number(9.0));
+        AnimProp::PaddingLeft.write(&mut style, AnimValue::Percent(0.5));
+        assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::percent(0.5)));
+    }
+
+    #[test]
+    fn the_percentage_axis_of_padding_is_the_width_and_of_flex_basis_the_main_axis() {
+        for side in [AnimProp::PaddingTop, AnimProp::PaddingRight, AnimProp::PaddingBottom, AnimProp::PaddingLeft] {
+            assert_eq!(side.percent_axis(Axis::Height), Some(Axis::Width), "{side:?}");
+        }
+        assert_eq!(AnimProp::FlexBasis.percent_axis(Axis::Width), Some(Axis::Width));
+        assert_eq!(AnimProp::FlexBasis.percent_axis(Axis::Height), Some(Axis::Height));
+        assert_eq!(AnimProp::Opacity.percent_axis(Axis::Width), None);
+    }
+
+    #[test]
+    fn an_unset_font_size_and_weight_are_the_computed_ones() {
+        let font = crate::motion::value::Font { size: 18.0, weight: 700.0 };
+        let mut colors = Colors::root();
+        colors.font = font;
+        assert_eq!(AnimProp::FontSize.initial(&colors), Some(AnimValue::Number(18.0)));
+        assert_eq!(AnimProp::FontWeight.initial(&colors), Some(AnimValue::Number(700.0)));
     }
 
     #[test]
@@ -1089,7 +1182,7 @@ mod tests {
             (AnimProp::MinWidth, serde_json::json!("auto")),
             (AnimProp::MaxHeight, serde_json::json!("auto")),
             (AnimProp::Width, serde_json::json!(1e300)),
-            (AnimProp::PaddingTop, serde_json::json!("12px")),
+            (AnimProp::PaddingTop, serde_json::json!("12foo")),
             (AnimProp::BackgroundColor, serde_json::json!("not a colour")),
             (AnimProp::BackgroundColor, serde_json::json!(4)),
             (

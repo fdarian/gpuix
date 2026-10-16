@@ -1447,9 +1447,9 @@ frame that has it.
 Where CSS computes an unset property to a keyword (`top`, `right`, `bottom`,
 `left`, `flexBasis` and `aspectRatio` are `auto`, `lineHeight` is `normal`),
 there is nothing to blend from, so as in CSS that property begins at its target.
-`fontSize` and `fontWeight` are inherited and gpuix does not carry their
-computed value down the tree yet, so an unset `fontSize` also begins at its
-target and an unset `fontWeight` starts from `400` whatever the parent's is.
+`fontSize` and `fontWeight` are inherited, so an unset one starts from the
+computed value: the parent's (`fontSize: "2em"` computes against it as well),
+or the initial `16px` and `400` at the root.
 
 ### Targets and timing
 
@@ -1461,8 +1461,9 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater, or `"auto"` (see below) |
 | `top`, `right`, `bottom`, `left` | pixels or `%`, may be negative |
 | `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | pixels or `%`, may be negative |
+| `paddingTop` ... `paddingLeft`, `flexBasis` | pixels or `%`, zero or greater |
 | `outlineOffset` | pixels, may be negative |
-| `paddingTop` ... `paddingLeft`, `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `flexBasis`, `aspectRatio` | zero or greater |
+| `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `aspectRatio` | zero or greater |
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
 | `backgroundColor`, `color`, `borderColor`, `outlineColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
@@ -1476,13 +1477,15 @@ its longhands, the longhand wins.
 Naming a discrete property (`display`, `position`, ...) or an unknown key is an
 error, not a silent no-op.
 
-**Layout-resolved lengths.** The sizes, insets and margins move between units, and
+**Layout-resolved lengths.** The sizes, insets, margins, padding and `flexBasis` move between units, and
 `height` and `width` also move to or from `"auto"`:
 
 - `px` to `%` and back runs in px, with the percentage resolved against the
   parent's content box, along the axis CSS uses: `width`, `minWidth`, `maxWidth`,
-  `left`, `right` and all four margins against its width (`marginTop` too, as in
-  CSS), `height`, `minHeight`, `maxHeight`, `top` and `bottom` against its height.
+  `left`, `right`, all four margins and all four paddings against its width
+  (`marginTop` and `paddingTop` too, as in CSS), `height`, `minHeight`,
+  `maxHeight`, `top` and `bottom` against its height, and `flexBasis` against the
+  main size of the flex container (its height in a `column`, its width otherwise).
   The percentage follows the parent if it resizes mid-flight, and the style
   settles on the unit you asked for. A root element has no parent, so it resolves
   against the window's content size, as the initial containing block does in a
@@ -1499,7 +1502,6 @@ error, not a silent no-op.
   height in a grid cell with fixed rows runs to the content height. An absolute
   or fixed box always resolves its `%` height. `minHeight` and `maxHeight` keep
   their share of the parent's height.
-- `padding` and `flexBasis` take numbers only, so they have no `%` to animate.
 - `height: "auto"` is the height the content wants. The target follows the
   content while it grows (a spring keeps its velocity), the end is rounded up to
   a whole device pixel so nothing clips, and the style goes back to a literal
@@ -5787,15 +5789,15 @@ render per frame.
   does not blend with a number, length or colour changes instantly: an unset
   `top`, `right`, `bottom`, `left`, `flexBasis` and `aspectRatio` (`auto`),
   `lineHeight` (`normal`), `scrollbarWidth` and an unset `width`. `fontSize`
-  and `fontWeight` are inherited too but gpuix does not carry their computed
-  value down yet, so an unset `fontSize` changes instantly and an unset
-  `fontWeight` runs from `400`. `zIndex` is not animatable
+  and `fontWeight` are inherited too: an unset one runs from the parent's
+  computed value. `zIndex` is not animatable
 - **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
-  `maxHeight`, `top`, `right`, `bottom`, `left` or margin that moves between a
-  pixel length and a percentage transitions in px, with the percentage resolved
-  against the parent's content box (the window's content size for a root), along
-  the axis CSS uses: the width for `left`, `right` and every margin side, the
-  height for `top` and `bottom`. It follows the parent while it runs and settles on the
+  `maxHeight`, `top`, `right`, `bottom`, `left`, margin, padding or `flexBasis`
+  that moves between a pixel length and a percentage transitions in px, with the
+  percentage resolved against the parent's content box (the window's content size
+  for a root), along the axis CSS uses: the width for `left`, `right`, every
+  margin and padding side, the height for `top` and `bottom`, and for `flexBasis`
+  the main axis of the flex container. It follows the parent while it runs and settles on the
   literal target unit. Two percentages interpolate as percentages
 - **`auto` sizes.** As in a browser, a change between a length and `auto` is
   discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an
