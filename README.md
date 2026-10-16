@@ -2841,14 +2841,60 @@ may break after every one of them, and none hangs.
 - The spaces at the end of a line are measured: they count when the line is fitted
   and `textAlign: 'center'` and `'right'` include them, as do the spaces at the end
   of the text or before a line break.
-- A word with no earlier place to break still breaks inside, as in the other
-  values.
+- A word that does not fit still overflows or breaks inside as `overflowWrap` says.
+  With the default, `normal`, the space after it stays at the end of its line.
+
+#### Breaking words
+
+`wordBreak` and `overflowWrap` are inherited and decide where a line may break
+inside a word, and what happens to a word that is longer than its line. They need
+a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` or
+`<text>` inside a paragraph uses the paragraph's, because it is one string.
+
+| `overflowWrap` | A word that does not fit |
+|---|---|
+| `normal` (default) | overflows its line, and the line breaks at the next place there is one |
+| `break-word` | is cut where it overflows, if no earlier place on its line will do |
+| `anywhere` | as `break-word` |
+
+| `wordBreak` | Breaks |
+|---|---|
+| `normal` (default) | after spaces, and before and after CJK characters |
+| `break-all` | also between any two letters, so a line is filled to its edge even when a space comes earlier |
+| `keep-all` | not between CJK characters, which behave like the letters of a word |
+| `break-word` | as `normal` with `overflowWrap: 'anywhere'`, whatever `overflowWrap` says |
+
+```tsx
+<text style={{ width: 120, overflowWrap: 'break-word' }}>{"https://example.com/a-very-long-address"}</text>
+<text style={{ width: 120, wordBreak: 'break-all' }}>{"aaaa bbbb cccc"}</text>
+```
+
+- Without `overflowWrap` a long word, a URL or an identifier is not broken: it
+  stretches past the edge of its box, as it does in a browser.
+- `break-all` does not break before closing punctuation (`)`, `!`, `,`...), after
+  opening punctuation or next to a no-break space, and a space still hangs at the
+  edge as it does without it.
+- `keep-all` keeps CJK characters and CJK punctuation together; a space and
+  punctuation such as `/` are still places to break. Without a space a run of
+  them overflows, unless `overflowWrap` cuts it.
+- `<input>` and `<textarea>` ignore both and break a long word at the edge, as a browser's
+  `textarea` does.
+- A value CSS does not have throws, like any style that cannot be parsed.
+- Text laid out by GPUI itself, as Zed does, keeps breaking such a word at the
+  edge: its `TextStyle::overflow_wrap` defaults to `BreakWord`, and `Normal` is
+  what gpuix sets for all of its text.
 
 Deviations, where GPUI's text layout cannot build the DOM model:
 
 - In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
   where CSS removes it, so selection and copy see it.
-- `word-break` and `overflow-wrap` are not supported.
+- The min-content width of a text is the width of its whole line, where CSS makes it
+  the longest word (one character for `overflowWrap: 'anywhere'` and `wordBreak:
+  'break-all'`). A text in a flex item therefore does not shrink below its text
+  without `minWidth: 0`, and `anywhere` and `break-all` do not change that. GPUI
+  measures `MinContent` as `MaxContent` for text; a probe at wrap width 0 that
+  bypasses the cached layout would fix it, but it needs a flag to keep Zed's text
+  sizing as it is, and it resizes every text in a flex or grid item.
 - `textOverflow` with `lineClamp` or a fixed width decides where to cut by the
   font's own width of a tab, not by the tab stop, so a line with tabs can be cut
   a little early or late. `<input>` and `<textarea>` have no tab stops.
@@ -5644,7 +5690,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
