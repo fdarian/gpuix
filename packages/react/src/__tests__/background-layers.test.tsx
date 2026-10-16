@@ -100,6 +100,20 @@ describeNative("gradients in backgroundImage", () => {
     near(at(35, 50), BLUE)
   })
 
+  // CSS: a repeating cycle of no length is the average colour of its stops. Here
+  // 10px is 5% of the 200px line, so only the wider box has a cycle.
+  it("paints the average colour when a repeating cycle in mixed units has no length", () => {
+    const image = "repeating-linear-gradient(to right, red 10px, blue 5%)"
+    const empty = paint({ width: 200, backgroundImage: image })
+    near(empty(5, 50), [128, 0, 128, 255])
+    near(empty(150, 50), [128, 0, 128, 255])
+    const cycling = paint({ width: 400, backgroundImage: image })
+    // Red to blue over 10px, from x=10: x=2 is 20% of the way, x=7 is 70%.
+    near(cycling(2, 50), [204, 0, 51, 255], 14)
+    near(cycling(7, 50), [77, 0, 178, 255], 14)
+    near(cycling(12, 50), cycling(2, 50), 14)
+  })
+
   it("resolves colour functions and currentColor in stops", () => {
     const at = paint(
       {

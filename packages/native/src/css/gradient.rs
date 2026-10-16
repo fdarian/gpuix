@@ -89,124 +89,12 @@ pub(super) fn parse_uncached(
     {
         return Err(GradientError::Invalid);
     }
-    if repeating {
-        if let Some(average) = zero_length_average(&items, kind) {
-            return Ok(Gradient {
-                shape,
-                items: vec![GradientItem::Stop(average); 2],
-                repeating: false,
-                color_space,
-            });
-        }
-    }
     Ok(Gradient {
         shape,
         items,
         repeating,
         color_space,
     })
-}
-
-/// A position with the unit it is in, so two can be compared when they are in
-/// the same one. A conic gradient's percentages are fractions of a turn.
-#[derive(Clone, Copy)]
-enum Placed {
-    Fraction(f64),
-    Length(f64),
-    Angle(f64),
-}
-
-impl Placed {
-    /// `None` for a sum of a length and a fraction, which is in no one unit.
-    fn of(position: StopPosition, kind: Kind) -> Option<Self> {
-        Some(match position {
-            StopPosition::Fraction(fraction) if kind == Kind::Conic => {
-                Self::Angle(f64::from(fraction) * 360.0)
-            }
-            StopPosition::Fraction(fraction) => Self::Fraction(f64::from(fraction)),
-            StopPosition::Length(length) => Self::Length(f64::from(f32::from(length))),
-            StopPosition::Calc { .. } => return None,
-            StopPosition::Angle(degrees) => Self::Angle(f64::from(degrees)),
-        })
-    }
-
-    fn parts(self) -> (u8, f64) {
-        match self {
-            Self::Fraction(value) => (0, value),
-            Self::Length(value) => (1, value),
-            Self::Angle(value) => (2, value),
-        }
-    }
-
-    /// Zero is zero in every unit, which is the only thing two units share.
-    fn is_at_most(self, other: Self) -> Option<bool> {
-        let ((unit, value), (other_unit, other_value)) = (self.parts(), other.parts());
-        if unit == other_unit {
-            Some(value <= other_value)
-        } else if value == 0.0 {
-            Some(0.0 <= other_value)
-        } else if other_value == 0.0 {
-            Some(value <= 0.0)
-        } else {
-            None
-        }
-    }
-}
-
-/// CSS renders a repeating gradient whose first and last stop coincide as the
-/// average colour of its stops, because a cycle of no length has no gradient to
-/// draw. gpui would draw a hard edge instead.
-///
-/// The cycle length is the last stop's position minus the first's, after every
-/// position is raised to the one before it. Without the box, `10px` and `5%`
-/// cannot be compared, so such a gradient is left to gpui.
-fn zero_length_average(items: &[GradientItem], kind: Kind) -> Option<GradientStop> {
-    let stops: Vec<&GradientStop> = items
-        .iter()
-        .filter_map(|item| match item {
-            GradientItem::Stop(stop) => Some(stop),
-            GradientItem::Hint(_) => None,
-        })
-        .collect();
-    let (first, rest) = stops.split_first()?;
-    let last_default = match kind {
-        Kind::Conic => Placed::Angle(360.0),
-        _ => Placed::Fraction(1.0),
-    };
-    // The first stop defaults to the start of the line, which is zero in any unit.
-    let start = match first.position {
-        Some(position) => Placed::of(position, kind)?,
-        None => Placed::Length(0.0),
-    };
-    for (index, stop) in rest.iter().enumerate() {
-        let position = match (stop.position, index + 1 == rest.len()) {
-            (Some(position), _) => Placed::of(position, kind)?,
-            (None, true) => last_default,
-            // Stops between the first and the last sit between them.
-            (None, false) => continue,
-        };
-        if !position.is_at_most(start)? {
-            return None;
-        }
-    }
-
-    // The average of the stops spaced evenly: an end counts for half of a middle stop.
-    let spans = (stops.len() - 1) as f32;
-    let (mut red, mut green, mut blue, mut alpha) = (0.0, 0.0, 0.0, 0.0);
-    for (index, stop) in stops.iter().enumerate() {
-        let weight = if index == 0 || index + 1 == stops.len() { 0.5 } else { 1.0 } / spans;
-        let colour = gpui::Rgba::from(stop.color);
-        alpha += colour.a * weight;
-        red += colour.r * colour.a * weight;
-        green += colour.g * colour.a * weight;
-        blue += colour.b * colour.a * weight;
-    }
-    let average = if alpha > 0.0 {
-        gpui::Rgba { r: red / alpha, g: green / alpha, b: blue / alpha, a: alpha }
-    } else {
-        gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }
-    };
-    Some(GradientStop { color: average.into(), position: None })
 }
 
 fn is_header(first: &str, kind: Kind, lengths: &LengthContext) -> bool {
@@ -738,21 +626,12 @@ mod tests {
         parsed("radial-gradient(0px, red, blue)");
     }
 
-    fn solid_colour(gradient: &Gradient) -> gpui::Rgba {
-        assert!(!gradient.repeating);
-        let colours: Vec<gpui::Rgba> = gradient
-            .items
-            .iter()
-            .map(|item| match item {
-                GradientItem::Stop(stop) => {
-                    assert_eq!(stop.position, None);
-                    stop.color.into()
-                }
-                GradientItem::Hint(_) => panic!("a hint"),
-            })
-            .collect();
-        assert!(colours.windows(2).all(|pair| pair[0] == pair[1]), "{colours:?}");
-        colours[0]
+    /// The solid colour a gradient paints in a box `width` pixels wide, where a
+    /// repeating cycle of no length is the average colour of its stops.
+    fn solid_colour(value: &str, width: f32) -> gpui::Rgba {
+        let chunks = parsed(value).resolve(gpui::size(px(width), px(40.0)));
+        assert_eq!(chunks.len(), 1, "{value}");
+        chunks[0].as_solid().unwrap_or_else(|| panic!("{value}: not solid")).into()
     }
 
     fn assert_rgb(colour: gpui::Rgba, expected: [f32; 3]) {
@@ -765,35 +644,44 @@ mod tests {
     fn a_zero_length_repeating_cycle_is_the_average_colour() {
         // The CSS Images example: rgb(75%, 50%, 75%).
         assert_rgb(
-            solid_colour(&parsed("repeating-linear-gradient(red 0px, white 0px, blue 0px)")),
+            solid_colour("repeating-linear-gradient(red 0px, white 0px, blue 0px)", 200.0),
             [0.75, 0.5, 0.75],
         );
         assert_rgb(
-            solid_colour(&parsed("repeating-linear-gradient(red 10px, blue 10px)")),
+            solid_colour("repeating-linear-gradient(red 10px, blue 10px)", 200.0),
             [0.5, 0.0, 0.5],
         );
         // The last stop defaults to 100%, which is where the first one is.
         assert_rgb(
-            solid_colour(&parsed("repeating-radial-gradient(red 100%, blue)")),
+            solid_colour("repeating-radial-gradient(red 100%, blue)", 200.0),
             [0.5, 0.0, 0.5],
         );
         assert_rgb(
-            solid_colour(&parsed("repeating-conic-gradient(red 0deg, blue 0turn)")),
+            solid_colour("repeating-conic-gradient(red 0deg, blue 0turn)", 200.0),
             [0.5, 0.0, 0.5],
         );
         // Stops whose positions fall back to the first one clamp onto it.
         assert_rgb(
-            solid_colour(&parsed("repeating-linear-gradient(red 20px, blue 5px, blue 20px)")),
+            solid_colour("repeating-linear-gradient(red 20px, blue 5px, blue 20px)", 200.0),
             [0.25, 0.0, 0.75],
         );
         // Hints take no part, and a transparent stop weighs by its alpha.
         assert_rgb(
-            solid_colour(&parsed("repeating-linear-gradient(red 0, 0, blue 0)")),
+            solid_colour("repeating-linear-gradient(red 0, 0, blue 0)", 200.0),
             [0.5, 0.0, 0.5],
         );
-        let faded = solid_colour(&parsed("repeating-linear-gradient(red 0, transparent 0)"));
+        let faded = solid_colour("repeating-linear-gradient(red 0, transparent 0)", 200.0);
         assert_rgb(faded, [1.0, 0.0, 0.0]);
         assert!((faded.a - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_cycle_of_no_length_depends_on_the_box_when_the_units_differ() {
+        let value = "repeating-linear-gradient(to right, red 10px, blue 5%)";
+        // 10px is 5% of 200px.
+        assert_rgb(solid_colour(value, 200.0), [0.5, 0.0, 0.5]);
+        let chunks = parsed(value).resolve(gpui::size(px(400.0), px(40.0)));
+        assert_eq!(chunks[0].as_solid(), None);
     }
 
     #[test]
@@ -801,7 +689,6 @@ mod tests {
         for (value, repeating) in [
             ("repeating-linear-gradient(red 0, blue 10px)", true),
             ("repeating-linear-gradient(red, blue)", true),
-            // The units cannot be compared without the box.
             ("repeating-linear-gradient(red 10px, blue 5%)", true),
             ("repeating-conic-gradient(red, blue)", true),
             // A plain gradient with coincident stops is a hard edge, which is right.
@@ -812,5 +699,7 @@ mod tests {
             let stops: Vec<_> = gradient.items.iter().map(|item| stop(item).0).collect();
             assert_ne!(stops[0], stops[1], "{value}");
         }
+        let plain = parsed("linear-gradient(red 10px, blue 10px)").resolve(gpui::size(px(200.0), px(40.0)));
+        assert_eq!(plain[0].as_solid(), None);
     }
 }
