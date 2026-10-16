@@ -175,10 +175,17 @@ struct ClippingAncestor {
 }
 
 /// Only the ancestors that reach `id` clip it: an absolute element is clipped by its containing
-/// block and what clips that, a fixed one by nothing.
-fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
+/// block and what clips that, a fixed one by nothing. `first` is the box `id` paints in when that
+/// is not its parent, an inline element's paragraph container, which clips it and what reaches it.
+fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
-    for ancestor in crate::layout::containing_block::reaching_ancestors(tree, id) {
+    let reaching = match first {
+        None => crate::layout::containing_block::reaching_ancestors(tree, id),
+        Some(first) => std::iter::once(first)
+            .chain(crate::layout::containing_block::reaching_ancestors(tree, first))
+            .collect(),
+    };
+    for ancestor in reaching {
         let Some(element) = tree.elements.get(&ancestor) else {
             break;
         };
@@ -240,10 +247,16 @@ fn clip_rects(ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
 
 /// The reporter for an element that has an observer listener, or `None` for
 /// every other element.
+///
+/// `clips_from` is where the walk for clipping ancestors starts, for an element
+/// whose parent in the tree is not the box it paints in. An inline element
+/// paints in its paragraph's container, and the spans in between have no box to
+/// clip it, whatever their `overflow`.
 pub(crate) fn reporter(
     id: u64,
     events: &HashSet<String>,
     tree: &RetainedTree,
+    clips_from: Option<u64>,
     reports: &SharedPaintReports,
     callback: &Option<EventCallback>,
 ) -> Option<PaintReporter> {
@@ -255,7 +268,7 @@ pub(crate) fn reporter(
     let callback = callback.clone()?;
     let reports = reports.clone();
     let ancestors = if intersection {
-        clipping_ancestors(tree, id)
+        clipping_ancestors(tree, id, clips_from)
     } else {
         Vec::new()
     };

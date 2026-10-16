@@ -9,6 +9,7 @@
 //! `div().child(string)`.
 
 pub mod inline;
+pub mod inline_bounds;
 pub mod inline_hit;
 pub mod paint;
 pub mod paragraph;

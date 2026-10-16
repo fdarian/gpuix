@@ -274,8 +274,6 @@ describeNative("events on inline boxes", () => {
     testRoot.renderer.clickElement(span!.id)
     expect(seen.map(([name]) => name)).toEqual(["span", "text"])
     expect(seen[1][1]).toBe(span)
-    // A span has no box of its own to click in the middle of.
-    expect(testRoot.renderer.getElementBounds(span!.id)).toBeNull()
   })
 
   it("still starts a selection with a press on a span, unless mousedown is prevented", () => {

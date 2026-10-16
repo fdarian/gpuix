@@ -19,7 +19,7 @@ use gpui::{Bounds, Pixels, Point, TextLayout, WindowId};
 use crate::retained_tree::RetainedTree;
 
 use super::inline::Paragraph;
-use super::paint::range_rects;
+use super::inline_bounds::fragments;
 
 /// The inline boxes of one paragraph that can be a target, by the bytes they
 /// cover.
@@ -156,7 +156,7 @@ pub fn boxes_under(
                 continue;
             };
             return entry.targets.around(byte, |range| {
-                range_rects(&entry.layout, range, 0.0, 0.0).first().copied()
+                fragments(&entry.layout, range).first().copied()
             });
         }
         Vec::new()

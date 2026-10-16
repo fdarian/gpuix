@@ -232,6 +232,9 @@ pub struct SelectableText {
     /// The inline boxes of a paragraph that the pointer can target, registered
     /// under `element_id` as the container.
     pub inline_targets: Option<Arc<super::inline_hit::Targets>>,
+    /// The inline elements of a paragraph that have a box of their own. Their
+    /// bounds are recorded from the paragraph's paint.
+    pub inline_boxes: Vec<super::inline_bounds::InlineBox>,
 }
 
 impl SelectableText {
@@ -258,6 +261,7 @@ impl SelectableText {
             group: None,
             highlight: None,
             inline_targets: None,
+            inline_boxes: Vec::new(),
         }
     }
 }
@@ -280,6 +284,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         group,
         highlight,
         inline_targets,
+        inline_boxes,
     } = opts;
     let key = selection_key(element_id, sub);
 
@@ -300,7 +305,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
 
     let underlay = canvas(
         |_, _, _| (),
-        move |_, _, window, _| {
+        move |_, _, window, cx| {
             // Hidden text is not on screen: it takes no part in selection, links, search washes
             // or the painted-text log.
             if window.visibility() == gpui::Visibility::Hidden {
@@ -355,6 +360,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     targets.clone(),
                 );
             }
+            super::inline_bounds::record(&layout, &inline_boxes, window, cx);
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);
             }

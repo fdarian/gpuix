@@ -2778,8 +2778,26 @@ bubbles up, and `stopPropagation()` on the span keeps it from there.
 - A press on a span still starts a text selection, unless a `mousedown` handler
   calls `preventDefault()`.
 - `offsetX` and `offsetY` are measured from where the span's first line begins.
-- A span has no bounds, so `getElementBounds` is `null` for it, and
-  `click()` on its ref, or `renderer.clickElement(id)`, clicks it by id, with the same path.
+- `click()` on a span's ref, or `renderer.clickElement(id)`, clicks it by id, with the same path.
+
+### Measure and observe an inline box
+
+A span has no box of its own, so its `getBoundingClientRect()` is the union of the
+rects of its lines, in window coordinates: the smallest rect that holds every line
+it covers. A span on one line is as wide as its glyphs and one line tall. A span
+that wraps is as tall as the lines it covers, and it spans from the leftmost
+start to the rightmost end of its lines, so it also covers the part of those lines
+that is not the span's. There is no `getClientRects()`. A space that hangs at a
+wrap belongs to the line it ends. A span with no text left (only collapsible white
+space), `display: none` or `visibility: hidden` has no box and returns a zero
+rect, as in the DOM, and `renderer.getElementBounds(id)` returns `null`.
+
+`ResizeObserver` and `IntersectionObserver` take a span. A `ResizeObserver` reports
+the union's size, and the span's content box is its border box because it has no
+padding or border. An `IntersectionObserver` intersects the union with the clips of
+the paragraph's container and its ancestors, so a span that wraps counts the gap in
+its rect as visible. A span that stops painting is reported as 0 by 0 and not
+intersecting.
 
 ### White space
 

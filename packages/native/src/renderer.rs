@@ -7324,6 +7324,7 @@ pub(crate) fn build_element(
                     id,
                     element.events(),
                     ctx.tree,
+                    None,
                     ctx.paint_reports,
                     ctx.event_callback,
                 ),
@@ -7631,7 +7632,7 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
-        paint_reporter(element.id, element.events(), ctx),
+        paint_reporter(element.id, element.events(), None, ctx),
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
@@ -7940,6 +7941,7 @@ fn paragraph_content(
             ctx.inherited.inert,
         )
         .map(Arc::new),
+        inline_boxes: inline_boxes(paragraph, ctx),
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
@@ -7949,6 +7951,25 @@ fn paragraph_content(
             ctx.inherited.selection_wash,
         )
     })
+}
+
+/// The inline elements of a paragraph that report their own box. They have no
+/// padding or border to take off a content box, so their style is not read.
+fn inline_boxes(
+    paragraph: &crate::text::inline::Paragraph,
+    ctx: &BuildCtx,
+) -> Vec<crate::text::inline_bounds::InlineBox> {
+    paragraph
+        .boxes
+        .iter()
+        .map(|(id, range)| crate::text::inline_bounds::InlineBox {
+            id: *id,
+            range: range.clone(),
+            report: ctx.tree.elements.get(id).and_then(|element| {
+                paint_reporter(*id, element.events(), Some(paragraph.container), ctx)
+            }),
+        })
+        .collect()
 }
 
 /// Explicit `userSelect` on this node. `None` means inherit; the ancestor
@@ -8324,6 +8345,7 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
 fn paint_reporter(
     id: u64,
     events: &HashSet<String>,
+    clips_from: Option<u64>,
     ctx: &BuildCtx,
 ) -> Option<crate::automation::PaintReporter> {
     let layout = events.contains("layout");
@@ -8335,6 +8357,7 @@ fn paint_reporter(
         id,
         events,
         ctx.tree,
+        clips_from,
         ctx.paint_reports,
         ctx.event_callback,
     );
