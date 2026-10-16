@@ -2,9 +2,7 @@
 //! parsed into gpui's `ClipPath`.
 //!
 //! `url()` and a box with no shape are not supported, so a value that uses
-//! them is ignored like any invalid one. gpui rounds an `inset()`, `rect()` and
-//! `xywh()` with circular corners, so the vertical radii after `/` in `round`
-//! are dropped.
+//! them is ignored like any invalid one.
 
 use gpui::{
     px, BackgroundBox, BackgroundPosition, ClipPath, ClipShape, InsetRadii, LengthPercentage,
@@ -14,8 +12,9 @@ use svgtypes::{SimplePathSegment, SimplifyingPathParser};
 
 use super::cache::{Cache, Inputs};
 use super::length::LengthContext;
+use super::border_radius::parse_radii;
 use super::position::{parse_box, parse_length_percentage, parse_non_negative, parse_position};
-use super::syntax::{function_args, split_commas, split_whitespace};
+use super::syntax::{expand_sides, function_args, split_commas, split_slash_tokens, split_whitespace};
 
 thread_local! {
     static CACHE: Cache<Option<Option<ClipPath>>> = Cache::new();
@@ -93,22 +92,9 @@ fn parse_shape(token: &str, lengths: &LengthContext) -> Option<ClipShape> {
     None
 }
 
-/// One to four values in the order `margin` uses: all, vertical / horizontal,
-/// top / horizontal / bottom, or each side clockwise from the top.
-fn expand_sides<T: Copy>(values: &[T]) -> Option<[T; 4]> {
-    Some(match *values {
-        [all] => [all, all, all, all],
-        [vertical, horizontal] => [vertical, horizontal, vertical, horizontal],
-        [top, horizontal, bottom] => [top, horizontal, bottom, horizontal],
-        [top, right, bottom, left] => [top, right, bottom, left],
-        _ => return None,
-    })
-}
-
 /// The arguments of a box shape split at `round`: the values before it and the parsed radii.
 fn split_round(args: &str, lengths: &LengthContext) -> Option<(Vec<String>, InsetRadii)> {
-    let spaced = args.replace('/', " / ");
-    let tokens = split_whitespace(&spaced);
+    let tokens = split_slash_tokens(args);
     let round_at = tokens
         .iter()
         .position(|token| token.eq_ignore_ascii_case("round"));
@@ -140,29 +126,44 @@ fn parse_inset(args: &str, lengths: &LengthContext) -> Option<ClipShape> {
     })
 }
 
-/// `<length-percentage>{1,4}` and, optionally, `/ <length-percentage>{1,4}`.
+/// `<length-percentage>{1,4}` and, optionally, `/ <length-percentage>{1,4}`. Without the `/`
+/// the vertical radii are the horizontal ones, so a percentage is of the height on that axis.
+/// An explicit zero on either axis squares the corner, which a zero horizontal radius says.
 fn parse_round(tokens: &[&str], lengths: &LengthContext) -> Option<InsetRadii> {
-    let horizontal_end = tokens.iter().position(|token| *token == "/");
-    let horizontal = &tokens[..horizontal_end.unwrap_or(tokens.len())];
-    if let Some(index) = horizontal_end {
-        let vertical = tokens[index + 1..]
-            .iter()
-            .map(|token| parse_non_negative(token, lengths))
-            .collect::<Option<Vec<_>>>()?;
-        expand_sides(&vertical)?;
-    }
-    let corners = expand_sides(
-        &horizontal
-            .iter()
-            .map(|token| parse_non_negative(token, lengths))
-            .collect::<Option<Vec<_>>>()?,
-    )?;
+    let radii = parse_radii(tokens, |token| parse_non_negative(token, lengths).ok_or_else(String::new)).ok()?;
+    let horizontal = radii.horizontal;
+    let vertical = radii.vertical.unwrap_or(horizontal);
+    let corner = |index: usize| {
+        let (x, y) = (horizontal[index], vertical[index]);
+        if is_zero(x) || is_zero(y) {
+            (zero(), zero())
+        } else {
+            (x, y)
+        }
+    };
+    let corners = [0, 1, 2, 3].map(corner);
     Some(InsetRadii {
-        top_left: corners[0],
-        top_right: corners[1],
-        bottom_right: corners[2],
-        bottom_left: corners[3],
+        top_left: corners[0].0,
+        top_right: corners[1].0,
+        bottom_right: corners[2].0,
+        bottom_left: corners[3].0,
+        top_left_y: corners[0].1,
+        top_right_y: corners[1].1,
+        bottom_right_y: corners[2].1,
+        bottom_left_y: corners[3].1,
     })
+}
+
+fn zero() -> LengthPercentage {
+    LengthPercentage::Length(px(0.0))
+}
+
+fn is_zero(length: LengthPercentage) -> bool {
+    match length {
+        LengthPercentage::Length(length) => f32::from(length) == 0.0,
+        LengthPercentage::Percent(fraction) => fraction == 0.0,
+        LengthPercentage::Calc { length, percent } => f32::from(length) == 0.0 && percent == 0.0,
+    }
 }
 
 fn parse_shape_radius(token: &str, lengths: &LengthContext) -> Option<ShapeRadius> {
@@ -539,11 +540,56 @@ mod tests {
         assert_eq!(two.top_right, pct(0.5));
         assert_eq!(two.bottom_right, len(4.0));
         assert_eq!(two.bottom_left, pct(0.5));
-        // The vertical radii after `/` are valid but dropped.
-        assert_eq!(radii("inset(0 round 8px/2px)"), radii("inset(0 round 8px)"));
+        // Without a `/` a percentage is of the width across and of the height down.
+        let circular = radii("inset(0 round 10%)");
+        assert_eq!([circular.top_left, circular.top_left_y], [pct(0.1), pct(0.1)]);
+        let absolute = radii("inset(0 round 8px)");
+        assert_eq!([absolute.top_left, absolute.top_left_y], [len(8.0), len(8.0)]);
         assert_eq!(parse("inset(0 round)"), None);
         assert_eq!(parse("inset(0 round -1px)"), None);
         assert_eq!(parse("inset(round 4px)"), None);
+    }
+
+    #[test]
+    fn inset_round_takes_a_vertical_radius_per_corner_after_a_slash() {
+        let radii = |value: &str| match shape(value) {
+            ClipShape::Inset { radii, .. } => radii,
+            other => panic!("{other:?}"),
+        };
+        let four = |radii: InsetRadii| {
+            (
+                [radii.top_left, radii.top_right, radii.bottom_right, radii.bottom_left],
+                [radii.top_left_y, radii.top_right_y, radii.bottom_right_y, radii.bottom_left_y],
+            )
+        };
+        assert_eq!(
+            four(radii("inset(0 round 10px 20px / 5px)")),
+            ([len(10.0), len(20.0), len(10.0), len(20.0)], [len(5.0); 4])
+        );
+        assert_eq!(
+            four(radii("inset(0 round 50% / 10px 20px 30px 40px)")),
+            ([pct(0.5); 4], [len(10.0), len(20.0), len(30.0), len(40.0)])
+        );
+        assert_eq!(
+            four(radii("inset(0 round 1px 2px 3px 4px/5% 6% 7% 8%)")),
+            ([len(1.0), len(2.0), len(3.0), len(4.0)], [pct(0.05), pct(0.06), pct(0.07), pct(0.08)])
+        );
+        // A zero on either axis squares the corner.
+        assert_eq!(
+            four(radii("inset(0 round 10px 20px / 0 5px)")),
+            ([len(0.0), len(20.0), len(0.0), len(20.0)], [len(0.0), len(5.0), len(0.0), len(5.0)])
+        );
+        assert_eq!(four(radii("inset(0 round 0 / 10px)")), ([len(0.0); 4], [len(0.0); 4]));
+        assert_eq!(four(radii("inset(0 round 10px / 0)")), ([len(0.0); 4], [len(0.0); 4]));
+        for invalid in [
+            "inset(0 round 8px /)",
+            "inset(0 round / 8px)",
+            "inset(0 round 8px / 1px 2px 3px 4px 5px)",
+            "inset(0 round 8px / -2px)",
+            "inset(0 round 8px / 2px / 3px)",
+        ] {
+            assert_eq!(parse(invalid), None, "{invalid}");
+        }
     }
 
     #[test]
@@ -725,7 +771,8 @@ mod tests {
             [len(1.0), len(2.0), len(3.0), len(4.0)]
         );
         assert_eq!(radii("xywh(0 0 5px 5px round 8px)").bottom_right, len(8.0));
-        assert_eq!(radii("xywh(0 0 5px 5px round 8px/2px)"), radii("xywh(0 0 5px 5px round 8px)"));
+        let elliptical = radii("xywh(0 0 5px 5px round 8px/2px)");
+        assert_eq!([elliptical.bottom_right, elliptical.bottom_right_y], [len(8.0), len(2.0)]);
         assert_eq!(radii("rect(0 1px 1px 0)"), InsetRadii::default());
     }
 

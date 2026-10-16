@@ -77,6 +77,49 @@ pub(crate) fn split_whitespace(value: &str) -> Vec<&str> {
     tokens
 }
 
+/// Whitespace-separated tokens with every `/` outside parentheses a token of
+/// its own, so `10px/5px` and `10px / 5px` split alike while `calc(1px / 2)`
+/// stays whole.
+pub(crate) fn split_slash_tokens(value: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let mut depth = 0i32;
+    let mut start: Option<usize> = None;
+    for (index, character) in value.char_indices() {
+        let separator = character.is_whitespace() || character == '/';
+        match character {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0 && separator {
+            if let Some(begin) = start.take() {
+                tokens.push(&value[begin..index]);
+            }
+            if character == '/' {
+                tokens.push(&value[index..index + 1]);
+            }
+        } else {
+            start.get_or_insert(index);
+        }
+    }
+    if let Some(begin) = start {
+        tokens.push(&value[begin..]);
+    }
+    tokens
+}
+
+/// One to four values in the order `margin` uses: all, vertical / horizontal,
+/// top / horizontal / bottom, or each side clockwise from the top.
+pub(crate) fn expand_sides<T: Copy>(values: &[T]) -> Option<[T; 4]> {
+    Some(match *values {
+        [all] => [all, all, all, all],
+        [vertical, horizontal] => [vertical, horizontal, vertical, horizontal],
+        [top, horizontal, bottom] => [top, horizontal, bottom, horizontal],
+        [top, right, bottom, left] => [top, right, bottom, left],
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,5 +139,22 @@ mod tests {
         assert_eq!(split_commas("a, rgb(1, 2, 3) ,b"), vec!["a", "rgb(1, 2, 3)", "b"]);
         assert_eq!(split_commas("a,,b"), vec!["a", "", "b"]);
         assert_eq!(split_whitespace("  rgb(0 0 0)  30% "), vec!["rgb(0 0 0)", "30%"]);
+    }
+
+    #[test]
+    fn slashes_are_tokens_outside_parentheses_only() {
+        assert_eq!(split_slash_tokens("10px/5px"), vec!["10px", "/", "5px"]);
+        assert_eq!(split_slash_tokens(" 1px  2px / 3px "), vec!["1px", "2px", "/", "3px"]);
+        assert_eq!(split_slash_tokens("calc(1px / 2) / 3px"), vec!["calc(1px / 2)", "/", "3px"]);
+    }
+
+    #[test]
+    fn sides_expand_like_margin() {
+        assert_eq!(expand_sides(&[1]), Some([1, 1, 1, 1]));
+        assert_eq!(expand_sides(&[1, 2]), Some([1, 2, 1, 2]));
+        assert_eq!(expand_sides(&[1, 2, 3]), Some([1, 2, 3, 2]));
+        assert_eq!(expand_sides(&[1, 2, 3, 4]), Some([1, 2, 3, 4]));
+        assert_eq!(expand_sides::<i32>(&[]), None);
+        assert_eq!(expand_sides(&[1, 2, 3, 4, 5]), None);
     }
 }

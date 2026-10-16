@@ -3,6 +3,7 @@
 
 pub(crate) mod background;
 pub(crate) mod border;
+pub(crate) mod border_radius;
 pub(crate) mod box_shadow;
 pub(crate) mod cache;
 pub(crate) mod clip_path;
