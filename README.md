@@ -5826,10 +5826,11 @@ so that animation starts at `0`.
   `focusWithin`, the group variants) escapes the same way while the state
   applies, and a state that sets it back to `static` puts the clip back.
   `getElementsAt` and `scrollIntoView` follow the position as painted;
-  `IntersectionObserver` reads the declared one. Known
-  difference: an `opacity` or `filter` group clips its composite to the clip in
-  force where the group starts, so an escaped box inside one on a clipped
-  element is still cut by it.
+  `IntersectionObserver` reads the declared one. An `opacity`,
+  `filter`, `mask` or `clipPath` group composites an escaped box with the rest
+  of the group, so a card with `opacity` on a clipped scroller no longer cuts
+  its dropdown at the scroller's edge. Known difference: a `filter` also lets
+  what it spreads of the card past that edge.
 - **`<img>`** is a replaced element. A missing dimension comes from the other
   one and the image's intrinsic ratio (or `aspectRatio`), a percentage of an
   indefinite parent counts as `auto`, and with neither set it takes its

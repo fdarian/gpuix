@@ -12711,7 +12711,8 @@ mod stacking_build_tests {
 }
 
 /// A `position` that only a state refinement declares escapes the overflow clip of the ancestors
-/// before its containing block, as a base `position` does. Painted through a real view.
+/// before its containing block, as a base `position` does, and an effect group around an escaped
+/// box does not cut it to the clip it started in. Painted through a real view.
 #[cfg(test)]
 mod state_position_escape_tests {
     use super::*;
@@ -12868,6 +12869,44 @@ mod state_position_escape_tests {
         page.draw(cx);
         page.assert_unclipped(cx);
         assert_eq!(hit_outside_the_card(&page, cx), [3, 1]);
+    }
+
+    /// How far right each effect group composites, in px.
+    fn group_clips(page: &Page, cx: &mut gpui::TestAppContext) -> Vec<f32> {
+        cx.update_window(page.window.into(), |_, window, _| {
+            let scale = window.scale_factor();
+            window.painted_group_masks().iter().map(|mask| mask.bounds.right().0 / scale).collect()
+        })
+        .unwrap()
+    }
+
+    #[gpui::test]
+    fn an_opacity_group_does_not_clip_an_escaped_box_to_the_clip_it_started_in(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let clip = r#"{"marginLeft": 100, "width": 100, "height": 100, "overflow": "hidden"}"#;
+        let card = r##"{"opacity": 0.5, "width": 100, "height": 100, "backgroundColor": "#0000ff"}"##;
+        let child = r##"{"position": "absolute", "left": 100, "top": 0, "width": 300, "height": 50, "backgroundColor": "#ff0000"}"##;
+        let page = Page::new(cx, &[(1, None, ROOT), (2, Some(1), clip), (3, Some(2), card), (4, Some(3), child)]);
+        page.window.update(cx, |_, window, _| window.force_effect_groups()).unwrap();
+        page.draw(cx);
+
+        page.assert_unclipped(cx);
+        let clips = group_clips(&page, cx);
+        assert_eq!(clips.len(), 1);
+        assert!(clips[0] >= 400.0, "the group composites up to {} but the box reaches 400", clips[0]);
+    }
+
+    #[gpui::test]
+    fn an_opacity_group_keeps_the_clip_when_nothing_escapes(cx: &mut gpui::TestAppContext) {
+        let clip = r#"{"marginLeft": 100, "width": 100, "height": 100, "overflow": "hidden"}"#;
+        let card = r##"{"opacity": 0.5, "width": 100, "height": 100, "backgroundColor": "#0000ff"}"##;
+        let child = r##"{"width": 300, "height": 50, "backgroundColor": "#ff0000"}"##;
+        let page = Page::new(cx, &[(1, None, ROOT), (2, Some(1), clip), (3, Some(2), card), (4, Some(3), child)]);
+        page.window.update(cx, |_, window, _| window.force_effect_groups()).unwrap();
+        page.draw(cx);
+
+        assert_eq!(group_clips(&page, cx), [200.0]);
     }
 
     /// The hit test of the retained tree, at a point outside the card.
