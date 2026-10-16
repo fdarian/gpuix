@@ -105,7 +105,7 @@ macro_rules! length_field {
 }
 
 /// A `DimensionValue` field that is not a size: an intrinsic size keyword is not a valid
-/// margin, inset or flex basis.
+/// margin or inset.
 macro_rules! dimension_field {
     ($name:ident, $property:literal, $reason:literal) => {
         fn $name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<DimensionValue>, D::Error> {
@@ -119,11 +119,6 @@ macro_rules! dimension_field {
     };
 }
 
-dimension_field!(
-    deserialize_flex_basis,
-    "flexBasis",
-    "min-content, max-content and fit-content are not supported there yet"
-);
 dimension_field!(
     deserialize_margin,
     "margin",
@@ -196,7 +191,8 @@ pub enum DimensionValue {
     Calc(LinearLength),
     Auto,
     /// `min-content`, `max-content`, `fit-content` and `fit-content(<length>)`. Only the
-    /// six size properties take one; the others reject it when they are deserialized.
+    /// six size properties and `flexBasis` take one; the others reject it when they are
+    /// deserialized.
     Intrinsic(IntrinsicKeyword),
     /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
     /// `<anchored>`. Only the six size properties of its direct children resolve it.
@@ -374,8 +370,8 @@ pub struct StyleDesc {
     pub flex_wrap: Option<String>,
     pub flex_grow: Option<f64>,
     pub flex_shrink: Option<f64>,
-    /// A length (px, `%` of the container's main size, `em`, `calc()`, ...) or `auto`.
-    #[serde(default, deserialize_with = "deserialize_flex_basis")]
+    /// A length (px, `%` of the container's main size, `em`, `calc()`, ...), `auto`, or an
+    /// intrinsic size keyword, which only counts along a row flex container's main axis.
     pub flex_basis: Option<DimensionValue>,
     pub align_items: Option<String>,
     pub align_self: Option<String>,
@@ -1091,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn margins_insets_and_flex_basis_reject_the_intrinsic_size_keywords() {
+    fn margins_and_insets_reject_the_intrinsic_size_keywords() {
         for field in ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"] {
             for value in ["min-content", "max-content", "fit-content", "fit-content(10px)"] {
                 let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"{field}": "{value}"}}"#))
@@ -1104,11 +1100,18 @@ mod tests {
             let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"{field}": "max-content"}}"#)).unwrap_err().to_string();
             assert!(error.contains("invalid inset \"max-content\""), "{field}: {error}");
         }
-        for value in ["min-content", "max-content", "fit-content", "fit-content(50%)"] {
-            let error = serde_json::from_str::<StyleDesc>(&format!(r#"{{"flexBasis": "{value}"}}"#)).unwrap_err().to_string();
-            assert!(error.contains(&format!("invalid flexBasis \"{value}\"")), "{value}: {error}");
-        }
         assert_eq!(style_of(r#"{"margin": null, "top": 3, "flexBasis": "auto"}"#).top, Some(DimensionValue::Pixels(3.0)));
+    }
+
+    #[test]
+    fn flex_basis_takes_the_intrinsic_size_keywords() {
+        for text in ["min-content", "max-content", "fit-content", "fit-content(50%)", "FIT-CONTENT(10PX)"] {
+            let style = style_of(&format!(r#"{{"flexBasis": "{text}"}}"#));
+            assert_eq!(style.flex_basis, Some(intrinsic(text)), "{text}");
+            assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"flexBasis": "fit-content(-5px)"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid fit-content"), "{error}");
     }
 
     #[test]

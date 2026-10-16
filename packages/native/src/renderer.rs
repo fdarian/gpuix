@@ -11503,6 +11503,142 @@ mod dimension_length_tests {
         near(page.offset(4, 1), (text_width(11), 0.0));
     }
 
+    /// A row of `container`, holding element 2 with `item` and text, then a growing element 4.
+    fn basis_row(cx: &mut gpui::TestAppContext, container: &str, item: &str, content: &str) -> Page {
+        let page = Page::new(
+            cx,
+            &[(1, None, container), (2, Some(1), item), (4, Some(1), r#"{"flexGrow": 1}"#)],
+        );
+        page.add_text(cx, 3, 2, content);
+        page
+    }
+
+    const ROW: &str = r#"{"width": 600, "display": "flex", "flexDirection": "row"}"#;
+
+    #[gpui::test]
+    fn a_max_content_flex_basis_beats_the_width_and_leaves_the_rest_to_a_sibling(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(
+            cx,
+            ROW,
+            r#"{"width": 20, "flexBasis": "max-content", "flexShrink": 0}"#,
+            HELLO_WORLD,
+        );
+        near(page.size(2), (text_width(11), LINE));
+        near(page.size(4), (600.0 - text_width(11), LINE));
+        near(page.offset(4, 1), (text_width(11), 0.0));
+    }
+
+    #[gpui::test]
+    fn a_min_content_flex_basis_wraps_the_text_to_its_widest_word(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(cx, ROW, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+        near(page.offset(4, 1), (text_width(10), 0.0));
+    }
+
+    #[gpui::test]
+    fn a_flex_basis_keyword_works_in_a_reversed_row_and_beats_a_width_keyword(cx: &mut gpui::TestAppContext) {
+        let reversed = r#"{"width": 600, "display": "flex", "flexDirection": "row-reverse"}"#;
+        let page = basis_row(cx, reversed, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+        let both = basis_row(
+            cx,
+            ROW,
+            r#"{"width": "min-content", "flexBasis": "max-content", "flexShrink": 0}"#,
+            LONG,
+        );
+        near(both.size(2), (text_width(21), LINE));
+    }
+
+    #[gpui::test]
+    fn a_fit_content_flex_basis_is_max_content_that_shrinks_and_a_limit_is_clamped(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(cx, ROW, r#"{"flexBasis": "fit-content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (text_width(21), LINE));
+        let narrow = basis_row(cx, r#"{"width": 150, "display": "flex"}"#, r#"{"flexBasis": "fit-content"}"#, LONG);
+        near(narrow.size(2), (150.0, 2.0 * LINE));
+
+        let limited = basis_row(cx, ROW, r#"{"flexBasis": "fit-content(100px)", "flexShrink": 0}"#, LONG);
+        near(limited.size(2), (100.0, 3.0 * LINE));
+        limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(10px)", "flexShrink": 0}"#);
+        near(limited.size(2), (text_width(10), 3.0 * LINE));
+        limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(500px)", "flexShrink": 0}"#);
+        near(limited.size(2), (text_width(21), LINE));
+        limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(25%)", "flexShrink": 0}"#);
+        near(limited.size(2), (150.0, 2.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn a_flex_basis_keyword_is_auto_along_a_column_and_in_a_block(cx: &mut gpui::TestAppContext) {
+        let column = r#"{"width": 600, "display": "flex", "flexDirection": "column"}"#;
+        let reversed = r#"{"width": 600, "display": "flex", "flexDirection": "column-reverse"}"#;
+        for parent in [column, reversed, r#"{"width": 600, "display": "block"}"#] {
+            for keyword in ["min-content", "max-content", "fit-content", "fit-content(50px)"] {
+                let item = format!(r#"{{"flexBasis": "{keyword}"}}"#);
+                let page = text_box(cx, parent, &item, LONG);
+                near(page.size(2), (600.0, LINE));
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn a_hover_flex_basis_replaces_a_base_keyword_and_the_other_way_round(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(
+            cx,
+            ROW,
+            r#"{"flexBasis": "max-content", "flexShrink": 0, "hover": {"flexBasis": 120}}"#,
+            LONG,
+        );
+        near(page.size(2), (text_width(21), LINE));
+        hover(&page, cx, 2);
+        assert_eq!(page.size(2).0, 120.0);
+
+        let reverse = basis_row(
+            cx,
+            ROW,
+            r#"{"flexBasis": 120, "flexShrink": 0, "hover": {"flexBasis": "max-content"}}"#,
+            LONG,
+        );
+        assert_eq!(reverse.size(2).0, 120.0);
+        hover(&reverse, cx, 2);
+        near(reverse.size(2), (text_width(21), LINE));
+    }
+
+    #[gpui::test]
+    fn set_style_swaps_a_flex_basis_keyword_for_a_length_and_back(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(cx, ROW, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (text_width(10), 3.0 * LINE));
+        page.set_style(cx, 2, r#"{"flexBasis": 120, "flexShrink": 0}"#);
+        near(page.size(2), (120.0, 3.0 * LINE));
+        page.set_style(cx, 2, r#"{"flexBasis": "max-content", "flexShrink": 0}"#);
+        near(page.size(2), (text_width(21), LINE));
+        page.set_style(cx, 2, r#"{"flexBasis": "auto", "flexShrink": 0}"#);
+        near(page.size(2), (text_width(21), LINE));
+        page.set_style(cx, 2, r#"{"flexBasis": "min-content", "flexShrink": 0}"#);
+        page.set_style(cx, 2, r#"{"flexShrink": 0}"#);
+        near(page.size(2), (text_width(21), LINE));
+    }
+
+    #[test]
+    fn a_later_apply_replaces_a_flex_basis_keyword_either_way() {
+        let keyword = refine(&[r#"{"flexBasis": "fit-content(2em)"}"#]);
+        assert_eq!(
+            keyword.intrinsic_widths.flex_basis,
+            Some(Some(gpui::IntrinsicSize::FitContentLimit(gpui::px(32.0).into())))
+        );
+        assert_eq!(keyword.flex_basis, Some(gpui::Length::Auto));
+
+        for replacement in [r#"{"flexBasis": 50}"#, r#"{"flexBasis": "auto"}"#, r#"{"flexBasis": "calc(1em + 1%)"}"#] {
+            let cleared = refine(&[r#"{"flexBasis": "max-content"}"#, replacement]);
+            assert_eq!(cleared.intrinsic_widths.flex_basis, Some(None), "{replacement}");
+        }
+        let back = refine(&[r#"{"flexBasis": 50}"#, r#"{"flexBasis": "min-content"}"#]);
+        assert_eq!(back.intrinsic_widths.flex_basis, Some(Some(gpui::IntrinsicSize::MinContent)));
+        assert_eq!(back.flex_basis, Some(gpui::Length::Auto));
+
+        let untouched = refine(&[r#"{"flexBasis": "max-content"}"#, r#"{"width": 5}"#]);
+        assert_eq!(untouched.intrinsic_widths.flex_basis, Some(Some(gpui::IntrinsicSize::MaxContent)));
+        assert_eq!(untouched.intrinsic_widths.width, Some(None));
+    }
+
     #[gpui::test]
     fn a_resize_observer_and_the_bounds_report_the_resolved_keyword_width(cx: &mut gpui::TestAppContext) {
         let payloads = Arc::new(Mutex::new(Vec::<EventPayload>::new()));

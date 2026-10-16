@@ -5073,7 +5073,7 @@ CSS-like styling via the `style` prop:
 
 **Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"` | `"contents"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
-**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth` and `maxWidth` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
+**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
 **Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); a percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
@@ -5139,7 +5139,7 @@ a `%` skips the special case for a zero-length repeat.
 
 ### Intrinsic widths
 
-`width`, `minWidth` and `maxWidth` take `min-content`, `max-content`,
+`width`, `minWidth`, `maxWidth` and `flexBasis` take `min-content`, `max-content`,
 `fit-content` and `fit-content(<length-percentage>)`, with the CSS Sizing
 meaning. `minWidth: "fit-content"` is `min-content` and `maxWidth: "fit-content"`
 is `max-content`. Text wraps at its widest unbreakable stretch for `min-content`,
@@ -5155,8 +5155,14 @@ A layout pre-pass measures them, so each node with a keyword costs extra layouts
 of its subtree every frame, and nesting multiplies it. Use them where the content
 decides the width, not on every box of a long list. A `height` keyword behaves as
 `auto`, since the block axis of CSS Sizing has no intrinsic size to ask for.
-`flexBasis`, the margins and the insets do not take the keywords (`flexBasis`
-with `min-content` or `max-content` is not built).
+The margins and the insets do not take the keywords.
+
+`flexBasis` measures the keyword the same way, and it wins over `width`, but only
+in a `row` or `row-reverse` flex container, where the main axis is the inline one.
+In a column, or in a parent that is not a flex container, it is `auto`. Its
+`fit-content` is `max-content`, because the container's size is not known to the
+measurement: the item's `flexShrink` brings it down to the container, so with
+`flexShrink: 0` it overflows where a browser would clamp.
 
 A later `auto` or definite value in a `hover` or focus style replaces a keyword,
 and `width: "auto"` in a state style replaces the base `width`, as in CSS.

@@ -124,14 +124,33 @@ pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
     el = apply_padding(el, style, lengths);
     el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
-    if let Some(value) = &style.flex_basis {
-        el.style().flex_basis = Some(length(value, lengths));
-    }
+    el = apply_flex_basis(el, style, lengths);
     if let Some(value) = style.justify_items.as_deref().and_then(align_items) {
         el.style().justify_items = Some(value);
     }
     if let Some(value) = style.justify_self.as_deref().and_then(align_items) {
         el.style().justify_self = Some(value);
+    }
+    el
+}
+
+/// A keyword leaves `flex_basis` `auto` for layout to fill in, and every other value clears
+/// the keyword, like `set_size`. Whether the keyword counts depends on the parent's direction,
+/// which only layout knows.
+fn apply_flex_basis<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
+    let Some(value) = &style.flex_basis else {
+        return el;
+    };
+    let refinement = el.style();
+    match value {
+        DimensionValue::Intrinsic(keyword) => {
+            refinement.flex_basis = Some(gpui::Length::Auto);
+            refinement.intrinsic_widths.flex_basis = Some(Some(intrinsic_size(keyword, lengths)));
+        }
+        value => {
+            refinement.flex_basis = Some(length(value, lengths));
+            refinement.intrinsic_widths.flex_basis = Some(None);
+        }
     }
     el
 }

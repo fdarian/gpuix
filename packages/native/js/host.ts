@@ -430,7 +430,11 @@ export interface StyleDesc {
   flexGrow?: number
   flexShrink?: number
   /** A length (see `DimensionValue`; a percentage is of the container's main size) or `"auto"`,
-   *  which uses the item's `width` (or `height` in a column). */
+   *  which uses the item's `width` (or `height` in a column). Also `"min-content"`,
+   *  `"max-content"`, `"fit-content"` and `"fit-content(<length>)"` as for `width`, measured
+   *  the same way and winning over `width`, but only in a `row` or `row-reverse` flex container;
+   *  in a column they are `"auto"`, as in CSS. `"fit-content"` is `"max-content"` here, which
+   *  the item's `flexShrink` narrows to the container, so with `flexShrink: 0` it overflows. */
   flexBasis?: DimensionValue
   alignItems?: string
   alignSelf?: string
@@ -485,7 +489,7 @@ export interface StyleDesc {
    *  extra layout of its subtree every frame, so put it on the few boxes that need it. A later
    *  style (`hover`, `focusVisible`) replaces the keyword with a length or `auto` and the other
    *  way round. The same keywords on `height`, `minHeight` and `maxHeight` are `auto`, as in
-   *  CSS. Margins, insets and `flexBasis` reject them. */
+   *  CSS. Margins and insets reject them. */
   width?: DimensionValue
   height?: DimensionValue
   minWidth?: DimensionValue

@@ -985,6 +985,7 @@ mod tests {
             (AnimProp::Height, "height"),
             (AnimProp::MinWidth, "minWidth"),
             (AnimProp::MaxHeight, "maxHeight"),
+            (AnimProp::FlexBasis, "flexBasis"),
         ] {
             let style = serde_json::from_str::<StyleDesc>(&format!(r#"{{ "{field}": "fit-content(10px)" }}"#)).unwrap();
             assert_eq!(prop.read(&style, &colors), None, "{field}");
