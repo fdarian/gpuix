@@ -3573,7 +3573,7 @@ bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it 
 | `tabIndex={0}` | Joins the tab order, in document order |
 | `tabIndex={n}`, `n > 0` | Tabbed first, in ascending order of `n` (document order among equal values), then the `0`s |
 | `tabIndex={-1}` | Focusable by click, `focus()` or `focusElement`, but never a Tab stop |
-| `autoFocus` | Takes focus once, when its native focus handle is created |
+| `autoFocus` | Takes focus once, when it mounts: in the commit that attaches it, as in React DOM. Windows and Linux focus it on the next frame |
 | `disabled` (`<input>`, `<textarea>`) | Not focusable. Focus leaves it when it becomes disabled |
 | `inert` | Nothing in the subtree is focusable; focus leaves it when an ancestor becomes inert. See below |
 
@@ -3806,9 +3806,17 @@ handler.
 `focus()`, `blur()`, `focusNext()`, `focusPrevious()` and the `within` variants fire
 their `blur`, `focusout`, `focus` and `focusin` events before they return, on
 macOS and in the test renderer, so a handler that moves focus hears them before
-its next line (a focus handler may move focus again). The focus a mouse press or
-`autoFocus` causes reaches handlers a frame later, and on Windows and Linux all of
-them are queued.
+its next line (a focus handler may move focus again). The focus a mouse press, an
+`autoFocus` mount and a frame cause is delivered the same way, and
+`document.activeElement` already names the new element: after the `mousedown`
+handlers and their `preventDefault()`, before the press returns; inside the commit
+that mounts the element; before the frame that noticed it returns. On Windows and
+Linux all of them are queued.
+
+A `mousedown` handler that mounts an `autoFocus` element (a popup opened on
+press) therefore loses its focus to the pressed element, as on the web: the press
+takes focus after the handlers. Call `preventDefault()` on the `mousedown` to keep
+it where the popup put it.
 
 `focusNext()` and `focusPrevious()` map directly to GPUI's
 `window.focus_next()` and `window.focus_prev()`.
