@@ -21,6 +21,7 @@ macro_rules! overlay_fields {
             group_active: None,
             group_focus_within: None,
             measure_natural_width: false,
+            flex_or_grid_item: false,
         }
     };
 }

@@ -762,6 +762,11 @@ pub struct StyleDesc {
     /// also measures the width this element has with `width: auto`.
     #[serde(skip)]
     pub measure_natural_width: bool,
+    /// Set by the renderer on the copy of the style it builds an element from, never by JS: the
+    /// element is an item of a flex or grid container, so its `z-index` applies without a
+    /// `position`. Only set when it has a `z-index`.
+    #[serde(skip)]
+    pub flex_or_grid_item: bool,
 
     // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
     // over the `animation` shorthand. Names refer to `defineKeyframes`.

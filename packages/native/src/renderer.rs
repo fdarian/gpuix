@@ -5886,6 +5886,7 @@ impl GpuixView {
             contents_overlay: None,
             anchor_scope: None,
             stacking_root: true,
+            stacking_item: false,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -6044,6 +6045,9 @@ pub(crate) struct BuildCtx<'a> {
     /// Set while building the first element of a build (the window root, a virtual-list row),
     /// which has no stacking context around it. Taken by `build_element`.
     pub stacking_root: bool,
+    /// Set while building a child of a flex or grid container, which its `z-index` applies to
+    /// without a `position`. Taken by `build_element`.
+    pub stacking_item: bool,
 }
 
 impl BuildCtx<'_> {
@@ -7102,6 +7106,7 @@ impl gpui::Render for GpuixView {
                     contents_overlay: None,
                     anchor_scope: None,
                     stacking_root: true,
+                    stacking_item: false,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7227,6 +7232,7 @@ pub(crate) fn build_element(
     // not the build context, which the children below need mutably.
     let tree = ctx.tree;
     let stacking_root = std::mem::take(&mut ctx.stacking_root);
+    let stacking_item = std::mem::take(&mut ctx.stacking_item);
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
@@ -7385,6 +7391,14 @@ pub(crate) fn build_element(
         ..style.cloned().unwrap_or_default()
     });
     let style = natural_width_style.as_ref().or(style);
+    // Only a z-index differs for an item, and it is the rare style that has one.
+    let item_style = (stacking_item && style.is_some_and(|style| style.z_index.is_some())).then(|| {
+        StyleDesc {
+            flex_or_grid_item: true,
+            ..style.cloned().unwrap_or_default()
+        }
+    });
+    let style = item_style.as_ref().or(style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -7911,14 +7925,19 @@ fn build_content(
         for child in plan {
             match child {
                 crate::text::inline::Child::Block(child_id) => {
+                    let item = crate::layout::stacking::is_flex_or_grid_container(element);
                     paint_ranks.push(crate::layout::stacking::paint_rank(
                         ctx.tree
                             .elements
                             .get(&child_id)
                             .and_then(|child| child.style.as_deref()),
+                        item,
+                        &ctx.inherited.colors,
+                        &ctx.inherited.lengths,
                     ));
                     ctx.contents_overlay =
                         crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                    ctx.stacking_item = item;
                     content_elements.push(build_element(child_id, ctx, window, cx));
                 }
                 crate::text::inline::Child::Paragraph(paragraph) => {
@@ -8214,7 +8233,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     lengths: &LengthContext,
     fill: crate::style::Fill,
 ) -> E {
-    el = crate::layout::style::apply(el, style, lengths);
+    el = crate::layout::style::apply(el, style, colors, lengths);
     match style.flex_wrap.as_deref() {
         Some("wrap") => el = el.flex_wrap(),
         Some("wrap-reverse") => el = el.flex_wrap_reverse(),
@@ -12478,50 +12497,211 @@ mod stacking_build_tests {
         tree.append_child(id, id + 100);
     }
 
-    /// `1` is the window root with `a`, a static 200 box holding `b`, and `c` after it.
-    fn paint_order(cx: &mut gpui::TestAppContext, root: &str, b: &str, c: &str) -> Vec<String> {
-        let tree = Arc::new(Mutex::new(RetainedTree::new()));
-        {
-            let mut tree = tree.lock().unwrap();
-            let root: StyleDesc = serde_json::from_str(root).unwrap();
-            tree.create_element(1, "div".to_owned());
-            tree.set_style(1, Arc::new(root));
-            tree.set_root(1);
-            labelled(&mut tree, 2, 1, r#"{"width": 200, "height": 200}"#, "a");
-            labelled(&mut tree, 3, 2, b, "b");
-            labelled(&mut tree, 4, 1, c, "c");
+    /// `1` is the window root with `a`, a 200 box holding `b`, and `c` after it, which overlaps
+    /// `a` where `b` is also: the point (150, 150).
+    struct Scene {
+        window: gpui::WindowHandle<GpuixView>,
+        tree: Arc<Mutex<RetainedTree>>,
+        painted: Vec<String>,
+    }
+
+    impl Scene {
+        fn new(cx: &mut gpui::TestAppContext, root: &str, a: &str, b: &str, c: &str) -> Scene {
+            Scene::with(cx, root, a, b, c, |_| {})
         }
-        let window = cx.add_window(|window, _| {
-            crate::events::enable_dom_hit_testing(window);
-            GpuixView::new(
-                tree,
+
+        /// `extra` adds more nodes under `b` (id 3).
+        fn with(
+            cx: &mut gpui::TestAppContext,
+            root: &str,
+            a: &str,
+            b: &str,
+            c: &str,
+            extra: impl FnOnce(&mut RetainedTree),
+        ) -> Scene {
+            let tree = Arc::new(Mutex::new(RetainedTree::new()));
+            {
+                let mut tree = tree.lock().unwrap();
+                let root: StyleDesc = serde_json::from_str(root).unwrap();
+                tree.create_element(1, "div".to_owned());
+                tree.set_style(1, Arc::new(root));
+                tree.set_root(1);
+                labelled(&mut tree, 2, 1, a, "a");
+                labelled(&mut tree, 3, 2, b, "b");
+                labelled(&mut tree, 4, 1, c, "c");
+                extra(&mut tree);
+            }
+            let window = cx.add_window(|window, _| {
+                crate::events::enable_dom_hit_testing(window);
+                GpuixView::new(
+                    tree.clone(),
+                    None,
+                    "test".to_owned(),
+                    SharedSelection::default(),
+                    crate::events::state::PointerRequests::default(),
+                )
+            });
+            cx.update_window(window.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+            })
+            .unwrap();
+            Scene { window, tree, painted: crate::text::painted_text(window.window_id()) }
+        }
+
+        /// The elements under (150, 150), topmost first, as the hit test of the painted frame
+        /// finds them.
+        fn hit_chain(&self, cx: &mut gpui::TestAppContext) -> Vec<u64> {
+            gpui::VisualTestContext::from_window(self.window.into(), cx).simulate_mouse_move(
+                gpui::point(gpui::px(150.0), gpui::px(150.0)),
                 None,
-                "test".to_owned(),
-                SharedSelection::default(),
-                crate::events::state::PointerRequests::default(),
-            )
-        });
-        cx.update_window(window.into(), |_, window, app| {
-            window.refresh();
-            window.draw(app).clear(app);
-        })
-        .unwrap();
-        crate::text::painted_text(window.window_id())
+                Default::default(),
+            );
+            cx.update_window(self.window.into(), |_, window, _| {
+                crate::events::ids::host_hit_chain(window)
+                    .into_iter()
+                    .map(|hit| hit.id)
+                    .collect()
+            })
+            .unwrap()
+        }
+
+        /// Every element under the same point, topmost first, from the retained tree. Its first
+        /// is the target the frame hit tests.
+        fn elements_at(&self) -> Vec<u64> {
+            let id = self.window.window_id();
+            let tree = self.tree.lock().unwrap();
+            tree.elements_at(150.0, 150.0, &|element| crate::automation::get_bounds(id, element))
+        }
     }
 
     const ROOT: &str = r#"{"width": 400, "height": 400}"#;
+    const A: &str = r#"{"width": 200, "height": 200}"#;
+    const FLEX_A: &str = r#"{"display": "flex", "width": 200, "height": 200}"#;
+    const GRID_A: &str = r#"{"display": "grid", "width": 200, "height": 200}"#;
     const C: &str = r#"{"width": 200, "height": 200, "marginTop": -100, "marginLeft": 100}"#;
 
     #[gpui::test]
     fn a_z_indexed_descendant_paints_after_a_later_sibling(cx: &mut gpui::TestAppContext) {
         let b = r#"{"position": "absolute", "zIndex": 5, "left": 120, "top": 120, "width": 100, "height": 100}"#;
-        assert_eq!(paint_order(cx, ROOT, b, C), ["a", "c", "b"]);
+        assert_eq!(Scene::new(cx, ROOT, A, b, C).painted, ["a", "c", "b"]);
     }
 
     #[gpui::test]
     fn a_static_box_with_a_z_index_stays_in_tree_order(cx: &mut gpui::TestAppContext) {
         let b = r#"{"zIndex": 5, "width": 100, "height": 100}"#;
-        assert_eq!(paint_order(cx, ROOT, b, C), ["a", "b", "c"]);
+        assert_eq!(Scene::new(cx, ROOT, A, b, C).painted, ["a", "b", "c"]);
+    }
+
+    const ITEM: &str = r#"{"zIndex": 5, "width": 180, "height": 180}"#;
+
+    #[gpui::test]
+    fn a_flex_item_with_a_z_index_paints_and_hits_above_a_later_sibling_of_its_container(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let scene = Scene::new(cx, ROOT, FLEX_A, ITEM, C);
+        assert_eq!(scene.painted, ["a", "c", "b"]);
+        assert_eq!(scene.hit_chain(cx), [3, 2, 1]);
+        assert_eq!(scene.elements_at(), [3, 4, 2, 1]);
+    }
+
+    #[gpui::test]
+    fn a_grid_item_with_a_z_index_paints_and_hits_above_a_later_sibling_of_its_container(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let scene = Scene::new(cx, ROOT, GRID_A, ITEM, C);
+        assert_eq!(scene.painted, ["a", "c", "b"]);
+        assert_eq!(scene.hit_chain(cx), [3, 2, 1]);
+        assert_eq!(scene.elements_at(), [3, 4, 2, 1]);
+    }
+
+    #[gpui::test]
+    fn a_flex_item_with_z_index_auto_or_in_a_block_stays_in_tree_order(cx: &mut gpui::TestAppContext) {
+        let auto = r#"{"width": 180, "height": 180}"#;
+        let scene = Scene::new(cx, ROOT, FLEX_A, auto, C);
+        assert_eq!(scene.painted, ["a", "b", "c"]);
+        assert_eq!(scene.hit_chain(cx), [4, 1]);
+        assert_eq!(scene.elements_at(), [4, 3, 2, 1]);
+
+        let scene = Scene::new(cx, ROOT, A, ITEM, C);
+        assert_eq!(scene.painted, ["a", "b", "c"]);
+        assert_eq!(scene.hit_chain(cx), [4, 1]);
+    }
+
+    #[gpui::test]
+    fn a_flex_item_with_a_negative_z_index_paints_below_the_in_flow_boxes(cx: &mut gpui::TestAppContext) {
+        let below = r#"{"zIndex": -1, "width": 180, "height": 180}"#;
+        let scene = Scene::new(cx, ROOT, FLEX_A, below, C);
+        assert_eq!(scene.painted, ["b", "a", "c"]);
+        assert_eq!(scene.hit_chain(cx), [4, 1]);
+        assert_eq!(scene.elements_at(), [4, 2, 3, 1]);
+    }
+
+    #[gpui::test]
+    fn a_flex_item_with_a_z_index_traps_what_is_inside_it(cx: &mut gpui::TestAppContext) {
+        // x is positioned with the highest index, but belongs to b, which is a context.
+        let scene = Scene::with(cx, ROOT, FLEX_A, ITEM, C, |tree| {
+            labelled(
+                tree,
+                5,
+                3,
+                r#"{"position": "absolute", "zIndex": 100, "left": 0, "top": 0, "width": 20, "height": 20}"#,
+                "x",
+            );
+        });
+        assert_eq!(scene.painted, ["a", "c", "b", "x"]);
+    }
+
+    const FADED: &str = r#"{"opacity": 0.5, "width": 180, "height": 180}"#;
+
+    #[gpui::test]
+    fn a_translucent_static_box_paints_and_hits_in_the_positioned_layer(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::new(cx, ROOT, A, FADED, C);
+        assert_eq!(scene.painted, ["a", "c", "b"]);
+        assert_eq!(scene.hit_chain(cx), [3, 2, 1]);
+        assert_eq!(scene.elements_at(), [3, 4, 2, 1]);
+    }
+
+    #[gpui::test]
+    fn a_box_with_full_opacity_stays_in_tree_order(cx: &mut gpui::TestAppContext) {
+        let opaque = r#"{"opacity": 1, "width": 180, "height": 180}"#;
+        let scene = Scene::new(cx, ROOT, A, opaque, C);
+        assert_eq!(scene.painted, ["a", "b", "c"]);
+        assert_eq!(scene.hit_chain(cx), [4, 1]);
+    }
+
+    #[gpui::test]
+    fn a_translucent_box_is_a_context_of_its_own(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::with(cx, ROOT, A, FADED, C, |tree| {
+            labelled(
+                tree,
+                5,
+                3,
+                r#"{"position": "absolute", "zIndex": 100, "left": 0, "top": 0, "width": 20, "height": 20}"#,
+                "x",
+            );
+        });
+        // x comes right after b, not after c's positioned peers: it is inside b.
+        assert_eq!(scene.painted, ["a", "c", "b", "x"]);
+    }
+
+    #[gpui::test]
+    fn a_translucent_flex_item_takes_its_z_index(cx: &mut gpui::TestAppContext) {
+        // z-index applies to the item, so it is not at 0 with the positioned boxes: c has 1.
+        let b = r#"{"opacity": 0.5, "zIndex": -1, "width": 180, "height": 180}"#;
+        let c = r#"{"position": "relative", "zIndex": 1, "width": 200, "height": 200, "marginTop": -100, "marginLeft": 100}"#;
+        let scene = Scene::new(cx, ROOT, FLEX_A, b, c);
+        assert_eq!(scene.painted, ["b", "a", "c"]);
+    }
+
+    #[gpui::test]
+    fn the_layout_of_a_lifted_box_is_unchanged(cx: &mut gpui::TestAppContext) {
+        let plain = Scene::new(cx, ROOT, FLEX_A, r#"{"width": 180, "height": 180}"#, C);
+        let id = plain.window.window_id();
+        let before = crate::automation::get_bounds(id, 3).unwrap();
+        let lifted = Scene::new(cx, ROOT, FLEX_A, ITEM, C);
+        let after = crate::automation::get_bounds(lifted.window.window_id(), 3).unwrap();
+        assert_eq!((before.x, before.y, before.width, before.height), (after.x, after.y, after.width, after.height));
     }
 }
 

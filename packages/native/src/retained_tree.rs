@@ -1073,8 +1073,9 @@ impl RetainedTree {
     /// both. An element that forms a stacking context (the window root, a virtual-list row, an
     /// `anchored` layer, or one whose style says so) paints its own box, then the positioned
     /// descendants it was handed with a negative `z-index`, then its in-flow content in tree
-    /// order, then the other positioned descendants by `(z-index, tree order)`. A positioned
-    /// element goes to the nearest context around it however many static boxes sit between.
+    /// order, then the other lifted descendants by `(z-index, tree order)`. A lifted element (a
+    /// positioned one, a flex or grid item with a `z-index`, an effect group) goes to the nearest
+    /// context around it however many static boxes sit between.
     /// Where no context is active (below a `visibility: hidden` element) the children of one
     /// parent are ordered by `paint_rank`. A deferred `anchored` layer is drawn after the tree
     /// by `priority`, without the clip of the elements around it: its hits come first.
@@ -1202,8 +1203,10 @@ impl RetainedTree {
             }
         }
 
+        let item = crate::layout::stacking::is_item(self, element);
         let mut own_context = (crate::layout::stacking::is_forced_context(self, element)
-            || crate::layout::stacking::creates_context(style, &walk.colors, &walk.lengths))
+            || (!crate::layout::contents::is_display_contents(element)
+                && crate::layout::stacking::creates_context(style, item, &walk.colors, &walk.lengths)))
         .then(Context::default);
         // Nothing under a hidden element is painted by a context above it: a `visible`
         // descendant is, in place, by `paint_rank`.
@@ -1249,7 +1252,9 @@ impl RetainedTree {
                     let lifted = self
                         .elements
                         .get(&child)
-                        .and_then(|child| crate::layout::stacking::lifted_z(self, child));
+                        .and_then(|child| {
+                            crate::layout::stacking::lifted_z(self, child, &walk.colors, &walk.lengths)
+                        });
                     match lifted {
                         Some(z) => {
                             let ordinal = context.take_ordinal();
@@ -1274,8 +1279,14 @@ impl RetainedTree {
                     .children
                     .iter()
                     .map(|&child| {
-                        let style = self.elements.get(&child).and_then(|child| child.style.as_deref());
-                        (crate::layout::stacking::paint_rank(style), child)
+                        let element = self.elements.get(&child);
+                        let rank = crate::layout::stacking::paint_rank(
+                            element.and_then(|child| child.style.as_deref()),
+                            element.is_some_and(|child| crate::layout::stacking::is_item(self, child)),
+                            &walk.colors,
+                            &walk.lengths,
+                        );
+                        (rank, child)
                     })
                     .collect();
                 ranked.sort_by_key(|(rank, _)| *rank);
@@ -2223,6 +2234,109 @@ mod tests {
             (4, 1, "div", at("absolute", Some(2.0))),
         ]);
         assert_eq!(order, [3, 2, 4, 1]);
+    }
+
+    fn laid_out(display: &str) -> StyleDesc {
+        StyleDesc { display: Some(display.to_string()), ..Default::default() }
+    }
+
+    fn item(z_index: Option<f64>) -> StyleDesc {
+        StyleDesc { z_index, ..Default::default() }
+    }
+
+    #[test]
+    fn elements_at_puts_a_flex_or_grid_item_with_a_z_index_above_the_later_sibling_of_its_container() {
+        for display in ["flex", "grid"] {
+            let order = hits(vec![
+                (1, 0, "div", flow()),
+                (2, 1, "div", laid_out(display)),
+                (3, 2, "div", item(Some(5.0))),
+                (4, 1, "div", flow()),
+            ]);
+            assert_eq!(order, [3, 4, 2, 1], "{display}");
+        }
+    }
+
+    #[test]
+    fn elements_at_leaves_a_static_box_with_a_z_index_in_tree_order_unless_it_is_an_item() {
+        // z-index auto on an item, and an index in a block container: tree order.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", laid_out("flex")),
+            (3, 2, "div", item(None)),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", laid_out("block")),
+            (3, 2, "div", item(Some(5.0))),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_gives_a_display_contents_parents_children_to_the_flex_container() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", laid_out("flex")),
+            (3, 2, "div", laid_out("contents")),
+            (5, 3, "div", item(Some(5.0))),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [5, 4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_orders_a_flex_item_by_its_z_index_among_positioned_boxes() {
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", laid_out("flex")),
+            (3, 2, "div", item(Some(2.0))),
+            (4, 1, "div", at("absolute", Some(1.0))),
+            (5, 1, "div", at("absolute", Some(3.0))),
+        ]);
+        assert_eq!(order, [5, 3, 4, 2, 1]);
+        // A negative index is below the in-flow boxes: the container's own box is above it.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", laid_out("flex")),
+            (3, 2, "div", item(Some(-1.0))),
+            (4, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 2, 3, 1]);
+    }
+
+    #[test]
+    fn elements_at_paints_a_translucent_static_box_with_the_positioned_ones() {
+        let faded = StyleDesc { opacity: Some(0.5), ..Default::default() };
+        // In the z=0 layer, in tree order with the positioned boxes, over the in-flow ones.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", faded.clone()),
+            (3, 1, "div", flow()),
+            (4, 1, "div", at("relative", None)),
+            (5, 1, "div", faded.clone()),
+        ]);
+        assert_eq!(order, [5, 4, 2, 3, 1]);
+        // Under a positioned box with a higher index, over one with a lower.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", at("absolute", Some(-1.0))),
+            (3, 1, "div", faded.clone()),
+            (4, 1, "div", at("absolute", Some(1.0))),
+        ]);
+        assert_eq!(order, [4, 3, 2, 1]);
+        // From inside its own context, and from a deeper static box.
+        let order = hits(vec![
+            (1, 0, "div", flow()),
+            (2, 1, "div", flow()),
+            (3, 2, "div", faded),
+            (4, 3, "div", at("absolute", Some(9.0))),
+            (5, 1, "div", flow()),
+        ]);
+        assert_eq!(order, [4, 3, 5, 2, 1]);
     }
 
     #[test]

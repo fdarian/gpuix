@@ -4387,8 +4387,9 @@ inherited, until a child sets `auto`), and a deferred
 [`<anchored>`](#overlay-menus) layer comes first, ordered by `priority`,
 because gpui paints it after the tree and outside the clip of its ancestors.
 Beyond that, the order is the paint order of [stacking contexts](#layout-like-css):
-a positioned element is listed by its `zIndex` in the nearest context, however many
-static boxes sit between, and everything else in tree order.
+a positioned element, a flex or grid item with a `zIndex` and a translucent one
+are listed by `zIndex` in the nearest context, however many static boxes sit
+between, and everything else in tree order.
 
 ### Button
 
@@ -5604,7 +5605,7 @@ CSS-like styling via the `style` prop:
 
 **Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); a percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
-**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer, positioned elements only) orders a positioned element in its stacking context, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
+**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
 **Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
 
@@ -5829,20 +5830,30 @@ so that animation starts at `0`.
   indefinite parent counts as `auto`, and with neither set it takes its
   intrinsic size. `maxWidth` keeps the proportions.
 - **Paint order and stacking contexts.** A stacking context paints its own
-  background, then its positioned descendants with a negative `zIndex`, then its
-  in-flow content in tree order, then the other positioned descendants by
-  `zIndex` (`auto` is 0) and tree order. A positioned element (any `position`
-  but `static`) belongs to the nearest stacking context around it, whatever
-  static boxes sit between, so a `zIndex` on a card's descendant can reach over
-  the next sibling of the card. Hit testing follows paint order, and tab order
-  stays in document order. These form a context: the window root, a positioned
-  element with a `zIndex` (not `auto`), `position: fixed` and `sticky`, and
-  anything composited as a whole: `opacity` below 1, `filter`, `backdropFilter`,
-  `maskImage` and `clipPath`. A `zIndex` inside one cannot rise above what is
-  outside it. An `<anchored>` layer and each row of a `<virtual-list>` is a
-  context of its own too, and nothing is lifted out of a row: a row's content
-  never rises above the next row. A `zIndex` on a static box does nothing (not
-  even on a flex or grid item), and there is no `transform`.
+  background, then the lifted descendants with a negative `zIndex`, then its
+  in-flow content in tree order, then the other lifted descendants by
+  `zIndex` (`auto` is 0) and tree order. A lifted element belongs to the nearest
+  stacking context around it, whatever static boxes sit between, so a `zIndex`
+  on a card's descendant can reach over the next sibling of the card. Hit
+  testing follows paint order, and tab order stays in document order. Lifted
+  are: a positioned element (any `position` but `static`); a flex or grid item
+  with a `zIndex`, whatever its `position` (`zIndex` applies to an item without
+  one, but not to any other static box, and `auto` leaves it in tree order);
+  and an element composited as a whole (`opacity` below 1, `filter`,
+  `backdropFilter`, `maskImage`, `clipPath`), which paints in the 0 layer with
+  the positioned `auto` and 0 elements, in tree order, though it is not
+  positioned (it takes its `zIndex` where one applies). Layout is unaffected.
+  These form a context: the window root, a positioned element with a `zIndex`
+  (not `auto`), `position: fixed` and `sticky`, a flex or grid item with a
+  `zIndex` (not `auto`), and anything composited as a whole. A `zIndex` inside
+  one cannot rise above what is outside it. An `<anchored>` layer and each row
+  of a `<virtual-list>` is a context of its own too, and nothing is lifted out
+  of a row: a row's content never rises above the next row. The children of a
+  `display: contents` element are items of the container around it; the
+  children of a custom element (`<img>`, `<anchored>`, ...) are not items.
+  There is no `transform`. Styles that appear only in a `hover`, `active` or
+  focus state, a `motion` animation or a transition do not move an element
+  between layers in `getElementsAt`.
 - **`order`** stable-sorts the children of a flex or grid container. Layout and
   paint follow it; tab order stays in document order.
 

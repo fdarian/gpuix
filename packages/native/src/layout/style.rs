@@ -3,6 +3,7 @@
 
 use gpui::Styled;
 
+use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
 use crate::style::{DimensionValue, IntrinsicKeyword, StyleDesc};
 
@@ -107,9 +108,14 @@ fn auto_flow(value: &str) -> Option<gpui::GridAutoFlow> {
     })
 }
 
-/// `lengths` is the context of the element `style` belongs to, which a length
+/// `colors` and `lengths` are the context of the element `style` belongs to, which a length
 /// with a unit other than px resolves in.
-pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
+pub(crate) fn apply<E: Styled>(
+    mut el: E,
+    style: &StyleDesc,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> E {
     match style.display.as_deref() {
         Some("flex") => el = el.flex(),
         Some("grid") => el = el.grid(),
@@ -124,6 +130,7 @@ pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
     el = apply_padding(el, style, lengths);
     el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
+    el = super::stacking::apply_z_index(el, style, colors, lengths);
     el = apply_flex_basis(el, style, lengths);
     if let Some(value) = style.justify_items.as_deref().and_then(align_items) {
         el.style().justify_items = Some(value);
@@ -270,7 +277,7 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthConte
     if let Some(value) = &style.left {
         el.style().inset.left = Some(length(value, lengths));
     }
-    super::stacking::apply_z_index(el, style)
+    el
 }
 
 fn apply_grid<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
