@@ -62,6 +62,11 @@ pub struct RetainedElement {
 struct ElementExtras {
     events: HashSet<String>,
     custom_props: HashMap<String, serde_json::Value>,
+    /// The style before the `setStyle` that made the element declare a CSS
+    /// transition. Native only tracks elements that declare one, and the
+    /// transitions of a change are the ones of the style after it, so without
+    /// this the first change would be the first style native sees.
+    before_transition: Option<Arc<StyleDesc>>,
 }
 
 static EMPTY_EXTRAS: LazyLock<ElementExtras> = LazyLock::new(ElementExtras::default);
@@ -137,6 +142,10 @@ impl RetainedElement {
         &self.extras.as_deref().unwrap_or(&EMPTY_EXTRAS).custom_props
     }
 
+    pub fn style_before_transition(&self) -> Option<&StyleDesc> {
+        self.extras.as_deref()?.before_transition.as_deref()
+    }
+
     fn extras_mut(&mut self) -> &mut ElementExtras {
         self.extras.get_or_insert_with(Default::default)
     }
@@ -145,7 +154,11 @@ impl RetainedElement {
         if self
             .extras
             .as_ref()
-            .is_some_and(|extras| extras.events.is_empty() && extras.custom_props.is_empty())
+            .is_some_and(|extras| {
+                extras.events.is_empty()
+                    && extras.custom_props.is_empty()
+                    && extras.before_transition.is_none()
+            })
         {
             self.extras = None;
         }
@@ -618,6 +631,16 @@ impl RetainedTree {
                     !crate::text::inline::same_paragraphs(element.style.as_deref(), &style);
                 text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
                     != style.white_space.as_deref();
+                let before = element.style.take().filter(|old| {
+                    !crate::motion::declares_transitions(old)
+                        && crate::motion::declares_transitions(&style)
+                });
+                if before.is_some() {
+                    element.extras_mut().before_transition = before;
+                } else if let Some(extras) = element.extras.as_mut() {
+                    extras.before_transition = None;
+                    element.release_empty_extras();
+                }
                 element.style = Some(style);
                 changed = true;
             }
@@ -1574,6 +1597,30 @@ mod tests {
         assert!(tree.elements[&1].extras.is_some());
         tree.set_custom_prop(1, "aria-label".to_string(), serde_json::Value::Null);
         assert!(tree.elements[&1].extras.is_none());
+    }
+
+    #[test]
+    fn the_style_before_a_transition_declaration_is_kept_until_the_next_style() {
+        let mut tree = tree_with_child();
+        let intern = |tree: &mut RetainedTree, json: &str| tree.styles.intern(json.as_bytes()).unwrap();
+        let plain = intern(&mut tree, r#"{"opacity":0}"#);
+        tree.set_style(1, plain);
+        assert!(tree.elements[&1].style_before_transition().is_none(), "the first style has nothing before it");
+
+        let declared = intern(&mut tree, r#"{"opacity":1,"transition":"opacity 1s"}"#);
+        tree.set_style(1, declared);
+        assert_eq!(tree.elements[&1].style_before_transition().unwrap().opacity, Some(0.0));
+
+        let again = intern(&mut tree, r#"{"opacity":0.5,"transition":"opacity 1s"}"#);
+        tree.set_style(1, again);
+        assert!(tree.elements[&1].style_before_transition().is_none());
+        assert!(tree.elements[&1].extras.is_none());
+
+        let hover = intern(&mut tree, r#"{"opacity":0.5,"hover":{"transition":"opacity 1s"}}"#);
+        tree.set_style(1, hover);
+        let plain = intern(&mut tree, r#"{"opacity":0.5}"#);
+        tree.set_style(1, plain);
+        assert!(tree.elements[&1].style_before_transition().is_none());
     }
 
     #[test]

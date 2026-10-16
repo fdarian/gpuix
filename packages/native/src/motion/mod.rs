@@ -28,7 +28,7 @@ pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimation
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
 pub(crate) use css_transition::{
-    validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
+    declares_transitions, validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
 };
 pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
 use curve::Transition;
@@ -678,8 +678,12 @@ pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDe
 /// declares none). The result has no state styles left, so GPUI's own
 /// `.hover()` / `.active()` / `.focus_visible()` refinements do not apply them a
 /// second time, instantly.
+///
+/// `before` is the style the element had before it first declared a transition:
+/// the change that adds the declaration transitions from it.
 pub(crate) fn resolve_declared_style(
-    transitions: Option<&mut CssTransitions>,
+    mut transitions: Option<&mut CssTransitions>,
+    before: Option<&StyleDesc>,
     parent_colors: &crate::color::ColorContext,
     pointer: crate::events::state_styles::PointerStates,
     motion: Option<&MotionState>,
@@ -690,6 +694,9 @@ pub(crate) fn resolve_declared_style(
     interpolate_size: InterpolateSize,
     now: Instant,
 ) -> StyleDesc {
+    if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
+        transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors);
+    }
     let mut after = fold_state_styles(style, focus_visible, pointer);
     if let Some(running) = transitions
         .and_then(|transitions| {

@@ -5545,7 +5545,9 @@ render per frame.
   stop lists. `motion` accepts the same strings as `ease`
 - **What starts one.** Each frame the element's style, with the state styles that
   apply folded in, is compared with the previous frame's. A changed value starts a
-  transition when its duration plus delay is above zero. The first style an
+  transition when its duration plus delay is above zero, using the `transition*`
+  of the style after the change, so a change that also adds the transition (or a
+  duration) runs. The first style an
   element mounts with never transitions. A property that is unset starts from its
   CSS initial value (`opacity` 1, padding `0`); one CSS leaves to layout (`auto`,
   an unset `width`) changes instantly
@@ -5591,10 +5593,6 @@ render per frame.
   bubble like the DOM (`target` is the transitioning element) and cannot be
   cancelled; `onTransitionEndCapture` and the other `…Capture` props listen in the
   capture phase
-
-Not supported: the one transition-start case where an element's first style has
-no `transition` and a later style adds one together with a changed value (the
-change applies instantly; the next one animates).
 
 ### CSS animations
 

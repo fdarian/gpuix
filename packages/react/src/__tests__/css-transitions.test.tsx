@@ -50,6 +50,54 @@ describeNative("CSS transitions", () => {
     expect(widthOf(renderer, "box")).toBe(300)
   })
 
+  it("runs a transition declared in the same render as the value change", () => {
+    const { render, renderer } = createTestRoot()
+    renderer.clockPause()
+    render(<div testId="box" style={{ width: 100, height: 20 }} />)
+    expect(widthOf(renderer, "box")).toBe(100)
+
+    render(
+      <div
+        testId="box"
+        style={{ width: 200, height: 20, transition: "width 1s linear" }}
+      />
+    )
+    expect(widthOf(renderer, "box")).toBe(100)
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(150, 0)
+    renderer.clockFastForward(1000)
+    expect(widthOf(renderer, "box")).toBe(200)
+  })
+
+  it("runs a duration that arrives with the value, and drops the transition with it", () => {
+    const { render, renderer } = createTestRoot()
+    const box = (width: number, duration: string) => (
+      <div
+        testId="box"
+        style={{
+          width,
+          height: 20,
+          transitionProperty: "width",
+          transitionDuration: duration,
+          transitionTimingFunction: "linear",
+        }}
+      />
+    )
+    renderer.clockPause()
+    render(box(100, "0s"))
+    render(box(200, "1s"))
+    renderer.clockFastForward(500)
+    expect(widthOf(renderer, "box")).toBeCloseTo(150, 0)
+
+    // The running transition keeps its own timing when only the duration changes.
+    render(box(200, "100ms"))
+    renderer.clockFastForward(250)
+    expect(widthOf(renderer, "box")).toBeCloseTo(175, 0)
+
+    render(box(300, "0s"))
+    expect(widthOf(renderer, "box")).toBe(300)
+  })
+
   it("does not animate without a transition, or on the first frame", () => {
     const { render, renderer } = createTestRoot()
     renderer.clockPause()

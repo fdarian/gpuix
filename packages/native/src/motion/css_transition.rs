@@ -497,6 +497,14 @@ pub(crate) fn validate_transitions(style: &StyleDesc) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether `style`, or a state style in it, declares a transition.
+pub(crate) fn declares_transitions(style: &StyleDesc) -> bool {
+    declares_transition(style)
+        || super::state_styles(style)
+            .into_iter()
+            .any(|(_, state)| state.is_some_and(declares_transition))
+}
+
 /// Whether `style` sets a `transition*` field that is more than `none`.
 fn declares_transition(style: &StyleDesc) -> bool {
     let only_none = |text: &Option<String>| {
@@ -1055,12 +1063,7 @@ impl CssTransitions {
     /// that cancels what was running (`transitioncancel`); once the state is
     /// idle the next call drops it.
     pub(crate) fn wants(&mut self, id: u64, style: Option<&StyleDesc>) -> bool {
-        if style.is_some_and(|style| {
-            declares_transition(style)
-                || super::state_styles(style)
-                    .into_iter()
-                    .any(|(_, state)| state.is_some_and(declares_transition))
-        }) {
+        if style.is_some_and(declares_transitions) {
             return true;
         }
         match self.states.get(&id) {
@@ -1088,6 +1091,17 @@ impl CssTransitions {
             })
             .map(|(id, _)| *id)
             .collect()
+    }
+
+    /// Starts tracking `id` from `before`, the style it had before it first
+    /// declared a transition. The transitions of a change come from the style
+    /// after it, so a change that also adds the declaration must not be the
+    /// first style the element is seen with.
+    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext) {
+        if let std::collections::hash_map::Entry::Vacant(slot) = self.states.entry(id) {
+            let colors = Colors::of(parent_colors, Some(before));
+            slot.insert(ElementState::new(id, before, colors));
+        }
     }
 
     /// Feeds one frame's after-change style. The first style an element is seen
@@ -1676,6 +1690,91 @@ mod tests {
         clock.frame(0, &sized(0.0, "none"));
         clock.frame(0, &sized(100.0, "width 1s linear"));
         assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
+    }
+
+    fn timed(width: f64, duration: &str) -> StyleDesc {
+        style(&format!(
+            r#"{{ "width": {width}, "transitionProperty": "width", "transitionDuration": "{duration}", "transitionTimingFunction": "linear" }}"#
+        ))
+    }
+
+    #[test]
+    fn an_element_seeded_with_the_style_before_its_declaration_transitions_the_change_that_adds_it() {
+        let mut clock = Clock::new();
+        let before = style(r#"{ "width": 0 }"#);
+        clock.transitions.seed(1, &before, &clock.parent_colors);
+        assert_eq!(width_of(&clock.frame(0, &sized(100.0, "width 1s linear"))), 0.0);
+        assert_eq!(clock.events(), [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0)]);
+        assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
+    }
+
+    #[test]
+    fn seeding_an_element_already_tracked_leaves_its_state_alone() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.frame(0, &sized(100.0, "width 1s linear"));
+        clock.transitions.seed(1, &style(r#"{ "width": 7 }"#), &clock.parent_colors);
+        assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
+    }
+
+    #[test]
+    fn a_duration_that_arrives_with_the_value_runs() {
+        let mut clock = Clock::new();
+        clock.frame(0, &timed(0.0, "0s"));
+        assert_eq!(width_of(&clock.frame(0, &timed(100.0, "1s"))), 0.0);
+        assert_eq!(width_of(&clock.frame(500, &timed(100.0, "1s"))), 50.0);
+    }
+
+    #[test]
+    fn a_zero_duration_that_arrives_with_the_value_applies_it_at_once_and_cancels_the_running_one() {
+        let mut clock = Clock::new();
+        clock.frame(0, &timed(0.0, "1s"));
+        clock.frame(0, &timed(100.0, "1s"));
+        clock.events();
+        clock.transitions.take_active();
+        assert_eq!(width_of(&clock.frame(500, &timed(200.0, "0s"))), 200.0);
+        assert_eq!(clock.events(), [(Cancel, "width".to_string(), 0.5)]);
+        assert!(!clock.transitions.take_active());
+    }
+
+    #[test]
+    fn removing_the_transition_with_the_value_change_applies_it_at_once_and_cancels_the_running_one() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        clock.frame(0, &sized(100.0, "width 1s linear"));
+        clock.events();
+        assert_eq!(width_of(&clock.frame(500, &sized(200.0, "none"))), 200.0);
+        assert_eq!(clock.events(), [(Cancel, "width".to_string(), 0.5)]);
+
+        let mut idle = Clock::new();
+        idle.frame(0, &sized(0.0, "width 1s linear"));
+        assert_eq!(width_of(&idle.frame(10, &sized(100.0, "none"))), 100.0);
+        assert!(idle.events().is_empty(), "no transition starts under the style after the change");
+    }
+
+    #[test]
+    fn a_duration_change_alone_leaves_a_running_transition_its_own_timing() {
+        let mut clock = Clock::new();
+        clock.frame(0, &timed(0.0, "1s"));
+        clock.frame(0, &timed(100.0, "1s"));
+        clock.events();
+        assert_eq!(width_of(&clock.frame(500, &timed(100.0, "100ms"))), 50.0);
+        assert_eq!(width_of(&clock.frame(900, &timed(100.0, "100ms"))), 90.0);
+        assert!(clock.events().is_empty());
+        clock.frame(1000, &timed(100.0, "100ms"));
+        assert_eq!(clock.events(), [(End, "width".to_string(), 1.0)]);
+    }
+
+    #[test]
+    fn a_hover_that_carries_the_value_and_the_transition_runs() {
+        let base = style(
+            r#"{ "width": 0, "hover": { "width": 100, "transition": "width 1s linear" } }"#,
+        );
+        let mut clock = Clock::new();
+        clock.frame(0, &resolve_state_styles(&base, false, false));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(width_of(&clock.frame(0, &hovered)), 0.0);
+        assert_eq!(width_of(&clock.frame(500, &hovered)), 50.0);
     }
 
     #[test]

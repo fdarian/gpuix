@@ -6959,6 +6959,7 @@ pub(crate) fn build_element(
             && window.last_input_was_keyboard();
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
+            element.style_before_transition(),
             &ctx.inherited.colors,
             pointer_states,
             ctx.motion_states.get(&id),
