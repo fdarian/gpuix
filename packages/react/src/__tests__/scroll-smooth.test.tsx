@@ -117,7 +117,7 @@ describeNative("scrollBehavior: smooth", () => {
     try {
       renderer.scrollTo(id, 0, -300)
       advance(100)
-      renderer.nativeSimulateScrollWheel(50, 50, 0, 10)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, -10)
       const afterWheel = top()
       advance(1000)
       expect(top()).toBe(afterWheel)

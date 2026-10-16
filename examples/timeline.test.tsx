@@ -198,14 +198,14 @@ describeNative('timeline example', () => {
     const root = mount()
     const app = await connectTest(root.renderer)
 
-    await app.mouse.wheel(GRID_CENTER, 0, -60)
+    await app.mouse.wheel(GRID_CENTER, 0, 60)
     expect(await readout(app)).toMatchObject({ x: '0', y: '60' })
 
-    await app.mouse.wheel(GRID_CENTER, -140, 0)
+    await app.mouse.wheel(GRID_CENTER, 140, 0)
     expect(await readout(app)).toMatchObject({ x: '140', y: '60' })
 
     // shift swaps the axis, so a vertical wheel pans horizontally.
-    await app.mouse.wheel(GRID_CENTER, 0, -35, { modifiers: 'shift' })
+    await app.mouse.wheel(GRID_CENTER, 0, 35, { modifiers: 'shift' })
     expect(await readout(app)).toMatchObject({ x: '175', y: '60' })
     await app.close()
   })
@@ -219,7 +219,7 @@ describeNative('timeline example', () => {
     const headerBefore = await app.getByTestId(`track-header-${TOP_TRACK}`).bounds()
     const playheadBefore = await app.getByTestId('timeline-playhead').bounds()
 
-    await app.mouse.wheel(GRID_CENTER, -120, -40)
+    await app.mouse.wheel(GRID_CENTER, 120, 40)
 
     const after = await app.getByTestId(`clip-${clip.id}`).bounds()
     const headerAfter = await app.getByTestId(`track-header-${TOP_TRACK}`).bounds()
@@ -239,10 +239,10 @@ describeNative('timeline example', () => {
     const root = mount()
     const app = await connectTest(root.renderer)
 
-    await app.mouse.wheel(GRID_CENTER, 900, 900)
+    await app.mouse.wheel(GRID_CENTER, -900, -900)
     expect(await readout(app)).toMatchObject({ x: '0', y: '0' })
 
-    await app.mouse.wheel(GRID_CENTER, -99_999, -99_999)
+    await app.mouse.wheel(GRID_CENTER, 99_999, 99_999)
     const maxed = await readout(app)
     const contentWidth = project.durationSeconds * PX_PER_SECOND
     expect(Number(maxed.x)).toBe(Math.round(contentWidth - (WIDTH - HEADER_WIDTH)))
@@ -257,7 +257,7 @@ describeNative('timeline example', () => {
     const bin = await app.getByTestId('media-bin').element()
     expect(root.renderer.getScrollOffset(bin.id)).toEqual([0, 0])
 
-    await app.getByTestId('media-bin').wheel(-60, -40)
+    await app.getByTestId('media-bin').wheel(60, 40)
 
     const offset = root.renderer.getScrollOffset(bin.id)
     expect(offset).not.toBeNull()
@@ -444,7 +444,7 @@ describeNative('timeline example', () => {
     const timeUnderPointer =
       (pointer.x - HEADER_WIDTH + Number(before.x)) / Number(before.pps)
 
-    await app.mouse.wheel(pointer, 0, 120, { modifiers: 'cmd' })
+    await app.mouse.wheel(pointer, 0, -120, { modifiers: 'cmd' })
 
     const after = await readout(app)
     expect(Number(after.pps)).toBeGreaterThan(Number(before.pps))

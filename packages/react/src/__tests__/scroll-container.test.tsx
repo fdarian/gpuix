@@ -54,7 +54,7 @@ describeNative("scrollable extent follows CSS scrollable overflow", () => {
     )
     try {
       const id = renderer.findByTestId("scroller")!.id
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -80)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 80)
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
       expect(metrics(renderer, "scroller").scrollHeight).toBe(100)
     } finally {
@@ -71,7 +71,7 @@ describeNative("scrollable extent follows CSS scrollable overflow", () => {
     )
     try {
       const id = renderer.findByTestId("scroller")!.id
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -80)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 80)
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
     } finally {
       unmount()
@@ -290,7 +290,7 @@ describeNative("overflow values", () => {
     )
     try {
       const id = renderer.findByTestId("scroller")!.id
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
       expect(renderer.getScrollOffset(id)).toEqual([0, -40])
       expect(metrics(renderer, "scroller").scrollHeight).toBe(400)
     } finally {
@@ -309,7 +309,7 @@ describeNative("overflow values", () => {
     )
     try {
       const id = renderer.findByTestId("scroller")!.id
-      renderer.nativeSimulateScrollWheel(100, 50, -30, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 30, 40)
       expect(renderer.getScrollOffset(id)).toEqual([0, -40])
     } finally {
       unmount()
@@ -323,7 +323,7 @@ describeNative("overflow values", () => {
       </div>
     )
     try {
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
       const id = renderer.findByTestId("scroller")!.id
       expect(renderer.getScrollOffset(id)).toBeNull()
     } finally {
@@ -346,7 +346,7 @@ describeNative("overflow values", () => {
       // The same extent as any scroller: 10 + 400 + 10 padding and the 10 above.
       expect(metrics(renderer, "scroller")).toMatchObject({ scrollHeight: 420, clientHeight: 100 })
 
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
       expect(renderer.getScrollOffset(id)).toEqual([0, 0])
       renderer.nativeSimulateKeystrokes(id, "ArrowDown")
       renderer.nativeSimulateKeystrokes(id, "PageDown")
@@ -371,7 +371,7 @@ describeNative("overflow values", () => {
       </div>
     )
     try {
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
       expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, -40])
     } finally {
       unmount()
@@ -405,6 +405,26 @@ describeNative("overflow values", () => {
       const clipped = bounds(renderer, "clipped")
       const outside = renderer.getElementsAt(clipped.x + clipped.width + 50, clipped.y + 10)
       expect(outside).not.toContain(renderer.findByTestId("inside")!.id)
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describeNative("simulated wheel sign", () => {
+  it("scrolls down on a positive deltaY and right on a positive deltaX, like WheelEvent", () => {
+    const { renderer, unmount } = setup(
+      <div testId="scroller" style={{ width: 200, height: 100, overflow: "scroll" }}>
+        <div style={{ width: 600, height: 400 }} />
+      </div>
+    )
+    try {
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 60)
+      expect(metrics(renderer, "scroller").scrollTop).toBe(60)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, -20)
+      expect(metrics(renderer, "scroller").scrollTop).toBe(40)
+      renderer.nativeSimulateScrollWheel(100, 50, 30, 0)
+      expect(metrics(renderer, "scroller").scrollLeft).toBe(30)
     } finally {
       unmount()
     }

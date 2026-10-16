@@ -369,8 +369,9 @@ export declare class GpuixRenderer {
   simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null, modifiers?: string | undefined | null): void
   /**
    * Dispatch a wheel event through the same GPUI hit test the trackpad uses.
-   * Deltas are pixels: negative `delta_y` scrolls down, negative `delta_x`
-   * pans right, matching `TestGpuixRenderer::simulate_scroll_wheel`.
+   * Deltas are pixels with the DOM's sign, like `WheelEvent.deltaY`: positive
+   * `delta_y` scrolls down, positive `delta_x` scrolls right, matching
+   * `TestGpuixRenderer::simulate_scroll_wheel`.
    *
    * `phase` is `"started"` (the default, a gesture of its own), `"moved"`,
    * `"ended"` or `"cancelled"`. The scroller that took a gesture's first delta
@@ -520,7 +521,8 @@ export declare class TestGpuixRenderer {
   simulateMouseUp(x: number, y: number, button?: number | undefined | null, modifiers?: string | undefined | null, clickCount?: number | undefined | null): void
   /**
    * Simulate a scroll wheel event at the given position.
-   * delta_x and delta_y are in pixels (negative = scroll up/left).
+   * delta_x and delta_y are pixels with the DOM's sign, like `WheelEvent.deltaX`
+   * and `deltaY`: positive `delta_y` scrolls down, positive `delta_x` scrolls right.
    *
    * `phase` is `"started"` (the default, a gesture of its own), `"moved"`, `"ended"` or
    * `"cancelled"`. The scroller that took a gesture's first delta keeps the rest of it, so

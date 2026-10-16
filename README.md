@@ -5754,6 +5754,11 @@ descendant's, like DOM `textContent`.
 | `app.mouse.wheel(target, dx, dy)` | A wheel over a point or a locator |
 | `app.mouse.drag(from, to)` | A drag between two points, two locators, or a mix |
 
+Wheel deltas have the DOM's sign, the one `onWheel` reports in `deltaY`:
+positive `dy` scrolls down (the content moves up) and positive `dx` scrolls
+right. `renderer.nativeSimulateScrollWheel(x, y, dx, dy)` and
+`renderer.dispatchScrollWheel(...)` on the test renderer take the same sign.
+
 A drag sends **interpolated moves**, not one jump, because snapping, live
 previews, and per-move commits only appear when the pointer travels. Pass
 `steps` to control how many, and `offset` to press away from the center.
@@ -5769,7 +5774,7 @@ Every mouse call takes **`modifiers`** as a hyphenated string (`'cmd'`,
 testable:
 
 ```ts
-await app.getByTestId('canvas').wheel(0, 120, { modifiers: 'cmd' })
+await app.getByTestId('canvas').wheel(0, -120, { modifiers: 'cmd' })
 await app.getByTestId('clip-8').click({ modifiers: 'shift' })
 ```
 

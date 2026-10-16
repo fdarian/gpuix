@@ -502,7 +502,7 @@ describe("<virtual-list>", () => {
       .find((d) => d.style.overflowX === "scroll")!
     expect(renderer.getScrollOffset(scroller.id)?.[0] ?? 0).toBe(0)
 
-    renderer.nativeSimulateScrollWheel(80, 40, -80, 0)
+    renderer.nativeSimulateScrollWheel(80, 40, 80, 0)
     const listOffset = renderer.getScrollOffset(list.id)
     const rowOffset = renderer.getScrollOffset(scroller.id)
     expect(listOffset?.[1] ?? 0, `list ${JSON.stringify(listOffset)}`).toBeCloseTo(0)

@@ -142,7 +142,7 @@ describeNative('infinite chat example', () => {
     // Wheel toward older messages until the void starts the fetch, then stop.
     let started = false
     for (let tick = 0; tick < 400 && !started; tick++) {
-      renderer.nativeSimulateScrollWheel(450, 320, 0, 240)
+      renderer.nativeSimulateScrollWheel(450, 320, 0, -240)
       renderer.flush()
       started = isLoading(renderer)
     }
@@ -174,7 +174,7 @@ describeNative('infinite chat example', () => {
     renderer.scrollToItem(listOf(renderer).id, 2)
     let started = false
     for (let tick = 0; tick < 600 && !started; tick++) {
-      renderer.nativeSimulateScrollWheel(450, 320, 0, -120)
+      renderer.nativeSimulateScrollWheel(450, 320, 0, 120)
       renderer.flush()
       started = isLoading(renderer)
     }
@@ -212,7 +212,7 @@ describeNative('infinite chat example', () => {
     renderer.scrollToItem(listOf(renderer).id, 4)
     let started = false
     for (let tick = 0; tick < 600 && !started; tick++) {
-      renderer.nativeSimulateScrollWheel(450, 120, 0, -240)
+      renderer.nativeSimulateScrollWheel(450, 120, 0, 240)
       renderer.flush()
       started = isLoading(renderer)
     }
@@ -220,7 +220,7 @@ describeNative('infinite chat example', () => {
 
     // Keep wheeling until the void fills the whole window.
     for (let tick = 0; tick < 100 && painted().length > 0; tick++) {
-      renderer.nativeSimulateScrollWheel(450, 120, 0, -240)
+      renderer.nativeSimulateScrollWheel(450, 120, 0, 240)
       renderer.flush()
     }
     const anchor = renderer.getListScrollTop(listOf(renderer).id)
@@ -260,7 +260,7 @@ describeNative('infinite chat example', () => {
     for (let page = 0; page < 5; page++) {
       let started = false
       for (let tick = 0; tick < 400 && !started; tick++) {
-        renderer.nativeSimulateScrollWheel(450, 320, 0, 240)
+        renderer.nativeSimulateScrollWheel(450, 320, 0, -240)
         renderer.flush()
         started = isLoading(renderer)
       }

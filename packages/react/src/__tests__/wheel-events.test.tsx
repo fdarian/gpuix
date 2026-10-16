@@ -42,7 +42,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(seen).toHaveLength(1)
       expect(seen[0]).toMatchObject({
@@ -60,7 +60,7 @@ describeNative("wheel events", () => {
           <div style={{ width: 100, height: 100 }} onWheel={record("right")} />
         </div>
       )
-      testRoot.renderer.nativeSimulateScrollWheel(250, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(250, 50, 0, 30)
       expect(log).toEqual([])
     })
 
@@ -81,7 +81,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(log).toEqual([
         "outer-capture:wheel",
@@ -105,7 +105,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(log).toEqual(["inner"])
     })
@@ -117,11 +117,11 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(log).toEqual(["inner:wheel", "outer:wheel"])
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(log).toHaveLength(6)
     })
 
@@ -136,7 +136,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(log).toEqual(["scroller:wheel"])
       expect(offset("scroller")).toEqual([0, -30])
@@ -153,7 +153,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(log).toEqual(["scroller:wheel"])
     })
@@ -172,7 +172,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 40, -7, -50, "shift", "moved")
+      testRoot.renderer.nativeSimulateScrollWheel(50, 40, 7, 50, "shift", "moved")
 
       expect(seen).toHaveLength(1)
       const event = seen[0]!
@@ -202,8 +202,8 @@ describeNative("wheel events", () => {
           onWheel={(event: HostWheelEvent) => deltas.push(event.deltaY)}
         />
       )
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -10)
       testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 10)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -10)
       expect(deltas).toEqual([10, -10])
     })
   })
@@ -223,11 +223,11 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(offset("scroller")).toEqual([0, 0])
 
       prevent = false
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(offset("scroller")).toEqual([0, -30])
     })
 
@@ -249,10 +249,10 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(offset("scroller")).toEqual([0, 0])
       phase = "bubble"
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(offset("scroller")).toEqual([0, 0])
     })
 
@@ -266,7 +266,7 @@ describeNative("wheel events", () => {
           <div style={{ height: 500 }} />
         </div>
       )
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(offset("scroller")).toEqual([0, -30])
     })
 
@@ -288,7 +288,7 @@ describeNative("wheel events", () => {
         </div>
       )
 
-      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
 
       expect(scrolls).toEqual(["inner:30"])
     })

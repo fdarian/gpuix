@@ -195,7 +195,7 @@ describeNative('chat example', () => {
     expect(renderer.getPaintedText()).not.toContain('Do I get hot reload')
 
     const transcript = renderer.findByType('virtual-list')[0]
-    renderer.nativeSimulateScrollWheel(700, 400, 0, -1400)
+    renderer.nativeSimulateScrollWheel(700, 400, 0, 1400)
     renderer.scrollToItem(transcript.id, transcript.children.length - 1)
     renderer.flush()
 

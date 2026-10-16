@@ -147,7 +147,7 @@ describeNative('chat performance', () => {
     })
 
     for (let i = 0; i < WARMUP; i++) {
-      renderer.dispatchScrollWheel(WHEEL_X, WHEEL_Y, 0, i % 2 === 0 ? -160 : 160)
+      renderer.dispatchScrollWheel(WHEEL_X, WHEEL_Y, 0, i % 2 === 0 ? 160 : -160)
     }
     renderer.resetDebugFrameOverlayStats()
     renderer.flush()
@@ -155,7 +155,7 @@ describeNative('chat performance', () => {
     const wheel: number[] = []
     for (let i = 0; i < WHEEL_SAMPLES; i++) {
       const start = performance.now()
-      renderer.dispatchScrollWheel(WHEEL_X, WHEEL_Y, 0, -160)
+      renderer.dispatchScrollWheel(WHEEL_X, WHEEL_Y, 0, 160)
       wheel.push(performance.now() - start)
     }
     expectBudget({

@@ -1049,7 +1049,7 @@ describeNative("events", () => {
       }
 
       testRoot.render(<ScrollBox />)
-      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, -50)
+      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, 50)
 
       expect(receivedEvents.length).toBeGreaterThanOrEqual(1)
       const wheelEvent = receivedEvents.find((e) => e.eventType === "wheel")
@@ -1085,7 +1085,7 @@ describeNative("events", () => {
         ]
       `)
 
-      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, -30)
+      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, 30)
       expect(testRoot.renderer.getAllText()).toMatchInlineSnapshot(`
         [
           "Scrolls: 1",
@@ -2322,8 +2322,8 @@ describeNative("events", () => {
       const initialOffset = testRoot.renderer.getScrollOffset(scrollContainer.id)
       expect(initialOffset).toEqual([0, 0])
 
-      // Simulate scrolling down 50px (negative deltaY = scroll down)
-      testRoot.renderer.nativeSimulateScrollWheel(150, 100, 0, -50)
+      // Simulate scrolling down 50px (positive deltaY = scroll down)
+      testRoot.renderer.nativeSimulateScrollWheel(150, 100, 0, 50)
 
       // Scroll offset should have changed (y becomes more negative as we scroll down)
       const afterScrollOffset = testRoot.renderer.getScrollOffset(scrollContainer.id)
@@ -2359,7 +2359,7 @@ describeNative("events", () => {
       expect(testRoot.renderer.getScrollOffset(parent.id)).toEqual([0, 0])
       expect(testRoot.renderer.getScrollOffset(inner.id)).toEqual([0, 0])
 
-      testRoot.renderer.nativeSimulateScrollWheel(80, 40, 0, -60)
+      testRoot.renderer.nativeSimulateScrollWheel(80, 40, 0, 60)
 
       const parentOffset = testRoot.renderer.getScrollOffset(parent.id)
       const innerOffset = testRoot.renderer.getScrollOffset(inner.id)
@@ -2388,7 +2388,7 @@ describeNative("events", () => {
         .find((d) => d.style.overflowX === "scroll")!
       expect(testRoot.renderer.getScrollOffset(scroller.id)).toEqual([0, 0])
 
-      testRoot.renderer.nativeSimulateScrollWheel(80, 40, -80, 0)
+      testRoot.renderer.nativeSimulateScrollWheel(80, 40, 80, 0)
       const offset = testRoot.renderer.getScrollOffset(scroller.id)
       expect(offset).not.toBeNull()
       expect(offset![0]).toBeLessThan(0)
@@ -2412,7 +2412,7 @@ describeNative("events", () => {
       const parent = testRoot.renderer
         .findByType("div")
         .find((d) => d.style.overflowY === "scroll")!
-      testRoot.renderer.nativeSimulateScrollWheel(80, 40, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(80, 40, 0, 80)
       const offset = testRoot.renderer.getScrollOffset(parent.id)
       expect(offset).not.toBeNull()
       expect(offset![1]).toBeLessThan(0)
@@ -2446,7 +2446,7 @@ describeNative("events", () => {
       }
 
       testRoot.render(<Canvas />)
-      testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, 80)
 
       expect(deltas).toEqual([80])
     })
@@ -2484,11 +2484,11 @@ describeNative("events", () => {
       const scroller = testRoot.renderer
         .findByType("div")
         .find((d) => d.style.overflowY === "scroll")!
-      testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, 80)
       expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBe(0)
 
       testRoot.render(<OverlayOverScroller passThrough />)
-      testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(160, 100, 0, 80)
       expect(testRoot.renderer.getScrollOffset(scroller.id)![1]).toBeLessThan(0)
     })
 
@@ -2519,7 +2519,7 @@ describeNative("events", () => {
       }
 
       testRoot.render(<ModalOverCanvas />)
-      testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(100, 60, 0, 80)
 
       // The DOM sign: content moving up is a positive deltaY.
       expect(deltas).toEqual([80])
@@ -2540,8 +2540,8 @@ describeNative("events", () => {
       }
 
       testRoot.render(<ZoomSurface />)
-      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, -40)
-      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, -40, "cmd")
+      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, 40)
+      testRoot.renderer.nativeSimulateScrollWheel(100, 100, 0, 40, "cmd")
 
       expect(held).toEqual([false, true])
     })
@@ -2568,7 +2568,7 @@ describeNative("events", () => {
       expect(initialOffset).toEqual([0, 0])
 
       // Scroll down
-      testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, -80)
+      testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, 80)
       const offset = testRoot.renderer.getScrollOffset(container.id)
       expect(offset).not.toBeNull()
       expect(offset![1]).toBeLessThan(0) // scrolled down vertically
@@ -2696,7 +2696,7 @@ describeNative("events", () => {
       testRoot.renderer.captureScreenshot(path0)
 
       // Scroll down 150px inside the scrollable container
-      testRoot.renderer.nativeSimulateScrollWheel(640, 400, 0, -150)
+      testRoot.renderer.nativeSimulateScrollWheel(640, 400, 0, 150)
 
       // Screenshot after scrolling
       testRoot.renderer.captureScreenshot(path1)
@@ -2729,7 +2729,7 @@ describeNative("events", () => {
       testRoot.render(<ScrollWithEvent />)
 
       // The wheel should fire onWheel AND move the content
-      testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, -40)
+      testRoot.renderer.nativeSimulateScrollWheel(150, 50, 0, 40)
 
       // Event should have fired
       expect(receivedScrollEvents.length).toBeGreaterThanOrEqual(1)

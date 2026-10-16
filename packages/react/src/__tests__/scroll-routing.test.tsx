@@ -46,7 +46,7 @@ describeNative("wheel routing", () => {
   it("scrolls the innermost scroller under the pointer", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -58,7 +58,7 @@ describeNative("wheel routing", () => {
     const { renderer, offset, scrollTo, unmount } = nested({})
     try {
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, -30])
     } finally {
@@ -70,10 +70,10 @@ describeNative("wheel routing", () => {
     const { renderer, offset, scrollTo, unmount } = nested({})
     try {
       scrollTo("inner", 0, -290)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, 0])
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30, undefined, "started")
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, -30])
     } finally {
@@ -84,7 +84,7 @@ describeNative("wheel routing", () => {
   it("chains upward when scrolling back from the other limit", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
       expect(offset("inner")).toEqual([0, 0])
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -100,11 +100,11 @@ describeNative("wheel routing", () => {
     try {
       // The inner scroller only goes along y, but it takes the whole event: the x delta is
       // dropped, not given to the outer scroller.
-      renderer.nativeSimulateScrollWheel(50, 150, -20, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 20, 30)
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([0, 0])
       // A sideways gesture finds nothing to scroll in the inner scroller, so the outer one has it.
-      renderer.nativeSimulateScrollWheel(50, 150, -20, 0, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 20, 0, undefined, "started")
       expect(offset("inner")).toEqual([0, -30])
       expect(offset("outer")).toEqual([-20, 0])
     } finally {
@@ -120,12 +120,12 @@ describeNative("wheel routing", () => {
       // The inner scroller has no horizontal range, so a diagonal tick moves it down and the
       // sideways part is dropped.
       scrollTo("inner", 0, -100)
-      renderer.nativeSimulateScrollWheel(50, 150, -20, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 20, 30)
       expect(offset("inner")).toEqual([0, -130])
       expect(offset("outer")).toEqual([0, 0])
       // At the bottom the inner scroller takes nothing, so the outer one has both parts.
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, -10, -30, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 10, 30, undefined, "started")
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([-10, -30])
     } finally {
@@ -139,7 +139,7 @@ describeNative("wheel routing", () => {
     })
     try {
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("outer")).toEqual([0, 0])
     } finally {
       unmount()
@@ -152,7 +152,7 @@ describeNative("wheel routing", () => {
     })
     try {
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("outer")).toEqual([0, 0])
     } finally {
       unmount()
@@ -165,7 +165,7 @@ describeNative("wheel routing", () => {
     })
     try {
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("outer")).toEqual([0, -30])
     } finally {
       unmount()
@@ -175,11 +175,11 @@ describeNative("wheel routing", () => {
   it("never leaves an offset out of range", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -5000)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 5000)
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, 0])
       // The next gesture finds the inner scroller at its limit, and the outer one clamps too.
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -5000, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 5000, undefined, "started")
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, -600])
     } finally {
@@ -191,7 +191,7 @@ describeNative("wheel routing", () => {
     const wheels: WheelEvent[] = []
     const { renderer, offset, unmount } = nested({ onOuterWheel: (e) => wheels.push(e) })
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("inner")).toEqual([0, -30])
       expect(wheels).toHaveLength(1)
       expect(wheels[0]!.deltaY).toBe(30)
@@ -205,7 +205,7 @@ describeNative("wheel routing", () => {
     try {
       scrollTo("inner", 0, -300)
       // Back up the inner scroller, which has room above, not the outer one.
-      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
       expect(offset("inner")).toEqual([0, -270])
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -219,10 +219,10 @@ describeNative("scroll latching", () => {
     const { renderer, offset, scrollTo, unmount } = nested({})
     try {
       scrollTo("inner", 0, -290)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -5, undefined, "started")
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -50, undefined, "moved")
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -50, undefined, "ended")
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -50, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 5, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 50, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 50, undefined, "ended")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 50, undefined, "moved")
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -233,11 +233,11 @@ describeNative("scroll latching", () => {
   it("does not let momentum hop to the parent when the inner scroller runs out", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -200, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 200, undefined, "started")
       renderer.nativeSimulateScrollWheel(50, 150, 0, 0, undefined, "ended")
       // Momentum frames follow the finger lift, well past the inner scroller's limit.
       for (let frame = 0; frame < 20; frame++) {
-        renderer.nativeSimulateScrollWheel(50, 150, 0, -60, undefined, "moved")
+        renderer.nativeSimulateScrollWheel(50, 150, 0, 60, undefined, "moved")
       }
       expect(offset("inner")).toEqual([0, -300])
       expect(offset("outer")).toEqual([0, 0])
@@ -250,12 +250,12 @@ describeNative("scroll latching", () => {
     const { renderer, offset, scrollTo, unmount } = nested({})
     try {
       scrollTo("inner", 0, -300)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30, undefined, "started")
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30, undefined, "moved")
       expect(offset("outer")).toEqual([0, -60])
       // The ancestor took the gesture, so the inner scroller is not retried.
       scrollTo("inner", 0, -100)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30, undefined, "moved")
       expect(offset("inner")).toEqual([0, -100])
       expect(offset("outer")).toEqual([0, -90])
     } finally {
@@ -266,9 +266,9 @@ describeNative("scroll latching", () => {
   it("keeps the latch when the pointer leaves the scroller mid-gesture", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -10, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 10, undefined, "started")
       // (250, 50) is over the outer scroller only.
-      renderer.nativeSimulateScrollWheel(250, 50, 0, -10, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(250, 50, 0, 10, undefined, "moved")
       expect(offset("inner")).toEqual([0, -20])
       expect(offset("outer")).toEqual([0, 0])
     } finally {
@@ -279,9 +279,9 @@ describeNative("scroll latching", () => {
   it("treats every wheel call without a phase as a gesture of its own", () => {
     const { renderer, offset, unmount } = nested({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -400)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 400)
       expect(offset("inner")).toEqual([0, -300])
-      renderer.nativeSimulateScrollWheel(250, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(250, 50, 0, 30)
       expect(offset("outer")).toEqual([0, -30])
     } finally {
       unmount()
@@ -327,7 +327,7 @@ describeNative("scrolling under inert and pointer-events: none", () => {
   ])("scrolls the ancestor when the wheel is over a scroller with %s", (_name, props) => {
     const { renderer, offset, unmount } = setup(props)
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 30)
       expect(offset("inner")).toEqual([0, 0])
       expect(offset("outer")).toEqual([0, -30])
     } finally {
@@ -349,7 +349,7 @@ describeNative("scrolling under inert and pointer-events: none", () => {
     )
     const renderer = root.renderer
     try {
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(renderer.getScrollOffset(renderer.findByTestId("inner")!.id)).toEqual([0, 0])
       expect(renderer.getScrollOffset(renderer.findByTestId("outer")!.id)).toEqual([0, -30])
     } finally {
@@ -363,11 +363,11 @@ describeNative("scrolling under inert and pointer-events: none", () => {
   ])("does not keep a latched gesture on a scroller that became %s", (_name, props) => {
     const { renderer, offset, rerender, unmount } = setup({})
     try {
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -10, undefined, "started")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 10, undefined, "started")
       expect(offset("inner")).toEqual([0, -10])
 
       rerender(props)
-      renderer.nativeSimulateScrollWheel(50, 150, 0, -10, undefined, "moved")
+      renderer.nativeSimulateScrollWheel(50, 150, 0, 10, undefined, "moved")
       expect(offset("inner")).toEqual([0, -10])
       expect(offset("outer")).toEqual([0, -10])
     } finally {

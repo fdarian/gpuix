@@ -3684,8 +3684,9 @@ impl GpuixRenderer {
     }
 
     /// Dispatch a wheel event through the same GPUI hit test the trackpad uses.
-    /// Deltas are pixels: negative `delta_y` scrolls down, negative `delta_x`
-    /// pans right, matching `TestGpuixRenderer::simulate_scroll_wheel`.
+    /// Deltas are pixels with the DOM's sign, like `WheelEvent.deltaY`: positive
+    /// `delta_y` scrolls down, positive `delta_x` scrolls right, matching
+    /// `TestGpuixRenderer::simulate_scroll_wheel`.
     ///
     /// `phase` is `"started"` (the default, a gesture of its own), `"moved"`,
     /// `"ended"` or `"cancelled"`. The scroller that took a gesture's first delta

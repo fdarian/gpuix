@@ -311,7 +311,7 @@ describeNative("diff viewer", () => {
       testRoot.renderer.captureScreenshot(pathBefore)
 
       // Scroll down 200px inside the container
-      testRoot.renderer.nativeSimulateScrollWheel(450, 150, 0, -200)
+      testRoot.renderer.nativeSimulateScrollWheel(450, 150, 0, 200)
 
       // Screenshot after scrolling
       testRoot.renderer.captureScreenshot(pathAfter)

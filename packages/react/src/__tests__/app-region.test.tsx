@@ -307,7 +307,7 @@ describeRegions("appRegion", () => {
       )
       // The test window delivers what a frame resynced with the next input. A wheel away from the
       // bar and the page changes nothing itself.
-      testRoot.renderer.nativeSimulateScrollWheel(390, 250, 0, -10)
+      testRoot.renderer.nativeSimulateScrollWheel(390, 250, 0, 10)
 
       expect(log).toEqual(["body:mouseleave"])
     })
@@ -315,7 +315,7 @@ describeRegions("appRegion", () => {
     it("still sends the wheel to what is under it", () => {
       testRoot.render(<Page />)
 
-      testRoot.renderer.nativeSimulateScrollWheel(350, 20, 0, -40)
+      testRoot.renderer.nativeSimulateScrollWheel(350, 20, 0, 40)
 
       expect(log).toContain("bar:wheel")
     })

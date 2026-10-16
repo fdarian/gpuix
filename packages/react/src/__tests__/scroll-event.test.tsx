@@ -43,7 +43,7 @@ describeNative("onScroll", () => {
     try {
       const offsets: number[][] = []
       render(scroller((event) => offsets.push(offset(event) as number[])))
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
 
       expect(offsets).toHaveLength(1)
       const id = renderer.findByTestId("scroller")!.id

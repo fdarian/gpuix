@@ -551,8 +551,9 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** End-to-end: simulate scroll wheel through GPUI →
-   *  dispatch resulting events to the framework. Deltas follow GPUI: negative `deltaY`
-   *  scrolls down. */
+   *  dispatch resulting events to the framework. Deltas have the DOM's sign, like
+   *  `WheelEvent.deltaY`: positive `deltaY` scrolls down (the content moves up),
+   *  positive `deltaX` scrolls right. */
   nativeSimulateScrollWheel(
     x: number,
     y: number,
@@ -566,7 +567,8 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchNativeEvents()
   }
 
-  /** Dispatch a wheel without the surrounding flushes, for perf sampling.
+  /** Dispatch a wheel without the surrounding flushes, for perf sampling. Deltas
+   *  have the DOM's sign: positive `deltaY` scrolls down.
    *  Call `flush()` yourself, or the sample is the framework update only and
    *  none of the GPUI build, layout and paint that follows. */
   dispatchScrollWheel(

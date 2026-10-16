@@ -114,7 +114,7 @@ function panSamples(root: TestRoot): number[] {
   for (let index = 0; index < WARMUP + SAMPLES; index += 1) {
     // Alternate direction so the pan never parks against a clamp, which would
     // measure a no-op render instead of a real one.
-    const direction = Math.floor(index / 8) % 2 === 0 ? -1 : 1
+    const direction = Math.floor(index / 8) % 2 === 0 ? 1 : -1
     const started = performance.now()
     root.renderer.dispatchScrollWheel(
       WHEEL_AT.x,

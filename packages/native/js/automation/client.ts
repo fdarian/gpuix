@@ -517,7 +517,8 @@ export class Locator {
     await this.app.mouse.move(await this.center(), options)
   }
 
-  /** Send one wheel event over the centre of this element. */
+  /** Send one wheel event over the centre of this element. Deltas have the
+   *  DOM's sign: positive `deltaY` scrolls down, positive `deltaX` scrolls right. */
   async wheel(
     deltaX: number,
     deltaY: number,
@@ -613,6 +614,7 @@ export class App {
     down: (target: PointTarget, options?: MouseOptions) => Promise<void>
     up: (target: PointTarget, options?: MouseOptions) => Promise<void>
     click: (target: PointTarget, options?: MouseOptions) => Promise<void>
+    /** One wheel event; deltas have the DOM's sign (positive `deltaY` scrolls down). */
     wheel: (
       target: PointTarget,
       deltaX: number,

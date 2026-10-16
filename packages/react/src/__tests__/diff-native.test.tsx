@@ -220,7 +220,7 @@ describe("<diff>", () => {
     expect(container).toBeDefined()
     expect(renderer.getScrollOffset(container!.id)).toEqual([0, 0])
 
-    renderer.nativeSimulateScrollWheel(200, 60, 0, -80)
+    renderer.nativeSimulateScrollWheel(200, 60, 0, 80)
     const offset = renderer.getScrollOffset(container!.id)
     expect(offset).not.toBeNull()
     expect(offset![1]).toBeLessThan(0)

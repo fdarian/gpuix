@@ -183,8 +183,8 @@ describeNative("automation", () => {
     render(<Surface />)
     const app = await connectTest(renderer)
 
-    await app.getByTestId("surface").wheel(0, -60)
-    await app.getByTestId("surface").wheel(0, -60, { modifiers: "cmd" })
+    await app.getByTestId("surface").wheel(0, 60)
+    await app.getByTestId("surface").wheel(0, 60, { modifiers: "cmd" })
 
     expect(seen).toEqual([
       { deltaY: 60, cmd: false },

@@ -116,11 +116,11 @@ describeNative("layout reads inside an input handler", () => {
       const scrollerId = renderer.findByTestId("scroller").id
       const scrollTop = () => -(renderer.getScrollOffset(scrollerId)?.[1] ?? 0)
 
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 30)
       expect(scrollTop()).toBe(30)
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 30)
       expect(scrollTop()).toBe(60)
-      renderer.nativeSimulateScrollWheel(100, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(100, 50, 0, 30)
       expect(scrollTop()).toBe(90)
 
       expect(seen).toEqual([0, 30, 60])

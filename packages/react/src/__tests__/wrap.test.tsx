@@ -242,7 +242,7 @@ describeNative("text wrapping", () => {
     const before = path.join(SHOTS_DIR, "wrap-md-code-x-before.png")
     const after = path.join(SHOTS_DIR, "wrap-md-code-x-after.png")
     renderer.captureScreenshot(before)
-    renderer.nativeSimulateScrollWheel(80, 50, -160, 0)
+    renderer.nativeSimulateScrollWheel(80, 50, 160, 0)
     renderer.captureScreenshot(after)
     expectScreenshotsDiffer(before, after)
   })
@@ -259,7 +259,7 @@ describeNative("text wrapping", () => {
     const after = path.join(SHOTS_DIR, "wrap-code-x-after.png")
     renderer.captureScreenshot(before)
     // Two rows of 18px from y=8, so the wheel must sit inside that band.
-    renderer.nativeSimulateScrollWheel(80, 20, -160, 0)
+    renderer.nativeSimulateScrollWheel(80, 20, 160, 0)
     renderer.captureScreenshot(after)
     expectScreenshotsDiffer(before, after)
   })
@@ -279,7 +279,7 @@ describeNative("text wrapping", () => {
     expect(scroller).toBeDefined()
     expect(renderer.getScrollOffset(scroller!.id)).toEqual([0, 0])
 
-    renderer.nativeSimulateScrollWheel(80, 50, 0, -80)
+    renderer.nativeSimulateScrollWheel(80, 50, 0, 80)
     const offset = renderer.getScrollOffset(scroller!.id)
     expect(offset).not.toBeNull()
     expect(offset![1]).toBeLessThan(0)

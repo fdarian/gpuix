@@ -104,7 +104,7 @@ describeNative("overlay scrollbars", () => {
   it("appear for a change made by the wheel, not only by scrollTo", () => {
     const { renderer, shoot, unmount } = scroller()
     try {
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -40)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 40)
       expect(rows(shoot(), 94, isRed).length).toBeGreaterThan(0)
     } finally {
       unmount()
@@ -185,7 +185,7 @@ describeNative("overlay scrollbars", () => {
       scrollTo(50)
       expect(anyBar(shoot())).toBe(false)
       expect(top()).toBe(50)
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -30)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 30)
       expect(top()).toBe(80)
     } finally {
       unmount()
@@ -380,7 +380,7 @@ describeNative("scrollbars on a <virtual-list>", () => {
     const { renderer, unmount } = list()
     try {
       expect(column(renderer, "list-rest")).toEqual([])
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -60)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 60)
       const found = column(renderer, "list-scrolled")
       // 160 of 1200: about 21px of the track.
       expect(found.length).toBeGreaterThanOrEqual(19)
@@ -429,7 +429,7 @@ describeNative("scrollbars on a <virtual-list>", () => {
   it("draws nothing with scrollbarWidth none", () => {
     const { renderer, unmount } = list({ scrollbarWidth: "none" })
     try {
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -60)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 60)
       expect(column(renderer, "list-none")).toEqual([])
     } finally {
       unmount()
@@ -440,7 +440,7 @@ describeNative("scrollbars on a <virtual-list>", () => {
     const { renderer, unmount } = list()
     try {
       const id = renderer.findByTestId("list")!.id
-      renderer.nativeSimulateScrollWheel(50, 50, 0, -60)
+      renderer.nativeSimulateScrollWheel(50, 50, 0, 60)
       renderer.nativeSimulateMouseMove(94, 20)
       renderer.nativeSimulateMouseDown(94, 20)
       renderer.nativeSimulateMouseMove(94, 100, 0)

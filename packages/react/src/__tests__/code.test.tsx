@@ -282,7 +282,7 @@ describe("<code>", () => {
     expect(container).toBeDefined()
     expect(renderer.getScrollOffset(container!.id)).toEqual([0, 0])
 
-    renderer.nativeSimulateScrollWheel(80, 50, 0, -80)
+    renderer.nativeSimulateScrollWheel(80, 50, 0, 80)
     const offset = renderer.getScrollOffset(container!.id)
     expect(offset).not.toBeNull()
     expect(offset![1]).toBeLessThan(0)

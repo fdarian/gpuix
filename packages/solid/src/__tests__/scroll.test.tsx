@@ -47,7 +47,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid scrolling", () => {
       </div>
     ))
 
-    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
 
     expect(wheels).toHaveLength(1)
     expect(wheels[0]).toMatchObject({ deltaY: 40, deltaMode: 0, clientX: 100, clientY: 50 })
@@ -81,12 +81,12 @@ describe.skipIf(!hasNativeTestRenderer)("Solid wheel events", () => {
     ))
     const scroller = app.renderer.findByTestId("scroller")!.id
 
-    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
     expect(log).toEqual(["outer-capture", "scroller", "outer"])
     expect(app.renderer.getScrollOffset(scroller)).toEqual([0, 0])
 
     prevent = false
-    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -40)
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, 40)
     expect(app.renderer.getScrollOffset(scroller)).toEqual([0, -40])
   })
 })
@@ -107,5 +107,23 @@ describe.skipIf(!hasNativeTestRenderer)("Solid scroll reads are never stale", ()
 
     setRows(10)
     expect(scroller.scrollHeight).toBe(500)
+  })
+})
+
+describe.skipIf(!hasNativeTestRenderer)("Solid simulated wheel sign", () => {
+  it("scrolls down on a positive deltaY and right on a positive deltaX, like WheelEvent", () => {
+    let scroller!: HostElement
+    const app = createTestRoot()
+    app.render(() => (
+      <div ref={scroller} style={{ width: 200, height: 100, overflow: "scroll" }}>
+        <div style={{ width: 600, height: 400 }} />
+      </div>
+    ))
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, 60)
+    expect(scroller.scrollTop).toBe(60)
+    app.renderer.nativeSimulateScrollWheel(100, 50, 0, -20)
+    expect(scroller.scrollTop).toBe(40)
+    app.renderer.nativeSimulateScrollWheel(100, 50, 30, 0)
+    expect(scroller.scrollLeft).toBe(30)
   })
 })

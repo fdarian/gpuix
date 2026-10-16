@@ -889,7 +889,8 @@ impl TestGpuixRenderer {
     }
 
     /// Simulate a scroll wheel event at the given position.
-    /// delta_x and delta_y are in pixels (negative = scroll up/left).
+    /// delta_x and delta_y are pixels with the DOM's sign, like `WheelEvent.deltaX`
+    /// and `deltaY`: positive `delta_y` scrolls down, positive `delta_x` scrolls right.
     ///
     /// `phase` is `"started"` (the default, a gesture of its own), `"moved"`, `"ended"` or
     /// `"cancelled"`. The scroller that took a gesture's first delta keeps the rest of it, so
@@ -912,10 +913,7 @@ impl TestGpuixRenderer {
                 window,
                 gpui::ScrollWheelEvent {
                     position: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
-                    delta: gpui::ScrollDelta::Pixels(gpui::point(
-                        gpui::px(delta_x as f32),
-                        gpui::px(delta_y as f32),
-                    )),
+                    delta: crate::automation::wheel_delta(delta_x, delta_y),
                     modifiers,
                     touch_phase,
                 },

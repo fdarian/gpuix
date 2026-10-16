@@ -434,6 +434,16 @@ pub fn dispatch_mouse_move(
     );
 }
 
+/// A wheel delta as GPUI wants it, from the DOM's sign: positive `delta_y`
+/// scrolls down (content moves up) and positive `delta_x` scrolls right, as in
+/// `WheelEvent.deltaY` / `deltaX`. GPUI's `ScrollDelta` has the opposite sign
+/// (it is how far the content moves), so the negation lives here, once, for
+/// every simulated wheel.
+pub fn wheel_delta(delta_x: f64, delta_y: f64) -> gpui::ScrollDelta {
+    gpui::ScrollDelta::Pixels(point(px(-delta_x as f32), px(-delta_y as f32)))
+}
+
+/// Dispatches a wheel event. The deltas have the DOM's sign, see `wheel_delta`.
 pub fn dispatch_scroll_wheel(
     window: &mut Window,
     cx: &mut App,
@@ -447,7 +457,7 @@ pub fn dispatch_scroll_wheel(
     window.dispatch_event(
         gpui::ScrollWheelEvent {
             position: point(px(x as f32), px(y as f32)),
-            delta: gpui::ScrollDelta::Pixels(point(px(delta_x as f32), px(delta_y as f32))),
+            delta: wheel_delta(delta_x, delta_y),
             modifiers,
             touch_phase,
         }
@@ -459,6 +469,15 @@ pub fn dispatch_scroll_wheel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wheel_deltas_have_the_doms_sign() {
+        // Positive deltaY scrolls down, which GPUI spells as the content moving up.
+        let gpui::ScrollDelta::Pixels(delta) = wheel_delta(7.0, 30.0) else {
+            panic!("a wheel delta is in pixels")
+        };
+        assert_eq!((f32::from(delta.x), f32::from(delta.y)), (-7.0, -30.0));
+    }
 
     #[test]
     fn frozen_clock_holds_and_fast_forwards() {

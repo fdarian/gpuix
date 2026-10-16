@@ -45,7 +45,7 @@ if (process.env.MOUNT_ONLY === '1') process.exit(0)
 const samples: number[] = []
 for (let i = 0; i < 40; i++) {
   const start = performance.now()
-  root.renderer.dispatchScrollWheel(700, 400, 0, i % 2 === 0 ? -160 : 160)
+  root.renderer.dispatchScrollWheel(700, 400, 0, i % 2 === 0 ? 160 : -160)
   samples.push(performance.now() - start)
 }
 samples.sort((a, b) => a - b)
