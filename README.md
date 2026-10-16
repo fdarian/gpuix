@@ -6049,23 +6049,47 @@ ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
 `border-box`.
 
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
-(one to four insets and `round` radii), `circle()` and `ellipse()` (a radius,
-`closest-side` or `farthest-side`, and `at <position>`), `polygon()` (an optional
-`nonzero` or `evenodd`, then points), or `none`. Lengths are any [length](#lengths) or `%`. Write a
-`border-box` (the default), `padding-box` or `content-box` before or after the
-shape to choose what the lengths are relative to. An invalid value is ignored, as
-in CSS. A clip path composites the element as a group, like `opacity` and `mask`.
+(one to four insets and `round` radii), `rect()` and `xywh()` (a box, with the
+same `round`), `circle()` and `ellipse()` (a radius, `closest-side` or
+`farthest-side`, and `at <position>`), `polygon()` (an optional `nonzero` or
+`evenodd`, then points), `path()` (an optional fill rule, then SVG path data in a
+string), or `none`. Lengths are any [length](#lengths) or `%`. Write a `border-box` (the default),
+`padding-box` or `content-box` before or after the shape to choose what the
+lengths are relative to. An invalid value is ignored, as in CSS. A clip path
+composites the element as a group, like `opacity` and `mask`.
 
 ```tsx
 <div style={{ clipPath: 'circle(50% at 50% 50%)' }} />
 <div style={{ clipPath: 'polygon(50% 0, 100% 100%, 0 100%)' }} />
 <div style={{ clipPath: 'inset(8px round 12px)' }} />
+<div style={{ clipPath: 'rect(auto 80% 50% 10px round 8px)' }} />
+<div style={{ clipPath: 'xywh(10% 10px 50% 40px)' }} />
+<div style={{ clipPath: "path(evenodd, 'M0 0 H100 V100 H0 Z M25 25 H75 V75 H25 Z')" }} />
 ```
 
-Limits: `url()`, `path()`, `rect()` and `xywh()` are not supported, and neither is a
-box with no shape, so a value using them is ignored. `margin-box` and `stroke-box`
-and `view-box` are `border-box`, and `fill-box` is `content-box`. `inset()` rounds
-its corners with circles, so the vertical radii after `/` in `round` are dropped.
+`rect()` and `xywh()` measure from the top left of the reference box: in
+`rect(<top> <right> <bottom> <left>)` the right and bottom are distances from the
+left and top edges, unlike `inset()`, and each of the four may be `auto` (`0` for
+top and left, `100%` for right and bottom). `xywh(<x> <y> <width> <height>)`
+takes a non-negative width and height. A width must be in the unit of its `x`
+(both `px` or both `%`) and a height in the unit of its `y`, because the far edge
+is their sum and a value is one unit or the other; `xywh(10px 0 50% 5px)` is
+invalid (a `0` is either). `rect()` has no such restriction.
+
+`path()` takes the SVG path data `d` accepts (all commands, relative or absolute,
+arcs included), in `px` from the top left of the reference box. Curves are
+flattened to within 0.25px, with a limit of 4096 vertices for the whole path: a
+path that would need more is flattened more coarsely, step by step up to 4px, and
+is invalid if even that is too many. Each subpath is closed and the fill rule
+applies to all of them together, so `nonzero` leaves a subpath that winds the same
+way as the one around it filled, and `evenodd` makes it a hole. A path with no
+subpath that has an area clips everything.
+
+Limits: `url()` is not supported, and neither is a box with no shape, so a value
+using them is ignored. `margin-box` and `stroke-box` and `view-box` are
+`border-box`, and `fill-box` is `content-box`. `inset()`, `rect()` and `xywh()`
+round their corners with circles, so the vertical radii after `/` in `round` are
+dropped. A string in `path()` has no escapes.
 
 The shape also clips hit testing, as in CSS: a pointer over the clipped-away part
 hits what is underneath instead, and the element's descendants are cut the same

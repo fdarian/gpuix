@@ -320,6 +320,7 @@ mod tests {
     use gpui::px;
     use crate::css::length::LinearLength;
     use crate::color::Scheme;
+    use gpui::px;
 
     fn colors(scheme: Scheme, current: f32) -> ColorContext {
         let mut context = ColorContext::root(scheme);

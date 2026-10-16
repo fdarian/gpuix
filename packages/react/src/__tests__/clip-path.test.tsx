@@ -132,11 +132,92 @@ describeNative("clip-path", () => {
     expectScreenshotsEqual(plain.file, shoot("none", clipped({ clipPath: "none" })).file)
   })
 
+  it("path() fills the polygon its data draws", () => {
+    // The upper right half of the box, the points being px from its top left.
+    const triangle = shoot("path-triangle", clipped({ clipPath: "path('M0 0 L100 0 L100 100 Z')" })).pixels
+    expectRed(triangle, 140, 60)
+    expectRed(triangle, 120, 100)
+    expectWhite(triangle, 60, 140)
+    expectWhite(triangle, 80, 120)
+    const halfDisc = shoot("path-arc", clipped({ clipPath: "path('M0 50 A50 50 0 0 1 100 50 Z')" })).pixels
+    expectRed(halfDisc, 100, 70)
+    expectRed(halfDisc, 100, 56)
+    expectWhite(halfDisc, 100, 130)
+    expectWhite(halfDisc, 53, 53)
+    const curve = shoot("path-curve", clipped({ clipPath: "path('M0 100 C0 0 100 0 100 100 Z')" })).pixels
+    expectRed(curve, 100, 130)
+    expectWhite(curve, 55, 60)
+    expectWhite(curve, 145, 60)
+  })
+
+  it("path() fills its subpaths under the fill rule, with no seam between them", () => {
+    const rings = "M0 0 H100 V100 H0 Z M25 25 H75 V75 H25 Z"
+    const nonzero = shoot("path-nonzero", clipped({ clipPath: `path(nonzero, '${rings}')` })).pixels
+    expectRed(nonzero, 100, 100)
+    // On the diagonal from the first corner of one square to the first corner of the next, where
+    // an edge drawn between them would leave a half-covered line.
+    expectRed(nonzero, 60, 60)
+    const evenodd = shoot("path-evenodd", clipped({ clipPath: `path(evenodd, '${rings}')` })).pixels
+    expectWhite(evenodd, 100, 100)
+    expectRed(evenodd, 60, 60)
+    expectRed(evenodd, 140, 140)
+    // Two separate squares: the bridge between them paints nothing.
+    const apart = shoot("path-apart", clipped({ clipPath: "path('M0 0 H30 V30 H0 Z M70 70 H100 V100 H70 Z')" })).pixels
+    expectRed(apart, 60, 60)
+    expectRed(apart, 140, 140)
+    expectWhite(apart, 100, 100)
+    expectWhite(apart, 140, 60)
+    expectWhite(apart, 60, 140)
+  })
+
+  it("path() is relative to the reference box", () => {
+    const padded = { boxSizing: "border-box", padding: 20, borderWidth: 0 }
+    const shot = shoot("path-content-box", clipped({ ...padded, clipPath: "path('M0 0 H20 V20 H0 Z') content-box" })).pixels
+    // The content box starts at (70, 70).
+    expectRed(shot, 80, 80)
+    expectWhite(shot, 60, 60)
+    expectWhite(shot, 95, 95)
+  })
+
+  it("xywh() is a position and a size from the top left", () => {
+    const shot = shoot("xywh", clipped({ clipPath: "xywh(25% 10px 50% 30px)" })).pixels
+    // x 75..125, y 60..90.
+    expectRed(shot, 100, 75)
+    expectRed(shot, 80, 62)
+    expectWhite(shot, 70, 75)
+    expectWhite(shot, 130, 75)
+    expectWhite(shot, 100, 55)
+    expectWhite(shot, 100, 95)
+    const rounded = shoot("xywh-round", clipped({ clipPath: "xywh(10px 10px 80px 80px round 40px)" })).pixels
+    expectRed(rounded, 100, 100)
+    expectRed(rounded, 100, 62)
+    expectWhite(rounded, 62, 62)
+  })
+
+  it("rect() measures right and bottom from the top left, unlike inset()", () => {
+    const shot = shoot("rect", clipped({ clipPath: "rect(10px 90px 90% 10px)" })).pixels
+    // x 60..140, y 60..140.
+    expectRed(shot, 65, 65)
+    expectRed(shot, 135, 135)
+    expectWhite(shot, 55, 100)
+    expectWhite(shot, 145, 100)
+    expectWhite(shot, 100, 145)
+    const auto = shoot("rect-auto", clipped({ clipPath: "rect(auto 50% auto auto)" })).pixels
+    expectRed(auto, 70, 100)
+    expectWhite(auto, 130, 100)
+    // An inset of the same numbers is a different box.
+    const inset = shoot("rect-inset", clipped({ clipPath: "inset(10px 90px 90% 10px)" })).pixels
+    expectWhite(inset, 100, 100)
+  })
+
   it("an invalid value and an unsupported one leave the element alone", () => {
     const plain = shoot("plain-2", clipped({}))
     for (const [name, value] of [
       ["url", "url(#clip)"],
-      ["path", "path('M0 0 L10 10 Z')"],
+      ["path", "path('M0 0 L10')"],
+      ["rect", "rect(0 10px 10px)"],
+      ["xywh", "xywh(0 0 -5px 5px)"],
+      ["xywh-mixed-units", "xywh(10px 0 50% 5px)"],
       ["box-only", "padding-box"],
       ["bad-circle", "circle(-5px)"],
       ["empty-polygon", "polygon()"],
@@ -236,6 +317,52 @@ describeNative("clipPath clips the pointer", () => {
     } finally {
       unmount()
     }
+  })
+})
+
+describeNative("path(), rect() and xywh() clip the pointer", () => {
+  /** Clicks (x, y) on a clicked 100x100 box at (50, 50) clipped to `clipPath`, above a clicked sibling. */
+  function clickAt(clipPath: string, x: number, y: number) {
+    const { render, renderer, unmount } = createTestRoot()
+    const log: string[] = []
+    try {
+      render(
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <div style={{ position: "absolute", width: 200, height: 200 }} onClick={() => log.push("under")} />
+          <div
+            style={{ position: "absolute", left: 50, top: 50, width: 100, height: 100, backgroundColor: "#ff0000", clipPath }}
+            onClick={() => log.push("clipped")}
+          >
+            <div style={{ width: 100, height: 100 }} onClick={() => log.push("child")} />
+          </div>
+        </div>
+      )
+      renderer.dispatchNativeEvents()
+      renderer.nativeSimulateClick(x, y)
+      return log
+    } finally {
+      unmount()
+    }
+  }
+
+  it("a press outside the path falls through to what is underneath", () => {
+    const triangle = "path('M0 0 L100 0 L100 100 Z')"
+    expect(clickAt(triangle, 140, 60)).toEqual(["child", "clipped"])
+    expect(clickAt(triangle, 60, 140)).toEqual(["under"])
+  })
+
+  it("the fill rule decides what a hole in the path hits", () => {
+    const rings = "M0 0 H100 V100 H0 Z M25 25 H75 V75 H25 Z"
+    expect(clickAt(`path(nonzero, '${rings}')`, 100, 100)).toEqual(["child", "clipped"])
+    expect(clickAt(`path(evenodd, '${rings}')`, 100, 100)).toEqual(["under"])
+    expect(clickAt(`path(evenodd, '${rings}')`, 60, 60)).toEqual(["child", "clipped"])
+  })
+
+  it("rect() and xywh() cut the hit area", () => {
+    expect(clickAt("rect(10px 90px 90% 10px)", 100, 100)).toEqual(["child", "clipped"])
+    expect(clickAt("rect(10px 90px 90% 10px)", 145, 100)).toEqual(["under"])
+    expect(clickAt("xywh(25% 10px 50% 30px)", 100, 75)).toEqual(["child", "clipped"])
+    expect(clickAt("xywh(25% 10px 50% 30px)", 100, 110)).toEqual(["under"])
   })
 })
 
