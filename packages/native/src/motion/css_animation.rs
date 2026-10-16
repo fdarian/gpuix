@@ -783,8 +783,7 @@ impl Planner<'_> {
 
 struct Run {
     name: String,
-    /// The definition at the time the animation started: redefining the name
-    /// affects the animations that start afterwards.
+    /// The registry's definition of `name` as of the last frame.
     keyframes: Arc<Keyframes>,
     properties: Vec<AnimProp>,
     params: Animation,
@@ -814,6 +813,17 @@ impl Run {
             plan: None,
             frozen: BTreeMap::new(),
         }
+    }
+
+    /// `@keyframes` is looked up at every style recalculation, so a redefinition
+    /// changes what a running animation shows while its timeline carries on.
+    fn redefine(&mut self, keyframes: &Arc<Keyframes>) {
+        if Arc::ptr_eq(&self.keyframes, keyframes) {
+            return;
+        }
+        self.keyframes = keyframes.clone();
+        self.properties = keyframes.properties();
+        self.plan = None;
     }
 
     fn local(&self, now: Instant) -> f64 {
@@ -1001,7 +1011,8 @@ impl ElementState {
 
     /// Matches the list against the running animations by name. One that stays
     /// in the list keeps running with the new values; one that left is
-    /// cancelled; a name that is new starts if its keyframes are defined.
+    /// cancelled; a name that is new starts if its keyframes are defined. A kept
+    /// animation reads the current definition of its name.
     fn reconcile(
         &mut self,
         id: u64,
@@ -1023,6 +1034,9 @@ impl ElementState {
             match kept {
                 Some(mut run) => {
                     run.retune(animation, now);
+                    if let Some(keyframes) = registry.get(name) {
+                        run.redefine(keyframes);
+                    }
                     runs.push(run);
                 }
                 None => {
@@ -1901,14 +1915,94 @@ mod tests {
     }
 
     #[test]
-    fn a_running_animation_keeps_the_keyframes_it_started_with() {
+    fn redefining_the_keyframes_changes_a_running_animation_and_keeps_its_timeline() {
         let mut frames = Frames::new();
         frames.define("fade", FADE);
         let animated = fading("fade 1s linear");
         frames.frame(0, &animated);
+        near(opacity(&frames.frame(250, &animated)), 0.25);
+        frames.events();
+
         frames.define("fade", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#);
         near(opacity(&frames.frame(500, &animated)), 0.5);
-        near(opacity(&frames.frame(250, &animated)), 0.25);
+        near(opacity(&frames.frame(750, &animated)), 0.25);
+        assert!(frames.events().is_empty(), "a redefinition neither restarts nor cancels");
+        frames.frame(1000, &animated);
+        assert_eq!(frames.events(), [named(End, "fade", 1.0)]);
+    }
+
+    #[test]
+    fn a_redefinition_keeps_the_iteration_direction_and_fill() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 2 alternate forwards");
+        frames.frame(0, &animated);
+        near(opacity(&frames.frame(1250, &animated)), 0.75);
+        frames.events();
+
+        frames.define("fade", r#"{ "from": { "opacity": 0.2 }, "to": { "opacity": 0.6 } }"#);
+        // The second iteration plays backwards: 0.25 of the way to 0.2.
+        near(opacity(&frames.frame(1250, &animated)), 0.5);
+        assert!(frames.events().is_empty());
+        // Forwards fill holds the end of the new definition.
+        near(opacity(&frames.frame(3000, &animated)), 0.2);
+        frames.define("fade", r#"{ "from": { "opacity": 0.4 }, "to": { "opacity": 0.7 } }"#);
+        near(opacity(&frames.frame(3500, &animated)), 0.4);
+    }
+
+    #[test]
+    fn a_redefinition_adds_and_drops_properties() {
+        let mut frames = Frames::new();
+        frames.define("move", r#"{ "from": { "width": 0 }, "to": { "width": 100 } }"#);
+        let animated = fading("move 1s linear");
+        frames.frame(0, &animated);
+        assert!(frames.frame(500, &animated).width.is_some());
+
+        frames.define("move", r#"{ "from": { "opacity": 0 }, "to": { "opacity": 1 } }"#);
+        let sample = frames.frame(500, &animated);
+        assert_eq!(sample.width, None);
+        near(opacity(&sample), 0.5);
+    }
+
+    #[test]
+    fn a_redefinition_reaches_every_animation_that_names_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        let later = fading("fade 1s linear");
+        let sample = |frames: &mut Frames, id: u64, millis: u64, declared: &StyleDesc| {
+            let now = frames.at(millis);
+            let values = frames.animations.update(
+                id,
+                declared,
+                declared,
+                &frames.parent_colors,
+                &frames.registry,
+                None,
+                frames.inherited,
+                now,
+            );
+            let mut resolved = declared.clone();
+            values.expect("the animation has an effect").apply_to(&mut resolved, None);
+            opacity(&resolved)
+        };
+        near(sample(&mut frames, 1, 0, &animated), 0.0);
+        near(sample(&mut frames, 2, 500, &later), 0.0);
+
+        frames.define("fade", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#);
+        near(sample(&mut frames, 1, 500, &animated), 0.5);
+        near(sample(&mut frames, 1, 750, &animated), 0.25);
+        near(sample(&mut frames, 2, 750, &later), 0.75);
+    }
+
+    #[test]
+    fn a_redefinition_reaches_a_paused_animation() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let paused = fading("fade 1s linear paused");
+        near(opacity(&frames.frame(0, &paused)), 0.0);
+        frames.define("fade", r#"{ "from": { "opacity": 0.5 }, "to": { "opacity": 1 } }"#);
+        near(opacity(&frames.frame(100, &paused)), 0.5);
     }
 
     #[test]

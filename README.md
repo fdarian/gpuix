@@ -5626,8 +5626,10 @@ defineKeyframes('pulse', {
   value, plus `animationTimingFunction`, which eases from that keyframe to the
   next. Blocks at the same offset merge, the later key winning. A property a
   definition leaves out of `from` or `to` starts or ends at the element's own
-  value, as in CSS. A bad definition throws from `defineKeyframes` and keeps the
-  earlier one
+  value, as in CSS. Redefining a name changes the animations already running on
+  it from the next frame, and they keep their start time, iteration, direction
+  and fill. A bad definition throws from `defineKeyframes` and keeps the earlier
+  one
 - **One registry for the process.** `@keyframes` is document-global, so a
   definition reaches every window and test root, including ones created later.
   Define keyframes once at module scope
@@ -5664,8 +5666,6 @@ defineKeyframes('pulse', {
 
 Differences from a browser:
 
-- Redefining a name affects animations that start afterwards. One already running
-  keeps the keyframes it started with, where a browser re-resolves it live
 - A transition compares the style beneath the animations, so it starts from
   the declared value, never from a value an animation drove, and a declared
   change starts one even on a property an animation overrides. A browser compares

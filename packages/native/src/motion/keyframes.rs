@@ -214,7 +214,7 @@ pub(crate) struct KeyframesRegistry {
 
 impl KeyframesRegistry {
     /// Defines `name`, replacing an earlier definition. An animation already
-    /// running keeps the frames it started with.
+    /// running takes the new frames from its next frame on.
     pub(crate) fn define(&mut self, name: &str, frames_json: &str) -> Result<(), String> {
         let keyframes = Keyframes::parse_named(name, frames_json)?;
         self.definitions.insert(name.to_string(), Arc::new(keyframes));
@@ -362,7 +362,7 @@ mod tests {
 
         registry.define("fade", r#"{ "from": { "opacity": 1 }, "to": { "opacity": 0 } }"#).unwrap();
         assert_eq!(registry.get("fade").unwrap().frames.len(), 2);
-        // A holder of the old definition keeps what it started with.
+        // A holder of the old Arc keeps it: replacing does not edit in place.
         assert_eq!(first.frames.len(), 1);
         assert!(registry.get("Fade").is_none());
     }

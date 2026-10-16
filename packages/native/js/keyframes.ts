@@ -58,8 +58,8 @@ function liveHosts(shared: KeyframesRegistry): KeyframesHost[] {
 /**
  * Defines the keyframes `animation: name ...` plays, as `@keyframes name` does,
  * on every renderer, including ones created later. Redefining a name replaces
- * it: animations that start afterwards use the new frames, ones already running
- * keep the old.
+ * it, and animations already running on it show the new frames from the next
+ * frame on, keeping their start time, iteration, direction and fill.
  *
  * ```ts
  * defineKeyframes("fade-in", {

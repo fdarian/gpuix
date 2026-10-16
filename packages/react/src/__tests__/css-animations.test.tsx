@@ -307,4 +307,32 @@ describeNative("CSS animations", () => {
     other.renderer.dispatchNativeEvents()
     expect(otherSeen).toEqual(["start"])
   })
+
+  it("shows a redefinition of the keyframes from the next frame, on the same timeline", () => {
+    defineKeyframes("react-redefined", { from: { width: 100 }, to: { width: 200 } })
+    const { render, renderer } = createTestRoot()
+    const events: string[] = []
+    renderer.clockPause()
+    render(
+      <div>
+        <div
+          testId="box"
+          onAnimationStart={() => events.push("start")}
+          onAnimationCancel={() => events.push("cancel")}
+          style={{ width: 50, height: 20, animation: "react-redefined 1s linear" }}
+        />
+        <div testId="other" style={{ width: 50, height: 20, animation: "react-redefined 1s linear" }} />
+      </div>
+    )
+    renderer.clockFastForward(250)
+    expect(widthOf(renderer)).toBeCloseTo(125, 0)
+
+    defineKeyframes("react-redefined", { from: { width: 400 }, to: { width: 300 } })
+    renderer.clockFastForward(250)
+    expect(widthOf(renderer)).toBeCloseTo(350, 0)
+    expect(widthOf(renderer, "other")).toBeCloseTo(350, 0)
+    renderer.clockFastForward(250)
+    expect(widthOf(renderer)).toBeCloseTo(325, 0)
+    expect(events).toEqual(["start"])
+  })
 })

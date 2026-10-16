@@ -1826,7 +1826,7 @@ impl TestGpuixRenderer {
     /// `GpuixRenderer.defineKeyframes`.
     #[napi]
     pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
-        self.with_motion_state(false, move |view, _now| {
+        self.with_motion_state(true, move |view, _now| {
             view.keyframes.define(&name, &frames_json)
         })
     }

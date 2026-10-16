@@ -2791,12 +2791,12 @@ impl GpuixRenderer {
     /// Defines the keyframes `animation-name: name` plays, as the `@keyframes`
     /// rule does. `framesJson` is a JSON object of `from`, `to`, `N%` or comma
     /// list keys to the animatable style properties plus `animationTimingFunction`.
-    /// Redefining a name replaces it for animations that start afterwards. A bad
+    /// Redefining a name replaces it for running animations too. A bad
     /// definition throws and leaves the earlier one. Use `defineKeyframes` from
     /// `@gpuix/native/host`, which defines it on every renderer.
     #[napi]
     pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
-        self.with_motion_state(false, move |view, _now| {
+        self.with_motion_state(true, move |view, _now| {
             view.keyframes.define(&name, &frames_json)
         })
     }
