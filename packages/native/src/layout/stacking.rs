@@ -7,8 +7,9 @@
 //! (`opacity` below 1, a filter, a mask, a clip path), which CSS paints as if positioned with
 //! `z-index: 0`. zed does the same for a `Div` flagged `stacking_context()`
 //! (`Element::lift_z`): what is lifted is painted and hit tested after the in-flow ones by
-//! `(z-index, tree order)`, the negative ones above the context's own background. Where no context is active (a layout root such as a virtual-list row, a deferred
-//! layer, a `visibility: hidden` subtree) nothing is lifted and `paint_rank` orders the
+//! `(z-index, tree order)`, the negative ones above the context's own background. Where no
+//! context is active (a layout root such as a virtual-list row, a deferred layer, a
+//! `visibility: hidden` subtree) nothing is lifted and `paint_rank` orders the
 //! children of one parent as before.
 //!
 //! These predicates are the only place that decides it. `build_element` flags the GPUI
