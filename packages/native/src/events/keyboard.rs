@@ -111,6 +111,7 @@ fn key_payload(
     keystroke: &gpui::Keystroke,
     native_key: &gpui::NativeKey,
     is_held: Option<bool>,
+    is_composing: bool,
 ) -> Option<EventPayload> {
     let window_listens = if event_type == "keydown" {
         routing.0.window_key_down.get()
@@ -146,7 +147,7 @@ fn key_payload(
         key_char: keystroke.key_char.clone(),
         is_held,
         repeat: Some(is_held.unwrap_or(false)),
-        is_composing: Some(false),
+        is_composing: Some(is_composing),
         shift_key: Some(keystroke.modifiers.shift),
         ctrl_key: Some(keystroke.modifiers.control),
         alt_key: Some(keystroke.modifiers.alt),
@@ -197,6 +198,7 @@ pub(crate) fn install_key_down(
             &event.keystroke,
             &event.native_key,
             Some(event.is_held),
+            event.is_composing,
         )
         .map(|payload| sync_dispatch::emit(window, cx, &callback, payload))
         .is_some_and(|outcome| outcome.default_prevented);
@@ -243,6 +245,7 @@ pub(crate) fn window_input_listeners(
                     &event.keystroke,
                     &event.native_key,
                     None,
+                    event.is_composing,
                 )
                 .map(|payload| sync_dispatch::emit(window, cx, &callback, payload))
                 .is_some_and(|outcome| outcome.default_prevented);

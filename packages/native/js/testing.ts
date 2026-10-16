@@ -87,6 +87,7 @@ interface NativeTestRendererApi
   ): void
   simulateKeyDown(keystroke: string, isHeld?: boolean): void
   simulateKeyUp(keystroke: string): void
+  simulateImeKeyDown(keystroke: string, action: string, text?: string): void
   simulateClick(x: number, y: number, button?: number, modifiers?: string): void
   simulateScrollWheel(
     x: number,
@@ -222,6 +223,18 @@ export interface TestRendererOptions extends WindowOptions, WindowFontsOption {
 }
 
 /** The motion a simulated mouse move reports, in logical pixels. */
+/**
+ * One key an input method consumes, and what the input method then does with
+ * it. `key` is a press in the `simulateKeystrokes` grammar.
+ */
+export type CompositionStep =
+  /** The composition becomes `text`: `compositionstart` on the first, then `compositionupdate`. */
+  | { key: string; action: "mark"; text: string }
+  /** The composition ends with `text` as the final text: `compositionend`. */
+  | { key: string; action: "commit"; text: string }
+  /** The composition ends with the text it has: `compositionend`. */
+  | { key: string; action: "unmark" }
+
 export interface MouseMovement {
   x: number
   y: number
@@ -535,6 +548,34 @@ export class TestRenderer implements NativeRenderer {
     this.dispatchNativeEvents()
     this.native.simulateKeyUp(keystroke)
     this.dispatchNativeEvents()
+  }
+
+  /** Focus a text input, then run an input method composition in it, one step
+   *  per key. Each step is what macOS does for a key the input method takes: a
+   *  `keydown` with `key` `"Process"`, the composition events and the `change`
+   *  of the edit, then the `keyup` of that key. A text input is the only element
+   *  that composes, so `elementId` must be one.
+   *  @param elementId - the `<input>` or `<textarea>` to compose in
+   *  @param steps - the keys the input method consumes, in order */
+  simulateComposition(elementId: number, steps: readonly CompositionStep[]): void {
+    this.native.flushIfDirty()
+    this.native.focusElement(elementId)
+    // Focus events are queued but a key is delivered synchronously: let the
+    // focus handlers run first, as in a browser.
+    this.dispatchNativeEvents()
+    for (const step of steps) {
+      this.native.simulateImeKeyDown(
+        step.key,
+        step.action,
+        step.action === "unmark" ? undefined : step.text
+      )
+      // The edit's events are queued behind the keydown, and a browser fires
+      // them before the keyup.
+      this.dispatchNativeEvents()
+      this.native.simulateKeyUp(step.key)
+      this.dispatchNativeEvents()
+    }
+    this.native.flushIfDirty()
   }
 
   /** End-to-end: simulate a click through GPUI hit testing →

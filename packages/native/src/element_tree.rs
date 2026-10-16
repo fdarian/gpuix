@@ -82,9 +82,8 @@ pub struct EventPayload {
     /// Populated for: keydown, keyup.
     pub repeat: Option<bool>,
 
-    /// DOM `KeyboardEvent.isComposing`. Always false: a key that feeds an
-    /// active IME composition is consumed by the platform's text input context
-    /// before GPUI sees it.
+    /// DOM `KeyboardEvent.isComposing`: an input method composition is in
+    /// progress. Only macOS reports it; elsewhere it is always false.
     /// Populated for: keydown, keyup.
     pub is_composing: Option<bool>,
 

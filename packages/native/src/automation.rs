@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use gpui::{
     canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, LayoutInsets,
-    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled, Window,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput,
+    Styled, Window,
 };
 use web_time::Instant;
 
@@ -304,6 +305,49 @@ pub fn dispatch_key_up(window: &mut Window, cx: &mut App, keystroke: &str) -> Re
     Ok(())
 }
 
+/// What a platform input method does with the text of a key it consumed.
+pub enum ImeAction<'a> {
+    /// `setMarkedText:`: the text becomes the composition.
+    Mark(&'a str),
+    /// `insertText:` while composing: the text is final and the composition ends.
+    Commit(&'a str),
+    /// `unmarkText`: the composition ends with the text it has.
+    Unmark,
+}
+
+/// A key the input method consumes (one press in the `dispatch_keystrokes`
+/// grammar), as macOS delivers it: an `ImeKeyDown` first, then what the input
+/// method does with it. Sends no keyup.
+pub fn dispatch_ime_key_down(
+    window: &mut Window,
+    cx: &mut App,
+    keystroke: &str,
+    action: ImeAction,
+) -> Result<(), String> {
+    let press = crate::events::key_names::parse_press(keystroke)?;
+    let is_composing = window.is_composing(cx);
+    window.dispatch_event(
+        PlatformInput::ImeKeyDown(KeyDownEvent {
+            keystroke: press.keystroke,
+            is_held: false,
+            prefer_character_input: false,
+            native_key: press.native_key,
+            is_composing,
+        }),
+        cx,
+    );
+    let reached_input = match action {
+        ImeAction::Mark(text) => window.dispatch_marked_text(text, cx),
+        ImeAction::Commit(text) => window.dispatch_composed_text(text, cx),
+        ImeAction::Unmark => window.dispatch_unmark_text(cx),
+    };
+    if reached_input {
+        Ok(())
+    } else {
+        Err("No text input is focused, so there is nothing for the input method to compose in".to_string())
+    }
+}
+
 fn send_key_down(window: &mut Window, cx: &mut App, press: Press, is_held: bool) {
     // Only a keystroke with a `key_char` goes through `dispatch_keystroke`,
     // which inserts that text into the focused input unless a handler stopped
@@ -312,12 +356,14 @@ fn send_key_down(window: &mut Window, cx: &mut App, press: Press, is_held: bool)
     if press.keystroke.key_char.is_some() && !is_held {
         window.dispatch_native_keystroke(press.keystroke, press.native_key, cx);
     } else {
+        let is_composing = window.is_composing(cx);
         window.dispatch_event(
             KeyDownEvent {
                 keystroke: press.keystroke,
                 is_held,
                 prefer_character_input: false,
                 native_key: press.native_key,
+                is_composing,
             }
             .to_platform_input(),
             cx,
@@ -326,10 +372,12 @@ fn send_key_down(window: &mut Window, cx: &mut App, press: Press, is_held: bool)
 }
 
 fn send_key_up(window: &mut Window, cx: &mut App, press: Press) {
+    let is_composing = window.is_composing(cx);
     window.dispatch_event(
         KeyUpEvent {
             keystroke: press.keystroke,
             native_key: press.native_key,
+            is_composing,
         }
         .to_platform_input(),
         cx,

@@ -739,6 +739,37 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// A key the platform's input method consumes (one press in the
+    /// `simulate_keystrokes` grammar), with no keyup after it, as macOS delivers
+    /// it: the key is announced to the observers of keys that compose, then the
+    /// input method calls the focused text input. `action` is `"mark"` (set the
+    /// composition to `text`), `"commit"` (end it with `text`) or `"unmark"` (end
+    /// it with the text it has; `text` is ignored). Pairs with `simulate_key_up`.
+    #[napi]
+    pub fn simulate_ime_key_down(
+        &self,
+        keystroke: String,
+        action: String,
+        text: Option<String>,
+    ) -> Result<()> {
+        let action = match (action.as_str(), text.as_deref()) {
+            ("mark", Some(text)) => crate::automation::ImeAction::Mark(text),
+            ("commit", Some(text)) => crate::automation::ImeAction::Commit(text),
+            ("unmark", _) => crate::automation::ImeAction::Unmark,
+            ("mark" | "commit", None) => {
+                return Err(Error::from_reason(format!("The {action:?} action needs the text")))
+            }
+            _ => {
+                return Err(Error::from_reason(format!(
+                    "{action:?} is not an input method action. The actions are mark, commit and unmark"
+                )))
+            }
+        };
+        self.key_input(|window, cx| {
+            crate::automation::dispatch_ime_key_down(window, cx, &keystroke, action)
+        })
+    }
+
     /// Dispatch one keyup (one press in the `simulate_keystrokes` grammar).
     #[napi]
     pub fn simulate_key_up(&self, keystroke: String) -> Result<()> {
