@@ -688,7 +688,7 @@ mod tests {
         assert_eq!(hovered.border_color.as_deref(), Some("green"));
         assert_eq!(hovered.border_top_color, None);
         assert_eq!(hovered.border_left_color, None);
-        assert_eq!(hovered.border_top_width, Some(3.0), "a colour leaves widths");
+        assert_eq!(hovered.border_top_width, Some(LinearLength::px(3.0)), "a colour leaves widths");
 
         let pressed = resolve_state_styles(&base, false, true);
         assert_eq!(pressed.border_top.as_deref(), Some("1px solid black"));
@@ -704,19 +704,19 @@ mod tests {
                 "hover":{"borderTop":"1px solid blue"}}"##,
         );
         let at_rest = resolve_state_styles(&base, false, false);
-        assert_eq!(at_rest.border_width, Some(2.0));
+        assert_eq!(at_rest.border_width, Some(LinearLength::px(2.0)));
 
         let hovered = resolve_state_styles(&base, true, false);
         assert_eq!(hovered.border_top.as_deref(), Some("1px solid blue"));
         assert_eq!(hovered.border_width, None);
         assert_eq!(hovered.border_color, None);
         assert_eq!((hovered.border_top_width, hovered.border_top_color.as_deref()), (None, None));
-        assert_eq!(hovered.border_right_width, Some(5.0), "a side longhand beats borderWidth");
+        assert_eq!(hovered.border_right_width, Some(LinearLength::px(5.0)), "a side longhand beats borderWidth");
         for (width, color) in [
             (hovered.border_bottom_width, hovered.border_bottom_color.as_deref()),
             (hovered.border_left_width, hovered.border_left_color.as_deref()),
         ] {
-            assert_eq!((width, color), (Some(2.0), Some("red")));
+            assert_eq!((width, color), (Some(LinearLength::px(2.0)), Some("red")));
         }
         assert_eq!(hovered.border_right_color.as_deref(), Some("red"));
     }
@@ -738,7 +738,7 @@ mod tests {
     fn a_state_side_shorthand_keeps_the_base_all_sides_longhands_it_does_not_cover() {
         let base = style(r##"{"borderWidth":2,"borderColor":"red","active":{"borderWidth":4,"borderTop":"1px solid blue"}}"##);
         let pressed = resolve_state_styles(&base, false, true);
-        assert_eq!(pressed.border_width, Some(4.0), "the state's own all-sides value is its own");
+        assert_eq!(pressed.border_width, Some(LinearLength::px(4.0)), "the state's own all-sides value is its own");
         assert_eq!(pressed.border_top_width, None);
         assert_eq!(pressed.border_right_width, None, "the state's borderWidth resets the base sides");
         assert_eq!(pressed.border_right_color.as_deref(), Some("red"));
@@ -764,13 +764,13 @@ mod tests {
                 "hover":{"borderTopWidth":1},"active":{"borderTop":"1px solid blue"}}"##,
         );
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!(hovered.border_width, Some(3.0));
-        assert_eq!(hovered.border_top_width, Some(1.0));
+        assert_eq!(hovered.border_width, Some(LinearLength::px(3.0)));
+        assert_eq!(hovered.border_top_width, Some(LinearLength::px(1.0)));
 
         // `border` is applied before the side shorthands, so it stays whole.
         let pressed = resolve_state_styles(&base, false, true);
         assert_eq!(pressed.border.as_deref(), Some("2px solid red"));
-        assert_eq!(pressed.border_left_width, Some(3.0));
+        assert_eq!(pressed.border_left_width, Some(LinearLength::px(3.0)));
         assert_eq!(pressed.border_top_width, None);
     }
 

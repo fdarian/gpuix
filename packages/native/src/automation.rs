@@ -26,7 +26,7 @@ pub struct ElementBounds {
     pub y: f64,
     pub width: f64,
     pub height: f64,
-    /// The DOM's `clientLeft`: the left border's width, so the padding box starts at `x + client_left`.
+    /// The DOM's `clientLeft`: the left border's width as laid out, so the padding box starts at `x + client_left`.
     pub client_left: f64,
     pub client_top: f64,
     pub border_right: f64,
@@ -107,7 +107,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// `report` sees the painted box right after it is recorded. `on_painted_layout`
 /// takes one listener, so the paint-driven events share this one.
 pub fn track_host_bounds<E>(
-    mut el: E,
+    el: E,
     id: u64,
     selection_start: Option<bool>,
     report: Option<PaintReporter>,

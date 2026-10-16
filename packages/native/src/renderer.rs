@@ -7294,7 +7294,6 @@ pub(crate) fn build_element(
     let built = if measured {
         ctx.measurements.wrap(
             id,
-            crate::motion::measure::VerticalBorder::of(style),
             ctx.inherited.container.resolves_percent_height(style),
             built,
         )
@@ -8100,23 +8099,24 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     if let Some(radius) = style.border_bottom_right_radius {
         el = el.rounded_br(gpui::px(radius as f32));
     }
-    el = crate::css::border::apply_shorthands(el, style, colors);
+    el = crate::css::border::apply_shorthands(el, style, colors, lengths);
     // `borderWidth: 0` must clear a border, not be ignored: an element that
     // draws its own border needs a way for the caller to remove it.
-    if let Some(width) = style.border_width {
-        el = el.border(gpui::px(width.max(0.0) as f32));
+    let width = |width: &crate::css::length::LinearLength| crate::css::border::resolve_width(width, lengths);
+    if let Some(value) = &style.border_width {
+        el = el.border(width(value));
     }
-    if let Some(width) = style.border_top_width {
-        el = el.border_t(gpui::px(width.max(0.0) as f32));
+    if let Some(value) = &style.border_top_width {
+        el = el.border_t(width(value));
     }
-    if let Some(width) = style.border_right_width {
-        el = el.border_r(gpui::px(width.max(0.0) as f32));
+    if let Some(value) = &style.border_right_width {
+        el = el.border_r(width(value));
     }
-    if let Some(width) = style.border_bottom_width {
-        el = el.border_b(gpui::px(width.max(0.0) as f32));
+    if let Some(value) = &style.border_bottom_width {
+        el = el.border_b(width(value));
     }
-    if let Some(width) = style.border_left_width {
-        el = el.border_l(gpui::px(width.max(0.0) as f32));
+    if let Some(value) = &style.border_left_width {
+        el = el.border_l(width(value));
     }
     el = crate::css::border::apply_colors(el, style, colors);
     match style.border_style.as_deref() {
@@ -8150,17 +8150,8 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
             el = el.shadow(shadows);
         }
     }
-    if style.outline_width.is_some() || style.outline_color.is_some() {
-        let color = style
-            .outline_color
-            .as_deref()
-            .and_then(|value| colors.resolve(value))
-            .unwrap_or_else(|| gpui::transparent_black().into());
-        el = el.outline(gpui::Outline {
-            width: gpui::px(style.outline_width.unwrap_or(1.0).max(0.0) as f32),
-            color: color.into(),
-            offset: gpui::px(style.outline_offset.unwrap_or(0.0) as f32),
-        });
+    if let Some(outline) = crate::css::border::outline(style, colors, lengths) {
+        el = el.outline(outline);
     }
     match style.visibility.as_deref() {
         Some("hidden") => el = el.invisible(),
@@ -10775,5 +10766,135 @@ mod dimension_length_tests {
             .expect("the observer reported");
         assert_eq!((observation.padding_left, observation.padding_top), (40.0, 20.0));
         assert_eq!((observation.content_width, observation.content_height), (100.0 - 40.0 - 20.0, 60.0));
+    }
+
+    /// `padded` with the fields of `style` added to element 2's 100px box.
+    fn bordered(cx: &mut gpui::TestAppContext, style: &str) -> Page {
+        padded(cx, &format!(r#"{{"width": 100, "height": 100, {style}}}"#))
+    }
+
+    fn border_of(page: &Page, id: u64) -> (f64, f64, f64, f64) {
+        let bounds = page.bounds(id);
+        (bounds.client_left, bounds.client_top, bounds.client_right, bounds.client_bottom)
+    }
+
+    #[gpui::test]
+    fn a_border_width_in_em_shrinks_the_content_box_by_the_font_size(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""fontSize": 20, "borderWidth": "0.5em""#);
+        near(page.offset(3, 2), (10.0, 10.0));
+        near(page.size(2), (100.0, 100.0));
+        assert_eq!(border_of(&page, 2), (10.0, 10.0, 10.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn each_border_side_takes_its_own_length_and_beats_the_shorthand(cx: &mut gpui::TestAppContext) {
+        let page = bordered(
+            cx,
+            r#""fontSize": 10, "borderWidth": "1in", "borderTopWidth": "calc(1px + 1rem)", "borderLeftWidth": 2,
+               "borderRightWidth": "2em", "borderBottomWidth": "calc(1em - 2px)""#,
+        );
+        assert_eq!(border_of(&page, 2), (2.0, 17.0, 20.0, 8.0));
+        near(page.offset(3, 2), (2.0, 17.0));
+    }
+
+    #[gpui::test]
+    fn a_negative_border_width_is_none(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""borderWidth": 3, "borderTopWidth": "-1em", "borderLeftWidth": -2"#);
+        assert_eq!(border_of(&page, 2), (0.0, 0.0, 3.0, 3.0));
+    }
+
+    #[gpui::test]
+    fn the_keywords_are_one_three_and_five_px(cx: &mut gpui::TestAppContext) {
+        let page = bordered(
+            cx,
+            r#""borderLeftWidth": "thin", "borderTopWidth": "medium", "borderRightWidth": "thick", "borderBottomWidth": "Thick""#,
+        );
+        assert_eq!(border_of(&page, 2), (1.0, 3.0, 5.0, 5.0));
+        page.set_style(cx, 2, r#"{"width": 100, "height": 100, "border": "thick solid red", "borderTop": "thin dashed blue"}"#);
+        assert_eq!(border_of(&page, 2), (5.0, 1.0, 5.0, 5.0));
+        page.set_style(cx, 2, r#"{"width": 100, "height": 100, "border": "solid"}"#);
+        assert_eq!(border_of(&page, 2), (3.0, 3.0, 3.0, 3.0));
+    }
+
+    #[gpui::test]
+    fn a_border_shorthand_resolves_em_in_the_elements_font_size(cx: &mut gpui::TestAppContext) {
+        let page = bordered(cx, r#""fontSize": 20, "border": "0.25em solid red", "borderBottom": "calc(1em + 1px) dashed""#);
+        assert_eq!(border_of(&page, 2), (5.0, 5.0, 5.0, 21.0));
+        near(page.offset(3, 2), (5.0, 5.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_border_resolves_in_the_hover_font_size(cx: &mut gpui::TestAppContext) {
+        let page = bordered(
+            cx,
+            r#""fontSize": 20, "border": "0.25em solid red", "hover": {"fontSize": 40}"#,
+        );
+        assert_eq!(border_of(&page, 2), (5.0, 5.0, 5.0, 5.0));
+        let bounds = page.bounds(2);
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            gpui::point(gpui::px((bounds.x + 90.0) as f32), gpui::px((bounds.y + 90.0) as f32)),
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        assert_eq!(border_of(&page, 2), (10.0, 10.0, 10.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_border_width_in_em_replaces_the_base_one(cx: &mut gpui::TestAppContext) {
+        let page = bordered(
+            cx,
+            r#""fontSize": 20, "borderLeftWidth": "0.5em", "borderWidth": 1, "hover": {"borderWidth": "1em"}"#,
+        );
+        assert_eq!(border_of(&page, 2), (10.0, 1.0, 1.0, 1.0));
+        let bounds = page.bounds(2);
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            gpui::point(gpui::px((bounds.x + 90.0) as f32), gpui::px((bounds.y + 90.0) as f32)),
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        assert_eq!(border_of(&page, 2), (20.0, 20.0, 20.0, 20.0));
+    }
+
+    #[test]
+    fn the_outline_resolves_in_the_elements_font_size() {
+        let style: StyleDesc =
+            serde_json::from_str(r#"{"outlineWidth": "0.1em", "outlineOffset": "calc(0.5em + 1px)", "outlineColor": "red"}"#).unwrap();
+        let lengths = LengthContext::initial(800.0, 600.0).descend(Some(&crate::css::length::LinearLength::px(20.0)), true);
+        let refinement = apply_styles(
+            gpui::StyleRefinement::default(),
+            &style,
+            &crate::color::ColorContext::root(crate::color::Scheme::Light),
+            &lengths,
+        );
+        let outline = refinement.outline.expect("the outline is applied");
+        assert_eq!((outline.width, outline.offset), (gpui::px(2.0), gpui::px(11.0)));
+    }
+
+    #[gpui::test]
+    fn a_resize_observer_content_box_excludes_the_resolved_border(cx: &mut gpui::TestAppContext) {
+        let payloads = Arc::new(Mutex::new(Vec::<EventPayload>::new()));
+        let sink = payloads.clone();
+        let page = Page::with_events(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), r#"{"width": 100, "height": 100, "fontSize": 20, "borderWidth": "0.5em", "borderLeftWidth": "calc(1em + 1px)", "padding": 5}"#),
+            ],
+            &[(2, crate::observers::RESIZE_EVENT)],
+            Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))),
+        );
+        page.draw(cx);
+        cx.run_until_parked();
+        let payloads = payloads.lock().unwrap();
+        let observation = payloads
+            .iter()
+            .find_map(|payload| payload.observation.as_ref())
+            .expect("the observer reported");
+        assert_eq!(
+            (observation.content_width, observation.content_height),
+            (100.0 - 21.0 - 10.0 - 10.0, 100.0 - 20.0 - 10.0)
+        );
     }
 }

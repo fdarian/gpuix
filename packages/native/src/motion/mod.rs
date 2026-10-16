@@ -1315,12 +1315,16 @@ mod tests {
             (serde_json::json!({ "columnGap": "1rem" }), "columnGap"),
             (serde_json::json!({ "gap": "10%" }), "gap"),
             (serde_json::json!({ "flexBasis": "calc(100% - 40px)" }), "flexBasis"),
+            (serde_json::json!({ "borderWidth": "0.5em" }), "borderWidth"),
+            (serde_json::json!({ "borderTopWidth": "thick" }), "borderTopWidth"),
+            (serde_json::json!({ "outlineWidth": "2em" }), "outlineWidth"),
+            (serde_json::json!({ "outlineOffset": "calc(1px + 1em)" }), "outlineOffset"),
         ] {
             let description = serde_json::json!({ "animate": animate, "transition": {} });
             let error = MotionState::new(&description, None, Colors::root(), None, 0, now).err().unwrap();
             assert!(error.contains(name) && error.contains("CSS length"), "{error}");
         }
-        let px = serde_json::json!({ "animate": { "padding": 8, "gap": 4 }, "transition": {} });
+        let px = serde_json::json!({ "animate": { "padding": 8, "gap": 4, "borderWidth": 2, "outlineOffset": 3 }, "transition": {} });
         assert!(MotionState::new(&px, None, Colors::root(), None, 0, now).is_ok());
     }
 

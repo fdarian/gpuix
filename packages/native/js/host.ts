@@ -64,7 +64,7 @@ export * from "./svg.js"
  * `calc()` of them with `+`, `-` and `*` or `/` by numbers (`"calc(100% - 20px)"`), plus
  * `"auto"` and `"anchor-size(...)"` where the property accepts them. Resolved natively on
  * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates only
- * a number of px or a percentage (a number of px alone for `fontSize`, `padding` and `gap`).
+ * a number of px or a percentage (a number of px alone for `fontSize`, `padding`, `gap`, the border widths and the outline).
  */
 export type DimensionValue = number | string
 
@@ -552,11 +552,13 @@ export interface StyleDesc {
   colorScheme?: string
   opacity?: number
 
-  borderWidth?: number
-  borderTopWidth?: number
-  borderRightWidth?: number
-  borderBottomWidth?: number
-  borderLeftWidth?: number
+  /** A length (see `DimensionValue`) with no percentage, or `"thin"` (1px), `"medium"` (3px) or
+   *  `"thick"` (5px). A negative width is 0. The sides win over `borderWidth`. */
+  borderWidth?: DimensionValue
+  borderTopWidth?: DimensionValue
+  borderRightWidth?: DimensionValue
+  borderBottomWidth?: DimensionValue
+  borderLeftWidth?: DimensionValue
   /** One to four colours, like CSS: `"red"`, `"red blue"` (top-bottom, left-right),
    *  `"red blue green"`, `"red blue green white"` (top, right, bottom, left). One
    *  invalid colour ignores the whole value. */
@@ -633,10 +635,11 @@ export interface StyleDesc {
   aspectRatio?: number | string
   /** CSS `outline`: a line outside the border box. Takes no layout space, so it
    *  can appear on focus without moving anything. Width defaults to 1. */
-  outlineWidth?: number
+  outlineWidth?: DimensionValue
   outlineColor?: string
-  /** Gap between the border box and the outline. Negative draws it inside. */
-  outlineOffset?: number
+  /** Gap between the border box and the outline: a length (see `DimensionValue`) with no
+   *  percentage. Negative draws it inside. `outlineWidth` takes what `borderWidth` does. */
+  outlineOffset?: DimensionValue
 
   fontSize?: number | string
   fontFamily?: string

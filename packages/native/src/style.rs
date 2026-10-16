@@ -74,6 +74,36 @@ fn deserialize_box_shadow<'de, D: serde::Deserializer<'de>>(
     Ok(Option::<BoxShadowInput>::deserialize(deserializer)?.and_then(BoxShadowInput::into_values))
 }
 
+/// `Option<LinearLength>` with a narrower grammar than a plain length.
+macro_rules! length_field {
+    ($name:ident, $what:literal, $rule:literal, $parse:path) => {
+        fn $name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LinearLength>, D::Error> {
+            struct Field(LinearLength);
+
+            impl<'de> Deserialize<'de> for Field {
+                fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                    crate::css::length::deserialize_with(deserializer, $what, $rule, $parse).map(Field)
+                }
+            }
+
+            Ok(Option::<Field>::deserialize(deserializer)?.map(|field| field.0))
+        }
+    };
+}
+
+length_field!(
+    deserialize_border_width,
+    "border width",
+    "a CSS length without %, or thin, medium or thick",
+    crate::css::border::parse_width
+);
+length_field!(
+    deserialize_outline_offset,
+    "outline offset",
+    "a CSS length without %",
+    crate::css::border::parse_offset
+);
+
 impl BoxShadowValues {
     pub fn as_slice(&self) -> &[BoxShadowValue] {
         match self {
@@ -328,11 +358,18 @@ pub struct StyleDesc {
     pub opacity: Option<f64>,
 
     // Border
-    pub border_width: Option<f64>,
-    pub border_top_width: Option<f64>,
-    pub border_right_width: Option<f64>,
-    pub border_bottom_width: Option<f64>,
-    pub border_left_width: Option<f64>,
+    /// A number is px; a string is a CSS length with no `%`, or `thin`, `medium`
+    /// or `thick`. A negative width is zero.
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub border_width: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub border_top_width: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub border_right_width: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub border_bottom_width: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub border_left_width: Option<LinearLength>,
     /// One to four colours, like CSS `border-color`: `"red"`, `"red blue"`, ...
     pub border_color: Option<String>,
     pub border_top_color: Option<String>,
@@ -379,9 +416,14 @@ pub struct StyleDesc {
     pub aspect_ratio: Option<crate::layout::aspect_ratio::AspectRatio>,
     /// CSS `outline`: a line outside the border box that takes no layout
     /// space, so it can appear on focus without moving anything.
-    pub outline_width: Option<f64>,
+    ///
+    /// `outlineWidth` takes what a border width does and `outlineOffset` a length
+    /// with no `%`.
+    #[serde(default, deserialize_with = "deserialize_border_width")]
+    pub outline_width: Option<LinearLength>,
     pub outline_color: Option<String>,
-    pub outline_offset: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_outline_offset")]
+    pub outline_offset: Option<LinearLength>,
 
     // Text
     /// A number is px; a string is a CSS length. `em` and `%` are relative to the
@@ -619,7 +661,7 @@ impl StyleDesc {
                 .as_deref()
                 .filter(|value| {
                     crate::css::border::parse_border(value).is_some_and(|parsed| {
-                        parsed.width > 0.0 && parsed.color.to_ascii_lowercase().contains("currentcolor")
+                        !parsed.width.is_zero() && parsed.color.to_ascii_lowercase().contains("currentcolor")
                     })
                 })
                 .map(str::to_owned)
@@ -951,7 +993,7 @@ mod tests {
         let followers = base.colors_following_current(&hover).unwrap();
         assert_eq!(followers.border_color.as_deref(), Some("currentColor"));
         assert_eq!(followers.background_color, None);
-        assert_eq!(followers.outline_width, Some(2.0));
+        assert_eq!(followers.outline_width, Some(LinearLength::px(2.0)));
         assert!(followers.outline_color.is_some());
 
         let overriding = StyleDesc {
@@ -1108,6 +1150,55 @@ mod tests {
     #[test]
     fn a_padding_and_gap_round_trip_through_serialization() {
         let style = style_of(r#"{"padding": "calc(10% + 4px)", "paddingTop": 3, "gap": "2em", "flexBasis": "calc(1em + 1%)"}"#);
+        assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+    }
+
+    #[test]
+    fn border_and_outline_widths_take_a_length_of_any_unit_or_a_keyword() {
+        let style = style_of(
+            r#"{
+                "borderWidth": 2, "borderTopWidth": "0.5em", "borderRightWidth": "calc(1px + 1rem)",
+                "borderBottomWidth": "thick", "borderLeftWidth": "1in",
+                "outlineWidth": "thin", "outlineOffset": "calc(-1 * (2vw + 1px))"
+            }"#,
+        );
+        let length = |text: &str| Some(parse_linear_length(text).unwrap());
+        assert_eq!(style.border_width, Some(LinearLength::px(2.0)));
+        assert_eq!(style.border_top_width, length("0.5em"));
+        assert_eq!(style.border_right_width, length("calc(1px + 1rem)"));
+        assert_eq!(style.border_bottom_width, Some(LinearLength::px(5.0)));
+        assert_eq!(style.border_left_width, Some(LinearLength::px(96.0)));
+        assert_eq!(style.outline_width, Some(LinearLength::px(1.0)));
+        assert_eq!(style.outline_offset, length("calc(-1 * (2vw + 1px))"));
+        assert_eq!(style_of(r#"{"borderWidth": "medium"}"#).border_width, Some(LinearLength::px(3.0)));
+        assert_eq!(style_of(r#"{"borderWidth": -3}"#).border_width, Some(LinearLength::px(-3.0)));
+        assert_eq!(style_of(r#"{"borderWidth": null}"#).border_width, None);
+        assert_eq!(style_of("{}").outline_offset, None);
+    }
+
+    #[test]
+    fn a_percentage_or_a_bad_value_is_not_a_border_or_outline_length() {
+        for json in [
+            r#"{"borderWidth": "10%"}"#,
+            r#"{"borderTopWidth": "calc(1px + 10%)"}"#,
+            r#"{"borderLeftWidth": "wide"}"#,
+            r#"{"borderRightWidth": "3"}"#,
+            r#"{"borderBottomWidth": true}"#,
+            r#"{"outlineWidth": "50%"}"#,
+            r#"{"outlineOffset": "5%"}"#,
+            r#"{"outlineOffset": "thin"}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"borderWidth": "10%"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid border width \"10%\""), "{error}");
+        let error = serde_json::from_str::<StyleDesc>(r#"{"outlineOffset": "5%"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid outline offset \"5%\""), "{error}");
+    }
+
+    #[test]
+    fn border_and_outline_lengths_round_trip_through_serialization() {
+        let style = style_of(r#"{"borderWidth": "0.5em", "borderTopWidth": 3, "outlineWidth": "thick", "outlineOffset": "calc(1em - 2px)"}"#);
         assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
     }
 }

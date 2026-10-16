@@ -386,15 +386,10 @@ impl<'a> Emitter<'a> {
 
     fn offset(&self, target: u64) -> Option<(f64, f64)> {
         let origin = self.origin(target)?;
-        let style = self
-            .tree
-            .elements
-            .get(&target)
-            .and_then(|element| element.style.as_deref());
-        let (border_left, border_top) = border_insets(style);
+        let border = crate::automation::get_bounds(target)?;
         Some((
-            self.position.0 - origin.0 - border_left,
-            self.position.1 - origin.1 - border_top,
+            self.position.0 - origin.0 - border.client_left,
+            self.position.1 - origin.1 - border.client_top,
         ))
     }
 
@@ -415,15 +410,6 @@ fn hit_origin(bounds: Bounds<Pixels>) -> (f64, f64) {
         f64::from(f32::from(bounds.origin.x)),
         f64::from(f32::from(bounds.origin.y)),
     )
-}
-
-fn border_insets(style: Option<&StyleDesc>) -> (f64, f64) {
-    let Some(style) = style else {
-        return (0.0, 0.0);
-    };
-    let left = style.border_left_width.or(style.border_width);
-    let top = style.border_top_width.or(style.border_width);
-    (left.unwrap_or(0.0).max(0.0), top.unwrap_or(0.0).max(0.0))
 }
 
 pub(super) fn button_bit(button: u32) -> u32 {
@@ -1720,11 +1706,19 @@ mod tests {
         assert_eq!(payload_buttons(released), Some(2));
     }
 
+    /// What the painted frame left for `id`: a box with the given border widths.
+    fn painted_with_border(id: u64, border: f32) {
+        crate::automation::record_bounds(
+            id,
+            Bounds::default(),
+            gpui::Edges::all(gpui::px(border)),
+        );
+    }
+
     #[test]
     fn offset_is_measured_from_the_padding_edge() {
-        let mut tree = tree(&[(3, "mousemove")]);
-        let style: StyleDesc = serde_json::from_str(r#"{"borderWidth":2}"#).unwrap();
-        tree.set_style(3, Arc::new(style));
+        let tree = tree(&[(3, "mousemove")]);
+        painted_with_border(3, 2.0);
         let mut state = PointerState::default();
         // The border box starts at (10, 20); the pointer is at (15, 30).
         let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
@@ -2805,6 +2799,7 @@ mod tests {
     #[test]
     fn a_wheel_is_one_event_at_the_target_with_its_path_and_the_tick() {
         let tree = tree(&listening_everywhere(&["wheel"]));
+        painted_with_border(3, 0.0);
         let mut state = PointerState::default();
         let output = dispatch(&mut state, &tree, &wheel((0.0, 40.0), chain_of(&[3, 2, 1])));
         assert_eq!(names(&output), ["wheel@3"]);

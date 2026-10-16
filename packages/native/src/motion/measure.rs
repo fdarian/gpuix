@@ -11,12 +11,11 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    AnyElement, App, Bounds, Edges, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
     Pixels, Size, Window,
 };
 
 use super::property::{AnimProp, Axis};
-use crate::style::StyleDesc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Measurement {
@@ -118,24 +117,16 @@ impl Measurements {
         move |_, _, _| painted_frames.set(painted_frames.get() + 1)
     }
 
-    /// `child` wrapped so each paint of it keeps `id` measured. `border` is the
-    /// vertical border of the style the element is built with, and
-    /// `percent_height_resolves` what `Container::resolves_percent_height` said.
+    /// `child` wrapped so each paint of it keeps `id` measured. `percent_height_resolves` is
+    /// what `Container::resolves_percent_height` said.
     ///
     /// A wrapper rather than `on_painted_layout` on the element: that listener
     /// lives on GPUI's `Interactivity`, which `<img>`, `<svg>`, `<input>` and
     /// the other custom elements build behind an `AnyElement`.
-    pub(crate) fn wrap(
-        &self,
-        id: u64,
-        border: VerticalBorder,
-        percent_height_resolves: bool,
-        child: AnyElement,
-    ) -> AnyElement {
+    pub(crate) fn wrap(&self, id: u64, percent_height_resolves: bool, child: AnyElement) -> AnyElement {
         self.wrapped.borrow_mut().insert(id);
         Measured {
             id,
-            border,
             percent_height_resolves,
             measurements: self.clone(),
             child,
@@ -146,7 +137,6 @@ impl Measurements {
     fn record(
         &self,
         id: u64,
-        border: VerticalBorder,
         percent_height_resolves: bool,
         bounds: Bounds<Pixels>,
         layout_id: LayoutId,
@@ -155,7 +145,7 @@ impl Measurements {
         let content = window.layout_content_size(layout_id);
         let measurement = Measurement {
             border_box: bounds.size,
-            natural_height: natural_height(content.height, border),
+            natural_height: natural_height(content.height, window.layout_insets(layout_id).border),
             parent_content: window
                 .layout_parent_content_size(layout_id)
                 .unwrap_or_else(|| window.viewport_size()),
@@ -168,7 +158,6 @@ impl Measurements {
 
 struct Measured {
     id: u64,
-    border: VerticalBorder,
     percent_height_resolves: bool,
     measurements: Measurements,
     child: AnyElement,
@@ -230,66 +219,30 @@ impl Element for Measured {
         cx: &mut App,
     ) {
         self.child.paint(window, cx);
-        self.measurements.record(
-            self.id,
-            self.border,
-            self.percent_height_resolves,
-            bounds,
-            *layout_id,
-            window,
-        );
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct VerticalBorder {
-    pub top: f32,
-    pub bottom: f32,
-}
-
-impl VerticalBorder {
-    /// A side width beats the `borderWidth` shorthand, as it does when the
-    /// renderer applies them.
-    pub(crate) fn of(style: Option<&StyleDesc>) -> Self {
-        let Some(style) = style else {
-            return Self::default();
-        };
-        let width = |side: Option<f64>| {
-            side.or(style.border_width)
-                .map_or(0.0, |width| width.max(0.0) as f32)
-        };
-        Self {
-            top: width(style.border_top_width),
-            bottom: width(style.border_bottom_width),
-        }
+        self.measurements
+            .record(self.id, self.percent_height_resolves, bounds, *layout_id, window);
     }
 }
 
 /// Layout's content extent covers the padding but not the border, so the
 /// border-box height is the extent plus the border on both sides.
-fn natural_height(content_height: Pixels, border: VerticalBorder) -> Pixels {
-    content_height + gpui::px(border.top + border.bottom)
+fn natural_height(content_height: Pixels, border: Edges<Pixels>) -> Pixels {
+    content_height + border.top + border.bottom
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn style(json: &str) -> StyleDesc {
-        serde_json::from_str(json).unwrap()
-    }
-
     #[test]
     fn natural_height_adds_both_borders_to_the_content_extent() {
-        let border = VerticalBorder {
-            top: 2.0,
-            bottom: 3.0,
+        let border = Edges {
+            top: gpui::px(2.0),
+            bottom: gpui::px(3.0),
+            ..Edges::default()
         };
         assert_eq!(natural_height(gpui::px(80.0), border), gpui::px(85.0));
-        assert_eq!(
-            natural_height(gpui::px(80.0), VerticalBorder::default()),
-            gpui::px(80.0)
-        );
+        assert_eq!(natural_height(gpui::px(80.0), Edges::default()), gpui::px(80.0));
     }
 
     fn measurement(natural_height: f32, scale_factor: f32) -> Measurement {
@@ -379,29 +332,6 @@ mod tests {
         assert_eq!(nested.percent_px(AnimProp::Right, 0.25), Some(50.0));
     }
 
-    #[test]
-    fn a_side_width_beats_the_shorthand() {
-        let border = VerticalBorder::of(Some(&style(
-            r#"{ "borderWidth": 4, "borderTopWidth": 1 }"#,
-        )));
-        assert_eq!(
-            border,
-            VerticalBorder {
-                top: 1.0,
-                bottom: 4.0
-            }
-        );
-    }
-
-    #[test]
-    fn no_border_is_zero_and_a_negative_width_clamps() {
-        assert_eq!(VerticalBorder::of(None), VerticalBorder::default());
-        assert_eq!(
-            VerticalBorder::of(Some(&style(r#"{ "borderBottomWidth": -3 }"#))),
-            VerticalBorder::default()
-        );
-    }
-
     fn some_measurement() -> Measurement {
         Measurement {
             border_box: gpui::size(gpui::px(1.0), gpui::px(2.0)),
@@ -413,12 +343,7 @@ mod tests {
     }
 
     fn wrap_empty(measurements: &Measurements, id: u64) {
-        measurements.wrap(
-            id,
-            VerticalBorder::default(),
-            true,
-            gpui::Empty.into_any_element(),
-        );
+        measurements.wrap(id, true, gpui::Empty.into_any_element());
     }
 
     #[test]

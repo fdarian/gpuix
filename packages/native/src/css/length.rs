@@ -30,8 +30,8 @@ pub struct LinearLength {
 }
 
 impl LinearLength {
-    pub(crate) fn px(px: f64) -> Self {
-        Self { px, ..Self::default() }
+    pub(crate) const fn px(px: f64) -> Self {
+        Self { px, percent: 0.0, em: 0.0, rem: 0.0, vw: 0.0, vh: 0.0, vmin: 0.0, vmax: 0.0 }
     }
 
     /// `fraction` is `0.5` for `50%`.
@@ -83,6 +83,13 @@ impl LinearLength {
 
     pub(crate) fn is_zero(&self) -> bool {
         self.terms().iter().all(|term| *term == 0.0)
+    }
+
+    /// Negative in any context: every unit is a non-negative quantity, so a length
+    /// with no positive term and a negative one cannot come out positive.
+    pub(crate) fn is_negative(&self) -> bool {
+        let terms = self.terms();
+        terms.iter().all(|term| *term <= 0.0) && terms.iter().any(|term| *term < 0.0)
     }
 
     pub(crate) fn has_percent(&self) -> bool {
@@ -245,37 +252,53 @@ impl Serialize for LinearLength {
 
 impl<'de> Deserialize<'de> for LinearLength {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct LengthVisitor;
+        deserialize_with(deserializer, "length", "a CSS length with a unit, or calc()", parse_linear_length)
+    }
+}
 
-        impl Visitor<'_> for LengthVisitor {
-            type Value = LinearLength;
+/// A number of px or a string `parse` accepts, for the properties whose grammar
+/// is narrower than a plain length (no `%`, extra keywords). `what` names the
+/// value in the error and `rule` says what it takes.
+pub(crate) fn deserialize_with<'de, D: Deserializer<'de>>(
+    deserializer: D,
+    what: &'static str,
+    rule: &'static str,
+    parse: fn(&str) -> Option<LinearLength>,
+) -> Result<LinearLength, D::Error> {
+    struct LengthVisitor {
+        what: &'static str,
+        rule: &'static str,
+        parse: fn(&str) -> Option<LinearLength>,
+    }
 
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a number of px or a CSS length string")
-            }
+    impl Visitor<'_> for LengthVisitor {
+        type Value = LinearLength;
 
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<LinearLength, E> {
-                if !value.is_finite() {
-                    return Err(E::custom(format!("invalid length {value}: not a finite number")));
-                }
-                Ok(LinearLength::px(value).clamped())
-            }
-
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<LinearLength, E> {
-                self.visit_f64(value as f64)
-            }
-
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<LinearLength, E> {
-                self.visit_f64(value as f64)
-            }
-
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<LinearLength, E> {
-                parse_linear_length(value).ok_or_else(|| E::custom(format!("invalid length \"{value}\"")))
-            }
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "a number of px or {}", self.rule)
         }
 
-        deserializer.deserialize_any(LengthVisitor)
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<LinearLength, E> {
+            if !value.is_finite() {
+                return Err(E::custom(format!("invalid {} {value}: not a finite number", self.what)));
+            }
+            Ok(LinearLength::px(value).clamped())
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<LinearLength, E> {
+            self.visit_f64(value as f64)
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<LinearLength, E> {
+            self.visit_f64(value as f64)
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<LinearLength, E> {
+            (self.parse)(value).ok_or_else(|| E::custom(format!("invalid {} \"{value}\": {}", self.what, self.rule)))
+        }
     }
+
+    deserializer.deserialize_any(LengthVisitor { what, rule, parse })
 }
 
 #[cfg(test)]
@@ -299,6 +322,8 @@ mod tests {
         assert!(LinearLength::default().is_zero());
         assert!(!LinearLength::px(1.0).is_zero());
         assert!(parse("calc(100% - 20px)").has_percent());
+        assert!(parse("-1px").is_negative() && parse("-0.5em").is_negative() && parse("calc(-1px - 1rem)").is_negative());
+        assert!(!parse("calc(1px - 1em)").is_negative() && !parse("0").is_negative() && !parse("1vw").is_negative());
         assert!(!parse("20px").has_percent());
     }
 

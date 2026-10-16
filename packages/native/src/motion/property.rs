@@ -477,6 +477,12 @@ impl AnimProp {
                 | Self::PaddingRight
                 | Self::PaddingBottom
                 | Self::PaddingLeft
+                | Self::BorderTopWidth
+                | Self::BorderRightWidth
+                | Self::BorderBottomWidth
+                | Self::BorderLeftWidth
+                | Self::OutlineWidth
+                | Self::OutlineOffset
         )
     }
 
@@ -819,6 +825,38 @@ mod tests {
         AnimProp::RowGap.write(&mut style, AnimValue::Number(3.0));
         assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
         assert_eq!(style.row_gap, Some(LinearLength::px(3.0)));
+    }
+
+    #[test]
+    fn only_a_px_border_width_or_outline_is_animatable() {
+        let colors = Colors::root();
+        let props = [
+            (AnimProp::BorderTopWidth, "borderTopWidth"),
+            (AnimProp::BorderRightWidth, "borderRightWidth"),
+            (AnimProp::BorderBottomWidth, "borderBottomWidth"),
+            (AnimProp::BorderLeftWidth, "borderLeftWidth"),
+            (AnimProp::OutlineWidth, "outlineWidth"),
+            (AnimProp::OutlineOffset, "outlineOffset"),
+        ];
+        for (prop, name) in props {
+            let read = |json: &str| prop.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors);
+            assert_eq!(read(&format!(r#"{{ "{name}": 2 }}"#)), Some(AnimValue::Number(2.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "1in" }}"#)), Some(AnimValue::Number(96.0)));
+            assert_eq!(read(&format!(r#"{{ "{name}": "0.5em" }}"#)), None);
+            assert_eq!(prop.parse(&serde_json::json!(4), &colors).unwrap(), AnimValue::Number(4.0));
+            for target in ["0.5em", "calc(1px + 1rem)", "thick", "3px"] {
+                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
+                assert!(
+                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
+                    "{error}"
+                );
+            }
+        }
+        let mut style = StyleDesc::default();
+        AnimProp::BorderLeftWidth.write(&mut style, AnimValue::Number(2.0));
+        AnimProp::OutlineOffset.write(&mut style, AnimValue::Number(-1.0));
+        assert_eq!(style.border_left_width, Some(LinearLength::px(2.0)));
+        assert_eq!(style.outline_offset, Some(LinearLength::px(-1.0)));
     }
 
     #[test]
