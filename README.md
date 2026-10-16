@@ -1745,6 +1745,61 @@ the texture atlas when it makes the next one, so an animation holds one atlas
 entry per `<svg>`, not one per frame. The cost is one rasterisation per frame, in the
 frame for a small `<svg>` and on a background thread for a large one.
 
+### Animate an inline span
+
+`motion.span` animates the colours and the opacity of an inline `<span>` inside
+text, with the `initial`, `animate`, `exit`, `transition` and `variants` of
+Framer's `motion.span`. It is available in `@gpuix/react` and `@gpuix/solid`, and
+the type of its props is `MotionSpanProps`.
+
+```tsx
+<text style={{ color: '#e2e2e2' }}>
+  Saved{' '}
+  <motion.span
+    initial={{ backgroundColor: '#ffe58a00', color: '#e2e2e2' }}
+    animate={{ backgroundColor: '#ffe58a66', color: '#ffffff' }}
+    transition={{ duration: 0.4 }}
+  >
+    3 files
+  </motion.span>
+</text>
+```
+
+A span is text that its paragraph paints, not a box of its own, so it animates
+only what the paragraph can repaint without laying out again: `opacity`, `color`,
+`backgroundColor`, `textDecorationColor`, `outlineColor`, `borderColor` and the
+four `border*Color` sides. They blend as on a `motion.div`, and run natively
+without a render per frame, in the order CSS uses (the `style`, then CSS
+transitions, then `motion`, then CSS animations). `initial` is on the first frame,
+so nothing flashes the `animate` value first. A key of any other property
+(`width`, `padding`, `fontSize`, ...) in `initial`, `animate`, `exit` or a variant
+**throws and names the property**, and TypeScript rejects it. `opacity` fades the
+glyphs, the lines, the background, the border and the outline of the span (see
+[Painting an inline box](#painting-an-inline-box) for how).
+
+- **`exit` inside `AnimatePresence`** works as on a `div`: the span stays
+  mounted until its exit has finished, and is then removed. Without an `exit` it
+  is removed at once.
+- **`variants`** name targets: `initial="hidden" animate="shown"`, a list of
+  names (later ones win), a function of `custom` as a variant, and a `transition`
+  inside a variant, which the animation to that variant plays with in place of
+  the component's. A name `variants` does not define throws. A name is not passed
+  on to children, so a `motion.span` inside another one names its own targets.
+  `motion.div` has no `variants`, and passing it one throws.
+- **No hover, tap or focus props.** `whileHover`, `whileTap`, `whileFocus`,
+  `whileInView` and `whileDrag` throw. A span takes those states from the `hover`,
+  `active`, `focusVisible` and `focusWithin` entries of its `style`, which fade
+  its colours with a `transition`, as on any element.
+- **No layout or drag.** `layout`, `layoutId`, `layoutDependency`, `layoutScroll`,
+  `layoutRoot`, `onLayoutAnimation*` and Framer's `drag*` props throw, because an
+  inline span has no box to measure or drag. (`draggable` and the DOM `onDrag*`
+  events are the ordinary ones.) A `Reorder.Item` rendered `as` a span throws for the same reason.
+- **No motion values in `style`.** A motion value in the `style` of a `motion.span`
+  throws: nothing samples one for the text a paragraph paints. Animate the colours
+  with `animate`.
+- A span that is a flex or grid item, or has `display: block`, is laid out as an
+  element and paints its colours the same way, but still takes only the keys above.
+
 ### Animate a sidebar
 
 Animate an **outer clipping container** and keep the inner sidebar at a fixed
@@ -2873,9 +2928,17 @@ search match lies over them.
   border box, so a point in the padding above the text of a span is on the span and
   a point in the line box above the padding is not.
 - Only `backgroundColor` paints on an inline box: `backgroundImage` and gradients,
-  `boxShadow`, `opacity` and `filter` are not read there. The metrics are the
+  `boxShadow` and `filter` are not read there. The metrics are the
   line's, so a span in a font whose ascent and descent differ from the rest of the
   line has the line's content area, not its own.
+- **`opacity` fades what the box paints.** Its text, text decorations, background,
+  border and outline are painted with that fraction of their alpha, and a box
+  inside another is faded by both (`display: contents` has no box, so its
+  `opacity` does nothing). **Deviation: it is not a group.** A paragraph has no
+  layer to composite a box into, so each thing is faded on its own: where two of
+  them overlap, such as the glyphs over the box's own background, the one
+  underneath shows through a little more than in a browser. An element's `opacity`
+  is a real group.
 - **The colours of a box transition and animate.** `color`, `backgroundColor`,
   `textDecorationColor`, `outlineColor` and the border colours (`borderColor` and
   `borderTopColor` ... `borderLeftColor`) take part in [CSS transitions](#css-transitions)
@@ -2884,12 +2947,14 @@ search match lies over them.
   interpolation (Oklab, or sRGB for legacy colours). A
   `<mark style={{ backgroundColor, transition: 'background-color 200ms' }}>` fades
   when its colour changes, and a keyframe animation on a span can pulse it. A colour
-  moves no line, so the paragraph is not laid out again. Nothing else of a span
+  moves no line, so the paragraph is not laid out again, and the same goes for
+  `opacity`. Nothing else of a span
   moves: a transition or keyframe on its padding, margin, font or size changes it
   at once and starts no event. `onTransitionRun` and the other transition and
   animation events fire with the span as `target`. A colour written only inside the
   `border`, `borderTop` or `textDecoration` shorthand is not a target, as for an
-  element: write the longhand. `motion` (`animate`, `exit`) has no `motion.span`.
+  element: write the longhand. `opacity` takes part too. `motion` runs on a span
+  as [`motion.span`](#animate-an-inline-span).
 
 ### Events on inline boxes
 
@@ -6414,8 +6479,8 @@ render per frame.
   (`transform`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
-- **Inline boxes.** A `<span>` transitions its colours too, and only them (see
-  [Painting an inline box](#painting-an-inline-box))
+- **Inline boxes.** A `<span>` transitions its colours and its `opacity` too, and
+  only them (see [Painting an inline box](#painting-an-inline-box))
 - **Discrete properties.** `display`, `visibility`, `flexDirection`, `flexWrap`,
   `alignItems`, `alignSelf`, `alignContent`, `justifyContent`, `justifyItems` and
   `justifySelf` have no in-between values, so they change at once unless the
