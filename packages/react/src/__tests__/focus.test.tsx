@@ -420,6 +420,117 @@ describeNative("focus model", () => {
         expect(queued()).toEqual([])
       })
 
+      // Handlers on pointerdown and mousedown only: the sync log records every event the
+      // press sends, and `seen` what `document.activeElement` named inside mousedown.
+      function orderScene(refs: Record<string, unknown>, seen: unknown[], prevent: { pointerdown?: boolean; mousedown?: boolean } = {}) {
+        const handlers = (name: string) => ({
+          onPointerDown: (event) => prevent.pointerdown && event.preventDefault(),
+          onMouseDown: (event) => {
+            seen.push([name, document.activeElement])
+            if (prevent.mousedown) event.preventDefault()
+          },
+          onFocus: () => {},
+          onBlur: () => {},
+        })
+        return (
+          <div testId="scope" style={{ width: 200, height: 100 }} {...handlers("scope")}>
+            <div ref={(value) => (refs.a = value)} testId="a" tabIndex={0} style={box} {...handlers("a")} />
+            <div ref={(value) => (refs.b = value)} testId="b" tabIndex={0} style={{ width: 40, height: 40 }} {...handlers("b")}>
+              <div testId="inner" style={{ width: 20, height: 10 }} {...handlers("inner")} />
+            </div>
+          </div>
+        )
+      }
+
+      it("orders pointerdown, mousedown, blur, focusout, focus, focusin on a press that moves focus", () => {
+        const refs = {}
+        const seen: unknown[] = []
+        const { renderer, center } = setup(orderScene(refs, seen))
+        renderer.native.flush()
+        const { sync } = watch(renderer)
+
+        renderer.native.simulateMouseDown(...center("a"), 0)
+        sync.length = 0
+        seen.length = 0
+        renderer.native.simulateMouseDown(...center("inner"), 0)
+        // The mousedown handlers still see the element that held focus before the press.
+        expect(seen).toEqual([["inner", refs.a], ["b", refs.a], ["scope", refs.a]])
+        expect(sync).toEqual([
+          "pointerdown:inner",
+          "mousedown:inner",
+          "blur:a",
+          "focusout:a",
+          "focus:b",
+          "focusin:b",
+        ])
+        // The press landed on a child that is not focusable: its nearest focusable ancestor took focus.
+        expect(document.activeElement).toBe(refs.b)
+      })
+
+      it("blurs to nothing after the mousedown handlers on a press with no focusable ancestor", () => {
+        const refs = {}
+        const seen: unknown[] = []
+        const { renderer, center } = setup(
+          <div style={{ width: 200, height: 100 }}>
+            <div ref={(value) => (refs.a = value)} testId="a" tabIndex={0} style={box} />
+            <div
+              testId="plain"
+              style={box}
+              onPointerDown={() => {}}
+              onMouseDown={() => seen.push(document.activeElement)}
+            />
+          </div>
+        )
+        renderer.native.flush()
+        const { sync } = watch(renderer)
+        renderer.native.simulateMouseDown(...center("a"), 0)
+        sync.length = 0
+        renderer.native.simulateMouseDown(...center("plain"), 0)
+        expect(seen).toEqual([refs.a])
+        expect(sync).toEqual(["pointerdown:plain", "mousedown:plain", "blur:a", "focusout:a"])
+        expect(document.activeElement).toBeNull()
+      })
+
+      it("cancels both the focus move and the blur when mousedown is prevented", () => {
+        const refs = {}
+        const { renderer, center, idOf } = setup(orderScene(refs, [], { mousedown: true }))
+        renderer.focusElement(idOf("a"))
+        renderer.native.flush()
+        const { sync } = watch(renderer)
+        // To another focusable, through a child that is not focusable.
+        renderer.native.simulateMouseDown(...center("inner"), 0)
+        expect(sync).toEqual(["pointerdown:inner", "mousedown:inner"])
+        expect(document.activeElement).toBe(refs.a)
+      })
+
+      it("cancels the blur of a bare-background press when mousedown is prevented", () => {
+        const refs = {}
+        const { renderer, center } = setup(
+          <div style={{ width: 200, height: 100 }}>
+            <div ref={(value) => (refs.a = value)} testId="a" tabIndex={0} style={box} />
+            <div testId="plain" style={box} onMouseDown={(event) => event.preventDefault()} />
+          </div>
+        )
+        renderer.native.flush()
+        renderer.native.simulateMouseDown(...center("a"), 0)
+        const { sync } = watch(renderer)
+        renderer.native.simulateMouseDown(...center("plain"), 0)
+        expect(sync).toEqual(["mousedown:plain"])
+        expect(document.activeElement).toBe(refs.a)
+      })
+
+      it("does not cancel the focus move when only pointerdown is prevented, as in Chrome", () => {
+        const refs = {}
+        const { renderer, center } = setup(orderScene(refs, [], { pointerdown: true }))
+        renderer.native.flush()
+        renderer.native.simulateMouseDown(...center("a"), 0)
+        const { sync } = watch(renderer)
+        renderer.native.simulateMouseDown(...center("inner"), 0)
+        // Whether mousedown still fires is not pinned: the DOM suppresses it after a cancelled pointerdown, gpuix does not.
+        expect(sync).toEqual(expect.arrayContaining(["blur:a", "focusout:a", "focus:b", "focusin:b"]))
+        expect(document.activeElement).toBe(refs.b)
+      })
+
       it("delivers no focus events for a press whose mousedown was cancelled", () => {
         const refs = { a: null, b: null }
         const { renderer, center } = setup(pressScene(refs, (event) => event.preventDefault()))
