@@ -3796,9 +3796,13 @@ element or `null` for the window. Entries have `isIntersecting`,
 `time` and `target`. Each target gets an entry after `observe()` (an element
 that never paints reports not intersecting) and then one per threshold crossing
 or `isIntersecting` flip. The intersection is the target's border box clipped by
-every ancestor's `overflow` between it and the root, then by the root.
-`rootMargin` takes 1 to 4 lengths in `px` or `%`, and with no `root` it can reach
-past the window edge, which does not clip the target. The test is geometry only, so
+every ancestor's `overflow` between it and the root, then by the root. As in the
+DOM, an element root and an `overflow` ancestor clip at their padding box: a
+target that lies entirely under their border does not intersect, and `rootBounds`
+is the root's padding box.
+`rootMargin` takes 1 to 4 lengths in `px` or `%` (a percentage is of the padding
+box), and with no `root` it can reach past the window edge, which does not clip
+the target. The test is geometry only, so
 a `visibility: "hidden"` target still intersects.
 
 Callbacks run once per batch of a frame's reports, after the frame, so state set

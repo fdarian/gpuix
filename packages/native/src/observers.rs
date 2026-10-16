@@ -52,6 +52,13 @@ pub struct Observation {
     /// inside the padding box (`ResizeObserverEntry.contentRect.x` and `.y`).
     pub padding_left: f64,
     pub padding_top: f64,
+    /// The border widths of an intersection report. The padding box, which
+    /// is what an `IntersectionObserver` root exposes, is the border box minus
+    /// these.
+    pub border_left: f64,
+    pub border_top: f64,
+    pub border_right: f64,
+    pub border_bottom: f64,
     /// The `overflow` clips of the ancestors, nearest first, in window
     /// coordinates. JS applies the ones below its root. The window edge is not
     /// one of them: an `IntersectionObserver` with a `rootMargin` sees past it.
@@ -111,6 +118,7 @@ struct ResizeSample {
 struct IntersectionSample {
     present: bool,
     border: Bounds<Pixels>,
+    border_insets: Insets,
     clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
 }
@@ -119,7 +127,7 @@ struct IntersectionSample {
 ///
 /// Mirrors how `apply_styles` reads `padding*` and `border*Width`. Not
 /// included: `hover` and `active` overrides, which change at paint time.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
 struct Insets {
     left: f32,
     top: f32,
@@ -152,7 +160,7 @@ struct ClippingAncestor {
     id: u64,
     clip_x: bool,
     clip_y: bool,
-    /// Inset by the border, which gpui only does for a visible border colour.
+    /// The clip edge is the padding box: the border is outside it.
     border: Insets,
 }
 
@@ -173,18 +181,11 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64) -> Vec<ClippingAncestor> {
             clip_y = true;
         }
         if clip_x || clip_y {
-            let visible_border = style.is_some_and(|style| {
-                style
-                    .border_color
-                    .as_deref()
-                    .and_then(crate::color::parse_color_rgba)
-                    .is_some_and(|color| color.a > 0.0)
-            });
             found.push(ClippingAncestor {
                 id: ancestor,
                 clip_x,
                 clip_y,
-                border: if visible_border { insets(style).1 } else { Insets::default() },
+                border: insets(style).1,
             });
         }
         next = element.parent;
@@ -252,7 +253,7 @@ pub(crate) fn reporter(
         }
         if intersection {
             let clips = clip_rects(&ancestors);
-            report_intersection(id, bounds, clips, viewport, &reports, &callback, cx);
+            report_intersection(id, bounds, border, clips, viewport, &reports, &callback, cx);
         }
     }))
 }
@@ -312,9 +313,11 @@ fn report_resize(
     queue(cx, callback, id, RESIZE_EVENT, bounds, observation);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn report_intersection(
     id: u64,
     bounds: Bounds<Pixels>,
+    border: Insets,
     clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
     reports: &SharedPaintReports,
@@ -326,6 +329,7 @@ fn report_intersection(
         let unchanged = reports.observers.intersection.get(&id).is_some_and(|last| {
             last.present
                 && same_bounds(last.border, bounds)
+                && last.border_insets == border
                 && last.clips.len() == clips.len()
                 && last
                     .clips
@@ -343,6 +347,7 @@ fn report_intersection(
             IntersectionSample {
                 present: true,
                 border: bounds,
+                border_insets: border,
                 clips: clips.clone(),
                 viewport,
             },
@@ -350,6 +355,10 @@ fn report_intersection(
     }
     let observation = Observation {
         present: true,
+        border_left: f64::from(border.left),
+        border_top: f64::from(border.top),
+        border_right: f64::from(border.right),
+        border_bottom: f64::from(border.bottom),
         clips: clips
             .iter()
             .map(|(id, rect)| ObservationClip {
@@ -468,5 +477,51 @@ fn sweep(reports: &SharedPaintReports, callback: &Option<EventCallback>, cx: &mu
     }
     for id in gone_intersection {
         queue(cx, callback, id, INTERSECTION_EVENT, nothing, Observation::default());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    #[test]
+    fn border_insets_read_the_shorthand_and_the_per_side_override() {
+        let style = StyleDesc {
+            border_width: Some(10.0),
+            border_left_width: Some(2.0),
+            padding: Some(4.0),
+            ..StyleDesc::default()
+        };
+        let (padding, border) = insets(Some(&style));
+        assert_eq!(
+            border,
+            Insets { left: 2.0, top: 10.0, right: 10.0, bottom: 10.0 }
+        );
+        assert_eq!(padding, Insets { left: 4.0, top: 4.0, right: 4.0, bottom: 4.0 });
+    }
+
+    #[test]
+    fn an_ancestor_clips_at_the_padding_box_whatever_its_border_colour() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.append_child(1, 2);
+        tree.set_style(
+            1,
+            Arc::new(StyleDesc {
+                border_width: Some(6.0),
+                overflow: Some("hidden".into()),
+                ..StyleDesc::default()
+            }),
+        );
+
+        let ancestors = clipping_ancestors(&tree, 2);
+        assert_eq!(ancestors.len(), 1);
+        assert_eq!(
+            ancestors[0].border,
+            Insets { left: 6.0, top: 6.0, right: 6.0, bottom: 6.0 }
+        );
     }
 }

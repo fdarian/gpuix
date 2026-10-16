@@ -1244,6 +1244,15 @@ export interface Observation {
   paddingLeft: number
   paddingTop: number
   /**
+   * The border widths of an intersection report. The padding box, which
+   * is what an `IntersectionObserver` root exposes, is the border box minus
+   * these.
+   */
+  borderLeft: number
+  borderTop: number
+  borderRight: number
+  borderBottom: number
+  /**
    * The `overflow` clips of the ancestors, nearest first, in window
    * coordinates. JS applies the ones below its root. The window edge is not
    * one of them: an `IntersectionObserver` with a `rootMargin` sees past it.

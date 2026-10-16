@@ -398,7 +398,10 @@ export interface IntersectionObserverInit {
 export interface IntersectionObserverEntry {
   /** `performance.now()` when the change was observed. */
   readonly time: number
-  /** The root's box with `rootMargin` applied. */
+  /**
+   * The root's padding box with `rootMargin` applied, or the window for a
+   * `null` root.
+   */
   readonly rootBounds: BoundingClientRect
   readonly boundingClientRect: BoundingClientRect
   readonly intersectionRect: BoundingClientRect
@@ -485,8 +488,23 @@ function contains(outer: Rect, inner: Rect): boolean {
   )
 }
 
-function asRect(rect: BoundingClientRect): Rect {
-  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+interface BorderWidths {
+  readonly left: number
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+}
+
+const NO_BORDER: BorderWidths = { left: 0, top: 0, right: 0, bottom: 0 }
+
+/** What an element root exposes: its overflow clip edge, inside the border. */
+function paddingBox(borderBox: BoundingClientRect, border: BorderWidths): Rect {
+  return {
+    x: borderBox.x + border.left,
+    y: borderBox.y + border.top,
+    width: Math.max(0, borderBox.width - border.left - border.right),
+    height: Math.max(0, borderBox.height - border.top - border.bottom),
+  }
 }
 
 function asBoundingClientRect(rect: Rect): BoundingClientRect {
@@ -504,6 +522,8 @@ export class IntersectionObserver {
   readonly #delivery: Delivery = { deliver: () => this.#deliver() }
   #renderer!: object
   #stopWatchingRoot: (() => void) | undefined
+  /** Set by the root's first report; an element root has no padding box before it. */
+  #rootBorder: BorderWidths | undefined
 
   constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit = {}) {
     if (typeof callback !== "function") {
@@ -540,7 +560,23 @@ export class IntersectionObserver {
       // The root moving or resizing changes what the targets intersect, and
       // nothing else tells us: a target that does not move reports nothing.
       this.#stopWatchingRoot = listen(INTERSECT_OBSERVE_EVENT, this.root, {
-        receive: () => this.#reevaluateAll(),
+        receive: (event) => {
+          const observation = event.observation!
+          this.#rootBorder = observation.present
+            ? {
+                left: observation.borderLeft,
+                top: observation.borderTop,
+                right: observation.borderRight,
+                bottom: observation.borderBottom,
+              }
+            : NO_BORDER
+          this.#reevaluateAll()
+        },
+        settled: (_, painted) => {
+          if (painted || this.#rootBorder) return
+          this.#rootBorder = NO_BORDER
+          this.#reevaluateAll()
+        },
       })
     }
     record.stop = listen(INTERSECT_OBSERVE_EVENT, target, {
@@ -582,6 +618,7 @@ export class IntersectionObserver {
   #stopRoot(): void {
     this.#stopWatchingRoot?.()
     this.#stopWatchingRoot = undefined
+    this.#rootBorder = undefined
   }
 
   #receive(record: IntersectionRecord, event: EventPayload): void {
@@ -616,7 +653,7 @@ export class IntersectionObserver {
     if (this.root) {
       const binding = this.root[HOST_BINDING]()
       base = binding
-        ? asRect(readBoundingClientRect(binding.renderer, this.root.id))
+        ? paddingBox(readBoundingClientRect(binding.renderer, this.root.id), this.#rootBorder!)
         : { x: 0, y: 0, width: 0, height: 0 }
     } else {
       base = { x: 0, y: 0, width: sample.viewport.width, height: sample.viewport.height }
@@ -634,6 +671,8 @@ export class IntersectionObserver {
 
   #evaluate(record: IntersectionRecord, sample: IntersectionSample): void {
     record.sample = sample
+    // The root's report brings its border and re-evaluates every record.
+    if (this.root && this.root[HOST_BINDING]() && !this.#rootBorder) return
     const rootBounds = this.#rootRect(sample)
     const zero = { x: 0, y: 0, width: 0, height: 0 }
     const border = sample.present ? sample.border : zero

@@ -456,6 +456,144 @@ describeNative("IntersectionObserver", () => {
     }
   })
 
+  describe("an element root with a border", () => {
+    // The root's border box is 100 by 100 at (20, 20); its padding box is
+    // 80 by 80 at (30, 30). The target sits in the 10px border, at (20, 20).
+    const app = (
+      ref: ReturnType<typeof setup>["ref"],
+      target: { top: number; left: number; width: number; height: number }
+    ) => (
+      <div style={{ flexDirection: "column", padding: 20 }}>
+        <div
+          ref={ref("root")}
+          style={{ position: "relative", width: 100, height: 100, borderWidth: 10, overflow: "hidden" }}
+        >
+          <div style={{ position: "absolute", ...target }} ref={ref("a")} />
+        </div>
+      </div>
+    )
+
+    it("does not intersect a target that is entirely under the border", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(app(ref, { top: -10, left: -10, width: 10, height: 10 }))
+        new IntersectionObserver(callback, { root: element("root") }).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(1)
+        expect(entries[0]).toMatchObject({
+          isIntersecting: false,
+          intersectionRatio: 0,
+          boundingClientRect: { x: 20, y: 20, width: 10, height: 10 },
+          intersectionRect: { width: 0, height: 0 },
+          rootBounds: { x: 30, y: 30, width: 80, height: 80 },
+        })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("measures the intersection against the padding box", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        render(app(ref, { top: -10, left: -10, width: 20, height: 20 }))
+        new IntersectionObserver(callback, { root: element("root"), threshold: [0, 0.25, 1] }).observe(
+          element("a")
+        )
+        renderer.dispatchNativeEvents()
+        expect(entries).toHaveLength(1)
+        expect(entries[0]).toMatchObject({
+          isIntersecting: true,
+          intersectionRatio: 0.25,
+          intersectionRect: { x: 30, y: 30, width: 10, height: 10 },
+          rootBounds: { x: 30, y: 30, width: 80, height: 80 },
+        })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("applies rootMargin to the padding box, percentages included", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const px = collect()
+        const percent = collect()
+        render(app(ref, { top: -10, left: -10, width: 10, height: 10 }))
+        new IntersectionObserver(px.callback, { root: element("root"), rootMargin: "10px" }).observe(
+          element("a")
+        )
+        new IntersectionObserver(percent.callback, { root: element("root"), rootMargin: "25%" }).observe(
+          element("a")
+        )
+        renderer.dispatchNativeEvents()
+        expect(px.entries[0]).toMatchObject({
+          isIntersecting: true,
+          rootBounds: { x: 20, y: 20, width: 100, height: 100 },
+        })
+        // 25% of the 80 by 80 padding box is 20px, not 25px of the border box.
+        expect(percent.entries[0]).toMatchObject({
+          isIntersecting: true,
+          rootBounds: { x: 10, y: 10, width: 120, height: 120 },
+        })
+      } finally {
+        unmount()
+      }
+    })
+
+    it("re-evaluates when only the border changes", () => {
+      const { render, renderer, ref, element, unmount } = setup()
+      try {
+        const { entries, callback } = collect()
+        // The root keeps its border box; the target lives outside it, over the
+        // spot where the border is.
+        const sibling = (borderWidth: number) => (
+          <div style={{ flexDirection: "column", padding: 20, position: "relative" }}>
+            <div
+              ref={ref("root")}
+              style={{ width: 100, height: 100, borderWidth, overflow: "hidden" }}
+            />
+            <div
+              ref={ref("a")}
+              style={{ position: "absolute", top: 20, left: 20, width: 10, height: 10 }}
+            />
+          </div>
+        )
+        render(sibling(10))
+        new IntersectionObserver(callback, { root: element("root") }).observe(element("a"))
+        renderer.dispatchNativeEvents()
+        render(sibling(0))
+        renderer.dispatchNativeEvents()
+        expect(entries.map((entry) => entry.isIntersecting)).toEqual([false, true])
+        expect(entries[1]!.rootBounds).toMatchObject({ x: 20, y: 20, width: 100, height: 100 })
+      } finally {
+        unmount()
+      }
+    })
+  })
+
+  it("clips by an ancestor's padding box whether or not its border is painted", () => {
+    const { render, renderer, ref, element, unmount } = setup()
+    try {
+      const { entries, callback } = collect()
+      render(
+        <div style={{ flexDirection: "column", padding: 20 }}>
+          <div style={{ position: "relative", width: 100, height: 100, borderWidth: 10, overflow: "hidden" }}>
+            <div
+              ref={ref("a")}
+              style={{ position: "absolute", top: -10, left: -10, width: 10, height: 10 }}
+            />
+          </div>
+        </div>
+      )
+      new IntersectionObserver(callback).observe(element("a"))
+      renderer.dispatchNativeEvents()
+      expect(entries.map((entry) => entry.isIntersecting)).toEqual([false])
+    } finally {
+      unmount()
+    }
+  })
+
   it("reports not intersecting once when the target is removed", () => {
     const { render, renderer, ref, element, unmount } = setup()
     try {
