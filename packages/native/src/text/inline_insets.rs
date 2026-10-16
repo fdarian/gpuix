@@ -197,6 +197,8 @@ impl BoxSpace {
 pub struct InsetSpec {
     boxes: Vec<(u64, Range<usize>)>,
     spaces: Vec<BoxSpace>,
+    /// The font size of every box, which sets the content area of its fragments.
+    font_sizes: HashMap<u64, Pixels>,
     /// The last width asked for, as the layout and the paint ask for the same one.
     memo: RefCell<Option<(Option<Pixels>, Rc<Insets>)>>,
 }
@@ -227,9 +229,14 @@ impl InsetSpec {
                 Some(space_of(&declared, *id, range, &box_lengths[id]))
             })
             .collect();
+        let font_sizes = box_lengths
+            .iter()
+            .map(|(id, lengths)| (*id, px(lengths.font_size as f32)))
+            .collect();
         Rc::new(Self {
             boxes: paragraph.boxes.clone(),
             spaces,
+            font_sizes,
             memo: RefCell::new(None),
         })
     }
@@ -289,6 +296,11 @@ impl BoxEdges {
 
     pub fn for_width(&self, width: Option<Pixels>) -> Edges {
         self.spec.at(width).edges(self.id)
+    }
+
+    /// The font size of the box, whatever the font sizes of the runs in it.
+    pub fn font_size(&self) -> Pixels {
+        self.spec.font_sizes[&self.id]
     }
 
     /// The padding and border of the box, as an element reports them.

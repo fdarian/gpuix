@@ -195,7 +195,7 @@ pub fn boxes_under(
                 continue;
             };
             return entry.targets.around(byte, position, |range, edges| {
-                border_box_rows(&entry.layout, range, edges.at(&entry.layout))
+                border_box_rows(&entry.layout, range, edges)
             });
         }
         Vec::new()
@@ -376,6 +376,7 @@ mod tests {
                     point(px(range.start as f32 * 10.0), px(0.0)),
                     size(px(range.len() as f32 * 10.0), px(40.0)),
                 ),
+                baseline: px(24.0),
                 ascent: px(12.0),
                 descent: px(4.0),
             }],

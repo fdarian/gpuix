@@ -35,44 +35,48 @@ pub struct InlineBox {
     pub report: Option<PaintReporter>,
 }
 
-/// One line fragment of a box: the line box it is on, and the font metrics of the
-/// line.
+/// One line fragment of a box: the line box it is on, where the baseline of that
+/// row is, and the metrics of the font of the box.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Row {
     pub line: Bounds<Pixels>,
+    /// The y coordinate of the baseline of the row.
+    pub baseline: Pixels,
     pub ascent: Pixels,
     pub descent: Pixels,
 }
 
 impl Row {
-    /// The band of the line the font's glyphs occupy. gpui centres `ascent` plus
-    /// `descent` in the line box (`paint_line`), so a `lineHeight` taller than the
-    /// font leaves the same space above and below it. A `lineHeight` shorter than
-    /// the font puts the band beyond the line box, as the content area is in CSS.
+    /// The band of the row the font of the box occupies: `ascent` above the
+    /// baseline and `descent` below it. A `lineHeight` taller than the font leaves
+    /// the same space above and below it, as gpui centres the font in the line
+    /// box. A `lineHeight` shorter than the font puts the band beyond the line box,
+    /// as the content area is in CSS.
     pub fn content_area(&self) -> Bounds<Pixels> {
-        let height = self.ascent + self.descent;
         Bounds::new(
-            point(self.line.origin.x, self.line.origin.y + (self.line.size.height - height) / 2.0),
-            size(self.line.size.width, height),
+            point(self.line.origin.x, self.baseline - self.ascent),
+            size(self.line.size.width, self.ascent + self.descent),
         )
     }
 }
 
 /// The line box of each line `range` covers, in window coordinates, with the
-/// metrics of that line. A range that wraps has one per line, and one that covers
-/// no glyph has none.
-pub fn rows(layout: &TextLayout, range: &Range<usize>) -> Vec<Row> {
-    range_rows(layout, range)
-        .into_iter()
-        .map(|(line, start)| {
-            let metrics = layout
-                .line_layout_for_index(start)
-                .expect("a row of the layout starts on a line of it");
-            Row {
-                line,
-                ascent: metrics.unwrapped_layout.ascent,
-                descent: metrics.unwrapped_layout.descent,
-            }
+/// baseline of the row and the metrics of the font of size `font_size` the box
+/// has. A range that wraps has one per line, and one that covers no glyph has none.
+pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels) -> Vec<Row> {
+    let rows = range_rows(layout, range);
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let (ascent, descent) = layout
+        .content_extent(range.clone(), font_size)
+        .expect("a range with a row has a glyph");
+    rows.into_iter()
+        .map(|row| Row {
+            line: row.rect,
+            baseline: row.row.baseline,
+            ascent,
+            descent,
         })
         .collect()
 }
@@ -82,8 +86,8 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>) -> Vec<Row> {
 /// border, the first fragment starting after the margin and the last ending
 /// before it. A fragment in the middle, or one that continues onto another line,
 /// is as wide as its line's part of the range.
-pub fn border_box_rows(layout: &TextLayout, range: &Range<usize>, edges: Edges) -> Vec<Bounds<Pixels>> {
-    border_box(rows(layout, range), edges)
+pub fn border_box_rows(layout: &TextLayout, range: &Range<usize>, edges: &BoxEdges) -> Vec<Bounds<Pixels>> {
+    border_box(rows(layout, range, edges.font_size()), edges.at(layout))
 }
 
 /// [`border_box_rows`] of `rows`.
@@ -125,7 +129,7 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
 /// belongs to and reports it to the element's listeners. Call it from paint.
 pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &mut Window, cx: &mut App) {
     for inline in boxes {
-        let Some(bounds) = union(&border_box_rows(layout, &inline.range, inline.edges.at(layout))) else {
+        let Some(bounds) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
             continue;
         };
         // An inline box has no layout node: its padding and border are its style's.
@@ -189,10 +193,12 @@ mod tests {
         }
     }
 
-    /// A 40px line box at `y` for a font of 12 above the baseline and 4 below.
+    /// A 40px line box at `y` for a font of 12 above the baseline and 4 below,
+    /// centred in the box as gpui paints it.
     fn row(x: f32, y: f32, width: f32) -> Row {
         Row {
             line: rect(x, y, width, 40.0),
+            baseline: px(y + 24.0),
             ascent: px(12.0),
             descent: px(4.0),
         }
@@ -204,6 +210,7 @@ mod tests {
         assert_eq!(row(10.0, 40.0, 50.0).content_area(), rect(10.0, 52.0, 50.0, 16.0));
         let tight = Row {
             line: rect(0.0, 0.0, 30.0, 10.0),
+            baseline: px(9.0),
             ..row(0.0, 0.0, 30.0)
         };
         assert_eq!(
@@ -211,6 +218,21 @@ mod tests {
             rect(0.0, -3.0, 30.0, 16.0),
             "a line shorter than the font is overflowed on both sides"
         );
+    }
+
+    #[test]
+    fn the_content_area_follows_the_baseline_of_a_row_that_is_not_centred() {
+        // A 60px row of big text around a baseline at 45, and the 20px box of a
+        // small span on that baseline, with its own font of 6 above and 2 below.
+        let small = Row {
+            line: rect(10.0, 100.0, 50.0, 60.0),
+            baseline: px(145.0),
+            ascent: px(6.0),
+            descent: px(2.0),
+        };
+        assert_eq!(small.content_area(), rect(10.0, 139.0, 50.0, 8.0));
+        let grown = border_box(vec![small], reaching(1.0, 3.0));
+        assert_eq!(grown, vec![rect(10.0, 138.0, 50.0, 12.0)]);
     }
 
     #[test]

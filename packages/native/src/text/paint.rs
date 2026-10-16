@@ -20,7 +20,7 @@ use parking_lot::Mutex;
 
 use gpui::{
     canvas, div, point, prelude::*, px, quad, size, BorderStyle, Bounds, Hsla, SharedString,
-    StyledText, TextLayout, TextRun, Window,
+    StyledText, TextLayout, TextRow, TextRun, Window,
 };
 
 use super::selection::{self, SelectionState};
@@ -772,59 +772,57 @@ fn register_copy_listener(window: &mut Window, selection: &SharedSelection) {
 /// geometry.
 ///
 /// `pad_x` overhangs the box horizontally (inline code); `inset_y` shrinks it
-/// vertically. Both are 0 for a selection wash, which wants full-line-height
-/// boxes that tile seamlessly across wrapped rows.
+/// vertically. Both are 0 for a selection wash, which wants full-height boxes
+/// that tile seamlessly across wrapped rows, however tall each row is.
 pub fn range_rects(
     layout: &TextLayout,
     range: &Range<usize>,
     pad_x: f32,
     inset_y: f32,
 ) -> Vec<Bounds<gpui::Pixels>> {
-    range_rects_with_positions(
+    range_rows_with_positions(
         layout.bounds(),
-        layout.line_height(),
         range,
         pad_x,
         inset_y,
         |index| layout.position_for_index(index),
+        |index| layout.row_for_index(index),
     )
+    .into_iter()
+    .map(|row| row.rect)
+    .collect()
 }
 
-/// [`range_rects`] without padding, and with the byte each row starts at, which
-/// is where its line's metrics are found.
-pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<(Bounds<gpui::Pixels>, usize)> {
+/// A visual line a byte range covers.
+pub struct RangeRow {
+    /// The part of the range on the row, the full height of the row.
+    pub rect: Bounds<gpui::Pixels>,
+    /// The byte the part starts at, which is where its line's metrics are found.
+    pub start: usize,
+    /// The row the part is on.
+    pub row: TextRow,
+}
+
+/// [`range_rects`] without padding, and with the row each box is on.
+pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
     range_rows_with_positions(
         layout.bounds(),
-        layout.line_height(),
         range,
         0.0,
         0.0,
         |index| layout.position_for_index(index),
+        |index| layout.row_for_index(index),
     )
-}
-
-fn range_rects_with_positions(
-    bounds: Bounds<gpui::Pixels>,
-    line_height: gpui::Pixels,
-    range: &Range<usize>,
-    pad_x: f32,
-    inset_y: f32,
-    position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
-) -> Vec<Bounds<gpui::Pixels>> {
-    range_rows_with_positions(bounds, line_height, range, pad_x, inset_y, position_for_index)
-        .into_iter()
-        .map(|(rect, _)| rect)
-        .collect()
 }
 
 fn range_rows_with_positions(
     bounds: Bounds<gpui::Pixels>,
-    line_height: gpui::Pixels,
     range: &Range<usize>,
     pad_x: f32,
     inset_y: f32,
     position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
-) -> Vec<(Bounds<gpui::Pixels>, usize)> {
+    row_for_index: impl Fn(usize) -> Option<TextRow>,
+) -> Vec<RangeRow> {
     let mut rects = Vec::new();
     let mut cur = range.start;
     // Walk the range one visual row at a time: binary search for the furthest
@@ -835,9 +833,11 @@ fn range_rows_with_positions(
         let Some(mut p1) = position_for_index(cur) else {
             break;
         };
+        let mut row_index = cur;
         if let Some(after) = position_for_index(cur.saturating_add(1)) {
             if after.y > p1.y {
                 p1 = point(bounds.left(), after.y);
+                row_index = cur + 1;
             }
         }
         // A soft-wrap boundary closes one row with upstream affinity and starts
@@ -858,16 +858,16 @@ fn range_rows_with_positions(
         };
         if let Some(p2) = position_for_index(seg_end) {
             if p2.x > p1.x {
-                rects.push((
-                    Bounds::new(
+                let row = row_for_index(row_index)
+                    .expect("an index with a position is on a row");
+                rects.push(RangeRow {
+                    rect: Bounds::new(
                         point(p1.x - px(pad_x), p1.y + px(inset_y)),
-                        size(
-                            p2.x - p1.x + px(2.0 * pad_x),
-                            line_height - px(2.0 * inset_y),
-                        ),
+                        size(p2.x - p1.x + px(2.0 * pad_x), row.height - px(2.0 * inset_y)),
                     ),
-                    cur,
-                ));
+                    start: cur,
+                    row,
+                });
             }
         }
         if next <= cur {
@@ -895,15 +895,32 @@ mod tests {
         })
     }
 
-    fn wrapped_range_rects(range: Range<usize>) -> Vec<Bounds<gpui::Pixels>> {
-        range_rects_with_positions(
+    fn row_of_height(y: f32, height: f32) -> TextRow {
+        TextRow {
+            top: px(y),
+            height: px(height),
+            baseline: px(y + height * 0.75),
+        }
+    }
+
+    /// Rows 22px tall, like the wrapped text of `wrapped_position`.
+    fn even_row(ix: usize) -> Option<TextRow> {
+        (ix <= 9).then(|| row_of_height(if ix <= 5 { 0.0 } else { 22.0 }, 22.0))
+    }
+
+    fn wrapped_range_rows(range: Range<usize>) -> Vec<RangeRow> {
+        range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
-            px(22.0),
             &range,
             0.0,
             0.0,
             wrapped_position,
+            even_row,
         )
+    }
+
+    fn wrapped_range_rects(range: Range<usize>) -> Vec<Bounds<gpui::Pixels>> {
+        wrapped_range_rows(range).into_iter().map(|row| row.rect).collect()
     }
 
     #[test]
@@ -916,15 +933,8 @@ mod tests {
 
     #[test]
     fn a_row_names_the_byte_it_starts_at() {
-        let rows = range_rows_with_positions(
-            Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
-            px(22.0),
-            &(2..9),
-            0.0,
-            0.0,
-            wrapped_position,
-        );
-        assert_eq!(rows.iter().map(|(_, start)| *start).collect::<Vec<_>>(), vec![2, 5]);
+        let rows = wrapped_range_rows(2..9);
+        assert_eq!(rows.iter().map(|row| row.start).collect::<Vec<_>>(), vec![2, 5]);
     }
 
     #[test]
@@ -935,5 +945,60 @@ mod tests {
         assert_eq!(rects[0].size, size(px(30.0), px(22.0)));
         assert_eq!(rects[1].origin, point(px(0.0), px(22.0)));
         assert_eq!(rects[1].size, size(px(40.0), px(22.0)));
+    }
+
+    /// The first row of `wrapped_position` is 30px tall and the second 50px.
+    fn uneven_row(ix: usize) -> Option<TextRow> {
+        (ix <= 9).then(|| {
+            if ix <= 5 {
+                row_of_height(0.0, 30.0)
+            } else {
+                row_of_height(30.0, 50.0)
+            }
+        })
+    }
+
+    fn uneven_positions(ix: usize) -> Option<gpui::Point<gpui::Pixels>> {
+        wrapped_position(ix).map(|position| {
+            if position.y > px(0.0) {
+                point(position.x, px(30.0))
+            } else {
+                position
+            }
+        })
+    }
+
+    #[test]
+    fn each_box_is_as_tall_as_its_own_row() {
+        let rows = range_rows_with_positions(
+            Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(80.0))),
+            &(2..9),
+            0.0,
+            0.0,
+            uneven_positions,
+            uneven_row,
+        );
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].rect.origin, point(px(20.0), px(0.0)));
+        assert_eq!(rows[0].rect.size.height, px(30.0));
+        assert_eq!(rows[1].rect.origin, point(px(0.0), px(30.0)));
+        assert_eq!(rows[1].rect.size.height, px(50.0));
+        assert_eq!(rows[0].row, row_of_height(0.0, 30.0));
+        assert_eq!(rows[1].row, row_of_height(30.0, 50.0));
+    }
+
+    #[test]
+    fn an_inset_shrinks_a_tall_row_by_the_same_amount() {
+        let rows = range_rows_with_positions(
+            Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(80.0))),
+            &(2..9),
+            0.0,
+            1.5,
+            uneven_positions,
+            uneven_row,
+        );
+        assert_eq!(rows[0].rect.size.height, px(27.0));
+        assert_eq!(rows[1].rect.origin.y, px(31.5));
+        assert_eq!(rows[1].rect.size.height, px(47.0));
     }
 }

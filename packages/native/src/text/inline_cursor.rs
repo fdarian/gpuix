@@ -113,7 +113,7 @@ pub fn hitboxes(layout: TextLayout, boxes: Vec<CursorBox>) -> impl IntoElement {
         move |_, window, _| {
             let mut hitboxes = Vec::new();
             for inline in &boxes {
-                for row in border_box_rows(&layout, &inline.range, inline.edges.at(&layout)) {
+                for row in border_box_rows(&layout, &inline.range, &inline.edges) {
                     hitboxes.push((window.insert_hitbox(row, HitboxBehavior::Normal), inline.cursor));
                 }
             }

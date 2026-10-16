@@ -173,7 +173,7 @@ pub fn run_styles(
 
 /// The `LengthContext` of every box of `paragraph`: the container's, descended
 /// along the chain of boxes around the box, so that a span's `em` is its own
-/// font size. A box is declared the same way around every piece of text it
+/// font size. A box without a style has the lengths of the box around it. A box is declared the same way around every piece of text it
 /// holds, so the first piece that holds it decides.
 pub fn box_lengths(
     tree: &RetainedTree,
@@ -190,6 +190,7 @@ pub fn box_lengths(
                 .get(id)
                 .and_then(|element| element.style.as_deref())
             else {
+                of_box.entry(*id).or_insert(lengths);
                 continue;
             };
             lengths = lengths.descend(folded(base, states(*id, base)).font_size.as_ref(), false);

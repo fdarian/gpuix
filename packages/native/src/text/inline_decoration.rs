@@ -290,7 +290,7 @@ pub fn paint_behind(
     cx: &mut App,
 ) {
     for decoration in decorations {
-        let rows = border_box_rows(layout, &decoration.range, decoration.edges.at(layout));
+        let rows = border_box_rows(layout, &decoration.range, &decoration.edges);
         for quad in quads(&rows, &decoration.paint) {
             // The element's own painter, so the quad has the geometry and
             // colour handling of an element's background and border.
@@ -310,7 +310,7 @@ pub fn overlay(layout: TextLayout, decorations: Vec<BoxDecoration>) -> impl Into
                 let Some(outline) = decoration.outline else {
                     continue;
                 };
-                let rows = border_box_rows(&layout, &decoration.range, decoration.edges.at(&layout));
+                let rows = border_box_rows(&layout, &decoration.range, &decoration.edges);
                 for quad in quads(&rows, &decoration.paint) {
                     // The element's own painter, so the ring has the geometry and
                     // colour handling of an element's outline.

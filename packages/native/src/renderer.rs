@@ -12068,6 +12068,134 @@ mod inline_run_size_tests {
         );
     }
 
+    /// What `spans_painted` measured.
+    struct Spans {
+        container: crate::automation::ElementBounds,
+        spans: Vec<crate::automation::ElementBounds>,
+        /// The ascent and descent of the font of the text at each of the sizes asked for.
+        metrics: Vec<(f64, f64)>,
+    }
+
+    /// A container (id 1) of `style` that holds `spans`, each a span of its style
+    /// around its text, and the bounds the painted spans report.
+    fn spans_painted(
+        cx: &mut gpui::TestAppContext,
+        style: &str,
+        spans: &[(&str, &str)],
+        sizes: &[f32],
+    ) -> Spans {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            let container: StyleDesc = serde_json::from_str(style).unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(container));
+            tree.set_root(1);
+            for (ix, (span_style, text)) in spans.iter().enumerate() {
+                let (span, text_id) = (10 + 2 * ix as u64, 11 + 2 * ix as u64);
+                tree.create_element(span, "span".to_owned());
+                let span_style: StyleDesc = serde_json::from_str(span_style).unwrap();
+                tree.set_style(span, Arc::new(span_style));
+                tree.append_child(1, span);
+                tree.create_element(text_id, "text".to_owned());
+                tree.set_text(text_id, (*text).to_owned());
+                tree.append_child(span, text_id);
+            }
+        }
+        let window = cx.add_window(|window, _| {
+            crate::events::enable_dom_hit_testing(window);
+            GpuixView::new(
+                tree,
+                None,
+                "test".to_owned(),
+                SharedSelection::default(),
+                crate::events::state::PointerRequests::default(),
+            )
+        });
+        let metrics = cx
+            .update_window(window.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+                let text_system = app.text_system().clone();
+                let font = text_system.resolve_font(&window.text_style().font());
+                sizes
+                    .iter()
+                    .map(|size| {
+                        let size = gpui::px(*size);
+                        (
+                            f64::from(f32::from(text_system.ascent(font, size))),
+                            f64::from(f32::from(text_system.descent(font, size))),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap();
+        Spans {
+            container: crate::automation::get_bounds(1).expect("the container was painted"),
+            spans: (0..spans.len())
+                .map(|ix| {
+                    crate::automation::get_bounds(10 + 2 * ix as u64)
+                        .expect("the span was painted")
+                })
+                .collect(),
+            metrics,
+        }
+    }
+
+    fn assert_near(measured: f64, expected: f64, what: &str) {
+        assert!(
+            (measured - expected).abs() <= TOLERANCE,
+            "expected {what} of {expected}px but measured {measured}px"
+        );
+    }
+
+    #[gpui::test]
+    fn a_span_with_a_font_size_has_the_content_area_of_its_own_font(cx: &mut gpui::TestAppContext) {
+        let painted = spans_painted(
+            cx,
+            CONTAINER,
+            &[(r#"{"fontSize": 30}"#, "big")],
+            &[10.0, 30.0],
+        );
+        let (ascent, descent) = painted.metrics[1];
+        let span = painted.spans[0];
+        assert_near(span.height, ascent + descent, "a height");
+        // The only thing on the row, so its line box is 45px and its font is
+        // centred in it.
+        assert_near(
+            span.y - painted.container.y,
+            (45.0 - ascent - descent) / 2.0,
+            "a top",
+        );
+    }
+
+    #[gpui::test]
+    fn spans_of_different_sizes_in_one_row_each_keep_their_own_content_area_on_one_baseline(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let painted = spans_painted(
+            cx,
+            CONTAINER,
+            &[(r#"{"fontSize": 30}"#, "big"), (r#"{}"#, "s")],
+            &[10.0, 30.0],
+        );
+        let ((small_ascent, small_descent), (big_ascent, big_descent)) =
+            (painted.metrics[0], painted.metrics[1]);
+        let (big, small) = (painted.spans[0], painted.spans[1]);
+        assert_near(big.height, big_ascent + big_descent, "the height of the big span");
+        assert_near(small.height, small_ascent + small_descent, "the height of the small span");
+        assert_near(
+            (small.y + small_ascent) - (big.y + big_ascent),
+            0.0,
+            "the baselines to differ",
+        );
+        assert_near(
+            painted.container.height,
+            45.0,
+            "the height of the row, which the big span sets",
+        );
+    }
+
     #[gpui::test]
     fn a_container_line_height_in_px_is_not_scaled_by_a_larger_span(cx: &mut gpui::TestAppContext) {
         let container = r#"{"width": 120, "fontSize": 10, "lineHeight": "24px"}"#;
