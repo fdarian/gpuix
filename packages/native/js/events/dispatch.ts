@@ -76,13 +76,40 @@ export function captureHandlerKey(eventType: string): string {
   return `${eventType}Capture`
 }
 
+/**
+ * What a handler sees of the native payload: every field but the three that
+ * carry element ids, which the event replaces with elements. `elementId` stays
+ * the numeric id of the element the payload was addressed to.
+ */
+export type PublicEventFields = Omit<EventPayload, "target" | "relatedTarget" | "path">
+
+/**
+ * An event with no propagation, such as `onSelectionChange` or
+ * `onPointerLockChange`: the payload with its elements in place of their ids.
+ * An element is the object a `ref` gives in the adapter (React's host
+ * instance, Solid's element).
+ */
+export interface RootEvent extends PublicEventFields {
+  /**
+   * The element the event was aimed at. `null` for an event aimed at the
+   * window: a key with nothing focused, a pointer move outside every element.
+   * GPUIX has no `body` or `html` element to stand in.
+   */
+  readonly target: object | null
+  /** The other element of a boundary or focus event, or `null` when there is none. */
+  readonly relatedTarget: object | null
+}
+
 /** The event object handlers receive: the native payload plus the DOM surface. */
-export interface DomEvent extends EventPayload {
+export interface DomEvent extends RootEvent {
   readonly type: string
-  /** Undefined only for an event aimed at the window, such as a key with nothing focused. */
-  readonly target: number | undefined
-  /** An element id, or the `window` / `document` object during their phases. */
-  currentTarget: number | object | null
+  /**
+   * The element whose handler is running, or the `window` / `document` object
+   * during their phases. `null` outside a dispatch.
+   */
+  currentTarget: object | null
+  /** The elements on the propagation path, target first, like the DOM's `composedPath()`. */
+  composedPath(): object[]
   eventPhase: number
   readonly bubbles: boolean
   readonly cancelable: boolean
@@ -100,6 +127,11 @@ export interface DomDispatchResult {
 
 export interface DomEventRoot {
   eventHandlers: EventHandlerMap
+  /**
+   * The element for a native element id, as the adapter's ref gives it, or
+   * `undefined` once the root has dropped it.
+   */
+  elementById(id: number): object | undefined
   /**
    * Where an error a handler throws goes: the renderer's `onError`. Without it
    * the error is reported to the global handler, as the DOM does.
@@ -138,22 +170,55 @@ function formSubmission(entries: string[][]): { formData: FormData; submitter: n
   return { formData, submitter: null }
 }
 
+/** The element for `id`, or throws: the root dropped an element native still names. */
+export function requireElement(root: DomEventRoot, id: number, eventType: string): object {
+  const element = root.elementById(id)
+  if (element === undefined) {
+    throw new Error(`Event "${eventType}" names element ${id}, which its root does not have.`)
+  }
+  return element
+}
+
 /**
- * Creates the event object and the state behind its stop methods. `target` is
- * undefined for an event with no element to aim at.
+ * The element for an id native may not have sent. `null` for no id, and for an
+ * element the root has already dropped: one that left the tree is not the other
+ * end of a boundary or focus event any more.
+ */
+export function optionalElement(root: DomEventRoot, id: number | undefined): object | null {
+  if (id == null) return null
+  const element = root.elementById(id)
+  return element === undefined ? null : element
+}
+
+/** The payload as a public event: element ids replaced by the elements they name. */
+export function toRootEvent(root: DomEventRoot, payload: EventPayload, target: object | null): RootEvent {
+  const fields: PublicEventFields & Partial<Pick<EventPayload, "target" | "relatedTarget" | "path">> = {
+    ...payload,
+  }
+  delete fields.target
+  delete fields.relatedTarget
+  delete fields.path
+  return { ...fields, target, relatedTarget: optionalElement(root, payload.relatedTarget) }
+}
+
+/**
+ * Creates the event object and the state behind its stop methods. `path` is
+ * the propagation path as elements, target first; empty for an event aimed at
+ * the window, which has a `null` target.
  */
 export function createDomEvent(
+  root: DomEventRoot,
   payload: EventPayload,
-  target: number | undefined
+  path: readonly object[]
 ): { event: DomEvent; state: DomEventState } {
   const state = { propagationStopped: false, immediatePropagationStopped: false }
   const cancelable = eventIsCancelable(payload.eventType)
   const event: DomEvent = {
-    ...payload,
+    ...toRootEvent(root, payload, path[0] ?? null),
     ...(payload.formEntries && formSubmission(payload.formEntries)),
     type: payload.eventType,
-    target,
     currentTarget: null,
+    composedPath: () => [...path],
     eventPhase: EVENT_PHASE_NONE,
     bubbles: eventBubbles(payload.eventType),
     cancelable,
@@ -217,13 +282,14 @@ export function dispatchDomEvent(
     )
   }
 
-  const { event, state } = createDomEvent(payload, target)
+  const elements = path.map((id) => requireElement(root, id, payload.eventType))
+  const { event, state } = createDomEvent(root, payload, elements)
   const errors: unknown[] = []
   const captureKey = captureHandlerKey(payload.eventType)
-  const visit = (elementId: number, phase: number, keys: string[]) => {
-    event.currentTarget = elementId
+  const visit = (index: number, phase: number, keys: string[]) => {
+    event.currentTarget = elements[index]
     event.eventPhase = phase
-    const handlers = root.eventHandlers.get(elementId)
+    const handlers = root.eventHandlers.get(path[index])
     if (!handlers) return
     for (const key of keys) {
       if (state.immediatePropagationStopped) return
@@ -238,14 +304,14 @@ export function dispatchDomEvent(
   const fail = (error: unknown) => errors.push(error)
   hooks?.beforeCapture?.(event, state, fail)
   for (let index = path.length - 1; index > 0 && !state.propagationStopped; index--) {
-    visit(path[index], EVENT_PHASE_CAPTURING, [captureKey])
+    visit(index, EVENT_PHASE_CAPTURING, [captureKey])
   }
   if (!state.propagationStopped) {
-    visit(target, EVENT_PHASE_AT_TARGET, [captureKey, payload.eventType])
+    visit(0, EVENT_PHASE_AT_TARGET, [captureKey, payload.eventType])
   }
   if (event.bubbles) {
     for (let index = 1; index < path.length && !state.propagationStopped; index++) {
-      visit(path[index], EVENT_PHASE_BUBBLING, [payload.eventType])
+      visit(index, EVENT_PHASE_BUBBLING, [payload.eventType])
     }
   }
   if (event.bubbles && !state.propagationStopped) hooks?.afterBubble?.(event, state, fail)

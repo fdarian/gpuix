@@ -24,7 +24,7 @@ function setup(
   ])
   let cancelled = 0
   return {
-    root: { eventHandlers },
+    root: { eventHandlers, elementById: (id: number) => ({ id }) },
     dispatch: createDragDispatcher(() => cancelled++),
     cancelled: () => cancelled,
   }

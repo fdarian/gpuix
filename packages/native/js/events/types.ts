@@ -1,4 +1,4 @@
-import type { EventPayload } from "../../index.js"
+import type { RootEvent } from "./dispatch.js"
 
 /** One entry of `DataTransfer.files`. Filled in by native on file drags. */
 export type HostFile = {
@@ -47,14 +47,19 @@ export type HostDataTransfer = {
 }
 
 /**
- * What every dispatched event carries, like the DOM `Event`. Ids are element
- * ids, not objects: `target` is the element the event was aimed at and
- * `currentTarget` the one whose handler is running.
+ * What every dispatched event carries, like the DOM `Event`. `target` is the
+ * element the event was aimed at and `currentTarget` the one whose handler is
+ * running (the `window` or `document` object during their phases). Both are
+ * the object a `ref` gives for the element, `relatedTarget` too; use
+ * `elementId` for the numeric id native knows it by.
  */
-export interface HostDomEvent extends EventPayload {
+export interface HostDomEvent extends RootEvent {
   readonly type: string
-  readonly target: number
-  readonly currentTarget: number | null
+  /** Never `null` for an element's handler: only `window` and `document` hear an event with no element. */
+  readonly target: object
+  readonly currentTarget: object | null
+  /** The elements on the propagation path, target first. */
+  composedPath(): object[]
   /** 1 capturing, 2 at target, 3 bubbling. */
   readonly eventPhase: number
   readonly bubbles: boolean

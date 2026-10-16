@@ -123,21 +123,25 @@ const notifyTypeSubscribers = () => {
   for (const subscriber of [...typeSubscribers]) subscriber()
 }
 
-/** What `document` asks a root so that `activeElement` can name its focused element. */
-type ActiveElementSource = {
+/**
+ * What a root tells the rest of the runtime about its elements: `document` asks
+ * it for `activeElement`, and event dispatch asks it for `target`,
+ * `currentTarget` and `relatedTarget`.
+ */
+type ElementSource = {
   /** Id of the element that holds focus in the root's window, or `null`. */
   focusedId(): number | null
   /** The object the adapter hands out for that element (a ref's value), or `undefined` once the root has dropped it. */
-  elementById(id: number): unknown
+  elementById(id: number): object | undefined
 }
 
-type ActiveElementEntry = {
-  source: ActiveElementSource
+type ElementSourceEntry = {
+  source: ElementSource
   /** Order in which the roots last heard a focus event; higher is more recent. */
   focusedAt: number
 }
 
-const activeElementEntries = new Map<object, ActiveElementEntry>()
+const elementSources = new Map<object, ElementSourceEntry>()
 let focusClock = 0
 
 /**
@@ -154,8 +158,8 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
    * a focus event last.
    */
   get activeElement(): Element | null {
-    let chosen: { entry: ActiveElementEntry; id: number } | undefined
-    for (const entry of activeElementEntries.values()) {
+    let chosen: { entry: ElementSourceEntry; id: number } | undefined
+    for (const entry of elementSources.values()) {
       const id = entry.source.focusedId()
       if (id === null) continue
       if (!chosen || entry.focusedAt > chosen.entry.focusedAt) chosen = { entry, id }
@@ -173,35 +177,54 @@ export const window = new GpuixEventTarget(notifyTypeSubscribers)
 export const document = new GpuixDocument(notifyTypeSubscribers)
 
 /**
- * Lets `document.activeElement` see the root that drives `renderer`, through
+ * Lets the runtime see the elements of the root that drives `renderer`, through
  * `elementById`: the object the adapter gives for an element id, as a `ref`
- * does. The returned function takes the root out again. A renderer that cannot
- * report focus is not listed.
+ * does. `document.activeElement` and the `target`, `currentTarget` and
+ * `relatedTarget` of every event read it. The returned function takes the root
+ * out again. A renderer that cannot report focus still names its elements; it
+ * just never has an `activeElement`.
  */
-export function installActiveElementSource(
+export function installElementSource(
   renderer: { getFocusedElementId?: () => number | null },
-  elementById: (id: number) => unknown
+  elementById: (id: number) => object | undefined
 ): () => void {
   const getFocusedElementId = renderer.getFocusedElementId
-  if (!getFocusedElementId) return () => {}
-  const entry: ActiveElementEntry = {
-    source: { focusedId: () => getFocusedElementId.call(renderer), elementById },
+  const entry: ElementSourceEntry = {
+    source: {
+      focusedId: () => (getFocusedElementId ? getFocusedElementId.call(renderer) : null),
+      elementById,
+    },
     focusedAt: 0,
   }
-  activeElementEntries.set(renderer, entry)
+  elementSources.set(renderer, entry)
   return () => {
-    if (activeElementEntries.get(renderer) === entry) activeElementEntries.delete(renderer)
+    if (elementSources.get(renderer) === entry) elementSources.delete(renderer)
   }
 }
 
-/** Drops the root of `renderer` whose window is gone, so `activeElement` never asks it. */
-export function forgetActiveElementSource(renderer: object): void {
-  activeElementEntries.delete(renderer)
+/** Drops the root of `renderer` whose window is gone, so nothing asks it for elements. */
+export function forgetElementSource(renderer: object): void {
+  elementSources.delete(renderer)
+}
+
+/**
+ * @internal The element `renderer`'s root has for `id`, or `undefined` once it
+ * dropped it. Throws when no adapter installed a source for `renderer`: the
+ * ids of its events cannot be turned into elements.
+ */
+export function elementOf(renderer: object, id: number): object | undefined {
+  const entry = elementSources.get(renderer)
+  if (!entry) {
+    throw new Error(
+      "No element source is installed for this renderer: an adapter's root installs one with installElementSource before events arrive."
+    )
+  }
+  return entry.source.elementById(id)
 }
 
 /** @internal Records that `owner`'s window just moved focus, for the tie-break of `activeElement`. */
 export function noteFocusEvent(owner: object): void {
-  const entry = activeElementEntries.get(owner)
+  const entry = elementSources.get(owner)
   if (entry) entry.focusedAt = ++focusClock
 }
 
@@ -268,7 +291,7 @@ export function dispatchPropagating(
     return { ...result, event: seen }
   }
 
-  const { event, state } = createDomEvent(payload, undefined)
+  const { event, state } = createDomEvent(root, payload, [])
   const errors: unknown[] = []
   const fail = (error: unknown) => errors.push(error)
   capture(event, state, fail)

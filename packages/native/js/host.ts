@@ -9,6 +9,7 @@ import type {
   PathPromptOptions,
   WindowInsets as NativeWindowInsets,
 } from "../index.js"
+import type { DomEvent, RootEvent } from "./events/dispatch.js"
 import type { AnimationEventProps, PointerEventProps } from "./events/types.js"
 import type { ScrollEvent } from "./scroll.js"
 import type { MotionValue } from "./motion-value.js"
@@ -29,15 +30,15 @@ export * from "./clipboard.js"
 export {
   document,
   GpuixDocument,
-  forgetActiveElementSource,
+  forgetElementSource,
   GpuixEventTarget,
-  installActiveElementSource,
+  installElementSource,
   syncWindowEventListeners,
   window,
   type AddEventListenerOptions,
   type WindowEventListener,
 } from "./events/window-target.js"
-export { preventEventDefault, type DomEvent } from "./events/dispatch.js"
+export { preventEventDefault, type DomEvent, type RootEvent } from "./events/dispatch.js"
 export * from "./focus.js"
 export * from "./forms.js"
 export * from "./bounds.js"
@@ -1000,9 +1001,10 @@ export interface HostProps extends AriaProps, PointerEventProps, AnimationEventP
    * A button went down on an element outside this one's logical subtree, for any
    * button. Anchored descendants are inside; an overlay that merely paints above is
    * outside. Runs at this element only, after `pointerdown` and `mousedown`, with
-   * `event.target` set to the pressed element. Use for "click outside to close".
+   * `event.target` set to the pressed element (the one a ref gives) and
+   * `event.currentTarget` to this one. Use for "click outside to close".
    */
-  onMouseDownOutside?: (event: EventPayload) => void
+  onMouseDownOutside?: (event: DomEvent) => void
 
   // ── Keyboard events ────────────────────────────────────────────
   /** Fires on the focused element, then on ancestors that declare it. A key
@@ -1700,7 +1702,7 @@ export type DebugFrameOverlayMode = "hidden" | "minimal" | "full"
 
 /** Method syntax makes the parameter bivariant, so an `onKeyDown` typed with
  *  `KeyEvent` can share the map. Dispatch builds the `KeyEvent` for key types. */
-export type HostEventHandler = { handle(event: EventPayload): void }["handle"]
+export type HostEventHandler = { handle(event: DomEvent): void }["handle"]
 
 export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
 
@@ -1714,7 +1716,7 @@ export type EventHandlerMap = Map<number, Map<string, HostEventHandler>>
  * `"Digit1"`), assuming a US QWERTY layout for printable keys. The mapping from
  * GPUI key names lives in `events/key_names.rs`.
  */
-export interface KeyEvent extends EventPayload {
+export interface KeyEvent extends DomEvent {
   /** True after any handler of this keystroke called `preventDefault()`. */
   readonly defaultPrevented: boolean
   /**
@@ -1736,7 +1738,7 @@ export type WindowKeyEventHandler = (
 ) => void
 
 export type WindowEventHandler = (
-  event: EventPayload,
+  event: RootEvent,
   renderer: NativeRenderer
 ) => void
 
@@ -1756,15 +1758,18 @@ export interface WindowKeyEventHandlers {
    * pointer lock element changes: after a granted `requestPointerLock()`, after
    * `exitPointerLock()`, when the platform drops the lock (the window lost
    * focus) and when the locked element leaves the tree. `event.target` is the
-   * locked element's id, absent once the lock is gone. Read the same thing
-   * from `renderer.pointerLockElement()`.
+   * locked element, the object a ref gives, and `null` once the lock is gone.
+   * (The DOM aims it at the document; the locked element is
+   * `document.pointerLockElement` there.) `renderer.pointerLockElement()` reads
+   * the same thing as an id.
    */
   onPointerLockChange?: WindowEventHandler
   /**
    * Window-level, like the DOM's document `pointerlockerror`. Fires when a
    * `requestPointerLock()` fails: the element is not in the tree, or the
    * platform refused (the window is not active, or the platform cannot lock the
-   * pointer). `event.target` is the element that was asked.
+   * pointer). `event.target` is the element that was asked, or `null` when it
+   * is already gone from the tree.
    */
   onPointerLockError?: WindowEventHandler
   /**

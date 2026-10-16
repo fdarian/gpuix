@@ -8,6 +8,15 @@ const ROOT = 1
 const MIDDLE = 2
 const LEAF = 3
 const PATH = [LEAF, MIDDLE, ROOT]
+const OTHER = 9
+
+const elements = new Map<number, object>([ROOT, MIDDLE, LEAF, OTHER].map((id) => [id, { id }]))
+const elementById = (id: number) => elements.get(id)
+const element = (id: number): object => {
+  const found = elements.get(id)
+  if (!found) throw new Error(`no test element ${id}`)
+  return found
+}
 
 function payload(eventType: string, fields: Partial<EventPayload> = {}): EventPayload {
   return { elementId: LEAF, eventType, ...fields } as EventPayload
@@ -29,7 +38,7 @@ function setup() {
     })
     eventHandlers.set(id, handlers)
   }
-  return { root: { eventHandlers }, calls, listen }
+  return { root: { eventHandlers, elementById }, calls, listen }
 }
 
 describe("dispatchDomEvent", () => {
@@ -52,18 +61,47 @@ describe("dispatchDomEvent", () => {
 
   it("reports the phase and currentTarget of each call while target stays fixed", () => {
     const { root, listen } = setup()
-    const seen: Array<[number | null, number, number]> = []
+    const seen: Array<[object | null, number, object | null]> = []
     const record = (event: DomEvent) => seen.push([event.currentTarget, event.eventPhase, event.target])
     listen(ROOT, captureHandlerKey("click"), record)
     listen(LEAF, "click", record)
     listen(MIDDLE, "click", record)
     const event = payload("click", { path: PATH })
     dispatchDomEvent(root, event)
-    expect(seen).toEqual([
-      [ROOT, 1, LEAF],
-      [LEAF, 2, LEAF],
-      [MIDDLE, 3, LEAF],
-    ])
+    expect(seen).toHaveLength(3)
+    expect(seen[0][0]).toBe(element(ROOT))
+    expect(seen[1][0]).toBe(element(LEAF))
+    expect(seen[2][0]).toBe(element(MIDDLE))
+    expect(seen.map((entry) => entry[1])).toEqual([1, 2, 3])
+    for (const entry of seen) expect(entry[2]).toBe(element(LEAF))
+  })
+
+  it("gives the elements, not their ids, as target and relatedTarget, and keeps elementId numeric", () => {
+    const { root, listen } = setup()
+    let received: DomEvent | undefined
+    listen(LEAF, "focusout", (event) => {
+      received = event
+    })
+    dispatchDomEvent(root, payload("focusout", { path: PATH, target: LEAF, relatedTarget: OTHER }))
+    expect(received?.target).toBe(element(LEAF))
+    expect(received?.relatedTarget).toBe(element(OTHER))
+    expect(received?.elementId).toBe(LEAF)
+    expect(received?.composedPath()).toEqual([element(LEAF), element(MIDDLE), element(ROOT)])
+    expect(received).not.toHaveProperty("path")
+  })
+
+  it("has a null relatedTarget when native sent none, or the root has dropped that element", () => {
+    const { root, listen } = setup()
+    const seen: Array<object | null> = []
+    listen(LEAF, "focusin", (event) => seen.push(event.relatedTarget))
+    dispatchDomEvent(root, payload("focusin", { path: PATH }))
+    dispatchDomEvent(root, payload("focusin", { path: PATH, relatedTarget: 77 }))
+    expect(seen).toEqual([null, null])
+  })
+
+  it("throws for a path element the root does not have", () => {
+    const { root } = setup()
+    expect(() => dispatchDomEvent(root, payload("click", { path: [LEAF, 55] }))).toThrow(/element 55/)
   })
 
   it("exposes the payload fields next to the DOM surface", () => {
@@ -72,16 +110,16 @@ describe("dispatchDomEvent", () => {
     listen(LEAF, "mouseDown", (event) => {
       received = event
     })
-    dispatchDomEvent(root, payload("mouseDown", { path: PATH, x: 10, y: 20, button: 2, relatedTarget: 9 }))
+    dispatchDomEvent(root, payload("mouseDown", { path: PATH, x: 10, y: 20, button: 2, relatedTarget: OTHER }))
     expect(received).toMatchObject({
       type: "mouseDown",
       eventType: "mouseDown",
-      target: LEAF,
+      target: element(LEAF),
       elementId: LEAF,
       x: 10,
       y: 20,
       button: 2,
-      relatedTarget: 9,
+      relatedTarget: element(OTHER),
       bubbles: true,
       cancelable: true,
       defaultPrevented: false,
@@ -232,14 +270,14 @@ describe("dispatchDomEvent", () => {
     listen(LEAF, "click")
     listen(MIDDLE, "click")
     listen(ROOT, "clickCapture")
-    let target: number | undefined
+    let target: object | null | undefined
     listen(LEAF, "keydown", (event) => {
       target = event.target
     })
     dispatchDomEvent(root, payload("click"))
     dispatchDomEvent(root, payload("keydown"))
     expect(calls).toEqual(["3:clickCapture", "3:click", "3:keydown"])
-    expect(target).toBe(LEAF)
+    expect(target).toBe(element(LEAF))
   })
 
   it("skips elements that have no handlers and does nothing when none is registered", () => {
@@ -380,7 +418,7 @@ describe("a handler that throws", () => {
     window.addEventListener("keydown", second)
     try {
       dispatchPropagating(
-        { eventHandlers: new Map(), reportError: (error) => reported.push(error) },
+        { eventHandlers: new Map(), elementById, reportError: (error) => reported.push(error) },
         payload("keydown")
       )
     } finally {
@@ -389,5 +427,44 @@ describe("a handler that throws", () => {
     }
     expect(seen).toEqual(["first", "second"])
     expect(reported).toHaveLength(1)
+  })
+})
+
+describe("window and document listeners", () => {
+  it("see the target element while currentTarget is the window or document", () => {
+    const { root, listen } = setup()
+    listen(LEAF, "click")
+    const seen: Array<[string, object | null, object | null]> = []
+    const onWindow = (event: DomEvent) => seen.push(["window", event.target, event.currentTarget])
+    const onDocument = (event: DomEvent) => seen.push(["document", event.target, event.currentTarget])
+    window.addEventListener("click", onWindow)
+    document.addEventListener("click", onDocument)
+    try {
+      dispatchPropagating(root, payload("click", { path: PATH }))
+    } finally {
+      window.removeEventListener("click", onWindow)
+      document.removeEventListener("click", onDocument)
+    }
+    expect(seen.map((entry) => entry[0])).toEqual(["document", "window"])
+    expect(seen[0][1]).toBe(element(LEAF))
+    expect(seen[0][2]).toBe(document)
+    expect(seen[1][1]).toBe(element(LEAF))
+    expect(seen[1][2]).toBe(window)
+  })
+
+  it("see a null target for an event aimed at the window", () => {
+    const { root } = setup()
+    const seen: Array<[object | null, object | null, object[]]> = []
+    const onKey = (event: DomEvent) => seen.push([event.target, event.currentTarget, event.composedPath()])
+    window.addEventListener("keydown", onKey)
+    try {
+      dispatchPropagating(root, payload("keydown"))
+    } finally {
+      window.removeEventListener("keydown", onKey)
+    }
+    expect(seen).toHaveLength(1)
+    expect(seen[0][0]).toBeNull()
+    expect(seen[0][1]).toBe(window)
+    expect(seen[0][2]).toEqual([])
   })
 })

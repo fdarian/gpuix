@@ -2,10 +2,16 @@ import type { EventPayload } from "../../index.js"
 import type { NativeRenderer } from "../host.js"
 import type { ActiveRoot, DismissLayer } from "../renderer-state.js"
 import {
+  createDomEvent,
   dispatchDomEvent,
+  optionalElement,
   reportHandlerErrors,
+  requireElement,
+  toRootEvent,
   type DomDispatchResult,
   type DomEvent,
+  type PublicEventFields,
+  type RootEvent,
 } from "./dispatch.js"
 import { scrollKeyName } from "../scroll.js"
 import { moveFocusByTab } from "../focus.js"
@@ -21,7 +27,7 @@ export interface RootEventContext {
 
 const notHandled: DomDispatchResult = { defaultPrevented: false, propagationStopped: false }
 
-function hasCommandModifier(event: EventPayload): boolean {
+function hasCommandModifier(event: PublicEventFields): boolean {
   const modifiers = event.modifiers
   return Boolean(modifiers?.ctrl || modifiers?.alt || modifiers?.cmd)
 }
@@ -52,6 +58,11 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
   if (event.eventType === "appearanceChange") {
     return event.elementId === root.windowAppearanceEventId && Boolean(root.handlers.onAppearanceChange)
   }
+  // A path whose target the root has dropped is an event native queued before
+  // the element was destroyed: nobody can be told about it.
+  if (event.path != null && event.path.length > 0 && root.elementById(event.path[0]) === undefined) {
+    return false
+  }
   // Document-level in the DOM, so no element id or listener flag: native
   // fires them only for a lock JS asked for or held.
   if (event.eventType === "pointerlockchange") return Boolean(root.handlers.onPointerLockChange)
@@ -75,25 +86,30 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
   )
 }
 
+/** An event of the window (selection, appearance, pointer lock), with `target` as the element when it names one. */
+function windowLevelEvent(root: ActiveRoot, event: EventPayload): RootEvent {
+  return { ...toRootEvent(root, event, optionalElement(root, event.target)), elementId: 0 }
+}
+
 export function runRootEvent(
   root: ActiveRoot,
   event: EventPayload,
   context: RootEventContext
 ): DomDispatchResult {
   if (event.eventType === "selectionChange") {
-    root.handlers.onSelectionChange?.({ ...event, elementId: 0 }, context.renderer)
+    root.handlers.onSelectionChange?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
   if (event.eventType === "appearanceChange") {
-    root.handlers.onAppearanceChange?.({ ...event, elementId: 0 }, context.renderer)
+    root.handlers.onAppearanceChange?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
   if (event.eventType === "pointerlockchange") {
-    root.handlers.onPointerLockChange?.({ ...event, elementId: 0 }, context.renderer)
+    root.handlers.onPointerLockChange?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
   if (event.eventType === "pointerlockerror") {
-    root.handlers.onPointerLockError?.({ ...event, elementId: 0 }, context.renderer)
+    root.handlers.onPointerLockError?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
   if (isDragEvent(event)) {
@@ -102,7 +118,10 @@ export function runRootEvent(
   }
   if (isOutsidePress(event.eventType)) {
     try {
-      root.eventHandlers.get(event.elementId)?.get(event.eventType)?.(event)
+      const path = (event.path ?? [event.elementId]).map((id) => requireElement(root, id, event.eventType))
+      const outside = createDomEvent(root, event, path).event
+      outside.currentTarget = requireElement(root, event.elementId, event.eventType)
+      root.eventHandlers.get(event.elementId)?.get(event.eventType)?.(outside)
     } catch (error) {
       reportHandlerErrors(root, [error])
     }

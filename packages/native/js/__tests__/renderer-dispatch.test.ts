@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest"
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap, NativeRenderer } from "../host.js"
-import { captureHandlerKey } from "../events/dispatch.js"
+import { captureHandlerKey, type DomEvent } from "../events/dispatch.js"
+import { installElementSource } from "../events/window-target.js"
 import { createRendererState } from "../renderer-state.js"
+
+const elements = new Map<number, object>([1, 2, 3, 9].map((id) => [id, { id }]))
 
 function setup() {
   const renderer = {} as NativeRenderer
+  installElementSource(renderer, (id) => elements.get(id))
   const state = createRendererState(renderer)
   const eventHandlers: EventHandlerMap = new Map()
   const scheduled: Array<() => void> = []
@@ -16,9 +20,12 @@ function setup() {
     onEvent: (event) => seen.push(event),
   })
   const calls: string[] = []
-  const listen = (id: number, key: string) => {
+  const listen = (id: number, key: string, handler?: (event: DomEvent) => void) => {
     const handlers = eventHandlers.get(id) ?? new Map()
-    handlers.set(key, (event: EventPayload) => calls.push(`${id}:${key}:${event.eventType}`))
+    handlers.set(key, (event: DomEvent) => {
+      calls.push(`${id}:${key}:${event.eventType}`)
+      handler?.(event)
+    })
     eventHandlers.set(id, handlers)
   }
   const flush = () => scheduled.splice(0).forEach((run) => run())
@@ -107,6 +114,25 @@ describe("renderer dispatch of pointer, mouse and drag events", () => {
     state.dispatch(payload)
     flush()
     expect(seen).toEqual([payload])
+  })
+
+  it("drops an event whose target element the root no longer has", () => {
+    const { state, listen, scheduled } = setup()
+    listen(1, "click")
+    expect(state.dispatch(event("click", { path: [77, 1] }))).toBe(false)
+    expect(scheduled).toHaveLength(0)
+  })
+
+  it("gives the outside-press event the pressed element as target and the listener as currentTarget", () => {
+    const { state, listen, flush } = setup()
+    const seen: DomEvent[] = []
+    listen(1, "mousedownoutside", (outside) => seen.push(outside))
+    state.dispatch(event("mouseDownOutside", { elementId: 1, target: 3, path: [3, 2, 1] }))
+    flush()
+    expect(seen).toHaveLength(1)
+    expect(seen[0].target).toBe(elements.get(3))
+    expect(seen[0].currentTarget).toBe(elements.get(1))
+    expect(seen[0].elementId).toBe(1)
   })
 
   it("keeps the gpuix outside-press event off the DOM path", () => {

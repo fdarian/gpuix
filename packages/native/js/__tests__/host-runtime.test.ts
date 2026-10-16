@@ -12,6 +12,7 @@ import {
   readWindowSize,
 } from "../host.js"
 import type { MutationHost, NativeRenderer, WindowInsetsHost, WindowSizeHost } from "../host.js"
+import { installElementSource } from "../events/window-target.js"
 
 class RecordingRenderer implements MutationHost, WindowSizeHost, WindowInsetsHost {
   batches: unknown[][] = []
@@ -357,16 +358,25 @@ describe("shared host runtime", () => {
     ).toBe(false)
   })
 
-  it("routes pointer lock events to their root handlers, with no element id", () => {
-    const state = createRendererState(new RecordingRenderer())
-    const seen: string[] = []
+  it("routes pointer lock events to their root handlers, with the element as target", () => {
+    const renderer = new RecordingRenderer()
+    const state = createRendererState(renderer)
+    const locked = { name: "locked" }
+    installElementSource(renderer, (id) => (id === 7 ? locked : undefined))
+    const seen: Array<[string, number, object | null]> = []
     state.attach({
-      onPointerLockChange: (event) => seen.push(`change:${event.elementId}:${event.target}`),
-      onPointerLockError: (event) => seen.push(`error:${event.elementId}:${event.target}`),
+      onPointerLockChange: (event) => seen.push(["change", event.elementId, event.target]),
+      onPointerLockError: (event) => seen.push(["error", event.elementId, event.target]),
     })
     expect(state.dispatch({ elementId: 0, eventType: "pointerlockchange", target: 7 })).toBe(true)
     expect(state.dispatch({ elementId: 0, eventType: "pointerlockerror", target: 8 })).toBe(true)
-    expect(seen).toEqual(["change:0:7", "error:0:8"])
+    expect(state.dispatch({ elementId: 0, eventType: "pointerlockchange" })).toBe(true)
+    expect(seen).toHaveLength(3)
+    expect(seen[0][0]).toBe("change")
+    expect(seen[0][1]).toBe(0)
+    expect(seen[0][2]).toBe(locked)
+    expect(seen[1]).toEqual(["error", 0, null])
+    expect(seen[2]).toEqual(["change", 0, null])
   })
 
   it("drops a pointer lock event nobody handles", () => {

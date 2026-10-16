@@ -2,7 +2,7 @@ import type { EventPayload } from "../index.js"
 import { reportUncaught, type DomDispatchResult } from "./events/dispatch.js"
 import { createDragDispatcher } from "./events/drag.js"
 import { handlesEvent, normalizeEventType, runRootEvent } from "./events/keyboard-defaults.js"
-import { GpuixEventTarget, noteFocusEvent } from "./events/window-target.js"
+import { elementOf, GpuixEventTarget, noteFocusEvent } from "./events/window-target.js"
 import { deliverObservation } from "./observers.js"
 import type {
   ElementIdAllocator,
@@ -160,6 +160,8 @@ export type ActiveRoot = RendererRootBinding & {
   handlers: RendererRootHandlers
   /** Where an error a handler of this root throws goes. See `RendererState.reportError`. */
   reportError(error: unknown): void
+  /** The element the adapter installed for an id with `installElementSource`. */
+  elementById(id: number): object | undefined
   /** Listens at the window level for this root only: the `onKeyDown` / `onKeyUp` options. */
   scoped: GpuixEventTarget
 }
@@ -252,6 +254,7 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
         handlers,
         eventHandlers,
         reportError: (error) => state.reportError(error),
+        elementById: (id) => elementOf(renderer, id),
         scoped,
         windowKeyEventId: generation,
         windowSelectionEventId: generation,

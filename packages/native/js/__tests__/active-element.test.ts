@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { document, installActiveElementSource, noteFocusEvent } from "../events/window-target.js"
+import { document, installElementSource, noteFocusEvent } from "../events/window-target.js"
 
 function root(elements: Record<number, object>) {
   const state = { focused: null as number | null }
   const renderer = { getFocusedElementId: () => state.focused }
-  const remove = installActiveElementSource(renderer, (id) => elements[id])
+  const remove = installElementSource(renderer, (id) => elements[id])
   return { renderer, state, remove }
 }
 
@@ -51,7 +51,7 @@ describe("document.activeElement across roots", () => {
   })
 
   it("lists no renderer that cannot report focus", () => {
-    const remove = installActiveElementSource({}, () => ({}))
+    const remove = installElementSource({}, () => ({}))
     expect(document.activeElement).toBeNull()
     remove()
   })

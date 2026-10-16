@@ -21,6 +21,9 @@ use napi_derive::napi;
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct EventPayload {
     /// Numeric element ID (matches the ID assigned in JS via createElement).
+    /// This payload is what native sends: `target`, `path` and `related_target`
+    /// are ids. JS turns them into elements before a handler sees the event, and
+    /// `elementId` stays the id on the event a handler gets.
     pub element_id: f64,
 
     /// Event type string — matches the key used in EVENT_PROPS on the JS side.
@@ -184,17 +187,20 @@ pub struct EventPayload {
     pub form_entries: Option<Vec<Vec<String>>>,
 
     // ── DOM event propagation ────────────────────────────────────────
-    /// Element the event was aimed at (the DOM `event.target`). Absent means
-    /// `element_id` is the target. Ids are `f64` like `element_id`: `u64` would
-    /// reach JS as a `bigint` and never match the `number` keys of the handler map.
+    /// Id of the element the event was aimed at (JS makes it `event.target`, the
+    /// element itself). Absent means `element_id` is the target. Ids are `f64`
+    /// like `element_id`: `u64` would reach JS as a `bigint` and never match the
+    /// `number` keys of the handler map.
     pub target: Option<f64>,
 
     /// Propagation path, target first and then each ancestor up to the root.
-    /// JS runs capture over it root to target and bubble target to root. Absent
-    /// means the event is handled at `element_id` only.
+    /// JS runs capture over it root to target and bubble target to root, and
+    /// gives handlers the elements as `composedPath()`. Absent means the event is
+    /// handled at `element_id` only.
     pub path: Option<Vec<f64>>,
 
-    /// The other element of a boundary or focus event (the DOM `event.relatedTarget`).
+    /// Id of the other element of a boundary or focus event (JS makes it
+    /// `event.relatedTarget`, the element itself, or `null` when absent).
     /// Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents,
     /// the drag enter and leave events, and the focus events: the element gaining focus on
     /// blur and focusout, the one losing it on focus and focusin. Absent when focus came

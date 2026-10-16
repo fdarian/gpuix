@@ -29,7 +29,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
-import { forgetActiveElementSource } from "./events/window-target.js"
+import { forgetElementSource } from "./events/window-target.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
@@ -378,7 +378,7 @@ export class TestRenderer implements NativeRenderer {
     }
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options)
-    if (latestRenderer) forgetActiveElementSource(latestRenderer)
+    if (latestRenderer) forgetElementSource(latestRenderer)
     latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)
     registerKeyframesHost(this.native)
@@ -419,7 +419,7 @@ export class TestRenderer implements NativeRenderer {
    *  throw afterwards; the retained tree stays readable. Without it the window is leaked
    *  when the thread exits. */
   dispose(): void {
-    forgetActiveElementSource(this)
+    forgetElementSource(this)
     this.native.setSyncEventHandler(null)
     this.native.dispose()
   }
