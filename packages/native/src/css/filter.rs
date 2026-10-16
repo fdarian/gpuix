@@ -1,7 +1,7 @@
 //! The CSS `filter` and `backdrop-filter` strings: a list of filter functions,
 //! parsed into a typed list and resolved into gpui's `FilterFunction`s.
 
-use super::cache::Cache;
+use super::cache::{Cache, Inputs};
 use super::dimension::{parse_length, parse_non_negative_length, parse_number_or_percentage, split_dimension};
 use super::length::LengthContext;
 use super::syntax::{function_args, split_whitespace};
@@ -38,7 +38,7 @@ thread_local! {
 /// `None` when the declaration is invalid, which CSS ignores as a whole. An
 /// empty list is the valid `none`.
 pub(crate) fn parse(value: &str, lengths: &LengthContext) -> Option<Vec<Filter>> {
-    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value, lengths)))
+    CACHE.with(|cache| cache.get_or_parse(value, Inputs { colors: None, lengths }, || parse_uncached(value, lengths)))
 }
 
 fn parse_uncached(value: &str, lengths: &LengthContext) -> Option<Vec<Filter>> {
@@ -243,6 +243,37 @@ mod tests {
 
     fn follows_current_color(value: &str) -> bool {
         super::follows_current_color(value, &LengthContext::for_tests())
+    }
+
+    #[test]
+    fn a_cached_filter_is_not_shared_across_length_contexts() {
+        let base = LengthContext::for_tests();
+        let large_font = base.descend(Some(&crate::css::length::LinearLength::px(40.0)), false);
+        let large_root = base.descend(Some(&crate::css::length::LinearLength::px(30.0)), true);
+        let wide = base.with_viewport(1600.0, 900.0);
+        let contexts = [base, large_font, large_root, wide];
+        for value in [
+            "blur(1em)",
+            "blur(calc(2px + 0.5em))",
+            "drop-shadow(1rem 1em 2px red)",
+            "blur(10vw)",
+        ] {
+            for _ in 0..2 {
+                for lengths in &contexts {
+                    assert_eq!(super::parse(value, lengths), super::parse_uncached(value, lengths), "{value}");
+                }
+            }
+            let distinct = contexts
+                .iter()
+                .map(|lengths| super::parse(value, lengths).unwrap())
+                .fold(Vec::<Vec<Filter>>::new(), |mut seen, filters| {
+                    if !seen.contains(&filters) {
+                        seen.push(filters);
+                    }
+                    seen
+                });
+            assert!(distinct.len() >= 2, "{value} resolved alike in every length context");
+        }
     }
 
     fn shadow(offset_x: f64, offset_y: f64, blur: f64, color: &str) -> Filter {

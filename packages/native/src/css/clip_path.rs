@@ -10,7 +10,7 @@ use gpui::{
     BackgroundBox, BackgroundPosition, ClipPath, ClipShape, InsetRadii, ShapeRadius,
 };
 
-use super::cache::Cache;
+use super::cache::{Cache, Inputs};
 use super::length::LengthContext;
 use super::position::{parse_box, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
@@ -22,7 +22,7 @@ thread_local! {
 /// `None` when the declaration is invalid. `Some(None)` is the valid `none`,
 /// which a state style needs in order to clear the base clip path.
 pub(crate) fn parse(value: &str, lengths: &LengthContext) -> Option<Option<ClipPath>> {
-    CACHE.with(|cache| cache.get_or_parse(value, || parse_uncached(value, lengths)))
+    CACHE.with(|cache| cache.get_or_parse(value, Inputs { colors: None, lengths }, || parse_uncached(value, lengths)))
 }
 
 fn parse_uncached(value: &str, lengths: &LengthContext) -> Option<Option<ClipPath>> {
@@ -224,6 +224,31 @@ mod tests {
         ] {
             assert_eq!(parse(value), parse_uncached(value), "{value}");
             assert_eq!(parse(value), parse_uncached(value), "{value} on a hit");
+        }
+    }
+
+    #[test]
+    fn a_cached_clip_path_is_not_shared_across_length_contexts() {
+        let base = LengthContext::for_tests();
+        let large_font = base.descend(Some(&crate::css::length::LinearLength::px(40.0)), false);
+        let large_root = base.descend(Some(&crate::css::length::LinearLength::px(30.0)), true);
+        let wide = base.with_viewport(1600.0, 900.0);
+        let contexts = [base, large_font, large_root, wide];
+        for value in [
+            "inset(1em round 2em)",
+            "circle(calc(10px + 1rem) at 50% 10vh)",
+            "polygon(0 0, 10vw 0, 1em 50%)",
+        ] {
+            for _ in 0..2 {
+                for lengths in &contexts {
+                    assert_eq!(super::parse(value, lengths), super::parse_uncached(value, lengths), "{value}");
+                }
+            }
+            let distinct = contexts
+                .iter()
+                .map(|lengths| format!("{:?}", super::parse(value, lengths).unwrap()))
+                .collect::<std::collections::HashSet<_>>();
+            assert!(distinct.len() >= 2, "{value} resolved alike in every length context");
         }
     }
 

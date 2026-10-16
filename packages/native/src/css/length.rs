@@ -208,6 +208,57 @@ impl LengthContext {
     }
 }
 
+/// The parts of a [`LengthContext`] a text can read, from the units it names.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct LengthReads {
+    font_size: bool,
+    root_font_size: bool,
+    viewport: bool,
+}
+
+impl LengthReads {
+    /// Conservative: a unit is a number followed by its name, so a name met in a word
+    /// (`item`) reads nothing and a match in an unrelated token only costs a cache entry.
+    pub(crate) fn of(text: &str) -> Self {
+        let bytes = text.as_bytes();
+        let mut reads = Self::default();
+        for (index, byte) in bytes.iter().enumerate() {
+            if !(byte.is_ascii_digit() || *byte == b'.') {
+                continue;
+            }
+            let unit = &bytes[index + 1..];
+            let starts = |name: &str| {
+                unit.len() >= name.len() && unit[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+            };
+            if starts("rem") {
+                reads.root_font_size = true;
+            } else if starts("em") {
+                reads.font_size = true;
+            } else if starts("vw") || starts("vh") || starts("vmin") || starts("vmax") {
+                reads.viewport = true;
+            }
+        }
+        reads
+    }
+
+    pub(crate) fn any(&self) -> bool {
+        self.font_size || self.root_font_size || self.viewport
+    }
+}
+
+impl LengthContext {
+    /// Whether every length `reads` names resolves the same in both. `resolve` reads
+    /// the font sizes and the viewport and nothing else: keep this in step with it,
+    /// because the parse caches treat contexts that agree here as one.
+    pub(crate) fn resolves_like(&self, other: &Self, reads: LengthReads) -> bool {
+        (!reads.font_size || self.font_size == other.font_size)
+            && (!reads.root_font_size || self.root_font_size == other.root_font_size)
+            && (!reads.viewport
+                || (self.viewport_width == other.viewport_width
+                    && self.viewport_height == other.viewport_height))
+    }
+}
+
 #[cfg(test)]
 impl LengthContext {
     /// `1em` is 20px, `1rem` 10px and the viewport 800x600, so no unit

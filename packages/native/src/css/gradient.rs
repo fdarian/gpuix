@@ -6,7 +6,7 @@ use gpui::{
     LengthPercentage, LinearDirection, RadialShape, RadialSize, StopPosition,
 };
 
-use super::cache::ColorCache;
+use super::cache::{Cache, Inputs};
 use super::length::LengthContext;
 use super::position::{parse_angle, parse_length_percentage, parse_non_negative, parse_position};
 use super::syntax::{function_args, split_commas, split_whitespace};
@@ -45,7 +45,7 @@ pub(crate) fn is_gradient(value: &str) -> bool {
 }
 
 thread_local! {
-    static CACHE: ColorCache<Result<Gradient, GradientError>> = ColorCache::new();
+    static CACHE: Cache<Result<Gradient, GradientError>> = Cache::new();
 }
 
 /// Parses one gradient. Colours resolve against `colors`, so `currentColor`,
@@ -55,7 +55,8 @@ pub(crate) fn parse(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> Result<Gradient, GradientError> {
-    CACHE.with(|cache| cache.get_or_parse(value, colors, || parse_uncached(value, colors, lengths)))
+    let inputs = Inputs { colors: Some(colors), lengths };
+    CACHE.with(|cache| cache.get_or_parse(value, inputs, || parse_uncached(value, colors, lengths)))
 }
 
 pub(super) fn parse_uncached(
@@ -429,6 +430,7 @@ fn parse_stops(
 mod tests {
     use super::*;
     use gpui::px;
+    use crate::css::length::LinearLength;
     use crate::color::Scheme;
 
     fn colors(scheme: Scheme, current: f32) -> ColorContext {
@@ -486,6 +488,51 @@ mod tests {
                 });
             assert!(distinct.len() >= 2, "{value} resolved alike in every context");
         }
+    }
+
+    #[test]
+    fn a_cached_gradient_is_not_shared_across_length_contexts() {
+        let colors = ColorContext::root(Scheme::Light);
+        let base = LengthContext::for_tests();
+        let large_font = base.descend(Some(&LinearLength::px(40.0)), false);
+        let large_root = base.descend(Some(&LinearLength::px(30.0)), true);
+        let wide = base.with_viewport(1600.0, 900.0);
+        let contexts = [base, large_font, large_root, wide];
+        for value in [
+            "linear-gradient(red 1em, blue)",
+            "linear-gradient(red calc(10px + 0.5em), blue)",
+            "linear-gradient(red 1rem, blue)",
+            "linear-gradient(red 10vw, blue 5vh)",
+            "radial-gradient(circle 2em at 1rem 10vh, red, blue)",
+        ] {
+            // Twice, so every context is also read back from a hit.
+            for _ in 0..2 {
+                for lengths in &contexts {
+                    assert_eq!(parse(value, &colors, lengths), parse_uncached(value, &colors, lengths), "{value}");
+                }
+            }
+            let distinct = contexts
+                .iter()
+                .map(|lengths| parse(value, &colors, lengths).unwrap())
+                .fold(Vec::<Gradient>::new(), |mut seen, gradient| {
+                    if !seen.contains(&gradient) {
+                        seen.push(gradient);
+                    }
+                    seen
+                });
+            assert!(distinct.len() >= 2, "{value} resolved alike in every length context");
+        }
+    }
+
+    #[test]
+    fn a_gradient_without_a_relative_unit_is_one_result_for_every_length_context() {
+        let colors = ColorContext::root(Scheme::Light);
+        let base = LengthContext::for_tests();
+        let value = "linear-gradient(red 20px, blue 80%)";
+        let first = parse(value, &colors, &base);
+        let other = parse(value, &colors, &base.with_viewport(1.0, 1.0));
+        assert_eq!(first, other);
+        assert_eq!(first, parse_uncached(value, &colors, &base));
     }
 
     fn parsed(value: &str) -> Gradient {
