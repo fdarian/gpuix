@@ -40,6 +40,7 @@ use crate::style::StyleDesc;
 use super::inline::Paragraph;
 use super::inline_bounds::border_box_rows;
 use super::inline_insets::{border_widths, BoxEdges, InsetSpec};
+use super::paragraph::{box_opacity, fade};
 
 /// The decorations of one inline box.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +63,20 @@ pub struct BoxPaint {
 }
 
 impl BoxPaint {
+    /// The paint of a box whose painting is `opacity` opaque.
+    fn faded(self, opacity: f32) -> Self {
+        Self {
+            background: self.background.map(|color| fade(color, opacity)),
+            colors: gpui::Edges {
+                top: fade(self.colors.top, opacity),
+                right: fade(self.colors.right, opacity),
+                bottom: fade(self.colors.bottom, opacity),
+                left: fade(self.colors.left, opacity),
+            },
+            ..self
+        }
+    }
+
     /// What `style` declares, with `colors` the context of the box itself, so that
     /// `currentColor` is its own `color`.
     ///
@@ -221,6 +236,7 @@ pub fn of(
     for piece in &paragraph.pieces {
         let mut colors = *colors;
         let mut lengths = *lengths;
+        let mut opacity = 1.0;
         for id in &piece.boxes {
             let Some(base) = motion.declared_by(tree, *id) else {
                 continue;
@@ -228,11 +244,17 @@ pub fn of(
             let declared = motion.declared(*id, base, states(*id, base));
             colors = colors.descend(&declared);
             lengths = lengths.descend(declared.font_size.as_ref(), false);
-            if declared.display.as_deref() == Some("contents") || looks.contains_key(id) {
+            if declared.display.as_deref() == Some("contents") {
                 continue;
             }
-            let outline = border::outline(&declared, &colors, &lengths).filter(is_visible);
-            let paint = BoxPaint::of(&declared, &colors, &lengths);
+            opacity *= box_opacity(&declared);
+            if looks.contains_key(id) {
+                continue;
+            }
+            let outline = border::outline(&declared, &colors, &lengths)
+                .filter(is_visible)
+                .map(|outline| Outline { color: fade(outline.color, opacity), ..outline });
+            let paint = BoxPaint::of(&declared, &colors, &lengths).faded(opacity);
             looks.insert(*id, (outline.is_some() || paint.paints()).then_some((outline, paint)));
         }
     }
@@ -369,6 +391,36 @@ mod tests {
 
         let found = resting(&fixture(&[(3, border("1em"))]));
         assert_eq!(f32::from(found[0].paint.widths.left), 16.0, "else the container's");
+    }
+
+    #[test]
+    fn the_opacity_of_a_box_and_the_boxes_around_it_scales_what_it_paints() {
+        let look = |opacity: f64| {
+            serde_json::json!({
+                "opacity": opacity, "backgroundColor": "#ff0000", "borderWidth": 2,
+                "borderColor": "#0000ff", "borderStyle": "solid",
+                "outlineWidth": 1, "outlineColor": "#00ff00"
+            })
+        };
+        let found = resting(&fixture(&[(3, look(0.5)), (5, look(0.5))]));
+        let alphas = |decoration: &BoxDecoration| {
+            (
+                decoration.paint.background.expect("a background").a,
+                decoration.paint.colors.left.a,
+                decoration.outline.expect("an outline").color.a,
+            )
+        };
+        assert_eq!(alphas(&found[0]), (0.5, 0.5, 0.5));
+        assert_eq!(alphas(&found[1]), (0.25, 0.25, 0.25), "the box inside is inside the group of the one around it");
+    }
+
+    #[test]
+    fn a_display_contents_box_has_no_opacity_to_give() {
+        let found = resting(&fixture(&[
+            (3, serde_json::json!({"opacity": 0.5, "display": "contents"})),
+            (5, serde_json::json!({"backgroundColor": "#ff0000"})),
+        ]));
+        assert_eq!(found[0].paint.background.expect("a background").a, 1.0);
     }
 
     #[test]

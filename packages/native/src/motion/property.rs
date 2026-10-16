@@ -481,21 +481,23 @@ properties! {
 pub(crate) enum Scope {
     Element,
     /// A `<span>`, or a `<text>` inside text: it has no layout node of its own,
-    /// so only what its paragraph paints around and in its text can move.
+    /// so only what its paragraph paints around and in its text can move: colours,
+    /// and the opacity those are painted with.
     InlineBox,
 }
 
 impl Scope {
     /// What an error names as the properties of [`Scope::InlineBox`].
     pub(super) const INLINE_BOX_PROPERTIES: &'static str = "colours (color, backgroundColor, textDecorationColor, \
-         outlineColor, borderColor and the four border side colours)";
+         outlineColor, borderColor and the four border side colours) and opacity";
 
     pub(super) fn animates(self, prop: AnimProp) -> bool {
         match self {
             Self::Element => true,
             Self::InlineBox => matches!(
                 prop,
-                AnimProp::Color
+                AnimProp::Opacity
+                    | AnimProp::Color
                     | AnimProp::BackgroundColor
                     | AnimProp::TextDecorationColor
                     | AnimProp::BorderTopColor

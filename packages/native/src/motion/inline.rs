@@ -778,6 +778,42 @@ mod tests {
     }
 
     #[test]
+    fn opacity_moves_on_a_span_and_the_paragraph_fades_what_it_paints() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "backgroundColor": "red", "color": "blue" }"#);
+        page.describe(3, &description(r#"{ "opacity": 0 }"#, r#"{ "opacity": 1 }"#))
+            .expect("opacity is a property a span can animate");
+
+        let start = page.frame(0);
+        assert_eq!(page.shown(&start, 3).opacity, Some(0.0));
+        let alpha = |styles: &InlineStyles, page: &Page| {
+            gpui::Rgba::from(page.runs(styles)[0].color.expect("a faded run is coloured")).a
+        };
+        assert_eq!(alpha(&start, &page), 0.0);
+
+        let middle = page.frame(500);
+        let halfway = alpha(&middle, &page);
+        assert!(halfway > 0.4 && halfway < 0.6, "{halfway}");
+        let end = page.frame(1000);
+        assert_eq!(page.shown(&end, 3).opacity, Some(1.0));
+        assert_eq!(alpha(&end, &page), 1.0);
+        assert!(page.motion_frame(3, 1000).just_settled);
+    }
+
+    #[test]
+    fn a_css_transition_of_the_opacity_of_a_span_runs() {
+        let mut page = Page::new();
+        let style = |opacity: f64| format!(r#"{{ "opacity": {opacity}, "transition": "opacity 1s linear" }}"#);
+        page.style(3, &style(0.0));
+        page.frame(0);
+        page.style(3, &style(1.0));
+        page.frame(0);
+        let middle = page.frame(500);
+        let opacity = page.shown(&middle, 3).opacity.expect("an opacity");
+        assert!(opacity > 0.4 && opacity < 0.6, "{opacity}");
+    }
+
+    #[test]
     fn the_state_of_a_removed_box_is_dropped() {
         let mut page = Page::new();
         page.style(3, r#"{ "backgroundColor": "red", "transition": "background-color 1s linear" }"#);

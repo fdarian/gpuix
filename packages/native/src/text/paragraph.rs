@@ -127,6 +127,7 @@ pub fn run_styles(
         let mut colors = *colors;
         let mut lengths = *lengths;
         let mut font_state = font_state.clone();
+        let mut opacity = 1.0;
         for id in &piece.boxes {
             let Some(base) = motion.declared_by(tree, *id) else {
                 continue;
@@ -139,6 +140,9 @@ pub fn run_styles(
             // It has no box, so what it declares reaches the text only as far as
             // it is inherited.
             let has_box = declared.display.as_deref() != Some("contents");
+            if has_box {
+                opacity *= box_opacity(declared);
+            }
             if declared.font_size.is_some() {
                 style.font_size = Some(lengths.font_size as f32);
             }
@@ -173,9 +177,14 @@ pub fn run_styles(
             // take it off, so `none` on a box adds nothing and removes nothing.
             if has_box {
                 if let Some(decoration) = text_decoration::of(declared) {
-                    style.add_decoration(&decoration, decoration.resolve_color(&colors), &lengths);
+                    let color = fade(decoration.resolve_color(&colors), opacity);
+                    style.add_decoration(&decoration, color, &lengths);
                 }
             }
+        }
+        // The glyphs are the group of every box around them.
+        if opacity < 1.0 {
+            style.color = Some(fade(style.color.unwrap_or_else(|| colors.current.into()), opacity));
         }
         match runs.last_mut() {
             Some(last) if last.same_style(&style) => last.len += style.len,
@@ -186,6 +195,18 @@ pub fn run_styles(
         return Vec::new();
     }
     runs
+}
+
+/// What a box's `opacity` leaves of the painting inside it. A paragraph has no
+/// layer to composite a box into, so the alpha of each thing it paints is scaled
+/// instead: where two of them overlap (the glyphs over the box's own background),
+/// the one underneath shows through a little more than it does in CSS.
+pub(crate) fn box_opacity(style: &StyleDesc) -> f32 {
+    style.opacity.map_or(1.0, |opacity| opacity.clamp(0.0, 1.0) as f32)
+}
+
+pub(crate) fn fade(color: Hsla, opacity: f32) -> Hsla {
+    Hsla { a: color.a * opacity, ..color }
 }
 
 /// The `LengthContext` of every box of `paragraph`: the container's, descended
@@ -897,6 +918,46 @@ mod tests {
         let inner = runs[1].underline.expect("the box's underline");
         assert_eq!(inner.style, TextDecorationStyle::Dotted);
         assert_eq!(runs[1].extra_decorations, vec![ExtraDecoration::Underline(outer)]);
+    }
+
+    #[test]
+    fn opacity_scales_the_text_colour_and_multiplies_through_nested_boxes() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"opacity": 0.5, "color": "#ff0000"})),
+            (5, serde_json::json!({"opacity": 0.5})),
+        ]);
+        let runs = runs_of(&tree);
+        assert_eq!(runs[0].color, None, "text outside the boxes is not faded");
+        assert_eq!(runs[3].color, None);
+        let outer = gpui::Rgba::from(runs[1].color.expect("the text of the box is faded"));
+        let inner = gpui::Rgba::from(runs[2].color.expect("the text of the nested box is faded"));
+        assert_eq!((outer.r, outer.a), (1.0, 0.5));
+        assert_eq!((inner.r, inner.a), (1.0, 0.25), "inside the group of the box around it");
+    }
+
+    #[test]
+    fn a_faded_box_that_sets_no_colour_fades_the_colour_it_inherits() {
+        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5}))]);
+        let faded = gpui::Rgba::from(runs_of(&tree)[1].color.expect("the text is faded"));
+        assert_eq!((faded.r, faded.g, faded.b, faded.a), (0.0, 0.0, 0.0, 0.5), "black, as the container's");
+    }
+
+    #[test]
+    fn a_display_contents_box_has_no_opacity_to_give() {
+        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5, "display": "contents"}))]);
+        assert!(runs_of(&tree).iter().all(|run| run.color.is_none()));
+    }
+
+    #[test]
+    fn a_line_is_faded_by_the_box_that_draws_it_and_not_by_the_boxes_inside() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"opacity": 0.5, "textDecoration": "underline #ff0000"})),
+            (5, serde_json::json!({"opacity": 0.5})),
+        ]);
+        let run = &runs_of(&tree)[2];
+        let line = gpui::Rgba::from(run.underline.expect("the line of the outer box").color.expect("a colour"));
+        assert_eq!(line.a, 0.5);
+        assert_eq!(gpui::Rgba::from(run.color.expect("the text is faded")).a, 0.25);
     }
 
     #[test]
