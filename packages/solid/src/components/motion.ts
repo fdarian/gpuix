@@ -23,6 +23,13 @@ import type {
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
+  SvgFeDropShadowProps,
+  SvgFeFloodProps,
+  SvgFeGaussianBlurProps,
+  SvgFeOffsetProps,
+  SvgImageProps,
+  SvgTextProps,
+  SvgTspanProps,
   WithExitFunction,
 } from "@gpuix/native/host"
 import type { SolidHostProps } from "../jsx-runtime.js"
@@ -147,4 +154,11 @@ export const motion = {
   line: createMotionComponent<MotionShapeProps<SvgLineProps>>("line"),
   polyline: createMotionComponent<MotionShapeProps<SvgPolyProps>>("polyline"),
   polygon: createMotionComponent<MotionShapeProps<SvgPolyProps>>("polygon"),
+  text: createMotionComponent<MotionShapeProps<SvgTextProps>>("text"),
+  tspan: createMotionComponent<MotionShapeProps<SvgTspanProps>>("tspan"),
+  image: createMotionComponent<MotionShapeProps<SvgImageProps>>("image"),
+  feGaussianBlur: createMotionComponent<MotionShapeProps<SvgFeGaussianBlurProps>>("feGaussianBlur"),
+  feOffset: createMotionComponent<MotionShapeProps<SvgFeOffsetProps>>("feOffset"),
+  feFlood: createMotionComponent<MotionShapeProps<SvgFeFloodProps>>("feFlood"),
+  feDropShadow: createMotionComponent<MotionShapeProps<SvgFeDropShadowProps>>("feDropShadow"),
 } as const

@@ -31,6 +31,36 @@ import type {
   SvgStopProps as NativeSvgStopProps,
   SvgSymbolProps as NativeSvgSymbolProps,
   SvgUseProps as NativeSvgUseProps,
+  SvgTextProps as NativeSvgTextProps,
+  SvgPatternProps as NativeSvgPatternProps,
+  SvgMarkerProps as NativeSvgMarkerProps,
+  SvgImageProps as NativeSvgImageProps,
+  SvgTspanProps as NativeSvgTspanProps,
+  SvgTextPathProps as NativeSvgTextPathProps,
+  SvgFilterProps as NativeSvgFilterProps,
+  SvgFilterPrimitiveProps as NativeSvgFilterPrimitiveProps,
+  SvgFeBlendProps as NativeSvgFeBlendProps,
+  SvgFeColorMatrixProps as NativeSvgFeColorMatrixProps,
+  SvgFeComponentTransferProps as NativeSvgFeComponentTransferProps,
+  SvgFeFuncProps as NativeSvgFeFuncProps,
+  SvgFeCompositeProps as NativeSvgFeCompositeProps,
+  SvgFeConvolveMatrixProps as NativeSvgFeConvolveMatrixProps,
+  SvgFeDiffuseLightingProps as NativeSvgFeDiffuseLightingProps,
+  SvgFeDisplacementMapProps as NativeSvgFeDisplacementMapProps,
+  SvgFeDistantLightProps as NativeSvgFeDistantLightProps,
+  SvgFeDropShadowProps as NativeSvgFeDropShadowProps,
+  SvgFeFloodProps as NativeSvgFeFloodProps,
+  SvgFeGaussianBlurProps as NativeSvgFeGaussianBlurProps,
+  SvgFeImageProps as NativeSvgFeImageProps,
+  SvgFeMergeProps as NativeSvgFeMergeProps,
+  SvgFeMergeNodeProps as NativeSvgFeMergeNodeProps,
+  SvgFeMorphologyProps as NativeSvgFeMorphologyProps,
+  SvgFeOffsetProps as NativeSvgFeOffsetProps,
+  SvgFePointLightProps as NativeSvgFePointLightProps,
+  SvgFeSpecularLightingProps as NativeSvgFeSpecularLightingProps,
+  SvgFeSpotLightProps as NativeSvgFeSpotLightProps,
+  SvgFeTileProps as NativeSvgFeTileProps,
+  SvgFeTurbulenceProps as NativeSvgFeTurbulenceProps,
   CodeProps as NativeCodeProps,
   DiffProps as NativeDiffProps,
   MarkdownProps as NativeMarkdownProps,
@@ -114,6 +144,41 @@ export type SvgClipPathProps = SvgShapeElementProps<NativeSvgClipPathProps>
 export type SvgMaskProps = SvgShapeElementProps<NativeSvgMaskProps>
 export type SvgUseProps = SvgShapeElementProps<NativeSvgUseProps>
 export type SvgSymbolProps = SvgShapeElementProps<NativeSvgSymbolProps>
+export type SvgPatternProps = SvgShapeElementProps<NativeSvgPatternProps>
+export type SvgMarkerProps = SvgShapeElementProps<NativeSvgMarkerProps>
+export type SvgImageProps = SvgShapeElementProps<NativeSvgImageProps>
+export type SvgTspanProps = SvgShapeElementProps<NativeSvgTspanProps>
+export type SvgTextPathProps = SvgShapeElementProps<NativeSvgTextPathProps>
+export type SvgFilterProps = SvgShapeElementProps<NativeSvgFilterProps>
+export type SvgFilterPrimitiveProps = SvgShapeElementProps<NativeSvgFilterPrimitiveProps>
+export type SvgFeBlendProps = SvgShapeElementProps<NativeSvgFeBlendProps>
+export type SvgFeColorMatrixProps = SvgShapeElementProps<NativeSvgFeColorMatrixProps>
+export type SvgFeComponentTransferProps = SvgShapeElementProps<NativeSvgFeComponentTransferProps>
+export type SvgFeFuncProps = SvgShapeElementProps<NativeSvgFeFuncProps>
+export type SvgFeCompositeProps = SvgShapeElementProps<NativeSvgFeCompositeProps>
+export type SvgFeConvolveMatrixProps = SvgShapeElementProps<NativeSvgFeConvolveMatrixProps>
+export type SvgFeDiffuseLightingProps = SvgShapeElementProps<NativeSvgFeDiffuseLightingProps>
+export type SvgFeDisplacementMapProps = SvgShapeElementProps<NativeSvgFeDisplacementMapProps>
+export type SvgFeDistantLightProps = SvgShapeElementProps<NativeSvgFeDistantLightProps>
+export type SvgFeDropShadowProps = SvgShapeElementProps<NativeSvgFeDropShadowProps>
+export type SvgFeFloodProps = SvgShapeElementProps<NativeSvgFeFloodProps>
+export type SvgFeGaussianBlurProps = SvgShapeElementProps<NativeSvgFeGaussianBlurProps>
+export type SvgFeImageProps = SvgShapeElementProps<NativeSvgFeImageProps>
+export type SvgFeMergeProps = SvgShapeElementProps<NativeSvgFeMergeProps>
+export type SvgFeMergeNodeProps = SvgShapeElementProps<NativeSvgFeMergeNodeProps>
+export type SvgFeMorphologyProps = SvgShapeElementProps<NativeSvgFeMorphologyProps>
+export type SvgFeOffsetProps = SvgShapeElementProps<NativeSvgFeOffsetProps>
+export type SvgFePointLightProps = SvgShapeElementProps<NativeSvgFePointLightProps>
+export type SvgFeSpecularLightingProps = SvgShapeElementProps<NativeSvgFeSpecularLightingProps>
+export type SvgFeSpotLightProps = SvgShapeElementProps<NativeSvgFeSpotLightProps>
+export type SvgFeTileProps = SvgShapeElementProps<NativeSvgFeTileProps>
+export type SvgFeTurbulenceProps = SvgShapeElementProps<NativeSvgFeTurbulenceProps>
+
+/**
+ * `<text>` is the host text element too, so its props are the host ones plus
+ * the SVG attributes the host element does not have.
+ */
+export type SvgTextProps = Props & Omit<NativeSvgTextProps, keyof Props>
 
 export interface CodeProps extends ReactHostProps<NativeCodeProps> {
   key?: Key | null

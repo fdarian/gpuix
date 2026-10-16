@@ -2,7 +2,6 @@
 // native elements and event contract.
 import {
   assertSvgPlacement,
-  BUILT_IN_TYPES,
   createElementMethods,
   defineScrollMembers,
   EVENT_PROP_NAMES,
@@ -10,7 +9,7 @@ import {
   blurHostElement,
   focusHostElement,
   hostElementMatches,
-  isUniversalProp,
+  forwardsCustomProp,
   registerEventListener,
   HOST_BINDING,
   HOST_MOUNT,
@@ -318,6 +317,37 @@ function isElementType(type: string): type is ElementType {
     case "mask":
     case "use":
     case "symbol":
+    case "pattern":
+    case "marker":
+    case "image":
+    case "tspan":
+    case "textPath":
+    case "filter":
+    case "feBlend":
+    case "feColorMatrix":
+    case "feComponentTransfer":
+    case "feFuncR":
+    case "feFuncG":
+    case "feFuncB":
+    case "feFuncA":
+    case "feComposite":
+    case "feConvolveMatrix":
+    case "feDiffuseLighting":
+    case "feDisplacementMap":
+    case "feDistantLight":
+    case "feDropShadow":
+    case "feFlood":
+    case "feGaussianBlur":
+    case "feImage":
+    case "feMerge":
+    case "feMergeNode":
+    case "feMorphology":
+    case "feOffset":
+    case "fePointLight":
+    case "feSpecularLighting":
+    case "feSpotLight":
+    case "feTile":
+    case "feTurbulence":
       return true
     default:
       return false
@@ -340,7 +370,7 @@ function eventTypeFor(name: string): string | undefined {
 }
 
 function customPropAllowed(node: HostElement, name: string): boolean {
-  return !BUILT_IN_TYPES.has(node.type) || isUniversalProp(name)
+  return forwardsCustomProp(node.type, name)
 }
 
 export function setHostProperty(

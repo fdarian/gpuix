@@ -5030,7 +5030,7 @@ fn sync_motion_states(
         let colors = crate::motion::Colors::of(&parent_colors, base);
         let measurement = measurements.get(id);
         // An SVG shape animates its attributes, not a style.
-        let svg_attributes = crate::custom_elements::svg_tree::is_svg_child_type(&element.element_type)
+        let svg_attributes = crate::custom_elements::svg_tree::is_svg_element(tree, element)
             .then(|| element.custom_props());
         let state = match states.entry(id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),

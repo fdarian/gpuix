@@ -1685,10 +1685,12 @@ takes the same lists and transition fields.
 ### Animate SVG shapes
 
 `motion.path`, `motion.circle`, `motion.ellipse`, `motion.rect`, `motion.line`,
-`motion.polyline`, `motion.polygon` and `motion.g` animate the attributes of a
-shape inside an `<svg>`. They take the same `initial`, `animate`, `exit` and
-`transition` as `motion.div`, including per-key transitions, springs and
-`AnimatePresence`, but the keys are SVG attributes instead of style.
+`motion.polyline`, `motion.polygon`, `motion.g`, `motion.image`, `motion.text`,
+`motion.tspan`, `motion.feGaussianBlur`, `motion.feOffset`, `motion.feFlood` and
+`motion.feDropShadow` animate the attributes of a shape inside an `<svg>`. They
+take the same `initial`, `animate`, `exit` and `transition` as `motion.div`,
+including per-key transitions, springs and `AnimatePresence`, but the keys are
+SVG attributes instead of style.
 
 ```tsx
 <svg viewBox="0 0 100 100" width={100} height={100} style={{ color: '#5ca9ff' }}>
@@ -1708,13 +1710,15 @@ shape inside an `<svg>`. They take the same `initial`, `animate`, `exit` and
 | `pathLength`, `pathOffset`, `pathSpacing` | Numbers, Framer's normalised draw: `pathLength` is the stroked fraction of the outline (default 1), `pathOffset` moves where the stroke starts, `pathSpacing` is the gap after it (default 1, one dash). They set the dash for you, so do not combine them with `strokeDasharray` |
 | `strokeDasharray`, `strokeDashoffset` | A number, a list or `"4 2"`, and a number. Lists of different lengths are repeated to a common length |
 | `strokeWidth`, `opacity`, `fillOpacity`, `strokeOpacity` | Numbers. Opacities are `0..1` |
-| `fill`, `stroke` | Colours, interpolated like `backgroundColor` (premultiplied alpha, Oklab in `motion`). `none` counts as transparent |
+| `fill`, `stroke`, `floodColor` | Colours, interpolated like `backgroundColor` (premultiplied alpha, Oklab in `motion`). `none` counts as transparent |
+| `floodOpacity` | A number, `0..1` |
 | `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `width`, `height`, `x1`, `y1`, `x2`, `y2` | Numbers in user units |
+| `stdDeviation`, `dx`, `dy`, `refX`, `refY`, `fontSize`, `letterSpacing` | Numbers in user units. `stdDeviation` blurs by one number on both axes |
 | `d` | Path data. Both paths are made absolute first; with the same commands every number is interpolated, otherwise the value switches halfway through the progress (or when a spring passes halfway) |
 
 A key that `initial` does not name starts from the element's own attribute, and
 then from the SVG default (`fill` black, `stroke` transparent, opacities 1,
-`strokeWidth` 1). `r`, `width` and similar have no default, so an animation of
+`strokeWidth` 1, `stdDeviation` and `dx` 0). `r`, `width`, `fontSize` and similar have no default, so an animation of
 one that the element does not declare jumps to its target. Naming a key that is
 not in the table, or a style such as `backgroundColor`, is an error.
 
@@ -4554,13 +4558,44 @@ on `style.color` to tint them need `fill="currentColor"`.
 
 `<svg>` also takes DOM-style children, so an icon or a chart can be written as
 JSX instead of a markup string: `path`, `circle`, `ellipse`, `rect`, `line`,
-`polyline`, `polygon` and `g`, and what they refer to by `id`: `defs`,
-`linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`, `symbol` and
-`use` (`<rect fill="url(#fade)" />`, `clipPath="url(#left)"`,
-`<use href="#bar" />`). `pattern`, filters and markers are not elements here;
-put them in `source` markup. They are valid only inside `<svg>` (anywhere else
-is an error), and they are not layout boxes: the `<svg>` paints them all as one
-image, so they take no `style` and no events.
+`polyline`, `polygon`, `g`, `image` and `text`, and what they refer to by `id`:
+`defs`, `linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`,
+`symbol`, `use`, `pattern`, `marker` and `filter` (`<rect fill="url(#fade)" />`,
+`clipPath="url(#left)"`, `<use href="#bar" />`). They are valid only inside
+`<svg>` (anywhere else is an error; `<text>` is the plain text element outside
+one), and they are not layout boxes: the `<svg>` paints them all as one image,
+so they take no `style` and no events.
+
+- **`pattern`** tiles its children over a `fill="url(#id)"`: `patternUnits`,
+  `patternContentUnits`, `patternTransform`, `x`, `y`, `width`, `height`,
+  `viewBox`, `preserveAspectRatio` and `href`.
+- **`marker`** is drawn at the vertices of a `path`, `line`, `polyline` or
+  `polygon` that sets `markerStart`, `markerMid` or `markerEnd` to
+  `url(#id)`. The `marker` prop sets all three that are not set themselves.
+  It takes `markerWidth`, `markerHeight`, `markerUnits`, `refX`, `refY`,
+  `orient`, `viewBox` and `preserveAspectRatio`.
+- **`filter`** holds the `fe*` primitives (`feBlend`, `feColorMatrix`,
+  `feComponentTransfer` with `feFuncR/G/B/A`, `feComposite`,
+  `feConvolveMatrix`, `feDiffuseLighting` and `feSpecularLighting` with
+  `feDistantLight`, `fePointLight` or `feSpotLight`, `feDisplacementMap`,
+  `feDropShadow`, `feFlood`, `feGaussianBlur`, `feImage`, `feMerge` with
+  `feMergeNode`, `feMorphology`, `feOffset`, `feTile`, `feTurbulence`) and is
+  applied with the `filter` prop on a shape or `g`: `filter="url(#id)"`. Give
+  it `filterUnits`, `primitiveUnits` and a region (`x`, `y`, `width`,
+  `height`). This is the SVG attribute, so `filter` on an `<svg>` child is not
+  the CSS `filter` style. Chain primitives with `in`, `in2` and `result`.
+- **`text`**, `tspan` and `textPath` take their string children as the text,
+  and `x`, `y`, `dx`, `dy`, `rotate`, `textLength`, `lengthAdjust`,
+  `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `textAnchor`,
+  `dominantBaseline`, `letterSpacing`, `wordSpacing` and `textDecoration`. White
+  space collapses as in a browser unless `xmlSpace="preserve"`. Text is drawn
+  with the installed system fonts; an unknown `fontFamily` falls back to the
+  default sans-serif.
+- **`image`** draws `href` into `x`, `y`, `width` and `height`
+  (`preserveAspectRatio` as in a browser). `href` is a `data:` URL, a
+  `file://` URL or a file path. Unlike `<img src>`, a `blob:` or `http(s):`
+  URL is not loaded: it is dropped with a warning, because the `<svg>`
+  rasterises synchronously.
 
 ```tsx
 <svg viewBox="0 0 24 24" width={24} height={24} style={{ color: '#b4b4b4' }}>

@@ -145,8 +145,62 @@ describe.skipIf(!hasNativeTestRenderer)("Solid svg children", () => {
     expect(new Set([start.toString("base64"), middle.toString("base64"), end.toString("base64")]).size).toBe(3)
   })
 
+  it("draws a text whose position and string are signals", () => {
+    const [x, setX] = createSignal(0)
+    const [word, setWord] = createSignal("I")
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={FRAME}>
+        <svg viewBox="0 0 100 100" style={SVG_STYLE}>
+          <text x={x()} y={60} fontFamily="Helvetica" fontSize={40} fill="currentColor">
+            {word()}
+          </text>
+        </svg>
+      </div>
+    ))
+    const first = shot(app, "text-0")
+    app.flushSync(() => setX(50))
+    const moved = shot(app, "text-50")
+    expect(moved.equals(first)).toBe(false)
+    app.flushSync(() => setWord("W"))
+    expect(shot(app, "text-w").equals(moved)).toBe(false)
+    app.flushSync(() => setX(0))
+    app.flushSync(() => setWord("I"))
+    expect(shot(app, "text-back").equals(first)).toBe(true)
+
+    // An svg with no text paints differently, so the first shot did draw it.
+    const empty = createTestRoot()
+    empty.render(() => (
+      <div style={FRAME}>
+        <svg viewBox="0 0 100 100" style={SVG_STYLE} />
+      </div>
+    ))
+    expect(shot(empty, "text-none").equals(first)).toBe(false)
+  })
+
+  it("applies a filter by id", () => {
+    const [on, setOn] = createSignal(false)
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={FRAME}>
+        <svg viewBox="0 0 100 100" style={SVG_STYLE}>
+          <defs>
+            <filter id="f" x={0} y={0} width={100} height={100} filterUnits="userSpaceOnUse">
+              <feGaussianBlur stdDeviation={6} />
+            </filter>
+          </defs>
+          <rect x={30} y={30} width={40} height={40} fill="#ff0000" filter={on() ? "url(#f)" : undefined} />
+        </svg>
+      </div>
+    ))
+    const sharp = shot(app, "filter-off")
+    app.flushSync(() => setOn(true))
+    expect(shot(app, "filter-on").equals(sharp)).toBe(false)
+  })
+
   it("rejects a shape outside an svg", () => {
     const app = createTestRoot()
     expect(() => app.render(() => <div><circle r={1} /></div>)).toThrow(/only valid inside <svg>/)
+    expect(() => app.render(() => <div><filter /></div>)).toThrow(/only valid inside <svg>/)
   })
 })

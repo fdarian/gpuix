@@ -320,6 +320,17 @@ interface SvgMotionTargets {
   x2?: number
   y2?: number
   d?: string
+  /** `<feGaussianBlur>` and `<feDropShadow>`; a single number. */
+  stdDeviation?: number
+  /** `<feOffset>`, `<feDropShadow>`, `<text>` and `<tspan>`; a single number. */
+  dx?: number
+  dy?: number
+  floodColor?: string
+  floodOpacity?: number
+  refX?: number
+  refY?: number
+  fontSize?: number
+  letterSpacing?: number
 }
 
 /** Same resolution as `MotionTransition`, keyed by `SvgMotionStyle`. */
@@ -1316,6 +1327,37 @@ export type SvgChildType =
   | "mask"
   | "use"
   | "symbol"
+  | "pattern"
+  | "marker"
+  | "image"
+  | "tspan"
+  | "textPath"
+  | "filter"
+  | "feBlend"
+  | "feColorMatrix"
+  | "feComponentTransfer"
+  | "feFuncR"
+  | "feFuncG"
+  | "feFuncB"
+  | "feFuncA"
+  | "feComposite"
+  | "feConvolveMatrix"
+  | "feDiffuseLighting"
+  | "feDisplacementMap"
+  | "feDistantLight"
+  | "feDropShadow"
+  | "feFlood"
+  | "feGaussianBlur"
+  | "feImage"
+  | "feMerge"
+  | "feMergeNode"
+  | "feMorphology"
+  | "feOffset"
+  | "fePointLight"
+  | "feSpecularLighting"
+  | "feSpotLight"
+  | "feTile"
+  | "feTurbulence"
 
 /**
  * SVG presentation attributes, camelCase as in React DOM: `strokeWidth`
@@ -1345,6 +1387,43 @@ export interface SvgPresentationProps {
   clipPath?: string
   /** `url(#id)` of a `<mask>` in the same `<svg>`. */
   mask?: string
+  /**
+   * `url(#id)` of a `<filter>` in the same `<svg>`. This is the SVG attribute,
+   * not the CSS `filter` style: a filter function such as `blur(2px)` is read
+   * by the rasteriser but only `url(#id)` is portable.
+   */
+  filter?: string
+  /** `url(#id)` of a `<marker>`, drawn at the first vertex of a `path`, `line`, `polyline` or `polygon`. */
+  markerStart?: string
+  /** `url(#id)` of a `<marker>`, drawn at every vertex but the first and last. */
+  markerMid?: string
+  /** `url(#id)` of a `<marker>`, drawn at the last vertex. */
+  markerEnd?: string
+  /** The CSS shorthand: sets `markerStart`, `markerMid` and `markerEnd` that are not set themselves. */
+  marker?: string
+  /** `"stroke"` paints the stroke under the fill, as in CSS `paint-order`. */
+  paintOrder?: string
+  imageRendering?: "auto" | "optimizeQuality" | "optimizeSpeed" | "smooth" | "high-quality" | "crisp-edges" | "pixelated"
+  // Text properties inherit, so they are set on a `<text>` or on an ancestor.
+  fontFamily?: string
+  fontSize?: number | string
+  fontWeight?: number | string
+  fontStyle?: "normal" | "italic" | "oblique"
+  fontVariant?: string
+  fontStretch?: string
+  textAnchor?: "start" | "middle" | "end"
+  dominantBaseline?: string
+  alignmentBaseline?: string
+  baselineShift?: number | string
+  letterSpacing?: number | string
+  wordSpacing?: number | string
+  textDecoration?: string
+  writingMode?: string
+  direction?: "ltr" | "rtl"
+  unicodeBidi?: string
+  textRendering?: "auto" | "optimizeSpeed" | "optimizeLegibility" | "geometricPrecision"
+  /** `"preserve"` keeps the white space of a text's string, otherwise it collapses as in a browser. */
+  xmlSpace?: "default" | "preserve"
 }
 
 /**
@@ -1464,12 +1543,248 @@ export interface SvgSymbolProps extends SvgShapeProps {
   preserveAspectRatio?: string
 }
 
+type SvgLength = number | string
+
+/** `<pattern>`: tiles its children over a shape that has `fill="url(#id)"`. */
+export interface SvgPatternProps extends SvgShapeProps {
+  x?: SvgLength
+  y?: SvgLength
+  width?: SvgLength
+  height?: SvgLength
+  patternUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  patternContentUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  patternTransform?: string
+  viewBox?: string
+  preserveAspectRatio?: string
+  /** Another pattern whose children and attributes this one inherits: `"#id"`. */
+  href?: string
+}
+
+/** `<marker>`: a drawing placed at the vertices of a shape with `markerStart`, `markerMid` or `markerEnd`. */
+export interface SvgMarkerProps extends SvgShapeProps {
+  markerWidth?: SvgLength
+  markerHeight?: SvgLength
+  markerUnits?: "strokeWidth" | "userSpaceOnUse"
+  refX?: SvgLength
+  refY?: SvgLength
+  orient?: "auto" | "auto-start-reverse" | SvgLength
+  viewBox?: string
+  preserveAspectRatio?: string
+}
+
+/**
+ * `<image>`: a raster or SVG picture. `href` is a `data:` URL, a `file://` URL
+ * or a file path. A `blob:` or `http(s):` URL is not loaded here, unlike
+ * `<img src>`: it is dropped with a warning.
+ */
+export interface SvgImageProps extends SvgShapeProps {
+  href?: string
+  x?: SvgLength
+  y?: SvgLength
+  width?: SvgLength
+  height?: SvgLength
+  preserveAspectRatio?: string
+}
+
+/**
+ * `<text>` inside an `<svg>`. Its string children are the text. Outside an
+ * `<svg>`, `<text>` is the host text element and takes none of these.
+ */
+export interface SvgTextProps extends SvgShapeProps {
+  x?: SvgLength | SvgLength[]
+  y?: SvgLength | SvgLength[]
+  dx?: SvgLength | SvgLength[]
+  dy?: SvgLength | SvgLength[]
+  /** One angle per character, in degrees. */
+  rotate?: number | string | number[]
+  textLength?: SvgLength
+  lengthAdjust?: "spacing" | "spacingAndGlyphs"
+}
+
+/** `<tspan>`: a run of a `<text>` with its own position or text properties. */
+export type SvgTspanProps = SvgTextProps
+
+/** `<textPath>`: text laid along the `<path>` that `href` names. */
+export interface SvgTextPathProps extends SvgShapeProps {
+  /** `"#id"` of a `<path>` in the same `<svg>`. */
+  href?: string
+  startOffset?: SvgLength
+  method?: "align" | "stretch"
+  spacing?: "auto" | "exact"
+}
+
+/**
+ * `<filter>`: `fe*` primitive children, referred to by `filter="url(#id)"`.
+ * The region is `x`, `y`, `width` and `height`, in `filterUnits`.
+ */
+export interface SvgFilterProps extends SvgShapeProps {
+  x?: SvgLength
+  y?: SvgLength
+  width?: SvgLength
+  height?: SvgLength
+  filterUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  primitiveUnits?: "userSpaceOnUse" | "objectBoundingBox"
+  /** Another filter whose primitives and attributes this one inherits: `"#id"`. */
+  href?: string
+}
+
+/** What every filter primitive takes: its subregion, the colour space it works in and a name. */
+export interface SvgFilterPrimitiveProps extends SvgShapeProps {
+  x?: SvgLength
+  y?: SvgLength
+  width?: SvgLength
+  height?: SvgLength
+  /** The name of an earlier `result`, or `SourceGraphic`, `SourceAlpha`. Default: the previous primitive's result. */
+  in?: string
+  /** Names this primitive's output for a later `in` or `in2`. */
+  result?: string
+  colorInterpolationFilters?: "auto" | "sRGB" | "linearRGB"
+}
+
+export interface SvgFeBlendProps extends SvgFilterPrimitiveProps {
+  in2?: string
+  mode?: "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity"
+}
+
+export interface SvgFeColorMatrixProps extends SvgFilterPrimitiveProps {
+  type?: "matrix" | "saturate" | "hueRotate" | "luminanceToAlpha"
+  /** 20 numbers for `matrix`, one for `saturate` and `hueRotate`. */
+  values?: string | number | number[]
+}
+
+export type SvgFeComponentTransferProps = SvgFilterPrimitiveProps
+
+/** `<feFuncR>`, `<feFuncG>`, `<feFuncB>` and `<feFuncA>`: one channel of an `<feComponentTransfer>`. */
+export interface SvgFeFuncProps extends SvgShapeProps {
+  type?: "identity" | "table" | "discrete" | "linear" | "gamma"
+  tableValues?: string | number[]
+  slope?: number | string
+  intercept?: number | string
+  amplitude?: number | string
+  exponent?: number | string
+  offset?: number | string
+}
+
+export interface SvgFeCompositeProps extends SvgFilterPrimitiveProps {
+  in2?: string
+  operator?: "over" | "in" | "out" | "atop" | "xor" | "arithmetic"
+  k1?: number | string
+  k2?: number | string
+  k3?: number | string
+  k4?: number | string
+}
+
+export interface SvgFeConvolveMatrixProps extends SvgFilterPrimitiveProps {
+  order?: number | string
+  kernelMatrix?: string | number[]
+  divisor?: number | string
+  bias?: number | string
+  targetX?: number | string
+  targetY?: number | string
+  edgeMode?: "duplicate" | "wrap" | "none"
+  preserveAlpha?: boolean | "true" | "false"
+}
+
+export interface SvgFeDiffuseLightingProps extends SvgFilterPrimitiveProps {
+  surfaceScale?: number | string
+  diffuseConstant?: number | string
+  lightingColor?: string
+}
+
+export interface SvgFeSpecularLightingProps extends SvgFilterPrimitiveProps {
+  surfaceScale?: number | string
+  specularConstant?: number | string
+  specularExponent?: number | string
+  lightingColor?: string
+}
+
+export interface SvgFeDisplacementMapProps extends SvgFilterPrimitiveProps {
+  in2?: string
+  scale?: number | string
+  xChannelSelector?: "R" | "G" | "B" | "A"
+  yChannelSelector?: "R" | "G" | "B" | "A"
+}
+
+/** A light source, the child of an `<feDiffuseLighting>` or `<feSpecularLighting>`. */
+export interface SvgFeDistantLightProps extends SvgShapeProps {
+  azimuth?: number | string
+  elevation?: number | string
+}
+
+export interface SvgFePointLightProps extends SvgShapeProps {
+  x?: number | string
+  y?: number | string
+  z?: number | string
+}
+
+export interface SvgFeSpotLightProps extends SvgFePointLightProps {
+  pointsAtX?: number | string
+  pointsAtY?: number | string
+  pointsAtZ?: number | string
+  specularExponent?: number | string
+  limitingConeAngle?: number | string
+}
+
+export interface SvgFeDropShadowProps extends SvgFilterPrimitiveProps {
+  dx?: number | string
+  dy?: number | string
+  /** One number, or `"x y"`. */
+  stdDeviation?: number | string | number[]
+  floodColor?: string
+  floodOpacity?: number | string
+}
+
+export interface SvgFeFloodProps extends SvgFilterPrimitiveProps {
+  floodColor?: string
+  floodOpacity?: number | string
+}
+
+export interface SvgFeGaussianBlurProps extends SvgFilterPrimitiveProps {
+  /** One number, or `"x y"`. */
+  stdDeviation?: number | string | number[]
+  edgeMode?: "duplicate" | "wrap" | "none"
+}
+
+export interface SvgFeImageProps extends SvgFilterPrimitiveProps {
+  /** Same sources as `<image href>`. */
+  href?: string
+  preserveAspectRatio?: string
+}
+
+export type SvgFeMergeProps = SvgFilterPrimitiveProps
+
+/** `<feMergeNode in="...">`: one layer of an `<feMerge>`. */
+export interface SvgFeMergeNodeProps extends SvgShapeProps {
+  in?: string
+}
+
+export interface SvgFeMorphologyProps extends SvgFilterPrimitiveProps {
+  operator?: "erode" | "dilate"
+  radius?: number | string | number[]
+}
+
+export interface SvgFeOffsetProps extends SvgFilterPrimitiveProps {
+  dx?: number | string
+  dy?: number | string
+}
+
+export type SvgFeTileProps = SvgFilterPrimitiveProps
+
+export interface SvgFeTurbulenceProps extends SvgFilterPrimitiveProps {
+  type?: "fractalNoise" | "turbulence"
+  baseFrequency?: number | string | number[]
+  numOctaves?: number | string
+  seed?: number | string
+  stitchTiles?: "stitch" | "noStitch"
+}
+
 /**
  * Props for `<svg>`, a vector graphic rasterised in full colour at device
  * resolution as one image. `currentColor` is the element's computed `color`.
  *
  * Give it DOM-style children (`path circle ellipse rect line polyline polygon
- * g`, and `defs linearGradient radialGradient stop clipPath mask use symbol` for
+ * g image text tspan textPath`, and `defs linearGradient radialGradient stop
+ * clipPath mask use symbol pattern marker filter` with its `fe*` primitives for
  * what shapes refer to by `id`) and a `viewBox`, or raw markup through `source` / `src`. Children win
  * when both are given. `width` and `height` size the element unless `style`
  * does; without either it has no size to paint into.

@@ -21,6 +21,7 @@ pub mod input;
 mod input_rules;
 pub mod markdown;
 pub(crate) mod text_selection;
+mod svg_names;
 pub mod svg_paint;
 pub mod svg_path;
 pub mod svg_tree;

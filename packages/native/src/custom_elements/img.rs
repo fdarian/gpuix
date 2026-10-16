@@ -247,7 +247,7 @@ fn resolve_src(src: &str) -> ImgSource {
 
 /// `file:///a/b%20c.png` as a path. Accepts an empty or `localhost` host. A query
 /// or fragment is not part of the path.
-fn file_url_path(src: &str) -> Option<std::path::PathBuf> {
+pub(super) fn file_url_path(src: &str) -> Option<std::path::PathBuf> {
     let rest = src.get(7..)?;
     let rest = &rest[..rest.find(['?', '#']).unwrap_or(rest.len())];
     let path = match rest.find('/') {

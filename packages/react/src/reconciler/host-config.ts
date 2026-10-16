@@ -9,7 +9,6 @@ import { DefaultEventPriority } from "react-reconciler/constants.js"
 import type { HostEventHandler } from "@gpuix/native/host"
 import {
   assertSvgPlacement,
-  BUILT_IN_TYPES,
   createElementMethods,
   defineScrollMembers,
   blurHostElement,
@@ -21,7 +20,7 @@ import {
   readBoundingClientRect,
   sameMutationValue,
   serializeCustomProp,
-  isUniversalProp,
+  forwardsCustomProp,
   readTextControlSelection,
   requestFormSubmit,
   selectTextControl,
@@ -284,10 +283,9 @@ function syncCustomProps(
   type: string,
   props: Props
 ): void {
-  const builtIn = BUILT_IN_TYPES.has(type)
   for (const [key, value] of Object.entries(props)) {
     if (isReservedProp(key)) continue
-    if (builtIn && !isUniversalProp(key)) continue
+    if (!forwardsCustomProp(type, key)) continue
     renderer.setCustomProp(id, key, serializeCustomProp(value))
   }
 }
@@ -306,13 +304,12 @@ function diffCustomProps(
   oldProps: Props,
   newProps: Props
 ): void {
-  const builtIn = BUILT_IN_TYPES.has(type)
   const previous = oldProps as Record<string, unknown>
   const next = newProps as Record<string, unknown>
   // Updated or added props
   for (const key in next) {
     if (isReservedProp(key)) continue
-    if (builtIn && !isUniversalProp(key)) continue
+    if (!forwardsCustomProp(type, key)) continue
     const value = next[key]
     const oldValue = previous[key]
     if (value === oldValue) continue
@@ -331,7 +328,7 @@ function diffCustomProps(
   // Removed props
   for (const key in previous) {
     if (isReservedProp(key)) continue
-    if (builtIn && !isUniversalProp(key)) continue
+    if (!forwardsCustomProp(type, key)) continue
     if (!(key in next)) renderer.setCustomProp(id, key, null)
   }
 }

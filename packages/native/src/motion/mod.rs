@@ -2325,6 +2325,22 @@ mod tests {
         }
 
         #[test]
+        fn animates_filter_and_text_attributes() {
+            let started = Instant::now();
+            let description = serde_json::json!({
+                "initial": { "stdDeviation": 0.0, "dx": 0.0, "floodColor": "#000000", "fontSize": 10.0 },
+                "animate": { "stdDeviation": 8.0, "dx": 20.0, "floodColor": "#ffffff", "fontSize": 30.0 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let state = MotionState::new_svg(&description, &attributes(&[]), Colors::root(), started).unwrap();
+            let halfway = at(&state, started, 500);
+            assert_eq!(attribute(&halfway, "stdDeviation"), "4");
+            assert_eq!(attribute(&halfway, "dx"), "10");
+            assert_eq!(attribute(&halfway, "font-size"), "20");
+            assert!(attribute(&halfway, "flood-color").starts_with("rgba(99."), "{halfway:?}");
+        }
+
+        #[test]
         fn offset_and_spacing_alone_still_draw() {
             let started = Instant::now();
             let description = serde_json::json!({

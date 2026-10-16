@@ -27,6 +27,35 @@ import type {
   SvgStopProps,
   SvgSymbolProps,
   SvgUseProps,
+  SvgTextProps,
+  SvgPatternProps,
+  SvgMarkerProps,
+  SvgImageProps,
+  SvgTspanProps,
+  SvgTextPathProps,
+  SvgFilterProps,
+  SvgFeBlendProps,
+  SvgFeColorMatrixProps,
+  SvgFeComponentTransferProps,
+  SvgFeFuncProps,
+  SvgFeCompositeProps,
+  SvgFeConvolveMatrixProps,
+  SvgFeDiffuseLightingProps,
+  SvgFeDisplacementMapProps,
+  SvgFeDistantLightProps,
+  SvgFeDropShadowProps,
+  SvgFeFloodProps,
+  SvgFeGaussianBlurProps,
+  SvgFeImageProps,
+  SvgFeMergeProps,
+  SvgFeMergeNodeProps,
+  SvgFeMorphologyProps,
+  SvgFeOffsetProps,
+  SvgFePointLightProps,
+  SvgFeSpecularLightingProps,
+  SvgFeSpotLightProps,
+  SvgFeTileProps,
+  SvgFeTurbulenceProps,
   TextareaProps,
   VirtualListProps,
 } from "@gpuix/native/host"
@@ -71,7 +100,7 @@ export namespace JSX {
   export interface ElementChildrenAttribute { children: {} }
   export interface IntrinsicElements {
     div: SolidHostProps
-    text: SolidHostProps
+    text: SolidHostProps<HostProps & Omit<SvgTextProps, keyof HostProps>>
     span: SolidHostProps
     img: SolidHostProps<ImgProps>
     svg: SolidHostProps<SvgProps>
@@ -91,6 +120,37 @@ export namespace JSX {
     mask: SolidHostProps<SvgMaskProps>
     use: SolidHostProps<SvgUseProps>
     symbol: SolidHostProps<SvgSymbolProps>
+    pattern: SolidHostProps<SvgPatternProps>
+    marker: SolidHostProps<SvgMarkerProps>
+    image: SolidHostProps<SvgImageProps>
+    tspan: SolidHostProps<SvgTspanProps>
+    textPath: SolidHostProps<SvgTextPathProps>
+    filter: SolidHostProps<SvgFilterProps>
+    feBlend: SolidHostProps<SvgFeBlendProps>
+    feColorMatrix: SolidHostProps<SvgFeColorMatrixProps>
+    feComponentTransfer: SolidHostProps<SvgFeComponentTransferProps>
+    feFuncR: SolidHostProps<SvgFeFuncProps>
+    feFuncG: SolidHostProps<SvgFeFuncProps>
+    feFuncB: SolidHostProps<SvgFeFuncProps>
+    feFuncA: SolidHostProps<SvgFeFuncProps>
+    feComposite: SolidHostProps<SvgFeCompositeProps>
+    feConvolveMatrix: SolidHostProps<SvgFeConvolveMatrixProps>
+    feDiffuseLighting: SolidHostProps<SvgFeDiffuseLightingProps>
+    feDisplacementMap: SolidHostProps<SvgFeDisplacementMapProps>
+    feDistantLight: SolidHostProps<SvgFeDistantLightProps>
+    feDropShadow: SolidHostProps<SvgFeDropShadowProps>
+    feFlood: SolidHostProps<SvgFeFloodProps>
+    feGaussianBlur: SolidHostProps<SvgFeGaussianBlurProps>
+    feImage: SolidHostProps<SvgFeImageProps>
+    feMerge: SolidHostProps<SvgFeMergeProps>
+    feMergeNode: SolidHostProps<SvgFeMergeNodeProps>
+    feMorphology: SolidHostProps<SvgFeMorphologyProps>
+    feOffset: SolidHostProps<SvgFeOffsetProps>
+    fePointLight: SolidHostProps<SvgFePointLightProps>
+    feSpecularLighting: SolidHostProps<SvgFeSpecularLightingProps>
+    feSpotLight: SolidHostProps<SvgFeSpotLightProps>
+    feTile: SolidHostProps<SvgFeTileProps>
+    feTurbulence: SolidHostProps<SvgFeTurbulenceProps>
     canvas: SolidHostProps
     input: SolidHostProps<InputProps>
     textarea: SolidHostProps<TextareaProps>

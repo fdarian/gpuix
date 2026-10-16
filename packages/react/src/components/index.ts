@@ -28,6 +28,13 @@ import type {
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
+  SvgFeDropShadowProps,
+  SvgFeFloodProps,
+  SvgFeGaussianBlurProps,
+  SvgFeOffsetProps,
+  SvgImageProps,
+  SvgTextProps,
+  SvgTspanProps,
   WithExitFunction,
 } from "../types/host.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
@@ -203,6 +210,13 @@ export const motion = {
   line: motionShape<SvgLineProps>("line"),
   polyline: motionShape<SvgPolyProps>("polyline"),
   polygon: motionShape<SvgPolyProps>("polygon"),
+  text: motionShape<SvgTextProps>("text"),
+  tspan: motionShape<SvgTspanProps>("tspan"),
+  image: motionShape<SvgImageProps>("image"),
+  feGaussianBlur: motionShape<SvgFeGaussianBlurProps>("feGaussianBlur"),
+  feOffset: motionShape<SvgFeOffsetProps>("feOffset"),
+  feFlood: motionShape<SvgFeFloodProps>("feFlood"),
+  feDropShadow: motionShape<SvgFeDropShadowProps>("feDropShadow"),
 } as const
 
 // There is no `VirtualList` React wrapper. Windowing on the React side is the

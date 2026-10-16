@@ -114,6 +114,15 @@ attributes! {
     X2 "x2" "x2" Number None Number(0.0);
     Y2 "y2" "y2" Number None Number(0.0);
     D "d" "d" Path None Unresolved;
+    StdDeviation "stdDeviation" "stdDeviation" Number NonNegative Number(0.0);
+    Dx "dx" "dx" Number None Number(0.0);
+    Dy "dy" "dy" Number None Number(0.0);
+    FloodColor "floodColor" "flood-color" Colour None Black;
+    FloodOpacity "floodOpacity" "flood-opacity" Number Unit Number(1.0);
+    RefX "refX" "refX" Number None Number(0.0);
+    RefY "refY" "refY" Number None Number(0.0);
+    FontSize "fontSize" "font-size" Number NonNegative Unresolved;
+    LetterSpacing "letterSpacing" "letter-spacing" Number None Number(0.0);
 }
 
 impl SvgAttr {

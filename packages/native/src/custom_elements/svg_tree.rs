@@ -8,7 +8,9 @@
 //!
 //! Besides shapes, the tree takes what a shape refers to by `id`: `defs`,
 //! `linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`, `symbol` and
-//! `use`. resvg resolves those references itself, so they are written as they come.
+//! `use`, and `pattern`, `marker`, `filter` with its `fe*` primitives, `image`, and
+//! `text` with `tspan` and `textPath`. resvg resolves those references itself, so
+//! they are written as they come. A string inside a text element is a text node.
 //!
 //! resvg ignores the `pathLength` attribute, so every dash that depends on it
 //! is turned into absolute user units against the shape's measured length.
@@ -24,6 +26,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use web_time::Instant;
 
+use super::svg_names::{self, ATTRIBUTES, COLOUR_ATTRIBUTES, MARKER_ATTRIBUTES, MARKER_SHORTHAND};
 use super::svg_path::{
     circle_length, ellipse_length, format_number, line_length, polyline_length, rect_length,
     PathData,
@@ -33,84 +36,25 @@ use crate::motion::{MotionState, SvgMotion};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
 
-const SHAPE_TAGS: [&str; 16] = [
-    "path",
-    "circle",
-    "ellipse",
-    "rect",
-    "line",
-    "polyline",
-    "polygon",
-    "g",
-    "defs",
-    "linearGradient",
-    "radialGradient",
-    "stop",
-    "clipPath",
-    "mask",
-    "use",
-    "symbol",
-];
-
 /// Whether `tag` is an element only valid inside an `<svg>`.
 pub(crate) fn is_svg_child_type(tag: &str) -> bool {
-    SHAPE_TAGS.contains(&tag)
+    svg_names::is_tag(tag)
 }
 
-/// Prop name and the attribute it becomes. SVG's own camelCase attributes
-/// (`viewBox`, `pathLength`) keep their case.
-const ATTRIBUTES: &[(&str, &str)] = &[
-    ("id", "id"),
-    ("href", "href"),
-    ("viewBox", "viewBox"),
-    ("preserveAspectRatio", "preserveAspectRatio"),
-    ("d", "d"),
-    ("points", "points"),
-    ("cx", "cx"),
-    ("cy", "cy"),
-    ("r", "r"),
-    ("rx", "rx"),
-    ("ry", "ry"),
-    ("x", "x"),
-    ("y", "y"),
-    ("width", "width"),
-    ("height", "height"),
-    ("x1", "x1"),
-    ("y1", "y1"),
-    ("x2", "x2"),
-    ("y2", "y2"),
-    ("pathLength", "pathLength"),
-    ("fx", "fx"),
-    ("fy", "fy"),
-    ("offset", "offset"),
-    ("stopColor", "stop-color"),
-    ("stopOpacity", "stop-opacity"),
-    ("gradientUnits", "gradientUnits"),
-    ("gradientTransform", "gradientTransform"),
-    ("spreadMethod", "spreadMethod"),
-    ("clipPathUnits", "clipPathUnits"),
-    ("maskUnits", "maskUnits"),
-    ("maskContentUnits", "maskContentUnits"),
-    ("clipPath", "clip-path"),
-    ("mask", "mask"),
-    ("fill", "fill"),
-    ("fillOpacity", "fill-opacity"),
-    ("fillRule", "fill-rule"),
-    ("clipRule", "clip-rule"),
-    ("stroke", "stroke"),
-    ("strokeWidth", "stroke-width"),
-    ("strokeOpacity", "stroke-opacity"),
-    ("strokeLinecap", "stroke-linecap"),
-    ("strokeLinejoin", "stroke-linejoin"),
-    ("strokeMiterlimit", "stroke-miterlimit"),
-    ("strokeDasharray", "stroke-dasharray"),
-    ("strokeDashoffset", "stroke-dashoffset"),
-    ("opacity", "opacity"),
-    ("transform", "transform"),
-    ("display", "display"),
-    ("visibility", "visibility"),
-    ("shapeRendering", "shape-rendering"),
-];
+/// Whether `element` is drawn by an `<svg>` instead of laid out: an SVG-only tag,
+/// or a `<text>` inside an SVG. A `<text>` with a string is that string, not an
+/// element.
+pub(crate) fn is_svg_element(tree: &RetainedTree, element: &crate::retained_tree::RetainedElement) -> bool {
+    if is_svg_child_type(&element.element_type) {
+        return true;
+    }
+    element.element_type == "text"
+        && element.content.is_none()
+        && element
+            .parent
+            .and_then(|parent| tree.elements.get(&parent))
+            .is_some_and(|parent| parent.element_type == "svg" || is_svg_element(tree, parent))
+}
 
 /// Props every host element takes that have nothing to say to the XML.
 const HOST_PROPS: &[&str] = &[
@@ -132,6 +76,9 @@ const HOST_PROPS: &[&str] = &[
 struct Node<'a> {
     tag: &'a str,
     props: &'a HashMap<String, Value>,
+    /// A string child of a text element, written as character data. Such a node
+    /// has no tag, props or children of its own.
+    text: Option<&'a str>,
     motion: Option<SvgMotion>,
     children: Vec<Node<'a>>,
 }
@@ -163,7 +110,7 @@ impl SvgTrees {
         now: Instant,
     ) -> Option<Arc<str>> {
         let element = tree.elements.get(&svg_id)?;
-        let children = nodes(tree, &element.children, motion_states, now);
+        let children = nodes(tree, "svg", &element.children, motion_states, now);
         if children.is_empty() {
             self.cache.remove(&svg_id);
             return None;
@@ -180,6 +127,7 @@ impl SvgTrees {
         let root = Node {
             tag: "svg",
             props: element.custom_props(),
+            text: None,
             motion: None,
             children,
         };
@@ -203,6 +151,7 @@ impl SvgTrees {
 
 fn nodes<'a>(
     tree: &'a RetainedTree,
+    parent: &str,
     ids: &[u64],
     motion_states: &HashMap<u64, MotionState>,
     now: Instant,
@@ -210,7 +159,20 @@ fn nodes<'a>(
     ids.iter()
         .filter_map(|id| tree.elements.get(id))
         .filter_map(|element| {
-            if !is_svg_child_type(&element.element_type) {
+            if let Some(content) = text_node(element) {
+                if !svg_names::holds_text(parent) {
+                    log::warn!("text inside <{parent}> is not drawn: only <text>, <tspan> and <textPath> hold text");
+                    return None;
+                }
+                return Some(Node {
+                    tag: "",
+                    props: element.custom_props(),
+                    text: Some(content),
+                    motion: None,
+                    children: Vec::new(),
+                });
+            }
+            if element.element_type != "text" && !is_svg_child_type(&element.element_type) {
                 log::warn!(
                     "<{}> inside <svg> is not an SVG element and is not drawn",
                     element.element_type
@@ -220,13 +182,24 @@ fn nodes<'a>(
             Some(Node {
                 tag: &element.element_type,
                 props: element.custom_props(),
+                text: None,
                 motion: motion_states
                     .get(&element.id)
                     .and_then(|state| state.visible_svg(now)),
-                children: nodes(tree, &element.children, motion_states, now),
+                children: nodes(tree, &element.element_type, &element.children, motion_states, now),
             })
         })
         .collect()
+}
+
+/// The string of a text node: React and Solid make a `text` element with
+/// content for a string child, and one without for a `<text>` tag.
+fn text_node(element: &crate::retained_tree::RetainedElement) -> Option<&str> {
+    if element.element_type == "text" {
+        element.content.as_deref()
+    } else {
+        None
+    }
 }
 
 fn animation_key(nodes: &[Node]) -> u64 {
@@ -255,6 +228,10 @@ fn serialize(root: &Node, colors: &ColorContext) -> String {
 }
 
 fn write_node(node: &Node, colors: &ColorContext, xml: &mut String) {
+    if let Some(text) = node.text {
+        escape_into(text, xml);
+        return;
+    }
     xml.push('<');
     xml.push_str(node.tag);
     if node.tag == "svg" {
@@ -300,19 +277,30 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
     let mut written: Vec<(&'static str, String)> = Vec::new();
     for (prop, attribute) in ATTRIBUTES {
         if let Some(text) = node.props.get(*prop).and_then(attribute_text) {
-            let text = match *attribute {
-                "fill" | "stroke" | "stop-color" => resolve_paint(text, colors),
-                _ => text,
+            let text = if COLOUR_ATTRIBUTES.contains(attribute) {
+                resolve_paint(text, colors)
+            } else {
+                text
             };
             written.push((attribute, text));
         }
     }
+    if let Some(shorthand) = node.props.get(MARKER_SHORTHAND).and_then(attribute_text) {
+        for (prop, attribute) in MARKER_ATTRIBUTES {
+            if !node.props.contains_key(prop) {
+                written.push((attribute, shorthand.clone()));
+            }
+        }
+    }
     for key in node.props.keys() {
-        let known = ATTRIBUTES.iter().any(|(prop, _)| prop == key);
+        let known = key == MARKER_SHORTHAND || ATTRIBUTES.iter().any(|(prop, _)| prop == key);
         let host = HOST_PROPS.contains(&key.as_str()) || key == "testId" || key == "autoFocus";
         if !known && !host {
             log::warn!("<{}> has no SVG attribute for the prop {key:?}", node.tag);
         }
+    }
+    if matches!(node.tag, "image" | "feImage") {
+        resolve_image_href(node.tag, &mut written);
     }
     if let Some(motion) = &node.motion {
         for (name, text) in &motion.attributes {
@@ -359,6 +347,33 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
         }
     }
     written
+}
+
+/// resvg loads an image from a `data:` URL or a file path, synchronously. A
+/// `file://` URL is turned into its path, as `<img>` does. A `blob:` image is
+/// fetched by JS and an `http(s)` one is a network request, and a paint cannot
+/// wait for either, so they are dropped with a warning.
+fn resolve_image_href(tag: &str, written: &mut Vec<(&'static str, String)>) {
+    let Some(index) = written.iter().position(|(name, _)| *name == "href") else {
+        return;
+    };
+    let href = written[index].1.trim().to_string();
+    let scheme = href.split_once(':').map(|(scheme, _)| scheme.to_ascii_lowercase());
+    let resolved = match scheme.as_deref() {
+        Some("file") => match super::img::file_url_path(&href) {
+            Some(path) => Ok(path.to_string_lossy().into_owned()),
+            None => Err("is not a valid file URL"),
+        },
+        Some("blob" | "http" | "https") => Err("can only be a data: URL or a file"),
+        _ => Ok(href.clone()),
+    };
+    match resolved {
+        Ok(href) => written[index].1 = href,
+        Err(reason) => {
+            log::warn!("<{tag}> href {href:?} {reason}");
+            written.remove(index);
+        }
+    }
 }
 
 /// A paint that is a colour needing the element's context, as `rgba()`. Anything
@@ -526,6 +541,7 @@ mod tests {
         Node {
             tag,
             props,
+            text: None,
             motion: None,
             children,
         }
@@ -797,6 +813,371 @@ mod tests {
         assert_eq!(sized.width, Some(DimensionValue::Pixels(50.0)));
         assert_eq!(sized.height, Some(DimensionValue::Pixels(16.0)));
         assert!(sized_style(None, &HashMap::new()).is_none());
+    }
+
+    /// A rendered document, read in the user units of its `viewBox`.
+    struct Raster {
+        image: Arc<gpui::RenderImage>,
+        view: (f32, f32),
+    }
+
+    impl Raster {
+        fn of(xml: &str, view: (f32, f32)) -> Self {
+            let renderer = gpui::SvgRenderer::new(Arc::new(()));
+            let image = renderer
+                .render_single_frame(xml.as_bytes(), 1.0)
+                .unwrap_or_else(|error| panic!("{error}: {xml}"));
+            Raster { image, view }
+        }
+
+        /// Straight RGBA at (`x`, `y`) in user units.
+        fn at(&self, x: f32, y: f32) -> [u8; 4] {
+            let size = self.image.size(0);
+            let width = size.width.0 as usize;
+            let column = ((x / self.view.0 * width as f32) as usize).min(width - 1);
+            let row = ((y / self.view.1 * size.height.0 as f32) as usize).min(size.height.0 as usize - 1);
+            let bytes = self.image.as_bytes(0).unwrap();
+            let at = (row * width + column) * 4;
+            let alpha = bytes[at + 3];
+            let straight = |channel: u8| {
+                if alpha == 0 {
+                    0
+                } else {
+                    (channel as u32 * 255 / alpha as u32).min(255) as u8
+                }
+            };
+            [straight(bytes[at + 2]), straight(bytes[at + 1]), straight(bytes[at]), alpha]
+        }
+
+        fn painted(&self, x: f32, y: f32) -> bool {
+            self.at(x, y)[3] > 128
+        }
+    }
+
+    fn document(width: u32, height: u32, children: Vec<Node>) -> String {
+        let svg = props(&[
+            ("viewBox", format!("0 0 {width} {height}").into()),
+            ("width", width.into()),
+            ("height", height.into()),
+        ]);
+        serialize(&node("svg", &svg, children))
+    }
+
+    static NO_PROPS: std::sync::LazyLock<HashMap<String, Value>> =
+        std::sync::LazyLock::new(HashMap::new);
+
+    fn leaf(text: &str) -> Node<'_> {
+        Node {
+            tag: "",
+            props: &NO_PROPS,
+            text: Some(text),
+            motion: None,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn a_pattern_tiles_its_content() {
+        let pattern = props(&[("id", "stripes".into()), ("width", 10.into()), ("height", 10.into()), ("patternUnits", "userSpaceOnUse".into())]);
+        let bar = props(&[("width", 5.into()), ("height", 10.into()), ("fill", "#ff0000".into())]);
+        let filled = props(&[("width", 40.into()), ("height", 10.into()), ("fill", "url(#stripes)".into())]);
+        let xml = document(
+            40,
+            10,
+            vec![
+                node("defs", &HashMap::new(), vec![node("pattern", &pattern, vec![node("rect", &bar, vec![])])]),
+                node("rect", &filled, vec![]),
+            ],
+        );
+        assert!(xml.contains("<pattern id=\"stripes\" width=\"10\" height=\"10\" patternUnits=\"userSpaceOnUse\">"), "{xml}");
+        let raster = Raster::of(&xml, (40.0, 10.0));
+        for tile in 0..4 {
+            let origin = tile as f32 * 10.0;
+            assert_eq!(raster.at(origin + 2.0, 5.0), [255, 0, 0, 255], "tile {tile} bar");
+            assert!(!raster.painted(origin + 7.0, 5.0), "tile {tile} gap");
+        }
+    }
+
+    #[test]
+    fn a_marker_is_drawn_at_the_end_of_a_path() {
+        let marker = props(&[
+            ("id", "dot".into()),
+            ("markerWidth", 6.into()),
+            ("markerHeight", 6.into()),
+            ("refX", 3.into()),
+            ("refY", 3.into()),
+            ("markerUnits", "userSpaceOnUse".into()),
+        ]);
+        let circle = props(&[("cx", 3.into()), ("cy", 3.into()), ("r", 3.into()), ("fill", "#00ff00".into())]);
+        let line = props(&[("d", "M2 10 L18 10".into()), ("stroke", "#0000ff".into()), ("strokeWidth", 1.into()), ("markerEnd", "url(#dot)".into())]);
+        let xml = document(
+            30,
+            20,
+            vec![
+                node("defs", &HashMap::new(), vec![node("marker", &marker, vec![node("circle", &circle, vec![])])]),
+                node("path", &line, vec![]),
+            ],
+        );
+        assert!(xml.contains("marker-end=\"url(#dot)\""), "{xml}");
+        let raster = Raster::of(&xml, (30.0, 20.0));
+        assert_eq!(raster.at(18.0, 10.0), [0, 255, 0, 255], "the dot sits on the path end");
+        assert_eq!(raster.at(10.0, 10.0)[2], 255, "the line itself");
+        assert!(!raster.painted(25.0, 10.0), "nothing past the dot");
+    }
+
+    #[test]
+    fn the_marker_shorthand_sets_the_three_markers_unless_they_are_set() {
+        let path = props(&[("d", "M0 0L9 9".into()), ("marker", "url(#all)".into()), ("markerMid", "url(#mid)".into())]);
+        let xml = serialize(&node("svg", &props(&[]), vec![node("path", &path, vec![])]));
+        assert!(xml.contains("marker-mid=\"url(#mid)\""), "{xml}");
+        assert!(xml.contains("marker-start=\"url(#all)\""), "{xml}");
+        assert!(xml.contains("marker-end=\"url(#all)\""), "{xml}");
+        assert_eq!(xml.matches("marker-mid").count(), 1, "{xml}");
+        assert!(!xml.contains(" marker="), "{xml}");
+    }
+
+    #[test]
+    fn filter_primitives_are_written_with_their_attributes() {
+        let filter = props(&[("id", "f".into()), ("filterUnits", "userSpaceOnUse".into()), ("x", 0.into()), ("width", 30.into())]);
+        let blur = props(&[("in", "SourceGraphic".into()), ("stdDeviation", 2.5.into()), ("result", "b".into())]);
+        let matrix = props(&[("type", "saturate".into()), ("values", 0.into()), ("colorInterpolationFilters", "sRGB".into())]);
+        let shadow = props(&[("dx", 1.into()), ("dy", 2.into()), ("floodColor", "light-dark(#ff0000, #0000ff)".into()), ("floodOpacity", 0.5.into())]);
+        let light = props(&[("azimuth", 45.into()), ("elevation", 30.into())]);
+        let xml = serialize_in(
+            &node(
+                "svg",
+                &props(&[]),
+                vec![node(
+                    "filter",
+                    &filter,
+                    vec![
+                        node("feGaussianBlur", &blur, vec![]),
+                        node("feColorMatrix", &matrix, vec![]),
+                        node("feDropShadow", &shadow, vec![]),
+                        node("feDiffuseLighting", &props(&[("surfaceScale", 2.into())]), vec![node("feDistantLight", &light, vec![])]),
+                    ],
+                )],
+            ),
+            &context("black", "dark"),
+        );
+        assert!(xml.contains("<filter id=\"f\" x=\"0\" width=\"30\" filterUnits=\"userSpaceOnUse\">"), "{xml}");
+        assert!(xml.contains("<feGaussianBlur in=\"SourceGraphic\" result=\"b\" stdDeviation=\"2.5\"/>"), "{xml}");
+        assert!(xml.contains("<feColorMatrix color-interpolation-filters=\"sRGB\" type=\"saturate\" values=\"0\"/>"), "{xml}");
+        assert!(xml.contains("flood-color=\"rgba(0, 0, 255, 1)\" flood-opacity=\"0.5\""), "{xml}");
+        assert!(xml.contains("<feDiffuseLighting surfaceScale=\"2\"><feDistantLight azimuth=\"45\" elevation=\"30\"/></feDiffuseLighting>"), "{xml}");
+    }
+
+    fn filtered(filter: Node, on: &HashMap<String, Value>) -> Raster {
+        Raster::of(
+            &document(
+                40,
+                20,
+                vec![
+                    node("defs", &HashMap::new(), vec![filter]),
+                    node("rect", on, vec![]),
+                ],
+            ),
+            (40.0, 20.0),
+        )
+    }
+
+    fn square() -> HashMap<String, Value> {
+        props(&[
+            ("x", 10.into()),
+            ("y", 5.into()),
+            ("width", 10.into()),
+            ("height", 10.into()),
+            ("fill", "#ff0000".into()),
+            ("filter", "url(#f)".into()),
+        ])
+    }
+
+    fn filter_props() -> HashMap<String, Value> {
+        props(&[("id", "f".into()), ("filterUnits", "userSpaceOnUse".into()), ("x", 0.into()), ("y", 0.into()), ("width", 40.into()), ("height", 20.into())])
+    }
+
+    #[test]
+    fn a_blur_filter_spreads_the_shape() {
+        let filter = filter_props();
+        let blur = props(&[("stdDeviation", 3.into())]);
+        let raster = filtered(node("filter", &filter, vec![node("feGaussianBlur", &blur, vec![])]), &square());
+        let outside = raster.at(8.0, 10.0);
+        assert!(outside[3] > 0 && outside[3] < 255, "the blur reaches past the edge: {outside:?}");
+        assert!(raster.at(15.0, 10.0)[3] > 150, "and the middle stays solid");
+        assert!(raster.at(2.0, 10.0)[3] < 8, "far from the shape the blur has faded");
+    }
+
+    #[test]
+    fn an_offset_filter_moves_the_shape() {
+        let filter = filter_props();
+        let offset = props(&[("dx", 15.into())]);
+        let raster = filtered(node("filter", &filter, vec![node("feOffset", &offset, vec![])]), &square());
+        assert!(!raster.painted(15.0, 10.0), "the shape left its place");
+        assert_eq!(raster.at(30.0, 10.0), [255, 0, 0, 255], "and arrived 15 units right");
+    }
+
+    #[test]
+    fn a_flood_filter_fills_the_region() {
+        let filter = filter_props();
+        let flood = props(&[("floodColor", "#00ff00".into()), ("floodOpacity", 1.into())]);
+        let raster = filtered(node("filter", &filter, vec![node("feFlood", &flood, vec![])]), &square());
+        assert_eq!(raster.at(2.0, 2.0), [0, 255, 0, 255], "the whole region, not the shape");
+        assert_eq!(raster.at(38.0, 18.0), [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn a_flood_colour_takes_current_color() {
+        let filter = filter_props();
+        let flood = props(&[("floodColor", "currentColor".into())]);
+        let svg = props(&[("viewBox", "0 0 40 20".into())]);
+        let target = square();
+        let xml = serialize_in(&node(
+            "svg",
+            &svg,
+            vec![
+                node("defs", &HashMap::new(), vec![node("filter", &filter, vec![node("feFlood", &flood, vec![])])]),
+                node("rect", &target, vec![]),
+            ],
+        ), &context("#ff00ff", "light"));
+        assert_eq!(Raster::of(&xml, (40.0, 20.0)).at(2.0, 2.0), [255, 0, 255, 255], "{xml}");
+    }
+
+    #[test]
+    fn text_paints_glyphs_from_string_children() {
+        let text = props(&[("x", 2.into()), ("y", 38.into()), ("fontSize", 40.into()), ("fontFamily", "sans-serif".into()), ("fill", "#000000".into())]);
+        let words = leaf("MM");
+        let xml = document(60, 40, vec![node("text", &text, vec![words])]);
+        assert!(xml.contains("<text x=\"2\" y=\"38\" fill=\"#000000\" font-family=\"sans-serif\" font-size=\"40\">MM</text>"), "{xml}");
+        let raster = Raster::of(&xml, (60.0, 40.0));
+        let mut ink = 0;
+        for row in 0..40 {
+            for column in 0..60 {
+                if raster.painted(column as f32, row as f32) {
+                    ink += 1;
+                }
+            }
+        }
+        assert!(ink > 100, "two capital letters leave ink, got {ink} pixels");
+        assert!(!raster.painted(58.0, 2.0), "the corner stays empty");
+    }
+
+    #[test]
+    fn tspan_and_text_path_nest_in_text_and_text_is_escaped() {
+        let text = props(&[]);
+        let span = props(&[("dx", 4.into()), ("fontWeight", "bold".into()), ("textDecoration", "underline".into())]);
+        let path = props(&[("href", "#curve".into()), ("startOffset", "10%".into())]);
+        let xml = serialize(&node(
+            "svg",
+            &props(&[]),
+            vec![node(
+                "text",
+                &text,
+                vec![
+                    leaf("a < b & "),
+                    node("tspan", &span, vec![leaf("bold")]),
+                    node("textPath", &path, vec![leaf("curved")]),
+                ],
+            )],
+        ));
+        assert!(xml.contains("<text>a &lt; b &amp; <tspan dx=\"4\" font-weight=\"bold\" text-decoration=\"underline\">bold</tspan><textPath href=\"#curve\" startOffset=\"10%\">curved</textPath></text>"), "{xml}");
+    }
+
+    #[test]
+    fn an_image_paints_its_decoded_pixels() {
+        let href = format!("data:image/png;base64,{RED_BLUE_PNG}");
+        let image = props(&[("href", href.as_str().into()), ("x", 5.into()), ("y", 5.into()), ("width", 20.into()), ("height", 10.into()), ("preserveAspectRatio", "none".into())]);
+        let xml = document(30, 20, vec![node("image", &image, vec![])]);
+        let raster = Raster::of(&xml, (30.0, 20.0));
+        assert_eq!(raster.at(8.0, 10.0), [255, 0, 0, 255], "the left half of the picture is red");
+        assert_eq!(raster.at(22.0, 10.0), [0, 0, 255, 255], "the right half is blue");
+        assert!(!raster.painted(2.0, 10.0), "outside the image box");
+    }
+
+    /// 4x4: red on the left two columns, blue on the right two.
+    const RED_BLUE_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGP4z8AARGDiPwNxHACeow/xfxmViwAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn an_image_href_is_a_data_url_or_a_file() {
+        let resolved = |href: &str| {
+            let mut written = vec![("href", href.to_string())];
+            resolve_image_href("image", &mut written);
+            written.pop().map(|(_, href)| href)
+        };
+        assert_eq!(resolved("data:image/png;base64,AAAA").as_deref(), Some("data:image/png;base64,AAAA"));
+        assert_eq!(resolved("file:///tmp/a%20b.png").as_deref(), Some("/tmp/a b.png"));
+        assert_eq!(resolved("FILE://localhost/tmp/a.png#x").as_deref(), Some("/tmp/a.png"));
+        assert_eq!(resolved("/tmp/a.png").as_deref(), Some("/tmp/a.png"));
+        assert_eq!(resolved("#other").as_deref(), Some("#other"));
+        for dropped in ["blob:abc", "https://example.test/a.png", "HTTP://example.test/a.png", "file://relative.png"] {
+            assert_eq!(resolved(dropped), None, "{dropped}");
+        }
+    }
+
+    fn svg_tree(build: impl FnOnce(&mut RetainedTree)) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        build(&mut tree);
+        tree
+    }
+
+    fn markup_of(tree: &RetainedTree) -> String {
+        SvgTrees::default()
+            .markup(tree, 1, &HashMap::new(), &ColorContext::root(Scheme::Light), Instant::now())
+            .map(|markup| markup.to_string())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn every_svg_tag_survives_the_tree() {
+        for (index, tag) in svg_names::TAGS.iter().enumerate() {
+            let tree = svg_tree(|tree| {
+                tree.create_element(2 + index as u64, tag.to_string());
+                tree.append_child(1, 2 + index as u64);
+            });
+            assert!(markup_of(&tree).contains(&format!("<{tag}")), "<{tag}> is dropped");
+        }
+    }
+
+    #[test]
+    fn a_text_tag_in_an_svg_is_an_svg_element_and_a_string_in_it_is_character_data() {
+        let tree = svg_tree(|tree| {
+            tree.create_element(2, "text".to_string());
+            tree.set_custom_prop(2, "x".to_string(), 3.into());
+            tree.append_child(1, 2);
+            tree.create_element(3, "text".to_string());
+            tree.set_text(3, "Hi".to_string());
+            tree.append_child(2, 3);
+        });
+        assert!(is_svg_element(&tree, &tree.elements[&2]));
+        assert!(!is_svg_element(&tree, &tree.elements[&3]), "a string is not an element");
+        assert!(markup_of(&tree).contains("<text x=\"3\">Hi</text>"));
+    }
+
+    #[test]
+    fn a_text_tag_outside_an_svg_is_not_an_svg_element() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "text".to_string());
+        tree.append_child(1, 2);
+        assert!(!is_svg_element(&tree, &tree.elements[&2]));
+        assert!(is_svg_child_type("pattern") && is_svg_child_type("feGaussianBlur"));
+        assert!(!is_svg_child_type("text"), "text is an SVG element only by where it sits");
+    }
+
+    #[test]
+    fn a_string_that_is_not_in_a_text_element_is_not_drawn() {
+        let tree = svg_tree(|tree| {
+            tree.create_element(2, "text".to_string());
+            tree.set_text(2, "stray".to_string());
+            tree.append_child(1, 2);
+            tree.create_element(3, "g".to_string());
+            tree.append_child(1, 3);
+            tree.create_element(4, "text".to_string());
+            tree.set_text(4, "in a group".to_string());
+            tree.append_child(3, 4);
+        });
+        let markup = markup_of(&tree);
+        assert!(!markup.contains("stray") && !markup.contains("in a group"), "{markup}");
     }
 
     #[test]

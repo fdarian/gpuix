@@ -30,6 +30,35 @@ import type {
   SvgStopProps,
   SvgSymbolProps,
   SvgUseProps,
+  SvgTextProps,
+  SvgPatternProps,
+  SvgMarkerProps,
+  SvgImageProps,
+  SvgTspanProps,
+  SvgTextPathProps,
+  SvgFilterProps,
+  SvgFeBlendProps,
+  SvgFeColorMatrixProps,
+  SvgFeComponentTransferProps,
+  SvgFeFuncProps,
+  SvgFeCompositeProps,
+  SvgFeConvolveMatrixProps,
+  SvgFeDiffuseLightingProps,
+  SvgFeDisplacementMapProps,
+  SvgFeDistantLightProps,
+  SvgFeDropShadowProps,
+  SvgFeFloodProps,
+  SvgFeGaussianBlurProps,
+  SvgFeImageProps,
+  SvgFeMergeProps,
+  SvgFeMergeNodeProps,
+  SvgFeMorphologyProps,
+  SvgFeOffsetProps,
+  SvgFePointLightProps,
+  SvgFeSpecularLightingProps,
+  SvgFeSpotLightProps,
+  SvgFeTileProps,
+  SvgFeTurbulenceProps,
   TextareaProps,
   VirtualListProps,
 } from "./dist/types/host"
@@ -47,7 +76,7 @@ export namespace JSX {
 
   interface IntrinsicElements {
     div: Props
-    text: Props
+    text: SvgTextProps
     span: Props
     img: ImgProps
     svg: SvgProps
@@ -67,6 +96,37 @@ export namespace JSX {
     mask: SvgMaskProps
     use: SvgUseProps
     symbol: SvgSymbolProps
+    pattern: SvgPatternProps
+    marker: SvgMarkerProps
+    image: SvgImageProps
+    tspan: SvgTspanProps
+    textPath: SvgTextPathProps
+    filter: SvgFilterProps
+    feBlend: SvgFeBlendProps
+    feColorMatrix: SvgFeColorMatrixProps
+    feComponentTransfer: SvgFeComponentTransferProps
+    feFuncR: SvgFeFuncProps
+    feFuncG: SvgFeFuncProps
+    feFuncB: SvgFeFuncProps
+    feFuncA: SvgFeFuncProps
+    feComposite: SvgFeCompositeProps
+    feConvolveMatrix: SvgFeConvolveMatrixProps
+    feDiffuseLighting: SvgFeDiffuseLightingProps
+    feDisplacementMap: SvgFeDisplacementMapProps
+    feDistantLight: SvgFeDistantLightProps
+    feDropShadow: SvgFeDropShadowProps
+    feFlood: SvgFeFloodProps
+    feGaussianBlur: SvgFeGaussianBlurProps
+    feImage: SvgFeImageProps
+    feMerge: SvgFeMergeProps
+    feMergeNode: SvgFeMergeNodeProps
+    feMorphology: SvgFeMorphologyProps
+    feOffset: SvgFeOffsetProps
+    fePointLight: SvgFePointLightProps
+    feSpecularLighting: SvgFeSpecularLightingProps
+    feSpotLight: SvgFeSpotLightProps
+    feTile: SvgFeTileProps
+    feTurbulence: SvgFeTurbulenceProps
     canvas: Props
     input: InputProps
     textarea: TextareaProps
