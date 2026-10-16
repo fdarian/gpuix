@@ -1027,8 +1027,11 @@ export interface EventPayload {
    */
   path?: Array<number>
   /**
-   * The other element of a boundary event (the DOM `event.relatedTarget`).
-   * Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents.
+   * The other element of a boundary or focus event (the DOM `event.relatedTarget`).
+   * Populated for: mouseover, mouseout, mouseenter, mouseleave and the pointer equivalents,
+   * the drag enter and leave events, and the focus events: the element gaining focus on
+   * blur and focusout, the one losing it on focus and focusin. Absent when focus came
+   * from or went to nothing.
    */
   relatedTarget?: number
   /**

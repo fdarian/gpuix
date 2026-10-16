@@ -3137,8 +3137,10 @@ A focus change dispatches in DOM order: `blur` then `focusout` on the element
 losing focus, then `focus` then `focusin` on the element gaining it. `focus` and
 `blur` do not bubble. `focusin` and `focusout` bubble to ancestors that listen.
 Every event carries `focusVisible`, whether the element matches
-`:focus-visible` (see [Focus styles](#focus-styles)). Removing a focused element
-from the tree fires nothing, like the DOM.
+`:focus-visible` (see [Focus styles](#focus-styles)), and `relatedTarget`: the
+element gaining focus on `blur` and `focusout`, the one losing it on `focus` and
+`focusin`, absent when focus came from or went to nothing. Removing a focused
+element from the tree fires nothing, like the DOM.
 
 The props follow each framework's web behaviour:
 
@@ -4572,10 +4574,10 @@ text imports no longer need a runtime flag.
 | Click outside | `onMouseDownOutside` | the mouse fields below, `button` — `target` is the pressed element |
 | Key down | `onKeyDown` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
 | Key up | `onKeyUp` | `key`, `code`, `keyChar`, `repeat`, `isComposing`, `shiftKey`, `ctrlKey`, `altKey`, `metaKey`, `modifiers` |
-| Focus | `onFocus` | `focusVisible`. See [Focus events](#focus-events) |
-| Blur | `onBlur` | `focusVisible` |
-| Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`. Bubbles |
-| Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`. Bubbles |
+| Focus | `onFocus` | `focusVisible`, `relatedTarget`. See [Focus events](#focus-events) |
+| Blur | `onBlur` | `focusVisible`, `relatedTarget` |
+| Focus in | `onFocusIn` (Solid; React's `onFocus`) | `focusVisible`, `relatedTarget`. Bubbles |
+| Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`, `relatedTarget`. Bubbles |
 | Wheel | `onWheel`, `onWheelCapture` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons`, `precise`, `touchPhase`, `modifiers`. Bubbles, cancelable. See [The wheel](#the-wheel) |
 | Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
