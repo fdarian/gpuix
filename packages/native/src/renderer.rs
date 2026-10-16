@@ -7155,7 +7155,7 @@ pub(crate) fn build_element(
                 .flatten();
             let style = sized_style.as_ref().or(style);
             if custom_type == "anchored" {
-                crate::layout::anchor_size::begin_build(id);
+                crate::layout::anchor_size::begin_build(tree, element);
             }
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = if is_svg {

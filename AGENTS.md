@@ -193,7 +193,7 @@ Both record during **paint**, and `bounds_frame_reset` clears the registry durin
 - **No box.** `display: none` builds nothing (no box, no hitbox, no a11y node); `display: contents` splices the children into the parent (`layout/contents.rs`, taffy has no such value); a root or virtual-list row has no parent, so `build_contents_container` puts its children in an anonymous block. An empty or whitespace-only text node generates no box and takes no `gap` slot (`text/inline.rs`).
 - **Sizes are px, `%`, `auto` and `anchor-size()`.** `width`, `height` and their `min` / `max` forms reject `max-content`, `min-content` and `fit-content` when deserialized (`DimensionValue`): taffy 0.13 has no intrinsic size keywords. Grid tracks do take them (`layout/grid.rs`).
 - Grid syntax is parsed once when a style is deserialized (`layout/grid.rs`), so the per-frame `apply_styles` only moves built values. `order` and `aspectRatio` live in `layout/` too.
-- `<anchored>` is a floating-ui style popup (zed `elements/anchored.rs`: flip, shift, `onPlacement`). `anchor-size()` takes one frame to settle, and the child is held at opacity 0 until the trigger is measured.
+- `<anchored>` is a floating-ui style popup (zed `elements/anchored.rs`: flip, shift, `onPlacement`). `anchor-size()` (sizes, margins and insets of a direct child; `layout/anchor_size.rs`) starts from the trigger's last painted size, so it is right in the first frame under a trigger that has painted; with none the child is held at opacity 0 until the trigger is measured.
 
 
 ## Paint and style

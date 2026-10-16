@@ -264,6 +264,41 @@ describeNative("<anchored> placement", () => {
       }
     })
 
+    it("resolves anchor-size() on margins and insets", () => {
+      const { render, renderer, unmount } = createTestRoot(WINDOW)
+      try {
+        render(
+          <div>
+            <div
+              testId="trigger"
+              style={{ position: "absolute", left: 100, top: 100, width: 140, height: 30 }}
+            >
+              <anchored gap={4}>
+                <div
+                  testId="margin"
+                  style={{ marginLeft: "anchor-size(width)", marginTop: "anchor-size(height)", width: 20, height: 10 }}
+                />
+                <div
+                  testId="inset"
+                  style={{ position: "relative", left: "anchor-size(width)", top: "anchor-size(height)", width: 20, height: 10 }}
+                />
+              </anchored>
+            </div>
+          </div>
+        )
+        renderer.flush()
+        renderer.flush()
+        const margin = box(renderer, "margin")
+        const inset = box(renderer, "inset")
+        // The layer opens at (100, 134); the child sits 140 right of it and 30 below it.
+        expect(margin).toMatchObject({ x: 100 + 140, y: 134 + 30, width: 20, height: 10 })
+        // The inset shifts the box from where flow put it, under the margin child.
+        expect(inset).toMatchObject({ x: 100 + 140, y: 134 + 30 + 10 + 30, width: 20, height: 10 })
+      } finally {
+        unmount()
+      }
+    })
+
     it("rejects an unknown anchor-size axis", () => {
       const errors: Error[] = []
       const { render, unmount } = createTestRoot({ ...WINDOW, onUncaughtError: (error) => errors.push(error) })

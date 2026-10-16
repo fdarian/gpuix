@@ -447,8 +447,8 @@ export interface StyleDesc {
   gridArea?: number | string
 
   /** px, a percentage, `"auto"`, or on a direct child of `<anchored>` the trigger's border box:
-   *  `"anchor-size(width)"` / `"anchor-size(height)"`. Accepted by the six size properties only,
-   *  and resolved natively on every layout. */
+   *  `"anchor-size(width)"` / `"anchor-size(height)"`. Margins and `top` / `right` / `bottom` /
+   *  `left` take it too. Resolved natively on every layout. */
   width?: DimensionValue
   height?: DimensionValue
   minWidth?: DimensionValue

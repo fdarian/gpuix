@@ -3636,10 +3636,12 @@ availableHeight, anchorWidth, anchorHeight }` (whole pixels, the last two being
 the trigger's border box) when any of them changes. Placement is recomputed on
 every layout, so the side changes live as the trigger scrolls, the window
 resizes or the layer's content changes size. A direct child of `<anchored>` can
-size itself from the trigger with `width`, `minWidth`, `maxWidth`, `height`,
-`minHeight` or `maxHeight` set to `"anchor-size(width)"` or
-`"anchor-size(height)"`, resolved natively (the child is transparent for the
-one frame before the trigger is first measured). And
+size or offset itself from the trigger with `width`, `minWidth`, `maxWidth`,
+`height`, `minHeight`, `maxHeight`, any `margin*` or `top` / `right` / `bottom`
+/ `left` set to `"anchor-size(width)"` or `"anchor-size(height)"`, resolved
+natively (a trigger that has already painted is measured from that frame, so
+the child is right in its first frame; under a trigger that has not, the child
+is transparent for the one frame before the trigger is first measured). And
 `constrainToAvailable` caps the layer's `maxWidth` / `maxHeight` to that room
 natively on every layout, with no JS round trip. An explicit `anchor` corner
 keeps the older corner-based placement.
