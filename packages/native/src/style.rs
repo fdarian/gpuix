@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::css::dimension::parse_linear_length;
+use crate::css::length::LinearLength;
 use crate::layout::grid_values::{
     GridAreaValue, GridAutoTracks, GridLinePairValue, GridLineValue, GridTemplateAreasValue,
     GridTemplateValue,
@@ -107,12 +109,17 @@ pub enum BackgroundValue {
     Gradient(Box<GradientValue>),
 }
 
-/// A dimension value that can be a number (pixels) or a string (percentage, auto, etc.)
+/// A dimension value that can be a number (pixels) or a string (any CSS length
+/// unit, a percentage, `calc()`, auto, etc.)
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum DimensionValue {
     Pixels(f64),
     Percentage(f64), // 0.0 to 1.0
+    /// A length that is neither plain px nor a plain percentage (`2em`, `50vw`,
+    /// `calc(100% - 20px)`). It resolves against the element when the tree is
+    /// applied, so motion cannot run from or to it.
+    Calc(LinearLength),
     Auto,
     /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
     /// `<anchored>`. Only the six size properties of its direct children resolve it.
@@ -123,6 +130,28 @@ pub enum DimensionValue {
 pub enum AnchorAxis {
     Width,
     Height,
+}
+
+impl DimensionValue {
+    /// `text` is what `length` was parsed from: a zero length has forgotten
+    /// whether it was `0px` or `0%`, and only the percentage resolves against a
+    /// containing block.
+    fn from_length(length: LinearLength, text: &str) -> Self {
+        if length.is_zero() {
+            return if text.trim_end().ends_with('%') {
+                DimensionValue::Percentage(0.0)
+            } else {
+                DimensionValue::Pixels(0.0)
+            };
+        }
+        if let Some(px) = length.as_px() {
+            DimensionValue::Pixels(px)
+        } else if let Some(fraction) = length.as_percent() {
+            DimensionValue::Percentage(fraction)
+        } else {
+            DimensionValue::Calc(length)
+        }
+    }
 }
 
 impl Default for DimensionValue {
@@ -144,7 +173,7 @@ impl<'de> Deserialize<'de> for DimensionValue {
             type Value = DimensionValue;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a number or a string like '100%' or 'auto'")
+                formatter.write_str("a number of px or a CSS length string like '100%', '2em' or 'calc(100% - 20px)', or 'auto'")
             }
 
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
@@ -183,18 +212,16 @@ impl<'de> Deserialize<'de> for DimensionValue {
                         "height" => Ok(DimensionValue::AnchorSize(AnchorAxis::Height)),
                         _ => Err(de::Error::custom(format!("invalid anchor-size: {}", v))),
                     }
-                } else if v.ends_with('%') {
-                    let num_str = v.trim_end_matches('%');
-                    match num_str.parse::<f64>() {
-                        Ok(n) => Ok(DimensionValue::Percentage(n / 100.0)),
-                        Err(_) => Err(de::Error::custom(format!("invalid percentage: {}", v))),
+                } else if let Ok(number) = v.parse::<f64>() {
+                    if number.is_finite() {
+                        Ok(DimensionValue::Pixels(number))
+                    } else {
+                        Err(de::Error::custom(format!("invalid dimension: {}", v)))
                     }
                 } else {
-                    // Try to parse as a number
-                    match v.parse::<f64>() {
-                        Ok(n) => Ok(DimensionValue::Pixels(n)),
-                        Err(_) => Err(de::Error::custom(format!("invalid dimension: {}", v))),
-                    }
+                    parse_linear_length(v)
+                        .map(|length| DimensionValue::from_length(length, v))
+                        .ok_or_else(|| de::Error::custom(format!("invalid dimension: {}", v)))
                 }
             }
         }
@@ -770,6 +797,101 @@ mod tests {
 
     fn light() -> ColorContext {
         ColorContext::root(crate::color::Scheme::Light)
+    }
+
+    fn dimension(json: &str) -> Result<DimensionValue, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+
+    fn calc(text: &str) -> DimensionValue {
+        DimensionValue::Calc(parse_linear_length(text).unwrap())
+    }
+
+    #[test]
+    fn a_number_and_a_numeric_string_are_px() {
+        assert_eq!(dimension("12").unwrap(), DimensionValue::Pixels(12.0));
+        assert_eq!(dimension("-3.5").unwrap(), DimensionValue::Pixels(-3.5));
+        assert_eq!(dimension("\"12\"").unwrap(), DimensionValue::Pixels(12.0));
+        assert_eq!(dimension("\"12px\"").unwrap(), DimensionValue::Pixels(12.0));
+        assert_eq!(dimension("\"0\"").unwrap(), DimensionValue::Pixels(0.0));
+    }
+
+    #[test]
+    fn an_absolute_unit_is_px() {
+        for (text, px) in [("1in", 96.0), ("2.54cm", 96.0), ("25.4mm", 96.0), ("101.6q", 96.0), ("72pt", 96.0), ("6pc", 96.0)] {
+            assert_eq!(dimension(&format!("\"{text}\"")).unwrap(), DimensionValue::Pixels(px), "{text}");
+        }
+        assert_eq!(dimension("\"calc(1in + 24px)\"").unwrap(), DimensionValue::Pixels(120.0));
+    }
+
+    #[test]
+    fn a_percentage_is_a_fraction_and_a_zero_percentage_stays_one() {
+        assert_eq!(dimension("\"50%\"").unwrap(), DimensionValue::Percentage(0.5));
+        assert_eq!(dimension("\"-25%\"").unwrap(), DimensionValue::Percentage(-0.25));
+        assert_eq!(dimension("\"calc(100% / 4)\"").unwrap(), DimensionValue::Percentage(0.25));
+        assert_eq!(dimension("\"0%\"").unwrap(), DimensionValue::Percentage(0.0));
+        assert_eq!(dimension("\"0px\"").unwrap(), DimensionValue::Pixels(0.0));
+        assert_eq!(dimension("\"0em\"").unwrap(), DimensionValue::Pixels(0.0));
+    }
+
+    #[test]
+    fn every_other_length_is_unresolved_until_it_is_applied() {
+        for text in ["2em", "1.5rem", "50vw", "25vh", "10vmin", "75vmax", "calc(100% - 20px)", "calc(1em + 4px)", "calc(50vw - 100%)"] {
+            assert_eq!(dimension(&format!("\"{text}\"")).unwrap(), calc(text), "{text}");
+        }
+        assert!(matches!(dimension("\"calc(1em + 4px)\"").unwrap(), DimensionValue::Calc(_)));
+    }
+
+    #[test]
+    fn auto_and_anchor_size_keep_their_own_variants() {
+        assert_eq!(dimension("\"auto\"").unwrap(), DimensionValue::Auto);
+        assert_eq!(dimension("\"anchor-size(width)\"").unwrap(), DimensionValue::AnchorSize(AnchorAxis::Width));
+        assert_eq!(dimension("\"anchor-size( height )\"").unwrap(), DimensionValue::AnchorSize(AnchorAxis::Height));
+        assert!(dimension("\"anchor-size(depth)\"").unwrap_err().to_string().contains("invalid anchor-size"));
+    }
+
+    #[test]
+    fn an_invalid_dimension_names_the_value() {
+        for text in ["12foo", "1ch", "calc(1px + 2)", "calc(1px * 2px)", "calc()", "inf", "NaN", "12 px", "", "px", "banana"] {
+            let error = dimension(&format!("\"{text}\"")).unwrap_err().to_string();
+            assert!(error.contains(&format!("invalid dimension: {text}")), "{text}: {error}");
+        }
+        for json in ["true", "null", "[1]"] {
+            assert!(dimension(json).is_err(), "{json}");
+        }
+    }
+
+    #[test]
+    fn dimensions_serialize_as_css() {
+        let json = |value: DimensionValue| serde_json::to_string(&value).unwrap();
+        assert_eq!(json(DimensionValue::Pixels(12.0)), "12.0");
+        assert_eq!(json(calc("calc(100% - 20px)")), "\"calc(100% - 20px)\"");
+        assert_eq!(json(calc("2em")), "\"2em\"");
+        let back = dimension(&json(calc("calc(1em + 2vw - 3px)"))).unwrap();
+        assert_eq!(back, calc("calc(1em + 2vw - 3px)"));
+    }
+
+    #[test]
+    fn every_dimension_field_takes_a_length() {
+        let style: StyleDesc = serde_json::from_str(
+            r#"{"width":"50vw","height":"calc(50% + 1rem)","minWidth":"10em","minHeight":"1in","maxWidth":"calc(100% - 20px)","maxHeight":"90%",
+                "margin":"calc(5% + 4px)","marginTop":"2em","marginRight":"1cm","marginBottom":"auto","marginLeft":3,
+                "top":"calc(100% - 30px)","right":"1rem","bottom":"10vh","left":"50%"}"#,
+        )
+        .unwrap();
+        assert_eq!(style.width, Some(calc("50vw")));
+        assert_eq!(style.height, Some(calc("calc(50% + 1rem)")));
+        assert_eq!(style.min_width, Some(calc("10em")));
+        assert_eq!(style.min_height, Some(DimensionValue::Pixels(96.0)));
+        assert_eq!(style.max_width, Some(calc("calc(100% - 20px)")));
+        assert_eq!(style.max_height, Some(DimensionValue::Percentage(0.9)));
+        assert_eq!(style.margin, Some(calc("calc(5% + 4px)")));
+        assert_eq!(style.margin_top, Some(calc("2em")));
+        assert_eq!(style.margin_bottom, Some(DimensionValue::Auto));
+        assert_eq!(style.top, Some(calc("calc(100% - 30px)")));
+        assert_eq!(style.bottom, Some(calc("10vh")));
+        assert_eq!(style.left, Some(DimensionValue::Percentage(0.5)));
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"width":"12foo"}"#).is_err());
     }
 
     #[test]

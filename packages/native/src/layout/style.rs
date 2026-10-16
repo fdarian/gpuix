@@ -1,17 +1,40 @@
 //! The layout half of `apply_styles`: display, flex direction, position and
-//! insets, margins, and the grid properties.
+//! insets, sizes, margins, and the grid properties.
 
 use gpui::Styled;
 
+use crate::css::length::LengthContext;
 use crate::style::{DimensionValue, StyleDesc};
 
 use super::grid_values::GridTemplateValue;
 
-fn length(value: &DimensionValue) -> gpui::Length {
+/// `None` for `auto` and `anchor-size()`, which leave the property to layout.
+fn definite(value: &DimensionValue, lengths: &LengthContext) -> Option<gpui::DefiniteLength> {
     match value {
-        DimensionValue::Pixels(pixels) => gpui::px(*pixels as f32).into(),
-        DimensionValue::Percentage(fraction) => gpui::relative(*fraction as f32).into(),
-        DimensionValue::Auto | DimensionValue::AnchorSize(_) => gpui::Length::Auto,
+        DimensionValue::Pixels(pixels) => Some(gpui::px(*pixels as f32).into()),
+        DimensionValue::Percentage(fraction) => Some(gpui::relative(*fraction as f32)),
+        DimensionValue::Calc(length) => {
+            let (total, fraction) = lengths.split(length);
+            Some(if fraction == 0.0 {
+                gpui::px(total as f32).into()
+            } else if total == 0.0 {
+                gpui::relative(fraction as f32)
+            } else {
+                gpui::DefiniteLength::calc(gpui::px(total as f32), fraction as f32)
+            })
+        }
+        DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
+    }
+}
+
+fn length(value: &DimensionValue, lengths: &LengthContext) -> gpui::Length {
+    definite(value, lengths).map_or(gpui::Length::Auto, gpui::Length::Definite)
+}
+
+/// `auto` and `anchor-size()` leave `slot` as it is.
+fn set_size(slot: &mut Option<gpui::Length>, value: &Option<DimensionValue>, lengths: &LengthContext) {
+    if let Some(definite) = value.as_ref().and_then(|value| definite(value, lengths)) {
+        *slot = Some(gpui::Length::Definite(definite));
     }
 }
 
@@ -47,7 +70,9 @@ fn auto_flow(value: &str) -> Option<gpui::GridAutoFlow> {
     })
 }
 
-pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc) -> E {
+/// `lengths` is the context of the element `style` belongs to, which a length
+/// with a unit other than px resolves in.
+pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     match style.display.as_deref() {
         Some("flex") => el = el.flex(),
         Some("grid") => el = el.grid(),
@@ -57,8 +82,9 @@ pub(crate) fn apply<E: Styled>(mut el: E, style: &StyleDesc) -> E {
     }
     el = apply_flex_direction(el, style);
     el = apply_grid(el, style);
-    el = apply_margin(el, style);
-    el = apply_position(el, style);
+    el = apply_size(el, style, lengths);
+    el = apply_margin(el, style, lengths);
+    el = apply_position(el, style, lengths);
     if let Some(value) = style.justify_items.as_deref().and_then(align_items) {
         el.style().justify_items = Some(value);
     }
@@ -79,31 +105,42 @@ fn apply_flex_direction<E: Styled>(mut el: E, style: &StyleDesc) -> E {
     el
 }
 
-fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc) -> E {
+fn apply_size<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
+    let refinement = el.style();
+    set_size(&mut refinement.size.width, &style.width, lengths);
+    set_size(&mut refinement.size.height, &style.height, lengths);
+    set_size(&mut refinement.min_size.width, &style.min_width, lengths);
+    set_size(&mut refinement.min_size.height, &style.min_height, lengths);
+    set_size(&mut refinement.max_size.width, &style.max_width, lengths);
+    set_size(&mut refinement.max_size.height, &style.max_height, lengths);
+    el
+}
+
+fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     if let Some(value) = &style.margin {
         let margin = &mut el.style().margin;
-        let value = length(value);
+        let value = length(value, lengths);
         margin.top = Some(value);
         margin.right = Some(value);
         margin.bottom = Some(value);
         margin.left = Some(value);
     }
     if let Some(value) = &style.margin_top {
-        el.style().margin.top = Some(length(value));
+        el.style().margin.top = Some(length(value, lengths));
     }
     if let Some(value) = &style.margin_right {
-        el.style().margin.right = Some(length(value));
+        el.style().margin.right = Some(length(value, lengths));
     }
     if let Some(value) = &style.margin_bottom {
-        el.style().margin.bottom = Some(length(value));
+        el.style().margin.bottom = Some(length(value, lengths));
     }
     if let Some(value) = &style.margin_left {
-        el.style().margin.left = Some(length(value));
+        el.style().margin.left = Some(length(value, lengths));
     }
     el
 }
 
-fn apply_position<E: Styled>(mut el: E, style: &StyleDesc) -> E {
+fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     match style.position.as_deref() {
         Some("static") => el.style().position = Some(gpui::Position::Static),
         Some("relative") => el = el.relative(),
@@ -115,16 +152,16 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc) -> E {
         _ => {}
     }
     if let Some(value) = &style.top {
-        el.style().inset.top = Some(length(value));
+        el.style().inset.top = Some(length(value, lengths));
     }
     if let Some(value) = &style.right {
-        el.style().inset.right = Some(length(value));
+        el.style().inset.right = Some(length(value, lengths));
     }
     if let Some(value) = &style.bottom {
-        el.style().inset.bottom = Some(length(value));
+        el.style().inset.bottom = Some(length(value, lengths));
     }
     if let Some(value) = &style.left {
-        el.style().inset.left = Some(length(value));
+        el.style().inset.left = Some(length(value, lengths));
     }
     el
 }

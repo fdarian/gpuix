@@ -82,7 +82,7 @@ impl Field for Option<DimensionValue> {
         match self.as_ref()? {
             DimensionValue::Pixels(value) => Some(AnimValue::Number(*value)),
             DimensionValue::Percentage(value) => Some(AnimValue::Percent(*value)),
-            DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
+            DimensionValue::Calc(_) | DimensionValue::Auto | DimensionValue::AnchorSize(_) => None,
         }
     }
 
@@ -523,7 +523,7 @@ impl AnimProp {
             }
             Kind::Dimension => {
                 let dimension: DimensionValue = serde_json::from_value(value.clone())
-                    .map_err(|_| format!("motion {name} must be a number or a percentage"))?;
+                    .map_err(|error| format!("motion {name} must be a number or a percentage: {error}"))?;
                 match dimension {
                     DimensionValue::Pixels(value) => {
                         AnimValue::Number(check_finite(name, value)?)
@@ -533,6 +533,13 @@ impl AnimProp {
                     }
                     DimensionValue::AnchorSize(_) => {
                         return Err(format!("motion cannot animate {name} to or from anchor-size()"));
+                    }
+                    DimensionValue::Calc(_) => {
+                        return Err(format!(
+                            "motion cannot animate {name} to or from a CSS length: only a number of px or a \
+                             percentage, because calc(), em, rem and the viewport units are resolved against \
+                             the element and the window when the tree is applied"
+                        ));
                     }
                     DimensionValue::Auto if self == Self::Height => AnimValue::Auto,
                     DimensionValue::Auto => {
@@ -735,6 +742,35 @@ mod tests {
         let error = AnimProp::FontSize.parse(&serde_json::json!("2em"), &colors).unwrap_err();
         assert!(error.starts_with("motion cannot animate fontSize to or from a CSS length"), "{error}");
         assert!(AnimProp::FontSize.parse(&serde_json::json!(-1), &colors).is_err());
+    }
+
+    #[test]
+    fn a_calc_dimension_has_no_start_value_and_is_not_a_target() {
+        let colors = Colors::root();
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::Width.read(&style, &colors)
+        };
+        assert_eq!(read(r#"{ "width": "calc(100% - 20px)" }"#), None);
+        assert_eq!(read(r#"{ "width": "10em" }"#), None);
+        assert_eq!(read(r#"{ "width": "2in" }"#), Some(AnimValue::Number(192.0)));
+        assert_eq!(read(r#"{ "width": "50%" }"#), Some(AnimValue::Percent(0.5)));
+
+        for prop in [AnimProp::Width, AnimProp::MinHeight, AnimProp::MarginLeft, AnimProp::Top] {
+            for target in ["calc(100% - 20px)", "50vw", "2em", "1.5rem"] {
+                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
+                assert!(
+                    error.starts_with(&format!("motion cannot animate {} to or from a CSS length", prop.name())),
+                    "{error}"
+                );
+            }
+        }
+        assert_eq!(
+            AnimProp::Width.parse(&serde_json::json!("2in"), &colors).unwrap(),
+            AnimValue::Number(192.0)
+        );
+        let error = AnimProp::Width.parse(&serde_json::json!("12foo"), &colors).unwrap_err();
+        assert!(error.contains("motion width must be a number or a percentage") && error.contains("12foo"), "{error}");
     }
 
     #[test]

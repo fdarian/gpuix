@@ -7877,24 +7877,6 @@ fn selection_start_flag(style: Option<&StyleDesc>) -> Option<bool> {
 
 // ── Style application ────────────────────────────────────────────────
 
-pub(crate) fn apply_width<E: gpui::Styled>(el: E, dim: &crate::style::DimensionValue) -> E {
-    match dim {
-        crate::style::DimensionValue::Pixels(v) => el.w(gpui::px(*v as f32)),
-        crate::style::DimensionValue::Percentage(v) if *v >= 0.999 => el.w_full(),
-        crate::style::DimensionValue::Percentage(v) => el.w(gpui::relative(*v as f32)),
-        crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => el,
-    }
-}
-
-pub(crate) fn apply_height<E: gpui::Styled>(el: E, dim: &crate::style::DimensionValue) -> E {
-    match dim {
-        crate::style::DimensionValue::Pixels(v) => el.h(gpui::px(*v as f32)),
-        crate::style::DimensionValue::Percentage(v) if *v >= 0.999 => el.h_full(),
-        crate::style::DimensionValue::Percentage(v) => el.h(gpui::relative(*v as f32)),
-        crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => el,
-    }
-}
-
 /// The lines of `decoration` on the text style `el` passes down. A line that
 /// is not declared leaves the inherited one alone, as in CSS, where `none` on a
 /// descendant takes nothing off.
@@ -7978,7 +7960,7 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     lengths: &LengthContext,
     fill: crate::style::Fill,
 ) -> E {
-    el = crate::layout::style::apply(el, style);
+    el = crate::layout::style::apply(el, style, lengths);
     match style.flex_wrap.as_deref() {
         Some("wrap") => el = el.flex_wrap(),
         Some("wrap-reverse") => el = el.flex_wrap_reverse(),
@@ -8050,40 +8032,6 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
     }
     if let Some(gap) = style.column_gap {
         el = el.gap_x(gpui::px(gap as f32));
-    }
-    if let Some(ref w) = style.width {
-        el = apply_width(el, w);
-    }
-    if let Some(ref h) = style.height {
-        el = apply_height(el, h);
-    }
-    if let Some(ref min_w) = style.min_width {
-        match min_w {
-            crate::style::DimensionValue::Pixels(v) => el = el.min_w(gpui::px(*v as f32)),
-            crate::style::DimensionValue::Percentage(v) => el = el.min_w(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
-        }
-    }
-    if let Some(ref min_h) = style.min_height {
-        match min_h {
-            crate::style::DimensionValue::Pixels(v) => el = el.min_h(gpui::px(*v as f32)),
-            crate::style::DimensionValue::Percentage(v) => el = el.min_h(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
-        }
-    }
-    if let Some(ref max_w) = style.max_width {
-        match max_w {
-            crate::style::DimensionValue::Pixels(v) => el = el.max_w(gpui::px(*v as f32)),
-            crate::style::DimensionValue::Percentage(v) => el = el.max_w(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
-        }
-    }
-    if let Some(ref max_h) = style.max_height {
-        match max_h {
-            crate::style::DimensionValue::Pixels(v) => el = el.max_h(gpui::px(*v as f32)),
-            crate::style::DimensionValue::Percentage(v) => el = el.max_h(gpui::relative(*v as f32)),
-            crate::style::DimensionValue::Auto | crate::style::DimensionValue::AnchorSize(_) => {}
-        }
     }
     if let Some(p) = style.padding {
         el = el.p(gpui::px(p as f32));
@@ -10474,5 +10422,215 @@ mod font_size_cascade_tests {
         cx.simulate_window_resize(page.window.into(), gpui::size(gpui::px(500.0), gpui::px(300.0)));
         page.draw(cx);
         page.assert_font_sizes(&[(3, 30.0)]);
+    }
+}
+
+/// Lengths of every unit and `calc()` on the size, margin and inset properties,
+/// resolved through a real layout and read back as bounds.
+#[cfg(test)]
+mod dimension_length_tests {
+    use super::*;
+
+    struct Page {
+        tree: Arc<Mutex<RetainedTree>>,
+        window: gpui::WindowHandle<GpuixView>,
+    }
+
+    /// `nodes` are `(id, parent, style)`; the first is the root.
+    impl Page {
+        fn new(cx: &mut gpui::TestAppContext, nodes: &[(u64, Option<u64>, &str)]) -> Self {
+            let tree = Arc::new(Mutex::new(RetainedTree::new()));
+            {
+                let mut tree = tree.lock().unwrap();
+                for (id, parent, style) in nodes {
+                    let style: StyleDesc = serde_json::from_str(style).unwrap();
+                    tree.create_element(*id, "div".to_owned());
+                    tree.set_style(*id, Arc::new(style));
+                    if let Some(parent) = parent {
+                        tree.append_child(*parent, *id);
+                    }
+                }
+                tree.set_root(nodes[0].0);
+            }
+            let view_tree = tree.clone();
+            let window = cx.add_window(|window, _| {
+                crate::events::enable_dom_hit_testing(window);
+                GpuixView::new(
+                    view_tree,
+                    None,
+                    "test".to_owned(),
+                    SharedSelection::default(),
+                    crate::events::state::PointerRequests::default(),
+                )
+            });
+            let page = Self { tree, window };
+            page.draw(cx);
+            page
+        }
+
+        fn draw(&self, cx: &mut gpui::TestAppContext) {
+            cx.update_window(self.window.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+            })
+            .unwrap();
+        }
+
+        fn set_style(&self, cx: &mut gpui::TestAppContext, id: u64, style: &str) {
+            let style: StyleDesc = serde_json::from_str(style).unwrap();
+            self.tree.lock().unwrap().set_style(id, Arc::new(style));
+            self.draw(cx);
+        }
+
+        fn bounds(&self, id: u64) -> crate::automation::ElementBounds {
+            crate::automation::get_bounds(id).unwrap_or_else(|| panic!("element {id} was not painted"))
+        }
+
+        /// `(width, height)` of `id`.
+        fn size(&self, id: u64) -> (f64, f64) {
+            let bounds = self.bounds(id);
+            (bounds.width, bounds.height)
+        }
+
+        /// `(x, y)` of `id` from the top left of `from`.
+        fn offset(&self, id: u64, from: u64) -> (f64, f64) {
+            let (bounds, origin) = (self.bounds(id), self.bounds(from));
+            (bounds.x - origin.x, bounds.y - origin.y)
+        }
+    }
+
+    fn near(actual: (f64, f64), expected: (f64, f64)) {
+        assert!(
+            (actual.0 - expected.0).abs() < 0.01 && (actual.1 - expected.1).abs() < 0.01,
+            "expected {expected:?} but got {actual:?}"
+        );
+    }
+
+    const PARENT: &str = r#"{"width": 200, "height": 200}"#;
+
+    #[gpui::test]
+    fn a_percentage_with_a_length_is_resolved_against_the_containing_block(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), r#"{"width": "calc(100% - 20px)", "height": "calc(50% + 1rem)"}"#),
+            ],
+        );
+        near(page.size(2), (180.0, 116.0));
+    }
+
+    #[gpui::test]
+    fn em_follows_the_elements_font_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"width": 400, "height": 400, "fontSize": 20}"#),
+                (2, Some(1), r#"{"width": "10em", "height": "calc(2em + 1rem)"}"#),
+                (3, Some(1), r#"{"fontSize": "50%", "width": "10em", "height": "1em"}"#),
+            ],
+        );
+        // The root's own 20px is the `rem` too.
+        near(page.size(2), (200.0, 60.0));
+        near(page.size(3), (100.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn rem_is_the_roots_size_and_the_absolute_units_ignore_the_font_size(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"width": 400, "height": 400, "fontSize": 30}"#),
+                (2, Some(1), r#"{"fontSize": 10, "width": "2rem", "height": "1in"}"#),
+                (3, Some(1), r#"{"width": "72pt", "height": "calc(2.54cm + 1in)"}"#),
+            ],
+        );
+        near(page.size(2), (60.0, 96.0));
+        near(page.size(3), (96.0, 192.0));
+    }
+
+    #[gpui::test]
+    fn viewport_units_follow_a_resize(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[(1, None, "{}"), (2, Some(1), r#"{"width": "50vw", "height": "calc(10vh + 5vmin)"}"#)],
+        );
+        let viewport = cx
+            .update_window(page.window.into(), |_, window, _| window.viewport_size())
+            .unwrap();
+        let (width, height) = (f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
+        near(page.size(2), (width * 0.5, height * 0.1 + width.min(height) * 0.05));
+        cx.simulate_window_resize(page.window.into(), gpui::size(gpui::px(500.0), gpui::px(300.0)));
+        page.draw(cx);
+        near(page.size(2), (250.0, 30.0 + 15.0));
+    }
+
+    #[gpui::test]
+    fn min_and_max_sizes_clamp_with_a_calc(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), r#"{"width": 190, "height": 10, "flexShrink": 0, "maxWidth": "calc(100% - 50px)", "minHeight": "calc(25% + 1em)"}"#),
+                (3, Some(1), r#"{"width": 10, "height": 400, "flexShrink": 0, "minWidth": "calc(50% + 10px)", "maxHeight": "calc(50% - 1rem)"}"#),
+                (4, Some(1), r#"{"width": 400, "height": 10, "flexShrink": 0, "maxWidth": "10em"}"#),
+            ],
+        );
+        near(page.size(2), (150.0, 66.0));
+        near(page.size(3), (110.0, 84.0));
+        near(page.size(4), (160.0, 10.0));
+    }
+
+    #[gpui::test]
+    fn a_calc_margin_shifts_the_sibling_by_its_px_and_percentage(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"display": "flex", "flexDirection": "row", "width": 400, "height": 200}"#),
+                (2, Some(1), r#"{"width": 50, "height": 20, "margin": "calc(5% + 4px)"}"#),
+                (3, Some(1), r#"{"width": 50, "height": 20}"#),
+            ],
+        );
+        // 5% of the containing block's width (400) is 20, so each margin is 24.
+        near(page.offset(2, 1), (24.0, 24.0));
+        near(page.offset(3, 1), (24.0 + 50.0 + 24.0, 0.0));
+        page.set_style(cx, 2, r#"{"width": 50, "height": 20, "marginLeft": "2em", "marginTop": "2rem"}"#);
+        near(page.offset(2, 1), (32.0, 32.0));
+    }
+
+    #[gpui::test]
+    fn an_absolute_child_resolves_calc_insets_against_its_containing_block(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"position": "relative", "width": 200, "height": 200}"#),
+                (
+                    2,
+                    Some(1),
+                    r#"{"position": "absolute", "width": 10, "height": 10, "top": "calc(100% - 30px)", "left": "calc(50% + 1em)"}"#,
+                ),
+            ],
+        );
+        near(page.offset(2, 1), (116.0, 170.0));
+    }
+
+    #[gpui::test]
+    fn a_hover_style_resolves_its_lengths_too(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, PARENT),
+                (2, Some(1), r#"{"width": 20, "height": 20, "hover": {"width": "calc(100% - 20px)"}}"#),
+            ],
+        );
+        near(page.size(2), (20.0, 20.0));
+        let bounds = page.bounds(2);
+        gpui::VisualTestContext::from_window(page.window.into(), cx).simulate_mouse_move(
+            gpui::point(gpui::px((bounds.x + 5.0) as f32), gpui::px((bounds.y + 5.0) as f32)),
+            None,
+            Default::default(),
+        );
+        page.draw(cx);
+        near(page.size(2), (180.0, 20.0));
     }
 }

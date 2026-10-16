@@ -58,6 +58,14 @@ export * from "./scroll.js"
 export * from "./reorder.js"
 export * from "./svg.js"
 
+/**
+ * A number is px. A string is a CSS length: `px`, `in`, `cm`, `mm`, `q`, `pt`, `pc`, `%`,
+ * `em` (this element's font size), `rem` (the root's), `vw`, `vh`, `vmin`, `vmax`, or a
+ * `calc()` of them with `+`, `-` and `*` or `/` by numbers (`"calc(100% - 20px)"`), plus
+ * `"auto"` and `"anchor-size(...)"` where the property accepts them. Resolved natively on
+ * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates only
+ * a number of px or a percentage.
+ */
 export type DimensionValue = number | string
 
 /**
@@ -457,7 +465,8 @@ export interface StyleDesc {
   /** An area name, or `"row-start / column-start / row-end / column-end"`. */
   gridArea?: number | string
 
-  /** px, a percentage, `"auto"`, or on a direct child of `<anchored>` the trigger's border box:
+  /** A length (see `DimensionValue`; a percentage is of the containing block), `"auto"`, or on a
+   *  direct child of `<anchored>` the trigger's border box:
    *  `"anchor-size(width)"` / `"anchor-size(height)"`. Margins and `top` / `right` / `bottom` /
    *  `left` take it too. Resolved natively on every layout. */
   width?: DimensionValue
@@ -473,8 +482,8 @@ export interface StyleDesc {
   paddingBottom?: number
   paddingLeft?: number
 
-  /** px, a percentage of the containing block's width, or `"auto"` (which absorbs free
-   *  space in flex layouts). */
+  /** A length (see `DimensionValue`; a percentage is of the containing block's width), or
+   *  `"auto"` (which absorbs free space in flex layouts). */
   margin?: DimensionValue
   marginTop?: DimensionValue
   marginRight?: DimensionValue
@@ -492,6 +501,7 @@ export interface StyleDesc {
    *  Negative paints below in-flow siblings, positive above. Only reorders siblings of the same
    *  parent, never against cousins. */
   zIndex?: number
+  /** A length (see `DimensionValue`; a percentage is of the containing block) or `"auto"`. */
   top?: DimensionValue
   right?: DimensionValue
   bottom?: DimensionValue
