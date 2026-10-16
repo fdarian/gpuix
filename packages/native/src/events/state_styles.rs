@@ -934,7 +934,7 @@ mod tests {
         assert_eq!(resolved.text_decoration_thickness.as_deref(), Some("3px"));
 
         let invalid = style(
-            r##"{"textDecorationStyle":"wavy","hover":{"textDecoration":"underline 10%"}}"##,
+            r##"{"textDecorationStyle":"wavy","hover":{"textDecoration":"underline -10%"}}"##,
         );
         let resolved = resolve_state_styles(&invalid, true, false);
         assert_eq!(resolved.text_decoration, None);

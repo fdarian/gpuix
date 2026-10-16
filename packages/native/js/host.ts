@@ -750,7 +750,7 @@ export interface StyleDesc {
    *  `underline`, `line-through`, `overline` and `none`; the style, colour and
    *  thickness apply to every line the declaration names. Styles are `solid`,
    *  `double`, `dotted`, `dashed` and `wavy`. A thickness is `auto`, `from-font`
-   *  or a length (`px` and the absolute units; not `%` or `em`). A descendant
+   *  or a length (`"2px"`, `"0.1em"`, a percentage of `1em`). A descendant
    *  cannot take a line off. */
   textDecoration?: string
   /** CSS `text-decoration-line`, laid over `textDecoration`. */
@@ -760,7 +760,8 @@ export interface StyleDesc {
   /** CSS `text-decoration-color`; `currentColor` is the element's own colour. */
   textDecorationColor?: string
   /** CSS `text-decoration-thickness`: `auto` (1px), `from-font` (the font's
-   *  underline thickness, 1px when it has none) or a length such as `"2px"`. */
+   *  underline thickness, 1px when it has none) or a length such as `"2px"` or
+   *  `"0.1em"`; a percentage is of `1em`. Resolved at the declaring element. */
   textDecorationThickness?: string
   /** CSS `font-variant-numeric`, inherited: `tabular-nums`, `proportional-nums`,
    *  `lining-nums`, `oldstyle-nums`, `slashed-zero`, `diagonal-fractions`,

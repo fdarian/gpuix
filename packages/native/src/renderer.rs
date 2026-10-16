@@ -8167,17 +8167,18 @@ fn apply_text_decoration<E: gpui::Styled>(
     mut el: E,
     decoration: &crate::css::text_decoration::TextDecoration,
     colors: &crate::color::ColorContext,
+    lengths: &crate::css::length::LengthContext,
 ) -> E {
     let color = decoration.resolve_color(colors);
     let text_style = el.text_style();
     if decoration.underline {
-        text_style.underline = Some(decoration.underline_style(color));
+        text_style.underline = Some(decoration.underline_style(color, lengths));
     }
     if decoration.line_through {
-        text_style.strikethrough = Some(decoration.strikethrough_style(color));
+        text_style.strikethrough = Some(decoration.strikethrough_style(color, lengths));
     }
     if decoration.overline {
-        text_style.overline = Some(decoration.overline_style(color));
+        text_style.overline = Some(decoration.overline_style(color, lengths));
     }
     el
 }
@@ -8374,7 +8375,7 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         }
     }
     if let Some(decoration) = crate::css::text_decoration::of(style) {
-        el = apply_text_decoration(el, &decoration, colors);
+        el = apply_text_decoration(el, &decoration, colors, lengths);
     }
     if let Some(line_height) = &style.line_height {
         el.text_style().line_height = Some(line_height.text_style_value(lengths));

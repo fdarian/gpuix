@@ -70,23 +70,28 @@ impl RunStyle {
         }
     }
 
-    fn add_decoration(&mut self, decoration: &text_decoration::TextDecoration, color: Hsla) {
+    fn add_decoration(
+        &mut self,
+        decoration: &text_decoration::TextDecoration,
+        color: Hsla,
+        lengths: &LengthContext,
+    ) {
         if decoration.underline {
-            if let Some(outer) = self.underline.replace(decoration.underline_style(color)) {
+            if let Some(outer) = self.underline.replace(decoration.underline_style(color, lengths)) {
                 self.extra_decorations.push(ExtraDecoration::Underline(outer));
             }
         }
         if decoration.line_through {
             if let Some(outer) = self
                 .strikethrough
-                .replace(decoration.strikethrough_style(color))
+                .replace(decoration.strikethrough_style(color, lengths))
             {
                 self.extra_decorations
                     .push(ExtraDecoration::Strikethrough(outer));
             }
         }
         if decoration.overline {
-            if let Some(outer) = self.overline.replace(decoration.overline_style(color)) {
+            if let Some(outer) = self.overline.replace(decoration.overline_style(color, lengths)) {
                 self.extra_decorations.push(ExtraDecoration::Overline(outer));
             }
         }
@@ -172,7 +177,7 @@ pub fn run_styles(
             // take it off, so `none` on a box adds nothing and removes nothing.
             if has_box {
                 if let Some(decoration) = text_decoration::of(declared) {
-                    style.add_decoration(&decoration, decoration.resolve_color(&colors));
+                    style.add_decoration(&decoration, decoration.resolve_color(&colors), &lengths);
                 }
             }
         }
@@ -795,6 +800,37 @@ mod tests {
         assert_eq!(underline.color, strikethrough.color);
         assert_eq!(underline.color, overline.color);
         assert!(!underline.thickness_from_font);
+    }
+
+    #[test]
+    fn a_thickness_in_em_is_the_declaring_spans_own_font_size() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontSize": 20, "textDecoration": "underline 0.1em"})),
+            (5, serde_json::json!({"fontSize": 40})),
+        ]);
+        let runs = runs_of(&tree);
+        assert_eq!(runs[1].underline.unwrap().thickness, gpui::px(2.0));
+        assert_eq!(
+            runs[2].underline.unwrap().thickness,
+            gpui::px(2.0),
+            "a descendant with a bigger font keeps the thickness resolved at the declaring span"
+        );
+    }
+
+    #[test]
+    fn a_thickness_in_percent_and_rem_in_a_span() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"fontSize": 30, "textDecorationLine": "underline overline", "textDecorationThickness": "10%"})),
+            (5, serde_json::json!({"textDecoration": "line-through 0.5rem"})),
+        ]);
+        let runs = runs_of(&tree);
+        assert_eq!(runs[1].underline.unwrap().thickness, gpui::px(3.0));
+        assert_eq!(runs[1].overline.unwrap().thickness, gpui::px(3.0));
+        assert_eq!(
+            runs[2].strikethrough.unwrap().thickness,
+            gpui::px(5.0),
+            "the container's 10px is the root's"
+        );
     }
 
     #[test]

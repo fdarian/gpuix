@@ -2740,8 +2740,13 @@ thickness, as in CSS. The styles are `solid`, `double` (two lines a thickness
 apart), `dotted` (round dots), `dashed` and `wavy`, on `underline`, `line-through`
 and `overline` alike. `textDecorationThickness` (also the last component of the
 shorthand) is `auto`, which is 1px, `from-font`, which is the font's own
-underline thickness and 1px for a font without one, or a length in `px` or an
-absolute unit such as `"2px"`. A percentage, `em` and a bare non-zero number are
+underline thickness and 1px for a font without one, or a length: `px`, the
+absolute units, `em`, `rem`, the viewport units, `calc()`, or a percentage, which is
+a percentage of `1em` of the element's font size (`"10%"` is `"0.1em"`). It is
+resolved at the element that declares it, with that element's own font size, and
+an inline box declaring it with its own `fontSize` uses that size. The lines a
+descendant inherits keep the thickness resolved there; a descendant with a bigger
+font does not thicken them. A negative length and a bare non-zero number are
 invalid and ignored, like in every other length in a style string. Dots and dashes
 follow Chrome's proportions (a dot is a thickness across, dashes are three
 thicknesses long with a gap of two, two long with a gap of one from a thickness

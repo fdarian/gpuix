@@ -7,7 +7,8 @@
 
 use gpui::TextDecorationStyle;
 
-use super::dimension::parse_definite_length;
+use super::dimension::{parse_linear_length, MAX_LENGTH};
+use super::length::{LengthContext, LinearLength};
 use super::syntax::split_whitespace;
 use crate::style::StyleDesc;
 
@@ -18,7 +19,9 @@ pub(crate) enum Thickness {
     #[default]
     Auto,
     FromFont,
-    Px(f64),
+    /// Unresolved until the declaring element's font size is known. A percentage
+    /// is parsed as that fraction of `1em`, so `percent` is always zero.
+    Length(LinearLength),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -42,27 +45,29 @@ pub(crate) struct TextDecoration {
 }
 
 impl TextDecoration {
-    pub fn underline_style(&self, color: gpui::Hsla) -> gpui::UnderlineStyle {
+    /// `lengths` is the declaring element's: a thickness in `em` is its own font
+    /// size's, and the lines a descendant inherits keep the px resolved here.
+    pub fn underline_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::UnderlineStyle {
         gpui::UnderlineStyle {
-            thickness: self.thickness.fallback(),
+            thickness: self.thickness.fallback(lengths),
             thickness_from_font: self.thickness == Thickness::FromFont,
             color: Some(color),
             style: self.style,
         }
     }
 
-    pub fn strikethrough_style(&self, color: gpui::Hsla) -> gpui::StrikethroughStyle {
+    pub fn strikethrough_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::StrikethroughStyle {
         gpui::StrikethroughStyle {
-            thickness: self.thickness.fallback(),
+            thickness: self.thickness.fallback(lengths),
             thickness_from_font: self.thickness == Thickness::FromFont,
             color: Some(color),
             style: self.style,
         }
     }
 
-    pub fn overline_style(&self, color: gpui::Hsla) -> gpui::OverlineStyle {
+    pub fn overline_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::OverlineStyle {
         gpui::OverlineStyle {
-            thickness: self.thickness.fallback(),
+            thickness: self.thickness.fallback(lengths),
             thickness_from_font: self.thickness == Thickness::FromFont,
             color: Some(color),
             style: self.style,
@@ -83,10 +88,12 @@ impl TextDecoration {
 
 impl Thickness {
     /// What gpui draws when it has no font thickness to use.
-    fn fallback(self) -> gpui::Pixels {
+    fn fallback(self, lengths: &LengthContext) -> gpui::Pixels {
         match self {
             Thickness::Auto | Thickness::FromFont => gpui::px(1.0),
-            Thickness::Px(value) => gpui::px(value as f32),
+            Thickness::Length(length) => {
+                gpui::px(lengths.resolve(&length, 0.0).clamp(0.0, MAX_LENGTH) as f32)
+            }
         }
     }
 }
@@ -229,18 +236,23 @@ fn parse_style(value: &str) -> Option<TextDecorationStyle> {
     })
 }
 
-/// `auto`, `from-font`, or a non-negative length in absolute units. A percentage
-/// and the font-relative and viewport units are invalid: the parse needs no
-/// element, so it has no font size or viewport to resolve them against.
+/// `auto`, `from-font`, or a non-negative length or percentage. A percentage is
+/// of `1em` of the declaring element (CSS Text Decoration 4), so it is folded
+/// into the `em` term here.
 fn parse_thickness(token: &str) -> Option<Thickness> {
     let token = token.trim();
     match token.to_ascii_lowercase().as_str() {
         "auto" => Some(Thickness::Auto),
         "from-font" => Some(Thickness::FromFont),
-        _ => parse_definite_length(token)
-            .and_then(|length| length.as_px())
-            .filter(|value| *value >= 0.0)
-            .map(Thickness::Px),
+        _ => parse_linear_length(token)
+            .filter(|length| !length.is_negative())
+            .map(|length| {
+                Thickness::Length(LinearLength {
+                    em: length.em + length.percent,
+                    percent: 0.0,
+                    ..length
+                })
+            }),
     }
 }
 
@@ -252,6 +264,22 @@ fn is_color(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn px_thickness(px: f64) -> Thickness {
+        Thickness::Length(LinearLength::px(px))
+    }
+
+    fn em_thickness(em: f64) -> Thickness {
+        Thickness::Length(LinearLength { em, ..LinearLength::default() })
+    }
+
+    /// `1em` is 20px and `1rem` 10px.
+    fn underline_px(declaration: &str, lengths: &LengthContext) -> gpui::Pixels {
+        parse_shorthand(declaration)
+            .unwrap()
+            .underline_style(gpui::red(), lengths)
+            .thickness
+    }
 
     fn lines(value: &str) -> Option<(bool, bool, bool)> {
         parse_shorthand(value).map(|d| (d.underline, d.overline, d.line_through))
@@ -282,7 +310,7 @@ mod tests {
         assert_eq!(d.color.as_deref(), Some("red"));
         let d = parse_shorthand("underline rgb(255 0 0) dotted 2px").unwrap();
         assert_eq!(d.style, TextDecorationStyle::Dotted);
-        assert_eq!(d.thickness, Thickness::Px(2.0));
+        assert_eq!(d.thickness, px_thickness(2.0));
         assert_eq!(d.color.as_deref(), Some("rgb(255 0 0)"));
         let d = parse_shorthand("currentColor underline").unwrap();
         assert_eq!(d.color.as_deref(), Some("currentColor"));
@@ -316,24 +344,79 @@ mod tests {
     fn thickness_is_auto_from_font_or_a_length() {
         assert_eq!(parse_thickness("auto"), Some(Thickness::Auto));
         assert_eq!(parse_thickness("From-Font"), Some(Thickness::FromFont));
-        assert_eq!(parse_thickness("3px"), Some(Thickness::Px(3.0)));
-        assert_eq!(parse_thickness("1.5PX"), Some(Thickness::Px(1.5)));
-        assert_eq!(parse_thickness("0"), Some(Thickness::Px(0.0)));
-        assert_eq!(parse_thickness("1in"), Some(Thickness::Px(96.0)));
-        assert_eq!(parse_thickness("calc(1px + 2px)"), Some(Thickness::Px(3.0)));
+        assert_eq!(parse_thickness("3px"), Some(px_thickness(3.0)));
+        assert_eq!(parse_thickness("1.5PX"), Some(px_thickness(1.5)));
+        assert_eq!(parse_thickness("0"), Some(px_thickness(0.0)));
+        assert_eq!(parse_thickness("1in"), Some(px_thickness(96.0)));
+        assert_eq!(parse_thickness("calc(1px + 2px)"), Some(px_thickness(3.0)));
     }
 
     #[test]
-    fn thickness_rejects_percentages_em_numbers_and_negatives() {
-        for value in ["10%", "0.1em", "1rem", "2", "-1px", "thick", "px", ""] {
+    fn thickness_takes_font_relative_units_and_a_percentage_of_one_em() {
+        assert_eq!(parse_thickness("0.1em"), Some(em_thickness(0.1)));
+        assert_eq!(parse_thickness("10%"), Some(em_thickness(0.1)));
+        assert_eq!(parse_thickness("0%"), Some(em_thickness(0.0)));
+        assert_eq!(
+            parse_thickness("1rem"),
+            Some(Thickness::Length(LinearLength { rem: 1.0, ..LinearLength::default() }))
+        );
+        assert_eq!(
+            parse_thickness("calc(50% + 1px)"),
+            Some(Thickness::Length(LinearLength { em: 0.5, px: 1.0, ..LinearLength::default() }))
+        );
+    }
+
+    #[test]
+    fn thickness_rejects_numbers_negatives_and_words() {
+        for value in ["2", "-1px", "-10%", "-0.1em", "thick", "px", "%", ""] {
             assert_eq!(parse_thickness(value), None, "{value}");
         }
     }
 
     #[test]
+    fn a_thickness_resolves_against_the_declaring_elements_lengths() {
+        let lengths = LengthContext::for_tests();
+        assert_eq!(underline_px("underline 0.1em", &lengths), gpui::px(2.0));
+        assert_eq!(underline_px("underline 10%", &lengths), gpui::px(2.0));
+        assert_eq!(underline_px("underline 150%", &lengths), gpui::px(30.0));
+        assert_eq!(underline_px("underline 0.5rem", &lengths), gpui::px(5.0));
+        assert_eq!(underline_px("underline calc(0.1em + 1px)", &lengths), gpui::px(3.0));
+        assert_eq!(underline_px("underline 2px", &lengths), gpui::px(2.0));
+        let bigger = lengths.descend(Some(&LinearLength::px(40.0)), false);
+        assert_eq!(underline_px("underline 0.1em", &bigger), gpui::px(4.0));
+        assert_eq!(underline_px("underline 0.5rem", &bigger), gpui::px(5.0), "rem is the root's");
+    }
+
+    #[test]
+    fn a_thickness_that_calc_makes_negative_is_zero() {
+        let lengths = LengthContext::for_tests();
+        assert_eq!(underline_px("underline calc(1em - 30px)", &lengths), gpui::px(0.0));
+    }
+
+    #[test]
+    fn a_longhand_thickness_in_em_resolves_like_the_shorthands() {
+        let style: StyleDesc = serde_json::from_value(serde_json::json!({
+            "textDecorationLine": "underline",
+            "textDecorationThickness": "0.25em",
+        }))
+        .unwrap();
+        let decoration = of(&style).unwrap();
+        assert_eq!(decoration.thickness, em_thickness(0.25));
+        let lengths = LengthContext::for_tests();
+        assert_eq!(
+            decoration.overline_style(gpui::red(), &lengths).thickness,
+            gpui::px(5.0)
+        );
+        assert_eq!(
+            decoration.strikethrough_style(gpui::red(), &lengths).thickness,
+            gpui::px(5.0)
+        );
+    }
+
+    #[test]
     fn the_shorthand_takes_a_thickness_in_any_position() {
         for value in ["underline 2px dashed red", "2px underline", "dashed 2px red underline"] {
-            assert_eq!(parse_shorthand(value).unwrap().thickness, Thickness::Px(2.0), "{value}");
+            assert_eq!(parse_shorthand(value).unwrap().thickness, px_thickness(2.0), "{value}");
         }
         assert_eq!(
             parse_shorthand("underline from-font").unwrap().thickness,
@@ -344,8 +427,9 @@ mod tests {
 
     #[test]
     fn an_invalid_or_repeated_thickness_invalidates_the_shorthand() {
-        assert_eq!(parse_shorthand("underline 10%"), None);
-        assert_eq!(parse_shorthand("underline 1em"), None);
+        assert_eq!(parse_shorthand("underline -10%"), None);
+        assert_eq!(parse_shorthand("underline 2"), None);
+        assert_eq!(parse_shorthand("underline 10% 1em"), None);
         assert_eq!(parse_shorthand("underline 1px 2px"), None);
         assert_eq!(parse_shorthand("underline auto 2px"), None);
     }
@@ -357,7 +441,7 @@ mod tests {
             "textDecorationThickness": "4px",
         }))
         .unwrap();
-        assert_eq!(of(&style).unwrap().thickness, Thickness::Px(4.0));
+        assert_eq!(of(&style).unwrap().thickness, px_thickness(4.0));
         let style: StyleDesc = serde_json::from_value(serde_json::json!({
             "textDecoration": "underline 2px",
             "textDecorationThickness": "auto",
@@ -366,25 +450,26 @@ mod tests {
         assert_eq!(of(&style).unwrap().thickness, Thickness::Auto);
         let style: StyleDesc = serde_json::from_value(serde_json::json!({
             "textDecoration": "underline 2px",
-            "textDecorationThickness": "5%",
+            "textDecorationThickness": "-5%",
         }))
         .unwrap();
-        assert_eq!(of(&style).unwrap().thickness, Thickness::Px(2.0));
+        assert_eq!(of(&style).unwrap().thickness, px_thickness(2.0));
         let style: StyleDesc = serde_json::from_value(serde_json::json!({
             "textDecorationThickness": "3px",
         }))
         .unwrap();
-        assert_eq!(of(&style).unwrap().thickness, Thickness::Px(3.0));
+        assert_eq!(of(&style).unwrap().thickness, px_thickness(3.0));
     }
 
     #[test]
     fn every_line_gets_the_style_and_thickness_of_the_declaration() {
         let d = parse_shorthand("underline overline line-through wavy 3px").unwrap();
         let color = gpui::red();
+        let lengths = LengthContext::for_tests();
         let (under, over, through) = (
-            d.underline_style(color),
-            d.overline_style(color),
-            d.strikethrough_style(color),
+            d.underline_style(color, &lengths),
+            d.overline_style(color, &lengths),
+            d.strikethrough_style(color, &lengths),
         );
         for (style, thickness, from_font) in [
             (under.style, under.thickness, under.thickness_from_font),
@@ -396,7 +481,7 @@ mod tests {
             assert!(!from_font);
         }
         let d = parse_shorthand("underline from-font").unwrap();
-        let style = d.underline_style(color);
+        let style = d.underline_style(color, &lengths);
         assert!(style.thickness_from_font);
         assert_eq!(style.thickness, gpui::px(1.0));
     }
