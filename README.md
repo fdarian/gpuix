@@ -1458,11 +1458,11 @@ list can be animated, in `animate`, `initial` and `exit`:
 
 | Target | Range or unit |
 |---|---|
-| `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater |
+| `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater, or `"auto"` (see below) |
 | `top`, `right`, `bottom`, `left` | pixels or `%`, may be negative |
 | `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | pixels or `%`, may be negative |
 | `outlineOffset` | pixels, may be negative |
-| `paddingTop` ... `paddingLeft`, `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight`, `flexGrow`, `flexShrink`, `flexBasis`, `aspectRatio` | zero or greater |
+| `paddingTop` ... `paddingLeft`, `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `flexBasis`, `aspectRatio` | zero or greater |
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
 | `backgroundColor`, `color`, `borderColor`, `outlineColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
@@ -1477,7 +1477,7 @@ Naming a discrete property (`display`, `position`, ...) or an unknown key is an
 error, not a silent no-op.
 
 **Layout-resolved lengths.** The sizes, insets and margins move between units, and
-`height` also moves to or from `"auto"`:
+`height` and `width` also move to or from `"auto"`:
 
 - `px` to `%` and back runs in px, with the percentage resolved against the
   parent's content box, along the axis CSS uses: `width`, `minWidth`, `maxWidth`,
@@ -1506,8 +1506,19 @@ error, not a silent no-op.
   `auto` when the animation settles. `height: 0` to `"auto"` and back is an
   accordion. An element that is not painted (inside a `display: none` subtree)
   has nothing to measure and jumps to its target.
-- `width: "auto"` is an error: the width of the content needs a second layout
-  pass to measure. Name a pixel width instead.
+- `width: "auto"` is the same for the width the content wants: `width: 0` to
+  `"auto"` and back is a horizontal accordion. It animates through `motion`, CSS
+  transitions and CSS animations. Transitions and animations need
+  `interpolateSize: "allow-keywords"`, as for `height`, and `animate` is not gated
+  by it. The content's width needs an extra layout of the element's subtree, so
+  an element that can animate `width` to or from `auto` pays one more layout per
+  frame, and the target is available one frame after the element is first
+  measured.
+
+Only pixels and the `%` and `auto` cases above animate. A length that needs the
+element's context (`em`, `rem`, `vw`, `calc()`, a mix of a length and a `%`) is
+not animatable: a `motion` or keyframe target written that way throws an error
+naming the property, and a CSS transition from or to such a value jumps.
 
 **Colours** interpolate with premultiplied alpha, so a fade to `transparent`
 keeps its hue. The space depends on who animates. In `motion` (`animate`,
@@ -2828,7 +2839,8 @@ image clipboard content still pastes its text.
 
 **`fontSize` and `lineHeight`** in `style` size each row. Without `lineHeight`,
 the row uses GPUI's default leading, so a larger `fontSize` grows the box.
-Pass `lineHeight` to set the row in pixels. `minRows` and `maxRows` multiply
+Pass `lineHeight` to set the row (`1.4` times the font size, or a length like
+`"20px"`). `minRows` and `maxRows` multiply
 that height. An explicit `height` still overrides both.
 
 ```tsx
@@ -3809,9 +3821,9 @@ useEffect(() => {
 `borderBoxSize`, `contentBoxSize`) and the observer. The first callback follows
 `observe()` for an element that is not 0 by 0, then one per change of the
 observed box (`"content-box"`, the default, or `"border-box"`). The content box
-is the border box minus the element's computed `padding` and `borderWidth`, so a
-`hover`, `active` or focus style (or a transition) that changes them reports
-too. An element that has no box
+is the border box minus the element's laid-out `padding` and border, so `em`, `calc()`
+and a `hover`, `active` or focus style (or a transition) that changes them are exact and
+report too. An element that has no box
 (`display: "none"`, a virtual list row outside its window) reports 0 by 0. A
 `visibility: "hidden"` element keeps its box and reports its size.
 `device-pixel-content-box` throws a `TypeError`.
@@ -4737,7 +4749,7 @@ take one (`renderer.scrollTo(elementId, ...)`). `composedPath()` lists the
 elements the event travels through, target first and the root last, without
 `window` and `document`.
 `x`/`y` are the same as `clientX`/`clientY`. `offsetX`/`offsetY` are relative
-to the target's padding edge. Native only produces an event type when the
+to the target's padding edge, read from its laid-out border. Native only produces an event type when the
 target or one of its ancestors listens for it (the drag events below are the exception, except `drag`). Capture
 handlers run from the root down to the target, then the target's handlers,
 then bubble handlers back up. `mouseenter`, `mouseleave`, `pointerenter` and
@@ -5047,10 +5059,10 @@ CSS-like styling via the `style` prop:
 >   `position: "absolute"` children: they resolve against the nearest
 >   `relative`, `absolute` or `fixed` ancestor. Put `position: "relative"` on
 >   the parent of anything you place with `top`/`right`/`bottom`/`left`.
-> - **Few shorthand values.** `padding` takes numbers and `margin` takes a
->   number, a percentage or `"auto"`, so CSS strings like `"0 16px"` or
->   `calc()` are ignored. `border`, `borderColor` and `boxShadow` do take CSS
->   strings, see below.
+> - **Few shorthand values.** `padding` takes one length and `margin` one length
+>   or `"auto"`, so a CSS string like `"0 16px"` is ignored. Each length can be
+>   any unit or a `calc()`, see [Lengths](#lengths). `border`, `borderColor` and
+>   `boxShadow` do take CSS strings, see below.
 > - **`boxShadow` takes the CSS string or a structured object.** See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
 > - **Do not nest `<text>` in `<text>`.** Adjacent `<text>` siblings merge
@@ -5061,13 +5073,93 @@ CSS-like styling via the `style` prop:
 
 **Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"` | `"contents"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
-**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), percentages (string like `"100%"`) or `"auto"`. The intrinsic keywords `max-content`, `min-content` and `fit-content` are rejected: taffy 0.13 has no intrinsic size keywords. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
+**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth` and `maxWidth` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
-**Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — margins take pixels, a percentage of the containing block's width, or `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
+**Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); a percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
-**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, percentages or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
+**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` orders positioned siblings, and a sticky element is positioned. See [Sticky positioning](#sticky-positioning) for `"sticky"`
 
 **Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle` (`"solid"` | `"dashed"`), `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
+
+### Lengths
+
+Every length-typed style field takes a number (pixels) or a CSS string: `px`,
+`in`, `cm`, `mm`, `q`, `pt`, `pc`, `%`, `em`, `rem`, `vw`, `vh`, `vmin`, `vmax`, or
+a `calc()` that adds and subtracts any of them and multiplies or divides by a
+number. A length and a `%` mixed in one `calc()` works wherever the property has a
+basis to resolve the percentage against. Invalid strings throw from `setStyle`
+like any other invalid value. A bare number written as a string (`"12"`) is
+accepted only on the sizes (`width`, `height`, `min*`, `max*`) and, like them, the
+margins and insets; every other field needs a unit or a JS number.
+
+```tsx
+<div style={{ width: 'calc(100% - 2rem)', padding: '0.5em', gap: '1vw', fontSize: '1.25rem' }} />
+```
+
+The fields:
+
+- Sizes and offsets: `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
+  `maxHeight`, the margins, `top`, `right`, `bottom`, `left`, the paddings, `gap`,
+  `rowGap`, `columnGap`, and `flexBasis` (which also takes `auto`)
+- Lines: `borderWidth` and the four side widths (no `%`; `thin`, `medium` and
+  `thick` work), `outlineWidth` and `outlineOffset` (no `%`), and the widths in
+  the `border` and `outline` shorthands
+- Text: `fontSize` and `lineHeight`
+- Paint: `boxShadow` offsets, blur and spread (no `%`), the lengths inside
+  `filter`, gradients, `backgroundPosition` and `backgroundSize`, `mask*` and the
+  `clipPath` shapes
+- Grid: the track sizes of `gridTemplateColumns`, `gridTemplateRows`,
+  `gridAutoColumns` and `gridAutoRows`
+
+`borderRadius` and the corner radii are not in this list.
+
+What a unit is relative to:
+
+- **`em`** is the element's own computed font size. In `fontSize` itself it is the
+  parent's, and so is a `%` there.
+- **`rem`** is the root element's computed font size, 16px unless the root sets
+  `fontSize`. The root's own `rem` is the initial size.
+- **`vw`, `vh`, `vmin`, `vmax`** are the window's size, and are resolved again on
+  resize.
+- A `hover`, `active` or group `fontSize` changes the element's own `em`, and so
+  its `em` lengths. A `focusVisible` or `focusWithin` `fontSize` changes the
+  element's own text only and not the `em` of its children, the same as `color`.
+- Two nested `display: contents` ancestors that set `fontSize` in `em` do not
+  compound.
+
+`lineHeight` is CSS `line-height`. A number is a unitless multiplier of the
+element's font size (`1.5`), a string is a length, a percentage of the font size
+or a `calc()` (`"24px"`, `"150%"`, `"1.5em"`), and `"normal"` is the font's
+default leading. A multiplier inherits as a multiplier, so each child gets its own
+multiple, and a length inherits as pixels.
+
+Limits: a `calc()` that comes out negative clamps to 0 for `fontSize` and for grid
+track sizes. A repeating gradient whose stop position is a `calc()` of a length and
+a `%` skips the special case for a zero-length repeat.
+
+### Intrinsic widths
+
+`width`, `minWidth` and `maxWidth` take `min-content`, `max-content`,
+`fit-content` and `fit-content(<length-percentage>)`, with the CSS Sizing
+meaning. `minWidth: "fit-content"` is `min-content` and `maxWidth: "fit-content"`
+is `max-content`. Text wraps at its widest unbreakable stretch for `min-content`,
+counting the trailing space of each word, so it is one space wider than a browser.
+
+```tsx
+<div style={{ display: 'flex' }}>
+  <div style={{ width: 'fit-content', maxWidth: '50%' }}>a label that wraps</div>
+</div>
+```
+
+A layout pre-pass measures them, so each node with a keyword costs extra layouts
+of its subtree every frame, and nesting multiplies it. Use them where the content
+decides the width, not on every box of a long list. A `height` keyword behaves as
+`auto`, since the block axis of CSS Sizing has no intrinsic size to ask for.
+`flexBasis`, the margins and the insets do not take the keywords (`flexBasis`
+with `min-content` or `max-content` is not built).
+
+A later `auto` or definite value in a `hover` or focus style replaces a keyword,
+and `width: "auto"` in a state style replaces the base `width`, as in CSS.
 
 ### Borders
 
@@ -5083,7 +5175,8 @@ Widths, colours and corners can differ per side:
 `borderTop` / `borderRight` / `borderBottom` / `borderLeft` take
 `<width> <style> <color>` in any order, with `solid` or `dashed` as the style.
 No style means no border, a missing colour is `currentColor`, and a missing width
-is 3px (`medium`; `thin` is 1px and `thick` 5px). Other line styles (`dotted`,
+is 3px (`medium`; `thin` is 1px and `thick` 5px). A width is any [length](#lengths)
+without a `%`, so `border: '0.1em solid red'` works. Other line styles (`dotted`,
 `double`, ...) make the value invalid, so it is ignored. `border` is applied
 first, then the side shorthands, then the longhands (`borderWidth`,
 `borderTopColor`, ...). The line style is one for the whole element, because GPUI
@@ -5142,10 +5235,11 @@ draws one: a `dashed` anywhere makes every side dashed.
 
 #### Grid
 
-`gridTemplateColumns` and `gridTemplateRows` take a CSS track list: `px`, `%`
-and `fr` units, `auto`, `min-content`, `max-content`, `minmax()`,
+`gridTemplateColumns` and `gridTemplateRows` take a CSS track list: any
+[length](#lengths) (`px`, `%`, `em`, `rem`, `vw`, `calc()`, ...), `fr` units, `auto`, `min-content`, `max-content`, `minmax()`,
 `fit-content()`, `repeat(n | auto-fill | auto-fit, ...)`, `[line names]` and
-`none`. A bare number `n` still means `repeat(n, minmax(0, 1fr))` (with
+`none`. `fit-content()` takes a length or a `%`, not a `calc()` that mixes the
+two. `gridAutoColumns` and `gridAutoRows` take the same track sizes. A bare number `n` still means `repeat(n, minmax(0, 1fr))` (with
 `gridColumnMin` / `gridRowMin` to pick the minimum). A track list that does not
 parse makes the batch throw, like any other invalid style value.
 
@@ -5359,7 +5453,7 @@ Limited relative-color forms can derive a new color from a base value:
 
 `boxShadow` accepts the CSS string, one structured shadow, or an array of them,
 painted in the order given. The string is parsed into the same layers:
-lengths are `px` (or a bare `0`), `inset` and the colour may lead or trail the
+lengths are any [length](#lengths) without a `%` (or a bare `0`), `inset` and the colour may lead or trail the
 lengths, the colour can be any [colour form](#colors) and defaults to
 `currentColor`, and `none` paints nothing. An invalid string paints no shadow.
 
@@ -5401,7 +5495,7 @@ macOS (Metal) renderer has. On Windows and Linux the subtree paints flat and onl
 `filter` and `backdropFilter` take the CSS function list: `blur()`, `brightness()`,
 `contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`,
 `sepia()` and `drop-shadow()`, applied in order, or `none`. Amounts are numbers or
-percentages, lengths are `px` (or a bare `0`), and angles are `deg`, `rad`, `turn`
+percentages, lengths are any [length](#lengths) without a `%` (or a bare `0`), and angles are `deg`, `rad`, `turn`
 or `grad`. A `drop-shadow()` colour can be any [colour form](#colors) and defaults
 to `currentColor`. An invalid string is ignored, as in CSS, and `url()` references
 are not supported. `filter` applies to the element and everything in it, and
@@ -5441,7 +5535,7 @@ ignored. `fill-box` is `content-box` and `stroke-box` and `view-box` are
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
 (one to four insets and `round` radii), `circle()` and `ellipse()` (a radius,
 `closest-side` or `farthest-side`, and `at <position>`), `polygon()` (an optional
-`nonzero` or `evenodd`, then points), or `none`. Lengths are `px` or `%`. Write a
+`nonzero` or `evenodd`, then points), or `none`. Lengths are any [length](#lengths) or `%`. Write a
 `border-box` (the default), `padding-box` or `content-box` before or after the
 shape to choose what the lengths are relative to. An invalid value is ignored, as
 in CSS. A clip path composites the element as a group, like `opacity` and `mask`.
@@ -5463,7 +5557,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight`, `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"`, inherited), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
@@ -5604,7 +5698,8 @@ render(<App />, { keyboardFocusDim: false })
 ```
 
 **Outline, not border.** `outlineWidth`, `outlineColor` and `outlineOffset` draw
-a line outside the border box, like CSS `outline`. It takes **no layout space**,
+a line outside the border box, like CSS `outline`. They take any
+[length](#lengths) without a `%`. It takes **no layout space**,
 so a ring you add with `focusVisible` moves nothing. A negative offset draws it
 inside. It follows `borderRadius`. A parent with `overflow: "hidden"` clips it,
 like in a browser.
@@ -5679,15 +5774,19 @@ render per frame.
   the axis CSS uses: the width for `left`, `right` and every margin side, the
   height for `top` and `bottom`. It follows the parent while it runs and settles on the
   literal target unit. Two percentages interpolate as percentages
-- **`auto` heights.** As in a browser, a change between a length and `auto` is
+- **`auto` sizes.** As in a browser, a change between a length and `auto` is
   discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an
-  ancestor (it inherits, default `'numeric-only'`). That covers `height` to or from
-  `auto` or unset, and an unset `minHeight` / `maxHeight` (CSS computes them to
-  `auto` / `none`). With it set, the transition starts from the laid-out height and
-  runs to the content's height, follows the content while it grows, and hands back
-  to `auto` at the end. `width` to or from `auto` stays discrete. `motion` animates
-  to `height: 'auto'` whatever `interpolateSize` is, since that is Framer's
-  behaviour
+  ancestor (it inherits, default `'numeric-only'`). That covers `height` and
+  `width` to or from `auto` or unset, and an unset `minHeight` / `maxHeight` (CSS
+  computes them to `auto` / `none`). With it set, the transition starts from the
+  laid-out size and runs to the content's size, follows the content while it
+  grows, and hands back to `auto` at the end. A `width` that animates costs an
+  extra layout per frame (see [Intrinsic widths](#intrinsic-widths)). `motion`
+  animates to `height: 'auto'` and `width: 'auto'` whatever `interpolateSize` is,
+  since that is Framer's behaviour
+- **Lengths in context.** A length written with `em`, `rem`, `vw`, `vh`, `vmin`,
+  `vmax` or `calc()`, or a length and a `%` mixed, has no pixel value to
+  interpolate until layout. A transition from or to one changes at once
 - **Interrupts.** A change mid-flight starts from the visible value, not the old
   target. Returning to where the transition began shortens the way back in
   proportion, as CSS specifies. Changing `transition*` does not touch a running
@@ -5804,6 +5903,8 @@ Differences from a browser:
 - `animation-duration: auto` is `0s`
 - A size keyframe against `auto` (or an unset size) is discrete unless
   `interpolateSize: 'allow-keywords'` applies, as for transitions
+- A keyframe length written with `em`, `rem`, `vw`, `calc()` or a mix of a length
+  and a `%` is an error that names the property, as for `motion`
 
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
 
