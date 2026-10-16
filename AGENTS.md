@@ -694,7 +694,7 @@ cd examples && TURNS=10000 SAFE_MDX=1 bun run bench:serde
 cd packages/native && cargo run --release --example bench_serde
 ```
 
-Four results that shaped the current code:
+Five results that shaped the current code:
 
 - `StyleDesc` is about 1.4 KB (1392 bytes when it was measured, and every field
   added since only grows it). Putting it in an enum variant makes the whole
@@ -710,6 +710,12 @@ Four results that shaped the current code:
 - `RetainedElement.style` is `Option<Arc<StyleDesc>>`. Read it with
   `.as_deref()`. The motion path must copy out before mutating, or one
   element's animation restyles every element that declared the same style
+- `RetainedElement.style` is the **effective** style: what the element declared
+  (`own_style`) over the universal layer (`setUniversalStyle`, a CSS `*` rule;
+  `universal_style.rs`). Only `RetainedTree::assign_style` writes it, for
+  `set_style`, `set_universal_style` and a string landing on a `text` element
+  (text nodes get no layer), so its bookkeeping lives once. `StyleTable` holds
+  the layered styles per own style, and `sweep` releases them with it
 
 No mainstream JS↔Rust codec deduplicates repeated string **values**. msgpackr
 `useRecords` deduplicates keys, and its output is not plain MessagePack, so

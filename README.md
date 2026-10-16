@@ -5983,6 +5983,8 @@ way, overflow included.
 
 **Ancestor state:** `group`, `groupHover`, `groupActive`, `groupFocusWithin`. See [Group state styles](#group-state-styles)
 
+**Every element:** `<UniversalStyle>`, a `* { ... }` layer under all own styles. See [Universal style](#universal-style)
+
 ### Group state styles
 
 There is no stylesheet, so an element cannot react to a hovered ancestor with a
@@ -6325,6 +6327,69 @@ Differences from a browser:
   and a `%` is an error that names the property, as for `motion`
 
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
+
+### Universal style
+
+A theme cross-fade needs `transition: 'background-color 300ms, color 300ms'` on
+every element, and nothing in your tree owns every element. `<UniversalStyle>` is
+the CSS `* { ... }` rule: a style layer under the own style of every element.
+
+```tsx
+import { UniversalStyle } from '@gpuix/react' // or '@gpuix/solid'
+
+<UniversalStyle style={{ transition: 'background-color 300ms, color 300ms' }} />
+```
+
+It renders nothing, applies while it is mounted and follows its `style` prop. Put
+it anywhere in the tree (the layer is the window's, not its subtree's). The same
+layer is `setUniversalStyle(style | null)` on the mutation queue, for code that
+does not use a component.
+
+- **Lowest precedence.** An element's own style and its state styles win
+  property by property. Shorthands and longhands interplay as they do for
+  `hover` over its base: an own `padding` replaces a universal `paddingTop`, an
+  own `transition` replaces the universal one, and a colour, filter or other CSS
+  string that is invalid in the element's own style falls through to the layer's
+- **Every element.** Including ones mounted later and ones that never set a
+  `style`. A string child is a text node, not an element, and gets nothing; a
+  `<text>` element does
+- **State refinements.** The layer may carry `hover`, `active`, `focusVisible`,
+  `focusWithin`, `groupHover`, `groupActive` and `groupFocusWithin`, like
+  `*:hover`. Where the element declares the same refinement the two merge, the
+  element's winning per property; where only one does, that one is used
+- **Not inherited.** It is a declaration on each element, as `* {}` is, so a
+  property that does not inherit does not start to
+- **Stacking.** Several `<UniversalStyle>` at once are spread over each other in
+  mount order, top-level properties only: a later one replaces a shared
+  property, and a nested `hover` object whole. Unmounting one leaves the others
+- **One restyle.** A change of the layer restyles every element once, in one
+  frame, with no per-element JavaScript. The result is the same as having set
+  every element's style to its new combined one
+- **Validation.** The style is checked exactly like `style` on an element. An
+  invalid one rejects the batch it is in and nothing changes
+
+The CSS transition rules hold, which is what makes the cross-fade work. With the
+layer's `transition` in place, an element whose `light-dark()` colour flips with
+`colorScheme` or the window's appearance (`renderer.setAppearance`) fades,
+though it never declared a transition. A layer that adds the `transition` and
+moves a colour in the same change runs it, as a style that does so would.
+
+```tsx
+<UniversalStyle style={{ transition: 'background-color 300ms, color 300ms' }} />
+<div style={{ colorScheme: 'light dark', backgroundColor: 'light-dark(#fff, #111)' }}>
+  <text>Fades when the appearance flips</text>
+</div>
+```
+
+Costs and limits:
+
+- A layer with a `transition` makes every element track transitions, which costs
+  a little per element per frame. Name the properties as above instead of `all`
+- It is one layer. There are no selectors, no specificity and no cascade between
+  rules, so it cannot say "every `<text>`" or "every child of a card"
+- An element that had no style when the layer first gave it a `transition` has
+  no earlier style to fade from, so a colour the same change gives it appears at
+  once. Later changes fade
 
 ## Automation
 
