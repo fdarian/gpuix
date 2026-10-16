@@ -12615,3 +12615,66 @@ mod paint_integration_tests {
         assert_eq!((small[0], large[0]), (20.0, 30.0));
     }
 }
+
+/// Lane 1's text decorations, painted by the elements that lane 2 and lane 8 changed: text in a
+/// block, in an inline box and with a font size of its own.
+#[cfg(test)]
+mod decoration_paint_tests {
+    use super::paint_integration_tests::painted;
+    use super::*;
+
+    const SOLID: u32 = 0;
+
+    fn decorations(window: gpui::WindowHandle<GpuixView>, cx: &mut gpui::TestAppContext) -> Vec<gpui::Underline> {
+        cx.update_window(window.into(), |_, window, _| window.painted_underlines()).unwrap()
+    }
+
+    fn lines(container: &str, span: &str, cx: &mut gpui::TestAppContext) -> Vec<gpui::Underline> {
+        let window = painted(cx, container, span);
+        decorations(window, cx)
+    }
+
+    #[gpui::test]
+    fn an_overline_on_a_block_paints_above_the_text_where_an_underline_paints_below(cx: &mut gpui::TestAppContext) {
+        let over = lines(r#"{"textDecoration": "overline"}"#, "{}", cx);
+        let under = lines(r#"{"textDecoration": "underline"}"#, "{}", cx);
+        assert_eq!((over.len(), under.len()), (1, 1));
+        assert_eq!(over[0].style, SOLID);
+        assert!(over[0].bounds.origin.y < under[0].bounds.origin.y);
+        assert_eq!(over[0].bounds.size.width, under[0].bounds.size.width);
+        assert!(over[0].bounds.size.width.0 > 0.0);
+    }
+
+    #[gpui::test]
+    fn an_overline_on_an_inline_box_covers_the_text_of_that_box_only(cx: &mut gpui::TestAppContext) {
+        let whole = lines(r#"{"textDecoration": "overline"}"#, "{}", cx);
+        let span = lines("{}", r#"{"textDecoration": "overline"}"#, cx);
+        assert_eq!((whole.len(), span.len()), (1, 1));
+        assert!(span[0].bounds.size.width.0 > 0.0);
+        assert!(span[0].bounds.size.width < whole[0].bounds.size.width);
+        assert!(span[0].bounds.origin.x > whole[0].bounds.origin.x);
+        assert_eq!(span[0].bounds.origin.y, whole[0].bounds.origin.y);
+    }
+
+    #[gpui::test]
+    fn an_overline_follows_the_font_size_of_its_inline_box(cx: &mut gpui::TestAppContext) {
+        let plain = lines("{}", r#"{"textDecoration": "overline"}"#, cx);
+        let large = lines("{}", r#"{"textDecoration": "overline", "fontSize": 40}"#, cx);
+        let underlined = lines("{}", r#"{"textDecoration": "underline", "fontSize": 40}"#, cx);
+        assert_eq!((plain.len(), large.len(), underlined.len()), (1, 1, 1));
+        // A larger font is wider, and its overline is above its underline.
+        assert!(large[0].bounds.size.width > plain[0].bounds.size.width);
+        assert!(large[0].bounds.origin.y < underlined[0].bounds.origin.y);
+    }
+
+    #[gpui::test]
+    fn the_style_and_thickness_of_an_overline_reach_the_scene(cx: &mut gpui::TestAppContext) {
+        let solid = lines("{}", r#"{"textDecoration": "overline"}"#, cx);
+        let dotted = lines("{}", r#"{"textDecoration": "overline dotted 3px"}"#, cx);
+        let double = lines("{}", r#"{"textDecoration": "overline double"}"#, cx);
+        assert_eq!(dotted.len(), 1);
+        assert_ne!(dotted[0].style, solid[0].style);
+        assert_eq!(dotted[0].thickness.0, solid[0].thickness.0 * 3.0);
+        assert_eq!(double.len(), 2, "a double line is two");
+    }
+}
