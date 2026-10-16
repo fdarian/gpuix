@@ -5148,8 +5148,6 @@ text imports no longer need a runtime flag.
 | Link click | `onLinkClick` | `value` (URL) — `<markdown>` only |
 | Selection change | `onSelectionChange` | `value` (joined selected text) — window-level on `render()` |
 | Appearance change | `onAppearanceChange` | `value` (`"light"` or `"dark"`) — window-level on `render()` |
-| Pointer lock change | `onPointerLockChange`, `document` `pointerlockchange` | `target` (the locked element, `null` once released) — window-level on `render()`. Bubbles, not cancelable |
-| Pointer lock error | `onPointerLockError`, `document` `pointerlockerror` | `target` (the element that was asked, `null` if it left the tree) — window-level on `render()`. Bubbles, not cancelable |
 
 Every pointer, mouse, drag and composition handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
@@ -5405,13 +5403,11 @@ const dial = useRef<PublicInstance>(null)
   onMouseMove={(e) => turn(e.movementX)}
 />
 
-render(<App />, {
-  onPointerLockChange(event) {
-    setLocked(event.target !== null) // the locked element, null once released
-  },
-  onPointerLockError(event) {
-    console.warn('could not lock', event.target)
-  },
+document.addEventListener('pointerlockchange', () => {
+  setLocked(document.pointerLockElement !== null) // the locked element, null once released
+})
+document.addEventListener('pointerlockerror', () => {
+  console.warn('could not lock')
 })
 ```
 
@@ -5431,29 +5427,26 @@ call that asked. Elsewhere the next frame applies the request.
 
 `pointerlockchange` and `pointerlockerror` are DOM events at `document`: listen
 with `document.addEventListener('pointerlockchange', ...)`, the `document` and
-`window` objects `@gpuix/react` and `@gpuix/solid` export. They run the window
-propagation (window capture, document capture, document bubble, window bubble),
-bubble and cannot be cancelled. `event.target` is the element, not `document`
-as in the DOM: the locked element for a change (`null` once released) and the
-element that was asked for an error, which `document.pointerLockElement` could
-not tell you. The same two events reach **window-level** callbacks on
-`render()` / `createRoot()`, the same attachment as `onAppearanceChange`:
+`window` objects `@gpuix/react` and `@gpuix/solid` export. `event.target` is
+`document`, as in the DOM, and they run the window propagation (window capture,
+document capture, document bubble, window bubble), bubble and cannot be
+cancelled. The element is `document.pointerLockElement`, like
+`document.activeElement`; an error names none.
 
-- `onPointerLockChange` fires when the lock element changes: the lock was
-  granted, moved to another element, or ended. The event's `target` is the
-  locked element, `null` once the lock is gone. A lock ends by
+- `pointerlockchange` fires when the lock element changes: the lock was
+  granted, moved to another element, or ended. `document.pointerLockElement` is
+  the new lock element, `null` once the lock is gone. A lock ends by
   `exitPointerLock()`, when the window loses focus (the platform releases it),
   and when the locked element leaves the tree.
-- `onPointerLockError` fires when a request fails: the element is not in the
-  tree, or the platform refused. `target` is the element that was asked, or
-  `null` when it already left the tree.
+- `pointerlockerror` fires when a request fails: the element is not in the
+  tree, or the platform refused.
 
 Asking again for the element that already holds the lock does nothing. Asking
 for another one moves the lock without releasing the cursor.
 
 Only macOS can lock the pointer (`CGAssociateMouseAndMouseCursorPosition`), and
 only for the active window. On Windows and Linux every request fails with
-`onPointerLockError`.
+`pointerlockerror`.
 
 `movementX` and `movementY` are on every pointer, mouse, wheel and drag event.
 On `pointermove` and `mousemove`, locked or not, they are how far the pointer
