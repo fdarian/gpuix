@@ -35,6 +35,7 @@ use crate::css::line_height::LineHeight;
 use crate::style::StyleDesc;
 use crate::syntax::{cache::highlight_cached, HighlightedDocument};
 use crate::text::runs::runs_for_spans;
+use crate::text::white_space::{StyledWhiteSpace as _, WhiteSpace};
 use crate::theme::{Metrics, Theme};
 
 // ── Factory ──────────────────────────────────────────────────────────
@@ -194,7 +195,7 @@ impl CustomElement for CodeElement {
             .font_weight(type_style.weight)
             .text_size(px(type_style.text_size))
             .line_height(px(type_style.line_height))
-            .whitespace_nowrap();
+            .white_space(WhiteSpace::Pre);
 
         for (line_ix, line) in lines.iter().enumerate() {
             let spans: Vec<(std::ops::Range<usize>, gpui::Hsla)> = highlight

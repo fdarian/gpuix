@@ -2,9 +2,11 @@
 /// GPUI paint pipeline. A paragraph is one painted string, so
 /// `getPaintedText()` shows what is left of the strings after processing.
 
+import path from "path"
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
+import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -23,6 +25,16 @@ function paint(node: React.ReactNode) {
   const testRoot = createTestRoot()
   testRoot.render(node)
   return testRoot
+}
+
+/** Menlo has one advance for every character, so a column is a space. */
+function measureSpace() {
+  const testRoot = paint(
+    <div highlight={{ query: "aaaaaaaaaa" }}>
+      <text style={TEXT}>{"aaaaaaaaaa"}</text>
+    </div>
+  )
+  return testRoot.renderer.getPaintedHighlights()[0]!.rects[0]!.width / 10
 }
 
 describeNative("white-space", () => {
@@ -303,15 +315,7 @@ describeNative("white-space", () => {
   })
 
   describe("tab stops", () => {
-    // Menlo has one advance for every character, so a column is a space.
-    const space = (() => {
-      const testRoot = paint(
-        <div highlight={{ query: "aaaaaaaaaa" }}>
-          <text style={TEXT}>{"aaaaaaaaaa"}</text>
-        </div>
-      )
-      return testRoot.renderer.getPaintedHighlights()[0]!.rects[0]!.width / 10
-    })()
+    const space = measureSpace()
 
     /** Where the first `Z` of `text` starts, in spaces from the left of the text and in lines from its top. */
     function whereIsZ(
@@ -432,6 +436,103 @@ describeNative("white-space", () => {
           unmount()
         }
       }
+    })
+  })
+
+  describe("hanging spaces", () => {
+    const space = measureSpace()
+    const BOX = { width: 4.5 * space, backgroundColor: "#101010" } as const
+    const INK = { ...TEXT, color: "#ffffff" } as const
+
+    function shoot(name: string, node: React.ReactNode) {
+      const testRoot = paint(node)
+      const file = path.join(SHOTS_DIR, `white-space-hang-${name}.png`)
+      testRoot.renderer.captureScreenshot(file)
+      return file
+    }
+
+    /** `text` in a box 4.5 columns wide. */
+    function rows(whiteSpace: string, textAlign: string, text: string) {
+      return (
+        <div style={BOX}>
+          <text style={{ whiteSpace, textAlign, ...INK }}>{text}</text>
+        </div>
+      )
+    }
+
+    it("leaves the space at a soft wrap out of a centred line", () => {
+      for (const whiteSpace of ["normal", "pre-wrap"]) {
+        const wrapped = shoot(`center-wrapped-${whiteSpace}`, rows(whiteSpace, "center", "aaaa bbbb"))
+        // The same two rows, broken by hand so that no space is left on them.
+        const broken = shoot(
+          `center-broken-${whiteSpace}`,
+          <div style={BOX}>
+            <div style={{ textAlign: "center", ...INK }}>aaaa</div>
+            <div style={{ textAlign: "center", ...INK }}>bbbb</div>
+          </div>
+        )
+        expectScreenshotsEqual(wrapped, broken)
+      }
+    })
+
+    it("leaves the space at a soft wrap out of a right aligned line", () => {
+      const wrapped = shoot("right-wrapped", rows("normal", "right", "aaaa bbbb"))
+      const broken = shoot(
+        "right-broken",
+        <div style={BOX}>
+          <div style={{ textAlign: "right", ...INK }}>aaaa</div>
+          <div style={{ textAlign: "right", ...INK }}>bbbb</div>
+        </div>
+      )
+      expectScreenshotsEqual(wrapped, broken)
+    })
+
+    it("does not wrap a line that only its trailing space overflows", () => {
+      const testRoot = paint(
+        <div testId="p" style={BOX}>
+          <text style={{ whiteSpace: "pre-wrap", ...INK }}>{"aaaa "}</text>
+        </div>
+      )
+      expect(lines(testRoot, "p")).toBe(1)
+    })
+
+    it("wraps once at a long run of spaces and makes no line of them", () => {
+      const spaces = " ".repeat(6)
+      const testRoot = paint(
+        <div testId="p" style={BOX}>
+          <text style={{ whiteSpace: "pre-wrap", ...INK }}>{`aaaa${spaces}bbbb`}</text>
+        </div>
+      )
+      expect(lines(testRoot, "p")).toBe(2)
+      const right = shoot("run-right", rows("pre-wrap", "right", `aaaa${spaces}bbbb`))
+      const broken = shoot("run-right-broken", rows("pre-wrap", "right", "aaaa\nbbbb"))
+      expectScreenshotsEqual(right, broken)
+    })
+
+    it("hangs the spaces of the last line and of a line before a line feed in pre-wrap", () => {
+      const spaced = shoot("pre-wrap-spaced", rows("pre-wrap", "center", "ab  \ncd  "))
+      const bare = shoot("pre-wrap-bare", rows("pre-wrap", "center", "ab\ncd"))
+      expectScreenshotsEqual(spaced, bare)
+    })
+
+    it("keeps the spaces of pre where they count", () => {
+      const spaced = shoot("pre-spaced", rows("pre", "center", "ab  \ncd"))
+      const bare = shoot("pre-bare", rows("pre", "center", "ab\ncd"))
+      expectScreenshotsDiffer(spaced, bare)
+    })
+
+    it("selects a hanging space past the edge of the box", () => {
+      const testRoot = paint(
+        <div highlight={{ query: "aaaa ", caseSensitive: true }} style={BOX}>
+          <text testId="t" style={{ whiteSpace: "pre-wrap", ...INK }}>{"aaaa bbbb"}</text>
+        </div>
+      )
+      const hits = testRoot.renderer.getPaintedHighlights()
+      expect(hits).toHaveLength(1)
+      const rect = hits[0]!.rects[0]!
+      const box = testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId("t")!.id)!
+      expect(rect.width / space).toBeCloseTo(5, 1)
+      expect(rect.x + rect.width).toBeGreaterThan(box.x + box.width)
     })
   })
 })

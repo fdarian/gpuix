@@ -43,7 +43,30 @@ impl WhiteSpace {
     pub fn wraps(self) -> bool {
         matches!(self, Self::Normal | Self::PreWrap | Self::PreLine)
     }
+
+    /// Whether the spaces and tabs at the end of a line hang: they are not
+    /// measured to fit the line or to align it. In `pre` they are content, and
+    /// `nowrap` has none left at the end of a line to hang.
+    pub fn hangs_trailing_spaces(self) -> bool {
+        self.wraps()
+    }
 }
+
+/// What gpui is told about an element's `white-space`: whether its text wraps and
+/// whether the spaces at the end of a line hang. Collapsing is the paragraph
+/// builder's (`text::inline`).
+pub trait StyledWhiteSpace: gpui::Styled + Sized {
+    fn white_space(mut self, value: WhiteSpace) -> Self {
+        self.text_style().hang_trailing_spaces = Some(value.hangs_trailing_spaces());
+        if value.wraps() {
+            self.whitespace_normal()
+        } else {
+            self.whitespace_nowrap()
+        }
+    }
+}
+
+impl<E: gpui::Styled> StyledWhiteSpace for E {}
 
 /// The `white-space` an element declares itself.
 fn declared(element: &RetainedElement) -> Option<WhiteSpace> {
@@ -119,6 +142,7 @@ pub fn step(tail: &mut Tail, c: char, mode: WhiteSpace) -> Emit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::Styled as _;
 
     fn run(mode: WhiteSpace, input: &str) -> String {
         let mut tail = Tail::LineStart;
@@ -183,5 +207,42 @@ mod tests {
         assert!(!WhiteSpace::Pre.wraps());
         assert!(!WhiteSpace::Normal.keeps_line_feeds());
         assert!(WhiteSpace::PreLine.keeps_line_feeds());
+    }
+
+    #[test]
+    fn spaces_hang_where_the_text_wraps() {
+        for (value, hangs) in [
+            (WhiteSpace::Normal, true),
+            (WhiteSpace::PreWrap, true),
+            (WhiteSpace::PreLine, true),
+            (WhiteSpace::Nowrap, false),
+            (WhiteSpace::Pre, false),
+        ] {
+            assert_eq!(value.hangs_trailing_spaces(), hangs, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn the_white_space_of_an_element_reaches_the_text_style() {
+        for (value, wraps) in [
+            (WhiteSpace::Normal, true),
+            (WhiteSpace::PreWrap, true),
+            (WhiteSpace::PreLine, true),
+            (WhiteSpace::Nowrap, false),
+            (WhiteSpace::Pre, false),
+        ] {
+            let mut el = gpui::div().white_space(value);
+            let text_style = el.text_style();
+            assert_eq!(text_style.hang_trailing_spaces, Some(wraps), "{value:?}");
+            assert_eq!(
+                text_style.white_space,
+                Some(if wraps {
+                    gpui::WhiteSpace::Normal
+                } else {
+                    gpui::WhiteSpace::Nowrap
+                }),
+                "{value:?}"
+            );
+        }
     }
 }

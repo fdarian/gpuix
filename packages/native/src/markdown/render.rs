@@ -19,6 +19,7 @@ use gpui::{
 use super::parser::{Block, BlockTree, InlineRun, TableAlign};
 use crate::syntax::cache::highlight_cached;
 use crate::text::{range_rects, runs::runs_for_spans, SharedSelection};
+use crate::text::white_space::{StyledWhiteSpace as _, WhiteSpace};
 use crate::theme::{Metrics, Theme};
 
 // ── Metrics ──────────────────────────────────────────────────────────
@@ -425,7 +426,7 @@ fn render_code_block(language: Option<&str>, code: &str, ctx: &mut MdContext) ->
         .font_family(theme.font_mono.clone())
         .text_size(px(m.code_text_size))
         .line_height(px(m.code_line_height))
-        .whitespace_nowrap();
+        .white_space(WhiteSpace::Pre);
 
     for (line_ix, line) in code.split('\n').enumerate() {
         let spans: Vec<(Range<usize>, Hsla)> = highlight

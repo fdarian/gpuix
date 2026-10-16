@@ -41,6 +41,7 @@ use crate::events::app_region::AppRegion;
 use crate::element_tree::EventPayload;
 use crate::retained_tree::{RetainedTree, StyleTable};
 use crate::style::StyleDesc;
+use crate::text::white_space::StyledWhiteSpace as _;
 use crate::text::{selectable_text, selection_frame_reset, SharedSelection};
 use crate::theme::Theme;
 
@@ -6949,6 +6950,8 @@ impl gpui::Render for GpuixView {
                 .size_full()
                 .on_painted(self.measurements.frame_counter());
             root.text_style().tab_size = Some(crate::css::tab_size::DEFAULT);
+            root.text_style().hang_trailing_spaces =
+                Some(crate::text::white_space::WhiteSpace::default().hangs_trailing_spaces());
             with_window_menu_actions(root)
                 .child(crate::events::listeners::pointer_frame(
                     cx.weak_entity(),
@@ -8119,17 +8122,13 @@ pub(crate) fn apply_styles_with_fill<E: gpui::Styled>(
         Some("left") | Some("start") => el = el.text_left(),
         _ => {}
     }
-    // Collapsing is the paragraph builder's (`text::inline`); gpui only wraps.
+    // Collapsing is the paragraph builder's (`text::inline`); gpui wraps and hangs.
     if let Some(white_space) = style
         .white_space
         .as_deref()
         .and_then(crate::text::white_space::WhiteSpace::parse)
     {
-        el = if white_space.wraps() {
-            el.whitespace_normal()
-        } else {
-            el.whitespace_nowrap()
-        };
+        el = el.white_space(white_space);
     }
     if let Some(tab_size) = style.tab_size {
         el.text_style().tab_size = Some(tab_size.to_gpui());

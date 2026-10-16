@@ -33,6 +33,7 @@ use crate::syntax::cache::highlight_cached;
 use crate::syntax::HighlightSpan;
 use crate::text::runs::runs_for_spans;
 use crate::text::{range_rects, SharedSelection};
+use crate::text::white_space::{StyledWhiteSpace as _, WhiteSpace};
 use crate::theme::Theme;
 
 /// How far past the viewport the list pre-builds rows.
@@ -887,7 +888,7 @@ fn diff_line_row(
                 .pl(px(12.0))
                 .font_family(theme.font_mono.clone())
                 .text_size(px(m.diff_text_size))
-                .whitespace_nowrap()
+                .white_space(WhiteSpace::Pre)
                 .child(ctx.text(ix, line.text.clone(), Some(runs), word_wash)),
         )
         .into_any_element()
