@@ -236,8 +236,6 @@ struct Builder {
     pieces: Vec<Piece>,
     boxes: Vec<(u64, Range<usize>)>,
     tail: Tail,
-    /// Characters since the last forced break, which is what a tab stop counts.
-    column: usize,
     /// The container's `white-space`, then that of each open box.
     modes: Vec<WhiteSpace>,
     /// Every character that came in was collapsible whitespace.
@@ -257,7 +255,6 @@ impl Builder {
             pieces: Vec::new(),
             boxes: Vec::new(),
             tail: Tail::LineStart,
-            column: 0,
             modes: vec![base],
             only_whitespace: true,
             blockified,
@@ -272,7 +269,6 @@ impl Builder {
     /// from every range that reached it.
     fn pop(&mut self) {
         self.text.pop();
-        self.column = self.column.saturating_sub(1);
         let len = self.text.len();
         for piece in &mut self.pieces {
             piece.range.end = piece.range.end.min(len);
@@ -301,22 +297,13 @@ impl Builder {
             };
             match white_space::step(&mut self.tail, c, mode) {
                 Emit::Nothing => {}
-                Emit::Char('\t') if mode.keeps_tabs() => {
-                    let width = white_space::tab_width(self.column);
-                    self.text.extend(std::iter::repeat_n(' ', width));
-                    self.column += width;
-                }
-                Emit::Char(c) => {
-                    self.text.push(c);
-                    self.column += 1;
-                }
+                Emit::Char(c) => self.text.push(c),
                 Emit::Break { trim } => {
                     if trim {
                         self.pop();
                         start = start.min(self.text.len());
                     }
                     self.text.push('\n');
-                    self.column = 0;
                 }
             }
         }
@@ -1104,11 +1091,36 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_in_pre_expands_to_the_next_multiple_of_eight_columns() {
+    fn a_tab_is_kept_where_the_white_space_keeps_spaces() {
+        for mode in ["pre", "pre-wrap"] {
+            let mut f = Fixture::new();
+            f.styled(1, serde_json::json!({"whiteSpace": mode}));
+            f.text(1, 2, "ab\tc\n\td");
+            assert_eq!(text_of(&f, 1), "ab\tc\n\td", "{mode}");
+        }
+    }
+
+    #[test]
+    fn a_tab_collapses_to_a_space_where_the_white_space_collapses() {
+        for mode in ["normal", "nowrap", "pre-line"] {
+            let mut f = Fixture::new();
+            f.styled(1, serde_json::json!({"whiteSpace": mode}));
+            f.text(1, 2, "ab\t\tc");
+            assert_eq!(text_of(&f, 1), "ab c", "{mode}");
+        }
+    }
+
+    #[test]
+    fn a_tab_in_a_span_is_one_byte_of_the_text() {
         let mut f = Fixture::new();
-        f.styled(1, serde_json::json!({"whiteSpace": "pre-wrap"}));
-        f.text(1, 2, "ab\tc\n\td");
-        assert_eq!(text_of(&f, 1), "ab      c\n        d");
+        f.styled(1, serde_json::json!({"whiteSpace": "pre"}));
+        f.text(1, 2, "a");
+        f.add(1, 3, "span").text(3, 4, "\tb");
+        let plan = f.plan(1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, "a\tb");
+        assert_eq!(paragraph.pieces[1].range, 1..3);
+        assert_eq!(paragraph.box_at(1), Some(3));
     }
 
     #[test]

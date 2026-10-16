@@ -43,12 +43,6 @@ impl WhiteSpace {
     pub fn wraps(self) -> bool {
         matches!(self, Self::Normal | Self::PreWrap | Self::PreLine)
     }
-
-    /// Whether a tab expands to the next tab stop. In the collapsing values it
-    /// is a space.
-    pub fn keeps_tabs(self) -> bool {
-        matches!(self, Self::Pre | Self::PreWrap)
-    }
 }
 
 /// The `white-space` an element declares itself.
@@ -122,11 +116,6 @@ pub fn step(tail: &mut Tail, c: char, mode: WhiteSpace) -> Emit {
     }
 }
 
-/// Spaces a tab at `column` expands to, for tab size 8.
-pub fn tab_width(column: usize) -> usize {
-    8 - column % 8
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,12 +183,5 @@ mod tests {
         assert!(!WhiteSpace::Pre.wraps());
         assert!(!WhiteSpace::Normal.keeps_line_feeds());
         assert!(WhiteSpace::PreLine.keeps_line_feeds());
-    }
-
-    #[test]
-    fn tab_stops_are_eight_columns_apart() {
-        assert_eq!(tab_width(0), 8);
-        assert_eq!(tab_width(3), 5);
-        assert_eq!(tab_width(8), 8);
     }
 }
