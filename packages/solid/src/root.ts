@@ -4,6 +4,7 @@ import {
   createMutationQueue,
   createRendererState,
   runMotionReleases,
+  syncWindowEventListeners,
   unregisterEventHandlers,
 } from "@gpuix/native/host"
 import { toAppearance } from "@gpuix/native/host"
@@ -73,6 +74,7 @@ export function createRoot(
     allocateId: () => ++state.ids.nextElementId,
   })
   let binding: RendererRootBinding | undefined
+  let stopWindowEventListeners: (() => void) | undefined
   let dispose: (() => void) | undefined
   const selectionListeners = new Set<(text: string | null) => void>()
   const onSelectionChange = (event: EventPayload, currentRenderer: NativeRenderer) => {
@@ -120,6 +122,7 @@ export function createRoot(
       true,
       binding.windowKeyEventId
     )
+    stopWindowEventListeners = syncWindowEventListeners(renderer)
     // Sent on every attach, so a remount without the option restores the default.
     mutations.setKeyboardFocusDim(rootHandlers.keyboardFocusDim !== false)
     syncSelection()
@@ -129,6 +132,8 @@ export function createRoot(
   const detach = () => {
     if (!binding?.detach()) return
     renderer.setWindowKeyEvents?.(false, false, binding.windowKeyEventId)
+    stopWindowEventListeners?.()
+    stopWindowEventListeners = undefined
     renderer.setWindowSelectionChange?.(false, binding.windowSelectionEventId)
     renderer.setWindowAppearanceChange?.(false, binding.windowAppearanceEventId)
     binding = undefined

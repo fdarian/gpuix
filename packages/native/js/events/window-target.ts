@@ -38,6 +38,9 @@ interface Registration {
 export class GpuixEventTarget {
   private readonly registrations = new Map<string, Registration[]>()
 
+  /** @param onTypesChange Called when a type gains its first listener or loses its last. */
+  constructor(private readonly onTypesChange?: () => void) {}
+
   addEventListener(
     type: string,
     listener: WindowEventListener,
@@ -52,6 +55,7 @@ export class GpuixEventTarget {
     }
     registrations.push({ listener, capture, once })
     this.registrations.set(key, registrations)
+    if (registrations.length === 1) this.onTypesChange?.()
   }
 
   removeEventListener(
@@ -68,12 +72,20 @@ export class GpuixEventTarget {
     )
     if (index < 0) return
     registrations.splice(index, 1)
-    if (registrations.length === 0) this.registrations.delete(key)
+    if (registrations.length === 0) {
+      this.registrations.delete(key)
+      this.onTypesChange?.()
+    }
   }
 
   /** Whether any listener is registered for `type` in either phase. */
   hasListeners(type: string): boolean {
     return this.registrations.has(type.toLowerCase())
+  }
+
+  /** @internal The types with a listener in either phase. */
+  listenedTypes(): string[] {
+    return [...this.registrations.keys()]
   }
 
   /**
@@ -106,8 +118,35 @@ export class GpuixEventTarget {
   }
 }
 
-export const window = new GpuixEventTarget()
-export const document = new GpuixEventTarget()
+const typeSubscribers = new Set<() => void>()
+const notifyTypeSubscribers = () => {
+  for (const subscriber of [...typeSubscribers]) subscriber()
+}
+
+export const window = new GpuixEventTarget(notifyTypeSubscribers)
+export const document = new GpuixEventTarget(notifyTypeSubscribers)
+
+/**
+ * Keeps `renderer` told which event types `window` or `document` listens for,
+ * so native produces them even when no element on the event's path does (the
+ * pointer over bare background). Sends the current set now and again whenever
+ * it changes. The returned function clears it on the renderer and stops.
+ */
+export function syncWindowEventListeners(renderer: {
+  setWindowEventListeners?: (types: string[]) => void
+}): () => void {
+  const send = () => {
+    renderer.setWindowEventListeners?.([
+      ...new Set([...window.listenedTypes(), ...document.listenedTypes()]),
+    ])
+  }
+  send()
+  typeSubscribers.add(send)
+  return () => {
+    typeSubscribers.delete(send)
+    renderer.setWindowEventListeners?.([])
+  }
+}
 
 export interface PropagationResult extends DomDispatchResult {
   /** The event the listeners saw. */

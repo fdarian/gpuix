@@ -265,6 +265,8 @@ export declare class GpuixRenderer {
    * if it has not been painted.
    */
   getScrollMetrics(elementId: number): Array<number> | null
+  /** The event types `window` or `document` listens for. Replaces the set. */
+  setWindowEventListeners(types: Array<string>): void
   /**
    * Capture the mouse for `element_id`. Takes effect at the next pointer
    * input, not before: the dispatcher applies it then and fires
@@ -602,6 +604,8 @@ export declare class TestGpuixRenderer {
    * `block` (default `"start"`) and `inline` (default `"nearest"`) ask.
    */
   scrollIntoView(elementId: number, block?: string | undefined | null, inline?: string | undefined | null, behavior?: string | undefined | null): void
+  /** The event types `window` or `document` listens for. Replaces the set. */
+  setWindowEventListeners(types: Array<string>): void
   /**
    * Capture the mouse for `element_id`; takes effect at the next simulated
    * pointer input. Ignored while no button is down.

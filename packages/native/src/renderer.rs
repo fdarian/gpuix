@@ -3123,6 +3123,12 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// The event types `window` or `document` listens for. Replaces the set.
+    #[napi]
+    pub fn set_window_event_listeners(&self, types: Vec<String>) {
+        self.pointer_requests.set_window_events(types);
+    }
+
     /// Capture the mouse for `element_id`. Takes effect at the next pointer
     /// input, not before: the dispatcher applies it then and fires
     /// `gotpointercapture`. Ignored while no button is down.
@@ -4386,6 +4392,11 @@ impl WebGpuixRenderer {
         })
     }
 
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = setWindowEventListeners)]
+    pub fn set_window_event_listeners(&self, types: Vec<String>) {
+        self.pointer_requests.set_window_events(types);
+    }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = setPointerCapture)]
     pub fn set_pointer_capture(

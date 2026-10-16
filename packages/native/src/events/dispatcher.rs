@@ -40,7 +40,7 @@ use super::element_drag;
 use super::file_drag;
 use super::ids::Hit;
 use super::path::{chain_follows_path, common_ancestor, event_path, path_listens};
-use super::state::{is_connected, DragOver, PointerState, Press};
+use super::state::{is_connected, DragOver, PointerRequests, PointerState, Press};
 
 const PRIMARY_BUTTON: u32 = 0;
 const SECONDARY_BUTTON: u32 = 2;
@@ -228,6 +228,7 @@ pub(super) struct Emitter<'a> {
     /// Boxes of the chain under the pointer now, and of the chain it left.
     hits: &'a [Hit],
     previous_hits: &'a [Hit],
+    requests: PointerRequests,
     pub events: Vec<DomEvent>,
 }
 
@@ -236,18 +237,21 @@ impl<'a> Emitter<'a> {
         tree: &'a RetainedTree,
         sample: &'a PointerSample,
         previous_hits: &'a [Hit],
+        requests: PointerRequests,
     ) -> Self {
         Self {
             tree,
             position: sample.position,
             hits: &sample.hits,
             previous_hits,
+            requests,
             events: Vec::new(),
         }
     }
 
     pub(super) fn emit(&mut self, event_type: &'static str, target: u64, fields: Fields) {
-        if !path_listens(self.tree, target, event_type) {
+        if !path_listens(self.tree, target, event_type) && !self.requests.window_listens(event_type)
+        {
             return;
         }
         self.push(event_type, target, fields);
@@ -260,7 +264,10 @@ impl<'a> Emitter<'a> {
             let path = event_path(self.tree, target);
             crate::accessibility::label::activated_control(self.tree, &path).is_some()
         };
-        if path_listens(self.tree, target, "click") || activates() {
+        if path_listens(self.tree, target, "click")
+            || self.requests.window_listens("click")
+            || activates()
+        {
             self.push("click", target, fields);
         }
     }
@@ -493,7 +500,7 @@ fn dispatch_at(state: &mut PointerState, tree: &RetainedTree, sample: &PointerSa
     state.requests.set_buttons(state.buttons);
 
     let previous_hits = std::mem::take(&mut state.hits);
-    let mut emitter = Emitter::new(tree, sample, &previous_hits);
+    let mut emitter = Emitter::new(tree, sample, &previous_hits, state.requests.clone());
     if let Some(restyle) = element_drag::dispatch(state, &mut emitter, sample, geometric) {
         state.hits = sample.hits.clone();
         return Output::new(emitter.events, restyle, chain_mismatch, sample, state.buttons);
@@ -582,7 +589,7 @@ fn dispatch_wheel(
     chain_mismatch: bool,
 ) -> Output {
     let locked = state.lock_element().filter(|id| is_connected(tree, *id));
-    let mut emitter = Emitter::new(tree, sample, &state.hits);
+    let mut emitter = Emitter::new(tree, sample, &state.hits, state.requests.clone());
     if let Some(target) = locked.or(geometric) {
         let fields = Fields {
             wheel: Some(tick),
@@ -607,7 +614,7 @@ fn dispatch_file_drag(
     chain_mismatch: bool,
 ) -> Output {
     let previous_hits = std::mem::take(&mut state.hits);
-    let mut emitter = Emitter::new(tree, sample, &previous_hits);
+    let mut emitter = Emitter::new(tree, sample, &previous_hits, state.requests.clone());
     let target = geometric.or(tree.root_id);
     match &sample.action {
         PointerAction::FileDragMove { paths } => {
@@ -1093,6 +1100,28 @@ mod tests {
         let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
         assert!(output.events.is_empty());
         assert!(state.is_hovered(3) && state.is_hovered(2) && state.is_hovered(1));
+    }
+
+    #[test]
+    fn a_window_listener_gets_an_event_whose_path_nobody_listens_for() {
+        let tree = tree(&[]);
+        let mut state = PointerState::default();
+        state
+            .requests
+            .set_window_events(vec!["mousemove".to_string(), "click".to_string()]);
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["mousemove@4"]);
+        assert_eq!(output.events[0].path, [4, 1]);
+
+        // Another type is still not produced, and the set can be emptied again.
+        let output = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1])));
+        assert!(output.events.is_empty());
+        let output = dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1])));
+        assert_eq!(names(&output), ["click@4"]);
+
+        state.requests.set_window_events(Vec::new());
+        let output = dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1])));
+        assert!(output.events.is_empty());
     }
 
     #[test]

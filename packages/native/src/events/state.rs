@@ -5,6 +5,7 @@
 //! `is_hovered` and `is_active`.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -42,6 +43,8 @@ struct Requested {
     cancel_drag: bool,
     lock: Option<LockRequest>,
     locked: Option<u64>,
+    /// The event types `window` or `document` has a listener for, in either phase.
+    window_events: HashSet<String>,
 }
 
 /// The last pointer lock call. Only the last one counts: a request followed by
@@ -53,6 +56,18 @@ pub(super) enum LockRequest {
 }
 
 impl PointerRequests {
+    /// `setWindowEventListeners`: the types JS listens for on `window` or
+    /// `document`. A DOM listener up there hears an event whatever the path
+    /// below it listens for, so the dispatcher produces these types even for an
+    /// unlistened path. Replaces the previous set.
+    pub fn set_window_events(&self, types: Vec<String>) {
+        self.0.lock().unwrap().window_events = types.into_iter().collect();
+    }
+
+    pub(super) fn window_listens(&self, event_type: &str) -> bool {
+        self.0.lock().unwrap().window_events.contains(event_type)
+    }
+
     /// Ends the element drag in progress without another event: `dragstart`'s
     /// `preventDefault()` is a drag that never was.
     pub fn cancel_drag(&self) {

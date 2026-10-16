@@ -67,6 +67,7 @@ interface NativeTestRendererApi
   focusNextWithin(elementId: number): void
   focusPreviousWithin(elementId: number): void
   setWindowKeyEvents(keyDown: boolean, keyUp: boolean, eventId: number): void
+  setWindowEventListeners(types: string[]): void
   setWindowSelectionChange(enabled: boolean, eventId: number): void
   setWindowAppearanceChange(enabled: boolean, eventId: number): void
   setAppearance(appearance: string): void
@@ -353,6 +354,9 @@ export class TestRenderer implements NativeRenderer {
   >
   readonly getMediaFeatures: NonNullable<NativeRenderer["getMediaFeatures"]>
   readonly setWindowKeyEvents: NonNullable<NativeRenderer["setWindowKeyEvents"]>
+  readonly setWindowEventListeners: NonNullable<
+    NativeRenderer["setWindowEventListeners"]
+  >
   private readonly dispatchEvent: (event: EventPayload) => void
   private readonly dispatchSyncEvent: (event: EventPayload) => SyncDispatchResult
   private readonly onError: ((error: unknown) => void) | undefined
@@ -374,6 +378,9 @@ export class TestRenderer implements NativeRenderer {
     this.writeClipboardText = this.native.writeClipboardText.bind(this.native)
     this.readClipboardText = this.native.readClipboardText.bind(this.native)
     this.setWindowKeyEvents = this.native.setWindowKeyEvents.bind(this.native)
+    this.setWindowEventListeners = this.native.setWindowEventListeners.bind(
+      this.native
+    )
     this.setWindowSelectionChange = this.native.setWindowSelectionChange.bind(
       this.native
     )

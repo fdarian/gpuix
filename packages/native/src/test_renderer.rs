@@ -1168,6 +1168,12 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// The event types `window` or `document` listens for. Replaces the set.
+    #[napi]
+    pub fn set_window_event_listeners(&self, types: Vec<String>) {
+        self.pointer_requests.set_window_events(types);
+    }
+
     /// Capture the mouse for `element_id`; takes effect at the next simulated
     /// pointer input. Ignored while no button is down.
     #[napi]

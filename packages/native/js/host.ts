@@ -29,6 +29,7 @@ export * from "./clipboard.js"
 export {
   document,
   GpuixEventTarget,
+  syncWindowEventListeners,
   window,
   type AddEventListenerOptions,
   type WindowEventListener,
@@ -1615,6 +1616,7 @@ export type NativeRenderer = MutationHost &
       | "focusPreviousWithin"
       | "blur"
       | "setWindowKeyEvents"
+      | "setWindowEventListeners"
       | "setSyncEventHandler"
       | "setWindowSelectionChange"
       | "setWindowAppearanceChange"

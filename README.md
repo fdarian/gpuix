@@ -3225,6 +3225,14 @@ them). One event runs window capture, document capture, the element path,
 document bubble, window bubble. The `onKeyDown` and `onKeyUp` options of
 `render()` are window bubble listeners that also receive the renderer.
 
+A `window` or `document` listener hears every event that bubbles to the top of
+the tree (pointer, mouse, click, wheel), whether or not any element on the path listens.
+`window.addEventListener('pointermove', fn)` fires while the pointer is over
+bare background, where the event's `target` is the root element. Nothing fires
+while the pointer is outside the window. Native produces only the types that
+have a listener on `window`, `document` or an element on the path, so adding the
+first listener of a type is what turns it on.
+
 ### Tab and Escape are defaults
 
 **Tab** and **Shift+Tab** move focus through the tab order, like a browser, and
