@@ -7,6 +7,7 @@ pub mod dispatcher;
 pub mod element_drag;
 pub mod file_drag;
 pub mod ids;
+pub mod inline_target;
 pub(crate) mod key_names;
 pub(crate) mod keyboard;
 pub mod listeners;

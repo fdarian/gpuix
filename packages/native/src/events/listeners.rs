@@ -41,6 +41,7 @@ use super::activation::Activation;
 use super::app_region::{self, PressOutcome, SimulatedWindowActions, WindowActions};
 use super::dispatcher::{button_bit, dispatch, Output, PointerAction, PointerSample, WheelTick};
 use super::ids::host_hit_chain;
+use super::inline_target::refine;
 use super::state::{chain_changed, ObservedChain, PointerState};
 use super::sync_dispatch;
 
@@ -77,7 +78,7 @@ fn sample(
             f64::from(f32::from(movement.y)),
         ),
         modifiers: EventModifiers::from(modifiers),
-        hits: host_hit_chain(window),
+        hits: refine(host_hit_chain(window), position),
         over_drag_region: app_region::in_drag_region(window, position),
     }
 }
