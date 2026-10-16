@@ -22,7 +22,7 @@ import { dispatchPropagating, document, isDocumentEvent, window } from "./window
 export interface RootEventContext {
   readonly renderer: NativeRenderer
   topLayer(): DismissLayer | undefined
-  dispatchDrag(root: ActiveRoot, event: EventPayload): void
+  dispatchDrag(root: ActiveRoot, event: EventPayload): DomDispatchResult["dropEffect"]
 }
 
 const notHandled: DomDispatchResult = { defaultPrevented: false, propagationStopped: false }
@@ -110,8 +110,8 @@ export function runRootEvent(
     return notHandled
   }
   if (isDragEvent(event)) {
-    context.dispatchDrag(root, event)
-    return notHandled
+    const dropEffect = context.dispatchDrag(root, event)
+    return dropEffect === undefined ? notHandled : { ...notHandled, dropEffect }
   }
   if (isOutsidePress(event.eventType)) {
     try {

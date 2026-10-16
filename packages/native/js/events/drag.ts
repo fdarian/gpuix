@@ -55,10 +55,14 @@ function startSession(kind: Session["kind"], data: DataTransferSession): Session
  * `dragleave` the DOM fires in its place. `cancelDrag` tells native that the
  * handler of `dragstart` cancelled the drag; native may already have sent a
  * move or two, which are dropped here.
+ *
+ * A `dragover` returns the drop effect it ended with, `"none"` unless a handler
+ * cancelled it with an effect the source allows. For a drag of files native
+ * answers the OS with it.
  */
 export function createDragDispatcher(
   cancelDrag: () => void
-): (root: DomEventRoot, event: EventPayload) => void {
+): (root: DomEventRoot, event: EventPayload) => HostDropEffect | undefined {
   let session: Session | undefined
   let cancelled = false
 
@@ -126,5 +130,6 @@ export function createDragDispatcher(
       cancelled = true
       cancelDrag()
     }
+    return event.eventType === "dragover" ? current.effect : undefined
   }
 }

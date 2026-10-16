@@ -30,6 +30,7 @@ import type {
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
 import { forgetElementSource, forgetFocusSource } from "./events/window-target.js"
+import type { HostDropEffect } from "./events/types.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
 import { flushObservations, settleObservations } from "./observers.js"
@@ -120,8 +121,8 @@ interface NativeTestRendererApi
     modifiers?: string,
     clickCount?: number
   ): void
-  simulateFileDragEnter(x: number, y: number, paths: string[]): void
-  simulateFileDragMove(x: number, y: number): void
+  simulateFileDragEnter(x: number, y: number, paths: string[]): string | null
+  simulateFileDragMove(x: number, y: number): string | null
   simulateFileDragSubmit(x: number, y: number): void
   simulateFileDragExit(): void
   simulateFileDragEnd(): void
@@ -717,20 +718,26 @@ export class TestRenderer implements NativeRenderer {
     this.native.flushIfDirty()
   }
 
-  /** End-to-end: files from the OS enter the window at `x`, `y`. */
-  nativeSimulateFileDragEnter(x: number, y: number, paths: string[]): void {
+  /**
+   * End-to-end: files from the OS enter the window at `x`, `y`. Returns the operation the
+   * window answered the OS drag with, as macOS would see it: the `dropEffect` the `dragover`
+   * ended with (`"none"` when no handler cancelled it), or `null` when native picked none.
+   */
+  nativeSimulateFileDragEnter(x: number, y: number, paths: string[]): HostDropEffect | null {
     this.native.flushIfDirty()
-    this.native.simulateFileDragEnter(x, y, paths)
+    const operation = this.native.simulateFileDragEnter(x, y, paths)
     this.dispatchNativeEvents()
     this.native.flushIfDirty()
+    return operation as HostDropEffect | null
   }
 
-  /** End-to-end: the dragged files move to `x`, `y`. */
-  nativeSimulateFileDragMove(x: number, y: number): void {
+  /** End-to-end: the dragged files move to `x`, `y`. Returns the operation, as `nativeSimulateFileDragEnter` does. */
+  nativeSimulateFileDragMove(x: number, y: number): HostDropEffect | null {
     this.native.flushIfDirty()
-    this.native.simulateFileDragMove(x, y)
+    const operation = this.native.simulateFileDragMove(x, y)
     this.dispatchNativeEvents()
     this.native.flushIfDirty()
+    return operation as HostDropEffect | null
   }
 
   /** End-to-end: the dragged files are released at `x`, `y`. */

@@ -42,6 +42,19 @@ use crate::renderer::{EventCallback, GpuixView};
 pub(crate) struct DispatchOutcome {
     pub default_prevented: bool,
     pub propagation_stopped: bool,
+    /// What a `dragover` handler chose for the drop, when one ran.
+    pub drag_operation: Option<gpui::DragOperation>,
+}
+
+/// The operation a `dropEffect` stands for.
+pub(crate) fn drag_operation(drop_effect: &str) -> Result<gpui::DragOperation, String> {
+    match drop_effect {
+        "none" => Ok(gpui::DragOperation::None),
+        "copy" => Ok(gpui::DragOperation::Copy),
+        "move" => Ok(gpui::DragOperation::Move),
+        "link" => Ok(gpui::DragOperation::Link),
+        other => Err(format!("\"{other}\" is not a dropEffect")),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -257,6 +270,8 @@ mod backend {
     pub struct SyncDispatchResult {
         pub default_prevented: bool,
         pub propagation_stopped: bool,
+        /// The `dropEffect` a `dragover` ended with.
+        pub drop_effect: Option<String>,
     }
 
     struct Registered {
@@ -364,11 +379,21 @@ mod backend {
             })?;
             function.call(payload)
         })();
-        match outcome {
-            Ok(result) => DispatchOutcome {
+        let outcome = outcome.and_then(|result| {
+            let drag_operation = result
+                .drop_effect
+                .as_deref()
+                .map(drag_operation)
+                .transpose()
+                .map_err(Error::from_reason)?;
+            Ok(DispatchOutcome {
                 default_prevented: result.default_prevented,
                 propagation_stopped: result.propagation_stopped,
-            },
+                drag_operation,
+            })
+        });
+        match outcome {
+            Ok(outcome) => outcome,
             Err(error) => {
                 // Native cannot throw through GPUI, so the first error waits for
                 // the napi method that is on the stack and is thrown from there.
@@ -449,15 +474,52 @@ mod backend {
                 .map(|value| value.is_truthy())
                 .unwrap_or(false)
         };
+        let drop_effect = |result: &JsValue| {
+            js_sys::Reflect::get(result, &JsValue::from_str("dropEffect"))
+                .ok()
+                .and_then(|value| value.as_string())
+        };
         match result {
-            Ok(result) => DispatchOutcome {
-                default_prevented: flag(&result, "defaultPrevented"),
-                propagation_stopped: flag(&result, "propagationStopped"),
-            },
+            Ok(result) => {
+                let drag_operation = drop_effect(&result)
+                    .map(|effect| drag_operation(&effect))
+                    .transpose();
+                match drag_operation {
+                    Ok(drag_operation) => DispatchOutcome {
+                        default_prevented: flag(&result, "defaultPrevented"),
+                        propagation_stopped: flag(&result, "propagationStopped"),
+                        drag_operation,
+                    },
+                    Err(message) => {
+                        log::error!("GPUIX browser sync event handler failed: {message}");
+                        DispatchOutcome::default()
+                    }
+                }
+            }
             Err(error) => {
                 log::error!("GPUIX browser sync event handler failed: {error:?}");
                 DispatchOutcome::default()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::DragOperation;
+
+    #[test]
+    fn each_drop_effect_is_its_operation() {
+        assert_eq!(drag_operation("none"), Ok(DragOperation::None));
+        assert_eq!(drag_operation("copy"), Ok(DragOperation::Copy));
+        assert_eq!(drag_operation("move"), Ok(DragOperation::Move));
+        assert_eq!(drag_operation("link"), Ok(DragOperation::Link));
+    }
+
+    #[test]
+    fn a_word_that_is_not_a_drop_effect_is_an_error() {
+        assert!(drag_operation("copyMove").is_err());
+        assert!(drag_operation("").is_err());
     }
 }

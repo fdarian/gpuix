@@ -1438,6 +1438,145 @@ describeNative("events", () => {
       expect(log).toEqual(["inner", "outer"])
     })
 
+    describe("the operation answered to the OS", () => {
+      it("is the dropEffect of a cancelled dragover", () => {
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "link"
+            }}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("link")
+        expect(testRoot.renderer.nativeSimulateFileDragMove(110, 100)).toBe("link")
+      })
+
+      it("is copy when the dragover is cancelled and picks no effect", () => {
+        testRoot.render(<div style={{ width: 200, height: 200 }} onDragOver={acceptDrops} />)
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("copy")
+      })
+
+      it("is move when the handler picks it", () => {
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
+            }}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("move")
+      })
+
+      it("refuses the drop when the dragover is not cancelled", () => {
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragOver={(event) => {
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+            }}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("none")
+      })
+
+      it("refuses the drop when the cancelled dragover chose none", () => {
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "none"
+            }}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("none")
+      })
+
+      it("refuses the drop when only the dragenter was cancelled", () => {
+        const log: string[] = []
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragEnter={acceptDrops}
+            onDragLeave={() => log.push("leave")}
+            onDrop={() => log.push("drop")}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("none")
+        testRoot.renderer.nativeSimulateFileDragSubmit(100, 100)
+
+        expect(log).toEqual(["leave"])
+      })
+
+      it("is the answer of the last dragover", () => {
+        let accept = true
+        testRoot.render(
+          <div
+            style={{ width: 200, height: 200 }}
+            onDragOver={(event) => {
+              if (accept) event.preventDefault()
+            }}
+          />,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("copy")
+        accept = false
+        expect(testRoot.renderer.nativeSimulateFileDragMove(110, 100)).toBe("none")
+        accept = true
+        expect(testRoot.renderer.nativeSimulateFileDragMove(120, 100)).toBe("copy")
+      })
+
+      it("refuses the drop in a window with nothing rendered", () => {
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("none")
+      })
+
+      it("refuses the drop over an element nothing listens on", () => {
+        testRoot.render(<div style={{ width: 200, height: 200 }} />)
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(100, 100, [textFile])).toBe("none")
+      })
+
+      it("follows the element under the pointer", () => {
+        testRoot.render(
+          <div style={{ width: 400, height: 400, display: "flex", flexDirection: "column" }}>
+            <div style={{ width: 100, height: 100 }} onDragOver={acceptDrops} />
+            <div style={{ width: 100, height: 100 }} />
+          </div>,
+        )
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(50, 50, [textFile])).toBe("copy")
+        expect(testRoot.renderer.nativeSimulateFileDragMove(50, 150)).toBe("none")
+        expect(testRoot.renderer.nativeSimulateFileDragMove(50, 60)).toBe("copy")
+      })
+
+      it("refuses a drag with no readable file", () => {
+        testRoot.render(<div style={{ width: 200, height: 200 }} onDragOver={acceptDrops} />)
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(40, 40, [])).toBe("none")
+        expect(testRoot.renderer.nativeSimulateFileDragMove(40, 40)).toBe("none")
+      })
+
+      it("does not carry over to the next drag", () => {
+        testRoot.render(<div style={{ width: 200, height: 200 }} onDragOver={acceptDrops} />)
+
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(40, 40, [textFile])).toBe("copy")
+        testRoot.renderer.nativeSimulateFileDragExit()
+        testRoot.renderer.nativeSimulateFileDragEnd()
+        testRoot.render(<div style={{ width: 200, height: 200 }} />)
+        expect(testRoot.renderer.nativeSimulateFileDragEnter(40, 40, [textFile])).toBe("none")
+      })
+    })
+
     it("delivers the drag events to an img leaf", () => {
       const log: string[] = []
       const svg =

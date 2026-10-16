@@ -1,5 +1,6 @@
 import type { EventPayload } from "../../index.js"
 import type { EventHandlerMap } from "../host.js"
+import type { HostDropEffect } from "./types.js"
 
 export const EVENT_PHASE_NONE = 0
 export const EVENT_PHASE_CAPTURING = 1
@@ -129,6 +130,8 @@ export interface DomEvent extends RootEvent {
 export interface DomDispatchResult {
   defaultPrevented: boolean
   propagationStopped: boolean
+  /** Set for a `dragover`: what the drop would do. */
+  dropEffect?: HostDropEffect
 }
 
 export interface DomEventRoot {

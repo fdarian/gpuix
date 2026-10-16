@@ -112,6 +112,35 @@ fn dispose_test_state(owner: Option<u64>) -> Result<()> {
     Ok(())
 }
 
+/// `simulate_event`, keeping what the platform callback would have returned for the event.
+fn simulate_event_with_result(
+    cx: &mut gpui::VisualTestAppContext,
+    window: gpui::AnyWindowHandle,
+    event: impl gpui::InputEvent,
+) -> Result<gpui::DispatchEventResult> {
+    let result = cx
+        .update_window(window, |_, window, cx| {
+            window.dispatch_event(event.to_platform_input(), cx)
+        })
+        .map_err(|error| Error::from_reason(error.to_string()))?;
+    cx.run_until_parked();
+    Ok(result)
+}
+
+/// The operation a file drag event answered the drag source with, as a `dropEffect`.
+fn drag_operation_reply(result: gpui::DispatchEventResult) -> Option<String> {
+    let operation = result.drag_operation?;
+    Some(
+        match operation {
+            gpui::DragOperation::None => "none",
+            gpui::DragOperation::Copy => "copy",
+            gpui::DragOperation::Move => "move",
+            gpui::DragOperation::Link => "link",
+        }
+        .to_string(),
+    )
+}
+
 /// Access VisualTestAppContext + window + view mutably within thread_local.
 /// The closure receives (&mut cx, window_handle, &view_entity).
 /// Returns Err if no TestGpuixRenderer has been created on this thread.
@@ -1145,33 +1174,44 @@ impl TestGpuixRenderer {
     }
 
     /// Files from the OS enter the window at `x`, `y` (`FileDropEvent::Entered`).
+    /// Returns the operation the window answered the drag source with, which the
+    /// `dragover` it fired decided: `"none"`, `"copy"`, `"move"` or `"link"`, or
+    /// `null` when the window picked none and the platform keeps its default.
     #[napi]
-    pub fn simulate_file_drag_enter(&self, x: f64, y: f64, paths: Vec<String>) -> Result<()> {
+    pub fn simulate_file_drag_enter(
+        &self,
+        x: f64,
+        y: f64,
+        paths: Vec<String>,
+    ) -> Result<Option<String>> {
         with_test_state(|cx, window, _view| {
             let paths =
                 gpui::ExternalPaths(paths.into_iter().map(std::path::PathBuf::from).collect());
-            cx.simulate_event(
+            let result = simulate_event_with_result(
+                cx,
                 window,
                 gpui::FileDropEvent::Entered {
                     position: file_drag_position(x, y),
                     paths,
                 },
-            );
-            Ok(())
+            )?;
+            Ok(drag_operation_reply(result))
         })
     }
 
-    /// The dragged files move to `x`, `y` (`FileDropEvent::Pending`).
+    /// The dragged files move to `x`, `y` (`FileDropEvent::Pending`). Returns the
+    /// operation the window answered the drag source with, as `simulateFileDragEnter` does.
     #[napi]
-    pub fn simulate_file_drag_move(&self, x: f64, y: f64) -> Result<()> {
+    pub fn simulate_file_drag_move(&self, x: f64, y: f64) -> Result<Option<String>> {
         with_test_state(|cx, window, _view| {
-            cx.simulate_event(
+            let result = simulate_event_with_result(
+                cx,
                 window,
                 gpui::FileDropEvent::Pending {
                     position: file_drag_position(x, y),
                 },
-            );
-            Ok(())
+            )?;
+            Ok(drag_operation_reply(result))
         })
     }
 

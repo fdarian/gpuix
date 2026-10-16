@@ -45,6 +45,8 @@ export interface RendererRootBinding {
 export interface SyncDispatchResult {
   defaultPrevented: boolean
   propagationStopped: boolean
+  /** Set for a `dragover`: what the drop would do. Native tells the OS, for a drag of files. */
+  dropEffect?: DomDispatchResult["dropEffect"]
 }
 
 /**
@@ -311,7 +313,10 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
       if (received.eventType === "focusin") noteFocusEvent(renderer)
       const event = normalizeEventType(received)
       if (!root || !handlesEvent(root, event)) {
-        return { defaultPrevented: false, propagationStopped: false }
+        // Nobody can accept a drop here, and native would otherwise leave the OS its default.
+        return event.eventType === "dragover"
+          ? { defaultPrevented: false, propagationStopped: false, dropEffect: "none" }
+          : { defaultPrevented: false, propagationStopped: false }
       }
       let result: SyncDispatchResult | undefined
       const run = () => {

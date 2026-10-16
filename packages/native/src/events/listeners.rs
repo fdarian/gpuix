@@ -28,9 +28,10 @@ use std::rc::Rc;
 use std::sync::Mutex;
 
 use gpui::{
-    canvas, App, DispatchPhase, ExternalPaths, FileDropEvent, IntoElement, KeyDownEvent, Modifiers,
-    MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
-    Pixels, Point, ScrollWheelEvent, Styled, TouchPhase, WeakEntity, Window,
+    canvas, App, DispatchPhase, DragOperation, ExternalPaths, FileDropEvent, IntoElement,
+    KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent,
+    MouseUpEvent, NavigationDirection, Pixels, Point, ScrollWheelEvent, Styled, TouchPhase,
+    WeakEntity, Window,
 };
 
 use crate::element_tree::EventModifiers;
@@ -236,6 +237,41 @@ impl PointerDispatch {
 }
 
 impl PointerDispatch {
+    /// Dispatches one input of a drag of files from the OS and delivers its events in
+    /// order, all of them through `sync_dispatch::emit`: the events of one drag go down
+    /// one path, or a queued `dragleave` could end the next drag's session in JS.
+    ///
+    /// A move also answers the drag source. The `dragover` it fired decides the
+    /// operation, and a move that fired none (nothing readable is dragged, or the window
+    /// has no root) refuses the drop. Where `emit` queues, no operation is picked and the
+    /// platform keeps its default.
+    fn file_drag(
+        &self,
+        view: &WeakEntity<GpuixView>,
+        sample: PointerSample,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let is_move = matches!(sample.action, PointerAction::FileDragMove { .. });
+        let output = dispatch_sample(&self.pointer, &self.activation.tree, &sample);
+        if output.restyle {
+            if let Some(view) = view.upgrade() {
+                cx.notify(view.entity_id());
+            }
+        }
+        let mut operation = is_move.then_some(Some(DragOperation::None));
+        for payload in output.into_payloads() {
+            let is_dragover = payload.event_type == "dragover";
+            let outcome = sync_dispatch::emit(window, cx, &self.activation.callback, payload);
+            if is_dragover {
+                operation = Some(outcome.drag_operation);
+            }
+        }
+        if let Some(operation) = operation.flatten() {
+            window.set_drag_operation(operation);
+        }
+    }
+
     /// Dispatches a release and delivers its events in order. A `click` that
     /// no handler cancelled activates the control of a label on its path, as
     /// the DOM's activation behaviour does: the control takes focus and gets a
@@ -292,6 +328,7 @@ pub(crate) fn pointer_frame(
             let hover = press.pointer.clone();
             let release = press.clone();
             let wheel = press.clone();
+            let file_drag = press.clone();
             let press = press.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
@@ -321,6 +358,7 @@ pub(crate) fn pointer_frame(
                 press.press(&down_view, button, sample, window, cx);
             });
             let up_view = view.clone();
+            let drop_dispatch = file_drag.clone();
             window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
                     return;
@@ -328,16 +366,13 @@ pub(crate) fn pointer_frame(
                 // GPUI turns `FileDropEvent::Submit` into this release, and clears
                 // the drag only after the listeners have run.
                 if cx.active_drag_value::<ExternalPaths>().is_some() {
-                    submit(
-                        &up_view,
-                        sample(
-                            window,
-                            PointerAction::FileDrop,
-                            event.position,
-                            event.modifiers,
-                        ),
-                        cx,
+                    let drop = sample(
+                        window,
+                        PointerAction::FileDrop,
+                        event.position,
+                        event.modifiers,
                     );
+                    drop_dispatch.file_drag(&up_view, drop, window, cx);
                     return;
                 }
                 let button = dom_button(event.button);
@@ -365,43 +400,48 @@ pub(crate) fn pointer_frame(
                 wheel.wheel(sample, window, cx);
             });
             let move_view = view.clone();
+            let move_dispatch = file_drag.clone();
             window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
                     return;
                 }
                 // GPUI turns `FileDropEvent::Entered` and `Pending` into a move with
                 // the dragged paths as the active drag.
-                let action = match cx.active_drag_value::<ExternalPaths>() {
-                    Some(dragged) => PointerAction::FileDragMove {
-                        paths: dragged.paths().to_vec(),
-                    },
-                    None => PointerAction::Move {
-                        pressed_button: event.pressed_button.map(dom_button),
-                    },
-                };
-                submit(
-                    &move_view,
-                    sample(window, action, event.position, event.modifiers),
-                    cx,
-                );
+                match cx.active_drag_value::<ExternalPaths>() {
+                    Some(dragged) => {
+                        let action = PointerAction::FileDragMove {
+                            paths: dragged.paths().to_vec(),
+                        };
+                        let drag = sample(window, action, event.position, event.modifiers);
+                        move_dispatch.file_drag(&move_view, drag, window, cx);
+                    }
+                    None => {
+                        let action = PointerAction::Move {
+                            pressed_button: event.pressed_button.map(dom_button),
+                        };
+                        submit(
+                            &move_view,
+                            sample(window, action, event.position, event.modifiers),
+                            cx,
+                        );
+                    }
+                }
             });
             let leave_view = view.clone();
+            let leave_dispatch = file_drag.clone();
             window.on_mouse_event(move |event: &FileDropEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
                     return;
                 }
                 // `Entered`, `Pending` and `Submit` never get here: GPUI rewrote them.
                 if matches!(event, FileDropEvent::Exited | FileDropEvent::Ended) {
-                    submit(
-                        &leave_view,
-                        sample(
-                            window,
-                            PointerAction::FileDragLeave,
-                            window.mouse_position(),
-                            window.modifiers(),
-                        ),
-                        cx,
+                    let leave = sample(
+                        window,
+                        PointerAction::FileDragLeave,
+                        window.mouse_position(),
+                        window.modifiers(),
                     );
+                    leave_dispatch.file_drag(&leave_view, leave, window, cx);
                 }
             });
             let cancel_view = view.clone();
@@ -421,15 +461,17 @@ pub(crate) fn pointer_frame(
                 );
             });
             let exit_view = view.clone();
+            let exit_dispatch = file_drag.clone();
             window.on_mouse_event(move |event: &MouseExitEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture {
                     return;
                 }
-                submit(
-                    &exit_view,
-                    sample(window, PointerAction::Exit, event.position, event.modifiers),
-                    cx,
-                );
+                let exit = sample(window, PointerAction::Exit, event.position, event.modifiers);
+                if exit_dispatch.pointer.borrow().file_drag.is_some() {
+                    exit_dispatch.file_drag(&exit_view, exit, window, cx);
+                } else {
+                    submit(&exit_view, exit, cx);
+                }
             });
 
             // After the draw: GPUI swaps frames only when it ends, and the control areas of the
@@ -450,7 +492,11 @@ pub(crate) fn pointer_frame(
                     resync.hits.as_slice()
                 };
                 if chain_changed(&observed, seen) {
-                    submit(&view, resync, cx);
+                    if file_drag.pointer.borrow().file_drag.is_some() {
+                        file_drag.file_drag(&view, resync, window, cx);
+                    } else {
+                        submit(&view, resync, cx);
+                    }
                 }
             });
         },

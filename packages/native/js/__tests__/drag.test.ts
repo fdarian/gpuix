@@ -256,6 +256,86 @@ describe("element drag dispatcher", () => {
     expect(log).toEqual([])
   })
 
+  describe("the drop effect a dragover returns", () => {
+    function overResult(
+      dragover: ((event: DomEvent) => void) | undefined,
+      extra: Record<string, (event: DomEvent) => void> = {}
+    ) {
+      const { root, dispatch } = setup(dragover ? { dragover, ...extra } : extra)
+      dispatch(root, drag("dragenter", { files: [FILE] }))
+      return { root, dispatch }
+    }
+
+    it("is the effect a cancelled dragover left, copy by default", () => {
+      const { root, dispatch } = overResult((event) => event.preventDefault())
+      expect(dispatch(root, drag("dragover"))).toBe("copy")
+    })
+
+    it("is the effect the handler picked", () => {
+      const { root, dispatch } = overResult((event) => {
+        event.preventDefault()
+        transferOf(event).dropEffect = "move"
+      })
+      expect(dispatch(root, drag("dragover"))).toBe("move")
+    })
+
+    it("is none for a dragover that was not cancelled, whatever effect it set", () => {
+      const { root, dispatch } = overResult((event) => {
+        transferOf(event).dropEffect = "link"
+      })
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is none for a cancelled dragover that set none", () => {
+      const { root, dispatch } = overResult((event) => {
+        event.preventDefault()
+        transferOf(event).dropEffect = "none"
+      })
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is none when only the dragenter was cancelled", () => {
+      const { root, dispatch } = overResult(undefined, { dragenter: (event) => event.preventDefault() })
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is none when nothing listens", () => {
+      const { root, dispatch } = overResult(undefined)
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is none for an effect the source did not allow", () => {
+      const { root, dispatch } = setup(
+        {
+          dragover: (event) => {
+            event.preventDefault()
+            transferOf(event).dropEffect = "link"
+          },
+        },
+        { dragstart: (event) => (transferOf(event).effectAllowed = "copy") }
+      )
+      dispatch(root, fromSource("dragstart"))
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is decided by each dragover on its own", () => {
+      let accept = true
+      const { root, dispatch } = overResult((event) => {
+        if (accept) event.preventDefault()
+      })
+      expect(dispatch(root, drag("dragover"))).toBe("copy")
+      accept = false
+      expect(dispatch(root, drag("dragover"))).toBe("none")
+    })
+
+    it("is not returned for the other events of a drag", () => {
+      const { root, dispatch } = setup({ dragover: (event) => event.preventDefault() })
+      expect(dispatch(root, drag("dragenter", { files: [FILE] }))).toBeUndefined()
+      dispatch(root, drag("dragover"))
+      expect(dispatch(root, drag("drop"))).toBeUndefined()
+    })
+  })
+
   it("starts each dragover from the effect the source's effectAllowed implies", () => {
     const effects: string[] = []
     const { root, dispatch } = setup(
