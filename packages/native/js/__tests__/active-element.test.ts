@@ -73,3 +73,26 @@ describe("document.activeElement across roots", () => {
     expect(() => elementOf(only.renderer, 1)).toThrow("No element source")
   })
 })
+
+describe("document.pointerLockElement", () => {
+  it("is the object of the element the renderer reports as locked, and null otherwise", () => {
+    const element = {}
+    const state = { locked: null as number | null }
+    const remove = installElementSource({ pointerLockElement: () => state.locked }, (id) =>
+      id === 4 ? element : undefined
+    )
+    expect(document.pointerLockElement).toBeNull()
+    state.locked = 4
+    expect(document.pointerLockElement).toBe(element)
+    state.locked = 9
+    expect(() => document.pointerLockElement).toThrow(/Element 9 holds the pointer lock/)
+    remove()
+    expect(document.pointerLockElement).toBeNull()
+  })
+
+  it("is null for a renderer that cannot lock", () => {
+    const remove = installElementSource({}, () => ({}))
+    expect(document.pointerLockElement).toBeNull()
+    remove()
+  })
+})

@@ -61,6 +61,8 @@ const NON_CANCELABLE_TYPES: ReadonlySet<string> = new Set([
   "compositionstart",
   "compositionupdate",
   "compositionend",
+  "pointerlockchange",
+  "pointerlockerror",
 ])
 
 export function eventBubbles(eventType: string): boolean {
@@ -207,7 +209,7 @@ export function toRootEvent(root: DomEventRoot, payload: EventPayload, target: o
 /**
  * Creates the event object and the state behind its stop methods. `path` is
  * the propagation path as elements, target first; empty for an event aimed at
- * the window, which has a `null` target.
+ * the window, whose `target` is the element `payload.target` names, if any.
  */
 export function createDomEvent(
   root: DomEventRoot,
@@ -217,7 +219,9 @@ export function createDomEvent(
   const state = { propagationStopped: false, immediatePropagationStopped: false }
   const cancelable = eventIsCancelable(payload.eventType)
   const event: DomEvent = {
-    ...toRootEvent(root, payload, path[0] ?? null),
+    // An event aimed at the window has no path but may still name an element
+    // (the lock element of `pointerlockchange`).
+    ...toRootEvent(root, payload, path[0] ?? optionalElement(root, payload.target)),
     ...(payload.formEntries && formSubmission(payload.formEntries)),
     type: payload.eventType,
     currentTarget: null,

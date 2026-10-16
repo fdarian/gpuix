@@ -131,6 +131,8 @@ const notifyTypeSubscribers = () => {
 type ElementSource = {
   /** Id of the element that holds focus in the root's window, or `null`. */
   focusedId(): number | null
+  /** Id of the element that holds the pointer lock in the root's window, or `null`. */
+  pointerLockId(): number | null
   /** The object the adapter hands out for that element (a ref's value), or `undefined` once the root has dropped it. */
   elementById(id: number): object | undefined
 }
@@ -159,7 +161,8 @@ const elementSources: Map<object, ElementSourceEntry> = (() => {
 let focusClock = 0
 
 /**
- * The `document` of a GPUIX app: the `window` target plus `activeElement`.
+ * The `document` of a GPUIX app: the `window` target plus `activeElement` and
+ * `pointerLockElement`.
  *
  * `Element` is what the adapter hands out for an element: React's host
  * instance, Solid's element.
@@ -186,6 +189,25 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
     }
     return element as Element
   }
+
+  /**
+   * The element that holds the pointer lock, the same object a `ref` gives, or
+   * `null` while none does. Where the platform can lock (macOS) it is held as
+   * soon as `requestPointerLock()` returns, before `pointerlockchange` arrives.
+   */
+  get pointerLockElement(): Element | null {
+    for (const entry of elementSources.values()) {
+      if (entry.focusStale) continue
+      const id = entry.source.pointerLockId()
+      if (id === null) continue
+      const element = entry.source.elementById(id)
+      if (element === undefined) {
+        throw new Error(`Element ${id} holds the pointer lock but its root has no element for it`)
+      }
+      return element as Element
+    }
+    return null
+  }
 }
 
 export const window = new GpuixEventTarget(notifyTypeSubscribers)
@@ -200,13 +222,15 @@ export const document = new GpuixDocument(notifyTypeSubscribers)
  * just never has an `activeElement`.
  */
 export function installElementSource(
-  renderer: { getFocusedElementId?: () => number | null },
+  renderer: { getFocusedElementId?: () => number | null; pointerLockElement?: () => number | null },
   elementById: (id: number) => object | undefined
 ): () => void {
   const getFocusedElementId = renderer.getFocusedElementId
+  const getPointerLockElement = renderer.pointerLockElement
   const entry: ElementSourceEntry = {
     source: {
       focusedId: () => (getFocusedElementId ? getFocusedElementId.call(renderer) : null),
+      pointerLockId: () => (getPointerLockElement ? getPointerLockElement.call(renderer) : null),
       elementById,
     },
     focusStale: false,

@@ -6,9 +6,10 @@
 /// grants, refuses and drops locks on command; everything on the GPUIX side of
 /// that is the real code.
 
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import React from "react"
 import type { RootEvent } from "@gpuix/native/host"
+import { document, window } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -83,6 +84,112 @@ describeNative("pointer lock", () => {
     expect(log).toEqual(["change:element"])
     expect(targets[0]).toBe(first)
     expect(testRoot.renderer.pointerLockElement()).toBe(first.id)
+  })
+
+  describe("at document", () => {
+    type LockEvent = {
+      type: string
+      target: object | null
+      bubbles: boolean
+      cancelable: boolean
+      eventPhase: number
+      currentTarget: object | null
+    }
+    let heard: string[]
+    let events: LockEvent[]
+    let stop: Array<() => void>
+
+    function listen(target: typeof document | typeof window, type: string, name: string) {
+      const listener = (event: LockEvent) => {
+        heard.push(name)
+        events.push({ ...event })
+      }
+      target.addEventListener(type, listener as never)
+      stop.push(() => target.removeEventListener(type, listener as never))
+    }
+
+    beforeEach(() => {
+      heard = []
+      events = []
+      stop = []
+    })
+
+    afterEach(() => {
+      for (const remove of stop) remove()
+    })
+
+    it("pointerlockchange reaches document and then window listeners, and pointerLockElement is set first", () => {
+      testRoot.render(<Boxes />)
+      const lockSeenByListener: Array<object | null> = []
+      listen(document, "pointerlockchange", "document")
+      listen(window, "pointerlockchange", "window")
+      document.addEventListener("pointerlockchange", (() =>
+        lockSeenByListener.push(document.pointerLockElement)) as never)
+
+      first.requestPointerLock()
+
+      expect(heard).toEqual(["document", "window"])
+      expect(events[0].type).toBe("pointerlockchange")
+      expect(events[0].target).toBe(first)
+      expect(events[0].bubbles).toBe(true)
+      expect(events[0].cancelable).toBe(false)
+      expect(lockSeenByListener).toEqual([first])
+      expect(document.pointerLockElement).toBe(first)
+    })
+
+    it("exitPointerLock fires pointerlockchange with no element and clears pointerLockElement", () => {
+      testRoot.render(<Boxes />)
+      first.requestPointerLock()
+      listen(document, "pointerlockchange", "document")
+
+      testRoot.renderer.exitPointerLock()
+
+      expect(heard).toEqual(["document"])
+      expect(events[0].target).toBeNull()
+      expect(document.pointerLockElement).toBeNull()
+    })
+
+    it("a refused request fires pointerlockerror at document and locks nothing", () => {
+      testRoot.render(<Boxes />)
+      testRoot.renderer.simulatePointerLockGranting(false)
+      listen(document, "pointerlockerror", "document")
+      listen(document, "pointerlockchange", "change")
+
+      first.requestPointerLock()
+
+      expect(heard).toEqual(["document"])
+      expect(events[0].type).toBe("pointerlockerror")
+      expect(events[0].target).toBe(first)
+      expect(document.pointerLockElement).toBeNull()
+    })
+
+    it("a lock the platform drops fires pointerlockchange at document", () => {
+      testRoot.render(<Boxes />)
+      first.requestPointerLock()
+      listen(document, "pointerlockchange", "document")
+
+      testRoot.renderer.simulatePointerLockLost()
+
+      expect(heard).toEqual(["document"])
+      expect(document.pointerLockElement).toBeNull()
+    })
+
+    it("a capture-phase window listener runs before the document's and can stop it", () => {
+      testRoot.render(<Boxes />)
+      document.addEventListener("pointerlockchange", (() => heard.push("document")) as never)
+      window.addEventListener(
+        "pointerlockchange",
+        ((event: { stopPropagation(): void }) => {
+          heard.push("window-capture")
+          event.stopPropagation()
+        }) as never,
+        true,
+      )
+
+      first.requestPointerLock()
+
+      expect(heard).toEqual(["window-capture"])
+    })
   })
 
   it("fires pointerlockerror when the platform refuses", () => {
@@ -175,6 +282,45 @@ describeNative("pointer lock", () => {
       { name: "first", type: "pointermove", x: 30, y: 40 },
       { name: "first", type: "mousemove", x: 30, y: 40 },
       { name: "first", type: "mouseup", x: 30, y: 40 },
+    ])
+  })
+
+  it("presses, clicks and wheel ticks over another element go to the lock element too", () => {
+    const seen: string[] = []
+    const track = (name: string) => (event: { type: string }) => seen.push(`${name}:${event.type}`)
+    const listeners = (name: string) => ({
+      onPointerDown: track(name),
+      onMouseDown: track(name),
+      onPointerUp: track(name),
+      onMouseUp: track(name),
+      onClick: track(name),
+      onWheel: track(name),
+    })
+    testRoot.render(
+      <div style={{ width: 400, height: 400 }}>
+        <div
+          ref={(instance) => {
+            if (instance) first = instance as unknown as Lockable
+          }}
+          style={{ width: 100, height: 100 }}
+          {...listeners("first")}
+        />
+        <div style={{ width: 100, height: 100 }} {...listeners("second")} />
+      </div>,
+    )
+    first.requestPointerLock()
+
+    testRoot.renderer.nativeSimulateMouseDown(60, 150)
+    testRoot.renderer.nativeSimulateMouseUp(60, 150)
+    testRoot.renderer.nativeSimulateScrollWheel(60, 150, 0, 10)
+
+    expect(seen).toEqual([
+      "first:pointerdown",
+      "first:mousedown",
+      "first:pointerup",
+      "first:mouseup",
+      "first:click",
+      "first:wheel",
     ])
   })
 

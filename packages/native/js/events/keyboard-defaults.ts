@@ -65,8 +65,12 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
   }
   // Document-level in the DOM, so no element id or listener flag: native
   // fires them only for a lock JS asked for or held.
-  if (event.eventType === "pointerlockchange") return Boolean(root.handlers.onPointerLockChange)
-  if (event.eventType === "pointerlockerror") return Boolean(root.handlers.onPointerLockError)
+  if (event.eventType === "pointerlockchange") {
+    return Boolean(root.handlers.onPointerLockChange) || hasWindowListener(event.eventType)
+  }
+  if (event.eventType === "pointerlockerror") {
+    return Boolean(root.handlers.onPointerLockError) || hasWindowListener(event.eventType)
+  }
   if (KEY_EVENT_TYPES.has(event.eventType)) {
     // Native aims a key at the window when nothing focused listens; that
     // address goes stale when the root is replaced.
@@ -84,6 +88,10 @@ export function handlesEvent(root: ActiveRoot, event: EventPayload): boolean {
     window.hasListeners(event.eventType) ||
     document.hasListeners(event.eventType)
   )
+}
+
+function hasWindowListener(eventType: string): boolean {
+  return window.hasListeners(eventType) || document.hasListeners(eventType)
 }
 
 /** An event of the window (selection, appearance, pointer lock), with `target` as the element when it names one. */
@@ -104,12 +112,13 @@ export function runRootEvent(
     root.handlers.onAppearanceChange?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
-  if (event.eventType === "pointerlockchange") {
-    root.handlers.onPointerLockChange?.(windowLevelEvent(root, event), context.renderer)
-    return notHandled
-  }
-  if (event.eventType === "pointerlockerror") {
-    root.handlers.onPointerLockError?.(windowLevelEvent(root, event), context.renderer)
+  if (event.eventType === "pointerlockchange" || event.eventType === "pointerlockerror") {
+    dispatchPropagating(root, event, root.scoped)
+    const handler =
+      event.eventType === "pointerlockchange"
+        ? root.handlers.onPointerLockChange
+        : root.handlers.onPointerLockError
+    handler?.(windowLevelEvent(root, event), context.renderer)
     return notHandled
   }
   if (isDragEvent(event)) {
