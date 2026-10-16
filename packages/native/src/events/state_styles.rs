@@ -122,7 +122,8 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
     resolved
 }
 
-fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
+/// `over`'s set fields on top of `base`, with every state refinement cleared.
+pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
     let over = without_invalid_values(over);
     let over = over.as_ref();
     let mut base = base.clone();

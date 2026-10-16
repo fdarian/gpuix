@@ -1798,6 +1798,7 @@ impl GpuixRenderer {
     ///   ["setEventListener", id, "eventType", true|false]
     ///   ["setRoot",          id]
     ///   ["setKeyboardFocusDim", true|false]
+    ///   ["setUniversalStyle", { ...style } | null]
     ///   ["setCustomProp",    id, "key", value]
     ///
     /// Returns accumulated destroyed IDs from all destroyElement ops.
@@ -8636,6 +8637,10 @@ enum BatchOp<'a> {
     SetKeyboardFocusDim {
         enabled: bool,
     },
+    /// Raw for the same reasons as `SetStyle`. `None` clears the layer.
+    SetUniversalStyle {
+        style: Option<&'a serde_json::value::RawValue>,
+    },
     SetCustomProp {
         id: u64,
         key: String,
@@ -8829,6 +8834,9 @@ impl<'de> serde::Deserialize<'de> for BatchOp<'de> {
                     "setKeyboardFocusDim" => BatchOp::SetKeyboardFocusDim {
                         enabled: next_arg(&mut seq, "enabled")?,
                     },
+                    "setUniversalStyle" => BatchOp::SetUniversalStyle {
+                        style: next_arg(&mut seq, "style")?,
+                    },
                     "setCustomProp" => BatchOp::SetCustomProp {
                         id: next_id(&mut seq, "id")?,
                         key: next_arg::<A, StrArg>(&mut seq, "prop key")?.0.into_owned(),
@@ -8851,8 +8859,7 @@ impl<'de> serde::Deserialize<'de> for BatchOp<'de> {
     }
 }
 
-/// Turn one raw `setStyle` payload into a shared style.
-///
+/// Turn one raw `setStyle` or `setUniversalStyle` payload into a shared style.
 fn intern_style_payload(
     styles: &mut StyleTable,
     payload: &serde_json::value::RawValue,
@@ -8861,23 +8868,44 @@ fn intern_style_payload(
     styles.intern(raw.as_bytes())
 }
 
-/// Resolve every `setStyle` payload in the batch, in op order.
+/// The styles a batch's payloads resolved to, in op order.
+struct ResolvedStyles {
+    /// One per `setStyle`.
+    elements: Vec<Arc<StyleDesc>>,
+    /// One per `setUniversalStyle`; `None` clears the layer.
+    universal: Vec<Option<Arc<StyleDesc>>>,
+}
+
+/// Resolve every `setStyle` and `setUniversalStyle` payload in the batch, in op
+/// order. The two are one grammar: the layer is a style like any element's.
 ///
 /// This is the last fallible step, so it runs before the apply loop and borrows
 /// only the style table. The borrow checker then proves no element was touched
 /// when it returns `Err`, which is what makes a batch atomic. An earlier
 /// version interned inside the apply loop, so a malformed style at the end of a
 /// batch left everything before it applied and then threw.
-fn resolve_styles(
-    styles: &mut StyleTable,
-    ops: &[BatchOp<'_>],
-) -> BatchResult<Vec<Arc<StyleDesc>>> {
-    let mut resolved = Vec::new();
+fn resolve_styles(styles: &mut StyleTable, ops: &[BatchOp<'_>]) -> BatchResult<ResolvedStyles> {
+    let mut resolved = ResolvedStyles {
+        elements: Vec::new(),
+        universal: Vec::new(),
+    };
     for (index, op) in ops.iter().enumerate() {
-        if let BatchOp::SetStyle { style, .. } = op {
-            let shared = intern_style_payload(styles, style)
-                .map_err(|error| format!("Batch op {index} setStyle parse error: {error}"))?;
-            resolved.push(shared);
+        match op {
+            BatchOp::SetStyle { style, .. } => {
+                let shared = intern_style_payload(styles, style)
+                    .map_err(|error| format!("Batch op {index} setStyle parse error: {error}"))?;
+                resolved.elements.push(shared);
+            }
+            BatchOp::SetUniversalStyle { style } => {
+                let shared = style
+                    .map(|style| intern_style_payload(styles, style))
+                    .transpose()
+                    .map_err(|error| {
+                        format!("Batch op {index} setUniversalStyle parse error: {error}")
+                    })?;
+                resolved.universal.push(shared);
+            }
+            _ => {}
         }
     }
     Ok(resolved)
@@ -8903,8 +8931,10 @@ pub fn apply_batch_to_tree(tree: &mut RetainedTree, bytes: &[u8]) -> BatchResult
 
     // Phase 2: resolve styles. Touches the style table only; a failure here
     // sweeps back out whatever this call interned.
-    let styles = resolve_styles(&mut tree.styles, &parsed).inspect_err(|_| tree.styles.sweep())?;
-    let mut styles = styles.into_iter();
+    let resolved =
+        resolve_styles(&mut tree.styles, &parsed).inspect_err(|_| tree.styles.sweep())?;
+    let mut styles = resolved.elements.into_iter();
+    let mut universal_styles = resolved.universal.into_iter();
 
     // Phase 3: apply. Cannot fail.
     let mut destroyed_ids: Vec<f64> = Vec::new();
@@ -8949,6 +8979,12 @@ pub fn apply_batch_to_tree(tree: &mut RetainedTree, bytes: &[u8]) -> BatchResult
             }
             BatchOp::SetKeyboardFocusDim { enabled } => {
                 tree.set_keyboard_focus_dim(enabled);
+            }
+            BatchOp::SetUniversalStyle { .. } => {
+                let shared = universal_styles
+                    .next()
+                    .expect("one resolved style per setUniversalStyle op");
+                tree.set_universal_style(shared);
             }
             BatchOp::SetCustomProp { id, key, value } => {
                 tree.set_custom_prop(id, key, value);

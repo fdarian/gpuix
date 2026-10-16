@@ -86,7 +86,7 @@ pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
 
 /// Whether swapping `old` for `new` leaves every paragraph where it was: none
 /// of the properties [`plan_children`] reads changed.
-pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
+pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool {
     fn read(style: Option<&StyleDesc>) -> [Option<&str>; 6] {
         let field = |get: fn(&StyleDesc) -> Option<&str>| style.and_then(get);
         [
@@ -98,7 +98,7 @@ pub fn same_paragraphs(old: Option<&StyleDesc>, new: &StyleDesc) -> bool {
             field(|style| style.white_space.as_deref()),
         ]
     }
-    read(old) == read(Some(new))
+    read(old) == read(new)
 }
 
 /// Whether `element`, a child of `parent` in a block container, is inline-level
@@ -893,13 +893,15 @@ mod tests {
     fn only_paragraph_shaping_styles_regroup() {
         let flex = style(serde_json::json!({"display": "flex"}));
         let colored = style(serde_json::json!({"display": "flex", "color": "red"}));
-        assert!(same_paragraphs(Some(&flex), &colored));
-        assert!(same_paragraphs(None, &StyleDesc::default()));
-        assert!(!same_paragraphs(None, &flex));
+        assert!(same_paragraphs(Some(&flex), Some(&colored)));
+        assert!(same_paragraphs(None, Some(&StyleDesc::default())));
+        assert!(!same_paragraphs(None, Some(&flex)));
         assert!(!same_paragraphs(
             Some(&flex),
-            &style(serde_json::json!({"display": "none"}))
+            Some(&style(serde_json::json!({"display": "none"})))
         ));
+        assert!(same_paragraphs(None, None));
+        assert!(!same_paragraphs(Some(&flex), None));
     }
 
     /// `<text>one <text>two</text> three</text>` with `configure` applied to the
@@ -970,8 +972,8 @@ mod tests {
     fn state_styles_do_not_regroup() {
         let plain = style(serde_json::json!({"color": "red"}));
         let hover = style(serde_json::json!({"color": "red", "hover": {"color": "blue"}}));
-        assert!(same_paragraphs(Some(&plain), &hover));
-        assert!(same_paragraphs(Some(&hover), &plain));
+        assert!(same_paragraphs(Some(&plain), Some(&hover)));
+        assert!(same_paragraphs(Some(&hover), Some(&plain)));
     }
 
     fn text_of(f: &Fixture, id: u64) -> String {
@@ -1230,7 +1232,7 @@ mod tests {
     fn a_white_space_change_regroups() {
         let normal = style(serde_json::json!({"color": "red"}));
         let pre = style(serde_json::json!({"color": "red", "whiteSpace": "pre"}));
-        assert!(!same_paragraphs(Some(&normal), &pre));
+        assert!(!same_paragraphs(Some(&normal), Some(&pre)));
     }
 
     #[test]

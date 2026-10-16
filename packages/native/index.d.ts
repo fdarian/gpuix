@@ -53,6 +53,7 @@ export declare class GpuixRenderer {
    *   ["setEventListener", id, "eventType", true|false]
    *   ["setRoot",          id]
    *   ["setKeyboardFocusDim", true|false]
+   *   ["setUniversalStyle", { ...style } | null]
    *   ["setCustomProp",    id, "key", value]
    *
    * Returns accumulated destroyed IDs from all destroyElement ops.

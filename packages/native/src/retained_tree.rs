@@ -68,14 +68,23 @@ pub struct RetainedElement {
     /// Shared, not owned. `StyleDesc` is ~1.4 KB, and holding it inline made an
     /// unstyled element pay for a style it does not have: `RetainedElement` was
     /// 1624 bytes, and the `HashMap` stores values inline, so the whole table
-    /// was that wide. Behind an `Arc` it was 248 bytes; cold metadata makes it 160.
+    /// was that wide. Behind an `Arc` it was 248 bytes; cold metadata makes it 160,
+    /// and `own_style` 168.
     ///
     /// The pointer is also shared between every element that declared the same
     /// style. A 10k-turn chat has 59 320 `setStyle` ops and 90 distinct styles.
     ///
+    /// This is the effective style: the one the element declared, over the
+    /// universal layer when there is one. Every reader wants it. Only `set_style`
+    /// and `set_universal_style` write it (`RetainedTree::assign_style`).
+    ///
     /// Read it with `.as_deref()` to get `Option<&StyleDesc>`. Never mutate
     /// through it; `Arc` has no `DerefMut`, so the compiler enforces that.
     pub style: Option<Arc<StyleDesc>>,
+    /// What the element declared with `setStyle`, which the effective `style`
+    /// is recomputed from when the universal layer changes. The same pointer as
+    /// `style` while there is no layer.
+    own_style: Option<Arc<StyleDesc>>,
     pub content: Option<String>,
     pub children: Vec<u64>,
     pub parent: Option<u64>,
@@ -162,6 +171,13 @@ impl RetainedElement {
             .unwrap_or(false)
     }
 
+    /// Whether the universal style layer applies to this element. CSS `*`
+    /// matches elements, not text nodes: a `text` element that holds a string is
+    /// one, a `<text>` that holds children is an element.
+    fn takes_universal_style(&self) -> bool {
+        !(self.element_type == "text" && self.content.is_some())
+    }
+
     pub fn is_disabled(&self) -> bool {
         self.custom_props()
             .get("disabled")
@@ -174,6 +190,7 @@ impl RetainedElement {
             id,
             element_type,
             style: None,
+            own_style: None,
             content: None,
             children: Vec::new(),
             parent: None,
@@ -258,6 +275,9 @@ pub struct StyleTable {
     count: usize,
     /// `count` right after the last sweep.
     swept_at: usize,
+    /// The universal layer's result per own style. It lives here because it holds
+    /// styles of the table, which `sweep` could not reclaim while it did.
+    layered: crate::universal_style::LayerCache,
 }
 
 impl StyleTable {
@@ -292,6 +312,7 @@ impl StyleTable {
     /// it. `strong_count == 1` means the table holds the last reference, so
     /// nothing can be reading it.
     pub fn sweep(&mut self) {
+        self.layered.release_unused();
         let mut live = 0;
         self.entries.retain(|_, bucket| {
             bucket.retain(|entry| Arc::strong_count(&entry.style) > 1);
@@ -339,6 +360,33 @@ fn reads_motion_values(props: &HashMap<String, serde_json::Value>) -> bool {
             .is_some_and(|layout| layout.get("dragOffset").is_some_and(|drag| !drag.is_null()))
 }
 
+/// What assigning a style changed, for the caller to mark the tree with.
+#[derive(Clone, Copy, Default)]
+struct StyleChange {
+    changed: bool,
+    regrouped: bool,
+    text_reprocessed: bool,
+    visibility_changed: bool,
+}
+
+impl StyleChange {
+    fn absorb(&mut self, other: Self) {
+        self.changed |= other.changed;
+        self.regrouped |= other.regrouped;
+        self.text_reprocessed |= other.text_reprocessed;
+        self.visibility_changed |= other.visibility_changed;
+    }
+}
+
+/// Whether two optional styles are the same allocation or equal in content.
+fn same_style(a: Option<&Arc<StyleDesc>>, b: Option<&Arc<StyleDesc>>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b) || **a == **b,
+        _ => false,
+    }
+}
+
 pub struct RetainedTree {
     /// Never shared by two trees of this process, unlike the tree's address,
     /// which a later tree can reuse. Caches that outlive a tree key on it.
@@ -365,6 +413,8 @@ pub struct RetainedTree {
     /// How many elements are `position: absolute` or `fixed`, which a clip above may not reach.
     escaping_count: usize,
     pub styles: StyleTable,
+    /// The style layer under every element's own style, a CSS `* { ... }` rule.
+    universal: Option<Arc<StyleDesc>>,
     /// The root element ID set by appendChildToContainer.
     pub root_id: Option<u64>,
     /// Dim other focusables while a control has keyboard focus. Set per root.
@@ -392,6 +442,7 @@ impl RetainedTree {
             anchored_count: 0,
             escaping_count: 0,
             styles: StyleTable::default(),
+            universal: None,
             root_id: None,
             keyboard_focus_dim: true,
             next_revision: 1,
@@ -436,6 +487,9 @@ impl RetainedTree {
         let revision = self.take_revision();
         self.elements
             .insert(id, RetainedElement::new(id, element_type, revision));
+        if self.universal.is_some() {
+            self.refresh_effective_style(id);
+        }
         self.track_focusable(id);
     }
 
@@ -694,55 +748,140 @@ impl RetainedTree {
     /// bytes, so `{"color":"red","width":10}` and `{"width":10,"color":"red"}`
     /// are two `Arc`s holding the same style. Only a pointer miss pays for the
     /// ~80-field compare, which is what decides whether this repaints.
+    ///
+    /// The comparison is on the declared style, before the universal layer is
+    /// put under it, so a resend costs no merge.
     pub fn set_style(&mut self, id: u64, style: Arc<StyleDesc>) {
-        let mut changed = false;
-        let mut regrouped = false;
-        let mut text_reprocessed = false;
-        let mut declared = None;
-        if let Some(element) = self.elements.get_mut(&id) {
-            let was_declared = element.declared_hidden();
-            let same = element
-                .style
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &style) || **current == *style);
-            if !same {
-                regrouped =
-                    !crate::text::inline::same_paragraphs(element.style.as_deref(), &style);
-                text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
-                    != style.white_space.as_deref();
-                let escaped_before = containing_block::escape(element).is_some();
-                let before = element.style.take().filter(|old| {
-                    !crate::motion::declares_transitions(old)
-                        && crate::motion::declares_transitions(&style)
-                });
-                if before.is_some() {
-                    element.extras_mut().before_transition = before;
-                } else if let Some(extras) = element.extras.as_mut() {
-                    extras.before_transition = None;
-                    element.release_empty_extras();
-                }
-                element.style = Some(style);
-                let escaped_after = containing_block::escape(element).is_some();
-                self.escaping_count += usize::from(escaped_after);
-                self.escaping_count -= usize::from(escaped_before);
-                changed = true;
-                declared = Some((was_declared, element.declared_hidden()));
+        let Some(element) = self.elements.get_mut(&id) else {
+            return;
+        };
+        let same = element
+            .own_style
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, &style) || **current == *style);
+        if same {
+            return;
+        }
+        element.own_style = Some(style);
+        let change = self.refresh_effective_style(id);
+        self.settle_style_change(id, change);
+    }
+
+    /// The style layer under every element's own style, as a CSS `* { ... }` rule
+    /// would be, or none. Restyles every element once, as if each had been given
+    /// its new effective style with `set_style`.
+    pub fn set_universal_style(&mut self, universal: Option<Arc<StyleDesc>>) {
+        if same_style(self.universal.as_ref(), universal.as_ref()) {
+            return;
+        }
+        self.universal = universal;
+        self.styles.layered.clear();
+        let ids: Vec<u64> = self.elements.keys().copied().collect();
+        let mut total = StyleChange::default();
+        for id in ids {
+            total.absorb(self.refresh_effective_style(id));
+        }
+        if total.visibility_changed {
+            // One pass from the tops of the trees instead of a walk below every element.
+            let tops: Vec<u64> = self
+                .elements
+                .values()
+                .filter(|element| element.parent.is_none())
+                .map(|element| element.id)
+                .collect();
+            for top in tops {
+                self.track_focusable_subtree(top);
             }
         }
-        if let Some((was, now)) = declared.filter(|(was, now)| was != now) {
-            self.visibility_count = self.visibility_count + usize::from(now.is_some())
-                - usize::from(was.is_some());
+        if total.changed {
+            let revision = self.take_revision();
+            let search = total.regrouped || total.text_reprocessed;
+            for element in self.elements.values_mut() {
+                element.subtree_revision = revision;
+                if search {
+                    element.search_revision = revision;
+                }
+            }
+        }
+    }
+
+    /// Recompute the effective style of `id` from the style it declared and the
+    /// universal layer, and assign it.
+    fn refresh_effective_style(&mut self, id: u64) -> StyleChange {
+        let Some(element) = self.elements.get(&id) else {
+            return StyleChange::default();
+        };
+        let effective = match (&self.universal, &element.own_style) {
+            (Some(universal), own) if element.takes_universal_style() => Some(match own {
+                Some(own) => self.styles.layered.effective(universal, own),
+                None => universal.clone(),
+            }),
+            (_, own) => own.clone(),
+        };
+        self.assign_style(id, effective)
+    }
+
+    /// The one place `RetainedElement::style` is written, and the bookkeeping
+    /// that depends on it: paragraph grouping, the style a transition starts
+    /// from, containing-block escapes and `visibility`. Marking the tree
+    /// changed is the caller's, because the universal layer does it once for
+    /// all elements.
+    fn assign_style(&mut self, id: u64, style: Option<Arc<StyleDesc>>) -> StyleChange {
+        let Some(element) = self.elements.get_mut(&id) else {
+            return StyleChange::default();
+        };
+        if same_style(element.style.as_ref(), style.as_ref()) {
+            // Equal but not the same allocation: take the shared one.
+            element.style = style;
+            return StyleChange::default();
+        }
+        let was_declared = element.declared_hidden();
+        let regrouped =
+            !crate::text::inline::same_paragraphs(element.style.as_deref(), style.as_deref());
+        let text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
+            != style.as_deref().and_then(|new| new.white_space.as_deref());
+        let escaped_before = containing_block::escape(element).is_some();
+        let before = element.style.take().filter(|old| {
+            !crate::motion::declares_transitions(old)
+                && style.as_deref().is_some_and(crate::motion::declares_transitions)
+        });
+        if before.is_some() {
+            element.extras_mut().before_transition = before;
+        } else if let Some(extras) = element.extras.as_mut() {
+            extras.before_transition = None;
+            element.release_empty_extras();
+        }
+        element.style = style;
+        let escaped_after = containing_block::escape(element).is_some();
+        self.escaping_count += usize::from(escaped_after);
+        self.escaping_count -= usize::from(escaped_before);
+        let now_declared = element.declared_hidden();
+        let visibility_changed = was_declared != now_declared;
+        if visibility_changed {
+            self.visibility_count = self.visibility_count + usize::from(now_declared.is_some())
+                - usize::from(was_declared.is_some());
+        }
+        StyleChange {
+            changed: true,
+            regrouped,
+            text_reprocessed,
+            visibility_changed,
+        }
+    }
+
+    fn settle_style_change(&mut self, id: u64, change: StyleChange) {
+        if change.visibility_changed {
             self.track_focusable_subtree(id);
         }
-        if text_reprocessed {
+        if change.text_reprocessed {
             // `white-space` is inherited and decides what text is left of a
             // string, so the searchable text of every descendant changes.
             self.mark_subtree_changed(id);
-        } else if regrouped {
+        } else if change.regrouped {
             // `display` decides which text nodes form one paragraph, and a
             // paragraph is what search matches.
             self.mark_changed(id);
-        } else if changed {
+        } else if change.changed {
             self.mark_render_changed(id);
         }
     }
@@ -756,6 +895,11 @@ impl RetainedTree {
             }
         }
         if changed {
+            if self.universal.is_some() {
+                // The string makes this a text node, which no style layer reaches.
+                let change = self.refresh_effective_style(id);
+                self.settle_style_change(id, change);
+            }
             self.mark_changed(id);
         }
     }
@@ -2193,5 +2337,235 @@ mod tests {
         let after = tree.elements[&1].subtree_revision;
         tree.set_text(3, "changed".to_string());
         assert_eq!(tree.elements[&1].subtree_revision, after);
+    }
+
+    // ── The universal style layer ────────────────────────────────────
+
+    fn layered_tree() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.create_element(3, "text".to_string());
+        tree.append_child(1, 2);
+        tree.append_child(1, 3);
+        tree.set_text(3, "hello".to_string());
+        apply(&mut tree, r##"[["setStyle",2,{"color":"#222222","padding":4}]]"##);
+        tree
+    }
+
+    fn style_of(tree: &RetainedTree, id: u64) -> Option<&StyleDesc> {
+        tree.elements[&id].style.as_deref()
+    }
+
+    #[test]
+    fn the_universal_layer_is_the_lowest_precedence_per_property() {
+        let mut tree = layered_tree();
+        apply(
+            &mut tree,
+            r##"[["setUniversalStyle",{"color":"#111111","opacity":0.5,"paddingTop":9}]]"##,
+        );
+        let own = style_of(&tree, 2).unwrap();
+        assert_eq!(own.color.as_deref(), Some("#222222"), "the element's own value wins");
+        assert_eq!(own.opacity, Some(0.5), "an unset property comes from the layer");
+        assert_eq!(own.padding_top, None, "an own shorthand shadows a layer longhand");
+        assert!(own.padding.is_some());
+    }
+
+    #[test]
+    fn an_element_with_no_style_and_one_created_later_get_the_layer() {
+        let mut tree = layered_tree();
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        assert_eq!(style_of(&tree, 1).unwrap().opacity, Some(0.5), "never given a style");
+        apply(&mut tree, r##"[["createElement",9,"div"]]"##);
+        assert_eq!(style_of(&tree, 9).unwrap().opacity, Some(0.5));
+        assert!(tree.elements[&9].own_style.is_none());
+        apply(&mut tree, r##"[["setStyle",9,{"width":10}]]"##);
+        let later = style_of(&tree, 9).unwrap();
+        assert_eq!((later.opacity, later.width.is_some()), (Some(0.5), true));
+    }
+
+    #[test]
+    fn a_text_node_never_gets_the_layer_but_a_text_element_does() {
+        let mut tree = layered_tree();
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        assert!(style_of(&tree, 3).is_none(), "a string is not an element");
+        assert!(crate::text::inline::is_raw_text(&tree.elements[&3]));
+
+        // A text node is created before its string arrives.
+        apply(&mut tree, r##"[["createElement",4,"text"],["createElement",5,"text"],["appendChild",4,5],["setText",5,"x"]]"##);
+        assert_eq!(style_of(&tree, 4).unwrap().opacity, Some(0.5), "a `<text>` element");
+        assert!(style_of(&tree, 5).is_none());
+        assert!(crate::text::inline::is_raw_text(&tree.elements[&5]));
+    }
+
+    #[test]
+    fn clearing_the_layer_restores_the_own_styles_exactly() {
+        let mut tree = layered_tree();
+        let own = tree.elements[&2].style.clone().unwrap();
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        assert!(!Arc::ptr_eq(style_of_arc(&tree, 2), &own));
+        apply(&mut tree, r##"[["setUniversalStyle",null]]"##);
+        assert!(Arc::ptr_eq(style_of_arc(&tree, 2), &own), "the pointer, not a copy");
+        assert!(style_of(&tree, 1).is_none(), "an element that had no style has none again");
+        assert_eq!(tree.styles.layered.len(), 0);
+    }
+
+    fn style_of_arc(tree: &RetainedTree, id: u64) -> &Arc<StyleDesc> {
+        tree.elements[&id].style.as_ref().unwrap()
+    }
+
+    #[test]
+    fn changing_the_layer_restyles_every_element_once() {
+        let mut tree = layered_tree();
+        tree.take_dirty();
+        let revision = tree.next_revision;
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        assert!(tree.take_dirty());
+        assert_eq!(tree.next_revision, revision + 1, "one revision for the whole tree");
+        assert!(tree.elements.values().all(|element| element.subtree_revision == revision));
+        assert_eq!(style_of(&tree, 2).unwrap().opacity, Some(0.5));
+
+        // The same layer again, byte for byte or only by content, is nothing.
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        apply(&mut tree, r##"[["setUniversalStyle",{ "opacity" : 0.50 }]]"##);
+        assert_eq!(tree.next_revision, revision + 1);
+        assert!(!tree.take_dirty());
+    }
+
+    #[test]
+    fn a_layer_change_that_no_element_shows_repaints_nothing() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        apply(&mut tree, r##"[["setStyle",1,{"opacity":0.2}],["setUniversalStyle",{"opacity":0.5}]]"##);
+        let revision = tree.elements[&1].subtree_revision;
+        tree.take_dirty();
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.9}]]"##);
+        assert_eq!(tree.elements[&1].subtree_revision, revision, "its own opacity wins either way");
+        assert!(!tree.take_dirty());
+    }
+
+    #[test]
+    fn elements_with_the_same_own_style_share_one_layered_style() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=20 {
+            tree.create_element(id, "div".to_string());
+        }
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        for id in 1..=20 {
+            let width = if id % 2 == 0 { 10 } else { 20 };
+            apply(&mut tree, &format!(r##"[["setStyle",{id},{{"width":{width}}}]]"##));
+        }
+        assert_eq!(tree.styles.layered.len(), 2);
+        assert!(Arc::ptr_eq(style_of_arc(&tree, 1), style_of_arc(&tree, 3)));
+        assert!(!Arc::ptr_eq(style_of_arc(&tree, 1), style_of_arc(&tree, 2)));
+    }
+
+    #[test]
+    fn sweeping_releases_the_layered_styles_no_element_holds() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
+        for frame in 0..30 {
+            apply(&mut tree, &format!(r##"[["setStyle",1,{{"left":{frame}}}]]"##));
+            tree.styles.sweep();
+            assert_eq!(tree.styles.layered.len(), 1, "frame {frame} leaked a layered style");
+            // The layer, and the style the element declares.
+            assert_eq!(tree.styles.len(), 2, "frame {frame} leaked a style");
+        }
+    }
+
+    #[test]
+    fn an_invalid_layer_rejects_the_batch_and_changes_nothing() {
+        let mut tree = layered_tree();
+        let revision = tree.next_revision;
+        let error = crate::renderer::apply_batch_to_tree(
+            &mut tree,
+            br##"[["setStyle",2,{"color":"#abcdef"}],["setUniversalStyle",{"color":5}]]"##,
+        )
+        .expect_err("a layer is validated like any style");
+        assert!(error.starts_with("Batch op 1 setUniversalStyle parse error:"), "{error}");
+        assert_eq!(style_of(&tree, 2).unwrap().color.as_deref(), Some("#222222"));
+        assert_eq!(tree.next_revision, revision);
+        assert!(tree.universal.is_none());
+
+        let error = crate::renderer::apply_batch_to_tree(
+            &mut tree,
+            br#"[["setUniversalStyle",{"transition":"width not-a-time"}]]"#,
+        )
+        .expect_err("transitions are validated too");
+        assert!(error.contains("setUniversalStyle parse error"), "{error}");
+
+        let error = crate::renderer::apply_batch_to_tree(&mut tree, br#"[["setUniversalStyle"]]"#)
+            .expect_err("a missing style is not a null one");
+        assert!(error.contains("missing style"), "{error}");
+        assert!(tree.universal.is_none());
+    }
+
+    #[test]
+    fn the_layer_is_ordered_with_the_element_mutations_of_its_batch() {
+        let mut tree = RetainedTree::new();
+        apply(
+            &mut tree,
+            r##"[["createElement",1,"div"],["setUniversalStyle",{"opacity":0.5}],["createElement",2,"div"]]"##,
+        );
+        assert_eq!(style_of(&tree, 1).unwrap().opacity, Some(0.5));
+        assert_eq!(style_of(&tree, 2).unwrap().opacity, Some(0.5));
+        apply(&mut tree, r##"[["setUniversalStyle",null],["createElement",3,"div"]]"##);
+        assert!(tree.elements.values().all(|element| element.style.is_none()));
+    }
+
+    #[test]
+    fn a_layer_that_introduces_a_transition_keeps_the_style_before_it() {
+        let mut tree = layered_tree();
+        apply(&mut tree, r##"[["setUniversalStyle",{"backgroundColor":"#ff0000"}]]"##);
+        assert!(tree.elements[&2].style_before_transition().is_none());
+        apply(
+            &mut tree,
+            r##"[["setUniversalStyle",{"backgroundColor":"#0000ff","transition":"background-color 1s"}]]"##,
+        );
+        for id in [1, 2] {
+            let before = tree.elements[&id].style_before_transition().unwrap();
+            assert_eq!(before.background_color.as_deref(), Some("#ff0000"), "element {id}");
+            assert!(!crate::motion::declares_transitions(before));
+        }
+
+        // An element's own transition replaces the layer's.
+        apply(&mut tree, r##"[["setStyle",2,{"transition":"opacity 2s"}]]"##);
+        let own = style_of(&tree, 2).unwrap();
+        assert_eq!(own.transition.as_deref(), Some("opacity 2s"));
+        assert_eq!(own.background_color.as_deref(), Some("#0000ff"));
+        assert!(tree.elements[&2].style_before_transition().is_none());
+
+        // Dropping the layer drops the declaration, and nothing is left behind.
+        apply(&mut tree, r##"[["setUniversalStyle",null],["setStyle",2,{"color":"#222222"}]]"##);
+        assert!(tree.elements[&1].style_before_transition().is_none());
+        assert!(tree.elements[&1].extras.is_none());
+    }
+
+    #[test]
+    fn the_layer_feeds_the_counts_that_gate_the_tree_walks() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.append_child(1, 2);
+        tree.set_custom_prop(2, "tabIndex".to_string(), serde_json::json!(0));
+        assert!(tree.focusable_ids.contains(&2));
+
+        apply(&mut tree, r##"[["setUniversalStyle",{"visibility":"hidden","position":"absolute"}]]"##);
+        assert!(tree.focusable_ids.is_empty(), "a hidden element cannot take focus");
+        assert!(tree.is_visibility_hidden(2));
+        assert_eq!((tree.visibility_count, tree.escaping_count), (2, 2));
+
+        apply(&mut tree, r##"[["createElement",3,"div"],["appendChild",1,3]]"##);
+        assert_eq!((tree.visibility_count, tree.escaping_count), (3, 3));
+        tree.destroy_element(3);
+
+        apply(&mut tree, r##"[["setStyle",2,{"visibility":"visible"}]]"##);
+        assert!(tree.focusable_ids.contains(&2), "its own value wins");
+
+        apply(&mut tree, r##"[["setUniversalStyle",null]]"##);
+        assert_eq!((tree.visibility_count, tree.escaping_count), (1, 0));
+        tree.destroy_element(1);
+        assert_eq!((tree.visibility_count, tree.escaping_count), (0, 0));
     }
 }
