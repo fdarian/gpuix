@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use gpui::{
-    px, DefiniteLength, FontWeight, Hsla, OverlineStyle, Pixels, SharedString, StrikethroughStyle,
+    px, DefiniteLength, ExtraDecoration, FontWeight, Hsla, OverlineStyle, Pixels, SharedString, StrikethroughStyle,
     StyledText, TextInset, TextLayout, TextRun, UnderlineStyle,
 };
 
@@ -50,10 +50,13 @@ pub struct RunStyle {
     pub features: Option<gpui::FontFeatures>,
     /// The decoration lines of a run keep the colour, style and thickness of the
     /// box that declared them, so a descendant that changes `color` does not
-    /// recolour them.
+    /// recolour them. The innermost box's line of a kind is the field, the lines
+    /// of the same kind from the boxes around it are `extra_decorations`: as in
+    /// CSS, nested declarations accumulate.
     pub underline: Option<UnderlineStyle>,
     pub strikethrough: Option<StrikethroughStyle>,
     pub overline: Option<OverlineStyle>,
+    pub extra_decorations: Vec<ExtraDecoration>,
 }
 
 impl RunStyle {
@@ -64,6 +67,28 @@ impl RunStyle {
         } == Self {
             len: 0,
             ..other.clone()
+        }
+    }
+
+    fn add_decoration(&mut self, decoration: &text_decoration::TextDecoration, color: Hsla) {
+        if decoration.underline {
+            if let Some(outer) = self.underline.replace(decoration.underline_style(color)) {
+                self.extra_decorations.push(ExtraDecoration::Underline(outer));
+            }
+        }
+        if decoration.line_through {
+            if let Some(outer) = self
+                .strikethrough
+                .replace(decoration.strikethrough_style(color))
+            {
+                self.extra_decorations
+                    .push(ExtraDecoration::Strikethrough(outer));
+            }
+        }
+        if decoration.overline {
+            if let Some(outer) = self.overline.replace(decoration.overline_style(color)) {
+                self.extra_decorations.push(ExtraDecoration::Overline(outer));
+            }
         }
     }
 
@@ -147,16 +172,7 @@ pub fn run_styles(
             // take it off, so `none` on a box adds nothing and removes nothing.
             if has_box {
                 if let Some(decoration) = text_decoration::of(declared) {
-                    let color = decoration.resolve_color(&colors);
-                    if decoration.underline {
-                        style.underline = Some(decoration.underline_style(color));
-                    }
-                    if decoration.line_through {
-                        style.strikethrough = Some(decoration.strikethrough_style(color));
-                    }
-                    if decoration.overline {
-                        style.overline = Some(decoration.overline_style(color));
-                    }
+                    style.add_decoration(&decoration, decoration.resolve_color(&colors));
                 }
             }
         }
@@ -288,15 +304,26 @@ impl InlineText {
                 if let Some(features) = &style.features {
                     run.font.features = features.clone();
                 }
-                if style.underline.is_some() {
-                    run.underline = style.underline;
+                // The lines the text inherits from the boxes around the paragraph
+                // stay under the ones the run's own boxes declare.
+                if let Some(underline) = style.underline {
+                    if let Some(outer) = run.underline.replace(underline) {
+                        run.extra_decorations.push(ExtraDecoration::Underline(outer));
+                    }
                 }
-                if style.strikethrough.is_some() {
-                    run.strikethrough = style.strikethrough;
+                if let Some(strikethrough) = style.strikethrough {
+                    if let Some(outer) = run.strikethrough.replace(strikethrough) {
+                        run.extra_decorations
+                            .push(ExtraDecoration::Strikethrough(outer));
+                    }
                 }
-                if style.overline.is_some() {
-                    run.overline = style.overline;
+                if let Some(overline) = style.overline {
+                    if let Some(outer) = run.overline.replace(overline) {
+                        run.extra_decorations.push(ExtraDecoration::Overline(outer));
+                    }
                 }
+                run.extra_decorations
+                    .extend(style.extra_decorations.iter().copied());
                 run
             })
             .collect()
@@ -789,16 +816,55 @@ mod tests {
     }
 
     #[test]
-    fn a_nested_box_that_declares_a_line_again_replaces_the_outer_one() {
+    fn a_nested_box_that_declares_a_line_again_adds_it_to_the_outer_one() {
         let tree = tree_with(&[
-            (3, serde_json::json!({"textDecoration": "underline wavy 2px"})),
-            (5, serde_json::json!({"textDecoration": "underline dashed"})),
+            (3, serde_json::json!({"textDecoration": "underline wavy 2px #ff0000"})),
+            (5, serde_json::json!({"textDecoration": "underline dashed #0000ff"})),
         ]);
         let runs = runs_of(&tree);
         let outer = runs[1].underline.expect("outer");
+        assert!(runs[1].extra_decorations.is_empty());
         let inner = runs[2].underline.expect("inner");
-        assert_eq!((outer.style, outer.thickness), (TextDecorationStyle::Wavy, gpui::px(2.0)));
         assert_eq!((inner.style, inner.thickness), (TextDecorationStyle::Dashed, gpui::px(1.0)));
+        assert_ne!(inner.color, outer.color);
+        assert_eq!(
+            runs[2].extra_decorations,
+            vec![ExtraDecoration::Underline(outer)],
+            "the outer underline is still there, with its own style, colour and thickness"
+        );
+        assert_eq!((outer.style, outer.thickness), (TextDecorationStyle::Wavy, gpui::px(2.0)));
+    }
+
+    #[test]
+    fn lines_of_each_kind_accumulate_on_their_own() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"textDecoration": "underline line-through"})),
+            (5, serde_json::json!({"textDecoration": "line-through double"})),
+        ]);
+        let run = runs_of(&tree).remove(2);
+        assert_eq!(run.strikethrough.expect("inner").style, TextDecorationStyle::Double);
+        assert!(run.underline.is_some());
+        assert!(matches!(run.extra_decorations[..], [ExtraDecoration::Strikethrough(_)]));
+    }
+
+    #[test]
+    fn a_run_keeps_the_lines_it_inherits_beneath_its_own() {
+        let outer = gpui::UnderlineStyle {
+            thickness: gpui::px(3.0),
+            ..Default::default()
+        };
+        let base = gpui::TextStyle {
+            underline: Some(outer),
+            ..Default::default()
+        };
+        let tree = tree_with(&[(3, serde_json::json!({"textDecoration": "underline dotted"}))]);
+        let styles = runs_of(&tree);
+        let runs = InlineText::new("a boldred end".into(), styles).runs(&base, px(16.0), |height| height);
+        assert_eq!(runs[0].underline, Some(outer), "text outside the box keeps its underline");
+        assert!(runs[0].extra_decorations.is_empty());
+        let inner = runs[1].underline.expect("the box's underline");
+        assert_eq!(inner.style, TextDecorationStyle::Dotted);
+        assert_eq!(runs[1].extra_decorations, vec![ExtraDecoration::Underline(outer)]);
     }
 
     #[test]

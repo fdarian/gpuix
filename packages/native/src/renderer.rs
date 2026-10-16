@@ -13055,6 +13055,13 @@ mod paint_integration_tests {
             tree.set_text(4, "bbbbbbbb".to_owned());
             tree.append_child(3, 4);
         }
+        shown(cx, tree)
+    }
+
+    pub(super) fn shown(
+        cx: &mut gpui::TestAppContext,
+        tree: Arc<Mutex<RetainedTree>>,
+    ) -> gpui::WindowHandle<GpuixView> {
         let window = cx.add_window(|window, _| {
             crate::events::enable_dom_hit_testing(window);
             GpuixView::new(
@@ -13142,7 +13149,7 @@ mod paint_integration_tests {
 /// block, in an inline box and with a font size of its own.
 #[cfg(test)]
 mod decoration_paint_tests {
-    use super::paint_integration_tests::painted;
+    use super::paint_integration_tests::{painted, shown};
     use super::*;
 
     const SOLID: u32 = 0;
@@ -13187,6 +13194,61 @@ mod decoration_paint_tests {
         // A larger font is wider, and its overline is above its underline.
         assert!(large[0].bounds.size.width > plain[0].bounds.size.width);
         assert!(large[0].bounds.origin.y < underlined[0].bounds.origin.y);
+    }
+
+    fn width(lines: &[gpui::Underline]) -> f32 {
+        lines.iter().map(|line| line.bounds.size.width.0).sum()
+    }
+
+    #[gpui::test]
+    fn an_inline_box_underline_inside_an_underlined_block_paints_both(cx: &mut gpui::TestAppContext) {
+        let alone = lines(r#"{"textDecoration": "underline #ff0000"}"#, "{}", cx);
+        let both = lines(
+            r#"{"textDecoration": "underline #ff0000"}"#,
+            r##"{"textDecoration": "underline dotted 3px #0000ff"}"##,
+            cx,
+        );
+        let red: Vec<_> = both.iter().filter(|line| line.color == alone[0].color).collect();
+        let blue: Vec<_> = both.iter().filter(|line| line.color != alone[0].color).collect();
+        assert_eq!(blue.len(), 1, "the span's own underline");
+        assert_ne!(blue[0].style, SOLID);
+        assert_eq!(blue[0].thickness.0, alone[0].thickness.0 * 3.0);
+        assert!(blue[0].bounds.size.width < alone[0].bounds.size.width);
+        assert_eq!(red.len(), 2, "the block's, before the box and under it");
+        assert!(red.iter().all(|line| line.style == SOLID));
+        let red_width: f32 = red.iter().map(|line| line.bounds.size.width.0).sum();
+        assert!((red_width - width(&alone)).abs() < 0.01, "{red_width} {}", width(&alone));
+    }
+
+    #[gpui::test]
+    fn a_none_inside_an_underline_does_not_take_it_off(cx: &mut gpui::TestAppContext) {
+        let alone = lines(r#"{"textDecoration": "underline"}"#, "{}", cx);
+        let with_none = lines(r#"{"textDecoration": "underline"}"#, r#"{"textDecoration": "none"}"#, cx);
+        assert_eq!(width(&with_none), width(&alone));
+    }
+
+    #[gpui::test]
+    fn a_nested_block_adds_its_underline_to_the_block_around_it(cx: &mut gpui::TestAppContext) {
+        let tree = Arc::new(Mutex::new(RetainedTree::new()));
+        {
+            let mut tree = tree.lock().unwrap();
+            tree.create_element(1, "div".to_owned());
+            tree.set_style(1, Arc::new(serde_json::from_str(r##"{"textDecoration": "underline #ff0000"}"##).unwrap()));
+            tree.set_root(1);
+            tree.create_element(2, "div".to_owned());
+            tree.set_style(2, Arc::new(serde_json::from_str(r##"{"textDecoration": "underline wavy 2px #0000ff"}"##).unwrap()));
+            tree.append_child(1, 2);
+            tree.create_element(3, "text".to_owned());
+            tree.set_text(3, "nested".to_owned());
+            tree.append_child(2, 3);
+        }
+        let window = shown(cx, tree);
+        let lines = decorations(window, cx);
+        assert_eq!(lines.len(), 2);
+        assert_ne!(lines[0].color, lines[1].color);
+        assert_ne!(lines[0].style, lines[1].style);
+        assert_ne!(lines[0].thickness, lines[1].thickness);
+        assert_eq!(lines[0].bounds.size.width, lines[1].bounds.size.width);
     }
 
     #[gpui::test]

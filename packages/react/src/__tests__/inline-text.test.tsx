@@ -598,6 +598,25 @@ describeNative("inline text", () => {
       expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(4)
       expect(count(pixels, { ...area, y: area.y + 16, height: 4 }, [0, 0, 0])).toBeGreaterThan(4)
     })
+
+    it("draws the underline of a box inside an underlined box besides the outer one", () => {
+      const testRoot = createTestRoot()
+      testRoot.render(
+        <text testId="p" style={{ ...WHITE, textDecoration: "underline #ff0000" }}>
+          <span style={{ textDecoration: "underline dotted 3px #0000ff" }}>xx</span>
+        </text>
+      )
+      const area = bounds(testRoot, "p")
+      const pixels = shoot(testRoot, "decoration-accumulated")
+      expect(count(pixels, area, [255, 0, 0])).toBeGreaterThan(4)
+      expect(count(pixels, area, [0, 0, 255])).toBeGreaterThan(4)
+    })
+
+    it("keeps the underline of the box around when the inner box says none", () => {
+      expect(signature("kept", { textDecoration: "none" }, { textDecoration: "underline" })).toBe(
+        signature("kept-alone", {}, { textDecoration: "underline" })
+      )
+    })
   })
 
   describe("fontStyle", () => {

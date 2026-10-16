@@ -1,8 +1,9 @@
 //! `text-decoration` and its longhands, down to what gpui can draw.
 //!
-//! gpui draws one underline, one strikethrough and one overline per run. As in
-//! CSS, the style, colour and thickness of one declaration apply to every line
-//! it names. `blink` is valid and draws nothing.
+//! As in CSS, the style, colour and thickness of one declaration apply to every
+//! line it names, and the lines of nested boxes accumulate: gpui runs hold the
+//! innermost line of each kind and the outer ones as extra decorations.
+//! `blink` is valid and draws nothing.
 
 use gpui::TextDecorationStyle;
 

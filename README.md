@@ -2729,9 +2729,11 @@ children join the paragraph and inherit from it.
 `textDecorationColor` and `textDecorationThickness` are its longhands, which win
 over it. A line is drawn over the whole box in the colour its own box had, so a
 descendant that changes `color` does not recolour it, and a descendant cannot
-take it off. gpui draws one underline, one strikethrough and one overline per
-run, so a nested box that declares the same line again replaces the outer one's
-style, colour and thickness.
+take it off, `none` included. Lines accumulate, as in CSS: a nested box, inline or
+block, that declares a line the box around it already draws gets its own beside
+the outer one, each with its own style, colour and thickness, so `underline wavy
+red` inside `underline` draws both. Each is drawn where its kind sits, so two
+lines of one kind with the same thickness and style overlap exactly.
 
 A declaration gives every line it names one style, one colour and one
 thickness, as in CSS. The styles are `solid`, `double` (two lines a thickness

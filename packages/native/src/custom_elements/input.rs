@@ -1838,6 +1838,7 @@ impl TextEditorState {
             font_size: None,
             line_height: None,
             overline: None,
+            extra_decorations: Vec::new(),
         };
         let marked = self.marked_range.as_ref().map(|marked| {
             self.content_to_display(marked.start)..self.content_to_display(marked.end)
