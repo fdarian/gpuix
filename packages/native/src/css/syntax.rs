@@ -27,13 +27,21 @@ pub(crate) fn function_args<'a>(value: &'a str, name: &str) -> Option<&'a str> {
     None
 }
 
-/// Splits at commas that are not inside parentheses. Empty pieces are kept so
-/// the caller can reject `a,,b`.
+/// Splits at commas that are not inside parentheses or a `url()`. Empty pieces
+/// are kept so the caller can reject `a,,b`.
 pub(crate) fn split_commas(value: &str) -> Vec<&str> {
     let mut pieces = Vec::new();
     let mut depth = 0i32;
     let mut start = 0;
+    let mut url_end = 0;
     for (index, character) in value.char_indices() {
+        if index < url_end {
+            continue;
+        }
+        if let Some(end) = url_token_end(value, index, character) {
+            url_end = end;
+            continue;
+        }
         match character {
             '(' => depth += 1,
             ')' => depth -= 1,
@@ -48,13 +56,22 @@ pub(crate) fn split_commas(value: &str) -> Vec<&str> {
     pieces
 }
 
-/// Splits at whitespace that is not inside parentheses, so `rgb(0 0 0) 30%` is
-/// two tokens.
+/// Splits at whitespace that is not inside parentheses or a `url()`, so
+/// `rgb(0 0 0) 30%` is two tokens.
 pub(crate) fn split_whitespace(value: &str) -> Vec<&str> {
     let mut tokens = Vec::new();
     let mut depth = 0i32;
     let mut start: Option<usize> = None;
+    let mut url_end = 0;
     for (index, character) in value.char_indices() {
+        if index < url_end {
+            continue;
+        }
+        if let Some(end) = url_token_end(value, index, character) {
+            url_end = end;
+            start.get_or_insert(index);
+            continue;
+        }
         match character {
             '(' => {
                 depth += 1;
@@ -75,6 +92,16 @@ pub(crate) fn split_whitespace(value: &str) -> Vec<&str> {
         tokens.push(&value[begin..]);
     }
     tokens
+}
+
+/// The end of the `url()` token that starts at `index`, whose first character is
+/// `character`. A quoted address can hold the parentheses, commas and spaces the
+/// splitters look for.
+fn url_token_end(value: &str, index: usize, character: char) -> Option<usize> {
+    if !matches!(character, 'u' | 'U') {
+        return None;
+    }
+    super::url::token_end(value, index)
 }
 
 /// Whitespace-separated tokens with every `/` outside parentheses a token of
@@ -139,6 +166,21 @@ mod tests {
         assert_eq!(split_commas("a, rgb(1, 2, 3) ,b"), vec!["a", "rgb(1, 2, 3)", "b"]);
         assert_eq!(split_commas("a,,b"), vec!["a", "", "b"]);
         assert_eq!(split_whitespace("  rgb(0 0 0)  30% "), vec!["rgb(0 0 0)", "30%"]);
+    }
+
+    #[test]
+    fn a_url_is_one_token_whatever_its_address_holds() {
+        assert_eq!(
+            split_commas("url(\"a,b)c.png\") no-repeat, url(d.png)"),
+            vec!["url(\"a,b)c.png\") no-repeat", "url(d.png)"]
+        );
+        assert_eq!(
+            split_whitespace("url( 'a b)c.png' ) center url(data:image/svg+xml,%3Csvg%2F%3E)"),
+            vec!["url( 'a b)c.png' )", "center", "url(data:image/svg+xml,%3Csvg%2F%3E)"]
+        );
+        // `url(` inside a longer identifier, or never closed, is nothing special.
+        assert_eq!(split_commas("my-url(a, b), c"), vec!["my-url(a, b)", "c"]);
+        assert_eq!(split_commas("url(a, b"), vec!["url(a, b"]);
     }
 
     #[test]
