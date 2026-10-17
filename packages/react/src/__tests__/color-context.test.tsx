@@ -81,7 +81,7 @@ describeNative("currentColor", () => {
     const outlined = paint(
       "outline",
       <div style={{ padding: 30, color: "#0000ff" }}>
-        <div style={{ width: 40, height: 40, outlineWidth: 6, outlineColor: "currentColor" }} />
+        <div style={{ width: 40, height: 40, outlineWidth: 6, outlineStyle: "solid", outlineColor: "currentColor" }} />
       </div>
     )
     expectNear(outlined.at(27, 50), BLUE)

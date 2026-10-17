@@ -120,7 +120,7 @@ macro_rules! dimension_field {
     };
 }
 
-const NOT_A_SIZE: &str = "only width, height and their min and max take min-content, max-content and fit-content";
+pub(crate) const NOT_A_SIZE: &str = "only width, height and their min and max take min-content, max-content and fit-content";
 
 dimension_field!(deserialize_margin, "margin", NOT_A_SIZE);
 dimension_field!(deserialize_inset, "inset", NOT_A_SIZE);
@@ -640,6 +640,12 @@ pub struct StyleDesc {
     // shorthand takes one to four values, for the sides in CSS order.
     #[serde(default, deserialize_with = "deserialize_padding")]
     pub padding: Option<Sides<LinearLength>>,
+    /// `padding-block` (top and bottom) and `padding-inline` (left and right): one or two
+    /// values, start then end. They win over `padding`, and the side longhands over them.
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_padding_block")]
+    pub padding_block: Option<crate::css::logical::Pair<LinearLength>>,
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_padding_inline")]
+    pub padding_inline: Option<crate::css::logical::Pair<LinearLength>>,
     pub padding_top: Option<LinearLength>,
     pub padding_right: Option<LinearLength>,
     pub padding_bottom: Option<LinearLength>,
@@ -648,6 +654,11 @@ pub struct StyleDesc {
     // Spacing (margin): px, a percentage of the containing block width, or "auto".
     #[serde(default, deserialize_with = "deserialize_margin_sides")]
     pub margin: Option<Sides<DimensionValue>>,
+    /// `margin-block` (top and bottom) and `margin-inline` (left and right), as for `padding`.
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_margin_block")]
+    pub margin_block: Option<crate::css::logical::Pair<DimensionValue>>,
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_margin_inline")]
+    pub margin_inline: Option<crate::css::logical::Pair<DimensionValue>>,
     #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_top: Option<DimensionValue>,
     #[serde(default, deserialize_with = "deserialize_margin")]
@@ -665,6 +676,11 @@ pub struct StyleDesc {
     /// four longhands win over it.
     #[serde(default, deserialize_with = "deserialize_inset_sides")]
     pub inset: Option<Sides<DimensionValue>>,
+    /// `inset-block` (`top` and `bottom`) and `inset-inline` (`left` and `right`), as for `padding`.
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_inset_block")]
+    pub inset_block: Option<crate::css::logical::Pair<DimensionValue>>,
+    #[serde(default, deserialize_with = "crate::css::logical::deserialize_inset_inline")]
+    pub inset_inline: Option<crate::css::logical::Pair<DimensionValue>>,
     #[serde(default, deserialize_with = "deserialize_inset")]
     pub top: Option<DimensionValue>,
     #[serde(default, deserialize_with = "deserialize_inset")]
@@ -715,6 +731,10 @@ pub struct StyleDesc {
     pub border_left_color: Option<String>,
     /// CSS shorthands, `"1px solid red"`. The longhands above win over them.
     pub border: Option<String>,
+    /// `border-block` (the top and bottom sides) and `border-inline` (left and right), written
+    /// like `border`. They win over `border` and the side shorthands over them.
+    pub border_block: Option<String>,
+    pub border_inline: Option<String>,
     pub border_top: Option<String>,
     pub border_right: Option<String>,
     pub border_bottom: Option<String>,
@@ -773,7 +793,15 @@ pub struct StyleDesc {
     /// with no `%`.
     #[serde(default, deserialize_with = "deserialize_border_width")]
     pub outline_width: Option<LinearLength>,
+    /// CSS `outline-style`: `none` (the default, which paints no outline), `auto` (painted as
+    /// `solid`), `dotted`, `dashed`, `solid`, `double`, `groove`, `ridge`, `inset` or `outset`.
+    /// An invalid string is ignored.
+    pub outline_style: Option<String>,
     pub outline_color: Option<String>,
+    /// CSS `outline`: `<width> || <style> || <color>`. `outlineWidth`, `outlineStyle` and
+    /// `outlineColor` win over it.
+    #[serde(default, deserialize_with = "crate::css::outline::deserialize_outline")]
+    pub outline: Option<crate::css::outline::Outline>,
     #[serde(default, deserialize_with = "deserialize_outline_offset")]
     pub outline_offset: Option<LinearLength>,
 
@@ -1120,17 +1148,12 @@ impl StyleDesc {
         follow!(border_bottom_color, follows);
         follow!(border_left_color, follows);
         follow!(border, shorthand_follows);
+        follow!(border_block, shorthand_follows);
+        follow!(border_inline, shorthand_follows);
         follow!(border_top, shorthand_follows);
         follow!(border_right, shorthand_follows);
         follow!(border_bottom, shorthand_follows);
         follow!(border_left, shorthand_follows);
-        if state.outline_color.is_none() {
-            followers.outline_color = follows(&self.outline_color);
-            if followers.outline_color.is_some() {
-                followers.outline_width = self.outline_width;
-                followers.outline_offset = self.outline_offset;
-            }
-        }
         if state.box_shadow.is_none()
             && self.box_shadow.as_ref().is_some_and(|shadows| {
                 shadows
@@ -1662,8 +1685,6 @@ mod tests {
         let followers = base.colors_following_current(&hover, &LengthContext::for_tests()).unwrap();
         assert_eq!(followers.border_color.as_deref(), Some("currentColor"));
         assert_eq!(followers.background_color, None);
-        assert_eq!(followers.outline_width, Some(LinearLength::px(2.0)));
-        assert!(followers.outline_color.is_some());
 
         let overriding = StyleDesc {
             border_color: Some("blue".to_owned()),

@@ -116,7 +116,11 @@ pub(crate) fn resolve(anchored_id: u64, style: &StyleDesc) -> Option<StyleDesc> 
         || [&style.margin, &style.inset]
             .into_iter()
             .flatten()
-            .any(|sides| sides.values().into_iter().any(|value| matches!(value, DimensionValue::AnchorSize(_))));
+            .any(|sides| sides.values().into_iter().any(|value| matches!(value, DimensionValue::AnchorSize(_))))
+        || [&style.margin_block, &style.margin_inline, &style.inset_block, &style.inset_inline]
+            .into_iter()
+            .flatten()
+            .any(|pair| pair.values().into_iter().any(|value| matches!(value, DimensionValue::AnchorSize(_))));
     if !uses_anchor_size {
         return None;
     }
@@ -149,6 +153,19 @@ pub(crate) fn resolve(anchored_id: u64, style: &StyleDesc) -> Option<StyleDesc> 
     for slot in [&mut resolved.margin, &mut resolved.inset] {
         *slot = slot.take().and_then(|sides| {
             sides.try_map(|value| match value {
+                DimensionValue::AnchorSize(axis) => anchor_px(axis),
+                other => Some(other),
+            })
+        });
+    }
+    for slot in [
+        &mut resolved.margin_block,
+        &mut resolved.margin_inline,
+        &mut resolved.inset_block,
+        &mut resolved.inset_inline,
+    ] {
+        *slot = slot.take().and_then(|pair| {
+            pair.try_map(|value| match value {
                 DimensionValue::AnchorSize(axis) => anchor_px(axis),
                 other => Some(other),
             })
@@ -250,6 +267,27 @@ mod tests {
         assert_eq!(resolved.left, width);
         assert_eq!(resolved.opacity, None);
         forget(902);
+    }
+
+    #[test]
+    fn the_logical_pairs_take_the_trigger_size_too() {
+        use crate::css::logical::Pair;
+        paint(904, 120.0, 30.0);
+        let style = StyleDesc {
+            margin_inline: Some(Pair { start: DimensionValue::AnchorSize(AnchorAxis::Width), end: DimensionValue::Pixels(2.0) }),
+            inset_block: Some(Pair::both(DimensionValue::AnchorSize(AnchorAxis::Height))),
+            ..Default::default()
+        };
+        let tree = mounted(905, None);
+        record(905, (120, 30));
+        begin_build(WindowId::from(1), &tree, &tree.elements[&905]);
+        let resolved = resolve(905, &style).unwrap();
+        assert_eq!(
+            resolved.margin_inline,
+            Some(Pair { start: DimensionValue::Pixels(120.0), end: DimensionValue::Pixels(2.0) })
+        );
+        assert_eq!(resolved.inset_block, Some(Pair::both(DimensionValue::Pixels(30.0))));
+        forget(905);
     }
 
     #[test]

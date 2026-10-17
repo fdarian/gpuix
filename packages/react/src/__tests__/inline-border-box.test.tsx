@@ -307,7 +307,7 @@ describeNative("border box of an inline element", () => {
             aa{" "}
             <span
               tabIndex={0}
-              style={{ marginLeft: 12, marginRight: 12, focusVisible: { outlineWidth: 4, outlineColor: "#ff0000" } }}
+              style={{ marginLeft: 12, marginRight: 12, focusVisible: { outlineWidth: 4, outlineStyle: "solid", outlineColor: "#ff0000" } }}
             >
               bb
             </span>

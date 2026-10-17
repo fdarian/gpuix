@@ -1812,7 +1812,7 @@ describeNative("focus styles", () => {
     // `keyboardFocusDim: false` on an element opts it out of the dim.
     const optedOut = run("opted-out", "tab", { otherStyle: { keyboardFocusDim: false } })
     // A ring from `focusVisible` does not: the element still dims.
-    const ringed = run("ringed", "tab", { otherStyle: { focusVisible: { outlineWidth: 2, outlineColor: "#89b4fa" } } })
+    const ringed = run("ringed", "tab", { otherStyle: { focusVisible: { outlineWidth: 2, outlineStyle: "solid", outlineColor: "#89b4fa" } } })
     // The root option turns the dim off for the whole window.
     const dimOff = run("dim-off", "tab", { keyboardFocusDim: false })
     // Typing is keyboard input too, so a focused text field dims nothing.

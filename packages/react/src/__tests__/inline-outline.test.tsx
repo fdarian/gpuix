@@ -11,7 +11,7 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 const PAGE = { width: 300, height: 100, padding: 20, backgroundColor: "#ffffff" } as const
-const RING = { outlineWidth: 4, outlineColor: "#ff0000" } as const
+const RING = { outlineWidth: 4, outlineStyle: "solid", outlineColor: "#ff0000" } as const
 const RED: [number, number, number, number] = [255, 0, 0, 255]
 const BLUE: [number, number, number, number] = [0, 0, 255, 255]
 const WHITE: [number, number, number, number] = [255, 255, 255, 255]
@@ -143,7 +143,7 @@ describeNative("outline on inline boxes", () => {
     const { testRoot, shoot, tab } = setup(
       <div style={PAGE}>
         <text testId="p" style={TEXT}>
-          <span tabIndex={0} style={{ focusVisible: { outlineWidth: 6, outlineColor: "#ff0000", outlineOffset: -6 } }}>
+          <span tabIndex={0} style={{ focusVisible: { outlineWidth: 6, outlineStyle: "solid", outlineColor: "#ff0000", outlineOffset: -6 } }}>
             mmmm
           </span>
         </text>
@@ -175,7 +175,7 @@ describeNative("outline on inline boxes", () => {
       </text>
     </div>
   )
-  const BLUE_RING = { outlineWidth: 4, outlineColor: "#0000ff" } as const
+  const BLUE_RING = { outlineWidth: 4, outlineStyle: "solid", outlineColor: "#0000ff" } as const
 
   it("rings the focused span and not the one around it", () => {
     const { testRoot, shoot, tab } = setup(

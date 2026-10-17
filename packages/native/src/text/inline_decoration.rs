@@ -370,7 +370,7 @@ mod tests {
     }
 
     fn ring(color: &str) -> serde_json::Value {
-        serde_json::json!({"outlineWidth": 2, "outlineColor": color, "outlineOffset": 1})
+        serde_json::json!({"outlineWidth": 2, "outlineStyle": "solid", "outlineColor": color, "outlineOffset": 1})
     }
 
     #[test]
@@ -399,7 +399,7 @@ mod tests {
             serde_json::json!({
                 "opacity": opacity, "backgroundColor": "#ff0000", "borderWidth": 2,
                 "borderColor": "#0000ff", "borderStyle": "solid",
-                "outlineWidth": 1, "outlineColor": "#00ff00"
+                "outlineWidth": 1, "outlineStyle": "solid", "outlineColor": "#00ff00"
             })
         };
         let found = resting(&fixture(&[(3, look(0.5)), (5, look(0.5))]));
@@ -457,10 +457,10 @@ mod tests {
     #[test]
     fn a_ring_that_paints_nothing_is_dropped() {
         for style in [
-            serde_json::json!({"outlineWidth": 2}),
-            serde_json::json!({"outlineWidth": 0, "outlineColor": "red"}),
-            serde_json::json!({"outlineWidth": 2, "outlineColor": "transparent"}),
-            serde_json::json!({"outlineWidth": 2, "outlineColor": "not a colour"}),
+            serde_json::json!({"outlineWidth": 2, "outlineColor": "red"}),
+            serde_json::json!({"outlineWidth": 2, "outlineStyle": "none", "outlineColor": "red"}),
+            serde_json::json!({"outlineWidth": 0, "outlineStyle": "solid", "outlineColor": "red"}),
+            serde_json::json!({"outlineWidth": 2, "outlineStyle": "solid", "outlineColor": "transparent"}),
         ] {
             assert_eq!(resting(&fixture(&[(3, style)])), vec![]);
         }
@@ -470,7 +470,7 @@ mod tests {
     fn current_color_is_the_colour_of_the_box_itself() {
         let tree = fixture(&[(
             3,
-            serde_json::json!({"color": "#00ff00", "outlineWidth": 2, "outlineColor": "currentColor"}),
+            serde_json::json!({"color": "#00ff00", "outlineWidth": 2, "outlineStyle": "solid", "outlineColor": "currentColor"}),
         )]);
         let found = resting(&tree);
         assert_eq!(found[0].outline.unwrap().color, gpui::Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }.into());
@@ -490,7 +490,7 @@ mod tests {
             serde_json::json!({
                 "hover": ring("#0000ff"),
                 "focusVisible": ring("#ff0000"),
-                "focusWithin": {"outlineWidth": 6, "outlineColor": "#00ff00"}
+                "focusWithin": {"outlineWidth": 6, "outlineStyle": "solid", "outlineColor": "#00ff00"}
             }),
         )]);
         assert_eq!(resting(&tree), vec![]);

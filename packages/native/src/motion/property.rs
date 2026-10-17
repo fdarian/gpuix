@@ -12,6 +12,7 @@ use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::LinearLength;
 use crate::css::flex::Flex;
+use crate::css::outline::Outline;
 use crate::css::shorthand::{Gap, Sides};
 use crate::css::line_height::LineHeight;
 use crate::layout::aspect_ratio::AspectRatio;
@@ -175,6 +176,22 @@ impl ShorthandFlex for Option<Flex> {
 
     fn basis(&self) -> Option<DimensionValue> {
         self.as_ref().map(|flex| flex.basis.clone())
+    }
+}
+
+/// `outline` seen as the longhand a transition reads when it is unset.
+trait ShorthandOutline {
+    fn width(&self) -> Option<LinearLength>;
+    fn color(&self) -> Option<String>;
+}
+
+impl ShorthandOutline for Option<Outline> {
+    fn width(&self) -> Option<LinearLength> {
+        self.as_ref().map(|outline| outline.width)
+    }
+
+    fn color(&self) -> Option<String> {
+        self.as_ref().map(|outline| outline.color.clone())
     }
 }
 
@@ -515,8 +532,8 @@ properties! {
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
-    OutlineWidth "outlineWidth" Number NonNegative Number(0.0), outline_width;
-    OutlineColor "outlineColor" Color None CurrentColor, outline_color;
+    OutlineWidth "outlineWidth" Number NonNegative Number(0.0), outline_width | outline.width();
+    OutlineColor "outlineColor" Color None CurrentColor, outline_color | outline.color();
     TextDecorationColor "textDecorationColor" Color None CurrentColor, text_decoration_color;
     OutlineOffset "outlineOffset" Number None Number(0.0), outline_offset;
 
@@ -1254,6 +1271,28 @@ mod tests {
             Some(AnimValue::Number(6.0))
         );
         assert_eq!(AnimProp::MarginTop.read(&style, &colors), None);
+    }
+
+    #[test]
+    fn the_flex_and_outline_longhands_read_through_their_shorthands() {
+        let colors = Colors::root();
+        let style: StyleDesc = serde_json::from_str(
+            r#"{"flex": "2 3 40px", "flexShrink": 0, "outline": "5px solid red", "outlineColor": "blue"}"#,
+        )
+        .unwrap();
+        assert_eq!(AnimProp::FlexGrow.read(&style, &colors), Some(AnimValue::Number(2.0)));
+        assert_eq!(AnimProp::FlexShrink.read(&style, &colors), Some(AnimValue::Number(0.0)));
+        assert_eq!(AnimProp::FlexBasis.read(&style, &colors), AnimProp::FlexBasis.read(
+            &serde_json::from_str(r#"{"flexBasis": 40}"#).unwrap(),
+            &colors
+        ));
+        assert_eq!(AnimProp::OutlineWidth.read(&style, &colors), Some(AnimValue::Number(5.0)));
+        let blue = AnimProp::OutlineColor.read(&serde_json::from_str(r#"{"outlineColor": "blue"}"#).unwrap(), &colors);
+        assert_eq!(AnimProp::OutlineColor.read(&style, &colors), blue, "the longhand wins");
+        let red = AnimProp::OutlineColor.read(&serde_json::from_str(r#"{"outlineColor": "red"}"#).unwrap(), &colors);
+        let only_shorthand: StyleDesc = serde_json::from_str(r#"{"outline": "5px solid red"}"#).unwrap();
+        assert_eq!(AnimProp::OutlineColor.read(&only_shorthand, &colors), red);
+        assert_eq!(AnimProp::FlexGrow.read(&StyleDesc::default(), &colors), None);
     }
 
     #[test]

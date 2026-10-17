@@ -195,47 +195,33 @@ fn apply_size<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) 
 }
 
 fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
-    if let Some(sides) = &style.margin {
-        let margin = &mut el.style().margin;
-        margin.top = Some(length(&sides.top, lengths));
-        margin.right = Some(length(&sides.right, lengths));
-        margin.bottom = Some(length(&sides.bottom, lengths));
-        margin.left = Some(length(&sides.left, lengths));
-    }
-    if let Some(value) = &style.margin_top {
-        el.style().margin.top = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.margin_right {
-        el.style().margin.right = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.margin_bottom {
-        el.style().margin.bottom = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.margin_left {
-        el.style().margin.left = Some(length(value, lengths));
+    let below = style.margin_below_longhands();
+    let margin = &mut el.style().margin;
+    for (slot, longhand, shorthand) in [
+        (&mut margin.top, &style.margin_top, &below.top),
+        (&mut margin.right, &style.margin_right, &below.right),
+        (&mut margin.bottom, &style.margin_bottom, &below.bottom),
+        (&mut margin.left, &style.margin_left, &below.left),
+    ] {
+        if let Some(value) = longhand.as_ref().or(shorthand.as_ref()) {
+            *slot = Some(length(value, lengths));
+        }
     }
     el
 }
 
 fn apply_padding<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
-    if let Some(sides) = &style.padding {
-        let padding = &mut el.style().padding;
-        padding.top = Some(linear(&sides.top, lengths));
-        padding.right = Some(linear(&sides.right, lengths));
-        padding.bottom = Some(linear(&sides.bottom, lengths));
-        padding.left = Some(linear(&sides.left, lengths));
-    }
-    if let Some(value) = &style.padding_top {
-        el.style().padding.top = Some(linear(value, lengths));
-    }
-    if let Some(value) = &style.padding_right {
-        el.style().padding.right = Some(linear(value, lengths));
-    }
-    if let Some(value) = &style.padding_bottom {
-        el.style().padding.bottom = Some(linear(value, lengths));
-    }
-    if let Some(value) = &style.padding_left {
-        el.style().padding.left = Some(linear(value, lengths));
+    let below = style.padding_below_longhands();
+    let padding = &mut el.style().padding;
+    for (slot, longhand, shorthand) in [
+        (&mut padding.top, &style.padding_top, &below.top),
+        (&mut padding.right, &style.padding_right, &below.right),
+        (&mut padding.bottom, &style.padding_bottom, &below.bottom),
+        (&mut padding.left, &style.padding_left, &below.left),
+    ] {
+        if let Some(value) = longhand.as_ref().or(shorthand.as_ref()) {
+            *slot = Some(linear(value, lengths));
+        }
     }
     el
 }
@@ -268,24 +254,17 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthConte
         Some("fixed") => el.style().position = Some(gpui::Position::Fixed),
         _ => {}
     }
-    if let Some(sides) = &style.inset {
-        let inset = &mut el.style().inset;
-        inset.top = Some(length(&sides.top, lengths));
-        inset.right = Some(length(&sides.right, lengths));
-        inset.bottom = Some(length(&sides.bottom, lengths));
-        inset.left = Some(length(&sides.left, lengths));
-    }
-    if let Some(value) = &style.top {
-        el.style().inset.top = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.right {
-        el.style().inset.right = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.bottom {
-        el.style().inset.bottom = Some(length(value, lengths));
-    }
-    if let Some(value) = &style.left {
-        el.style().inset.left = Some(length(value, lengths));
+    let below = style.inset_below_longhands();
+    let inset = &mut el.style().inset;
+    for (slot, longhand, shorthand) in [
+        (&mut inset.top, &style.top, &below.top),
+        (&mut inset.right, &style.right, &below.right),
+        (&mut inset.bottom, &style.bottom, &below.bottom),
+        (&mut inset.left, &style.left, &below.left),
+    ] {
+        if let Some(value) = longhand.as_ref().or(shorthand.as_ref()) {
+            *slot = Some(length(value, lengths));
+        }
     }
     el
 }

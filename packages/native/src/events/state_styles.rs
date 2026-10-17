@@ -160,20 +160,20 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         align_content, justify_content, gap, row_gap, column_gap, grid_template_columns,
         grid_template_rows, grid_column_min, grid_row_min,
         width, height, min_width, min_height, max_width, max_height,
-        padding, padding_top, padding_right, padding_bottom, padding_left,
-        margin, margin_top, margin_right, margin_bottom, margin_left,
-        position, top, right, bottom, left, inset,
+        padding, padding_block, padding_inline, padding_top, padding_right, padding_bottom, padding_left,
+        margin, margin_block, margin_inline, margin_top, margin_right, margin_bottom, margin_left,
+        position, top, right, bottom, left, inset, inset_block, inset_inline,
         background, background_color, background_image, background_size, background_position,
         background_repeat, background_origin, background_clip, color, color_scheme, opacity,
         filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
         mask_clip, mask_mode, mask_composite, mask, clip_path, font_style,
-        border, border_top, border_right, border_bottom, border_left, border_top_color,
+        border, border_block, border_inline, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,
         border_left_width, border_color, border_radius, border_top_left_radius,
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
         box_shadow, border_style, border_top_style, border_right_style, border_bottom_style,
-        border_left_style, aspect_ratio, outline_width, outline_color, outline_offset,
+        border_left_style, aspect_ratio, outline_width, outline_style, outline_color, outline_offset, outline,
         font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow, vertical_align,
         table_layout, border_spacing, border_collapse, caption_side, empty_cells,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
@@ -264,25 +264,25 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
 fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
     let sides = [
         (
-            over.border_top.as_deref(),
+            over.border_top.as_deref().or(over.border_block.as_deref()),
             &mut base.border_top_width,
             &mut base.border_top_color,
             &mut base.border_top_style,
         ),
         (
-            over.border_right.as_deref(),
+            over.border_right.as_deref().or(over.border_inline.as_deref()),
             &mut base.border_right_width,
             &mut base.border_right_color,
             &mut base.border_right_style,
         ),
         (
-            over.border_bottom.as_deref(),
+            over.border_bottom.as_deref().or(over.border_block.as_deref()),
             &mut base.border_bottom_width,
             &mut base.border_bottom_color,
             &mut base.border_bottom_style,
         ),
         (
-            over.border_left.as_deref(),
+            over.border_left.as_deref().or(over.border_inline.as_deref()),
             &mut base.border_left_width,
             &mut base.border_left_color,
             &mut base.border_left_style,
@@ -323,6 +323,12 @@ fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
 /// base longhand would otherwise beat a state style's shorthand.
 fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
     split_border_all_sides(base, over);
+    // `outlineOffset` is not part of `outline`.
+    if over.outline.is_some() {
+        base.outline_width = None;
+        base.outline_style = None;
+        base.outline_color = None;
+    }
     if over.flex.is_some() {
         base.flex_grow = None;
         base.flex_shrink = None;
@@ -348,23 +354,43 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.row_gap = None;
         base.column_gap = None;
     }
+    // A shorthand beats the broader ones and loses to the narrower ones, whatever order they are
+    // written in, so a state's one resets the base's broader and narrower ones it covers.
     if over.padding.is_some() {
+        base.padding_block = None;
+        base.padding_inline = None;
+    }
+    if over.padding.is_some() || over.padding_block.is_some() {
         base.padding_top = None;
-        base.padding_right = None;
         base.padding_bottom = None;
+    }
+    if over.padding.is_some() || over.padding_inline.is_some() {
         base.padding_left = None;
+        base.padding_right = None;
     }
     if over.margin.is_some() {
+        base.margin_block = None;
+        base.margin_inline = None;
+    }
+    if over.margin.is_some() || over.margin_block.is_some() {
         base.margin_top = None;
-        base.margin_right = None;
         base.margin_bottom = None;
+    }
+    if over.margin.is_some() || over.margin_inline.is_some() {
         base.margin_left = None;
+        base.margin_right = None;
     }
     if over.inset.is_some() {
+        base.inset_block = None;
+        base.inset_inline = None;
+    }
+    if over.inset.is_some() || over.inset_block.is_some() {
         base.top = None;
-        base.right = None;
         base.bottom = None;
+    }
+    if over.inset.is_some() || over.inset_inline.is_some() {
         base.left = None;
+        base.right = None;
     }
     if over.border_width.is_some() {
         base.border_top_width = None;
@@ -431,12 +457,36 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
     // shorthand its own. The longhands win over the shorthands, so a base
     // longhand would beat a state's shorthand.
     if over.border.is_some() {
+        base.border_block = None;
+        base.border_inline = None;
         base.border_top = None;
         base.border_right = None;
         base.border_bottom = None;
         base.border_left = None;
         base.border_width = None;
         base.border_color = None;
+    }
+    // `borderBlock` and `borderInline` sit between `border` and the side shorthands, and reset the
+    // side shorthands and longhands of their axis.
+    if over.border_block.is_some() {
+        base.border_top = None;
+        base.border_bottom = None;
+        base.border_top_width = None;
+        base.border_top_color = None;
+        base.border_top_style = None;
+        base.border_bottom_width = None;
+        base.border_bottom_color = None;
+        base.border_bottom_style = None;
+    }
+    if over.border_inline.is_some() {
+        base.border_left = None;
+        base.border_right = None;
+        base.border_left_width = None;
+        base.border_left_color = None;
+        base.border_left_style = None;
+        base.border_right_width = None;
+        base.border_right_color = None;
+        base.border_right_style = None;
     }
     if over.border.is_some() || over.border_width.is_some() {
         base.border_top_width = None;
@@ -720,6 +770,82 @@ mod tests {
         assert_eq!((hovered.effective_align_self(), hovered.effective_justify_self()), (Some("center"), Some("end")));
         let pressed = resolve_state_styles(&base, false, true);
         assert_eq!((pressed.effective_align_items(), pressed.effective_justify_items()), (Some("baseline"), Some("center")));
+    }
+
+    #[test]
+    fn a_state_outline_resets_the_base_width_style_and_colour_but_not_the_offset() {
+        let base = style(
+            r##"{
+                "outline": "1px solid red", "outlineWidth": 5, "outlineStyle": "dashed", "outlineColor": "blue", "outlineOffset": 4,
+                "hover": { "outline": "2px dotted green" },
+                "active": { "outlineStyle": "none" }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!((at_rest.outline_width, at_rest.outline_style.as_deref()), (Some(LinearLength::px(5.0)), Some("dashed")));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!((hovered.outline_width, hovered.outline_style.as_deref(), hovered.outline_color.as_deref()), (None, None, None));
+        assert_eq!(hovered.outline_offset, Some(LinearLength::px(4.0)));
+        assert_eq!(hovered.outline.as_ref().map(|outline| outline.color.as_str()), Some("green"));
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.outline_style.as_deref(), Some("none"));
+        assert_eq!(pressed.outline, base.outline, "a state longhand leaves the base shorthand in place");
+    }
+
+    #[test]
+    fn a_state_logical_shorthand_resets_the_base_longhands_of_its_axis_and_keeps_the_other_axis() {
+        let base = style(
+            r##"{
+                "padding": 1, "paddingBlock": "2px 3px", "paddingInline": 4, "paddingTop": 9, "paddingLeft": 8,
+                "margin": 1, "marginInline": "5px 6px", "marginTop": 7, "marginRight": 10,
+                "inset": 0, "insetBlock": "1px 2px", "top": 3, "left": 4,
+                "hover": { "paddingBlock": 20, "marginInline": "auto", "insetBlock": "10px 20px" },
+                "active": { "padding": 30, "margin": 0, "inset": "5px" }
+            }"##,
+        );
+        let px = |value: f64| LinearLength::px(value);
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.padding_block, Some(crate::css::logical::Pair::both(px(20.0))));
+        assert_eq!((hovered.padding_top, hovered.padding_bottom), (None, None));
+        assert_eq!(hovered.padding_left, Some(px(8.0)), "the other axis keeps its longhand");
+        assert_eq!(hovered.padding_inline, base.padding_inline);
+        assert_eq!(hovered.margin_inline, Some(crate::css::logical::Pair::both(DimensionValue::Auto)));
+        assert_eq!((hovered.margin_left, hovered.margin_right), (None, None));
+        assert_eq!(hovered.margin_top, Some(DimensionValue::Pixels(7.0)));
+        assert_eq!((hovered.top, hovered.bottom), (None, None));
+        assert_eq!(hovered.left, Some(DimensionValue::Pixels(4.0)));
+
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!((pressed.padding_block, pressed.padding_inline), (None, None));
+        assert_eq!((pressed.margin_block, pressed.margin_inline), (None, None));
+        assert_eq!((pressed.inset_block, pressed.inset_inline), (None, None));
+        assert_eq!(
+            (pressed.padding_top, pressed.padding_left, pressed.margin_top, pressed.margin_right, pressed.top, pressed.left),
+            (None, None, None, None, None, None)
+        );
+    }
+
+    #[test]
+    fn a_state_border_block_resets_the_base_top_and_bottom_but_not_left_and_right() {
+        let base = style(
+            r##"{
+                "border": "1px solid red", "borderTop": "5px solid red", "borderBottomWidth": 6, "borderLeft": "2px solid blue",
+                "borderInline": "3px dashed red",
+                "hover": { "borderBlock": "4px solid green" },
+                "active": { "borderInline": "7px solid green" },
+                "focusWithin": { "border": "8px solid green" }
+            }"##,
+        );
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_block.as_deref(), Some("4px solid green"));
+        assert_eq!((hovered.border_top, hovered.border_bottom_width), (None, None));
+        assert_eq!(hovered.border_left.as_deref(), Some("2px solid blue"));
+        assert_eq!(hovered.border_inline, base.border_inline);
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!((pressed.border_left, pressed.border_right), (None, None));
+        assert_eq!(pressed.border_top.as_deref(), Some("5px solid red"));
+        let all = overlay(&base, base.focus_within.as_deref().unwrap());
+        assert_eq!((all.border_block, all.border_inline, all.border_top, all.border_left), (None, None, None, None));
     }
 
     #[test]

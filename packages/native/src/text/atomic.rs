@@ -16,7 +16,6 @@ use gpui::{
 
 use crate::css::length::LengthContext;
 use crate::css::line_height::LineHeight;
-use crate::css::shorthand::Sides;
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
 
@@ -111,21 +110,24 @@ pub fn strip(
     lengths: &LengthContext,
     height_definite: bool,
 ) -> (StyleDesc, Extracted) {
-    let side = |own: &Option<DimensionValue>, shorthand: fn(&Sides<DimensionValue>) -> &DimensionValue| {
+    let below = style.margin_below_longhands();
+    let side = |own: &Option<DimensionValue>, shorthand: &Option<DimensionValue>| {
         own.as_ref()
-            .or(style.margin.as_ref().map(shorthand))
+            .or(shorthand.as_ref())
             .and_then(|value| crate::layout::style::definite(value, lengths))
             .unwrap_or_else(|| gpui::px(0.).into())
     };
     let margin = Edges {
-        top: side(&style.margin_top, |sides| &sides.top),
-        right: side(&style.margin_right, |sides| &sides.right),
-        bottom: side(&style.margin_bottom, |sides| &sides.bottom),
-        left: side(&style.margin_left, |sides| &sides.left),
+        top: side(&style.margin_top, &below.top),
+        right: side(&style.margin_right, &below.right),
+        bottom: side(&style.margin_bottom, &below.bottom),
+        left: side(&style.margin_left, &below.left),
     };
     let mut stripped = style.clone();
     stripped.atomic_inline = true;
     stripped.margin = None;
+    stripped.margin_block = None;
+    stripped.margin_inline = None;
     stripped.margin_top = None;
     stripped.margin_right = None;
     stripped.margin_bottom = None;

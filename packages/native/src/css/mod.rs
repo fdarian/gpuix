@@ -18,9 +18,11 @@ pub(crate) mod font_features;
 pub(crate) mod gradient;
 pub(crate) mod length;
 pub(crate) mod line_height;
+pub(crate) mod logical;
 pub(crate) mod mask;
 #[cfg(test)]
 mod parse_cost;
+pub(crate) mod outline;
 pub(crate) mod place;
 pub(crate) mod position;
 pub(crate) mod shorthand;

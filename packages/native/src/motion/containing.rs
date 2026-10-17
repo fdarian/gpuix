@@ -95,7 +95,7 @@ impl Container {
         match &style.height {
             Some(DimensionValue::Pixels(_)) => true,
             Some(DimensionValue::Percentage(_)) => self.resolves_percent_height(Some(style)),
-            _ if is_out_of_flow(style) => has_both_vertical_insets(style),
+            _ if is_out_of_flow(style) => style.has_both_vertical_insets(),
             _ => self.sizes_item_height(style),
         }
     }
@@ -122,16 +122,6 @@ impl Container {
 
 fn is_out_of_flow(style: &StyleDesc) -> bool {
     matches!(style.position.as_deref(), Some("absolute" | "fixed"))
-}
-
-fn has_both_vertical_insets(style: &StyleDesc) -> bool {
-    let set = |inset: &Option<DimensionValue>| {
-        matches!(
-            inset,
-            Some(DimensionValue::Pixels(_) | DimensionValue::Percentage(_))
-        )
-    };
-    set(&style.top) && set(&style.bottom)
 }
 
 #[cfg(test)]

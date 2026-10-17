@@ -89,6 +89,10 @@ export type LineStyle =
   | "inset"
   | "outset"
 
+/** A CSS `<outline-style>`, the value of `outlineStyle`: a `LineStyle` but `hidden`, or `auto`,
+ *  which is painted as `solid`. */
+export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
+
 /**
  * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
  * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
@@ -461,6 +465,19 @@ export interface StyleDesc {
    *  `span` are props of the element). */
   display?: string
   visibility?: string
+  /** CSS `flex`. A number `n` is `n 1 0%` (React DOM sends a numeric `flex` unitless, so
+   *  `flex: 1` is `"1"`); `"none"` is `0 0 auto`, `"auto"` is `1 1 auto`, `"initial"` is
+   *  `0 1 auto`. Otherwise `<grow> <shrink>? || <basis>`: `"2 3"` (over a `0%` basis),
+   *  `"2 100px"`, `"100px 2"`, `"1 1 0"`, and a lone basis (`"100px"`, `"50%"`,
+   *  `"fit-content"`) is `1 1 <basis>`. The basis takes what `flexBasis` does, so not
+   *  `content`. A unitless `0` is a factor unless two factors come before it. `flexGrow`,
+   *  `flexShrink` and `flexBasis` win over it. It is not an `animate` target: animate those
+   *  three; `transition: flex` covers them. */
+  flex?: number | string
+  /** CSS `flex-flow`: `"<direction> || <wrap>"` in either order (`"column wrap"`,
+   *  `"wrap-reverse"`); a missing part is `row` or `nowrap`. `flexDirection` and `flexWrap`
+   *  win over it. */
+  flexFlow?: string
   /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */
   flexDirection?: string
   /** `"nowrap"`, `"wrap"` or `"wrap-reverse"`. */
@@ -478,6 +495,15 @@ export interface StyleDesc {
   alignSelf?: string
   alignContent?: string
   justifyContent?: string
+  /** CSS `place-items`, `place-content` and `place-self`: `"<align> <justify>"`, and one value
+   *  is both (`"center"`, `"center end"`, `"space-between center"`). Each value is one the
+   *  longhand takes, including `safe` and `unsafe` before a position and `first` or `last`
+   *  before `baseline`, so `placeItems: "left"` or `placeContent: "auto"` throws as in CSS
+   *  (`left` and `right` are for the justify value only). The `align*` and `justify*`
+   *  longhands win over them. */
+  placeItems?: string
+  placeContent?: string
+  placeSelf?: string
   /** A length for both gaps, or `"<row> <column>"`: `"4px 8px"` is a 4px gap between rows and an
    *  8px gap between columns (see `DimensionValue`; a percentage is of the container's content
    *  box). Not `"auto"`. `rowGap` and `columnGap` win over `gap`. */
@@ -542,6 +568,12 @@ export interface StyleDesc {
    *  bottom, left). A `calc()` is one value however many spaces it holds. Not `"auto"`. The
    *  sides win over `padding`. */
   padding?: DimensionValue
+  /** `paddingBlock` is the top and the bottom, `paddingInline` the left and the right (gpuix lays
+   *  out left to right and horizontally): one value for both ends or `"<start> <end>"`.
+   *  They win over `padding` and the side longhands win over them. The same holds for
+   *  `marginBlock`, `marginInline`, `insetBlock` and `insetInline`. */
+  paddingBlock?: DimensionValue
+  paddingInline?: DimensionValue
   paddingTop?: DimensionValue
   paddingRight?: DimensionValue
   paddingBottom?: DimensionValue
@@ -551,6 +583,9 @@ export interface StyleDesc {
    *  absorbs free space in flex layouts): `"0 auto"` centres a box with a width. A percentage
    *  is of the containing block's width. The sides win over `margin`. */
   margin?: DimensionValue
+  /** One or two lengths or `"auto"`, as for `paddingBlock`. */
+  marginBlock?: DimensionValue
+  marginInline?: DimensionValue
   marginTop?: DimensionValue
   marginRight?: DimensionValue
   marginBottom?: DimensionValue
@@ -572,6 +607,10 @@ export interface StyleDesc {
    *  A percentage is of the containing block. `top`, `right`, `bottom` and `left` win over
    *  `inset`. */
   inset?: DimensionValue
+  /** `insetBlock` is `top` and `bottom`, `insetInline` is `left` and `right`: one or two lengths
+   *  or `"auto"`, as for `paddingBlock`. */
+  insetBlock?: DimensionValue
+  insetInline?: DimensionValue
   /** A length (see `DimensionValue`; a percentage is of the containing block) or `"auto"`. */
   top?: DimensionValue
   right?: DimensionValue
@@ -643,6 +682,10 @@ export interface StyleDesc {
    *  `borderStyle`, then the longhands (`borderWidth`, `borderColor`,
    *  `borderTopStyle`, ...) override those. */
   border?: string
+  /** `borderBlock` sets the top and the bottom, `borderInline` the left and the right, written
+   *  like `border`. They win over `border`, and `borderTop` ... `borderLeft` win over them. */
+  borderBlock?: string
+  borderInline?: string
   borderTop?: string
   borderRight?: string
   borderBottom?: string
@@ -730,8 +773,15 @@ export interface StyleDesc {
    *  whichever axis has no definite size. An `<img>` uses its intrinsic ratio unless this is set. */
   aspectRatio?: number | string
   /** CSS `outline`: a line outside the border box. Takes no layout space, so it
-   *  can appear on focus without moving anything. Width defaults to 1. */
+   *  can appear on focus without moving anything. As in CSS the style is `none` unless
+   *  `outline` or `outlineStyle` gives one, so a ring needs `outlineStyle: "solid"` (or
+   *  `outline: "2px solid red"`); the width is then `medium` (3px) and the colour
+   *  `currentColor` unless given. Width, style and colour of the shorthand come in any
+   *  order, `hidden` is an error, and `outlineWidth`, `outlineStyle` and `outlineColor`
+   *  win over it. `auto` is painted as `solid`. `outlineOffset` is not part of it. */
+  outline?: string
   outlineWidth?: DimensionValue
+  outlineStyle?: OutlineStyle | (string & {})
   outlineColor?: string
   /** Gap between the border box and the outline: a length (see `DimensionValue`) with no
    *  percentage. Negative draws it inside. `outlineWidth` takes what `borderWidth` does. */

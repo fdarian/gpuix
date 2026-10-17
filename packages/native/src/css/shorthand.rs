@@ -96,7 +96,7 @@ impl Serialize for Gap {
 
 /// `text` as one to `max` whitespace-separated values, each read by `parse_one`.
 /// A `calc()` with spaces inside is one value.
-fn parse_values<T>(
+pub(crate) fn parse_values<T>(
     text: &str,
     max: usize,
     mut parse_one: impl FnMut(&str) -> Result<T, String>,

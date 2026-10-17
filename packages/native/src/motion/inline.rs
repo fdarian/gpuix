@@ -539,7 +539,7 @@ mod tests {
         let style = |colour: &str| {
             format!(
                 r#"{{ "backgroundColor": "{colour}", "borderWidth": 2, "borderStyle": "solid", "borderColor": "{colour}",
-                    "outlineWidth": 1, "outlineColor": "{colour}",
+                    "outlineWidth": 1, "outlineStyle": "solid", "outlineColor": "{colour}",
                     "transition": "background-color 1s linear, border-color 1s linear, outline-color 1s linear" }}"#
             )
         };

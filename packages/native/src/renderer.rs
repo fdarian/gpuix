@@ -8858,12 +8858,26 @@ pub(crate) fn apply_state_styles<E: gpui::Styled>(
         refinement = apply_styles(refinement, &followers, colors, lengths);
     }
     let fill = state.resolved_fill(colors, lengths);
-    if crate::css::border::declares_widths(state, colors) {
+    let mut refined = if crate::css::border::declares_widths(state, colors) {
         let merged = crate::events::state_styles::overlay(base, state);
         apply_styles_taking_borders_from(refinement, state, &merged, colors, lengths, fill)
     } else {
         apply_styles_with_fill(refinement, state, colors, lengths, fill)
+    };
+    // An outline needs a style, a width and a colour, and the state may give only some of them
+    // (a focus ring that sets `outlineWidth` over a base `outline`), or change the `color` the
+    // base's colour follows. So it is the merged style's outline that the state refines with.
+    // A refinement cannot unset the base's, so "none" is a zero-width outline.
+    if state.declares_outline() || (state.color.is_some() && base.declares_outline()) {
+        let merged = crate::events::state_styles::overlay(base, state);
+        refined.style().outline = Some(crate::css::border::outline(&merged, colors, lengths).unwrap_or(gpui::Outline {
+            width: gpui::px(0.0),
+            color: gpui::transparent_black(),
+            offset: gpui::px(0.0),
+            style: gpui::BorderStyle::Solid,
+        }));
     }
+    refined
 }
 
 /// `colors` and `lengths` are the context of the element `style` belongs to: its
@@ -12205,7 +12219,7 @@ mod dimension_length_tests {
     #[test]
     fn the_outline_resolves_in_the_elements_font_size() {
         let style: StyleDesc =
-            serde_json::from_str(r#"{"outlineWidth": "0.1em", "outlineOffset": "calc(0.5em + 1px)", "outlineColor": "red"}"#).unwrap();
+            serde_json::from_str(r#"{"outlineWidth": "0.1em", "outlineStyle": "solid", "outlineOffset": "calc(0.5em + 1px)", "outlineColor": "red"}"#).unwrap();
         let lengths = LengthContext::initial(800.0, 600.0).descend(Some(&crate::css::length::LinearLength::px(20.0)), true);
         let refinement = apply_styles(
             gpui::StyleRefinement::default(),
