@@ -230,7 +230,7 @@ pub(super) fn attribute_text(value: &AnimValue) -> String {
             .collect::<Vec<_>>()
             .join(" "),
         AnimValue::Path(path) => path.to_data(),
-        AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
+        AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(_) | AnimValue::List(_) => {
             unreachable!("an SVG attribute never holds {value:?}")
         }
     }

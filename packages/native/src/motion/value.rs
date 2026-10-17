@@ -4,6 +4,7 @@
 //! values of the same kind into a [`Layout`] plus a start and end channel
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
+use super::list::ListValue;
 use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
@@ -335,6 +336,9 @@ pub(super) enum AnimValue {
     /// An enum-like property (`display`, `visibility`, ...). `None` is the
     /// style leaving it unset.
     Keyword(Option<String>),
+    /// A multi-value CSS string such as `"0.5em 0.75em"` or `"red blue"`. Only a
+    /// motion value holds one: a style property takes the components one by one.
+    List(ListValue),
 }
 
 impl AnimValue {
@@ -388,6 +392,7 @@ impl AnimValue {
             Self::Path(_) => "path data",
             Self::Auto => "auto",
             Self::Keyword(_) => "a keyword",
+            Self::List(_) => "a list of values",
         }
     }
 }
@@ -428,6 +433,15 @@ pub(super) enum Layout {
         to: Option<String>,
         rule: KeywordRule,
     },
+    /// The components of a [`AnimValue::List`], each in its own layout with the
+    /// number of channels it takes, side by side. `slash` is where the `/` stands.
+    List {
+        parts: Vec<(Layout, usize)>,
+        slash: Option<usize>,
+    },
+    /// Values that cannot blend part by part (lists of different shapes): one
+    /// channel runs from option to option and the value flips at the halfway point.
+    DiscreteList(Vec<AnimValue>),
 }
 
 /// How a keyword property interpolates between its two values, CSS Transitions
@@ -505,6 +519,17 @@ impl Layout {
             Self::Keyword { from, to, rule } => {
                 AnimValue::Keyword(rule.at(from, to, channels[0]).clone())
             }
+            Self::List { parts, slash } => {
+                let mut rest = channels;
+                let mut items = Vec::with_capacity(parts.len());
+                for (layout, count) in parts {
+                    let (own, after) = rest.split_at(*count);
+                    items.push(layout.decode(own));
+                    rest = after;
+                }
+                AnimValue::List(ListValue { items, slash: *slash })
+            }
+            Self::DiscreteList(options) => options[option_index(channels[0], options.len())].clone(),
         }
     }
 
@@ -514,6 +539,16 @@ impl Layout {
             Self::Percent => true,
             Self::Calc => channel == 1,
             Self::Ellipse => channel % 2 == 1,
+            Self::List { parts, .. } => {
+                let mut start = 0;
+                for (layout, count) in parts {
+                    if channel < start + count {
+                        return layout.is_percent_channel(channel - start);
+                    }
+                    start += count;
+                }
+                false
+            }
             _ => false,
         }
     }
@@ -522,6 +557,19 @@ impl Layout {
     /// carry it over; `None` where it means nothing there. A length moves between
     /// px, percentage and `calc` channels, keeping the part it has.
     pub(super) fn velocity_in(&self, other: &Self, rate: &[f64]) -> Option<Vec<f64>> {
+        if let (Self::List { parts, slash }, Self::List { parts: other_parts, slash: other_slash }) = (self, other) {
+            if slash != other_slash || parts.len() != other_parts.len() {
+                return None;
+            }
+            let mut rest = rate;
+            let mut carried = Vec::new();
+            for ((layout, count), (other_layout, _)) in parts.iter().zip(other_parts) {
+                let (own, after) = rest.split_at(*count);
+                carried.extend(layout.velocity_in(other_layout, own)?);
+                rest = after;
+            }
+            return Some(carried);
+        }
         let same = match (self, other) {
             (Self::Number, Self::Number)
             | (Self::Percent, Self::Percent)
@@ -560,6 +608,16 @@ impl Layout {
     /// which is not linear in the stored Oklab channels. Progress outside 0..=1
     /// extrapolates, which is how an overshooting easing is applied.
     pub(super) fn blend(&self, segment: usize, from: &[f64], to: &[f64], progress: f64) -> Vec<f64> {
+        if let Self::List { parts, .. } = self {
+            let mut start = 0;
+            let mut channels = Vec::with_capacity(from.len());
+            for (layout, count) in parts {
+                let range = start..start + count;
+                channels.extend(layout.blend(segment, &from[range.clone()], &to[range], progress));
+                start += count;
+            }
+            return channels;
+        }
         let mut channels: Vec<f64> = from
             .iter()
             .zip(to)
@@ -603,7 +661,10 @@ impl Pair {
     pub(super) fn is_discrete(&self) -> bool {
         matches!(
             self.layout,
-            Layout::DiscreteShadows(_) | Layout::DiscretePath(_) | Layout::Keyword { .. }
+            Layout::DiscreteShadows(_)
+                | Layout::DiscretePath(_)
+                | Layout::DiscreteList(_)
+                | Layout::Keyword { .. }
         )
     }
 }
@@ -648,6 +709,9 @@ pub(super) fn align_in(
     values: &[&AnimValue],
     interpolation: Interpolation,
 ) -> Result<Aligned, String> {
+    if values.iter().any(|value| matches!(value, AnimValue::List(_))) {
+        return super::list::align(name, values, interpolation);
+    }
     for window in values.windows(2) {
         let lengths = window.iter().all(|value| value.as_ellipse().is_some());
         if !lengths && std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
@@ -669,6 +733,7 @@ pub(super) fn align_in(
             Ok(align_lengths(values))
         }
         AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
+        AnimValue::List(_) => unreachable!("a list was aligned above"),
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {
                 AnimValue::Color(color) => color,

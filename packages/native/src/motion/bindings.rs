@@ -14,12 +14,16 @@ use serde_json::{Map, Value};
 use web_time::Instant;
 
 use super::curve::{parse_ease, Curve, Transition};
-use super::property::{check_finite, expand_shorthand, parse_shadow_list, shadow_layers, AnimProp};
+use super::list::ListValue;
+use super::property::{
+    check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp,
+};
 use super::value::{AnimValue, Color};
 use super::values::{MotionValues, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
 use crate::css::length::LengthContext;
+use crate::css::syntax::split_slash_tokens;
 use crate::style::StyleDesc;
 
 const NAME: &str = "motion value";
@@ -294,9 +298,13 @@ impl MotionValueStore {
     ) -> bool {
         let mut active = false;
         let mut bound = Vec::new();
+        let mut parsed = Vec::new();
         for binding in bindings {
             match parse_binding(binding) {
-                Ok(pairs) => bound.extend(pairs.into_iter().map(|(_, id)| id)),
+                Ok(pairs) => {
+                    bound.extend(pairs.iter().map(Bound::id));
+                    parsed.push(pairs);
+                }
                 Err(error) => self.warn(error),
             }
         }
@@ -314,6 +322,19 @@ impl MotionValueStore {
                 }
                 Err(error) => self.warn(error),
             }
+        }
+        let rejected: Vec<String> = parsed
+            .iter()
+            .flatten()
+            .filter_map(|bound| match (bound, self.frame_values.get(&bound.id())) {
+                (Bound::Shorthand { name, props, .. }, Some(AnimValue::List(list))) => {
+                    split_for(name, props, list).err()
+                }
+                _ => None,
+            })
+            .collect();
+        for error in rejected {
+            self.warn(error);
         }
         for id in read {
             let Ok(id) = value_id(*id) else {
@@ -338,17 +359,35 @@ impl MotionValueStore {
         }
     }
 
-    /// Lays the bound values the last frame sampled over `style`.
+    /// Lays the bound values the last frame sampled over `style`. A multi-value
+    /// string bound to a shorthand gives each longhand its own component.
     pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc) {
-        let Ok(pairs) = parse_binding(binding) else {
+        let Ok(bound) = parse_binding(binding) else {
             return;
         };
-        for (prop, id) in pairs {
-            let Some(value) = self.frame_values.get(&id) else {
+        for bound in bound {
+            let Some(value) = self.frame_values.get(&bound.id()) else {
                 continue;
             };
-            if prop.accepts(value) {
-                prop.write(style, prop.clamp_value(value.clone()));
+            let write = |style: &mut StyleDesc, prop: AnimProp, value: &AnimValue| {
+                if prop.accepts(value) {
+                    prop.write(style, prop.clamp_value(value.clone()));
+                }
+            };
+            match (&bound, value) {
+                (Bound::Shorthand { name, props, .. }, AnimValue::List(list)) => {
+                    if let Ok(values) = split_for(name, props, list) {
+                        for (prop, value) in props.iter().zip(&values) {
+                            write(style, *prop, value);
+                        }
+                    }
+                }
+                (Bound::Shorthand { props, .. }, value) => {
+                    for prop in props.iter() {
+                        write(style, *prop, value);
+                    }
+                }
+                (Bound::Longhand { prop, .. }, value) => write(style, *prop, value),
             }
         }
     }
@@ -425,10 +464,12 @@ struct ValueContext {
     lengths: LengthContext,
 }
 
-/// A number, a CSS length or colour string, a list of numbers, or a `boxShadow`
-/// layer or list. A length string (`20px`, `50%`, `2em`, `calc(100% - 20px)`)
-/// is its px and its share of the percentage basis, as in a motion property:
-/// one with only one of the two reads as the number or the percentage.
+/// A number, a CSS length or colour string, a multi-value string of those
+/// (`0.5em 0.75em`, `10px / 20px`, `red blue`), a list of numbers, or a
+/// `boxShadow` layer or list. A length string (`20px`, `50%`, `2em`,
+/// `calc(100% - 20px)`) is its px and its share of the percentage basis, as in a
+/// motion property: one with only one of the two reads as the number or the
+/// percentage.
 fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, String> {
     match value {
         Value::Number(number) => {
@@ -438,17 +479,15 @@ fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, Strin
             Ok(AnimValue::Number(check_finite(NAME, number)?))
         }
         Value::String(text) => {
-            // A plain percentage stays one, so `0%` is not read as the number 0.
-            if let Some(percent) = text.strip_suffix('%').and_then(|percent| percent.trim().parse::<f64>().ok()) {
-                return Ok(AnimValue::Percent(check_finite(NAME, percent / 100.0)?));
+            if let Some(value) = parse_component(text, context)? {
+                return Ok(value);
             }
-            if let Some(length) = parse_linear_length(text) {
-                let (px, percent) = context.lengths.split(&length);
-                return Ok(AnimValue::length(check_finite(NAME, px)?, check_finite(NAME, percent)?));
+            if split_slash_tokens(text).len() < 2 {
+                return Err(format!("a {NAME} string must be a colour or a CSS length: {text}"));
             }
-            Color::parse(text, &context.colors)
-                .map(AnimValue::Color)
-                .ok_or_else(|| format!("a {NAME} string must be a colour or a CSS length: {text}"))
+            ListValue::parse(text, |token| parse_component(token, context))
+                .map(AnimValue::List)
+                .map_err(|error| format!("a {NAME} string must be a colour, a CSS length or a list of them: {error}"))
         }
         Value::Array(items) if !items.is_empty() && items.iter().all(Value::is_number) => {
             items
@@ -465,6 +504,19 @@ fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, Strin
         }
         other => Err(format!("a {NAME} cannot hold {other}")),
     }
+}
+
+/// One length or colour, which is a whole string or a component of a list.
+fn parse_component(text: &str, context: &ValueContext) -> Result<Option<AnimValue>, String> {
+    // A plain percentage stays one, so `0%` is not read as the number 0.
+    if let Some(percent) = text.strip_suffix('%').and_then(|percent| percent.trim().parse::<f64>().ok()) {
+        return Ok(Some(AnimValue::Percent(check_finite(NAME, percent / 100.0)?)));
+    }
+    if let Some(length) = parse_linear_length(text) {
+        let (px, percent) = context.lengths.split(&length);
+        return Ok(Some(AnimValue::length(check_finite(NAME, px)?, check_finite(NAME, percent)?)));
+    }
+    Ok(Color::parse(text, &context.colors).map(AnimValue::Color))
 }
 
 enum Keyframes {
@@ -519,6 +571,7 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
             crate::css::length::LinearLength { px: *px, percent: *percent, ..Default::default() }.to_string(),
         )),
         AnimValue::Color(color) => Ok(Value::String(color.to_css())),
+        AnimValue::List(list) => list.to_css().map(Value::String),
         AnimValue::Shadows(shadows) => serde_json::to_value(shadow_layers(shadows.clone()))
             .map_err(|error| error.to_string()),
         AnimValue::Numbers(values) => values
@@ -568,25 +621,53 @@ fn parse_spring(config: &Value) -> Result<Transition, String> {
     }
 }
 
-/// `{ opacity: 3, padding: 4 }`: style properties to the values that drive
-/// them, shorthands expanded.
-fn parse_binding(binding: &Value) -> Result<Vec<(AnimProp, ValueId)>, String> {
+/// A style property a motion value drives.
+enum Bound {
+    Longhand { prop: AnimProp, id: ValueId },
+    /// A shorthand, which gives each of its longhands a component of a multi-value
+    /// string and the whole of any other value.
+    Shorthand { name: String, props: &'static [AnimProp], id: ValueId },
+}
+
+impl Bound {
+    fn id(&self) -> ValueId {
+        match self {
+            Self::Longhand { id, .. } | Self::Shorthand { id, .. } => *id,
+        }
+    }
+}
+
+/// `{ opacity: 3, padding: 4 }`: style properties to the values that drive them.
+fn parse_binding(binding: &Value) -> Result<Vec<Bound>, String> {
     let map = binding
         .as_object()
         .ok_or_else(|| "motionValues must be an object of property to motion value".to_string())?;
-    let mut pairs = Vec::new();
+    let mut bound = Vec::new();
     for (name, id) in map {
         let id = value_id(
             id.as_f64()
                 .ok_or_else(|| format!("motionValues.{name} must be a motion value id"))?,
         )?;
         match (AnimProp::from_name(name), expand_shorthand(name)) {
-            (Some(prop), _) => pairs.push((prop, id)),
-            (None, Some(props)) => pairs.extend(props.iter().map(|prop| (*prop, id))),
+            (Some(prop), _) => bound.push(Bound::Longhand { prop, id }),
+            (None, Some(props)) => bound.push(Bound::Shorthand { name: name.clone(), props, id }),
             (None, None) => return Err(format!("motionValues cannot bind {name}")),
         }
     }
-    Ok(pairs)
+    Ok(bound)
+}
+
+/// What each longhand of the shorthand `name` takes from a multi-value string,
+/// or why the string is no value of it.
+fn split_for(name: &str, props: &[AnimProp], list: &ListValue) -> Result<Vec<AnimValue>, String> {
+    let rejected = |reason: String| {
+        format!("motionValues.{name} cannot take {}: {reason}", list.to_css().unwrap_or_default())
+    };
+    let values = split_list(name, list.horizontal(), list.vertical()).map_err(rejected)?;
+    match props.iter().zip(&values).find(|(prop, value)| !prop.accepts(value)) {
+        Some((prop, _)) => Err(rejected(format!("{} takes no such component", prop.name()))),
+        None => Ok(values),
+    }
 }
 
 #[cfg(test)]
@@ -597,6 +678,7 @@ mod tests {
 
     use super::*;
     use crate::css::length::LinearLength;
+    use crate::style::CornerRadiusValue;
 
     struct Clock(Instant);
 
@@ -1108,7 +1190,10 @@ mod tests {
         assert!(parse_binding(&json!({ "display": 1 })).is_err());
         assert!(parse_binding(&json!({ "opacity": "x" })).is_err());
         assert!(parse_binding(&json!([1])).is_err());
-        assert_eq!(parse_binding(&json!({ "padding": 1 })).unwrap().len(), 4);
+        match parse_binding(&json!({ "padding": 1 })).unwrap().as_slice() {
+            [Bound::Shorthand { props, .. }] => assert_eq!(props.len(), 4),
+            _ => panic!("padding is one shorthand binding"),
+        }
     }
 
     #[test]
@@ -1248,5 +1333,272 @@ mod tests {
         assert!(snap < 1e-4, "snapped {snap} of the basis");
         let snap = percent_snap(json!("20px"), json!("calc(100% - 20px)"));
         assert!(snap < 1e-4, "snapped {snap} of the basis");
+    }
+
+    #[test]
+    fn a_multi_value_string_is_held_as_its_components_and_reads_back_as_css() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("0.5em 0.75em")).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("8px 12px"));
+        store.set(1.0, &json!("10px / 20px"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("10px / 20px"));
+        store.set(1.0, &json!("calc(100% - 4px)  50% 0"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(100% - 4px) 50% 0px"));
+        store.set(1.0, &json!("10px/5%"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("10px / 5%"));
+
+        store.create_source(2.0, &json!("red blue")).unwrap();
+        let read = store.get(2.0, clock.at(0)).unwrap();
+        assert!(read.as_str().unwrap().starts_with("rgba(255.000, 0.000, 0.000, 1.00000) rgba(0.000, 0.000, 255.000"), "{read}");
+
+        // A colour with spaces and a slash is one value, and a lone length keeps its one-value shape.
+        store.create_source(3.0, &json!("rgb(0 0 255 / 50%)")).unwrap();
+        assert!(store.get(3.0, clock.at(0)).unwrap().as_str().unwrap().starts_with("rgba(0.000, 0.000, 255.000, 0.5"));
+        store.create_source(4.0, &json!("12px")).unwrap();
+        assert_eq!(store.get(4.0, clock.at(0)).unwrap(), json!(12.0));
+        store.set(4.0, &json!("1px 2px"), clock.at(0)).unwrap();
+        assert_eq!(store.get(4.0, clock.at(0)).unwrap(), json!("1px 2px"));
+    }
+
+    #[test]
+    fn a_multi_value_string_that_is_no_list_of_lengths_or_colours_is_rejected() {
+        let mut store = MotionValueStore::default();
+        for text in ["10px bogus", "10px / red", "/ 10px", "10px /", "1px / 2px / 3px", "red 10px / 20px", "10px 20px solid"] {
+            assert!(store.create_source(1.0, &json!(text)).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn two_lists_of_the_same_shape_blend_component_by_component() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("0.5em 0.75em")).unwrap();
+        store.animate(2.0, &json!("1em 1.5em"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("12px 18px"));
+        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!("16px 24px"));
+
+        // Lengths of different units mix as calc() parts, per component.
+        store.animate(2.0, &json!("50% calc(100% - 4px)"), Some(&linear(1.0)), clock.at(2000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("calc(25% + 8px) calc(50% + 10px)"));
+
+        store.create_source(3.0, &json!("10px / 20px")).unwrap();
+        store.animate(3.0, &json!("30px / 40px"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("20px / 30px"));
+
+        store.create_source(4.0, &json!("#000000 #ffffff")).unwrap();
+        store.animate(4.0, &json!("#ffffff #ffffff"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        let mid = store.get(4.0, clock.at(500)).unwrap();
+        let mid = mid.as_str().unwrap();
+        let (first, second) = mid.split_once(") ").unwrap();
+        assert!(first.starts_with("rgba(") && second.starts_with("rgba("), "{mid}");
+        assert_ne!(first, second.trim_end_matches(')'));
+    }
+
+    #[test]
+    fn list_keyframes_blend_per_segment() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("0px 0px")).unwrap();
+        store
+            .animate(2.0, &json!(["0px 0px", "10px 20px", null, "30px 0px"]), Some(&linear(3.0)), clock.at(0))
+            .unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("5px 10px"));
+        assert_eq!(store.get(2.0, clock.at(1500)).unwrap(), json!("10px 20px"));
+        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("20px 10px"));
+    }
+
+    #[test]
+    fn a_shorter_list_is_filled_out_by_the_shorthand_rule_before_blending() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("8px")).unwrap();
+        store.animate(2.0, &json!("8px 16px"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("8px 12px"));
+        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!("8px 16px"));
+
+        store.animate(2.0, &json!("0px 10px 20px 30px"), Some(&linear(1.0)), clock.at(2000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("4px 13px 14px 23px"));
+
+        // Three values are top, the sides, bottom; two are the sides alike.
+        store.create_source(3.0, &json!("0px 10px 20px")).unwrap();
+        store.animate(3.0, &json!("20px 10px"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("10px 10px 20px"));
+
+        // A radius without a / has the same vertical radii as horizontal.
+        store.create_source(4.0, &json!("10px 20px")).unwrap();
+        store.animate(4.0, &json!("10px / 30px"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(4.0, clock.at(500)).unwrap(), json!("10px 15px / 20px 25px"));
+    }
+
+    #[test]
+    fn lists_that_cannot_be_filled_out_alike_jump_at_the_halfway_point() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("1px 2px")).unwrap();
+        store.animate(2.0, &json!("1px 2px 3px 4px 5px"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(400)).unwrap(), json!("1px 2px"));
+        assert_eq!(store.get(2.0, clock.at(600)).unwrap(), json!("1px 2px 3px 4px 5px"));
+
+        // A colour never blends with a length, a list or not.
+        store.create_source(5.0, &json!("1px 2px")).unwrap();
+        assert!(store.animate(5.0, &json!("red blue"), None, clock.at(2000)).is_err());
+        store.create_source(3.0, &json!("red")).unwrap();
+        assert!(store.animate(3.0, &json!("1px 2px"), None, clock.at(0)).is_err());
+    }
+
+    #[test]
+    fn a_list_is_mapped_by_a_transform_and_chased_by_a_spring() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store
+            .create_transform(2.0, 1.0, vec![0.0, 1.0], &json!(["0px 10px", "20px 30px"]), None)
+            .unwrap();
+        store.set(1.0, &json!(0.5), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!("10px 20px"));
+
+        store.create_spring(3.0, &json!("0px 0px"), &json!({ "stiffness": 300, "damping": 30 }), clock.at(0)).unwrap();
+        store.set(3.0, &json!("10px 20px"), clock.at(0)).unwrap();
+        assert!(store.is_animating(3.0, clock.at(50)).unwrap());
+        let mid = store.get(3.0, clock.at(50)).unwrap();
+        assert_ne!(mid, json!("0px 0px"));
+        assert_eq!(store.get(3.0, clock.at(60_000)).unwrap(), json!("10px 20px"));
+    }
+
+    fn applied(store: &mut MotionValueStore, clock: &Clock, binding: Value) -> StyleDesc {
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        style
+    }
+
+    #[test]
+    fn a_list_bound_to_a_shorthand_gives_each_side_its_own_component() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("0.5em 0.75em")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "padding": 1 }));
+        assert_eq!(style.padding_top, Some(LinearLength::px(8.0)));
+        assert_eq!(style.padding_bottom, Some(LinearLength::px(8.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(12.0)));
+        assert_eq!(style.padding_right, Some(LinearLength::px(12.0)));
+
+        store.set(1.0, &json!("1px 2px 3px"), clock.at(0)).unwrap();
+        let style = applied(&mut store, &clock, json!({ "borderWidth": 1 }));
+        assert_eq!(style.border_top_width, Some(LinearLength::px(1.0)));
+        assert_eq!(style.border_right_width, Some(LinearLength::px(2.0)));
+        assert_eq!(style.border_bottom_width, Some(LinearLength::px(3.0)));
+        assert_eq!(style.border_left_width, Some(LinearLength::px(2.0)));
+
+    }
+
+    #[test]
+    fn a_list_bound_to_margin_and_inset_reads_as_dimensions() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("8px 25%")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "margin": 1, "inset": 1 }));
+        assert_eq!(style.margin_top, Some(crate::style::DimensionValue::Pixels(8.0)));
+        assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Percentage(0.25)));
+        assert_eq!(style.top, Some(crate::style::DimensionValue::Pixels(8.0)));
+        assert_eq!(style.right, Some(crate::style::DimensionValue::Percentage(0.25)));
+    }
+
+    #[test]
+    fn a_list_bound_to_gap_is_the_row_and_the_column() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("4px 9px")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "gap": 1 }));
+        assert_eq!(style.row_gap, Some(LinearLength::px(4.0)));
+        assert_eq!(style.column_gap, Some(LinearLength::px(9.0)));
+
+        store.set(1.0, &json!("1px 2px 3px"), clock.at(0)).unwrap();
+        let style = applied(&mut store, &clock, json!({ "gap": 1 }));
+        assert_eq!(style.row_gap, None, "gap takes at most two values");
+    }
+
+    #[test]
+    fn a_list_bound_to_border_radius_gives_each_corner_both_radii() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("10px / 20px")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "borderRadius": 1 }));
+        let corner = |x: f64, y: f64| Some(CornerRadiusValue { x: LinearLength::px(x), y: Some(LinearLength::px(y)) });
+        assert_eq!(style.border_top_left_radius, corner(10.0, 20.0));
+        assert_eq!(style.border_bottom_right_radius, corner(10.0, 20.0));
+
+        // Clockwise from the top left on both sides of the /.
+        store.set(1.0, &json!("1px 2px 3px 4px / 5px 6px 7px 8px"), clock.at(0)).unwrap();
+        let style = applied(&mut store, &clock, json!({ "borderRadius": 1 }));
+        assert_eq!(style.border_top_left_radius, corner(1.0, 5.0));
+        assert_eq!(style.border_top_right_radius, corner(2.0, 6.0));
+        assert_eq!(style.border_bottom_right_radius, corner(3.0, 7.0));
+        assert_eq!(style.border_bottom_left_radius, corner(4.0, 8.0));
+
+        // Without a / the corners are circular.
+        store.set(1.0, &json!("1px 2px"), clock.at(0)).unwrap();
+        let style = applied(&mut store, &clock, json!({ "borderRadius": 1 }));
+        let circle = |x: f64| Some(CornerRadiusValue { x: LinearLength::px(x), y: None });
+        assert_eq!(style.border_top_left_radius, circle(1.0));
+        assert_eq!(style.border_top_right_radius, circle(2.0));
+        assert_eq!(style.border_bottom_left_radius, circle(2.0));
+        assert_eq!(style.border_bottom_right_radius, circle(1.0));
+    }
+
+    #[test]
+    fn a_list_bound_to_border_color_gives_each_side_its_own_colour() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("#ff0000 #0000ff")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "borderColor": 1 }));
+        let red = style.border_top_color.clone().unwrap();
+        let blue = style.border_left_color.clone().unwrap();
+        assert_ne!(red, blue);
+        assert!(red.starts_with("rgba(255.000, 0.000, 0.000") && blue.starts_with("rgba(0.000, 0.000, 255.000"), "{red} {blue}");
+        assert_eq!(style.border_bottom_color, Some(red));
+        assert_eq!(style.border_right_color, Some(blue));
+    }
+
+    #[test]
+    fn a_list_a_shorthand_cannot_take_is_skipped() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        let cases = [
+            ("padding", json!("#ff0000 #0000ff")),
+            ("borderColor", json!("1px 2px")),
+            ("padding", json!("1px 2px 3px 4px 5px")),
+            ("padding", json!("1px / 2px")),
+            ("gap", json!("1px 2px 3px")),
+        ];
+        for (index, (name, value)) in cases.into_iter().enumerate() {
+            let id = index as f64;
+            store.create_source(id, &value).unwrap();
+            let style = applied(&mut store, &clock, json!({ name: id }));
+            assert_eq!(style.padding_top, None, "{name} {value}");
+            assert_eq!(style.border_top_color, None, "{name} {value}");
+            assert_eq!(style.row_gap, None, "{name} {value}");
+        }
+    }
+
+    #[test]
+    fn a_list_is_no_value_of_a_longhand() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("1px 2px")).unwrap();
+        let style = applied(&mut store, &clock, json!({ "paddingTop": 1, "width": 1, "opacity": 1 }));
+        assert_eq!(style.padding_top, None);
+        assert_eq!(style.width, None);
+        assert_eq!(style.opacity, None);
+    }
+
+    #[test]
+    fn an_animating_list_moves_the_sides_it_is_bound_to() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("0.5em 0.75em")).unwrap();
+        let binding = json!({ "padding": 2 });
+        store.animate(2.0, &json!("1em 1.5em"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert!(store.frame([&binding], &[], clock.at(500)).active);
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        assert_eq!(style.padding_top, Some(LinearLength::px(12.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(18.0)));
     }
 }

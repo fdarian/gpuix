@@ -16,7 +16,7 @@ use crate::css::outline::Outline;
 use crate::css::line_height::LineHeight;
 use crate::css::border_radius::parse_radii;
 use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
-use crate::css::syntax::split_slash_tokens;
+use crate::css::syntax::{expand_sides, split_slash_tokens};
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{
     BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue,
@@ -700,6 +700,51 @@ fn split_value(name: &str, channels: usize, value: &Value) -> Result<Vec<Value>,
     }
 }
 
+/// CSS lists the corners of a `border-radius` clockwise from the top left; the
+/// longhands go top left, top right, bottom left, bottom right. This is the CSS
+/// index of each.
+const RADIUS_CORNERS: [usize; 4] = [0, 1, 3, 2];
+
+/// [`split_shorthand`] for a value that is already parsed, such as the
+/// components of a motion value's string: `horizontal`, and for a
+/// `borderRadius` the radii after its `/`. One value per longhand of `name`, in
+/// the order [`expand_shorthand`] lists them, by the same rules.
+pub(super) fn split_list(
+    name: &str,
+    horizontal: &[AnimValue],
+    vertical: Option<&[AnimValue]>,
+) -> Result<Vec<AnimValue>, String> {
+    let sides = |values: &[AnimValue]| {
+        expand_sides(values).ok_or_else(|| format!("expected one to four values, got {}", values.len()))
+    };
+    let split = match name {
+        "gap" => match (horizontal, vertical) {
+            ([row], None) => vec![row.clone(), row.clone()],
+            ([row, column], None) => vec![row.clone(), column.clone()],
+            _ => return Err(format!("{name} takes one or two values, got {}", horizontal.len())),
+        },
+        "borderRadius" => {
+            let horizontal = sides(horizontal)?;
+            let vertical = vertical.map(sides).transpose()?;
+            RADIUS_CORNERS
+                .into_iter()
+                .map(|corner| match &vertical {
+                    Some(vertical) => {
+                        let radius = |value: &AnimValue| {
+                            value.as_length().ok_or_else(|| format!("{name} radii must be lengths"))
+                        };
+                        Ok(AnimValue::ellipse(radius(&horizontal[corner])?, radius(&vertical[corner])?))
+                    }
+                    None => Ok(horizontal[corner].clone()),
+                })
+                .collect::<Result<_, String>>()?
+        }
+        _ if vertical.is_some() => return Err(format!("{name} has no / to separate values")),
+        _ => sides(horizontal)?.to_vec(),
+    };
+    Ok(split)
+}
+
 /// One string per longhand of `name`, in the order [`expand_shorthand`] lists them.
 fn split_text(name: &str, text: &str) -> Result<Vec<String>, String> {
     let token = |token: &str| Ok(token.to_string());
@@ -708,9 +753,7 @@ fn split_text(name: &str, text: &str) -> Result<Vec<String>, String> {
         "borderRadius" => {
             let tokens = split_slash_tokens(text);
             let radii = parse_radii(&tokens, token).map_err(|reason| format!("invalid \"{text}\": {reason}"))?;
-            // CSS lists the corners clockwise from the top left; the longhands
-            // here go top left, top right, bottom left, bottom right.
-            Ok([0, 1, 3, 2]
+            Ok(RADIUS_CORNERS
                 .into_iter()
                 .map(|corner| match &radii.vertical {
                     Some(vertical) => format!("{} {}", radii.horizontal[corner], vertical[corner]),

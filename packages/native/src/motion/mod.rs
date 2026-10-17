@@ -12,6 +12,7 @@ mod curve;
 mod inline;
 mod keyframes;
 mod layout_flip;
+mod list;
 pub(crate) mod measure;
 mod property;
 mod svg_attr;
