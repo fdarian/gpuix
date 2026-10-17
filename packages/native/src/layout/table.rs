@@ -53,12 +53,10 @@ pub(crate) fn can_be_container(element: &RetainedElement) -> bool {
     matches!(part(element), None | Some(Part::Caption))
 }
 
+/// The part the element is, by the `display` its `@container` blocks gave it when they select one
+/// ([`RetainedElement::display`]).
 pub(crate) fn part(element: &RetainedElement) -> Option<Part> {
-    element
-        .style
-        .as_deref()
-        .and_then(|style| style.display.as_deref())
-        .and_then(part_of)
+    element.display().as_deref().and_then(part_of)
 }
 
 /// A child of a table that takes no part in the grid and so is not wrapped: an absolutely
@@ -726,5 +724,53 @@ mod tests {
         let mut f = Fixture::new("table-cell");
         f.part(2, "table-cell");
         assert_eq!(shape(&f.plan()), "table[2]");
+    }
+
+    /// What the `@container` blocks of an element made of its `display`, as a build records it.
+    fn container_display(f: &Fixture, id: u64, display: &str) {
+        *f.tree.elements[&id].container_display.borrow_mut() = Some(Some(display.to_string()));
+    }
+
+    #[test]
+    fn a_table_part_is_what_its_container_blocks_made_of_it() {
+        let mut f = Fixture::new("table-row");
+        f.part(2, "block").part(3, "table-cell").part(4, "block");
+        assert_eq!(shape(&f.plan()), "cell[#2] #3 cell[#4]");
+        container_display(&f, 2, "table-cell");
+        container_display(&f, 3, "block");
+        assert_eq!(shape(&f.plan()), "#2 cell[#3 #4]");
+    }
+
+    #[test]
+    fn a_container_that_became_a_table_wraps_its_children_in_cells() {
+        let mut f = Fixture::new("block");
+        f.text(1, 2, "a");
+        f.part(3, "table-row");
+        assert_eq!(shape(&f.plan()), r#""a" table[3]"#);
+        container_display(&f, 1, "table");
+        assert_eq!(shape(&f.plan()), r#"cell["a"] #3"#);
+    }
+
+    #[test]
+    fn parts_a_container_block_made_are_wrapped_in_an_anonymous_table_in_a_block() {
+        let mut f = Fixture::new("block");
+        f.part(2, "block").part(3, "block").part(4, "block");
+        container_display(&f, 2, "table-cell");
+        container_display(&f, 3, "table-cell");
+        assert_eq!(shape(&f.plan()), "table[2, 3] #4");
+    }
+
+    #[test]
+    fn an_element_a_container_block_made_a_part_is_no_query_container() {
+        let mut f = Fixture::new("block");
+        assert!(can_be_container(&f.tree.elements[&1]));
+        container_display(&f, 1, "table-cell");
+        assert!(!can_be_container(&f.tree.elements[&1]));
+        container_display(&f, 1, "table-caption");
+        assert!(can_be_container(&f.tree.elements[&1]));
+        let mut f = Fixture::new("table-cell");
+        assert!(!can_be_container(&f.tree.elements[&1]));
+        container_display(&f, 1, "block");
+        assert!(can_be_container(&f.tree.elements[&1]));
     }
 }

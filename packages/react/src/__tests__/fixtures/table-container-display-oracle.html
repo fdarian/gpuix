@@ -1,0 +1,109 @@
+<!doctype html>
+<!--
+  Oracle for table-container-display.test.tsx: the expected numbers there are what headless Chrome
+  lays out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  The boxes are fixed-size divs, so no font is involved except for the text of the inline-table case
+  (GpuixTestSquare at 20px with a line height of 20px). `data-id` names a box in the test as
+  `case.name`, and the numbers are relative to the `data-case` box it is in. Each case is laid out at
+  300px, where its container query matches, and at 200px, where it does not.
+-->
+<html>
+<head>
+<style>
+  @font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .line { font: 20px/20px GpuixTestSquare; color: #000; container-type: inline-size; }
+
+  /* A: cells that are blocks in a narrow container, in a row. A row's loose blocks share one anonymous cell. */
+  .a-row { display: table-row; }
+  .a-cell { display: block; }
+  @container (min-width: 250px) { .a-cell { display: table-cell; } }
+
+  /* B: a block that is a table in a wide container, with cells that are blocks until then. */
+  .b-table { display: block; }
+  .b-cell { display: block; }
+  @container (min-width: 250px) { .b-table { display: table; } .b-cell { display: table-cell; } }
+
+  /* C: a row that is a block in a narrow container: its cells are then loose parts in an anonymous table. */
+  .c-table { display: table; }
+  .c-row { display: block; }
+  .c-cell { display: table-cell; }
+  @container (min-width: 250px) { .c-row { display: table-row; } }
+
+  /* D: a block that is a caption in a wide container. */
+  .d-table { display: table; }
+  .d-caption { display: block; height: 10px; }
+  .d-cell { display: table-cell; }
+  @container (min-width: 250px) { .d-caption { display: table-caption; } }
+
+  /* E: a table that is a block in a narrow container: its rows are then plain blocks and its cells loose parts. */
+  .e-table { display: table; }
+  @container (max-width: 250px) { .e-table { display: block; } }
+  .e-row { display: table-row; }
+  .e-cell { display: table-cell; }
+
+  /* F: a block that is an inline-table in a wide container, on a line of text. */
+  .f-table { display: block; }
+  .f-row { display: table-row; }
+  .f-cell { display: table-cell; }
+  @container (min-width: 250px) { .f-table { display: inline-table; } }
+
+  /* G: a block that is a row group in a wide container, in a table. */
+  .g-table { display: table; }
+  .g-group { display: block; }
+  .g-row { display: table-row; }
+  .g-cell { display: table-cell; }
+  @container (min-width: 250px) { .g-group { display: table-row-group; } }
+
+  /* H: a cell that is a block in a narrow container. */
+  .h-table { display: table; }
+  .h-row { display: table-row; }
+  .h-cell { display: table-cell; }
+  @container (max-width: 250px) { .h-cell2 { display: block; } }
+</style>
+</head>
+<body>
+
+<div class="line" data-case data-id="a-300" style="width: 300px"><div class="a-row" data-id="a-300.row"><div class="a-cell" style="width: 30px; height: 10px" data-id="a-300.c1"></div><div class="a-cell" style="width: 20px; height: 20px" data-id="a-300.c2"></div></div></div>
+<div class="line" data-case data-id="a-200" style="width: 200px"><div class="a-row" data-id="a-200.row"><div class="a-cell" style="width: 30px; height: 10px" data-id="a-200.c1"></div><div class="a-cell" style="width: 20px; height: 20px" data-id="a-200.c2"></div></div></div>
+
+<div class="line" data-case data-id="b-300" style="width: 300px"><div class="b-table" data-id="b-300.table"><div class="b-cell" style="width: 30px; height: 10px" data-id="b-300.c1"></div><div class="b-cell" style="width: 20px; height: 20px" data-id="b-300.c2"></div></div></div>
+<div class="line" data-case data-id="b-200" style="width: 200px"><div class="b-table" data-id="b-200.table"><div class="b-cell" style="width: 30px; height: 10px" data-id="b-200.c1"></div><div class="b-cell" style="width: 20px; height: 20px" data-id="b-200.c2"></div></div></div>
+
+<div class="line" data-case data-id="c-300" style="width: 300px"><div class="c-table" data-id="c-300.table"><div class="c-row" data-id="c-300.row"><div class="c-cell" style="width: 30px; height: 10px" data-id="c-300.c1"></div><div class="c-cell" style="width: 20px; height: 20px" data-id="c-300.c2"></div></div></div></div>
+<div class="line" data-case data-id="c-200" style="width: 200px"><div class="c-table" data-id="c-200.table"><div class="c-row" data-id="c-200.row"><div class="c-cell" style="width: 30px; height: 10px" data-id="c-200.c1"></div><div class="c-cell" style="width: 20px; height: 20px" data-id="c-200.c2"></div></div></div></div>
+
+<div class="line" data-case data-id="d-300" style="width: 300px"><div class="d-table" data-id="d-300.table"><div class="d-cell" style="width: 30px; height: 20px" data-id="d-300.cell"></div><div class="d-caption" data-id="d-300.caption"></div></div></div>
+<div class="line" data-case data-id="d-200" style="width: 200px"><div class="d-table" data-id="d-200.table"><div class="d-cell" style="width: 30px; height: 20px" data-id="d-200.cell"></div><div class="d-caption" data-id="d-200.caption"></div></div></div>
+
+<div class="line" data-case data-id="e-300" style="width: 300px"><div class="e-table" data-id="e-300.table"><div class="e-row" data-id="e-300.row"><div class="e-cell" style="width: 30px; height: 10px" data-id="e-300.c1"></div><div class="e-cell" style="width: 20px; height: 20px" data-id="e-300.c2"></div></div></div></div>
+<div class="line" data-case data-id="e-200" style="width: 200px"><div class="e-table" data-id="e-200.table"><div class="e-row" data-id="e-200.row"><div class="e-cell" style="width: 30px; height: 10px" data-id="e-200.c1"></div><div class="e-cell" style="width: 20px; height: 20px" data-id="e-200.c2"></div></div></div></div>
+
+<div class="line" data-case data-id="f-300" style="width: 300px"><span data-id="f-300.t1">AA</span><div class="f-table" data-id="f-300.table"><div class="f-row" data-id="f-300.row"><div class="f-cell" style="width: 30px; height: 30px" data-id="f-300.c1"></div></div></div><span data-id="f-300.t2">AA</span></div>
+<div class="line" data-case data-id="f-200" style="width: 200px"><span data-id="f-200.t1">AA</span><div class="f-table" data-id="f-200.table"><div class="f-row" data-id="f-200.row"><div class="f-cell" style="width: 30px; height: 30px" data-id="f-200.c1"></div></div></div><span data-id="f-200.t2">AA</span></div>
+
+<div class="line" data-case data-id="g-300" style="width: 300px"><div class="g-table" data-id="g-300.table"><div class="g-group" data-id="g-300.group"><div class="g-row" data-id="g-300.row"><div class="g-cell" style="width: 30px; height: 10px" data-id="g-300.c1"></div><div class="g-cell" style="width: 20px; height: 20px" data-id="g-300.c2"></div></div></div></div></div>
+<div class="line" data-case data-id="g-200" style="width: 200px"><div class="g-table" data-id="g-200.table"><div class="g-group" data-id="g-200.group"><div class="g-row" data-id="g-200.row"><div class="g-cell" style="width: 30px; height: 10px" data-id="g-200.c1"></div><div class="g-cell" style="width: 20px; height: 20px" data-id="g-200.c2"></div></div></div></div></div>
+
+<div class="line" data-case data-id="h-300" style="width: 300px"><div class="h-table" data-id="h-300.table"><div class="h-row" data-id="h-300.row"><div class="h-cell" style="width: 30px; height: 10px" data-id="h-300.c1"></div><div class="h-cell h-cell2" style="width: 20px; height: 20px" data-id="h-300.c2"></div><div class="h-cell" style="width: 10px; height: 30px" data-id="h-300.c3"></div></div></div></div>
+<div class="line" data-case data-id="h-200" style="width: 200px"><div class="h-table" data-id="h-200.table"><div class="h-row" data-id="h-200.row"><div class="h-cell" style="width: 30px; height: 10px" data-id="h-200.c1"></div><div class="h-cell h-cell2" style="width: 20px; height: 20px" data-id="h-200.c2"></div><div class="h-cell" style="width: 10px; height: 30px" data-id="h-200.c3"></div></div></div></div>
+
+<script>
+  document.fonts.load('20px GpuixTestSquare').then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>
