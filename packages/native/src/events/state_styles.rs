@@ -485,7 +485,7 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
 mod tests {
     use super::*;
     use crate::css::length::LinearLength;
-    use crate::css::shorthand::Sides;
+    use crate::css::shorthand::{Gap, Sides};
     use crate::style::{BackgroundValue, DimensionValue};
 
     fn style(json: &str) -> StyleDesc {
@@ -638,6 +638,53 @@ mod tests {
         assert_eq!((hovered.padding, hovered.padding_top), (Some(Sides::all(LinearLength::px(8.0))), Some(LinearLength::px(1.0))));
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!((pressed.padding, pressed.padding_top), (Some(Sides::all(LinearLength::px(3.0))), Some(LinearLength::px(2.0))));
+    }
+
+    #[test]
+    fn a_state_box_shorthand_replaces_the_base_one_and_resets_the_longhands_it_covers() {
+        let base = style(
+            r##"{
+                "padding": "1px 2px", "paddingLeft": 9, "margin": "0 auto", "marginTop": 4, "inset": "0 5px", "top": 7,
+                "borderWidth": "1px 2px 3px 4px", "borderTopWidth": 8, "gap": "3px 6px", "rowGap": 1,
+                "hover": { "padding": "0.5em 0.75em", "margin": "auto", "inset": "10px 20px", "borderWidth": "thin thick", "gap": "4px 8px" },
+                "active": { "paddingTop": 11, "top": 12 }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!(at_rest.padding_left, Some(LinearLength::px(9.0)));
+        let hovered = resolve_state_styles(&base, true, false);
+        let length = |text: &str| crate::css::dimension::parse_linear_length(text).unwrap();
+        assert_eq!(hovered.padding, Some(Sides { top: length("0.5em"), right: length("0.75em"), bottom: length("0.5em"), left: length("0.75em") }));
+        assert_eq!(hovered.padding_left, None);
+        assert_eq!(hovered.margin, Some(Sides::all(DimensionValue::Auto)));
+        assert_eq!(hovered.margin_top, None);
+        let ten = DimensionValue::Pixels(10.0);
+        let twenty = DimensionValue::Pixels(20.0);
+        assert_eq!(hovered.inset, Some(Sides { top: ten.clone(), right: twenty.clone(), bottom: ten, left: twenty }));
+        assert_eq!(hovered.top, None, "the state's inset resets the base top");
+        assert_eq!(hovered.border_top_width, None);
+        assert_eq!(
+            hovered.border_width,
+            Some(Sides { top: length("1px"), right: length("5px"), bottom: length("1px"), left: length("5px") })
+        );
+        assert_eq!(hovered.gap, Some(Gap { row: length("4px"), column: length("8px") }));
+        assert_eq!(hovered.row_gap, None);
+
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.padding_top, Some(LinearLength::px(11.0)));
+        assert_eq!(pressed.top, Some(DimensionValue::Pixels(12.0)));
+        assert_eq!(pressed.inset, base.inset, "a state longhand leaves the base shorthand in place");
+    }
+
+    #[test]
+    fn a_state_side_shorthand_keeps_each_side_of_a_multi_value_base_border_width() {
+        let base = style(r##"{"borderWidth":"1px 2px 3px 4px","hover":{"borderLeft":"9px solid blue"}}"##);
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.border_width, None);
+        assert_eq!(hovered.border_top_width, Some(LinearLength::px(1.0)));
+        assert_eq!(hovered.border_right_width, Some(LinearLength::px(2.0)));
+        assert_eq!(hovered.border_bottom_width, Some(LinearLength::px(3.0)));
+        assert_eq!(hovered.border_left_width, None);
     }
 
     #[test]

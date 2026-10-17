@@ -478,8 +478,9 @@ export interface StyleDesc {
   alignSelf?: string
   alignContent?: string
   justifyContent?: string
-  /** A length (see `DimensionValue`; a percentage is of the container's content box). `rowGap`
-   *  and `columnGap` win over `gap`. */
+  /** A length for both gaps, or `"<row> <column>"`: `"4px 8px"` is a 4px gap between rows and an
+   *  8px gap between columns (see `DimensionValue`; a percentage is of the container's content
+   *  box). Not `"auto"`. `rowGap` and `columnGap` win over `gap`. */
   gap?: DimensionValue
   rowGap?: DimensionValue
   columnGap?: DimensionValue
@@ -535,16 +536,20 @@ export interface StyleDesc {
   maxWidth?: DimensionValue
   maxHeight?: DimensionValue
 
-  /** A length (see `DimensionValue`; a percentage is of the containing block's width, on all
-   *  four sides). The sides win over `padding`. */
+  /** One to four lengths in CSS order (see `DimensionValue`; a percentage is of the containing
+   *  block's width, on all four sides): `"8px"`, `"8px 12px"` (top and bottom, then left and
+   *  right), `"1px 2px 3px"` (top, left and right, bottom), `"1px 2px 3px 4px"` (top, right,
+   *  bottom, left). A `calc()` is one value however many spaces it holds. Not `"auto"`. The
+   *  sides win over `padding`. */
   padding?: DimensionValue
   paddingTop?: DimensionValue
   paddingRight?: DimensionValue
   paddingBottom?: DimensionValue
   paddingLeft?: DimensionValue
 
-  /** A length (see `DimensionValue`; a percentage is of the containing block's width), or
-   *  `"auto"` (which absorbs free space in flex layouts). */
+  /** One to four lengths in CSS order, as for `padding`, each of which may be `"auto"` (which
+   *  absorbs free space in flex layouts): `"0 auto"` centres a box with a width. A percentage
+   *  is of the containing block's width. The sides win over `margin`. */
   margin?: DimensionValue
   marginTop?: DimensionValue
   marginRight?: DimensionValue
@@ -562,6 +567,11 @@ export interface StyleDesc {
    *  Negative paints below in-flow siblings, positive above. Only reorders siblings of the same
    *  parent, never against cousins. */
   zIndex?: number
+  /** One to four lengths or `"auto"` in CSS order, as for `margin`, for `top`, `right`, `bottom`
+   *  and `left`: `"10px 20px"` is 10px from the top and bottom and 20px from the left and right.
+   *  A percentage is of the containing block. `top`, `right`, `bottom` and `left` win over
+   *  `inset`. */
+  inset?: DimensionValue
   /** A length (see `DimensionValue`; a percentage is of the containing block) or `"auto"`. */
   top?: DimensionValue
   right?: DimensionValue
@@ -607,10 +617,12 @@ export interface StyleDesc {
   colorScheme?: string
   opacity?: number
 
-  /** A length (see `DimensionValue`) with no percentage, or `"thin"` (1px), `"medium"` (3px) or
-   *  `"thick"` (5px). A negative width is 0. The sides win over `borderWidth`. A side
-   *  only has a width when its line style is visible: with no `borderStyle` (or
-   *  `border*` shorthand or side style) it is `none` and the width is 0, as in CSS. */
+  /** One to four lengths in CSS order, as for `padding`, each a length (see `DimensionValue`)
+   *  with no percentage, or `"thin"` (1px), `"medium"` (3px) or `"thick"` (5px):
+   *  `"1px 2px 3px 4px"`, `"thin thick"`. A negative width is 0. The sides win over
+   *  `borderWidth`. A side only has a width when its line style is visible: with no
+   *  `borderStyle` (or `border*` shorthand or side style) it is `none` and the width is 0, as
+   *  in CSS. */
   borderWidth?: DimensionValue
   borderTopWidth?: DimensionValue
   borderRightWidth?: DimensionValue
@@ -640,9 +652,9 @@ export interface StyleDesc {
    *  `"10px 20px"`), then optionally `/` and one to four vertical radii
    *  (`"10px 20px / 5px"`, `"50% / 10px 20px"`). A percentage is of the border
    *  box, the width for the horizontal radius and the height for the vertical
-   *  one, so `"50%"` on a wide box is an ellipse. Lengths are `px` (or a bare
-   *  `0`); `em`, `rem` and the viewport units are not supported. A negative or
-   *  invalid value throws. Radii that add up to more than a side are scaled down
+   *  one, so `"50%"` on a wide box is an ellipse. Lengths take any unit (`px`,
+   *  `em`, `rem`, `vw`, `vh`, `vmin`, `vmax`, `in`, ...) or a `calc()`; `em` is
+   *  the element's font size. A negative or invalid value throws. Radii that add up to more than a side are scaled down
    *  together, as in CSS. The corner longhands win over it. */
   borderRadius?: number | string
   /** A number (px), or `"<horizontal> [<vertical>]"`: `"20px"`, `"20px 10px"`,
