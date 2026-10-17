@@ -750,7 +750,7 @@ terminal.
 | `appName` | string | Name inside the macOS `Hide X` and `Quit X` items. Defaults to `title` |
 | `focus` | boolean, default `true` | `false` opens the window behind the active app, like `open -g` |
 | `show` | boolean, default `true` | `false` opens the window hidden. Call `activateWindow()` to reveal it |
-| `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. GPUIX ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. Variable fonts only render their default instance, so pass one static file per weight |
+| `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. GPUIX ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. On macOS a variable font follows `fontWeight` and `fontVariationSettings`; elsewhere it only renders its default instance, so pass one static file per weight |
 
 Call it again after a save and it remounts the tree on the same window.
 
@@ -2775,8 +2775,8 @@ and copies as one line, and is searched by `highlight` as one piece of text.
 ```
 
 An inline box can set `color`, `fontWeight`, `fontStyle`, `fontFamily`,
-`fontSize`, `lineHeight`, `textDecoration` (see below), `fontVariantNumeric` and
-`fontFeatureSettings`; its `backgroundColor` (a `<mark>`-style wash), border and
+`fontSize`, `lineHeight`, `textDecoration` (see below), `fontVariantNumeric`,
+`fontFeatureSettings` and `fontVariationSettings`; its `backgroundColor` (a `<mark>`-style wash), border and
 `borderRadius`, painted round each line of its text (see [Painting an inline box](#painting-an-inline-box)); and
 an `outline` (see [Focus on an inline box](#focus-on-an-inline-box)). A box inherits from the box
 around it, as in CSS. A `display: contents` span inside a span adds no box: its
@@ -2797,8 +2797,8 @@ A declaration gives every line it names one style, one colour and one
 thickness, as in CSS. The styles are `solid`, `double` (two lines a thickness
 apart), `dotted` (round dots), `dashed` and `wavy`, on `underline`, `line-through`
 and `overline` alike. `textDecorationThickness` (also the last component of the
-shorthand) is `auto`, which is 1px, `from-font`, which is the font's own
-underline thickness and 1px for a font without one, or a length: `px`, the
+shorthand) is `auto`, which is a tenth of the font size as in Chrome, `from-font`,
+which is the font's own underline thickness and `auto` for a font without one, or a length: `px`, the
 absolute units, `em`, `rem`, the viewport units, `calc()`, or a percentage, which is
 a percentage of `1em` of the element's font size (`"10%"` is `"0.1em"`). It is
 resolved at the element that declares it, with that element's own font size, and
@@ -2809,7 +2809,20 @@ invalid and ignored, like in every other length in a style string. Dots and dash
 follow Chrome's proportions (a dot is a thickness across, dashes are three
 thicknesses long with a gap of two, two long with a gap of one from a thickness
 of 3px) but do not stretch to end on a mark, so a line that is not a whole
-number of marks ends on a partial one.
+number of marks ends on a partial one. `auto` and `from-font` stay fractional; a
+solid or double line floors them to a device pixel (at least one) when it paints,
+and a dotted or dashed one rounds them.
+
+`textUnderlineOffset` is inherited and sets how far below the alphabetic baseline
+the top edge of an underline sits. `auto` (the default) leaves a gap of half the
+thickness, rounded up, and at least a pixel, as Chrome does. A length (a number is
+px; `"0.25em"`, `calc()`) replaces that gap, so `0` puts the line on the baseline and
+a negative one above it. A percentage is of `1em`. The box that declares the
+underline decides: its own value or the one it inherits, and a descendant's offset
+does not move the line of an ancestor. `em` resolves where the value is set and
+descendants inherit the pixels; a percentage is of the font size of the box that
+draws the line. It applies to underlines only, is not animatable, and a
+`focusVisible` style that declares an underline takes the inherited offset.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` with a `tabIndex` is a block too: it is an element of its own
@@ -3240,6 +3253,37 @@ Deviations, where GPUI's text layout cannot build the DOM model:
 - In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
   where CSS removes it, so selection and copy see it.
 
+#### Balanced and pretty lines
+
+`textWrap` is the inherited shorthand of `textWrapMode` (`wrap`, `nowrap`) and
+`textWrapStyle` (`auto`, `balance`, `pretty`, `stable`): a mode, a style, or both in
+either order (`"balance"`, `"nowrap"`, `"nowrap pretty"`). What it leaves out is the
+longhand's initial value, so `"balance"` also turns wrapping on. A longhand on the same
+element wins over the shorthand. A value CSS does not have throws. Only a container sets
+them: a `<span>` inside a paragraph uses the paragraph's.
+
+```tsx
+<text style={{ width: 320, textWrap: 'balance' }}>{title}</text>
+<text style={{ width: 320, textWrap: 'pretty' }}>{paragraph}</text>
+```
+
+- **`balance`** evens out the lines of a paragraph of at most 6 lines (each stretch
+  of text between forced line breaks counts as one paragraph), without making more
+  lines than `auto` does.
+- **`pretty`** keeps the last line from being a single short word (under a third of
+  the line), by breaking the last four lines at most differently. A paragraph whose
+  last line is longer is left as `auto` has it.
+- The text is as wide as it is with `auto`: only the breaks move, so a box that
+  shrinks to its text keeps its width and `textAlign` aligns within it. `stable` is
+  `auto`.
+- Neither applies to text with a tab, `whiteSpace: 'break-spaces'` or `lineClamp`,
+  or where a word is wider than its line, as in Chromium. The breaker approximates
+  Chromium's, so the lines can differ from a browser's.
+- **`textWrapMode: 'nowrap'`** keeps the text on one line and wins over the wrapping
+  part of `whiteSpace` when both are declared on the same element. It leaves what
+  `whiteSpace` does to spaces and newlines alone, so `whiteSpace: 'pre'` with
+  `textWrapMode: 'wrap'` is `pre-wrap`.
+
 #### Truncating text
 
 `textOverflow: 'ellipsis'` cuts the text with `…` after the last glyph that fits.
@@ -3261,6 +3305,42 @@ wraps to without the cut:
 `textOverflow: 'ellipsis-start'` still decides where to cut by the width of each
 character along one line, so a tab counts as the font's own width of one, not as a
 tab stop, and `lineClamp` is a line of `n` times the width.
+
+### Trimming text boxes
+
+A heading in a padded box has more space above its capitals and below its baseline
+than the padding says, because a line is as tall as the font's ascent, descent and
+line height. `textBoxTrim` cuts that space off a block container, so the padding is
+the space that shows.
+
+```tsx
+<div style={{ padding: 8, backgroundColor: '#313244', textBox: 'trim-both cap alphabetic' }}>
+  <text>Title</text>
+</div>
+```
+
+- **`textBoxTrim`** (`none`, `trim-start`, `trim-end`, `trim-both`; not inherited).
+  `trim-start` cuts the space above the first line of text down to the over edge,
+  `trim-end` the space below the last line down to the under edge. The container
+  gets shorter by what was cut and what follows moves up. Its padding and border stay:
+  the trim is inside them. Ink the edge leaves out (a tall letter above `cap`) overflows.
+- **`textBoxEdge`** (inherited, `auto` is `text`) is the metric it cuts to,
+  `<over> <under>`. Over is `text` (the font's ascent: only the half-leading above is cut), `cap`
+  (cap height) or `ex` (x-height). Under is `text` (the descent) or `alphabetic` (the
+  baseline). One value is both where it can be, otherwise the under edge is `text`:
+  `"cap"` is `"cap text"` and `"ex"` is `"ex text"`. Chrome rejects a lone `cap` or `ex`
+  today; the spec allows it.
+- **`textBox`** is the shorthand: `normal`, or a trim and an edge in either order. A
+  trim left out is `trim-both`, not `none`, and an edge left out is `auto`. The longhands
+  win over it. An invalid value is ignored.
+- **Which lines.** Only the first and last line of text are trimmed. The trim goes
+  down through block children to their first or last line, and stops at one with
+  padding or a border on that side, or with no line of text to start with. An absolutely
+  positioned child is not a first or last child. A flex or grid container trims
+  nothing and passes nothing down. `none` on a descendant does not take off a trim
+  from above.
+- The metrics are those of the font of the block that holds the line. A trimmed
+  box is a whole number of device pixels tall, rounded up.
 
 ### Inline-block, inline-flex, inline-grid and inline-table
 
@@ -6685,11 +6765,13 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`, `textUnderlineOffset` (see [Inline text](#inline-text)), `textWrap`, `textWrapMode` and `textWrapStyle` (see [Balanced and pretty lines](#balanced-and-pretty-lines)), `textBox`, `textBoxTrim` and `textBoxEdge` (see [Trimming text boxes](#trimming-text-boxes))
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
-`fontFamily` resolves installed fonts. To use your own, pass the files in the `fonts` window option or call [`registerFont()`](#custom-fonts). Variable fonts render only their default instance, so use one static file per weight. The family name must match the font's family name exactly.
+`fontVariationSettings` (`'"wght" 650, "wdth" 90'`, or `normal`) sets the axes of a variable font, on macOS. It inherits, works on a `<span>` (per run) and on inputs, and is not available inside state styles. A tag is four characters and its value a number, clamped to the font's range for that axis; an axis the font does not have is ignored, and a tag named twice takes its last value. `fontWeight` already sets `wght` on a variable font, to any weight and not only the named ones (`600` is 600, not the 590 semibold instance), and a `wght` in `fontVariationSettings` wins over it. A value CSS does not have throws, where `fontFeatureSettings` ignores it. It animates: see [Targets and timing](#targets-and-timing).
+
+`fontFamily` resolves installed fonts. To use your own, pass the files in the `fonts` window option or call [`registerFont()`](#custom-fonts). On macOS a variable font follows `fontWeight` and `fontVariationSettings` along its axes; elsewhere it renders its default instance, so use one static file per weight. The family name must match the font's family name exactly.
 
 **Selection:** `userSelect` (`"text"` | `"none"`), `selectionColor` — both inherit down the tree
 
