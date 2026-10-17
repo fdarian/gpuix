@@ -5735,6 +5735,9 @@ What a unit is relative to:
   `fontSize`. The root's own `rem` is the initial size.
 - **`vw`, `vh`, `vmin`, `vmax`** are the window's size, and are resolved again on
   resize.
+- **`cqw`, `cqh`, `cqi`, `cqb`, `cqmin`, `cqmax`** are fractions of the content box of
+  the nearest ancestor [query container](#container-queries), and follow it when it
+  resizes. With no such container they are the window's size, like `vw` and `vh`.
 - A `hover`, `active` or group `fontSize` changes the element's own `em`, and so
   its `em` lengths. A `focusVisible` or `focusWithin` `fontSize` changes the
   element's own text only and not the `em` of its children, the same as `color`.
@@ -6400,6 +6403,8 @@ way, overflow included.
 
 **Descendant state:** `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`. See [Relational state (`:has()`)](#relational-state-has)
 
+**Container queries:** `containerType`, `containerName`, `container`, `"@container"`. See [Container queries](#container-queries)
+
 **Every element:** `<UniversalStyle>`, a `* { ... }` layer under all own styles. See [Universal style](#universal-style)
 
 ### Group state styles
@@ -6493,6 +6498,161 @@ There is no stylesheet, so this is not the whole of `:has()`. It cannot express:
   your component and pass the style
 - Anything about a sibling or an ancestor of the descendant. Only the four states
   of a descendant are tracked
+
+### Container queries
+
+A component often has to look different when the space it is given is small, not
+when the window is. CSS container queries do that, and so do these styles. Mark an
+ancestor as a **container**, then style its descendants with `"@container"` blocks
+whose keys are queries about the container's size, and with `cq` units that are
+fractions of it:
+
+```tsx
+<div style={{ containerType: 'inline-size', containerName: 'card' }}>
+  <div
+    style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4cqw', // 4% of the card's width
+      '@container': {
+        '(min-width: 400px)': { flexDirection: 'row' },
+        'card (400px <= width < 800px) and (orientation: landscape)': { gap: 24 },
+        'not (min-width: 200px)': { display: 'none' },
+      },
+    }}
+  >
+    ...
+  </div>
+</div>
+```
+
+| Style | |
+|---|---|
+| `containerType` | `"normal"` (default, not a container), `"inline-size"` (queries read the width) or `"size"` (the width and the height) |
+| `containerName` | names a query can pick the container by: `"card"`, `"card panel"`, `"none"` |
+| `container` | `"<name> [ / <type> ]"`, both in one (`"card / inline-size"`); a type left out is `"normal"`; the longhands win |
+| `"@container"` | an object of `query: style`, in written order |
+
+**Which container answers.** A query is about the **nearest ancestor container**,
+never the element itself, and measures its **content box**: the border box less
+padding, border and a scrollbar gutter. Start the query with a name
+(`"card (min-width: 400px)"`) to ask the nearest container that has it instead; a
+name alone (`"card"`) is true when there is one. A feature reads one axis or both:
+`width` and `inline-size` need a container of type `inline-size` or `size`, and
+`height`, `block-size`, `aspect-ratio` and `orientation` need `size`. The nearest
+container that **contains the axes a feature reads** answers it, so a
+`(min-height: 300px)` under an `inline-size` container looks past it to a `size`
+one above. A query with no such container, or whose container has not been laid out
+yet, is false.
+
+**The grammar** is CSS Containment 3:
+
+- Features: `width`, `height`, `inline-size`, `block-size` (lengths), `aspect-ratio`
+  (`16/9`, `1.5`) and `orientation` (`portrait` | `landscape`; portrait when the
+  height is at least the width). Written `(feature: value)`, with `min-` and `max-`
+  on the first five, as a boolean `(width)` (not zero), or as a range:
+  `(width >= 400px)`, `(400px <= width < 800px)`, `(aspect-ratio > 1/1)`
+- Lengths: px, `em` (the **container's** font size), `rem`, the viewport units,
+  `calc()`; no `%`
+- `and`, `or`, `not`, and parentheses. `and` and `or` cannot be mixed without
+  parentheses, and `not` takes one condition in parentheses
+- A feature this does not know, and `style()` and `scroll-state()`, are *unknown*.
+  An unknown result is false, so `not` of one is false too. Text that is not a
+  query at all (unbalanced parentheses, `and` mixed with `or`) makes the whole style
+  invalid, like an invalid `width`
+
+**How blocks apply.** Matching blocks fold into the element's style in the order
+they are written, a later one winning over an earlier one that sets the same
+property, and a shorthand resetting its longhands as it does in `hover`. They fold
+in **before** the state styles, so `hover`, `active`, `focusVisible` and the others
+win over a block, as `:hover` beats a plain rule inside `@container` by
+specificity. A block may carry state keys of its own, which merge into the style's:
+
+```tsx
+style={{
+  color: '#444',
+  hover: { color: '#000' },
+  '@container': { '(min-width: 400px)': { color: '#06f', hover: { color: '#04c' } } },
+}}
+```
+
+is `#06f` in a wide container, `#04c` when it is hovered, and `#000` when hovered in
+a narrow one. A block cannot hold another `"@container"`, and a state style
+(`hover`, ...) cannot hold one. Everything else a style holds works in a block:
+layout, `display: none`, `color` for `currentColor`, transitions and animations
+(a flip starts the transition), and `<UniversalStyle>` blocks, which come before the
+element's own. Blocks do not apply to a `<span>`: put the style on a `<text>`, or
+use a container unit.
+
+**Container units.** `cqw` and `cqi` are 1% of the width of the nearest ancestor
+container that contains the width, `cqh` and `cqb` 1% of the height of the nearest
+one that contains the height (a `size` container), `cqmin` and `cqmax` 1% of the
+smaller and larger of those two. They work in every length: sizes, padding, `gap`,
+`fontSize`, `lineHeight`, border widths, shadows, gradients, grid tracks, `calc()`.
+With no container for an axis they fall back to the small viewport, the window's
+size. A container's own `width: "50cqw"` is about the container above it.
+
+**The container's box.** `containerType: "inline-size"` contains the inline axis: the
+element's content-based width is only its padding and border, as if it had no
+children. That is what makes the query possible (a box that grows to fit what a
+query shows could never settle), and it is visible: an `inline-size` container with
+no `width` in a flex row, an absolutely positioned box or a column flex container
+with `alignItems: "flex-start"` is as wide as its padding and border, whatever it
+holds, so give it a `width`, `flexGrow` or `alignSelf: "stretch"`. A block-level
+container fills its parent as any block does. `"size"` contains the height too, so
+a container with no `height` is as tall as its padding and border. `minWidth`,
+`maxWidth` and the like still clamp. A container also lays its content out in a
+formatting context of its own, so the margins of its children do not collapse
+through it.
+
+**The style is right in the frame that lays the container out.** Layout knows a
+container's size only after the tree has been built from the style the size picks,
+so the build reads the size the last layout recorded. After layout and prepaint,
+each container compares the size it was just laid out at with the one the build
+assumed, for the axes a query or a unit read, and when they differ the window
+**builds the frame again before presenting it**: the pass is dropped before paint
+and the build runs from the new size, up to four passes in all (one more for each
+level of containers whose size another container's query changes; a mount at depth
+two settles in three). Only the presented pass paints, so `onLayout`, the observers,
+bounds, painted text, selection and accessibility only ever see the final frame, and
+a mount or a resize that flips a query never shows the old style for a frame. A
+transition does not start from a guess: a style that reads a container is not
+transitioned until every container above it has been laid out once. If the limit is
+reached with the sizes still disagreeing (two containers that flip each other, as
+`min-width` rules can) the last pass is presented and the window draws once more, so
+such a loop costs a frame per step, never a hang.
+
+The cost is paid only by a frame in which a container's size changed in an axis
+something read: each extra pass builds, lays out and prepaints the whole tree but
+does not paint. A frame in which no container changed costs one comparison per
+container that something reads, and no extra pass. A tree with no container, and one
+with containers nobody reads, pays nothing. On 500 containers and 4.5k elements
+(`examples/container-queries.perf.test.tsx`, `bun run test:perf:cq`) a steady frame
+costs what the same tree without containers costs (about 40 ms of CPU in the test
+renderer, within noise), and a frame in which every container crosses a query takes
+about 1.9 to 2 times a steady frame, which is what a restyle from the app costs
+too, since the app has to render and the frame draws afterwards.
+
+Differences from the browser:
+
+- A container is not the containing block of its `position: absolute` and `fixed`
+  descendants and does not make a stacking context, as CSS layout containment does for
+  `container-type`: add `position: relative` where you rely on it
+- `style()` queries and `scroll-state()` are unknown (false), and `container-type:
+  scroll-state` does not exist
+- Only host boxes are containers (`div`, `text`, `label`, ...); not a `<span>`, an
+  `<img>`, an `<svg>`, an `<input>`, a `display: contents` element or a
+  `<virtual-list>` itself. Its rows can sit under one
+- `<virtual-list>` takes no `@container` blocks (it takes no `hover` either), and
+  neither does a `<span>`
+- A block is evaluated where the element is built, so `elementsAt`, stacking and the
+  paragraph planner read the style without it. `display: none` is the exception: the
+  parent is rebuilt when a block hides or shows its child. `position`, `zIndex`,
+  `display: contents` and `display` values that change how the parent lays out text
+  (`inline`) are not taken from a block by those readers
+- Vertical writing modes do not exist, so `cqi` is `cqw` and `cqb` is `cqh`, and
+  `inline-size` is `width`
+- Sizes are snapped to sixty-fourths of a pixel, the unit browsers lay out in
 
 ### Hover and active
 
