@@ -28,15 +28,9 @@ pub(crate) fn generates_box(tree: &RetainedTree, child_id: u64) -> bool {
 
 /// What the element's own style declares, whether or not a transition still
 /// shows it. An element with `@container` blocks declares what the last build found
-/// once they were folded in (`RetainedElement::container_hidden`).
+/// once they were folded in (`RetainedElement::display`).
 pub(crate) fn declares_display_none(element: &RetainedElement) -> bool {
-    element.container_hidden.get().unwrap_or_else(|| {
-        element
-            .style
-            .as_deref()
-            .and_then(|style| style.display.as_deref())
-            == Some("none")
-    })
+    element.display().as_deref() == Some("none")
 }
 
 /// `display: none` generates no box, and neither do its descendants.

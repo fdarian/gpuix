@@ -93,11 +93,13 @@ pub struct RetainedElement {
     /// Take keyboard focus the first time this element gets a focus handle.
     /// Without it an `<input>` is dead until the user clicks it.
     pub auto_focus: bool,
-    /// Whether the last build found the element `display: none` once its `@container`
-    /// blocks were folded in, which its parent decided its children by. `None` until an
-    /// element with such blocks is built, and again whenever its style is replaced.
-    /// A build that finds another answer asks for the frame to be built again.
-    pub container_hidden: std::cell::Cell<Option<bool>>,
+    /// The `display` the last build found for the element once its `@container` blocks were
+    /// folded in, which its parent decided its children by (`display: none` takes no part in
+    /// layout, `inline-block` is a box on a line of its parent's text). The outer `None` until
+    /// an element with such blocks is built, and again whenever its style is replaced. A build
+    /// that finds another answer asks for the frame to be built again. Read it through
+    /// [`Self::display`].
+    pub container_display: std::cell::RefCell<Option<Option<String>>>,
     /// Last mutation applied to this element or one of its descendants.
     pub subtree_revision: u64,
     /// Last change to the searchable TEXT of this subtree: content, structure,
@@ -127,6 +129,18 @@ struct ElementExtras {
 static EMPTY_EXTRAS: LazyLock<ElementExtras> = LazyLock::new(ElementExtras::default);
 
 impl RetainedElement {
+    /// The `display` the element has: what its style declares, or what its `@container` blocks
+    /// made of it when the last build folded them in (`container_display`).
+    pub fn display(&self) -> Option<std::borrow::Cow<'_, str>> {
+        if let Some(folded) = &*self.container_display.borrow() {
+            return folded.clone().map(std::borrow::Cow::Owned);
+        }
+        self.style
+            .as_deref()
+            .and_then(|style| style.display.as_deref())
+            .map(std::borrow::Cow::Borrowed)
+    }
+
     /// The element's `tabIndex`, when it has a usable one.
     pub fn tab_index(&self) -> Option<isize> {
         self.custom_props()
@@ -201,7 +215,7 @@ impl RetainedElement {
             parent: None,
             extras: None,
             auto_focus: false,
-            container_hidden: Default::default(),
+            container_display: Default::default(),
             subtree_revision: revision,
             search_revision: revision,
             test_id: None,
@@ -888,7 +902,7 @@ impl RetainedTree {
             element.release_empty_extras();
         }
         element.style = style;
-        element.container_hidden.set(None);
+        *element.container_display.borrow_mut() = None;
         let escaped_after = containing_block::may_escape(element);
         self.escaping_count += usize::from(escaped_after);
         self.escaping_count -= usize::from(escaped_before);

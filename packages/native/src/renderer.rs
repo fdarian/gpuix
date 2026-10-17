@@ -7693,7 +7693,7 @@ fn build_element_unpumped(
             if custom_type == "anchored" {
                 crate::layout::anchor_size::begin_build(window.window_handle().window_id(), tree, element);
             }
-            crate::layout::container::settle_hidden_children(
+            crate::layout::container::settle_children(
                 ctx.tree,
                 element,
                 &crate::layout::container::Chain(ctx.inherited.container_chain()),
@@ -8097,7 +8097,7 @@ pub(crate) fn build_host_container(
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
-    crate::layout::container::settle_hidden_children(
+    crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
@@ -8261,7 +8261,7 @@ fn build_contents_container(
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }
-    crate::layout::container::settle_hidden_children(
+    crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
@@ -8510,7 +8510,11 @@ fn build_atomics(
     let mut atomics = Vec::with_capacity(around.len());
     let containing_height = Rc::new(Cell::new(gpui::Pixels::ZERO));
     for (id, piece, around) in around {
-        let kind = crate::text::atomic::kind(tree.elements.get(&id).and_then(|element| element.style.as_deref()));
+        let atomic_element = tree.elements.get(&id);
+        let kind = crate::text::atomic::kind(
+            atomic_element.and_then(|element| element.display()).as_deref(),
+            atomic_element.and_then(|element| element.style.as_deref()),
+        );
         let probe = (kind == crate::text::atomic::Kind::FirstItem)
             .then(|| crate::text::atomic::Probe::new(id));
         let outer = (

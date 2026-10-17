@@ -355,10 +355,11 @@ pub enum Kind {
     BottomMarginEdge,
 }
 
-/// The kind of baseline a box with this style has.
-pub fn kind(style: Option<&StyleDesc>) -> Kind {
+/// The kind of baseline a box with this `display` (the one its `@container` blocks gave it, or its
+/// style's) and style has.
+pub fn kind(display: Option<&str>, style: Option<&StyleDesc>) -> Kind {
     let Some(style) = style else { return Kind::LastLine };
-    match style.display.as_deref() {
+    match display {
         Some("inline-flex" | "inline-grid") => Kind::FirstItem,
         _ => {
             // `clip` is not a scroll container, and Chrome keeps the baseline of the text in it.
@@ -515,19 +516,25 @@ mod tests {
 
     #[test]
     fn the_baseline_comes_from_the_display_and_the_overflow() {
-        assert_eq!(kind(Some(&style(serde_json::json!({"display": "inline-block"})))), Kind::LastLine);
-        assert_eq!(kind(None), Kind::LastLine);
-        assert_eq!(kind(Some(&style(serde_json::json!({"display": "inline-flex"})))), Kind::FirstItem);
-        assert_eq!(kind(Some(&style(serde_json::json!({"display": "inline-grid"})))), Kind::FirstItem);
+        let kind_of = |json: serde_json::Value| {
+            let style = style(json);
+            kind(style.display.as_deref(), Some(&style))
+        };
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-block"})), Kind::LastLine);
+        assert_eq!(kind(None, None), Kind::LastLine);
+        let block = style(serde_json::json!({"display": "block"}));
+        assert_eq!(kind(Some("inline-flex"), Some(&block)), Kind::FirstItem, "the display a container block gave");
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-flex"})), Kind::FirstItem);
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-grid"})), Kind::FirstItem);
         for overflow in [
             serde_json::json!({"overflow": "hidden"}),
             serde_json::json!({"overflowY": "auto"}),
             serde_json::json!({"overflow": "visible", "overflowX": "scroll"}),
         ] {
-            assert_eq!(kind(Some(&style(overflow))), Kind::BottomMarginEdge);
+            assert_eq!(kind_of(overflow), Kind::BottomMarginEdge);
         }
-        assert_eq!(kind(Some(&style(serde_json::json!({"overflow": "clip"})))), Kind::LastLine);
-        assert_eq!(kind(Some(&style(serde_json::json!({"overflow": "visible"})))), Kind::LastLine);
+        assert_eq!(kind_of(serde_json::json!({"overflow": "clip"})), Kind::LastLine);
+        assert_eq!(kind_of(serde_json::json!({"overflow": "visible"})), Kind::LastLine);
     }
 
     #[test]

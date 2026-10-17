@@ -277,19 +277,25 @@ pub(crate) fn fold(style: &StyleDesc, containers: &dyn Containers) -> Option<Sty
 }
 
 /// Records what the folded `declared` style of an element with `@container` blocks says about
-/// whether it has a box, which its parent builds its children by (`display: none` takes no
-/// part in the parent's layout). Returns whether that is not what the parent assumed, so the
-/// frame has to be built again.
+/// its `display`, which its parent builds its children by (`display: none` takes no part in the
+/// parent's layout, and the paragraph planner makes a box of it, a word on a line or an atomic
+/// inline by it). Returns whether that is not what the parent assumed, so the frame has to be
+/// built again.
 pub(crate) fn settle_display(element: &RetainedElement, declared: Option<&StyleDesc>) -> bool {
-    let assumed = crate::layout::box_generation::declares_display_none(element);
-    let hidden = declared.and_then(|style| style.display.as_deref()) == Some("none");
-    element.container_hidden.set(Some(hidden));
-    assumed != hidden
+    let assumed = element.display().map(std::borrow::Cow::into_owned);
+    let folded = declared.and_then(|style| style.display.clone());
+    let changed = assumed != folded;
+    *element.container_display.borrow_mut() = Some(folded);
+    changed
 }
 
-/// [`settle_display`] for the children of `parent` that have no box now, which nothing else
-/// would visit to find that their blocks show them. `containers` is what they are in.
-pub(crate) fn settle_hidden_children(
+/// [`settle_display`] for the children of `parent` that its own build may not visit, since
+/// nothing else would find that their blocks show them or turn them into another kind of box: a
+/// child with no box now, and an inline box of the paragraph (a `<span>`, an element a block made
+/// `inline`), which is not built as an element. The inline boxes' children are settled too,
+/// since the planner reads their display to tell what the box around them is. `containers` is
+/// what they are in.
+pub(crate) fn settle_children(
     tree: &RetainedTree,
     parent: &RetainedElement,
     containers: &dyn Containers,
@@ -298,17 +304,27 @@ pub(crate) fn settle_hidden_children(
     if !tree.has_container_rules() {
         return;
     }
+    let mut changed = false;
+    settle_among(tree, parent, containers, &mut changed);
+    if changed {
+        window.request_redraw_before_present();
+    }
+}
+
+fn settle_among(
+    tree: &RetainedTree,
+    parent: &RetainedElement,
+    containers: &dyn Containers,
+    changed: &mut bool,
+) {
     for child_id in crate::layout::contents::flatten(tree, &parent.children).iter() {
         let Some(child) = tree.elements.get(child_id) else { continue };
-        let Some(style) = child.style.as_deref().filter(|style| style.container_rules.is_some()) else {
-            continue;
-        };
-        if !crate::layout::box_generation::is_display_none(child) {
-            continue;
+        if let Some(style) = child.style.as_deref().filter(|style| style.container_rules.is_some()) {
+            let folded = fold(style, containers);
+            *changed |= settle_display(child, folded.as_ref().or(Some(style)));
         }
-        let folded = fold(style, containers);
-        if settle_display(child, folded.as_ref().or(Some(style))) {
-            window.request_redraw_before_present();
+        if crate::text::inline::is_inline_wrapper(child, parent) {
+            settle_among(tree, child, containers, changed);
         }
     }
 }

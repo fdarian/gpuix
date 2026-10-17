@@ -6751,10 +6751,13 @@ Differences from the browser:
 - `<virtual-list>` takes no `@container` blocks (it takes no `hover` either), and
   neither does an inline `<span>`
 - A block is evaluated where the element is built, so `elementsAt`, stacking and the
-  paragraph planner read the style without it. `display: none` is the exception: the
-  parent is rebuilt when a block hides or shows its child. `position`, `zIndex`,
-  `display: contents` and `display` values that change how the parent lays out text
-  (`inline`, `inline-block`, `inline-flex`, `inline-grid`) are not taken from a block by those readers
+  paragraph planner read the style without it. `display` is the exception for the values
+  that decide what kind of box a child is in its parent's text (`none`, `block`, `inline`,
+  `inline-block`, `inline-flex`, `inline-grid`, and `flex` or `grid` for the container
+  itself): the parent is rebuilt when a block changes one. `position`, `zIndex`,
+  `display: contents` and the other `display` values are not taken from a block by those readers.
+  An element a block makes `inline` is a span of its parent's text, which takes no blocks, so its
+  other blocks stop applying while it is
 - Vertical writing modes do not exist, so `cqi` is `cqw` and `cqb` is `cqh`, and
   `inline-size` is `width`
 - Sizes are snapped to sixty-fourths of a pixel, the unit browsers lay out in

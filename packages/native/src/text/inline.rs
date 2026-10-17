@@ -55,11 +55,10 @@ pub fn is_host_container(element: &RetainedElement) -> bool {
     is_host_type(&element.element_type)
 }
 
-fn display_of(element: &RetainedElement) -> Option<&str> {
-    element
-        .style
-        .as_deref()
-        .and_then(|style| style.display.as_deref())
+/// The `display` the planner sees: the one an `@container` block gave the element when the
+/// last build folded them in, or the style's.
+fn display_of(element: &RetainedElement) -> Option<std::borrow::Cow<'_, str>> {
+    element.display()
 }
 
 /// A child that generates no box at all.
@@ -82,10 +81,19 @@ pub fn is_raw_text(element: &RetainedElement) -> bool {
 /// grid items. A container that scrolls on x alone is a flex viewport too, see
 /// `build_host_container`.
 pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
-    let Some(style) = style else { return false };
-    if display::lays_out_items(style.display.as_deref()) {
+    lays_out_items_as(style, style.and_then(|style| style.display.as_deref()))
+}
+
+/// [`lays_out_items`] for an element, with the display its `@container` blocks gave it.
+fn element_lays_out_items(element: &RetainedElement) -> bool {
+    lays_out_items_as(element.style.as_deref(), display_of(element).as_deref())
+}
+
+fn lays_out_items_as(style: Option<&StyleDesc>, display_value: Option<&str>) -> bool {
+    if display::lays_out_items(display_value) {
         return true;
     }
+    let Some(style) = style else { return false };
     let x = style.overflow_x.as_deref().or(style.overflow.as_deref());
     let y = style.overflow_y.as_deref().or(style.overflow.as_deref());
     x == Some("scroll") && y != Some("scroll")
@@ -119,7 +127,7 @@ fn is_out_of_flow(element: &RetainedElement) -> bool {
 /// `inline-block`, `inline-flex` or `inline-grid` box that is in the flow. One
 /// that is positioned absolutely or fixed is blockified, as CSS says.
 pub fn is_atomic(element: &RetainedElement) -> bool {
-    display::is_atomic_inline(display_of(element))
+    display::is_atomic_inline(display_of(element).as_deref())
         && !is_out_of_flow(element)
         && !matches!(element.element_type.as_str(), "anchored" | "virtual-list")
 }
@@ -135,17 +143,26 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     if is_atomic(element) {
         return true;
     }
-    // A label or a form has behaviour of its own, so it is a block.
-    if !is_host_container(element) || matches!(element.element_type.as_str(), "label" | "form") {
-        return false;
-    }
-    if element.custom_props().contains_key("highlight") {
-        return false;
-    }
     // It generates no box, so its children are inline when they would be
     // children of `parent`.
-    if is_display_contents(element) {
+    if is_host_container(element) && is_display_contents(element) && !is_special_host(element) {
         return children_are_inline(tree, element, parent);
+    }
+    is_inline_wrapper(element, parent) && children_are_inline(tree, element, element)
+}
+
+/// A host that is a block whatever its style says, or that is not a box to begin with.
+fn is_special_host(element: &RetainedElement) -> bool {
+    matches!(element.element_type.as_str(), "label" | "form") || element.custom_props().contains_key("highlight")
+}
+
+/// Whether `element`, a child of `parent` in a block container, is an inline box that holds the
+/// text and inline boxes inside it in the paragraph of its parent, as far as its own
+/// style and kind say. Whether everything it holds is inline is up to [`is_inline_box`].
+pub fn is_inline_wrapper(element: &RetainedElement, parent: &RetainedElement) -> bool {
+    // A label or a form has behaviour of its own, so it is a block.
+    if !is_host_container(element) || is_special_host(element) {
+        return false;
     }
     // A focusable `<span>` stays inline: its paragraph anchors the focus handle
     // ([`super::inline_focus`]). A focusable `<text>` is a block, an element of
@@ -161,12 +178,12 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
         "text" => matches!(parent.element_type.as_str(), "text" | "span"),
         _ => false,
     };
-    let inline = match display_of(element) {
+    let inline = match display_of(element).as_deref() {
         Some("inline") => true,
         Some(_) => false,
         None => inline_by_default,
     };
-    inline && !lays_out_items(element.style.as_deref()) && children_are_inline(tree, element, element)
+    inline && !element_lays_out_items(element)
 }
 
 fn children_are_inline(tree: &RetainedTree, element: &RetainedElement, parent: &RetainedElement) -> bool {
@@ -460,7 +477,7 @@ pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Ch
 /// The plan is in paint order, which `order` reorders. Selection and find number text in
 /// document order, as the browser does, and read this.
 pub fn plan_children_at(tree: &RetainedTree, container: &RetainedElement) -> Vec<(Child, u32)> {
-    let items = lays_out_items(container.style.as_deref());
+    let items = element_lays_out_items(container);
     let mut out = Vec::new();
     let mut paragraph = Builder::new(container.id, white_space::computed(tree, container), items);
     if let Some(content) = container.content.as_deref() {
@@ -1398,6 +1415,60 @@ mod tests {
             let covered: usize = paragraph.pieces.iter().map(|piece| piece.range.len()).sum();
             assert_eq!(covered, paragraph.text.len(), "the pieces cover the text exactly");
         }
+    }
+
+    /// What a build found for `id` once its `@container` blocks were folded in.
+    fn container_display(f: &Fixture, id: u64, display: Option<&str>) {
+        *f.tree.elements[&id].container_display.borrow_mut() = Some(display.map(str::to_string));
+    }
+
+    #[test]
+    fn the_display_an_at_container_block_gave_decides_what_kind_of_box_a_child_is() {
+        let kinds = |plan: &[Child]| -> Vec<&'static str> {
+            plan.iter()
+                .map(|child| match child {
+                    Child::Paragraph(paragraph) if paragraph.atomics().next().is_some() => "atomic paragraph",
+                    Child::Paragraph(_) => "paragraph",
+                    Child::Block(_) => "block",
+                })
+                .collect()
+        };
+        // A block that a container made an inline-block, a span, and nothing at all.
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "div");
+        f.styled(3, serde_json::json!({"display": "block", "width": 10, "height": 10}));
+        f.text(1, 4, " b");
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph", "block", "paragraph"]);
+        container_display(&f, 3, Some("inline-block"));
+        assert_eq!(kinds(&f.plan(1)), vec!["atomic paragraph"]);
+        container_display(&f, 3, Some("inline"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph"]);
+        container_display(&f, 3, Some("none"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph"]);
+        container_display(&f, 3, Some("block"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph", "block", "paragraph"]);
+
+        // And the other way: an inline-block that became a block.
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        inline_block(&mut f, 1, 3, "inline-block");
+        f.text(1, 4, " b");
+        assert_eq!(kinds(&f.plan(1)), vec!["atomic paragraph"]);
+        container_display(&f, 3, Some("block"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph", "block", "paragraph"]);
+
+        // A span that became a block, and a container that became a flex container.
+        let mut f = Fixture::new();
+        f.text(1, 2, "a ");
+        f.add(1, 3, "span");
+        f.text(3, 5, "b");
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph"]);
+        container_display(&f, 3, Some("block"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph", "block"]);
+        container_display(&f, 3, None);
+        container_display(&f, 1, Some("flex"));
+        assert_eq!(kinds(&f.plan(1)), vec!["paragraph", "block"], "the items of a flex container");
     }
 
     #[test]
