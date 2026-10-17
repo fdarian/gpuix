@@ -1391,7 +1391,7 @@ mod tests {
 
     #[test]
     fn a_radius_is_a_start_value_only_when_it_is_a_circular_px_corner() {
-        let colors = Colors::root();
+        let colors = sized_colors();
         let read = |json: &str| {
             let style: StyleDesc = serde_json::from_str(json).unwrap();
             AnimProp::BorderTopLeftRadius.read(&style, &colors)
