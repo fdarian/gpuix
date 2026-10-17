@@ -916,6 +916,58 @@ mod tests {
         assert_eq!(f.plan(1).len(), 1, "a two-axis scroller is a block");
     }
 
+    /// CSS Grid 6.1: text and a span that are children of the grid are separate items (the span
+    /// blockified, each run of text anonymous); what is inside an item is its own inline context.
+    #[test]
+    fn a_grid_wraps_each_text_run_and_blockifies_a_span_between_them() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"display": "grid"}));
+        f.text(1, 2, "AA");
+        f.add(1, 3, "span").text(3, 4, "AAA");
+        f.text(1, 5, "AA");
+        let plan = f.plan(1);
+        assert_eq!(plan.len(), 3);
+        assert_eq!(paragraphs(&plan)[0].text, "AA");
+        assert_eq!(plan[1], Child::Block(3));
+        assert_eq!(paragraphs(&plan)[1].text, "AA");
+    }
+
+    #[test]
+    fn a_span_inside_a_grid_or_flex_item_stays_in_the_items_paragraph() {
+        for container in ["grid", "flex"] {
+            for item in ["div", "span", "text"] {
+                let mut f = Fixture::new();
+                f.styled(1, serde_json::json!({"display": container}));
+                f.add(1, 2, item);
+                f.text(2, 3, "AA");
+                f.add(2, 4, "span").text(4, 5, "AAA");
+                f.text(2, 6, "AA");
+                assert_eq!(f.plan(1), vec![Child::Block(2)], "{container} {item}");
+                let plan = f.plan(2);
+                assert_eq!(plan.len(), 1, "{container} {item}");
+                assert_eq!(paragraphs(&plan)[0].text, "AAAAAAA", "{container} {item}");
+            }
+        }
+    }
+
+    /// The stable label: an `inline-grid` span between text is one placeholder in the paragraph, and the
+    /// two spans stacked in its cell are items of its own, blockified.
+    #[test]
+    fn an_inline_grid_label_is_atomic_in_a_text_run_and_its_spans_are_its_items() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "div");
+        f.text(2, 3, "before ");
+        f.add(2, 4, "span");
+        f.styled(4, serde_json::json!({"display": "inline-grid", "whiteSpace": "nowrap"}));
+        f.add(4, 5, "span").text(5, 6, "Label");
+        f.add(4, 7, "span").text(7, 8, "Label");
+        f.text(2, 9, " after");
+        let plan = f.plan(2);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(paragraphs(&plan)[0].atomics().map(|(id, _)| id).collect::<Vec<_>>(), vec![4]);
+        assert_eq!(f.plan(4), vec![Child::Block(5), Child::Block(7)]);
+    }
+
     /// Solid makes an empty text node for every dynamic hole. In a flex
     /// container with a `gap` it must not become an item, or it adds a gap.
     #[test]
