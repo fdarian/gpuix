@@ -616,8 +616,12 @@ impl TestGpuixRenderer {
         // The offscreen window is also never key. GPUI reports focus paths
         // only for an active window, so without this onFocus / onBlur never
         // fire in tests. Real activation would take the user's keyboard.
+        //
+        // `GPUIX_TEST_A11Y_OFF` runs a suite as an app without a screen reader runs, in which
+        // gpui skips what lies outside its clip: see `setA11yActive`.
+        let a11y_active = std::env::var_os("GPUIX_TEST_A11Y_OFF").is_none();
         cx.update_window(window, |_, window, cx| {
-            window.set_a11y_active_for_tests(true);
+            window.set_a11y_active_for_tests(a11y_active);
             window.set_active_for_tests(true, cx);
         })
         .map_err(|e| Error::from_reason(e.to_string()))?;
@@ -708,6 +712,21 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_layout_pass_count(&self) -> Result<f64> {
         update_view(|_view, window, _cx| window.layout_pass_count() as f64)
+    }
+
+    /// Pretends a screen reader is connected, or not. The test window starts with one, so every
+    /// flush builds an accessibility tree. An app without one lets gpui skip the subtrees that lie
+    /// outside their clip (`getCulledSubtreeCount`), which an accessibility tree has to hold.
+    #[napi(js_name = "setA11yActive")]
+    pub fn set_a11y_active(&self, active: bool) -> Result<()> {
+        update_view(|_view, window, _cx| window.set_a11y_active_for_tests(active))
+    }
+
+    /// How many subtrees the window has skipped as lying outside their clip, over its life: the
+    /// work `getPaintedFrameCount` frames did not do. A test compares it before and after a frame.
+    #[napi]
+    pub fn get_culled_subtree_count(&self) -> Result<f64> {
+        update_view(|_view, window, _cx| window.culled_subtree_count() as f64)
     }
 
     /// Apply a batch of mutations in a single FFI call.

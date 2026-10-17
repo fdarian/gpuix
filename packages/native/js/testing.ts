@@ -136,6 +136,8 @@ interface NativeTestRendererApi
   resetBuildCounters(): void
   getPaintedFrameCount(): number
   getLayoutPassCount(): number
+  getCulledSubtreeCount(): number
+  setA11yActive(active: boolean): void
   setInlineDraws(enabled: boolean): void
   drawFrame(): void
   getElementBounds(elementId: number): ElementBounds | null
@@ -898,6 +900,18 @@ export class TestRenderer implements NativeRenderer {
    *  once regardless. */
   getLayoutPassCount(): number {
     return this.native.getLayoutPassCount()
+  }
+
+  /** Pretends a screen reader is connected, as the test window starts out,
+   *  or not. gpui skips what lies outside its clip only without one. */
+  setA11yActive(active: boolean): void {
+    this.native.setA11yActive(active)
+  }
+
+  /** Subtrees the window has skipped as lying outside their clip, over its
+   *  life. Compare before and after a frame. */
+  getCulledSubtreeCount(): number {
+    return this.native.getCulledSubtreeCount()
   }
 
   getElementBounds(elementId: number): ElementBounds | null {

@@ -242,6 +242,11 @@ impl Element for Measured {
         self.child.lift_z()
     }
 
+    // What it measures is read from paint, which a culled child still runs.
+    fn cull_outset(&self) -> Option<Edges<Pixels>> {
+        self.child.cull_outset()
+    }
+
     fn prepaint(
         &mut self,
         _: Option<&GlobalElementId>,

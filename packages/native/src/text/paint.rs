@@ -297,6 +297,9 @@ pub struct SelectableText {
     pub aligned_boxes: Vec<super::paragraph::BoxStyle>,
     /// The atomic inlines of a paragraph. `parent` of each is an index of `aligned_boxes`.
     pub atomics: Vec<gpui::AtomicInline>,
+    /// How far past its box the text can draw, if it may be skipped outside its clip, see
+    /// [`gpui::InteractiveElement::cullable`].
+    pub cull_outset: Option<gpui::Edges<gpui::Pixels>>,
 }
 
 impl SelectableText {
@@ -336,6 +339,7 @@ impl SelectableText {
             inline_decorations: Vec::new(),
             aligned_boxes: Vec::new(),
             atomics: Vec::new(),
+            cull_outset: None,
         }
     }
 }
@@ -370,6 +374,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_decorations,
         aligned_boxes,
         atomics,
+        cull_outset,
     } = opts;
     let key = selection_key(element_id, sub);
     let doc = selection::DocPos::new(path, sub);
@@ -531,9 +536,12 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
 
     // Positioned only to hold the underlay. Lifted, every text run would rise above the
     // later boxes of its context.
-    div()
-        .relative()
-        .unlifted()
+    let wrapper = div().relative().unlifted();
+    let wrapper = match cull_outset {
+        Some(outset) => wrapper.cullable(outset),
+        None => wrapper,
+    };
+    wrapper
         .child(underlay)
         .child(glyphs)
         .children(decorations)

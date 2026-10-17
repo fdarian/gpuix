@@ -2778,7 +2778,10 @@ time**. `8.3 MS` is about 120 Hz.
 `<virtual-list>` is the only thing that virtualizes. A surface where **you** own
 the offset — a timeline, a node graph, a map — places its children absolutely,
 so GPUI builds and lays out **every** retained child on every frame. Nothing
-skips them for you.
+skips that for you. GPUI does skip the prepaint and paint of in-flow content
+outside an `overflow` clip, as a browser does, but a clipped box still costs about
+two thirds of a visible one. Content
+placed with `position: absolute` is never skipped.
 
 `memo` and culling fix different halves, and only one of them is the draw:
 

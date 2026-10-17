@@ -5978,6 +5978,7 @@ impl GpuixView {
             baseline_probe: None,
             collapsed: Default::default(),
             text_box_trim: Default::default(),
+            subtree: crate::layout::cull::Subtree::empty(),
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -6167,6 +6168,9 @@ pub(crate) struct BuildCtx<'a> {
     /// The ends of the lines of the next element built that an ancestor's `text-box-trim`
     /// reaches through the blocks between. Taken by `build_element`.
     pub text_box_trim: gpui::TextBoxTrim,
+    /// What the element being built has under it so far: how far it draws past its boxes, and
+    /// whether gpui may skip it outside its clip. See `layout::cull`.
+    pub subtree: crate::layout::cull::Subtree,
 }
 
 impl BuildCtx<'_> {
@@ -7322,6 +7326,7 @@ impl gpui::Render for GpuixView {
                     baseline_probe: None,
                     collapsed: Default::default(),
                     text_box_trim: Default::default(),
+                    subtree: crate::layout::cull::Subtree::empty(),
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7734,6 +7739,8 @@ fn build_element_unpumped(
         ctx.inherited.highlight = resolved.map(|(context, _)| context);
     }
 
+    // What the element holds is its own to say; the element above hears it once it is built.
+    let enclosing = std::mem::replace(&mut ctx.subtree, crate::layout::cull::Subtree::empty());
     let built = match element.element_type.as_str() {
         // `<text>` is a `<div>` that happens to carry a string. Giving it its
         // own builder meant every interaction prop on the shared `Props` type
@@ -7756,6 +7763,7 @@ fn build_element_unpumped(
         }
         "virtual-list" => {
             ctx.custom_registry.destroy(id);
+            ctx.subtree.block();
             build_virtual_list(element, ctx, window, cx)
         }
 
@@ -7842,8 +7850,12 @@ fn build_element_unpumped(
                     ctx.event_callback,
                 ),
             };
-            ctx.custom_registry
-                .render(custom_type, element.custom_props(), render_ctx, window, cx)
+            let built = ctx
+                .custom_registry
+                .render(custom_type, element.custom_props(), render_ctx, window, cx);
+            // It draws and is hit as it likes, and paints and prepaints for itself.
+            ctx.subtree.block();
+            built
         }
     };
 
@@ -7864,10 +7876,17 @@ fn build_element_unpumped(
     } else {
         built
     };
-    match layout_source {
-        Some(source) => ctx.layout_flips.wrap(id, source, built, ctx.now, ctx.motion_values),
+    let built = match layout_source {
+        Some(source) => {
+            // It moves the element by an offset of its own.
+            ctx.subtree.block();
+            ctx.layout_flips.wrap(id, source, built, ctx.now, ctx.motion_values)
+        }
         None => built,
-    }
+    };
+    let below = std::mem::replace(&mut ctx.subtree, enclosing);
+    ctx.subtree.merge(below);
+    built
 }
 
 fn build_virtual_list(
@@ -8223,6 +8242,19 @@ pub(crate) fn build_host_container(
     if crate::layout::stacking::forms_context(style, stacking_root, &ctx.inherited.colors, &ctx.inherited.lengths) {
         host = host.stacking_context();
     }
+    ctx.subtree = crate::layout::cull::Subtree::of_element(
+        ctx.subtree,
+        style,
+        &ctx.inherited.colors,
+        &ctx.inherited.lengths,
+    );
+    // The borders of a collapsed table are painted by the table over its cells.
+    if ctx.inherited.table.collapse {
+        ctx.subtree.block();
+    }
+    if let Some(outset) = ctx.subtree.outset() {
+        host = host.cullable(outset);
+    }
     host.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         host = host.paint_ranks(paint_ranks);
@@ -8344,6 +8376,7 @@ fn build_content(
     if element.children.is_empty() {
         if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
             content_elements.push(text_content(element, &content, trim, ctx));
+            ctx.subtree.merge(crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32));
             paint_ranks.push(0);
         }
     }
@@ -8498,7 +8531,9 @@ fn build_plan(
                         }
                     }
                 }
-                content_elements.push(paragraph_content(&paragraph, child_trim, ctx, window, cx));
+                let (paragraph_element, subtree) = paragraph_content(&paragraph, child_trim, ctx, window, cx);
+                content_elements.push(paragraph_element);
+                ctx.subtree.merge(subtree);
                 if let Some(outside) = outside {
                     ctx.inherited = outside;
                 }
@@ -8552,6 +8587,12 @@ fn build_contents_container(
     };
     let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
     el = crate::text::atomic::report_containing_height(el, containing_heights);
+    if ctx.inherited.table.collapse {
+        ctx.subtree.block();
+    }
+    if let Some(outset) = ctx.subtree.outset() {
+        el = el.cullable(outset);
+    }
     el.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         el = el.paint_ranks(paint_ranks);
@@ -8585,6 +8626,7 @@ fn text_content(
             .highlight
             .clone()
             .map(crate::text::HighlightSource::Resolved),
+        cull_outset: crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32).outset(),
         ..crate::text::SelectableText::new(
             element.id,
             0,
@@ -8606,7 +8648,7 @@ fn paragraph_content(
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
-) -> gpui::AnyElement {
+) -> (gpui::AnyElement, crate::layout::cull::Subtree) {
     let motion = ctx.inline_styles(paragraph);
     let styles = {
         let ctx = &*ctx;
@@ -8637,7 +8679,44 @@ fn paragraph_content(
         &ctx.inherited.lengths,
         &states,
     );
-    selectable_text(crate::text::SelectableText {
+    let inline_decorations = crate::text::inline_decoration::of(
+        ctx.tree,
+        paragraph,
+        &ctx.inherited.colors,
+        &ctx.inherited.lengths,
+        &states,
+        &motion,
+        &insets,
+    );
+    let inline_cursors = crate::text::inline_cursor::of(
+        ctx.tree,
+        paragraph,
+        ctx.inherited.pointer_events_none,
+        ctx.inherited.inert,
+        &states,
+        &insets,
+    );
+    let inline_regions = if ctx.inherited.frameless {
+        crate::text::inline_region::of(ctx.tree, paragraph, ctx.inherited.app_region, &states, &insets)
+    } else {
+        Vec::new()
+    };
+    let inline_focus = focusable_inline_boxes(paragraph, ctx);
+    // Plain text draws inside the boxes of its lines. What a box around part of it paints, an
+    // inline element in the line and its tab stop, is not bounded by them.
+    let plain = atomics.is_empty()
+        && inline_decorations.is_empty()
+        && inline_cursors.is_empty()
+        && inline_regions.is_empty()
+        && inline_focus.is_empty()
+        && !insets.takes_space_along_the_line();
+    let subtree = if plain {
+        crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32)
+    } else {
+        crate::layout::cull::Subtree::blocked()
+    };
+    let cull_outset = subtree.outset();
+    let paragraph_element = selectable_text(crate::text::SelectableText {
         text_box_trim,
         group: None,
         line,
@@ -8660,36 +8739,12 @@ fn paragraph_content(
         )
         .map(Arc::new),
         inline_boxes: inline_boxes(paragraph, ctx, &insets),
-        inline_focus: focusable_inline_boxes(paragraph, ctx),
-        inline_decorations: crate::text::inline_decoration::of(
-            ctx.tree,
-            paragraph,
-            &ctx.inherited.colors,
-            &ctx.inherited.lengths,
-            &states,
-            &motion,
-            &insets,
-        ),
-        inline_cursors: crate::text::inline_cursor::of(
-            ctx.tree,
-            paragraph,
-            ctx.inherited.pointer_events_none,
-            ctx.inherited.inert,
-            &states,
-            &insets,
-        ),
-        inline_regions: if ctx.inherited.frameless {
-            crate::text::inline_region::of(
-                ctx.tree,
-                paragraph,
-                ctx.inherited.app_region,
-                &states,
-                &insets,
-            )
-        } else {
-            Vec::new()
-        },
+        inline_focus,
+        inline_decorations,
+        inline_cursors,
+        inline_regions,
         inline_insets: insets.takes_space_along_the_line().then(|| insets.clone()),
+        cull_outset,
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
@@ -8699,7 +8754,8 @@ fn paragraph_content(
             ctx.selection.clone(),
             ctx.inherited.selection_wash,
         )
-    })
+    });
+    (paragraph_element, subtree)
 }
 
 /// The atomic inlines of `paragraph`, built as the elements they are, and the inline boxes the

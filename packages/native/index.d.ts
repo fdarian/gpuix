@@ -476,6 +476,17 @@ export declare class TestGpuixRenderer {
    */
   getLayoutPassCount(): number
   /**
+   * Pretends a screen reader is connected, or not. The test window starts with one, so every
+   * flush builds an accessibility tree. An app without one lets gpui skip the subtrees that lie
+   * outside their clip (`getCulledSubtreeCount`), which an accessibility tree has to hold.
+   */
+  setA11yActive(active: boolean): void
+  /**
+   * How many subtrees the window has skipped as lying outside their clip, over its life: the
+   * work `getPaintedFrameCount` frames did not do. A test compares it before and after a frame.
+   */
+  getCulledSubtreeCount(): number
+  /**
    * Apply a batch of mutations in a single FFI call.
    * Same format as GpuixRenderer::apply_batch (string op names).
    * Returns accumulated destroyed IDs from all destroyElement ops.

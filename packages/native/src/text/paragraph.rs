@@ -692,6 +692,48 @@ impl gpui::Element for InlineText {
             cx,
         )
     }
+
+    fn prepaint_culled(
+        &mut self,
+        id: Option<&gpui::GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
+        bounds: gpui::Bounds<gpui::Pixels>,
+        state: &mut (),
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        gpui::Element::prepaint_culled(
+            &mut self.styled,
+            id,
+            inspector_id,
+            bounds,
+            state,
+            window,
+            cx,
+        )
+    }
+
+    fn paint_culled(
+        &mut self,
+        id: Option<&gpui::GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
+        bounds: gpui::Bounds<gpui::Pixels>,
+        request_layout: &mut (),
+        prepaint: &mut (),
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        gpui::Element::paint_culled(
+            &mut self.styled,
+            id,
+            inspector_id,
+            bounds,
+            request_layout,
+            prepaint,
+            window,
+            cx,
+        )
+    }
 }
 
 #[cfg(test)]
