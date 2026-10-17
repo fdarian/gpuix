@@ -166,6 +166,8 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
 /// text run gets a distinct, document-ordered selection sub-key.
 pub struct MdContext {
     pub element_id: u64,
+    /// See [`crate::custom_elements::CustomRenderContext::doc_path`].
+    pub doc_path: Arc<[u32]>,
     pub selection: SharedSelection,
     pub selectable: bool,
     pub selection_wash: Hsla,
@@ -184,6 +186,7 @@ pub struct MdContext {
 impl MdContext {
     pub fn new(
         element_id: u64,
+        doc_path: Arc<[u32]>,
         selection: SharedSelection,
         selectable: bool,
         selection_wash: Hsla,
@@ -193,6 +196,7 @@ impl MdContext {
     ) -> Self {
         Self {
             element_id,
+            doc_path,
             selection,
             selectable,
             selection_wash,
@@ -402,6 +406,7 @@ fn flat_text_element(flat: &FlatText, ctx: &mut MdContext) -> AnyElement {
         ..crate::text::SelectableText::new(
             ctx.element_id,
             sub,
+            ctx.doc_path.clone(),
             flat.text.clone(),
             Some(flat.runs.clone()),
             ctx.selection.clone(),
@@ -457,6 +462,7 @@ fn render_code_block(language: Option<&str>, code: &str, ctx: &mut MdContext) ->
             ..crate::text::SelectableText::new(
                 ctx.element_id,
                 sub,
+                ctx.doc_path.clone(),
                 SharedString::from(line.to_string()),
                 Some(runs),
                 ctx.selection.clone(),

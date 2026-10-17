@@ -5816,6 +5816,7 @@ impl GpuixView {
         list_id: u64,
         index: usize,
         expected_child_id: u64,
+        list_path: Vec<u32>,
         inherited: Inherited,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
@@ -5834,6 +5835,8 @@ impl GpuixView {
                 .flatten()
         });
 
+        let mut row_path = list_path;
+        row_path.push(index as u32);
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let window_start = self
@@ -5922,6 +5925,7 @@ impl GpuixView {
             svg_trees: &mut self.svg_trees,
             now,
             selection: self.selection.clone(),
+            doc_path: row_path,
             inherited,
             highlights: &mut self.highlights,
             paint_reports: &self.paint_reports,
@@ -6064,6 +6068,9 @@ pub(crate) struct BuildCtx<'a> {
     svg_trees: &'a mut crate::custom_elements::svg_tree::SvgTrees,
     pub now: web_time::Instant,
     pub selection: SharedSelection,
+    /// Child indices from the root to the element being built, in the retained tree: the document
+    /// position selection and find order text by. A virtual-list row starts at its list's.
+    pub doc_path: Vec<u32>,
     /// Inherited text state, resolved the way CSS inherits it. The renderer's
     /// own theme only seeds the root selection wash; custom elements resolve
     /// their own theme from their `theme` prop.
@@ -7142,6 +7149,7 @@ impl gpui::Render for GpuixView {
                     svg_trees: &mut self.svg_trees,
                     now,
                     selection: self.selection.clone(),
+                    doc_path: Vec::new(),
                     inherited: Inherited::root(
                         &theme,
                         window.appearance(),
@@ -7547,22 +7555,27 @@ fn build_element_unpumped(
                 child_ids
                     .iter()
                     .copied()
-                    .filter(|child_id| {
+                    .enumerate()
+                    .filter(|(_, child_id)| {
                         crate::layout::box_generation::generates_box(ctx.tree, *child_id)
                     })
-                    .map(|child_id| {
+                    .map(|(ix, child_id)| {
                         ctx.contents_overlay =
                             crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
                         if custom_type == "anchored" {
                             ctx.anchor_scope = Some(id);
                         }
-                        build_element(child_id, ctx, window, cx)
+                        ctx.doc_path.push(ix as u32);
+                        let child = build_element(child_id, ctx, window, cx);
+                        ctx.doc_path.pop();
+                        child
                     })
                     .collect()
             };
             let inherited = ctx.inherited.clone();
             let render_ctx = CustomRenderContext {
                 id,
+                doc_path: ctx.doc_path.as_slice().into(),
                 events: element.events(),
                 event_callback: ctx.event_callback,
                 focus_handle: ctx.focus_handles.get(&id),
@@ -7745,6 +7758,7 @@ fn build_virtual_list(
     // Cloned, not copied: gpui runs this processor once per requested row, so
     // the captured value must survive every call.
     let inherited = ctx.inherited.clone();
+    let list_path = ctx.doc_path.clone();
     let render_item = cx.processor(move |view, index: usize, window, cx| {
         let Some(entry) = view.virtual_lists.get(&list_id) else {
             return unmounted_virtual_row(1.0);
@@ -7753,7 +7767,7 @@ fn build_virtual_list(
             // Empty measures as 0 and poisons ListState. Keep the estimate.
             return unmounted_virtual_row(entry.config.estimated_item_height.unwrap_or(1.0));
         };
-        view.build_virtual_child(list_id, index, child_id, inherited.clone(), window, cx)
+        view.build_virtual_child(list_id, index, child_id, list_path.clone(), inherited.clone(), window, cx)
     });
     let scroll_state = list_state.clone();
     // The list inserts its own hitbox under this id, so a host id makes it a
@@ -7931,10 +7945,10 @@ pub(crate) fn build_host_container(
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
-        crate::text::inline::plan_children(ctx.tree, element)
+        crate::text::inline::plan_children_at(ctx.tree, element)
     };
     if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
-        if let Some(content) = crate::text::inline::accessible_text(&plan) {
+        if let Some(content) = crate::text::inline::accessible_text(plan.iter().map(|(child, _)| child)) {
             el = el.aria_value(content);
         }
     }
@@ -7966,7 +7980,7 @@ pub(crate) fn build_host_container(
 /// What a host element holds, in paint order, with the paint rank of each.
 fn build_content(
     element: &crate::retained_tree::RetainedElement,
-    plan: Vec<crate::text::inline::Child>,
+    plan: Vec<(crate::text::inline::Child, u32)>,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -7989,7 +8003,8 @@ fn build_content(
     // Children. Consecutive inline children are one paragraph, see
     // `text::inline`; the rest are elements of their own.
     if !element.children.is_empty() {
-        for child in plan {
+        for (child, at) in plan {
+            ctx.doc_path.push(at);
             match child {
                 crate::text::inline::Child::Block(child_id) => {
                     let item = crate::layout::stacking::is_flex_or_grid_container(element);
@@ -8012,6 +8027,7 @@ fn build_content(
                     content_elements.push(paragraph_content(&paragraph, ctx));
                 }
             }
+            ctx.doc_path.pop();
         }
     }
     (content_elements, paint_ranks)
@@ -8045,7 +8061,7 @@ fn build_contents_container(
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
-        crate::text::inline::plan_children(ctx.tree, element)
+        crate::text::inline::plan_children_at(ctx.tree, element)
     };
     let (content, paint_ranks) = build_content(element, plan, ctx, window, cx);
     el.extend(content);
@@ -8080,6 +8096,7 @@ fn text_content(
         ..crate::text::SelectableText::new(
             element.id,
             0,
+            ctx.doc_path.as_slice().into(),
             gpui::SharedString::from(content.to_string()),
             None,
             ctx.selection.clone(),
@@ -8172,6 +8189,7 @@ fn paragraph_content(
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
+            ctx.doc_path.as_slice().into(),
             gpui::SharedString::from(paragraph.text.clone()),
             None,
             ctx.selection.clone(),

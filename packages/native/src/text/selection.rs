@@ -8,10 +8,12 @@
 //! continuously because its whole document is ONE element over one text model.
 //! GPUIX renders a TREE of text elements, so this module rebuilds that
 //! continuity: every frame the renderer registers each painted text element in
-//! paint order (which IS document order), and a drag anchored in one element
-//! resolves against that registry into per-element SPANS — partial in the anchor
-//! and head elements, whole for every element between. The wash paints per
-//! element from its span; copy joins the spans in order.
+//! paint order, and a drag anchored in one element resolves against that
+//! registry, SORTED INTO DOCUMENT ORDER by [`DocPos`], into per-element SPANS —
+//! partial in the anchor and head elements, whole for every element between.
+//! Paint order is not document order: a positioned element is lifted and paints
+//! after the siblings that follow it. The wash paints per element from its span;
+//! copy joins the spans in order. Hit testing alone stays in paint order.
 //!
 //! This is the pure state half. It has no gpui dependency so it can be unit
 //! tested without a window. The registry, geometry and mouse listeners live in
@@ -23,6 +25,33 @@
 //! selection.
 
 use std::ops::Range;
+use std::sync::Arc;
+
+/// Where a text run sits in the document, for ordering selection and find.
+///
+/// The path of child indices from the root through the retained tree, then the run's `sub`.
+/// Tree order, not flex or grid `order` and not paint order, as in a browser, where the
+/// selection and Ctrl+F follow the DOM. A shorter path that is a prefix of a longer one comes
+/// first, so a container's own text precedes its children's.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DocPos {
+    path: Arc<[u32]>,
+    sub: usize,
+}
+
+impl DocPos {
+    pub fn new(path: Arc<[u32]>, sub: usize) -> Self {
+        Self { path, sub }
+    }
+}
+
+/// The indices of `positions` in document order. Equal positions keep their paint order, so a
+/// row gpui paints twice stays adjacent to itself.
+pub fn document_order(positions: &[&DocPos]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..positions.len()).collect();
+    order.sort_by(|a, b| positions[*a].cmp(positions[*b]));
+    order
+}
 
 /// One element's slice of the selection, in document order.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -127,7 +156,24 @@ impl SelectionState {
         self.active && self.dragging
     }
 
-    /// Resolve a drag head against this frame's visible runs.
+    /// [`Self::update_drag`] for runs in PAINT order: `head` indexes `painted`, as the hit test
+    /// that found it did, and the spans come out in document order.
+    pub fn update_drag_painted(
+        &mut self,
+        painted: &[(RegisteredText, &DocPos)],
+        head: (usize, usize),
+    ) -> bool {
+        let positions: Vec<&DocPos> = painted.iter().map(|(_, doc)| *doc).collect();
+        let order = document_order(&positions);
+        let Some(head_in_document) = order.iter().position(|painted_ix| *painted_ix == head.0)
+        else {
+            return false;
+        };
+        let elements: Vec<RegisteredText> = order.iter().map(|ix| painted[*ix].0).collect();
+        self.update_drag(&elements, (head_in_document, head.1))
+    }
+
+    /// Resolve a drag head against this frame's visible runs, in document order.
     ///
     /// Once virtualization removes the anchor, an overlapping selected run
     /// joins the visible frame to the spans retained from earlier frames.
@@ -630,5 +676,81 @@ mod tests {
             sel.selected_text().as_deref(),
             Some("let a = 1;\nlet b = 2;")
         );
+    }
+
+    fn at(path: &[u32], sub: usize) -> DocPos {
+        DocPos::new(Arc::from(path), sub)
+    }
+
+    /// `[first, second, third]` in the document, where `first` is positioned: it paints last.
+    fn lifted_first() -> (Vec<RegisteredText<'static>>, Vec<DocPos>) {
+        (
+            vec![
+                reg("second", "second line", None),
+                reg("third", "third line", None),
+                reg("first", "first line", None),
+            ],
+            vec![at(&[1], 0), at(&[2], 0), at(&[0], 0)],
+        )
+    }
+
+    fn painted<'a>(
+        elements: &[RegisteredText<'a>],
+        positions: &'a [DocPos],
+    ) -> Vec<(RegisteredText<'a>, &'a DocPos)> {
+        elements.iter().copied().zip(positions).collect()
+    }
+
+    #[test]
+    fn document_order_sorts_by_path_then_sub() {
+        let positions = [at(&[1, 0], 0), at(&[1], 3), at(&[0, 5], 0), at(&[1], 1), at(&[1, 0], 0)];
+        let refs: Vec<&DocPos> = positions.iter().collect();
+        // A container's own runs come before its children, and equal positions keep paint order.
+        assert_eq!(document_order(&refs), vec![2, 3, 1, 0, 4]);
+    }
+
+    #[test]
+    fn a_drag_over_a_lifted_run_selects_in_document_order() {
+        let (elements, positions) = lifted_first();
+        let runs = painted(&elements, &positions);
+        let mut selection = SelectionState::default();
+        // Pressed in "first" (paint index 2), dragged to the end of "third" (paint index 1).
+        selection.arm("first", 0);
+        selection.promote_pending();
+        assert!(selection.update_drag_painted(&runs, (1, 10)));
+        assert_eq!(
+            selection.selected_text().as_deref(),
+            Some("first line\nsecond line\nthird line")
+        );
+        for key in ["first", "second", "third"] {
+            assert!(selection.wash_range(key).is_some(), "{key} is washed");
+        }
+    }
+
+    #[test]
+    fn a_drag_from_a_later_run_up_into_a_lifted_run_is_reversed() {
+        let (elements, positions) = lifted_first();
+        let runs = painted(&elements, &positions);
+        let mut selection = SelectionState::default();
+        selection.arm("third", 5);
+        selection.promote_pending();
+        // The head is in the middle of "first", which is painted last.
+        assert!(selection.update_drag_painted(&runs, (2, 6)));
+        assert_eq!(
+            selection.selected_text().as_deref(),
+            Some("line\nsecond line\nthird")
+        );
+        assert_eq!(selection.wash_range("first"), Some(6..10));
+        assert_eq!(selection.wash_range("third"), Some(0..5));
+    }
+
+    #[test]
+    fn a_head_outside_the_registry_resolves_nothing() {
+        let (elements, positions) = lifted_first();
+        let runs = painted(&elements, &positions);
+        let mut selection = SelectionState::default();
+        selection.arm("first", 0);
+        selection.promote_pending();
+        assert!(!selection.update_drag_painted(&runs, (7, 0)));
     }
 }

@@ -33,6 +33,8 @@ pub mod svg_tree;
 pub struct CustomRenderContext<'a> {
     /// Numeric element ID (matches React's instance ID).
     pub id: u64,
+    /// Where this element sits in the document, which orders its text in selection and find.
+    pub doc_path: std::sync::Arc<[u32]>,
     /// Event types registered by React that this element wires itself (e.g.
     /// "keydown", "change"). Pointer and mouse events are not among them: the
     /// dispatcher in `crate::events` delivers those for every element.
@@ -113,6 +115,7 @@ impl CustomRenderContext<'_> {
             ..crate::text::SelectableText::new(
                 self.id,
                 sub,
+                self.doc_path.clone(),
                 text,
                 runs,
                 self.selection.clone(),

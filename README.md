@@ -4646,9 +4646,15 @@ It fires once when the selected ranges change, including a clear to empty
 The event is a `RootEvent`, an event with no propagation. `value` is the joined selected text.
 
 Selection works because each painted text element registers itself into a
-per-frame registry in **paint order**, which is document order. A drag anchored
-in one element resolves against that registry into per-element spans: partial in
-the anchor and head, whole for everything between.
+per-frame registry. A drag anchored in one element resolves against that
+registry into per-element spans: partial in the anchor and head, whole for
+everything between.
+
+As in a browser, the range, the wash and the copied text follow **document
+order**: the order of the elements in the tree, not the order they paint in.
+A `position: relative` element, a `zIndex` or a flex `order` moves what is
+painted on top, not where the text sits in the selection. Only the hit test
+follows paint order, so a press lands on the topmost text under the pointer.
 
 <details>
 <summary>Why not one big text element, like Zed?</summary>
@@ -4741,6 +4747,9 @@ Matches are **non-overlapping** and leftmost-first. Case-insensitive matching
 uses Unicode **lowercasing**, not full case folding, so `ﬀ` does not match `ff`.
 A word boundary is any code point that is not Unicode Alphabetic, a digit,
 or `_`.
+
+Matches are numbered in **document order**, as browser find numbers them, so
+`activeIndex` does not move when a positioned element paints late.
 
 A match never crosses a line, exactly like browser find. It **does** cross the
 several host nodes React creates for one interpolated line, which matters more

@@ -8,9 +8,14 @@
 //! - https://github.com/zeronsh/comet/commit/3536a3702ca405fec1321e95f54e280240c5d38f
 //!
 //! Why the registry is rebuilt during **paint** rather than during build:
-//! paint order is the only place where document order is guaranteed, because a
-//! `list()` or `uniform_list()` decides at paint time which rows exist. Comet
+//! a `list()` or `uniform_list()` decides at paint time which rows exist. Comet
 //! learned this the hard way; do not move registration into `build_element`.
+//!
+//! The registry is in PAINT order, which is not document order: gpui lifts a
+//! positioned element, so its text registers after the siblings that follow it.
+//! Hit testing wants paint order (the topmost text wins). Selection and copy
+//! want document order, so each entry carries a [`selection::DocPos`] and
+//! `resolve_drag` sorts by it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -35,9 +40,10 @@ use super::selection::{self, SelectionState};
 /// always uncontended.
 pub type SharedSelection = Arc<Mutex<SelectionState>>;
 
-/// One painted text element, registered per frame in document order.
+/// One painted text element, registered per frame in paint order.
 struct RegEntry {
     key: Arc<str>,
+    doc: selection::DocPos,
     text: SharedString,
     layout: TextLayout,
     /// See [`selection::RegisteredText::group`].
@@ -113,12 +119,13 @@ pub fn selection_frame_reset(
     on_drag_end: impl Fn(&mut gpui::App) + 'static,
 ) -> impl IntoElement {
     canvas(
-        |_, _, _| (),
+        // Prepaint, not paint: every run announces its find matches in prepaint, and the
+        // reset canvas is the first to prepaint.
+        |_, window, _| super::search::ordinal_frame_reset(window.window_handle().window_id()),
         move |_, _, window, _| {
             let id = window.window_handle().window_id();
             frame_reset(id);
             super::inline_hit::frame_reset(id);
-            super::search::ordinal_frame_reset(id);
             register_copy_listener(window, &selection);
             register_down_listener(window, &selection);
             register_drag_listeners(window, &selection, on_drag_move, on_drag_end);
@@ -223,6 +230,9 @@ pub struct SelectableText {
     /// key is derived from these, so nothing has to parse it back apart.
     pub element_id: u64,
     pub sub: usize,
+    /// Where the owning element sits in the document, see [`selection::DocPos`]. Child indices
+    /// from the root through the retained tree, which for a virtual-list row start at the list's.
+    pub path: Arc<[u32]>,
     pub text: SharedString,
     /// `None` is the important case for plain `<text>` nodes: gpui then derives
     /// one run from `window.text_style()`, so colour, weight and family keep
@@ -278,6 +288,7 @@ impl SelectableText {
     pub fn new(
         element_id: u64,
         sub: usize,
+        path: Arc<[u32]>,
         text: SharedString,
         runs: Option<Vec<TextRun>>,
         selection: SharedSelection,
@@ -286,6 +297,7 @@ impl SelectableText {
         Self {
             element_id,
             sub,
+            path,
             text,
             runs,
             run_styles: Vec::new(),
@@ -314,6 +326,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
     let SelectableText {
         element_id,
         sub,
+        path,
         text,
         runs,
         run_styles,
@@ -334,6 +347,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_decorations,
     } = opts;
     let key = selection_key(element_id, sub);
+    let doc = selection::DocPos::new(path, sub);
 
     debug_assert!(
         runs.is_none() || run_styles.is_empty(),
@@ -377,8 +391,27 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .iter()
         .map(|focusable| (focusable.id, focusable.handle.clone()))
         .collect();
+    let announced = highlight.clone().map(|source| (source, key.clone(), doc.clone(), text.clone()));
     let underlay = canvas(
-        |_, _, _| (),
+        move |_, window, _| {
+            // Numbers the find matches in document order, which needs every run's matches
+            // before the first one paints. See `search::wash`.
+            if window.visibility() == gpui::Visibility::Hidden {
+                return;
+            }
+            let Some((source, key, doc, text)) = &announced else {
+                return;
+            };
+            let window_id = window.window_handle().window_id();
+            match source {
+                HighlightSource::Resolved(ctx) => {
+                    super::search::announce_retained_run(window_id, ctx, key, doc)
+                }
+                HighlightSource::Native(ctx) => {
+                    super::search::announce_native_run(window_id, ctx, key, doc, text)
+                }
+            }
+        },
         move |_, _, window, cx| {
             // Hidden text is not on screen: it takes no part in selection, links, search washes
             // or the painted-text log.
@@ -423,6 +456,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 with_frame(window_id, |frame| {
                     frame.registry.push(RegEntry {
                         key: key.clone(),
+                        doc: doc.clone(),
                         text: text.clone(),
                         layout: layout.clone(),
                         group,
@@ -563,8 +597,9 @@ fn register_link_listener(
 
 /// `(element index, byte offset)` for a window position.
 ///
-/// Prefers the element whose full bounds contain the point, taking the LAST
-/// such element in paint order so an overlay wins over what it covers. Only
+/// The index is into the registry, which is in paint order. Prefers the element whose full
+/// bounds contain the point, taking the LAST such element in paint order so an overlay wins over
+/// what it covers. Only
 /// when the point is outside every text does it fall back to the nearest by
 /// vertical then horizontal distance. `index_for_position` then clamps: left
 /// of a line is the line start, right of a line is the line end.
@@ -641,19 +676,23 @@ fn registry_point_on_line(
     })
 }
 
-/// Resolve the drag head against the frame's registry.
+/// Resolve the drag head, an index into the registry's paint order, into spans in document
+/// order.
 fn resolve_drag(window: WindowId, selection: &SharedSelection, head: (usize, usize)) -> bool {
     with_frame(window, |frame| {
-        let elements: Vec<selection::RegisteredText> = frame
+        let painted: Vec<(selection::RegisteredText, &selection::DocPos)> = frame
             .registry
             .iter()
-            .map(|e| selection::RegisteredText {
-                key: e.key.as_ref(),
-                text: e.text.as_ref(),
-                group: e.group,
+            .map(|e| {
+                let text = selection::RegisteredText {
+                    key: e.key.as_ref(),
+                    text: e.text.as_ref(),
+                    group: e.group,
+                };
+                (text, &e.doc)
             })
             .collect();
-        selection.lock().update_drag(&elements, head)
+        selection.lock().update_drag_painted(&painted, head)
     })
 }
 
@@ -1047,6 +1086,7 @@ mod tests {
         with_frame(window, |frame| {
             frame.registry.push(RegEntry {
                 key: selection_key(1, 0),
+                doc: selection::DocPos::new(Arc::from([]), 0),
                 text: text.clone(),
                 layout: TextLayout::default(),
                 group: None,

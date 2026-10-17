@@ -66,6 +66,94 @@ describe("text selection", () => {
     expect(selected).toBe("first line\nsecond line\nthird line")
   })
 
+  // Hit testing follows paint order, but the range, the wash and the copied text follow the
+  // document: a positioned sibling paints late and must not move in the selection.
+  describe("document order against paint order", () => {
+    const lines = (first: React.CSSProperties, second: React.CSSProperties = {}) => (
+      <div style={{ display: "flex", flexDirection: "column", padding: 20, gap: 8 }}>
+        <text style={{ fontSize: 20, ...first }}>first line</text>
+        <text style={{ fontSize: 20, ...second }}>second line</text>
+        <text style={{ fontSize: 20 }}>third line</text>
+      </div>
+    )
+    const expected = "first line\nsecond line\nthird line"
+
+    it("copies a position: relative sibling where it sits in the document", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({ position: "relative" }))
+      expect(renderer.dragSelect(21, 30, 900, 300)).toBe(expected)
+    })
+
+    it("keeps a reversed drag in document order over a positioned sibling", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({ position: "relative" }))
+      expect(renderer.dragSelect(900, 105, 21, 30)).toBe(expected)
+    })
+
+    it("starts at the positioned sibling and ends in the middle of the document", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({ position: "relative" }))
+      // Down on "first line", up past the end of "second line".
+      expect(renderer.dragSelect(21, 30, 900, 70)).toBe("first line\nsecond line")
+    })
+
+    it("selects from a later line up into a positioned sibling", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({}, { position: "relative" }))
+      // Down on "third line", up onto "second line".
+      expect(renderer.dragSelect(900, 105, 21, 70)).toBe("second line\nthird line")
+    })
+
+    it("keeps a z-index: -1 sibling in document order", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({ position: "relative", zIndex: -1 }))
+      expect(renderer.dragSelect(21, 30, 900, 300)).toBe(expected)
+    })
+
+    it("keeps a positioned sibling with a positive z-index in document order", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({}, { position: "relative", zIndex: 5 }))
+      expect(renderer.dragSelect(21, 30, 900, 300)).toBe(expected)
+    })
+
+    it("ignores flex order, as the DOM selection does", () => {
+      const { render, renderer } = createTestRoot()
+      render(lines({ order: 2 }))
+      // Painted top to bottom: second, third, first. A drag from the start of "third" to the end
+      // of "first" selects what the document holds between them.
+      expect(renderer.dragSelect(21, 70, 900, 105)).toBe("second line")
+    })
+
+    it("orders nested positioned text inside later siblings", () => {
+      const { render, renderer } = createTestRoot()
+      render(
+        <div style={{ display: "flex", flexDirection: "column", padding: 20, gap: 8 }}>
+          <div style={{ position: "relative" }}>
+            <text style={{ fontSize: 20 }}>alpha</text>
+            <text style={{ fontSize: 20, position: "relative" }}>beta</text>
+          </div>
+          <text style={{ fontSize: 20 }}>gamma</text>
+        </div>
+      )
+      expect(renderer.dragSelect(21, 30, 900, 300)).toBe("alpha\nbeta\ngamma")
+    })
+
+    it("still hits the text painted on top when two overlap", () => {
+      const { render, renderer } = createTestRoot()
+      render(
+        <div style={{ position: "relative", padding: 20 }}>
+          <text style={{ fontSize: 20 }}>underneath</text>
+          <text style={{ fontSize: 20, position: "absolute", left: 20, top: 20 }}>on top</text>
+        </div>
+      )
+      // The press and the drag both land on glyphs of the two; paint order picks the later one.
+      const selected = renderer.dragSelect(21, 30, 50, 30)
+      expect(selected).not.toBeNull()
+      expect(selected).not.toContain("under")
+      expect("on top".startsWith(selected!)).toBe(true)
+    })
+  })
+
   it("takes a partial span from the anchor element and whole spans below", () => {
     const { render, renderer } = createTestRoot()
     render(

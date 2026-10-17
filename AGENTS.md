@@ -244,9 +244,15 @@ Every string GPUIX paints goes through `crate::text`:
 text invisible to selection AND to `getPaintedText()`, so it cannot be tested
 except by screenshot.
 
-The registry is rebuilt during **paint**, not during build, because paint order
-is the only place document order is guaranteed: a `list()` decides at paint time
-which rows exist. `selection_frame_reset()` must stay the first child of the
+The registry is rebuilt during **paint**, not during build, because a `list()`
+decides at paint time which rows exist. It is in paint order, which is NOT
+document order (a positioned element is lifted and registers after the siblings
+that follow it): hit testing (`registry_point`) uses paint order, so the topmost
+text wins, while selection, copy and the wash use `DocPos` (child indices through
+the retained tree plus `sub`; tree order, ignoring flex `order`), carried on
+`SelectableText::path`. Find numbers matches the same way: every run announces
+its matches in prepaint (`search::announce_*_run`), and `wash` numbers them in
+document order. `selection_frame_reset()` must stay the first child of the
 root, or stale entries from the previous frame leak into the next drag.
 
 The registries are thread-locals, but keyed by `WindowId`: every window's frame

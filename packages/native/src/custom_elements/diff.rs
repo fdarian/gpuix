@@ -269,6 +269,7 @@ impl CustomElement for DiffElement {
         }
 
         let element_id = ctx.id;
+        let doc_path = ctx.doc_path.clone();
         let selection = ctx.selection.clone();
         let selectable = ctx.selectable;
         let wash = ctx.selection_wash;
@@ -327,6 +328,7 @@ impl CustomElement for DiffElement {
                     ix,
                     RowContext {
                         element_id,
+                        doc_path: doc_path.clone(),
                         selection: &selection,
                         selectable,
                         wash,
@@ -353,6 +355,7 @@ impl CustomElement for DiffElement {
                     ix,
                     RowContext {
                         element_id,
+                        doc_path: doc_path.clone(),
                         selection: &selection,
                         selectable,
                         wash,
@@ -433,6 +436,7 @@ impl CustomElement for DiffElement {
 
 struct RowContext<'a> {
     element_id: u64,
+    doc_path: std::sync::Arc<[u32]>,
     selection: &'a SharedSelection,
     selectable: bool,
     wash: Hsla,
@@ -480,6 +484,7 @@ impl RowContext<'_> {
             ..crate::text::SelectableText::new(
                 self.element_id,
                 sub,
+                self.doc_path.clone(),
                 SharedString::from(text),
                 runs,
                 self.selection.clone(),

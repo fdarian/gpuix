@@ -18,6 +18,7 @@
 //! Search, copy and paint all call [`plan_children`], because a paragraph is one
 //! painted string and they must agree on where it starts and ends.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::layout::contents::is_display_contents;
@@ -224,6 +225,8 @@ struct Builder {
     /// A flex or grid item of whitespace alone is not rendered, whatever its
     /// `white-space`.
     blockified: bool,
+    /// Document position of the first child that fed the paragraph, see [`plan_children_at`].
+    at: Option<u32>,
 }
 
 impl Builder {
@@ -239,6 +242,7 @@ impl Builder {
             modes: vec![base],
             only_whitespace: true,
             blockified,
+            at: None,
         }
     }
 
@@ -356,7 +360,7 @@ impl Builder {
     /// Ends the paragraph. A collapsible space at its end is removed, and so is
     /// a single final line feed, which ends the last line and starts no new
     /// one. A paragraph with nothing left generates no box.
-    fn finish(&mut self, out: &mut Vec<Child>) {
+    fn finish(&mut self, out: &mut Vec<(Child, u32)>) {
         let mut next = Self::new(self.container, self.modes[0], self.blockified);
         next.index = self.index;
         let mut builder = std::mem::replace(self, next);
@@ -372,13 +376,14 @@ impl Builder {
             return;
         }
         builder.boxes.retain(|(_, range)| !range.is_empty());
-        out.push(Child::Paragraph(Paragraph {
+        let paragraph = Paragraph {
             container: builder.container,
             index: builder.index,
             text: builder.text,
             pieces: builder.pieces,
             boxes: builder.boxes,
-        }));
+        };
+        out.push((Child::Paragraph(paragraph), builder.at.unwrap_or(0)));
     }
 }
 
@@ -387,31 +392,56 @@ impl Builder {
 /// The container's own `content` leads as text, like a text node that comes
 /// first.
 pub fn plan_children(tree: &RetainedTree, container: &RetainedElement) -> Vec<Child> {
+    plan_children_at(tree, container)
+        .into_iter()
+        .map(|(child, _)| child)
+        .collect()
+}
+
+/// [`plan_children`], with where each child sits in the DOCUMENT: its index among the container's
+/// children once `display: contents` is spliced out, ignoring flex and grid `order`. A paragraph
+/// sits where its first child does, and `0` when only the container's own `content` feeds it.
+///
+/// The plan is in paint order, which `order` reorders. Selection and find number text in
+/// document order, as the browser does, and read this.
+pub fn plan_children_at(tree: &RetainedTree, container: &RetainedElement) -> Vec<(Child, u32)> {
     let items = lays_out_items(container.style.as_deref());
     let mut out = Vec::new();
     let mut paragraph = Builder::new(container.id, white_space::computed(tree, container), items);
     if let Some(content) = container.content.as_deref() {
         paragraph.push_text(content, &[]);
     }
+    let document = crate::layout::contents::flatten(tree, &container.children);
     let children = crate::layout::order::children_in_order(tree, container, container.style.as_deref());
-    for child in children
-        .iter()
-        .filter_map(|id| tree.elements.get(id))
-        .filter(|child| !is_display_none(child))
-    {
+    let reordered = *document != *children;
+    let document_index: HashMap<u64, u32> = if reordered {
+        document.iter().enumerate().map(|(ix, id)| (*id, ix as u32)).collect()
+    } else {
+        HashMap::new()
+    };
+    for (ix, child) in children.iter().enumerate() {
+        let Some(child) = tree.elements.get(child) else {
+            continue;
+        };
+        if is_display_none(child) {
+            continue;
+        }
+        let at = if reordered { document_index[&child.id] } else { ix as u32 };
         // `children_in_order` spliced the `display: contents` elements out, but
         // their descendants still inherit from them.
         let contents = crate::layout::contents::contents_between(tree, container, child.id)
             .unwrap_or_default();
         if is_raw_text(child) {
+            paragraph.at.get_or_insert(at);
             if let Some(content) = child.content.as_deref() {
                 paragraph.within(&contents, |paragraph, chain| paragraph.push_text(content, chain));
             }
         } else if !items && is_inline_box(tree, child, container) {
+            paragraph.at.get_or_insert(at);
             paragraph.within(&contents, |paragraph, chain| paragraph.push_element(tree, child, chain));
         } else {
             paragraph.finish(&mut out);
-            out.push(Child::Block(child.id));
+            out.push((Child::Block(child.id), at));
             paragraph.index += 1;
         }
     }
@@ -429,7 +459,7 @@ pub fn own_text(tree: &RetainedTree, element: &RetainedElement) -> Option<String
     let mut out = Vec::new();
     paragraph.finish(&mut out);
     match out.pop() {
-        Some(Child::Paragraph(paragraph)) => Some(paragraph.text),
+        Some((Child::Paragraph(paragraph), _)) => Some(paragraph.text),
         _ => None,
     }
 }
@@ -456,7 +486,7 @@ pub fn leaf_run(tree: &RetainedTree, parent: &RetainedElement, leaves: &[u64]) -
     let mut out = Vec::new();
     paragraph.finish(&mut out);
     match out.pop() {
-        Some(Child::Paragraph(paragraph)) => Some(LeafRun {
+        Some((Child::Paragraph(paragraph), _)) => Some(LeafRun {
             text: paragraph.text,
             parts: paragraph
                 .pieces
@@ -470,9 +500,9 @@ pub fn leaf_run(tree: &RetainedTree, parent: &RetainedElement, leaves: &[u64]) -
 
 /// The text an inline formatting context reads out, as painted: that of every
 /// paragraph in `plan`, in order.
-pub fn accessible_text(plan: &[Child]) -> Option<String> {
+pub fn accessible_text<'a>(plan: impl IntoIterator<Item = &'a Child>) -> Option<String> {
     let text: String = plan
-        .iter()
+        .into_iter()
         .filter_map(|child| match child {
             Child::Paragraph(paragraph) => Some(paragraph.text.as_str()),
             Child::Block(_) => None,
@@ -609,6 +639,52 @@ mod tests {
         assert_eq!(paragraphs(&plan)[1].text, "three");
         assert_eq!(paragraphs(&plan)[0].key().as_ref(), "1:0");
         assert_eq!(paragraphs(&plan)[1].key().as_ref(), "1:1");
+    }
+
+    /// The plan is in paint order, so flex `order` moves a block in it. Its document position does
+    /// not move: selection and find follow the tree.
+    #[test]
+    fn a_reordered_block_keeps_its_document_position() {
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"display": "flex"}));
+        f.add(1, 2, "div").styled(2, serde_json::json!({"order": 2}));
+        f.add(1, 3, "div");
+        f.add(1, 4, "div").styled(4, serde_json::json!({"order": 1}));
+        let at = plan_children_at(&f.tree, &f.tree.elements[&1]);
+        assert_eq!(
+            at,
+            vec![(Child::Block(3), 1), (Child::Block(4), 2), (Child::Block(2), 0)]
+        );
+    }
+
+    #[test]
+    fn a_paragraph_sits_where_its_first_child_does() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "div");
+        f.text(1, 3, "a");
+        f.add(1, 4, "span").text(4, 5, "b");
+        f.add(1, 6, "div");
+        f.text(1, 7, "c");
+        let positions: Vec<u32> = plan_children_at(&f.tree, &f.tree.elements[&1])
+            .into_iter()
+            .map(|(_, at)| at)
+            .collect();
+        // block 2, paragraph "ab" (children 1 and 2), block 6, paragraph "c".
+        assert_eq!(positions, vec![0, 1, 3, 4]);
+    }
+
+    #[test]
+    fn display_contents_children_count_in_the_flattened_list() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "div").styled(2, serde_json::json!({"display": "contents"}));
+        f.add(2, 3, "div");
+        f.add(2, 4, "div");
+        f.add(1, 5, "div");
+        let positions: Vec<u32> = plan_children_at(&f.tree, &f.tree.elements[&1])
+            .into_iter()
+            .map(|(_, at)| at)
+            .collect();
+        assert_eq!(positions, vec![0, 1, 2]);
     }
 
     #[test]

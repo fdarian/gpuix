@@ -266,6 +266,59 @@ describe("highlight", () => {
     expect(hits.map((hit) => hit.active)).toEqual([true, false])
   })
 
+  // A positioned element paints after the siblings that follow it, but find counts it where it
+  // sits in the document. The painted list is in paint order, so the active wash comes second.
+  it("numbers matches in document order when a positioned element paints late", () => {
+    const { render, renderer } = createTestRoot()
+    render(
+      <div
+        style={{ display: "flex", flexDirection: "column" }}
+        highlight={{ query: "x", activeIndex: 0 }}
+      >
+        <text style={{ position: "relative" }}>x first</text>
+        <text>x second</text>
+      </div>
+    )
+
+    const hits = renderer.getPaintedHighlights()
+    expect(hits.map((hit) => hit.text)).toEqual(["x second", "x first"])
+    expect(hits.map((hit) => hit.active)).toEqual([false, true])
+  })
+
+  it("numbers a positioned native element in document order too", () => {
+    const { render, renderer } = createTestRoot()
+    render(
+      <div
+        style={{ display: "flex", flexDirection: "column" }}
+        highlight={{ query: "x", activeIndex: 1 }}
+      >
+        <code code={"x again"} language="typescript" showHeader={false} style={{ position: "relative" }} />
+        <text>x here</text>
+      </div>
+    )
+
+    const hits = renderer.getPaintedHighlights()
+    expect(hits.map((hit) => hit.text)).toEqual(["x here", "x again"])
+    expect(hits.map((hit) => hit.active)).toEqual([true, false])
+  })
+
+  it("numbers matches in tree order, not flex order", () => {
+    const { render, renderer } = createTestRoot()
+    render(
+      <div
+        style={{ display: "flex", flexDirection: "column" }}
+        highlight={{ query: "x", activeIndex: 0 }}
+      >
+        <text style={{ order: 1 }}>x first</text>
+        <text>x second</text>
+      </div>
+    )
+
+    const hits = renderer.getPaintedHighlights()
+    expect(hits.map((hit) => hit.text)).toEqual(["x second", "x first"])
+    expect(hits.map((hit) => hit.active)).toEqual([false, true])
+  })
+
   it("reports a count to a listener added after the first render", () => {
     const { render, renderer } = createTestRoot()
     const counts: number[] = []

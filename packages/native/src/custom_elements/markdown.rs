@@ -91,6 +91,7 @@ impl CustomElement for MarkdownElement {
 
         let mut md = MdContext::new(
             ctx.id,
+            ctx.doc_path.clone(),
             ctx.selection.clone(),
             ctx.selectable,
             ctx.selection_wash,

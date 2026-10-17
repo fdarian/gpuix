@@ -19,6 +19,8 @@ use gpui::{Hsla, WindowId};
 
 use crate::retained_tree::{RetainedElement, RetainedTree};
 
+use super::selection::DocPos;
+
 // ── Spec ─────────────────────────────────────────────────────────────
 
 /// One `highlight` entry as it arrives from JS, with colours already resolved
@@ -322,11 +324,19 @@ enum MatchId {
 /// Per-frame match numbering, shared by retained and native runs.
 #[derive(Default)]
 struct Ordinals {
-    /// Next ordinal per `(declaration, spec)`.
+    /// Matches announced during prepaint and not numbered yet, per `(declaration, spec)`.
+    announced: HashMap<(u64, usize), Vec<Announced>>,
+    /// Next ordinal per `(declaration, spec)` for a match nobody announced.
     cursor: HashMap<(u64, usize), usize>,
     /// Ordinals already handed out, so a match painted by two runs, or a row
     /// gpui paints twice, keeps the number it got the first time.
     assigned: HashMap<(u64, usize, MatchId), usize>,
+}
+
+/// One match a run will paint, with where in the document it starts.
+struct Announced {
+    at: (DocPos, usize),
+    id: MatchId,
 }
 
 thread_local! {
@@ -335,18 +345,78 @@ thread_local! {
     static ORDINALS: RefCell<HashMap<WindowId, Ordinals>> = RefCell::new(HashMap::new());
 }
 
-/// Clear the per-frame match numbering of `window`. Called by the frame reset, which
-/// paints before any text, including `gpui::list()` rows and deferred overlays.
+/// Clear the per-frame match numbering of `window`. Called by the frame reset's prepaint, which
+/// runs before any text announces its matches, including `gpui::list()` rows and deferred overlays.
 pub fn ordinal_frame_reset(window: WindowId) {
     ORDINALS.with(|state| state.borrow_mut().insert(window, Ordinals::default()));
 }
 
-/// The wash for one match, numbered in PAINT order.
+/// Announce the matches a retained run is about to paint, so they can be numbered in DOCUMENT
+/// order. Called from prepaint, before any run paints.
+pub fn announce_retained_run(
+    window: WindowId,
+    ctx: &HighlightContext,
+    key: &Arc<str>,
+    doc: &DocPos,
+) {
+    let Some(entries) = ctx.matches.by_key.get(key) else {
+        return;
+    };
+    for entry in entries {
+        announce(
+            window,
+            ctx,
+            entry.spec,
+            (doc.clone(), entry.range.start),
+            MatchId::Retained(entry.index),
+        );
+    }
+}
+
+/// [`announce_retained_run`] for a string a native element is about to paint.
+pub fn announce_native_run(
+    window: WindowId,
+    ctx: &HighlightContext,
+    key: &Arc<str>,
+    doc: &DocPos,
+    text: &str,
+) {
+    for (spec_index, position, range) in native_matches(ctx, text) {
+        let id = MatchId::Native(key.clone(), position);
+        announce(window, ctx, spec_index, (doc.clone(), range.start), id);
+    }
+}
+
+fn announce(
+    window: WindowId,
+    ctx: &HighlightContext,
+    spec_index: usize,
+    at: (DocPos, usize),
+    id: MatchId,
+) {
+    ORDINALS.with(|states| {
+        let mut states = states.borrow_mut();
+        let state = states.entry(window).or_default();
+        let group = (ctx.declaration, spec_index);
+        // Numbered already: a late announcement would renumber from the offset.
+        if state.cursor.contains_key(&group) {
+            return;
+        }
+        state.announced.entry(group).or_default().push(Announced { at, id });
+    });
+}
+
+/// The wash for one match, numbered in DOCUMENT order.
 ///
 /// Numbering at build time cannot work: retained matches are located before the
 /// frame, native text only exists during it, and a subtree can interleave them
 /// (`<code>` then `<text>`). Numbering each kind separately made `activeIndex`
 /// point at the wrong match whenever a native element came first.
+///
+/// Numbering in paint order cannot work either: a positioned element paints after the
+/// siblings that follow it, but Ctrl+F counts it where it sits in the document. So every run
+/// announces its matches in prepaint, and the first wash of a frame numbers them all. A match
+/// that nobody announced takes the next number after those, which is the old paint-order count.
 fn wash(
     window: WindowId,
     ctx: &HighlightContext,
@@ -359,13 +429,25 @@ fn wash(
     let ordinal = ORDINALS.with(|states| {
         let mut states = states.borrow_mut();
         let state = states.entry(window).or_default();
+        let group = (slot.0, slot.1);
+        if let Some(mut announced) = state.announced.remove(&group) {
+            announced.sort_by(|a, b| a.at.cmp(&b.at));
+            let mut next = spec.match_index_offset;
+            for announce in announced {
+                let numbered = (group.0, group.1, announce.id);
+                if let std::collections::hash_map::Entry::Vacant(entry) =
+                    state.assigned.entry(numbered)
+                {
+                    entry.insert(next);
+                    next += 1;
+                }
+            }
+            state.cursor.insert(group, next);
+        }
         if let Some(assigned) = state.assigned.get(&slot) {
             return *assigned;
         }
-        let next = state
-            .cursor
-            .entry((slot.0, slot.1))
-            .or_insert(spec.match_index_offset);
+        let next = state.cursor.entry(group).or_insert(spec.match_index_offset);
         let ordinal = *next;
         *next += 1;
         state.assigned.insert(slot, ordinal);
@@ -418,6 +500,17 @@ pub fn washes_for_native_run(
     key: &Arc<str>,
     text: &str,
 ) -> Vec<Wash> {
+    native_matches(ctx, text)
+        .into_iter()
+        .map(|(spec_index, position, range)| {
+            let id = MatchId::Native(key.clone(), position);
+            wash(window, ctx, spec_index, &ctx.set.specs[spec_index], range, id)
+        })
+        .collect()
+}
+
+/// Every match of every spec in `text`, as `(spec index, position within that spec, range)`.
+fn native_matches(ctx: &HighlightContext, text: &str) -> Vec<(usize, usize, Range<usize>)> {
     let mut out = Vec::new();
     // Folding allocates, and a case-sensitive spec never reads it.
     let folded = ctx
@@ -436,8 +529,7 @@ pub fn washes_for_native_run(
             .into_iter()
             .enumerate()
         {
-            let id = MatchId::Native(key.clone(), position);
-            out.push(wash(window, ctx, spec_index, spec, range, id));
+            out.push((spec_index, position, range));
         }
     }
     out
@@ -1310,33 +1402,82 @@ mod tests {
         assert!(!again[1].active);
     }
 
-    /// The blocker a review caught: ordinals follow PAINT order, so a native
-    /// element painted BEFORE retained text takes the lower numbers. Numbering
-    /// retained matches first made `activeIndex: 0` mark the `<text>` match.
+    /// The blocker a review caught: a native element and retained text share one numbering, so
+    /// the native element's matches come before the text's exactly when it comes first in the
+    /// DOCUMENT. Numbering retained matches first made `activeIndex: 0` mark the `<text>` match.
+    /// Paint order does not decide it: a positioned element paints late.
     #[test]
-    fn ordinals_follow_paint_order_across_both_kinds() {
+    fn ordinals_follow_document_order_across_both_kinds() {
         let groups = GroupList::collect(&interpolated_tree(), 1);
         let mut s = spec("l");
         s.active_index = Some(0);
         let ctx = context(&groups, HighlightSet { specs: vec![s] });
+        let text_key: Arc<str> = "2:0".into();
+        let native_key: Arc<str> = "9:0".into();
+        let first = DocPos::new(Arc::from([0]), 0);
+        let second = DocPos::new(Arc::from([1]), 0);
 
+        // The native element is first in the document and paints first.
         ordinal_frame_reset(window());
-        let native: Arc<str> = "9:0".into();
-        // The native element paints first, so it must own ordinal 0.
-        let painted_native = washes_for_native_run(window(), &ctx, &native, "l");
-        let painted_text = washes_for_retained_run(window(), &ctx, &"2:0".into());
-        assert!(
-            painted_native[0].active,
-            "the first painted match is active"
-        );
+        announce_native_run(window(), &ctx, &native_key, &first, "l");
+        announce_retained_run(window(), &ctx, &text_key, &second);
+        let painted_native = washes_for_native_run(window(), &ctx, &native_key, "l");
+        let painted_text = washes_for_retained_run(window(), &ctx, &text_key);
+        assert!(painted_native[0].active, "the first match in the document is active");
         assert!(painted_text.iter().all(|wash| !wash.active));
 
-        // Reverse the paint order and the ownership moves with it.
+        // The text is first in the document, though the native element still paints first.
         ordinal_frame_reset(window());
-        let painted_text = washes_for_retained_run(window(), &ctx, &"2:0".into());
-        let painted_native = washes_for_native_run(window(), &ctx, &native, "l");
-        assert!(painted_text[0].active);
+        announce_native_run(window(), &ctx, &native_key, &second, "l");
+        announce_retained_run(window(), &ctx, &text_key, &first);
+        let painted_native = washes_for_native_run(window(), &ctx, &native_key, "l");
+        let painted_text = washes_for_retained_run(window(), &ctx, &text_key);
+        assert!(painted_text[0].active, "paint order does not move the match");
         assert!(painted_native.iter().all(|wash| !wash.active));
+    }
+
+    /// A lifted run paints after the runs that follow it, and keeps its place in the count.
+    #[test]
+    fn a_run_painted_late_keeps_its_document_ordinal() {
+        let ctx = native_context(spec("x"), 1);
+        let at = |index: u32| DocPos::new(Arc::from([index]), 0);
+        let keys: Vec<Arc<str>> = ["7:0", "7:1", "7:2"].into_iter().map(Into::into).collect();
+
+        ordinal_frame_reset(window());
+        // Document order: 7:0 (two matches), 7:1, 7:2. Paint order: 7:1, 7:2, 7:0.
+        for (key, index) in keys.iter().zip(0..) {
+            announce_native_run(window(), &ctx, key, &at(index), "x x");
+        }
+        let actives = |washes: Vec<Wash>| -> Vec<bool> {
+            washes.iter().map(|wash| wash.active).collect()
+        };
+        let second = actives(washes_for_native_run(window(), &ctx, &keys[1], "x x"));
+        let third = actives(washes_for_native_run(window(), &ctx, &keys[2], "x x"));
+        let lifted = actives(washes_for_native_run(window(), &ctx, &keys[0], "x x"));
+        assert_eq!(lifted, vec![false, true], "ordinals 0 and 1");
+        assert_eq!(second, vec![false, false], "ordinals 2 and 3");
+        assert_eq!(third, vec![false, false], "ordinals 4 and 5");
+    }
+
+    /// A run nobody announced is numbered after those that did, in paint order.
+    #[test]
+    fn an_unannounced_run_is_numbered_in_paint_order() {
+        let ctx = native_context(spec("x"), 2);
+        let known: Arc<str> = "7:0".into();
+        let late: Arc<str> = "7:1".into();
+
+        ordinal_frame_reset(window());
+        announce_native_run(
+            window(),
+            &ctx,
+            &known,
+            &DocPos::new(Arc::from([0]), 0),
+            "x x",
+        );
+        let painted = washes_for_native_run(window(), &ctx, &known, "x x");
+        let unannounced = washes_for_native_run(window(), &ctx, &late, "x");
+        assert!(painted.iter().all(|wash| !wash.active));
+        assert!(unannounced[0].active, "ordinal 2, after the two announced");
     }
 
     /// A match split across interpolated runs is ONE match, so it takes one
