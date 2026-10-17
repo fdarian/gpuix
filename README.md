@@ -2779,9 +2779,9 @@ time**. `8.3 MS` is about 120 Hz.
 the offset — a timeline, a node graph, a map — places its children absolutely,
 so GPUI builds and lays out **every** retained child on every frame. Nothing
 skips that for you. GPUI does skip the prepaint and paint of in-flow content
-outside an `overflow` clip, as a browser does, but a clipped box still costs about
-two thirds of a visible one. Content
-placed with `position: absolute` is never skipped.
+outside an `overflow` clip, as a browser does, but a clipped box is still built
+and laid out, because script can read its box, and costs about two thirds of a
+visible one. Content placed with `position: absolute` is never skipped.
 
 `memo` and culling fix different halves, and only one of them is the draw:
 
@@ -7915,6 +7915,33 @@ expect(renderer.takeSimulatedWindowActions()).toEqual(['move'])
 
 The page got no event from that press. Windows hands the region to the OS, so
 nothing is recorded there.
+
+### Frame cost in tests
+
+A frame does not build a subtree whose inputs did not change; GPUI replays what
+it drew the frame before. The result is the frame a full build gives, and the
+test renderer lets you check that and count what a frame did. Counters you read
+off the renderer:
+
+- `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
+  and skipped, and the style and inherited-state copies the build made.
+- `getLayoutCounters()`: layout nodes made, found again and freed, styles and
+  child lists set, passes, and measure calls, since the window was made.
+- `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
+  and why a recording could not be replayed.
+- `getCulledSubtreeCount()`: subtrees skipped for lying outside their clip. A test
+  of what a clipped box still reports (its box, observers, tab order) reads it to
+  be sure something was skipped.
+- `getLayoutPassCount()` and `getPaintedFrameCount()`: layout-only passes (a
+  bounds read) and real paints. The test window draws a dirty window whenever
+  effects flush, which a display link never does, so `setInlineDraws(false)`
+  stops that and `drawFrame()` ends a frame the way the display does.
+
+`setA11yActive(false)` removes the pretend screen reader the test window starts
+with. Set `GPUIX_RETAIN_OFF=1` to build every frame in full, for timing, and
+`GPUIX_RETAIN_VERIFY=1` to build each frame that replayed a second time, whole,
+and compare the two: a difference is printed as `[retained]` and fails
+`unmount()`. Run your suite with it on after a change to a custom element.
 
 ### Assert numbers, not pixels
 
