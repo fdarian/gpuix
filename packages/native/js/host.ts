@@ -769,8 +769,10 @@ export interface StyleDesc {
    *  horizontal then the vertical one. A number is px; any length unit works, no percentage and
    *  nothing negative. It is 0 with `borderCollapse: "collapse"`. Anything else throws. */
   borderSpacing?: number | (string & {})
-  /** CSS `border-collapse`, inherited. `"collapse"` is read by layout (no spacing, borders count
-   *  by half) but the collapsed borders are not resolved or painted yet. */
+  /** CSS `border-collapse`, inherited. `"collapse"` shares each edge of a table's grid between
+   *  the borders that meet there (the wider wins, `hidden` removes it) and has the table paint
+   *  it once, centred on the grid line; the table's `borderSpacing`, `padding` and
+   *  `borderRadius` and `emptyCells` then do nothing. */
   borderCollapse?: "separate" | "collapse"
   /** CSS `caption-side`, inherited from the table to its `table-caption` children. */
   captionSide?: "top" | "bottom"

@@ -6,9 +6,13 @@
 //! [`gpui::TableRole`], so a part outside a table, which the table never reads, lays out as the
 //! block CSS would wrap in an anonymous table (without the wrapper).
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use gpui::Styled;
 
 use crate::css::table::TableInherited;
+use crate::layout::table_grid::CellKey;
 use crate::layout::box_generation::is_display_none;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
@@ -162,14 +166,46 @@ fn span_prop(element: &RetainedElement, name: &str, default: u16, min: u16, max:
     }
 }
 
+/// What the tables with collapsed borders built this frame handed to their parts: a cell finds its
+/// border widths here when it is built, after the table.
+#[derive(Default)]
+pub(crate) struct Collapsed {
+    cells: HashMap<CellKey, [f32; 4]>,
+    tables: HashMap<u64, ([f32; 4], Arc<gpui::CollapsedBorders>)>,
+}
+
+impl Collapsed {
+    pub(crate) fn insert(&mut self, table: u64, resolved: super::collapse::Resolved) {
+        self.cells.extend(resolved.cells);
+        self.tables.insert(table, (resolved.table, resolved.borders));
+    }
+
+    /// The border widths of a cell of a table with collapsed borders, `[top, right, bottom, left]`: a cell
+    /// that is in no table has none.
+    pub(crate) fn cell(&self, key: CellKey) -> [f32; 4] {
+        self.cells.get(&key).copied().unwrap_or_default()
+    }
+}
+
+/// The columns and rows a cell covers, as `colSpan` and `rowSpan` ask for.
+pub(crate) fn cell_spans(element: &RetainedElement) -> (usize, usize) {
+    (span_prop(element, "colSpan", 1, 1, 1000) as usize, span_prop(element, "rowSpan", 1, 0, 65534) as usize)
+}
+
+/// The columns a `table-column` or `table-column-group` stands for.
+pub(crate) fn column_span(element: &RetainedElement) -> usize {
+    span_prop(element, "span", 1, 1, 1000) as usize
+}
+
 /// The table roles and styles of `element`, which `style` (the final one, with its states
 /// folded) makes a part.
-pub(crate) fn apply<E: Styled>(
+pub(crate) fn apply<E: Styled + gpui::InteractiveElement>(
     mut el: E,
     tree: &RetainedTree,
     element: &RetainedElement,
     style: Option<&StyleDesc>,
     table: &TableInherited,
+    collapsed: &Collapsed,
 ) -> E {
     let Some(style) = style else { return el };
     let Some(part) = style.display.as_deref().and_then(part_of) else {
@@ -187,16 +223,39 @@ pub(crate) fn apply<E: Styled>(
             if style.table_layout == Some(crate::css::table::TableLayout::Fixed) {
                 el = el.table_layout(gpui::TableLayout::Fixed);
             }
+            if let Some((halves, borders)) = table.collapse.then(|| collapsed.tables.get(&element.id)).flatten() {
+                el = collapsed_widths(el, *halves);
+                // The padding of a table does not apply with collapsed borders, nor does its radius.
+                let sides = |side| gpui::EdgesRefinement { top: side, right: side, bottom: side, left: side };
+                let style = el.style();
+                style.padding = sides(Some(gpui::px(0.0).into()));
+                let square = Some(gpui::CornerRadius::default());
+                style.corner_radii = gpui::CornersRefinement {
+                    top_left: square,
+                    top_right: square,
+                    bottom_right: square,
+                    bottom_left: square,
+                };
+                el = el.collapsed_borders(borders.clone());
+            }
         }
-        Part::RowGroup(kind) => el = el.table_role(gpui::TableRole::RowGroup(kind)),
-        Part::Row => el = el.table_role(gpui::TableRole::Row),
+        // Borders of these apply only through the borders of the cells they meet, when collapsed.
+        Part::RowGroup(_) | Part::Row | Part::Column | Part::ColumnGroup => {
+            el = without_borders(el);
+            el = match part {
+                Part::RowGroup(kind) => el.table_role(gpui::TableRole::RowGroup(kind)),
+                Part::Row => el.table_role(gpui::TableRole::Row),
+                Part::Column => el.table_role(gpui::TableRole::Column { span: column_span(element) as u16 }),
+                _ => el.table_role(gpui::TableRole::ColumnGroup { span: column_span(element) as u16 }),
+            };
+        }
         Part::Cell => {
-            el = el.table_role(gpui::TableRole::Cell {
-                col_span: span_prop(element, "colSpan", 1, 1, 1000),
-                row_span: span_prop(element, "rowSpan", 1, 0, 65534),
-            });
+            let (col_span, row_span) = cell_spans(element);
+            el = el.table_role(gpui::TableRole::Cell { col_span: col_span as u16, row_span: row_span as u16 });
             el = el.cell_vertical_align(cell_vertical_align(style));
-            if table.hide_empty_cells && !table.collapse && is_empty(tree, element) {
+            if table.collapse {
+                el = collapsed_widths(el, collapsed.cell(CellKey::Element(element.id)));
+            } else if table.hide_empty_cells && is_empty(tree, element) {
                 el = without_decoration(el);
             }
         }
@@ -204,13 +263,30 @@ pub(crate) fn apply<E: Styled>(
             let side = if table.caption_bottom { gpui::CaptionSide::Bottom } else { gpui::CaptionSide::Top };
             el = el.table_role(gpui::TableRole::Caption(side));
         }
-        Part::Column => {
-            el = el.table_role(gpui::TableRole::Column { span: span_prop(element, "span", 1, 1, 1000) });
-        }
-        Part::ColumnGroup => {
-            el = el.table_role(gpui::TableRole::ColumnGroup { span: span_prop(element, "span", 1, 1, 1000) });
-        }
     }
+    el
+}
+
+/// The border widths of a box of a table with collapsed borders, which the table paints.
+fn collapsed_widths<E: Styled>(mut el: E, [top, right, bottom, left]: [f32; 4]) -> E {
+    el = el.collapsed_border();
+    let width = |width: f32| Some(gpui::px(width).into());
+    el.style().border_widths = gpui::EdgesRefinement {
+        top: width(top),
+        right: width(right),
+        bottom: width(bottom),
+        left: width(left),
+    };
+    el
+}
+
+fn without_borders<E: Styled>(mut el: E) -> E {
+    el.style().border_widths = gpui::EdgesRefinement {
+        top: Some(gpui::px(0.0).into()),
+        right: Some(gpui::px(0.0).into()),
+        bottom: Some(gpui::px(0.0).into()),
+        left: Some(gpui::px(0.0).into()),
+    };
     el
 }
 
@@ -249,12 +325,16 @@ fn cell_vertical_align(style: &StyleDesc) -> gpui::CellVerticalAlign {
 }
 
 /// An anonymous cell: a block with no style of its own, inheriting the text style of the table
-/// part around it.
-pub(crate) fn anonymous_cell() -> gpui::Div {
+/// part around it. In a table with collapsed borders it has the widths its neighbours' borders
+/// leave it.
+pub(crate) fn anonymous_cell(collapsed: Option<[f32; 4]>) -> gpui::Div {
     use gpui::prelude::*;
     let mut cell = gpui::div().table_role(gpui::TableRole::Cell { col_span: 1, row_span: 1 });
     cell.style().position = Some(gpui::Position::Static);
-    cell
+    match collapsed {
+        Some(halves) => collapsed_widths(cell, halves),
+        None => cell,
+    }
 }
 
 #[cfg(test)]
@@ -274,7 +354,7 @@ mod tests {
     fn role(display: &str, props: &[(&str, serde_json::Value)]) -> gpui::TableRole {
         use gpui::Styled;
         let element = element(serde_json::json!({ "display": display }), props);
-        let mut div = apply(gpui::div(), &RetainedTree::new(), &element, element.style.as_deref(), &TableInherited::default());
+        let mut div = apply(gpui::div(), &RetainedTree::new(), &element, element.style.as_deref(), &TableInherited::default(), &Collapsed::default());
         div.style().table_role.unwrap_or_default()
     }
 

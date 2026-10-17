@@ -7,8 +7,10 @@ use super::syntax::split_whitespace;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LineStyle {
-    /// `none` and `hidden`: the border is not drawn and takes no width.
+    /// The border is not drawn and takes no width.
     None,
+    /// Like `none`, but in a table with collapsed borders it also removes the borders it meets.
+    Hidden,
     Dotted,
     Dashed,
     Solid,
@@ -23,7 +25,8 @@ impl LineStyle {
     /// A `<line-style>` keyword, in any case.
     pub(crate) fn parse(token: &str) -> Option<Self> {
         match token.to_ascii_lowercase().as_str() {
-            "none" | "hidden" => Some(Self::None),
+            "none" => Some(Self::None),
+            "hidden" => Some(Self::Hidden),
             "dotted" => Some(Self::Dotted),
             "dashed" => Some(Self::Dashed),
             "solid" => Some(Self::Solid),
@@ -36,10 +39,15 @@ impl LineStyle {
         }
     }
 
+    /// Whether the border is there: it has a width and is drawn.
+    pub(crate) fn is_visible(self) -> bool {
+        !matches!(self, Self::None | Self::Hidden)
+    }
+
     /// What gpui paints, `None` for a style that takes no width.
-    fn painted(self) -> Option<gpui::BorderStyle> {
+    pub(crate) fn painted(self) -> Option<gpui::BorderStyle> {
         match self {
-            Self::None => None,
+            Self::None | Self::Hidden => None,
             Self::Dotted => Some(gpui::BorderStyle::Dotted),
             Self::Dashed => Some(gpui::BorderStyle::Dashed),
             Self::Solid => Some(gpui::BorderStyle::Solid),
@@ -347,7 +355,7 @@ impl Declared {
     /// width is `medium`.
     fn used_width(&self, side: Side, lengths: &LengthContext) -> gpui::Pixels {
         match self.styles[side as usize] {
-            None | Some(LineStyle::None) => gpui::px(0.0),
+            None | Some(LineStyle::None | LineStyle::Hidden) => gpui::px(0.0),
             Some(_) => resolve_width(&self.widths[side as usize].unwrap_or(MEDIUM), lengths),
         }
     }
@@ -368,6 +376,30 @@ pub(crate) fn used_widths(style: &StyleDesc, colors: &ColorContext, lengths: &Le
 pub(crate) fn declares_widths(style: &StyleDesc, colors: &ColorContext) -> bool {
     let declared = declare(style, colors);
     SIDES.into_iter().any(|side| declared.names(side))
+}
+
+/// One side of a box as a collapsed table reads it: what it declares, with the width it would have.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SideBorder {
+    pub style: LineStyle,
+    /// The used width: 0 for a side that is not visible.
+    pub width: gpui::Pixels,
+    /// Transparent when no colour is declared, as for a box of its own.
+    pub color: gpui::Hsla,
+}
+
+/// What `style` declares for every side, as `[top, right, bottom, left]`. `lengths` is the element's.
+pub(crate) fn sides(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> [SideBorder; 4] {
+    use gpui::Styled;
+    let declared = declare(style, colors);
+    let mut probe = apply_colors(gpui::div(), style, colors);
+    let painted = &probe.style().border_colors;
+    let color = [painted.top, painted.right, painted.bottom, painted.left];
+    SIDES.map(|side| SideBorder {
+        style: declared.styles[side as usize].unwrap_or(LineStyle::None),
+        width: declared.used_width(side, lengths),
+        color: color[side as usize].unwrap_or_else(gpui::transparent_black),
+    })
 }
 
 /// The border widths of the sides `style` names. A side it leaves out is not
@@ -445,7 +477,7 @@ mod tests {
     #[test]
     fn none_and_zero_clear_the_border() {
         assert_eq!(side("none").style, LineStyle::None);
-        assert_eq!(side("hidden").style, LineStyle::None);
+        assert_eq!(side("hidden").style, LineStyle::Hidden);
         assert_eq!(side("0 solid red").width, LinearLength::default());
     }
 
@@ -556,7 +588,7 @@ mod tests {
     fn every_line_style_parses_in_the_shorthand_in_any_case() {
         for (keyword, expected) in [
             ("none", LineStyle::None),
-            ("hidden", LineStyle::None),
+            ("hidden", LineStyle::Hidden),
             ("dotted", LineStyle::Dotted),
             ("dashed", LineStyle::Dashed),
             ("solid", LineStyle::Solid),

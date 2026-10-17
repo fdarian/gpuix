@@ -1536,3 +1536,695 @@ describeNative("tables: parts are elements", () => {
     }
   })
 })
+
+/** Compares the pixels of a block of the page with a map of it: one letter a pixel, `.` for white. */
+function expectMap(
+  pixels: ReturnType<typeof paint>,
+  rows: string[],
+  legend: Record<string, number[]>,
+  at: [number, number] = [0, 0]
+) {
+  const letters = Object.entries({ ".": WHITE, ...legend })
+  const got = rows.map((row, y) =>
+    [...row]
+      .map((_, x) => {
+        const pixel = pixels.at(at[0] + x, at[1] + y)
+        return letters.find(([, color]) => color.every((value, index) => value === pixel[index]))?.[0] ?? "?"
+      })
+      .join("")
+  )
+  expect(got.join("\n")).toEqual(rows.join("\n"))
+}
+
+const BLACK = [0, 0, 0, 255]
+const DARK_GREEN = [0, 128, 0, 255]
+const ORANGE = [255, 165, 0, 255]
+const YELLOW = [255, 255, 0, 255]
+const PURPLE = [128, 0, 128, 255]
+const GRAY = [238, 238, 238, 255]
+
+describeNative("tables: border-collapse", () => {
+  /**
+   * The borders of the cells and the table, the table's 4px border against the 2, 6, 4 and 2px of the cells: the
+   * wider border wins each edge, a cell wins a tie with the table (the green one on the left and below), each side of
+   * a border holds half of it, and the borders cover the cells' backgrounds and meet the way Chrome joins them: the
+   * 6px blue one runs up to the top of the table and over the black one, the others stop at its edge.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse;border:4px solid #000000;background:#eeeeee">
+   *   <tr id="r1">
+   *     <td id="a" style="border:2px solid #ff0000;background:#ffff00"><div id="a1" style="width:30px;height:10px"></div></td>
+   *     <td id="b" style="border:6px solid #0000ff"><div id="b1" style="width:30px;height:10px"></div></td>
+   *   </tr>
+   *   <tr id="r2">
+   *     <td id="c" style="border:4px solid #008000"><div id="c1" style="width:30px;height:10px"></div></td>
+   *     <td id="d" style="border:2px solid #ffa500"><div id="d1" style="width:30px;height:10px"></div></td>
+   *   </tr>
+   * </table>
+   * ```
+   * The map is the screenshot of that page, 76 by 36 pixels from the corner of the table, `.` white, `g` the table's
+   * background, `K` black, `B` blue, `Y` yellow, `G` green. Red and orange lose every edge.
+   */
+  it("gives each edge the wider border and paints it centred on the line, over the cells", () => {
+    const border = (width: number, color: string): Style => ({ border: `${width}px solid ${color}` })
+    const ui = (
+      <Table id="t" style={{ borderCollapse: "collapse", backgroundColor: "#eeeeee", ...border(4, "#000000") }}>
+        <Row id="r1">
+          <Cell id="a" style={{ ...border(2, "#ff0000"), backgroundColor: "#ffff00" }}>
+            <Box id="a1" w={30} h={10} />
+          </Cell>
+          <Cell id="b" style={border(6, "#0000ff")}>
+            <Box id="b1" w={30} h={10} />
+          </Cell>
+        </Row>
+        <Row id="r2">
+          <Cell id="c" style={border(4, "#008000")}>
+            <Box id="c1" w={30} h={10} />
+          </Cell>
+          <Cell id="d" style={border(2, "#ffa500")}>
+            <Box id="d1" w={30} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      t: [0, 0, 76, 36],
+      r1: [2, 3, 71, 16],
+      a: [2, 3, 35, 16],
+      a1: [4, 6, 30, 10],
+      b: [37, 3, 36, 16],
+      b1: [40, 6, 30, 10],
+      r2: [2, 19, 71, 15],
+      c: [2, 19, 35, 15],
+      c1: [4, 22, 30, 10],
+      d: [37, 19, 36, 15],
+      d1: [39, 22, 30, 10],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-conflicts", ui),
+      [
+      "ggggggggggggggggggggggggggggggggggBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBggggggggggggggggggggggggggggggBBBBBB",
+      "KKKKYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGggggggggggggggggggggggggggggggBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGgggggggggggggggggggggggggggggggGGGGggggggggggggggggggggggggggggggggKKKKg",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKg",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKg",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKg",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKg"
+      ],
+      { K: BLACK, B: BLUE, g: GRAY, Y: YELLOW, G: DARK_GREEN }
+    )
+  })
+
+  /**
+   * A cell spanning two rows has one border along its right side for each row: the 4px red of the cell against the
+   * 2px blue of the cell beside the first row, and against the 6px green of the second. Where the second row's
+   * green meets its edge with the first, it is the widest there and covers the red.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse">
+   *   <tr id="r1">
+   *     <td id="s" rowspan="2" style="border:4px solid #ff0000"><div id="s1" style="width:20px;height:10px"></div></td>
+   *     <td id="p" style="border:2px solid #0000ff"><div id="p1" style="width:20px;height:10px"></div></td>
+   *   </tr>
+   *   <tr id="r2">
+   *     <td id="q" style="border:6px solid #008000"><div id="q1" style="width:20px;height:10px"></div></td>
+   *   </tr>
+   * </table>
+   * ```
+   * `R` red, `B` blue, `G` green, 56 by 36 pixels.
+   */
+  it("gives a cell that spans rows a border for each of them", () => {
+    const ui = (
+      <Table id="t" style={{ borderCollapse: "collapse" }}>
+        <Row id="r1">
+          <Cell id="s" rowSpan={2} style={{ border: "4px solid #ff0000" }}>
+            <Box id="s1" w={20} h={10} />
+          </Cell>
+          <Cell id="p" style={{ border: "2px solid #0000ff" }}>
+            <Box id="p1" w={20} h={10} />
+          </Cell>
+        </Row>
+        <Row id="r2">
+          <Cell id="q" style={{ border: "6px solid #008000" }}>
+            <Box id="q1" w={20} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      t: [0, 0, 56, 36],
+      r1: [2, 2, 51, 15],
+      s: [2, 2, 25, 31],
+      s1: [4, 4, 20, 10],
+      p: [27, 2, 26, 15],
+      p1: [29, 4, 20, 10],
+      r2: [2, 17, 51, 16],
+      q: [27, 17, 26, 16],
+      q1: [30, 20, 20, 10],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-rowspan", ui),
+      [
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRR...........................",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBB..",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBB..",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR.....................RRRR.......................BB..",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGG....................GGGGGG",
+      "RRRR....................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRRRRRRRRRRRRRRRRRRRRRRGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRRRRRRRRRRRRRRRRRRRRRRGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRRRRRRRRRRRRRRRRRRRRRRGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "RRRRRRRRRRRRRRRRRRRRRRRRGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+      "........................GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+      ],
+      { R: RED, B: BLUE, G: DARK_GREEN }
+    )
+  })
+
+  /**
+   * `hidden` removes the border of an edge whatever the others say, and `none` loses to any border: the middle cell's
+   * hidden borders leave the edges next to it bare (its top and bottom too), and the 2px orange border of the cell
+   * beside the 8px `none` ones is the one there.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse">
+   *   <tr id="r1">
+   *     <td id="a" style="border:4px solid #ff0000"><div id="a1" style="width:12px;height:10px"></div></td>
+   *     <td id="b" style="border:6px hidden #00ff00"><div id="b1" style="width:12px;height:10px"></div></td>
+   *     <td id="c" style="border:4px solid #0000ff"><div id="c1" style="width:12px;height:10px"></div></td>
+   *   </tr>
+   *   <tr id="r2">
+   *     <td id="d" style="border:2px solid #ffa500"><div id="d1" style="width:12px;height:10px"></div></td>
+   *     <td id="e" style="border:8px none #00ff00"><div id="e1" style="width:12px;height:10px"></div></td>
+   *     <td id="f"><div id="f1" style="width:12px;height:10px"></div></td>
+   *   </tr>
+   * </table>
+   * ```
+   * `R` red, `B` blue, `O` orange, 45 by 30 pixels.
+   */
+  it("removes the borders of an edge that is hidden and ignores one that is none", () => {
+    const ui = (
+      <Table id="t" style={{ borderCollapse: "collapse" }}>
+        <Row id="r1">
+          <Cell id="a" style={{ border: "4px solid #ff0000" }}>
+            <Box id="a1" w={12} h={10} />
+          </Cell>
+          <Cell id="b" style={{ border: "6px hidden #00ff00" }}>
+            <Box id="b1" w={12} h={10} />
+          </Cell>
+          <Cell id="c" style={{ border: "4px solid #0000ff" }}>
+            <Box id="c1" w={12} h={10} />
+          </Cell>
+        </Row>
+        <Row id="r2">
+          <Cell id="d" style={{ border: "2px solid #ffa500" }}>
+            <Box id="d1" w={12} h={10} />
+          </Cell>
+          <Cell id="e" style={{ border: "8px none #00ff00" }}>
+            <Box id="e1" w={12} h={10} />
+          </Cell>
+          <Cell id="f">
+            <Box id="f1" w={12} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      t: [0, 0, 45, 30],
+      r1: [2, 2, 41, 14],
+      a: [2, 2, 14, 14],
+      a1: [4, 4, 12, 10],
+      b: [16, 2, 13, 14],
+      b1: [16, 4, 12, 10],
+      c: [29, 2, 14, 14],
+      c1: [29, 4, 12, 10],
+      r2: [2, 16, 41, 13],
+      d: [2, 16, 14, 13],
+      d1: [3, 18, 12, 10],
+      e: [16, 16, 13, 13],
+      e1: [17, 18, 12, 10],
+      f: [29, 16, 14, 13],
+      f1: [29, 18, 12, 10],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-hidden", ui),
+      [
+      "RRRRRRRRRRRRRRRR.............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRR.............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRR.............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRR.............BBBBBBBBBBBBBBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRR.....................................BBBB",
+      "RRRRRRRRRRRRRRRRR............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRR............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRR............BBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRR............BBBBBBBBBBBBBBBB",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OO............OO............................",
+      ".OOOOOOOOOOOOOOOO............................",
+      ".OOOOOOOOOOOOOOOO............................"
+      ],
+      { R: RED, B: BLUE, O: ORANGE }
+    )
+  })
+
+  /**
+   * Row groups, rows, columns and column groups have borders too, and take part in the conflicts: the 12px purple top
+   * border of the row group beats the table's edge, the 8px red bottom border of the first row beats the cell's
+   * black 2px one, the 10px blue one of the second column beats the 6px green of the column group (its left, top and
+   * bottom edges are the group's too) where they meet.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse">
+   *   <colgroup id="cg" style="border:6px solid #008000"><col id="c1"><col id="c2" style="border:10px solid #0000ff"></colgroup>
+   *   <tbody id="g1" style="border-top:12px solid #800080">
+   *     <tr id="r1" style="border-bottom:8px solid #ff0000">
+   *       <td id="a" style="border:2px solid #000000"><div style="width:20px;height:10px"></div></td>
+   *       <td id="b"><div style="width:20px;height:10px"></div></td>
+   *     </tr>
+   *     <tr id="r2"><td id="c"><div style="width:20px;height:10px"></div></td><td id="d"><div style="width:20px;height:10px"></div></td></tr>
+   *   </tbody>
+   * </table>
+   * ```
+   * `G` green, `B` blue, `P` purple, `R` red, 66 by 50 pixels. (The `<col>`s have no box in Chrome that is theirs.)
+   */
+  it("takes the borders of rows, row groups, columns and column groups into the conflicts", () => {
+    const ui = (
+      <Table id="t" style={{ borderCollapse: "collapse" }}>
+        <ColGroup id="cg" style={{ border: "6px solid #008000" }}>
+          <Col id="c1" />
+          <Col id="c2" style={{ border: "10px solid #0000ff" }} />
+        </ColGroup>
+        <Body id="g1" style={{ borderTop: "12px solid #800080" }}>
+          <Row id="r1" style={{ borderBottom: "8px solid #ff0000" }}>
+            <Cell id="a" style={{ border: "2px solid #000000" }}>
+              <Box id="a1" w={20} h={10} />
+            </Cell>
+            <Cell id="b">
+              <Box id="b1" w={20} h={10} />
+            </Cell>
+          </Row>
+          <Row id="r2">
+            <Cell id="c">
+              <Box id="c3" w={20} h={10} />
+            </Cell>
+            <Cell id="d">
+              <Box id="d1" w={20} h={10} />
+            </Cell>
+          </Row>
+        </Body>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      t: [0, 0, 66, 50],
+      g1: [3, 6, 58, 39],
+      r1: [3, 6, 58, 20],
+      a: [3, 6, 28, 20],
+      b: [31, 6, 30, 20],
+      r2: [3, 26, 58, 19],
+      c: [3, 26, 28, 19],
+      d: [31, 26, 30, 19],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-parts", ui),
+      [
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBRRRRRRRRRRRRRRRRRRRRBBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBB....................BBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGG....................BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "..........................BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "..........................BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      ],
+      { G: DARK_GREEN, B: BLUE, P: PURPLE, R: RED, K: BLACK }
+    )
+  })
+
+  /**
+   * The table lays out as if it had no spacing, no padding and no radius, and `empty-cells` does not hide an
+   * empty cell's borders.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse;border-spacing:10px;empty-cells:hide;padding:10px;border:2px solid #000000;border-radius:8px;background:#eeeeee">
+   *   <tr id="r1">
+   *     <td id="a" style="border:2px solid #ff0000;background:#ffff00"></td>
+   *     <td id="b" style="border:2px solid #0000ff;padding:3px"><div id="b1" style="width:20px;height:10px"></div></td>
+   *   </tr>
+   * </table>
+   * ```
+   */
+  it("ignores border-spacing, the table's padding and radius and empty-cells", () => {
+    const ui = (
+      <Table
+        id="t"
+        style={{
+          borderCollapse: "collapse",
+          borderSpacing: 10,
+          emptyCells: "hide",
+          padding: 10,
+          border: "2px solid #000000",
+          borderRadius: 8,
+          backgroundColor: "#eeeeee",
+        }}
+      >
+        <Row id="r1">
+          <Cell id="a" style={{ border: "2px solid #ff0000", backgroundColor: "#ffff00" }} />
+          <Cell id="b" style={{ border: "2px solid #0000ff", padding: 3 }}>
+            <Box id="b1" w={20} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      t: [0, 0, 32, 20],
+      r1: [1, 1, 30, 18],
+      a: [1, 1, 2, 18],
+      b: [3, 1, 28, 18],
+      b1: [7, 5, 20, 10],
+      // oracle:end
+    })
+    const pixels = paint("collapse-ignored", ui)
+    // The empty cell has its 2px red border on the left though `empty-cells` is `hide`, where it wins the tie with the
+    // table's black one; the table's background is inside the borders, and the blue is the other cell's.
+    // Pixels of the Chrome screenshot of the page.
+    for (const [x, y, color] of [
+      [0, 0, RED],
+      [3, 10, RED],
+      [4, 10, GRAY],
+      [29, 10, GRAY],
+      [30, 10, BLUE],
+      [31, 19, BLUE],
+      [10, 0, BLUE],
+      [10, 1, BLUE],
+      [10, 2, GRAY],
+      [10, 17, GRAY],
+      [10, 18, BLUE],
+    ] as const) {
+      expect(pixels.at(x, y), `(${x}, ${y})`).toEqual(color)
+    }
+  })
+
+  /**
+   * A `double` border of 6px is two lines of 2px with a gap of 2px, a dashed one has gaps along it and a
+   * dotted one is not a line. They are centred on the grid line like the solid ones; the thickness is the
+   * border's.
+   */
+  it("paints the style of a border: double, dashed and dotted", () => {
+    const ui = (style: string) => (
+      <Table id="t" style={{ borderCollapse: "collapse", border: `6px ${style} #0000ff` }}>
+        <Row id="r">
+          <Cell id="a">
+            <Box id="a1" w={60} h={20} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    const double = paint("collapse-double", ui("double"))
+    const column = (pixels: typeof double, x: number) =>
+      [0, 1, 2, 3, 4, 5, 6, 7].map((y) => (pixels.at(x, y).every((value, index) => value === BLUE[index]) ? "B" : "."))
+    expect(column(double, 30).join("")).toBe("BB..BB..")
+    const dashed = paint("collapse-dashed", ui("dashed"))
+    // Along the top border, clear of the corners.
+    const dashes = Array.from({ length: 50 }, (_, index) => column(dashed, index + 8)[1])
+    expect(dashes).toContain("B")
+    expect(dashes).toContain(".")
+    // Across the dashes the line is 6 thick, centred on the line at y = 3: rows 0 to 5.
+    const solidRows = (pixels: typeof dashed) => {
+      const at = Array.from({ length: 50 }, (_, index) => index + 8).find((x) => column(pixels, x)[2] === "B")!
+      return column(pixels, at).join("")
+    }
+    expect(solidRows(dashed)).toBe("BBBBBB..")
+    const dotted = paint("collapse-dotted", ui("dotted"))
+    const dots = Array.from({ length: 50 }, (_, index) => column(dotted, index + 8)[2])
+    expect(dots).toContain("B")
+    expect(dots).toContain(".")
+  })
+
+  /**
+   * A border of an odd width leaves half a pixel more on neither side: the halves are exact, so the grid starts
+   * 1.5px in, and a cell is 33 wide around its 30. All four are 3px, so on each edge the cell on the left or
+   * above beats the other, and a cell beats the table.
+   *
+   * ```html
+   * <table id="t" style="border-collapse:collapse;border:3px solid #000000">
+   *   <tr id="r1">
+   *     <td id="a" style="border:3px solid #ff0000"><div id="a1" style="width:30px;height:10px"></div></td>
+   *     <td id="b" style="border:3px solid #0000ff"><div id="b1" style="width:30px;height:10px"></div></td>
+   *   </tr>
+   *   <tr id="r2">
+   *     <td id="c" style="border:3px solid #008000"><div id="c1" style="width:30px;height:10px"></div></td>
+   *     <td id="d" style="border:3px solid #ffa500"><div id="d1" style="width:30px;height:10px"></div></td>
+   *   </tr>
+   * </table>
+   * ```
+   * `R` red, `B` blue, `G` green, `O` orange, 69 by 29 pixels.
+   */
+  it("splits a border of an odd width into exact halves", () => {
+    const border = (color: string): Style => ({ border: `3px solid ${color}` })
+    const ui = (
+      <Table id="t" style={{ borderCollapse: "collapse", ...border("#000000") }}>
+        <Row id="r1">
+          <Cell id="a" style={border("#ff0000")}>
+            <Box id="a1" w={30} h={10} />
+          </Cell>
+          <Cell id="b" style={border("#0000ff")}>
+            <Box id="b1" w={30} h={10} />
+          </Cell>
+        </Row>
+        <Row id="r2">
+          <Cell id="c" style={border("#008000")}>
+            <Box id="c1" w={30} h={10} />
+          </Cell>
+          <Cell id="d" style={border("#ffa500")}>
+            <Box id="d1" w={30} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      // Chrome's boxes are at 1.5 and 34.5: here they snap to a pixel, half toward zero, and the sizes agree.
+      t: [0, 0, 69, 29],
+      r1: [1, 1, 66, 13],
+      a: [1, 1, 33, 13],
+      a1: [3, 3, 30, 10],
+      b: [34, 1, 33, 13],
+      b1: [36, 3, 30, 10],
+      r2: [1, 14, 66, 13],
+      c: [1, 14, 33, 13],
+      c1: [3, 16, 30, 10],
+      d: [34, 14, 33, 13],
+      d1: [36, 16, 30, 10],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-odd", ui),
+      [
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRR..............................RRR..............................BBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGG..............................GGG..............................OOO",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO",
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO"
+      ],
+      { R: RED, B: BLUE, G: DARK_GREEN, O: ORANGE }
+    )
+  })
+
+  it("paints no border on a row, a row group, a column or a column group of its own", () => {
+    const edge: Style = { border: "4px solid #ff0000" }
+    const ui = (collapse: boolean) => (
+      <Table id="t" style={{ borderCollapse: collapse ? "collapse" : "separate" }}>
+        <ColGroup id="cg" style={edge}>
+          <Col id="c1" style={edge} />
+        </ColGroup>
+        <Body id="g" style={edge}>
+          <Row id="r" style={edge}>
+            <Cell id="a">
+              <Box id="a1" w={30} h={10} />
+            </Cell>
+          </Row>
+        </Body>
+      </Table>
+    )
+    // Separated, none of them has a border: the table is as big as its cell and white all over.
+    const separate = paint("collapse-off", ui(false))
+    expect(separate.at(1, 1)).toEqual(WHITE)
+    expect(separate.at(15, 5)).toEqual(WHITE)
+    expectBoxes(ui(false), { t: [0, 0, 30, 10], a: [0, 0, 30, 10] })
+    // Collapsed, they are the borders of the cell's edges.
+    expect(paint("collapse-on", ui(true)).at(1, 1)).toEqual(RED)
+  })
+
+  it("paints a collapsed table's borders under its opacity", () => {
+    const solid = paint(
+      "collapse-opaque",
+      <Table id="t" style={{ borderCollapse: "collapse", border: "4px solid #0000ff" }}>
+        <Row id="r">
+          <Cell id="a">
+            <Box id="a1" w={20} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    const faded = paint(
+      "collapse-faded",
+      <Table id="t" style={{ borderCollapse: "collapse", border: "4px solid #0000ff", opacity: 0.5 }}>
+        <Row id="r">
+          <Cell id="a">
+            <Box id="a1" w={20} h={10} />
+          </Cell>
+        </Row>
+      </Table>
+    )
+    expect(solid.at(10, 1)).toEqual(BLUE)
+    const [r, g, b] = faded.at(10, 1)
+    expect([r, g].every((value) => value > 100 && value < 160), `blended: ${r},${g},${b}`).toBe(true)
+    expect(b).toBe(255)
+  })
+})

@@ -5952,6 +5952,7 @@ impl GpuixView {
             atomic_height_definite: false,
             containing_heights: Vec::new(),
             baseline_probe: None,
+            collapsed: Default::default(),
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -6136,6 +6137,8 @@ pub(crate) struct BuildCtx<'a> {
     /// The flex or grid container whose first item `build_content` is to watch, for the
     /// baseline of an `inline-flex` or `inline-grid` box.
     pub baseline_probe: Option<crate::text::atomic::Probe>,
+    /// What the tables with collapsed borders built so far gave their parts.
+    pub collapsed: crate::layout::table::Collapsed,
 }
 
 impl BuildCtx<'_> {
@@ -7257,6 +7260,7 @@ impl gpui::Render for GpuixView {
                     atomic_height_definite: false,
                     containing_heights: Vec::new(),
                     baseline_probe: None,
+                    collapsed: Default::default(),
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -8034,7 +8038,10 @@ pub(crate) fn build_host_container(
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
 
-    el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table);
+    if ctx.inherited.table.collapse && crate::layout::table::part(element) == Some(crate::layout::table::Part::Table) {
+        resolve_collapsed_borders(ctx, element, style, window.scale_factor());
+    }
+    el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
@@ -8144,6 +8151,71 @@ pub(crate) fn build_host_container(
     el.into_any_element()
 }
 
+/// The borders of the table `element` with collapsed borders, resolved for its cells and itself.
+fn resolve_collapsed_borders(
+    ctx: &mut BuildCtx,
+    element: &crate::retained_tree::RetainedElement,
+    style: Option<&StyleDesc>,
+    scale: f32,
+) {
+    use crate::css::border::{LineStyle, SideBorder};
+
+    /// The borders of `element` and, below a table, row group, row or column group, of its children, each read
+    /// with the colours and lengths it inherits. They see the pointer's states but not transitions, animations
+    /// or motion.
+    fn walk(
+        ctx: &BuildCtx,
+        element: &crate::retained_tree::RetainedElement,
+        style: Option<&StyleDesc>,
+        inherited: &Inherited,
+        is_table: bool,
+        sides: &mut HashMap<u64, [SideBorder; 4]>,
+    ) {
+        sides.insert(
+            element.id,
+            crate::css::border::sides(style.unwrap_or(&EMPTY_STYLE), &inherited.colors, &inherited.lengths),
+        );
+        use crate::layout::table::Part;
+        if !is_table && !matches!(crate::layout::table::part(element), Some(Part::RowGroup(_) | Part::Row | Part::ColumnGroup)) {
+            return;
+        }
+        let children = crate::layout::order::children_in_order(ctx.tree, element, element.style.as_deref());
+        for child in children.iter().filter_map(|id| ctx.tree.elements.get(id)) {
+            if crate::layout::box_generation::is_display_none(child) {
+                continue;
+            }
+            let states = child
+                .style
+                .as_deref()
+                .map(|style| ctx.pointer_states(child.id, style, child.has_inert_prop()))
+                .unwrap_or_default();
+            let folded = child
+                .style
+                .as_deref()
+                .filter(|_| states.any())
+                .map(|style| crate::events::state_styles::resolve_pointer_states(style, states));
+            let child_style = folded.as_ref().or(child.style.as_deref());
+            let child_inherited = inherited.clone().descend(child_style, child.has_inert_prop());
+            walk(ctx, child, child_style, &child_inherited, false, sides);
+        }
+    }
+
+    let mut sides = HashMap::new();
+    walk(ctx, element, style, &ctx.inherited, true, &mut sides);
+    // A table whose width is definite lays its columns out fixed when it says so, and keeps the columns no cell starts in.
+    let fixed = style.is_some_and(|style| {
+        style.table_layout == Some(crate::css::table::TableLayout::Fixed)
+            && style.width.as_ref().is_some_and(|width| !matches!(width, crate::style::DimensionValue::Auto))
+    });
+    let none = || SideBorder { style: LineStyle::None, width: gpui::px(0.0), color: gpui::transparent_black() };
+    let resolved = crate::layout::collapse::resolve(ctx.tree, element, !fixed, scale, &|id| {
+        sides.get(&id).copied().unwrap_or([none(); 4])
+    });
+    if let Some(resolved) = resolved {
+        ctx.collapsed.insert(element.id, resolved);
+    }
+}
+
 /// What a host element holds, in paint order, with the paint rank of each, and the cells its
 /// atomic inlines read the content height of the element from.
 fn build_content(
@@ -8178,17 +8250,19 @@ fn build_content(
             .as_ref()
             .filter(|probe| probe.container == element.id)
             .map(crate::text::atomic::Probe::clone_handle);
-        build_plan(element, plan, probe.as_ref(), &mut content_elements, &mut paint_ranks, ctx, window, cx);
+        build_plan(element, plan, probe.as_ref(), &mut 0, &mut content_elements, &mut paint_ranks, ctx, window, cx);
     }
     let containing_heights = std::mem::replace(&mut ctx.containing_heights, outer_heights);
     (content_elements, paint_ranks, containing_heights)
 }
 
 /// Builds the children `plan` of `element` into `content_elements`, with the paint rank of each.
+/// `anonymous` counts the anonymous cells of `element` built so far.
 fn build_plan(
     element: &crate::retained_tree::RetainedElement,
     plan: Vec<(crate::text::inline::Child, u32)>,
     probe: Option<&crate::text::atomic::Probe>,
+    anonymous: &mut usize,
     content_elements: &mut Vec<gpui::AnyElement>,
     paint_ranks: &mut Vec<i32>,
     ctx: &mut BuildCtx,
@@ -8202,8 +8276,11 @@ fn build_plan(
         if let crate::text::inline::Child::AnonymousCell(cell) = child {
             let mut inside = Vec::new();
             let mut inside_ranks = Vec::new();
-            build_plan(element, cell, probe, &mut inside, &mut inside_ranks, ctx, window, cx);
-            let mut cell = crate::layout::table::anonymous_cell();
+            build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+            let key = crate::layout::table_grid::CellKey::Anonymous { container: element.id, ordinal: *anonymous };
+            *anonymous += 1;
+            let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
+            let mut cell = crate::layout::table::anonymous_cell(halves);
             if inside_ranks.iter().any(|rank| *rank != 0) {
                 cell = cell.paint_ranks(inside_ranks);
             }

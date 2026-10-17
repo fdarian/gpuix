@@ -6155,6 +6155,21 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   nothing, and neither does a `position: absolute` or `fixed` child, which the
   table places by its insets. Children of a `table-column` are not built, and a
   `table-column-group` builds only its `table-column` children.
+- **Collapsed borders.** With `borderCollapse: "collapse"` (inherited) the borders of
+  the table, its cells, rows, row groups, columns and column groups share the edges of
+  the grid, and each edge has one: `hidden` removes it, otherwise the wider wins, then
+  the more elaborate style (`double`, `solid`, `dashed`, `dotted`, `ridge`, `outset`,
+  `groove`, `inset`; `none` loses to any), then the closer box (cell, row, row group,
+  column, column group, table), then the one on the left or above (CSS 2.1 section
+  17.6.2.1). A border is centred on its grid line: each cell and the table get half of
+  the widest border along each side as their border width, exactly (a 3px border leaves
+  1.5px on each side, as in Chrome), so the table's border box holds the outer half of
+  its outer borders, and `borderSpacing`, the table's `padding` and `borderRadius`, and
+  `emptyCells` do nothing. Cells, rows, groups and the table paint none of their own
+  borders; the table paints each edge once, after its cells, so a border covers their
+  backgrounds, in the border's colour and style, and where borders cross the strongest
+  covers the others and the others run under it. Rows, groups and columns paint no
+  border at all when the borders are separate.
 - **Parts are elements.** Cells, rows, groups and captions take events, `hover`
   and `active` styles, focus (`tabIndex`), `overflow`, `zIndex`, transitions and
   motion, `ResizeObserver`, `getBoundingClientRect`, selection and search like any
@@ -6162,9 +6177,12 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
 
 Differences from Chrome:
 
-- `borderCollapse: "collapse"` is parsed and laid out (no spacing, the borders of the
-  table and its cells count as half widths), but the collapsed borders are not resolved
-  or painted: each cell paints its own border.
+- Collapsed borders are resolved from the style a part declares with the pointer's states
+  (`hover`, `active`, groups) folded in: a transition, animation or `motion` of a border
+  of a row, cell or column is not seen by its neighbours until it ends. A column no cell
+  starts in joins the one before it in the layout, and the borders predict that: a table
+  with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
+  percentage of a parent with no width draws no collapsed borders.
 - `inline-table` is a `table`: it is block-level until the `inline-*` values exist.
 - A table part outside a table, row group or row (a `table-row`, or a `table-cell`
   in a plain `div`) is a block with no anonymous table around it.
@@ -6185,8 +6203,8 @@ Differences from Chrome:
 - Sums are floats, where Chrome counts in 1/64 of a pixel, so widths shared out can differ in
   the second decimal; the painted box is snapped to the device pixel.
 - `mask` and `clipPath` reference the whole box, with the captions.
-- `emptyCells` does nothing with `borderCollapse: "collapse"`, and an element that paints
-  nothing (`visibility: hidden`) counts as content in a cell.
+- An element that paints nothing (`visibility: hidden`) counts as content in a cell for
+  `emptyCells`.
 - Copying a selection across cells joins their text with line breaks, where Chrome puts a
   tab between the cells of a row.
 - The table styles are not animatable by `motion`, a keyframe or a CSS transition.

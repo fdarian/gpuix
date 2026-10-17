@@ -997,7 +997,7 @@ impl StyleDesc {
                 .as_deref()
                 .filter(|value| {
                     crate::css::border::parse_border(value).is_some_and(|parsed| {
-                        parsed.style != crate::css::border::LineStyle::None
+                        parsed.style.is_visible()
                             && parsed.color.to_ascii_lowercase().contains("currentcolor")
                     })
                 })
