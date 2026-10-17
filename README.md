@@ -3358,7 +3358,7 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   before it, the box's text and the text after it, in that order; the copied text reads `a b c` for
   `a <box>b</box> c` (the placeholder is left out, and the text of a block in the box starts a line of its own,
   as the DOM does); and the matches of a `highlight` are numbered in the same order. A match cannot cross the box.
-- A box is a [query container](#container-queries) like any other box (`containerType` on it works, and an
+- An `inline-block`, `inline-flex` or `inline-grid` box is a [query container](#container-queries) like any other box (`containerType` on it works, and an
   `inline-size` one without a `width` is as wide as its padding and border), and the boxes inside it or inside a
   container around its paragraph read `@container` blocks and `cq` units in the frame that lays them out. Hovering
   or pressing something in it restyles the `hasHover` and `hasActive` of its ancestors, the paragraph's element
@@ -6068,6 +6068,12 @@ so that animation starts at `0`.
   between layers in `getElementsAt`.
 - **`order`** stable-sorts the children of a flex or grid container. Layout and
   paint follow it; tab order stays in document order.
+- **Baselines.** Text has a first baseline: that of its first line. A flex or grid
+  item with `alignItems` or `alignSelf: "baseline"`, a `baseline`-aligned
+  [table cell](#tables) and an [`inline-flex`, `inline-grid` or `inline-table`](#inline-block-inline-flex-inline-grid-and-inline-table)
+  on its line all line up by their text, as in a browser, and a box with no text
+  uses the bottom of its border box. A flex or grid container's own baseline is its
+  first item's.
 
 #### Grid
 
