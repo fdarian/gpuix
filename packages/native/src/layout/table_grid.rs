@@ -16,6 +16,16 @@ pub(crate) enum BoxKey {
     Anonymous { container: u64, ordinal: usize },
 }
 
+impl BoxKey {
+    /// A number that names the box among the boxes of a window.
+    pub(crate) fn token(self) -> u64 {
+        match self {
+            BoxKey::Element(id) => id << 1,
+            BoxKey::Anonymous { container, ordinal } => ((container << 24) | ordinal as u64) << 1 | 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Cell {
     pub key: BoxKey,

@@ -191,6 +191,22 @@ impl Collapsed {
     }
 }
 
+/// What the text below `element` knows of the table around it, for copying: which row it is in, and the cell.
+/// The cells directly in a table or a row group are in one implicit row, named by the table or group.
+pub(crate) fn enter(row: &mut Option<u64>, cell: &mut Option<crate::text::selection::TableCell>, element: &RetainedElement) {
+    let token = BoxKey::Element(element.id).token();
+    match part(element) {
+        Some(Part::Table | Part::RowGroup(_) | Part::Row) => {
+            *row = Some(token);
+            *cell = None;
+        }
+        Some(Part::Cell) => {
+            *cell = row.map(|row| crate::text::selection::TableCell { row, cell: token });
+        }
+        _ => {}
+    }
+}
+
 /// The columns and rows a cell covers, as `colSpan` and `rowSpan` ask for.
 pub(crate) fn cell_spans(element: &RetainedElement) -> (usize, usize) {
     (span_prop(element, "colSpan", 1, 1, 1000) as usize, span_prop(element, "rowSpan", 1, 0, 65534) as usize)

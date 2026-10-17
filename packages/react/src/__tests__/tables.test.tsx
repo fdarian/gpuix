@@ -1445,6 +1445,88 @@ describeNative("tables: parts are elements", () => {
     }
   })
 
+  /**
+   * Chrome serialises a selection across cells with a tab between the cells of a row and a line break between rows
+   * (`getSelection().toString()` of a `<table>` and of `display: table` boxes, and `innerText`), also when the
+   * cells are anonymous.
+   *
+   * ```html
+   * <table><tr><td>aa</td><td>bb</td></tr><tr><td>cc</td><td>dd</td></tr></table>
+   * ```
+   * selects as `"aa\tbb\ncc\tdd"`; a row of two bare cells in a block as `"x\ty"`; `loose` in an anonymous cell
+   * before a row as `"loose\naa\tbb"`.
+   */
+  it("copies the cells of a row with a tab between them and the rows with a line break", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      const copy = (ui: React.ReactElement, from: string, to: string) => {
+        render(<div style={{ width: 400, fontSize: 20, lineHeight: 30 }}>{ui}</div>)
+        const [x1, y1] = boxOf(renderer, from)
+        const [x2, y2, w2, h2] = boxOf(renderer, to)
+        return renderer.dragSelect(x1 + 1, y1 + 5, x2 + w2 + 30, y2 + h2 - 5)
+      }
+      expect(
+        copy(
+          <Table id="t">
+            <Row id="r1">
+              <Cell id="a">
+                <text>aa</text>
+              </Cell>
+              <Cell id="b">
+                <text>bb</text>
+              </Cell>
+            </Row>
+            <Row id="r2">
+              <Cell id="c">
+                <text>cc</text>
+              </Cell>
+              <Cell id="d">
+                <text>dd</text>
+              </Cell>
+            </Row>
+          </Table>,
+          "a",
+          "d"
+        )
+      ).toBe("aa\tbb\ncc\tdd")
+      // Cells that are bare, in the anonymous table of a block.
+      expect(
+        copy(
+          <div>
+            <Cell id="a">
+              <text>x</text>
+            </Cell>
+            <Cell id="b">
+              <text>y</text>
+            </Cell>
+          </div>,
+          "a",
+          "b"
+        )
+      ).toBe("x\ty")
+      // Text in an anonymous cell of the table, then a row.
+      expect(
+        copy(
+          <Table id="t">
+            loose
+            <Row id="r">
+              <Cell id="a">
+                <text>aa</text>
+              </Cell>
+              <Cell id="b">
+                <text>bb</text>
+              </Cell>
+            </Row>
+          </Table>,
+          "t",
+          "b"
+        )
+      ).toBe("loose\naa\tbb")
+    } finally {
+      unmount()
+    }
+  })
+
   it("transitions the width of a cell, and the table around it follows", () => {
     const { render, renderer, unmount } = createTestRoot()
     try {

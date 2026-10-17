@@ -6178,6 +6178,9 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   backgrounds, in the border's colour and style, and where borders cross the strongest
   covers the others and the others run under it. Rows, groups and columns paint no
   border at all when the borders are separate.
+- **Copying.** A selection across cells copies as `getSelection().toString()` does in Chrome:
+  a tab between the cells of a row and a line break between rows and between the blocks of
+  one cell (the cells of an anonymous table and the anonymous cells included).
 - **Parts are elements.** Cells, rows, groups and captions take events, `hover`
   and `active` styles, focus (`tabIndex`), `overflow`, `zIndex`, transitions and
   motion, `ResizeObserver`, `getBoundingClientRect`, selection and search like any
@@ -6211,8 +6214,9 @@ Differences from Chrome:
 - `mask` and `clipPath` reference the whole box, with the captions.
 - An element that paints nothing (`visibility: hidden`) counts as content in a cell for
   `emptyCells`.
-- Copying a selection across cells joins their text with line breaks, where Chrome puts a
-  tab between the cells of a row.
+- Copying a selection across cells puts a tab between the cells of a row and a line break
+  between rows, as Chrome does, but after a cell that ends in a block (a `div` of its own,
+  not text) Chrome drops the tab and this does not.
 - The table styles are not animatable by `motion`, a keyframe or a CSS transition.
 - A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
   block with no table role.

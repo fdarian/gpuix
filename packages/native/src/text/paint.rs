@@ -50,6 +50,8 @@ struct RegEntry {
     group: Option<u64>,
     /// See [`selection::RegisteredText::line`].
     line: Option<Arc<str>>,
+    /// See [`selection::RegisteredText::cell`].
+    cell: Option<selection::TableCell>,
 }
 
 /// Full element box that owns whether a press may start a selection.
@@ -263,6 +265,8 @@ pub struct SelectableText {
     pub group: Option<u64>,
     /// See [`crate::text::selection::RegisteredText::line`].
     pub line: Option<Arc<str>>,
+    /// See [`crate::text::selection::RegisteredText::cell`].
+    pub cell: Option<selection::TableCell>,
     pub highlight: Option<HighlightSource>,
     /// The inline boxes of a paragraph that the pointer can target, registered
     /// under `element_id` as the container.
@@ -318,6 +322,7 @@ impl SelectableText {
             selectable: true,
             group: None,
             line: None,
+            cell: None,
             highlight: None,
             inline_targets: None,
             inline_boxes: Vec::new(),
@@ -350,6 +355,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         selectable,
         group,
         line,
+        cell,
         highlight,
         inline_targets,
         inline_boxes,
@@ -480,6 +486,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                         layout: layout.clone(),
                         group,
                         line: line.clone(),
+                        cell,
                     })
                 });
             }
@@ -706,6 +713,7 @@ fn resolve_drag(window: WindowId, selection: &SharedSelection, head: (usize, usi
             .map(|e| {
                 let text = selection::RegisteredText {
                     line: e.line.as_deref(),
+                    cell: e.cell,
                     ..selection::RegisteredText::whole(e.key.as_ref(), e.text.as_ref(), e.group)
                 };
                 (text, &e.doc)
@@ -1125,6 +1133,7 @@ mod tests {
                 layout: TextLayout::default(),
                 group: None,
                 line: None,
+                cell: None,
             });
             frame.highlights.push(PaintedHighlight {
                 element_id: 1,

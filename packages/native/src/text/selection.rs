@@ -138,6 +138,14 @@ pub fn document_order(positions: &[&DocPos]) -> Vec<usize> {
     order
 }
 
+/// The table cell a run of text is in, see [`RegisteredText::cell`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TableCell {
+    /// What names the row of the cell, or what stands for it when the cells have none.
+    pub row: u64,
+    pub cell: u64,
+}
+
 /// One element's slice of the selection, in document order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -153,6 +161,8 @@ pub struct Span {
     pub group: Option<u64>,
     /// See [`RegisteredText::line`].
     pub line: Option<String>,
+    /// See [`RegisteredText::cell`].
+    pub cell: Option<TableCell>,
 }
 
 impl Span {
@@ -186,6 +196,9 @@ pub struct RegisteredText<'a> {
     /// must join them with nothing. Anything else is a separate line and joins
     /// with a newline.
     pub group: Option<u64>,
+    /// The cell of a table the run is in. Copy puts a tab, where it puts a line break, between runs
+    /// of different cells of one row, as Chrome does.
+    pub cell: Option<TableCell>,
 }
 
 impl<'a> RegisteredText<'a> {
@@ -197,6 +210,7 @@ impl<'a> RegisteredText<'a> {
             window: (0, text.len()),
             line: None,
             group,
+            cell: None,
         }
     }
 
@@ -305,6 +319,7 @@ impl SelectionState {
             text: text.to_string(),
             group: None,
             line: None,
+            cell: None,
         }];
     }
 
@@ -515,6 +530,7 @@ pub fn resolve_spans(
                 text: text.to_string(),
                 group: entry.group,
                 line: entry.line.map(str::to_owned),
+                cell: entry.cell,
             });
         }
     }
@@ -541,8 +557,12 @@ fn join_spans(spans: &[Span]) -> String {
     let mut out = String::new();
     let mut previous: Option<&Span> = None;
     for span in spans.iter().filter(|s| !s.range.is_empty()) {
-        if previous.is_some_and(|previous| !runs_into(previous, span)) {
-            out.push('\n');
+        if let Some(previous) = previous {
+            if next_cell(previous, span) {
+                out.push('\t');
+            } else if !runs_into(previous, span) {
+                out.push('\n');
+            }
         }
         // The placeholder of an atomic inline is not text; what is inside the box is a
         // text of its own.
@@ -554,6 +574,12 @@ fn join_spans(spans: &[Span]) -> String {
         previous = Some(span);
     }
     out
+}
+
+/// Whether `next` is in another cell of the table row `previous` is in, where copy puts a tab, as
+/// Chrome does.
+fn next_cell(previous: &Span, next: &Span) -> bool {
+    matches!((previous.cell, next.cell), (Some(a), Some(b)) if a.row == b.row && a.cell != b.cell)
 }
 
 /// Whether `next` continues the line `previous` is on.
@@ -847,6 +873,27 @@ mod tests {
             sel.selected_text().as_deref(),
             Some("Hello Tommy\nsecond line")
         );
+    }
+
+    /// Chrome copies a table as `a\tb\nc\td`: a tab between the cells of a row, a line break between
+    /// rows, and between two lines of one cell.
+    #[test]
+    fn copy_puts_a_tab_between_the_cells_of_a_row() {
+        let cell = |row, cell| Some(TableCell { row, cell });
+        let run = |key, text, cell| RegisteredText { cell, ..RegisteredText::whole(key, text, None) };
+        let elements = vec![
+            run("a", "a", cell(1, 10)),
+            run("b", "b", cell(1, 11)),
+            run("b2", "b2", cell(1, 11)),
+            run("c", "c", cell(2, 20)),
+            run("d", "d", cell(2, 21)),
+            run("e", "outside", None),
+        ];
+        let mut sel = SelectionState::default();
+        sel.arm("a", 0);
+        assert!(sel.promote_pending());
+        assert!(sel.update_spans(resolve_spans(&elements, (0, 0), (5, 7))));
+        assert_eq!(sel.selected_text().as_deref(), Some("a\tb\nb2\nc\td\noutside"));
     }
 
     /// `<code>` and `<diff>` register their runs without a group, so every

@@ -6284,6 +6284,9 @@ pub(crate) struct Inherited {
     pub interpolate_size: crate::motion::InterpolateSize,
     /// `border-spacing`, `border-collapse`, `caption-side` and `empty-cells`, which inherit.
     pub table: crate::css::table::TableInherited,
+    /// The row and cell of a table the element is in, for copied text.
+    pub table_row: Option<u64>,
+    pub table_cell: Option<crate::text::selection::TableCell>,
     /// What the parent is as a containing block, which decides whether a
     /// percentage `height` of a child has anything to resolve against.
     pub container: crate::motion::containing::Container,
@@ -6359,6 +6362,8 @@ impl Inherited {
             font_features: None,
             interpolate_size: Default::default(),
             table: Default::default(),
+            table_row: None,
+            table_cell: None,
             container: crate::motion::containing::Container::WINDOW,
             groups: None,
             containers: None,
@@ -7605,6 +7610,7 @@ fn build_element_unpumped(
     ctx.inherited = parent_inherited
         .clone()
         .descend(style, element.has_inert_prop());
+    crate::layout::table::enter(&mut ctx.inherited.table_row, &mut ctx.inherited.table_cell, element);
     // An atomic inline's margin and percentage width are the paragraph's to lay out. They
     // resolve against the font of the box, which is known now.
     let atomic_style = atomic_root.then(|| {
@@ -8303,9 +8309,15 @@ fn build_plan(
             crate::text::inline::Child::AnonymousCell(cell) => {
                 let mut inside = Vec::new();
                 let mut inside_ranks = Vec::new();
-                build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 let key = crate::layout::table_grid::BoxKey::Anonymous { container: element.id, ordinal: *anonymous };
                 *anonymous += 1;
+                let outside = ctx.inherited.table_cell;
+                ctx.inherited.table_cell = ctx
+                    .inherited
+                    .table_row
+                    .map(|row| crate::text::selection::TableCell { row, cell: key.token() });
+                build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                ctx.inherited.table_cell = outside;
                 let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
                 let mut cell = crate::layout::table::anonymous_cell(halves);
                 if inside_ranks.iter().any(|rank| *rank != 0) {
@@ -8325,7 +8337,10 @@ fn build_plan(
                 let blocks = parts.into_iter().map(|(id, at)| (crate::text::inline::Child::Block(id), at)).collect();
                 let mut inside = Vec::new();
                 let mut inside_ranks = Vec::new();
+                let outside = (ctx.inherited.table_row, ctx.inherited.table_cell);
+                (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
                 build_plan(element, blocks, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
                 let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
                 if inside_ranks.iter().any(|rank| *rank != 0) {
                     table = table.paint_ranks(inside_ranks);
@@ -8460,6 +8475,7 @@ fn text_content(
     selectable_text(crate::text::SelectableText {
         group: crate::text::search::group_id(ctx.tree, element.id),
         line: ctx.inline_line.clone(),
+        cell: ctx.inherited.table_cell,
         selectable: ctx.inherited.selectable,
         highlight: ctx
             .inherited
@@ -8519,6 +8535,7 @@ fn paragraph_content(
     selectable_text(crate::text::SelectableText {
         group: None,
         line,
+        cell: ctx.inherited.table_cell,
         selectable: ctx.inherited.selectable,
         highlight: ctx
             .inherited
