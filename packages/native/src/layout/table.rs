@@ -9,8 +9,10 @@
 use gpui::Styled;
 
 use crate::css::table::TableInherited;
+use crate::layout::box_generation::is_display_none;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
+use crate::text::inline::{Child, is_blank, is_raw_text, plan_flow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Part {
@@ -48,11 +50,6 @@ pub(crate) fn part(element: &RetainedElement) -> Option<Part> {
         .and_then(part_of)
 }
 
-/// Whether the children of `element` that are not table parts are wrapped in anonymous cells.
-pub(crate) fn wraps_children(element: &RetainedElement) -> bool {
-    matches!(part(element), Some(Part::Table | Part::RowGroup(_) | Part::Row))
-}
-
 /// A child of a table that takes no part in the grid and so is not wrapped: an absolutely
 /// positioned one is placed by the table itself.
 pub(crate) fn is_out_of_flow(element: &RetainedElement) -> bool {
@@ -60,6 +57,93 @@ pub(crate) fn is_out_of_flow(element: &RetainedElement) -> bool {
         element.style.as_deref().and_then(|style| style.position.as_deref()),
         Some("absolute" | "fixed")
     )
+}
+
+/// How a table part plans its children: the table parts as they are, and each run of consecutive
+/// other children of a table, row group or row in one anonymous cell (CSS 2.1 section 17.2.1).
+/// A run of nothing but white space is dropped, and an absolutely positioned child is out of the
+/// run, as the table places it. A column has no children and a column group holds nothing but
+/// columns. `None` for an element that is not one of these.
+pub(crate) fn plan_children(
+    tree: &RetainedTree,
+    container: &RetainedElement,
+    children: &[(u64, u32)],
+    content: Option<&str>,
+) -> Option<Vec<(Child, u32)>> {
+    match part(container)? {
+        Part::Table | Part::RowGroup(_) | Part::Row => Some(plan_cells(tree, container, children, content)),
+        Part::Column => Some(Vec::new()),
+        Part::ColumnGroup => Some(
+            children
+                .iter()
+                .filter_map(|(id, at)| Some((tree.elements.get(id)?, *at)))
+                .filter(|(child, _)| !is_display_none(child) && part(child) == Some(Part::Column))
+                .map(|(child, at)| (Child::Block(child.id), at))
+                .collect(),
+        ),
+        Part::Cell | Part::Caption => None,
+    }
+}
+
+fn plan_cells(
+    tree: &RetainedTree,
+    container: &RetainedElement,
+    children: &[(u64, u32)],
+    content: Option<&str>,
+) -> Vec<(Child, u32)> {
+    struct Cells<'a> {
+        tree: &'a RetainedTree,
+        container: &'a RetainedElement,
+        run: Vec<(u64, u32)>,
+        leading: Option<&'a str>,
+        index: usize,
+        out: Vec<(Child, u32)>,
+    }
+
+    impl Cells<'_> {
+        fn close(&mut self) {
+            // The container's own text is in front of everything else, so in its first cell.
+            let leading = self.leading.take();
+            let run = std::mem::take(&mut self.run);
+            let blank = run.iter().all(|(id, _)| {
+                self.tree
+                    .elements
+                    .get(id)
+                    .is_some_and(|child| is_raw_text(child) && child.content.as_deref().is_none_or(is_blank))
+            });
+            if leading.is_none() && blank {
+                return;
+            }
+            let at = run.first().map_or(0, |(_, at)| *at);
+            let cell = plan_flow(self.tree, self.container, &run, leading, false, &mut self.index);
+            if !cell.is_empty() {
+                self.out.push((Child::AnonymousCell(cell), at));
+            }
+        }
+    }
+
+    let mut cells = Cells {
+        tree,
+        container,
+        run: Vec::new(),
+        leading: content.filter(|content| !is_blank(content)),
+        index: 0,
+        out: Vec::new(),
+    };
+    for (child, at) in children
+        .iter()
+        .filter_map(|(id, at)| Some((tree.elements.get(id)?, *at)))
+        .filter(|(child, _)| !is_display_none(child))
+    {
+        if part(child).is_some() || is_out_of_flow(child) {
+            cells.close();
+            cells.out.push((Child::Block(child.id), at));
+        } else {
+            cells.run.push((child.id, at));
+        }
+    }
+    cells.close();
+    cells.out
 }
 
 /// How many columns or rows a `colSpan`, `rowSpan` or `span` prop asks for. HTML reads a
@@ -134,11 +218,9 @@ pub(crate) fn apply<E: Styled>(
 /// space and `display: none` children. Any element in it, even one that paints nothing, is
 /// content.
 fn is_empty(tree: &RetainedTree, cell: &RetainedElement) -> bool {
-    use crate::text::inline::is_blank;
     cell.content.as_deref().is_none_or(is_blank)
         && cell.children.iter().filter_map(|id| tree.elements.get(id)).all(|child| {
-            crate::layout::box_generation::is_display_none(child)
-                || (crate::text::inline::is_raw_text(child) && child.content.as_deref().is_none_or(is_blank))
+            is_display_none(child) || (is_raw_text(child) && child.content.as_deref().is_none_or(is_blank))
         })
 }
 
@@ -285,5 +367,154 @@ mod tests {
         tree.create_element(2, "div".to_string());
         tree.append_child(1, 2);
         assert!(!is_empty(&tree, &tree.elements[&1]), "a box is content even when it paints nothing");
+    }
+
+    /// A tree whose root (id 1) is the container planned.
+    struct Fixture {
+        tree: RetainedTree,
+    }
+
+    impl Fixture {
+        fn new(display: &str) -> Self {
+            let mut f = Self { tree: RetainedTree::new() };
+            f.tree.create_element(1, "div".to_string());
+            f.styled(1, serde_json::json!({"display": display}));
+            f
+        }
+
+        fn add(&mut self, parent: u64, id: u64, kind: &str) -> &mut Self {
+            self.tree.create_element(id, kind.to_string());
+            self.tree.append_child(parent, id);
+            self
+        }
+
+        fn text(&mut self, parent: u64, id: u64, content: &str) -> &mut Self {
+            self.add(parent, id, "text");
+            self.tree.set_text(id, content.to_string());
+            self
+        }
+
+        fn styled(&mut self, id: u64, json: serde_json::Value) -> &mut Self {
+            self.tree.set_style(id, std::sync::Arc::new(serde_json::from_value(json).unwrap()));
+            self
+        }
+
+        fn part(&mut self, id: u64, display: &str) -> &mut Self {
+            self.add(1, id, "div");
+            self.styled(id, serde_json::json!({"display": display}))
+        }
+
+        fn plan(&self) -> Vec<Child> {
+            crate::text::inline::plan_children(&self.tree, &self.tree.elements[&1])
+        }
+    }
+
+    fn paragraphs(plan: &[Child]) -> Vec<&crate::text::inline::Paragraph> {
+        fn collect<'a>(child: &'a Child, out: &mut Vec<&'a crate::text::inline::Paragraph>) {
+            match child {
+                Child::Paragraph(paragraph) => out.push(paragraph),
+                Child::AnonymousCell(cell) => cell.iter().for_each(|(child, _)| collect(child, out)),
+                Child::Block(_) => {}
+            }
+        }
+        let mut out = Vec::new();
+        plan.iter().for_each(|child| collect(child, &mut out));
+        out
+    }
+
+    /// What a table's plan holds, as `cell[...]` for an anonymous cell, `#id` for a block and the
+    /// text for a paragraph.
+    fn shape(plan: &[Child]) -> String {
+        plan.iter()
+            .map(|child| match child {
+                Child::Block(id) => format!("#{id}"),
+                Child::Paragraph(paragraph) => format!("{:?}", paragraph.text),
+                Child::AnonymousCell(cell) => {
+                    let cell: Vec<Child> = cell.iter().map(|(child, _)| child.clone()).collect();
+                    format!("cell[{}]", shape(&cell))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn text_in_a_table_is_wrapped_in_one_anonymous_cell() {
+        let mut f = Fixture::new("table");
+        f.text(1, 2, "hello ").text(1, 3, "world");
+        assert_eq!(shape(&f.plan()), r#"cell["hello world"]"#);
+    }
+
+    #[test]
+    fn consecutive_children_that_are_not_parts_share_a_cell_and_a_part_splits_them() {
+        let mut f = Fixture::new("table-row");
+        f.add(1, 2, "div");
+        f.add(1, 3, "span").text(3, 4, "inline");
+        f.part(5, "table-cell");
+        f.add(1, 6, "div");
+        f.add(1, 7, "div");
+        assert_eq!(shape(&f.plan()), r#"cell[#2 "inline"] #5 cell[#6 #7]"#);
+    }
+
+    #[test]
+    fn white_space_between_parts_is_dropped_but_not_white_space_inside_a_run() {
+        let mut f = Fixture::new("table");
+        f.text(1, 2, "\n  ");
+        f.part(3, "table-row");
+        f.text(1, 4, " ");
+        f.part(5, "table-row");
+        f.text(1, 6, "\n");
+        assert_eq!(shape(&f.plan()), "#3 #5");
+        let mut f = Fixture::new("table");
+        f.text(1, 2, " a ");
+        f.add(1, 3, "div");
+        f.text(1, 4, " ");
+        assert_eq!(shape(&f.plan()), r#"cell["a" #3]"#);
+    }
+
+    #[test]
+    fn an_absolutely_positioned_child_and_display_none_do_not_make_a_cell() {
+        let mut f = Fixture::new("table");
+        f.add(1, 2, "div");
+        f.styled(2, serde_json::json!({"position": "absolute"}));
+        f.add(1, 3, "div");
+        f.styled(3, serde_json::json!({"display": "none"}));
+        f.text(1, 4, " ");
+        f.add(1, 5, "div");
+        f.styled(5, serde_json::json!({"position": "fixed"}));
+        assert_eq!(shape(&f.plan()), "#2 #5");
+    }
+
+    #[test]
+    fn a_cell_is_a_plain_block_container() {
+        let mut f = Fixture::new("table-cell");
+        f.text(1, 2, "a").add(1, 3, "div");
+        f.text(1, 4, "b");
+        assert_eq!(shape(&f.plan()), r#""a" #3 "b""#);
+    }
+
+    #[test]
+    fn a_column_has_no_children_and_a_column_group_only_columns() {
+        let mut f = Fixture::new("table-column");
+        f.add(1, 2, "div");
+        assert_eq!(shape(&f.plan()), "");
+        let mut f = Fixture::new("table-column-group");
+        f.part(2, "table-column");
+        f.add(1, 3, "div");
+        f.part(4, "table-column");
+        f.text(1, 5, "x");
+        assert_eq!(shape(&f.plan()), "#2 #4");
+    }
+
+    #[test]
+    fn paragraphs_of_different_cells_have_different_selection_keys() {
+        let mut f = Fixture::new("table");
+        f.text(1, 2, "a");
+        f.part(3, "table-row");
+        f.text(1, 4, "b");
+        let plan = f.plan();
+        let keys: Vec<_> = paragraphs(&plan).iter().map(|paragraph| paragraph.key()).collect();
+        assert_eq!(keys.len(), 2);
+        assert_ne!(keys[0], keys[1]);
     }
 }
