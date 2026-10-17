@@ -5,7 +5,7 @@ use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
 use crate::css::border::{parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
-use crate::css::{clip_path, filter, text_decoration};
+use crate::css::{clip_path, filter, text_box, text_decoration};
 use crate::style::{BackgroundValue, StyleDesc};
 
 /// Takes `$base`'s value for every field `$over` leaves unset. Written as a
@@ -174,7 +174,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
         box_shadow, border_style, border_top_style, border_right_style, border_bottom_style,
         border_left_style, aspect_ratio, outline_width, outline_style, outline_color, outline_offset, outline,
-        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow, vertical_align,
+        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, text_box, text_box_trim, text_box_edge, word_break, overflow_wrap, text_overflow, vertical_align,
         table_layout, border_spacing, border_collapse, caption_side, empty_cells,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
         text_decoration_color, text_decoration_thickness, text_underline_offset,
@@ -236,6 +236,7 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value, &lengths),
         background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value, &lengths),
         text_decoration: |value| text_decoration::is_valid_shorthand(value),
+        text_box: |value| text_box::is_valid_shorthand(value),
     );
     if let Some(value) = &over.background {
         let valid = match value {
@@ -426,6 +427,10 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.text_decoration_style = None;
         base.text_decoration_color = None;
         base.text_decoration_thickness = None;
+    }
+    if over.text_box.is_some() {
+        base.text_box_trim = None;
+        base.text_box_edge = None;
     }
     if over.overflow.is_some() {
         base.overflow_x = None;
@@ -1234,6 +1239,26 @@ mod tests {
         let resolved = resolve_state_styles(&invalid, true, false);
         assert_eq!(resolved.text_decoration, None);
         assert_eq!(resolved.text_decoration_style.as_deref(), Some("wavy"));
+    }
+
+    #[test]
+    fn a_state_text_box_shorthand_resets_the_base_longhands_and_an_invalid_one_resets_nothing() {
+        let base = style(
+            r##"{"textBoxTrim":"trim-end","textBoxEdge":"ex alphabetic",
+                "hover":{"textBox":"cap alphabetic"},"active":{"textBox":"sideways"}}"##,
+        );
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.text_box.as_deref(), Some("cap alphabetic"));
+        assert_eq!(hovered.text_box_trim, None);
+        assert_eq!(hovered.text_box_edge, None);
+        let declared = text_box::of(&hovered);
+        assert_eq!(declared.trim, Some(text_box::Trim::TrimBoth));
+        assert_eq!(declared.edge.map(|edge| edge.to_string()).as_deref(), Some("cap alphabetic"));
+
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.text_box, None);
+        assert_eq!(pressed.text_box_trim, Some(text_box::Trim::TrimEnd));
+        assert_eq!(pressed.text_box_edge.map(|edge| edge.to_string()).as_deref(), Some("ex alphabetic"));
     }
 
     #[test]

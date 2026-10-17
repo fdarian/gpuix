@@ -472,6 +472,12 @@ impl InlineText {
         self
     }
 
+    /// See [`StyledText::with_text_box_trim`].
+    pub fn with_text_box_trim(mut self, trim: gpui::TextBoxTrim) -> Self {
+        self.styled = self.styled.with_text_box_trim(trim);
+        self
+    }
+
     pub fn layout(&self) -> &TextLayout {
         self.styled.layout()
     }

@@ -107,6 +107,10 @@ impl StyleDesc {
             user_select,
             selection_color
         );
+        // Either `textBoxEdge` or the edge of the `textBox` shorthand.
+        if let Some(edge) = crate::css::text_box::of(other).edge {
+            self.text_box_edge = Some(edge);
+        }
     }
 
     /// Only the properties CSS inherits: what a box-less element passes to the
@@ -155,6 +159,9 @@ impl StyleDesc {
             user_select,
             selection_color
         );
+        if crate::css::text_box::of(&result).edge.is_none() {
+            result.text_box_edge = overlay.text_box_edge;
+        }
         result
     }
 }

@@ -268,6 +268,8 @@ pub struct SelectableText {
     /// See [`crate::text::selection::RegisteredText::cell`].
     pub cell: Option<selection::TableCell>,
     pub highlight: Option<HighlightSource>,
+    /// The ends of the text whose empty line space `text-box-trim` cuts.
+    pub text_box_trim: gpui::TextBoxTrim,
     /// The inline boxes of a paragraph that the pointer can target, registered
     /// under `element_id` as the container.
     pub inline_targets: Option<Arc<super::inline_hit::Targets>>,
@@ -324,6 +326,7 @@ impl SelectableText {
             line: None,
             cell: None,
             highlight: None,
+            text_box_trim: gpui::TextBoxTrim::default(),
             inline_targets: None,
             inline_boxes: Vec::new(),
             inline_cursors: Vec::new(),
@@ -357,6 +360,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         line,
         cell,
         highlight,
+        text_box_trim,
         inline_targets,
         inline_boxes,
         inline_cursors,
@@ -382,7 +386,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         let styled = match inline_insets {
             Some(spec) => styled.with_insets_for_width(move |width| spec.at(width).text()),
             None => styled,
-        };
+        }
+        .with_text_box_trim(text_box_trim);
         (styled.layout().clone(), styled.into_any_element())
     } else {
         let inline = super::paragraph::InlineText::new(text.clone(), run_styles)
@@ -390,7 +395,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         let inline = match inline_insets {
             Some(spec) => inline.with_insets_for_width(move |width| spec.at(width).text()),
             None => inline,
-        };
+        }
+        .with_text_box_trim(text_box_trim);
         (inline.layout().clone(), inline.into_any_element())
     };
     super::atomic::note(element_id, &layout);

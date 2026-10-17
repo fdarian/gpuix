@@ -821,6 +821,16 @@ pub struct StyleDesc {
     /// CSS `tab-size`: a number of spaces, or a length. Inherited, 8 by default.
     /// Tab stops are measured from the start of each line of text.
     pub tab_size: Option<crate::css::tab_size::TabSize>,
+    /// CSS `text-box`: `normal`, or a trim and an edge in either order, a part
+    /// left out being `trim-both` and `auto`. `textBoxTrim` and `textBoxEdge` are
+    /// laid over it.
+    pub text_box: Option<String>,
+    /// CSS `text-box-trim`. Not inherited: it cuts the space above the first
+    /// line and below the last line of this block container, and of the block
+    /// containers inside it that have no padding or border on that side.
+    pub text_box_trim: Option<crate::css::text_box::Trim>,
+    /// CSS `text-box-edge`. Inherited, `auto` (the same as `text`) by default.
+    pub text_box_edge: Option<crate::css::text_box::Edge>,
     /// CSS `word-break`. Inherited, `normal` by default. Only a container sets
     /// it: a paragraph is laid out as one string with one value.
     pub word_break: Option<crate::css::word_break::WordBreak>,

@@ -29,6 +29,7 @@ pub(crate) mod shorthand;
 pub(crate) mod syntax;
 pub(crate) mod tab_size;
 pub(crate) mod table;
+pub(crate) mod text_box;
 pub(crate) mod text_decoration;
 pub(crate) mod text_underline_offset;
 pub(crate) mod url;

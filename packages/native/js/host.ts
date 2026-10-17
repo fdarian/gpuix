@@ -868,6 +868,31 @@ export interface StyleDesc {
     | "bottom"
     | number
     | (string & {})
+  /** CSS `text-box`: `"normal"` (no trim, `auto` edge) or a `textBoxTrim` and a `textBoxEdge`
+   *  in either order, e.g. `"trim-both cap alphabetic"`. A trim left out is `trim-both`, not
+   *  `none`, and an edge left out is `auto`. `textBoxTrim` and `textBoxEdge` laid over it win.
+   *  An invalid value is ignored. */
+  textBox?: string
+  /** CSS `text-box-trim`, `"none"` by default and not inherited. On a block container,
+   *  `"trim-start"` cuts the space above the first line of text down to the `textBoxEdge`
+   *  over edge, `"trim-end"` the space below the last line down to the under edge, and
+   *  `"trim-both"` does both. The container gets shorter by what was cut and what follows
+   *  moves up; its padding and border stay, the trim is inside them, and ink the edge
+   *  leaves out (a tall letter above `cap`) overflows. Only those two lines are trimmed. The
+   *  trim goes through block children down to their first or last line, but stops at one
+   *  with padding or a border on that side or with no line of text to start with, and
+   *  an absolutely positioned child is not a first or last child. A flex or grid
+   *  container trims nothing and passes nothing down. `"none"` on a descendant does not
+   *  take off a trim from above. */
+  textBoxTrim?: "none" | "trim-start" | "trim-end" | "trim-both"
+  /** CSS `text-box-edge`, inherited, `"auto"` by default, which is `"text"`. The metric a
+   *  `textBoxTrim` cuts to: `<over> <under>`, where over is `"text"` (the font's ascent: only
+   *  the half-leading above is cut), `"cap"` (cap height) or `"ex"` (x-height), and under
+   *  is `"text"` (the descent: only the half-leading below is cut) or `"alphabetic"` (the
+   *  baseline). One value is both where it can be (`"text"` is `"text text"`), otherwise
+   *  the under edge is `"text"` (`"cap"` is `"cap text"`). The metrics are those of the font
+   *  of the block that holds the line. */
+  textBoxEdge?: string
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   /** CSS `text-decoration`: lines, a style, a colour and a thickness in any order,

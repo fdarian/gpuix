@@ -5962,6 +5962,7 @@ impl GpuixView {
             containing_heights: Vec::new(),
             baseline_probe: None,
             collapsed: Default::default(),
+            text_box_trim: Default::default(),
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -6148,6 +6149,9 @@ pub(crate) struct BuildCtx<'a> {
     pub baseline_probe: Option<crate::text::atomic::Probe>,
     /// What the tables with collapsed borders built so far gave their parts.
     pub collapsed: crate::layout::table::Collapsed,
+    /// The ends of the lines of the next element built that an ancestor's `text-box-trim`
+    /// reaches through the blocks between. Taken by `build_element`.
+    pub text_box_trim: gpui::TextBoxTrim,
 }
 
 impl BuildCtx<'_> {
@@ -7282,6 +7286,7 @@ impl gpui::Render for GpuixView {
                     containing_heights: Vec::new(),
                     baseline_probe: None,
                     collapsed: Default::default(),
+                    text_box_trim: Default::default(),
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7423,6 +7428,7 @@ fn build_element_unpumped(
     let stacking_root = std::mem::take(&mut ctx.stacking_root);
     let stacking_item = std::mem::take(&mut ctx.stacking_item);
     let atomic_root = std::mem::take(&mut ctx.atomic_root);
+    let passed_trim = std::mem::take(&mut ctx.text_box_trim);
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
@@ -7707,6 +7713,12 @@ fn build_element_unpumped(
             if crate::layout::contents::is_display_contents(element) {
                 build_contents_container(element, style, stacking_root, ctx, window, cx)
             } else {
+                ctx.text_box_trim = crate::css::text_box::requested(
+                    style,
+                    passed_trim,
+                    &ctx.inherited.colors,
+                    &ctx.inherited.lengths,
+                );
                 build_host_container(element, style, stacking_root, ctx, window, cx)
             }
         }
@@ -8290,9 +8302,10 @@ fn build_content(
     // conditional row. React never sends empty text, so this is a no-op there.
     let mut content_elements = Vec::new();
     let mut paint_ranks = Vec::new();
+    let trim = std::mem::take(&mut ctx.text_box_trim);
     if element.children.is_empty() {
         if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
-            content_elements.push(text_content(element, &content, ctx));
+            content_elements.push(text_content(element, &content, trim, ctx));
             paint_ranks.push(0);
         }
     }
@@ -8306,7 +8319,7 @@ fn build_content(
             .as_ref()
             .filter(|probe| probe.container == element.id)
             .map(crate::text::atomic::Probe::clone_handle);
-        build_plan(element, plan, probe.as_ref(), &mut 0, &mut content_elements, &mut paint_ranks, ctx, window, cx);
+        build_plan(element, plan, trim, probe.as_ref(), &mut 0, &mut content_elements, &mut paint_ranks, ctx, window, cx);
     }
     let containing_heights = std::mem::replace(&mut ctx.containing_heights, outer_heights);
     (content_elements, paint_ranks, containing_heights)
@@ -8317,6 +8330,7 @@ fn build_content(
 fn build_plan(
     element: &crate::retained_tree::RetainedElement,
     plan: Vec<(crate::text::inline::Child, u32)>,
+    trim: gpui::TextBoxTrim,
     probe: Option<&crate::text::atomic::Probe>,
     anonymous: &mut usize,
     content_elements: &mut Vec<gpui::AnyElement>,
@@ -8327,7 +8341,23 @@ fn build_plan(
 ) {
     use gpui::prelude::*;
 
-    for (child, at) in plan {
+    let in_flow = |child: &crate::text::inline::Child| match child {
+        crate::text::inline::Child::Block(child_id) => !ctx
+            .tree
+            .elements
+            .get(child_id)
+            .and_then(|child| child.style.as_deref())
+            .and_then(|style| style.position.as_deref())
+            .is_some_and(|position| matches!(position, "absolute" | "fixed")),
+        _ => true,
+    };
+    let first_in_flow = plan.iter().position(|(child, _)| in_flow(child));
+    let last_in_flow = plan.iter().rposition(|(child, _)| in_flow(child));
+    for (index, (child, at)) in plan.into_iter().enumerate() {
+        let child_trim = gpui::TextBoxTrim {
+            start: trim.start && Some(index) == first_in_flow,
+            end: trim.end && Some(index) == last_in_flow,
+        };
         // The cell is no element: what it holds sits at its own document positions.
         match child {
             crate::text::inline::Child::AnonymousCell(cell) => {
@@ -8340,7 +8370,7 @@ fn build_plan(
                     .inherited
                     .table_row
                     .map(|row| crate::text::selection::TableCell { row, cell: key.token() });
-                build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                build_plan(element, cell, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 ctx.inherited.table_cell = outside;
                 let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
                 let mut cell = crate::layout::table::anonymous_cell(halves);
@@ -8363,7 +8393,7 @@ fn build_plan(
                 let mut inside_ranks = Vec::new();
                 let outside = (ctx.inherited.table_row, ctx.inherited.table_cell);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
-                build_plan(element, blocks, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
                 let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
                 if inside_ranks.iter().any(|rank| *rank != 0) {
@@ -8389,6 +8419,7 @@ fn build_plan(
                 ctx.contents_overlay =
                     crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
                 ctx.stacking_item = item;
+                ctx.text_box_trim = child_trim;
                 let out_of_flow = child_element.is_some_and(|child| {
                     matches!(
                         child.style.as_deref().and_then(|style| style.position.as_deref()),
@@ -8426,7 +8457,7 @@ fn build_plan(
                         }
                     }
                 }
-                content_elements.push(paragraph_content(&paragraph, ctx, window, cx));
+                content_elements.push(paragraph_content(&paragraph, child_trim, ctx, window, cx));
                 ctx.inherited = own;
             }
             crate::text::inline::Child::AnonymousCell(_) | crate::text::inline::Child::AnonymousTable(_) => {
@@ -8494,9 +8525,11 @@ fn build_contents_container(
 fn text_content(
     element: &crate::retained_tree::RetainedElement,
     content: &str,
+    text_box_trim: gpui::TextBoxTrim,
     ctx: &BuildCtx,
 ) -> gpui::AnyElement {
     selectable_text(crate::text::SelectableText {
+        text_box_trim,
         group: crate::text::search::group_id(ctx.tree, element.id),
         line: ctx.inline_line.clone(),
         cell: ctx.inherited.table_cell,
@@ -8523,6 +8556,7 @@ fn text_content(
 /// paragraphs never join into one copied line.
 fn paragraph_content(
     paragraph: &crate::text::inline::Paragraph,
+    text_box_trim: gpui::TextBoxTrim,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -8558,6 +8592,7 @@ fn paragraph_content(
         &states,
     );
     selectable_text(crate::text::SelectableText {
+        text_box_trim,
         group: None,
         line,
         cell: ctx.inherited.table_cell,
@@ -9035,6 +9070,9 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     }
     if let Some(tab_size) = style.tab_size {
         el.text_style().tab_size = Some(tab_size.to_gpui(lengths));
+    }
+    if let Some(edge) = crate::css::text_box::of(style).edge {
+        el.text_style().text_box_edge = Some(edge.to_gpui());
     }
     crate::css::word_break::apply(el.text_style(), style.word_break, style.overflow_wrap);
     match style.text_overflow.as_deref() {
