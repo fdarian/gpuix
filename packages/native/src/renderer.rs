@@ -7630,13 +7630,11 @@ fn build_element_unpumped(
         })
         .flatten();
     let current_style = css_animated.as_ref().or(underlying_style);
-    let overlaid_style = ctx.contents_overlay.take().map(|overlay| {
-        current_style
-            .cloned()
-            .unwrap_or_default()
-            .with_inherited_overlay(&overlay)
-    });
-    let style = overlaid_style.as_ref().or(current_style);
+    let overlaid_style = ctx
+        .contents_overlay
+        .take()
+        .map(|overlay| current_style.unwrap_or(&EMPTY_STYLE).with_inherited_overlay(&overlay));
+    let style = overlaid_style.as_deref().or(current_style);
     let anchored_style = ctx.anchor_scope.take().and_then(|anchored_id| {
         style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
     });
@@ -7671,10 +7669,8 @@ fn build_element_unpumped(
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
-    let parent_inherited = ctx.inherited.clone();
-    ctx.inherited = parent_inherited
-        .clone()
-        .descend(style, element.has_inert_prop());
+    let descended = ctx.inherited.clone().descend(style, element.has_inert_prop());
+    let parent_inherited = std::mem::replace(&mut ctx.inherited, descended);
     crate::layout::table::enter(&mut ctx.inherited.table_row, &mut ctx.inherited.table_cell, element);
     // An atomic inline's margin and percentage width are the paragraph's to lay out. They
     // resolve against the font of the box, which is known now.
@@ -8107,7 +8103,7 @@ pub(crate) fn build_host_container(
     let style = match style {
         Some(style) if inert => {
             inert_style = style.without_pointer_states();
-            Some(&inert_style)
+            Some(&*inert_style)
         }
         style => style,
     };
@@ -8488,8 +8484,11 @@ fn build_plan(
                 paint_ranks.push(0);
                 // A span's container units are fractions of the container it sits in, which
                 // may be this element.
-                let own = ctx.inherited.clone();
-                ctx.inherited = own.clone().enter_children();
+                // Only a query container changes what the paragraph's boxes inherit.
+                let outside = ctx.inherited.self_container.is_some().then(|| {
+                    let entered = ctx.inherited.clone().enter_children();
+                    std::mem::replace(&mut ctx.inherited, entered)
+                });
                 // A span is not built by `build_element`, so the paragraph reports the
                 // containers its boxes' units read.
                 if let Some(scope) = ctx.inherited.containers.as_deref() {
@@ -8500,7 +8499,9 @@ fn build_plan(
                     }
                 }
                 content_elements.push(paragraph_content(&paragraph, child_trim, ctx, window, cx));
-                ctx.inherited = own;
+                if let Some(outside) = outside {
+                    ctx.inherited = outside;
+                }
             }
             crate::text::inline::Child::AnonymousCell(_) | crate::text::inline::Child::AnonymousTable(_) => {
                 unreachable!("handled before")

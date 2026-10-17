@@ -133,12 +133,13 @@ impl StyleDesc {
         inherited
     }
 
-    /// Fills the inheritable properties this style leaves unset from `overlay`.
-    pub(crate) fn with_inherited_overlay(&self, overlay: &StyleDesc) -> StyleDesc {
-        let mut result = self.clone();
+    /// Fills the inheritable properties this style leaves unset from `overlay`. Borrowed when
+    /// there is nothing to fill.
+    pub(crate) fn with_inherited_overlay(&self, overlay: &StyleDesc) -> Cow<'_, StyleDesc> {
+        let mut result = Cow::Borrowed(self);
         macro_rules! fill {
             ($($field:ident),*) => {
-                $(if result.$field.is_none() { result.$field = overlay.$field.clone(); })*
+                $(if self.$field.is_none() && overlay.$field.is_some() { result.to_mut().$field = overlay.$field.clone(); })*
             };
         }
         fill!(
@@ -165,8 +166,8 @@ impl StyleDesc {
             user_select,
             selection_color
         );
-        if crate::css::text_box::of(&result).edge.is_none() {
-            result.text_box_edge = overlay.text_box_edge;
+        if overlay.text_box_edge.is_some() && crate::css::text_box::of(&result).edge.is_none() {
+            result.to_mut().text_box_edge = overlay.text_box_edge;
         }
         result
     }
@@ -228,7 +229,7 @@ mod tests {
         };
         let mut overlay = StyleDesc::default();
         overlay.take_inheritable_from(&declared);
-        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay).into_owned();
         assert_eq!(merged.tab_size, declared.tab_size);
     }
 
@@ -240,7 +241,8 @@ mod tests {
         };
         let mut overlay = StyleDesc::default();
         overlay.take_inheritable_from(&declared);
-        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        let bare = StyleDesc::default();
+        let merged = bare.with_inherited_overlay(&overlay);
         assert_eq!(merged.text_underline_offset, declared.text_underline_offset);
     }
 
@@ -253,7 +255,7 @@ mod tests {
         };
         let mut overlay = StyleDesc::default();
         overlay.take_inheritable_from(&declared);
-        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay).into_owned();
         assert_eq!(merged.word_break, declared.word_break);
         assert_eq!(merged.overflow_wrap, declared.overflow_wrap);
     }
@@ -271,7 +273,8 @@ mod tests {
         };
         let mut overlay = StyleDesc::default();
         overlay.take_inheritable_from(&declared);
-        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        let bare = StyleDesc::default();
+        let merged = bare.with_inherited_overlay(&overlay);
         assert_eq!(merged.text_wrap, declared.text_wrap);
         assert_eq!(merged.text_wrap_mode, declared.text_wrap_mode);
         assert_eq!(merged.text_wrap_style, declared.text_wrap_style);

@@ -1046,8 +1046,23 @@ use crate::color::ColorContext;
 impl StyleDesc {
     /// The style with everything that needs a mouse hitbox removed: `hover`,
     /// `active` and `cursor`. What an `inert` subtree paints.
-    pub fn without_pointer_states(&self) -> Self {
-        Self {
+    ///
+    /// Borrowed when there is nothing to remove, which is nearly every element: an inert
+    /// subtree is the whole page behind a dialog, and this runs for each of its elements.
+    pub fn without_pointer_states(&self) -> std::borrow::Cow<'_, Self> {
+        if self.hover.is_none()
+            && self.active.is_none()
+            && self.group_hover.is_none()
+            && self.group_active.is_none()
+            && self.group_focus_within.is_none()
+            && self.has_hover.is_none()
+            && self.has_active.is_none()
+            && self.has_focus.is_none()
+            && self.cursor.is_none()
+        {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        std::borrow::Cow::Owned(Self {
             hover: None,
             active: None,
             group_hover: None,
@@ -1058,7 +1073,7 @@ impl StyleDesc {
             has_focus: None,
             cursor: None,
             ..self.clone()
-        }
+        })
     }
 }
 

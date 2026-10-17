@@ -151,7 +151,7 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
 pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
     let over = without_invalid_values(over);
     let over = over.as_ref();
-    let mut base = base.clone();
+    let mut base = Cow::Borrowed(base);
     drop_shadowed_longhands(&mut base, over);
     overlay_fields!(
         base, over;
@@ -323,239 +323,256 @@ fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
 /// A shorthand in `over` resets the longhands it covers, as a later CSS
 /// declaration does. `apply_styles` reads longhands after their shorthand, so a
 /// base longhand would otherwise beat a state style's shorthand.
-fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
-    split_border_all_sides(base, over);
+fn drop_shadowed_longhands(base: &mut Cow<'_, StyleDesc>, over: &StyleDesc) {
+    // Each clear copies the base the first time it finds something to clear, and never when the
+    // base has nothing there: a state style usually shadows nothing.
+    macro_rules! clear {
+        ($($field:ident),+) => {
+            $(if base.$field.is_some() {
+                base.to_mut().$field = None;
+            })+
+        };
+    }
+    if over.border_top.is_some()
+        || over.border_right.is_some()
+        || over.border_bottom.is_some()
+        || over.border_left.is_some()
+        || over.border_block.is_some()
+        || over.border_inline.is_some()
+    {
+        split_border_all_sides(base.to_mut(), over);
+    }
     // `outlineOffset` is not part of `outline`.
     if over.outline.is_some() {
-        base.outline_width = None;
-        base.outline_style = None;
-        base.outline_color = None;
+        clear!(outline_width);
+        clear!(outline_style);
+        clear!(outline_color);
     }
     if over.flex.is_some() {
-        base.flex_grow = None;
-        base.flex_shrink = None;
-        base.flex_basis = None;
+        clear!(flex_grow);
+        clear!(flex_shrink);
+        clear!(flex_basis);
     }
     if over.flex_flow.is_some() {
-        base.flex_direction = None;
-        base.flex_wrap = None;
+        clear!(flex_direction);
+        clear!(flex_wrap);
     }
     if over.place_items.is_some() {
-        base.align_items = None;
-        base.justify_items = None;
+        clear!(align_items);
+        clear!(justify_items);
     }
     if over.place_content.is_some() {
-        base.align_content = None;
-        base.justify_content = None;
+        clear!(align_content);
+        clear!(justify_content);
     }
     if over.place_self.is_some() {
-        base.align_self = None;
-        base.justify_self = None;
+        clear!(align_self);
+        clear!(justify_self);
     }
     if over.gap.is_some() {
-        base.row_gap = None;
-        base.column_gap = None;
+        clear!(row_gap);
+        clear!(column_gap);
     }
     // A shorthand beats the broader ones and loses to the narrower ones, whatever order they are
     // written in, so a state's one resets the base's broader and narrower ones it covers.
     if over.padding.is_some() {
-        base.padding_block = None;
-        base.padding_inline = None;
+        clear!(padding_block);
+        clear!(padding_inline);
     }
     if over.padding.is_some() || over.padding_block.is_some() {
-        base.padding_top = None;
-        base.padding_bottom = None;
+        clear!(padding_top);
+        clear!(padding_bottom);
     }
     if over.padding.is_some() || over.padding_inline.is_some() {
-        base.padding_left = None;
-        base.padding_right = None;
+        clear!(padding_left);
+        clear!(padding_right);
     }
     if over.margin.is_some() {
-        base.margin_block = None;
-        base.margin_inline = None;
+        clear!(margin_block);
+        clear!(margin_inline);
     }
     if over.margin.is_some() || over.margin_block.is_some() {
-        base.margin_top = None;
-        base.margin_bottom = None;
+        clear!(margin_top);
+        clear!(margin_bottom);
     }
     if over.margin.is_some() || over.margin_inline.is_some() {
-        base.margin_left = None;
-        base.margin_right = None;
+        clear!(margin_left);
+        clear!(margin_right);
     }
     if over.inset.is_some() {
-        base.inset_block = None;
-        base.inset_inline = None;
+        clear!(inset_block);
+        clear!(inset_inline);
     }
     if over.inset.is_some() || over.inset_block.is_some() {
-        base.top = None;
-        base.bottom = None;
+        clear!(top);
+        clear!(bottom);
     }
     if over.inset.is_some() || over.inset_inline.is_some() {
-        base.left = None;
-        base.right = None;
+        clear!(left);
+        clear!(right);
     }
     if over.border_width.is_some() {
-        base.border_top_width = None;
-        base.border_right_width = None;
-        base.border_bottom_width = None;
-        base.border_left_width = None;
+        clear!(border_top_width);
+        clear!(border_right_width);
+        clear!(border_bottom_width);
+        clear!(border_left_width);
     }
     if over.border_radius.is_some() {
-        base.border_top_left_radius = None;
-        base.border_top_right_radius = None;
-        base.border_bottom_left_radius = None;
-        base.border_bottom_right_radius = None;
+        clear!(border_top_left_radius);
+        clear!(border_top_right_radius);
+        clear!(border_bottom_left_radius);
+        clear!(border_bottom_right_radius);
     }
     if over.transition.is_some() {
-        base.transition_property = None;
-        base.transition_duration = None;
-        base.transition_timing_function = None;
-        base.transition_delay = None;
-        base.transition_behavior = None;
+        clear!(transition_property);
+        clear!(transition_duration);
+        clear!(transition_timing_function);
+        clear!(transition_delay);
+        clear!(transition_behavior);
     }
     if over.animation.is_some() {
-        base.animation_name = None;
-        base.animation_duration = None;
-        base.animation_timing_function = None;
-        base.animation_delay = None;
-        base.animation_iteration_count = None;
-        base.animation_direction = None;
-        base.animation_fill_mode = None;
-        base.animation_play_state = None;
+        clear!(animation_name);
+        clear!(animation_duration);
+        clear!(animation_timing_function);
+        clear!(animation_delay);
+        clear!(animation_iteration_count);
+        clear!(animation_direction);
+        clear!(animation_fill_mode);
+        clear!(animation_play_state);
     }
     if over.text_decoration.is_some() {
-        base.text_decoration_line = None;
-        base.text_decoration_style = None;
-        base.text_decoration_color = None;
-        base.text_decoration_thickness = None;
+        clear!(text_decoration_line);
+        clear!(text_decoration_style);
+        clear!(text_decoration_color);
+        clear!(text_decoration_thickness);
     }
     if over.text_box.is_some() {
-        base.text_box_trim = None;
-        base.text_box_edge = None;
+        clear!(text_box_trim);
+        clear!(text_box_edge);
     }
     if over.overflow.is_some() {
-        base.overflow_x = None;
-        base.overflow_y = None;
+        clear!(overflow_x);
+        clear!(overflow_y);
     }
     if over.container.is_some() {
-        base.container_type = None;
-        base.container_name = None;
+        clear!(container_type);
+        clear!(container_name);
     }
     if over.overscroll_behavior.is_some() {
-        base.overscroll_behavior_x = None;
-        base.overscroll_behavior_y = None;
+        clear!(overscroll_behavior_x);
+        clear!(overscroll_behavior_y);
     }
     // `gridArea` covers both axes, `gridColumn` / `gridRow` one each, and the
     // start and end longhands a single line.
     if over.grid_area.is_some() {
-        base.grid_column = None;
-        base.grid_row = None;
+        clear!(grid_column);
+        clear!(grid_row);
     }
     if over.grid_area.is_some() || over.grid_column.is_some() {
-        base.grid_column_start = None;
-        base.grid_column_end = None;
+        clear!(grid_column_start);
+        clear!(grid_column_end);
     }
     if over.grid_area.is_some() || over.grid_row.is_some() {
-        base.grid_row_start = None;
-        base.grid_row_end = None;
+        clear!(grid_row_start);
+        clear!(grid_row_end);
     }
     // `border` covers every side's width, colour and style, and a side
     // shorthand its own. The longhands win over the shorthands, so a base
     // longhand would beat a state's shorthand.
     if over.border.is_some() {
-        base.border_block = None;
-        base.border_inline = None;
-        base.border_top = None;
-        base.border_right = None;
-        base.border_bottom = None;
-        base.border_left = None;
-        base.border_width = None;
-        base.border_color = None;
+        clear!(border_block);
+        clear!(border_inline);
+        clear!(border_top);
+        clear!(border_right);
+        clear!(border_bottom);
+        clear!(border_left);
+        clear!(border_width);
+        clear!(border_color);
     }
     // `borderBlock` and `borderInline` sit between `border` and the side shorthands, and reset the
     // side shorthands and longhands of their axis.
     if over.border_block.is_some() {
-        base.border_top = None;
-        base.border_bottom = None;
-        base.border_top_width = None;
-        base.border_top_color = None;
-        base.border_top_style = None;
-        base.border_bottom_width = None;
-        base.border_bottom_color = None;
-        base.border_bottom_style = None;
+        clear!(border_top);
+        clear!(border_bottom);
+        clear!(border_top_width);
+        clear!(border_top_color);
+        clear!(border_top_style);
+        clear!(border_bottom_width);
+        clear!(border_bottom_color);
+        clear!(border_bottom_style);
     }
     if over.border_inline.is_some() {
-        base.border_left = None;
-        base.border_right = None;
-        base.border_left_width = None;
-        base.border_left_color = None;
-        base.border_left_style = None;
-        base.border_right_width = None;
-        base.border_right_color = None;
-        base.border_right_style = None;
+        clear!(border_left);
+        clear!(border_right);
+        clear!(border_left_width);
+        clear!(border_left_color);
+        clear!(border_left_style);
+        clear!(border_right_width);
+        clear!(border_right_color);
+        clear!(border_right_style);
     }
     if over.border.is_some() || over.border_width.is_some() {
-        base.border_top_width = None;
-        base.border_right_width = None;
-        base.border_bottom_width = None;
-        base.border_left_width = None;
+        clear!(border_top_width);
+        clear!(border_right_width);
+        clear!(border_bottom_width);
+        clear!(border_left_width);
     }
     if over.border.is_some() || over.border_color.is_some() {
-        base.border_top_color = None;
-        base.border_right_color = None;
-        base.border_bottom_color = None;
-        base.border_left_color = None;
+        clear!(border_top_color);
+        clear!(border_right_color);
+        clear!(border_bottom_color);
+        clear!(border_left_color);
     }
     if over.border.is_some() || over.border_style.is_some() {
-        base.border_style = None;
-        base.border_top_style = None;
-        base.border_right_style = None;
-        base.border_bottom_style = None;
-        base.border_left_style = None;
+        clear!(border_style);
+        clear!(border_top_style);
+        clear!(border_right_style);
+        clear!(border_bottom_style);
+        clear!(border_left_style);
     }
     if over.border_top.is_some() {
-        base.border_top_width = None;
-        base.border_top_color = None;
-        base.border_top_style = None;
+        clear!(border_top_width);
+        clear!(border_top_color);
+        clear!(border_top_style);
     }
     if over.border_right.is_some() {
-        base.border_right_width = None;
-        base.border_right_color = None;
-        base.border_right_style = None;
+        clear!(border_right_width);
+        clear!(border_right_color);
+        clear!(border_right_style);
     }
     if over.border_bottom.is_some() {
-        base.border_bottom_width = None;
-        base.border_bottom_color = None;
-        base.border_bottom_style = None;
+        clear!(border_bottom_width);
+        clear!(border_bottom_color);
+        clear!(border_bottom_style);
     }
     if over.border_left.is_some() {
-        base.border_left_width = None;
-        base.border_left_color = None;
-        base.border_left_style = None;
+        clear!(border_left_width);
+        clear!(border_left_color);
+        clear!(border_left_style);
     }
     // The `mask` shorthand resets every layer longhand, as `background` does.
     if over.mask.is_some() {
-        base.mask_image = None;
-        base.mask_size = None;
-        base.mask_position = None;
-        base.mask_repeat = None;
-        base.mask_origin = None;
-        base.mask_clip = None;
-        base.mask_mode = None;
-        base.mask_composite = None;
+        clear!(mask_image);
+        clear!(mask_size);
+        clear!(mask_position);
+        clear!(mask_repeat);
+        clear!(mask_origin);
+        clear!(mask_clip);
+        clear!(mask_mode);
+        clear!(mask_composite);
     }
     // `background_color` wins over `background` when both are set, so a base
     // colour would beat a state's shorthand. A state's colour alone leaves the
     // base shorthand: its layers still paint, as under a `background-color`.
     // The `background` shorthand also resets every layer longhand.
     if over.background.is_some() {
-        base.background_color = None;
-        base.background_image = None;
-        base.background_size = None;
-        base.background_position = None;
-        base.background_repeat = None;
-        base.background_origin = None;
-        base.background_clip = None;
+        clear!(background_color);
+        clear!(background_image);
+        clear!(background_size);
+        clear!(background_position);
+        clear!(background_repeat);
+        clear!(background_origin);
+        clear!(background_clip);
     }
 }
 
