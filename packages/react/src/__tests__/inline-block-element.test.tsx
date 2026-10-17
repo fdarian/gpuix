@@ -6,8 +6,8 @@
 import fs from "fs"
 import React from "react"
 import { describe, expect, it } from "vitest"
-import type { PublicInstance, ResizeObserverEntry } from "../index"
-import { ResizeObserver } from "../index"
+import type { IntersectionObserverEntry, PublicInstance, ResizeObserverEntry } from "../index"
+import { IntersectionObserver, motion, ResizeObserver } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
@@ -364,6 +364,37 @@ describeNative("bounds and observers of an inline-block", () => {
     }
   })
 
+  it("is intersecting a scroller only while it is scrolled into view", () => {
+    const seen: boolean[] = []
+    let target: PublicInstance | null = null
+    const { renderer, unmount } = setup(
+      <div style={{ width: 300, height: 100, overflow: "auto", ...TEXT }}>
+        {Array.from({ length: 12 }, (_, index) => (
+          <div
+            key={index}
+            ref={index === 11 ? (element) => (target = element) : undefined}
+            style={{ ...box(140, 40), backgroundColor: "#0000ff" }}
+          />
+        ))}
+      </div>
+    )
+    try {
+      const observer = new IntersectionObserver(
+        (entries: IntersectionObserverEntry[]) => seen.push(...entries.map((entry) => entry.isIntersecting)),
+        { root: null }
+      )
+      observer.observe(target!)
+      renderer.dispatchNativeEvents()
+      expect(seen.at(-1)).toBe(false)
+      target!.scrollIntoView({ block: "end" })
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      expect(seen.at(-1)).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
+
   it("is scrolled into view by scrollIntoView", () => {
     let target: PublicInstance | null = null
     const { renderer, idOf, unmount } = setup(
@@ -495,6 +526,39 @@ describeNative("an inline-block that changes", () => {
       renderer.clockFastForward(1000)
       renderer.dispatchNativeEvents()
       expect(bounds("ib").width).toBeCloseTo(100, 1)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("animates its margin with motion, and the text after it follows", () => {
+    const { renderer, render, bounds, unmount } = setup(<div />)
+    try {
+      renderer.clockPause()
+      render(
+        <div style={{ width: 300, ...TEXT }}>
+          A
+          <motion.div
+            testId="ib"
+            style={box(20, 20)}
+            initial={{ marginLeft: 0 }}
+            animate={{ marginLeft: 40 }}
+            transition={{ duration: 1, ease: "linear" }}
+          />
+          <span testId="after">A</span>
+        </div>
+      )
+      renderer.dispatchNativeEvents()
+      expect(bounds("ib").x).toBeCloseTo(20, 0)
+      const x0 = bounds("after").x
+      renderer.clockFastForward(500)
+      renderer.dispatchNativeEvents()
+      expect(bounds("ib").x).toBeCloseTo(40, 0)
+      expect(bounds("after").x - x0).toBeCloseTo(20, 0)
+      renderer.clockFastForward(1000)
+      renderer.dispatchNativeEvents()
+      expect(bounds("ib").x).toBeCloseTo(60, 0)
+      expect(bounds("after").x - x0).toBeCloseTo(40, 0)
     } finally {
       unmount()
     }
