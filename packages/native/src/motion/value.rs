@@ -23,6 +23,10 @@ pub(crate) struct Colors {
     pub(super) text: ColorContext,
     /// The element's computed font, which an unset `fontSize` or `fontWeight` is.
     pub(super) font: Font,
+    /// What `em`, `rem` and the viewport units of the element's lengths mean. A length
+    /// resolves to px against it when a value is parsed or read, as in a CSS computed
+    /// value, so a track never holds a relative unit.
+    pub(super) lengths: LengthContext,
 }
 
 /// A computed `font-size` in px and `font-weight`.
@@ -59,10 +63,13 @@ impl ParentFont {
         }
     }
 
+    fn lengths_of(&self, style: Option<&StyleDesc>) -> LengthContext {
+        self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root)
+    }
+
     fn of(&self, style: Option<&StyleDesc>) -> Font {
-        let lengths = self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root);
         Font {
-            size: lengths.font_size,
+            size: self.lengths_of(style).font_size,
             weight: style
                 .and_then(|style| style.font_weight.as_ref())
                 .map_or(self.weight, super::property::font_weight),
@@ -94,6 +101,7 @@ impl Colors {
             element: parent.descend(declared),
             text: parent.for_color_property(declared),
             font: font.of(style),
+            lengths: font.lengths_of(style),
         }
     }
 
@@ -306,6 +314,11 @@ pub(super) enum AnimValue {
     Number(f64),
     /// A percentage as a fraction, matching `DimensionValue::Percentage`.
     Percent(f64),
+    /// A length with both a px part and a share of its percentage basis,
+    /// `calc(<percent> * 100% + <px>px)`. `em`, `rem` and the viewport units are
+    /// already px. Built through [`AnimValue::length`], which keeps a length that
+    /// has only one of the two as a [`Self::Number`] or [`Self::Percent`].
+    Calc { px: f64, percent: f64 },
     Color(Color),
     Shadows(Vec<Shadow>),
     /// A list of numbers, such as `stroke-dasharray`.
@@ -321,10 +334,32 @@ pub(super) enum AnimValue {
 }
 
 impl AnimValue {
+    /// The simplest value for `px` plus `percent` of the basis.
+    pub(super) fn length(px: f64, percent: f64) -> Self {
+        if percent == 0.0 {
+            Self::Number(px)
+        } else if px == 0.0 {
+            Self::Percent(percent)
+        } else {
+            Self::Calc { px, percent }
+        }
+    }
+
+    /// The px and percentage parts of a length, whichever of the three it is held as.
+    pub(super) fn as_length(&self) -> Option<(f64, f64)> {
+        match self {
+            Self::Number(px) => Some((*px, 0.0)),
+            Self::Percent(percent) => Some((0.0, *percent)),
+            Self::Calc { px, percent } => Some((*px, *percent)),
+            _ => None,
+        }
+    }
+
     fn describe(&self) -> &'static str {
         match self {
             Self::Number(_) => "a number or px length",
             Self::Percent(_) => "a percentage",
+            Self::Calc { .. } => "a length mixing px and a percentage",
             Self::Color(_) => "a colour",
             Self::Shadows(_) => "a shadow list",
             Self::Numbers(_) => "a list of numbers",
@@ -340,6 +375,9 @@ impl AnimValue {
 pub(super) enum Layout {
     Number,
     Percent,
+    /// `[px, percent]`: lengths that are not all px or all percentages blend as
+    /// the two parts of a `calc()`, each on its own channel.
+    Calc,
     /// The [`Blend`] of each segment between two keyframes.
     Color(Vec<Blend>),
     Shadows {
@@ -417,6 +455,7 @@ impl Layout {
         match self {
             Self::Number => AnimValue::Number(channels[0]),
             Self::Percent => AnimValue::Percent(channels[0]),
+            Self::Calc => AnimValue::length(channels[0], channels[1]),
             Self::Color(blends) => AnimValue::Color(Color::from_channels(channels, all_srgb(blends))),
             Self::Shadows { insets, blends } => AnimValue::Shadows(
                 insets
@@ -443,17 +482,29 @@ impl Layout {
         }
     }
 
-    /// Whether a velocity measured in `self`'s channels still means the same
-    /// thing in `other`'s, so a retarget can carry it over.
-    pub(super) fn carries_velocity_to(&self, other: &Self) -> bool {
-        match (self, other) {
+    /// A velocity measured in `self`'s channels as `other`'s, so a retarget can
+    /// carry it over; `None` where it means nothing there. A length moves between
+    /// px, percentage and `calc` channels, keeping the part it has.
+    pub(super) fn velocity_in(&self, other: &Self, rate: &[f64]) -> Option<Vec<f64>> {
+        let same = match (self, other) {
             (Self::Number, Self::Number)
             | (Self::Percent, Self::Percent)
-            | (Self::Color(_), Self::Color(_)) => true,
+            | (Self::Calc, Self::Calc)
+            | (Self::Color(_), Self::Color(_))
+            | (Self::Numbers, Self::Numbers) => true,
             (Self::Shadows { insets: a, .. }, Self::Shadows { insets: b, .. }) => a.len() == b.len(),
-            (Self::Numbers, Self::Numbers) => true,
             (Self::Path(a), Self::Path(b)) => a.same_structure(b),
             _ => false,
+        };
+        if same {
+            return Some(rate.to_vec());
+        }
+        match (self, other) {
+            (Self::Number, Self::Calc) => Some(vec![rate[0], 0.0]),
+            (Self::Percent, Self::Calc) => Some(vec![0.0, rate[0]]),
+            (Self::Calc, Self::Number) => Some(vec![rate[0]]),
+            (Self::Calc, Self::Percent) => Some(vec![rate[1]]),
+            _ => None,
         }
     }
 }
@@ -557,7 +608,8 @@ pub(super) fn align_in(
     interpolation: Interpolation,
 ) -> Result<Aligned, String> {
     for window in values.windows(2) {
-        if std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
+        let lengths = window.iter().all(|value| value.as_length().is_some());
+        if !lengths && std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
             return Err(format!(
                 "motion {name} cannot animate from {} to {}: mixed units are not supported",
                 window[0].describe(),
@@ -566,14 +618,9 @@ pub(super) fn align_in(
         }
     }
     match values[0] {
-        AnimValue::Number(_) => Ok(simple(Layout::Number, values, |value| match value {
-            AnimValue::Number(number) => vec![*number],
-            _ => unreachable!("kinds were checked"),
-        })),
-        AnimValue::Percent(_) => Ok(simple(Layout::Percent, values, |value| match value {
-            AnimValue::Percent(fraction) => vec![*fraction],
-            _ => unreachable!("kinds were checked"),
-        })),
+        AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } => {
+            Ok(align_lengths(values))
+        }
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {
                 AnimValue::Color(color) => color,
@@ -629,6 +676,23 @@ pub(super) fn align_in(
             values[values.len() - 1].describe()
         )),
     }
+}
+
+/// Lengths that are all px or all percentages keep their one channel. Any other
+/// mix blends as a `calc()`: CSS Values 4 interpolates `20px` to `50%` as
+/// `calc(20px * (1 - p) + 50% * p)`, each part on its own.
+fn align_lengths(values: &[&AnimValue]) -> Aligned {
+    let length = |value: &AnimValue| value.as_length().expect("kinds were checked");
+    if values.iter().all(|value| matches!(value, AnimValue::Number(_))) {
+        return simple(Layout::Number, values, |value| vec![length(value).0]);
+    }
+    if values.iter().all(|value| matches!(value, AnimValue::Percent(_))) {
+        return simple(Layout::Percent, values, |value| vec![length(value).1]);
+    }
+    simple(Layout::Calc, values, |value| {
+        let (px, percent) = length(value);
+        vec![px, percent]
+    })
 }
 
 fn unwrap_each<'a, T: ?Sized>(
@@ -1052,10 +1116,69 @@ mod tests {
     }
 
     #[test]
-    fn mixed_units_are_rejected() {
-        let error = pair("width", &AnimValue::Number(10.0), &AnimValue::Percent(0.5)).unwrap_err();
+    fn a_length_and_a_colour_are_rejected() {
+        let error = pair("width", &AnimValue::Number(10.0), &AnimValue::Color(color("#fff"))).unwrap_err();
         assert!(error.contains("width") && error.contains("mixed units"), "{error}");
-        assert!(pair("color", &AnimValue::Number(1.0), &AnimValue::Color(color("#fff"))).is_err());
+        assert!(pair("color", &AnimValue::Percent(1.0), &AnimValue::Color(color("#fff"))).is_err());
+        assert!(pair("width", &AnimValue::Auto, &AnimValue::Percent(0.5)).is_err());
+    }
+
+    fn length_at(from: &AnimValue, to: &AnimValue, progress: f64) -> AnimValue {
+        pair("width", from, to).unwrap().at(progress)
+    }
+
+    #[test]
+    fn a_px_length_and_a_percentage_blend_as_the_two_parts_of_a_calc() {
+        // CSS Values 4: 20px to 50% is calc(20px * (1 - p) + 50% * p).
+        let pair = pair("width", &AnimValue::Number(20.0), &AnimValue::Percent(0.5)).unwrap();
+        assert_eq!(pair.layout, Layout::Calc);
+        assert_eq!(pair.at(0.5), AnimValue::Calc { px: 10.0, percent: 0.25 });
+        assert_eq!(pair.at(0.0), AnimValue::Number(20.0));
+        assert_eq!(pair.at(1.0), AnimValue::Percent(0.5));
+        assert_eq!(pair.at(1.5), AnimValue::Calc { px: -10.0, percent: 0.75 });
+    }
+
+    #[test]
+    fn two_calcs_mix_each_part_on_its_own() {
+        // calc(100% - 20px) to calc(50% + 10px) is calc(75% - 5px) halfway: 295px of 400.
+        let from = AnimValue::Calc { px: -20.0, percent: 1.0 };
+        let to = AnimValue::Calc { px: 10.0, percent: 0.5 };
+        let AnimValue::Calc { px, percent } = length_at(&from, &to, 0.5) else {
+            panic!("a calc stays a calc");
+        };
+        assert_eq!((px, percent), (-5.0, 0.75));
+        assert_eq!(px + percent * 400.0, 295.0);
+        assert_eq!(length_at(&from, &AnimValue::Number(40.0), 0.5), AnimValue::Calc { px: 10.0, percent: 0.5 });
+    }
+
+    #[test]
+    fn lengths_with_one_part_keep_the_simplest_channels() {
+        let numbers = pair("width", &AnimValue::Number(1.0), &AnimValue::Number(3.0)).unwrap();
+        assert_eq!((numbers.layout, numbers.from.len()), (Layout::Number, 1));
+        let percents = pair("width", &AnimValue::Percent(0.1), &AnimValue::Percent(0.5)).unwrap();
+        assert_eq!((percents.layout, percents.from.len()), (Layout::Percent, 1));
+        // A calc that lost a part reads as the simple value again.
+        assert_eq!(AnimValue::length(5.0, 0.0), AnimValue::Number(5.0));
+        assert_eq!(AnimValue::length(0.0, 0.5), AnimValue::Percent(0.5));
+        assert_eq!(AnimValue::length(0.0, 0.0), AnimValue::Number(0.0));
+    }
+
+    #[test]
+    fn keyframes_of_mixed_lengths_share_one_calc_layout() {
+        let values = [AnimValue::Number(10.0), AnimValue::Percent(0.5), AnimValue::Calc { px: -4.0, percent: 1.0 }];
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let aligned = align("width", &refs).unwrap();
+        assert_eq!(aligned.layout, Layout::Calc);
+        assert_eq!(aligned.frames, vec![vec![10.0, 0.0], vec![0.0, 0.5], vec![-4.0, 1.0]]);
+    }
+
+    #[test]
+    fn a_velocity_moves_between_length_layouts_keeping_the_part_it_has() {
+        assert_eq!(Layout::Number.velocity_in(&Layout::Calc, &[3.0]), Some(vec![3.0, 0.0]));
+        assert_eq!(Layout::Percent.velocity_in(&Layout::Calc, &[0.2]), Some(vec![0.0, 0.2]));
+        assert_eq!(Layout::Calc.velocity_in(&Layout::Calc, &[3.0, 0.2]), Some(vec![3.0, 0.2]));
+        assert_eq!(Layout::Calc.velocity_in(&Layout::Percent, &[3.0, 0.2]), Some(vec![0.2]));
+        assert_eq!(Layout::Number.velocity_in(&Layout::Percent, &[3.0]), None);
     }
 
     fn path(data: &str) -> PathData {
@@ -1152,9 +1275,9 @@ mod tests {
 
     #[test]
     fn the_first_mismatched_neighbours_are_named() {
-        let values = [AnimValue::Number(1.0), AnimValue::Number(2.0), AnimValue::Percent(0.5)];
+        let values = [AnimValue::Number(1.0), AnimValue::Number(2.0), AnimValue::Color(color("red"))];
         let refs: Vec<&AnimValue> = values.iter().collect();
         let error = align("width", &refs).unwrap_err();
-        assert!(error.contains("from a number or px length to a percentage"), "{error}");
+        assert!(error.contains("from a number or px length to a colour"), "{error}");
     }
 }

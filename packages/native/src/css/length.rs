@@ -234,6 +234,13 @@ impl LengthContext {
         }
     }
 
+    /// The px of a `font-size` this element declares, unclamped: its `em` and `%`
+    /// are of the parent's size, not its own.
+    pub(crate) fn declared_font_size(&self, length: &LinearLength) -> f64 {
+        let parent = Self { font_size: self.parent_font_size, ..*self };
+        parent.resolve(length, parent.font_size)
+    }
+
     /// `percent_basis` is the px a `100%` stands for.
     pub(crate) fn resolve(&self, length: &LinearLength, percent_basis: f64) -> f64 {
         let (min_side, max_side) = if self.viewport_width < self.viewport_height {
@@ -648,6 +655,15 @@ mod tests {
         assert_eq!(wide.font_size, 32.0);
         let narrow = context(400.0, 600.0).descend(Some(&size), false);
         assert_eq!(narrow.font_size, 24.0);
+    }
+
+    #[test]
+    fn a_declared_font_size_resolves_against_the_parent_and_is_not_clamped() {
+        let parent = context(800.0, 600.0).descend(Some(&parse("20px")), true);
+        let element = parent.descend(Some(&parse("2em")), false);
+        assert_eq!(element.declared_font_size(&parse("1.5em")), 30.0);
+        assert_eq!(element.declared_font_size(&parse("50%")), 10.0);
+        assert_eq!(element.declared_font_size(&parse("calc(1em - 30px)")), -10.0);
     }
 
     #[test]

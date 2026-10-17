@@ -298,8 +298,10 @@ impl Track {
     /// [`Self::carry_velocity`] for a speed that did not come from a track,
     /// such as a value being dragged by `set`, given in the channels of `layout`.
     pub(super) fn carry_rate(&mut self, layout: &Layout, rate: Vec<f64>) {
-        let is_spring = matches!(self.transition.curve, Curve::Spring(_));
-        if is_spring && layout.carries_velocity_to(&self.layout) {
+        if !matches!(self.transition.curve, Curve::Spring(_)) {
+            return;
+        }
+        if let Some(rate) = layout.velocity_in(&self.layout, &rate) {
             self.from_velocity = rate;
             self.settle = self.spring_settle();
         }

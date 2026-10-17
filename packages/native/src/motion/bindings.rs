@@ -492,6 +492,9 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
     match value {
         AnimValue::Number(value) => number(*value),
         AnimValue::Percent(fraction) => Ok(Value::String(format!("{}%", fraction * 100.0))),
+        AnimValue::Calc { px, percent } => Ok(Value::String(
+            crate::css::length::LinearLength { px: *px, percent: *percent, ..Default::default() }.to_string(),
+        )),
         AnimValue::Color(color) => Ok(Value::String(color.to_css())),
         AnimValue::Shadows(shadows) => serde_json::to_value(shadow_layers(shadows.clone()))
             .map_err(|error| error.to_string()),
@@ -853,9 +856,18 @@ mod tests {
         store.create_source(3.0, &json!("0%")).unwrap();
         store.animate(3.0, &json!(["0%", "50%", "100%"]), Some(&linear(1.0)), clock.at(0)).unwrap();
         assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("50%"));
-        assert!(store.animate(3.0, &json!(["0%", 5]), None, clock.at(0)).is_err());
+        assert!(store.animate(3.0, &json!(["0%", "#fff"]), None, clock.at(0)).is_err());
         // A failed animate leaves the one running.
         assert_eq!(store.get(3.0, clock.at(500)).unwrap(), json!("50%"));
+    }
+
+    #[test]
+    fn a_percentage_and_a_number_blend_as_a_calc() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("50%")).unwrap();
+        store.animate(2.0, &json!(20), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("calc(25% + 10px)"));
+        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!(20.0));
     }
 
     #[test]

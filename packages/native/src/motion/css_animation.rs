@@ -2628,20 +2628,39 @@ mod tests {
     }
 
     #[test]
-    fn a_percentage_meeting_a_length_runs_through_px_and_ends_as_the_percentage() {
+    fn a_percentage_meeting_a_length_blends_as_a_calc_and_ends_as_the_percentage() {
         let mut frames = Frames::new();
-        frames.define("grow", r#"{ "from": { "width": 0 }, "to": { "width": "50%" } }"#);
+        frames.define("grow", r#"{ "from": { "width": 20 }, "to": { "width": "50%" } }"#);
         let animated = fading("grow 1s linear forwards");
         let measurement = measured(40.0, 10.0, 10.0);
         frames.frame_measured(0, &animated, Some(&measurement));
-        match frames.frame_measured(500, &animated, Some(&measurement)).width {
-            Some(DimensionValue::Pixels(width)) => near(width, 200.0),
-            other => panic!("{other:?}"),
-        }
+        let middle = frames.frame_measured(500, &animated, Some(&measurement)).width;
+        assert_eq!(
+            middle,
+            Some(DimensionValue::Calc(crate::css::length::LinearLength { px: 10.0, percent: 0.25, ..Default::default() }))
+        );
         assert_eq!(
             frames.frame_measured(2000, &animated, Some(&measurement)).width,
             Some(DimensionValue::Percentage(0.5))
         );
+    }
+
+    #[test]
+    fn calc_keyframes_and_em_keyframes_blend_per_part() {
+        let mut frames = Frames::new();
+        frames.define(
+            "grow",
+            r#"{ "from": { "width": "calc(100% - 20px)" }, "50%": { "width": "calc(50% + 1em)" }, "to": { "width": 100 } }"#,
+        );
+        let animated = fading("grow 1s linear forwards");
+        frames.frame(0, &animated);
+        let calc = |px: f64, percent: f64| {
+            Some(DimensionValue::Calc(crate::css::length::LinearLength { px, percent, ..Default::default() }))
+        };
+        assert_eq!(frames.frame(250, &animated).width, calc(-2.0, 0.75));
+        assert_eq!(frames.frame(500, &animated).width, calc(16.0, 0.5));
+        assert_eq!(frames.frame(750, &animated).width, calc(58.0, 0.25));
+        assert_eq!(frames.frame(1000, &animated).width, Some(DimensionValue::Pixels(100.0)));
     }
 
     fn background(style: &StyleDesc) -> [f32; 3] {

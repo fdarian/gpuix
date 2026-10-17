@@ -586,7 +586,7 @@ struct Running {
     /// transition alone.
     end_computed: AnimValue,
     /// The segment runs to a number measured from layout standing in for
-    /// `end` (`auto`, or a percentage met from px), and follows it.
+    /// `end` (`auto`), and follows it.
     measured: bool,
     /// CSS "reversing-adjusted start value", as a computed value: where an
     /// interrupting change back to it counts as a reversal.
@@ -597,8 +597,7 @@ struct Running {
 
 impl Running {
     /// `None` when the two values cannot be interpolated, which in CSS means
-    /// the change is simply not transitioned. A percentage meeting a px length
-    /// has no px value until the parent has been measured.
+    /// the change is simply not transitioned.
     #[allow(clippy::too_many_arguments)]
     fn new(
         prop: AnimProp,
@@ -608,15 +607,13 @@ impl Running {
         entry: &Entry,
         reversing_start: AnimValue,
         shortening: f64,
-        measurement: Option<&Measurement>,
         now: Instant,
     ) -> Option<Self> {
-        let (from, to) = common_unit(prop, from, to, measurement)?;
-        let segment = pair_in(prop.name(), &from, &to, Interpolation::Css)
+        let segment = pair_in(prop.name(), from, to, Interpolation::Css)
             .ok()
             .filter(|pair| entry.allow_discrete || !pair.is_discrete())?;
         Some(Self {
-            measured: end != to,
+            measured: end != *to,
             started: now,
             delay: if entry.delay >= 0.0 {
                 entry.delay
@@ -668,7 +665,6 @@ impl Running {
         }
         let end = match &self.end {
             AnimValue::Auto => measurement.natural_px(prop),
-            AnimValue::Percent(fraction) => measurement.percent_px(prop, *fraction),
             _ => None,
         };
         let progress = self.progress(self.elapsed(now));
@@ -684,29 +680,6 @@ impl Running {
     /// `elapsedTime` of `transitionrun` and `transitionstart`.
     fn initial_elapsed(&self) -> f64 {
         (-self.delay).min(self.duration).max(0.0)
-    }
-}
-
-/// The two ends of a transition in one unit. A px length and a percentage meet
-/// in px, the percentage resolved against the parent's last painted box (the
-/// window for a root); until a box is measured they cannot meet, and the change
-/// is not transitioned.
-fn common_unit(
-    prop: AnimProp,
-    from: &AnimValue,
-    to: &AnimValue,
-    measurement: Option<&Measurement>,
-) -> Option<(AnimValue, AnimValue)> {
-    let in_pixels = |value: &AnimValue| match value {
-        AnimValue::Percent(fraction) => measurement?
-            .percent_px(prop, *fraction)
-            .map(AnimValue::Number),
-        other => Some(other.clone()),
-    };
-    match (from, to) {
-        (AnimValue::Number(_), AnimValue::Percent(_))
-        | (AnimValue::Percent(_), AnimValue::Number(_)) => Some((in_pixels(from)?, in_pixels(to)?)),
-        _ => Some((from.clone(), to.clone())),
     }
 }
 
@@ -1013,7 +986,7 @@ impl ElementState {
             {
                 let reversing_start = before_computed.unwrap_or_else(|| from.clone());
                 if let Some(running) = Running::new(
-                    prop, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, measurement, now,
+                    prop, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, now,
                 ) {
                     self.begin(id, prop, running, events);
                 }
@@ -1048,7 +1021,7 @@ impl ElementState {
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
         if let Some(running) = Running::new(
-            prop, &current, &to, (end, end_computed), &entry, reversing_start, shortening, measurement, now,
+            prop, &current, &to, (end, end_computed), &entry, reversing_start, shortening, now,
         ) {
             self.begin(id, prop, running, events);
         }
@@ -2084,14 +2057,18 @@ mod tests {
     }
 
     #[test]
-    fn px_percent_and_auto_changes_are_instant_until_layout_can_resolve_them() {
+    fn a_px_to_percent_change_transitions_at_once_and_an_auto_change_waits_for_layout() {
         let mut clock = Clock::new();
-        clock.frame(0, &style(r#"{ "width": 10, "transition": "all 1s" }"#));
-        let percent = style(r#"{ "width": "50%", "transition": "all 1s" }"#);
-        assert_eq!(clock.frame(10, &percent).width, Some(DimensionValue::Percentage(0.5)));
-        let auto = style(r#"{ "width": "auto", "transition": "all 1s" }"#);
+        clock.frame(0, &style(r#"{ "width": 10, "transition": "all 1s linear" }"#));
+        let percent = style(r#"{ "width": "50%", "transition": "all 1s linear" }"#);
+        assert_eq!(clock.frame(10, &percent).width, Some(DimensionValue::Pixels(10.0)));
+        assert_eq!(clock.events().len(), 2, "run and start");
+        assert_eq!(
+            clock.frame(510, &percent).width,
+            Some(DimensionValue::Calc(LinearLength { px: 5.0, percent: 0.25, ..LinearLength::default() }))
+        );
+        let auto = style(r#"{ "width": "auto", "transition": "all 1s linear" }"#);
         assert_eq!(clock.frame(20, &auto).width, Some(DimensionValue::Auto));
-        assert!(clock.events().is_empty());
     }
 
     #[test]
@@ -2679,36 +2656,80 @@ mod tests {
             assert!(error.starts_with("hover."), "{error}");
         }
 
-        fn in_parent(width: f32, height: f32) -> Measurement {
-            Measurement {
-                parent_content: gpui::size(gpui::px(width), gpui::px(height)),
-                ..measurement(30.0, 30.0)
-            }
-        }
-
-        fn width_of(style: &StyleDesc) -> f64 {
-            match style.width {
-                Some(DimensionValue::Pixels(width)) => width,
-                ref other => panic!("expected px, got {other:?}"),
-            }
-        }
-
         fn sized(width: &str) -> StyleDesc {
             style(&format!(r#"{{ "width": {width}, "transition": "width 1s linear" }}"#))
         }
 
         #[test]
-        fn px_to_a_percentage_runs_through_px_and_ends_on_the_percentage() {
+        fn a_percentage_end_is_a_percentage_whatever_the_parent_looks_like() {
             let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            clock.frame_measured(0, &sized("0"), None, Some(&parent));
+            let tall = |height: &str| {
+                style(&format!(r#"{{ "height": {height}, "transition": "height 1s linear" }}"#))
+            };
+            let auto_parent = Measurement {
+                percent_height_resolves: false,
+                natural_height: gpui::px(60.0),
+                ..measurement(30.0, 30.0)
+            };
+            clock.frame_measured(0, &tall("0"), None, Some(&auto_parent));
+            clock.frame_measured(0, &tall(r#""50%""#), None, Some(&auto_parent));
+            let middle = clock.frame_measured(500, &tall(r#""50%""#), None, Some(&auto_parent));
+            assert_eq!(middle.height, Some(DimensionValue::Percentage(0.25)));
+        }
 
-            let started = clock.frame_measured(100, &sized(r#""50%""#), None, Some(&parent));
-            assert_eq!(width_of(&started), 0.0);
-            assert_eq!(width_of(&clock.frame_measured(600, &sized(r#""50%""#), None, Some(&parent))), 50.0);
+        #[test]
+        fn a_parent_resize_does_not_touch_a_running_blend() {
+            let mut clock = Clock::new();
+            let narrow = Measurement {
+                parent_content: gpui::size(gpui::px(200.0), gpui::px(80.0)),
+                ..measurement(30.0, 30.0)
+            };
+            let wide = Measurement {
+                parent_content: gpui::size(gpui::px(400.0), gpui::px(80.0)),
+                ..narrow
+            };
+            clock.frame_measured(0, &sized("20"), None, Some(&narrow));
+            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&narrow));
+            let before = clock.frame_measured(500, &sized(r#""50%""#), None, Some(&narrow)).width;
+            let after = clock.frame_measured(500, &sized(r#""50%""#), None, Some(&wide)).width;
+            assert_eq!(
+                before,
+                Some(DimensionValue::Calc(LinearLength { px: 10.0, percent: 0.25, ..LinearLength::default() }))
+            );
+            assert_eq!(after, before, "the percentage is still a share of whatever the parent is");
+        }
+    }
+    /// A length is its px and its share of the percentage basis, which blend on
+    /// their own as the two parts of a `calc()`, and `em` is px by then.
+    mod lengths {
+        use super::*;
+
+        fn sized(width: &str) -> StyleDesc {
+            style(&format!(r#"{{ "width": {width}, "transition": "width 1s linear" }}"#))
+        }
+
+        fn calc(px: f64, percent: f64) -> Option<DimensionValue> {
+            Some(DimensionValue::Calc(LinearLength { px, percent, ..LinearLength::default() }))
+        }
+
+        /// `from` to `to` for a second, linear, read at `millis`.
+        fn width_at(from: &str, to: &str, millis: u64) -> Option<DimensionValue> {
+            let mut clock = Clock::new();
+            clock.frame(0, &sized(from));
+            clock.frame(0, &sized(to));
+            clock.frame(millis, &sized(to)).width
+        }
+
+        #[test]
+        fn px_to_a_percentage_blends_as_a_calc_with_no_measurement_and_ends_on_the_percentage() {
+            let mut clock = Clock::new();
+            clock.frame(0, &sized("20"));
+            let started = clock.frame(100, &sized(r#""50%""#));
+            assert_eq!(started.width, Some(DimensionValue::Pixels(20.0)));
+            assert_eq!(clock.frame(600, &sized(r#""50%""#)).width, calc(10.0, 0.25));
             assert!(clock.transitions.take_active());
 
-            let ended = clock.frame_measured(1100, &sized(r#""50%""#), None, Some(&parent));
+            let ended = clock.frame(1100, &sized(r#""50%""#));
             assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
             assert_eq!(
                 clock.events(),
@@ -2718,187 +2739,100 @@ mod tests {
                     (End, "width".to_string(), 1.0),
                 ]
             );
-            // The style keeps the percentage, so nothing starts again.
-            let after = clock.frame_measured(1200, &sized(r#""50%""#), None, Some(&parent));
-            assert_eq!(after.width, Some(DimensionValue::Percentage(0.5)));
-            assert!(clock.events().is_empty());
+            assert!(clock.frame(1200, &sized(r#""50%""#)).width == Some(DimensionValue::Percentage(0.5)));
+            assert!(clock.events().is_empty(), "the style keeps the percentage, so nothing starts again");
         }
 
         #[test]
-        fn a_percentage_to_px_starts_from_the_percentage_in_px() {
-            let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&parent));
-            let started = clock.frame_measured(100, &sized("20"), None, Some(&parent));
-            assert_eq!(width_of(&started), 100.0);
-            assert_eq!(width_of(&clock.frame_measured(600, &sized("20"), None, Some(&parent))), 60.0);
-            let ended = clock.frame_measured(1100, &sized("20"), None, Some(&parent));
-            assert_eq!(ended.width, Some(DimensionValue::Pixels(20.0)));
-        }
-
-        #[test]
-        fn two_percentages_still_blend_as_percentages() {
-            let mut clock = Clock::new();
-            clock.frame(0, &sized(r#""10%""#));
-            clock.frame(100, &sized(r#""50%""#));
-            let middle = clock.frame(600, &sized(r#""50%""#));
-            let Some(DimensionValue::Percentage(fraction)) = middle.width else {
-                panic!("expected a percentage, got {:?}", middle.width);
+        fn a_percentage_to_px_blends_from_the_percentage() {
+            assert_eq!(width_at(r#""50%""#, "20", 500), calc(10.0, 0.25));
+            assert_eq!(width_at(r#""50%""#, "20", 1000), Some(DimensionValue::Pixels(20.0)));
+            let Some(DimensionValue::Percentage(fraction)) = width_at(r#""10%""#, r#""50%""#, 500) else {
+                panic!("two percentages stay a percentage");
             };
             assert!((fraction - 0.3).abs() < 1e-9, "{fraction}");
         }
 
         #[test]
-        fn a_root_resolves_a_percentage_against_the_window() {
-            let mut clock = Clock::new();
-            let root = measurement(30.0, 30.0);
-            clock.frame_measured(0, &sized("0"), None, Some(&root));
-            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&root));
-            assert_eq!(width_of(&clock.frame_measured(500, &sized(r#""50%""#), None, Some(&root))), 200.0);
-            let ended = clock.frame_measured(1000, &sized(r#""50%""#), None, Some(&root));
-            assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
+        fn a_calc_transitions_from_and_to_a_calc_as_chrome_mixes_it() {
+            // calc(100% - 20px) to calc(50% + 10px): the percentages mix and so do the px.
+            let middle = width_at(r#""calc(100% - 20px)""#, r#""calc(50% + 10px)""#, 500);
+            assert_eq!(middle, calc(-5.0, 0.75));
+            let Some(DimensionValue::Calc(length)) = middle else { unreachable!() };
+            let basis = |parent: f64| crate::css::length::LengthContext::for_tests().resolve(&length, parent);
+            assert_eq!(basis(400.0), 295.0);
+            assert_eq!(basis(600.0), 445.0, "a parent that resized stays the mix of the new basis");
+            assert_eq!(width_at(r#""calc(100% - 20px)""#, r#""calc(50% + 10px)""#, 1000), calc(10.0, 0.5));
         }
 
         #[test]
-        fn the_percentage_end_follows_the_parent_while_it_runs() {
-            let mut clock = Clock::new();
-            clock.frame_measured(0, &sized("0"), None, Some(&in_parent(200.0, 80.0)));
-            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&in_parent(200.0, 80.0)));
-            let wider = in_parent(400.0, 80.0);
-            let mid = clock.frame_measured(500, &sized(r#""50%""#), None, Some(&wider));
-            assert_eq!(width_of(&mid), 50.0, "the value showing does not jump");
-            let later = clock.frame_measured(750, &sized(r#""50%""#), None, Some(&wider));
-            assert_eq!(width_of(&later), 125.0);
-            let ended = clock.frame_measured(1000, &sized(r#""50%""#), None, Some(&wider));
-            assert_eq!(ended.width, Some(DimensionValue::Percentage(0.5)));
+        fn a_calc_meets_a_px_length_and_a_percentage() {
+            assert_eq!(width_at(r#""calc(100% - 20px)""#, "40", 500), calc(10.0, 0.5));
+            assert_eq!(width_at("40", r#""calc(100% - 20px)""#, 500), calc(10.0, 0.5));
+            assert_eq!(width_at(r#""calc(100% - 20px)""#, r#""50%""#, 500), calc(-10.0, 0.75));
         }
 
         #[test]
-        fn reversing_a_px_to_percentage_transition_shortens_the_return() {
-            let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            clock.frame_measured(0, &sized("0"), None, Some(&parent));
-            clock.frame_measured(0, &sized(r#""50%""#), None, Some(&parent));
-            assert_eq!(width_of(&clock.frame_measured(500, &sized(r#""50%""#), None, Some(&parent))), 50.0);
-            clock.events();
-
-            // Back to the start value after half the time: the return takes half
-            // as long, from 50px to 0.
-            clock.frame_measured(500, &sized("0"), None, Some(&parent));
-            assert_eq!(width_of(&clock.frame_measured(750, &sized("0"), None, Some(&parent))), 25.0);
-            let ended = clock.frame_measured(1000, &sized("0"), None, Some(&parent));
-            assert_eq!(ended.width, Some(DimensionValue::Pixels(0.0)));
+        fn em_is_px_by_the_time_it_blends() {
+            // The root's font is 16px.
+            assert_eq!(width_at(r#""1em""#, r#""2em""#, 500), Some(DimensionValue::Pixels(24.0)));
+            assert_eq!(width_at(r#""calc(100% - 1em)""#, r#""10px""#, 500), calc(-3.0, 0.5));
         }
 
         #[test]
-        fn a_percentage_height_resolves_against_the_parent_height() {
-            let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            let tall = |height: &str| {
-                style(&format!(r#"{{ "height": {height}, "transition": "height 1s linear" }}"#))
-            };
-            clock.frame_measured(0, &tall("0"), None, Some(&parent));
-            clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
-            assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 20.0);
-        }
-
-        #[test]
-        fn a_percentage_height_in_an_auto_parent_runs_to_the_natural_height() {
-            let mut clock = Clock::new();
-            let parent = Measurement {
-                percent_height_resolves: false,
-                natural_height: gpui::px(60.0),
-                ..in_parent(200.0, 80.0)
-            };
-            let tall = |height: &str| {
-                style(&format!(r#"{{ "height": {height}, "transition": "height 1s linear" }}"#))
-            };
-            clock.frame_measured(0, &tall("0"), None, Some(&parent));
-            clock.frame_measured(0, &tall(r#""50%""#), None, Some(&parent));
-            assert_eq!(height_of(&clock.frame_measured(500, &tall(r#""50%""#), None, Some(&parent))), 30.0);
-            let ended = clock.frame_measured(1000, &tall(r#""50%""#), None, Some(&parent));
-            assert_eq!(ended.height, Some(DimensionValue::Percentage(0.5)));
-        }
-
-        #[test]
-        fn a_margin_percentage_resolves_against_the_parent_width() {
-            let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            let spaced = |margin: &str| {
-                style(&format!(r#"{{ "marginTop": {margin}, "transition": "margin-top 1s linear" }}"#))
-            };
-            clock.frame_measured(0, &spaced("0"), None, Some(&parent));
-            clock.frame_measured(0, &spaced(r#""50%""#), None, Some(&parent));
-            let middle = clock.frame_measured(500, &spaced(r#""50%""#), None, Some(&parent));
-            assert_eq!(middle.margin_top, Some(DimensionValue::Pixels(50.0)));
-            let ended = clock.frame_measured(1000, &spaced(r#""50%""#), None, Some(&parent));
-            assert_eq!(ended.margin_top, Some(DimensionValue::Percentage(0.5)));
-        }
-
-        #[test]
-        fn a_padding_percentage_resolves_against_the_parent_width_on_every_side() {
-            let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            let padded = |padding: &str| {
+        fn a_changed_font_size_moves_an_em_length_and_starts_a_transition() {
+            let sized_in = |font: &str| {
                 style(&format!(
-                    r#"{{ "paddingTop": {padding}, "paddingLeft": {padding}, "transition": "padding-top 1s linear, padding-left 1s linear" }}"#
+                    r#"{{ "fontSize": "{font}", "width": "2em", "transition": "width 1s linear" }}"#
                 ))
             };
-            clock.frame_measured(0, &padded("0"), None, Some(&parent));
-            clock.frame_measured(0, &padded(r#""50%""#), None, Some(&parent));
-            let middle = clock.frame_measured(500, &padded(r#""50%""#), None, Some(&parent));
-            assert_eq!(middle.padding_top, Some(LinearLength::px(50.0)));
-            assert_eq!(middle.padding_left, Some(LinearLength::px(50.0)));
-            let ended = clock.frame_measured(1000, &padded(r#""50%""#), None, Some(&parent));
-            assert_eq!(ended.padding_top, Some(LinearLength::percent(0.5)));
-        }
-
-        #[test]
-        fn a_padding_percentage_meeting_a_percentage_interpolates_as_a_percentage() {
             let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            let padded = |padding: &str| {
-                style(&format!(r#"{{ "padding": {padding}, "transition": "padding 1s linear" }}"#))
-            };
-            clock.frame_measured(0, &padded(r#""10%""#), None, Some(&parent));
-            clock.frame_measured(0, &padded(r#""30%""#), None, Some(&parent));
-            let middle = clock.frame_measured(500, &padded(r#""30%""#), None, Some(&parent));
-            assert_eq!(middle.padding_left, Some(LinearLength::percent(0.2)));
+            clock.frame(0, &sized_in("10px"));
+            clock.frame(0, &sized_in("20px"));
+            assert_eq!(clock.frame(500, &sized_in("20px")).width, Some(DimensionValue::Pixels(30.0)));
         }
 
         #[test]
-        fn a_flex_basis_percentage_is_of_the_width_in_a_row_and_the_height_in_a_column() {
-            let basis = |value: &str| {
-                style(&format!(r#"{{ "flexBasis": {value}, "transition": "flex-basis 1s linear" }}"#))
-            };
-            let middle_in = |parent: &Measurement| {
-                let mut clock = Clock::new();
-                clock.frame_measured(0, &basis("0"), None, Some(parent));
-                clock.frame_measured(0, &basis(r#""50%""#), None, Some(parent));
-                clock.frame_measured(500, &basis(r#""50%""#), None, Some(parent)).flex_basis
-            };
-            let row = in_parent(200.0, 80.0);
-            assert_eq!(middle_in(&row), Some(DimensionValue::Pixels(50.0)));
-            let column = Measurement { flex_main: crate::motion::property::Axis::Height, ..in_parent(200.0, 80.0) };
-            assert_eq!(middle_in(&column), Some(DimensionValue::Pixels(20.0)));
-            let auto_column = Measurement { percent_height_resolves: false, natural_height: gpui::px(60.0), ..column };
-            assert_eq!(middle_in(&auto_column), Some(DimensionValue::Pixels(30.0)));
-        }
-
-        #[test]
-        fn an_inset_percentage_resolves_against_the_parent_height_for_top_and_the_width_for_left() {
+        fn every_percent_length_property_blends_a_percentage_with_px() {
             let mut clock = Clock::new();
-            let parent = in_parent(200.0, 80.0);
-            let placed = |inset: &str| {
+            let styled = |value: &str| {
                 style(&format!(
-                    r#"{{ "top": {inset}, "left": {inset}, "transition": "top 1s linear, left 1s linear" }}"#
+                    r#"{{ "marginTop": {value}, "top": {value}, "paddingLeft": {value}, "flexBasis": {value},
+                         "rowGap": {value}, "borderTopLeftRadius": {value},
+                         "transition": "margin-top 1s linear, top 1s linear, padding-left 1s linear, flex-basis 1s linear, row-gap 1s linear, border-top-left-radius 1s linear" }}"#
                 ))
             };
-            clock.frame_measured(0, &placed("0"), None, Some(&parent));
-            clock.frame_measured(0, &placed(r#""50%""#), None, Some(&parent));
-            let middle = clock.frame_measured(500, &placed(r#""50%""#), None, Some(&parent));
-            assert_eq!(middle.top, Some(DimensionValue::Pixels(20.0)));
-            assert_eq!(middle.left, Some(DimensionValue::Pixels(50.0)));
+            clock.frame(0, &styled("0"));
+            clock.frame(0, &styled(r#""50%""#));
+            let middle = clock.frame(500, &styled(r#""50%""#));
+            assert_eq!(middle.margin_top, Some(DimensionValue::Percentage(0.25)));
+            assert_eq!(middle.top, Some(DimensionValue::Percentage(0.25)));
+            assert_eq!(middle.flex_basis, Some(DimensionValue::Percentage(0.25)));
+            assert_eq!(middle.padding_left, Some(LinearLength::percent(0.25)));
+            assert_eq!(middle.row_gap, Some(LinearLength::percent(0.25)));
+            assert_eq!(
+                middle.border_top_left_radius,
+                Some(crate::style::CornerRadiusValue::circular(LinearLength::percent(0.25)))
+            );
+        }
+
+        #[test]
+        fn number_length_properties_take_relative_units() {
+            let mut clock = Clock::new();
+            let styled = |gap: &str, border: &str, offset: &str, size: &str| {
+                style(&format!(
+                    r#"{{ "rowGap": "{gap}", "borderTopWidth": "{border}", "outlineOffset": "{offset}", "fontSize": "{size}",
+                         "transition": "row-gap 1s linear, border-top-width 1s linear, outline-offset 1s linear, font-size 1s linear" }}"#
+                ))
+            };
+            clock.frame(0, &styled("10px", "2px", "0px", "10px"));
+            clock.frame(0, &styled("calc(1em + 2px)", "0.5em", "-0.5em", "200%"));
+            let middle = clock.frame(500, &styled("calc(1em + 2px)", "0.5em", "-0.5em", "200%"));
+            // The element's font is the declared 10px at the start and 32px (200% of the
+            // parent's 16px) at the end: `em` is px by the time the style is read.
+            assert_eq!(middle.font_size, Some(LinearLength::px(21.0)));
+            assert_eq!(middle.border_top_width, Some(LinearLength::px(2.0 + (16.0 - 2.0) / 2.0)));
+            assert_eq!(middle.outline_offset, Some(LinearLength::px(-8.0)));
         }
     }
     mod discrete {

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
-use crate::css::length::LinearLength;
+use crate::css::length::{LengthContext, LinearLength};
 use crate::css::flex::Flex;
 use crate::css::outline::Outline;
 use crate::css::shorthand::{Gap, Sides};
@@ -24,8 +24,12 @@ use crate::style::{
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Number,
-    /// A `LinearLength` that is a number of px or a percentage.
-    PercentLength,
+    /// A `LinearLength` (or a corner radius of one): px, `em`, `rem` and the viewport
+    /// units resolve to px when the value is read, and a percentage stays a share of
+    /// the property's basis, so a value is its px and its percentage.
+    Length,
+    /// A `font-size`, where `em` and `%` are of the parent's size, so it is plain px.
+    FontSize,
     Dimension,
     Color,
     FontWeight,
@@ -70,14 +74,33 @@ enum Initial {
     Unset,
 }
 
+/// What a field is read in: the colours its value resolves in and the lengths.
+struct Reading<'a> {
+    colors: &'a ColorContext,
+    lengths: &'a LengthContext,
+}
+
 /// How a `StyleDesc` field converts to and from an animated value.
 trait Field {
-    fn read(&self, colors: &ColorContext) -> Option<AnimValue>;
+    fn read(&self, cx: &Reading) -> Option<AnimValue>;
     fn write(&mut self, value: AnimValue);
 }
 
+/// `length` in px and a share of its percentage basis.
+fn resolved(length: &LinearLength, lengths: &LengthContext) -> AnimValue {
+    let (px, percent) = lengths.split(length);
+    AnimValue::length(px, percent)
+}
+
+fn linear_length(value: AnimValue) -> LinearLength {
+    let (px, percent) = value
+        .as_length()
+        .unwrap_or_else(|| unreachable!("a length field was given {value:?}"));
+    LinearLength { px, percent, ..LinearLength::default() }
+}
+
 impl Field for Option<f64> {
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
         self.map(AnimValue::Number)
     }
 
@@ -89,18 +112,20 @@ impl Field for Option<f64> {
     }
 }
 
-/// Motion moves a corner between circular px radii. A percentage or an
-/// elliptical corner has no number to start from, and a written one replaces it.
+/// A circular corner is a length, a percentage of the border box on each axis
+/// included. An elliptical corner has no single length to start from, and a
+/// written one replaces it.
 impl Field for Option<CornerRadiusValue> {
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
-        self.as_ref()?.circular_px().map(AnimValue::Number)
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        let corner = self.as_ref()?;
+        match corner.y {
+            Some(y) if y != corner.x => None,
+            _ => Some(resolved(&corner.x, cx.lengths)),
+        }
     }
 
     fn write(&mut self, value: AnimValue) {
-        match value {
-            AnimValue::Number(value) => *self = Some(CornerRadiusValue::px(value)),
-            other => unreachable!("a radius field was given {other:?}"),
-        }
+        *self = Some(CornerRadiusValue::circular(linear_length(value)));
     }
 }
 
@@ -211,14 +236,12 @@ impl ShorthandAxes for Option<Gap> {
 }
 
 impl Field for Option<DimensionValue> {
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
         match self.as_ref()? {
             DimensionValue::Pixels(value) => Some(AnimValue::Number(*value)),
             DimensionValue::Percentage(value) => Some(AnimValue::Percent(*value)),
-            DimensionValue::Calc(_)
-            | DimensionValue::Auto
-            | DimensionValue::Intrinsic(_)
-            | DimensionValue::AnchorSize(_) => None,
+            DimensionValue::Calc(length) => Some(resolved(length, cx.lengths)),
+            DimensionValue::Auto | DimensionValue::Intrinsic(_) | DimensionValue::AnchorSize(_) => None,
         }
     }
 
@@ -226,6 +249,7 @@ impl Field for Option<DimensionValue> {
         *self = Some(match value {
             AnimValue::Number(value) => DimensionValue::Pixels(value),
             AnimValue::Percent(value) => DimensionValue::Percentage(value),
+            AnimValue::Calc { .. } => DimensionValue::Calc(linear_length(value)),
             AnimValue::Auto => DimensionValue::Auto,
             other => unreachable!("a dimension field was given {other:?}"),
         });
@@ -233,24 +257,19 @@ impl Field for Option<DimensionValue> {
 }
 
 impl Field for Option<LinearLength> {
-    /// Only a plain px length is a number a track can run from: `em`, `%` and the
-    /// viewport units need the cascade, which motion does not have.
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
-        self.as_ref()?.as_px().map(AnimValue::Number)
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        Some(resolved(self.as_ref()?, cx.lengths))
     }
 
     fn write(&mut self, value: AnimValue) {
-        match value {
-            AnimValue::Number(value) => *self = Some(LinearLength::px(value)),
-            other => unreachable!("a length field was given {other:?}"),
-        }
+        *self = Some(linear_length(value));
     }
 }
 
 impl Field for Option<LineHeight> {
     /// Only a multiplier is a number a track can run from: `normal` has no value
     /// and a length needs the element's font size.
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
         match self.as_ref()? {
             LineHeight::Multiplier(multiplier) => Some(AnimValue::Number(*multiplier)),
             LineHeight::Normal | LineHeight::Length(_) => None,
@@ -266,7 +285,7 @@ impl Field for Option<LineHeight> {
 }
 
 impl Field for Option<AspectRatio> {
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
         self.and_then(AspectRatio::ratio).map(AnimValue::Number)
     }
 
@@ -281,8 +300,8 @@ impl Field for Option<AspectRatio> {
 
 impl Field for Option<String> {
     /// A colour GPUI would drop as unparsable is no value at all.
-    fn read(&self, colors: &ColorContext) -> Option<AnimValue> {
-        Color::parse(self.as_deref()?, colors).map(AnimValue::Color)
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        Color::parse(self.as_deref()?, cx.colors).map(AnimValue::Color)
     }
 
     fn write(&mut self, value: AnimValue) {
@@ -294,7 +313,7 @@ impl Field for Option<String> {
 }
 
 impl Field for Option<FontWeightValue> {
-    fn read(&self, _colors: &ColorContext) -> Option<AnimValue> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
         Some(AnimValue::Number(font_weight(self.as_ref()?)))
     }
 
@@ -307,8 +326,8 @@ impl Field for Option<FontWeightValue> {
 }
 
 impl Field for Option<BoxShadowValues> {
-    fn read(&self, colors: &ColorContext) -> Option<AnimValue> {
-        shadows_from("boxShadow", self.as_ref()?.as_slice(), colors)
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        shadows_from("boxShadow", self.as_ref()?.as_slice(), cx.colors)
             .ok()
             .map(AnimValue::Shadows)
     }
@@ -334,40 +353,26 @@ fn keyword_write(slot: &mut Option<String>, value: AnimValue) {
 
 /// `Option<String>` holds both colours and keywords, so the kind of the row
 /// picks the conversion.
-fn percent_length_read(slot: &Option<LinearLength>) -> Option<AnimValue> {
-    let length = slot.as_ref()?;
-    length
-        .as_px()
-        .map(AnimValue::Number)
-        .or_else(|| length.as_percent().map(AnimValue::Percent))
-}
-
-fn percent_length_write(slot: &mut Option<LinearLength>, value: AnimValue) {
-    match value {
-        AnimValue::Number(value) => *slot = Some(LinearLength::px(value)),
-        AnimValue::Percent(fraction) => *slot = Some(LinearLength::percent(fraction)),
-        other => unreachable!("a length field was given {other:?}"),
-    }
+fn font_size_read(slot: &Option<LinearLength>, cx: &Reading) -> Option<AnimValue> {
+    let px = cx.lengths.declared_font_size(slot.as_ref()?).max(0.0);
+    Some(AnimValue::Number(px))
 }
 
 macro_rules! read_field {
-    (Keyword, $slot:expr, $colors:expr) => {
+    (Keyword, $slot:expr, $cx:expr) => {
         keyword_read(&$slot)
     };
-    (PercentLength, $slot:expr, $colors:expr) => {
-        percent_length_read(&$slot)
+    (FontSize, $slot:expr, $cx:expr) => {
+        font_size_read(&$slot, $cx)
     };
-    ($kind:ident, $slot:expr, $colors:expr) => {
-        Field::read(&$slot, $colors)
+    ($kind:ident, $slot:expr, $cx:expr) => {
+        Field::read(&$slot, $cx)
     };
 }
 
 macro_rules! write_field {
     (Keyword, $slot:expr, $value:expr) => {
         keyword_write(&mut $slot, $value)
-    };
-    (PercentLength, $slot:expr, $value:expr) => {
-        percent_length_write(&mut $slot, $value)
     };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
@@ -459,18 +464,24 @@ macro_rules! properties {
             /// shorthand the renderer would apply beneath it. A longhand that is
             /// set but has no number (a percentage radius) does not fall through.
             pub(super) fn read(self, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
-                let colors = self.colors(colors);
-                match self {
+                let cx = &Reading { colors: self.colors(colors), lengths: &colors.lengths };
+                let value = match self {
                     $(Self::$variant => {
-                        let value = read_field!($kind, style.$field, colors);
+                        let value = read_field!($kind, style.$field, cx);
                         $(let value = if style.$field.is_none() {
-                            read_field!($kind, style.$fallback$(.$corner())?, colors)
+                            read_field!($kind, style.$fallback$(.$corner())?, cx)
                         } else {
                             value
                         };)?
                         value
                     }),*
-                }
+                };
+                // A `calc()` clamps to the range of its property, which only a
+                // resolved length can be held to.
+                value.map(|value| match self.kind() {
+                    Kind::Length | Kind::Dimension => self.clamp_value(value),
+                    _ => value,
+                })
             }
 
             pub(super) fn write(self, style: &mut StyleDesc, value: AnimValue) {
@@ -488,8 +499,8 @@ properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow | flex.grow();
     FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink | flex.shrink();
     FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis | flex.basis();
-    RowGap "rowGap" Number NonNegative Number(0.0), row_gap | gap.row();
-    ColumnGap "columnGap" Number NonNegative Number(0.0), column_gap | gap.column();
+    RowGap "rowGap" Length NonNegative Number(0.0), row_gap | gap.row();
+    ColumnGap "columnGap" Length NonNegative Number(0.0), column_gap | gap.column();
 
     Width "width" Dimension NonNegative Unresolved, width;
     Height "height" Dimension NonNegative Unresolved, height;
@@ -498,10 +509,10 @@ properties! {
     MaxWidth "maxWidth" Dimension NonNegative Unresolved, max_width;
     MaxHeight "maxHeight" Dimension NonNegative Unresolved, max_height;
 
-    PaddingTop "paddingTop" PercentLength NonNegative Number(0.0), padding_top | padding.top();
-    PaddingRight "paddingRight" PercentLength NonNegative Number(0.0), padding_right | padding.right();
-    PaddingBottom "paddingBottom" PercentLength NonNegative Number(0.0), padding_bottom | padding.bottom();
-    PaddingLeft "paddingLeft" PercentLength NonNegative Number(0.0), padding_left | padding.left();
+    PaddingTop "paddingTop" Length NonNegative Number(0.0), padding_top | padding.top();
+    PaddingRight "paddingRight" Length NonNegative Number(0.0), padding_right | padding.right();
+    PaddingBottom "paddingBottom" Length NonNegative Number(0.0), padding_bottom | padding.bottom();
+    PaddingLeft "paddingLeft" Length NonNegative Number(0.0), padding_left | padding.left();
 
     MarginTop "marginTop" Dimension None Number(0.0), margin_top | margin.top();
     MarginRight "marginRight" Dimension None Number(0.0), margin_right | margin.right();
@@ -517,27 +528,27 @@ properties! {
     Color "color" Color None ComputedColor, color;
     Opacity "opacity" Number Unit Number(1.0), opacity;
 
-    BorderTopWidth "borderTopWidth" Number NonNegative Number(0.0), border_top_width | border_width.top();
-    BorderRightWidth "borderRightWidth" Number NonNegative Number(0.0), border_right_width | border_width.right();
-    BorderBottomWidth "borderBottomWidth" Number NonNegative Number(0.0), border_bottom_width | border_width.bottom();
-    BorderLeftWidth "borderLeftWidth" Number NonNegative Number(0.0), border_left_width | border_width.left();
+    BorderTopWidth "borderTopWidth" Length NonNegative Number(0.0), border_top_width | border_width.top();
+    BorderRightWidth "borderRightWidth" Length NonNegative Number(0.0), border_right_width | border_width.right();
+    BorderBottomWidth "borderBottomWidth" Length NonNegative Number(0.0), border_bottom_width | border_width.bottom();
+    BorderLeftWidth "borderLeftWidth" Length NonNegative Number(0.0), border_left_width | border_width.left();
     BorderTopColor "borderTopColor" Color None CurrentColor, border_top_color | border_color;
     BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
     BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
     BorderLeftColor "borderLeftColor" Color None CurrentColor, border_left_color | border_color;
-    BorderTopLeftRadius "borderTopLeftRadius" Number NonNegative Number(0.0), border_top_left_radius | border_radius.top_left();
-    BorderTopRightRadius "borderTopRightRadius" Number NonNegative Number(0.0), border_top_right_radius | border_radius.top_right();
-    BorderBottomLeftRadius "borderBottomLeftRadius" Number NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
-    BorderBottomRightRadius "borderBottomRightRadius" Number NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
+    BorderTopLeftRadius "borderTopLeftRadius" Length NonNegative Number(0.0), border_top_left_radius | border_radius.top_left();
+    BorderTopRightRadius "borderTopRightRadius" Length NonNegative Number(0.0), border_top_right_radius | border_radius.top_right();
+    BorderBottomLeftRadius "borderBottomLeftRadius" Length NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
+    BorderBottomRightRadius "borderBottomRightRadius" Length NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
-    OutlineWidth "outlineWidth" Number NonNegative Number(0.0), outline_width | outline.width();
+    OutlineWidth "outlineWidth" Length NonNegative Number(0.0), outline_width | outline.width();
     OutlineColor "outlineColor" Color None CurrentColor, outline_color | outline.color();
     TextDecorationColor "textDecorationColor" Color None CurrentColor, text_decoration_color;
-    OutlineOffset "outlineOffset" Number None Number(0.0), outline_offset;
+    OutlineOffset "outlineOffset" Length None Number(0.0), outline_offset;
 
-    FontSize "fontSize" Number NonNegative Initial::FontSize, font_size;
+    FontSize "fontSize" FontSize NonNegative Initial::FontSize, font_size;
     FontWeight "fontWeight" FontWeight Weight Initial::FontWeight, font_weight;
     LineHeight "lineHeight" Number NonNegative Unresolved, line_height;
 
@@ -691,14 +702,13 @@ impl AnimProp {
         )
     }
 
-    /// Whether the field is a [`LinearLength`], of which only plain px is animatable.
-    fn is_css_length(self) -> bool {
-        matches!(
+    /// Whether the property's grammar takes a percentage. Border widths and the
+    /// outline do not; `font-size` does, but resolves it against the parent's
+    /// font size, so it is never a share of anything at run time.
+    fn takes_percent(self) -> bool {
+        !matches!(
             self,
-            Self::FontSize
-                | Self::RowGap
-                | Self::ColumnGap
-                | Self::BorderTopWidth
+            Self::BorderTopWidth
                 | Self::BorderRightWidth
                 | Self::BorderBottomWidth
                 | Self::BorderLeftWidth
@@ -745,9 +755,13 @@ impl AnimProp {
         self.kind() == Kind::Shadow && items.iter().all(Value::is_object)
     }
 
-    /// Parses and validates one value from a description.
+    /// Parses and validates one value from a description. A length with `em`,
+    /// `rem`, the viewport units or `calc()` resolves to px against the element
+    /// in `colors`, as a CSS computed value does; a percentage stays a share of
+    /// the property's basis.
     pub(super) fn parse(self, value: &Value, colors: &Colors) -> Result<AnimValue, String> {
         let name = self.name();
+        let lengths = &colors.lengths;
         let colors = self.colors(colors);
         let parsed = match self.kind() {
             Kind::Number if self == Self::LineHeight && value.is_string() => {
@@ -757,28 +771,22 @@ impl AnimProp {
                      the tree is applied"
                 ));
             }
-            Kind::Number if self.is_css_length() && value.is_string() => {
-                return Err(format!(
-                    "motion cannot animate {name} to or from a CSS length: only a number of px, \
-                     because calc(), em, rem, % and the viewport units are resolved against the \
-                     element and the window when the tree is applied"
-                ));
-            }
             Kind::Number => AnimValue::Number(parse_number(name, value)?),
-            Kind::PercentLength => {
+            Kind::Length => {
                 let length: LinearLength = serde_json::from_value(value.clone())
-                    .map_err(|error| format!("motion {name} must be a number or a percentage: {error}"))?;
-                match (length.as_px(), length.as_percent()) {
-                    (Some(px), _) => AnimValue::Number(check_finite(name, px)?),
-                    (None, Some(fraction)) => AnimValue::Percent(check_finite(name, fraction)?),
-                    (None, None) => {
-                        return Err(format!(
-                            "motion cannot animate {name} to or from a CSS length: only a number of px or a \
-                             percentage, because calc(), em, rem and the viewport units are resolved against \
-                             the element and the window when the tree is applied"
-                        ));
-                    }
+                    .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
+                if length.has_percent() && !self.takes_percent() {
+                    return Err(format!("motion {name} cannot be a percentage: it takes a length"));
                 }
+                self.resolve_length(&length, lengths)?
+            }
+            Kind::FontSize => {
+                let length: LinearLength = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
+                if length.is_negative() {
+                    return Err(format!("motion {name} must be non-negative"));
+                }
+                AnimValue::Number(check_finite(name, lengths.declared_font_size(&length).max(0.0))?)
             }
             Kind::FontWeight => {
                 let weight: FontWeightValue = serde_json::from_value(value.clone())
@@ -787,7 +795,7 @@ impl AnimProp {
             }
             Kind::Dimension => {
                 let dimension: DimensionValue = serde_json::from_value(value.clone())
-                    .map_err(|error| format!("motion {name} must be a number or a percentage: {error}"))?;
+                    .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
                 match dimension {
                     DimensionValue::Pixels(value) => {
                         AnimValue::Number(check_finite(name, value)?)
@@ -795,20 +803,14 @@ impl AnimProp {
                     DimensionValue::Percentage(value) => {
                         AnimValue::Percent(check_finite(name, value)?)
                     }
+                    DimensionValue::Calc(length) => self.resolve_length(&length, lengths)?,
                     DimensionValue::AnchorSize(_) => {
                         return Err(format!("motion cannot animate {name} to or from anchor-size()"));
                     }
                     DimensionValue::Intrinsic(keyword) => {
                         return Err(format!(
-                            "motion cannot animate {name} to or from {keyword}: only a number of px or a \
+                            "motion cannot animate {name} to or from {keyword}: only a length or a \
                              percentage, because the size of the content is measured by layout"
-                        ));
-                    }
-                    DimensionValue::Calc(_) => {
-                        return Err(format!(
-                            "motion cannot animate {name} to or from a CSS length: only a number of px or a \
-                             percentage, because calc(), em, rem and the viewport units are resolved against \
-                             the element and the window when the tree is applied"
                         ));
                     }
                     DimensionValue::Auto if matches!(self, Self::Width | Self::Height) => AnimValue::Auto,
@@ -838,11 +840,29 @@ impl AnimProp {
         Ok(parsed)
     }
 
+    /// A parsed length as a value. One that is negative in any context is an error;
+    /// one that only resolves to a negative (`calc(1em - 20px)`) is clamped, as CSS
+    /// clamps a `calc()` to its property's range. This depends on the element only
+    /// through the clamp, because keyframes are checked once against a stand-in.
+    fn resolve_length(self, length: &LinearLength, lengths: &LengthContext) -> Result<AnimValue, String> {
+        let name = self.name();
+        if !length.is_finite() {
+            return Err(format!("motion {name} must fit a finite 32-bit float"));
+        }
+        if matches!(self.clamp_rule(), Clamp::NonNegative) && length.is_negative() {
+            return Err(format!("motion {name} must be non-negative"));
+        }
+        let (px, percent) = lengths.split(length);
+        let value = AnimValue::length(check_finite(name, px)?, check_finite(name, percent)?);
+        Ok(self.clamp_value(value))
+    }
+
     fn validate(self, value: &AnimValue) -> Result<(), String> {
         let name = self.name();
         let (AnimValue::Number(number) | AnimValue::Percent(number)) = value else {
             return Ok(());
         };
+        // A mixed length is checked as a length (`resolve_length`).
         match self.clamp_rule() {
             Clamp::NonNegative if *number < 0.0 => {
                 Err(format!("motion {name} must be non-negative"))
@@ -861,8 +881,11 @@ impl AnimProp {
     pub(super) fn accepts(self, value: &AnimValue) -> bool {
         matches!(
             (self.kind(), value),
-            (Kind::Number | Kind::FontWeight, AnimValue::Number(_))
-                | (Kind::Dimension | Kind::PercentLength, AnimValue::Number(_) | AnimValue::Percent(_))
+            (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
+                | (
+                    Kind::Dimension | Kind::Length,
+                    AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. }
+                )
                 | (Kind::Color, AnimValue::Color(_))
                 | (Kind::Shadow, AnimValue::Shadows(_))
         )
@@ -874,6 +897,10 @@ impl AnimProp {
         match (self.clamp_rule(), value) {
             (Clamp::NonNegative, AnimValue::Number(value)) => AnimValue::Number(value.max(0.0)),
             (Clamp::NonNegative, AnimValue::Percent(value)) => AnimValue::Percent(value.max(0.0)),
+            // Negative whatever the basis is, and only then can it be held.
+            (Clamp::NonNegative, AnimValue::Calc { px, percent }) if px <= 0.0 && percent <= 0.0 => {
+                AnimValue::Number(0.0)
+            }
             (Clamp::Unit, AnimValue::Number(value)) => AnimValue::Number(value.clamp(0.0, 1.0)),
             (Clamp::Weight, AnimValue::Number(value)) => {
                 AnimValue::Number(value.clamp(1.0, 1000.0))
@@ -976,35 +1003,52 @@ mod tests {
         assert_eq!(AnimProp::Visibility.read(&style, &colors), None);
     }
 
+    /// Colours for an element with `1em` = 20px, `1rem` = 10px and an 800x600 window; its
+    /// parent's font size is 10px, which is what its own `fontSize` resolves against.
+    fn sized_colors() -> Colors {
+        let mut colors = Colors::root();
+        colors.lengths = LengthContext::for_tests();
+        colors.font.size = 20.0;
+        colors
+    }
+
+    fn json(value: &str) -> serde_json::Value {
+        serde_json::from_str(value).unwrap()
+    }
+
     #[test]
-    fn only_a_px_font_size_is_animatable() {
-        let colors = Colors::root();
+    fn a_font_size_reads_and_parses_lengths_against_the_parent_font() {
+        let colors = sized_colors();
         let read = |json: &str| {
             let style: StyleDesc = serde_json::from_str(json).unwrap();
             AnimProp::FontSize.read(&style, &colors)
         };
         assert_eq!(read(r#"{ "fontSize": 18 }"#), Some(AnimValue::Number(18.0)));
         assert_eq!(read(r#"{ "fontSize": "18px" }"#), Some(AnimValue::Number(18.0)));
-        assert_eq!(read(r#"{ "fontSize": "1.5em" }"#), None);
-        assert_eq!(read(r#"{ "fontSize": "calc(1rem + 2vw)" }"#), None);
+        assert_eq!(read(r#"{ "fontSize": "1.5em" }"#), Some(AnimValue::Number(15.0)));
+        assert_eq!(read(r#"{ "fontSize": "50%" }"#), Some(AnimValue::Number(5.0)));
+        assert_eq!(read(r#"{ "fontSize": "calc(1rem + 2vw)" }"#), Some(AnimValue::Number(26.0)));
+        assert_eq!(read(r#"{ "fontSize": "calc(1em - 40px)" }"#), Some(AnimValue::Number(0.0)));
+        assert_eq!(read("{}"), None);
 
         let mut style = StyleDesc::default();
         AnimProp::FontSize.write(&mut style, AnimValue::Number(24.0));
         assert_eq!(style.font_size, Some(LinearLength::px(24.0)));
     }
-
     #[test]
-    fn a_font_size_target_must_be_a_number_and_a_css_length_says_why() {
-        let colors = Colors::root();
-        assert_eq!(
-            AnimProp::FontSize.parse(&serde_json::json!(18), &colors).unwrap(),
-            AnimValue::Number(18.0)
-        );
-        let error = AnimProp::FontSize.parse(&serde_json::json!("2em"), &colors).unwrap_err();
-        assert!(error.starts_with("motion cannot animate fontSize to or from a CSS length"), "{error}");
-        assert!(AnimProp::FontSize.parse(&serde_json::json!(-1), &colors).is_err());
+    fn a_font_size_target_is_px_by_the_time_it_is_parsed() {
+        let colors = sized_colors();
+        let parse = |value: serde_json::Value| AnimProp::FontSize.parse(&value, &colors);
+        assert_eq!(parse(serde_json::json!(18)).unwrap(), AnimValue::Number(18.0));
+        assert_eq!(parse(serde_json::json!("2em")).unwrap(), AnimValue::Number(20.0));
+        assert_eq!(parse(serde_json::json!("200%")).unwrap(), AnimValue::Number(20.0));
+        assert_eq!(parse(serde_json::json!("calc(1em + 2px)")).unwrap(), AnimValue::Number(12.0));
+        assert_eq!(parse(serde_json::json!("calc(1em - 20px)")).unwrap(), AnimValue::Number(0.0));
+        assert!(parse(serde_json::json!(-1)).is_err());
+        assert!(parse(serde_json::json!("-1em")).is_err());
+        let error = parse(serde_json::json!("big")).unwrap_err();
+        assert!(error.starts_with("motion fontSize must be a number or a CSS length"), "{error}");
     }
-
     #[test]
     fn a_line_height_animates_as_a_multiplier_and_a_string_says_why_it_cannot() {
         let colors = Colors::root();
@@ -1059,37 +1103,66 @@ mod tests {
     }
 
     #[test]
-    fn a_calc_dimension_has_no_start_value_and_is_not_a_target() {
-        let colors = Colors::root();
+    fn a_calc_dimension_resolves_its_relative_units_and_keeps_its_percentage() {
+        let colors = sized_colors();
         let read = |json: &str| {
             let style: StyleDesc = serde_json::from_str(json).unwrap();
             AnimProp::Width.read(&style, &colors)
         };
-        assert_eq!(read(r#"{ "width": "calc(100% - 20px)" }"#), None);
-        assert_eq!(read(r#"{ "width": "10em" }"#), None);
+        assert_eq!(read(r#"{ "width": "calc(100% - 20px)" }"#), Some(AnimValue::Calc { px: -20.0, percent: 1.0 }));
+        assert_eq!(read(r#"{ "width": "10em" }"#), Some(AnimValue::Number(200.0)));
+        assert_eq!(read(r#"{ "width": "calc(50% + 1rem + 5vw)" }"#), Some(AnimValue::Calc { px: 50.0, percent: 0.5 }));
+        assert_eq!(read(r#"{ "width": "calc(0% + 2em)" }"#), Some(AnimValue::Number(40.0)));
         assert_eq!(read(r#"{ "width": "2in" }"#), Some(AnimValue::Number(192.0)));
         assert_eq!(read(r#"{ "width": "50%" }"#), Some(AnimValue::Percent(0.5)));
+        assert_eq!(read(r#"{ "width": "auto" }"#), None);
 
         for prop in [AnimProp::Width, AnimProp::MinHeight, AnimProp::MarginLeft, AnimProp::Top] {
-            for target in ["calc(100% - 20px)", "50vw", "2em", "1.5rem"] {
-                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
-                assert!(
-                    error.starts_with(&format!("motion cannot animate {} to or from a CSS length", prop.name())),
-                    "{error}"
-                );
-            }
+            let parse = |target: &str| prop.parse(&serde_json::json!(target), &colors).unwrap();
+            assert_eq!(parse("calc(100% - 20px)"), AnimValue::Calc { px: -20.0, percent: 1.0 }, "{prop:?}");
+            assert_eq!(parse("50vw"), AnimValue::Number(400.0), "{prop:?}");
+            assert_eq!(parse("2em"), AnimValue::Number(40.0), "{prop:?}");
+            assert_eq!(parse("1.5rem"), AnimValue::Number(15.0), "{prop:?}");
+            assert_eq!(parse("calc(2 * (10% + 1em))"), AnimValue::Calc { px: 40.0, percent: 0.2 }, "{prop:?}");
         }
         assert_eq!(
             AnimProp::Width.parse(&serde_json::json!("2in"), &colors).unwrap(),
             AnimValue::Number(192.0)
         );
         let error = AnimProp::Width.parse(&serde_json::json!("12foo"), &colors).unwrap_err();
-        assert!(error.contains("motion width must be a number or a percentage") && error.contains("12foo"), "{error}");
+        assert!(error.contains("motion width must be a number or a CSS length") && error.contains("12foo"), "{error}");
     }
 
     #[test]
-    fn only_a_px_gap_is_animatable() {
-        let colors = Colors::root();
+    fn a_calc_is_held_to_its_range_and_a_clamped_one_does_not_depend_on_the_element() {
+        let colors = sized_colors();
+        // Negative in any context is an error; negative here only is clamped, as CSS
+        // clamps a `calc()`. A keyframe checked against the root stays valid on another element.
+        assert!(AnimProp::Width.parse(&serde_json::json!("calc(-10% - 1px)"), &colors).is_err());
+        assert_eq!(
+            AnimProp::Width.parse(&serde_json::json!("calc(1em - 30px)"), &colors).unwrap(),
+            AnimValue::Number(0.0)
+        );
+        assert_eq!(
+            AnimProp::Width.parse(&serde_json::json!("calc(1em - 30px)"), &Colors::root()).unwrap(),
+            AnimValue::Number(0.0)
+        );
+        assert_eq!(
+            AnimProp::MarginLeft.parse(&serde_json::json!("calc(1em - 30px)"), &colors).unwrap(),
+            AnimValue::Number(-10.0)
+        );
+        assert_eq!(
+            AnimProp::Width.clamp_value(AnimValue::Calc { px: -5.0, percent: -0.1 }),
+            AnimValue::Number(0.0)
+        );
+        assert_eq!(
+            AnimProp::Width.clamp_value(AnimValue::Calc { px: -5.0, percent: 0.1 }),
+            AnimValue::Calc { px: -5.0, percent: 0.1 }
+        );
+    }
+    #[test]
+    fn a_gap_takes_a_length_or_a_percentage_of_the_content_box() {
+        let colors = sized_colors();
         let props = [
             (AnimProp::RowGap, "rowGap"),
             (AnimProp::ColumnGap, "columnGap"),
@@ -1099,57 +1172,68 @@ mod tests {
             assert_eq!(read(&format!(r#"{{ "{name}": 6 }}"#)), Some(AnimValue::Number(6.0)));
             assert_eq!(read(&format!(r#"{{ "{name}": "6px" }}"#)), Some(AnimValue::Number(6.0)));
             assert_eq!(read(&format!(r#"{{ "{name}": "1in" }}"#)), Some(AnimValue::Number(96.0)));
-            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), None);
-            assert_eq!(read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)), None);
+            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), Some(AnimValue::Number(40.0)));
+            assert_eq!(
+                read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)),
+                Some(AnimValue::Calc { px: 4.0, percent: 0.1 })
+            );
+            assert_eq!(read(&format!(r#"{{ "gap": "10%" }}"#)), Some(AnimValue::Percent(0.1)));
 
             assert_eq!(prop.parse(&serde_json::json!(12), &colors).unwrap(), AnimValue::Number(12.0));
             assert!(prop.parse(&serde_json::json!(-1), &colors).is_err());
-            for target in ["calc(10% + 4px)", "2em", "10%", "12px"] {
-                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
-                assert!(
-                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
-                    "{error}"
-                );
-            }
+            assert_eq!(prop.parse(&serde_json::json!("12px"), &colors).unwrap(), AnimValue::Number(12.0));
+            assert_eq!(prop.parse(&serde_json::json!("2em"), &colors).unwrap(), AnimValue::Number(40.0));
+            assert_eq!(prop.parse(&serde_json::json!("10%"), &colors).unwrap(), AnimValue::Percent(0.1));
+            assert_eq!(
+                prop.parse(&serde_json::json!("calc(10% + 4px)"), &colors).unwrap(),
+                AnimValue::Calc { px: 4.0, percent: 0.1 }
+            );
+            let error = prop.parse(&serde_json::json!("wide"), &colors).unwrap_err();
+            assert!(error.starts_with(&format!("motion {name} must be a number or a CSS length")), "{error}");
         }
 
         let mut style = StyleDesc::default();
         AnimProp::RowGap.write(&mut style, AnimValue::Number(3.0));
+        AnimProp::ColumnGap.write(&mut style, AnimValue::Calc { px: 3.0, percent: 0.5 });
         assert_eq!(style.row_gap, Some(LinearLength::px(3.0)));
+        assert_eq!(style.column_gap, Some(LinearLength { px: 3.0, percent: 0.5, ..LinearLength::default() }));
     }
-
     #[test]
-    fn padding_is_a_px_length_or_a_percentage() {
-        let colors = Colors::root();
+    fn padding_is_a_length_a_percentage_or_a_mix() {
+        let colors = sized_colors();
         for (prop, name) in [(AnimProp::PaddingTop, "paddingTop"), (AnimProp::PaddingLeft, "paddingLeft")] {
             let read = |json: &str| prop.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors);
             assert_eq!(read(&format!(r#"{{ "{name}": 6 }}"#)), Some(AnimValue::Number(6.0)));
             assert_eq!(read(&format!(r#"{{ "{name}": "6px" }}"#)), Some(AnimValue::Number(6.0)));
             assert_eq!(read(&format!(r#"{{ "{name}": "25%" }}"#)), Some(AnimValue::Percent(0.25)));
-            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), None);
-            assert_eq!(read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)), None);
+            assert_eq!(read(&format!(r#"{{ "{name}": "2em" }}"#)), Some(AnimValue::Number(40.0)));
+            assert_eq!(
+                read(&format!(r#"{{ "{name}": "calc(10% + 4px)" }}"#)),
+                Some(AnimValue::Calc { px: 4.0, percent: 0.1 })
+            );
 
             assert_eq!(prop.parse(&serde_json::json!(12), &colors).unwrap(), AnimValue::Number(12.0));
             assert_eq!(prop.parse(&serde_json::json!("12px"), &colors).unwrap(), AnimValue::Number(12.0));
             assert_eq!(prop.parse(&serde_json::json!("10%"), &colors).unwrap(), AnimValue::Percent(0.1));
+            assert_eq!(prop.parse(&serde_json::json!("2em"), &colors).unwrap(), AnimValue::Number(40.0));
+            assert_eq!(prop.parse(&serde_json::json!("1vw"), &colors).unwrap(), AnimValue::Number(8.0));
+            assert_eq!(
+                prop.parse(&serde_json::json!("calc(10% + 1em)"), &colors).unwrap(),
+                AnimValue::Calc { px: 20.0, percent: 0.1 }
+            );
             assert!(prop.parse(&serde_json::json!(-1), &colors).is_err());
             assert!(prop.parse(&serde_json::json!("-10%"), &colors).is_err());
-            for target in ["calc(10% + 4px)", "2em", "1vw"] {
-                let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
-                assert!(
-                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
-                    "{error}"
-                );
-            }
+            assert!(prop.parse(&serde_json::json!("-1em"), &colors).is_err());
         }
 
         let mut style = StyleDesc::default();
         AnimProp::PaddingTop.write(&mut style, AnimValue::Number(9.0));
         AnimProp::PaddingLeft.write(&mut style, AnimValue::Percent(0.5));
+        AnimProp::PaddingRight.write(&mut style, AnimValue::Calc { px: 4.0, percent: 0.5 });
         assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
         assert_eq!(style.padding_left, Some(LinearLength::percent(0.5)));
+        assert_eq!(style.padding_right, Some(LinearLength { px: 4.0, percent: 0.5, ..LinearLength::default() }));
     }
-
     #[test]
     fn the_percentage_axis_of_padding_is_the_width_and_of_flex_basis_the_main_axis() {
         for side in [AnimProp::PaddingTop, AnimProp::PaddingRight, AnimProp::PaddingBottom, AnimProp::PaddingLeft] {
@@ -1170,8 +1254,8 @@ mod tests {
     }
 
     #[test]
-    fn only_a_px_border_width_or_outline_is_animatable() {
-        let colors = Colors::root();
+    fn a_border_width_or_outline_takes_a_length_but_not_a_percentage() {
+        let colors = sized_colors();
         let props = [
             (AnimProp::BorderTopWidth, "borderTopWidth"),
             (AnimProp::BorderRightWidth, "borderRightWidth"),
@@ -1184,49 +1268,59 @@ mod tests {
             let read = |json: &str| prop.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors);
             assert_eq!(read(&format!(r#"{{ "{name}": 2 }}"#)), Some(AnimValue::Number(2.0)));
             assert_eq!(read(&format!(r#"{{ "{name}": "1in" }}"#)), Some(AnimValue::Number(96.0)));
-            assert_eq!(read(&format!(r#"{{ "{name}": "0.5em" }}"#)), None);
+            assert_eq!(read(&format!(r#"{{ "{name}": "0.5em" }}"#)), Some(AnimValue::Number(10.0)));
             assert_eq!(prop.parse(&serde_json::json!(4), &colors).unwrap(), AnimValue::Number(4.0));
-            for target in ["0.5em", "calc(1px + 1rem)", "thick", "3px"] {
+            assert_eq!(prop.parse(&serde_json::json!("3px"), &colors).unwrap(), AnimValue::Number(3.0));
+            assert_eq!(prop.parse(&serde_json::json!("0.5em"), &colors).unwrap(), AnimValue::Number(10.0));
+            assert_eq!(prop.parse(&serde_json::json!("calc(1px + 1rem)"), &colors).unwrap(), AnimValue::Number(11.0));
+            for target in ["50%", "calc(10% + 1px)"] {
                 let error = prop.parse(&serde_json::json!(target), &colors).unwrap_err();
-                assert!(
-                    error.starts_with(&format!("motion cannot animate {name} to or from a CSS length")),
-                    "{error}"
-                );
+                assert_eq!(error, format!("motion {name} cannot be a percentage: it takes a length"), "{target}");
             }
+            let error = prop.parse(&serde_json::json!("thick"), &colors).unwrap_err();
+            assert!(error.starts_with(&format!("motion {name} must be a number or a CSS length")), "{error}");
         }
         let mut style = StyleDesc::default();
         AnimProp::BorderLeftWidth.write(&mut style, AnimValue::Number(2.0));
         AnimProp::OutlineOffset.write(&mut style, AnimValue::Number(-1.0));
         assert_eq!(style.border_left_width, Some(LinearLength::px(2.0)));
         assert_eq!(style.outline_offset, Some(LinearLength::px(-1.0)));
+        assert!(AnimProp::BorderTopWidth.parse(&serde_json::json!(-1), &colors).is_err());
+        assert_eq!(AnimProp::OutlineOffset.parse(&serde_json::json!(-1), &colors).unwrap(), AnimValue::Number(-1.0));
     }
-
     #[test]
-    fn flex_basis_animates_between_px_and_percentages_but_not_auto_or_calc() {
-        let colors = Colors::root();
+    fn flex_basis_animates_between_lengths_and_percentages_but_not_auto() {
+        let colors = sized_colors();
         let read = |json: &str| {
             AnimProp::FlexBasis.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors)
         };
         assert_eq!(read(r#"{ "flexBasis": 40 }"#), Some(AnimValue::Number(40.0)));
         assert_eq!(read(r#"{ "flexBasis": "50%" }"#), Some(AnimValue::Percent(0.5)));
         assert_eq!(read(r#"{ "flexBasis": "auto" }"#), None);
-        assert_eq!(read(r#"{ "flexBasis": "calc(100% - 40px)" }"#), None);
+        assert_eq!(
+            read(r#"{ "flexBasis": "calc(100% - 40px)" }"#),
+            Some(AnimValue::Calc { px: -40.0, percent: 1.0 })
+        );
 
         assert_eq!(
             AnimProp::FlexBasis.parse(&serde_json::json!("25%"), &colors).unwrap(),
             AnimValue::Percent(0.25)
         );
-        for target in ["calc(100% - 40px)", "2em"] {
-            let error = AnimProp::FlexBasis.parse(&serde_json::json!(target), &colors).unwrap_err();
-            assert!(error.starts_with("motion cannot animate flexBasis to or from a CSS length"), "{error}");
-        }
+        assert_eq!(
+            AnimProp::FlexBasis.parse(&serde_json::json!("calc(100% - 2em)"), &colors).unwrap(),
+            AnimValue::Calc { px: -40.0, percent: 1.0 }
+        );
         assert!(AnimProp::FlexBasis.parse(&serde_json::json!("auto"), &colors).is_err());
 
         let mut style = StyleDesc::default();
         AnimProp::FlexBasis.write(&mut style, AnimValue::Percent(0.5));
         assert_eq!(style.flex_basis, Some(DimensionValue::Percentage(0.5)));
+        AnimProp::FlexBasis.write(&mut style, AnimValue::Calc { px: 3.0, percent: 0.5 });
+        assert_eq!(
+            style.flex_basis,
+            Some(DimensionValue::Calc(LinearLength { px: 3.0, percent: 0.5, ..LinearLength::default() }))
+        );
     }
-
     #[test]
     fn an_intrinsic_size_keyword_is_not_a_start_value_or_a_target() {
         let colors = Colors::root();
@@ -1304,23 +1398,27 @@ mod tests {
         };
         assert_eq!(read(r##"{"borderTopLeftRadius":"9px"}"##), Some(AnimValue::Number(9.0)));
         assert_eq!(read(r##"{"borderRadius":"4px 8px"}"##), Some(AnimValue::Number(4.0)));
-        assert_eq!(read(r##"{"borderRadius":"50%"}"##), None);
+        assert_eq!(read(r##"{"borderRadius":"50%"}"##), Some(AnimValue::Percent(0.5)));
+        assert_eq!(read(r##"{"borderRadius":"1em"}"##), Some(AnimValue::Number(20.0)));
+        assert_eq!(read(r##"{"borderTopLeftRadius":"calc(10% + 2px)"}"##), Some(AnimValue::Calc { px: 2.0, percent: 0.1 }));
         assert_eq!(read(r##"{"borderTopLeftRadius":"10px 20px"}"##), None);
-        assert_eq!(read(r##"{"borderRadius":"10px","borderTopLeftRadius":"30%"}"##), None);
+        assert_eq!(read(r##"{"borderTopLeftRadius":"10px 10px"}"##), Some(AnimValue::Number(10.0)));
+        assert_eq!(read(r##"{"borderRadius":"10px","borderTopLeftRadius":"30%"}"##), Some(AnimValue::Percent(0.3)));
     }
-
     #[test]
-    fn a_motion_radius_is_a_number_and_writes_a_circular_corner() {
-        let colors = Colors::root();
-        let error = AnimProp::BorderTopLeftRadius
-            .parse(&serde_json::json!("50%"), &colors)
-            .unwrap_err();
-        assert!(error.contains("borderTopLeftRadius must be a number"), "{error}");
+    fn a_motion_radius_is_a_length_and_writes_a_circular_corner() {
+        let colors = sized_colors();
+        let parse = |value: &str| AnimProp::BorderTopLeftRadius.parse(&json(value), &colors);
+        assert_eq!(parse(r#""50%""#).unwrap(), AnimValue::Percent(0.5));
+        assert_eq!(parse(r#""2em""#).unwrap(), AnimValue::Number(40.0));
+        assert_eq!(parse(r#""calc(50% - 2px)""#).unwrap(), AnimValue::Calc { px: -2.0, percent: 0.5 });
+        assert!(parse("-1").is_err());
         let mut style: StyleDesc = serde_json::from_str(r##"{"borderTopLeftRadius":"50% 20px"}"##).unwrap();
         AnimProp::BorderTopLeftRadius.write(&mut style, AnimValue::Number(7.0));
         assert_eq!(style.border_top_left_radius, Some(CornerRadiusValue::px(7.0)));
+        AnimProp::BorderTopLeftRadius.write(&mut style, AnimValue::Percent(0.5));
+        assert_eq!(style.border_top_left_radius, Some(CornerRadiusValue::circular(LinearLength::percent(0.5))));
     }
-
     #[test]
     fn clamps_hold_the_applied_value_in_range() {
         assert_eq!(
