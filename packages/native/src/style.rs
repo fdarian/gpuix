@@ -837,6 +837,16 @@ pub struct StyleDesc {
     /// CSS `overflow-wrap`. Inherited, `normal` by default: a word longer than
     /// its line overflows it. Only a container sets it.
     pub overflow_wrap: Option<crate::css::word_break::OverflowWrap>,
+    /// CSS `text-wrap`, the shorthand of `text_wrap_mode` and `text_wrap_style`.
+    /// Inherited. A longhand declared on the same element wins.
+    pub text_wrap: Option<crate::css::text_wrap::TextWrap>,
+    /// CSS `text-wrap-mode`: `nowrap` keeps the text on one line. Inherited, and wins
+    /// over the wrap component of `white_space` on the same element. Only a
+    /// container sets it.
+    pub text_wrap_mode: Option<crate::css::text_wrap::TextWrapMode>,
+    /// CSS `text-wrap-style`: `balance` and `pretty` choose among the breaks that
+    /// make no more lines than greedy wrapping. Inherited. Only a container sets it.
+    pub text_wrap_style: Option<crate::css::text_wrap::TextWrapStyle>,
     pub text_overflow: Option<String>,
     /// CSS `vertical-align`. Not inherited. A table cell reads it.
     pub vertical_align: Option<crate::css::vertical_align::VerticalAlign>,

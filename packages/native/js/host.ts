@@ -893,6 +893,35 @@ export interface StyleDesc {
    *  the under edge is `"text"` (`"cap"` is `"cap text"`). The metrics are those of the font
    *  of the block that holds the line. */
   textBoxEdge?: string
+  /** CSS `text-wrap`, inherited, the shorthand of `textWrapMode` and
+   *  `textWrapStyle`: a mode, a style, or both in either order (`"nowrap"`,
+   *  `"balance"`, `"nowrap pretty"`). What it leaves out is the longhand's initial
+   *  value, so `"balance"` also turns wrapping back on. A longhand declared on the
+   *  same element wins over it; so does it over `whiteSpace`. Only a container sets
+   *  it: a `<span>` inside a paragraph uses the paragraph's. */
+  textWrap?:
+    | "wrap"
+    | "nowrap"
+    | "balance"
+    | "pretty"
+    | "stable"
+    | `${"wrap" | "nowrap"} ${"auto" | "balance" | "pretty" | "stable"}`
+    | `${"auto" | "balance" | "pretty" | "stable"} ${"wrap" | "nowrap"}`
+  /** CSS `text-wrap-mode`, inherited, `"wrap"` by default. `"nowrap"` keeps the text
+   *  on one line, as the wrapping part of `whiteSpace` does, and wins over it when
+   *  both are declared on the same element; it leaves what `whiteSpace` does to
+   *  spaces and newlines alone, so `whiteSpace: "pre"` with `textWrapMode: "wrap"`
+   *  is `pre-wrap`. */
+  textWrapMode?: "wrap" | "nowrap"
+  /** CSS `text-wrap-style`, inherited, `"auto"` by default. `"balance"` evens out
+   *  the lines of a paragraph of at most 6 lines (each run of text between `\n`
+   *  lines counts as one), and `"pretty"` keeps the last line from being a single
+   *  short word, both without making more lines than `"auto"` does. The text is
+   *  as wide as it is with `"auto"`: only the breaks move, so `textAlign` still
+   *  aligns within the full width. `"stable"` is `"auto"`. Not applied to text with
+   *  a tab, `whiteSpace: "break-spaces"` or `lineClamp`, or where a word is wider
+   *  than its line. */
+  textWrapStyle?: "auto" | "balance" | "pretty" | "stable"
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   /** CSS `text-decoration`: lines, a style, a colour and a thickness in any order,

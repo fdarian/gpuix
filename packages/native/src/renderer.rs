@@ -9075,6 +9075,13 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         el.text_style().text_box_edge = Some(edge.to_gpui());
     }
     crate::css::word_break::apply(el.text_style(), style.word_break, style.overflow_wrap);
+    // After `white-space`: the mode is its longhand and wins on the same element.
+    crate::css::text_wrap::apply(
+        el.text_style(),
+        style.text_wrap,
+        style.text_wrap_mode,
+        style.text_wrap_style,
+    );
     match style.text_overflow.as_deref() {
         Some("ellipsis") => el = el.text_ellipsis(),
         Some("ellipsis-start") => el = el.text_ellipsis_start(),

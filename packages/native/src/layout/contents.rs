@@ -102,6 +102,9 @@ impl StyleDesc {
             border_collapse,
             caption_side,
             empty_cells,
+            text_wrap,
+            text_wrap_mode,
+            text_wrap_style,
             cursor,
             visibility,
             user_select,
@@ -154,6 +157,9 @@ impl StyleDesc {
             border_collapse,
             caption_side,
             empty_cells,
+            text_wrap,
+            text_wrap_mode,
+            text_wrap_style,
             cursor,
             visibility,
             user_select,
@@ -250,6 +256,25 @@ mod tests {
         let merged = StyleDesc::default().with_inherited_overlay(&overlay);
         assert_eq!(merged.word_break, declared.word_break);
         assert_eq!(merged.overflow_wrap, declared.overflow_wrap);
+    }
+
+    #[test]
+    fn text_wrap_passes_through_a_display_contents_element() {
+        let declared = StyleDesc {
+            text_wrap: Some(crate::css::text_wrap::TextWrap {
+                mode: crate::css::text_wrap::TextWrapMode::Nowrap,
+                style: crate::css::text_wrap::TextWrapStyle::Balance,
+            }),
+            text_wrap_mode: Some(crate::css::text_wrap::TextWrapMode::Wrap),
+            text_wrap_style: Some(crate::css::text_wrap::TextWrapStyle::Pretty),
+            ..Default::default()
+        };
+        let mut overlay = StyleDesc::default();
+        overlay.take_inheritable_from(&declared);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        assert_eq!(merged.text_wrap, declared.text_wrap);
+        assert_eq!(merged.text_wrap_mode, declared.text_wrap_mode);
+        assert_eq!(merged.text_wrap_style, declared.text_wrap_style);
     }
 
     #[test]
