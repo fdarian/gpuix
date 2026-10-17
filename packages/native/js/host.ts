@@ -875,9 +875,12 @@ export interface StyleDesc {
   textDecorationStyle?: "solid" | "double" | "dotted" | "dashed" | "wavy"
   /** CSS `text-decoration-color`; `currentColor` is the element's own colour. */
   textDecorationColor?: string
-  /** CSS `text-decoration-thickness`: `auto` (1px), `from-font` (the font's
-   *  underline thickness, 1px when it has none) or a length such as `"2px"` or
-   *  `"0.1em"`; a percentage is of `1em`. Resolved at the declaring element. */
+  /** CSS `text-decoration-thickness`: `auto` (a tenth of the font size, as Chrome
+   *  computes it), `from-font` (the font's underline thickness, `auto` when it has
+   *  none) or a length such as `"2px"` or `"0.1em"`; a percentage is of `1em`.
+   *  Resolved at the declaring element, and the same for every line it draws. `auto`
+   *  and `from-font` stay fractional, a solid or double line floors them to a device
+   *  pixel (at least one) when it paints and a dotted or dashed one rounds them. */
   textDecorationThickness?: string
   /** CSS `text-underline-offset`, inherited: how far below the alphabetic baseline
    *  the top edge of an underline sits. `auto` (the default) leaves a gap of half

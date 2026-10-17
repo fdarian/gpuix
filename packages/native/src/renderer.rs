@@ -13940,7 +13940,8 @@ mod decoration_paint_tests {
         let blue: Vec<_> = both.iter().filter(|line| line.color != alone[0].color).collect();
         assert_eq!(blue.len(), 1, "the span's own underline");
         assert_ne!(blue[0].style, SOLID);
-        assert_eq!(blue[0].thickness.0, alone[0].thickness.0 * 3.0);
+        let three_px = lines(r#"{"textDecoration": "underline 3px"}"#, "{}", cx);
+        assert_eq!(blue[0].thickness, three_px[0].thickness);
         assert!(blue[0].bounds.size.width < alone[0].bounds.size.width);
         assert_eq!(red.len(), 2, "the block's, before the box and under it");
         assert!(red.iter().all(|line| line.style == SOLID));
@@ -13979,6 +13980,25 @@ mod decoration_paint_tests {
         assert_eq!(lines[0].bounds.size.width, lines[1].bounds.size.width);
     }
 
+    /// A line of `auto` thickness is a tenth of the font size of its box, floored to a
+    /// device pixel, whichever line it is.
+    #[gpui::test]
+    fn an_auto_thickness_follows_the_font_size_for_every_line(cx: &mut gpui::TestAppContext) {
+        for font_size in [16.0_f32, 32.0, 40.0] {
+            let container = format!(
+                r#"{{"fontSize": {font_size}, "textDecoration": "underline overline line-through"}}"#
+            );
+            let window = painted(cx, &container, "{}");
+            let scale = cx.update_window(window.into(), |_, window, _| window.scale_factor()).unwrap();
+            let lines = decorations(window, cx);
+            assert_eq!(lines.len(), 3, "{font_size}");
+            let expected = (font_size / 10.0 * scale).floor().max(1.0);
+            for line in lines {
+                assert_eq!(line.thickness.0, expected, "{font_size}");
+            }
+        }
+    }
+
     #[gpui::test]
     fn the_style_and_thickness_of_an_overline_reach_the_scene(cx: &mut gpui::TestAppContext) {
         let solid = lines("{}", r#"{"textDecoration": "overline"}"#, cx);
@@ -13986,7 +14006,8 @@ mod decoration_paint_tests {
         let double = lines("{}", r#"{"textDecoration": "overline double"}"#, cx);
         assert_eq!(dotted.len(), 1);
         assert_ne!(dotted[0].style, solid[0].style);
-        assert_eq!(dotted[0].thickness.0, solid[0].thickness.0 * 3.0);
+        let three_px = lines("{}", r#"{"textDecoration": "overline 3px"}"#, cx);
+        assert_eq!(dotted[0].thickness, three_px[0].thickness);
         assert_eq!(double.len(), 2, "a double line is two");
     }
 }

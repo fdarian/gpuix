@@ -62,13 +62,59 @@ impl TextUnderlineOffset {
     }
 }
 
+fn declares_decoration(style: &StyleDesc) -> bool {
+    style.text_decoration.is_some() || style.text_decoration_line.is_some()
+}
+
+/// `state` (a `focusWithin` or `focusVisible` refinement) as it paints over `below`, the
+/// style it refines, whose offset is `below_offset`. A state is applied as a refinement
+/// of the element's text style, so it has to carry the whole line: one that declares a
+/// decoration takes the offset the element has when it declares none, and one that only
+/// changes the offset of a line `below` declares takes that line along. `None` when
+/// `state` needs nothing.
+fn filled_state(state: &StyleDesc, below: &StyleDesc, below_offset: TextUnderlineOffset) -> Option<StyleDesc> {
+    if declares_decoration(state) {
+        return (state.text_underline_offset.is_none() && below_offset != TextUnderlineOffset::Auto)
+            .then(|| StyleDesc { text_underline_offset: Some(below_offset), ..state.clone() });
+    }
+    (state.text_underline_offset.is_some() && declares_decoration(below)).then(|| {
+        let mut filled = state.clone();
+        filled.text_decoration = below.text_decoration.clone();
+        filled.text_decoration_line = below.text_decoration_line.clone();
+        filled.text_decoration_style = filled.text_decoration_style.or_else(|| below.text_decoration_style.clone());
+        filled.text_decoration_color = filled.text_decoration_color.or_else(|| below.text_decoration_color.clone());
+        filled.text_decoration_thickness =
+            filled.text_decoration_thickness.or_else(|| below.text_decoration_thickness.clone());
+        filled
+    })
+}
+
 /// `style` with the offset it inherits filled in, when it declares a text
 /// decoration without an offset of its own: the line takes the offset of the box
-/// that declares it, and that box inherits one. `None` when `style` needs nothing.
+/// that declares it, and that box inherits one. The `focusWithin` and `focusVisible`
+/// refinements get the same, each over the style under it. `None` when `style` needs
+/// nothing.
 pub(crate) fn with_inherited(style: &StyleDesc, inherited: TextUnderlineOffset) -> Option<StyleDesc> {
-    let declares_decoration = style.text_decoration.is_some() || style.text_decoration_line.is_some();
-    (declares_decoration && style.text_underline_offset.is_none() && inherited != TextUnderlineOffset::Auto)
-        .then(|| StyleDesc { text_underline_offset: Some(inherited), ..style.clone() })
+    let base = (declares_decoration(style) && style.text_underline_offset.is_none() && inherited != TextUnderlineOffset::Auto)
+        .then(|| StyleDesc { text_underline_offset: Some(inherited), ..style.clone() });
+    if style.focus_within.is_none() && style.focus_visible.is_none() {
+        return base;
+    }
+    let mut filled = base.unwrap_or_else(|| style.clone());
+    let offset_of = |style: &StyleDesc| style.text_underline_offset.unwrap_or(inherited);
+    // `focusVisible` sits on `focusWithin`, which sits on the element's own style.
+    let mut below = filled.clone();
+    if let Some(within) = filled.focus_within.as_deref() {
+        let within = filled_state(within, &below, offset_of(&below)).unwrap_or_else(|| within.clone());
+        below = crate::events::state_styles::overlay(&below, &within);
+        filled.focus_within = Some(Box::new(within));
+    }
+    if let Some(visible) = filled.focus_visible.as_deref() {
+        if let Some(visible) = filled_state(visible, &below, offset_of(&below)) {
+            filled.focus_visible = Some(Box::new(visible));
+        }
+    }
+    (filled != *style).then_some(filled)
 }
 
 impl fmt::Display for TextUnderlineOffset {
@@ -220,5 +266,71 @@ mod tests {
                 .is_none(),
             "its own offset wins"
         );
+    }
+
+    fn state_of(json: &str) -> StyleDesc {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn a_focus_state_that_declares_a_decoration_takes_the_inherited_offset() {
+        let inherited = TextUnderlineOffset::Length(LinearLength::px(4.0));
+        for state in ["focusWithin", "focusVisible"] {
+            let style = state_of(&format!(r#"{{"{state}": {{"textDecoration": "underline"}}}}"#));
+            let filled = with_inherited(&style, inherited).unwrap_or_else(|| panic!("{state}"));
+            let state = filled.focus_within.as_deref().or(filled.focus_visible.as_deref()).unwrap();
+            assert_eq!(state.text_underline_offset, Some(inherited));
+            assert_eq!(filled.text_underline_offset, None, "the element declares no line");
+        }
+    }
+
+    #[test]
+    fn a_focus_state_takes_the_elements_own_offset_before_the_inherited_one() {
+        let inherited = TextUnderlineOffset::Length(LinearLength::px(4.0));
+        let style = state_of(
+            r#"{"textUnderlineOffset": 7, "focusVisible": {"textDecoration": "underline"}}"#,
+        );
+        let filled = with_inherited(&style, inherited).unwrap();
+        assert_eq!(
+            filled.focus_visible.unwrap().text_underline_offset,
+            Some(TextUnderlineOffset::Length(LinearLength::px(7.0)))
+        );
+    }
+
+    #[test]
+    fn focus_visible_takes_the_offset_of_focus_within_under_it() {
+        let inherited = TextUnderlineOffset::Length(LinearLength::px(4.0));
+        let style = state_of(
+            r#"{"focusWithin": {"textUnderlineOffset": 9}, "focusVisible": {"textDecoration": "underline"}}"#,
+        );
+        let filled = with_inherited(&style, inherited).unwrap();
+        assert_eq!(
+            filled.focus_visible.unwrap().text_underline_offset,
+            Some(TextUnderlineOffset::Length(LinearLength::px(9.0)))
+        );
+    }
+
+    #[test]
+    fn a_focus_state_keeps_the_offset_it_declares_and_auto_needs_nothing() {
+        let inherited = TextUnderlineOffset::Length(LinearLength::px(4.0));
+        let own = state_of(
+            r#"{"focusWithin": {"textDecoration": "underline", "textUnderlineOffset": 2}}"#,
+        );
+        assert!(with_inherited(&own, inherited).is_none());
+        let plain = state_of(r#"{"focusWithin": {"textDecoration": "underline"}}"#);
+        assert!(with_inherited(&plain, TextUnderlineOffset::Auto).is_none());
+    }
+
+    #[test]
+    fn a_focus_state_that_only_sets_the_offset_carries_the_line_of_the_element() {
+        let style = state_of(
+            r##"{"textDecoration": "underline #ff0000", "focusWithin": {"textUnderlineOffset": 6}}"##,
+        );
+        let filled = with_inherited(&style, TextUnderlineOffset::Auto).unwrap();
+        let within = filled.focus_within.unwrap();
+        assert_eq!(within.text_decoration.as_deref(), Some("underline #ff0000"));
+        assert_eq!(within.text_underline_offset, Some(TextUnderlineOffset::Length(LinearLength::px(6.0))));
+        let no_line = state_of(r#"{"focusWithin": {"textUnderlineOffset": 6}}"#);
+        assert!(with_inherited(&no_line, TextUnderlineOffset::Auto).is_none());
     }
 }

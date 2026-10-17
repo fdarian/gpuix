@@ -22,10 +22,15 @@ const TEXT = {
 let shots = 0
 
 /** The rows that have red pixels in them, which only the underline paints. */
-function underlineRows(node: React.ReactNode, hover?: { x: number; y: number }): number[] {
+function underlineRows(
+  node: React.ReactNode,
+  hover?: { x: number; y: number },
+  keystrokes?: string
+): number[] {
   const testRoot = createTestRoot()
   testRoot.render(node)
   if (hover) testRoot.renderer.nativeSimulateMouseMove(hover.x, hover.y)
+  if (keystrokes) testRoot.renderer.simulateKeystrokes(keystrokes)
   const file = `${SHOTS_DIR}/text-underline-offset-${shots++}.png`
   testRoot.renderer.captureScreenshot(file)
   const pixels = readLogicalPixels(file, testRoot.renderer)
@@ -45,6 +50,14 @@ function underlineRows(node: React.ReactNode, hover?: { x: number; y: number }):
 function underlineY(node: React.ReactNode): number {
   const rows = underlineRows(node)
   expect(rows, "one underline row").toHaveLength(1)
+  return rows[0]!
+}
+
+/** The top row of an underline thicker than a pixel: `auto` is a tenth of the font
+ *  size, so text of 32px or more has a line of several. */
+function underlineTop(node: React.ReactNode): number {
+  const rows = underlineRows(node)
+  expect(rows.length, "an underline").toBeGreaterThan(0)
   return rows[0]!
 }
 
@@ -75,8 +88,8 @@ describeNative("textUnderlineOffset", () => {
   it("takes em of the element's own font size", () => {
     const y0 = baseline()
     expect(underlineY(own({ textUnderlineOffset: "0.25em" }))).toBe(y0 + 4)
-    expect(underlineY(own({ textUnderlineOffset: "0.25em", fontSize: 32 }))).toBe(
-      underlineY(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8
+    expect(underlineTop(own({ textUnderlineOffset: "0.25em", fontSize: 32 }))).toBe(
+      underlineTop(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8
     )
   })
 
@@ -84,8 +97,8 @@ describeNative("textUnderlineOffset", () => {
     const y0 = baseline()
     expect(underlineY(own({ textUnderlineOffset: "25%" }))).toBe(y0 + 4)
     expect(underlineY(own({ textUnderlineOffset: "50%" }))).toBe(y0 + 8)
-    expect(underlineY(own({ textUnderlineOffset: "25%", fontSize: 32 }))).toBe(
-      underlineY(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8
+    expect(underlineTop(own({ textUnderlineOffset: "25%", fontSize: 32 }))).toBe(
+      underlineTop(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8
     )
   })
 
@@ -146,22 +159,22 @@ describeNative("textUnderlineOffset", () => {
     it("passes an em on as the px it was where it was set", () => {
       const y0 = baseline()
       // 0.25em of the parent's 16px is 4px, whatever the text's own size.
-      const big = underlineY(
+      const big = underlineTop(
         <div style={{ fontSize: 16, textUnderlineOffset: "0.25em" } as never}>
           <text style={{ ...TEXT, ...UNDERLINE, fontSize: 32 } as never}>xxxx</text>
         </div>
       )
-      expect(big).toBe(underlineY(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 4)
+      expect(big).toBe(underlineTop(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 4)
       expect(y0).toBeGreaterThan(0)
     })
 
     it("passes a percentage on as a percentage, of the box that draws the line", () => {
-      const big = underlineY(
+      const big = underlineTop(
         <div style={{ fontSize: 16, textUnderlineOffset: "25%" } as never}>
           <text style={{ ...TEXT, ...UNDERLINE, fontSize: 32 } as never}>xxxx</text>
         </div>
       )
-      expect(big).toBe(underlineY(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8)
+      expect(big).toBe(underlineTop(own({ textUnderlineOffset: "0px", fontSize: 32 })) + 8)
     })
   })
 
@@ -194,12 +207,12 @@ describeNative("textUnderlineOffset", () => {
     })
 
     it("takes the em it inherited as px and a percentage of the span's own size", () => {
-      const reference = underlineY(inline({}, { ...UNDERLINE, fontSize: 32, textUnderlineOffset: "0px" }))
+      const reference = underlineTop(inline({}, { ...UNDERLINE, fontSize: 32, textUnderlineOffset: "0px" }))
       expect(
-        underlineY(inline({ textUnderlineOffset: "0.25em" }, { ...UNDERLINE, fontSize: 32 }))
+        underlineTop(inline({ textUnderlineOffset: "0.25em" }, { ...UNDERLINE, fontSize: 32 }))
       ).toBe(reference + 4)
       expect(
-        underlineY(inline({ textUnderlineOffset: "25%" }, { ...UNDERLINE, fontSize: 32 }))
+        underlineTop(inline({ textUnderlineOffset: "25%" }, { ...UNDERLINE, fontSize: 32 }))
       ).toBe(reference + 8)
     })
 
@@ -222,6 +235,87 @@ describeNative("textUnderlineOffset", () => {
         { x: 4, y: 4 }
       )
       expect(hovered).toEqual([y0 + 6])
+    })
+  })
+
+  describe("on focus styles", () => {
+    /** A focusable box whose `state` style declares the underline. */
+    const focusable = (state: "focusVisible" | "focusWithin", declared: object, own: object = {}) => (
+      <div
+        tabIndex={0}
+        style={{ ...TEXT, ...own, [state]: declared } as never}
+      >
+        xxxx
+      </div>
+    )
+
+    for (const state of ["focusVisible", "focusWithin"] as const) {
+      it(`gives the underline a ${state} style declares the offset it inherits`, () => {
+        const y0 = baseline()
+        const inherited = (child: React.ReactElement) => (
+          <div style={{ textUnderlineOffset: "4px" } as never}>{child}</div>
+        )
+        expect(underlineRows(focusable(state, UNDERLINE), undefined, "Tab")).toEqual([y0 + 1])
+        expect(
+          underlineRows(inherited(focusable(state, UNDERLINE)), undefined, "Tab")
+        ).toEqual([y0 + 4])
+        expect(underlineRows(inherited(focusable(state, UNDERLINE)))).toEqual([])
+      })
+
+      it(`gives the underline a ${state} style the offset of the element itself over the inherited one`, () => {
+        const y0 = baseline()
+        expect(
+          underlineRows(
+            <div style={{ textUnderlineOffset: "4px" } as never}>
+              {focusable(state, UNDERLINE, { textUnderlineOffset: "7px" })}
+            </div>,
+            undefined,
+            "Tab"
+          )
+        ).toEqual([y0 + 7])
+      })
+
+      it(`takes the offset a ${state} style declares itself`, () => {
+        const y0 = baseline()
+        expect(
+          underlineRows(
+            <div style={{ textUnderlineOffset: "4px" } as never}>
+              {focusable(state, { ...UNDERLINE, textUnderlineOffset: "9px" })}
+            </div>,
+            undefined,
+            "Tab"
+          )
+        ).toEqual([y0 + 9])
+      })
+
+      it(`moves the underline of the element when a ${state} style sets only the offset`, () => {
+        const y0 = baseline()
+        const box = focusable(state, { textUnderlineOffset: "6px" }, UNDERLINE)
+        expect(underlineRows(box)).toEqual([y0 + 1])
+        expect(underlineRows(box, undefined, "Tab")).toEqual([y0 + 6])
+      })
+    }
+
+    it("lets focusVisible take the offset focusWithin sets under it", () => {
+      const y0 = baseline()
+      expect(
+        underlineRows(
+          <div
+            tabIndex={0}
+            style={
+              {
+                ...TEXT,
+                focusWithin: { textUnderlineOffset: "5px" },
+                focusVisible: UNDERLINE,
+              } as never
+            }
+          >
+            xxxx
+          </div>,
+          undefined,
+          "Tab"
+        )
+      ).toEqual([y0 + 5])
     })
   })
 })

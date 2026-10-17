@@ -13,8 +13,7 @@ use super::syntax::split_whitespace;
 use super::text_underline_offset::TextUnderlineOffset;
 use crate::style::StyleDesc;
 
-/// `text-decoration-thickness`. `auto` is the 1px gpui draws unless told
-/// otherwise.
+/// `text-decoration-thickness`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum Thickness {
     #[default]
@@ -55,7 +54,7 @@ impl TextDecoration {
     pub fn underline_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::UnderlineStyle {
         gpui::UnderlineStyle {
             thickness: self.thickness.fallback(lengths),
-            thickness_from_font: self.thickness == Thickness::FromFont,
+            thickness_kind: self.thickness.kind(),
             color: Some(color),
             style: self.style,
             offset: self.underline_offset.resolve(lengths),
@@ -65,7 +64,7 @@ impl TextDecoration {
     pub fn strikethrough_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::StrikethroughStyle {
         gpui::StrikethroughStyle {
             thickness: self.thickness.fallback(lengths),
-            thickness_from_font: self.thickness == Thickness::FromFont,
+            thickness_kind: self.thickness.kind(),
             color: Some(color),
             style: self.style,
         }
@@ -74,7 +73,7 @@ impl TextDecoration {
     pub fn overline_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::OverlineStyle {
         gpui::OverlineStyle {
             thickness: self.thickness.fallback(lengths),
-            thickness_from_font: self.thickness == Thickness::FromFont,
+            thickness_kind: self.thickness.kind(),
             color: Some(color),
             style: self.style,
         }
@@ -93,10 +92,20 @@ impl TextDecoration {
 }
 
 impl Thickness {
-    /// What gpui draws when it has no font thickness to use.
+    fn kind(self) -> gpui::DecorationThickness {
+        match self {
+            Thickness::Auto => gpui::DecorationThickness::Auto,
+            Thickness::FromFont => gpui::DecorationThickness::FromFont,
+            Thickness::Length(_) => gpui::DecorationThickness::Length,
+        }
+    }
+
+    /// What gpui draws when it has no font thickness to use. Chrome's `auto` is a
+    /// tenth of the font size of the box that declares the line, unrounded until
+    /// the line is painted.
     fn fallback(self, lengths: &LengthContext) -> gpui::Pixels {
         match self {
-            Thickness::Auto | Thickness::FromFont => gpui::px(1.0),
+            Thickness::Auto | Thickness::FromFont => gpui::px(lengths.font_size as f32 / 10.0),
             Thickness::Length(length) => {
                 gpui::px(lengths.resolve(&length, 0.0).clamp(0.0, MAX_LENGTH) as f32)
             }
@@ -482,19 +491,42 @@ mod tests {
             d.overline_style(color, &lengths),
             d.strikethrough_style(color, &lengths),
         );
-        for (style, thickness, from_font) in [
-            (under.style, under.thickness, under.thickness_from_font),
-            (over.style, over.thickness, over.thickness_from_font),
-            (through.style, through.thickness, through.thickness_from_font),
+        for (style, thickness, kind) in [
+            (under.style, under.thickness, under.thickness_kind),
+            (over.style, over.thickness, over.thickness_kind),
+            (through.style, through.thickness, through.thickness_kind),
         ] {
             assert_eq!(style, TextDecorationStyle::Wavy);
             assert_eq!(thickness, gpui::px(3.0));
-            assert!(!from_font);
+            assert_eq!(kind, gpui::DecorationThickness::Length);
         }
-        let d = parse_shorthand("underline from-font").unwrap();
-        let style = d.underline_style(color, &lengths);
-        assert!(style.thickness_from_font);
-        assert_eq!(style.thickness, gpui::px(1.0));
+    }
+
+    /// `1em` is 20px in the test context.
+    #[test]
+    fn auto_and_from_font_carry_a_tenth_of_the_font_size_for_every_line() {
+        let lengths = LengthContext::for_tests();
+        for (value, kind) in [
+            ("underline overline line-through", gpui::DecorationThickness::Auto),
+            ("underline overline line-through auto", gpui::DecorationThickness::Auto),
+            ("underline overline line-through from-font", gpui::DecorationThickness::FromFont),
+        ] {
+            let d = parse_shorthand(value).unwrap();
+            let color = gpui::red();
+            let (under, over, through) = (
+                d.underline_style(color, &lengths),
+                d.overline_style(color, &lengths),
+                d.strikethrough_style(color, &lengths),
+            );
+            for (thickness, line_kind) in [
+                (under.thickness, under.thickness_kind),
+                (over.thickness, over.thickness_kind),
+                (through.thickness, through.thickness_kind),
+            ] {
+                assert_eq!(thickness, gpui::px(2.0), "{value}");
+                assert_eq!(line_kind, kind, "{value}");
+            }
+        }
     }
 
     #[test]

@@ -1066,7 +1066,7 @@ mod tests {
         assert!(underline.color.is_some());
         assert_eq!(underline.color, strikethrough.color);
         assert_eq!(underline.color, overline.color);
-        assert!(!underline.thickness_from_font);
+        assert_eq!(underline.thickness_kind, gpui::DecorationThickness::Length);
     }
 
     #[test]
@@ -1113,8 +1113,8 @@ mod tests {
         let run = runs_of(&tree).remove(1);
         let overline = run.overline.expect("overline");
         assert_eq!(overline.style, TextDecorationStyle::Double);
-        assert!(overline.thickness_from_font);
-        assert_eq!(overline.thickness, gpui::px(1.0), "the fallback of a font with no metric");
+        assert_eq!(overline.thickness_kind, gpui::DecorationThickness::FromFont);
+        assert_eq!(overline.thickness, gpui::px(1.0), "the fallback of a font with no metric: a tenth of the 10px font");
         assert_eq!(run.underline, None);
     }
 
