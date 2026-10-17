@@ -137,12 +137,12 @@ pub(crate) fn split_slash_tokens(value: &str) -> Vec<&str> {
 
 /// One to four values in the order `margin` uses: all, vertical / horizontal,
 /// top / horizontal / bottom, or each side clockwise from the top.
-pub(crate) fn expand_sides<T: Copy>(values: &[T]) -> Option<[T; 4]> {
-    Some(match *values {
-        [all] => [all, all, all, all],
-        [vertical, horizontal] => [vertical, horizontal, vertical, horizontal],
-        [top, horizontal, bottom] => [top, horizontal, bottom, horizontal],
-        [top, right, bottom, left] => [top, right, bottom, left],
+pub(crate) fn expand_sides<T: Clone>(values: &[T]) -> Option<[T; 4]> {
+    Some(match values {
+        [all] => [all.clone(), all.clone(), all.clone(), all.clone()],
+        [vertical, horizontal] => [vertical.clone(), horizontal.clone(), vertical.clone(), horizontal.clone()],
+        [top, horizontal, bottom] => [top.clone(), horizontal.clone(), bottom.clone(), horizontal.clone()],
+        [top, right, bottom, left] => [top.clone(), right.clone(), bottom.clone(), left.clone()],
         _ => return None,
     })
 }

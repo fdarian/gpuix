@@ -2,6 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::css::dimension::parse_linear_length;
 use crate::css::length::{LengthContext, LinearLength};
+use crate::css::shorthand::{self, Gap, Sides};
 use crate::layout::grid_values::{
     GridAreaValue, GridAutoTracks, GridLinePairValue, GridLineValue, GridTemplateAreasValue,
     GridTemplateValue,
@@ -107,7 +108,7 @@ macro_rules! length_field {
 /// A `DimensionValue` field that is not a size: an intrinsic size keyword is not a valid
 /// margin or inset.
 macro_rules! dimension_field {
-    ($name:ident, $property:literal, $reason:literal) => {
+    ($name:ident, $property:literal, $reason:expr) => {
         fn $name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<DimensionValue>, D::Error> {
             match Option::<DimensionValue>::deserialize(deserializer)? {
                 Some(DimensionValue::Intrinsic(keyword)) => {
@@ -119,16 +120,53 @@ macro_rules! dimension_field {
     };
 }
 
-dimension_field!(
-    deserialize_margin,
-    "margin",
-    "only width, height and their min and max take min-content, max-content and fit-content"
-);
-dimension_field!(
-    deserialize_inset,
-    "inset",
-    "only width, height and their min and max take min-content, max-content and fit-content"
-);
+const NOT_A_SIZE: &str = "only width, height and their min and max take min-content, max-content and fit-content";
+
+dimension_field!(deserialize_margin, "margin", NOT_A_SIZE);
+dimension_field!(deserialize_inset, "inset", NOT_A_SIZE);
+
+/// `margin` and `inset`: one to four dimensions, or a number of px.
+fn dimension_sides<'de, D: Deserializer<'de>>(
+    deserializer: D,
+    property: &'static str,
+) -> Result<Option<Sides<DimensionValue>>, D::Error> {
+    let token = |token: &str| match DimensionValue::parse(token)? {
+        DimensionValue::Intrinsic(_) => Err(format!("invalid {property} \"{token}\": {NOT_A_SIZE}")),
+        value => Ok(value),
+    };
+    shorthand::deserialize_optional(
+        deserializer,
+        "a number of px or a string of one to four CSS lengths or auto",
+        |value| Ok(Sides::all(DimensionValue::Pixels(value))),
+        |text| shorthand::parse_sides(text, token),
+    )
+}
+
+fn deserialize_margin_sides<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Sides<DimensionValue>>, D::Error> {
+    dimension_sides(deserializer, "margin")
+}
+
+fn deserialize_inset_sides<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Sides<DimensionValue>>, D::Error> {
+    dimension_sides(deserializer, "inset")
+}
+
+fn deserialize_padding<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Sides<LinearLength>>, D::Error> {
+    shorthand::deserialize_length_sides(
+        deserializer,
+        "padding",
+        "a CSS length with a unit, or calc()",
+        parse_linear_length,
+    )
+}
+
+fn deserialize_border_widths<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Sides<LinearLength>>, D::Error> {
+    shorthand::deserialize_length_sides(
+        deserializer,
+        "border width",
+        "a CSS length without %, or thin, medium or thick",
+        crate::css::border::parse_width,
+    )
+}
 
 length_field!(
     deserialize_border_width,
@@ -314,8 +352,7 @@ pub enum BackgroundValue {
 
 /// A dimension value that can be a number (pixels) or a string (any CSS length
 /// unit, a percentage, `calc()`, auto, etc.)
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DimensionValue {
     Pixels(f64),
     Percentage(f64), // 0.0 to 1.0
@@ -412,6 +449,60 @@ impl DimensionValue {
     }
 }
 
+impl DimensionValue {
+    /// One dimension written as a string: a length, `auto`, an intrinsic size
+    /// keyword or `anchor-size()`.
+    pub(crate) fn parse(v: &str) -> Result<Self, String> {
+        if v == "auto" {
+            Ok(DimensionValue::Auto)
+        } else if let Some(keyword) = IntrinsicKeyword::parse(v) {
+            keyword.map(DimensionValue::Intrinsic)
+        } else if let Some(axis) = v.strip_prefix("anchor-size(").and_then(|rest| rest.strip_suffix(')')) {
+            match axis.trim() {
+                "width" => Ok(DimensionValue::AnchorSize(AnchorAxis::Width)),
+                "height" => Ok(DimensionValue::AnchorSize(AnchorAxis::Height)),
+                _ => Err(format!("invalid anchor-size: {v}")),
+            }
+        } else if let Ok(number) = v.parse::<f64>() {
+            if number.is_finite() {
+                Ok(DimensionValue::Pixels(number))
+            } else {
+                Err(format!("invalid dimension: {v}"))
+            }
+        } else {
+            parse_linear_length(v)
+                .map(|length| DimensionValue::from_length(length, v))
+                .ok_or_else(|| format!("invalid dimension: {v}"))
+        }
+    }
+}
+
+/// The CSS the dimension parses back from.
+impl std::fmt::Display for DimensionValue {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pixels(pixels) => LinearLength::px(*pixels).fmt(formatter),
+            Self::Percentage(fraction) => LinearLength::percent(*fraction).fmt(formatter),
+            Self::Calc(length) => length.fmt(formatter),
+            Self::Auto => formatter.write_str("auto"),
+            Self::Intrinsic(keyword) => keyword.fmt(formatter),
+            Self::AnchorSize(AnchorAxis::Width) => formatter.write_str("anchor-size(width)"),
+            Self::AnchorSize(AnchorAxis::Height) => formatter.write_str("anchor-size(height)"),
+        }
+    }
+}
+
+/// A number of px stays a number; everything else is its CSS, which is what
+/// [`DimensionValue::parse`] reads back (`auto` and a percentage included).
+impl Serialize for DimensionValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Pixels(pixels) => serializer.serialize_f64(*pixels),
+            other => serializer.collect_str(other),
+        }
+    }
+}
+
 impl Default for DimensionValue {
     fn default() -> Self {
         DimensionValue::Auto
@@ -460,30 +551,7 @@ impl<'de> Deserialize<'de> for DimensionValue {
             where
                 E: de::Error,
             {
-                if v == "auto" {
-                    Ok(DimensionValue::Auto)
-                } else if let Some(keyword) = IntrinsicKeyword::parse(v) {
-                    keyword.map(DimensionValue::Intrinsic).map_err(de::Error::custom)
-                } else if let Some(axis) = v
-                    .strip_prefix("anchor-size(")
-                    .and_then(|rest| rest.strip_suffix(')'))
-                {
-                    match axis.trim() {
-                        "width" => Ok(DimensionValue::AnchorSize(AnchorAxis::Width)),
-                        "height" => Ok(DimensionValue::AnchorSize(AnchorAxis::Height)),
-                        _ => Err(de::Error::custom(format!("invalid anchor-size: {}", v))),
-                    }
-                } else if let Ok(number) = v.parse::<f64>() {
-                    if number.is_finite() {
-                        Ok(DimensionValue::Pixels(number))
-                    } else {
-                        Err(de::Error::custom(format!("invalid dimension: {}", v)))
-                    }
-                } else {
-                    parse_linear_length(v)
-                        .map(|length| DimensionValue::from_length(length, v))
-                        .ok_or_else(|| de::Error::custom(format!("invalid dimension: {}", v)))
-                }
+                DimensionValue::parse(v).map_err(de::Error::custom)
             }
         }
 
@@ -512,8 +580,10 @@ pub struct StyleDesc {
     pub align_self: Option<String>,
     pub align_content: Option<String>,
     pub justify_content: Option<String>,
-    /// A number is px; a string is a CSS length. `%` is of the container's content box.
-    pub gap: Option<LinearLength>,
+    /// A number is px; a string is `<row-gap> <column-gap>?`, each a CSS length. `%` is of the
+    /// container's content box. `rowGap` and `columnGap` win over it.
+    #[serde(default, deserialize_with = "shorthand::deserialize_gap")]
+    pub gap: Option<Gap>,
     pub row_gap: Option<LinearLength>,
     pub column_gap: Option<LinearLength>,
     /// Stable-sorts the children of a flex or grid container. Default 0.
@@ -547,16 +617,18 @@ pub struct StyleDesc {
     pub max_width: Option<DimensionValue>,
     pub max_height: Option<DimensionValue>,
 
-    // Spacing (padding): px or a CSS length; `%` is of the containing block's width.
-    pub padding: Option<LinearLength>,
+    // Spacing (padding): px or a CSS length; `%` is of the containing block's width. The
+    // shorthand takes one to four values, for the sides in CSS order.
+    #[serde(default, deserialize_with = "deserialize_padding")]
+    pub padding: Option<Sides<LinearLength>>,
     pub padding_top: Option<LinearLength>,
     pub padding_right: Option<LinearLength>,
     pub padding_bottom: Option<LinearLength>,
     pub padding_left: Option<LinearLength>,
 
     // Spacing (margin): px, a percentage of the containing block width, or "auto".
-    #[serde(default, deserialize_with = "deserialize_margin")]
-    pub margin: Option<DimensionValue>,
+    #[serde(default, deserialize_with = "deserialize_margin_sides")]
+    pub margin: Option<Sides<DimensionValue>>,
     #[serde(default, deserialize_with = "deserialize_margin")]
     pub margin_top: Option<DimensionValue>,
     #[serde(default, deserialize_with = "deserialize_margin")]
@@ -570,6 +642,10 @@ pub struct StyleDesc {
     pub position: Option<String>,
     /// Paint order among positioned siblings. Only applies when `position` is set.
     pub z_index: Option<f64>,
+    /// One to four lengths or `auto` for `top`, `right`, `bottom` and `left` in CSS order. The
+    /// four longhands win over it.
+    #[serde(default, deserialize_with = "deserialize_inset_sides")]
+    pub inset: Option<Sides<DimensionValue>>,
     #[serde(default, deserialize_with = "deserialize_inset")]
     pub top: Option<DimensionValue>,
     #[serde(default, deserialize_with = "deserialize_inset")]
@@ -600,10 +676,10 @@ pub struct StyleDesc {
     pub opacity: Option<f64>,
 
     // Border
-    /// A number is px; a string is a CSS length with no `%`, or `thin`, `medium`
-    /// or `thick`. A negative width is zero.
-    #[serde(default, deserialize_with = "deserialize_border_width")]
-    pub border_width: Option<LinearLength>,
+    /// A number is px; a string is one to four CSS lengths with no `%`, or `thin`, `medium`
+    /// or `thick`, for the sides in CSS order. A negative width is zero.
+    #[serde(default, deserialize_with = "deserialize_border_widths")]
+    pub border_width: Option<Sides<LinearLength>>,
     #[serde(default, deserialize_with = "deserialize_border_width")]
     pub border_top_width: Option<LinearLength>,
     #[serde(default, deserialize_with = "deserialize_border_width")]
@@ -1390,6 +1466,9 @@ mod tests {
         assert_eq!(json(DimensionValue::Pixels(12.0)), "12.0");
         assert_eq!(json(calc("calc(100% - 20px)")), "\"calc(100% - 20px)\"");
         assert_eq!(json(calc("2em")), "\"2em\"");
+        assert_eq!(json(DimensionValue::Auto), "\"auto\"");
+        assert_eq!(json(DimensionValue::Percentage(0.5)), "\"50%\"");
+        assert_eq!(dimension(&json(DimensionValue::Percentage(0.07))).unwrap(), DimensionValue::Percentage(0.07));
         let back = dimension(&json(calc("calc(1em + 2vw - 3px)"))).unwrap();
         assert_eq!(back, calc("calc(1em + 2vw - 3px)"));
     }
@@ -1408,7 +1487,7 @@ mod tests {
         assert_eq!(style.min_height, Some(DimensionValue::Pixels(96.0)));
         assert_eq!(style.max_width, Some(calc("calc(100% - 20px)")));
         assert_eq!(style.max_height, Some(DimensionValue::Percentage(0.9)));
-        assert_eq!(style.margin, Some(calc("calc(5% + 4px)")));
+        assert_eq!(style.margin, Some(Sides::all(calc("calc(5% + 4px)"))));
         assert_eq!(style.margin_top, Some(calc("2em")));
         assert_eq!(style.margin_bottom, Some(DimensionValue::Auto));
         assert_eq!(style.top, Some(calc("calc(100% - 30px)")));
@@ -1755,19 +1834,19 @@ mod tests {
             }"#,
         );
         let length = |text: &str| Some(parse_linear_length(text).unwrap());
-        assert_eq!(style.padding, Some(LinearLength::px(4.0)));
+        assert_eq!(style.padding, Some(Sides::all(LinearLength::px(4.0))));
         assert_eq!(style.padding_top, length("2em"));
         assert_eq!(style.padding_right, length("1rem"));
         assert_eq!(style.padding_bottom, Some(LinearLength::percent(0.1)));
         assert_eq!(style.padding_left, length("calc(10% + 4px)"));
-        assert_eq!(style.gap, Some(LinearLength::px(96.0)));
+        assert_eq!(style.gap, Some(Gap::all(LinearLength::px(96.0))));
         assert_eq!(style.row_gap, length("50vw"));
         assert_eq!(style.column_gap, length("calc(1em + 2px)"));
     }
 
     #[test]
     fn a_bad_padding_or_gap_is_an_error() {
-        assert_eq!(style_of(r#"{"gap": "12px"}"#).gap, Some(LinearLength::px(12.0)));
+        assert_eq!(style_of(r#"{"gap": "12px"}"#).gap, Some(Gap::all(LinearLength::px(12.0))));
         for json in [r#"{"padding": "12"}"#, r#"{"padding": "auto"}"#, r#"{"gap": "12foo"}"#, r#"{"paddingLeft": true}"#, r#"{"rowGap": "calc(1px + 2)"}"#] {
             assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
         }
@@ -1802,15 +1881,15 @@ mod tests {
             }"#,
         );
         let length = |text: &str| Some(parse_linear_length(text).unwrap());
-        assert_eq!(style.border_width, Some(LinearLength::px(2.0)));
+        assert_eq!(style.border_width, Some(Sides::all(LinearLength::px(2.0))));
         assert_eq!(style.border_top_width, length("0.5em"));
         assert_eq!(style.border_right_width, length("calc(1px + 1rem)"));
         assert_eq!(style.border_bottom_width, Some(LinearLength::px(5.0)));
         assert_eq!(style.border_left_width, Some(LinearLength::px(96.0)));
         assert_eq!(style.outline_width, Some(LinearLength::px(1.0)));
         assert_eq!(style.outline_offset, length("calc(-1 * (2vw + 1px))"));
-        assert_eq!(style_of(r#"{"borderWidth": "medium"}"#).border_width, Some(LinearLength::px(3.0)));
-        assert_eq!(style_of(r#"{"borderWidth": -3}"#).border_width, Some(LinearLength::px(-3.0)));
+        assert_eq!(style_of(r#"{"borderWidth": "medium"}"#).border_width, Some(Sides::all(LinearLength::px(3.0))));
+        assert_eq!(style_of(r#"{"borderWidth": -3}"#).border_width, Some(Sides::all(LinearLength::px(-3.0))));
         assert_eq!(style_of(r#"{"borderWidth": null}"#).border_width, None);
         assert_eq!(style_of("{}").outline_offset, None);
     }
@@ -1839,5 +1918,221 @@ mod tests {
     fn border_and_outline_lengths_round_trip_through_serialization() {
         let style = style_of(r#"{"borderWidth": "0.5em", "borderTopWidth": 3, "outlineWidth": "thick", "outlineOffset": "calc(1em - 2px)"}"#);
         assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+    }
+
+    fn length(text: &str) -> LinearLength {
+        parse_linear_length(text).unwrap()
+    }
+
+    fn sides<T>(top: T, right: T, bottom: T, left: T) -> Option<Sides<T>> {
+        Some(Sides { top, right, bottom, left })
+    }
+
+    fn px(value: f64) -> DimensionValue {
+        DimensionValue::Pixels(value)
+    }
+
+    #[test]
+    fn padding_takes_one_to_four_values_and_fills_the_missing_sides_like_css() {
+        let (a, b, c, d) = (length("1px"), length("2px"), length("3px"), length("4px"));
+        assert_eq!(style_of(r#"{"padding": "1px"}"#).padding, sides(a, a, a, a));
+        assert_eq!(style_of(r#"{"padding": "1px 2px"}"#).padding, sides(a, b, a, b));
+        assert_eq!(style_of(r#"{"padding": "1px 2px 3px"}"#).padding, sides(a, b, c, b));
+        assert_eq!(style_of(r#"{"padding": "1px 2px 3px 4px"}"#).padding, sides(a, b, c, d));
+        assert_eq!(style_of(r#"{"padding": 6}"#).padding, Some(Sides::all(length("6px"))));
+        assert_eq!(style_of(r#"{"padding": "  0.5em   0.75em "}"#).padding, sides(length("0.5em"), length("0.75em"), length("0.5em"), length("0.75em")));
+        assert_eq!(style_of(r#"{"padding": "0 1px"}"#).padding, sides(length("0"), a, length("0"), a));
+        assert_eq!(style_of(r#"{"padding": null}"#).padding, None);
+    }
+
+    #[test]
+    fn padding_values_may_be_em_percent_and_calc_with_spaces_inside() {
+        let padding = style_of(r#"{"padding": "calc(1px + 1em) 2px 10% 1rem"}"#).padding.unwrap();
+        assert_eq!(padding.top, length("calc(1px + 1em)"));
+        assert_eq!(padding.right, length("2px"));
+        assert_eq!(padding.bottom, LinearLength::percent(0.1));
+        assert_eq!(padding.left, length("1rem"));
+        let two = style_of(r#"{"padding": "calc(1px + 1em) 2px"}"#).padding.unwrap();
+        assert_eq!((two.top, two.bottom), (length("calc(1px + 1em)"), length("calc(1px + 1em)")));
+        assert_eq!((two.right, two.left), (length("2px"), length("2px")));
+    }
+
+    #[test]
+    fn a_bad_padding_shorthand_throws() {
+        for json in [
+            r#"{"padding": ""}"#,
+            r#"{"padding": "   "}"#,
+            r#"{"padding": "1px 2px 3px 4px 5px"}"#,
+            r#"{"padding": "1px auto"}"#,
+            r#"{"padding": "1px 12"}"#,
+            r#"{"padding": "1px, 2px"}"#,
+            r#"{"padding": "1px calc(1px + 2)"}"#,
+            r#"{"padding": "1px min-content"}"#,
+            r#"{"padding": [1, 2]}"#,
+            r#"{"padding": true}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"padding": "1px 12"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid padding \"12\""), "{error}");
+        let error = serde_json::from_str::<StyleDesc>(r#"{"padding": "1px 2px 3px 4px 5px"}"#).unwrap_err().to_string();
+        assert!(error.contains("one to four values"), "{error}");
+    }
+
+    #[test]
+    fn margin_takes_one_to_four_values_each_of_which_may_be_auto() {
+        let style = |json: &str| style_of(json).margin;
+        assert_eq!(style(r#"{"margin": "0 auto"}"#), sides(px(0.0), DimensionValue::Auto, px(0.0), DimensionValue::Auto));
+        assert_eq!(style(r#"{"margin": "auto"}"#), Some(Sides::all(DimensionValue::Auto)));
+        assert_eq!(
+            style(r#"{"margin": "1px auto 3px"}"#),
+            sides(px(1.0), DimensionValue::Auto, px(3.0), DimensionValue::Auto)
+        );
+        assert_eq!(
+            style(r#"{"margin": "auto 2px 50% calc(1px + 1em)"}"#),
+            sides(DimensionValue::Auto, px(2.0), DimensionValue::Percentage(0.5), calc("calc(1px + 1em)"))
+        );
+        assert_eq!(style(r#"{"margin": "0.5em 1em"}"#), sides(calc("0.5em"), calc("1em"), calc("0.5em"), calc("1em")));
+        assert_eq!(style(r#"{"margin": "-4px 8px"}"#), sides(px(-4.0), px(8.0), px(-4.0), px(8.0)));
+        assert_eq!(style(r#"{"margin": 5}"#), Some(Sides::all(px(5.0))));
+        assert_eq!(style(r#"{"margin": null}"#), None);
+        assert_eq!(
+            style(r#"{"margin": "anchor-size(width) 0"}"#),
+            sides(
+                DimensionValue::AnchorSize(AnchorAxis::Width),
+                px(0.0),
+                DimensionValue::AnchorSize(AnchorAxis::Width),
+                px(0.0)
+            )
+        );
+    }
+
+    #[test]
+    fn a_bad_margin_shorthand_throws() {
+        for json in [
+            r#"{"margin": ""}"#,
+            r#"{"margin": "1px 2px 3px 4px 5px"}"#,
+            r#"{"margin": "1px 12foo"}"#,
+            r#"{"margin": "auto, 1px"}"#,
+            r#"{"margin": "1px calc(1px + 2)"}"#,
+            r#"{"margin": "1px max-content"}"#,
+            r#"{"margin": "fit-content(10px) 1px"}"#,
+            r#"{"margin": [1]}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"margin": "1px max-content"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid margin \"max-content\""), "{error}");
+    }
+
+    #[test]
+    fn inset_takes_one_to_four_values_and_auto() {
+        let style = |json: &str| style_of(json).inset;
+        assert_eq!(style(r#"{"inset": 0}"#), Some(Sides::all(px(0.0))));
+        assert_eq!(style(r#"{"inset": "10px 20px"}"#), sides(px(10.0), px(20.0), px(10.0), px(20.0)));
+        assert_eq!(style(r#"{"inset": "1px 2px 3px"}"#), sides(px(1.0), px(2.0), px(3.0), px(2.0)));
+        assert_eq!(
+            style(r#"{"inset": "auto 0 50% 2em"}"#),
+            sides(DimensionValue::Auto, px(0.0), DimensionValue::Percentage(0.5), calc("2em"))
+        );
+        assert_eq!(
+            style(r#"{"inset": "calc(100% - 4px) auto"}"#),
+            sides(calc("calc(100% - 4px)"), DimensionValue::Auto, calc("calc(100% - 4px)"), DimensionValue::Auto)
+        );
+        assert_eq!(style(r#"{"inset": null}"#), None);
+        assert_eq!(style_of(r#"{"inset": "1px", "top": 5}"#).top, Some(px(5.0)), "the longhand is its own field");
+        for json in [
+            r#"{"inset": ""}"#,
+            r#"{"inset": "1px 2px 3px 4px 5px"}"#,
+            r#"{"inset": "1px nope"}"#,
+            r#"{"inset": "max-content"}"#,
+            r#"{"inset": "0 fit-content"}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"inset": "0 fit-content"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid inset \"fit-content\""), "{error}");
+    }
+
+    #[test]
+    fn border_width_takes_one_to_four_values_with_the_keywords_per_side() {
+        let (a, b, c, d) = (length("1px"), length("2px"), length("3px"), length("4px"));
+        let style = |json: &str| style_of(json).border_width;
+        assert_eq!(style(r#"{"borderWidth": "1px 2px 3px 4px"}"#), sides(a, b, c, d));
+        assert_eq!(style(r#"{"borderWidth": "1px 2px"}"#), sides(a, b, a, b));
+        assert_eq!(style(r#"{"borderWidth": "1px 2px 3px"}"#), sides(a, b, c, b));
+        assert_eq!(style(r#"{"borderWidth": "thin medium thick"}"#), sides(a, c, length("5px"), c));
+        assert_eq!(style(r#"{"borderWidth": "thick 1px"}"#), sides(length("5px"), a, length("5px"), a));
+        assert_eq!(style(r#"{"borderWidth": "0.5em calc(1px + 1rem)"}"#).unwrap().right, length("calc(1px + 1rem)"));
+        assert_eq!(style(r#"{"borderWidth": 2}"#), Some(Sides::all(length("2px"))));
+        assert_eq!(style(r#"{"borderWidth": "medium"}"#), Some(Sides::all(c)));
+        for json in [
+            r#"{"borderWidth": ""}"#,
+            r#"{"borderWidth": "1px 10%"}"#,
+            r#"{"borderWidth": "1px wide"}"#,
+            r#"{"borderWidth": "1px 2px 3px 4px 5px"}"#,
+            r#"{"borderWidth": "1px 3"}"#,
+            r#"{"borderWidth": "1px auto"}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"borderWidth": "1px 10%"}"#).unwrap_err().to_string();
+        assert!(error.contains("invalid border width \"10%\""), "{error}");
+    }
+
+    #[test]
+    fn gap_takes_a_row_and_an_optional_column() {
+        let style = |json: &str| style_of(json).gap;
+        let gap = |row: &str, column: &str| Some(Gap { row: length(row), column: length(column) });
+        assert_eq!(style(r#"{"gap": "4px 8px"}"#), gap("4px", "8px"));
+        assert_eq!(style(r#"{"gap": "4px"}"#), gap("4px", "4px"));
+        assert_eq!(style(r#"{"gap": 6}"#), gap("6px", "6px"));
+        assert_eq!(style(r#"{"gap": "1em calc(1px + 1em)"}"#), gap("1em", "calc(1px + 1em)"));
+        assert_eq!(style(r#"{"gap": "10% 0"}"#), gap("10%", "0"));
+        assert_eq!(style(r#"{"gap": null}"#), None);
+        for json in [
+            r#"{"gap": ""}"#,
+            r#"{"gap": "1px 2px 3px"}"#,
+            r#"{"gap": "1px auto"}"#,
+            r#"{"gap": "1px 2"}"#,
+            r#"{"gap": "normal"}"#,
+            r#"{"gap": [1, 2]}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
+        let error = serde_json::from_str::<StyleDesc>(r#"{"gap": "1px 2px 3px"}"#).unwrap_err().to_string();
+        assert!(error.contains("one or two values"), "{error}");
+    }
+
+    #[test]
+    fn the_box_shorthands_round_trip_through_serialization() {
+        let style = style_of(
+            r#"{
+                "padding": "calc(1px + 1em) 2px 10% 1rem", "margin": "1px auto 50% 2em", "inset": "auto 0",
+                "borderWidth": "thin 2px 3px 4px", "gap": "4px 1em"
+            }"#,
+        );
+        assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+        let uniform = style_of(r#"{"padding": "2em 2em", "margin": "auto", "inset": "0", "borderWidth": "2px", "gap": "3px 3px"}"#);
+        let json = serde_json::to_value(&uniform).unwrap();
+        assert_eq!(json["padding"], "2em");
+        assert_eq!(json["margin"], "auto");
+        assert_eq!(json["gap"], 3.0);
+        assert_eq!(style_of(&serde_json::to_string(&uniform).unwrap()), uniform);
+    }
+
+    #[test]
+    fn border_color_style_and_radius_already_take_one_to_four_values() {
+        let style = style_of(
+            r##"{"borderColor": "red blue green white", "borderStyle": "solid dashed", "borderRadius": "1px 2px 3px / 4px 5px"}"##,
+        );
+        assert_eq!(style.border_color.as_deref(), Some("red blue green white"));
+        assert_eq!(style.border_style.as_deref(), Some("solid dashed"));
+        let corners = style.corner_radii();
+        assert_eq!(corners.top_left, CornerRadiusValue { x: length("1px"), y: Some(length("4px")) });
+        assert_eq!(corners.bottom_right, CornerRadiusValue { x: length("3px"), y: Some(length("4px")) });
+        let em = style_of(r#"{"borderRadius": "0.5em 1rem"}"#).corner_radii();
+        assert_eq!((em.top_left.x, em.top_right.x), (length("0.5em"), length("1rem")));
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"borderRadius": "1px 2px 3px 4px 5px"}"#).is_err());
     }
 }

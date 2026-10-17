@@ -2250,7 +2250,7 @@ mod tests {
     fn starts_from_the_elements_own_style_when_initial_omits_the_key() {
         let started = Instant::now();
         let base = StyleDesc {
-            padding: Some(LinearLength::px(40.0)),
+            padding: Some(crate::css::shorthand::Sides::all(LinearLength::px(40.0))),
             width: Some(DimensionValue::Pixels(200.0)),
             ..Default::default()
         };

@@ -3,7 +3,7 @@
 
 use super::dimension;
 use super::length::{LengthContext, LinearLength};
-use super::syntax::split_whitespace;
+use super::syntax::{expand_sides, split_whitespace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LineStyle {
@@ -130,18 +130,6 @@ fn parse_shorthand_width(token: &str) -> Option<LinearLength> {
 /// The px of a border or outline width, which a `%` never reaches.
 pub(crate) fn resolve_width(width: &LinearLength, lengths: &LengthContext) -> gpui::Pixels {
     gpui::px(lengths.resolve(width, 0.0).max(0.0) as f32)
-}
-
-/// The CSS rule for the sides a one to four value property leaves out, as
-/// `[top, right, bottom, left]`.
-fn expand_sides<T: Copy>(values: &[T]) -> Option<[T; 4]> {
-    match *values {
-        [all] => Some([all; 4]),
-        [vertical, horizontal] => Some([vertical, horizontal, vertical, horizontal]),
-        [top, horizontal, bottom] => Some([top, horizontal, bottom, horizontal]),
-        [top, right, bottom, left] => Some([top, right, bottom, left]),
-        _ => None,
-    }
 }
 
 /// `border-color`'s one to four values as `[top, right, bottom, left]`, with the
@@ -318,8 +306,8 @@ fn declare(style: &StyleDesc, colors: &ColorContext) -> Declared {
             }
         }
     }
-    if let Some(width) = style.border_width {
-        declared.widths = [Some(width); 4];
+    if let Some(widths) = &style.border_width {
+        declared.widths = widths.values().map(|width| Some(*width));
     }
     if let Some(sides) = style.border_style.as_deref().and_then(parse_style_sides) {
         for (index, keyword) in sides.into_iter().enumerate() {

@@ -21,6 +21,7 @@ pub(crate) mod mask;
 #[cfg(test)]
 mod parse_cost;
 pub(crate) mod position;
+pub(crate) mod shorthand;
 pub(crate) mod syntax;
 pub(crate) mod tab_size;
 pub(crate) mod table;

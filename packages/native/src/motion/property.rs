@@ -11,6 +11,7 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::LinearLength;
+use crate::css::shorthand::{Gap, Sides};
 use crate::css::line_height::LineHeight;
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{
@@ -125,6 +126,48 @@ impl ShorthandCorners for Option<BorderRadiusValue> {
 
     fn bottom_right(&self) -> Option<CornerRadiusValue> {
         self.map(|radii| radii.0.bottom_right)
+    }
+}
+
+/// A box shorthand seen from one side, or `gap` from one axis, which is what a
+/// longhand reads when it is unset.
+trait ShorthandSides<T> {
+    fn top(&self) -> Option<T>;
+    fn right(&self) -> Option<T>;
+    fn bottom(&self) -> Option<T>;
+    fn left(&self) -> Option<T>;
+}
+
+impl<T: Clone> ShorthandSides<T> for Option<Sides<T>> {
+    fn top(&self) -> Option<T> {
+        self.as_ref().map(|sides| sides.top.clone())
+    }
+
+    fn right(&self) -> Option<T> {
+        self.as_ref().map(|sides| sides.right.clone())
+    }
+
+    fn bottom(&self) -> Option<T> {
+        self.as_ref().map(|sides| sides.bottom.clone())
+    }
+
+    fn left(&self) -> Option<T> {
+        self.as_ref().map(|sides| sides.left.clone())
+    }
+}
+
+trait ShorthandAxes {
+    fn row(&self) -> Option<LinearLength>;
+    fn column(&self) -> Option<LinearLength>;
+}
+
+impl ShorthandAxes for Option<Gap> {
+    fn row(&self) -> Option<LinearLength> {
+        self.map(|gap| gap.row)
+    }
+
+    fn column(&self) -> Option<LinearLength> {
+        self.map(|gap| gap.column)
     }
 }
 
@@ -406,8 +449,8 @@ properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow;
     FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink;
     FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis;
-    RowGap "rowGap" Number NonNegative Number(0.0), row_gap | gap;
-    ColumnGap "columnGap" Number NonNegative Number(0.0), column_gap | gap;
+    RowGap "rowGap" Number NonNegative Number(0.0), row_gap | gap.row();
+    ColumnGap "columnGap" Number NonNegative Number(0.0), column_gap | gap.column();
 
     Width "width" Dimension NonNegative Unresolved, width;
     Height "height" Dimension NonNegative Unresolved, height;
@@ -416,29 +459,29 @@ properties! {
     MaxWidth "maxWidth" Dimension NonNegative Unresolved, max_width;
     MaxHeight "maxHeight" Dimension NonNegative Unresolved, max_height;
 
-    PaddingTop "paddingTop" PercentLength NonNegative Number(0.0), padding_top | padding;
-    PaddingRight "paddingRight" PercentLength NonNegative Number(0.0), padding_right | padding;
-    PaddingBottom "paddingBottom" PercentLength NonNegative Number(0.0), padding_bottom | padding;
-    PaddingLeft "paddingLeft" PercentLength NonNegative Number(0.0), padding_left | padding;
+    PaddingTop "paddingTop" PercentLength NonNegative Number(0.0), padding_top | padding.top();
+    PaddingRight "paddingRight" PercentLength NonNegative Number(0.0), padding_right | padding.right();
+    PaddingBottom "paddingBottom" PercentLength NonNegative Number(0.0), padding_bottom | padding.bottom();
+    PaddingLeft "paddingLeft" PercentLength NonNegative Number(0.0), padding_left | padding.left();
 
-    MarginTop "marginTop" Dimension None Number(0.0), margin_top | margin;
-    MarginRight "marginRight" Dimension None Number(0.0), margin_right | margin;
-    MarginBottom "marginBottom" Dimension None Number(0.0), margin_bottom | margin;
-    MarginLeft "marginLeft" Dimension None Number(0.0), margin_left | margin;
+    MarginTop "marginTop" Dimension None Number(0.0), margin_top | margin.top();
+    MarginRight "marginRight" Dimension None Number(0.0), margin_right | margin.right();
+    MarginBottom "marginBottom" Dimension None Number(0.0), margin_bottom | margin.bottom();
+    MarginLeft "marginLeft" Dimension None Number(0.0), margin_left | margin.left();
 
-    Top "top" Dimension None Unresolved, top;
-    Right "right" Dimension None Unresolved, right;
-    Bottom "bottom" Dimension None Unresolved, bottom;
-    Left "left" Dimension None Unresolved, left;
+    Top "top" Dimension None Unresolved, top | inset.top();
+    Right "right" Dimension None Unresolved, right | inset.right();
+    Bottom "bottom" Dimension None Unresolved, bottom | inset.bottom();
+    Left "left" Dimension None Unresolved, left | inset.left();
 
     BackgroundColor "backgroundColor" Color None Transparent, background_color;
     Color "color" Color None ComputedColor, color;
     Opacity "opacity" Number Unit Number(1.0), opacity;
 
-    BorderTopWidth "borderTopWidth" Number NonNegative Number(0.0), border_top_width | border_width;
-    BorderRightWidth "borderRightWidth" Number NonNegative Number(0.0), border_right_width | border_width;
-    BorderBottomWidth "borderBottomWidth" Number NonNegative Number(0.0), border_bottom_width | border_width;
-    BorderLeftWidth "borderLeftWidth" Number NonNegative Number(0.0), border_left_width | border_width;
+    BorderTopWidth "borderTopWidth" Number NonNegative Number(0.0), border_top_width | border_width.top();
+    BorderRightWidth "borderRightWidth" Number NonNegative Number(0.0), border_right_width | border_width.right();
+    BorderBottomWidth "borderBottomWidth" Number NonNegative Number(0.0), border_bottom_width | border_width.bottom();
+    BorderLeftWidth "borderLeftWidth" Number NonNegative Number(0.0), border_left_width | border_width.left();
     BorderTopColor "borderTopColor" Color None CurrentColor, border_top_color | border_color;
     BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
     BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
@@ -1171,7 +1214,7 @@ mod tests {
     fn a_longhand_reads_through_its_shorthand() {
         let colors = Colors::root();
         let style = StyleDesc {
-            padding: Some(LinearLength::px(8.0)),
+            padding: Some(Sides::all(LinearLength::px(8.0))),
             padding_left: Some(LinearLength::px(20.0)),
             border_radius: Some(BorderRadiusValue::px(6.0)),
             ..Default::default()

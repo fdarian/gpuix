@@ -544,7 +544,7 @@ mod tests {
         tree.set_style(
             1,
             Arc::new(StyleDesc {
-                border_width: Some(crate::css::length::LinearLength::px(2.0)),
+                border_width: Some(crate::css::shorthand::Sides::all(crate::css::length::LinearLength::px(2.0))),
                 overflow: Some("hidden".into()),
                 ..StyleDesc::default()
             }),

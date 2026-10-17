@@ -195,13 +195,12 @@ fn apply_size<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) 
 }
 
 fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
-    if let Some(value) = &style.margin {
+    if let Some(sides) = &style.margin {
         let margin = &mut el.style().margin;
-        let value = length(value, lengths);
-        margin.top = Some(value);
-        margin.right = Some(value);
-        margin.bottom = Some(value);
-        margin.left = Some(value);
+        margin.top = Some(length(&sides.top, lengths));
+        margin.right = Some(length(&sides.right, lengths));
+        margin.bottom = Some(length(&sides.bottom, lengths));
+        margin.left = Some(length(&sides.left, lengths));
     }
     if let Some(value) = &style.margin_top {
         el.style().margin.top = Some(length(value, lengths));
@@ -219,13 +218,12 @@ fn apply_margin<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext
 }
 
 fn apply_padding<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
-    if let Some(value) = &style.padding {
+    if let Some(sides) = &style.padding {
         let padding = &mut el.style().padding;
-        let value = linear(value, lengths);
-        padding.top = Some(value);
-        padding.right = Some(value);
-        padding.bottom = Some(value);
-        padding.left = Some(value);
+        padding.top = Some(linear(&sides.top, lengths));
+        padding.right = Some(linear(&sides.right, lengths));
+        padding.bottom = Some(linear(&sides.bottom, lengths));
+        padding.left = Some(linear(&sides.left, lengths));
     }
     if let Some(value) = &style.padding_top {
         el.style().padding.top = Some(linear(value, lengths));
@@ -247,9 +245,8 @@ fn apply_padding<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContex
 fn apply_gap<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     if let Some(value) = &style.gap {
         let gap = &mut el.style().gap;
-        let value = linear(value, lengths);
-        gap.width = Some(value);
-        gap.height = Some(value);
+        gap.height = Some(linear(&value.row, lengths));
+        gap.width = Some(linear(&value.column, lengths));
     }
     if let Some(value) = &style.row_gap {
         el.style().gap.height = Some(linear(value, lengths));
@@ -270,6 +267,13 @@ fn apply_position<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthConte
         Some("absolute") => el.style().position = Some(gpui::Position::AbsoluteInAncestor),
         Some("fixed") => el.style().position = Some(gpui::Position::Fixed),
         _ => {}
+    }
+    if let Some(sides) = &style.inset {
+        let inset = &mut el.style().inset;
+        inset.top = Some(length(&sides.top, lengths));
+        inset.right = Some(length(&sides.right, lengths));
+        inset.bottom = Some(length(&sides.bottom, lengths));
+        inset.left = Some(length(&sides.left, lengths));
     }
     if let Some(value) = &style.top {
         el.style().inset.top = Some(length(value, lengths));

@@ -161,7 +161,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         width, height, min_width, min_height, max_width, max_height,
         padding, padding_top, padding_right, padding_bottom, padding_left,
         margin, margin_top, margin_right, margin_bottom, margin_left,
-        position, top, right, bottom, left,
+        position, top, right, bottom, left, inset,
         background, background_color, background_image, background_size, background_position,
         background_repeat, background_origin, background_clip, color, color_scheme, opacity,
         filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
@@ -305,8 +305,8 @@ fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
             continue;
         }
         // A side's own longhand already beats the all-sides value.
-        if let Some(all_width) = all_width {
-            width.get_or_insert(all_width);
+        if let Some(all_width) = &all_width {
+            width.get_or_insert(*all_width.values()[index]);
         }
         if let Some(all_colors) = &all_colors {
             color.get_or_insert_with(|| all_colors[index].clone());
@@ -337,6 +337,12 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
         base.margin_right = None;
         base.margin_bottom = None;
         base.margin_left = None;
+    }
+    if over.inset.is_some() {
+        base.top = None;
+        base.right = None;
+        base.bottom = None;
+        base.left = None;
     }
     if over.border_width.is_some() {
         base.border_top_width = None;
@@ -479,6 +485,7 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
 mod tests {
     use super::*;
     use crate::css::length::LinearLength;
+    use crate::css::shorthand::Sides;
     use crate::style::{BackgroundValue, DimensionValue};
 
     fn style(json: &str) -> StyleDesc {
@@ -513,7 +520,7 @@ mod tests {
         assert_eq!(resolved.background_color.as_deref(), Some("#222222"));
         assert_eq!(resolved.cursor.as_deref(), Some("pointer"));
         assert_eq!(resolved.color.as_deref(), Some("#ffffff"));
-        assert_eq!(resolved.padding, Some(LinearLength::px(8.0)));
+        assert_eq!(resolved.padding, Some(Sides::all(LinearLength::px(8.0))));
         assert_eq!(resolved.opacity, None);
     }
 
@@ -592,7 +599,7 @@ mod tests {
         assert_eq!(at_rest.padding_top, Some(LinearLength::px(4.0)));
 
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!(hovered.padding, Some(LinearLength::px(10.0)));
+        assert_eq!(hovered.padding, Some(Sides::all(LinearLength::px(10.0))));
         assert_eq!(hovered.padding_top, None);
         assert_eq!(hovered.margin_left, None);
         assert_eq!(hovered.border_top_width, None);
@@ -628,9 +635,9 @@ mod tests {
             r##"{ "padding": 8, "hover": { "paddingTop": 1 }, "active": { "padding": 3, "paddingTop": 2 } }"##,
         );
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!((hovered.padding, hovered.padding_top), (Some(LinearLength::px(8.0)), Some(LinearLength::px(1.0))));
+        assert_eq!((hovered.padding, hovered.padding_top), (Some(Sides::all(LinearLength::px(8.0))), Some(LinearLength::px(1.0))));
         let pressed = resolve_state_styles(&base, true, true);
-        assert_eq!((pressed.padding, pressed.padding_top), (Some(LinearLength::px(3.0)), Some(LinearLength::px(2.0))));
+        assert_eq!((pressed.padding, pressed.padding_top), (Some(Sides::all(LinearLength::px(3.0))), Some(LinearLength::px(2.0))));
     }
 
     #[test]
@@ -822,7 +829,7 @@ mod tests {
                 "hover":{"borderTop":"1px solid blue"}}"##,
         );
         let at_rest = resolve_state_styles(&base, false, false);
-        assert_eq!(at_rest.border_width, Some(LinearLength::px(2.0)));
+        assert_eq!(at_rest.border_width, Some(Sides::all(LinearLength::px(2.0))));
 
         let hovered = resolve_state_styles(&base, true, false);
         assert_eq!(hovered.border_top.as_deref(), Some("1px solid blue"));
@@ -856,7 +863,7 @@ mod tests {
     fn a_state_side_shorthand_keeps_the_base_all_sides_longhands_it_does_not_cover() {
         let base = style(r##"{"borderWidth":2,"borderColor":"red","active":{"borderWidth":4,"borderTop":"1px solid blue"}}"##);
         let pressed = resolve_state_styles(&base, false, true);
-        assert_eq!(pressed.border_width, Some(LinearLength::px(4.0)), "the state's own all-sides value is its own");
+        assert_eq!(pressed.border_width, Some(Sides::all(LinearLength::px(4.0))), "the state's own all-sides value is its own");
         assert_eq!(pressed.border_top_width, None);
         assert_eq!(pressed.border_right_width, None, "the state's borderWidth resets the base sides");
         assert_eq!(pressed.border_right_color.as_deref(), Some("red"));
@@ -923,7 +930,7 @@ mod tests {
                 "hover":{"borderTopWidth":1},"active":{"borderTop":"1px solid blue"}}"##,
         );
         let hovered = resolve_state_styles(&base, true, false);
-        assert_eq!(hovered.border_width, Some(LinearLength::px(3.0)));
+        assert_eq!(hovered.border_width, Some(Sides::all(LinearLength::px(3.0))));
         assert_eq!(hovered.border_top_width, Some(LinearLength::px(1.0)));
 
         // `border` is applied before the side shorthands, so it stays whole.

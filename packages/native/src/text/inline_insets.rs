@@ -48,6 +48,7 @@ use gpui::{px, Bounds, LayoutInsets, Pixels, TextInset, TextLayout};
 use crate::color::ColorContext;
 use crate::css::border::used_widths;
 use crate::css::length::{LengthContext, LinearLength};
+use crate::css::shorthand::Sides;
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
@@ -395,21 +396,22 @@ fn space_of(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> BoxSpace {
-    let padding = |side: Option<LinearLength>| {
-        side.or(style.padding).map_or_else(Extent::default, |length| Extent::of(&length, lengths))
+    let padding = |side: Option<LinearLength>, shorthand: fn(&Sides<LinearLength>) -> &LinearLength| {
+        side.or_else(|| style.padding.as_ref().map(|sides| *shorthand(sides)))
+            .map_or_else(Extent::default, |length| Extent::of(&length, lengths))
     };
-    let margin = |side: &Option<DimensionValue>| {
-        Extent::of_margin(side.as_ref().or(style.margin.as_ref()), lengths)
+    let margin = |side: &Option<DimensionValue>, shorthand: fn(&Sides<DimensionValue>) -> &DimensionValue| {
+        Extent::of_margin(side.as_ref().or_else(|| style.margin.as_ref().map(shorthand)), lengths)
     };
     BoxSpace {
         id,
         range: range.clone(),
-        margin_start: margin(&style.margin_left),
-        margin_end: margin(&style.margin_right),
-        padding_start: padding(style.padding_left),
-        padding_end: padding(style.padding_right),
-        padding_top: padding(style.padding_top),
-        padding_bottom: padding(style.padding_bottom),
+        margin_start: margin(&style.margin_left, |sides| &sides.left),
+        margin_end: margin(&style.margin_right, |sides| &sides.right),
+        padding_start: padding(style.padding_left, |sides| &sides.left),
+        padding_end: padding(style.padding_right, |sides| &sides.right),
+        padding_top: padding(style.padding_top, |sides| &sides.top),
+        padding_bottom: padding(style.padding_bottom, |sides| &sides.bottom),
         border: border_widths(style, colors, lengths),
     }
 }

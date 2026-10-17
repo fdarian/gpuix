@@ -26,8 +26,9 @@ thread_local! {
     static ANCHORS: RefCell<HashMap<u64, AnchorInfo>> = RefCell::new(HashMap::new());
 }
 
-/// Every property of a style that is a `DimensionValue` and takes `anchor-size()`.
-/// `$borrow` is `&` or `&mut`.
+/// Every longhand of a style that is a `DimensionValue` and takes `anchor-size()`.
+/// `$borrow` is `&` or `&mut`. The `margin` and `inset` shorthands hold one per side and are
+/// handled apart.
 macro_rules! anchor_slots {
     ($style:expr, $($borrow:tt)+) => {
         [
@@ -37,7 +38,6 @@ macro_rules! anchor_slots {
             $($borrow)+ $style.height,
             $($borrow)+ $style.min_height,
             $($borrow)+ $style.max_height,
-            $($borrow)+ $style.margin,
             $($borrow)+ $style.margin_top,
             $($borrow)+ $style.margin_right,
             $($borrow)+ $style.margin_bottom,
@@ -112,7 +112,11 @@ pub(crate) fn forget(anchored_id: u64) {
 pub(crate) fn resolve(anchored_id: u64, style: &StyleDesc) -> Option<StyleDesc> {
     let uses_anchor_size = anchor_slots!(style, &)
         .into_iter()
-        .any(|value| matches!(value, Some(DimensionValue::AnchorSize(_))));
+        .any(|value| matches!(value, Some(DimensionValue::AnchorSize(_))))
+        || [&style.margin, &style.inset]
+            .into_iter()
+            .flatten()
+            .any(|sides| sides.values().into_iter().any(|value| matches!(value, DimensionValue::AnchorSize(_))));
     if !uses_anchor_size {
         return None;
     }
@@ -124,16 +128,29 @@ pub(crate) fn resolve(anchored_id: u64, style: &StyleDesc) -> Option<StyleDesc> 
         info.size
     });
 
+    let anchor_px = |axis: AnchorAxis| {
+        size.map(|(width, height)| {
+            DimensionValue::Pixels(match axis {
+                AnchorAxis::Width => width as f64,
+                AnchorAxis::Height => height as f64,
+            })
+        })
+    };
     let mut resolved = style.clone();
     for slot in anchor_slots!(resolved, &mut) {
         let axis = match slot {
             Some(DimensionValue::AnchorSize(axis)) => *axis,
             _ => continue,
         };
-        *slot = size.map(|(width, height)| {
-            DimensionValue::Pixels(match axis {
-                AnchorAxis::Width => width as f64,
-                AnchorAxis::Height => height as f64,
+        *slot = anchor_px(axis);
+    }
+    // A side that cannot resolve yet takes its whole shorthand with it: the child is
+    // transparent until the trigger is measured.
+    for slot in [&mut resolved.margin, &mut resolved.inset] {
+        *slot = slot.take().and_then(|sides| {
+            sides.try_map(|value| match value {
+                DimensionValue::AnchorSize(axis) => anchor_px(axis),
+                other => Some(other),
             })
         });
     }
@@ -146,6 +163,7 @@ pub(crate) fn resolve(anchored_id: u64, style: &StyleDesc) -> Option<StyleDesc> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::css::shorthand::Sides;
     use std::sync::Arc;
 
     fn style_with(width: Option<DimensionValue>, min_height: Option<DimensionValue>) -> StyleDesc {
@@ -207,7 +225,7 @@ mod tests {
     fn resolves_margins_and_insets() {
         record(902, (120, 30));
         let style = StyleDesc {
-            margin: anchor(AnchorAxis::Width),
+            margin: Some(Sides::all(DimensionValue::AnchorSize(AnchorAxis::Width))),
             margin_top: anchor(AnchorAxis::Height),
             margin_right: anchor(AnchorAxis::Width),
             margin_bottom: anchor(AnchorAxis::Height),
@@ -221,7 +239,7 @@ mod tests {
         let resolved = resolve(902, &style).unwrap();
         let width = Some(DimensionValue::Pixels(120.0));
         let height = Some(DimensionValue::Pixels(30.0));
-        assert_eq!(resolved.margin, width);
+        assert_eq!(resolved.margin, width.clone().map(Sides::all));
         assert_eq!(resolved.margin_top, height);
         assert_eq!(resolved.margin_right, width);
         assert_eq!(resolved.margin_bottom, height);
