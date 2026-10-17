@@ -273,6 +273,16 @@ pub trait CustomElement: 'static {
     /// Clean up resources (GPUI entities, subscriptions, etc.)
     fn destroy(&mut self);
 
+    /// A word naming what `render` reads that is not in the retained tree, when calling `render`
+    /// again with the same props, context and word would build and paint exactly what it did,
+    /// without side effects the first call had. `None` when it would not, and the element is
+    /// built every frame. It is read after `render`, and must give the same answer before the next.
+    ///
+    /// The default is `None`: an adapter has to say why it can be skipped.
+    fn retain_state(&self) -> Option<u64> {
+        None
+    }
+
     /// Every image this element put in the sprite atlas and still holds, so the
     /// registry can drop them when the element goes away.
     fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
@@ -449,6 +459,11 @@ impl CustomElementRegistry {
             ..ctx
         };
         entry.element.render(ctx, window, cx)
+    }
+
+    /// See [`CustomElement::retain_state`].
+    pub(crate) fn retain_state(&self, id: u64) -> Option<u64> {
+        self.instances.get(&id)?.element.retain_state()
     }
 
     /// Lets every `<img>` that `display: none` keeps out of the build load, so its

@@ -7556,6 +7556,9 @@ fn build_element_unpumped(
     let base_style = state_style.as_ref().or(declared);
     ctx.retain.pointer(pointer_states);
     ctx.retain.focus(&ctx.focus_styles, id, ctx.focus_handles.contains_key(&id));
+    if let Some(links) = crate::accessibility::links_key(id) {
+        ctx.retain.shape(links);
+    }
 
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition. CSS animations come last of
@@ -7839,13 +7842,9 @@ fn build_element_unpumped(
             // An `<svg>` paints its shape children as one image, so they are
             // serialised instead of built.
             let is_svg = custom_type == "svg";
-            ctx.retain.exclude(if is_svg {
-                crate::retain::Exclusion::Svg
-            } else if custom_type == "anchored" {
-                crate::retain::Exclusion::Anchored
-            } else {
-                crate::retain::Exclusion::CustomElement
-            });
+            if custom_type == "anchored" {
+                ctx.retain.exclude(crate::retain::Exclusion::Anchored);
+            }
             let svg_markup = is_svg
                 .then(|| ctx.svg_trees
                     .markup(ctx.tree, id, ctx.motion_states, &ctx.inherited.colors, ctx.now))
@@ -7887,6 +7886,17 @@ fn build_element_unpumped(
                     })
                     .collect()
             };
+            let svg_drawn = svg_markup.clone();
+            let click_path = click_path(ctx.tree, element);
+            if !ctx.inherited.inert {
+                ctx.retain.shape(click_path.len() as u64);
+            }
+            if element.events().contains("layout")
+                || element.events().contains("scroll")
+                || crate::observers::watches_paint(element.events())
+            {
+                ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
+            }
             let inherited = &ctx.inherited;
             let render_ctx = CustomRenderContext {
                 id,
@@ -7895,7 +7905,7 @@ fn build_element_unpumped(
                 event_callback: ctx.event_callback,
                 focus_handle: ctx.focus_handles.get(&id),
                 focus_styles: ctx.focus_styles.clone(),
-                click_path: click_path(ctx.tree, element),
+                click_path,
                 activation: ctx.activation,
                 style,
                 colors: inherited.colors,
@@ -7927,6 +7937,20 @@ fn build_element_unpumped(
             let built = ctx
                 .custom_registry
                 .render(custom_type, element.custom_props(), render_ctx, window, cx);
+            // What the adapter keeps for itself is the part of its build the tree cannot show. An
+            // adapter that cannot name it is rebuilt every frame.
+            match ctx.custom_registry.retain_state(id) {
+                Some(state) => ctx.retain.shape(state),
+                None => ctx.retain.exclude(if is_svg {
+                    crate::retain::Exclusion::Svg
+                } else {
+                    crate::retain::Exclusion::CustomElement
+                }),
+            }
+            if is_svg {
+                ctx.retain.shape(ctx.svg_trees.generation(id));
+                ctx.retain.digest(|| format!("{svg_drawn:?}"));
+            }
             // It draws and is hit as it likes, and paints and prepaints for itself.
             ctx.subtree.block();
             built
@@ -8221,13 +8245,13 @@ pub(crate) fn build_host_container(
     el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
     if let Some(handle) = ctx.scroll_handles.get(&element.id) {
+        // Its offset is part of what the build read (the key sees it move), and so is where its
+        // children are. A hidden one is only moved by script, and that is a change like any other.
         ctx.retain.scroll(handle.offset());
         let user = style.map(crate::scroll::Axes::of).is_some_and(|axes| axes.x.scrolls_for_user() || axes.y.scrolls_for_user());
-        ctx.retain.exclude(if user {
-            crate::retain::Exclusion::Scroller
-        } else {
-            crate::retain::Exclusion::OverflowHidden
-        });
+        if user {
+            ctx.retain.exclude(crate::retain::Exclusion::Scroller);
+        }
     }
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
@@ -8309,9 +8333,6 @@ pub(crate) fn build_host_container(
         if let Some(content) = crate::text::inline::accessible_text(plan.iter().map(|(child, _)| child)) {
             el = el.aria_value(content);
         }
-    }
-    if is_label {
-        ctx.retain.exclude(crate::retain::Exclusion::Label);
     }
     if is_label && !inert {
         el = crate::accessibility::label::describe(el, element.id);

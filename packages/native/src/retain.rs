@@ -18,9 +18,16 @@
 //! The maximal such subtrees are the would-be placeholders. They are counted, and every other
 //! element is counted under the first reason it is not in one.
 //!
-//! Known gaps, found by the verify mode only where a test reaches them: a parent whose children are
+//! What an element reads of other elements is in its key, or the element is excluded: a link
+//! (`<label>`, `aria-*` references, see `accessibility::links_key`) and whether a click on it is
+//! taken (the click path) are in its shape, and a custom element says what it keeps for itself
+//! (`CustomElement::retain_state`) or is rebuilt every frame. An `overflow: hidden` element is
+//! no obstacle: its scroll offset is a volatile input like a scroller's, and what a clip does to
+//! what is inside it is gpui's replay key (content mask, absolute bounds), not the build's.
+//!
+//! Known gap, found by the verify mode only where a test reaches it: a parent whose children are
 //! chosen by `hold_display` (a `display` transition with `allow-discrete`) builds a different set
-//! of children with an unchanged key, and a `<label>` reads its control (so it is excluded).
+//! of children with an unchanged key.
 //!
 //! Not known at build time: that layout gives a retained subtree the same box it had. Step 5's
 //! replay key checks that, so the numbers here are an upper bound for frames that move layout.
@@ -138,8 +145,11 @@ pub(crate) enum Exclusion {
     ContainerQuery,
     /// It declares a `highlight`, or is inside one.
     Highlight,
-    /// A custom element renders itself, and prepaints and paints for itself.
+    /// A custom element that has no `retain_state`: `<input>` and `<textarea>` are views of their
+    /// own that notify, take the input handler while focused and blink; `<code>`, `<markdown>`
+    /// and `<diff>` hold scrollers whose offset only gpui knows.
     CustomElement,
+    /// An `<svg>` that has not been painted yet or whose raster is still being made.
     Svg,
     VirtualList,
     /// Built by a virtual list in layout, after the render.
@@ -152,18 +162,14 @@ pub(crate) enum Exclusion {
     Fixed,
     /// `overflow: scroll` or `auto`.
     Scroller,
-    /// `overflow: hidden`, which has a scroll offset JS can set.
-    OverflowHidden,
     /// `layout` prop: moves by an offset of its own.
     LayoutAnimation,
     /// Built as part of a paragraph's line.
     AtomicInline,
-    /// A `<label>` reads the control it names, which is not in its subtree.
-    Label,
 }
 
 impl Exclusion {
-    const ALL: [Exclusion; 17] = [
+    const ALL: [Exclusion; 15] = [
         Self::PaintReporter,
         Self::ContainerQuery,
         Self::Highlight,
@@ -177,10 +183,8 @@ impl Exclusion {
         Self::Sticky,
         Self::Fixed,
         Self::Scroller,
-        Self::OverflowHidden,
         Self::LayoutAnimation,
         Self::AtomicInline,
-        Self::Label,
     ];
 
     fn name(self) -> &'static str {
@@ -198,10 +202,8 @@ impl Exclusion {
             Self::Sticky => "sticky",
             Self::Fixed => "fixed",
             Self::Scroller => "scroller",
-            Self::OverflowHidden => "overflow-hidden",
             Self::LayoutAnimation => "layout-animation",
             Self::AtomicInline => "atomic-inline",
-            Self::Label => "label",
         }
     }
 }
@@ -946,6 +948,10 @@ mod tests {
         El { id, parent: Some(parent), element_type: "text", style: "{}", text: Some(content), props: Vec::new() }
     }
 
+    fn typed(id: u64, parent: u64, element_type: &'static str, style: &'static str) -> El {
+        El { id, parent: Some(parent), element_type, style, text: None, props: Vec::new() }
+    }
+
     fn with(mut element: El, key: &'static str, value: serde_json::Value) -> El {
         element.props.push((key, value));
         element
@@ -1071,6 +1077,18 @@ mod tests {
                 Default::default(),
             );
             self.assert_sound(cx);
+        }
+
+        fn set_prop(&self, id: u64, key: &str, value: serde_json::Value) {
+            self.tree.lock().unwrap().set_custom_prop(id, key.to_owned(), value);
+        }
+
+        /// How many elements the last frames counted under `reason`.
+        fn counted(reason: &str) -> u64 {
+            crate::perf_counters::retain_reasons()
+                .iter()
+                .find(|(name, _)| name == reason)
+                .map_or(0, |(_, count)| *count)
         }
 
         fn set_style(&self, id: u64, style: &str) {
@@ -1259,5 +1277,213 @@ mod tests {
         scene.window.update(cx, |_, window, _| window.blur()).unwrap();
         scene.settle(cx);
         assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    const HIDDEN_CARD: &str = r#"{"height": 60, "overflow": "hidden"}"#;
+
+    /// `page` with lines taller than their card, so a hidden card has something to scroll.
+    fn page_with_tall_lines(card_styles: [&'static str; 3]) -> Vec<El> {
+        let mut elements = page(card_styles);
+        for element in &mut elements {
+            if element.style == r#"{"height": 10}"# {
+                element.style = r#"{"height": 30}"#;
+            }
+        }
+        elements
+    }
+
+    #[gpui::test]
+    fn a_hidden_overflow_is_retained_until_script_moves_what_it_clips(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::new(cx, page_with_tall_lines([HIDDEN_CARD, CARD, CARD]));
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1], "the clipping card is no obstacle");
+        crate::perf_counters::reset();
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.scroll_handles[&10].set_offset(gpui::point(gpui::px(0.0), gpui::px(-20.0)));
+            })
+            .unwrap();
+        scene.draw(cx);
+        // The card read a new offset, and its lines sit somewhere else because of it.
+        assert_eq!(scene.roots(cx), vec![20, 30]);
+        assert_eq!(Scene::counted("changed:scroll"), 1);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    /// The page, and under it a label of the control `email`, then the control.
+    fn labelled_input() -> Vec<El> {
+        let mut elements = page([CARD; 3]);
+        elements.push(with(div(40, Some(1), r#"{"height": 20}"#), "id", serde_json::json!("row")));
+        elements.push(with(typed(41, 1, "label", r#"{"height": 10}"#), "htmlFor", serde_json::json!("email")));
+        elements.push(text(42, 41, "Email"));
+        elements.push(with(typed(43, 1, "input", r#"{"height": 20}"#), "id", serde_json::json!("email")));
+        elements
+    }
+
+    #[gpui::test]
+    fn a_label_is_retained_and_changes_when_the_control_it_names_stops_taking_its_click(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let scene = Scene::new(cx, labelled_input());
+        scene.settle(cx);
+        // An input rebuilds itself every frame, so the page above it is the spine.
+        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40, 41]);
+        crate::perf_counters::reset();
+        scene.set_prop(43, "disabled", serde_json::json!(true));
+        scene.draw(cx);
+        // The label's own subtree is untouched. What it reads of the control is whether a click
+        // on it goes anywhere, which is in its shape, and the shape of what it holds follows it.
+        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40]);
+        assert_eq!(Scene::counted("changed:shape"), 2);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40, 41]);
+        scene.set_prop(43, "disabled", serde_json::json!(false));
+        scene.draw(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40]);
+    }
+
+    #[gpui::test]
+    fn an_element_an_aria_reference_names_changes_when_the_reference_does(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD; 3]);
+        elements.push(with(typed(40, 1, "div", r#"{"height": 20}"#), "id", serde_json::json!("hint")));
+        elements.push(text(41, 40, "Be brief"));
+        elements.push(typed(50, 1, "div", r#"{"height": 20}"#));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+        crate::perf_counters::reset();
+        scene.set_prop(50, "aria-describedby", serde_json::json!("hint"));
+        scene.draw(cx);
+        // 40 is named by 50 now and gets a node for it, with nothing of its own having changed.
+        // Its text is keyed by the shape it sits in.
+        assert_eq!(Scene::counted("changed:shape"), 2);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    fn icon(size: &'static str, motion: Option<serde_json::Value>) -> Vec<El> {
+        let mut elements = page([CARD; 3]);
+        elements.push(typed(40, 1, "svg", size));
+        let mut circle = with(
+            with(typed(41, 40, "circle", "{}"), "cx", serde_json::json!(12)),
+            "r",
+            serde_json::json!(6),
+        );
+        if let Some(motion) = motion {
+            circle = with(circle, "motion", motion);
+        }
+        elements.push(circle);
+        elements
+    }
+
+    const SMALL_ICON: &str = r##"{"width": 24, "height": 24, "color": "#336699"}"##;
+
+    #[gpui::test]
+    fn an_svg_is_retained_once_it_has_been_painted(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::new(cx, icon(SMALL_ICON, None));
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+        scene.set_prop(41, "r", serde_json::json!(8));
+        scene.draw(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn an_svg_whose_shapes_move_is_changed_every_frame_of_it(cx: &mut gpui::TestAppContext) {
+        let elements = icon(
+            SMALL_ICON,
+            Some(serde_json::json!({
+                "generation": 1,
+                "initial": { "r": 2.0 },
+                "animate": { "r": 10.0 },
+                "transition": { "duration": 600.0, "ease": "linear" }
+            })),
+        );
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        crate::perf_counters::reset();
+        for _ in 0..4 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.draw(cx);
+            // The circle is never built as an element; its animated attributes reach the svg
+            // as part of the XML, and the svg is the one that changes.
+            assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        }
+        assert!(Scene::counted("changed:shape") >= 4, "{:?}", crate::perf_counters::retain_reasons());
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(2000.0)).unwrap();
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1], "it came to rest");
+    }
+
+    #[gpui::test]
+    fn an_svg_too_big_to_raster_in_paint_is_not_retained_until_the_raster_lands(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::new(cx, icon(r#"{"width": 300, "height": 200}"#, None));
+        crate::perf_counters::reset();
+        scene.draw(cx);
+        assert!(Scene::counted("excluded:svg") >= 1, "{:?}", crate::perf_counters::retain_reasons());
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        cx.run_until_parked();
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn an_img_is_retained_once_it_has_loaded_and_changes_when_script_hands_it_an_image(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let mut elements = page([CARD; 3]);
+        elements.push(with(
+            typed(40, 1, "img", r#"{"width": 16, "height": 16}"#),
+            "src",
+            serde_json::json!("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%2F%3E"),
+        ));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+        crate::perf_counters::reset();
+        scene
+            .window
+            .update(cx, |view, window, cx| {
+                view.set_image_pixels(
+                    40,
+                    1,
+                    1,
+                    vec![255; 4],
+                    crate::custom_elements::img::PixelFormat::Rgba,
+                    window,
+                    cx,
+                )
+                .unwrap();
+            })
+            .unwrap();
+        // The app draws as soon as the image is set.
+        scene.assert_sound(cx);
+        // Nothing in the tree moved: the source is what the element keeps for itself.
+        assert_eq!(Scene::counted("changed:shape"), 1, "{:?}", crate::perf_counters::retain_reasons());
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn an_img_still_loading_and_an_input_are_never_retained(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD; 3]);
+        elements.push(with(
+            typed(40, 1, "img", r#"{"width": 16, "height": 16}"#),
+            "src",
+            serde_json::json!("blob:never-arrives"),
+        ));
+        elements.push(typed(41, 1, "input", r#"{"height": 20}"#));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        crate::perf_counters::reset();
+        scene.draw(cx);
+        assert_eq!(Scene::counted("excluded:custom-element"), 2);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
     }
 }

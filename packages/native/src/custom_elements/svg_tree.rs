@@ -88,6 +88,8 @@ struct Node<'a> {
 #[derive(Default)]
 pub(crate) struct SvgTrees {
     cache: HashMap<u64, Cached>,
+    /// Counts the markups made, so no two have the same generation.
+    made: u64,
 }
 
 struct Cached {
@@ -96,6 +98,7 @@ struct Cached {
     /// What the colours in `markup` resolved in.
     colors: ColorContext,
     markup: Arc<str>,
+    generation: u64,
 }
 
 impl SvgTrees {
@@ -132,6 +135,7 @@ impl SvgTrees {
             children,
         };
         let markup: Arc<str> = serialize(&root, colors).into();
+        self.made += 1;
         self.cache.insert(
             svg_id,
             Cached {
@@ -139,9 +143,16 @@ impl SvgTrees {
                 animation,
                 colors: *colors,
                 markup: markup.clone(),
+                generation: self.made,
             },
         );
         Some(markup)
+    }
+
+    /// Names the markup `markup` last returned for `svg_id`: it differs from the one before it
+    /// whenever the XML was written again, which is the only way it changes. 0 without markup.
+    pub(crate) fn generation(&self, svg_id: u64) -> u64 {
+        self.cache.get(&svg_id).map_or(0, |cached| cached.generation)
     }
 
     pub(crate) fn retain(&mut self, mut is_live: impl FnMut(u64) -> bool) {

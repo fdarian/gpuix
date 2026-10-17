@@ -212,6 +212,12 @@ impl SvgPaint {
         self.shown = Some(Shown { key, image });
     }
 
+    /// Something was painted and nothing is on its way: painting the same box again would draw the
+    /// image already shown. While a job runs, or before the first paint, it would not.
+    pub fn settled(&self) -> bool {
+        self.shown.is_some() && self.running.is_none() && self.inbox.borrow().is_none()
+    }
+
     /// Drops the image held, for an `<svg>` that has nothing left to paint.
     pub fn clear(&mut self, drop_image: impl FnOnce(Arc<RenderImage>)) {
         self.running = None;

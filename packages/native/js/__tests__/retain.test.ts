@@ -54,19 +54,31 @@ describe.skipIf(!hasNativeTestRenderer)("native retain counters", () => {
 
   it("counts an element that cannot be reused under the reason, and counts it as reusable once the reason is lifted", () => {
     const renderer = mount()
+    renderer.applyBatch(JSON.stringify([["setStyle", 20, { height: 40, overflow: "scroll" }]]))
+    renderer.flush()
+    renderer.flush()
+    renderer.resetBuildCounters()
+    renderer.flush()
+    expect(reasons(renderer)["excluded:scroller"]).toBeGreaterThan(0)
+    renderer.setRetainLift(["scroller"])
+    renderer.flush()
+    renderer.resetBuildCounters()
+    renderer.flush()
+    const counters = renderer.getBuildCounters()
+    expect(reasons(renderer)["excluded:scroller"]).toBeUndefined()
+    expect(counters.retainableElements).toBe(counters.elementsBuilt)
+  })
+
+  it("does not count an overflow: hidden element as an obstacle", () => {
+    const renderer = mount()
     renderer.applyBatch(JSON.stringify([["setStyle", 20, { height: 40, overflow: "hidden" }]]))
     renderer.flush()
     renderer.flush()
     renderer.resetBuildCounters()
     renderer.flush()
-    expect(reasons(renderer)["excluded:overflow-hidden"]).toBeGreaterThan(0)
-    renderer.setRetainLift(["overflow-hidden"])
-    renderer.flush()
-    renderer.resetBuildCounters()
-    renderer.flush()
     const counters = renderer.getBuildCounters()
-    expect(reasons(renderer)["excluded:overflow-hidden"]).toBeUndefined()
     expect(counters.retainableElements).toBe(counters.elementsBuilt)
+    expect(counters.retainMismatches).toBe(0)
   })
 
   it("rejects an exclusion it does not know", () => {

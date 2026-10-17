@@ -179,9 +179,7 @@ function frames(root: TestRoot, name: string, run: () => number): RetainCounters
 
 /** Exclusions lifted one step after another, to see what each is worth. */
 const LIFTS: [string, string[]][] = [
-  ['overflow-hidden', ['overflow-hidden']],
-  ['+svg', ['svg']],
-  ['+custom-element +label', ['custom-element', 'label']],
+  ['+custom-element', ['custom-element']],
   ['+scroller +display-contents +container-query +paint-reporter', ['scroller', 'display-contents', 'container-query', 'paint-reporter']],
 ]
 

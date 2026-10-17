@@ -90,6 +90,27 @@ where
     el
 }
 
+/// What `apply_accessibility` reads of the elements around `host_id` rather than of it: the labels
+/// that name it, the elements whose `aria-*` reference names it, the control it activates. None for
+/// the many elements nothing links to. It is in the retained key, because none of it is in the
+/// element's own subtree.
+pub(crate) fn links_key(host_id: u64) -> Option<u64> {
+    let links = links::current();
+    let labels = links.labels_of(host_id);
+    let referenced = links.referenced_text(host_id);
+    let author_id = links.label_author_id(host_id);
+    let control = links.control_of(host_id);
+    if labels.is_none() && referenced.is_none() && author_id.is_none() && control.is_none() {
+        return None;
+    }
+    let mut fp = crate::retain::Fingerprint::new();
+    fp.hash(&labels);
+    fp.hash(&referenced);
+    fp.hash(&author_id);
+    fp.hash(&control);
+    Some(fp.finish())
+}
+
 /// `aria-label`, or `alt` when that is empty. Used by `<img>`.
 pub(crate) fn apply_image_label<E>(
     el: E,

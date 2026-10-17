@@ -109,6 +109,10 @@ pub struct ImgElement {
     /// `setImagePixels` or `setImage` last put there, and `src: null` has
     /// nothing to take away from it.
     has_src: bool,
+    /// Counts the changes of source, the ones that do not come with a prop too (`setImage`).
+    epoch: u64,
+    /// The image last rendered has more than one frame: gpui steps it while painting.
+    animated: bool,
 }
 
 impl ImgElement {
@@ -119,6 +123,7 @@ impl ImgElement {
         self.decoded = None;
         self.awaiting_outcome = !src.is_empty();
         self.source = resolve_src(src);
+        self.epoch += 1;
     }
 
     /// The image this element has in the atlas, if any.
@@ -519,6 +524,7 @@ impl CustomElement for ImgElement {
         };
         let natural = natural_size(&image);
         self.report(ctx.id, ctx.events, ctx.event_callback, cx, Ok(natural));
+        self.animated = image.frame_count() > 1;
         if !matches!(self.source, ImgSource::Render(_)) {
             self.painted = Some(image.clone());
         }
@@ -593,6 +599,7 @@ impl CustomElement for ImgElement {
                 let message = value.get("message").and_then(|message| message.as_str());
                 if let (ImgSource::Pending, Some(message)) = (&self.source, message) {
                     self.source = ImgSource::Failed(message.to_string());
+                    self.epoch += 1;
                 }
             }
             _ => {}
@@ -644,7 +651,19 @@ impl CustomElement for ImgElement {
         self.source = ImgSource::Render(image);
         self.painted = None;
         self.decoded = None;
+        self.epoch += 1;
         previous
+    }
+
+    /// Once its source has loaded and `load` or `error` has been reported, what it paints is its
+    /// source, which only a change of source replaces. Until then the asset arriving is something
+    /// only `render` notices, and a GIF is stepped by the paint.
+    fn retain_state(&self) -> Option<u64> {
+        let settled = !self.awaiting_outcome
+            && self.dropped.is_empty()
+            && !self.animated
+            && !matches!(self.source, ImgSource::Pending);
+        settled.then_some(self.epoch)
     }
 }
 
@@ -764,6 +783,8 @@ pub struct SvgElement {
     source: Option<std::sync::Arc<[u8]>>,
     /// Shared with the paint closure, which runs after `render` returns.
     paint: std::rc::Rc<std::cell::RefCell<super::svg_paint::SvgPaint>>,
+    /// The last render had a document to paint.
+    drawing: bool,
 }
 
 impl SvgElement {
@@ -871,6 +892,7 @@ impl CustomElement for SvgElement {
             Some(markup) => Some(std::sync::Arc::from(markup.as_bytes())),
             None => self.source.clone().or_else(|| self.bytes.clone()),
         };
+        self.drawing = bytes.is_some();
         if let Some(bytes) = bytes {
             let paint = self.paint.clone();
             let renderer = cx.svg_renderer();
@@ -919,6 +941,13 @@ impl CustomElement for SvgElement {
 
     fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
         self.paint.borrow().held().into_iter().collect()
+    }
+
+    /// What it paints is its document, drawn at its box in its colour. Both are in the key, and
+    /// the raster of a big document is a job that lands in some later paint, so until one has
+    /// been shown and none is running it is not the same as the last paint.
+    fn retain_state(&self) -> Option<u64> {
+        (!self.drawing || self.paint.borrow().settled()).then_some(0)
     }
 }
 
