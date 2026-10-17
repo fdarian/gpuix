@@ -1,3 +1,6 @@
+import fs from "fs"
+import os from "os"
+import path from "path"
 import { createEffect, createSignal } from "solid-js"
 import { describe, expect, it } from "bun:test"
 import {
@@ -14,6 +17,10 @@ import {
 import type { MotionValue } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { TestRenderer } from "../testing.js"
+import { readLogicalPixels } from "./pixels.js"
+import type { Pixels } from "./pixels.js"
+
+const shots = fs.mkdtempSync(path.join(os.tmpdir(), "gpuix-solid-motion-values-"))
 
 const linear = { duration: 1, ease: "linear" } as const
 
@@ -476,6 +483,201 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion values in style", () => {
       spring.set("calc(100% - 20px)")
       for (let i = 0; i < 200; i++) frame(app.renderer, 16)
       expect(sizeOf(app.renderer, "sprung").width).toBe(380)
+    })
+  })
+
+  describe("a multi-value string", () => {
+    /** The padding box's insets as the inner box sees them, and the box's own size. */
+    function insets(renderer: TestRenderer, box = "box", inner = "inner") {
+      renderer.dispatchNativeEvents()
+      const outer = renderer.getElementBounds(renderer.findByTestId(box)!.id)!
+      const inside = renderer.getElementBounds(renderer.findByTestId(inner)!.id)!
+      return { x: inside.x - outer.x, y: inside.y - outer.y, width: outer.width, height: outer.height }
+    }
+
+    function mountPadded(padding: MotionValue<string>) {
+      const app = createTestRoot({ width: 400, height: 300 })
+      app.renderer.clockPause()
+      app.render(() => (
+        <div style={row}>
+          <div testId="box" style={{ fontSize: 16, padding }}>
+            <div testId="inner" style={{ width: 20, height: 20 }} />
+          </div>
+        </div>
+      ))
+      return app.renderer
+    }
+
+    it("binds '0.5em 0.75em' to padding as 8px above and below and 12px at the sides", () => {
+      const padding = motionValue("0.5em 0.75em")
+      const renderer = mountPadded(padding)
+      expect(insets(renderer)).toEqual({ x: 12, y: 8, width: 44, height: 36 })
+      expect(padding.get()).toBe("8px 12px")
+
+      padding.set("1px 2px 3px 4px")
+      renderer.flush()
+      expect(insets(renderer)).toEqual({ x: 4, y: 1, width: 26, height: 24 })
+    })
+
+    it("animates padding from '0.5em 0.75em' to '1em 1.5em' with each axis on its own value", () => {
+      const padding = motionValue("0.5em 0.75em")
+      const renderer = mountPadded(padding)
+      animate(padding, "1em 1.5em", linear)
+      frame(renderer, 500)
+      const middle = insets(renderer)
+      expect(middle.y).toBeCloseTo(12, 0)
+      expect(middle.x).toBeCloseTo(18, 0)
+      expect(middle.width).toBeCloseTo(20 + 2 * 18, 0)
+      expect(middle.height).toBeCloseTo(20 + 2 * 12, 0)
+      expect(padding.get()).toBe("12px 18px")
+
+      frame(renderer, 1000)
+      expect(insets(renderer)).toEqual({ x: 24, y: 16, width: 68, height: 52 })
+      expect(padding.get()).toBe("16px 24px")
+    })
+
+    it("maps through createTransform and springs to a multi-value string", () => {
+      const app = createTestRoot({ width: 400, height: 300 })
+      app.renderer.clockPause()
+      let x!: MotionValue<number>
+      let spring!: MotionValue<string>
+      app.render(() => {
+        x = createMotionValue(0)
+        const mapped = createTransform(x, [0, 1], ["0px 0px", "16px 24px"])
+        spring = createSpring("0px 0px", { stiffness: 300, damping: 30 })
+        return (
+          <div style={row}>
+            <div testId="box" style={{ padding: mapped }}>
+              <div testId="inner" style={{ width: 20, height: 20 }} />
+            </div>
+            <div testId="other" style={{ padding: spring }}>
+              <div testId="inside" style={{ width: 20, height: 20 }} />
+            </div>
+          </div>
+        )
+      })
+      x.set(0.5)
+      app.renderer.flush()
+      expect(insets(app.renderer)).toMatchObject({ x: 12, y: 8 })
+
+      spring.set("16px 24px")
+      for (let i = 0; i < 200; i++) frame(app.renderer, 16)
+      expect(insets(app.renderer, "other", "inside")).toMatchObject({ x: 24, y: 16 })
+    })
+
+    it("fills a one-value string out to the shorthand's sides when it animates to two", () => {
+      const padding = motionValue("8px")
+      const renderer = mountPadded(padding)
+      expect(insets(renderer)).toMatchObject({ x: 8, y: 8 })
+      animate(padding, "8px 16px", linear)
+      frame(renderer, 500)
+      expect(insets(renderer).y).toBeCloseTo(8, 0)
+      expect(insets(renderer).x).toBeCloseTo(12, 0)
+      frame(renderer, 1000)
+      expect(insets(renderer)).toMatchObject({ x: 16, y: 8 })
+      expect(padding.get()).toBe("8px 16px")
+    })
+
+    it("jumps at the halfway point between strings no shorthand could fill out alike", () => {
+      const app = createTestRoot({ width: 400, height: 300 })
+      app.renderer.clockPause()
+      const list = motionValue("1px 2px")
+      app.render(() => <div testId="box" style={{ padding: list }} />)
+      animate(list, "1px 2px 3px 4px 5px", linear)
+      frame(app.renderer, 400)
+      expect(list.get()).toBe("1px 2px")
+      frame(app.renderer, 400)
+      expect(list.get()).toBe("1px 2px 3px 4px 5px")
+    })
+
+    it("binds to gap as the row gap and the column gap", () => {
+      const app = createTestRoot({ width: 400, height: 300 })
+      app.renderer.clockPause()
+      const gap = motionValue("4px 9px")
+      app.render(() => (
+        <div testId="grid" style={{ display: "flex", flexWrap: "wrap", width: 40, gap }}>
+          <div testId="a" style={{ width: 20, height: 10 }} />
+          <div testId="b" style={{ width: 20, height: 10 }} />
+          <div testId="c" style={{ width: 20, height: 10 }} />
+        </div>
+      ))
+      const at = (id: string) => app.renderer.getElementBounds(app.renderer.findByTestId(id)!.id)!
+      expect(at("b").y - at("a").y).toBe(10 + 4)
+      gap.set("4px 0px")
+      app.renderer.flush()
+      expect(at("b").x - at("a").x).toBe(20)
+      expect(at("b").y).toBe(at("a").y)
+    })
+
+    it("paints borderColor 'red blue' with the top and bottom red and the sides blue", () => {
+      const app = createTestRoot({ width: 200, height: 200 })
+      const renderer = app.renderer
+      renderer.clockPause()
+      const file = path.join(shots, "motion-value-border-color.png")
+      const color = motionValue("#000000 #000000")
+      app.render(() => (
+        <div
+          style={{ width: 80, height: 80, borderStyle: "solid", borderWidth: 20, backgroundColor: "#ffffff", borderColor: color }}
+        />
+      ))
+      const sample = () => {
+        renderer.dispatchNativeEvents()
+        renderer.captureScreenshot(file)
+        return readLogicalPixels(file, renderer)
+      }
+      const top = (pixels: Pixels) => pixels.at(60, 10).slice(0, 3)
+      const left = (pixels: Pixels) => pixels.at(10, 60).slice(0, 3)
+      expect(top(sample())).toEqual([0, 0, 0])
+
+      animate(color, "red blue", linear)
+      frame(renderer, 1000)
+      const done = sample()
+      expect(top(done)).toEqual([255, 0, 0])
+      expect(left(done)).toEqual([0, 0, 255])
+      expect(done.at(60, 70).slice(0, 3)).toEqual([255, 0, 0])
+      expect(done.at(70, 60).slice(0, 3)).toEqual([0, 0, 255])
+      expect(color.get()).toMatch(/^rgba\(255\.000, 0\.000, 0\.000, 1\.00000\) rgba\(0\.000, 0\.000, 255\.000, 1\.00000\)$/)
+    })
+
+    it("paints borderRadius '10px / 20px' animating to '30px / 40px' through a 20px by 30px corner", () => {
+      const app = createTestRoot({ width: 280, height: 220 })
+      const renderer = app.renderer
+      renderer.clockPause()
+      const MARGIN = 40
+      const radius = motionValue("10px / 20px")
+      app.render(() => (
+        <div style={{ width: 280, height: 220, padding: MARGIN, backgroundColor: "#ffffff" }}>
+          <div style={{ width: 200, height: 140, backgroundColor: "#ff0000", borderRadius: radius }} />
+        </div>
+      ))
+      const file = path.join(shots, "motion-value-radius.png")
+      const painted = (pixels: Pixels, x: number, y: number) => {
+        const [r, g, b] = pixels.at(MARGIN + x, MARGIN + y)
+        if (r > 200 && g < 60 && b < 60) return true
+        if (r > 240 && g > 240 && b > 240) return false
+        throw new Error(`(${x}, ${y}) is neither the fill nor the page: ${[r, g, b]}`)
+      }
+      const shot = () => {
+        renderer.dispatchNativeEvents()
+        renderer.captureScreenshot(file)
+        return readLogicalPixels(file, renderer)
+      }
+
+      animate(radius, "30px / 40px", linear)
+      frame(renderer, 500)
+      const middle = shot()
+      expect(painted(middle, 8, 12)).toBe(true)
+      expect(painted(middle, 1, 13)).toBe(false)
+      expect(painted(middle, 4, 8)).toBe(false)
+      expect(painted(middle, 20, 2)).toBe(true)
+      expect(painted(middle, 199 - 8, 139 - 12)).toBe(true)
+      expect(painted(middle, 199 - 1, 139 - 13)).toBe(false)
+      expect(radius.get()).toBe("20px / 30px")
+
+      frame(renderer, 1000)
+      const done = shot()
+      expect(painted(done, 12, 16)).toBe(true)
+      expect(painted(done, 3, 8)).toBe(false)
     })
   })
 })
