@@ -3070,11 +3070,12 @@ A `<span>` with a `tabIndex` is focusable like any element, and stays inline:
 `:focus-visible`) and `focusWithin` (while it or a span inside it has focus) are
 style variants of a span like of any element, and `focusVisible` wins over
 `focusWithin`, which wins over `hover` and `active`. The properties an inline box
-can set change its run, and `outlineWidth`, `outlineColor` and `outlineOffset`
-draw a focus ring. The base style, `hover` and `active` can declare an outline too:
+can set change its run, and `outline` (or `outlineWidth`, `outlineStyle`,
+`outlineColor` and `outlineOffset`) draws a focus ring. The base style, `hover` and
+`active` can declare an outline too:
 
 ```tsx
-<span tabIndex={0} style={{ focusVisible: { outlineWidth: 2, outlineColor: '#89b4fa', outlineOffset: 2 } }}>
+<span tabIndex={0} style={{ focusVisible: { outline: '2px solid #89b4fa', outlineOffset: 2 } }}>
   docs
 </span>
 ```
@@ -3086,9 +3087,9 @@ draw a focus ring. The base style, `hover` and `active` can declare an outline t
   by the clip of the paragraph (an `overflow` above it) and nothing else.
 - The ring of a nested span is its own: focusing the span inside another one
   rings the inner span only, unless the outer one declares `focusWithin`.
-- An outline needs a colour, as on an element: `outlineWidth` alone draws nothing.
-  The ring follows the span's `borderRadius`, and there is no `outline`
-  shorthand.
+- An outline needs a style, as on an element: `outlineWidth` and `outlineColor`
+  alone draw nothing (see [Outline](#outline)). The ring follows the span's
+  `borderRadius`.
 - **Deviation: a span is never dimmed.** While a control has keyboard focus the
   other focusables dim ([Focus styles](#focus-styles)). A focused span starts that
   dim for the elements, like any control, but a span is not dimmed when another
@@ -5800,7 +5801,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outlineWidth`, `outlineColor`, `outlineOffset`
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
 ### Lengths
 
@@ -6974,7 +6975,7 @@ than from the live input device:
   style={{
     borderRadius: 8,
     backgroundColor: '#313244',
-    focusVisible: { outlineWidth: 2, outlineColor: '#89b4fa', outlineOffset: 2 },
+    focusVisible: { outline: '2px solid #89b4fa', outlineOffset: 2 },
   }}
 />
 ```
@@ -7005,7 +7006,7 @@ Tab  ► [ Save ]  (dim New)  (dim Search)  (dim input)
 
 ```tsx
 <div tabIndex={0} style={{
-  focusVisible: { outlineWidth: 2, outlineColor: '#89b4fa' }, // when focused
+  focusVisible: { outline: '2px solid #89b4fa' },             // when focused
 }} />                                                         // dims otherwise
 <div tabIndex={0} style={{ keyboardFocusDim: false }} />      // never dims
 ```
@@ -7018,12 +7019,33 @@ Tab  ► [ Save ]  (dim New)  (dim Search)  (dim input)
 render(<App />, { keyboardFocusDim: false })
 ```
 
-**Outline, not border.** `outlineWidth`, `outlineColor` and `outlineOffset` draw
-a line outside the border box, like CSS `outline`. They take any
-[length](#lengths) without a `%`. It takes **no layout space**,
-so a ring you add with `focusVisible` moves nothing. A negative offset draws it
-inside. It follows `borderRadius`. A parent with `overflow: "hidden"` clips it,
-like in a browser.
+### Outline
+
+`outline` draws a line outside the border box, like CSS `outline`. It takes **no
+layout space**, so a ring you add with `focusVisible` moves nothing. It follows
+`borderRadius`, and a parent with `overflow: "hidden"` clips it, like in a browser.
+
+```tsx
+<div style={{ outline: '2px solid #89b4fa', outlineOffset: 2 }} />
+<div style={{ outlineStyle: 'dashed', outlineColor: 'red' }} />   // 3px dashed red
+```
+
+- **A style is required.** As in CSS, `outlineStyle` is `none` until `outline` or
+  `outlineStyle` gives one, so `outlineWidth` and `outlineColor` alone draw
+  nothing. With a style, the width defaults to `medium` (3px) and the colour to
+  `currentColor`.
+- **`outline`** is `<width> <style> <colour>` in any order, each part at most
+  once. A part it leaves out is that default. `hidden` throws. `outlineWidth`,
+  `outlineStyle` and `outlineColor` win over it, whatever the key order.
+  `outlineOffset` is not part of it.
+- **Styles.** `solid`, `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset` and
+  `outset`, as for [borders](#borders). `auto` is accepted and paints as `solid`.
+- Width and offset take any [length](#lengths) without a `%`; a negative offset
+  draws the outline inside.
+- **State styles.** A state's `outline` replaces the base's width, style and
+  colour (not the offset). A state's `outlineWidth`, `outlineStyle` or
+  `outlineColor` changes only its own part, so `focusVisible: { outlineColor: 'blue' }`
+  recolours the base's outline.
 
 ### CSS transitions
 
