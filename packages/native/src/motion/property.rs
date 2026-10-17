@@ -11,6 +11,7 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::LinearLength;
+use crate::css::flex::Flex;
 use crate::css::shorthand::{Gap, Sides};
 use crate::css::line_height::LineHeight;
 use crate::layout::aspect_ratio::AspectRatio;
@@ -153,6 +154,27 @@ impl<T: Clone> ShorthandSides<T> for Option<Sides<T>> {
 
     fn left(&self) -> Option<T> {
         self.as_ref().map(|sides| sides.left.clone())
+    }
+}
+
+/// `flex` seen as the longhand a transition reads when it is unset.
+trait ShorthandFlex {
+    fn grow(&self) -> Option<f64>;
+    fn shrink(&self) -> Option<f64>;
+    fn basis(&self) -> Option<DimensionValue>;
+}
+
+impl ShorthandFlex for Option<Flex> {
+    fn grow(&self) -> Option<f64> {
+        self.as_ref().map(|flex| flex.grow)
+    }
+
+    fn shrink(&self) -> Option<f64> {
+        self.as_ref().map(|flex| flex.shrink)
+    }
+
+    fn basis(&self) -> Option<DimensionValue> {
+        self.as_ref().map(|flex| flex.basis.clone())
     }
 }
 
@@ -446,9 +468,9 @@ macro_rules! properties {
 use Initial::{ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
 
 properties! {
-    FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow;
-    FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink;
-    FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis;
+    FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow | flex.grow();
+    FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink | flex.shrink();
+    FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis | flex.basis();
     RowGap "rowGap" Number NonNegative Number(0.0), row_gap | gap.row();
     ColumnGap "columnGap" Number NonNegative Number(0.0), column_gap | gap.column();
 

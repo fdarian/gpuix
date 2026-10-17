@@ -13,6 +13,7 @@ pub(crate) mod color_space;
 pub(crate) mod container_query;
 pub(crate) mod dimension;
 pub(crate) mod filter;
+pub(crate) mod flex;
 pub(crate) mod font_features;
 pub(crate) mod gradient;
 pub(crate) mod length;
@@ -20,6 +21,7 @@ pub(crate) mod line_height;
 pub(crate) mod mask;
 #[cfg(test)]
 mod parse_cost;
+pub(crate) mod place;
 pub(crate) mod position;
 pub(crate) mod shorthand;
 pub(crate) mod syntax;

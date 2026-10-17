@@ -238,6 +238,7 @@ pub(crate) fn outline(style: &StyleDesc, colors: &ColorContext, lengths: &Length
             .outline_offset
             .as_ref()
             .map_or(gpui::px(0.0), |offset| gpui::px(lengths.resolve(offset, 0.0) as f32)),
+        style: gpui::BorderStyle::Solid,
     })
 }
 

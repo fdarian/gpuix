@@ -8903,19 +8903,19 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     fill: crate::style::Fill,
 ) -> E {
     el = crate::layout::style::apply(el, style, colors, lengths);
-    match style.flex_wrap.as_deref() {
+    match style.effective_flex_wrap() {
         Some("wrap") => el = el.flex_wrap(),
         Some("wrap-reverse") => el = el.flex_wrap_reverse(),
         Some("nowrap") => el = el.flex_nowrap(),
         _ => {}
     }
-    if let Some(grow) = style.flex_grow {
+    if let Some(grow) = style.effective_flex_grow() {
         el.style().flex_grow = Some(grow as f32);
     }
-    if let Some(shrink) = style.flex_shrink {
+    if let Some(shrink) = style.effective_flex_shrink() {
         el.style().flex_shrink = Some(shrink as f32);
     }
-    match style.align_items.as_deref() {
+    match style.effective_align_items() {
         Some("center") => el = el.items_center(),
         Some("start") | Some("flex-start") => el = el.items_start(),
         Some("end") | Some("flex-end") => el = el.items_end(),
@@ -8923,7 +8923,7 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         Some("baseline") => el = el.items_baseline(),
         _ => {}
     }
-    match style.align_content.as_deref() {
+    match style.effective_align_content() {
         Some("center") => el = el.content_center(),
         Some("start") | Some("flex-start") => el = el.content_start(),
         Some("end") | Some("flex-end") => el = el.content_end(),
@@ -8934,7 +8934,7 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         Some("normal") => el = el.content_normal(),
         _ => {}
     }
-    match style.justify_content.as_deref() {
+    match style.effective_justify_content() {
         Some("center") => el = el.justify_center(),
         Some("start") | Some("flex-start") => el = el.justify_start(),
         Some("end") | Some("flex-end") => el = el.justify_end(),
@@ -8943,7 +8943,7 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         Some("evenly") | Some("space-evenly") => el = el.justify_evenly(),
         _ => {}
     }
-    match style.align_self.as_deref() {
+    match style.effective_align_self() {
         Some("center") => {
             el.style().align_self = Some(gpui::AlignItems::Center);
         }

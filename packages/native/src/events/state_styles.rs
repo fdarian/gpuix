@@ -155,7 +155,8 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
     overlay_fields!(
         base, over;
         display, visibility,
-        flex_direction, flex_wrap, flex_grow, flex_shrink, flex_basis, align_items, align_self,
+        flex_direction, flex_wrap, flex_grow, flex_shrink, flex_basis, flex, flex_flow, place_items,
+        place_content, place_self, align_items, align_self,
         align_content, justify_content, gap, row_gap, column_gap, grid_template_columns,
         grid_template_rows, grid_column_min, grid_row_min,
         width, height, min_width, min_height, max_width, max_height,
@@ -322,6 +323,27 @@ fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
 /// base longhand would otherwise beat a state style's shorthand.
 fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
     split_border_all_sides(base, over);
+    if over.flex.is_some() {
+        base.flex_grow = None;
+        base.flex_shrink = None;
+        base.flex_basis = None;
+    }
+    if over.flex_flow.is_some() {
+        base.flex_direction = None;
+        base.flex_wrap = None;
+    }
+    if over.place_items.is_some() {
+        base.align_items = None;
+        base.justify_items = None;
+    }
+    if over.place_content.is_some() {
+        base.align_content = None;
+        base.justify_content = None;
+    }
+    if over.place_self.is_some() {
+        base.align_self = None;
+        base.justify_self = None;
+    }
     if over.gap.is_some() {
         base.row_gap = None;
         base.column_gap = None;
@@ -638,6 +660,66 @@ mod tests {
         assert_eq!((hovered.padding, hovered.padding_top), (Some(Sides::all(LinearLength::px(8.0))), Some(LinearLength::px(1.0))));
         let pressed = resolve_state_styles(&base, true, true);
         assert_eq!((pressed.padding, pressed.padding_top), (Some(Sides::all(LinearLength::px(3.0))), Some(LinearLength::px(2.0))));
+    }
+
+    #[test]
+    fn a_state_flex_replaces_the_base_flex_and_resets_the_longhands_it_covers() {
+        let base = style(
+            r##"{
+                "flex": 1, "flexGrow": 5, "flexShrink": 0, "flexBasis": "10px",
+                "hover": { "flex": "2 3 40px" },
+                "active": { "flexGrow": 7 }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!((at_rest.effective_flex_grow(), at_rest.effective_flex_shrink()), (Some(5.0), Some(0.0)));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!((hovered.flex_grow, hovered.flex_shrink, hovered.flex_basis.as_ref()), (None, None, None));
+        assert_eq!(
+            (hovered.effective_flex_grow(), hovered.effective_flex_shrink(), hovered.effective_flex_basis()),
+            (Some(2.0), Some(3.0), Some(&DimensionValue::Pixels(40.0)))
+        );
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.effective_flex_grow(), Some(7.0), "a state longhand beats the base shorthand and longhand");
+        assert_eq!(pressed.flex, base.flex, "and leaves the base shorthand in place");
+    }
+
+    #[test]
+    fn a_state_flex_flow_resets_the_base_direction_and_wrap() {
+        let base = style(
+            r##"{
+                "flexFlow": "row wrap", "flexDirection": "column-reverse",
+                "hover": { "flexFlow": "column nowrap" }, "active": { "flexWrap": "wrap-reverse" }
+            }"##,
+        );
+        assert_eq!(resolve_state_styles(&base, false, false).effective_flex_direction(), Some("column-reverse"));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!((hovered.effective_flex_direction(), hovered.effective_flex_wrap()), (Some("column"), Some("nowrap")));
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!((pressed.effective_flex_direction(), pressed.effective_flex_wrap()), (Some("column-reverse"), Some("wrap-reverse")));
+    }
+
+    #[test]
+    fn a_state_place_shorthand_resets_the_base_longhands_of_its_two_axes() {
+        let base = style(
+            r##"{
+                "placeItems": "start", "alignItems": "end", "justifyItems": "center",
+                "placeContent": "center", "justifyContent": "space-between", "alignContent": "start",
+                "placeSelf": "start", "alignSelf": "end",
+                "hover": { "placeItems": "stretch center", "placeContent": "end", "placeSelf": "center end" },
+                "active": { "alignItems": "baseline" }
+            }"##,
+        );
+        let at_rest = resolve_state_styles(&base, false, false);
+        assert_eq!((at_rest.effective_align_items(), at_rest.effective_justify_items()), (Some("end"), Some("center")));
+        assert_eq!((at_rest.effective_align_self(), at_rest.effective_justify_self()), (Some("end"), Some("start")));
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!((hovered.align_items.as_deref(), hovered.justify_items.as_deref()), (None, None));
+        assert_eq!((hovered.effective_align_items(), hovered.effective_justify_items()), (Some("stretch"), Some("center")));
+        assert_eq!((hovered.effective_align_content(), hovered.effective_justify_content()), (Some("end"), Some("end")));
+        assert_eq!((hovered.effective_align_self(), hovered.effective_justify_self()), (Some("center"), Some("end")));
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!((pressed.effective_align_items(), pressed.effective_justify_items()), (Some("baseline"), Some("center")));
     }
 
     #[test]

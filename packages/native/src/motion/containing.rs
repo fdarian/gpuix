@@ -33,12 +33,12 @@ impl Layout {
         }
         Self::Flex {
             column: matches!(
-                style.flex_direction.as_deref(),
+                style.effective_flex_direction(),
                 Some("column" | "column-reverse")
             ),
-            wrap: matches!(style.flex_wrap.as_deref(), Some("wrap" | "wrap-reverse")),
+            wrap: matches!(style.effective_flex_wrap(), Some("wrap" | "wrap-reverse")),
             stretch: matches!(
-                style.align_items.as_deref(),
+                style.effective_align_items(),
                 None | Some("stretch" | "normal")
             ),
         }
@@ -111,7 +111,7 @@ impl Container {
             Layout::Other => false,
             Layout::Flex { column: true, .. } => true,
             Layout::Flex { wrap: true, .. } => false,
-            Layout::Flex { stretch, .. } => match style.align_self.as_deref() {
+            Layout::Flex { stretch, .. } => match style.effective_align_self() {
                 None | Some("auto" | "normal") => stretch,
                 Some("stretch") => true,
                 Some(_) => false,

@@ -138,10 +138,10 @@ pub(crate) fn apply<E: Styled>(
     el = apply_position(el, style, lengths);
     el = super::stacking::apply_z_index(el, style, colors, lengths);
     el = apply_flex_basis(el, style, lengths);
-    if let Some(value) = style.justify_items.as_deref().and_then(align_items) {
+    if let Some(value) = style.effective_justify_items().and_then(align_items) {
         el.style().justify_items = Some(value);
     }
-    if let Some(value) = style.justify_self.as_deref().and_then(align_items) {
+    if let Some(value) = style.effective_justify_self().and_then(align_items) {
         el.style().justify_self = Some(value);
     }
     el
@@ -151,7 +151,7 @@ pub(crate) fn apply<E: Styled>(
 /// the keyword, like `set_size`. Whether the keyword counts depends on the parent's direction,
 /// which only layout knows.
 fn apply_flex_basis<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
-    let Some(value) = &style.flex_basis else {
+    let Some(value) = style.effective_flex_basis() else {
         return el;
     };
     let refinement = el.style();
@@ -169,7 +169,7 @@ fn apply_flex_basis<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
 }
 
 fn apply_flex_direction<E: Styled>(mut el: E, style: &StyleDesc) -> E {
-    match style.flex_direction.as_deref() {
+    match style.effective_flex_direction() {
         Some("column") => el = el.flex_col(),
         Some("row") => el = el.flex_row(),
         Some("column-reverse") => el = el.flex_col_reverse(),

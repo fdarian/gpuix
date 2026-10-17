@@ -482,6 +482,9 @@ impl std::fmt::Display for DimensionValue {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pixels(pixels) => LinearLength::px(*pixels).fmt(formatter),
+            // A zero length has forgotten whether it was `0px` or `0%`, and only `0%` resolves
+            // against a containing block.
+            Self::Percentage(fraction) if *fraction == 0.0 => formatter.write_str("0%"),
             Self::Percentage(fraction) => LinearLength::percent(*fraction).fmt(formatter),
             Self::Calc(length) => length.fmt(formatter),
             Self::Auto => formatter.write_str("auto"),
@@ -576,6 +579,14 @@ pub struct StyleDesc {
     /// A length (px, `%` of the container's main size, `em`, `calc()`, ...), `auto`, or an
     /// intrinsic size keyword, which only counts along a row flex container's main axis.
     pub flex_basis: Option<DimensionValue>,
+    /// CSS `flex`: a number (`flex: 1` is `1 1 0%`), `none`, `auto`, `initial`, or
+    /// `<grow> <shrink>? || <basis>`. `flexGrow`, `flexShrink` and `flexBasis` win over it.
+    #[serde(default, deserialize_with = "crate::css::flex::deserialize_flex")]
+    pub flex: Option<crate::css::flex::Flex>,
+    /// CSS `flex-flow`: a direction and a wrap, in either order. `flexDirection` and
+    /// `flexWrap` win over it.
+    #[serde(default, deserialize_with = "crate::css::flex::deserialize_flex_flow")]
+    pub flex_flow: Option<crate::css::flex::FlexFlow>,
     pub align_items: Option<String>,
     pub align_self: Option<String>,
     pub align_content: Option<String>,
@@ -590,6 +601,14 @@ pub struct StyleDesc {
     pub order: Option<f64>,
     pub justify_items: Option<String>,
     pub justify_self: Option<String>,
+    /// CSS `place-items`, `place-content` and `place-self`: `<align> <justify>?`, where one
+    /// value is both. The `align-*` and `justify-*` longhands win over them.
+    #[serde(default, deserialize_with = "crate::css::place::deserialize_place_items")]
+    pub place_items: Option<crate::css::place::Place>,
+    #[serde(default, deserialize_with = "crate::css::place::deserialize_place_content")]
+    pub place_content: Option<crate::css::place::Place>,
+    #[serde(default, deserialize_with = "crate::css::place::deserialize_place_self")]
+    pub place_self: Option<crate::css::place::Place>,
 
     // Grid. A template is a column count `n` or a CSS track list.
     pub grid_template_columns: Option<GridTemplateValue>,
