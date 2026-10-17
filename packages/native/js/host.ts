@@ -71,8 +71,8 @@ export * from "./universal-style.js"
  * `calc()` of them with `+`, `-` and `*` or `/` by numbers (`"calc(100% - 20px)"`), plus
  * `"auto"`, `"anchor-size(...)"` and the size keywords (`"min-content"`, `"max-content"`,
  * `"fit-content"`) where the property accepts them. Resolved natively on
- * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates only
- * a number of px or a percentage (a number of px alone for `fontSize`, `padding`, `gap`, the border widths and the outline).
+ * every layout, so `vw` follows a resize and `em` follows `fontSize`. Motion animates every
+ * length: see `MotionStyle`.
  */
 export type DimensionValue = number | string
 
@@ -99,9 +99,20 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
  * `borderRadius` and `gap` shorthands, which expand to their longhands.
  * Discrete properties (`display`, `position`, ...) are an error.
  *
- * `width`, `height` and the min/max sizes move between px and `%` (a share of
- * the parent's content box, or of the window for a root), and settle on the
- * unit they were given. `width` and `height` also take `"auto"`, the size the content
+ * A length is its px and its percentage, whatever it is written as, and two lengths
+ * blend part by part, as Chrome blends them: `calc(100% - 20px)` to `calc(50% + 10px)`
+ * is `calc(75% - 5px)` halfway, and `20px` to `50%` is `calc(10px + 25%)`. `em`, `rem`
+ * and the viewport units are px by then, from the element's font size and the window.
+ * The percentage stays a share of its basis (the containing block, or the border box for
+ * a corner radius), so a parent that resizes mid-animation is followed exactly, and a
+ * spring or a retarget keeps its speed on each part. This holds for the sizes, the
+ * insets, the margins, `padding`, `flexBasis`, the gaps, the border widths, `outlineWidth`,
+ * `outlineOffset`, the corner radii and `fontSize`. Where CSS takes no percentage (the
+ * border widths and the outline) a percentage is an error; a `fontSize` percentage is of
+ * the parent's font size, so it is px. A target that is negative whatever the basis is an
+ * error, and one that only comes out negative is clamped. A radius moves as a circular
+ * corner (`"50%"` is an ellipse on a wide box, as in CSS); a multi-value `borderRadius`,
+ * `padding` or `margin` string is not a target. `width` and `height` also take `"auto"`, the size the content
  * wants (the min and max sizes do not). The width is measured by an extra layout of the
  * tree while the element animates it, one frame late like the height. The size keywords
  * (`min-content` and the like) are an error, and a CSS transition or animation to or from
@@ -183,17 +194,10 @@ export type MotionStyleTargets = Pick<
   minHeight?: MotionLength
   maxWidth?: MotionLength
   maxHeight?: MotionLength
-  /** A radius moves as a circular number of px, so a percentage or elliptical
-   *  `borderRadius` is not a target. */
-  borderRadius?: number
-  borderTopLeftRadius?: number
-  borderTopRightRadius?: number
-  borderBottomLeftRadius?: number
-  borderBottomRightRadius?: number
 }
 
-/** Pixels, or a percentage string such as `"50%"`. */
-export type MotionLength = number | `${number}%`
+/** Pixels, or a CSS length such as `"50%"`, `"1.5em"` or `"calc(100% - 20px)"`. */
+export type MotionLength = DimensionValue
 
 /**
  * `StyleDesc` where each animatable property may hold a motion value instead.

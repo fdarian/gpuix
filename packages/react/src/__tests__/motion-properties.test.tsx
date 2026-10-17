@@ -296,10 +296,11 @@ describeNative("motion properties", () => {
         render(<Panel parent={{}} />)
         expect(boundsOf(renderer, "panel").height).toBe(0)
 
+        // The blend from 0 has a percentage in it, which an auto parent cannot
+        // resolve, so the height is auto from the first frame on, as in Chrome.
         renderer.clockFastForward(500)
-        expect(boundsOf(renderer, "panel").height).toBeCloseTo(40, 0)
+        expect(boundsOf(renderer, "panel").height).toBe(80)
 
-        // 50% of an auto parent is auto, so it ends at the content.
         renderer.clockFastForward(1000)
         expect(boundsOf(renderer, "panel").height).toBe(80)
       })
@@ -332,6 +333,120 @@ describeNative("motion properties", () => {
 
         renderer.clockFastForward(1000)
         expect(boundsOf(renderer, "panel").height).toBe(100)
+      })
+    })
+
+    describe("lengths that mix units", () => {
+      const Bar = (props: {
+        parent?: number
+        from: number | string
+        to: number | string
+        fontSize?: number
+      }) => (
+        <div style={{ display: "flex", flexDirection: "column", width: props.parent ?? 400 }}>
+          <motion.div
+            testId="bar"
+            initial={{ width: props.from }}
+            animate={{ width: props.to }}
+            transition={linear}
+            style={{ height: 10, fontSize: props.fontSize }}
+          />
+        </div>
+      )
+
+      it("blends calc() to calc() part by part, and a parent that resizes mid-animation stays exact", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 800, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+        const bar = <Bar from="calc(100% - 20px)" to="calc(50% + 10px)" />
+
+        renderer.clockPause()
+        render(bar)
+        expect(boundsOf(renderer, "bar").width).toBe(380)
+
+        // calc(75% - 5px) of 400px.
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "bar").width).toBeCloseTo(295, 0)
+
+        // The same blend of the new basis: calc(75% - 5px) of 600px.
+        render(<Bar parent={600} from="calc(100% - 20px)" to="calc(50% + 10px)" />)
+        expect(boundsOf(renderer, "bar").width).toBeCloseTo(445, 0)
+
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "bar").width).toBe(310)
+      })
+
+      it("blends px to a percentage as calc(20px * (1 - t) + 50% * t)", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 800, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(<Bar from={20} to="50%" />)
+        expect(boundsOf(renderer, "bar").width).toBe(20)
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "bar").width).toBeCloseTo(110, 0)
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "bar").width).toBe(200)
+      })
+
+      it("resolves em against the element's font size", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 800, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(<Bar from="1em" to="calc(100% - 2em)" fontSize={20} />)
+        expect(boundsOf(renderer, "bar").width).toBe(20)
+        renderer.clockFastForward(500)
+        // Halfway between 20px and calc(100% - 40px): calc(10px + 50% - 20px).
+        expect(boundsOf(renderer, "bar").width).toBeCloseTo(190, 0)
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "bar").width).toBe(360)
+      })
+
+      it("animates padding to em and a gap to calc()", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 800, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+
+        renderer.clockPause()
+        render(
+          <motion.div
+            testId="box"
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", fontSize: 20 }}
+            initial={{ paddingLeft: 0, rowGap: 0 }}
+            animate={{ paddingLeft: "2em", rowGap: "calc(1em + 4px)" }}
+            transition={linear}
+          >
+            <div testId="first" style={{ width: 20, height: 20 }} />
+            <div testId="second" style={{ width: 20, height: 20 }} />
+          </motion.div>
+        )
+        renderer.clockFastForward(500)
+        const middle = boundsOf(renderer, "second")
+        expect(boundsOf(renderer, "first").x).toBeCloseTo(20, 0)
+        expect(middle.y - boundsOf(renderer, "first").y).toBeCloseTo(32, 0)
+
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "first").x).toBe(40)
+        expect(boundsOf(renderer, "second").y - boundsOf(renderer, "first").y).toBe(44)
+      })
+
+      it("transitions from and to a calc() as a CSS transition", () => {
+        const { render: mount, renderer } = createTestRoot({ width: 800, height: 300 })
+        const render = (node: ReactNode) => settled(mount, renderer, node)
+        const box = (width: string) => (
+          <div style={{ width: 400 }}>
+            <div testId="box" style={{ width, height: 10, transition: "width 1s linear" }} />
+          </div>
+        )
+
+        renderer.clockPause()
+        render(box("calc(100% - 20px)"))
+        expect(boundsOf(renderer, "box").width).toBe(380)
+
+        render(box("calc(50% + 10px)"))
+        renderer.clockFastForward(500)
+        expect(boundsOf(renderer, "box").width).toBeCloseTo(295, 0)
+        renderer.clockFastForward(1000)
+        expect(boundsOf(renderer, "box").width).toBe(210)
       })
     })
 
