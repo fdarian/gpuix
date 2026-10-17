@@ -335,7 +335,7 @@ struct Ordinals {
 
 /// One match a run will paint, with where in the document it starts.
 struct Announced {
-    at: (DocPos, usize),
+    at: DocPos,
     id: MatchId,
 }
 
@@ -367,7 +367,7 @@ pub fn announce_retained_run(
             window,
             ctx,
             entry.spec,
-            (doc.clone(), entry.range.start),
+            doc.at(entry.range.start),
             MatchId::Retained(entry.index),
         );
     }
@@ -383,7 +383,7 @@ pub fn announce_native_run(
 ) {
     for (spec_index, position, range) in native_matches(ctx, text) {
         let id = MatchId::Native(key.clone(), position);
-        announce(window, ctx, spec_index, (doc.clone(), range.start), id);
+        announce(window, ctx, spec_index, doc.at(range.start), id);
     }
 }
 
@@ -391,7 +391,7 @@ fn announce(
     window: WindowId,
     ctx: &HighlightContext,
     spec_index: usize,
-    at: (DocPos, usize),
+    at: DocPos,
     id: MatchId,
 ) {
     ORDINALS.with(|states| {
@@ -761,7 +761,7 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
 fn collect_paragraph(tree: &RetainedTree, paragraph: &super::inline::Paragraph, out: &mut Vec<Group>) {
     let key = paragraph.key();
     let mut start = 0;
-    let mut push = |range: Range<usize>, out: &mut Vec<Group>| {
+    let push = |range: Range<usize>, out: &mut Vec<Group>| {
         if !range.is_empty() {
             out.push(Group::within_run(key.clone(), range.start, paragraph.text[range].to_string()));
         }
@@ -1524,6 +1524,29 @@ mod tests {
         assert_eq!(lifted, vec![false, true], "ordinals 0 and 1");
         assert_eq!(second, vec![false, false], "ordinals 2 and 3");
         assert_eq!(third, vec![false, false], "ordinals 4 and 5");
+    }
+
+    /// `x <box>x</box> x`: the paragraph is one run with the placeholder of the box in it, and the
+    /// text in the box falls between the matches on either side, though the paragraph paints first.
+    #[test]
+    fn a_match_in_an_atomic_inline_is_numbered_between_the_matches_around_it() {
+        use super::super::selection::DocPath;
+        let paragraph_text = "x \u{FFFC} x";
+        let box_key: Arc<str> = "9:0".into();
+        let paragraph_key: Arc<str> = "9:1".into();
+        let paragraph = DocPos::new(Arc::<[u32]>::from([0]), 0);
+        let hosts = DocPath::from(Arc::<[u32]>::from([0])).host(0, 2);
+        let boxed = DocPos::new(DocPath::new(hosts, Arc::from([0])), 0);
+        for (active, expected) in [(0, [true, false, false]), (1, [false, true, false]), (2, [false, false, true])] {
+            let ctx = native_context(spec("x"), active);
+            ordinal_frame_reset(window());
+            announce_native_run(window(), &ctx, &paragraph_key, &paragraph, paragraph_text);
+            announce_native_run(window(), &ctx, &box_key, &boxed, "x");
+            let around = washes_for_native_run(window(), &ctx, &paragraph_key, paragraph_text);
+            let inside = washes_for_native_run(window(), &ctx, &box_key, "x");
+            let actives = [around[0].active, inside[0].active, around[1].active];
+            assert_eq!(actives, expected, "activeIndex {active}");
+        }
     }
 
     /// A run nobody announced is numbered after those that did, in paint order.

@@ -48,6 +48,8 @@ struct RegEntry {
     layout: TextLayout,
     /// See [`selection::RegisteredText::group`].
     group: Option<u64>,
+    /// See [`selection::RegisteredText::line`].
+    line: Option<Arc<str>>,
 }
 
 /// Full element box that owns whether a press may start a selection.
@@ -232,7 +234,7 @@ pub struct SelectableText {
     pub sub: usize,
     /// Where the owning element sits in the document, see [`selection::DocPos`]. Child indices
     /// from the root through the retained tree, which for a virtual-list row start at the list's.
-    pub path: Arc<[u32]>,
+    pub path: selection::DocPath,
     pub text: SharedString,
     /// `None` is the important case for plain `<text>` nodes: gpui then derives
     /// one run from `window.text_style()`, so colour, weight and family keep
@@ -259,6 +261,8 @@ pub struct SelectableText {
     /// See [`crate::text::selection::RegisteredText::group`]. `None` for a run
     /// that must never merge with its neighbour, which is every custom element.
     pub group: Option<u64>,
+    /// See [`crate::text::selection::RegisteredText::line`].
+    pub line: Option<Arc<str>>,
     pub highlight: Option<HighlightSource>,
     /// The inline boxes of a paragraph that the pointer can target, registered
     /// under `element_id` as the container.
@@ -293,7 +297,7 @@ impl SelectableText {
     pub fn new(
         element_id: u64,
         sub: usize,
-        path: Arc<[u32]>,
+        path: selection::DocPath,
         text: SharedString,
         runs: Option<Vec<TextRun>>,
         selection: SharedSelection,
@@ -313,6 +317,7 @@ impl SelectableText {
             on_link: None,
             selectable: true,
             group: None,
+            line: None,
             highlight: None,
             inline_targets: None,
             inline_boxes: Vec::new(),
@@ -344,6 +349,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         on_link,
         selectable,
         group,
+        line,
         highlight,
         inline_targets,
         inline_boxes,
@@ -446,10 +452,12 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 None => Vec::new(),
             };
             paint_highlight_washes(&layout, element_id, sub, &text, &washes, window);
-            if let Some(range) = selectable
-                .then(|| selection.lock().wash_range(&key))
-                .flatten()
-            {
+            let ranges = if selectable {
+                selection.lock().wash_ranges(&key)
+            } else {
+                Vec::new()
+            };
+            for range in ranges {
                 let mut rects = range_rects(&layout, &range, 0.0, 0.0);
                 super::inline_insets::trim_wash(&layout, &text, &range, &mut rects);
                 for rect in rects {
@@ -471,6 +479,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                         text: text.clone(),
                         layout: layout.clone(),
                         group,
+                        line: line.clone(),
                     })
                 });
             }
@@ -696,9 +705,8 @@ fn resolve_drag(window: WindowId, selection: &SharedSelection, head: (usize, usi
             .iter()
             .map(|e| {
                 let text = selection::RegisteredText {
-                    key: e.key.as_ref(),
-                    text: e.text.as_ref(),
-                    group: e.group,
+                    line: e.line.as_deref(),
+                    ..selection::RegisteredText::whole(e.key.as_ref(), e.text.as_ref(), e.group)
                 };
                 (text, &e.doc)
             })
@@ -1110,6 +1118,7 @@ mod tests {
                 text: text.clone(),
                 layout: TextLayout::default(),
                 group: None,
+                line: None,
             });
             frame.highlights.push(PaintedHighlight {
                 element_id: 1,

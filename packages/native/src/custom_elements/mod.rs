@@ -34,7 +34,7 @@ pub struct CustomRenderContext<'a> {
     /// Numeric element ID (matches React's instance ID).
     pub id: u64,
     /// Where this element sits in the document, which orders its text in selection and find.
-    pub doc_path: std::sync::Arc<[u32]>,
+    pub doc_path: crate::text::selection::DocPath,
     /// Event types registered by React that this element wires itself (e.g.
     /// "keydown", "change"). Pointer and mouse events are not among them: the
     /// dispatcher in `crate::events` delivers those for every element.

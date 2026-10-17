@@ -251,9 +251,14 @@ document order (a positioned element is lifted and registers after the siblings
 that follow it): hit testing (`registry_point`) uses paint order, so the topmost
 text wins, while selection, copy and the wash use `DocPos` (child indices through
 the retained tree plus `sub`; tree order, ignoring flex `order`), carried on
-`SelectableText::path`. Find numbers matches the same way: every run announces
-its matches in prepaint (`search::announce_*_run`), and `wash` numbers them in
-document order. `selection_frame_reset()` must stay the first child of the
+`SelectableText::path`. The text of an atomic inline (`inline-block`...) is hosted
+by the paragraph the box is in, at the byte of its placeholder (`DocPath::host`,
+`BuildCtx::doc_hosts`): the paragraph is one registry entry, so `resolve_drag`
+cuts it at its U+FFFC into segments (`selection::segments`) and the box's text
+sorts between them; a segment and the box's texts share a `line` so copy puts no
+line break between them. Find numbers matches the same way: every run announces
+its matches in prepaint (`search::announce_*_run`, at `DocPos::at(byte)`), and
+`wash` numbers them in document order. `selection_frame_reset()` must stay the first child of the
 root, or stale entries from the previous frame leak into the next drag.
 
 The registries are thread-locals, but keyed by `WindowId`: every window's frame

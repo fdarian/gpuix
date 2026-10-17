@@ -167,7 +167,7 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
 pub struct MdContext {
     pub element_id: u64,
     /// See [`crate::custom_elements::CustomRenderContext::doc_path`].
-    pub doc_path: Arc<[u32]>,
+    pub doc_path: crate::text::selection::DocPath,
     pub selection: SharedSelection,
     pub selectable: bool,
     pub selection_wash: Hsla,
@@ -186,7 +186,7 @@ pub struct MdContext {
 impl MdContext {
     pub fn new(
         element_id: u64,
-        doc_path: Arc<[u32]>,
+        doc_path: crate::text::selection::DocPath,
         selection: SharedSelection,
         selectable: bool,
         selection_wash: Hsla,

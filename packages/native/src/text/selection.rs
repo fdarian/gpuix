@@ -27,21 +27,106 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+/// One level of a document position: a run, and the byte of it where the next level sits.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Host {
+    path: Arc<[u32]>,
+    sub: usize,
+    offset: usize,
+}
+
+/// Where a text sits in the document before its own `sub` is known: the child indices of its
+/// element from the root through the retained tree, and the paragraphs that host it.
+///
+/// A text inside an atomic inline (`display: inline-block`) is hosted by the paragraph the box
+/// sits in, at the byte of the box's placeholder. The text before the box and the text after it
+/// are one run of that paragraph, so only the byte tells the box's text where it falls between
+/// them.
+#[derive(Clone, Debug, Default)]
+pub struct DocPath {
+    hosts: Arc<[Host]>,
+    path: Arc<[u32]>,
+}
+
+impl DocPath {
+    pub fn new(hosts: Arc<[Host]>, path: Arc<[u32]>) -> Self {
+        Self { hosts, path }
+    }
+
+    /// The path of the box whose placeholder is at `offset` of the run `sub` of this element, for
+    /// the texts built inside that box. `path` starts over inside it.
+    pub fn host(&self, sub: usize, offset: usize) -> Arc<[Host]> {
+        let level = Host {
+            path: self.path.clone(),
+            sub,
+            offset,
+        };
+        self.hosts.iter().cloned().chain(std::iter::once(level)).collect()
+    }
+}
+
+impl From<Arc<[u32]>> for DocPath {
+    fn from(path: Arc<[u32]>) -> Self {
+        Self::new(Arc::from([]), path)
+    }
+}
+
 /// Where a text run sits in the document, for ordering selection and find.
 ///
 /// The path of child indices from the root through the retained tree, then the run's `sub`.
 /// Tree order, not flex or grid `order` and not paint order, as in a browser, where the
 /// selection and Ctrl+F follow the DOM. A shorter path that is a prefix of a longer one comes
-/// first, so a container's own text precedes its children's.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// first, so a container's own text precedes its children's. A text inside an atomic inline
+/// sorts at the byte of the box's placeholder in the paragraph around it: see [`DocPath`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DocPos {
-    path: Arc<[u32]>,
-    sub: usize,
+    hosts: Arc<[Host]>,
+    own: Host,
 }
 
 impl DocPos {
-    pub fn new(path: Arc<[u32]>, sub: usize) -> Self {
-        Self { path, sub }
+    pub fn new(path: impl Into<DocPath>, sub: usize) -> Self {
+        let path = path.into();
+        Self {
+            hosts: path.hosts,
+            own: Host {
+                path: path.path,
+                sub,
+                offset: 0,
+            },
+        }
+    }
+
+    /// The position of `offset` bytes into this run.
+    pub fn at(&self, offset: usize) -> Self {
+        Self {
+            hosts: self.hosts.clone(),
+            own: Host {
+                offset,
+                ..self.own.clone()
+            },
+        }
+    }
+
+    /// How many atomic inlines the run sits inside.
+    pub fn depth(&self) -> usize {
+        self.hosts.len()
+    }
+
+    fn levels(&self) -> impl Iterator<Item = &Host> {
+        self.hosts.iter().chain(std::iter::once(&self.own))
+    }
+}
+
+impl Ord for DocPos {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.levels().cmp(other.levels())
+    }
+}
+
+impl PartialOrd for DocPos {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -66,6 +151,16 @@ pub struct Span {
     pub text: String,
     /// See [`RegisteredText::group`].
     pub group: Option<u64>,
+    /// See [`RegisteredText::line`].
+    pub line: Option<String>,
+}
+
+impl Span {
+    fn fits(&self, element: &RegisteredText) -> bool {
+        self.key == element.key
+            && element.window.0 <= self.range.start
+            && self.range.end <= element.window.1
+    }
 }
 
 /// One painted text element as the frame registry sees it.
@@ -73,6 +168,15 @@ pub struct Span {
 pub struct RegisteredText<'a> {
     pub key: &'a str,
     pub text: &'a str,
+    /// The bytes of `text` this entry stands for. A paragraph with atomic inlines is one painted
+    /// string, but the text of a box in it falls between the text before and the text after the
+    /// box, so it is several entries, one per stretch between placeholders.
+    pub window: (usize, usize),
+    /// The line this run is on, for runs that share one without being in one string: the text
+    /// of an atomic inline is on the line of the paragraph the box sits in, so `a <box>b</box> c`
+    /// copies as `a b c`, but the text of a block in the box is on a line of its own. Copy puts a
+    /// line break between two runs unless they share a group or a line.
+    pub line: Option<&'a str>,
     /// Id of the host element whose primitive text children this run belongs
     /// to, or `None` for a run that never merges with a neighbour.
     ///
@@ -82,6 +186,57 @@ pub struct RegisteredText<'a> {
     /// must join them with nothing. Anything else is a separate line and joins
     /// with a newline.
     pub group: Option<u64>,
+}
+
+impl<'a> RegisteredText<'a> {
+    /// A run that has no atomic inline in it.
+    pub fn whole(key: &'a str, text: &'a str, group: Option<u64>) -> Self {
+        Self {
+            key,
+            text,
+            window: (0, text.len()),
+            line: None,
+            group,
+        }
+    }
+
+    fn holds(&self, ix: usize) -> bool {
+        self.window.0 <= ix && ix <= self.window.1
+    }
+}
+
+/// Where in `elements` a byte `ix` of the run `key` is: the entry that holds it, or the last one
+/// before it when it is the placeholder of a box.
+fn locate(elements: &[RegisteredText], key: &str, ix: usize) -> Option<usize> {
+    let mut before = None;
+    for (at, element) in elements.iter().enumerate().filter(|(_, element)| element.key == key) {
+        if element.holds(ix) {
+            return Some(at);
+        }
+        if element.window.1 < ix {
+            before = Some(at);
+        }
+    }
+    before.or_else(|| elements.iter().position(|element| element.key == key))
+}
+
+/// `painted` with each run that has atomic inlines in it cut at their placeholders, as
+/// `(index into painted, entry, position)`.
+fn segments<'a>(
+    painted: &[(RegisteredText<'a>, &DocPos)],
+) -> Vec<(usize, RegisteredText<'a>, DocPos)> {
+    let mut out = Vec::with_capacity(painted.len());
+    for (ix, (run, doc)) in painted.iter().enumerate() {
+        let mut start = run.window.0;
+        for (at, placeholder) in run.text.match_indices(gpui::OBJECT_REPLACEMENT_CHARACTER) {
+            if at >= run.window.0 && at < run.window.1 {
+                out.push((ix, RegisteredText { window: (start, at), ..*run }, doc.at(start)));
+                start = at + placeholder.len();
+            }
+        }
+        out.push((ix, RegisteredText { window: (start, run.window.1), ..*run }, doc.at(start)));
+    }
+    out
 }
 
 /// Live selection for one renderer.
@@ -149,6 +304,7 @@ impl SelectionState {
             range,
             text: text.to_string(),
             group: None,
+            line: None,
         }];
     }
 
@@ -163,13 +319,25 @@ impl SelectionState {
         painted: &[(RegisteredText, &DocPos)],
         head: (usize, usize),
     ) -> bool {
-        let positions: Vec<&DocPos> = painted.iter().map(|(_, doc)| *doc).collect();
+        let segments = segments(painted);
+        let positions: Vec<&DocPos> = segments.iter().map(|(_, _, doc)| doc).collect();
         let order = document_order(&positions);
-        let Some(head_in_document) = order.iter().position(|painted_ix| *painted_ix == head.0)
+        let holding = |segment: &&(usize, RegisteredText, DocPos)| segment.0 == head.0;
+        let head_segment = segments
+            .iter()
+            .position(|segment| holding(&segment) && segment.1.holds(head.1))
+            .or_else(|| {
+                segments
+                    .iter()
+                    .rposition(|segment| holding(&segment) && segment.1.window.1 < head.1)
+            })
+            .or_else(|| segments.iter().position(|segment| holding(&segment)));
+        let Some(head_in_document) =
+            head_segment.and_then(|head| order.iter().position(|ix| *ix == head))
         else {
             return false;
         };
-        let elements: Vec<RegisteredText> = order.iter().map(|ix| painted[*ix].0).collect();
+        let elements: Vec<RegisteredText> = order.iter().map(|ix| segments[*ix].1).collect();
         self.update_drag(&elements, (head_in_document, head.1))
     }
 
@@ -181,9 +349,7 @@ impl SelectionState {
         if !self.is_dragging() {
             return false;
         }
-        let spans = if let Some(anchor_element) = elements
-            .iter()
-            .position(|element| element.key == self.anchor_key)
+        let spans = if let Some(anchor_element) = locate(elements, &self.anchor_key, self.anchor_ix)
         {
             let anchor = (anchor_element, self.anchor_ix);
             self.forward = Some(anchor <= head);
@@ -230,15 +396,22 @@ impl SelectionState {
         self.active
     }
 
-    /// The wash range for `key` this frame. `None` means nothing to paint.
-    pub fn wash_range(&self, key: &str) -> Option<Range<usize>> {
+    /// The wash ranges for `key` this frame, in order. Empty means nothing to paint. A paragraph
+    /// with a box in it has one on each side of the box.
+    pub fn wash_ranges(&self, key: &str) -> Vec<Range<usize>> {
         if !self.active {
-            return None;
+            return Vec::new();
         }
         self.spans
             .iter()
-            .find(|s| s.key == key && !s.range.is_empty())
+            .filter(|s| s.key == key && !s.range.is_empty())
             .map(|s| s.range.clone())
+            .collect()
+    }
+
+    #[cfg(test)]
+    fn wash_range(&self, key: &str) -> Option<Range<usize>> {
+        self.wash_ranges(key).into_iter().next()
     }
 
     /// The full selected text, spans joined in document order.
@@ -289,7 +462,7 @@ fn extend_virtualized_drag(
                 .find_map(|(element_index, element)| {
                     existing
                         .iter()
-                        .position(|span| span.key == element.key)
+                        .position(|span| span.fits(element))
                         .map(|span_index| (element_index, span_index))
                 })?;
         let start = existing.get(span_index)?.range.start;
@@ -305,7 +478,7 @@ fn extend_virtualized_drag(
                 .find_map(|(element_index, element)| {
                     existing
                         .iter()
-                        .position(|span| span.key == element.key)
+                        .position(|span| span.fits(element))
                         .map(|span_index| (element_index, span_index))
                 })?;
         let end = existing.get(span_index)?.range.end;
@@ -331,15 +504,17 @@ pub fn resolve_spans(
     let mut spans = Vec::new();
     for (ei, entry) in elements.iter().enumerate().take(end.0 + 1).skip(start.0) {
         let text = entry.text;
-        let from = if ei == start.0 { start.1 } else { 0 };
-        let to = if ei == end.0 { end.1 } else { text.len() };
-        let (from, to) = (clamp_boundary(text, from), clamp_boundary(text, to));
+        let from = if ei == start.0 { start.1 } else { entry.window.0 };
+        let to = if ei == end.0 { end.1 } else { entry.window.1 };
+        let within = |ix: usize| clamp_boundary(text, ix.clamp(entry.window.0, entry.window.1));
+        let (from, to) = (within(from), within(to));
         if from < to {
             spans.push(Span {
                 key: entry.key.to_string(),
                 range: from..to,
                 text: text.to_string(),
                 group: entry.group,
+                line: entry.line.map(str::to_owned),
             });
         }
     }
@@ -364,13 +539,10 @@ fn clamp_boundary(text: &str, mut ix: usize) -> usize {
 /// `"Hello\nTommy\n!"`, because React split one line into three host nodes.
 fn join_spans(spans: &[Span]) -> String {
     let mut out = String::new();
-    let mut previous: Option<Option<u64>> = None;
+    let mut previous: Option<&Span> = None;
     for span in spans.iter().filter(|s| !s.range.is_empty()) {
-        if let Some(previous) = previous {
-            let same_group = span.group.is_some() && span.group == previous;
-            if !same_group {
-                out.push('\n');
-            }
+        if previous.is_some_and(|previous| !runs_into(previous, span)) {
+            out.push('\n');
         }
         // The placeholder of an atomic inline is not text; what is inside the box is a
         // text of its own.
@@ -379,9 +551,16 @@ fn join_spans(spans: &[Span]) -> String {
                 .chars()
                 .filter(|c| *c != gpui::OBJECT_REPLACEMENT_CHARACTER),
         );
-        previous = Some(span.group);
+        previous = Some(span);
     }
     out
+}
+
+/// Whether `next` continues the line `previous` is on.
+fn runs_into(previous: &Span, next: &Span) -> bool {
+    let same_group = next.group.is_some() && next.group == previous.group;
+    let same_line = next.line.is_some() && next.line == previous.line;
+    same_group || same_line
 }
 
 /// Word range around `ix` for double-click selection: an alphanumeric/`_` run,
@@ -418,7 +597,11 @@ mod tests {
     use super::*;
 
     fn reg<'a>(key: &'a str, text: &'a str, group: Option<u64>) -> RegisteredText<'a> {
-        RegisteredText { key, text, group }
+        RegisteredText::whole(key, text, group)
+    }
+
+    fn on_line<'a>(key: &'a str, text: &'a str, line: &'a str) -> RegisteredText<'a> {
+        RegisteredText { line: Some(line), ..RegisteredText::whole(key, text, None) }
     }
 
     fn elems<'a>() -> Vec<RegisteredText<'a>> {
@@ -748,6 +931,127 @@ mod tests {
         );
         assert_eq!(selection.wash_range("first"), Some(6..10));
         assert_eq!(selection.wash_range("third"), Some(0..5));
+    }
+
+    /// `AA <box>BB</box> CC`, then a block `DD`: the paragraph is one painted string with the
+    /// placeholder of the box in it, the box's text is hosted by the paragraph at that byte, and
+    /// the paragraph paints first. Registry (paint) order: paragraph, box, block.
+    fn around_a_box() -> (Vec<RegisteredText<'static>>, Vec<DocPos>) {
+        let paragraph = DocPath::from(Arc::<[u32]>::from([0]));
+        let hosts = paragraph.host(0, 3);
+        (
+            vec![
+                on_line("p", "AA \u{FFFC} CC", "p"),
+                on_line("box", "BB", "p"),
+                reg("after", "DD", None),
+            ],
+            vec![
+                DocPos::new(paragraph, 0),
+                DocPos::new(DocPath::new(hosts, Arc::from([0])), 0),
+                at(&[1], 0),
+            ],
+        )
+    }
+
+    fn dragged(down: (&str, usize), head: (usize, usize)) -> SelectionState {
+        let (elements, positions) = around_a_box();
+        let mut selection = SelectionState::default();
+        selection.arm(down.0, down.1);
+        selection.promote_pending();
+        assert!(selection.update_drag_painted(&painted(&elements, &positions), head));
+        selection
+    }
+
+    #[test]
+    fn a_box_in_a_paragraph_falls_between_the_text_before_and_after_it() {
+        // Down at the start of the paragraph, up at the end of the block after it.
+        let selection = dragged(("p", 0), (2, 2));
+        assert_eq!(selection.selected_text().as_deref(), Some("AA BB CC\nDD"));
+        assert_eq!(selection.wash_ranges("p"), vec![0..3, 6..9]);
+        assert_eq!(selection.wash_ranges("box"), vec![0..2]);
+        assert_eq!(selection.wash_ranges("after"), vec![0..2]);
+    }
+
+    #[test]
+    fn a_drag_from_inside_the_box_copies_the_rest_of_the_line_after_it() {
+        let selection = dragged(("box", 1), (2, 1));
+        assert_eq!(selection.selected_text().as_deref(), Some("B CC\nD"));
+        assert_eq!(selection.wash_ranges("p"), vec![6..9]);
+    }
+
+    #[test]
+    fn a_reversed_drag_from_after_the_box_up_into_it() {
+        // Down in " CC" after the box, up in the middle of the box.
+        let selection = dragged(("p", 8), (1, 1));
+        assert_eq!(selection.selected_text().as_deref(), Some("B C"));
+        assert_eq!(selection.wash_ranges("p"), vec![6..8]);
+        assert_eq!(selection.wash_ranges("box"), vec![1..2]);
+    }
+
+    #[test]
+    fn a_drag_inside_the_text_before_the_box_does_not_reach_it() {
+        let selection = dragged(("p", 0), (0, 2));
+        assert_eq!(selection.selected_text().as_deref(), Some("AA"));
+        assert_eq!(selection.wash_ranges("box"), Vec::<Range<usize>>::new());
+    }
+
+    #[test]
+    fn a_head_on_the_placeholder_belongs_to_the_text_before_it() {
+        let selection = dragged(("p", 0), (0, 4));
+        assert_eq!(selection.selected_text().as_deref(), Some("AA "));
+    }
+
+    #[test]
+    fn two_boxes_in_a_row_and_a_box_with_a_line_of_its_own() {
+        // `<box>1</box><box>2</box>` and the block after: no breaks inside the line.
+        let line = DocPath::from(Arc::<[u32]>::from([0]));
+        let elements = [
+            on_line("p", "\u{FFFC}\u{FFFC}", "p"),
+            on_line("one", "1", "p"),
+            on_line("two", "2", "p"),
+            reg("after", "DD", None),
+        ];
+        let positions = [
+            DocPos::new(line.clone(), 0),
+            DocPos::new(DocPath::new(line.host(0, 0), Arc::from([0])), 0),
+            DocPos::new(DocPath::new(line.host(0, 3), Arc::from([0])), 0),
+            at(&[1], 0),
+        ];
+        let mut selection = SelectionState::default();
+        selection.arm("one", 0);
+        selection.promote_pending();
+        assert!(selection.update_drag_painted(&painted(&elements, &positions), (3, 2)));
+        assert_eq!(selection.selected_text().as_deref(), Some("12\nDD"));
+    }
+
+    #[test]
+    fn a_box_with_blocks_of_its_own_keeps_their_line_breaks() {
+        let line = DocPath::from(Arc::<[u32]>::from([0]));
+        let hosts = line.host(0, 2);
+        let elements = [
+            on_line("p", "a \u{FFFC} c", "p"),
+            reg("x", "x", None),
+            reg("y", "y", None),
+        ];
+        let positions = [
+            DocPos::new(line, 0),
+            DocPos::new(DocPath::new(hosts.clone(), Arc::from([0])), 0),
+            DocPos::new(DocPath::new(hosts, Arc::from([1])), 0),
+        ];
+        let mut selection = SelectionState::default();
+        selection.arm("p", 0);
+        selection.promote_pending();
+        assert!(selection.update_drag_painted(&painted(&elements, &positions), (0, 8)));
+        assert_eq!(selection.selected_text().as_deref(), Some("a \nx\ny\n c"));
+    }
+
+    #[test]
+    fn a_text_in_a_box_sorts_by_the_byte_of_its_placeholder() {
+        let path = DocPath::from(Arc::<[u32]>::from([2]));
+        let first = DocPos::new(DocPath::new(path.host(0, 3), Arc::from([0])), 0);
+        let second = DocPos::new(DocPath::new(path.host(0, 9), Arc::from([0])), 0);
+        let run = DocPos::new(path, 0);
+        assert!(run.at(0) < first && first < run.at(4) && run.at(4) < second && second < run.at(10));
     }
 
     #[test]

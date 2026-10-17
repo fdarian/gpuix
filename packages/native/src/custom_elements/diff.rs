@@ -436,7 +436,7 @@ impl CustomElement for DiffElement {
 
 struct RowContext<'a> {
     element_id: u64,
-    doc_path: std::sync::Arc<[u32]>,
+    doc_path: crate::text::selection::DocPath,
     selection: &'a SharedSelection,
     selectable: bool,
     wash: Hsla,

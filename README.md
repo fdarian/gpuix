@@ -3344,10 +3344,11 @@ belongs to tables, which are not supported yet.
   a percentage offset counts as `auto`.
 - `textOverflow` and `lineClamp` ignore a paragraph with an atomic inline in it: cutting the text would cut its
   placeholder, so it overflows.
-- The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search):
-  a drag across the box selects the paragraph around it and then the box's text, in painting order, not in
-  document order, and the matches of a `highlight` are numbered in painting order too (the box's after the
-  paragraph's). What is copied leaves the placeholder out, and a match cannot cross the box.
+- The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search),
+  and it falls where the box sits in the paragraph, as in a browser: a drag across the box selects the text
+  before it, the box's text and the text after it, in that order; the copied text reads `a b c` for
+  `a <box>b</box> c` (the placeholder is left out, and the text of a block in the box starts a line of its own,
+  as the DOM does); and the matches of a `highlight` are numbered in the same order. A match cannot cross the box.
 
 ## Text input
 

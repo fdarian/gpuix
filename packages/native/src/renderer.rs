@@ -5824,6 +5824,7 @@ impl GpuixView {
         index: usize,
         expected_child_id: u64,
         list_path: Vec<u32>,
+        list_hosts: Arc<[crate::text::selection::Host]>,
         inherited: Inherited,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
@@ -5933,6 +5934,8 @@ impl GpuixView {
             now,
             selection: self.selection.clone(),
             doc_path: row_path,
+            doc_hosts: list_hosts,
+            inline_line: None,
             inherited,
             highlights: &mut self.highlights,
             paint_reports: &self.paint_reports,
@@ -6082,6 +6085,12 @@ pub(crate) struct BuildCtx<'a> {
     /// Child indices from the root to the element being built, in the retained tree: the document
     /// position selection and find order text by. A virtual-list row starts at its list's.
     pub doc_path: Vec<u32>,
+    /// The paragraphs whose atomic inlines the element being built is inside, see
+    /// [`crate::text::selection::DocPath`].
+    pub doc_hosts: Arc<[crate::text::selection::Host]>,
+    /// The line of text the inline content of the atomic inline being built continues, see
+    /// [`crate::text::selection::RegisteredText::line`]. The first paragraph the box builds takes it.
+    pub inline_line: Option<Arc<str>>,
     /// Inherited text state, resolved the way CSS inherits it. The renderer's
     /// own theme only seeds the root selection wash; custom elements resolve
     /// their own theme from their `theme` prop.
@@ -6122,6 +6131,11 @@ pub(crate) struct BuildCtx<'a> {
 }
 
 impl BuildCtx<'_> {
+    /// Where the element being built sits in the document, which orders its text in selection and find.
+    pub fn doc_path(&self) -> crate::text::selection::DocPath {
+        crate::text::selection::DocPath::new(self.doc_hosts.clone(), self.doc_path.as_slice().into())
+    }
+
     /// The states of `id` that `style` has a refinement for. Nothing applies in
     /// an inert subtree: nothing in it can be hovered, and it also ignores a
     /// group outside it.
@@ -7208,6 +7222,8 @@ impl gpui::Render for GpuixView {
                     now,
                     selection: self.selection.clone(),
                     doc_path: Vec::new(),
+                    doc_hosts: Arc::from([]),
+                    inline_line: None,
                     inherited: Inherited::root(
                         &theme,
                         window.appearance(),
@@ -7699,7 +7715,7 @@ fn build_element_unpumped(
             let inherited = ctx.inherited.clone();
             let render_ctx = CustomRenderContext {
                 id,
-                doc_path: ctx.doc_path.as_slice().into(),
+                doc_path: ctx.doc_path(),
                 events: element.events(),
                 event_callback: ctx.event_callback,
                 focus_handle: ctx.focus_handles.get(&id),
@@ -7883,6 +7899,7 @@ fn build_virtual_list(
     // the captured value must survive every call.
     let inherited = ctx.inherited.clone();
     let list_path = ctx.doc_path.clone();
+    let list_hosts = ctx.doc_hosts.clone();
     let render_item = cx.processor(move |view, index: usize, window, cx| {
         let Some(entry) = view.virtual_lists.get(&list_id) else {
             return unmounted_virtual_row(1.0);
@@ -7891,7 +7908,7 @@ fn build_virtual_list(
             // Empty measures as 0 and poisons ListState. Keep the estimate.
             return unmounted_virtual_row(entry.config.estimated_item_height.unwrap_or(1.0));
         };
-        view.build_virtual_child(list_id, index, child_id, list_path.clone(), inherited.clone(), window, cx)
+        view.build_virtual_child(list_id, index, child_id, list_path.clone(), list_hosts.clone(), inherited.clone(), window, cx)
     });
     let scroll_state = list_state.clone();
     // The list inserts its own hitbox under this id, so a host id makes it a
@@ -8163,11 +8180,14 @@ fn build_content(
                             Some("absolute" | "fixed")
                         )
                     });
+                    // A block of a box is a line of its own.
+                    let outer_line = ctx.inline_line.take();
                     let built = if out_of_flow {
                         crate::text::atomic::out_of_flow(|| build_element(child_id, ctx, window, cx))
                     } else {
                         build_element(child_id, ctx, window, cx)
                     };
+                    ctx.inline_line = outer_line;
                     content_elements.push(match &probe {
                         Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
                         _ => built,
@@ -8261,6 +8281,7 @@ fn text_content(
 ) -> gpui::AnyElement {
     selectable_text(crate::text::SelectableText {
         group: crate::text::search::group_id(ctx.tree, element.id),
+        line: ctx.inline_line.clone(),
         selectable: ctx.inherited.selectable,
         highlight: ctx
             .inherited
@@ -8270,7 +8291,7 @@ fn text_content(
         ..crate::text::SelectableText::new(
             element.id,
             0,
-            ctx.doc_path.as_slice().into(),
+            ctx.doc_path(),
             gpui::SharedString::from(content.to_string()),
             None,
             ctx.selection.clone(),
@@ -8301,7 +8322,13 @@ fn paragraph_content(
             &motion,
         )
     };
-    let (aligned_boxes, atomics) = build_atomics(paragraph, &styles, &motion, ctx, window, cx);
+    // A box in the paragraph, or the paragraph being inline content of a box, puts the texts around
+    // and inside the boxes on one line for copy.
+    let line = ctx
+        .inline_line
+        .take()
+        .or_else(|| paragraph.atomics().next().is_some().then(|| paragraph.key()));
+    let (aligned_boxes, atomics) = build_atomics(paragraph, &styles, &motion, line.as_ref(), ctx, window, cx);
     let ctx = &*ctx;
     let states = ctx.inline_states();
     let insets = crate::text::inline_insets::InsetSpec::of(
@@ -8313,6 +8340,7 @@ fn paragraph_content(
     );
     selectable_text(crate::text::SelectableText {
         group: None,
+        line,
         selectable: ctx.inherited.selectable,
         highlight: ctx
             .inherited
@@ -8364,7 +8392,7 @@ fn paragraph_content(
         ..crate::text::SelectableText::new(
             paragraph.container,
             paragraph.index,
-            ctx.doc_path.as_slice().into(),
+            ctx.doc_path(),
             gpui::SharedString::from(paragraph.text.clone()),
             None,
             ctx.selection.clone(),
@@ -8379,6 +8407,7 @@ fn build_atomics(
     paragraph: &crate::text::inline::Paragraph,
     styles: &crate::text::paragraph::Styles,
     motion: &crate::motion::InlineStyles,
+    line: Option<&Arc<str>>,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -8471,7 +8500,13 @@ fn build_atomics(
         ctx.contents_overlay = around.overlay;
         ctx.atomic_root = true;
         ctx.atomic_extracted = None;
+        // The text in the box falls in the paragraph at its placeholder, for selection and find.
+        let hosts = ctx.doc_path().host(paragraph.index, piece.range.start);
+        let outer_hosts = std::mem::replace(&mut ctx.doc_hosts, hosts);
+        ctx.inline_line = line.cloned();
         let (built, texts) = crate::text::atomic::collecting(|| build_element(id, ctx, window, cx));
+        ctx.inline_line = None;
+        ctx.doc_hosts = outer_hosts;
         ctx.inherited = outer.0;
         ctx.baseline_probe = outer.1;
         // A box that built nothing (a `display` transition is hiding it) has no margin.
