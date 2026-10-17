@@ -454,8 +454,11 @@ export interface StyleDesc {
    *  `"contents"`, which builds no box either and lays its children out as the parent's own.
    *  `"inline-block"`, `"inline-flex"` and `"inline-grid"` put the box on a line of text as one
    *  unit, as CSS does (an atomic inline); where the parent lays out items, or the box is
-   *  `position: absolute` or `fixed`, they are `"block"`, `"flex"` and `"grid"`. `"inline-table"`
-   *  and `"table"` are not supported. */
+   *  `position: absolute` or `fixed`, they are `"block"`, `"flex"` and `"grid"`.
+   *  The table values: `"table"`, `"table-row-group"`, `"table-header-group"`,
+   *  `"table-footer-group"`, `"table-row"`, `"table-cell"`, `"table-caption"`, `"table-column"`
+   *  and `"table-column-group"` (see the README's Tables section; `colSpan`, `rowSpan` and
+   *  `span` are props of the element). `"inline-table"` is a `"table"` for now. */
   display?: string
   visibility?: string
   /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */
@@ -757,11 +760,30 @@ export interface StyleDesc {
    *  where it overflows, when no earlier place on the line will do. Only a
    *  container sets it. */
   overflowWrap?: "normal" | "break-word" | "anywhere"
+  /** CSS `table-layout` of a `display: "table"` element, not inherited. `"fixed"` sizes the columns
+   *  from the first row and the `table-column`s alone, and needs a `width` on the table (else it
+   *  is `"auto"`). */
+  tableLayout?: "auto" | "fixed"
+  /** CSS `border-spacing`, inherited: the gap between the cells of a `display: "table"` element
+   *  and between the cells and its border. One length is both axes; two, as in `"4px 8px"`, are the
+   *  horizontal then the vertical one. A number is px; any length unit works, no percentage and
+   *  nothing negative. It is 0 with `borderCollapse: "collapse"`. Anything else throws. */
+  borderSpacing?: number | (string & {})
+  /** CSS `border-collapse`, inherited. `"collapse"` is read by layout (no spacing, borders count
+   *  by half) but the collapsed borders are not resolved or painted yet. */
+  borderCollapse?: "separate" | "collapse"
+  /** CSS `caption-side`, inherited from the table to its `table-caption` children. */
+  captionSide?: "top" | "bottom"
+  /** CSS `empty-cells`, inherited. `"hide"` leaves a `table-cell` with nothing in it unpainted
+   *  (no background, border or shadow), unless the table collapses its borders. */
+  emptyCells?: "show" | "hide"
   /** CSS `vertical-align`, not inherited: where an inline box sits on its line (CSS 2.1 §10.8.1).
    *  `"baseline"`, `"sub"`, `"super"`, `"text-top"`, `"text-bottom"` and `"middle"` are relative to the
    *  parent's text; `"top"` and `"bottom"` align the box with the line box. A number is px and a string
    *  with a unit is a length that raises the box's baseline (negative lowers it); a `%` is of the
-   *  element's own `lineHeight`. Anything else throws. */
+   *  element's own `lineHeight`. Anything else throws. On a `display: "table-cell"` it places the
+   *  content in the row: `"top"`, `"middle"`, `"bottom"` or `"baseline"` (the default); every other
+   *  value is `"baseline"` there. */
   verticalAlign?:
     | "baseline"
     | "sub"
@@ -1400,6 +1422,15 @@ export interface HostProps
    * Inside an inert subtree `<input>` and `<textarea>` behave as `disabled`.
    */
   inert?: boolean
+  /** The columns a `display: "table-cell"` element covers, like the DOM `colSpan`. At least 1,
+   *  at most 1000. */
+  colSpan?: number
+  /** The rows a `display: "table-cell"` element covers, like the DOM `rowSpan`. 0 reaches the
+   *  last row of its row group. At most 65534. */
+  rowSpan?: number
+  /** The columns a `display: "table-column"` or `"table-column-group"` element stands for, like
+   *  the DOM `span`. A column group with `table-column` children takes its columns from them. */
+  span?: number
   /**
    * AccessKit role, as an ARIA token (`"button"`, `"heading"`).
    * A node is in the accessibility tree only with both an id (always set)

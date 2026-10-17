@@ -707,6 +707,18 @@ pub fn leaf_text(tree: &RetainedTree, element: &RetainedElement) -> Option<Strin
     Some(run.text[range.clone()].to_string())
 }
 
+fn collect_plan(tree: &RetainedTree, plan: Vec<super::inline::Child>, out: &mut Vec<Group>) {
+    for child in plan {
+        match child {
+            super::inline::Child::Block(child_id) => collect_into(tree, child_id, false, out),
+            super::inline::Child::Paragraph(paragraph) => collect_paragraph(tree, &paragraph, out),
+            super::inline::Child::AnonymousCell(cell) => {
+                collect_plan(tree, cell.into_iter().map(|(child, _)| child).collect(), out)
+            }
+        }
+    }
+}
+
 fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group>) {
     let Some(element) = tree.elements.get(&id) else {
         return;
@@ -729,14 +741,7 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
         }
         // A paragraph is one painted string, so it is one group. The container's
         // own content leads the first one.
-        for child in super::inline::plan_children(tree, element) {
-            match child {
-                super::inline::Child::Block(child_id) => collect_into(tree, child_id, false, out),
-                super::inline::Child::Paragraph(paragraph) => {
-                    collect_paragraph(tree, &paragraph, out)
-                }
-            }
-        }
+        collect_plan(tree, super::inline::plan_children(tree, element), out);
         return;
     }
 

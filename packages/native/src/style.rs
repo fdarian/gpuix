@@ -705,8 +705,19 @@ pub struct StyleDesc {
     /// its line overflows it. Only a container sets it.
     pub overflow_wrap: Option<crate::css::word_break::OverflowWrap>,
     pub text_overflow: Option<String>,
-    /// CSS `vertical-align`. Not inherited. Parsed only: it has no effect yet.
+    /// CSS `vertical-align`. Not inherited. A table cell reads it.
     pub vertical_align: Option<crate::css::vertical_align::VerticalAlign>,
+    /// CSS `table-layout`. Not inherited.
+    pub table_layout: Option<crate::css::table::TableLayout>,
+    /// CSS `border-spacing`, inherited. Only a `display: table` element reads it.
+    pub border_spacing: Option<crate::css::table::BorderSpacing>,
+    /// CSS `border-collapse`, inherited. Parsed and handed to layout, but collapsed borders are
+    /// not resolved or painted yet.
+    pub border_collapse: Option<crate::css::table::BorderCollapse>,
+    /// CSS `caption-side`, inherited: a caption reads the one of its table.
+    pub caption_side: Option<crate::css::table::CaptionSide>,
+    /// CSS `empty-cells`, inherited.
+    pub empty_cells: Option<crate::css::table::EmptyCells>,
     pub line_clamp: Option<f64>,
     /// CSS `text-decoration` and its longhands. `css::text_decoration` says what
     /// is drawn.

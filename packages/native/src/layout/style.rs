@@ -121,7 +121,13 @@ pub(crate) fn apply<E: Styled>(
         Some("grid") => el = el.grid(),
         Some("block") => el = el.block(),
         Some("none") => el = el.hidden(),
-        _ => {}
+        Some(display) => match super::table::part_of(display) {
+            Some(super::table::Part::Table) => el = el.table(),
+            // The part's role comes from `layout::table::apply`: it needs the element's props.
+            Some(_) => el = el.block(),
+            None => {}
+        },
+        None => {}
     }
     el = apply_flex_direction(el, style);
     el = apply_grid(el, style, lengths);

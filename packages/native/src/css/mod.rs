@@ -23,6 +23,7 @@ mod parse_cost;
 pub(crate) mod position;
 pub(crate) mod syntax;
 pub(crate) mod tab_size;
+pub(crate) mod table;
 pub(crate) mod text_decoration;
 pub(crate) mod url;
 pub(crate) mod vertical_align;

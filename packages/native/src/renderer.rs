@@ -6279,6 +6279,8 @@ pub(crate) struct Inherited {
     pub font_features: Option<gpui::FontFeatures>,
     /// The nearest ancestor's `interpolateSize`.
     pub interpolate_size: crate::motion::InterpolateSize,
+    /// `border-spacing`, `border-collapse`, `caption-side` and `empty-cells`, which inherit.
+    pub table: crate::css::table::TableInherited,
     /// What the parent is as a containing block, which decides whether a
     /// percentage `height` of a child has anything to resolve against.
     pub container: crate::motion::containing::Container,
@@ -6353,6 +6355,7 @@ impl Inherited {
             font_state: Default::default(),
             font_features: None,
             interpolate_size: Default::default(),
+            table: Default::default(),
             container: crate::motion::containing::Container::WINDOW,
             groups: None,
             containers: None,
@@ -6426,6 +6429,7 @@ impl Inherited {
         if let Some(interpolate_size) = crate::motion::InterpolateSize::declared(style) {
             self.interpolate_size = interpolate_size;
         }
+        self.table = self.table.descend(style, &self.lengths);
         self
     }
 }
@@ -8030,6 +8034,7 @@ pub(crate) fn build_host_container(
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
 
+    el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
@@ -8173,67 +8178,97 @@ fn build_content(
             .as_ref()
             .filter(|probe| probe.container == element.id)
             .map(crate::text::atomic::Probe::clone_handle);
-        for (child, at) in plan {
-            ctx.doc_path.push(at);
-            match child {
-                crate::text::inline::Child::Block(child_id) => {
-                    let item = crate::layout::stacking::is_flex_or_grid_container(element);
-                    let child_element = ctx.tree.elements.get(&child_id);
-                    paint_ranks.push(crate::layout::stacking::paint_rank(
-                        child_element.and_then(|child| child.style.as_deref()),
-                        item,
-                        &ctx.inherited.colors,
-                        &ctx.inherited.lengths,
-                    ));
-                    ctx.contents_overlay =
-                        crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-                    ctx.stacking_item = item;
-                    let out_of_flow = child_element.is_some_and(|child| {
-                        matches!(
-                            child.style.as_deref().and_then(|style| style.position.as_deref()),
-                            Some("absolute" | "fixed")
-                        )
-                    });
-                    // A block of a box is a line of its own.
-                    let outer_line = ctx.inline_line.take();
-                    let built = if out_of_flow {
-                        crate::text::atomic::out_of_flow(|| build_element(child_id, ctx, window, cx))
-                    } else {
-                        build_element(child_id, ctx, window, cx)
-                    };
-                    ctx.inline_line = outer_line;
-                    content_elements.push(match &probe {
-                        Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
-                        _ => built,
-                    });
-                }
-                crate::text::inline::Child::Paragraph(paragraph) => {
-                    if let Some(probe) = &probe {
-                        probe.first_is_text();
-                    }
-                    paint_ranks.push(0);
-                    // A span's container units are fractions of the container it sits in, which
-                    // may be this element.
-                    let own = ctx.inherited.clone();
-                    ctx.inherited = own.clone().enter_children();
-                    // A span is not built by `build_element`, so the paragraph reports the
-                    // containers its boxes' units read.
-                    if let Some(scope) = ctx.inherited.containers.as_deref() {
-                        for id in paragraph.pieces.iter().flat_map(|piece| piece.boxes.iter()) {
-                            if let Some(style) = ctx.tree.elements.get(id).and_then(|span| span.style.as_deref()) {
-                                scope.note_reads_from(style.container_unit_axes);
-                            }
-                        }
-                    }
-                    content_elements.push(paragraph_content(&paragraph, ctx, window, cx));
-                    ctx.inherited = own;
-                }
-            }
-            ctx.doc_path.pop();
-        }
+        build_plan(element, plan, probe.as_ref(), &mut content_elements, &mut paint_ranks, ctx, window, cx);
     }
     let containing_heights = std::mem::replace(&mut ctx.containing_heights, outer_heights);
     (content_elements, paint_ranks, containing_heights)
+}
+
+/// Builds the children `plan` of `element` into `content_elements`, with the paint rank of each.
+fn build_plan(
+    element: &crate::retained_tree::RetainedElement,
+    plan: Vec<(crate::text::inline::Child, u32)>,
+    probe: Option<&crate::text::atomic::Probe>,
+    content_elements: &mut Vec<gpui::AnyElement>,
+    paint_ranks: &mut Vec<i32>,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) {
+    use gpui::prelude::*;
+
+    for (child, at) in plan {
+        // The cell is no element: what it holds sits at its own document positions.
+        if let crate::text::inline::Child::AnonymousCell(cell) = child {
+            let mut inside = Vec::new();
+            let mut inside_ranks = Vec::new();
+            build_plan(element, cell, probe, &mut inside, &mut inside_ranks, ctx, window, cx);
+            let mut cell = crate::layout::table::anonymous_cell();
+            if inside_ranks.iter().any(|rank| *rank != 0) {
+                cell = cell.paint_ranks(inside_ranks);
+            }
+            paint_ranks.push(0);
+            content_elements.push(cell.children(inside).into_any_element());
+            continue;
+        }
+        ctx.doc_path.push(at);
+        match child {
+            crate::text::inline::Child::Block(child_id) => {
+                let item = crate::layout::stacking::is_flex_or_grid_container(element);
+                let child_element = ctx.tree.elements.get(&child_id);
+                paint_ranks.push(crate::layout::stacking::paint_rank(
+                    child_element.and_then(|child| child.style.as_deref()),
+                    item,
+                    &ctx.inherited.colors,
+                    &ctx.inherited.lengths,
+                ));
+                ctx.contents_overlay =
+                    crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                ctx.stacking_item = item;
+                let out_of_flow = child_element.is_some_and(|child| {
+                    matches!(
+                        child.style.as_deref().and_then(|style| style.position.as_deref()),
+                        Some("absolute" | "fixed")
+                    )
+                });
+                // A block of a box is a line of its own.
+                let outer_line = ctx.inline_line.take();
+                let built = if out_of_flow {
+                    crate::text::atomic::out_of_flow(|| build_element(child_id, ctx, window, cx))
+                } else {
+                    build_element(child_id, ctx, window, cx)
+                };
+                ctx.inline_line = outer_line;
+                content_elements.push(match probe {
+                    Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
+                    _ => built,
+                });
+            }
+            crate::text::inline::Child::Paragraph(paragraph) => {
+                if let Some(probe) = probe {
+                    probe.first_is_text();
+                }
+                paint_ranks.push(0);
+                // A span's container units are fractions of the container it sits in, which
+                // may be this element.
+                let own = ctx.inherited.clone();
+                ctx.inherited = own.clone().enter_children();
+                // A span is not built by `build_element`, so the paragraph reports the
+                // containers its boxes' units read.
+                if let Some(scope) = ctx.inherited.containers.as_deref() {
+                    for id in paragraph.pieces.iter().flat_map(|piece| piece.boxes.iter()) {
+                        if let Some(style) = ctx.tree.elements.get(id).and_then(|span| span.style.as_deref()) {
+                            scope.note_reads_from(style.container_unit_axes);
+                        }
+                    }
+                }
+                content_elements.push(paragraph_content(&paragraph, ctx, window, cx));
+                ctx.inherited = own;
+            }
+            crate::text::inline::Child::AnonymousCell(_) => unreachable!("handled before"),
+        }
+        ctx.doc_path.pop();
+    }
 }
 
 /// A `display: contents` element that has no parent to splice into: the root, or
