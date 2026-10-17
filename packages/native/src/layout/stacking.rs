@@ -157,18 +157,28 @@ pub(crate) fn apply_context(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> Stateful<Div> {
-    if forced
+    if forms_context(style, forced, colors, lengths) {
+        el.stacking_context()
+    } else {
+        el
+    }
+}
+
+/// Whether [`apply_context`] flags the element. For a caller that holds the element by reference
+/// and has to call `stacking_context` itself, since `Div` is the only thing that has it.
+pub(crate) fn forms_context(
+    style: Option<&StyleDesc>,
+    forced: bool,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> bool {
+    forced
         || creates_context(
             style,
             style.is_some_and(|style| style.flex_or_grid_item),
             colors,
             lengths,
         )
-    {
-        el.stacking_context()
-    } else {
-        el
-    }
 }
 
 /// The retained-tree counterpart of what zed lifts: the `z-index` of `element` if its parent

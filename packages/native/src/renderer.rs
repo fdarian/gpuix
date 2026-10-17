@@ -8091,7 +8091,10 @@ pub(crate) fn build_host_container(
     // nothing else, so the dispatcher can map GPUI's hit chain back to elements.
     // Text instances are the exception: the DOM has no box for a text node, so the
     // pointer is over the element holding it.
-    let mut el = gpui::div().id(crate::events::ids::host_element_id(element.id));
+    let mut host = gpui::div().id(crate::events::ids::host_element_id(element.id));
+    // Everything up to the children goes through the slot: the element is 1.6 KB, and a helper
+    // that took and returned it copied it twice.
+    let mut el = crate::slot::Slot::new(&mut host);
     if !is_text_node(element) {
         el = crate::events::ids::host_hitbox(el, ctx.inherited.pointer_events_none);
         el = crate::events::app_region::mark(el, ctx.inherited.app_region);
@@ -8136,13 +8139,6 @@ pub(crate) fn build_host_container(
     if style.and_then(|style| style.position.as_deref()).is_none() {
         el.style().position = Some(gpui::Position::Static);
     }
-    el = crate::layout::stacking::apply_context(
-        el,
-        style,
-        stacking_root,
-        &ctx.inherited.colors,
-        &ctx.inherited.lengths,
-    );
     // The inert root claims its box as a non-selectable start region; below it,
     // a descendant's `userSelect: "text"` must not reopen one.
     let selection_start = if element.has_inert_prop() {
@@ -8227,13 +8223,16 @@ pub(crate) fn build_host_container(
     // input like the pointer's (`events::listeners`).
 
     let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
-    el = crate::text::atomic::report_containing_height(el, containing_heights);
-    el.extend(content);
+    crate::text::atomic::report_containing_height(el, containing_heights);
+    if crate::layout::stacking::forms_context(style, stacking_root, &ctx.inherited.colors, &ctx.inherited.lengths) {
+        host = host.stacking_context();
+    }
+    host.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
-        el = el.paint_ranks(paint_ranks);
+        host = host.paint_ranks(paint_ranks);
     }
 
-    el.into_any_element()
+    host.into_any_element()
 }
 
 /// The table a collapsed border is resolved for.

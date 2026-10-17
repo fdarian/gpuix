@@ -464,14 +464,14 @@ pub(crate) fn state_for(id: u64) -> Rc<RefCell<State>> {
 
 /// Gives a scroll container its bars, if its style does not turn them off, and the room for them
 /// that a classic bar takes. `overflow` is the container's, per axis (x, then y).
-pub(crate) fn attach(
-    el: gpui::Stateful<gpui::Div>,
+pub(crate) fn attach<E: gpui::Styled + gpui::StatefulInteractiveElement>(
+    el: E,
     id: u64,
     source: Source,
     style: &StyleDesc,
     colors: &crate::color::ColorContext,
     overflow: [Overflow; 2],
-) -> gpui::Stateful<gpui::Div> {
+) -> E {
     let look = Look::of(style, colors);
     if look.hidden() {
         return el;
@@ -514,12 +514,12 @@ fn overlay<E: gpui::StatefulInteractiveElement>(
 /// Makes the container leave room for its classic bars. A bar for the vertical axis takes width
 /// and one for the horizontal axis takes height, and a bar the user cannot move (`hidden`) takes
 /// nothing.
-fn reserve(
-    el: gpui::Stateful<gpui::Div>,
+fn reserve<E: gpui::Styled + gpui::StatefulInteractiveElement>(
+    el: E,
     state: &Rc<RefCell<State>>,
     look: Look,
     overflow: [Overflow; 2],
-) -> gpui::Stateful<gpui::Div> {
+) -> E {
     let mut st = state.borrow_mut();
     let gutter = look.gutter();
     if gutter == 0.0 {

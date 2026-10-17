@@ -116,13 +116,13 @@ pub(crate) fn overscroll_y(style: &StyleDesc) -> gpui::OverscrollBehavior {
 /// The handle outlives the frame in `handles`, which is how GPUI keeps the offset between
 /// renders. Overflow never changes `display` or the element's children: a scroller lays out
 /// exactly as it would without `overflow`.
-pub(crate) fn apply_container(
-    mut el: gpui::Stateful<gpui::Div>,
+pub(crate) fn apply_container<E: gpui::Styled + gpui::StatefulInteractiveElement>(
+    mut el: E,
     id: u64,
     style: Option<&StyleDesc>,
     colors: &crate::color::ColorContext,
     handles: &mut HashMap<u64, gpui::ScrollHandle>,
-) -> gpui::Stateful<gpui::Div> {
+) -> E {
     let Some(style) = style else {
         handles.remove(&id);
         return el;

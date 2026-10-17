@@ -35,6 +35,7 @@ pub mod perf_counters;
 mod renderer;
 mod scroll;
 mod scrollbar;
+mod slot;
 // The data model is public so `examples/bench_serde.rs` measures the real
 // types instead of a copy that silently drifts from them.
 pub mod retained_tree;
