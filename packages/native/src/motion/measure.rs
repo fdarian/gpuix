@@ -142,10 +142,14 @@ impl Measurements {
     }
 
     /// The `on_painted` listener for the root element, which every painted
-    /// frame includes.
+    /// frame includes. A layout-only pass reports it too and is not a frame.
     pub(crate) fn frame_counter(&self) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
         let painted_frames = self.painted_frames.clone();
-        move |_, _, _| painted_frames.set(painted_frames.get() + 1)
+        move |_, window, _| {
+            if !window.is_layout_pass() {
+                painted_frames.set(painted_frames.get() + 1)
+            }
+        }
     }
 
     /// `child` wrapped so each paint of it keeps `id` measured.

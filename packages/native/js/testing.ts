@@ -132,6 +132,9 @@ interface NativeTestRendererApi
   getAutomationTree(): string
   getRetainedElementCount(): number
   getPaintedFrameCount(): number
+  getLayoutPassCount(): number
+  setInlineDraws(enabled: boolean): void
+  drawFrame(): void
   getElementBounds(elementId: number): ElementBounds | null
   getElementsAt(x: number, y: number): number[]
   clockPause(): number
@@ -857,10 +860,30 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getRetainedElementCount()
   }
 
-  /** Frames the window has painted, a layout-only measure pass included. A
-   *  test compares it before and after to count the draws a read caused. */
+  /** Frames the window has painted. A test compares it before and after to
+   *  count the draws a read caused: a bounds or scroll read paints nothing. */
   getPaintedFrameCount(): number {
     return this.native.getPaintedFrameCount()
+  }
+
+  /** Draw a dirty window when an update or a simulated input flushes (the
+   *  default), or leave that to `drawFrame`, as a real window leaves it to its
+   *  display link. A test that counts draws per frame turns it off. */
+  setInlineDraws(enabled: boolean): void {
+    this.native.setInlineDraws(enabled)
+  }
+
+  /** One display-link frame: deliver the queued frame callbacks, then draw a
+   *  pending change once. Pairs with `setInlineDraws(false)`. */
+  drawFrame(): void {
+    this.native.drawFrame()
+  }
+
+  /** Layout-only passes the window has run. A read of bounds or scroll metrics
+   *  on a dirty window is one, in place of a draw, and the next frame draws
+   *  once regardless. */
+  getLayoutPassCount(): number {
+    return this.native.getLayoutPassCount()
   }
 
   getElementBounds(elementId: number): ElementBounds | null {
@@ -1161,7 +1184,6 @@ export class TestRenderer implements NativeRenderer {
   /** `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]`, or
    *  null for an element that has not been painted. */
   getScrollMetrics(elementId: number): number[] | null {
-    this.native.flush()
     return this.native.getScrollMetrics(elementId)
   }
 

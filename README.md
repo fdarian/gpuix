@@ -4599,9 +4599,11 @@ elements live in the tree, not the order gpui paints them in.
 `element.getBoundingClientRect()` returns the element's border box in window
 coordinates, like the DOM: `{ x, y, width, height, top, left, right, bottom }`.
 It is never stale. Mutations your framework has queued are sent first (Solid
-sends in a microtask, React at commit) and the window is laid out and painted
-synchronously if anything changed, so the first read after a mount, or a read
-right after a style change in the same turn, answers for the tree as it is. An
+sends in a microtask, React at commit) and the window is laid out synchronously
+if anything changed, without painting, as a browser forces layout. The first
+read after a mount, or a read right after a style change in the same turn,
+answers for the tree as it is, and the next frame draws once however many reads
+came before it. An
 element with no box (not mounted, not painted) returns a zero
 rect, as in the DOM.
 
@@ -4617,7 +4619,7 @@ redraw, so the offset between a parent and a child stays constant under a moving
 ancestor.
 
 `renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
-on the test renderer. It does the same flush and draw, and returns `null`
+on the test renderer. It does the same flush and layout, and returns `null`
 instead of a zero rect when the element has no box. `<input>` reports its border
 box like every other element. The browser (wasm) build still answers from the
 last painted frame.

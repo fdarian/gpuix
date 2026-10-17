@@ -67,17 +67,26 @@ thread_local! {
 /// `List::prepaint` speculatively prepaints a row range and can roll the window
 /// back and prepaint a different one, so a prepaint-recorded box can belong to a
 /// row that never reached the screen.
+///
+/// A pass that only lays out (a bounds read: `Window::draw_if_dirty`) has no paint, so the
+/// recording moves to its end, through `Window::publish_layout`, which drops what a rolled-back
+/// prepaint queued. The reset is still ahead of everything, and runs in that pass's prepaint.
 pub fn bounds_frame_reset() -> impl IntoElement {
     canvas(
-        |_, _, _| (),
-        move |_, _, window, _| {
-            let window = window.window_handle().window_id();
-            BOUNDS.with(|cell| cell.borrow_mut().retain(|key, _| key.0 != window));
+        |_, window, _| {
+            if window.is_layout_pass() {
+                forget_window(window.window_handle().window_id());
+            }
         },
+        move |_, _, window, _| forget_window(window.window_handle().window_id()),
     )
     .absolute()
     .w(px(0.0))
     .h(px(0.0))
+}
+
+fn forget_window(window: WindowId) {
+    BOUNDS.with(|cell| cell.borrow_mut().retain(|key, _| key.0 != window));
 }
 
 /// Record this element's own painted box, with no extra element in the tree.
@@ -416,6 +425,11 @@ fn send_key_up(window: &mut Window, cx: &mut App, press: Press) {
 
 /// Every automation mouse dispatcher takes modifiers, so a test can drive
 /// cmd-wheel zoom, shift-click range selection, or alt-drag duplication.
+///
+/// Each one first draws what the tree changed since the last frame, because the pointer is hit
+/// tested against a drawn frame. A bounds read only lays out, and the display link that would
+/// draw a frame for it may not run (a hidden window, a session with no display); a person's
+/// pointer lands on whatever frame was on screen, and automation should land on what it read.
 pub fn dispatch_click(
     window: &mut Window,
     cx: &mut App,
@@ -424,6 +438,7 @@ pub fn dispatch_click(
     button: u32,
     modifiers: Modifiers,
 ) {
+    window.paint_if_dirty(cx);
     let position = point(px(x as f32), px(y as f32));
     let button = mouse_button(button);
     window.dispatch_event(
@@ -457,6 +472,7 @@ pub fn dispatch_mouse_down(
     button: u32,
     modifiers: Modifiers,
 ) {
+    window.paint_if_dirty(cx);
     window.dispatch_event(
         MouseDownEvent {
             button: mouse_button(button),
@@ -478,6 +494,7 @@ pub fn dispatch_mouse_up(
     button: u32,
     modifiers: Modifiers,
 ) {
+    window.paint_if_dirty(cx);
     window.dispatch_event(
         MouseUpEvent {
             button: mouse_button(button),
@@ -498,6 +515,7 @@ pub fn dispatch_mouse_move(
     pressed_button: Option<u32>,
     modifiers: Modifiers,
 ) {
+    window.paint_if_dirty(cx);
     window.dispatch_event(
         MouseMoveEvent {
             position: point(px(x as f32), px(y as f32)),
@@ -529,6 +547,7 @@ pub fn dispatch_scroll_wheel(
     modifiers: Modifiers,
     touch_phase: gpui::TouchPhase,
 ) {
+    window.paint_if_dirty(cx);
     window.dispatch_event(
         gpui::ScrollWheelEvent {
             position: point(px(x as f32), px(y as f32)),

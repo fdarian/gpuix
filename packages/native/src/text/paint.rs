@@ -421,12 +421,25 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .map(|focusable| (focusable.id, focusable.handle.clone()))
         .collect();
     let announced = highlight.clone().map(|source| (source, key.clone(), doc.clone(), text.clone()));
+    let inline_boxes = std::rc::Rc::new(inline_boxes);
+    let layout_of_boxes = layout.clone();
+    let boxes_to_record = inline_boxes.clone();
     let underlay = canvas(
         move |_, window, _| {
             // Numbers the find matches in document order, which needs every run's matches
             // before the first one paints. See `search::wash`.
             if window.visibility() == gpui::Visibility::Hidden {
                 return;
+            }
+            // A pass that lays out and does not paint (a bounds read) records the boxes of the
+            // inline elements once every run is prepainted: this canvas comes before the glyphs
+            // that finish the paragraph's line layout.
+            if window.is_layout_pass() && !boxes_to_record.is_empty() {
+                let layout = layout_of_boxes.clone();
+                let boxes = boxes_to_record.clone();
+                window.publish_layout(move |window, cx| {
+                    super::inline_bounds::record(&layout, &boxes, window, cx)
+                });
             }
             let Some((source, key, doc, text)) = &announced else {
                 return;

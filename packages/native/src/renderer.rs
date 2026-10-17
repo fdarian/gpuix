@@ -1291,23 +1291,38 @@ impl GpuixRenderer {
         recv_ui_response(response_receiver, "the GPUI key command")?.map_err(Error::from_reason)
     }
 
-    /// Lay out and paint any pending change now, so a bounds read answers for
-    /// the tree as it is, like `getBoundingClientRect` forcing layout.
+    /// Lay out any pending change now, so a bounds read answers for the tree as it is, like
+    /// `getBoundingClientRect` forcing layout. Nothing is painted: the next display-link step
+    /// draws and presents once, however many reads came before it.
     ///
     /// Without this, bounds come from the last display-link frame, which may
     /// not exist yet right after a commit. Call it before locking `tree`: the
-    /// draw builds the view from it. The display-link step that follows only
-    /// presents.
+    /// pass builds the view from it.
     ///
-    /// Returns the window that was drawn, which is where its painted boxes are. `None` before
-    /// `init`: nothing was painted.
+    /// Returns the window that was laid out, which is where its boxes are. `None` before
+    /// `init`: nothing was laid out.
     #[cfg(target_os = "macos")]
     fn draw_pending_changes(&self) -> Result<Option<gpui::WindowId>> {
+        self.with_initialized_window(|window, cx| window.draw_if_dirty(cx))
+    }
+
+    /// Like `draw_pending_changes`, for a read of what a frame painted (the painted text), which
+    /// a layout does not produce.
+    #[cfg(target_os = "macos")]
+    fn paint_pending_changes(&self) -> Result<Option<gpui::WindowId>> {
+        self.with_initialized_window(|window, cx| window.paint_if_dirty(cx))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn with_initialized_window(
+        &self,
+        pass: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> bool,
+    ) -> Result<Option<gpui::WindowId>> {
         if !*self.initialized.lock().unwrap() {
             return Ok(None);
         }
         update_window_without_view(|window, cx| {
-            window.draw_if_dirty(cx);
+            pass(window, cx);
             window.window_handle().window_id()
         })
         .map(Some)
@@ -3517,7 +3532,7 @@ impl GpuixRenderer {
         #[cfg(target_os = "macos")]
         {
             return Ok(self
-                .draw_pending_changes()?
+                .paint_pending_changes()?
                 .map(crate::text::painted_text)
                 .unwrap_or_default());
         }
@@ -3535,7 +3550,7 @@ impl GpuixRenderer {
         #[cfg(target_os = "macos")]
         {
             return Ok(self
-                .draw_pending_changes()?
+                .paint_pending_changes()?
                 .map(crate::text::painted_highlights)
                 .unwrap_or_default()
                 .into_iter()

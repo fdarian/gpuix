@@ -3,25 +3,24 @@
  * animation (issue #39). A `motion.div` animates over a page of about 1000
  * elements while pointer moves arrive; each move's handler calls
  * `getBoundingClientRect` on the hovered container, as the demo's fluid hover
- * did on every move. A read answers from a fresh layout, so a dirty window
- * draws in the read, and that draw is not a frame the display shows. In the
- * demo's 3 s sidebar sweep: 298 draws for 171 presented frames.
+ * did on every move. A read answers from a fresh layout. It used to draw in the
+ * read, and that draw was not a frame the display shows (the demo's 3 s sidebar
+ * sweep: 298 draws for 171 presented frames). A browser forces a layout and
+ * paints once at the frame, and so does a read now: it is a layout-only pass,
+ * and the frame that follows is the only draw.
  *
- * The test renderer has no display, so "presented" is the number of frames the
- * loop asked for. Counters, both native:
+ * The test window draws a dirty window whenever an update or an input flushes,
+ * which a display link never does. The test turns that off (`setInlineDraws`)
+ * and ends each frame with `drawFrame`, the display link's one draw, so that
+ * what is counted is what a live window pays. Counters, both native:
  *   draws     `getDebugFrameOverlayStats().frames`, every `Window::draw`
- *   painted   `getPaintedFrameCount()`, draws plus layout-only measure passes
- * A frame here is `clockFastForward(1/75 s)`, which draws once; draws/frame
- * above 1.00 is the waste. The real-window counterpart is `GPUIX_PRESENT_LOG`
- * (one line per frame that reaches the screen), which the test renderer does
- * not write.
+ *   passes    `getLayoutPassCount()`, the layout-only passes of reads
+ * A frame is `clockFastForward(1/75 s)`, the moves, then `drawFrame`.
  *
- * Handler variants, with 1 and 3 pointer moves per frame. `write` is the
- * control for the two that also read: a commit only marks the window dirty, so
- * their draws above `write` come from the reads. A read on a clean window (the
- * clock draw just ran) costs nothing, which is why `read` alone shows 1.00.
- * The first read after a commit draws, and `measure-only` counts the
- * layout-only passes that a read inside an input dispatch would use instead.
+ * Handler variants, with 1 and 3 pointer moves per frame. A commit only marks
+ * the window dirty and a clean window needs no pass, so the first read after a
+ * change lays out and the reads that follow it with nothing invalidated in
+ * between share that pass.
  *
  *   none             no handler
  *   read             reads the container box on every move
@@ -29,8 +28,10 @@
  *   write-then-read  commits the highlight position, then reads (a dirty window)
  *   read-then-write  reads, then commits the highlight position
  *
- * It profiles, it does not guard: no budgets. Run it through
- * `bun run test:perf:draws` (NODE_ENV=production, like `test:perf`).
+ * Guards: no variant draws more than once per frame (1.05 for slack), and
+ * the layout passes are as many as invalidations a read saw. Run it through
+ * `bun run test:perf:draws` (NODE_ENV=production, like `test:perf`); the
+ * counts do not depend on the build, the timings do.
  */
 
 import React, { useRef, useState } from 'react'
@@ -80,6 +81,24 @@ function Page({ handler }: { handler: Handler }) {
   )
 }
 
+/** The layout passes a frame needs: one per invalidation a read saw. */
+function expectedPassesPerFrame(handler: Handler, moves: number): number {
+  switch (handler) {
+    case 'none':
+    case 'write':
+      return 0
+    // The clock tick dirties the window once; reads after it find nothing new.
+    case 'read':
+      return 1
+    // Each move's write invalidates what the read before it laid out.
+    case 'write-then-read':
+      return moves
+    // The first read finds the tick's invalidation, the later ones the last move's write.
+    case 'read-then-write':
+      return moves
+  }
+}
+
 describeNative('draws against frames under pointer moves and an animation', () => {
   for (const moves of [1, 3]) {
     it(`${moves} move(s) per frame`, () => {
@@ -89,34 +108,41 @@ describeNative('draws against frames under pointer moves and an animation', () =
           root.render(<Page handler={handler} />)
           const renderer = root.renderer
           renderer.clockPause()
+          renderer.setInlineDraws(false)
+          renderer.drawFrame()
           const draws = () => renderer.getDebugFrameOverlayStats().frames
-          const painted = () => renderer.getPaintedFrameCount()
+          const passes = () => renderer.getLayoutPassCount()
           let drawsAtStart = 0
-          let paintedAtStart = 0
+          let passesAtStart = 0
           let step = 0
           const frames = sample(
             (index) => {
               if (index === WARMUP) {
                 drawsAtStart = draws()
-                paintedAtStart = painted()
+                passesAtStart = passes()
               }
               renderer.clockFastForward(FRAME_MS)
               for (let move = 0; move < moves; move++) {
                 step++
                 renderer.dispatchMouseMove(HOVER.x + 10 + (step % 500), HOVER.y + 100)
               }
+              renderer.drawFrame()
             },
             WARMUP,
             SAMPLES,
           )
           const drawn = draws() - drawsAtStart
-          const measured = painted() - paintedAtStart - drawn
+          const laidOut = passes() - passesAtStart
           console.log(
             `[draws.perf] moves/frame=${moves} handler=${handler} frames=${SAMPLES} ` +
-              `draws=${drawn} (${(drawn / SAMPLES).toFixed(2)}/frame) measure-only=${measured} | ${formatSummary(summarize(frames))}`,
+              `draws=${drawn} (${(drawn / SAMPLES).toFixed(2)}/frame) layout-passes=${laidOut} ` +
+              `(${(laidOut / SAMPLES).toFixed(2)}/frame) | ${formatSummary(summarize(frames))}`,
           )
-          expect(drawn).toBeGreaterThanOrEqual(SAMPLES)
+          expect(drawn, `${handler}: draws`).toBeGreaterThanOrEqual(SAMPLES)
+          expect(drawn / SAMPLES, `${handler}: draws per frame`).toBeLessThanOrEqual(1.05)
+          expect(laidOut, `${handler}: layout passes`).toBe(SAMPLES * expectedPassesPerFrame(handler, moves))
         } finally {
+          root.renderer.setInlineDraws(true)
           root.unmount()
         }
       }

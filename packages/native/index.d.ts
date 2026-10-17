@@ -459,11 +459,16 @@ export declare class TestGpuixRenderer {
    */
   getRetainedElementCount(): number
   /**
-   * How many frames the window has painted, a layout-only measure pass
-   * included. A test that must prove a read did not draw once per call
-   * compares this before and after.
+   * How many frames the window has painted. A test that must prove a read did not draw once
+   * per call compares this before and after. A bounds or scroll read lays out and paints
+   * nothing: those passes are `getLayoutPassCount`.
    */
   getPaintedFrameCount(): number
+  /**
+   * How many layout-only passes the window has run: what a bounds or scroll read makes of a
+   * dirty window, in place of a draw. The next frame draws once more regardless.
+   */
+  getLayoutPassCount(): number
   /**
    * Apply a batch of mutations in a single FFI call.
    * Same format as GpuixRenderer::apply_batch (string op names).
@@ -477,6 +482,18 @@ export declare class TestGpuixRenderer {
    * hit testing requires elements to be laid out).
    */
   flush(): void
+  /**
+   * Whether the test window is drawn whenever an update or a simulated input flushes, which
+   * is how a test sees the result of what it just did. A live window is drawn by the display
+   * link once per frame, however many inputs and reads came in it. A test that counts draws
+   * turns this off and ends each frame with `drawFrame`.
+   */
+  setInlineDraws(enabled: boolean): void
+  /**
+   * A display-link frame: delivers the frame callbacks the last draw queued, then draws a
+   * pending change, once. For use with `setInlineDraws(false)`.
+   */
+  drawFrame(): void
   /**
    * Draws only what a live window would: a pending change, nothing on a clean window.
    * `flush()` notifies the view, so it draws every call; the `nativeSimulate*` helpers

@@ -220,10 +220,10 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
     })
 }
 
-/// Lays out and paints a pending change before a bounds or scroll read, as the live renderer does.
-/// From a handler of the input being dispatched that is a measure pass, not a draw.
+/// Lays out a pending change before a bounds or scroll read, as the live renderer does: a
+/// layout-only pass, which paints nothing and leaves the window dirty for the next frame.
 ///
-/// Returns the window that was drawn, which is where its painted boxes are.
+/// Returns the window that was laid out, which is where its boxes are.
 fn draw_pending_changes() -> Result<gpui::WindowId> {
     window_call(|window, cx| {
         window.draw_if_dirty(cx);
@@ -667,12 +667,19 @@ impl TestGpuixRenderer {
         self.tree.lock().unwrap().elements.len() as u32
     }
 
-    /// How many frames the window has painted, a layout-only measure pass
-    /// included. A test that must prove a read did not draw once per call
-    /// compares this before and after.
+    /// How many frames the window has painted. A test that must prove a read did not draw once
+    /// per call compares this before and after. A bounds or scroll read lays out and paints
+    /// nothing: those passes are `getLayoutPassCount`.
     #[napi]
     pub fn get_painted_frame_count(&self) -> Result<f64> {
         update_view(|view, _window, _cx| view.painted_frame_count() as f64)
+    }
+
+    /// How many layout-only passes the window has run: what a bounds or scroll read makes of a
+    /// dirty window, in place of a draw. The next frame draws once more regardless.
+    #[napi]
+    pub fn get_layout_pass_count(&self) -> Result<f64> {
+        update_view(|_view, window, _cx| window.layout_pass_count() as f64)
     }
 
     /// Apply a batch of mutations in a single FFI call.
@@ -719,6 +726,26 @@ impl TestGpuixRenderer {
         update_view_or_defer(|_view, _window, cx| cx.notify())
     }
 
+    /// Whether the test window is drawn whenever an update or a simulated input flushes, which
+    /// is how a test sees the result of what it just did. A live window is drawn by the display
+    /// link once per frame, however many inputs and reads came in it. A test that counts draws
+    /// turns this off and ends each frame with `drawFrame`.
+    #[napi]
+    pub fn set_inline_draws(&self, enabled: bool) -> Result<()> {
+        with_test_state(|cx, _window, _view| {
+            cx.update(|app| app.set_draws_inline(enabled));
+            Ok(())
+        })
+    }
+
+    /// A display-link frame: delivers the frame callbacks the last draw queued, then draws a
+    /// pending change, once. For use with `setInlineDraws(false)`.
+    #[napi]
+    pub fn draw_frame(&self) -> Result<()> {
+        deliver_frame()?;
+        window_call(|window, cx| window.paint_if_dirty(cx)).map(|_| ())
+    }
+
     /// Draws only what a live window would: a pending change, nothing on a clean window.
     /// `flush()` notifies the view, so it draws every call; the `nativeSimulate*` helpers
     /// that wrap one input in a flush before and after use this instead, so an input costs
@@ -729,7 +756,7 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             return self.flush();
         }
-        draw_pending_changes().map(|_| ())
+        window_call(|window, cx| window.paint_if_dirty(cx)).map(|_| ())
     }
 
     /// Simulate a click at the given window coordinates.
@@ -1690,7 +1717,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
-        self.flush()?;
+        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
+            self.flush()?;
+        }
         let window = draw_pending_changes()?;
         Ok(crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec()))
     }
