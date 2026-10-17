@@ -867,3 +867,58 @@ describeNative("container queries: what a pass before present must not report", 
     })
   })
 })
+
+describeNative("container queries: text and virtual lists", () => {
+  const heightOf = (testRoot: TestRoot, testId: string) => laidOut(testRoot, testId)[3]
+
+  it("a font size in cqw follows the container in the frame that lays it out, on a text and on a span", () => {
+    const app = (width: number) => (
+      <div style={{ width }}>
+        <div style={{ containerType: "inline-size" }}>
+          <text testId="plain" style={{ fontSize: "10cqw" }}>
+            m
+          </text>
+          <text testId="spanned">
+            <span style={{ fontSize: "10cqw" }}>m</span>
+          </text>
+        </div>
+      </div>
+    )
+    withRoot((testRoot) => {
+      expect(paintedFrames(testRoot, () => testRoot.render(app(400)))).toBe(1)
+      const [plain, spanned] = [heightOf(testRoot, "plain"), heightOf(testRoot, "spanned")]
+      expect(plain).toBeGreaterThan(40)
+      expect(spanned).toBeGreaterThan(40)
+      expect(paintedFrames(testRoot, () => testRoot.render(app(200)))).toBe(1)
+      // Line boxes are whole pixels, so half is within one.
+      expect(Math.abs(heightOf(testRoot, "plain") - plain / 2)).toBeLessThanOrEqual(1)
+      expect(Math.abs(heightOf(testRoot, "spanned") - spanned / 2)).toBeLessThanOrEqual(1)
+    })
+  })
+
+  it("the rows of a virtual list under a container read it", () => {
+    const app = (width: number) => (
+      <div style={{ width }}>
+        <div style={{ containerType: "inline-size" }}>
+          <virtual-list overdraw={0} estimatedItemHeight={40} style={{ width: "100%", height: 200 }}>
+            {[0, 1].map((row) => (
+              <div
+                key={row}
+                testId={`row-${row}`}
+                style={{ height: 40, width: 100, "@container": { "(min-width: 300px)": { width: "50cqw" } } }}
+              />
+            ))}
+          </virtual-list>
+        </div>
+      </div>
+    )
+    withRoot((testRoot) => {
+      testRoot.render(app(400))
+      expect(laidOut(testRoot, "row-0")[2]).toBe(200)
+      testRoot.render(app(200))
+      expect(laidOut(testRoot, "row-0")[2]).toBe(100)
+      testRoot.render(app(600))
+      expect(laidOut(testRoot, "row-1")[2]).toBe(300)
+    })
+  })
+})
