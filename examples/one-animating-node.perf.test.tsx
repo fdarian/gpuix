@@ -82,6 +82,7 @@ describeNative('one animating node over a large static tree', () => {
           const elements = renderer.getRetainedElementCount()
           const draws = renderer.getDebugFrameOverlayStats().frames
           renderer.resetBuildCounters()
+          const layoutBefore = renderer.getLayoutCounters()
           const frames = sample(
             // The clock moves and notifies the view, which draws once: one frame.
             () => renderer.clockFastForward(FRAME_MS),
@@ -90,6 +91,9 @@ describeNative('one animating node over a large static tree', () => {
           )
           const drawn = renderer.getDebugFrameOverlayStats().frames - draws
           const built = renderer.getBuildCounters()
+          const layoutAfter = renderer.getLayoutCounters()
+          const layoutPerFrame = (key: keyof typeof layoutAfter) =>
+            ((layoutAfter[key] - layoutBefore[key]) / (WARMUP + SAMPLES)).toFixed(1)
           const perFrame = (count: number) => (count / (WARMUP + SAMPLES)).toFixed(1)
           const highlight = renderer.findByTestId('highlight')
           const highlightY = highlight ? ` highlight-y=${renderer.getElementBounds(highlight.id)!.y.toFixed(1)}` : ''
@@ -97,7 +101,9 @@ describeNative('one animating node over a large static tree', () => {
             `[animating.perf] ${variant}${highlightY} cards=${cards} elements=${elements} ` +
               `draws/frame=${(drawn / (WARMUP + SAMPLES)).toFixed(2)} ` +
               `built/frame=${perFrame(built.elementsBuilt)} style-clones/frame=${perFrame(built.styleDescClones)} ` +
-              `inherited-clones/frame=${perFrame(built.inheritedClones)} | ${formatSummary(summarize(frames))}`,
+              `inherited-clones/frame=${perFrame(built.inheritedClones)} ` +
+              `layout-nodes-new/frame=${layoutPerFrame('nodesCreated')} reused/frame=${layoutPerFrame('nodesReused')} ` +
+              `layout-passes/frame=${layoutPerFrame('passes')} styles-set/frame=${layoutPerFrame('stylesSet')} children-set/frame=${layoutPerFrame('childrenSet')} | ${formatSummary(summarize(frames))}`,
           )
           console.log(`[animating.perf]   ${formatRetain(built)}`)
           expect(elements).toBeGreaterThan(0)

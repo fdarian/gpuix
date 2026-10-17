@@ -14,6 +14,7 @@ import {
   TestGpuixRenderer,
   validateKeyframes,
   type BuildCounters,
+  type LayoutCounters,
   type EventPayload,
   type MediaFeatures,
   type WindowOptions,
@@ -133,6 +134,7 @@ interface NativeTestRendererApi
   getAutomationTree(): string
   getRetainedElementCount(): number
   getBuildCounters(): BuildCounters
+  getLayoutCounters(): LayoutCounters
   resetBuildCounters(): void
   setRetainVerify(verify: boolean): void
   setRetainLift(names: string[]): void
@@ -876,6 +878,12 @@ export class TestRenderer implements NativeRenderer {
    *  element, so divide by the frames drawn for the per-frame figure. */
   getBuildCounters(): BuildCounters {
     return this.native.getBuildCounters()
+  }
+
+  /** Layout nodes made, found again and freed, and styles and child lists set,
+   *  by the window's layout engine since the window was made. */
+  getLayoutCounters(): LayoutCounters {
+    return this.native.getLayoutCounters()
   }
 
   resetBuildCounters(): void {

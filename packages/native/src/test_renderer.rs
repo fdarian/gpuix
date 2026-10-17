@@ -50,6 +50,18 @@ pub struct BuildCounters {
     pub retain_reasons: String,
 }
 
+/// What the layout engine of the window has done since the window was made, see `get_layout_counters`.
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct LayoutCounters {
+    pub nodes_created: f64,
+    pub nodes_reused: f64,
+    pub nodes_removed: f64,
+    pub styles_set: f64,
+    pub children_set: f64,
+    pub passes: f64,
+}
+
 // ── Thread-local storage for !Send GPUI types ────────────────────────
 
 /// Bundles VisualTestAppContext + window handle + view entity.
@@ -734,6 +746,23 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_retain_mismatches(&self) -> Result<Vec<String>> {
         update_view(|view, _window, _cx| view.retain.mismatches().to_vec())
+    }
+
+    /// Layout nodes the window's engine made, found again, freed, and the styles and child lists it
+    /// set, since the window was made: subtract two reads for a span of frames.
+    #[napi]
+    pub fn get_layout_counters(&self) -> Result<LayoutCounters> {
+        update_view(|_view, window, _cx| {
+            let counters = window.layout_counters();
+            LayoutCounters {
+                nodes_created: counters.nodes_created as f64,
+                nodes_reused: counters.nodes_reused as f64,
+                nodes_removed: counters.nodes_removed as f64,
+                styles_set: counters.styles_set as f64,
+                children_set: counters.children_set as f64,
+                passes: counters.passes as f64,
+            }
+        })
     }
 
     #[napi]

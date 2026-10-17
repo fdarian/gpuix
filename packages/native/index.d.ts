@@ -478,6 +478,11 @@ export declare class TestGpuixRenderer {
   setRetainLift(names: Array<string>): void
   /** What the elements judged unchanged were built differently by, one line each. */
   getRetainMismatches(): Array<string>
+  /**
+   * Layout nodes the window's engine made, found again, freed, and the styles and child lists it
+   * set, since the window was made: subtract two reads for a span of frames.
+   */
+  getLayoutCounters(): LayoutCounters
   resetBuildCounters(): void
   /**
    * How many frames the window has painted. A test that must prove a read did not draw once
@@ -1411,6 +1416,16 @@ export interface LayerShellOptions {
    * overlay that never takes keyboard focus.
    */
   keyboardInteractivity?: string
+}
+
+/** What the layout engine of the window has done since the window was made, see `get_layout_counters`. */
+export interface LayoutCounters {
+  nodesCreated: number
+  nodesReused: number
+  nodesRemoved: number
+  stylesSet: number
+  childrenSet: number
+  passes: number
 }
 
 /** The OS accessibility preferences that media queries expose. */
