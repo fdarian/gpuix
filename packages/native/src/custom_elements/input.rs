@@ -547,6 +547,9 @@ impl CustomElement for TextEditorElement {
         if let Some(features) = ctx.font_features.clone() {
             editor = editor.font_features(features);
         }
+        if let Some(variations) = ctx.font_variations.clone() {
+            editor = editor.font_variations(variations);
+        }
         editor = crate::focus::apply_focus_styles(
             editor,
             ctx.id,

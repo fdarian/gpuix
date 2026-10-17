@@ -879,6 +879,10 @@ pub struct StyleDesc {
     /// CSS `font-feature-settings`, e.g. `'"tnum" 1, "liga" 0'`. Inherited, and it
     /// wins over `fontVariantNumeric` on a feature both name.
     pub font_feature_settings: Option<String>,
+    /// CSS `font-variation-settings`, e.g. `'"wght" 650, "wdth" 90'`. Inherited. An axis
+    /// the font does not have is ignored, and one named here beats `fontWeight` on `wght`.
+    /// A value CSS does not have fails the style parse. Not supported inside `hover`/`active`/`focusVisible`.
+    pub font_variation_settings: Option<crate::css::font_variations::VariationSettings>,
 
     // Overflow
     pub overflow: Option<String>,

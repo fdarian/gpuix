@@ -51,6 +51,7 @@ pub struct RunStyle {
     pub font_style: Option<gpui::FontStyle>,
     pub family: Option<SharedString>,
     pub features: Option<gpui::FontFeatures>,
+    pub variations: Option<gpui::FontVariations>,
     /// The decoration lines of a run keep the colour, style and thickness of the
     /// box that declared them, so a descendant that changes `color` does not
     /// recolour them. The innermost box's line of a kind is the field, the lines
@@ -248,6 +249,9 @@ pub fn styles(
             font_state = next;
             if features.is_some() {
                 style.features = features;
+            }
+            if let Some(settings) = &declared.font_variation_settings {
+                style.variations = Some(settings.variations());
             }
             // CSS draws a decoration over the whole box and a descendant cannot
             // take it off, so `none` on a box adds nothing and removes nothing.
@@ -519,6 +523,9 @@ impl InlineText {
         }
         if let Some(features) = &style.features {
             run.font.features = features.clone();
+        }
+        if let Some(variations) = &style.variations {
+            run.font.variations = variations.clone();
         }
         // The lines the text inherits from the boxes around the paragraph
         // stay under the ones the run's own boxes declare.

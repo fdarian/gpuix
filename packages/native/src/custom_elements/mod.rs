@@ -58,6 +58,8 @@ pub struct CustomRenderContext<'a> {
     pub lengths: crate::css::length::LengthContext,
     /// Font features this element declares, for the text it paints.
     pub font_features: Option<gpui::FontFeatures>,
+    /// Font variations this element declares, for the text it paints.
+    pub font_variations: Option<gpui::FontVariations>,
     /// Built child elements from the retained tree for this custom node.
     pub children: Vec<gpui::AnyElement>,
     /// For `<svg>`: the XML of its shape children, which win over `src` and
@@ -170,6 +172,9 @@ pub(crate) fn custom_surface(
     }
     if let Some(features) = ctx.font_features.clone() {
         el = el.font_features(features);
+    }
+    if let Some(variations) = ctx.font_variations.clone() {
+        el = el.font_variations(variations);
     }
     if ctx
         .style

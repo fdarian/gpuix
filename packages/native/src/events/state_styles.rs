@@ -174,7 +174,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         border_top_right_radius, border_bottom_left_radius, border_bottom_right_radius,
         box_shadow, border_style, border_top_style, border_right_style, border_bottom_style,
         border_left_style, aspect_ratio, outline_width, outline_style, outline_color, outline_offset, outline,
-        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, text_box, text_box_trim, text_box_edge, word_break, overflow_wrap, text_wrap, text_wrap_mode, text_wrap_style, text_overflow, vertical_align,
+        font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, font_variation_settings, text_align, line_height, white_space, tab_size, text_box, text_box_trim, text_box_edge, word_break, overflow_wrap, text_wrap, text_wrap_mode, text_wrap_style, text_overflow, vertical_align,
         table_layout, border_spacing, border_collapse, caption_side, empty_cells,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
         text_decoration_color, text_decoration_thickness, text_underline_offset,

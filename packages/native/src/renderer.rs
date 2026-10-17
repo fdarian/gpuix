@@ -6296,6 +6296,9 @@ pub(crate) struct Inherited {
     /// The combined features, only on the element whose style declares one of the
     /// two: gpui inherits a text style on its own, so descendants add nothing.
     pub font_features: Option<gpui::FontFeatures>,
+    /// `fontVariationSettings`, only on the element whose style declares it, as with
+    /// `font_features`.
+    pub font_variations: Option<gpui::FontVariations>,
     /// The nearest ancestor's `interpolateSize`.
     pub interpolate_size: crate::motion::InterpolateSize,
     /// `border-spacing`, `border-collapse`, `caption-side` and `empty-cells`, which inherit.
@@ -6377,6 +6380,7 @@ impl Inherited {
             above_root: true,
             font_state: Default::default(),
             font_features: None,
+            font_variations: None,
             interpolate_size: Default::default(),
             table: Default::default(),
             table_row: None,
@@ -6412,6 +6416,7 @@ impl Inherited {
             .descend(style.and_then(|style| style.font_size.as_ref()), self.above_root);
         self.above_root = false;
         self.font_features = None;
+        self.font_variations = None;
         self.container = self.container.within(style.unwrap_or(&EMPTY_STYLE));
         self.inert |= inert;
         if self.inert {
@@ -6429,6 +6434,7 @@ impl Inherited {
             style.font_variant_numeric.as_deref(),
             style.font_feature_settings.as_deref(),
         );
+        self.font_variations = style.font_variation_settings.as_ref().map(|settings| settings.variations());
         match style.user_select.as_deref() {
             Some("none") => self.selectable = false,
             Some("text") | Some("auto") if !self.inert => self.selectable = true,
@@ -7787,6 +7793,7 @@ fn build_element_unpumped(
                 colors: inherited.colors,
                 lengths: inherited.lengths,
                 font_features: inherited.font_features.clone(),
+                font_variations: inherited.font_variations.clone(),
                 children: custom_children,
                 svg_markup,
                 selection: ctx.selection.clone(),
@@ -7994,6 +8001,9 @@ fn build_virtual_list(
         if let Some(features) = ctx.inherited.font_features.clone() {
             list = list.font_features(features);
         }
+        if let Some(variations) = ctx.inherited.font_variations.clone() {
+            list = list.font_variations(variations);
+        }
     }
     let list = apply_accessibility(list, element.id, element.custom_props(), None);
     let default_style = StyleDesc::default();
@@ -8074,6 +8084,9 @@ pub(crate) fn build_host_container(
 
         if let Some(features) = ctx.inherited.font_features.clone() {
             el = el.font_features(features);
+        }
+        if let Some(variations) = ctx.inherited.font_variations.clone() {
+            el = el.font_variations(variations);
         }
     }
     if let Some(scope) = ctx.inherited.self_container.clone() {
@@ -8499,6 +8512,9 @@ fn build_contents_container(
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
         window,
     );
+    if let Some(variations) = ctx.inherited.font_variations.clone() {
+        el = el.font_variations(variations);
+    }
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {

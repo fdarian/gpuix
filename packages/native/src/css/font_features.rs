@@ -82,7 +82,7 @@ pub(crate) fn parse_feature_settings(value: &str) -> Option<Features> {
 }
 
 /// The quoted tag at the start of `item` and what follows it.
-fn parse_tag(item: &str) -> Option<(&str, &str)> {
+pub(crate) fn parse_tag(item: &str) -> Option<(&str, &str)> {
     let item = item.trim();
     let quote = item.chars().next().filter(|quote| matches!(quote, '"' | '\''))?;
     let rest = &item[1..];

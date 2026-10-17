@@ -15,6 +15,7 @@ pub(crate) mod dimension;
 pub(crate) mod filter;
 pub(crate) mod flex;
 pub(crate) mod font_features;
+pub(crate) mod font_variations;
 pub(crate) mod gradient;
 pub(crate) mod length;
 pub(crate) mod line_height;

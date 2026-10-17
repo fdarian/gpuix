@@ -965,6 +965,13 @@ export interface StyleDesc {
    *  characters; the value is an integer, `on`, `off`, or omitted (1). Wins over
    *  `fontVariantNumeric` on a tag both name. Not available inside a state style. */
   fontFeatureSettings?: string
+  /** CSS `font-variation-settings`, inherited: `'"wght" 650, "wdth" 90'`, or `normal`. A
+   *  tag is four characters and the value a number, clamped to the font's range for that
+   *  axis; an axis the font does not have is ignored, and a tag named twice takes its last
+   *  value. On a variable font `fontWeight` already sets `wght` (to any weight, not only the
+   *  named ones), and a `wght` here wins over it. A value CSS does not have throws, as
+   *  `textWrap` does. Not available inside a state style. */
+  fontVariationSettings?: string
 
   /** `"visible"` (default); `"clip"` clips; `"hidden"` clips and is a scroll container that
    *  only code scrolls (`scrollTo`, `scrollTop`, `scrollIntoView`), not the wheel or the keys;
@@ -1233,6 +1240,7 @@ export type StateStyleDesc = Omit<
   | "hasFocusVisible"
   | "fontVariantNumeric"
   | "fontFeatureSettings"
+  | "fontVariationSettings"
 >
 
 /** A `groupHover`/`groupActive`/`groupFocusWithin` style. Its `group` picks which ancestor group to
