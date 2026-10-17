@@ -3327,7 +3327,9 @@ of the line box, which grows to hold the box), a length (raises the box by it, a
 (of the box's own `lineHeight`, which an `inline-block` inherits from the boxes around it
 like any text style). A nested box is aligned to the box around it, and the shifts add up. A line is as tall as
 CSS 10.8 makes it: the container's strut and every box on the baseline around the shared
-baseline, then the `top` and `bottom` ones. The bounds, the background, the border and the
+baseline, then the `top` and `bottom` ones. A span has its strut (its font's ascent and descent with the
+half-leading of its `lineHeight`) in every line it has something on, whatever it holds: a span with a
+`lineHeight` of its own around nothing but a box makes the line as tall as that strut. The bounds, the background, the border and the
 outline of a span that is raised or lowered move with its text. `verticalAlign` on a table cell
 belongs to tables, which are not supported yet.
 
@@ -3339,8 +3341,9 @@ belongs to tables, which are not supported yet.
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
 - The underline, line-through or overline of a span that wraps and is raised is drawn at the baseline of the
   row, not at the raised one. Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
-  its own: what it holds goes with it. A span that holds nothing but atomic inlines does not make the line
-  taller with its own `lineHeight`: its strut is made of its text.
+  its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
+  inlines is its line box, since it has no text to take the content area of its font from (a browser
+  reports that content area).
 - An `absolute` descendant of an atomic inline is positioned against the atomic inline (it is a layout root),
   and the box is its own stacking context. A percentage `height` inside it sees an `auto` height, which CSS
   does for a shrink-to-fit box too.

@@ -1,0 +1,54 @@
+<!doctype html>
+<!--
+  Oracle for inline-strut.test.tsx: the expected numbers there are what headless Chrome
+  lays out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  The text is GpuixTestSquare at 20px with a line height of 20px: every character is 20px wide,
+  the ascent is the whole em and there is no descent. `data-id` names a box in the test as
+  `case.name`, and the numbers are relative to the `data-case` box it is in.
+-->
+<html>
+<head>
+<style>
+  @font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .line { font: 20px/20px GpuixTestSquare; color: #000; width: 300px; }
+  .ib { display: inline-block; width: 30px; height: 10px; }
+</style>
+</head>
+<body>
+
+<!-- a span holding only a box: the span's own strut is in the line -->
+<div class="line" data-case data-id="tall"><span style="line-height: 40px" data-id="tall.span"><span class="ib" data-id="tall.box"></span></span></div>
+<div class="line" data-case data-id="big"><span style="font-size: 30px" data-id="big.span"><span class="ib" data-id="big.box"></span></span></div>
+<div class="line" data-case data-id="small"><span style="line-height: 10px" data-id="small.span"><span class="ib" data-id="small.box"></span></span></div>
+<div class="line" data-case data-id="text"><span data-id="text.t1">A</span><span style="line-height: 40px" data-id="text.span"><span class="ib" data-id="text.box"></span></span><span data-id="text.t2">A</span></div>
+<div class="line" data-case data-id="nested"><span style="line-height: 40px" data-id="nested.outer"><span style="line-height: 10px" data-id="nested.inner"><span class="ib" data-id="nested.box"></span></span></span></div>
+<div class="line" data-case data-id="raised"><span style="line-height: 40px; vertical-align: 5px" data-id="raised.span"><span class="ib" data-id="raised.box"></span></span></div>
+<div class="line" data-case data-id="lowered"><span style="line-height: 40px; vertical-align: -15px" data-id="lowered.span"><span class="ib" data-id="lowered.box"></span></span></div>
+<div class="line" data-case data-id="top"><span style="line-height: 40px; vertical-align: top" data-id="top.span"><span class="ib" data-id="top.box"></span></span></div>
+<div class="line" data-case data-id="bottom"><span style="line-height: 40px; vertical-align: bottom" data-id="bottom.span"><span class="ib" data-id="bottom.box"></span></span></div>
+<div class="line" data-case data-id="box-top"><span style="line-height: 40px" data-id="box-top.span"><span class="ib" style="vertical-align: top" data-id="box-top.box"></span></span></div>
+
+<!-- the box wraps, and the line it wraps to has the strut of the span it is in -->
+<div class="line" style="width: 100px" data-case data-id="wrap"><span data-id="wrap.t1">AAA</span><span style="line-height: 40px" data-id="wrap.span"><span data-id="wrap.t2">A</span><span class="ib" data-id="wrap.box"></span></span></div>
+<div class="line" style="width: 100px" data-case data-id="wrap-only"><span data-id="wrap-only.t1">AAAA</span><span style="line-height: 40px" data-id="wrap-only.span"><span class="ib" data-id="wrap-only.box"></span></span></div>
+
+<script>
+  document.fonts.load('20px GpuixTestSquare').then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

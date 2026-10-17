@@ -106,6 +106,16 @@ impl RunStyle {
         }
     }
 
+    /// Whether the text style of a box has another font or line height than the one it inherits
+    /// from the container, so that its strut is another one.
+    fn changes_strut(&self) -> bool {
+        self.font_size.is_some()
+            || self.line_height.is_some()
+            || self.weight.is_some()
+            || self.font_style.is_some()
+            || self.family.is_some()
+    }
+
     fn inherits_everything(&self) -> bool {
         self.same_style(&Self::default())
     }
@@ -291,17 +301,29 @@ fn note_box(
 /// The boxes of a paragraph the line layout is told about, outermost first: those
 /// aligned to something other than the baseline, and those around a box that is,
 /// or around an atomic inline that is (`shifted`), since the alignment of a box
-/// is relative to the font of the box it is in. A baseline-aligned box with
-/// nothing shifted in it has nothing to say.
+/// is relative to the font of the box it is in. A box around an atomic inline
+/// whose font or line height differs from the container's is listed too, for its
+/// strut: it is in the line whatever the box holds. A baseline-aligned box with
+/// nothing shifted in it and no strut of its own has nothing to say.
 pub fn listed_boxes(
     paragraph: &Paragraph,
     boxes: &[BoxStyle],
     shifted: &HashSet<u64>,
 ) -> Vec<BoxStyle> {
-    if shifted.is_empty() && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline) {
+    let by_id: HashMap<u64, &BoxStyle> = boxes.iter().map(|style| (style.id, style)).collect();
+    let struts_around = |atomic: &&super::inline::Piece| {
+        atomic
+            .boxes
+            .iter()
+            .filter_map(|id| by_id.get(id))
+            .any(|style| style.style.changes_strut())
+    };
+    if shifted.is_empty()
+        && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline)
+        && !paragraph.atomics().map(|(_, piece)| piece).any(|piece| struts_around(&piece))
+    {
         return Vec::new();
     }
-    let by_id: HashMap<u64, &BoxStyle> = boxes.iter().map(|style| (style.id, style)).collect();
     let mut needed: HashSet<u64> = HashSet::new();
     let mut need_chain = |mut id: Option<u64>| {
         while let Some(current) = id {
@@ -317,6 +339,9 @@ pub fn listed_boxes(
     for (atomic, piece) in paragraph.atomics() {
         if shifted.contains(&atomic) {
             need_chain(piece.boxes.iter().rev().find(|id| by_id.contains_key(id)).copied());
+        }
+        for id in piece.boxes.iter().filter(|id| by_id.get(id).is_some_and(|style| style.style.changes_strut())) {
+            need_chain(Some(*id));
         }
     }
     paragraph
@@ -1366,6 +1391,26 @@ mod tests {
         assert_eq!(ids(&nested, &[]), vec![3, 5], "and the one around a shifted span");
         let own = tree_with(&[(3, serde_json::json!({"verticalAlign": "top"}))]);
         assert_eq!(ids(&own, &[]), vec![3], "a shifted span with nothing shifted inside it");
+    }
+
+    #[test]
+    fn a_span_around_an_atomic_is_listed_for_its_strut_when_its_font_or_line_height_is_its_own() {
+        let paragraph_of = |tree: &RetainedTree| match plan_children(tree, &tree.elements[&1]).remove(0) {
+            Child::Paragraph(paragraph) => paragraph,
+            Child::Block(_) => panic!("a paragraph"),
+        };
+        let ids = |style: serde_json::Value| {
+            let tree = tree_with_atomic(&[(3, style)]);
+            let paragraph = paragraph_of(&tree);
+            listed_boxes(&paragraph, &styles_of(&tree).boxes, &HashSet::new())
+                .iter()
+                .map(|style| style.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(serde_json::json!({"lineHeight": "40px"})), vec![3]);
+        assert_eq!(ids(serde_json::json!({"fontSize": 30})), vec![3]);
+        assert_eq!(ids(serde_json::json!({"fontWeight": 700})), vec![3]);
+        assert_eq!(ids(serde_json::json!({"color": "#ff0000"})), Vec::<u64>::new(), "its strut is the container's");
     }
 
     #[test]
