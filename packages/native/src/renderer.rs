@@ -6105,7 +6105,7 @@ impl BuildCtx<'_> {
         style: &StyleDesc,
         inert: bool,
     ) -> crate::events::state_styles::PointerStates {
-        pointer_states_of(&self.inherited, self.pointer, id, style, inert)
+        pointer_states_of(&self.inherited, self.pointer, &self.focus_styles, id, style, inert)
     }
 
     /// The transitions and animations of the colours of the inline boxes of
@@ -6121,7 +6121,7 @@ impl BuildCtx<'_> {
                 .elements
                 .get(&id)
                 .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-            focus_styles.states_of(id, style, pointer_states_of(inherited, pointer, id, style, inert))
+            focus_styles.states_of(id, style, pointer_states_of(inherited, pointer, focus_styles, id, style, inert))
         };
         crate::motion::InlineStyles::resolve(
             tree,
@@ -6143,6 +6143,7 @@ impl BuildCtx<'_> {
 fn pointer_states_of(
     inherited: &Inherited,
     pointer: &crate::events::state::PointerState,
+    focus: &crate::focus::FocusStyles,
     id: u64,
     style: &StyleDesc,
     inert: bool,
@@ -6162,6 +6163,9 @@ fn pointer_states_of(
         group_active: followed(&style.group_active).is_some_and(|group| group.active),
         group_focused_within: followed(&style.group_focus_within)
             .is_some_and(|group| group.focused_within),
+        has_hovered: style.has_hover.is_some() && pointer.has_hovered(id),
+        has_active: style.has_active.is_some() && pointer.has_active(id),
+        has_focused: style.has_focus.is_some() && focus.has_focus(id),
         ..Default::default()
     }
 }
@@ -7333,11 +7337,14 @@ fn build_element_unpumped(
     let measured = has_motion || transitions_wanted || animations_wanted;
     let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
     let transitioned = (transitions_wanted || animations_wanted).then(|| {
-        let focus_visible = ctx
-            .focus_handles
-            .get(&id)
-            .is_some_and(|handle| handle.is_focused(window))
-            && window.last_input_was_keyboard();
+        let focus_visible = crate::motion::FocusVisible {
+            own: ctx
+                .focus_handles
+                .get(&id)
+                .is_some_and(|handle| handle.is_focused(window))
+                && window.last_input_was_keyboard(),
+            descendant: ctx.focus_styles.has_focus_visible(id),
+        };
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),

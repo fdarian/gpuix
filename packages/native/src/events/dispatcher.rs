@@ -862,7 +862,8 @@ pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_
             has_state_style(tree, *id, |style| {
                 style.hover.is_some() || style.declared_group().is_some()
             })
-        });
+        })
+        || relational_restyle(tree, &state.hovered, &new_path, |style| style.has_hover.is_some());
     state.hovered = new_path;
     restyle
 }
@@ -1020,9 +1021,30 @@ pub(super) fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path
             has_state_style(tree, *id, |style| {
                 style.active.is_some() || style.declared_group().is_some()
             })
-        });
+        })
+        || relational_restyle(tree, &state.active, &new_path, |style| style.has_active.is_some());
     state.active = new_path;
     restyle
+}
+
+/// Whether an element whose `:has(...)` state changed between the chains `old`
+/// and `new` (target first) declares that state's style. An element matches
+/// while it is in the chain but not its target, so the old target gains the
+/// match when the pointer moves to a child, and loses it when it moves back.
+fn relational_restyle(
+    tree: &RetainedTree,
+    old: &[u64],
+    new: &[u64],
+    declares: impl Fn(&StyleDesc) -> bool,
+) -> bool {
+    fn below_target(chain: &[u64]) -> &[u64] {
+        chain.split_first().map_or(&[], |(_, rest)| rest)
+    }
+    let (old, new) = (below_target(old), below_target(new));
+    old.iter()
+        .filter(|id| !new.contains(id))
+        .chain(new.iter().filter(|id| !old.contains(id)))
+        .any(|id| has_state_style(tree, *id, &declares))
 }
 
 fn has_state_style(tree: &RetainedTree, id: u64, has: impl Fn(&StyleDesc) -> bool) -> bool {
@@ -1820,6 +1842,42 @@ mod tests {
         assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1]))).restyle);
         assert!(dispatch(&mut state, &tree, &mv(chain_of(&[4, 1]))).restyle);
         assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[1]))).restyle);
+    }
+
+    #[test]
+    fn a_has_hover_style_restyles_only_when_a_descendant_gains_or_loses_the_pointer() {
+        let mut tree = tree(&[]);
+        let style: StyleDesc = serde_json::from_str(r#"{"hasHover":{"opacity":0.5}}"#).unwrap();
+        tree.set_style(2, Arc::new(style));
+        let mut state = PointerState::default();
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1]))).restyle, "a child is entered");
+        assert!(state.has_hovered(2) && !state.has_hovered(3) && state.has_hovered(1));
+        assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1]))).restyle);
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[2, 1]))).restyle, "the element itself is now the target");
+        assert!(state.is_hovered(2) && !state.has_hovered(2));
+        assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[4, 1]))).restyle, "left without ever holding a descendant");
+        assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[2, 1]))).restyle, "entered as the target");
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1]))).restyle);
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[4, 1]))).restyle, "the child and its parent are both left");
+        assert!(!state.has_hovered(2));
+    }
+
+    #[test]
+    fn a_has_active_style_restyles_when_a_descendant_is_pressed_and_released() {
+        let mut tree = tree(&[]);
+        let style: StyleDesc = serde_json::from_str(r#"{"hasActive":{"opacity":0.5}}"#).unwrap();
+        tree.set_style(2, Arc::new(style));
+        let mut state = PointerState::default();
+        let pressed = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[2, 1])));
+        assert!(!pressed.restyle, "pressing the element itself is its own :active");
+        assert!(!state.has_active(2));
+        dispatch(&mut state, &tree, &up(0, 1, chain_of(&[2, 1])));
+
+        let pressed = dispatch(&mut state, &tree, &down(0, 1, chain_of(&[3, 2, 1])));
+        assert!(pressed.restyle);
+        assert!(state.has_active(2) && !state.has_active(3));
+        assert!(dispatch(&mut state, &tree, &up(0, 1, chain_of(&[3, 2, 1]))).restyle);
+        assert!(!state.has_active(2));
     }
 
     fn drag_move(hits: Vec<Hit>) -> PointerSample {

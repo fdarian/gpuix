@@ -31,6 +31,13 @@ pub fn layer_under(universal: &StyleDesc, own: &StyleDesc) -> StyleDesc {
         universal.group_focus_within.as_deref(),
         own.group_focus_within.as_deref(),
     );
+    layered.has_hover = refine(universal.has_hover.as_deref(), own.has_hover.as_deref());
+    layered.has_active = refine(universal.has_active.as_deref(), own.has_active.as_deref());
+    layered.has_focus = refine(universal.has_focus.as_deref(), own.has_focus.as_deref());
+    layered.has_focus_visible = refine(
+        universal.has_focus_visible.as_deref(),
+        own.has_focus_visible.as_deref(),
+    );
     layered
 }
 
@@ -163,6 +170,26 @@ mod tests {
     }
 
     #[test]
+    fn the_relational_refinements_merge_like_the_others() {
+        let universal = style(
+            r##"{ "hasHover": { "backgroundColor": "#aaaaaa", "opacity": 0.5 },
+                  "hasFocusVisible": { "outlineWidth": 2 } }"##,
+        );
+        let own = style(
+            r##"{ "hasHover": { "backgroundColor": "#bbbbbb" },
+                  "hasActive": { "color": "#cccccc" },
+                  "hasFocus": { "color": "#dddddd" } }"##,
+        );
+        let layered = layer_under(&universal, &own);
+        let hover = layered.has_hover.as_deref().unwrap();
+        assert_eq!(hover.background_color.as_deref(), Some("#bbbbbb"));
+        assert_eq!(hover.opacity, Some(0.5));
+        assert_eq!(layered.has_focus_visible, universal.has_focus_visible);
+        assert_eq!(layered.has_active, own.has_active);
+        assert_eq!(layered.has_focus, own.has_focus);
+    }
+
+    #[test]
     fn one_layered_style_serves_every_element_with_the_same_own_style() {
         let universal = style(r#"{ "opacity": 0.5 }"#);
         let own = Arc::new(style(r#"{ "width": 10 }"#));
@@ -223,7 +250,7 @@ mod tests {
                 None,
                 id,
                 style,
-                false,
+                crate::motion::FocusVisible::default(),
                 None,
                 crate::motion::InterpolateSize::default(),
                 crate::motion::Scope::Element,

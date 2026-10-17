@@ -67,9 +67,21 @@ impl FocusStyles {
         }
         Position::parse(
             variant(&style.focus_visible, focusable && self.visible == Some(id))
+                .or_else(|| variant(&style.has_focus_visible, self.has_focus_visible(id)))
                 .or_else(|| variant(&style.focus_within, self.within.contains(&id)))
                 .or(style.position.as_deref()),
         )
+    }
+
+    /// `:has(:focus)`: a strict descendant of `id` is focused. `within` starts
+    /// with the focused element.
+    pub fn has_focus(&self, id: u64) -> bool {
+        self.within.first().is_some_and(|focused| *focused != id) && self.within.contains(&id)
+    }
+
+    /// `:has(:focus-visible)`: a strict descendant of `id` matches `:focus-visible`.
+    pub fn has_focus_visible(&self, id: u64) -> bool {
+        self.visible.is_some_and(|visible| visible != id) && self.within.contains(&id)
     }
 
     /// `states` with the focus variants of `style` that apply to element `id`.
@@ -77,6 +89,7 @@ impl FocusStyles {
     pub fn states_of(&self, id: u64, style: &StyleDesc, states: PointerStates) -> PointerStates {
         PointerStates {
             focus_within: style.focus_within.is_some() && self.within.contains(&id),
+            has_focus_visible: style.has_focus_visible.is_some() && self.has_focus_visible(id),
             focus_visible: style.focus_visible.is_some() && self.visible == Some(id),
             ..states
         }
@@ -434,68 +447,72 @@ pub(crate) fn defer_mouse_down_default(
 /// keyboard focus. Paint only, so it moves nothing.
 const KEYBOARD_FOCUS_DIM: f32 = 0.4;
 
-/// `focusWithin`, for any element: an ancestor of the focused element is not
-/// focusable itself, so this cannot wait for `apply_focus_styles`.
+/// `focusWithin` and `hasFocusVisible`, for any element: an ancestor of the
+/// focused element is not focusable itself, so this cannot wait for
+/// `apply_focus_styles`.
 pub(crate) fn apply_focus_within<E: gpui::Styled>(
-    mut el: E,
+    el: E,
     id: u64,
     style: Option<&crate::style::StyleDesc>,
     colors: &crate::color::ColorContext,
     lengths: &crate::css::length::LengthContext,
     focus: &crate::focus::FocusStyles,
 ) -> E {
-    if focus.within.contains(&id) {
-        if let Some((base, declared)) =
-            style.and_then(|base| Some((base, base.focus_within.as_deref()?)))
-        {
-            el = crate::renderer::apply_state_styles(
-                el,
-                base,
-                declared,
-                &colors.for_state(declared),
-                &lengths.for_state(declared.font_size.as_ref()),
-            );
-        }
+    apply_focus_variants(el, id, false, style, colors, lengths, focus)
+}
+
+/// The focus variants of `style` that apply to `id`, weakest first: `focusWithin`,
+/// `hasFocusVisible`, `focusVisible` (which needs a focusable element). Each is
+/// applied over the base with the ones before it, so a border it declared is part
+/// of what the next sits on.
+fn apply_focus_variants<E: gpui::Styled>(
+    mut el: E,
+    id: u64,
+    focusable: bool,
+    style: Option<&crate::style::StyleDesc>,
+    colors: &crate::color::ColorContext,
+    lengths: &crate::css::length::LengthContext,
+    focus: &crate::focus::FocusStyles,
+) -> E {
+    let Some(base) = style else { return el };
+    let variants = [
+        (base.focus_within.as_deref(), focus.within.contains(&id)),
+        (base.has_focus_visible.as_deref(), focus.has_focus_visible(id)),
+        (base.focus_visible.as_deref(), focusable && focus.visible == Some(id)),
+    ];
+    let mut beneath = std::borrow::Cow::Borrowed(base);
+    for (declared, applies) in variants {
+        let Some(declared) = declared.filter(|_| applies) else {
+            continue;
+        };
+        el = crate::renderer::apply_state_styles(
+            el,
+            &beneath,
+            declared,
+            &colors.for_state(declared),
+            &lengths.for_state(declared.font_size.as_ref()),
+        );
+        beneath = std::borrow::Cow::Owned(crate::events::state_styles::overlay(&beneath, declared));
     }
     el
 }
 
 /// Focus look for a focusable element, applied right after `track_focus`.
 ///
-/// `focusWithin` and `focusVisible` follow the DOM focus state in
+/// `focusWithin`, `hasFocusVisible` and `focusVisible` follow the DOM focus state in
 /// `crate::focus`, not gpui's live input modality: gpui's `.focus_visible()`
 /// would hide the ring on a text field focused by a click. While a control is
 /// focus-visible, every other element dims unless its style sets
 /// `keyboardFocusDim: false`; that also shows at a glance where Tab can go.
 pub(crate) fn apply_focus_styles<E: gpui::Styled>(
-    mut el: E,
+    el: E,
     id: u64,
     style: Option<&crate::style::StyleDesc>,
     colors: &crate::color::ColorContext,
     lengths: &crate::css::length::LengthContext,
     focus: &crate::focus::FocusStyles,
 ) -> E {
-    el = apply_focus_within(el, id, style, colors, lengths, focus);
-    if focus.visible == Some(id) {
-        if let Some((base, declared)) =
-            style.and_then(|base| Some((base, base.focus_visible.as_deref()?)))
-        {
-            // `focusWithin` is below it, so a border it declared is part of what
-            // `focusVisible` sits on.
-            let within = base
-                .focus_within
-                .as_deref()
-                .filter(|_| focus.within.contains(&id))
-                .map(|within| crate::events::state_styles::overlay(base, within));
-            el = crate::renderer::apply_state_styles(
-                el,
-                within.as_ref().unwrap_or(base),
-                declared,
-                &colors.for_state(declared),
-                &lengths.for_state(declared.font_size.as_ref()),
-            );
-        }
-    }
+    let el = apply_focus_variants(el, id, true, style, colors, lengths, focus);
     let opted_out = style.and_then(|style| style.keyboard_focus_dim) == Some(false);
     match focus.dim_path.as_deref() {
         // Opacity applies to the subtree, so the focused element's own
@@ -744,6 +761,32 @@ mod tests {
     }
 
     #[test]
+    fn the_has_focus_variants_apply_to_strict_ancestors_of_the_focused_box_only() {
+        let styles = FocusStyles {
+            visible: Some(3),
+            within: Arc::from([3, 2, 1]),
+            ..Default::default()
+        };
+        assert!(!styles.has_focus(3) && !styles.has_focus_visible(3), "the element itself does not count");
+        assert!(styles.has_focus(2) && styles.has_focus_visible(2));
+        assert!(styles.has_focus(1) && styles.has_focus_visible(1));
+        assert!(!styles.has_focus(9) && !styles.has_focus_visible(9));
+
+        // Focused by the mouse: focused, but not focus-visible.
+        let clicked = FocusStyles { visible: None, ..styles.clone() };
+        assert!(clicked.has_focus(2) && !clicked.has_focus_visible(2));
+        assert!(!FocusStyles::default().has_focus(1));
+
+        let declares = |json: &str| serde_json::from_str::<StyleDesc>(json).unwrap();
+        let style = declares(r#"{"hasFocus":{"color":"red"},"hasFocusVisible":{"color":"blue"}}"#);
+        let ancestor = styles.states_of(2, &style, PointerStates::default());
+        assert!(ancestor.has_focus_visible, "an inline box folds hasFocusVisible");
+        assert!(!ancestor.has_focused, "hasFocus is the pointer fold's, like groupFocusWithin");
+        assert!(!styles.states_of(3, &style, PointerStates::default()).any());
+        assert!(!styles.states_of(2, &declares(r#"{"color":"red"}"#), PointerStates::default()).any());
+    }
+
+    #[test]
     fn a_focus_variant_decides_position_where_it_applies_and_visible_wins_over_within() {
         let styles = FocusStyles {
             visible: Some(3),
@@ -759,6 +802,13 @@ mod tests {
         assert_eq!(styles.position(3, &style, false), Position::Absolute);
         assert_eq!(styles.position(2, &style, true), Position::Absolute);
         assert_eq!(styles.position(9, &style, true), Position::Relative);
+
+        let relational = serde_json::from_str::<StyleDesc>(
+            r#"{"focusWithin":{"position":"absolute"},"hasFocusVisible":{"position":"sticky"}}"#,
+        )
+        .unwrap();
+        assert_eq!(styles.position(2, &relational, true), Position::Sticky, "hasFocusVisible beats focusWithin");
+        assert_eq!(styles.position(3, &relational, true), Position::Absolute, "and is not the element's own");
     }
 
     #[test]

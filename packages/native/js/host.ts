@@ -842,7 +842,7 @@ export interface StyleDesc {
    * CSS transitions, in CSS syntax with kebab-case property names, as in a DOM
    * inline style: `"background-color 150ms ease-out, opacity .2s 50ms"`, `"all
    * 1s"`, `"none"`. When the value of an animatable property changes (a style
-   * prop, or a `hover` / `active` / `focusVisible` state style applying or
+   * prop, or a `hover` / `active` / `focusVisible` / `has*` state style applying or
    * ending) the element animates from the value it showed to the new one. An
    * interrupted transition continues from the visible value. The element's
    * first style never transitions. `animate` on a `motion` element beats a
@@ -931,6 +931,21 @@ export interface StyleDesc {
    *  and `focusVisible`. */
   groupFocusWithin?: GroupStateStyleDesc
   active?: StateStyleDesc
+  /** While a strict descendant is hovered, like CSS `:has(:hover)`. The pointer
+   *  over the element itself does not count, and a portal child counts as a
+   *  descendant (the logical tree, as for `hover`). Below `hover`: the element's
+   *  own state beats what its descendants cause, and this beats `groupHover`. */
+  hasHover?: StateStyleDesc
+  /** While the mouse is down on a strict descendant, like CSS `:has(:active)`.
+   *  Below `active`, above `groupActive`. */
+  hasActive?: StateStyleDesc
+  /** While a strict descendant has focus, like CSS `:has(:focus)`. Below
+   *  `focusWithin`, above `groupFocusWithin`. Unlike `focusWithin` it does not
+   *  apply while the element itself is the focused one. */
+  hasFocus?: StateStyleDesc
+  /** While a strict descendant matches `:focus-visible`, like CSS
+   *  `:has(:focus-visible)`. Above `focusWithin`, below `focusVisible`. */
+  hasFocusVisible?: StateStyleDesc
   /** While the element matches `:focus-visible`: focused by the keyboard (Tab),
    *  or a text control, or focus moved there by script from an element that
    *  matched. A mouse press on a button never shows it. Needs a focusable
@@ -955,6 +970,10 @@ export type StateStyleDesc = Omit<
   | "groupHover"
   | "groupActive"
   | "groupFocusWithin"
+  | "hasHover"
+  | "hasActive"
+  | "hasFocus"
+  | "hasFocusVisible"
   | "fontVariantNumeric"
   | "fontFeatureSettings"
 >

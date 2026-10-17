@@ -20,6 +20,9 @@ macro_rules! overlay_fields {
             group_hover: None,
             group_active: None,
             group_focus_within: None,
+            has_hover: None,
+            has_active: None,
+            has_focus: None,
             measure_natural_width: false,
             flex_or_grid_item: false,
         }
@@ -30,8 +33,11 @@ macro_rules! overlay_fields {
 /// nearest ancestor `group` that its `groupHover` / `groupActive` /
 /// `groupFocusWithin` follow.
 ///
-/// `focus_within` and `focus_visible` are set only for an inline box. Any other
-/// element applies its focus styles where it tracks focus
+/// `has_hovered`, `has_active` and `has_focused` say a strict descendant is
+/// hovered, pressed or focused: `:has(:hover)`, `:has(:active)`, `:has(:focus)`.
+///
+/// `focus_within`, `has_focus_visible` and `focus_visible` are set only for an
+/// inline box. Any other element applies those focus styles where it tracks focus
 /// ([`crate::focus::apply_focus_styles`]), which an inline box has no element for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PointerStates {
@@ -40,7 +46,11 @@ pub struct PointerStates {
     pub group_hovered: bool,
     pub group_active: bool,
     pub group_focused_within: bool,
+    pub has_hovered: bool,
+    pub has_active: bool,
+    pub has_focused: bool,
     pub focus_within: bool,
+    pub has_focus_visible: bool,
     pub focus_visible: bool,
 }
 
@@ -51,7 +61,11 @@ impl PointerStates {
             || self.group_hovered
             || self.group_active
             || self.group_focused_within
+            || self.has_hovered
+            || self.has_active
+            || self.has_focused
             || self.focus_within
+            || self.has_focus_visible
             || self.focus_visible
     }
 }
@@ -83,28 +97,34 @@ pub fn resolve_state_styles(style: &StyleDesc, hovered: bool, active: bool) -> S
 }
 
 /// `style` with the refinements of `states` folded in and every state style
-/// cleared. Later wins: `groupHover`, `hover`, `groupActive`, `active`,
-/// `groupFocusWithin`, `focusWithin`, `focusVisible`. A group refinement is one more variant of the element, so
-/// the element's own `hover` beats a `groupHover` that sets the same field (as in
-/// Tailwind).
+/// cleared. Later wins: `groupHover`, `hasHover`, `hover`, `groupActive`,
+/// `hasActive`, `active`, `groupFocusWithin`, `hasFocus`, `focusWithin`,
+/// `hasFocusVisible`, `focusVisible`. A group refinement is one more variant of
+/// the element, so the element's own `hover` beats a `groupHover` that sets the
+/// same field (as in Tailwind). A relational refinement sits between the two: an
+/// element's own state beats what its descendants cause, and that beats a group.
 ///
 /// Focus styles sit above the pointer ones, so `groupFocusWithin` comes after
-/// them, and `focusWithin` and `focusVisible` after that. They are in the fold
-/// only for an inline box; an element with a focus handle applies them after it,
-/// so they beat every layer here either way.
+/// them, and `focusWithin`, `hasFocusVisible` and `focusVisible` after that. The
+/// last three are in the fold only for an inline box; an element with a focus
+/// handle applies them after it, so they beat every layer here either way.
 pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> StyleDesc {
     let mut resolved = overlay(style, &StyleDesc::default());
     let layers = [
         (states.group_hovered, style.group_hover.as_deref(), true),
+        (states.has_hovered, style.has_hover.as_deref(), false),
         (states.hovered, style.hover.as_deref(), false),
         (states.group_active, style.group_active.as_deref(), true),
+        (states.has_active, style.has_active.as_deref(), false),
         (states.active, style.active.as_deref(), false),
         (
             states.group_focused_within,
             style.group_focus_within.as_deref(),
             true,
         ),
+        (states.has_focused, style.has_focus.as_deref(), false),
         (states.focus_within, style.focus_within.as_deref(), false),
+        (states.has_focus_visible, style.has_focus_visible.as_deref(), false),
         (states.focus_visible, style.focus_visible.as_deref(), false),
     ];
     for (applies, refinement, names_group) in layers {
@@ -160,7 +180,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         animation, animation_name, animation_duration, animation_timing_function,
         animation_delay, animation_iteration_count, animation_direction, animation_fill_mode,
         animation_play_state,
-        focus_visible, focus_within, keyboard_focus_dim, group,
+        focus_visible, focus_within, has_focus_visible, keyboard_focus_dim, group,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
         grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
@@ -1108,6 +1128,88 @@ mod tests {
         assert_eq!(all.opacity, Some(0.3), "leaves what it does not set");
         let rest = resolve_pointer_states(&base, PointerStates::default());
         assert_eq!(rest.width, base.width);
+    }
+
+    /// Each layer sets `opacity` and one property of its own, so the first
+    /// assertion in a row shows which layer is on top and the second that the
+    /// ones beneath it still contribute.
+    #[test]
+    fn relational_styles_fold_in_the_order_the_plan_gives() {
+        let base = style(
+            r##"{
+                "opacity": 0,
+                "groupHover": { "opacity": 0.1, "color": "#000001" },
+                "hasHover": { "opacity": 0.2, "backgroundColor": "#000002" },
+                "hover": { "opacity": 0.3, "width": 3 },
+                "groupActive": { "opacity": 0.4, "height": 4 },
+                "hasActive": { "opacity": 0.5, "minWidth": 5 },
+                "active": { "opacity": 0.6, "minHeight": 6 },
+                "groupFocusWithin": { "opacity": 0.7, "maxWidth": 7 },
+                "hasFocus": { "opacity": 0.8, "maxHeight": 8 },
+                "focusWithin": { "opacity": 0.9, "padding": 9 },
+                "hasFocusVisible": { "opacity": 0.95, "margin": 10 },
+                "focusVisible": { "opacity": 1, "gap": 11 }
+            }"##,
+        );
+        let hovers = PointerStates { group_hovered: true, has_hovered: true, hovered: true, ..Default::default() };
+        let presses = PointerStates { group_active: true, has_active: true, active: true, ..hovers };
+        let focuses = PointerStates {
+            group_focused_within: true,
+            has_focused: true,
+            focus_within: true,
+            has_focus_visible: true,
+            focus_visible: true,
+            ..presses
+        };
+        let opacity = |states: PointerStates| resolve_pointer_states(&base, states).opacity;
+
+        assert_eq!(opacity(PointerStates { group_hovered: true, ..Default::default() }), Some(0.1));
+        assert_eq!(opacity(PointerStates { group_hovered: true, has_hovered: true, ..Default::default() }), Some(0.2));
+        assert_eq!(opacity(hovers), Some(0.3), "hover beats hasHover beats groupHover");
+        assert_eq!(opacity(PointerStates { has_hovered: true, group_active: true, ..Default::default() }), Some(0.4));
+        assert_eq!(opacity(PointerStates { hovered: true, has_active: true, ..Default::default() }), Some(0.5));
+        assert_eq!(opacity(presses), Some(0.6));
+        assert_eq!(opacity(PointerStates { active: true, group_focused_within: true, ..Default::default() }), Some(0.7));
+        assert_eq!(opacity(PointerStates { group_focused_within: true, has_focused: true, ..Default::default() }), Some(0.8));
+        assert_eq!(opacity(PointerStates { has_focused: true, focus_within: true, ..Default::default() }), Some(0.9));
+        assert_eq!(opacity(PointerStates { focus_within: true, has_focus_visible: true, ..Default::default() }), Some(0.95));
+        assert_eq!(opacity(focuses), Some(1.0), "focusVisible is last");
+        assert_eq!(opacity(PointerStates::default()), Some(0.0));
+
+        let all = resolve_pointer_states(&base, focuses);
+        for (what, set) in [
+            ("groupHover", all.color.is_some()),
+            ("hasHover", all.background_color.is_some()),
+            ("hover", all.width.is_some()),
+            ("groupActive", all.height.is_some()),
+            ("hasActive", all.min_width.is_some()),
+            ("active", all.min_height.is_some()),
+            ("groupFocusWithin", all.max_width.is_some()),
+            ("hasFocus", all.max_height.is_some()),
+            ("focusWithin", all.padding.is_some()),
+            ("hasFocusVisible", all.margin.is_some()),
+            ("focusVisible", all.gap.is_some()),
+        ] {
+            assert!(set, "{what} contributes what the layers above it leave");
+        }
+        assert_eq!((all.has_hover, all.has_active, all.has_focus), (None, None, None));
+        assert!(all.has_focus_visible.is_some(), "kept for the element that applies it after the fold, like focusVisible");
+    }
+
+    #[test]
+    fn a_relational_state_alone_is_a_state_and_a_missing_declaration_is_ignored() {
+        let none = PointerStates::default();
+        for states in [
+            PointerStates { has_hovered: true, ..none },
+            PointerStates { has_active: true, ..none },
+            PointerStates { has_focused: true, ..none },
+            PointerStates { has_focus_visible: true, ..none },
+        ] {
+            assert!(states.any(), "{states:?}");
+        }
+        let base = style(r##"{"opacity":1,"hasHover":{"opacity":0.5}}"##);
+        let resolved = resolve_pointer_states(&base, PointerStates { has_active: true, hovered: true, ..none });
+        assert_eq!(resolved.opacity, Some(1.0), "neither the element's hover nor another has* is hasHover");
     }
 
     #[test]

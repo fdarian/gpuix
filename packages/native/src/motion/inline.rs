@@ -155,7 +155,7 @@ fn step(
         motion,
         id,
         style,
-        false,
+        super::FocusVisible::default(),
         None,
         InterpolateSize::default(),
         Scope::InlineBox,

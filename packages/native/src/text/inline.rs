@@ -923,7 +923,7 @@ mod tests {
         assert_eq!(plain.len(), 1, "style alone keeps it inline");
         assert_eq!(paragraphs(&plain)[0].text, "one two three");
 
-        let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 9] = [
+        let behaviours: [(&str, Box<dyn Fn(&mut Fixture)>); 13] = [
             ("listener", Box::new(|f| f.tree.set_event_listener(3, "click".into(), true))),
             ("hover", Box::new(|f| { f.styled(3, serde_json::json!({"hover": {"color": "red"}})); })),
             ("active", Box::new(|f| { f.styled(3, serde_json::json!({"active": {"color": "red"}})); })),
@@ -931,6 +931,10 @@ mod tests {
             ("groupHover", Box::new(|f| { f.styled(3, serde_json::json!({"groupHover": {"color": "red"}})); })),
             ("groupActive", Box::new(|f| { f.styled(3, serde_json::json!({"groupActive": {"color": "red"}})); })),
             ("groupFocusWithin", Box::new(|f| { f.styled(3, serde_json::json!({"groupFocusWithin": {"color": "red"}})); })),
+            ("hasHover", Box::new(|f| { f.styled(3, serde_json::json!({"hasHover": {"color": "red"}})); })),
+            ("hasActive", Box::new(|f| { f.styled(3, serde_json::json!({"hasActive": {"color": "red"}})); })),
+            ("hasFocus", Box::new(|f| { f.styled(3, serde_json::json!({"hasFocus": {"color": "red"}})); })),
+            ("hasFocusVisible", Box::new(|f| { f.styled(3, serde_json::json!({"hasFocusVisible": {"color": "red"}})); })),
             ("group", Box::new(|f| { f.styled(3, serde_json::json!({"group": true})); })),
             ("cursor", Box::new(|f| { f.styled(3, serde_json::json!({"cursor": "pointer"})); })),
         ];

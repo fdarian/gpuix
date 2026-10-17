@@ -35,8 +35,8 @@ impl Position {
 }
 
 /// The `position` an element was painted with, for a walk over the retained tree, which only
-/// has the declared style. It differs when a `hover`, `active`, `focusVisible`, `focusWithin` or
-/// group refinement sets `position`: `build_element` folds the state in and the painted box
+/// has the declared style. It differs when a `hover`, `active`, `focusVisible`, `focusWithin`, group or
+/// `has*` refinement sets `position`: `build_element` folds the state in and the painted box
 /// records it (`ElementBounds::position`). `None` is no record, and the declared one stands.
 pub(crate) type PaintedPosition<'a> = &'a dyn Fn(u64) -> Option<Position>;
 
@@ -70,6 +70,10 @@ pub(crate) fn may_escape(element: &RetainedElement) -> bool {
             &style.group_hover,
             &style.group_active,
             &style.group_focus_within,
+            &style.has_hover,
+            &style.has_active,
+            &style.has_focus,
+            &style.has_focus_visible,
         ]
         .into_iter()
         .any(|state| state.as_deref().is_some_and(escapes))

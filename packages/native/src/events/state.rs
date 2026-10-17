@@ -196,6 +196,11 @@ pub fn chain_changed(observed: &ObservedChain, hits: &[Hit]) -> bool {
     })
 }
 
+/// Whether `id` is in `chain` (target first) but not its target.
+pub(super) fn strictly_in(chain: &[u64], id: u64) -> bool {
+    chain.iter().skip(1).any(|ancestor| *ancestor == id)
+}
+
 #[derive(Default)]
 pub struct PointerState {
     /// Hover target, then its retained ancestors. This is the DOM `:hover` chain.
@@ -248,6 +253,17 @@ impl PointerState {
     /// Whether `id` is the primary-button press target or one of its ancestors.
     pub fn is_active(&self, id: u64) -> bool {
         self.active.contains(&id)
+    }
+
+    /// Whether a strict descendant of `id` is under the pointer: `id` is in the
+    /// hover chain but is not its target. `:has(:hover)`.
+    pub fn has_hovered(&self, id: u64) -> bool {
+        strictly_in(&self.hovered, id)
+    }
+
+    /// Whether a strict descendant of `id` is pressed. `:has(:active)`.
+    pub fn has_active(&self, id: u64) -> bool {
+        strictly_in(&self.active, id)
     }
 
     /// The hover target, the innermost element of the hover chain.

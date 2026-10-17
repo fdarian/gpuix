@@ -804,6 +804,15 @@ pub struct StyleDesc {
     /// Applied while the nearest ancestor `group` of that name, or anything inside
     /// it, has focus.
     pub group_focus_within: Option<Box<StyleDesc>>,
+    /// While a strict descendant is hovered, like CSS `:has(:hover)`. The element
+    /// being hovered itself does not count.
+    pub has_hover: Option<Box<StyleDesc>>,
+    /// While the mouse is down on a strict descendant, like CSS `:has(:active)`.
+    pub has_active: Option<Box<StyleDesc>>,
+    /// While a strict descendant is focused, like CSS `:has(:focus)`.
+    pub has_focus: Option<Box<StyleDesc>>,
+    /// While a strict descendant matches `:focus-visible`, like CSS `:has(:focus-visible)`.
+    pub has_focus_visible: Option<Box<StyleDesc>>,
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,
@@ -850,6 +859,9 @@ impl StyleDesc {
             group_hover: None,
             group_active: None,
             group_focus_within: None,
+            has_hover: None,
+            has_active: None,
+            has_focus: None,
             cursor: None,
             ..self.clone()
         }

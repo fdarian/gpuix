@@ -747,7 +747,7 @@ pub(crate) fn wants_natural_width(
 /// The state styles `fold_state_styles` can lay over `style`, by the name a
 /// validation error gives them. A transition or animation declared in any of
 /// them has to take part, or it never runs.
-pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 6] {
+pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 10] {
     [
         ("hover", style.hover.as_deref()),
         ("active", style.active.as_deref()),
@@ -755,7 +755,22 @@ pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDe
         ("groupHover", style.group_hover.as_deref()),
         ("groupActive", style.group_active.as_deref()),
         ("groupFocusWithin", style.group_focus_within.as_deref()),
+        ("hasHover", style.has_hover.as_deref()),
+        ("hasActive", style.has_active.as_deref()),
+        ("hasFocus", style.has_focus.as_deref()),
+        ("hasFocusVisible", style.has_focus_visible.as_deref()),
     ]
+}
+
+/// Which `:focus-visible` refinements of an element apply, for the ones an
+/// element applies where it tracks focus. An inline box has them in its
+/// `PointerStates` instead.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct FocusVisible {
+    /// The element itself matches: `focusVisible`.
+    pub own: bool,
+    /// A strict descendant matches: `hasFocusVisible`.
+    pub descendant: bool,
 }
 
 /// The style `style` has after the state styles that currently apply (focus,
@@ -781,7 +796,7 @@ pub(crate) fn resolve_declared_style(
     motion: Option<&MotionState>,
     id: u64,
     style: &StyleDesc,
-    focus_visible: bool,
+    focus_visible: FocusVisible,
     measurement: Option<&Measurement>,
     interpolate_size: InterpolateSize,
     scope: Scope,
@@ -819,39 +834,41 @@ pub(crate) struct DeclaredStyle {
 
 fn fold_state_styles(
     style: &StyleDesc,
-    focus_visible: bool,
+    focus_visible: FocusVisible,
     pointer: crate::events::state_styles::PointerStates,
 ) -> StyleDesc {
-    use crate::events::state_styles::resolve_pointer_states;
+    use crate::events::state_styles::{resolve_pointer_states, PointerStates};
 
-    let focused = match style.focus_visible.as_deref() {
-        // `focusVisible` rides through the fold as a `hover` of its own, so the
-        // fold's field rules apply to it; the real `hover` and `active` come
-        // back for the second pass.
-        Some(declared) if focus_visible => {
-            let mut carrier = style.clone();
-            carrier.hover = Some(Box::new(declared.clone()));
-            carrier.active = None;
-            let mut folded = resolve_pointer_states(
-                &carrier,
-                crate::events::state_styles::PointerStates {
-                    hovered: true,
-                    ..Default::default()
-                },
-            );
-            folded.hover = style.hover.clone();
-            folded.active = style.active.clone();
-            folded.group_hover = style.group_hover.clone();
-            folded.group_active = style.group_active.clone();
-            folded.group_focus_within = style.group_focus_within.clone();
-            std::borrow::Cow::Owned(folded)
-        }
+    let applies = (focus_visible.own && style.focus_visible.is_some())
+        || (focus_visible.descendant && style.has_focus_visible.is_some());
+    let focused = if applies {
+        // The focus layers go in first and the pointer ones come back for the
+        // second pass, so a hovered or pressed element is above them.
+        let mut folded = resolve_pointer_states(
+            style,
+            PointerStates {
+                has_focus_visible: focus_visible.descendant,
+                focus_visible: focus_visible.own,
+                ..Default::default()
+            },
+        );
+        folded.hover = style.hover.clone();
+        folded.active = style.active.clone();
+        folded.group_hover = style.group_hover.clone();
+        folded.group_active = style.group_active.clone();
+        folded.group_focus_within = style.group_focus_within.clone();
+        folded.has_hover = style.has_hover.clone();
+        folded.has_active = style.has_active.clone();
+        folded.has_focus = style.has_focus.clone();
+        std::borrow::Cow::Owned(folded)
+    } else {
         // Borrowed: `resolve_pointer_states` copies the style itself, so cloning
         // it here too paid for a second copy of a ~3.5 kB struct on every frame.
-        _ => std::borrow::Cow::Borrowed(style),
+        std::borrow::Cow::Borrowed(style)
     };
     let mut after = resolve_pointer_states(&focused, pointer);
     after.focus_visible = None;
+    after.has_focus_visible = None;
     after
 }
 
@@ -2463,16 +2480,16 @@ mod tests {
             }"##,
         )
         .unwrap();
-        let rest = fold_state_styles(&style, false, Default::default());
+        let rest = fold_state_styles(&style, FocusVisible::default(), Default::default());
         assert_eq!(rest.color.as_deref(), Some("#000000"));
 
-        let focused = fold_state_styles(&style, true, Default::default());
+        let focused = fold_state_styles(&style, FocusVisible { own: true, descendant: false }, Default::default());
         assert_eq!(focused.color.as_deref(), Some("#111111"));
         assert_eq!(focused.opacity, Some(0.9));
 
         let both = fold_state_styles(
             &style,
-            true,
+            FocusVisible { own: true, descendant: false },
             crate::events::state_styles::PointerStates {
                 hovered: true,
                 active: true,
@@ -2488,7 +2505,43 @@ mod tests {
                 (folded.group_hover, folded.group_active, folded.group_focus_within),
                 (None, None, None)
             );
+            assert_eq!(
+                (folded.has_hover, folded.has_active, folded.has_focus, folded.has_focus_visible),
+                (None, None, None, None)
+            );
         }
+    }
+
+    #[test]
+    fn relational_styles_fold_between_the_element_s_own_states_and_the_groups() {
+        use crate::events::state_styles::PointerStates;
+        let style: StyleDesc = serde_json::from_str(
+            r##"{
+                "color": "#000000",
+                "groupHover": { "color": "#111111", "opacity": 0.1 },
+                "hasHover": { "opacity": 0.2 },
+                "hover": { "color": "#333333" },
+                "hasFocusVisible": { "color": "#222222", "opacity": 0.3 },
+                "focusVisible": { "opacity": 0.4 }
+            }"##,
+        )
+        .unwrap();
+        let states = PointerStates {
+            group_hovered: true,
+            has_hovered: true,
+            hovered: true,
+            ..Default::default()
+        };
+        let folded = fold_state_styles(&style, FocusVisible::default(), states);
+        assert_eq!(folded.color.as_deref(), Some("#333333"), "hover beats groupHover");
+        assert_eq!(folded.opacity, Some(0.2), "hasHover beats groupHover");
+
+        let descendant = FocusVisible { own: false, descendant: true };
+        let focused = fold_state_styles(&style, descendant, Default::default());
+        assert_eq!((focused.color.as_deref(), focused.opacity), (Some("#222222"), Some(0.3)));
+        let both = fold_state_styles(&style, FocusVisible { own: true, descendant: true }, Default::default());
+        assert_eq!(both.opacity, Some(0.4), "focusVisible beats hasFocusVisible");
+        assert!(focused.has_focus_visible.is_none() && both.focus_visible.is_none());
     }
 
     #[test]
@@ -2506,7 +2559,7 @@ mod tests {
             group_hovered: true,
             ..Default::default()
         };
-        let folded = fold_state_styles(&style, false, states);
+        let folded = fold_state_styles(&style, FocusVisible::default(), states);
         assert_eq!(folded.color.as_deref(), Some("#111111"));
         assert_eq!(folded.opacity, Some(0.8), "hover beats groupHover");
         assert_eq!(folded.group, None, "the followed group is not declared");
