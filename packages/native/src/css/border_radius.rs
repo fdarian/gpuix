@@ -82,7 +82,7 @@ pub(crate) struct Radii<T> {
 }
 
 /// `<length>{1,4} [ / <length>{1,4} ]?` as tokens with the `/` apart.
-pub(crate) fn parse_radii<T: Copy>(
+pub(crate) fn parse_radii<T: Clone>(
     tokens: &[&str],
     parse: impl Fn(&str) -> Result<T, String>,
 ) -> Result<Radii<T>, String> {

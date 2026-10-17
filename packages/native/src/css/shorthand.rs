@@ -121,16 +121,23 @@ pub(crate) fn parse_sides<T: Clone>(
     Ok(Sides::from_array(expand_sides(&values).expect("parse_values returned one to four values")))
 }
 
+/// A `<first> <second>?` string: one value is both.
+pub(crate) fn parse_pair<T: Clone>(
+    text: &str,
+    parse_one: impl FnMut(&str) -> Result<T, String>,
+) -> Result<(T, T), String> {
+    let mut values = parse_values(text, 2, parse_one)?.into_iter();
+    let first = values.next().expect("parse_values returned one or two values");
+    let second = values.next().unwrap_or_else(|| first.clone());
+    Ok((first, second))
+}
+
 /// `gap`'s `<row-gap> <column-gap>?` string: one value is both.
 pub(crate) fn parse_gap(
     text: &str,
     parse_one: impl FnMut(&str) -> Result<LinearLength, String>,
 ) -> Result<Gap, String> {
-    match parse_values(text, 2, parse_one)?[..] {
-        [both] => Ok(Gap::all(both)),
-        [row, column] => Ok(Gap { row, column }),
-        _ => unreachable!("one or two values were checked"),
-    }
+    parse_pair(text, parse_one).map(|(row, column)| Gap { row, column })
 }
 
 /// A length parser that reports itself as `"invalid {what} \"{token}\": {rule}"`.

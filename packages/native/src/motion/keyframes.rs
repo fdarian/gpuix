@@ -23,7 +23,7 @@ use serde_json::Value;
 use super::css_animation::check_keyframes_name;
 use super::css_transition::parse_list;
 use super::curve::{parse_timing_function, Ease};
-use super::property::{expand_shorthand, AnimProp};
+use super::property::{split_shorthand, AnimProp};
 use super::value::{AnimValue, Colors};
 
 const TIMING_FUNCTION: &str = "animationTimingFunction";
@@ -180,20 +180,23 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
             keyframe.timing = timings.into_iter().next();
             continue;
         }
-        let props: Vec<AnimProp> = match (AnimProp::from_name(name), expand_shorthand(name)) {
-            (Some(prop), _) => vec![prop],
-            (None, Some(props)) => props.to_vec(),
+        let split = split_shorthand(name, value).transpose()?;
+        let channels = match (&split, AnimProp::from_name(name)) {
+            (Some(split), _) => split.channels.clone(),
+            (None, Some(prop)) => vec![(prop, value.clone())],
             (None, None) => {
                 return Err(format!("`{name}` cannot be animated in keyframes"));
             }
         };
-        for prop in props {
-            prop.parse(value, &Colors::root())
-                .map_err(|error| format!("{name}: {error}"))?;
+        for (prop, value) in channels {
+            prop.parse(&value, &Colors::root()).map_err(|error| {
+                let error = split.as_ref().map_or(error.clone(), |split| split.error(prop, error));
+                format!("{name}: {error}")
+            })?;
             // A shorthand sets longhands in order, so a later key wins.
             match keyframe.values.iter_mut().find(|(existing, _)| *existing == prop) {
-                Some(slot) => slot.1 = value.clone(),
-                None => keyframe.values.push((prop, value.clone())),
+                Some(slot) => slot.1 = value,
+                None => keyframe.values.push((prop, value)),
             }
         }
     }
@@ -302,6 +305,31 @@ mod tests {
         assert_eq!(number(frame, AnimProp::PaddingTop), Some(2.0));
         assert_eq!(number(frame, AnimProp::PaddingLeft), Some(8.0));
         assert_eq!(keyframes.properties().len(), 4);
+    }
+
+    #[test]
+    fn a_multi_value_shorthand_gives_each_longhand_its_own_value() {
+        let keyframes = parse(
+            r#"{ "to": { "padding": "1px 2px", "gap": "3px 4px", "borderRadius": "5px / 6px", "inset": "7px 8px" } }"#,
+        );
+        let frame = &keyframes.frames[0];
+        assert_eq!(number(frame, AnimProp::PaddingTop), Some(1.0));
+        assert_eq!(number(frame, AnimProp::PaddingRight), Some(2.0));
+        assert_eq!(number(frame, AnimProp::RowGap), Some(3.0));
+        assert_eq!(number(frame, AnimProp::ColumnGap), Some(4.0));
+        assert_eq!(number(frame, AnimProp::Top), Some(7.0));
+        assert_eq!(number(frame, AnimProp::Left), Some(8.0));
+        assert_eq!(
+            frame.value(AnimProp::BorderTopLeftRadius, &Colors::root()),
+            Some(AnimValue::Ellipse { x: (5.0, 0.0), y: (6.0, 0.0) })
+        );
+    }
+
+    #[test]
+    fn a_bad_multi_value_shorthand_fails_where_it_is_written() {
+        assert!(error(r#"{ "to": { "padding": "1px 2px 3px 4px 5px" } }"#).contains("padding"));
+        assert!(error(r#"{ "to": { "padding": "1px -2px" } }"#).contains("paddingRight"));
+        assert!(error(r#"{ "to": { "padding": "-2px" } }"#).contains("padding must"));
     }
 
     #[test]

@@ -2835,6 +2835,65 @@ mod tests {
             assert_eq!(middle.outline_offset, Some(LinearLength::px(-8.0)));
         }
     }
+    /// A box shorthand written with several values is one value per side, axis or corner,
+    /// and each blends on its own.
+    mod shorthands {
+        use super::*;
+        use crate::style::CornerRadiusValue;
+
+        fn blended(property: &str, from: &str, to: &str) -> StyleDesc {
+            let styled = |value: &str| {
+                style(&format!(
+                    r#"{{ "{property}": "{value}", "transition": "{} 1s linear" }}"#,
+                    kebab_case(property)
+                ))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &styled(from));
+            clock.frame(0, &styled(to));
+            clock.frame(500, &styled(to))
+        }
+
+        #[test]
+        fn a_padding_string_blends_each_side_to_its_own_value() {
+            // The root's font is 16px.
+            let middle = blended("padding", "0.5em 0.75em", "1em 1.5em");
+            assert_eq!(middle.padding_top, Some(LinearLength::px(12.0)));
+            assert_eq!(middle.padding_bottom, Some(LinearLength::px(12.0)));
+            assert_eq!(middle.padding_left, Some(LinearLength::px(18.0)));
+            assert_eq!(middle.padding_right, Some(LinearLength::px(18.0)));
+        }
+
+        #[test]
+        fn inset_gap_and_border_width_blend_per_side_and_per_axis() {
+            let middle = blended("inset", "0 10px", "20px 30px");
+            assert_eq!(middle.top, Some(DimensionValue::Pixels(10.0)));
+            assert_eq!(middle.right, Some(DimensionValue::Pixels(20.0)));
+            let middle = blended("gap", "0 4px", "8px 12px");
+            assert_eq!(middle.row_gap, Some(LinearLength::px(4.0)));
+            assert_eq!(middle.column_gap, Some(LinearLength::px(8.0)));
+            let middle = blended("borderWidth", "1px 2px 3px 4px", "3px 4px 5px 6px");
+            assert_eq!(middle.border_top_width, Some(LinearLength::px(2.0)));
+            assert_eq!(middle.border_left_width, Some(LinearLength::px(5.0)));
+        }
+
+        #[test]
+        fn an_elliptical_border_radius_blends_both_radii() {
+            let middle = blended("borderRadius", "10px / 20px", "30px / 40px");
+            let ellipse = CornerRadiusValue { x: LinearLength::px(20.0), y: Some(LinearLength::px(30.0)) };
+            assert_eq!(middle.border_top_left_radius, Some(ellipse));
+            assert_eq!(middle.border_bottom_right_radius, Some(ellipse));
+        }
+
+        #[test]
+        fn a_circular_corner_blends_with_an_elliptical_one() {
+            let middle = blended("borderTopLeftRadius", "10px", "20px 40px");
+            assert_eq!(
+                middle.border_top_left_radius,
+                Some(CornerRadiusValue { x: LinearLength::px(15.0), y: Some(LinearLength::px(25.0)) })
+            );
+        }
+    }
     mod discrete {
         use super::*;
 

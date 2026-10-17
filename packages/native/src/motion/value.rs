@@ -319,6 +319,10 @@ pub(super) enum AnimValue {
     /// already px. Built through [`AnimValue::length`], which keeps a length that
     /// has only one of the two as a [`Self::Number`] or [`Self::Percent`].
     Calc { px: f64, percent: f64 },
+    /// A corner radius whose horizontal and vertical radii differ, each a length as
+    /// in [`Self::Calc`]. Built through [`AnimValue::ellipse`], which keeps a circular
+    /// one as a length.
+    Ellipse { x: (f64, f64), y: (f64, f64) },
     Color(Color),
     Shadows(Vec<Shadow>),
     /// A list of numbers, such as `stroke-dasharray`.
@@ -345,6 +349,23 @@ impl AnimValue {
         }
     }
 
+    /// A corner of radii `x` and `y`, each its px and its share of the border box's side.
+    pub(super) fn ellipse(x: (f64, f64), y: (f64, f64)) -> Self {
+        if x == y {
+            Self::length(x.0, x.1)
+        } else {
+            Self::Ellipse { x, y }
+        }
+    }
+
+    /// The horizontal and vertical radii of a corner, a circular one having the same on both.
+    pub(super) fn as_ellipse(&self) -> Option<((f64, f64), (f64, f64))> {
+        match self {
+            Self::Ellipse { x, y } => Some((*x, *y)),
+            other => other.as_length().map(|length| (length, length)),
+        }
+    }
+
     /// The px and percentage parts of a length, whichever of the three it is held as.
     pub(super) fn as_length(&self) -> Option<(f64, f64)> {
         match self {
@@ -360,6 +381,7 @@ impl AnimValue {
             Self::Number(_) => "a number or px length",
             Self::Percent(_) => "a percentage",
             Self::Calc { .. } => "a length mixing px and a percentage",
+            Self::Ellipse { .. } => "an elliptical corner",
             Self::Color(_) => "a colour",
             Self::Shadows(_) => "a shadow list",
             Self::Numbers(_) => "a list of numbers",
@@ -378,6 +400,9 @@ pub(super) enum Layout {
     /// `[px, percent]`: lengths that are not all px or all percentages blend as
     /// the two parts of a `calc()`, each on its own channel.
     Calc,
+    /// `[x px, x percent, y px, y percent]`: a corner radius with two radii, which
+    /// blend part by part like the two parts of a [`Self::Calc`].
+    Ellipse,
     /// The [`Blend`] of each segment between two keyframes.
     Color(Vec<Blend>),
     Shadows {
@@ -456,6 +481,7 @@ impl Layout {
             Self::Number => AnimValue::Number(channels[0]),
             Self::Percent => AnimValue::Percent(channels[0]),
             Self::Calc => AnimValue::length(channels[0], channels[1]),
+            Self::Ellipse => AnimValue::ellipse((channels[0], channels[1]), (channels[2], channels[3])),
             Self::Color(blends) => AnimValue::Color(Color::from_channels(channels, all_srgb(blends))),
             Self::Shadows { insets, blends } => AnimValue::Shadows(
                 insets
@@ -487,6 +513,7 @@ impl Layout {
         match self {
             Self::Percent => true,
             Self::Calc => channel == 1,
+            Self::Ellipse => channel % 2 == 1,
             _ => false,
         }
     }
@@ -499,6 +526,7 @@ impl Layout {
             (Self::Number, Self::Number)
             | (Self::Percent, Self::Percent)
             | (Self::Calc, Self::Calc)
+            | (Self::Ellipse, Self::Ellipse)
             | (Self::Color(_), Self::Color(_))
             | (Self::Numbers, Self::Numbers) => true,
             (Self::Shadows { insets: a, .. }, Self::Shadows { insets: b, .. }) => a.len() == b.len(),
@@ -513,6 +541,10 @@ impl Layout {
             (Self::Percent, Self::Calc) => Some(vec![0.0, rate[0]]),
             (Self::Calc, Self::Number) => Some(vec![rate[0]]),
             (Self::Calc, Self::Percent) => Some(vec![rate[1]]),
+            // A circular corner moves both radii at the one rate.
+            (Self::Number, Self::Ellipse) => Some(vec![rate[0], 0.0, rate[0], 0.0]),
+            (Self::Percent, Self::Ellipse) => Some(vec![0.0, rate[0], 0.0, rate[0]]),
+            (Self::Calc, Self::Ellipse) => Some(vec![rate[0], rate[1], rate[0], rate[1]]),
             _ => None,
         }
     }
@@ -617,7 +649,7 @@ pub(super) fn align_in(
     interpolation: Interpolation,
 ) -> Result<Aligned, String> {
     for window in values.windows(2) {
-        let lengths = window.iter().all(|value| value.as_length().is_some());
+        let lengths = window.iter().all(|value| value.as_ellipse().is_some());
         if !lengths && std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
             return Err(format!(
                 "motion {name} cannot animate from {} to {}: mixed units are not supported",
@@ -626,10 +658,17 @@ pub(super) fn align_in(
             ));
         }
     }
+    if values.iter().any(|value| matches!(value, AnimValue::Ellipse { .. })) {
+        return Ok(simple(Layout::Ellipse, values, |value| {
+            let (x, y) = value.as_ellipse().expect("kinds were checked");
+            vec![x.0, x.1, y.0, y.1]
+        }));
+    }
     match values[0] {
         AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } => {
             Ok(align_lengths(values))
         }
+        AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {
                 AnimValue::Color(color) => color,
@@ -1145,6 +1184,28 @@ mod tests {
         assert_eq!(pair.at(0.0), AnimValue::Number(20.0));
         assert_eq!(pair.at(1.0), AnimValue::Percent(0.5));
         assert_eq!(pair.at(1.5), AnimValue::Calc { px: -10.0, percent: 0.75 });
+    }
+
+    #[test]
+    fn an_elliptical_corner_blends_each_radius_on_its_own() {
+        let circle = AnimValue::Number(10.0);
+        let ellipse = AnimValue::Ellipse { x: (30.0, 0.0), y: (0.0, 0.5) };
+        let pair = pair("borderTopLeftRadius", &circle, &ellipse).unwrap();
+        assert_eq!(pair.layout, Layout::Ellipse);
+        assert_eq!(pair.at(0.5), AnimValue::Ellipse { x: (20.0, 0.0), y: (5.0, 0.25) });
+        assert_eq!(pair.at(0.0), circle);
+        assert_eq!(pair.at(1.0), ellipse);
+        assert!(Layout::Ellipse.is_percent_channel(1) && Layout::Ellipse.is_percent_channel(3));
+        assert!(!Layout::Ellipse.is_percent_channel(0) && !Layout::Ellipse.is_percent_channel(2));
+        assert_eq!(Layout::Number.velocity_in(&Layout::Ellipse, &[3.0]), Some(vec![3.0, 0.0, 3.0, 0.0]));
+        assert_eq!(Layout::Ellipse.velocity_in(&Layout::Ellipse, &[1.0, 0.0, 2.0, 0.0]), Some(vec![1.0, 0.0, 2.0, 0.0]));
+    }
+
+    #[test]
+    fn a_corner_with_the_same_radius_on_both_axes_is_a_length() {
+        assert_eq!(AnimValue::ellipse((10.0, 0.0), (10.0, 0.0)), AnimValue::Number(10.0));
+        assert_eq!(AnimValue::ellipse((0.0, 0.5), (0.0, 0.5)), AnimValue::Percent(0.5));
+        assert_eq!(AnimValue::ellipse((10.0, 0.0), (20.0, 0.0)), AnimValue::Ellipse { x: (10.0, 0.0), y: (20.0, 0.0) });
     }
 
     #[test]

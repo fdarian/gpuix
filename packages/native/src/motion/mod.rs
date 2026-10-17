@@ -1273,9 +1273,9 @@ fn parse_initial(
         .collect()
 }
 
-/// Expands shorthands (`padding`, `margin`, `borderRadius`, `borderWidth`,
-/// `gap`) into longhands. Where both are given the longhand wins, as the more
-/// specific one does in CSS.
+/// Expands shorthands (`padding`, `margin`, `inset`, `borderRadius`, `borderWidth`,
+/// `borderColor`, `gap`) into longhands, a multi-value string giving each its own
+/// value. Where both are given the longhand wins, as the more specific one does in CSS.
 fn parse_goals(
     context: &str,
     style: &Map<String, Value>,
@@ -1285,11 +1285,16 @@ fn parse_goals(
     let mut goals = Goals::new();
     let mut longhands = Vec::new();
     for (key, value) in style {
-        if let Some(props) = shorthand(target, key) {
-            let parsed = parse_goal(PropKey::Style(props[0]), value, colors)
-                .map_err(|error| rename(error, props[0], key))?;
-            for prop in props {
-                goals.insert(PropKey::Style(*prop), parsed.clone());
+        let split = match target {
+            Target::Style => property::split_shorthand(key, value),
+            Target::Svg => None,
+        };
+        if let Some(split) = split {
+            let split = split?;
+            for (prop, value) in &split.channels {
+                let parsed = parse_goal(PropKey::Style(*prop), value, colors)
+                    .map_err(|error| split.error(*prop, error))?;
+                goals.insert(PropKey::Style(*prop), parsed);
             }
         } else if let Some(prop) = PropKey::from_name(target, key) {
             longhands.push((prop, value));
@@ -1334,12 +1339,6 @@ fn parse_goal(key: PropKey, value: &Value, colors: &Colors) -> Result<Goal, Stri
         };
     }
     Goal::keyframes(key.name(), frames)
-}
-
-/// A shorthand is validated through its first longhand, so name the shorthand
-/// the author wrote in the error.
-fn rename(error: String, prop: AnimProp, shorthand: &str) -> String {
-    error.replacen(prop.name(), shorthand, 1)
 }
 
 #[cfg(test)]
@@ -2226,6 +2225,146 @@ mod tests {
             .apply_to(&mut style);
         assert_eq!(style.border_top_left_radius, Some(crate::style::CornerRadiusValue::px(5.0)));
         assert_eq!(style.border_bottom_right_radius, Some(crate::style::CornerRadiusValue::px(5.0)));
+    }
+
+    fn halfway(animate: serde_json::Value, initial: serde_json::Value) -> StyleDesc {
+        let started = Instant::now();
+        let description = serde_json::json!({
+            "initial": initial,
+            "animate": animate,
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+        style_at(&state, at(started, 0.5))
+    }
+
+    fn describe_error(description: serde_json::Value) -> String {
+        match MotionState::new(&description, None, Colors::root(), None, 0, Instant::now()) {
+            Ok(_) => panic!("{description} was accepted"),
+            Err(error) => error,
+        }
+    }
+
+    #[test]
+    fn a_multi_value_shorthand_animates_each_side_to_its_own_value() {
+        let style = halfway(
+            serde_json::json!({ "padding": "20px 40px", "inset": "10px 30px 50px", "borderWidth": "2px 4px 6px 8px" }),
+            serde_json::json!({ "padding": "0 0", "inset": 0, "borderWidth": 0 }),
+        );
+        assert_eq!(style.padding_top, Some(LinearLength::px(10.0)));
+        assert_eq!(style.padding_right, Some(LinearLength::px(20.0)));
+        assert_eq!(style.padding_bottom, Some(LinearLength::px(10.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(20.0)));
+        assert_eq!(style.top, Some(DimensionValue::Pixels(5.0)));
+        assert_eq!(style.right, Some(DimensionValue::Pixels(15.0)));
+        assert_eq!(style.bottom, Some(DimensionValue::Pixels(25.0)));
+        assert_eq!(style.left, Some(DimensionValue::Pixels(15.0)));
+        assert_eq!(style.border_top_width, Some(LinearLength::px(1.0)));
+        assert_eq!(style.border_left_width, Some(LinearLength::px(4.0)));
+    }
+
+    #[test]
+    fn gap_takes_the_row_then_the_column_and_a_margin_its_four_sides() {
+        let style = halfway(
+            serde_json::json!({ "gap": "4px 8px", "margin": "0 20px" }),
+            serde_json::json!({ "gap": 0, "margin": "10px 0" }),
+        );
+        assert_eq!(style.row_gap, Some(LinearLength::px(2.0)));
+        assert_eq!(style.column_gap, Some(LinearLength::px(4.0)));
+        assert_eq!(style.margin_top, Some(DimensionValue::Pixels(5.0)));
+        assert_eq!(style.margin_right, Some(DimensionValue::Pixels(10.0)));
+    }
+
+    #[test]
+    fn a_border_colour_string_gives_each_side_its_colour() {
+        let started = Instant::now();
+        let description = serde_json::json!({
+            "initial": { "borderColor": "#000000 #000000" },
+            "animate": { "borderColor": "#ff0000 #0000ff" },
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+        let end = style_at(&state, at(started, 1.0));
+        assert_eq!(rgba(end.border_top_color.as_deref().unwrap()), rgba("#ff0000"));
+        assert_eq!(rgba(end.border_bottom_color.as_deref().unwrap()), rgba("#ff0000"));
+        assert_eq!(rgba(end.border_right_color.as_deref().unwrap()), rgba("#0000ff"));
+        assert_eq!(rgba(end.border_left_color.as_deref().unwrap()), rgba("#0000ff"));
+    }
+
+    #[test]
+    fn a_border_radius_with_a_slash_animates_the_horizontal_and_vertical_radii() {
+        let style = halfway(
+            serde_json::json!({ "borderRadius": "30px / 40px" }),
+            serde_json::json!({ "borderRadius": "10px / 20px" }),
+        );
+        let ellipse = crate::style::CornerRadiusValue { x: LinearLength::px(20.0), y: Some(LinearLength::px(30.0)) };
+        assert_eq!(style.border_top_left_radius, Some(ellipse));
+        assert_eq!(style.border_bottom_right_radius, Some(ellipse));
+
+        let style = halfway(
+            serde_json::json!({ "borderRadius": "10px 20px 30px 40px / 0px" }),
+            serde_json::json!({ "borderRadius": 0 }),
+        );
+        // Top left, top right, bottom right, bottom left in CSS order; a zero vertical radius is square.
+        assert_eq!(
+            style.border_top_right_radius,
+            Some(crate::style::CornerRadiusValue { x: LinearLength::px(10.0), y: Some(LinearLength::px(0.0)) })
+        );
+        assert_eq!(style.border_bottom_right_radius.map(|corner| corner.x), Some(LinearLength::px(15.0)));
+        assert_eq!(style.border_bottom_left_radius.map(|corner| corner.x), Some(LinearLength::px(20.0)));
+    }
+
+    #[test]
+    fn an_elliptical_corner_longhand_and_a_shorthand_corner_blend_per_axis() {
+        let style = halfway(
+            serde_json::json!({ "borderTopLeftRadius": "10px 20px", "borderRadius": 8 }),
+            serde_json::json!({ "borderTopLeftRadius": "0 0" }),
+        );
+        assert_eq!(
+            style.border_top_left_radius,
+            Some(crate::style::CornerRadiusValue { x: LinearLength::px(5.0), y: Some(LinearLength::px(10.0)) })
+        );
+    }
+
+    #[test]
+    fn a_keyframes_list_of_shorthand_strings_splits_every_frame() {
+        let started = Instant::now();
+        let description = serde_json::json!({
+            "initial": { "padding": 0 },
+            "animate": { "padding": ["0 0", "10px 20px", "30px 40px"] },
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+        let style = style_at(&state, at(started, 0.5));
+        assert_eq!(style.padding_top, Some(LinearLength::px(10.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(20.0)));
+        let style = style_at(&state, at(started, 1.0));
+        assert_eq!(style.padding_top, Some(LinearLength::px(30.0)));
+        assert_eq!(style.padding_left, Some(LinearLength::px(40.0)));
+    }
+
+    #[test]
+    fn a_longhand_still_beats_a_multi_value_shorthand() {
+        let style = halfway(
+            serde_json::json!({ "paddingLeft": 100, "padding": "20px 40px" }),
+            serde_json::json!({ "padding": 0 }),
+        );
+        assert_eq!(style.padding_left, Some(LinearLength::px(50.0)));
+        assert_eq!(style.padding_right, Some(LinearLength::px(20.0)));
+    }
+
+    #[test]
+    fn auto_in_a_margin_is_an_error_for_the_side_that_has_it() {
+        let single = describe_error(serde_json::json!({ "animate": { "margin": "auto" } }));
+        assert!(single.contains("margin") && single.contains("auto"), "{single}");
+        let two = describe_error(serde_json::json!({ "animate": { "margin": "0 auto" } }));
+        assert!(two.contains("marginRight") && two.contains("auto"), "{two}");
+        let sides = describe_error(serde_json::json!({ "animate": { "padding": "1px 2px 3px 4px 5px" } }));
+        assert!(sides.contains("padding") && sides.contains("one to four values"), "{sides}");
+        let sign = describe_error(serde_json::json!({ "animate": { "padding": "1px -2px" } }));
+        assert!(sign.contains("paddingRight") && sign.contains("non-negative"), "{sign}");
+        let same = describe_error(serde_json::json!({ "animate": { "padding": -2 } }));
+        assert!(same.contains("motion padding must"), "{same}");
     }
 
     #[test]

@@ -13,8 +13,10 @@ use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
 use crate::css::flex::Flex;
 use crate::css::outline::Outline;
-use crate::css::shorthand::{Gap, Sides};
 use crate::css::line_height::LineHeight;
+use crate::css::border_radius::parse_radii;
+use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
+use crate::css::syntax::split_slash_tokens;
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{
     BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue,
@@ -28,6 +30,8 @@ enum Kind {
     /// units resolve to px when the value is read, and a percentage stays a share of
     /// the property's basis, so a value is its px and its percentage.
     Length,
+    /// A corner radius: a length, or two when the corner is elliptical.
+    Corner,
     /// A `font-size`, where `em` and `%` are of the parent's size, so it is plain px.
     FontSize,
     Dimension,
@@ -96,6 +100,10 @@ fn linear_length(value: AnimValue) -> LinearLength {
     let (px, percent) = value
         .as_length()
         .unwrap_or_else(|| unreachable!("a length field was given {value:?}"));
+    length_of((px, percent))
+}
+
+fn length_of((px, percent): (f64, f64)) -> LinearLength {
     LinearLength { px, percent, ..LinearLength::default() }
 }
 
@@ -113,19 +121,22 @@ impl Field for Option<f64> {
 }
 
 /// A circular corner is a length, a percentage of the border box on each axis
-/// included. An elliptical corner has no single length to start from, and a
-/// written one replaces it.
+/// included. An elliptical one is a length per axis.
 impl Field for Option<CornerRadiusValue> {
     fn read(&self, cx: &Reading) -> Option<AnimValue> {
         let corner = self.as_ref()?;
-        match corner.y {
-            Some(y) if y != corner.x => None,
-            _ => Some(resolved(&corner.x, cx.lengths)),
-        }
+        let x = cx.lengths.split(&corner.x);
+        Some(match &corner.y {
+            Some(y) => AnimValue::ellipse(x, cx.lengths.split(y)),
+            None => AnimValue::length(x.0, x.1),
+        })
     }
 
     fn write(&mut self, value: AnimValue) {
-        *self = Some(CornerRadiusValue::circular(linear_length(value)));
+        *self = Some(match value.as_ellipse() {
+            Some((x, y)) if x != y => CornerRadiusValue { x: length_of(x), y: Some(length_of(y)) },
+            _ => CornerRadiusValue::circular(linear_length(value)),
+        });
     }
 }
 
@@ -479,7 +490,7 @@ macro_rules! properties {
                 // A `calc()` clamps to the range of its property, which only a
                 // resolved length can be held to.
                 value.map(|value| match self.kind() {
-                    Kind::Length | Kind::Dimension => self.clamp_value(value),
+                    Kind::Length | Kind::Corner | Kind::Dimension => self.clamp_value(value),
                     _ => value,
                 })
             }
@@ -536,10 +547,10 @@ properties! {
     BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
     BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
     BorderLeftColor "borderLeftColor" Color None CurrentColor, border_left_color | border_color;
-    BorderTopLeftRadius "borderTopLeftRadius" Length NonNegative Number(0.0), border_top_left_radius | border_radius.top_left();
-    BorderTopRightRadius "borderTopRightRadius" Length NonNegative Number(0.0), border_top_right_radius | border_radius.top_right();
-    BorderBottomLeftRadius "borderBottomLeftRadius" Length NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
-    BorderBottomRightRadius "borderBottomRightRadius" Length NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
+    BorderTopLeftRadius "borderTopLeftRadius" Corner NonNegative Number(0.0), border_top_left_radius | border_radius.top_left();
+    BorderTopRightRadius "borderTopRightRadius" Corner NonNegative Number(0.0), border_top_right_radius | border_radius.top_right();
+    BorderBottomLeftRadius "borderBottomLeftRadius" Corner NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
+    BorderBottomRightRadius "borderBottomRightRadius" Corner NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
@@ -629,8 +640,86 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
             BorderLeftColor,
         ],
         "gap" => &[RowGap, ColumnGap],
+        "inset" => &[Top, Right, Bottom, Left],
         _ => return None,
     })
+}
+
+/// A shorthand's value as the value of each longhand it covers.
+pub(super) struct Split {
+    shorthand: String,
+    pub(super) channels: Vec<(AnimProp, Value)>,
+}
+
+impl Split {
+    /// `error` from parsing the value of `prop`. When every longhand got the value
+    /// the shorthand was written with, it names the shorthand, which is what the
+    /// author wrote; otherwise it names the longhand that failed.
+    pub(super) fn error(&self, prop: AnimProp, error: String) -> String {
+        let uniform = self.channels.iter().all(|(_, value)| *value == self.channels[0].1);
+        if uniform {
+            error.replacen(prop.name(), &self.shorthand, 1)
+        } else {
+            error
+        }
+    }
+}
+
+/// Splits what `animate`, `initial`, a keyframe or a keyframes array gives a shorthand into
+/// one value per longhand, so each longhand animates its own side, axis or corner:
+/// `padding: "0.5em 0.75em"` is `0.5em` above and below and `0.75em` left and right.
+/// Keyframes are split frame by frame. `None` when `name` is no shorthand.
+pub(super) fn split_shorthand(name: &str, value: &Value) -> Option<Result<Split, String>> {
+    let props = expand_shorthand(name)?;
+    Some(
+        split_value(name, props.len(), value)
+            .map_err(|error| format!("motion {name}: {error}"))
+            .map(|values| Split { shorthand: name.to_string(), channels: props.iter().copied().zip(values).collect() }),
+    )
+}
+
+fn split_value(name: &str, channels: usize, value: &Value) -> Result<Vec<Value>, String> {
+    match value {
+        Value::String(text) => {
+            Ok(split_text(name, text)?.into_iter().map(Value::String).collect())
+        }
+        Value::Array(frames) => {
+            let mut split = vec![Vec::with_capacity(frames.len()); channels];
+            for frame in frames {
+                let values = match frame {
+                    Value::Null => vec![Value::Null; channels],
+                    frame => split_value(name, channels, frame)?,
+                };
+                for (channel, value) in split.iter_mut().zip(values) {
+                    channel.push(value);
+                }
+            }
+            Ok(split.into_iter().map(Value::Array).collect())
+        }
+        other => Ok(vec![other.clone(); channels]),
+    }
+}
+
+/// One string per longhand of `name`, in the order [`expand_shorthand`] lists them.
+fn split_text(name: &str, text: &str) -> Result<Vec<String>, String> {
+    let token = |token: &str| Ok(token.to_string());
+    match name {
+        "gap" => parse_pair(text, token).map(|(row, column)| vec![row, column]),
+        "borderRadius" => {
+            let tokens = split_slash_tokens(text);
+            let radii = parse_radii(&tokens, token).map_err(|reason| format!("invalid \"{text}\": {reason}"))?;
+            // CSS lists the corners clockwise from the top left; the longhands
+            // here go top left, top right, bottom left, bottom right.
+            Ok([0, 1, 3, 2]
+                .into_iter()
+                .map(|corner| match &radii.vertical {
+                    Some(vertical) => format!("{} {}", radii.horizontal[corner], vertical[corner]),
+                    None => radii.horizontal[corner].clone(),
+                })
+                .collect())
+        }
+        _ => parse_sides(text, token).map(|sides| vec![sides.top, sides.right, sides.bottom, sides.left]),
+    }
 }
 
 /// The axis of a box: the side of the border box a size property measures, or
@@ -780,6 +869,19 @@ impl AnimProp {
                 }
                 self.resolve_length(&length, lengths)?
             }
+            Kind::Corner => {
+                let corner: CornerRadiusValue = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
+                let x = self.resolve_length(&corner.x, lengths)?;
+                match corner.y {
+                    None => x,
+                    Some(y) => {
+                        let y = self.resolve_length(&y, lengths)?;
+                        let radius = |value: &AnimValue| value.as_length().expect("a radius is a length");
+                        AnimValue::ellipse(radius(&x), radius(&y))
+                    }
+                }
+            }
             Kind::FontSize => {
                 let length: LinearLength = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
@@ -883,9 +985,10 @@ impl AnimProp {
             (self.kind(), value),
             (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
                 | (
-                    Kind::Dimension | Kind::Length,
+                    Kind::Dimension | Kind::Length | Kind::Corner,
                     AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. }
                 )
+                | (Kind::Corner, AnimValue::Ellipse { .. })
                 | (Kind::Color, AnimValue::Color(_))
                 | (Kind::Shadow, AnimValue::Shadows(_))
         )
@@ -900,6 +1003,12 @@ impl AnimProp {
             // Negative whatever the basis is, and only then can it be held.
             (Clamp::NonNegative, AnimValue::Calc { px, percent }) if px <= 0.0 && percent <= 0.0 => {
                 AnimValue::Number(0.0)
+            }
+            (Clamp::NonNegative, AnimValue::Ellipse { x, y }) => {
+                let radius = |(px, percent): (f64, f64)| {
+                    self.clamp_value(AnimValue::length(px, percent)).as_length().expect("a radius is a length")
+                };
+                AnimValue::ellipse(radius(x), radius(y))
             }
             (Clamp::Unit, AnimValue::Number(value)) => AnimValue::Number(value.clamp(0.0, 1.0)),
             (Clamp::Weight, AnimValue::Number(value)) => {
@@ -1390,7 +1499,7 @@ mod tests {
     }
 
     #[test]
-    fn a_radius_is_a_start_value_only_when_it_is_a_circular_px_corner() {
+    fn a_radius_reads_as_a_length_or_as_two_when_the_corner_is_elliptical() {
         let colors = sized_colors();
         let read = |json: &str| {
             let style: StyleDesc = serde_json::from_str(json).unwrap();
@@ -1401,12 +1510,20 @@ mod tests {
         assert_eq!(read(r##"{"borderRadius":"50%"}"##), Some(AnimValue::Percent(0.5)));
         assert_eq!(read(r##"{"borderRadius":"1em"}"##), Some(AnimValue::Number(20.0)));
         assert_eq!(read(r##"{"borderTopLeftRadius":"calc(10% + 2px)"}"##), Some(AnimValue::Calc { px: 2.0, percent: 0.1 }));
-        assert_eq!(read(r##"{"borderTopLeftRadius":"10px 20px"}"##), None);
+        assert_eq!(
+            read(r##"{"borderTopLeftRadius":"10px 20px"}"##),
+            Some(AnimValue::Ellipse { x: (10.0, 0.0), y: (20.0, 0.0) })
+        );
+        assert_eq!(
+            read(r##"{"borderRadius":"1em 2em / 10% 3px"}"##),
+            Some(AnimValue::Ellipse { x: (20.0, 0.0), y: (0.0, 0.1) })
+        );
         assert_eq!(read(r##"{"borderTopLeftRadius":"10px 10px"}"##), Some(AnimValue::Number(10.0)));
         assert_eq!(read(r##"{"borderRadius":"10px","borderTopLeftRadius":"30%"}"##), Some(AnimValue::Percent(0.3)));
     }
+
     #[test]
-    fn a_motion_radius_is_a_length_and_writes_a_circular_corner() {
+    fn a_motion_radius_is_a_length_or_two_and_writes_a_circular_or_elliptical_corner() {
         let colors = sized_colors();
         let parse = |value: &str| AnimProp::BorderTopLeftRadius.parse(&json(value), &colors);
         assert_eq!(parse(r#""50%""#).unwrap(), AnimValue::Percent(0.5));
@@ -1418,6 +1535,86 @@ mod tests {
         assert_eq!(style.border_top_left_radius, Some(CornerRadiusValue::px(7.0)));
         AnimProp::BorderTopLeftRadius.write(&mut style, AnimValue::Percent(0.5));
         assert_eq!(style.border_top_left_radius, Some(CornerRadiusValue::circular(LinearLength::percent(0.5))));
+
+        let ellipse = AnimValue::Ellipse { x: (10.0, 0.0), y: (2.0, 0.5) };
+        assert_eq!(parse(r#""10px calc(50% + 2px)""#).unwrap(), ellipse);
+        assert!(parse(r#""10px -1px""#).is_err());
+        // The same radius twice is a circle, and so it stays one value.
+        assert_eq!(parse(r#""10px 10px""#).unwrap(), AnimValue::Number(10.0));
+        AnimProp::BorderTopLeftRadius.write(&mut style, ellipse);
+        assert_eq!(
+            style.border_top_left_radius,
+            Some(CornerRadiusValue { x: LinearLength::px(10.0), y: Some(LinearLength { px: 2.0, percent: 0.5, ..Default::default() }) })
+        );
+        assert_eq!(
+            AnimProp::BorderTopLeftRadius.clamp_value(AnimValue::Ellipse { x: (-4.0, 0.0), y: (5.0, 0.0) }),
+            AnimValue::Ellipse { x: (0.0, 0.0), y: (5.0, 0.0) }
+        );
+    }
+
+    fn split(name: &str, value: &str) -> Result<Vec<(AnimProp, serde_json::Value)>, String> {
+        split_shorthand(name, &json(value)).expect("a shorthand").map(|split| split.channels)
+    }
+
+    fn texts(name: &str, value: &str) -> Vec<String> {
+        split(name, value)
+            .unwrap()
+            .into_iter()
+            .map(|(_, value)| value.as_str().expect("a string").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn a_box_shorthand_string_gives_each_side_its_own_value() {
+        assert_eq!(texts("padding", r#""1px 2px""#), ["1px", "2px", "1px", "2px"]);
+        assert_eq!(texts("padding", r#""1px 2px 3px""#), ["1px", "2px", "3px", "2px"]);
+        assert_eq!(texts("borderWidth", r#""1px 2px 3px 4px""#), ["1px", "2px", "3px", "4px"]);
+        assert_eq!(texts("margin", r#""0 auto""#), ["0", "auto", "0", "auto"]);
+        assert_eq!(texts("inset", r#""10px 20px""#), ["10px", "20px", "10px", "20px"]);
+        assert_eq!(texts("borderColor", r#""red rgb(0 0 255)""#), ["red", "rgb(0 0 255)", "red", "rgb(0 0 255)"]);
+        assert_eq!(
+            split("inset", r#""10px 20px""#).unwrap().iter().map(|(prop, _)| *prop).collect::<Vec<_>>(),
+            [AnimProp::Top, AnimProp::Right, AnimProp::Bottom, AnimProp::Left]
+        );
+        assert!(split("padding", r#""1px 2px 3px 4px 5px""#).is_err());
+        assert!(split("padding", r#""""#).is_err());
+    }
+
+    #[test]
+    fn a_gap_string_is_the_row_then_the_column() {
+        assert_eq!(texts("gap", r#""4px 8px""#), ["4px", "8px"]);
+        assert_eq!(texts("gap", r#""4px""#), ["4px", "4px"]);
+        assert!(split("gap", r#""1px 2px 3px""#).is_err());
+    }
+
+    #[test]
+    fn a_border_radius_string_gives_each_corner_its_radii_in_gpuix_order() {
+        // Top left, top right, bottom left, bottom right.
+        assert_eq!(texts("borderRadius", r#""1px 2px 3px 4px""#), ["1px", "2px", "4px", "3px"]);
+        assert_eq!(
+            texts("borderRadius", r#""1px 2px 3px 4px / 5px 6px""#),
+            ["1px 5px", "2px 6px", "4px 6px", "3px 5px"]
+        );
+        assert_eq!(texts("borderRadius", r#""10px/20px""#), ["10px 20px"; 4]);
+    }
+
+    #[test]
+    fn a_number_or_a_keyframes_list_is_split_value_by_value() {
+        let numbers = split("padding", "8").unwrap();
+        assert!(numbers.iter().all(|(_, value)| *value == json("8")));
+        let frames = split("padding", r#"["1px 2px", null, 3]"#).unwrap();
+        assert_eq!(frames[0].1, json(r#"["1px", null, 3]"#));
+        assert_eq!(frames[1].1, json(r#"["2px", null, 3]"#));
+        assert_eq!(frames[3].1, json(r#"["2px", null, 3]"#));
+    }
+
+    #[test]
+    fn a_shorthand_error_names_the_shorthand_unless_the_sides_differ() {
+        let split = |name: &str, value: &str| split_shorthand(name, &json(value)).unwrap().unwrap();
+        let uniform = split("padding", "-1");
+        assert_eq!(uniform.error(AnimProp::PaddingTop, "motion paddingTop must be non-negative".into()), "motion padding must be non-negative");
+        let mixed = split("padding", r#""1px -1px""#);
+        assert_eq!(mixed.error(AnimProp::PaddingRight, "motion paddingRight must be non-negative".into()), "motion paddingRight must be non-negative");
     }
     #[test]
     fn clamps_hold_the_applied_value_in_range() {

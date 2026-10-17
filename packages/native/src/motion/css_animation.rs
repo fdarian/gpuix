@@ -1625,6 +1625,24 @@ mod tests {
         near(opacity(&frames.frame(2500, &animated)), 0.5);
     }
 
+    #[test]
+    fn keyframes_of_a_multi_value_shorthand_move_each_side_to_its_own_value() {
+        let mut frames = Frames::new();
+        frames.define(
+            "pad",
+            r#"{ "from": { "padding": "0 0", "borderRadius": "0" }, "to": { "padding": "20px 40px", "borderRadius": "10px / 20px" } }"#,
+        );
+        let padded = style(r#"{ "animation": "pad 1s linear" }"#);
+        frames.frame(0, &padded);
+        let middle = frames.frame(500, &padded);
+        assert_eq!(middle.padding_top, Some(crate::css::length::LinearLength::px(10.0)));
+        assert_eq!(middle.padding_left, Some(crate::css::length::LinearLength::px(20.0)));
+        assert_eq!(
+            middle.border_top_left_radius,
+            Some(crate::style::CornerRadiusValue { x: crate::css::length::LinearLength::px(5.0), y: Some(crate::css::length::LinearLength::px(10.0)) })
+        );
+    }
+
     fn dimmed(opacity: f64, animation: &str) -> StyleDesc {
         style(&format!(
             r#"{{ "opacity": {opacity}, "transition": "opacity 1s linear", "animation": "{animation}" }}"#
