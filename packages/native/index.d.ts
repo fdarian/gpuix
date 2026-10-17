@@ -1426,6 +1426,8 @@ export interface LayoutCounters {
   stylesSet: number
   childrenSet: number
   passes: number
+  /** Calls to the measure functions of text and other measured leaves. */
+  measures: number
 }
 
 /** The OS accessibility preferences that media queries expose. */

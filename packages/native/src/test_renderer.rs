@@ -60,6 +60,8 @@ pub struct LayoutCounters {
     pub styles_set: f64,
     pub children_set: f64,
     pub passes: f64,
+    /// Calls to the measure functions of text and other measured leaves.
+    pub measures: f64,
 }
 
 // ── Thread-local storage for !Send GPUI types ────────────────────────
@@ -761,6 +763,7 @@ impl TestGpuixRenderer {
                 styles_set: counters.styles_set as f64,
                 children_set: counters.children_set as f64,
                 passes: counters.passes as f64,
+                measures: counters.measures as f64,
             }
         })
     }

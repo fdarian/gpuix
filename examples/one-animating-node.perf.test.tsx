@@ -103,7 +103,7 @@ describeNative('one animating node over a large static tree', () => {
               `built/frame=${perFrame(built.elementsBuilt)} style-clones/frame=${perFrame(built.styleDescClones)} ` +
               `inherited-clones/frame=${perFrame(built.inheritedClones)} ` +
               `layout-nodes-new/frame=${layoutPerFrame('nodesCreated')} reused/frame=${layoutPerFrame('nodesReused')} ` +
-              `layout-passes/frame=${layoutPerFrame('passes')} styles-set/frame=${layoutPerFrame('stylesSet')} children-set/frame=${layoutPerFrame('childrenSet')} | ${formatSummary(summarize(frames))}`,
+              `layout-passes/frame=${layoutPerFrame('passes')} styles-set/frame=${layoutPerFrame('stylesSet')} children-set/frame=${layoutPerFrame('childrenSet')} measures/frame=${layoutPerFrame('measures')} | ${formatSummary(summarize(frames))}`,
           )
           console.log(`[animating.perf]   ${formatRetain(built)}`)
           expect(elements).toBeGreaterThan(0)
