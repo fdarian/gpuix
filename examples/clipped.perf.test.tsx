@@ -30,7 +30,7 @@
 import React from 'react'
 import { describe, expect, it } from 'vitest'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
-import { formatSummary, sample, summarize, type Summary } from './perf-harness'
+import { formatSummary, percentile, sample, summarize, type Summary } from './perf-harness'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -98,11 +98,82 @@ function frame(node: React.ReactNode, a11y: boolean): { summary: Summary; elemen
   const root = createTestRoot(WINDOW)
   try {
     root.renderer.setA11yActive(a11y)
+    // These measure the cost of building and culling a clipped frame; a retained replay of a page
+    // that does not change would skip the culling they count.
+    root.renderer.setRetainEnabled(false)
     root.render(<div style={{ width: WINDOW.width, height: WINDOW.height }}>{node}</div>)
     const summary = summarize(sample(() => root.renderer.flush(), WARMUP, SAMPLES))
     const before = root.renderer.getCulledSubtreeCount()
     root.renderer.flush()
     return { summary, elements: root.renderer.getRetainedElementCount(), culled: root.renderer.getCulledSubtreeCount() - before }
+  } finally {
+    root.unmount()
+  }
+}
+
+/**
+ * What a frame of a scroller may cost with retention on against off. Retention records what it
+ * builds, which a scroller gives it nothing to skip from: its rows are somewhere else with each
+ * frame, or are too small to be a subtree. A frame that found nothing to skip stops recording for
+ * a while, so the two cost the same. Measured: 1.00 to 1.02, which noise is of the order of.
+ */
+const SCROLL_RETAIN_OVER_OFF = 1.05
+
+function Cards() {
+  return (
+    <div testId="scroller" style={{ width: 400, height: 300, overflowY: 'auto' }}>
+      {Array.from({ length: 200 }, (_, index) => (
+        <div key={index} style={{ height: 60, padding: 8, display: 'flex', flexDirection: 'row', gap: 8 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#456' }} />
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <text style={{ fontSize: 14, color: '#fff' }}>{`Card ${index}`}</text>
+            <text style={{ fontSize: 12, color: '#aaa' }}>{`Some description for card ${index}`}</text>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** p50 of a frame with retention on and off, in blocks of frames that alternate so drift hits both. */
+function retentionOverOff(node: React.ReactNode, a11y: boolean, scrolls: boolean): { on: number; off: number } {
+  const root = createTestRoot(WINDOW)
+  try {
+    const renderer = root.renderer
+    renderer.setA11yActive(a11y)
+    root.render(<div style={{ width: WINDOW.width, height: WINDOW.height }}>{node}</div>)
+    renderer.flush()
+    const scroller = scrolls ? renderer.findByTestId('scroller')! : undefined
+    if (scroller) {
+      // A display-link frame per scroll, as a live window draws: not the draws a test makes inline.
+      renderer.setInlineDraws(false)
+      renderer.drawFrame()
+    }
+    let top = 0
+    let direction = 1
+    let count = 0
+    const frame = () => {
+      if (scroller) {
+        if (count++ % 80 === 0) direction = -direction
+        top += direction * 3
+        renderer.scrollTo(scroller.id, 0, top, 'instant')
+        renderer.drawFrame()
+      } else {
+        renderer.flush()
+      }
+    }
+    const times = { on: [] as number[], off: [] as number[] }
+    for (let round = 0; round < 12; round++) {
+      for (const mode of round % 2 === 0 ? (['on', 'off'] as const) : (['off', 'on'] as const)) {
+        renderer.setRetainEnabled(mode === 'on')
+        for (let i = 0; i < 40; i++) {
+          const start = performance.now()
+          frame()
+          if (i >= 8) times[mode].push(performance.now() - start)
+        }
+      }
+    }
+    return { on: percentile(times.on, 0.5), off: percentile(times.off, 0.5) }
   } finally {
     root.unmount()
   }
@@ -136,6 +207,18 @@ describeNative.each([{ a11y: true }, { a11y: false }])('clipped and off-screen c
       expect(run.culled, `${clip}: the boxes outside the clip are skipped`).toBeGreaterThan(Math.max(...BOX_COUNTS) * 0.8)
       const ratio = (run.summary.cpuP50 - empty.summary.cpuP50) / (visible.summary.cpuP50 - empty.summary.cpuP50)
       expect(ratio, `${clip} costs ${ratio.toFixed(2)} of visible per box`).toBeLessThan(CLIPPED_OVER_VISIBLE)
+    }
+  }, 300_000)
+
+  it('scroll: retention costs no more than none', () => {
+    const shapes = [
+      { name: 'boxes in a scroller, unchanged', node: <Boxes count={2000} clip="scroll" />, scrolls: false },
+      { name: 'cards in a scroller, scrolled every frame', node: <Cards />, scrolls: true },
+    ]
+    for (const shape of shapes) {
+      const { on, off } = retentionOverOff(shape.node, a11y, shape.scrolls)
+      console.log(`[clipped.perf] a11y=${a11y} ${shape.name}: retention on=${on.toFixed(2)}ms off=${off.toFixed(2)}ms ratio=${(on / off).toFixed(3)}`)
+      expect(on / off, `${shape.name}: ${on.toFixed(2)}ms against ${off.toFixed(2)}ms`).toBeLessThan(SCROLL_RETAIN_OVER_OFF)
     }
   }, 300_000)
 

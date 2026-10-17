@@ -144,6 +144,7 @@ function calls(r, ids) {
     setPointerCapture: () => r.setPointerCapture(ids.box, 1),
     setRetainLift: () => r.setRetainLift(["svg"]),
     setRetainPlanning: () => r.setRetainPlanning(true),
+    setRetainEnabled: () => r.setRetainEnabled(true),
     setRetainVerify: () => r.setRetainVerify(false),
     setScrollbarStyle: () => r.setScrollbarStyle("overlay"),
     setSelectionRange: () => r.setSelectionRange(ids.field, 0, 1),

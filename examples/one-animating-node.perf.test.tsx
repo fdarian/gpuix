@@ -117,8 +117,12 @@ describeNative('one animating node over a large static tree', () => {
           expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
           // Every built element is counted once, as in a retainable subtree or under the reason it is not.
           // `GPUIX_RETAIN_OFF` stops the counting, to time the build without it.
+          // A page with no subtree worth skipping (the empty one) stops being recorded for a while,
+          // and the frames it is not recorded in count nothing.
           if (process.env.GPUIX_RETAIN_OFF === undefined) {
-            expect(countedReasons(built)).toBe(built.elementsBuilt + built.elementsSkipped)
+            const counted = countedReasons(built)
+            if (cards > 0) expect(counted).toBe(built.elementsBuilt + built.elementsSkipped)
+            else expect(counted).toBeLessThanOrEqual(built.elementsBuilt + built.elementsSkipped)
           }
         } finally {
           root.unmount()

@@ -521,6 +521,9 @@ struct Backoff {
     resting: bool,
     /// Whether a scroller moved in the last frame, recorded or not.
     scrolling: bool,
+    /// How many elements the tree had when the stretch began: a page that gains or loses
+    /// elements is not the page that had nothing to skip.
+    elements: usize,
 }
 
 pub(crate) struct Retain {
@@ -531,6 +534,10 @@ pub(crate) struct Retain {
     backoff: Backoff,
     /// The pass of the draw the frame being built is in, see [`Sources::pass`].
     pass: usize,
+    /// How many elements the tree has in the frame being built.
+    elements: usize,
+    #[cfg(test)]
+    frame_log: Vec<bool>,
     /// Whether a frame skips the building of what the sources say did not change, and hands it
     /// to gpui as a retained subtree. Off, the elements are only recorded and judged, which is
     /// what the tests of the judgement read.
@@ -608,6 +615,9 @@ impl Retain {
             planning_wanted: !cfg!(test),
             backoff: Backoff::default(),
             pass: 1,
+            elements: 0,
+            #[cfg(test)]
+            frame_log: Vec::new(),
             planning: enabled && !cfg!(test),
             lifted: 0,
             verify: cfg!(test) || std::env::var_os("GPUIX_RETAIN_VERIFY").is_some(),
@@ -698,6 +708,12 @@ impl Retain {
         (self.lifted & (1 << reason as u32) == 0).then_some(reason)
     }
 
+    /// Whether each frame since the last call was recorded, a draw's later passes not counted.
+    #[cfg(test)]
+    pub(crate) fn take_frame_log(&mut self) -> Vec<bool> {
+        std::mem::take(&mut self.frame_log)
+    }
+
     pub(crate) fn mismatches(&self) -> &[String] {
         &self.mismatches
     }
@@ -711,7 +727,12 @@ impl Retain {
     /// text, 0 for none: text that is in a selection that moved paints differently.
     pub(crate) fn begin_frame(&mut self, sources: Sources) {
         self.pass = sources.pass;
+        self.elements = sources.tree.elements.len();
         self.backoff.resting = self.enabled && self.rests(&sources);
+        #[cfg(test)]
+        if sources.pass == 1 && self.enabled {
+            self.frame_log.push(!self.backoff.resting);
+        }
         self.open = self.enabled && !self.backoff.resting;
         self.deferred = false;
         self.selection = sources.selection;
@@ -735,6 +756,10 @@ impl Retain {
             return self.backoff.resting || self.backoff.rest > 0;
         }
         if self.backoff.rest == 0 {
+            return false;
+        }
+        if self.backoff.elements != self.elements {
+            self.backoff = Backoff::default();
             return false;
         }
         let scrolls = scroll_bits(sources.scrolls);
@@ -1119,7 +1144,7 @@ impl Retain {
 
     /// Plans the frames that follow a recorded one that found `candidates`, or none, to skip.
     fn back_off(&mut self, candidates: bool) {
-        if candidates {
+        if candidates || self.nodes.is_empty() {
             self.backoff.gap = 0;
             return;
         }
@@ -1127,7 +1152,7 @@ impl Retain {
         let scrolling = self.deltas.scrolling;
         let gap = self.backoff.gap;
         self.forget();
-        self.backoff = Backoff { rest: gap, gap, resting: false, scrolling };
+        self.backoff = Backoff { rest: gap, gap, resting: false, scrolling, elements: self.elements };
     }
 
     /// Decides what this build would have reused, counts it, and keeps what the next build compares
@@ -1209,7 +1234,9 @@ impl Retain {
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
             self.moved[at] = parent.is_some_and(|parent| self.moved[parent] || self.below[parent].scrolled);
-            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !node.moved && !self.moved[at]);
+            // What a scroller that only appeared moves is not a loss: the frame after it finds the rows still.
+            let carried = (node.moved || self.moved[at]) && self.deltas.scrolling;
+            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !carried);
 
             if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
@@ -1813,6 +1840,143 @@ mod tests {
 
     const CARD: &str = r#"{"height": 60}"#;
     const HOVER_CARD: &str = r##"{"height": 60, "hover": {"backgroundColor": "#aa0000"}}"##;
+
+    /// A scroller of three cards, which are subtrees a frame could skip when the scroller is
+    /// where it was, under a page that is not one since it holds a scroller.
+    fn scroller_page() -> Vec<El> {
+        let mut elements = vec![
+            div(1, None, r#"{"display": "flex", "flexDirection": "column", "width": 400, "height": 300}"#),
+            div(
+                2,
+                Some(1),
+                r#"{"display": "flex", "flexDirection": "column", "width": 400, "height": 40, "overflowY": "auto"}"#,
+            ),
+        ];
+        for card in [10, 20, 30] {
+            elements.push(div(card, Some(2), r#"{"height": 30}"#));
+            for line in 1..=2 {
+                elements.push(div(card + line, Some(card), r#"{"height": 10}"#));
+                elements.push(text(card * 10 + line, card + line, "some words"));
+            }
+        }
+        elements
+    }
+
+    /// A scroller of boxes of one element each, which no frame skips on its own.
+    fn boxes_page() -> Vec<El> {
+        let mut elements = vec![
+            div(1, None, r#"{"display": "flex", "flexDirection": "column", "width": 400, "height": 300}"#),
+            div(
+                2,
+                Some(1),
+                r#"{"display": "flex", "flexDirection": "column", "width": 400, "height": 40, "overflowY": "auto"}"#,
+            ),
+        ];
+        for id in 10..16 {
+            elements.push(div(id, Some(2), r#"{"height": 30}"#));
+        }
+        elements
+    }
+
+    /// A scene that skips what it can and backs off, as a window does outside a test.
+    fn backing_off(cx: &mut gpui::TestAppContext, elements: Vec<El>) -> Scene {
+        let scene = Scene::new(cx, elements);
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.retain.set_verify(false);
+            })
+            .unwrap();
+        scene
+    }
+
+    /// Draws `frames` frames and says for each whether it was recorded. A test app draws more
+    /// than once when it flushes effects, so these are the frames the retention saw.
+    fn frame_log(scene: &Scene, cx: &mut gpui::TestAppContext, draw: impl FnOnce(&Scene, &mut gpui::TestAppContext)) -> Vec<bool> {
+        scene.window.update(cx, |view, _, _| view.retain.take_frame_log()).unwrap();
+        draw(scene, cx);
+        scene.window.update(cx, |view, _, _| view.retain.take_frame_log()).unwrap()
+    }
+
+    fn draws(frames: usize) -> impl FnOnce(&Scene, &mut gpui::TestAppContext) {
+        move |scene, cx| (0..frames).for_each(|_| scene.notified_draw(cx))
+    }
+
+    #[gpui::test]
+    fn a_page_with_nothing_to_skip_is_recorded_less_and_less_often(cx: &mut gpui::TestAppContext) {
+        let scene = backing_off(cx, boxes_page());
+        let log = frame_log(&scene, cx, draws(12));
+        let recorded: Vec<usize> = (0..log.len()).filter(|at| log[*at]).collect();
+        // Stretches of 1, 2, 4, 8 and 8 unrecorded frames between the recorded ones.
+        let gaps: Vec<usize> = recorded.windows(2).map(|pair| pair[1] - pair[0] - 1).collect();
+        assert_eq!(gaps, [1, 2, 4, 8, 8, 8][..gaps.len()], "{log:?}");
+        assert!(gaps.len() >= 3, "{log:?}");
+    }
+
+    #[gpui::test]
+    fn a_page_that_gains_an_element_is_recorded_at_once(cx: &mut gpui::TestAppContext) {
+        let scene = backing_off(cx, boxes_page());
+        let log = frame_log(&scene, cx, draws(8));
+        assert!(!log[log.len() - 1], "in the middle of a stretch: {log:?}");
+        {
+            let mut tree = scene.tree.lock().unwrap();
+            tree.create_element(99, "div".to_owned());
+            let style = tree.styles.intern(br#"{"height": 30}"#).unwrap();
+            tree.set_style(99, style);
+            tree.append_child(2, 99);
+        }
+        let log = frame_log(&scene, cx, draws(1));
+        assert!(log[0], "{log:?}");
+    }
+
+    #[gpui::test]
+    fn a_page_with_a_subtree_to_skip_is_recorded_every_frame(cx: &mut gpui::TestAppContext) {
+        let scene = backing_off(cx, page([CARD; 3]));
+        let log = frame_log(&scene, cx, draws(12));
+        assert!(log.iter().all(|recorded| *recorded), "{log:?}");
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn a_verified_page_is_recorded_every_frame(cx: &mut gpui::TestAppContext) {
+        let scene = Scene::new(cx, boxes_page());
+        scene.window.update(cx, |view, _, _| view.retain.set_planning(true)).unwrap();
+        let log = frame_log(&scene, cx, draws(12));
+        assert!(log.iter().all(|recorded| *recorded), "{log:?}");
+    }
+
+    #[gpui::test]
+    fn frames_are_recorded_again_the_moment_the_scrollers_stop(cx: &mut gpui::TestAppContext) {
+        let scene = backing_off(cx, scroller_page());
+        scene.notified_draw(cx);
+        let scroll = |scene: &Scene, cx: &mut gpui::TestAppContext, top: f32| {
+            scene
+                .window
+                .update(cx, |view, _, _| {
+                    view.scroll_handles
+                        .get(&2)
+                        .expect("the scroller has a handle")
+                        .set_offset(gpui::point(gpui::px(0.), gpui::px(-top)));
+                })
+                .unwrap();
+            scene.draw(cx);
+        };
+        // Moving every frame, the cards are never in the same place twice: recorded to look,
+        // 1, 2, 4 frames apart.
+        let moving = frame_log(&scene, cx, |scene, cx| (1..=12).for_each(|top| scroll(scene, cx, top as f32)));
+        assert!(moving.iter().filter(|recorded| !**recorded).count() >= 6, "{moving:?}");
+        // Stopped, whatever the stretch it is in: the next frame is recorded, and the one after
+        // replays the cards.
+        let rest = moving.iter().rev().take_while(|recorded| !**recorded).count();
+        let stopped = frame_log(&scene, cx, |scene, cx| scroll(scene, cx, 12.));
+        assert!(stopped[0], "{moving:?} {stopped:?} {rest}");
+        scene.notified_draw(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        let before = retained_counters(&scene, cx);
+        scene.notified_draw(cx);
+        assert!(retained_counters(&scene, cx).replays > before.replays, "and the cards are replayed again");
+    }
 
     #[gpui::test]
     fn a_page_that_does_not_move_is_one_retainable_root(cx: &mut gpui::TestAppContext) {
