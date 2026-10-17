@@ -1,7 +1,10 @@
 /**
- * How much of a page a retained replay could skip (#37 step 4a): the share of the built elements
- * that sit in a subtree nothing in changed and nothing on the exclusion list is in, per page and
- * per kind of frame, and what the rest are counted under. It decides whether step 5 pays.
+ * How much of a page a retained replay skips (#37 steps 4a and 5b), per page and per kind of
+ * frame. Each page is run twice. Judged (`setRetainPlanning(false)`): every frame builds every
+ * element, and the share of them in a subtree nothing in changed and nothing on the exclusion list
+ * is in is what a replay could skip, with the rest counted under the reason they are not.
+ * Skipping: the frames leave unbuilt what they judge unchanged and gpui replays it; the share of
+ * elements left unbuilt, what gpui's retained subtrees did and what a frame costs are printed.
  *
  * Frames:
  *   idle    nothing changes, the clock moves
@@ -17,7 +20,7 @@ import React, { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { motion } from '@gpuix/react'
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from '@gpuix/react/testing'
-import { countedReasons, formatRetain, type RetainCounters } from './perf-harness'
+import { countedReasons, formatRetain, formatRetained, retainedDelta, type RetainCounters } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 import { ChatApp } from './chat'
 import { MailApp } from './mail'
@@ -167,13 +170,19 @@ const PAGES: Page[] = [
 function frames(root: TestRoot, name: string, run: () => number): RetainCounters {
   const { renderer } = root
   renderer.resetBuildCounters()
+  const retainedBefore = renderer.getRetainedCounters()
+  const cpuBefore = process.cpuUsage()
   const drawn = run()
+  const cpu = process.cpuUsage(cpuBefore)
   const built = renderer.getBuildCounters()
+  const cpuPerFrame = (cpu.user + cpu.system) / 1000 / drawn
   console.log(
-    `[retain.perf] ${name} frames=${drawn} built/frame=${(built.elementsBuilt / drawn).toFixed(0)} ${formatRetain(built)}`,
+    `[retain.perf] ${name} frames=${drawn} cpu/frame=${cpuPerFrame.toFixed(2)}ms built/frame=${(built.elementsBuilt / drawn).toFixed(0)} ` +
+      `${formatRetain(built)} | ${formatRetained(retainedDelta(renderer.getRetainedCounters(), retainedBefore), drawn)}`,
   )
   expect(built.retainMismatches, renderer.getRetainMismatches().join('\n')).toBe(0)
-  expect(countedReasons(built)).toBe(built.elementsBuilt)
+  expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join('\n')).toBe(0)
+  expect(countedReasons(built)).toBe(built.elementsBuilt + built.elementsSkipped)
   return built
 }
 
@@ -185,14 +194,17 @@ const LIFTS: [string, string[]][] = [
 
 describeNative('retainable share of a frame, by page', () => {
   for (const page of PAGES) {
-    it(`${page.name}`, () => {
+    for (const skipping of [false, true]) {
+    it(`${page.name} ${skipping ? 'skipping' : 'judged'}`, () => {
       const size = page.size ?? WINDOW
       const root = createTestRoot(size)
       try {
         root.render(page.element)
         const { renderer } = root
         renderer.clockPause()
-        renderer.setRetainVerify(true)
+        renderer.setRetainPlanning(skipping)
+        // Judged frames hash every element they build and check what was judged unchanged.
+        renderer.setRetainVerify(!skipping)
         // The first builds see every element for the first time.
         for (let i = 0; i < 3; i++) renderer.clockFastForward(FRAME_MS)
         console.log(`[retain.perf] ${page.name}: ${renderer.getRetainedElementCount()} retained elements`)
@@ -201,9 +213,9 @@ describeNative('retainable share of a frame, by page', () => {
           for (let i = 0; i < IDLE_FRAMES; i++) renderer.clockFastForward(FRAME_MS)
           return IDLE_FRAMES
         }
-        frames(root, `${page.name} idle`, idle)
+        frames(root, `${page.name} idle ${skipping ? 'skipping' : 'judged'}`, idle)
 
-        frames(root, `${page.name} hover`, () => {
+        frames(root, `${page.name} hover ${skipping ? 'skipping' : 'judged'}`, () => {
           let drawn = 0
           for (let row = 0; row < GRID.rows; row++) {
             for (let column = 0; column < GRID.columns; column++) {
@@ -220,7 +232,7 @@ describeNative('retainable share of a frame, by page', () => {
         if (page.typeInto) {
           const input = renderer.findByType(page.typeInto)[0]
           if (input) {
-            frames(root, `${page.name} type`, () => {
+            frames(root, `${page.name} type ${skipping ? 'skipping' : 'judged'}`, () => {
               renderer.focusElement(input.id)
               for (let i = 0; i < KEYS; i++) renderer.simulateKeystrokes('a')
               return KEYS
@@ -232,21 +244,24 @@ describeNative('retainable share of a frame, by page', () => {
           root.render(page.animated)
           renderer.clockPause()
           for (let i = 0; i < 3; i++) renderer.clockFastForward(FRAME_MS)
-          frames(root, `${page.name} animate`, idle)
+          frames(root, `${page.name} animate ${skipping ? 'skipping' : 'judged'}`, idle)
         }
 
-        // What an idle frame would be with exclusions lifted, cumulatively.
-        renderer.setRetainVerify(false)
-        const lifted: string[] = []
-        for (const [label, names] of LIFTS) {
-          lifted.push(...names)
-          renderer.setRetainLift(lifted)
-          for (let i = 0; i < 3; i++) renderer.clockFastForward(FRAME_MS)
-          frames(root, `${page.name} idle lifting ${label}`, idle)
+        if (!skipping) {
+          // What an idle frame would be with exclusions lifted, cumulatively.
+          renderer.setRetainVerify(false)
+          const lifted: string[] = []
+          for (const [label, names] of LIFTS) {
+            lifted.push(...names)
+            renderer.setRetainLift(lifted)
+            for (let i = 0; i < 3; i++) renderer.clockFastForward(FRAME_MS)
+            frames(root, `${page.name} idle lifting ${label}`, idle)
+          }
         }
       } finally {
         root.unmount()
       }
     }, 300_000)
+    }
   }
 })

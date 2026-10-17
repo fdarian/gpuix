@@ -9,6 +9,7 @@ use std::cell::{Cell, RefCell};
 
 thread_local! {
     static ELEMENTS_BUILT: Cell<u64> = const { Cell::new(0) };
+    static ELEMENTS_SKIPPED: Cell<u64> = const { Cell::new(0) };
     static STYLE_DESC_CLONES: Cell<u64> = const { Cell::new(0) };
     static INHERITED_CLONES: Cell<u64> = const { Cell::new(0) };
     static RETAINABLE_ROOTS: Cell<u64> = const { Cell::new(0) };
@@ -21,6 +22,7 @@ thread_local! {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Counts {
     pub elements_built: u64,
+    pub elements_skipped: u64,
     pub style_desc_clones: u64,
     pub inherited_clones: u64,
     /// The maximal unchanged, retainable subtrees of the builds, see `retain`.
@@ -31,6 +33,11 @@ pub(crate) struct Counts {
     pub retainable_elements_large: u64,
     /// Elements judged unchanged that were built differently; none unless `retain` is verifying.
     pub retain_mismatches: u64,
+}
+
+/// A frame left `elements` unbuilt because it found them unchanged.
+pub(crate) fn elements_skipped(elements: u64) {
+    ELEMENTS_SKIPPED.with(|count| count.set(count.get() + elements));
 }
 
 pub(crate) fn element_built() {
@@ -76,6 +83,7 @@ pub(crate) fn retain_reasons() -> Vec<(String, u64)> {
 pub(crate) fn snapshot() -> Counts {
     Counts {
         elements_built: ELEMENTS_BUILT.with(Cell::get),
+        elements_skipped: ELEMENTS_SKIPPED.with(Cell::get),
         style_desc_clones: STYLE_DESC_CLONES.with(Cell::get),
         inherited_clones: INHERITED_CLONES.with(Cell::get),
         retainable_roots: RETAINABLE_ROOTS.with(Cell::get),
@@ -87,6 +95,7 @@ pub(crate) fn snapshot() -> Counts {
 
 pub(crate) fn reset() {
     ELEMENTS_BUILT.with(|count| count.set(0));
+    ELEMENTS_SKIPPED.with(|count| count.set(0));
     STYLE_DESC_CLONES.with(|count| count.set(0));
     INHERITED_CLONES.with(|count| count.set(0));
     RETAINABLE_ROOTS.with(|count| count.set(0));

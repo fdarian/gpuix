@@ -1,9 +1,12 @@
-//! Which subtrees of an element build a retained replay could reuse (#37 step 4a).
+//! Which subtrees of the element tree a frame leaves unbuilt, because gpui replays what they left in
+//! the frame before (#37 step 5b).
 //!
-//! gpui consumes its elements every frame, so reusing a subtree means replaying what it prepainted
-//! and painted instead of building it. That is step 5. This step only decides, per frame and
-//! without changing anything, which subtrees *would* be reused if it could, and counts them, so the
-//! share of a page that is worth it is known before the replay is written.
+//! gpui consumes its elements every frame, so skipping a subtree means handing gpui a
+//! `gpui::retained` element in its place and replaying what it prepainted and painted. A frame
+//! decides before it builds an element: it skips it when the last build recorded it as eligible, its
+//! entry key is the same, and no source of the frame names it or anything below it (see
+//! `Sources`). Everything below is also how the last build of an element is judged after the fact,
+//! which is how eligibility and the entry key are recorded.
 //!
 //! A built element has a *key*, what its build is a function of that the retained tree can see: its
 //! `subtree_revision`, a fingerprint of what it inherits (hashed by content: group, container and
@@ -545,6 +548,9 @@ pub(crate) struct Entry<'a> {
     /// Whether nothing around the element is waiting for something from its build that a skipped
     /// build could not give (the baseline of a box, the text of a line).
     pub plain: bool,
+    /// Whether the element has a layout node of its own: a table row or row group does not, and
+    /// has no layout result for a retained element to be laid out as.
+    pub boxed: bool,
     /// The key of a subtree that was deferred, which the frame that deferred it computed.
     pub prekeyed: Option<EnterKey>,
 }
@@ -559,8 +565,9 @@ pub(crate) struct Skip {
 }
 
 /// Elements below this many are not worth a retained element of their own: it costs about what
-/// it saves.
-const MIN_ROOT: u32 = 4;
+/// it saves. A table cell is two (the cell and the text in it) and a table row cannot be a root,
+/// so a bigger bound builds every cell of a table that has a row under the pointer.
+const MIN_ROOT: u32 = 2;
 
 impl Retain {
     pub(crate) fn new() -> Self {
@@ -855,6 +862,7 @@ impl Retain {
             node.subtree = record.subtree;
             node.end = at + 1;
             node.skipped = Some(Skipped { size: record.size, digest: record.digest });
+            crate::perf_counters::elements_skipped(u64::from(record.size));
             let skip = Skip {
                 token: record.token,
                 enter: EnterKey(enter),
@@ -872,7 +880,7 @@ impl Retain {
 
     /// The record of the last build of the element if the frame can leave it unbuilt.
     fn skippable(&self, node: &Node, entry: &Entry) -> Option<&Record> {
-        if !self.planning || self.lifted != 0 || self.deltas.all || !entry.plain || entry.prekeyed.is_some() {
+        if !self.planning || self.lifted != 0 || self.deltas.all || !entry.plain || !entry.boxed || entry.prekeyed.is_some() {
             return None;
         }
         if node.exclusion.is_some() || node.moved || self.deltas.spine.contains(&node.id) {
@@ -1295,6 +1303,7 @@ mod tests {
             anchor_scope: false,
             text_box_trim: Default::default(),
             plain: true,
+            boxed: true,
             prekeyed: None,
         });
         retain.stacking(|| (None, true));

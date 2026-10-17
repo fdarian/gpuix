@@ -7341,7 +7341,7 @@ impl gpui::Render for GpuixView {
         // are different fields of self, so Rust allows borrowing all simultaneously.
         let theme = Theme::dark();
         let now = self.clock.now();
-        crate::scroll::begin_frame();
+        crate::scroll::begin_frame(|id| tree.elements.contains_key(&id));
         crate::scrollbar::begin_frame(
             now,
             self.scroller_style
@@ -7618,6 +7618,15 @@ fn build_element_in(
             anchor_scope: ctx.anchor_scope.is_some(),
             text_box_trim: ctx.text_box_trim,
             plain,
+            boxed: !matches!(
+                crate::layout::table::part(known),
+                Some(
+                    crate::layout::table::Part::RowGroup(_)
+                        | crate::layout::table::Part::Row
+                        | crate::layout::table::Part::Column
+                        | crate::layout::table::Part::ColumnGroup
+                )
+            ),
             prekeyed,
         });
         if let Some(skip) = skip {

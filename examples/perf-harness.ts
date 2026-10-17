@@ -57,6 +57,7 @@ export function formatSummary(summary: Summary): string {
 /** The part of `getBuildCounters()` that says how much of the build a retained replay could skip (#37 step 4a). */
 export type RetainCounters = {
   elementsBuilt: number
+  elementsSkipped: number
   retainableRoots: number
   retainableElements: number
   retainableElementsLarge: number
@@ -69,19 +70,56 @@ export type RetainCounters = {
  * rest are not, largest first. Every built element is counted under exactly one reason.
  */
 export function formatRetain(counters: RetainCounters, top = 6): string {
-  const percent = (count: number) => ((100 * count) / counters.elementsBuilt).toFixed(1)
+  const percent = (count: number) => ((100 * count) / (counters.elementsBuilt + counters.elementsSkipped)).toFixed(1)
   const reasons = Object.entries(JSON.parse(counters.retainReasons) as Record<string, number>)
     .filter(([reason]) => reason !== 'retained')
     .sort((left, right) => right[1] - left[1])
     .slice(0, top)
     .map(([reason, count]) => `${reason}=${percent(count)}%`)
   return (
-    `retainable=${percent(counters.retainableElements)}% roots=${counters.retainableRoots} ` +
+    `skipped=${percent(counters.elementsSkipped)}% retainable=${percent(counters.retainableElements)}% roots=${counters.retainableRoots} ` +
     `in-large-roots=${percent(counters.retainableElementsLarge)}% not-because: ${reasons.join(' ')}`
   )
 }
 
-/** Every built element is counted once, as retainable or under one reason. */
+/** Every element a frame built or skipped is counted once, as retainable or under one reason. */
 export function countedReasons(counters: RetainCounters): number {
   return Object.values(JSON.parse(counters.retainReasons) as Record<string, number>).reduce((sum, count) => sum + count, 0)
+}
+
+/** What gpui's retained subtrees did over `frames` frames: per frame, so runs of different lengths compare. */
+export function formatRetained(counters: RetainedCounters, frames: number): string {
+  const perFrame = (count: number) => (count / frames).toFixed(2)
+  const unreplayable = Object.entries(JSON.parse(counters.nonReusable) as Record<string, number>)
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${reason}=${count}`)
+  return (
+    `retained hits/frame=${perFrame(counters.hits)} replays/frame=${perFrame(counters.replays)} ` +
+    `builds/frame=${perFrame(counters.builds)} lazy/frame=${perFrame(counters.lazyBuilds)} ` +
+    `fallbacks=${counters.layoutFallbacks} not-replayable: ${unreplayable.join(' ') || 'none'}`
+  )
+}
+
+/** The part of `getRetainedCounters()` the benchmarks print. */
+export type RetainedCounters = {
+  hits: number
+  replays: number
+  lazyBuilds: number
+  builds: number
+  layoutFallbacks: number
+  nonReusable: string
+}
+
+/** The counters of a span of frames: what `after` has over `before`. */
+export function retainedDelta(after: RetainedCounters, before: RetainedCounters): RetainedCounters {
+  const reasons = JSON.parse(after.nonReusable) as Record<string, number>
+  const earlier = JSON.parse(before.nonReusable) as Record<string, number>
+  return {
+    hits: after.hits - before.hits,
+    replays: after.replays - before.replays,
+    lazyBuilds: after.lazyBuilds - before.lazyBuilds,
+    builds: after.builds - before.builds,
+    layoutFallbacks: after.layoutFallbacks - before.layoutFallbacks,
+    nonReusable: JSON.stringify(Object.fromEntries(Object.entries(reasons).map(([reason, count]) => [reason, count - (earlier[reason] ?? 0)]))),
+  }
 }

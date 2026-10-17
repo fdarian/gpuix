@@ -125,11 +125,13 @@ pub(crate) fn apply_container<E: gpui::Styled + gpui::StatefulInteractiveElement
 ) -> E {
     let Some(style) = style else {
         handles.remove(&id);
+        set_smooth_by_default(id, false);
         return el;
     };
     let axes = Axes::of(style);
     if !axes.scrolls() {
         handles.remove(&id);
+        set_smooth_by_default(id, false);
         return el;
     }
     el = match (axes.x.has_offset(), axes.y.has_offset()) {
@@ -146,11 +148,7 @@ pub(crate) fn apply_container<E: gpui::Styled + gpui::StatefulInteractiveElement
         overscroll(style.overscroll_behavior_x.as_deref().or(both)),
         overscroll(style.overscroll_behavior_y.as_deref().or(both)),
     );
-    SMOOTH_BY_DEFAULT.with(|smooth| {
-        if style.scroll_behavior.as_deref() == Some("smooth") {
-            smooth.borrow_mut().insert(id);
-        }
-    });
+    set_smooth_by_default(id, style.scroll_behavior.as_deref() == Some("smooth"));
     let handle = handles.entry(id).or_insert_with(gpui::ScrollHandle::new);
     el = el.track_scroll(handle);
     if axes.x.scrolls_for_user() || axes.y.scrolls_for_user() {
@@ -228,16 +226,27 @@ impl Behavior {
 
 thread_local! {
     /// Scrollers whose `scrollBehavior` style is `smooth`, for calls that name no behavior.
-    /// Rebuilt every frame by `apply_container`. Thread-local like `SCROLL_HANDLES`, so the
+    /// `apply_container` says for each scroller it builds whether it is one, and a frame that does
+    /// not build a scroller leaves what it said. Thread-local like `SCROLL_HANDLES`, so the
     /// same napi calls can reach it without a window update.
     static SMOOTH_BY_DEFAULT: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
     static ANIMATIONS: RefCell<HashMap<u64, Animation>> = RefCell::new(HashMap::new());
 }
 
-/// Call before building a frame, so a scroller that lost `scrollBehavior: "smooth"` or was
-/// removed does not keep it.
-pub(crate) fn begin_frame() {
-    SMOOTH_BY_DEFAULT.with(|smooth| smooth.borrow_mut().clear());
+/// Call before building a frame, so a scroller that was removed does not keep `scrollBehavior:
+/// "smooth"`.
+pub(crate) fn begin_frame(exists: impl Fn(u64) -> bool) {
+    SMOOTH_BY_DEFAULT.with(|smooth| smooth.borrow_mut().retain(|id| exists(*id)));
+}
+
+fn set_smooth_by_default(id: u64, smooth: bool) {
+    SMOOTH_BY_DEFAULT.with(|set| {
+        if smooth {
+            set.borrow_mut().insert(id);
+        } else {
+            set.borrow_mut().remove(&id);
+        }
+    });
 }
 
 fn is_smooth(id: u64, behavior: Behavior) -> bool {

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
 
 // A column of three cards, each with two lines of text.
-const mount = () => {
+const mount = (skipping = false) => {
   const renderer = new TestRenderer({ width: 400, height: 400 })
+  // The counters judge what a frame builds, which a frame that skips builds less of.
+  renderer.setRetainPlanning(skipping)
   renderer.clockPause()
   const batch: unknown[] = [
     ["createElement", 1, "div"],
@@ -18,7 +20,7 @@ const mount = () => {
     }
   }
   renderer.applyBatch(JSON.stringify(batch))
-  renderer.setRetainVerify(true)
+  renderer.setRetainVerify(!skipping)
   renderer.flush()
   return renderer
 }
@@ -79,6 +81,20 @@ describe.skipIf(!hasNativeTestRenderer)("native retain counters", () => {
     const counters = renderer.getBuildCounters()
     expect(counters.retainableElements).toBe(counters.elementsBuilt)
     expect(counters.retainMismatches).toBe(0)
+  })
+
+  it("builds none of a page that does not change, and replays it", () => {
+    const renderer = mount(true)
+    for (let frame = 0; frame < 4; frame++) renderer.flush()
+    const before = renderer.getRetainedCounters()
+    renderer.resetBuildCounters()
+    renderer.flush()
+    renderer.flush()
+    const counters = renderer.getBuildCounters()
+    expect(counters.elementsBuilt).toBe(0)
+    expect(counters.elementsSkipped).toBeGreaterThan(0)
+    expect(renderer.getRetainedCounters().replays).toBeGreaterThan(before.replays)
+    expect(renderer.getRetainedCounters().mismatches).toBe(0)
   })
 
   it("rejects an exclusion it does not know", () => {

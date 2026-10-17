@@ -23,7 +23,7 @@ import React from 'react'
 import { describe, expect, it } from 'vitest'
 import { motion } from '@gpuix/react'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
-import { countedReasons, formatRetain, formatSummary, sample, summarize } from './perf-harness'
+import { countedReasons, formatRetain, formatRetained, formatSummary, retainedDelta, sample, summarize } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -83,6 +83,7 @@ describeNative('one animating node over a large static tree', () => {
           const draws = renderer.getDebugFrameOverlayStats().frames
           renderer.resetBuildCounters()
           const layoutBefore = renderer.getLayoutCounters()
+          const retainedBefore = renderer.getRetainedCounters()
           const frames = sample(
             // The clock moves and notifies the view, which draws once: one frame.
             () => renderer.clockFastForward(FRAME_MS),
@@ -105,19 +106,59 @@ describeNative('one animating node over a large static tree', () => {
               `layout-nodes-new/frame=${layoutPerFrame('nodesCreated')} reused/frame=${layoutPerFrame('nodesReused')} ` +
               `layout-passes/frame=${layoutPerFrame('passes')} styles-set/frame=${layoutPerFrame('stylesSet')} children-set/frame=${layoutPerFrame('childrenSet')} measures/frame=${layoutPerFrame('measures')} | ${formatSummary(summarize(frames))}`,
           )
-          console.log(`[animating.perf]   ${formatRetain(built)}`)
+          console.log(
+            `[animating.perf]   ${formatRetain(built)} | ${formatRetained(retainedDelta(renderer.getRetainedCounters(), retainedBefore), WARMUP + SAMPLES)}`,
+          )
           expect(elements).toBeGreaterThan(0)
           // The work counters do not depend on the clock: a frame of a static tree copies one
-          // Inherited per element it builds and no style except the animated element's own.
-          expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt)
+          // Inherited per element it builds, and one for each subtree it leaves to gpui, and no
+          // style except the animated element's own.
+          expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt + built.retainableRoots)
           expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
           // Every built element is counted once, as in a retainable subtree or under the reason it is not.
           // `GPUIX_RETAIN_OFF` stops the counting, to time the build without it.
-          if (process.env.GPUIX_RETAIN_OFF === undefined) expect(countedReasons(built)).toBe(built.elementsBuilt)
+          if (process.env.GPUIX_RETAIN_OFF === undefined) {
+            expect(countedReasons(built)).toBe(built.elementsBuilt + built.elementsSkipped)
+          }
         } finally {
           root.unmount()
         }
       }
     }, 300_000)
   }
+
+  it('a frame with one node animating costs a fraction of building the page, and builds a fraction of its elements', () => {
+    const root = createTestRoot(WINDOW)
+    try {
+      root.render(<Page cards={60} variant="idle" />)
+      const renderer = root.renderer
+      renderer.clockPause()
+      const elements = renderer.getRetainedElementCount()
+      const frameCost = () =>
+        summarize(sample(() => renderer.clockFastForward(FRAME_MS), WARMUP, SAMPLES)).cpuP50
+
+      // Every frame builds every element: the cost the page had before frames could skip anything.
+      renderer.setRetainPlanning(false)
+      const building = frameCost()
+
+      renderer.setRetainPlanning(true)
+      root.render(<Page cards={60} variant="motion-opacity" />)
+      renderer.clockPause()
+      for (let frame = 0; frame < WARMUP; frame++) renderer.clockFastForward(FRAME_MS)
+      renderer.resetBuildCounters()
+      const animating = frameCost()
+      const built = renderer.getBuildCounters()
+      const perFrame = built.elementsBuilt / (WARMUP + SAMPLES)
+      console.log(
+        `[animating.perf] guard elements=${elements} building=${building.toFixed(2)}ms animating=${animating.toFixed(2)}ms ` +
+          `ratio=${(animating / building).toFixed(2)} built/frame=${perFrame.toFixed(1)}`,
+      )
+      // About a tenth today; the bound leaves room for a noisy machine and not for a frame that builds the page.
+      expect(animating).toBeLessThan(building * 0.4)
+      expect(perFrame).toBeLessThan(elements * 0.05)
+      expect(renderer.getRetainedCounters().replays).toBeGreaterThan(0)
+    } finally {
+      root.unmount()
+    }
+  }, 300_000)
 })

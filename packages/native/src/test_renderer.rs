@@ -33,6 +33,10 @@ use crate::retained_tree::RetainedTree;
 pub struct BuildCounters {
     /// Elements `build_element` ran for. Text and inline boxes a paragraph builds itself are not counted.
     pub elements_built: f64,
+    /// Elements a frame did not build because nothing they were built from had changed: they
+    /// were replayed, or built later by gpui for a frame that could not replay them (those are
+    /// counted in `elementsBuilt` as well).
+    pub elements_skipped: f64,
     /// `StyleDesc` values cloned, a state style inside a style counted as its own.
     pub style_desc_clones: f64,
     pub inherited_clones: f64,
@@ -734,6 +738,7 @@ impl TestGpuixRenderer {
         let counts = crate::perf_counters::snapshot();
         BuildCounters {
             elements_built: counts.elements_built as f64,
+            elements_skipped: counts.elements_skipped as f64,
             style_desc_clones: counts.style_desc_clones as f64,
             inherited_clones: counts.inherited_clones as f64,
             retainable_roots: counts.retainable_roots as f64,

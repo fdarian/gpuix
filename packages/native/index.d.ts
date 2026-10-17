@@ -954,6 +954,12 @@ export declare class TestGpuixRenderer {
 export interface BuildCounters {
   /** Elements `build_element` ran for. Text and inline boxes a paragraph builds itself are not counted. */
   elementsBuilt: number
+  /**
+   * Elements a frame did not build because nothing they were built from had changed: they
+   * were replayed, or built later by gpui for a frame that could not replay them (those are
+   * counted in `elementsBuilt` as well).
+   */
+  elementsSkipped: number
   /** `StyleDesc` values cloned, a state style inside a style counted as its own. */
   styleDescClones: number
   inheritedClones: number

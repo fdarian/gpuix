@@ -454,6 +454,132 @@ describeNative("a page of retained cards", () => {
     }
   })
 
+  it("scrolls smoothly an element with hidden overflow inside a replayed card, by the style it was built with", () => {
+    const { renderer, counters, settle, idOf, expectWhatABuildShows, finish, unmount } = setup(
+      <Page
+        card={(index) =>
+          index === 4 ? (
+            <Card
+              key={index}
+              index={index}
+              extra={
+                <div testId="clipped" style={{ width: 50, height: 20, overflow: "hidden", scrollBehavior: "smooth" }}>
+                  <div style={{ height: 400 }} />
+                </div>
+              }
+            />
+          ) : null
+        }
+      />
+    )
+    try {
+      renderer.clockPause()
+      settle()
+      const before = counters().replays
+      const id = idOf("clipped")
+      const top = () => renderer.getScrollOffset(id)[1]
+      renderer.scrollTo(id, 0, 100)
+      expect(top(), "the first frame starts the animation").toBe(0)
+      renderer.clockFastForward(100)
+      renderer.flush()
+      expect(top()).toBeGreaterThan(0)
+      expect(top()).toBeLessThan(100)
+      renderer.clockFastForward(1000)
+      renderer.flush()
+      expect(top()).toBe(100)
+      // Replayed frames did not forget it was smooth.
+      settle()
+      expect(counters().replays).toBeGreaterThan(before)
+      renderer.scrollTo(id, 0, 0)
+      renderer.clockFastForward(100)
+      renderer.flush()
+      expect(top()).toBeGreaterThan(0)
+      expect(top()).toBeLessThan(100)
+      renderer.clockFastForward(1000)
+      renderer.flush()
+      settle()
+      expectWhatABuildShows("smooth")
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("selects text across replayed cards, and replays them again once it is let go", () => {
+    const { renderer, counters, settle, bounds, expectWhatABuildShows, finish, unmount } = setup(<Page />)
+    try {
+      settle()
+      const from = bounds("title-0")
+      const to = bounds("title-1")
+      const selected = renderer.dragSelect(from.x + 2, from.y + 5, to.x + 60, to.y + 5)
+      expect(selected).toContain("card 0")
+      expect(selected).toContain("card 1")
+      expect(renderer.getSelectedText()).toBe(selected)
+      settle()
+      expectWhatABuildShows("selection")
+      renderer.clearSelection()
+      const before = counters().replays
+      settle()
+      expect(renderer.getSelectedText()).toBeNull()
+      expect(counters().replays).toBeGreaterThan(before)
+      expectWhatABuildShows("selection-cleared")
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("moves what an element with hidden overflow shows inside a replayed card when script scrolls it", () => {
+    const { renderer, settle, idOf, bounds, expectWhatABuildShows, finish, unmount } = setup(
+      <Page
+        card={(index) =>
+          index === 7 ? (
+            <Card
+              key={index}
+              index={index}
+              extra={
+                <div testId="clipped" style={{ width: 50, height: 20, overflow: "hidden" }}>
+                  <div testId="content" style={{ height: 400 }} />
+                </div>
+              }
+            />
+          ) : null
+        }
+      />
+    )
+    try {
+      settle()
+      const rest = bounds("content").y
+      renderer.scrollTo(idOf("clipped"), 0, 60, "instant")
+      renderer.flush()
+      expect(bounds("content").y).toBe(rest - 60)
+      settle()
+      expectWhatABuildShows("hidden-scroll")
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("repaints replayed cards when the window's appearance changes what light-dark() resolves to", () => {
+    const render = () => (
+      <Page card={(index) => <Card key={index} index={index} style={{ colorScheme: "light dark", backgroundColor: "light-dark(#ff0000, #00ff00)" }} />} />
+    )
+    const { renderer, settle, inside, sample, expectWhatABuildShows, finish, unmount } = setup(render())
+    try {
+      renderer.setAppearance("light")
+      settle()
+      expect(sample("scheme-light", ...inside(2))).toEqual(RED)
+      renderer.setAppearance("dark")
+      settle()
+      expect(sample("scheme-dark", ...inside(2))).toEqual(GREEN)
+      expectWhatABuildShows("scheme")
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+
   it("keeps a card out of the replays while its style is pressed, and replays it after", () => {
     const { renderer, settle, center, inside, sample, finish, unmount } = setup(
       <Page card={(index) => <Card key={index} index={index} style={{ active: { backgroundColor: "#0000ff" } }} />} />
