@@ -96,7 +96,10 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
 /**
  * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
  * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
- * `borderRadius` and `gap` shorthands, which expand to their longhands.
+ * `borderRadius`, `borderColor`, `gap` and `inset` shorthands, which expand to their longhands.
+ * A shorthand written with several values (`padding: "0.5em 0.75em"`, `gap: "4px 8px"`,
+ * `borderRadius: "10px 20px / 5px"`) gives each side, axis or corner its own value, and
+ * each animates on its own; keyframes of such strings split frame by frame.
  * Discrete properties (`display`, `position`, ...) are an error.
  *
  * A length is its px and its percentage, whatever it is written as, and two lengths
@@ -110,9 +113,10 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
  * `outlineOffset`, the corner radii and `fontSize`. Where CSS takes no percentage (the
  * border widths and the outline) a percentage is an error; a `fontSize` percentage is of
  * the parent's font size, so it is px. A target that is negative whatever the basis is an
- * error, and one that only comes out negative is clamped. A radius moves as a circular
- * corner (`"50%"` is an ellipse on a wide box, as in CSS); a multi-value `borderRadius`,
- * `padding` or `margin` string is not a target. `width` and `height` also take `"auto"`, the size the content
+ * error, and one that only comes out negative is clamped. A corner moves
+ * both its radii (`"50%"` is an ellipse on a wide box, as in CSS), so `"10px / 20px"`
+ * to `"30px / 40px"` is `"20px / 30px"` halfway. A margin side cannot animate to or from
+ * `auto`, so a `margin` with `auto` in it is an error. `width` and `height` also take `"auto"`, the size the content
  * wants (the min and max sizes do not). The width is measured by an extra layout of the
  * tree while the element animates it, one frame late like the height. The size keywords
  * (`min-content` and the like) are an error, and a CSS transition or animation to or from
@@ -137,6 +141,7 @@ export type MotionKeyframes<Value> = Value | Array<Value | null>
 
 export type MotionStyleTargets = Pick<
   StyleDesc,
+  | "inset"
   | "top"
   | "right"
   | "bottom"
