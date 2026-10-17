@@ -1,0 +1,91 @@
+<!doctype html>
+<!--
+  Oracle for inline-relative-percent.test.tsx: the expected numbers there are what headless Chrome
+  lays out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  The text is GpuixTestSquare at 20px with a line height of 20px: every character is 20px wide,
+  the ascent is the whole em and there is no descent. `data-id` names a box in the test as
+  `case.name`, and the numbers are relative to the `data-case` box it is in.
+-->
+<html>
+<head>
+<style>
+  @font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .line { font: 20px/20px GpuixTestSquare; color: #000; }
+  .ib { display: inline-block; position: relative; width: 20px; height: 10px; }
+  .pad { padding: 10px 20px; }
+</style>
+</head>
+<body>
+
+<!-- left and right are of the width of the containing block's content box -->
+<div class="line pad" data-case data-id="left" style="width: 340px">
+  <span data-id="left.t1">A</span><span class="ib" data-id="left.box" style="left: 10%"></span><span data-id="left.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="right" style="width: 340px">
+  <span data-id="right.t1">A</span><span class="ib" data-id="right.box" style="right: 10%"></span><span data-id="right.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="leftright" style="width: 340px">
+  <span data-id="leftright.t1">A</span><span class="ib" data-id="leftright.box" style="left: 10%; right: 25%"></span><span data-id="leftright.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="calc" style="width: 340px">
+  <span data-id="calc.t1">A</span><span class="ib" data-id="calc.box" style="left: calc(10% + 4px)"></span><span data-id="calc.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="span" style="width: 340px">
+  <span data-id="span.t1">A<span style="padding: 0 30px"><span class="ib" data-id="span.box" style="left: 10%"></span></span></span>
+</div>
+
+<!-- top and bottom are of the height of the containing block's content box when it has one -->
+<div class="line pad" data-case data-id="auto-top" style="width: 340px">
+  <span data-id="auto-top.t1">A</span><span class="ib" data-id="auto-top.box" style="top: 10%"></span><span data-id="auto-top.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="auto-top-bottom" style="width: 340px">
+  <span data-id="auto-top-bottom.t1">A</span><span class="ib" data-id="auto-top-bottom.box" style="top: 10%; bottom: 5px"></span><span data-id="auto-top-bottom.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="auto-bottom" style="width: 340px">
+  <span data-id="auto-bottom.t1">A</span><span class="ib" data-id="auto-bottom.box" style="bottom: 10%"></span><span data-id="auto-bottom.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="auto-top-calc" style="width: 340px">
+  <span data-id="auto-top-calc.t1">A</span><span class="ib" data-id="auto-top-calc.box" style="top: calc(10% + 5px)"></span><span data-id="auto-top-calc.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="top" style="width: 340px; height: 200px">
+  <span data-id="top.t1">A</span><span class="ib" data-id="top.box" style="top: 10%"></span><span data-id="top.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="bottom" style="width: 340px; height: 200px">
+  <span data-id="bottom.t1">A</span><span class="ib" data-id="bottom.box" style="bottom: 25%"></span><span data-id="bottom.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="top-calc" style="width: 340px; height: 200px">
+  <span data-id="top-calc.t1">A</span><span class="ib" data-id="top-calc.box" style="top: calc(10% + 5px); left: 10%"></span><span data-id="top-calc.t2">A</span>
+</div>
+<div class="line pad" data-case data-id="percent-parent" style="width: 340px; height: 300px">
+  <div data-id="percent-parent.host" style="height: 50%"><span data-id="percent-parent.t1">A</span><span class="ib" data-id="percent-parent.box" style="top: 10%"></span><span data-id="percent-parent.t2">A</span></div>
+</div>
+<div class="line pad" data-case data-id="auto-in-definite" style="width: 340px; height: 300px">
+  <div data-id="auto-in-definite.host"><span data-id="auto-in-definite.t1">A</span><span class="ib" data-id="auto-in-definite.box" style="top: 10%"></span><span data-id="auto-in-definite.t2">A</span></div>
+</div>
+<div class="line pad" data-case data-id="stretched" style="width: 340px; height: 300px; display: flex; flex-direction: column">
+  <div data-id="stretched.host"><span data-id="stretched.t1">A</span><span class="ib" data-id="stretched.box" style="top: 10%"></span><span data-id="stretched.t2">A</span></div>
+</div>
+<div class="line pad" data-case data-id="mixed" style="width: 340px; height: 200px">
+  <div style="height: 10px"></div><span data-id="mixed.t1">A</span><span class="ib" data-id="mixed.box" style="top: 10%"></span><span data-id="mixed.t2">A</span>
+</div>
+
+<script>
+  document.fonts.load('20px GpuixTestSquare').then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

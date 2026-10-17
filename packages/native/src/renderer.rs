@@ -22,7 +22,7 @@ use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi::JsDeferred;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -5949,6 +5949,8 @@ impl GpuixView {
             stacking_item: false,
             atomic_root: false,
             atomic_extracted: None,
+            atomic_height_definite: false,
+            containing_heights: Vec::new(),
             baseline_probe: None,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
@@ -6125,6 +6127,12 @@ pub(crate) struct BuildCtx<'a> {
     /// margin and a percentage width off its style into `atomic_extracted`.
     pub atomic_root: bool,
     pub atomic_extracted: Option<crate::text::atomic::Extracted>,
+    /// Whether the block container the atomic inline is in has a definite height, which a
+    /// percentage `top` or `bottom` of its `position: relative` is of.
+    pub atomic_height_definite: bool,
+    /// The cells the atomic inlines of the paragraphs of the host being built read the
+    /// content height of their containing block from, which the host writes in prepaint.
+    pub containing_heights: Vec<Rc<Cell<gpui::Pixels>>>,
     /// The flex or grid container whose first item `build_content` is to watch, for the
     /// baseline of an `inline-flex` or `inline-grid` box.
     pub baseline_probe: Option<crate::text::atomic::Probe>,
@@ -7242,6 +7250,8 @@ impl gpui::Render for GpuixView {
                     stacking_item: false,
                     atomic_root: false,
                     atomic_extracted: None,
+                    atomic_height_definite: false,
+                    containing_heights: Vec::new(),
                     baseline_probe: None,
                 };
                 build_element(root_id, &mut ctx, window, cx)
@@ -7593,6 +7603,7 @@ fn build_element_unpumped(
         let (stripped, extracted) = crate::text::atomic::strip(
             style.unwrap_or(&EMPTY_STYLE),
             &ctx.inherited.lengths,
+            ctx.atomic_height_definite,
         );
         ctx.atomic_extracted = Some(extracted);
         stripped
@@ -8118,7 +8129,8 @@ pub(crate) fn build_host_container(
     // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
     // input like the pointer's (`events::listeners`).
 
-    let (content, paint_ranks) = build_content(element, plan, ctx, window, cx);
+    let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
+    el = crate::text::atomic::report_containing_height(el, containing_heights);
     el.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         el = el.paint_ranks(paint_ranks);
@@ -8127,14 +8139,16 @@ pub(crate) fn build_host_container(
     el.into_any_element()
 }
 
-/// What a host element holds, in paint order, with the paint rank of each.
+/// What a host element holds, in paint order, with the paint rank of each, and the cells its
+/// atomic inlines read the content height of the element from.
 fn build_content(
     element: &crate::retained_tree::RetainedElement,
     plan: Vec<(crate::text::inline::Child, u32)>,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
-) -> (Vec<gpui::AnyElement>, Vec<i32>) {
+) -> (Vec<gpui::AnyElement>, Vec<i32>, Vec<Rc<Cell<gpui::Pixels>>>) {
+    let outer_heights = std::mem::take(&mut ctx.containing_heights);
     // Text content — selectable, same as a <text> leaf.
     // An empty string paints no glyphs, so it must take no space: gpui's text
     // layout still reserves a full line for "", and Solid's universal renderer
@@ -8218,7 +8232,8 @@ fn build_content(
             ctx.doc_path.pop();
         }
     }
-    (content_elements, paint_ranks)
+    let containing_heights = std::mem::replace(&mut ctx.containing_heights, outer_heights);
+    (content_elements, paint_ranks, containing_heights)
 }
 
 /// A `display: contents` element that has no parent to splice into: the root, or
@@ -8257,7 +8272,8 @@ fn build_contents_container(
     } else {
         crate::text::inline::plan_children_at(ctx.tree, element)
     };
-    let (content, paint_ranks) = build_content(element, plan, ctx, window, cx);
+    let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
+    el = crate::text::atomic::report_containing_height(el, containing_heights);
     el.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         el = el.paint_ranks(paint_ranks);
@@ -8415,6 +8431,9 @@ fn build_atomics(
     use crate::css::vertical_align::ResolvedVerticalAlign;
 
     let tree = ctx.tree;
+    // The block container the paragraph is in, which `position: relative` offsets are of; the
+    // boxes around the atomic below it are inline and make no containing block.
+    let height_definite = ctx.inherited.container.height_is_definite();
     // What each atomic inherits from the boxes around it, and how it is aligned.
     struct Around {
         inherited: Inherited,
@@ -8489,6 +8508,7 @@ fn build_atomics(
     let listed = crate::text::paragraph::listed_boxes(paragraph, &styles.boxes, &shifted);
 
     let mut atomics = Vec::with_capacity(around.len());
+    let containing_height = Rc::new(Cell::new(gpui::Pixels::ZERO));
     for (id, piece, around) in around {
         let kind = crate::text::atomic::kind(tree.elements.get(&id).and_then(|element| element.style.as_deref()));
         let probe = (kind == crate::text::atomic::Kind::FirstItem)
@@ -8500,6 +8520,7 @@ fn build_atomics(
         ctx.contents_overlay = around.overlay;
         ctx.atomic_root = true;
         ctx.atomic_extracted = None;
+        ctx.atomic_height_definite = height_definite;
         // The text in the box falls in the paragraph at its placeholder, for selection and find.
         let hosts = ctx.doc_path().host(paragraph.index, piece.range.start);
         let outer_hosts = std::mem::replace(&mut ctx.doc_hosts, hosts);
@@ -8518,6 +8539,12 @@ fn build_atomics(
         inline.margin = extracted.margin;
         inline.width = extracted.width;
         inline.offset = extracted.offset;
+        if crate::text::atomic::is_of_containing_height(inline.offset.y) {
+            inline.containing_height = containing_height.clone();
+            if !ctx.containing_heights.iter().any(|cell| Rc::ptr_eq(cell, &containing_height)) {
+                ctx.containing_heights.push(containing_height.clone());
+            }
+        }
         inline.vertical_align = crate::text::paragraph::vertical_align(around.align);
         inline.line_height = around.line_height;
         inline.parent = piece

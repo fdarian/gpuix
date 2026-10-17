@@ -61,6 +61,11 @@ impl Container {
         layout: Layout::Other,
     };
 
+    /// Whether the children of this container have a height to resolve a percentage against.
+    pub(crate) fn height_is_definite(self) -> bool {
+        self.height_definite
+    }
+
     /// Whether a percentage `height` on an element of `style` in this container
     /// resolves. An absolute box has the padding box of its containing block to
     /// resolve against, which always has a height.

@@ -26,7 +26,7 @@ pub struct Extracted {
     /// paragraph, which the box cannot resolve as the root of a layout of its own.
     pub width: Option<DefiniteLength>,
     /// How far `position: relative` moves the box from where the line puts it.
-    pub offset: gpui::Point<Pixels>,
+    pub offset: gpui::Point<DefiniteLength>,
 }
 
 impl Extracted {
@@ -39,32 +39,77 @@ impl Extracted {
     }
 }
 
-/// The offset of a `position: relative` box: `left` before `right` and `top` before `bottom`. A
-/// percentage is of a containing block the paragraph does not have, and counts as `auto`.
-fn relative_offset(style: &StyleDesc, lengths: &LengthContext) -> gpui::Point<Pixels> {
+/// The offset of a `position: relative` box: `left` before `right` and `top` before `bottom`, an
+/// inset that is `auto` giving way to the opposite one. A percentage is of the width of the
+/// containing block along x, which is the width of the paragraph, and of its content height along
+/// y, which only a `height_definite` containing block has: with none, CSS computes the inset as
+/// `auto`.
+fn relative_offset(
+    style: &StyleDesc,
+    lengths: &LengthContext,
+    height_definite: bool,
+) -> gpui::Point<DefiniteLength> {
     if style.position.as_deref() != Some("relative") {
         return gpui::Point::default();
     }
-    let px = |value: &Option<DimensionValue>| {
-        let linear = match value.as_ref()? {
-            DimensionValue::Pixels(pixels) => return Some(*pixels as f32),
-            DimensionValue::Calc(length) => length,
-            DimensionValue::Percentage(_)
-            | DimensionValue::Auto
-            | DimensionValue::Intrinsic(_)
-            | DimensionValue::AnchorSize(_) => return None,
+    let inset = |value: &Option<DimensionValue>, percent_resolves: bool| {
+        let value = value.as_ref()?;
+        let percent = match value {
+            DimensionValue::Percentage(_) => true,
+            DimensionValue::Calc(length) => length.has_percent(),
+            DimensionValue::Auto | DimensionValue::Pixels(_) | DimensionValue::Intrinsic(_) | DimensionValue::AnchorSize(_) => false,
         };
-        lengths.resolve_definite(linear).map(|pixels| pixels as f32)
+        if percent && !percent_resolves {
+            return None;
+        }
+        crate::layout::style::definite(value, lengths)
     };
-    let x = px(&style.left).or_else(|| px(&style.right).map(|right| -right)).unwrap_or(0.);
-    let y = px(&style.top).or_else(|| px(&style.bottom).map(|bottom| -bottom)).unwrap_or(0.);
-    gpui::point(gpui::px(x), gpui::px(y))
+    let along = |start: &Option<DimensionValue>, end: &Option<DimensionValue>, percent_resolves| {
+        inset(start, percent_resolves)
+            .or_else(|| inset(end, percent_resolves).map(|end| -end))
+            .unwrap_or_else(|| gpui::px(0.).into())
+    };
+    gpui::point(
+        along(&style.left, &style.right, true),
+        along(&style.top, &style.bottom, height_definite),
+    )
+}
+
+/// Whether `length`, the `y` of an offset, is made of the height of the containing block.
+pub fn is_of_containing_height(length: DefiniteLength) -> bool {
+    match length {
+        DefiniteLength::Absolute(_) => false,
+        DefiniteLength::Fraction(_) => true,
+        DefiniteLength::Calc { fraction, .. } => fraction != 0.,
+    }
+}
+
+/// Makes `element`, the block container the atomic inlines in `cells` are in, write its content
+/// height into them once layout has produced it, which is before it prepaints the paragraphs
+/// that read them.
+pub fn report_containing_height<E: gpui::InteractiveElement>(
+    element: E,
+    cells: Vec<Rc<Cell<Pixels>>>,
+) -> E {
+    if cells.is_empty() {
+        return element;
+    }
+    element.on_prepainted_layout(move |bounds, layout_id, window, _| {
+        let height = crate::layout::container::content_box(bounds, layout_id, window).height;
+        for cell in &cells {
+            cell.set(gpui::px(height as f32));
+        }
+    })
 }
 
 /// `style` without what the paragraph handles for the box: its margin, which
 /// the line puts around it, and a width that is a percentage. An `auto` margin
 /// is zero, as it is for an inline-level box.
-pub fn strip(style: &StyleDesc, lengths: &LengthContext) -> (StyleDesc, Extracted) {
+pub fn strip(
+    style: &StyleDesc,
+    lengths: &LengthContext,
+    height_definite: bool,
+) -> (StyleDesc, Extracted) {
     let side = |own: &Option<DimensionValue>| {
         own.as_ref()
             .or(style.margin.as_ref())
@@ -99,7 +144,7 @@ pub fn strip(style: &StyleDesc, lengths: &LengthContext) -> (StyleDesc, Extracte
         Extracted {
             margin,
             width,
-            offset: relative_offset(style, lengths),
+            offset: relative_offset(style, lengths, height_definite),
         },
     )
 }
@@ -409,6 +454,7 @@ mod tests {
         let (stripped, extracted) = strip(
             &style(serde_json::json!({"margin": 4, "marginLeft": "2em", "marginTop": "auto", "marginBottom": "10%", "width": 50})),
             &lengths(),
+            false,
         );
         assert_eq!(extracted.margin.left, px(20.).into());
         assert_eq!(extracted.margin.right, px(4.).into());
@@ -422,30 +468,49 @@ mod tests {
 
     #[test]
     fn a_width_in_percent_goes_to_the_paragraph_and_leaves_the_box_auto() {
-        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "50%"})), &lengths());
+        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "50%"})), &lengths(), false);
         assert_eq!(extracted.width, Some(relative(0.5)));
         assert_eq!(stripped.width, Some(DimensionValue::Auto));
 
-        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "calc(100% - 20px)"})), &lengths());
+        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "calc(100% - 20px)"})), &lengths(), false);
         assert_eq!(extracted.width, Some(DefiniteLength::calc(px(-20.), 1.0)));
         assert_eq!(stripped.width, Some(DimensionValue::Auto));
 
-        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "calc(2em + 4px)"})), &lengths());
+        let (stripped, extracted) = strip(&style(serde_json::json!({"width": "calc(2em + 4px)"})), &lengths(), false);
         assert_eq!(extracted.width, None, "no percent in it");
         assert_ne!(stripped.width, Some(DimensionValue::Auto));
     }
 
     #[test]
     fn a_relative_box_is_offset_by_left_before_right_and_top_before_bottom() {
-        let offset = |json: serde_json::Value| strip(&style(json), &lengths()).1.offset;
-        assert_eq!(offset(serde_json::json!({"position": "relative", "left": 7, "top": 5})), gpui::point(px(7.), px(5.)));
+        let offset = |json: serde_json::Value| strip(&style(json), &lengths(), false).1.offset;
+        let at = |x: f32, y: f32| gpui::point(px(x).into(), px(y).into());
+        assert_eq!(offset(serde_json::json!({"position": "relative", "left": 7, "top": 5})), at(7., 5.));
         assert_eq!(
             offset(serde_json::json!({"position": "relative", "left": 7, "right": 3, "bottom": 4})),
-            gpui::point(px(7.), px(-4.))
+            at(7., -4.)
         );
-        assert_eq!(offset(serde_json::json!({"position": "relative", "right": "2em"})), gpui::point(px(-20.), px(0.)));
-        assert_eq!(offset(serde_json::json!({"position": "relative", "left": "50%"})), gpui::Point::default());
+        assert_eq!(offset(serde_json::json!({"position": "relative", "right": "2em"})), at(-20., 0.));
         assert_eq!(offset(serde_json::json!({"left": 7, "top": 5})), gpui::Point::default(), "static");
+    }
+
+    #[test]
+    fn a_percentage_offset_is_of_the_containing_block_and_its_height_only_when_definite() {
+        let offset = |json: serde_json::Value, height_definite| {
+            strip(&style(json), &lengths(), height_definite).1.offset
+        };
+        let relative = |left: &str, top: &str| serde_json::json!({"position": "relative", "left": left, "top": top});
+        let indefinite = offset(relative("10%", "10%"), false);
+        assert_eq!(indefinite.x, DefiniteLength::Fraction(0.1));
+        assert_eq!(indefinite.y, DefiniteLength::from(px(0.)), "auto");
+        let definite = offset(relative("calc(10% + 4px)", "25%"), true);
+        assert_eq!(definite.x, DefiniteLength::calc(px(4.), 0.1));
+        assert_eq!(definite.y, DefiniteLength::Fraction(0.25));
+        assert!(is_of_containing_height(definite.y) && !is_of_containing_height(DefiniteLength::from(px(3.))));
+        // An `auto` inset gives way to the opposite one, and a percentage that cannot resolve is `auto`.
+        let given_way = offset(serde_json::json!({"position": "relative", "top": "10%", "bottom": 5, "right": "20%"}), false);
+        assert_eq!(given_way.y, DefiniteLength::from(px(-5.)));
+        assert_eq!(given_way.x, DefiniteLength::Fraction(-0.2));
     }
 
     #[test]

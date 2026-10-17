@@ -3295,6 +3295,10 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   in `%` (or a `calc()` with one) is of the paragraph's width, and a percentage on a
   child of an `auto` box is of the width the box came to. `margin` in `%` is of the paragraph's
   width as well, and an `auto` margin is 0.
+- **Relative position.** `position: relative` moves the box by `left` or `right` and `top` or `bottom`, and
+  nothing else on the line moves with it. A percentage `left` or `right` is of the width of the block
+  that holds the line, and a `top` or `bottom` of its height when that is definite (a `height`, a
+  percentage of one that is, a flex item the container sizes) and `auto` otherwise, as in a browser.
 - **Baseline.** An `inline-block` sits on the baseline of the last line box of its
   in-flow content, or on its bottom margin edge when it has none or its `overflow` is
   `hidden`, `scroll` or `auto` (`clip` keeps the baseline). An `inline-flex` or `inline-grid` sits on the first
@@ -3340,8 +3344,6 @@ belongs to tables, which are not supported yet.
 - An `absolute` descendant of an atomic inline is positioned against the atomic inline (it is a layout root),
   and the box is its own stacking context. A percentage `height` inside it sees an `auto` height, which CSS
   does for a shrink-to-fit box too.
-- `position: relative` moves the box by `left` or `right` and `top` or `bottom` in px, `em`, `calc()`...;
-  a percentage offset counts as `auto`.
 - `textOverflow` and `lineClamp` ignore a paragraph with an atomic inline in it: cutting the text would cut its
   placeholder, so it overflows.
 - The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search),
