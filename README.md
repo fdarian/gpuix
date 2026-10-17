@@ -5781,10 +5781,9 @@ CSS-like styling via the `style` prop:
 >   `position: "absolute"` children: they resolve against the nearest
 >   `relative`, `absolute` or `fixed` ancestor. Put `position: "relative"` on
 >   the parent of anything you place with `top`/`right`/`bottom`/`left`.
-> - **Few shorthand values.** `padding` takes one length and `margin` one length
->   or `"auto"`, so a CSS string like `"0 16px"` is ignored. Each length can be
->   any unit or a `calc()`, see [Lengths](#lengths). `border`, `borderColor` and
->   `boxShadow` do take CSS strings, see below.
+> - **A longhand beats its shorthand, whatever the key order.** `{ paddingLeft: 4,
+>   padding: 8 }` and `{ padding: 8, paddingLeft: 4 }` both leave the left at 4.
+>   In React DOM the later key wins. See [Shorthands](#shorthands).
 > - **`boxShadow` takes the CSS string or a structured object.** See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
 > - **Do not nest `<text>` in `<text>`.** Adjacent `<text>` siblings merge
@@ -5793,15 +5792,15 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flex`, `flexFlow`, `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `placeItems`, `placeContent`, `placeSelf`, `gap` (one or two lengths), `rowGap`, `columnGap`. Grid: see [Grid](#grid). The shorthands are in [Shorthands](#shorthands)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
-**Spacing:** `padding`, `paddingTop/Right/Bottom/Left`, `margin`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); a percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
+**Spacing:** `padding`, `paddingBlock`, `paddingInline`, `paddingTop/Right/Bottom/Left`, `margin`, `marginBlock`, `marginInline`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); `padding` and `margin` take one to four values (`"0 auto"`, see [Shorthands](#shorthands)). A percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
-**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
+**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`), and `inset`, `insetBlock` and `insetInline` for them (`inset: 0` fills the containing block). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth`, `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
 ### Lengths
 
@@ -5862,6 +5861,51 @@ multiple, and a length inherits as pixels.
 Limits: a `calc()` that comes out negative clamps to 0 for `fontSize` and for grid
 track sizes. A repeating gradient whose stop position is a `calc()` of a length and
 a `%` skips the special case for a zero-length repeat.
+
+### Shorthands
+
+A shorthand is its own style field, and the longhands it covers keep winning
+over it. The ones below take CSS's several-value syntax.
+
+```tsx
+<div style={{ display: 'flex', flex: '1 0 200px', padding: '8px 12px', margin: '0 auto', gap: '4px 8px' }} />
+```
+
+| Shorthand | Takes |
+|---|---|
+| `padding`, `margin`, `inset`, `borderWidth` | One to four values in CSS order: `"8px"` is all sides, `"8px 12px"` top and bottom then left and right, `"1px 2px 3px"` top, left and right, bottom, `"1px 2px 3px 4px"` top, right, bottom, left. `margin` and `inset` take `auto` too. `borderWidth` takes `thin`, `medium` and `thick` and no `%` |
+| `gap` | One or two lengths: `"4px 8px"` is the gap between rows, then between columns |
+| `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: gpuix only lays out left to right and horizontally |
+| `borderBlock`, `borderInline` | Written like `border` (`"1px solid red"`), for top and bottom or left and right |
+| `flex` | A number `n` is `n 1 0%`. `none` is `0 0 auto`, `auto` is `1 1 auto`, `initial` is `0 1 auto`. Otherwise `<grow> <shrink>? \|\| <basis>`: `"2 3"`, `"2 100px"`, `"100px 2"`, and a lone basis (`"100px"`, `"50%"`, `"fit-content"`) is `1 1 <basis>`. The basis is what `flexBasis` takes, so not `content` |
+| `flexFlow` | `"<direction> \|\| <wrap>"` in either order (`"column wrap"`); a part left out is `row` or `nowrap` |
+| `placeItems`, `placeContent`, `placeSelf` | `"<align> <justify>"`; one value is both (`"center"`, `"center end"`). Each value is one the longhand takes, so `placeItems: "left"` throws as in CSS |
+| `outline` | See [Outline](#outline) |
+
+- **A longhand wins, whatever the order of the keys.** From weakest to strongest:
+  `padding`, `paddingBlock` / `paddingInline`, then `paddingTop` ... `paddingLeft`;
+  `margin`, `inset` and the gaps (`gap`, then `rowGap` and `columnGap`) work the same,
+  and `border`, `borderBlock` / `borderInline`, the side shorthands, `borderStyle`, then
+  the longhands. React DOM and Chrome apply the later of two keys instead, so a style
+  object that writes the longhand first and the shorthand after it reads differently
+  here.
+- **In a state style** (`hover`, `focusVisible`, ...) a shorthand replaces the base
+  style's longhands it covers: `hover: { padding: 12 }` over a base `paddingLeft: 4`
+  pads 12 on the left. A state's longhand only changes its own side.
+- **Numbers.** A JS number is px. A bare number written inside a string reads as px
+  only in `margin` and `inset` (`margin: "0 8"`), like their longhands; elsewhere
+  it needs a unit, except `0`. A `calc()` is one value however many spaces it holds.
+  A bad count, a bad value, or `auto` where the property takes none throws when
+  the style is set. A numeric `border: 1` throws too: write `"1px solid"`.
+- **Percentages** in `padding` and `margin` are of the containing block's width on
+  every side, as in CSS.
+- **`flex` and the longhands.** `flexGrow`, `flexShrink` and `flexBasis` win over
+  `flex`. In a column whose height is `auto`, `flex: 1` takes an explicit `height` on
+  the item as its basis, where Chrome uses the content.
+- **Animation.** The multi-value shorthands animate, each side, axis or corner on
+  its own (see [Targets and timing](#targets-and-timing)). `flex` is not a `motion`
+  target: animate `flexGrow`, `flexShrink` and `flexBasis`, which `transition: flex`
+  covers.
 
 ### Intrinsic widths
 
