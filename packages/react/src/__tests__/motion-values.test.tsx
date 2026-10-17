@@ -325,6 +325,93 @@ describeNative("motion values in style", () => {
     expect(sizeOf(renderer, "box").width).toBe(60)
   })
 
+  describe("a CSS length string with calc()", () => {
+    const parent = { display: "flex", flexDirection: "column", width: 400 } as const
+
+    function mount(width: MotionValue<string> | MotionValue<number>) {
+      const { render, renderer } = createTestRoot({ width: 800, height: 300 })
+      renderer.clockPause()
+      render(
+        <div style={parent}>
+          <div testId="box" style={{ width, height: 10 }} />
+        </div>
+      )
+      return renderer
+    }
+
+    it("binds to style and tracks a set", () => {
+      const width = motionValue("calc(100% - 20px)")
+      const renderer = mount(width)
+      expect(sizeOf(renderer, "box").width).toBe(380)
+
+      width.set("calc(50% + 10px)")
+      renderer.flush()
+      expect(sizeOf(renderer, "box").width).toBe(210)
+
+      width.set("2em")
+      renderer.flush()
+      expect(sizeOf(renderer, "box").width).toBe(32)
+    })
+
+    it("animates between two calcs as the mix of their parts", () => {
+      const width = motionValue("calc(100% - 20px)")
+      const renderer = mount(width)
+      animate(width, "calc(50% + 10px)", linear)
+      frame(renderer, 500)
+      // calc(75% - 5px) of 400px.
+      expect(sizeOf(renderer, "box").width).toBe(295)
+      expect(width.get()).toBe("calc(75% - 5px)")
+      frame(renderer, 1000)
+      expect(sizeOf(renderer, "box").width).toBe(210)
+      expect(width.get()).toBe("calc(50% + 10px)")
+    })
+
+    it("animates between px or a percentage and a calc", () => {
+      const px = motionValue(20)
+      const renderer = mount(px)
+      animate(px, "calc(50% + 10px)", linear)
+      frame(renderer, 500)
+      // calc(25% + 15px) of 400px.
+      expect(sizeOf(renderer, "box").width).toBe(115)
+      expect(px.get()).toBe("calc(25% + 15px)")
+      frame(renderer, 1000)
+      expect(sizeOf(renderer, "box").width).toBe(210)
+
+      const percent = motionValue("50%")
+      const other = mount(percent)
+      animate(percent, "calc(100% - 20px)", linear)
+      frame(other, 500)
+      expect(sizeOf(other, "box").width).toBe(290)
+    })
+
+    it("maps through useTransform and springs to a calc", () => {
+      const { render, renderer } = createTestRoot({ width: 800, height: 300 })
+      renderer.clockPause()
+      let x!: MotionValue<number>
+      let spring!: MotionValue<string>
+      function App() {
+        x = useMotionValue(0)
+        const width = useTransform(x, [0, 1], ["calc(100% - 20px)", "calc(50% + 10px)"])
+        spring = useSpring("0%", { stiffness: 300, damping: 30 })
+        return (
+          <div style={parent}>
+            <div testId="mapped" style={{ width, height: 10 }} />
+            <div testId="sprung" style={{ width: spring, height: 10 }} />
+          </div>
+        )
+      }
+      render(<App />)
+      expect(sizeOf(renderer, "mapped").width).toBe(380)
+      x.set(0.5)
+      renderer.flush()
+      expect(sizeOf(renderer, "mapped").width).toBe(295)
+
+      spring.set("calc(100% - 20px)")
+      for (let i = 0; i < 200; i++) frame(renderer, 16)
+      expect(sizeOf(renderer, "sprung").width).toBe(380)
+    })
+  })
+
   it("disposes every node when the root unmounts", () => {
     const { render, renderer, root } = createTestRoot()
     renderer.clockPause()
