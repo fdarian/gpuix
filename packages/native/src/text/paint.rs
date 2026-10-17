@@ -20,6 +20,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -41,6 +42,7 @@ use super::selection::{self, SelectionState};
 pub type SharedSelection = Arc<Mutex<SelectionState>>;
 
 /// One painted text element, registered per frame in paint order.
+#[derive(Clone)]
 struct RegEntry {
     key: Arc<str>,
     doc: selection::DocPos,
@@ -145,6 +147,14 @@ pub fn selection_frame_reset(
 /// Only `track_host_bounds` calls this, so a start region is
 /// always the same box automation already uses. Last painted region that contains the point wins.
 pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
+    crate::tape::write(
+        (window, bounds, selectable),
+        |(window, bounds, selectable)| push_start_region(*window, *bounds, *selectable),
+        |(_, bounds, selectable)| format!("start region {bounds:?} {selectable}"),
+    );
+}
+
+fn push_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
     with_frame(window, |frame| {
         frame.start_regions.push(StartRegion { bounds, selectable })
     });
@@ -184,7 +194,11 @@ fn utf16_offset(text: &str, byte: usize) -> usize {
 
 /// Record text painted by a custom element that owns its text layout.
 pub fn log_painted_text(window: WindowId, text: SharedString) {
-    with_frame(window, |frame| frame.painted.push(text));
+    crate::tape::write(
+        (window, text),
+        |(window, text)| with_frame(*window, |frame| frame.painted.push(text.clone())),
+        |(_, text)| format!("painted {text:?}"),
+    );
 }
 
 /// Text that is deliberately NOT selectable: line-number gutters, language
@@ -502,17 +516,31 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 }
             }
             if selectable {
-                with_frame(window_id, |frame| {
-                    frame.registry.push(RegEntry {
-                        key: key.clone(),
-                        doc: doc.clone(),
-                        text: text.clone(),
-                        layout: layout.clone(),
-                        group,
-                        line: line.clone(),
-                        cell,
-                    })
-                });
+                let entry = RegEntry {
+                    key: key.clone(),
+                    doc: doc.clone(),
+                    text: text.clone(),
+                    layout: layout.clone(),
+                    group,
+                    line: line.clone(),
+                    cell,
+                };
+                crate::tape::write(
+                    (window_id, entry),
+                    |(window, entry)| with_frame(*window, |frame| frame.registry.push(entry.clone())),
+                    |(_, entry)| {
+                        format!(
+                            "text {} {:?} {:?} {:?} {:?} {:?} {:?}",
+                            entry.key,
+                            entry.doc,
+                            entry.text,
+                            entry.layout.bounds(),
+                            entry.group,
+                            entry.line,
+                            entry.cell
+                        )
+                    },
+                );
             }
             log_painted_text(window_id, text.clone());
             if let Some(targets) = &inline_targets {

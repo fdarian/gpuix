@@ -464,9 +464,28 @@ export declare class TestGpuixRenderer {
    */
   getBuildCounters(): BuildCounters
   /**
-   * Makes every element hash what it builds and compare it with the last build when the key
-   * says nothing changed, see `retain`. Counted in `retainMismatches`. Costs a formatted style
-   * per element, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on for a run.
+   * What the retained subtrees of the window did since it was made: subtract two reads for a
+   * span of frames.
+   */
+  getRetainedCounters(): RetainedCounters
+  /**
+   * How the frames that were compared with a build differed from it, one entry each, see
+   * `setRetainVerify`.
+   */
+  getRetentionMismatches(): Array<string>
+  /**
+   * Whether a frame skips what it judges unchanged since the frame before, handing it to gpui
+   * as a retained subtree that is replayed. On unless `GPUIX_RETAIN_OFF`; turning it on after it
+   * was off starts from a frame that builds everything.
+   */
+  setRetainPlanning(planning: boolean): void
+  /**
+   * Builds each frame that replayed a retained subtree once more, whole, and compares the two:
+   * the scene, the hitboxes, the accessibility tree and the registries gpuix keeps (painted
+   * boxes, text and selection regions, measurements). A difference is counted in
+   * `getRetainedCounters().mismatches` and described by `getRetentionMismatches`. Every such
+   * frame costs two builds, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on
+   * for a run.
    */
   setRetainVerify(verify: boolean): void
   /**
@@ -1510,6 +1529,31 @@ export interface PathPromptOptions {
    * ".png,.jpg,image/*,application/pdf". Directories are never filtered.
    */
   accept?: string
+}
+
+/** What the retained subtrees of the window did since it was made, see `get_retained_counters`. */
+export interface RetainedCounters {
+  /** Subtrees a frame did not build, because the frame before left them recorded as the same. */
+  hits: number
+  /** Subtrees whose prepaint was replayed from the recording. */
+  replays: number
+  /**
+   * Subtrees skipped for layout that had to be built for prepaint, because the place or the
+   * surroundings they were recorded in changed.
+   */
+  lazyBuilds: number
+  /** Subtrees built for layout. */
+  builds: number
+  layoutFallbacks: number
+  /**
+   * Frames that replayed something and were compared with a build of the same frame; always 0
+   * unless `setRetainVerify`.
+   */
+  verified: number
+  /** Of those, the frames that differed. */
+  mismatches: number
+  /** A JSON object: the recordings that could not be replayed, by the first reason. */
+  nonReusable: string
 }
 
 /** What the sync handler returns. */

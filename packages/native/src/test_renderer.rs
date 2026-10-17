@@ -64,6 +64,29 @@ pub struct LayoutCounters {
     pub measures: f64,
 }
 
+/// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct RetainedCounters {
+    /// Subtrees a frame did not build, because the frame before left them recorded as the same.
+    pub hits: f64,
+    /// Subtrees whose prepaint was replayed from the recording.
+    pub replays: f64,
+    /// Subtrees skipped for layout that had to be built for prepaint, because the place or the
+    /// surroundings they were recorded in changed.
+    pub lazy_builds: f64,
+    /// Subtrees built for layout.
+    pub builds: f64,
+    pub layout_fallbacks: f64,
+    /// Frames that replayed something and were compared with a build of the same frame; always 0
+    /// unless `setRetainVerify`.
+    pub verified: f64,
+    /// Of those, the frames that differed.
+    pub mismatches: f64,
+    /// A JSON object: the recordings that could not be replayed, by the first reason.
+    pub non_reusable: String,
+}
+
 // ── Thread-local storage for !Send GPUI types ────────────────────────
 
 /// Bundles VisualTestAppContext + window handle + view entity.
@@ -727,9 +750,52 @@ impl TestGpuixRenderer {
         }
     }
 
-    /// Makes every element hash what it builds and compare it with the last build when the key
-    /// says nothing changed, see `retain`. Counted in `retainMismatches`. Costs a formatted style
-    /// per element, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on for a run.
+    /// What the retained subtrees of the window did since it was made: subtract two reads for a
+    /// span of frames.
+    #[napi]
+    pub fn get_retained_counters(&self) -> Result<RetainedCounters> {
+        window_call(|window, _cx| {
+            let counters = window.retained_counters();
+            RetainedCounters {
+                hits: counters.hits as f64,
+                replays: counters.replays as f64,
+                lazy_builds: counters.lazy_builds as f64,
+                builds: counters.builds as f64,
+                layout_fallbacks: counters.layout_fallbacks as f64,
+                verified: counters.verified as f64,
+                mismatches: counters.mismatches as f64,
+                non_reusable: serde_json::Value::Object(
+                    gpui::NonReusable::ALL
+                        .into_iter()
+                        .map(|reason| (format!("{reason:?}"), serde_json::Value::from(counters.non_reusable(reason))))
+                        .collect(),
+                )
+                .to_string(),
+            }
+        })
+    }
+
+    /// How the frames that were compared with a build differed from it, one entry each, see
+    /// `setRetainVerify`.
+    #[napi]
+    pub fn get_retention_mismatches(&self) -> Result<Vec<String>> {
+        window_call(|window, _cx| window.retention_mismatches().to_vec())
+    }
+
+    /// Whether a frame skips what it judges unchanged since the frame before, handing it to gpui
+    /// as a retained subtree that is replayed. On unless `GPUIX_RETAIN_OFF`; turning it on after it
+    /// was off starts from a frame that builds everything.
+    #[napi]
+    pub fn set_retain_planning(&self, planning: bool) -> Result<()> {
+        update_view(move |view, _window, _cx| view.retain.set_planning(planning))
+    }
+
+    /// Builds each frame that replayed a retained subtree once more, whole, and compares the two:
+    /// the scene, the hitboxes, the accessibility tree and the registries gpuix keeps (painted
+    /// boxes, text and selection regions, measurements). A difference is counted in
+    /// `getRetainedCounters().mismatches` and described by `getRetentionMismatches`. Every such
+    /// frame costs two builds, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on
+    /// for a run.
     #[napi]
     pub fn set_retain_verify(&self, verify: bool) -> Result<()> {
         update_view(|view, _window, _cx| view.retain.set_verify(verify))

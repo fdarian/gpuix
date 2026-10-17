@@ -186,6 +186,12 @@ pub fn collecting<R>(build: impl FnOnce() -> R) -> (R, Vec<(u64, TextLayout)>) {
     (built, frame.texts)
 }
 
+/// Whether a box is collecting the texts built inside it, which a build that is not run would not
+/// give it.
+pub fn is_collecting() -> bool {
+    FRAMES.with(|frames| !frames.borrow().is_empty())
+}
+
 /// A text was built for `container`.
 pub fn note(container: u64, layout: &TextLayout) {
     FRAMES.with(|frames| {

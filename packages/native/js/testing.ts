@@ -15,6 +15,7 @@ import {
   validateKeyframes,
   type BuildCounters,
   type LayoutCounters,
+  type RetainedCounters,
   type EventPayload,
   type MediaFeatures,
   type WindowOptions,
@@ -135,8 +136,11 @@ interface NativeTestRendererApi
   getRetainedElementCount(): number
   getBuildCounters(): BuildCounters
   getLayoutCounters(): LayoutCounters
+  getRetainedCounters(): RetainedCounters
+  getRetentionMismatches(): string[]
   resetBuildCounters(): void
   setRetainVerify(verify: boolean): void
+  setRetainPlanning(planning: boolean): void
   setRetainLift(names: string[]): void
   getRetainMismatches(): string[]
   getPaintedFrameCount(): number
@@ -378,6 +382,21 @@ export interface A11yTreeDump {
 /** The test window is one per thread: making a renderer tears down the one before it. */
 let latestRenderer: TestRenderer | undefined
 
+/** Throws if a replayed frame of this window differed from a build of it, and prints the
+ *  counters when GPUIX_RETAIN_VERIFY_REPORT is set. */
+function reportRetentionMismatches(native: NativeTestRendererApi): void {
+  const counters = native.getRetainedCounters()
+  if (process.env.GPUIX_RETAIN_VERIFY_REPORT !== undefined) {
+    console.log(
+      `[retain-verify] verified=${counters.verified} mismatches=${counters.mismatches} replays=${counters.replays} ` +
+        `hits=${counters.hits} builds=${counters.builds} lazy=${counters.lazyBuilds} non-reusable=${counters.nonReusable}`
+    )
+  }
+  if (counters.mismatches > 0) {
+    throw new Error(`${counters.mismatches} replayed frames differed from a build:\n${native.getRetentionMismatches().join('\n')}`)
+  }
+}
+
 export class TestRenderer implements NativeRenderer {
   /** Native TestGpuixRenderer — all state lives here in Rust's RetainedTree. */
   private native: NativeTestRendererApi
@@ -455,6 +474,9 @@ export class TestRenderer implements NativeRenderer {
    *  throw afterwards; the retained tree stays readable. Without it the window is leaked
    *  when the thread exits. */
   dispose(): void {
+    // A run under GPUIX_RETAIN_VERIFY fails at the window that showed a replayed frame that a
+    // build would have shown differently, and says which test's window it was.
+    if (process.env.GPUIX_RETAIN_VERIFY !== undefined) reportRetentionMismatches(this.native)
     forgetElementSource(this)
     this.native.setSyncEventHandler(null)
     this.native.dispose()
@@ -880,6 +902,17 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getBuildCounters()
   }
 
+  /** What the retained subtrees did since the window was made: subtrees not built, replayed,
+   *  built late, and frames compared with a whole build under `setRetainVerify`. */
+  getRetainedCounters(): RetainedCounters {
+    return this.native.getRetainedCounters()
+  }
+
+  /** How the frames compared under `setRetainVerify` differed from a whole build. */
+  getRetentionMismatches(): string[] {
+    return this.native.getRetentionMismatches()
+  }
+
   /** Layout nodes made, found again and freed, and styles and child lists set,
    *  by the window's layout engine since the window was made. */
   getLayoutCounters(): LayoutCounters {
@@ -895,6 +928,12 @@ export class TestRenderer implements NativeRenderer {
    *  formatted style per element: leave it off to time a frame. */
   setRetainVerify(verify: boolean): void {
     this.native.setRetainVerify(verify)
+  }
+
+  /** Turns the skipping of unchanged subtrees on or off (on by default): off, every frame
+   *  builds every element, the way `GPUIX_RETAIN_OFF` makes it for the whole run. */
+  setRetainPlanning(planning: boolean): void {
+    this.native.setRetainPlanning(planning)
   }
 
   /** Counts as if these exclusions (`svg`, `overflow-hidden`, `custom-element`, ...) were lifted,

@@ -163,13 +163,28 @@ where
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
 pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
+    crate::tape::write(
+        (window, id, ElementBounds::from_gpui(bounds, insets)),
+        |(window, id, bounds)| insert_bounds(*window, *id, *bounds),
+        |(_, id, bounds)| format!("bounds {id} {bounds:?}"),
+    );
+}
+
+fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
     BOUNDS.with(|cell| {
-        cell.borrow_mut()
-            .insert((window, id), ElementBounds::from_gpui(bounds, insets));
+        cell.borrow_mut().insert((window, id), bounds);
     });
 }
 
 fn record_position(window: WindowId, id: u64, position: Position) {
+    crate::tape::write(
+        (window, id, position),
+        |(window, id, position)| set_position(*window, *id, *position),
+        |(_, id, position)| format!("position {id} {position:?}"),
+    );
+}
+
+fn set_position(window: WindowId, id: u64, position: Position) {
     BOUNDS.with(|cell| {
         if let Some(bounds) = cell.borrow_mut().get_mut(&(window, id)) {
             bounds.position = Some(position);

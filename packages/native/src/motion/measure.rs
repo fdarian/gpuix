@@ -125,6 +125,8 @@ pub(crate) struct Measurements {
     /// The elements `wrap` was called for since the last `prune`.
     wrapped: Rc<RefCell<HashSet<u64>>>,
     painted_frames: Rc<Cell<u64>>,
+    /// The elements whose measurement differs from the one before, since the last `take_changed`.
+    changed: Rc<RefCell<Vec<u64>>>,
 }
 
 impl Measurements {
@@ -158,7 +160,8 @@ impl Measurements {
     pub(crate) fn frame_counter(&self) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
         let painted_frames = self.painted_frames.clone();
         move |_, window, _| {
-            if !window.is_layout_pass() {
+            // The pass that builds a frame whole to compare it with one that replayed is not a frame.
+            if !window.is_layout_pass() && !window.is_retention_reference() {
                 painted_frames.set(painted_frames.get() + 1)
             }
         }
@@ -171,6 +174,7 @@ impl Measurements {
     /// the other custom elements build behind an `AnyElement`.
     pub(crate) fn wrap(&self, id: u64, container: Containment, child: AnyElement) -> AnyElement {
         self.wrapped.borrow_mut().insert(id);
+        crate::tape::note_build(crate::tape::BuildEffect::Measured(id));
         Measured {
             id,
             container,
@@ -200,7 +204,28 @@ impl Measurements {
             percent_height_resolves: container.percent_height_resolves,
             flex_main: container.flex_main,
         };
-        self.by_element.borrow_mut().insert(id, measurement);
+        if self.by_element.borrow().get(&id) != Some(&measurement) {
+            self.changed.borrow_mut().push(id);
+        }
+        crate::tape::write(
+            (self.by_element.clone(), id, measurement),
+            |(by_element, id, measurement)| {
+                by_element.borrow_mut().insert(*id, *measurement);
+            },
+            |(_, id, measurement)| format!("measured {id} {measurement:?}"),
+        );
+    }
+
+    /// The elements whose measurement changed since this was last called.
+    pub(crate) fn take_changed(&self) -> Vec<u64> {
+        std::mem::take(&mut *self.changed.borrow_mut())
+    }
+
+    /// Keeps `id` from being pruned as an element that is no longer measured, for a frame that
+    /// does not build its wrapper.
+    pub(crate) fn keep(&self, id: u64) {
+        self.wrapped.borrow_mut().insert(id);
+        crate::tape::note_build(crate::tape::BuildEffect::Measured(id));
     }
 }
 

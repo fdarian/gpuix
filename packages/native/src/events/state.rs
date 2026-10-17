@@ -247,6 +247,11 @@ impl PointerState {
         self.element_drag.is_some()
     }
 
+    /// The hover chain and the press chain, target first.
+    pub fn chains(&self) -> (&[u64], &[u64]) {
+        (&self.hovered, &self.active)
+    }
+
     /// Whether `id` is the hover target or one of its ancestors.
     pub fn is_hovered(&self, id: u64) -> bool {
         self.hovered.contains(&id)

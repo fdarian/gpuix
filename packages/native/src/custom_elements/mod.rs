@@ -466,6 +466,14 @@ impl CustomElementRegistry {
         self.instances.get(&id)?.element.retain_state()
     }
 
+    /// The `retain_state` of every element the registry holds.
+    pub(crate) fn retain_states(&self) -> Vec<(u64, Option<u64>)> {
+        self.instances
+            .iter()
+            .map(|(id, instance)| (*id, instance.element.retain_state()))
+            .collect()
+    }
+
     /// Lets every `<img>` that `display: none` keeps out of the build load, so its
     /// `load` and `error` still fire. Call once per frame, after the build.
     pub fn load_hidden_images(

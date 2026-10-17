@@ -5005,6 +5005,8 @@ pub(crate) struct GpuixView {
     containers: crate::layout::container::ContainerStore,
     /// What the last build recorded of each element, for deciding what a replay could reuse.
     pub(crate) retain: crate::retain::Retain,
+    /// What the retained roots wrote into the registries the last time they were built.
+    tapes: crate::tape::Tapes,
     /// Where the pointer is and what it is pressing.
     /// Shared with the window's mouse-down listener, which dispatches a press
     /// without reaching the view.
@@ -5446,6 +5448,7 @@ impl GpuixView {
             paint_reports: SharedPaintReports::default(),
             containers: Default::default(),
             retain: crate::retain::Retain::new(),
+            tapes: Default::default(),
             pointer: Rc::new(RefCell::new(crate::events::state::PointerState::with_requests(
                 pointer_requests,
             ))),
@@ -5983,6 +5986,7 @@ impl GpuixView {
             text_box_trim: Default::default(),
             subtree: crate::layout::cull::Subtree::empty(),
             retain: &mut self.retain,
+            tapes: &self.tapes,
         };
         build_ctx.retain.enter_row();
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
@@ -6179,6 +6183,8 @@ pub(crate) struct BuildCtx<'a> {
     pub subtree: crate::layout::cull::Subtree,
     /// What this build is recording for the next, see `retain`.
     pub retain: &'a mut crate::retain::Retain,
+    /// See `GpuixView::tapes`.
+    tapes: &'a crate::tape::Tapes,
 }
 
 impl BuildCtx<'_> {
@@ -7163,6 +7169,90 @@ impl PendingFocus {
 }
 
 impl GpuixView {
+    /// Builds the subtree of `id` for gpui, which asked for it while it laid out or prepainted the
+    /// frame: it could not use what it recorded of the subtree, or never had. `env` is the build
+    /// of the frame around the subtree as it was when the frame skipped it.
+    pub(crate) fn build_subtree(
+        &mut self,
+        id: u64,
+        env: FrameEnv,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::AnyElement {
+        use gpui::IntoElement;
+
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        let callback = self.event_callback.clone();
+        let activation = self.activation();
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
+        let mut highlight_events = Vec::new();
+        self.retain.begin_deferred();
+        let element = {
+            let mut ctx = BuildCtx {
+                tree: &tree,
+                event_callback: &callback,
+                activation: &activation,
+                focus_handles: &self.focus_handles,
+                scroll_handles: &mut self.scroll_handles,
+                custom_registry: &mut self.custom_registry,
+                virtual_lists: &mut self.virtual_lists,
+                motion_states: &mut self.motion_states,
+                motion_values: &self.motion_values,
+                css_transitions: &mut self.css_transitions,
+                css_animations: &mut self.css_animations,
+                keyframes: &self.keyframes,
+                measurements: &self.measurements,
+                layout_flips: &self.layout_flips,
+                svg_trees: &mut self.svg_trees,
+                now: env.now,
+                selection: self.selection.clone(),
+                doc_path: env.doc_path,
+                doc_hosts: Arc::from([]),
+                inline_line: None,
+                inherited: env.inherited,
+                highlights: &mut self.highlights,
+                paint_reports: &self.paint_reports,
+                containers: &self.containers,
+                highlight_events: &mut highlight_events,
+                focus_styles: env.focus_styles,
+                pointer: &pointer,
+                contents_overlay: None,
+                anchor_scope: None,
+                stacking_root: env.stacking_root,
+                stacking_item: env.stacking_item,
+                atomic_root: false,
+                atomic_extracted: None,
+                atomic_height_definite: false,
+                containing_heights: Vec::new(),
+                baseline_probe: None,
+                collapsed: Default::default(),
+                text_box_trim: env.text_box_trim,
+                subtree: crate::layout::cull::Subtree::empty(),
+                retain: &mut self.retain,
+                tapes: &self.tapes,
+            };
+            build_element_in(id, &mut ctx, window, cx, Some(env.enter))
+        };
+        self.retain.finish_deferred();
+        drop(pointer);
+        debug_assert!(highlight_events.is_empty(), "a highlight is never inside a retained subtree");
+        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_layout_events(&callback, &tree, self.layout_flips.take_events());
+        if self.css_transitions.take_active() || self.css_animations.take_active() {
+            window.request_animation_frame();
+        }
+        // Only a build that gpui can record has a tape that goes with the recording.
+        if !window.retention_allowed() {
+            return element;
+        }
+        let tape = crate::tape::SharedTape::default();
+        self.tapes.set(id, tape.clone());
+        crate::tape::Taped::new(element, tape).into_any_element()
+    }
+
     pub(crate) fn activation(&self) -> crate::events::activation::Activation {
         crate::events::activation::Activation {
             tree: self.tree.clone(),
@@ -7182,6 +7272,16 @@ impl gpui::Render for GpuixView {
 
         window.set_window_title(&self.window_title);
         self.apply_pointer_lock(window, cx);
+        let verifies = self.retain.verifies_frames();
+        self.tapes.verify(verifies);
+        window.set_retention_verifier(verifies.then(|| {
+            let tapes = self.tapes.clone();
+            Rc::new(move |window: &gpui::Window| tapes.describe_replays(window.is_retention_reference()))
+                as Rc<dyn Fn(&gpui::Window) -> String>
+        }));
+        if !window.is_retention_reference() {
+            self.tapes.forget_replays();
+        }
 
         #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         if let Some(id) = PENDING_FOCUS_ELEMENT.with(|pending| pending.borrow_mut().take()) {
@@ -7208,6 +7308,7 @@ impl gpui::Render for GpuixView {
         self.virtual_lists
             .retain(|id, _| tree.elements.contains_key(id));
         self.containers.retain(|id| tree.elements.contains_key(&id));
+        self.tapes.retain(|id| tree.elements.contains_key(&id));
         // Pruned by listener, not existence: dropping `onLayout` and adding it
         // back reports the size again, like a fresh observer.
         {
@@ -7288,7 +7389,25 @@ impl gpui::Render for GpuixView {
         let pointer = pointer_state.borrow();
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
-        self.retain.begin_frame(self.selection.lock().identity());
+        self.retain.begin_frame(crate::retain::Sources {
+            tree: &tree,
+            hovered: pointer.chains().0,
+            active: pointer.chains().1,
+            focus: &focus_styles,
+            focusable: &self.focus_handles,
+            keyboard: window.last_input_was_keyboard(),
+            scrolls: &self.scroll_handles,
+            measured: self.measurements.take_changed(),
+            links: crate::accessibility::links::take_changed(),
+            customs: self.custom_registry.retain_states(),
+            motion: self
+                .motion_states
+                .iter()
+                .filter(|(_, state)| state.is_animating(now))
+                .map(|(id, _)| *id)
+                .collect(),
+            selection: self.selection.lock().identity(),
+        });
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -7337,6 +7456,7 @@ impl gpui::Render for GpuixView {
                     text_box_trim: Default::default(),
                     subtree: crate::layout::cull::Subtree::empty(),
                     retain: &mut self.retain,
+                    tapes: &self.tapes,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7452,14 +7572,41 @@ impl gpui::Render for GpuixView {
 
 static EMPTY_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(StyleDesc::default);
 
+/// What an element that has no box in the layout is built as. It has the id of the element, like
+/// every host does, and not the id-less `Empty`: a retained root names its layout node by its
+/// path, and an element without an id of its own is named by its parent's, which is the node of
+/// whatever else under that parent has none.
+fn absent_host(id: u64) -> gpui::AnyElement {
+    use gpui::{InteractiveElement, IntoElement};
+    gpui::div().id(crate::events::ids::host_element_id(id)).into_any_element()
+}
+
 pub(crate) fn build_element(
     id: u64,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
 ) -> gpui::AnyElement {
+    build_element_in(id, ctx, window, cx, None)
+}
+
+/// `build_element`, for the subtree gpui asked for after the frame was built if `prekeyed`: the
+/// key the frame that deferred it entered it with.
+fn build_element_in(
+    id: u64,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+    prekeyed: Option<crate::retain::EnterKey>,
+) -> gpui::AnyElement {
     if let Some(known) = ctx.tree.elements.get(&id) {
-        ctx.retain.enter(crate::retain::Entry {
+        let plain = ctx.baseline_probe.is_none()
+            && ctx.inline_line.is_none()
+            && ctx.doc_hosts.is_empty()
+            && ctx.containing_heights.is_empty()
+            && ctx.atomic_extracted.is_none()
+            && !crate::text::atomic::is_collecting();
+        let skip = ctx.retain.enter(crate::retain::Entry {
             id,
             revision: known.subtree_revision,
             inherited: &ctx.inherited,
@@ -7470,7 +7617,12 @@ pub(crate) fn build_element(
             contents_overlay: ctx.contents_overlay.is_some(),
             anchor_scope: ctx.anchor_scope.is_some(),
             text_box_trim: ctx.text_box_trim,
+            plain,
+            prekeyed,
         });
+        if let Some(skip) = skip {
+            return retained_root(id, skip, ctx, window, cx);
+        }
     }
     let element = build_element_unpumped(id, ctx, window, cx);
     if ctx.tree.elements.contains_key(&id) {
@@ -7482,13 +7634,82 @@ pub(crate) fn build_element(
     element
 }
 
+/// What a deferred build needs of the build around the element, which is over by then.
+pub(crate) struct FrameEnv {
+    inherited: Inherited,
+    doc_path: Vec<u32>,
+    now: web_time::Instant,
+    stacking_root: bool,
+    stacking_item: bool,
+    text_box_trim: gpui::TextBoxTrim,
+    enter: crate::retain::EnterKey,
+    focus_styles: crate::focus::FocusStyles,
+}
+
+/// The element standing for a subtree the frame found unchanged. gpui builds the subtree from
+/// `GpuixView::build_subtree` if it cannot use what it recorded of it, and until then it is as if
+/// it had been built: its effects outside the frame are repeated, and the registries it writes
+/// are filled from its tape when gpui replays it.
+fn retained_root(
+    id: u64,
+    skip: crate::retain::Skip,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) -> gpui::AnyElement {
+    use gpui::IntoElement;
+
+    for effect in skip.effects.iter().flat_map(|effects| effects.iter()) {
+        match effect {
+            crate::tape::BuildEffect::Measured(id) => ctx.measurements.keep(*id),
+            crate::tape::BuildEffect::Image(key, url) => crate::background_images::request(*key, url),
+        }
+    }
+    crate::background_images::pump(window, cx);
+    ctx.subtree.merge(skip.subtree);
+    let env = FrameEnv {
+        inherited: ctx.inherited.clone(),
+        doc_path: ctx.doc_path.clone(),
+        now: ctx.now,
+        stacking_root: std::mem::take(&mut ctx.stacking_root),
+        stacking_item: std::mem::take(&mut ctx.stacking_item),
+        text_box_trim: std::mem::take(&mut ctx.text_box_trim),
+        enter: skip.enter,
+        focus_styles: ctx.focus_styles.clone(),
+    };
+    let view = cx.weak_entity();
+    let tapes = ctx.tapes.clone();
+    let mut retained = gpui::retained(
+        gpui::ElementId::NamedInteger(gpui::SharedString::new_static("gpuix-retained"), id),
+        skip.token,
+        move |window, cx| {
+            view.update(cx, |view, cx| view.build_subtree(id, env, window, cx))
+                .expect("the view of a window lives as long as the window draws")
+        },
+    )
+    .on_replay(move |phase, _, _| {
+        tapes.replay(
+            id,
+            match phase {
+                gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
+                gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
+            },
+        );
+    });
+    retained = retained.cull_outset(skip.subtree.outset());
+    if let Some(z) = skip.lift_z {
+        retained = retained.lift_z(z);
+    }
+    retained.into_any_element()
+}
+
 fn build_element_unpumped(
     id: u64,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
 ) -> gpui::AnyElement {
-    use gpui::IntoElement;
+    
 
     // Copy the tree reference out of `ctx`, so `element` borrows the tree and
     // not the build context, which the children below need mutably.
@@ -7498,7 +7719,7 @@ fn build_element_unpumped(
     let atomic_root = std::mem::take(&mut ctx.atomic_root);
     let passed_trim = std::mem::take(&mut ctx.text_box_trim);
     let Some(element) = tree.elements.get(&id) else {
-        return gpui::Empty.into_any_element();
+        return absent_host(id);
     };
     crate::perf_counters::element_built();
 
@@ -7537,7 +7758,7 @@ fn build_element_unpumped(
     if crate::layout::box_generation::is_display_none(element) {
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
-        return gpui::Empty.into_any_element();
+        return absent_host(id);
     }
     ctx.css_transitions.show(id);
     ctx.css_animations.show(id);
@@ -7622,7 +7843,7 @@ fn build_element_unpumped(
     {
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
-        return gpui::Empty.into_any_element();
+        return absent_host(id);
     }
     if transitioned.as_ref().is_some_and(|declared| declared.transitions.is_some()) {
         ctx.retain.dynamic(crate::retain::Dynamic::Transition);
@@ -7725,6 +7946,9 @@ fn build_element_unpumped(
     });
     let style = offset_style.as_ref().or(style);
 
+    if style.is_some_and(StyleDesc::lays_out_unstably) {
+        ctx.retain.exclude(crate::retain::Exclusion::UnstableLayout);
+    }
     match style.and_then(|style| style.position.as_deref()) {
         Some("sticky") => ctx.retain.exclude(crate::retain::Exclusion::Sticky),
         Some("fixed") => ctx.retain.exclude(crate::retain::Exclusion::Fixed),
@@ -7751,7 +7975,7 @@ fn build_element_unpumped(
     let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
     ctx.retain.stacking(|| {
         (
-            crate::layout::stacking::lift_z(style, stacking_item, colors, lengths).is_some(),
+            crate::layout::stacking::lift_z(style, stacking_item, colors, lengths),
             crate::layout::stacking::forms_context(style, stacking_root, colors, lengths),
         )
     });
@@ -7856,12 +8080,14 @@ fn build_element_unpumped(
             if custom_type == "anchored" {
                 crate::layout::anchor_size::begin_build(window.window_handle().window_id(), tree, element);
             }
-            crate::layout::container::settle_children(
+            if crate::layout::container::settle_children(
                 ctx.tree,
                 element,
                 &crate::layout::container::Chain(ctx.inherited.container_chain()),
                 window,
-            );
+            ) {
+                ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
+            }
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = if is_svg {
                 Vec::new()
@@ -7983,6 +8209,7 @@ fn build_element_unpumped(
         None => built,
     };
     let below = std::mem::replace(&mut ctx.subtree, enclosing);
+    ctx.retain.subtree(below);
     ctx.subtree.merge(below);
     built
 }
@@ -8318,12 +8545,14 @@ pub(crate) fn build_host_container(
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
-    crate::layout::container::settle_children(
+    if crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
         window,
-    );
+    ) {
+        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
+    }
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
@@ -8689,12 +8918,14 @@ fn build_contents_container(
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }
-    crate::layout::container::settle_children(
+    if crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
         window,
-    );
+    ) {
+        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
+    }
     if let Some(variations) = ctx.inherited.font_variations.clone() {
         el = el.font_variations(variations);
     }
@@ -8799,6 +9030,13 @@ fn paragraph_content(
         )
     };
     ctx.retain.digest(|| format!("{} {:?}", paragraph.text, styles.runs));
+    if paragraph.boxes.iter().any(|(id, _)| {
+        ctx.tree.elements.get(id).is_some_and(|span| {
+            span.events().contains("layout") || span.events().contains("scroll") || crate::observers::watches_paint(span.events())
+        })
+    }) {
+        ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
+    }
     // A box in the paragraph, or the paragraph being inline content of a box, puts the texts around
     // and inside the boxes on one line for copy.
     let line = ctx

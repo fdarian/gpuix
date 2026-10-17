@@ -43,6 +43,12 @@ pub struct Targets {
 }
 
 impl Targets {
+    /// The boxes around each piece of text and the ranges they cover, as text.
+    pub fn describe(&self) -> String {
+        let ranges: Vec<_> = self.ranges.iter().map(|(id, range, _)| (id, range)).collect();
+        format!("{:?} {ranges:?}", self.pieces)
+    }
+
     /// `None` when no box of the paragraph can be a target, which is every
     /// paragraph of plain text: it needs no lookup.
     ///
@@ -159,6 +165,16 @@ pub fn frame_reset(window: WindowId) {
 }
 
 pub fn register(window: WindowId, container: u64, layout: TextLayout, targets: Arc<Targets>) {
+    crate::tape::write(
+        (window, container, layout, targets),
+        |(window, container, layout, targets)| push(*window, *container, layout.clone(), targets.clone()),
+        |(_, container, layout, targets)| {
+            format!("paragraph {container} {:?} {}", layout.bounds(), targets.describe())
+        },
+    );
+}
+
+fn push(window: WindowId, container: u64, layout: TextLayout, targets: Arc<Targets>) {
     PARAGRAPHS.with(|paragraphs| {
         paragraphs
             .borrow_mut()

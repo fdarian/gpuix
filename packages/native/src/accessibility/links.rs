@@ -54,6 +54,35 @@ impl A11yLinks {
     pub(crate) fn referenced_text(&self, element: u64) -> Option<&str> {
         self.referenced_text.get(&element).map(String::as_str)
     }
+
+    /// What `apply_accessibility` reads of the elements around `host_id` rather than of it, as one
+    /// number. None for the many elements nothing links to.
+    pub(crate) fn key(&self, host_id: u64) -> Option<u64> {
+        let labels = self.labels_of(host_id);
+        let referenced = self.referenced_text(host_id);
+        let author_id = self.label_author_id(host_id);
+        let control = self.control_of(host_id);
+        if labels.is_none() && referenced.is_none() && author_id.is_none() && control.is_none() {
+            return None;
+        }
+        let mut fp = crate::retain::Fingerprint::new();
+        fp.hash(&labels);
+        fp.hash(&referenced);
+        fp.hash(&author_id);
+        fp.hash(&control);
+        Some(fp.finish())
+    }
+
+    /// The key of every element that has one.
+    fn keys(&self) -> HashMap<u64, u64> {
+        self.labels_of
+            .keys()
+            .chain(self.control_of.keys())
+            .chain(self.label_author_ids.keys())
+            .chain(self.referenced_text.keys())
+            .filter_map(|id| Some((*id, self.key(*id)?)))
+            .collect()
+    }
 }
 
 /// Identifies the tree state a cached result belongs to. The tree id separates
@@ -67,6 +96,14 @@ struct CacheKey {
 
 thread_local! {
     static CACHE: RefCell<Option<(CacheKey, Rc<A11yLinks>)>> = const { RefCell::new(None) };
+    /// The elements whose key differs from the one they had before the links were computed again,
+    /// until `take_changed`.
+    static CHANGED: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The elements whose links changed since this was last called.
+pub(crate) fn take_changed() -> Vec<u64> {
+    CHANGED.with(|changed| std::mem::take(&mut *changed.borrow_mut()))
 }
 
 /// Recompute the links when the tree changed since the last call. Call before
@@ -87,7 +124,15 @@ pub(crate) fn sync(tree: &RetainedTree) {
         if cache.as_ref().is_some_and(|(cached, _)| *cached == key) {
             return;
         }
-        *cache = Some((key, Rc::new(compute(tree, root))));
+        let links = compute(tree, root);
+        let before = cache.as_ref().map(|(_, links)| links.keys()).unwrap_or_default();
+        let now = links.keys();
+        CHANGED.with(|changed| {
+            let mut changed = changed.borrow_mut();
+            changed.extend(now.iter().filter(|(id, key)| before.get(id) != Some(key)).map(|(id, _)| *id));
+            changed.extend(before.keys().filter(|id| !now.contains_key(id)));
+        });
+        *cache = Some((key, Rc::new(links)));
     });
 }
 

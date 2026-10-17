@@ -300,15 +300,17 @@ pub(crate) fn settle_children(
     parent: &RetainedElement,
     containers: &dyn Containers,
     window: &mut gpui::Window,
-) {
+) -> bool {
     if !tree.has_container_rules() {
-        return;
+        return false;
     }
     let mut changed = false;
-    settle_among(tree, parent, containers, &mut changed);
+    let mut depends = false;
+    settle_among(tree, parent, containers, &mut changed, &mut depends);
     if changed {
         window.request_redraw_before_present();
     }
+    depends
 }
 
 fn settle_among(
@@ -316,15 +318,17 @@ fn settle_among(
     parent: &RetainedElement,
     containers: &dyn Containers,
     changed: &mut bool,
+    depends: &mut bool,
 ) {
     for child_id in crate::layout::contents::flatten(tree, &parent.children).iter() {
         let Some(child) = tree.elements.get(child_id) else { continue };
         if let Some(style) = child.style.as_deref().filter(|style| style.container_rules.is_some()) {
             let folded = fold(style, containers);
             *changed |= settle_display(child, folded.as_ref().or(Some(style)));
+            *depends = true;
         }
         if crate::text::inline::is_inline_wrapper(child, parent) {
-            settle_among(tree, child, containers, changed);
+            settle_among(tree, child, containers, changed, depends);
         }
     }
 }

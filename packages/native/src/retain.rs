@@ -32,11 +32,15 @@
 //! Not known at build time: that layout gives a retained subtree the same box it had. Step 5's
 //! replay key checks that, so the numbers here are an upper bound for frames that move layout.
 
+use std::collections::HashMap;
 use std::hash::Hasher;
+use std::rc::Rc;
+use std::sync::Arc;
 
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
 use crate::renderer::{GroupScope, Inherited};
+use crate::tape::BuildEffect;
 
 /// A hash of the contents of what the build reads, cheap enough to run once per element.
 pub(crate) struct Fingerprint(FxHasher);
@@ -166,10 +170,14 @@ pub(crate) enum Exclusion {
     LayoutAnimation,
     /// Built as part of a paragraph's line.
     AtomicInline,
+    /// `position: absolute`, an intrinsic width keyword or a natural width: gpui's layout
+    /// rewrites the box after it is requested, so the layout nodes it left are not the next
+    /// frame's to use.
+    UnstableLayout,
 }
 
 impl Exclusion {
-    const ALL: [Exclusion; 15] = [
+    const ALL: [Exclusion; 16] = [
         Self::PaintReporter,
         Self::ContainerQuery,
         Self::Highlight,
@@ -185,6 +193,7 @@ impl Exclusion {
         Self::Scroller,
         Self::LayoutAnimation,
         Self::AtomicInline,
+        Self::UnstableLayout,
     ];
 
     fn name(self) -> &'static str {
@@ -204,6 +213,7 @@ impl Exclusion {
             Self::Scroller => "scroller",
             Self::LayoutAnimation => "layout-animation",
             Self::AtomicInline => "atomic-inline",
+            Self::UnstableLayout => "unstable-layout",
         }
     }
 }
@@ -285,6 +295,12 @@ struct Key {
     shape: u64,
 }
 
+/// The key an element had when it was entered, before its own build added to its shape: all a
+/// frame knows of it before it builds it. A deferred build is entered with the key the frame
+/// that deferred it computed, since the parent whose shape it is part of is not there.
+#[derive(Clone, Copy)]
+pub(crate) struct EnterKey(Key);
+
 /// What the build of an element reads that the retained tree cannot see.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 struct Vol {
@@ -330,12 +346,25 @@ impl Vol {
 }
 
 /// What the last build recorded about an element.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Record {
     key: Key,
+    enter: Key,
     vol: Vol,
     digest: u64,
     eligible: bool,
+    /// Counts the frames that built the element on their own: a frame that finds the element
+    /// changed builds it, and what gpui recorded of it before is of another build. See `token`.
+    epoch: u64,
+    /// What gpui's retained element is keyed by: equal for two frames only when the element was
+    /// entered with the same key and has not been built on its own in between.
+    token: u64,
+    lift_z: Option<i32>,
+    forms_context: bool,
+    /// Elements in the subtree.
+    size: u32,
+    subtree: crate::layout::cull::Subtree,
+    effects: Option<Rc<[BuildEffect]>>,
 }
 
 const NO_PARENT: u32 = u32::MAX;
@@ -364,18 +393,32 @@ pub(crate) fn slot_name(slot: usize) -> String {
     }
 }
 
+/// An element a frame did not build, standing in for the record of its last build.
+struct Skipped {
+    size: u32,
+    digest: u64,
+}
+
 struct Node {
     id: u64,
     parent: u32,
     /// One past the last node below this one.
     end: u32,
     key: Key,
+    enter: Key,
     vol: Vol,
     exclusion: Option<Exclusion>,
-    lifted: bool,
+    lift_z: Option<i32>,
     forms_context: bool,
+    /// Something above scrolled, so the box this one was recorded at is not where it is.
+    moved: bool,
     /// Only with `verify`: a hash of what the build made of the element itself.
     digest: u64,
+    subtree: crate::layout::cull::Subtree,
+    /// The build effects noted since the element was entered, and until it was left.
+    effects_start: usize,
+    effects_end: usize,
+    skipped: Option<Skipped>,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -390,6 +433,7 @@ struct Below {
     /// Something below is lifted out of the elements between it and here.
     lifts: bool,
     digest: u64,
+    size: u32,
 }
 
 /// The decision for the last build, for tests.
@@ -400,14 +444,73 @@ pub(crate) struct Summary {
     pub elements: usize,
 }
 
+/// What the build reads that the retained tree cannot show, as the frame found it. The elements
+/// that differ from the frame before, and their ancestors, are the spine a frame builds; what is
+/// off it can be skipped.
+pub(crate) struct Sources<'a> {
+    pub tree: &'a crate::retained_tree::RetainedTree,
+    pub hovered: &'a [u64],
+    pub active: &'a [u64],
+    pub focus: &'a crate::focus::FocusStyles,
+    pub focusable: &'a HashMap<u64, gpui::FocusHandle>,
+    /// Whether the last input was the keyboard's, which `:focus-visible` follows.
+    pub keyboard: bool,
+    pub scrolls: &'a HashMap<u64, gpui::ScrollHandle>,
+    /// The elements whose measurement changed since the frame before.
+    pub measured: Vec<u64>,
+    /// The elements whose accessibility links changed since the frame before.
+    pub links: Vec<u64>,
+    /// The state each custom element says it keeps for itself, see `CustomElement::retain_state`.
+    pub customs: Vec<(u64, Option<u64>)>,
+    /// The elements with a motion that is running.
+    pub motion: Vec<u64>,
+    pub selection: u64,
+}
+
+/// What the sources were at the frame before, to tell what changed.
+#[derive(Default)]
+struct Seen {
+    known: bool,
+    hovered: Vec<u64>,
+    active: Vec<u64>,
+    within: Arc<[u64]>,
+    visible: Option<u64>,
+    dim: Option<Arc<[u64]>>,
+    keyboard: bool,
+    scrolls: FxHashMap<u64, (u32, u32)>,
+    customs: FxHashMap<u64, Option<u64>>,
+    motion: FxHashSet<u64>,
+    selection: u64,
+}
+
+/// What the frame found different from the frame before.
+#[derive(Default)]
+struct Deltas {
+    /// Nothing about the frame before holds (the first frame, a new selection).
+    all: bool,
+    /// The elements that changed, and their ancestors.
+    spine: FxHashSet<u64>,
+    /// The elements whose scroll offset moved, which moves what is below them.
+    scrolled: FxHashSet<u64>,
+}
+
 pub(crate) struct Retain {
     /// `GPUIX_RETAIN_OFF` stops recording, to time a build without it.
     enabled: bool,
+    /// Whether a frame skips the building of what the sources say did not change, and hands it
+    /// to gpui as a retained subtree. Off, the elements are only recorded and judged, which is
+    /// what the tests of the judgement read.
+    planning: bool,
     /// The exclusions to ignore, by `Exclusion as u32`: what the numbers would be if they were
     /// lifted. For measuring which to lift first; nothing reuses anything.
     lifted: u32,
     verify: bool,
+    /// The smallest subtree that is skipped. A run under `GPUIX_RETAIN_VERIFY` skips every one it
+    /// can, since the small pages of a suite have no subtree of `MIN_ROOT` elements.
+    min_root: u32,
     open: bool,
+    /// A subtree gpui asked for after the frame was built is being built.
+    deferred: bool,
     /// Above zero while a virtual list builds a row, which is outside any render.
     rows: u32,
     selection: u64,
@@ -416,8 +519,11 @@ pub(crate) struct Retain {
     below: Vec<Below>,
     retained: Vec<bool>,
     moved: Vec<bool>,
-    last: FxHashMap<u64, Record>,
-    next: FxHashMap<u64, Record>,
+    records: FxHashMap<u64, Record>,
+    /// The elements whose last build found a motion, transition or animation running.
+    dynamic: FxHashSet<u64>,
+    seen: Seen,
+    deltas: Deltas,
     summary: Summary,
     mismatches: Vec<String>,
 }
@@ -436,15 +542,40 @@ pub(crate) struct Entry<'a> {
     pub anchor_scope: bool,
     /// What an ancestor's `text-box-trim` asks of the ends of the element's lines.
     pub text_box_trim: gpui::TextBoxTrim,
+    /// Whether nothing around the element is waiting for something from its build that a skipped
+    /// build could not give (the baseline of a box, the text of a line).
+    pub plain: bool,
+    /// The key of a subtree that was deferred, which the frame that deferred it computed.
+    pub prekeyed: Option<EnterKey>,
 }
+
+/// An element that was skipped, and what its parent and the frame need of it.
+pub(crate) struct Skip {
+    pub token: u64,
+    pub enter: EnterKey,
+    pub lift_z: Option<i32>,
+    pub subtree: crate::layout::cull::Subtree,
+    pub effects: Option<Rc<[BuildEffect]>>,
+}
+
+/// Elements below this many are not worth a retained element of their own: it costs about what
+/// it saves.
+const MIN_ROOT: u32 = 4;
 
 impl Retain {
     pub(crate) fn new() -> Self {
+        let enabled = std::env::var_os("GPUIX_RETAIN_OFF").is_none();
         Self {
-            enabled: std::env::var_os("GPUIX_RETAIN_OFF").is_none(),
+            enabled,
+            planning: enabled && !cfg!(test),
             lifted: 0,
             verify: cfg!(test) || std::env::var_os("GPUIX_RETAIN_VERIFY").is_some(),
+            min_root: std::env::var("GPUIX_RETAIN_MIN_ROOT")
+                .ok()
+                .and_then(|min| min.parse().ok())
+                .unwrap_or(if std::env::var_os("GPUIX_RETAIN_VERIFY").is_some() { 1 } else { MIN_ROOT }),
             open: false,
+            deferred: false,
             rows: 0,
             selection: 0,
             nodes: Vec::new(),
@@ -452,8 +583,10 @@ impl Retain {
             below: Vec::new(),
             retained: Vec::new(),
             moved: Vec::new(),
-            last: FxHashMap::default(),
-            next: FxHashMap::default(),
+            records: FxHashMap::default(),
+            dynamic: FxHashSet::default(),
+            seen: Seen::default(),
+            deltas: Deltas::default(),
             summary: Summary::default(),
             mismatches: Vec::new(),
         }
@@ -461,8 +594,28 @@ impl Retain {
 
     /// With `verify` every element hashes what it built, and an element that is judged unchanged
     /// has to hash as it did. A mismatch is a hole in the key. Costs a style formatted per element.
+    /// A frame that skips what it judged unchanged has no build to hash, so it is gpui that
+    /// compares the frame with one built whole, see [`Self::verifies_frames`].
     pub(crate) fn set_verify(&mut self, verify: bool) {
         self.verify = verify;
+    }
+
+    /// Whether gpui builds each frame that replayed something once more, whole, and compares the
+    /// two.
+    pub(crate) fn verifies_frames(&self) -> bool {
+        self.verify && self.planning
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_min_root(&mut self, min_root: u32) {
+        self.min_root = min_root;
+    }
+
+    /// Turns the skipping of unchanged subtrees on or off, which the next frame starts from
+    /// nothing for.
+    pub(crate) fn set_planning(&mut self, planning: bool) {
+        self.planning = planning && self.enabled;
+        self.seen = Seen::default();
     }
 
     /// Counts as if the exclusions named here, by `Exclusion::name`, were lifted.
@@ -477,7 +630,7 @@ impl Retain {
         }
         self.lifted = lifted;
         // What was recorded under other exclusions says nothing about these.
-        self.last.clear();
+        self.records.clear();
         Ok(())
     }
 
@@ -489,17 +642,124 @@ impl Retain {
         &self.mismatches
     }
 
+    #[cfg(test)]
     pub(crate) fn summary(&self) -> &Summary {
         &self.summary
     }
 
-    /// `selection` is the identity of the selected text, 0 for none: text that is in a selection
-    /// that moved paints differently.
-    pub(crate) fn begin_frame(&mut self, selection: u64) {
+    /// Starts the build of a frame. `selection` in `sources` is the identity of the selected
+    /// text, 0 for none: text that is in a selection that moved paints differently.
+    pub(crate) fn begin_frame(&mut self, sources: Sources) {
         self.open = self.enabled;
-        self.selection = selection;
+        self.deferred = false;
+        self.selection = sources.selection;
         self.nodes.clear();
         self.stack.clear();
+        crate::tape::clear_build_effects();
+        if self.planning {
+            self.find_deltas(&sources);
+        }
+    }
+
+    /// What changed in `sources` since the frame before, as the elements that differ and their
+    /// ancestors.
+    fn find_deltas(&mut self, sources: &Sources) {
+        let mut changed: Vec<u64> = Vec::new();
+        let seen = &mut self.seen;
+        let all = !seen.known || seen.selection != sources.selection;
+
+        differ(&seen.hovered, sources.hovered, &mut changed);
+        differ(&seen.active, sources.active, &mut changed);
+        differ(&seen.within, &sources.focus.within, &mut changed);
+        // The target's ancestors stay in the chain, and `:has(:hover)` changes for the one the
+        // target moves to or from.
+        if seen.hovered.first() != sources.hovered.first() {
+            changed.extend(seen.hovered.first().into_iter().chain(sources.hovered.first()));
+        }
+        if seen.active.first() != sources.active.first() {
+            changed.extend(seen.active.first().into_iter().chain(sources.active.first()));
+        }
+        if seen.within.first() != sources.focus.within.first() {
+            changed.extend(seen.within.first().into_iter().chain(sources.focus.within.first()));
+        }
+        if seen.visible != sources.focus.visible {
+            changed.extend(seen.visible.into_iter().chain(sources.focus.visible));
+        }
+        if seen.keyboard != sources.keyboard {
+            changed.extend(sources.focus.within.first());
+        }
+        match (&seen.dim, &sources.focus.dim_path) {
+            (None, None) => {}
+            (Some(before), Some(now)) => differ(before, now, &mut changed),
+            // Every focusable element that is not on the path dims, or stops dimming.
+            _ => changed.extend(sources.focusable.keys()),
+        }
+
+        let mut scrolled = FxHashSet::default();
+        let mut scrolls = FxHashMap::default();
+        for (id, handle) in sources.scrolls {
+            let offset = handle.offset();
+            let bits = (f32::from(offset.x).to_bits(), f32::from(offset.y).to_bits());
+            if seen.scrolls.get(id) != Some(&bits) {
+                changed.push(*id);
+                scrolled.insert(*id);
+            }
+            scrolls.insert(*id, bits);
+        }
+        changed.extend(seen.scrolls.keys().filter(|id| !scrolls.contains_key(id)));
+
+        let mut customs = FxHashMap::default();
+        for (id, state) in &sources.customs {
+            if seen.customs.get(id) != Some(state) {
+                changed.push(*id);
+            }
+            customs.insert(*id, *state);
+        }
+        changed.extend(seen.customs.keys().filter(|id| !customs.contains_key(id)));
+
+        let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
+        changed.extend(motion.union(&seen.motion));
+        changed.extend(&sources.measured);
+        changed.extend(&sources.links);
+        changed.extend(&self.dynamic);
+
+        seen.known = true;
+        seen.hovered = sources.hovered.to_vec();
+        seen.active = sources.active.to_vec();
+        seen.within = sources.focus.within.clone();
+        seen.visible = sources.focus.visible;
+        seen.dim = sources.focus.dim_path.clone();
+        seen.keyboard = sources.keyboard;
+        seen.scrolls = scrolls;
+        seen.customs = customs;
+        seen.motion = motion;
+        seen.selection = sources.selection;
+
+        let mut spine = FxHashSet::default();
+        for id in changed {
+            let mut at = Some(id);
+            while let Some(id) = at {
+                if !spine.insert(id) {
+                    break;
+                }
+                at = sources.tree.elements.get(&id).and_then(|element| element.parent);
+            }
+        }
+        self.deltas = Deltas { all, spine, scrolled };
+    }
+
+    /// Starts the build of a subtree that gpui asked for after the frame was built, because the
+    /// frame before did not leave it recorded as the same, or does not lay out where it was.
+    pub(crate) fn begin_deferred(&mut self) {
+        self.open = self.enabled;
+        self.deferred = true;
+        self.nodes.clear();
+        self.stack.clear();
+    }
+
+    pub(crate) fn finish_deferred(&mut self) {
+        self.finish_session();
+        self.deferred = false;
     }
 
     /// Whether the element being built is recorded, so the caller can skip work only the record needs.
@@ -515,47 +775,48 @@ impl Retain {
         self.rows -= 1;
     }
 
-    pub(crate) fn enter(&mut self, entry: Entry) {
+    /// Enters the element about to be built, or decides to skip it: when the frame found nothing
+    /// that its last build read different, and gpui can be handed the subtree to keep. A skipped
+    /// element is left entered and exited, and the caller builds a retained element instead.
+    pub(crate) fn enter(&mut self, entry: Entry) -> Option<Skip> {
         if !self.enabled {
-            return;
+            return None;
         }
         if self.rows > 0 {
             crate::perf_counters::retain_slot(EXCLUDED + Exclusion::VirtualRow as usize, 1);
-            return;
+            return None;
         }
         if !self.open {
-            return;
+            return None;
         }
         let parent = self.stack.last().copied().unwrap_or(NO_PARENT);
-        let mut shape = Fingerprint::new();
-        shape.word(entry.id);
-        shape.word(u64::from(entry.at));
-        shape.word(self.nodes.get(parent as usize).map_or(0, |parent| parent.key.shape));
-        shape.bits(&[
-            entry.stacking_root,
-            entry.stacking_item,
-            entry.atomic_root,
-            entry.contents_overlay,
-            entry.anchor_scope,
-            entry.text_box_trim.start,
-            entry.text_box_trim.end,
-        ]);
-        let mut node = Node {
-            id: entry.id,
-            parent,
-            end: 0,
-            key: Key {
-                revision: entry.revision,
-                inherited: inherited_fingerprint(entry.inherited),
-                shape: shape.finish(),
-            },
-            vol: Vol::default(),
-            exclusion: None,
-            lifted: false,
-            forms_context: false,
-            digest: 0,
+        let enter = match entry.prekeyed {
+            Some(prekeyed) => prekeyed.0,
+            None => {
+                let mut shape = Fingerprint::new();
+                shape.word(entry.id);
+                shape.word(u64::from(entry.at));
+                shape.word(self.nodes.get(parent as usize).map_or(0, |parent| parent.key.shape));
+                shape.bits(&[
+                    entry.stacking_root,
+                    entry.stacking_item,
+                    entry.atomic_root,
+                    entry.contents_overlay,
+                    entry.anchor_scope,
+                    entry.text_box_trim.start,
+                    entry.text_box_trim.end,
+                ]);
+                Key {
+                    revision: entry.revision,
+                    inherited: inherited_fingerprint(entry.inherited),
+                    shape: shape.finish(),
+                }
+            }
         };
-        node.exclusion = if entry.atomic_root {
+        let moved = self.nodes.get(parent as usize).is_some_and(|parent| {
+            parent.moved || self.deltas.scrolled.contains(&parent.id)
+        });
+        let exclusion = if entry.atomic_root {
             self.unless_lifted(Exclusion::AtomicInline)
         } else if entry.contents_overlay {
             self.unless_lifted(Exclusion::DisplayContents)
@@ -568,16 +829,69 @@ impl Retain {
         } else {
             None
         };
-        self.stack.push(self.nodes.len() as u32);
+        let mut node = Node {
+            id: entry.id,
+            parent,
+            end: 0,
+            key: enter,
+            enter,
+            vol: Vol::default(),
+            exclusion,
+            lift_z: None,
+            forms_context: false,
+            moved,
+            digest: 0,
+            subtree: crate::layout::cull::Subtree::empty(),
+            effects_start: crate::tape::build_effects_len(),
+            effects_end: 0,
+            skipped: None,
+        };
+        let at = self.nodes.len() as u32;
+        if let Some(record) = self.skippable(&node, &entry) {
+            node.key = record.key;
+            node.vol = record.vol;
+            node.lift_z = record.lift_z;
+            node.forms_context = record.forms_context;
+            node.subtree = record.subtree;
+            node.end = at + 1;
+            node.skipped = Some(Skipped { size: record.size, digest: record.digest });
+            let skip = Skip {
+                token: record.token,
+                enter: EnterKey(enter),
+                lift_z: record.lift_z,
+                subtree: record.subtree,
+                effects: record.effects.clone(),
+            };
+            self.nodes.push(node);
+            return Some(skip);
+        }
+        self.stack.push(at);
         self.nodes.push(node);
+        None
+    }
+
+    /// The record of the last build of the element if the frame can leave it unbuilt.
+    fn skippable(&self, node: &Node, entry: &Entry) -> Option<&Record> {
+        if !self.planning || self.lifted != 0 || self.deltas.all || !entry.plain || entry.prekeyed.is_some() {
+            return None;
+        }
+        if node.exclusion.is_some() || node.moved || self.deltas.spine.contains(&node.id) {
+            return None;
+        }
+        let record = self.records.get(&node.id)?;
+        (record.eligible && record.size >= self.min_root && record.enter == node.enter).then_some(record)
     }
 
     pub(crate) fn exit(&mut self) {
         if self.rows > 0 || !self.open {
             return;
         }
+        // A skipped element was never pushed.
         let at = self.stack.pop().expect("exit without enter");
-        self.nodes[at as usize].end = self.nodes.len() as u32;
+        let end = self.nodes.len() as u32;
+        let node = &mut self.nodes[at as usize];
+        node.end = end;
+        node.effects_end = crate::tape::build_effects_len();
     }
 
     fn top(&mut self) -> Option<&mut Node> {
@@ -664,20 +978,28 @@ impl Retain {
         }
     }
 
-    /// Whether the element is lifted into the stacking context around it, and whether it is one.
-    pub(crate) fn stacking(&mut self, decide: impl FnOnce() -> (bool, bool)) {
+    /// The `z-index` the element is lifted into the stacking context around it with, if it is,
+    /// and whether it is one.
+    pub(crate) fn stacking(&mut self, decide: impl FnOnce() -> (Option<i32>, bool)) {
         if self.recording() {
-            let (lifted, forms_context) = decide();
+            let (lift_z, forms_context) = decide();
             if let Some(node) = self.top() {
-                node.lifted = lifted;
+                node.lift_z = lift_z;
                 node.forms_context = forms_context;
             }
         }
     }
 
+    /// What the element's parent needs to know of how far it draws.
+    pub(crate) fn subtree(&mut self, subtree: crate::layout::cull::Subtree) {
+        if let Some(node) = self.top() {
+            node.subtree = subtree;
+        }
+    }
+
     /// Adds what the build made of the element to its digest. Only formatted when verifying.
     pub(crate) fn digest(&mut self, built: impl FnOnce() -> String) {
-        if !self.verify {
+        if !self.verify || self.planning {
             return;
         }
         let built = built();
@@ -689,9 +1011,14 @@ impl Retain {
         }
     }
 
+    /// Ends the build of a frame.
+    pub(crate) fn finish_frame(&mut self) {
+        self.finish_session();
+    }
+
     /// Decides what this build would have reused, counts it, and keeps what the next build compares
     /// itself with.
-    pub(crate) fn finish_frame(&mut self) {
+    fn finish_session(&mut self) {
         if !self.open {
             return;
         }
@@ -703,8 +1030,11 @@ impl Retain {
         self.below.clear();
         self.below.resize(count, Below::default());
         for (at, node) in self.nodes.iter().enumerate() {
-            let before = self.last.get(&node.id);
             let below = &mut self.below[at];
+            if node.skipped.is_some() {
+                continue;
+            }
+            let before = self.records.get(&node.id);
             below.changed = match before {
                 None => Some(Cause::New),
                 Some(before) if before.key.revision != node.key.revision => Some(Cause::Edited),
@@ -719,18 +1049,29 @@ impl Retain {
         for at in (0..count).rev() {
             let node = &self.nodes[at];
             let own = self.below[at];
-            let escapes = node.lifted || (!node.forms_context && own.lifts);
-            let mut fp = Fingerprint::new();
-            fp.word(node.digest);
-            fp.word(own.digest);
-            let digest = fp.finish();
+            let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
+            let digest = match &node.skipped {
+                Some(skipped) => skipped.digest,
+                None => {
+                    let mut fp = Fingerprint::new();
+                    fp.word(node.digest);
+                    fp.word(own.digest);
+                    fp.finish()
+                }
+            };
+            let size = match &node.skipped {
+                Some(skipped) => skipped.size,
+                None => own.size + 1,
+            };
             self.below[at].digest = digest;
+            self.below[at].size = size;
             if node.parent == NO_PARENT {
                 continue;
             }
             let parent = &mut self.below[node.parent as usize];
             parent.changed_below |= own.changed.is_some() || own.changed_below;
             parent.lifts |= escapes;
+            parent.size += size;
             if let Some(excluded) = node.exclusion.or(own.excluded) {
                 parent.excluded = Some(excluded);
             }
@@ -741,10 +1082,10 @@ impl Retain {
         self.retained.resize(count, false);
         self.moved.clear();
         self.moved.resize(count, false);
-        self.next.clear();
         self.summary = Summary { roots: Vec::new(), elements_in_roots: 0, elements: count };
         let mut counts = [0u64; SLOTS];
         let mut large = 0;
+        let all_effects = crate::tape::build_effects_since(0);
         for at in 0..count {
             let node = &self.nodes[at];
             let own = self.below[at];
@@ -755,11 +1096,11 @@ impl Retain {
 
             if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
-            } else if clean && eligible && self.moved[at] {
+            } else if node.skipped.is_none() && clean && eligible && self.moved[at] {
                 counts[MOVED] += 1;
-            } else if clean && eligible {
+            } else if node.skipped.is_some() || (clean && eligible) {
                 self.retained[at] = true;
-                let size = (node.end as usize) - at;
+                let size = own.size as usize;
                 self.summary.roots.push(node.id);
                 self.summary.elements_in_roots += size;
                 if size >= LARGE_ROOT {
@@ -780,15 +1121,48 @@ impl Retain {
                 counts[slot] += 1;
             }
 
-            if self.retained[at] && self.verify {
-                check(&self.last, &mut self.mismatches, node.id, own.digest, eligible);
+            if node.skipped.is_some() {
+                continue;
             }
-            self.next.insert(
+            if self.retained[at] && self.verify && !self.planning {
+                check(&self.records, &mut self.mismatches, node.id, own.digest, eligible);
+            }
+            if node.vol.dynamic != 0 {
+                self.dynamic.insert(node.id);
+            } else {
+                self.dynamic.remove(&node.id);
+            }
+            let before = self.records.get(&node.id);
+            let epoch = match (before, self.deferred) {
+                (Some(before), true) => before.epoch,
+                (Some(before), false) => before.epoch + 1,
+                (None, _) => 1,
+            };
+            let effects = (node.effects_end > node.effects_start)
+                .then(|| Rc::<[BuildEffect]>::from(&all_effects[node.effects_start..node.effects_end]));
+            let mut token = Fingerprint::new();
+            token.word(node.enter.revision);
+            token.word(node.enter.inherited);
+            token.word(node.enter.shape);
+            token.word(epoch);
+            self.records.insert(
                 node.id,
-                Record { key: node.key, vol: node.vol, digest: own.digest, eligible },
+                Record {
+                    key: node.key,
+                    enter: node.enter,
+                    vol: node.vol,
+                    digest: own.digest,
+                    eligible,
+                    epoch,
+                    token: token.finish(),
+                    lift_z: node.lift_z,
+                    forms_context: node.forms_context,
+                    size: own.size,
+                    subtree: node.subtree,
+                    effects,
+                },
             );
         }
-        std::mem::swap(&mut self.last, &mut self.next);
 
         counts[RETAINED] = self.summary.elements_in_roots as u64;
         crate::perf_counters::retain_slots(&counts);
@@ -796,10 +1170,16 @@ impl Retain {
     }
 }
 
+/// The ids that are in one of `before` and `now`, not in both, added to `changed`.
+fn differ(before: &[u64], now: &[u64], changed: &mut Vec<u64>) {
+    changed.extend(before.iter().filter(|id| !now.contains(id)));
+    changed.extend(now.iter().filter(|id| !before.contains(id)));
+}
+
 /// An element judged unchanged has to have been built as it was last time: the hash of what the
 /// build made of it and of everything below it is the one the last build recorded.
-fn check(last: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64, digest: u64, eligible: bool) {
-    let Some(before) = last.get(&id) else { return };
+fn check(records: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64, digest: u64, eligible: bool) {
+    let Some(before) = records.get(&id) else { return };
     let problem = if before.digest != digest {
         "built differently"
     } else if before.eligible != eligible {
@@ -887,7 +1267,22 @@ mod tests {
     }
 
     fn build(retain: &mut Retain, inherited: &Inherited, built: &str) {
-        retain.begin_frame(0);
+        let (tree, focus) = (RetainedTree::new(), crate::focus::FocusStyles::default());
+        let (handles, scrolls) = (HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree: &tree,
+            hovered: &[],
+            active: &[],
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            customs: Vec::new(),
+            motion: Vec::new(),
+            selection: 0,
+        });
         retain.enter(Entry {
             id: 1,
             revision: 7,
@@ -899,8 +1294,10 @@ mod tests {
             contents_overlay: false,
             anchor_scope: false,
             text_box_trim: Default::default(),
+            plain: true,
+            prekeyed: None,
         });
-        retain.stacking(|| (false, true));
+        retain.stacking(|| (None, true));
         retain.digest(|| built.to_owned());
         retain.exit();
         retain.finish_frame();
@@ -1035,6 +1432,10 @@ mod tests {
         fn assert_sound(&self, cx: &mut gpui::TestAppContext) {
             let mismatches = self.window.update(cx, |view, _, _| view.retain.mismatches().to_vec()).unwrap();
             assert!(mismatches.is_empty(), "{mismatches:?}");
+            let replayed = cx
+                .update_window(self.window.into(), |_, window, _| window.retention_mismatches().to_vec())
+                .unwrap();
+            assert!(replayed.is_empty(), "{replayed:?}");
         }
 
         /// The roots the last build would have reused, sorted.
@@ -1096,6 +1497,100 @@ mod tests {
             let style = tree.styles.intern(style.as_bytes()).unwrap();
             tree.set_style(id, style);
         }
+    }
+
+    /// A page that skips what it judges unchanged, drawn until its roots are recorded. With
+    /// `verify`, every frame that replays something is built again and compared.
+    fn planned(cx: &mut gpui::TestAppContext, card_styles: [&'static str; 3], verify: bool) -> Scene {
+        let scene = Scene::new(cx, page(card_styles));
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.retain.set_verify(verify);
+            })
+            .unwrap();
+        for _ in 0..4 {
+            scene.notified_draw(cx);
+        }
+        scene
+    }
+
+    impl Scene {
+        /// A frame of a view that notified, which does not refresh the window.
+        fn notified_draw(&self, cx: &mut gpui::TestAppContext) {
+            self.window.update(cx, |_, _, cx| cx.notify()).unwrap();
+            cx.update_window(self.window.into(), |_, window, app| window.draw(app).clear(app)).unwrap();
+            self.assert_sound(cx);
+        }
+    }
+
+    fn retained_counters(scene: &Scene, cx: &mut gpui::TestAppContext) -> gpui::RetainedCounters {
+        cx.update_window(scene.window.into(), |_, window, _| window.retained_counters()).unwrap()
+    }
+
+    #[gpui::test]
+    fn a_replayed_page_is_the_page_a_build_makes(cx: &mut gpui::TestAppContext) {
+        let scene = planned(cx, [CARD; 3], true);
+        let before = retained_counters(&scene, cx);
+        scene.notified_draw(cx);
+        scene.notified_draw(cx);
+        let after = retained_counters(&scene, cx);
+        assert!(after.verified > before.verified, "frames that replayed were compared: {after:?}");
+        assert_eq!(after.mismatches, 0);
+    }
+
+    #[gpui::test]
+    fn a_box_that_goes_away_with_a_transition_running_and_comes_back(cx: &mut gpui::TestAppContext) {
+        let shown = |width: u32, display: &str| {
+            format!(
+                r#"{{"width": {width}, "height": 20, "display": "{display}", "transition": "width 1s linear"}}"#
+            )
+        };
+        let elements = vec![
+            div(1, None, r#"{"width": 400, "height": 300}"#),
+            div(2, Some(1), Box::leak(shown(100, "block").into_boxed_str())),
+        ];
+        let scene = Scene::new(cx, elements);
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.retain.set_verify(true);
+                view.retain.set_min_root(1);
+            })
+            .unwrap();
+        let step = |cx: &mut gpui::TestAppContext, width: u32, display: &str, ms: f64| {
+            scene.set_style(2, &shown(width, display));
+            scene.window.update(cx, |view, _, _| { view.clock.fast_forward_ms(ms); }).unwrap();
+            scene.notified_draw(cx);
+        };
+        for _ in 0..3 {
+            scene.notified_draw(cx);
+        }
+        step(cx, 200, "block", 0.0);
+        step(cx, 200, "block", 500.0);
+        step(cx, 200, "none", 0.0);
+        step(cx, 200, "none", 16.0);
+        step(cx, 300, "none", 0.0);
+        step(cx, 300, "none", 16.0);
+        step(cx, 300, "block", 0.0);
+        step(cx, 300, "block", 500.0);
+    }
+
+    #[gpui::test]
+    fn a_page_that_does_not_move_is_not_built(cx: &mut gpui::TestAppContext) {
+        let scene = planned(cx, [CARD; 3], false);
+        let before = retained_counters(&scene, cx);
+        crate::perf_counters::reset();
+        scene.notified_draw(cx);
+        scene.notified_draw(cx);
+        let after = retained_counters(&scene, cx);
+        assert_eq!(crate::perf_counters::snapshot().elements_built, 0);
+        assert!(after.replays > before.replays, "{after:?}");
+        assert_eq!(after.builds, before.builds);
+        assert_eq!(after.lazy_builds, before.lazy_builds);
+        assert_eq!(after.total_non_reusable(), 0, "{after:?}");
     }
 
     const CARD: &str = r#"{"height": 60}"#;

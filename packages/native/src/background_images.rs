@@ -53,6 +53,7 @@ thread_local! {
 /// Asks for the image at `url` to be loaded by the next `pump`. A layer calls
 /// this on every build, which is also what keeps its image from being evicted.
 pub(crate) fn request(key: ImageKey, url: &str) {
+    crate::tape::note_build(crate::tape::BuildEffect::Image(key, url.into()));
     REQUESTS.with_borrow_mut(|requests| {
         if requests.queued.insert(key) {
             requests.urls.entry(key).or_insert_with(|| Arc::from(url.trim()));

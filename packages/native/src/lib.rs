@@ -37,6 +37,7 @@ mod retain;
 mod scroll;
 mod scrollbar;
 mod slot;
+mod tape;
 // The data model is public so `examples/bench_serde.rs` measures the real
 // types instead of a copy that silently drifts from them.
 pub mod retained_tree;
