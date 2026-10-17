@@ -163,7 +163,7 @@ where
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
 pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
-    crate::tape::write(
+    crate::tape::write_in_layout(
         (window, id, ElementBounds::from_gpui(bounds, insets)),
         |(window, id, bounds)| insert_bounds(*window, *id, *bounds),
         |(_, id, bounds)| format!("bounds {id} {bounds:?}"),
@@ -177,7 +177,7 @@ fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
 }
 
 fn record_position(window: WindowId, id: u64, position: Position) {
-    crate::tape::write(
+    crate::tape::write_in_layout(
         (window, id, position),
         |(window, id, position)| set_position(*window, *id, *position),
         |(_, id, position)| format!("position {id} {position:?}"),
@@ -194,6 +194,13 @@ fn set_position(window: WindowId, id: u64, position: Position) {
 
 pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
     BOUNDS.with(|cell| cell.borrow().get(&(window, id)).copied())
+}
+
+/// Every painted box of `window` as text, in the order of the element ids.
+pub(crate) fn describe_bounds(window: WindowId) -> String {
+    let mut all: Vec<_> = all_bounds(window).into_iter().collect();
+    all.sort_by_key(|(id, _)| *id);
+    all.iter().map(|(id, bounds)| format!("bounds {id} {bounds:?}\n")).collect()
 }
 
 pub fn all_bounds(window: WindowId) -> HashMap<u64, ElementBounds> {

@@ -1549,6 +1549,93 @@ mod tests {
         assert_eq!(after.mismatches, 0);
     }
 
+    impl Scene {
+        /// A read of a bounds on a window that has a change to show: a pass that lays out and
+        /// does not paint. Returns the boxes it published, how many elements it built and what the
+        /// retained subtrees did, all as the pass left them (the test app draws the window once it
+        /// is over).
+        fn layout_only(&self, cx: &mut gpui::TestAppContext) -> (String, u64, gpui::RetainedCounters) {
+            crate::perf_counters::reset();
+            let result = cx
+                .update_window(self.window.into(), |view, window, app| {
+                    view.downcast::<GpuixView>().unwrap().update(app, |_, cx| cx.notify());
+                    assert!(window.draw_if_dirty(app), "a pass ran");
+                    (
+                        crate::automation::describe_bounds(window.window_handle().window_id()),
+                        crate::perf_counters::snapshot().elements_built,
+                        window.retained_counters(),
+                    )
+                })
+                .unwrap();
+            self.assert_sound(cx);
+            result
+        }
+
+        /// The boxes of the last frame, after a frame that builds every element.
+        fn built_bounds(&self, cx: &mut gpui::TestAppContext) -> String {
+            self.draw(cx);
+            crate::automation::describe_bounds(self.window.window_id())
+        }
+    }
+
+    #[gpui::test]
+    fn a_layout_only_pass_publishes_the_boxes_a_build_publishes(cx: &mut gpui::TestAppContext) {
+        let scene = planned(cx, [CARD; 3], true);
+        let all = 1 + 3 * (1 + 3 * 2);
+
+        // The last card grows, and nothing before it moves.
+        scene.set_style(30, r#"{"height": 90}"#);
+        let (published, _, during) = scene.layout_only(cx);
+        assert!(during.layout_replays >= 5, "{during:?}");
+        assert!(during.verified > 0, "the pass was compared with a build of it: {during:?}");
+        assert_eq!(published, scene.built_bounds(cx));
+        assert!(published.lines().count() >= all as usize - 3, "the boxes of what was skipped are there:\n{published}");
+
+        // The first card grows and moves the others, which are built where they are.
+        scene.settle(cx);
+        scene.set_style(10, r#"{"height": 90}"#);
+        let (published, _, _) = scene.layout_only(cx);
+        assert_eq!(published, scene.built_bounds(cx));
+
+        // And the frame after a pass is the frame a build makes, which replays what the pass
+        // left alone.
+        scene.settle(cx);
+        let before = retained_counters(&scene, cx);
+        scene.set_style(30, r#"{"height": 60}"#);
+        scene.layout_only(cx);
+        scene.notified_draw(cx);
+        let after = retained_counters(&scene, cx);
+        assert!(after.replays > before.replays, "{after:?}");
+        assert_eq!(after.mismatches, 0, "{after:?}");
+        assert!(after.verified > before.verified);
+    }
+
+    #[gpui::test]
+    fn a_layout_only_pass_builds_the_spine_and_what_changed(cx: &mut gpui::TestAppContext) {
+        let scene = planned(cx, [CARD; 3], false);
+        let pass = |cx: &mut gpui::TestAppContext| {
+            let before = retained_counters(&scene, cx);
+            let (_, built, after) = scene.layout_only(cx);
+            (built, after.layout_skips - before.layout_skips, after.layout_replays - before.layout_replays, after.layout_builds - before.layout_builds)
+        };
+        // Nothing changed: the page is the one root, and the pass skips it.
+        assert_eq!(pass(cx), (0, 1, 1, 0));
+        scene.settle(cx);
+
+        // The page and the last card are built; the other cards and the lines of the last are
+        // not, and are where they were.
+        scene.set_style(30, r#"{"height": 90}"#);
+        assert_eq!(pass(cx), (2, 5, 5, 0));
+        scene.settle(cx);
+
+        // The cards after the first move, and are built where they are.
+        scene.set_style(10, r#"{"height": 90}"#);
+        let (built, skips, replays, builds) = pass(cx);
+        assert!(built > 2, "{built}");
+        // The cards moved, and so did the lines in them, which are skipped inside the cards built.
+        assert_eq!((skips, replays, builds), (11, 3, 8));
+    }
+
     #[gpui::test]
     fn a_box_that_goes_away_with_a_transition_running_and_comes_back(cx: &mut gpui::TestAppContext) {
         let shown = |width: u32, display: &str| {

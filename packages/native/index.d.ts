@@ -1552,6 +1552,18 @@ export interface RetainedCounters {
   builds: number
   layoutFallbacks: number
   /**
+   * Subtrees a layout-only pass (a bounds read on a dirty window) did not build, because the
+   * last presented frame left them recorded as the same.
+   */
+  layoutSkips: number
+  /**
+   * Of those, the subtrees it published from their recording instead of building them for
+   * prepaint as it does the ones that moved.
+   */
+  layoutReplays: number
+  /** Subtrees built by a layout-only pass. */
+  layoutBuilds: number
+  /**
    * Frames that replayed something and were compared with a build of the same frame; always 0
    * unless `setRetainVerify`.
    */

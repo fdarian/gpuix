@@ -7244,8 +7244,9 @@ impl GpuixView {
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
         }
-        // Only a build that gpui can record has a tape that goes with the recording.
-        if !window.retention_allowed() {
+        // Only a build that gpui can record has a tape that goes with the recording. A pass that
+        // only lays out records nothing, and must leave the tape of the recording that stands.
+        if !window.retention_records() {
             return element;
         }
         let tape = crate::tape::SharedTape::default();
@@ -7276,8 +7277,13 @@ impl gpui::Render for GpuixView {
         self.tapes.verify(verifies);
         window.set_retention_verifier(verifies.then(|| {
             let tapes = self.tapes.clone();
-            Rc::new(move |window: &gpui::Window| tapes.describe_replays(window.is_retention_reference()))
-                as Rc<dyn Fn(&gpui::Window) -> String>
+            Rc::new(move |window: &gpui::Window| {
+                // A pass that only lays out records no tape. What it publishes is the registry.
+                if window.is_layout_pass() {
+                    return crate::automation::describe_bounds(window.window_handle().window_id());
+                }
+                tapes.describe_replays(window.is_retention_reference())
+            }) as Rc<dyn Fn(&gpui::Window) -> String>
         }));
         if !window.is_retention_reference() {
             self.tapes.forget_replays();
@@ -7702,6 +7708,7 @@ fn retained_root(
             match phase {
                 gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
                 gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
+                gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
             },
         );
     });

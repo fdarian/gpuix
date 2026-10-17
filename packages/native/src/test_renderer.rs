@@ -82,6 +82,14 @@ pub struct RetainedCounters {
     /// Subtrees built for layout.
     pub builds: f64,
     pub layout_fallbacks: f64,
+    /// Subtrees a layout-only pass (a bounds read on a dirty window) did not build, because the
+    /// last presented frame left them recorded as the same.
+    pub layout_skips: f64,
+    /// Of those, the subtrees it published from their recording instead of building them for
+    /// prepaint as it does the ones that moved.
+    pub layout_replays: f64,
+    /// Subtrees built by a layout-only pass.
+    pub layout_builds: f64,
     /// Frames that replayed something and were compared with a build of the same frame; always 0
     /// unless `setRetainVerify`.
     pub verified: f64,
@@ -767,6 +775,9 @@ impl TestGpuixRenderer {
                 lazy_builds: counters.lazy_builds as f64,
                 builds: counters.builds as f64,
                 layout_fallbacks: counters.layout_fallbacks as f64,
+                layout_skips: counters.layout_skips as f64,
+                layout_replays: counters.layout_replays as f64,
+                layout_builds: counters.layout_builds as f64,
                 verified: counters.verified as f64,
                 mismatches: counters.mismatches as f64,
                 non_reusable: serde_json::Value::Object(

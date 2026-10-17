@@ -27,18 +27,24 @@ use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, 
 pub(crate) enum Phase {
     Prepaint,
     Paint,
+    /// A pass that lays out and does not paint: the writes of both phases that such a pass makes
+    /// too, see [`write_in_layout`].
+    Layout,
 }
 
 /// A registry write that can be made again, and said in words.
 trait Replay {
     fn apply(&self);
     fn describe(&self) -> String;
+    /// Whether a pass that only lays out makes the write too, from prepaint.
+    fn in_layout(&self) -> bool;
 }
 
 struct Write<D> {
     data: D,
     apply: fn(&D),
     describe: fn(&D) -> String,
+    in_layout: bool,
 }
 
 impl<D> Replay for Write<D> {
@@ -48,6 +54,10 @@ impl<D> Replay for Write<D> {
 
     fn describe(&self) -> String {
         (self.describe)(&self.data)
+    }
+
+    fn in_layout(&self) -> bool {
+        self.in_layout
     }
 }
 
@@ -65,6 +75,7 @@ impl Tape {
         match phase {
             Phase::Prepaint => &mut self.prepaint,
             Phase::Paint => &mut self.paint,
+            Phase::Layout => unreachable!("nothing records into the layout phase: it replays the other two"),
         }
     }
 
@@ -72,6 +83,13 @@ impl Tape {
     /// recorded is part of its tape too.
     pub(crate) fn replay(&self, phase: Phase) {
         let effects = match phase {
+            // A pass that only lays out records no tape, so this is not part of one. It makes the
+            // writes of prepaint, and those of paint that it makes from prepaint too.
+            Phase::Layout => {
+                self.prepaint.iter().for_each(|effect| effect.apply());
+                self.paint.iter().filter(|effect| effect.in_layout()).for_each(|effect| effect.apply());
+                return;
+            }
             Phase::Prepaint => &self.prepaint,
             Phase::Paint => &self.paint,
         };
@@ -89,7 +107,10 @@ impl Tape {
     /// What the tape writes, as text, one line per write.
     pub(crate) fn describe(&self) -> String {
         let lines = |phase: &str, effects: &[Effect]| {
-            effects.iter().map(|effect| format!("{phase} {}\n", effect.describe())).collect::<String>()
+            effects
+                .iter()
+                .map(|effect| format!("{phase}{} {}\n", if effect.in_layout() { "+layout" } else { "" }, effect.describe()))
+                .collect::<String>()
         };
         lines("prepaint", &self.prepaint) + &lines("paint", &self.paint)
     }
@@ -175,13 +196,23 @@ thread_local! {
 /// or painted, if there is one, for `describe` to say in words and a frame that replays the
 /// subtree to make again. A frame without retained subtrees pays one thread-local read per write.
 pub(crate) fn write<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String) {
+    write_with(data, apply, describe, false);
+}
+
+/// [`write`] for a registry that a pass which only lays out (a bounds read) writes too, from
+/// prepaint: the painted boxes. A subtree that such a pass does not build repeats it from its tape.
+pub(crate) fn write_in_layout<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String) {
+    write_with(data, apply, describe, true);
+}
+
+fn write_with<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String, in_layout: bool) {
     apply(&data);
     RECORDING.with(|recordings| {
         let recordings = recordings.borrow();
         if recordings.is_empty() {
             return;
         }
-        let effect: Effect = Rc::new(Write { data, apply, describe });
+        let effect: Effect = Rc::new(Write { data, apply, describe, in_layout });
         for recording in recordings.iter() {
             recording.tape.borrow_mut().of(recording.phase).push(effect.clone());
         }

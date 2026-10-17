@@ -12,7 +12,7 @@
 import fs from "fs"
 import React from "react"
 import { describe, expect, it } from "vitest"
-import { IntersectionObserver, motion, ResizeObserver } from "../index"
+import { flushSync, IntersectionObserver, motion, ResizeObserver, type PublicInstance } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
@@ -577,6 +577,75 @@ describeNative("a page of retained cards", () => {
       finish()
     } finally {
       unmount()
+    }
+  })
+
+  it("answers a read after a write inside one card from a pass that builds the spine and publishes the rest", () => {
+    // About 2000 elements, in cards of a fixed size, so that a change inside one moves no other.
+    const COUNT = 220
+    const PROBE = 100
+    let write!: (tall: boolean) => void
+    const probe = React.createRef<PublicInstance>()
+    function Big() {
+      const [tall, setTall] = React.useState(false)
+      write = setTall
+      return (
+        <div testId="page" style={{ display: "flex", flexWrap: "wrap", gap: 8, width: 1240 }}>
+          {Array.from({ length: COUNT }, (_, index) => (
+            <Card key={index} index={index} extra={index === PROBE ? <div ref={probe} style={{ width: 20, height: tall ? 30 : 10 }} /> : null} />
+          ))}
+        </div>
+      )
+    }
+    const root = createTestRoot({ width: 1240, height: 780 })
+    const { renderer } = root
+    try {
+      root.render(<Big />)
+      for (let frame = 0; frame < 5; frame++) renderer.flush()
+      // A live window is drawn by the display link, once per frame; a read in between is a pass.
+      renderer.setInlineDraws(false)
+      renderer.drawFrame()
+      renderer.drawFrame()
+      const boxOf = (testId: string) => renderer.getElementBounds(renderer.findByTestId(testId).id)
+      const sampled = Array.from({ length: COUNT / 20 }, (_, group) => [`card-${group * 20}`, `title-${group * 20 + 3}`, `button-${group * 20 + 7}`]).flat()
+      const boxes = () => Object.fromEntries(sampled.map((testId) => [testId, boxOf(testId)]))
+      const before = boxes()
+      const probeBefore = probe.current!.getBoundingClientRect()
+      expect(probeBefore.height).toBe(10)
+      renderer.drawFrame()
+
+      const counters = renderer.getRetainedCounters()
+      const builtBefore = renderer.getBuildCounters().elementsBuilt
+      const passes = renderer.getLayoutPassCount()
+      flushSync(() => write(true))
+      const probeAfter = probe.current!.getBoundingClientRect()
+      expect(renderer.getLayoutPassCount()).toBe(passes + 1)
+      expect(probeAfter.height).toBe(30)
+      expect(probeAfter.y).toBe(probeBefore.y)
+      const built = renderer.getBuildCounters().elementsBuilt - builtBefore
+      const during = renderer.getRetainedCounters()
+      // The cards were not touched: every one but the one written is skipped and publishes its boxes.
+      expect(during.layoutReplays - counters.layoutReplays).toBeGreaterThanOrEqual(COUNT - 1)
+      if (!verifying) expect(during.layoutBuilds - counters.layoutBuilds).toBe(0)
+      expect(boxes()).toEqual(before)
+      // The page, the card and what changed in it: nowhere near the 2000 elements a build makes.
+      if (!verifying) expect(built).toBeLessThan(30)
+
+      // The frame after replays what the pass left alone, and shows the same as a build.
+      const replays = renderer.getRetainedCounters().replays
+      renderer.drawFrame()
+      expect(renderer.getRetainedCounters().replays - replays).toBeGreaterThanOrEqual(COUNT - 1)
+      const shown = boxes()
+      expect(probe.current!.getBoundingClientRect()).toEqual(probeAfter)
+      renderer.setRetainPlanning(false)
+      renderer.setInlineDraws(true)
+      renderer.flush()
+      expect(boxes()).toEqual(shown)
+      expect(probe.current!.getBoundingClientRect()).toEqual(probeAfter)
+      expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      renderer.setInlineDraws(true)
+      root.unmount()
     }
   })
 

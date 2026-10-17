@@ -28,8 +28,16 @@
  *   write-then-read  commits the highlight position, then reads (a dirty window)
  *   read-then-write  reads, then commits the highlight position
  *
- * Guards: no variant draws more than once per frame (1.05 for slack), and
- * the layout passes are as many as invalidations a read saw. Run it through
+ * Guards: no variant draws more than once per frame (1.05 for slack), the
+ * layout passes are as many as invalidations a read saw, and a frame with a
+ * read costs less than 3x the same frame without it (`read` against `none`,
+ * `write-then-read` and `read-then-write` against `write`). A browser's forced
+ * layout redoes only what is dirty, and so does the pass: the subtrees the
+ * last frame recorded as unchanged are skipped and publish their boxes from
+ * the recording instead of being built (the page is the same one every frame
+ * but for the highlight and the dot). Before that, the pass built every
+ * element: `write-then-read` was 6.7 ms against 1.6 ms for `write` with one
+ * move per frame, and 18.1 ms against 2.5 ms with three. Run it through
  * `bun run test:perf:draws` (NODE_ENV=production, like `test:perf`); the
  * counts do not depend on the build, the timings do.
  */
@@ -38,7 +46,7 @@ import React, { useRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { flushSync, motion, type PublicInstance } from '@gpuix/react'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
-import { formatSummary, sample, summarize } from './perf-harness'
+import { formatSummary, sample, summarize, type Summary } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -102,6 +110,7 @@ function expectedPassesPerFrame(handler: Handler, moves: number): number {
 describeNative('draws against frames under pointer moves and an animation', () => {
   for (const moves of [1, 3]) {
     it(`${moves} move(s) per frame`, () => {
+      const summaries = new Map<Handler, Summary>()
       for (const handler of ['none', 'read', 'write', 'write-then-read', 'read-then-write'] as const) {
         const root = createTestRoot(WINDOW)
         try {
@@ -133,6 +142,7 @@ describeNative('draws against frames under pointer moves and an animation', () =
           )
           const drawn = draws() - drawsAtStart
           const laidOut = passes() - passesAtStart
+          summaries.set(handler, summarize(frames))
           console.log(
             `[draws.perf] moves/frame=${moves} handler=${handler} frames=${SAMPLES} ` +
               `draws=${drawn} (${(drawn / SAMPLES).toFixed(2)}/frame) layout-passes=${laidOut} ` +
@@ -146,6 +156,13 @@ describeNative('draws against frames under pointer moves and an animation', () =
           root.unmount()
         }
       }
+      // What a forced layout adds to the frame it is in.
+      const cpu = (handler: Handler) => summaries.get(handler)!.cpuP50
+      expect(cpu('read'), 'read against none').toBeLessThan(3 * cpu('none'))
+      expect(cpu('write-then-read'), 'write-then-read against write').toBeLessThan(3 * cpu('write'))
+      expect(cpu('read-then-write'), 'read-then-write against write').toBeLessThan(3 * cpu('write'))
+      // With one move there is one write, which is a frame of its own: against a frame that changes nothing.
+      if (moves === 1) expect(cpu('write-then-read'), 'write-then-read against none').toBeLessThan(3 * cpu('none'))
     }, 300_000)
   }
 })
