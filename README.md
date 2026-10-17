@@ -6898,7 +6898,8 @@ Differences from the browser:
   paragraph planner read the style without it. `display` is the exception for the values
   that decide what kind of box a child is in its parent's text (`none`, `block`, `inline`,
   `inline-block`, `inline-flex`, `inline-grid`, and `flex` or `grid` for the container
-  itself) and what part of a table it is (`table`, `inline-table` and the other `table-*`
+  itself, which also decides whether `order` sorts its children and whether the `zIndex` of a
+  static child stacks) and what part of a table it is (`table`, `inline-table` and the other `table-*`
   values, which also decide what a table, row group or row wraps in an anonymous cell, and what
   a block wraps in an anonymous table): the parent is rebuilt when a block changes one.
   `position`, `zIndex` and `display: contents` are not taken from a block by those readers.

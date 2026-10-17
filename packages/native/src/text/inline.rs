@@ -498,7 +498,7 @@ pub fn plan_children_at(tree: &RetainedTree, container: &RetainedElement) -> Vec
 /// [`plan_children_at`].
 fn children_at(tree: &RetainedTree, container: &RetainedElement) -> Vec<(u64, u32)> {
     let document = crate::layout::contents::flatten(tree, &container.children);
-    let children = crate::layout::order::children_in_order(tree, container, container.style.as_deref());
+    let children = crate::layout::order::children_in_order(tree, container);
     if *document == *children {
         return children.iter().enumerate().map(|(ix, id)| (*id, ix as u32)).collect();
     }

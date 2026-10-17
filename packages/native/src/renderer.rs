@@ -8196,7 +8196,7 @@ fn resolve_collapsed_borders(ctx: &mut BuildCtx, table: CollapsedTable, scale: f
         if !is_table && !matches!(crate::layout::table::part(element), Some(Part::RowGroup(_) | Part::Row | Part::ColumnGroup)) {
             return;
         }
-        let children = crate::layout::order::children_in_order(ctx.tree, element, element.style.as_deref());
+        let children = crate::layout::order::children_in_order(ctx.tree, element);
         for child in children.iter().filter_map(|id| ctx.tree.elements.get(id)) {
             walk_child(ctx, child, inherited, sides);
         }

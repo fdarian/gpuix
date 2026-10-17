@@ -214,7 +214,7 @@ pub(crate) fn is_item(tree: &RetainedTree, element: &RetainedElement) -> bool {
 /// Whether `element` lays its children out as a flex or grid container.
 pub(crate) fn is_flex_or_grid_container(element: &RetainedElement) -> bool {
     crate::text::inline::is_host_container(element)
-        && super::display::lays_out_items(element.style.as_deref().and_then(|style| style.display.as_deref()))
+        && super::display::lays_out_items(element.display().as_deref())
 }
 
 /// Whether `element` is a context whatever its style says. The counterpart of the `forced`

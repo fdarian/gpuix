@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 
 use crate::retained_tree::{RetainedElement, RetainedTree};
-use crate::style::StyleDesc;
 
 /// The children of a container with `display: contents` elements spliced in, in `order` order
-/// when it is a flex or grid container.
+/// when it is a flex or grid container, by the display its `@container` blocks gave it.
 ///
 /// Taffy has no `order`, and GPUI paints children in the order they are added,
 /// so sorting the list that gets built moves layout and paint together. The sort
@@ -13,10 +12,9 @@ use crate::style::StyleDesc;
 pub(crate) fn children_in_order<'a>(
     tree: &RetainedTree,
     element: &'a RetainedElement,
-    style: Option<&StyleDesc>,
 ) -> Cow<'a, [u64]> {
     let children = super::contents::flatten(tree, &element.children);
-    let is_flex_or_grid = super::display::lays_out_items(style.and_then(|style| style.display.as_deref()));
+    let is_flex_or_grid = super::display::lays_out_items(element.display().as_deref());
     if !is_flex_or_grid || !children.iter().any(|id| order_of(tree, *id) != 0) {
         return children;
     }
@@ -45,6 +43,7 @@ fn order_of(tree: &RetainedTree, id: u64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::StyleDesc;
 
     fn tree_with_orders(orders: &[Option<f64>], display: &str) -> (RetainedTree, u64) {
         let mut tree = RetainedTree::new();
@@ -70,13 +69,26 @@ mod tests {
     fn sorted(orders: &[Option<f64>], display: &str) -> Vec<u64> {
         let (tree, id) = tree_with_orders(orders, display);
         let element = tree.elements.get(&id).unwrap();
-        children_in_order(&tree, element, element.style.as_deref()).into_owned()
+        children_in_order(&tree, element).into_owned()
     }
 
     #[test]
     fn sorts_by_order_and_keeps_document_order_for_ties() {
         let result = sorted(&[Some(2.0), None, Some(-1.0), Some(2.0), Some(0.0)], "flex");
         assert_eq!(result, vec![12, 11, 14, 10, 13]);
+    }
+
+    #[test]
+    fn a_display_a_container_block_gave_decides_whether_order_applies() {
+        let (tree, id) = tree_with_orders(&[Some(2.0), Some(1.0)], "block");
+        let element = tree.elements.get(&id).unwrap();
+        *element.container_display.borrow_mut() = Some(Some("inline-flex".to_string()));
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![11, 10]);
+
+        let (tree, id) = tree_with_orders(&[Some(2.0), Some(1.0)], "flex");
+        let element = tree.elements.get(&id).unwrap();
+        *element.container_display.borrow_mut() = Some(Some("block".to_string()));
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![10, 11]);
     }
 
     #[test]
