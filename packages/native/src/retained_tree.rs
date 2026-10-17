@@ -968,17 +968,19 @@ impl RetainedTree {
             } else {
                 false
             };
-            // Which listeners exist decides how the element is built. For a
-            // `<text>` it also decides whether it is raw text (`is_raw_text`),
-            // which the paragraph builder and search read it by.
-            self.dirty |= changed;
-            if changed
-                && self
+            // Which listeners exist decides how the element is built, so it takes a revision:
+            // `retain` keys what it reuses by it. For a `<text>` it also decides whether it is
+            // raw text (`is_raw_text`), which the paragraph builder and search read it by.
+            if changed {
+                if self
                     .elements
                     .get(&id)
                     .is_some_and(|element| element.element_type == "text")
-            {
-                self.mark_changed(id);
+                {
+                    self.mark_changed(id);
+                } else {
+                    self.mark_render_changed(id);
+                }
             }
         }
     }
@@ -2513,6 +2515,19 @@ mod tests {
         let after = tree.elements[&1].subtree_revision;
         tree.set_text(3, "changed".to_string());
         assert_eq!(tree.elements[&1].subtree_revision, after);
+    }
+
+    #[test]
+    fn a_listener_appearing_or_going_takes_a_revision_and_a_resend_does_not() {
+        let mut tree = tree_with_child();
+        let before = tree.elements[&1].subtree_revision;
+        tree.set_event_listener(1, "layout".to_string(), true);
+        let added = tree.elements[&1].subtree_revision;
+        assert!(added > before, "which listeners exist decides how the element is built");
+        tree.set_event_listener(1, "layout".to_string(), true);
+        assert_eq!(tree.elements[&1].subtree_revision, added);
+        tree.set_event_listener(1, "layout".to_string(), false);
+        assert!(tree.elements[&1].subtree_revision > added);
     }
 
     // ── The universal style layer ────────────────────────────────────

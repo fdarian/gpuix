@@ -721,6 +721,15 @@ impl TestGpuixRenderer {
         update_view(|view, _window, _cx| view.retain.set_verify(verify))
     }
 
+    /// Counts as if the exclusions named here were lifted, to see which are worth lifting first:
+    /// `paint-reporter`, `container-query`, `highlight`, `custom-element`, `svg`, `virtual-list`,
+    /// `collapsed-table`, `display-contents`, `anchored`, `sticky`, `fixed`, `scroller`,
+    /// `overflow-hidden`, `layout-animation`, `atomic-inline`, `label`. Nothing is reused.
+    #[napi]
+    pub fn set_retain_lift(&self, names: Vec<String>) -> Result<()> {
+        update_view(move |view, _window, _cx| view.retain.lift(&names))?.map_err(Error::from_reason)
+    }
+
     /// What the elements judged unchanged were built differently by, one line each.
     #[napi]
     pub fn get_retain_mismatches(&self) -> Result<Vec<String>> {

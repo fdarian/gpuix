@@ -21,6 +21,7 @@
 import React from 'react'
 import { describe, expect, it } from 'vitest'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { formatRetain } from './perf-harness'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -296,19 +297,26 @@ describeNative('command menu page: clipped and scrolled-out content', () => {
       const elements = renderer.getRetainedElementCount()
 
       // A frame with nothing changed: the whole root view is rebuilt and laid out.
+      renderer.resetBuildCounters()
       report(variant, 'idle-flush', sample(() => renderer.flush()), elements)
+      // How much of those builds a retained replay could have skipped (#37 step 4a).
+      console.log(`[menus.perf] ${variant} idle-flush ${formatRetain(renderer.getBuildCounters())}`)
 
       // Wheel on the page scroller: the same rebuild plus a scroll offset change.
+      renderer.resetBuildCounters()
       const wheel = sample((i) =>
         renderer.dispatchScrollWheel(WINDOW.width / 2, 400, 0, i % 2 === 0 ? 40 : -40),
       )
       report(variant, 'page-wheel', wheel, elements)
+      console.log(`[menus.perf] ${variant} page-wheel ${formatRetain(renderer.getBuildCounters())}`)
 
       // A wheel over a menu's list scroller.
+      renderer.resetBuildCounters()
       const listWheel = sample((i) =>
         renderer.dispatchScrollWheel(WINDOW.width / 2, 200, 0, i % 2 === 0 ? 40 : -40),
       )
       report(variant, 'list-wheel', listWheel, elements)
+      console.log(`[menus.perf] ${variant} list-wheel ${formatRetain(renderer.getBuildCounters())}`)
       expect(elements).toBeGreaterThan(0)
     }, 120_000)
   }

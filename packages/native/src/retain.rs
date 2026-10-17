@@ -18,6 +18,10 @@
 //! The maximal such subtrees are the would-be placeholders. They are counted, and every other
 //! element is counted under the first reason it is not in one.
 //!
+//! Known gaps, found by the verify mode only where a test reaches them: a parent whose children are
+//! chosen by `hold_display` (a `display` transition with `allow-discrete`) builds a different set
+//! of children with an unchanged key, and a `<label>` reads its control (so it is excluded).
+//!
 //! Not known at build time: that layout gives a retained subtree the same box it had. Step 5's
 //! replay key checks that, so the numbers here are an upper bound for frames that move layout.
 
@@ -397,6 +401,9 @@ pub(crate) struct Summary {
 pub(crate) struct Retain {
     /// `GPUIX_RETAIN_OFF` stops recording, to time a build without it.
     enabled: bool,
+    /// The exclusions to ignore, by `Exclusion as u32`: what the numbers would be if they were
+    /// lifted. For measuring which to lift first; nothing reuses anything.
+    lifted: u32,
     verify: bool,
     open: bool,
     /// Above zero while a virtual list builds a row, which is outside any render.
@@ -433,6 +440,7 @@ impl Retain {
     pub(crate) fn new() -> Self {
         Self {
             enabled: std::env::var_os("GPUIX_RETAIN_OFF").is_none(),
+            lifted: 0,
             verify: cfg!(test) || std::env::var_os("GPUIX_RETAIN_VERIFY").is_some(),
             open: false,
             rows: 0,
@@ -455,8 +463,24 @@ impl Retain {
         self.verify = verify;
     }
 
-    pub(crate) fn verifying(&self) -> bool {
-        self.verify
+    /// Counts as if the exclusions named here, by `Exclusion::name`, were lifted.
+    pub(crate) fn lift(&mut self, names: &[String]) -> Result<(), String> {
+        let mut lifted = 0;
+        for name in names {
+            let reason = Exclusion::ALL
+                .into_iter()
+                .find(|reason| reason.name() == name)
+                .ok_or_else(|| format!("no exclusion called {name}"))?;
+            lifted |= 1 << reason as u32;
+        }
+        self.lifted = lifted;
+        // What was recorded under other exclusions says nothing about these.
+        self.last.clear();
+        Ok(())
+    }
+
+    fn unless_lifted(&self, reason: Exclusion) -> Option<Exclusion> {
+        (self.lifted & (1 << reason as u32) == 0).then_some(reason)
     }
 
     pub(crate) fn mismatches(&self) -> &[String] {
@@ -529,17 +553,19 @@ impl Retain {
             forms_context: false,
             digest: 0,
         };
-        if entry.atomic_root {
-            node.exclusion = Some(Exclusion::AtomicInline);
+        node.exclusion = if entry.atomic_root {
+            self.unless_lifted(Exclusion::AtomicInline)
         } else if entry.contents_overlay {
-            node.exclusion = Some(Exclusion::DisplayContents);
+            self.unless_lifted(Exclusion::DisplayContents)
         } else if entry.anchor_scope {
-            node.exclusion = Some(Exclusion::Anchored);
+            self.unless_lifted(Exclusion::Anchored)
         } else if entry.inherited.highlight.is_some() {
-            node.exclusion = Some(Exclusion::Highlight);
+            self.unless_lifted(Exclusion::Highlight)
         } else if entry.inherited.table.collapse {
-            node.exclusion = Some(Exclusion::CollapsedTable);
-        }
+            self.unless_lifted(Exclusion::CollapsedTable)
+        } else {
+            None
+        };
         self.stack.push(self.nodes.len() as u32);
         self.nodes.push(node);
     }
@@ -562,6 +588,7 @@ impl Retain {
 
     /// The first reason wins: it is the one the element is counted under.
     pub(crate) fn exclude(&mut self, reason: Exclusion) {
+        let Some(reason) = self.unless_lifted(reason) else { return };
         if let Some(node) = self.top() {
             node.exclusion.get_or_insert(reason);
         }
@@ -780,7 +807,8 @@ fn check(last: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64, d
     };
     crate::perf_counters::retain_mismatch();
     let message = format!("element {id} was judged unchanged and {problem}");
-    log::error!("{message}");
+    // Loud, for a suite run under `GPUIX_RETAIN_VERIFY`: nothing reads the counter there.
+    eprintln!("[retain] {message}");
     if mismatches.len() < 32 {
         mismatches.push(message);
     }

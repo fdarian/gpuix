@@ -469,6 +469,13 @@ export declare class TestGpuixRenderer {
    * per element, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on for a run.
    */
   setRetainVerify(verify: boolean): void
+  /**
+   * Counts as if the exclusions named here were lifted, to see which are worth lifting first:
+   * `paint-reporter`, `container-query`, `highlight`, `custom-element`, `svg`, `virtual-list`,
+   * `collapsed-table`, `display-contents`, `anchored`, `sticky`, `fixed`, `scroller`,
+   * `overflow-hidden`, `layout-animation`, `atomic-inline`, `label`. Nothing is reused.
+   */
+  setRetainLift(names: Array<string>): void
   /** What the elements judged unchanged were built differently by, one line each. */
   getRetainMismatches(): Array<string>
   resetBuildCounters(): void

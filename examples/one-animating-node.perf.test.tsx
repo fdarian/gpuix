@@ -106,7 +106,8 @@ describeNative('one animating node over a large static tree', () => {
           expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt)
           expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
           // Every built element is counted once, as in a retainable subtree or under the reason it is not.
-          expect(countedReasons(built)).toBe(built.elementsBuilt)
+          // `GPUIX_RETAIN_OFF` stops the counting, to time the build without it.
+          if (process.env.GPUIX_RETAIN_OFF === undefined) expect(countedReasons(built)).toBe(built.elementsBuilt)
         } finally {
           root.unmount()
         }

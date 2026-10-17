@@ -55,7 +55,7 @@ export function formatSummary(summary: Summary): string {
 }
 
 /** The part of `getBuildCounters()` that says how much of the build a retained replay could skip (#37 step 4a). */
-export interface RetainCounters {
+export type RetainCounters = {
   elementsBuilt: number
   retainableRoots: number
   retainableElements: number

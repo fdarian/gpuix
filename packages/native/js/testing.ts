@@ -134,6 +134,9 @@ interface NativeTestRendererApi
   getRetainedElementCount(): number
   getBuildCounters(): BuildCounters
   resetBuildCounters(): void
+  setRetainVerify(verify: boolean): void
+  setRetainLift(names: string[]): void
+  getRetainMismatches(): string[]
   getPaintedFrameCount(): number
   getLayoutPassCount(): number
   getCulledSubtreeCount(): number
@@ -877,6 +880,24 @@ export class TestRenderer implements NativeRenderer {
 
   resetBuildCounters(): void {
     this.native.resetBuildCounters()
+  }
+
+  /** Hashes what every element builds, and counts in `retainMismatches` an element the
+   *  retain key judged unchanged that built differently since the last build. Costs a
+   *  formatted style per element: leave it off to time a frame. */
+  setRetainVerify(verify: boolean): void {
+    this.native.setRetainVerify(verify)
+  }
+
+  /** Counts as if these exclusions (`svg`, `overflow-hidden`, `custom-element`, ...) were lifted,
+   *  to see which are worth lifting first. Nothing is reused. */
+  setRetainLift(names: string[]): void {
+    this.native.setRetainLift(names)
+  }
+
+  /** The elements counted in `retainMismatches`, one line each. */
+  getRetainMismatches(): string[] {
+    return this.native.getRetainMismatches()
   }
 
   /** Frames the window has painted. A test compares it before and after to
