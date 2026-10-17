@@ -957,10 +957,86 @@ export interface StyleDesc {
   /** `false` keeps this focusable element at full opacity while another
    *  control has keyboard focus. Default dims it. Not inherited. */
   keyboardFocusDim?: boolean
+
+  /**
+   * Makes the element a query container, like CSS `container-type`: the
+   * `"@container"` blocks and container units (`cqw`, `cqh`, ...) of its
+   * descendants are about its content box. `"inline-size"` contains the width:
+   * the element's width no longer depends on its content, so with no `width`
+   * it is only its padding and border (a flex item or an absolutely positioned
+   * box with an `inline-size` container inside shrinks to nothing, as in a
+   * browser). `"size"` contains the height too. `"normal"` (the default) makes
+   * no container. Applies to `div`, `text` and the other boxes that hold
+   * children, not to `span` or the elements that paint their own content.
+   */
+  containerType?: "normal" | "inline-size" | "size"
+  /**
+   * Names the container so a query can pick it: `"@container sidebar
+   * (min-width: 400px)"` asks the nearest ancestor container called `sidebar`
+   * instead of the nearest one. Several names are separated by spaces;
+   * `"none"` is no name. Like CSS `container-name`.
+   */
+  containerName?: string
+  /**
+   * `"<name> [ / <type> ]"`, both properties in one, like CSS `container`:
+   * `"sidebar / inline-size"`. A type left out is `"normal"`. `containerType`
+   * and `containerName` win over it.
+   */
+  container?: string
+  /**
+   * Styles that apply while a container query is true, like CSS `@container`.
+   * Keys are queries in the CSS Containment 3 grammar, written the way they
+   * follow `@container`: an optional container name, then a condition.
+   *
+   * ```ts
+   * style={{
+   *   padding: 16,
+   *   "@container": {
+   *     "(min-width: 400px)": { padding: 32 },
+   *     "sidebar (400px <= width < 800px) and (orientation: landscape)": { flexDirection: "row" },
+   *     "not (min-height: 300px)": { display: "none" },
+   *   },
+   * }}
+   * ```
+   *
+   * Features: `width`, `height`, `inline-size`, `block-size`, `aspect-ratio`
+   * and `orientation`, with `min-` / `max-` prefixes, `(feature: value)`, the
+   * range syntax `(400px <= width < 800px)`, and `and` / `or` / `not` (mixing
+   * `and` with `or` needs parentheses). Lengths take px, em (the container's
+   * font size), rem, vw, vh, vmin, vmax, the container units and `calc()`.
+   * A feature, or a `style()` / `scroll-state()` query, that is not supported
+   * is unknown, and an unknown query is false. A text that is not a query at
+   * all makes the whole style invalid.
+   *
+   * The query looks at the nearest ancestor container (with that name, if
+   * the query has one) that contains the axes its features read: `width`
+   * needs `"inline-size"` or `"size"`, `height`, `aspect-ratio` and
+   * `orientation` need `"size"`. It never matches the element itself, and it
+   * measures the container's content box (without padding, border and a
+   * scrollbar gutter). With no such container, or before the container has
+   * been laid out, it is false.
+   *
+   * Blocks apply in the order they are written, a later one winning over an
+   * earlier one that sets the same property. They fold into the style before
+   * `hover`, `active` and the other state styles, which therefore win over
+   * them, and a block may carry its own state keys (`hover`, `focusVisible`,
+   * ...) that merge into the style's. A block cannot hold another
+   * `"@container"`.
+   *
+   * The style is right in the frame that lays the container out: when a
+   * container's size changes what a query or a container unit resolves to,
+   * the frame is built again before it is presented (up to four times for
+   * nested containers).
+   */
+  "@container"?: Record<string, ContainerBlockStyleDesc>
 }
+
+/** A style inside `"@container"`: any style, state styles included, except another `"@container"`. */
+export type ContainerBlockStyleDesc = Omit<StyleDesc, "@container">
 
 export type StateStyleDesc = Omit<
   StyleDesc,
+  | "@container"
   | "hover"
   | "active"
   | "focusVisible"

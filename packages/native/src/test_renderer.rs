@@ -570,6 +570,7 @@ impl TestGpuixRenderer {
                         view.simulate_window_actions(window_actions_clone);
                         view.set_frameless(frameless);
                         crate::events::enable_dom_hit_testing(window);
+                        crate::layout::container::allow_redraw_passes(window);
                         view.install_key_interception(window, cx);
                         view
                     })

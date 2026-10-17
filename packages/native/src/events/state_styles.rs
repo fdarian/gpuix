@@ -23,6 +23,8 @@ macro_rules! overlay_fields {
             has_hover: None,
             has_active: None,
             has_focus: None,
+            container_rules: None,
+            container_unit_axes: $base.container_unit_axes.union($over.container_unit_axes),
             measure_natural_width: false,
             flex_or_grid_item: false,
         }
@@ -181,6 +183,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         animation_delay, animation_iteration_count, animation_direction, animation_fill_mode,
         animation_play_state,
         focus_visible, focus_within, has_focus_visible, keyboard_focus_dim, group,
+        container_type, container_name, container,
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
         grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
@@ -371,6 +374,10 @@ fn drop_shadowed_longhands(base: &mut StyleDesc, over: &StyleDesc) {
     if over.overflow.is_some() {
         base.overflow_x = None;
         base.overflow_y = None;
+    }
+    if over.container.is_some() {
+        base.container_type = None;
+        base.container_name = None;
     }
     if over.overscroll_behavior.is_some() {
         base.overscroll_behavior_x = None;

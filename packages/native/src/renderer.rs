@@ -1604,6 +1604,7 @@ impl GpuixRenderer {
                         view.observe_scroller_style(cx);
                         view.set_frameless(window_options.frameless());
                         crate::events::enable_dom_hit_testing(window);
+                        crate::layout::container::allow_redraw_passes(window);
                         view.install_key_interception(window, cx);
                         view
                     })
@@ -1756,6 +1757,7 @@ impl GpuixRenderer {
                                         view.observe_scroller_style(cx);
                                         view.set_frameless(window_options.frameless());
                                         crate::events::enable_dom_hit_testing(window);
+                                        crate::layout::container::allow_redraw_passes(window);
                                         view.install_key_interception(window, cx);
                                         view
                                     })
@@ -3988,6 +3990,7 @@ fn start_web_app(
                 );
                 view.observe_appearance(window, cx);
                 crate::events::enable_dom_hit_testing(window);
+                crate::layout::container::allow_redraw_passes(window);
                 view.install_key_interception(window, cx);
                 if let Some((key_down, key_up, event_id)) =
                     PENDING_WINDOW_KEY_EVENTS.with(|pending| pending.borrow_mut().take())
@@ -4978,6 +4981,9 @@ pub(crate) struct GpuixView {
     /// What `onLayout` and `onScroll` last reported, for the elements that
     /// have the listener. Shared with the paint closures that compare against it.
     paint_reports: SharedPaintReports,
+    /// The content box layout last produced for each query container, which the next build
+    /// reads: see `layout::container`.
+    containers: crate::layout::container::ContainerStore,
     /// Where the pointer is and what it is pressing.
     /// Shared with the window's mouse-down listener, which dispatches a press
     /// without reaching the view.
@@ -5416,6 +5422,7 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
+            containers: Default::default(),
             pointer: Rc::new(RefCell::new(crate::events::state::PointerState::with_requests(
                 pointer_requests,
             ))),
@@ -5929,6 +5936,7 @@ impl GpuixView {
             inherited,
             highlights: &mut self.highlights,
             paint_reports: &self.paint_reports,
+            containers: &self.containers,
             highlight_events: &mut highlight_events,
             focus_styles,
             pointer: &pointer,
@@ -6078,6 +6086,7 @@ pub(crate) struct BuildCtx<'a> {
     /// Persistent `highlight` caches, keyed by the declaring element.
     highlights: &'a mut HashMap<u64, HighlightCacheEntry>,
     paint_reports: &'a SharedPaintReports,
+    containers: &'a crate::layout::container::ContainerStore,
     /// `onHighlight` payloads queued during the build.
     ///
     /// Never emitted inline: a handler that calls `setState` repaints, which
@@ -6231,6 +6240,12 @@ pub(crate) struct Inherited {
     /// The `group` declarations above this element, nearest first, with the
     /// state their `groupHover` / `groupActive` / `groupFocusWithin` followers read.
     pub groups: Option<Arc<GroupScope>>,
+    /// The query containers above this element, nearest first, which its `@container`
+    /// blocks are evaluated against and its container units are fractions of.
+    pub containers: Option<Arc<crate::layout::container::ContainerScope>>,
+    /// The container this element is, once it is built. Its children's `containers` begin
+    /// with it (`enter_children`); the element's own style never sees it.
+    self_container: Option<Arc<crate::layout::container::ContainerScope>>,
 }
 
 /// One `group` declaration on the way down the tree.
@@ -6295,11 +6310,30 @@ impl Inherited {
             interpolate_size: Default::default(),
             container: crate::motion::containing::Container::WINDOW,
             groups: None,
+            containers: None,
+            self_container: None,
         }
+    }
+
+    /// The containers the children of the element this is the context of are in: the element
+    /// itself, if it is one, then the ones above it.
+    fn container_chain(&self) -> Option<&crate::layout::container::ContainerScope> {
+        self.self_container.as_deref().or(self.containers.as_deref())
+    }
+
+    /// What the children of the element this is the context of inherit as far as query
+    /// containers go: the element itself, if it is one.
+    fn enter_children(mut self) -> Self {
+        if let Some(scope) = self.self_container.take() {
+            self.lengths = scope.descendant_lengths(self.lengths);
+            self.containers = Some(scope);
+        }
+        self
     }
 
     /// Apply the inheritable parts of `style` for the subtree below it.
     fn descend(mut self, style: Option<&StyleDesc>, inert: bool) -> Self {
+        self = self.enter_children();
         self.lengths = self
             .lengths
             .descend(style.and_then(|style| style.font_size.as_ref()), self.above_root);
@@ -7049,6 +7083,7 @@ impl gpui::Render for GpuixView {
             .retain(|id, _| tree.elements.contains_key(id));
         self.virtual_lists
             .retain(|id, _| tree.elements.contains_key(id));
+        self.containers.retain(|id| tree.elements.contains_key(&id));
         // Pruned by listener, not existence: dropping `onLayout` and adding it
         // back reports the size again, like a fresh observer.
         {
@@ -7158,6 +7193,7 @@ impl gpui::Render for GpuixView {
                     ),
                     highlights: &mut self.highlights,
                     paint_reports: &self.paint_reports,
+                    containers: &self.containers,
                     highlight_events: &mut highlight_events,
                     focus_styles,
                     pointer: &pointer,
@@ -7307,6 +7343,36 @@ fn build_element_unpumped(
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
+
+    // `@container` blocks fold into the declared style before anything reads it, so state
+    // styles, transitions and motion all see the style the containers above select.
+    let containers = crate::layout::container::Chain(ctx.inherited.container_chain());
+    let container_style = element
+        .style
+        .as_deref()
+        .and_then(|style| crate::layout::container::fold(style, &containers));
+    let declared = container_style.as_ref().or(element.style.as_deref());
+    // The style it had before it declared a transition went through the same containers.
+    let before_transition = element
+        .style_before_transition()
+        .and_then(|before| crate::layout::container::fold(before, &containers));
+    // A parent builds its children by whether this element has a box, before this element is
+    // built, so what it assumed has to be what the folded style says.
+    if element.style.as_deref().is_some_and(|style| style.container_rules.is_some())
+        && crate::layout::container::settle_display(element, declared)
+    {
+        window.request_redraw_before_present();
+    }
+    // Its container units read the axes their containers contain.
+    let reads_containers = element.style.as_deref().is_some_and(StyleDesc::reads_containers);
+    if let (Some(style), Some(scope)) = (element.style.as_deref(), ctx.inherited.container_chain()) {
+        scope.note_reads_from(style.container_unit_axes);
+    }
+    // Until every container above has been laid out once, the style is a guess that the next
+    // pass replaces. It must not seed a transition or an animation: the correct style would
+    // then animate in from the guess.
+    let provisional = reads_containers
+        && ctx.inherited.container_chain().is_some_and(|scope| !scope.is_known());
     if crate::layout::box_generation::is_display_none(element) {
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
@@ -7318,17 +7384,15 @@ fn build_element_unpumped(
     // `hover`, `active`, `groupHover`, `groupActive` and `groupFocusWithin` are
     // folded into the base here, before motion, so the GPUI element never sees them: the dispatcher
     // decides who is hovered.
-    let pointer_states = element
-        .style
-        .as_deref()
+    let pointer_states = declared
         .map(|style| ctx.pointer_states(id, style, element.has_inert_prop()))
         .unwrap_or_default();
-    let state_style = element.style.as_deref().and_then(|style| {
+    let state_style = declared.and_then(|style| {
         pointer_states
             .any()
             .then(|| crate::events::state_styles::resolve_pointer_states(style, pointer_states))
     });
-    let base_style = state_style.as_ref().or(element.style.as_deref());
+    let base_style = state_style.as_ref().or(declared);
 
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition. CSS animations come last of
@@ -7338,8 +7402,8 @@ fn build_element_unpumped(
     let has_motion = props.contains_key("motion");
     let motion_binding = props.get("motionValues");
     let layout_source = props.get("layout");
-    let transitions_wanted = ctx.css_transitions.wants(id, element.style.as_deref());
-    let animations_wanted = ctx.css_animations.wants(id, element.style.as_deref());
+    let transitions_wanted = !provisional && ctx.css_transitions.wants(id, declared);
+    let animations_wanted = !provisional && ctx.css_animations.wants(id, declared);
     // A plain element has no measurement to read: it is not wrapped below, and
     // the root render prunes the measurement of any element that was not.
     let measured = has_motion || transitions_wanted || animations_wanted;
@@ -7356,13 +7420,13 @@ fn build_element_unpumped(
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
-            element.style_before_transition(),
+            before_transition.as_ref().or(element.style_before_transition()),
             &ctx.inherited.colors,
             &ctx.inherited.parent_font(),
             pointer_states,
             ctx.motion_states.get(&id),
             id,
-            element.style.as_deref().unwrap_or(&EMPTY_STYLE),
+            declared.unwrap_or(&EMPTY_STYLE),
             focus_visible,
             measurement.as_ref(),
             ctx.inherited.interpolate_size,
@@ -7494,6 +7558,22 @@ fn build_element_unpumped(
         }));
     }
 
+    // A host box with a `containerType` is a query container for what is built below it. Its
+    // children see it, its own style does not (`Inherited::enter_children`).
+    if crate::text::inline::is_host_type(&element.element_type)
+        && !crate::layout::contents::is_display_contents(element)
+    {
+        if let Some(declaration) = style.and_then(crate::layout::container::declared) {
+            ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::new(
+                id,
+                declaration,
+                ctx.containers.get(id),
+                ctx.inherited.lengths,
+                ctx.inherited.containers.clone(),
+            )));
+        }
+    }
+
     // A `highlight` here replaces any ancestor's: the nearest declaration wins,
     // and `GroupList::collect` skips nested declarations so an ancestor never
     // resolves or counts matches that will not paint.
@@ -7548,6 +7628,12 @@ fn build_element_unpumped(
             if custom_type == "anchored" {
                 crate::layout::anchor_size::begin_build(window.window_handle().window_id(), tree, element);
             }
+            crate::layout::container::settle_hidden_children(
+                ctx.tree,
+                element,
+                &crate::layout::container::Chain(ctx.inherited.container_chain()),
+                window,
+            );
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = if is_svg {
                 Vec::new()
@@ -7874,6 +7960,9 @@ pub(crate) fn build_host_container(
             el = el.font_features(features);
         }
     }
+    if let Some(scope) = ctx.inherited.self_container.clone() {
+        el = crate::layout::container::contain(el, scope, ctx.containers.clone());
+    }
 
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
 
@@ -7942,6 +8031,12 @@ pub(crate) fn build_host_container(
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
+    crate::layout::container::settle_hidden_children(
+        ctx.tree,
+        element,
+        &crate::layout::container::Chain(ctx.inherited.container_chain()),
+        window,
+    );
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
@@ -8024,7 +8119,21 @@ fn build_content(
                 }
                 crate::text::inline::Child::Paragraph(paragraph) => {
                     paint_ranks.push(0);
+                    // A span's container units are fractions of the container it sits in, which
+                    // may be this element.
+                    let own = ctx.inherited.clone();
+                    ctx.inherited = own.clone().enter_children();
+                    // A span is not built by `build_element`, so the paragraph reports the
+                    // containers its boxes' units read.
+                    if let Some(scope) = ctx.inherited.containers.as_deref() {
+                        for id in paragraph.pieces.iter().flat_map(|piece| piece.boxes.iter()) {
+                            if let Some(style) = ctx.tree.elements.get(id).and_then(|span| span.style.as_deref()) {
+                                scope.note_reads_from(style.container_unit_axes);
+                            }
+                        }
+                    }
                     content_elements.push(paragraph_content(&paragraph, ctx));
+                    ctx.inherited = own;
                 }
             }
             ctx.doc_path.pop();
@@ -8058,6 +8167,12 @@ fn build_contents_container(
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }
+    crate::layout::container::settle_hidden_children(
+        ctx.tree,
+        element,
+        &crate::layout::container::Chain(ctx.inherited.container_chain()),
+        window,
+    );
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
@@ -10618,6 +10733,7 @@ mod font_size_cascade_tests {
             let view_tree = tree.clone();
             let window = cx.add_window(|window, _| {
                 crate::events::enable_dom_hit_testing(window);
+                crate::layout::container::allow_redraw_passes(window);
                 GpuixView::new(
                     view_tree,
                     None,
@@ -11025,6 +11141,7 @@ mod dimension_length_tests {
             let view_tree = tree.clone();
             let window = cx.add_window(|window, _| {
                 crate::events::enable_dom_hit_testing(window);
+                crate::layout::container::allow_redraw_passes(window);
                 GpuixView::new(
                     view_tree,
                     callback,
@@ -12322,6 +12439,19 @@ mod dimension_length_tests {
             near(page.size(2), (120.0, 100.0));
         }
     }
+
+    #[gpui::test]
+    fn a_container_query_applies_in_the_first_frame(cx: &mut gpui::TestAppContext) {
+        let page = Page::new(
+            cx,
+            &[
+                (1, None, r#"{"width": 500}"#),
+                (2, Some(1), r#"{"containerType": "inline-size", "width": "100%"}"#),
+                (3, Some(2), r#"{"height": 20, "width": 100, "@container": {"(min-width: 400px)": {"width": 300}}}"#),
+            ],
+        );
+        assert_eq!(page.size(3), (300.0, 20.0));
+    }
 }
 
 /// A span's `fontSize` and `lineHeight` through a real layout: the height of the
@@ -12361,6 +12491,7 @@ mod inline_run_size_tests {
         }
         let window = cx.add_window(|window, _| {
             crate::events::enable_dom_hit_testing(window);
+            crate::layout::container::allow_redraw_passes(window);
             GpuixView::new(
                 tree,
                 None,
@@ -12453,6 +12584,7 @@ mod inline_run_size_tests {
         }
         let window = cx.add_window(|window, _| {
             crate::events::enable_dom_hit_testing(window);
+            crate::layout::container::allow_redraw_passes(window);
             GpuixView::new(
                 tree,
                 None,
@@ -12576,6 +12708,7 @@ mod inline_run_size_tests {
         }
         let window = cx.add_window(|window, _| {
             crate::events::enable_dom_hit_testing(window);
+            crate::layout::container::allow_redraw_passes(window);
             GpuixView::new(
                 tree,
                 None,
@@ -12716,6 +12849,7 @@ mod stacking_build_tests {
             }
             let window = cx.add_window(|window, _| {
                 crate::events::enable_dom_hit_testing(window);
+                crate::layout::container::allow_redraw_passes(window);
                 GpuixView::new(
                     tree.clone(),
                     None,
@@ -12921,6 +13055,7 @@ mod state_position_escape_tests {
             }
             let window = cx.add_window(|window, _| {
                 crate::events::enable_dom_hit_testing(window);
+                crate::layout::container::allow_redraw_passes(window);
                 GpuixView::new(
                     view_tree,
                     None,
@@ -13158,6 +13293,7 @@ mod paint_integration_tests {
     ) -> gpui::WindowHandle<GpuixView> {
         let window = cx.add_window(|window, _| {
             crate::events::enable_dom_hit_testing(window);
+            crate::layout::container::allow_redraw_passes(window);
             GpuixView::new(
                 tree,
                 None,

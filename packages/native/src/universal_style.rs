@@ -38,6 +38,11 @@ pub fn layer_under(universal: &StyleDesc, own: &StyleDesc) -> StyleDesc {
         universal.has_focus_visible.as_deref(),
         own.has_focus_visible.as_deref(),
     );
+    // The universal blocks come first, so the element's own win when both match.
+    layered.container_rules = crate::layout::container::ContainerRules::concat(
+        universal.container_rules.as_ref(),
+        own.container_rules.as_ref(),
+    );
     layered
 }
 
@@ -187,6 +192,34 @@ mod tests {
         assert_eq!(layered.has_focus_visible, universal.has_focus_visible);
         assert_eq!(layered.has_active, own.has_active);
         assert_eq!(layered.has_focus, own.has_focus);
+    }
+
+    #[test]
+    fn container_blocks_layer_the_universal_ones_first_so_the_elements_own_win() {
+        use crate::css::container_query::{Axes, Containers, Measured};
+
+        struct Wide;
+        impl Containers for Wide {
+            fn container(&self, _: Option<&str>, _: Axes) -> Option<Measured> {
+                Some(Measured {
+                    width: Some(1000.0),
+                    height: Some(1000.0),
+                    lengths: crate::css::length::LengthContext::initial(1000.0, 1000.0),
+                })
+            }
+        }
+        let universal = style(
+            r##"{ "@container": { "(min-width: 1px)": { "color": "#aaaaaa", "opacity": 0.5 },
+                                  "(min-width: 9999px)": { "width": 7 } } }"##,
+        );
+        let own = style(r##"{ "@container": { "(min-width: 1px)": { "color": "#bbbbbb" } } }"##);
+        let folded = crate::layout::container::fold(&layer_under(&universal, &own), &Wide).unwrap();
+        assert_eq!(folded.color.as_deref(), Some("#bbbbbb"));
+        assert_eq!(folded.opacity, Some(0.5), "what only the universal block sets still applies");
+        assert_eq!(folded.width, None);
+        // One side alone is used as it is.
+        let only_universal = layer_under(&universal, &style("{}"));
+        assert_eq!(only_universal.container_rules, universal.container_rules);
     }
 
     #[test]

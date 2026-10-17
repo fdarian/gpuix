@@ -816,6 +816,23 @@ pub struct StyleDesc {
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,
+
+    // Containment. See `layout::container`.
+    /// Makes the element a query container of `@container` blocks and `cq` units below it.
+    /// `inline-size` and `size` also make the size on that axis independent of the content.
+    pub container_type: Option<crate::layout::container::ContainerType>,
+    /// The names a query can pick this container by, space separated.
+    pub container_name: Option<crate::layout::container::ContainerNames>,
+    /// `<name> [ / <type> ]`, the two longhands in one. The longhands win.
+    pub container: Option<crate::layout::container::ContainerShorthand>,
+    /// Style blocks that apply while a container query is true, in written order, the later
+    /// one winning. A block may carry state keys (`hover`, ...).
+    #[serde(rename = "@container")]
+    pub container_rules: Option<crate::layout::container::ContainerRules>,
+    /// The axes of a query container that the container units in this style (blocks and state
+    /// styles included) read. Set when the style is interned, never by JS.
+    #[serde(skip)]
+    pub container_unit_axes: crate::css::container_query::Axes,
 }
 
 pub use crate::color::{parse_color, parse_color_hex};
@@ -832,6 +849,13 @@ pub enum GroupName {
 const DEFAULT_GROUP: &str = "__gpuix_group";
 
 impl StyleDesc {
+    /// Whether the style depends on the size of a query container: it has `@container` blocks
+    /// or names a container unit.
+    pub(crate) fn reads_containers(&self) -> bool {
+        self.container_rules.is_some()
+            || self.container_unit_axes != crate::css::container_query::Axes::NONE
+    }
+
     /// The group this element declares, if any.
     pub(crate) fn declared_group(&self) -> Option<gpui::SharedString> {
         match self.group.as_ref()? {

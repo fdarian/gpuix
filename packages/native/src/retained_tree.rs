@@ -93,6 +93,11 @@ pub struct RetainedElement {
     /// Take keyboard focus the first time this element gets a focus handle.
     /// Without it an `<input>` is dead until the user clicks it.
     pub auto_focus: bool,
+    /// Whether the last build found the element `display: none` once its `@container`
+    /// blocks were folded in, which its parent decided its children by. `None` until an
+    /// element with such blocks is built, and again whenever its style is replaced.
+    /// A build that finds another answer asks for the frame to be built again.
+    pub container_hidden: std::cell::Cell<Option<bool>>,
     /// Last mutation applied to this element or one of its descendants.
     pub subtree_revision: u64,
     /// Last change to the searchable TEXT of this subtree: content, structure,
@@ -196,6 +201,7 @@ impl RetainedElement {
             parent: None,
             extras: None,
             auto_focus: false,
+            container_hidden: Default::default(),
             subtree_revision: revision,
             search_revision: revision,
             test_id: None,
@@ -280,6 +286,10 @@ pub struct StyleTable {
     layered: crate::universal_style::LayerCache,
 }
 
+fn has_container_rules(element: &RetainedElement) -> bool {
+    element.style.as_deref().is_some_and(|style| style.container_rules.is_some())
+}
+
 impl StyleTable {
     /// Parse a style payload, reusing the shared value when the same bytes
     /// arrived before. Hashing ~110 bytes is far cheaper than building the
@@ -293,7 +303,12 @@ impl StyleTable {
                 return Ok(hit.style.clone());
             }
         }
-        let style: StyleDesc = serde_json::from_slice(raw).map_err(|error| error.to_string())?;
+        let mut style: StyleDesc = serde_json::from_slice(raw).map_err(|error| error.to_string())?;
+        // Read from the text: which container units a style names is a property of all of it,
+        // `@container` blocks and state styles included.
+        style.container_unit_axes = crate::css::length::LengthReads::container_axes(
+            std::str::from_utf8(raw).map_err(|error| error.to_string())?,
+        );
         crate::motion::validate_transitions(&style)?;
         crate::motion::validate_animations(&style)?;
         let shared = Arc::new(style);
@@ -413,6 +428,9 @@ pub struct RetainedTree {
     /// How many elements are `position: absolute` or `fixed` in some state, which a clip above may
     /// not reach.
     escaping_count: usize,
+    /// How many elements have `@container` blocks, so a tree without any skips looking for
+    /// the children they keep from being built.
+    container_rule_count: usize,
     pub styles: StyleTable,
     /// The style layer under every element's own style, a CSS `* { ... }` rule.
     universal: Option<Arc<StyleDesc>>,
@@ -444,6 +462,7 @@ impl RetainedTree {
             visibility_count: 0,
             anchored_count: 0,
             escaping_count: 0,
+            container_rule_count: 0,
             styles: StyleTable::default(),
             universal: None,
             root_id: None,
@@ -460,6 +479,11 @@ impl RetainedTree {
 
     /// Whether a frame drawn now would differ from the last one, clearing the
     /// answer. Call once per applied batch.
+    /// Whether any element has `@container` blocks.
+    pub fn has_container_rules(&self) -> bool {
+        self.container_rule_count > 0
+    }
+
     pub fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
     }
@@ -690,6 +714,7 @@ impl RetainedTree {
             self.visibility_count -= usize::from(element.declared_hidden().is_some());
             self.anchored_count -= usize::from(element.element_type == "anchored");
             self.escaping_count -= usize::from(containing_block::may_escape(&element));
+            self.container_rule_count -= usize::from(has_container_rules(&element));
             destroyed.push(id);
             for child_id in element.children {
                 self.destroy_element_recursive(child_id, destroyed);
@@ -851,6 +876,7 @@ impl RetainedTree {
         let text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
             != style.as_deref().and_then(|new| new.white_space.as_deref());
         let escaped_before = containing_block::may_escape(element);
+        let container_rules_before = has_container_rules(element);
         let before = element.style.take().filter(|old| {
             !crate::motion::declares_transitions(old)
                 && style.as_deref().is_some_and(crate::motion::declares_transitions)
@@ -862,9 +888,12 @@ impl RetainedTree {
             element.release_empty_extras();
         }
         element.style = style;
+        element.container_hidden.set(None);
         let escaped_after = containing_block::may_escape(element);
         self.escaping_count += usize::from(escaped_after);
         self.escaping_count -= usize::from(escaped_before);
+        self.container_rule_count += usize::from(has_container_rules(element));
+        self.container_rule_count -= usize::from(container_rules_before);
         let now_declared = element.declared_hidden();
         let visibility_changed = was_declared != now_declared;
         if visibility_changed {
