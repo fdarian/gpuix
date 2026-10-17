@@ -10,6 +10,7 @@ use gpui::TextDecorationStyle;
 use super::dimension::{parse_linear_length, MAX_LENGTH};
 use super::length::{LengthContext, LinearLength};
 use super::syntax::split_whitespace;
+use super::text_underline_offset::TextUnderlineOffset;
 use crate::style::StyleDesc;
 
 /// `text-decoration-thickness`. `auto` is the 1px gpui draws unless told
@@ -42,6 +43,10 @@ pub(crate) struct TextDecoration {
     /// The CSS colour as written, resolved in the colour context of the element
     /// that declared it. `None` is `currentColor`.
     pub color: Option<String>,
+    /// The offset of the box's underline. Not part of `text-decoration`: it is an
+    /// inherited property, so the caller sets it to the cascaded value where it has
+    /// one (see [`super::text_underline_offset`]).
+    pub underline_offset: TextUnderlineOffset,
 }
 
 impl TextDecoration {
@@ -53,6 +58,7 @@ impl TextDecoration {
             thickness_from_font: self.thickness == Thickness::FromFont,
             color: Some(color),
             style: self.style,
+            offset: self.underline_offset.resolve(lengths),
         }
     }
 
@@ -126,6 +132,11 @@ pub(crate) fn of(style: &StyleDesc) -> Option<TextDecoration> {
         .filter(|value| is_color(value))
     {
         decoration.get_or_insert_with(TextDecoration::default).color = Some(color.trim().to_owned());
+    }
+    if let Some(declared) = style.text_underline_offset {
+        if let Some(decoration) = decoration.as_mut() {
+            decoration.underline_offset = declared;
+        }
     }
     decoration
 }

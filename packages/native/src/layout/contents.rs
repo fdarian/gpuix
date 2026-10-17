@@ -95,6 +95,7 @@ impl StyleDesc {
             line_height,
             white_space,
             tab_size,
+            text_underline_offset,
             word_break,
             overflow_wrap,
             border_spacing,
@@ -142,6 +143,7 @@ impl StyleDesc {
             line_height,
             white_space,
             tab_size,
+            text_underline_offset,
             word_break,
             overflow_wrap,
             border_spacing,
@@ -215,6 +217,18 @@ mod tests {
         overlay.take_inheritable_from(&declared);
         let merged = StyleDesc::default().with_inherited_overlay(&overlay);
         assert_eq!(merged.tab_size, declared.tab_size);
+    }
+
+    #[test]
+    fn text_underline_offset_passes_through_a_display_contents_element() {
+        let declared = StyleDesc {
+            text_underline_offset: Some(crate::css::text_underline_offset::TextUnderlineOffset::Auto),
+            ..Default::default()
+        };
+        let mut overlay = StyleDesc::default();
+        overlay.take_inheritable_from(&declared);
+        let merged = StyleDesc::default().with_inherited_overlay(&overlay);
+        assert_eq!(merged.text_underline_offset, declared.text_underline_offset);
     }
 
     #[test]

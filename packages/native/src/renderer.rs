@@ -6278,6 +6278,9 @@ pub(crate) struct Inherited {
     pub lengths: LengthContext,
     /// Computed `font-weight`, which an unset one of a transition or motion starts from.
     pub font_weight: f64,
+    /// Computed `text-underline-offset`, which an underline takes from the box
+    /// that declares it.
+    pub underline_offset: crate::css::text_underline_offset::TextUnderlineOffset,
     /// No element has been built yet: the next one is the root, whose computed
     /// font size becomes the `rem`.
     above_root: bool,
@@ -6363,6 +6366,7 @@ impl Inherited {
                 f64::from(f32::from(viewport.height)),
             ),
             font_weight: crate::motion::INITIAL_FONT_WEIGHT,
+            underline_offset: Default::default(),
             above_root: true,
             font_state: Default::default(),
             font_features: None,
@@ -6408,6 +6412,9 @@ impl Inherited {
             self.pointer_events_none = true;
         }
         let Some(style) = style else { return self };
+        self.underline_offset = self
+            .underline_offset
+            .inherit(style.text_underline_offset.as_ref(), &self.lengths);
         if let Some(weight) = &style.font_weight {
             self.font_weight = f64::from(parse_font_weight(weight).0);
         }
@@ -7610,6 +7617,12 @@ fn build_element_unpumped(
         }
     });
     let style = item_style.as_ref().or(style);
+    // An underline sits where the box that declares it says, and that box inherits
+    // its offset.
+    let offset_style = style.and_then(|style| {
+        crate::css::text_underline_offset::with_inherited(style, ctx.inherited.underline_offset)
+    });
+    let style = offset_style.as_ref().or(style);
 
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
@@ -8520,6 +8533,7 @@ fn paragraph_content(
             &ctx.inherited.colors,
             &ctx.inherited.lengths,
             &ctx.inherited.font_state,
+            ctx.inherited.underline_offset,
             &ctx.inline_states(),
             &motion,
         )

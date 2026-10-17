@@ -879,6 +879,16 @@ export interface StyleDesc {
    *  underline thickness, 1px when it has none) or a length such as `"2px"` or
    *  `"0.1em"`; a percentage is of `1em`. Resolved at the declaring element. */
   textDecorationThickness?: string
+  /** CSS `text-underline-offset`, inherited: how far below the alphabetic baseline
+   *  the top edge of an underline sits. `auto` (the default) leaves a gap of half
+   *  the thickness, rounded up, and at least a pixel, as Chrome does; a length
+   *  (a number is px, `"0.25em"`, `calc()`) replaces that gap, so `0` puts the line
+   *  on the baseline and a negative one above it. A percentage is of `1em`. The box
+   *  that declares the underline decides: its own value or the one it inherits, and a
+   *  descendant's offset does not move the line of an ancestor. `em` resolves where
+   *  the value is set and descendants inherit the px, a percentage is of the font size
+   *  of the box that draws the line. Underlines only; not animatable. */
+  textUnderlineOffset?: "auto" | number | (string & {})
   /** CSS `font-variant-numeric`, inherited: `tabular-nums`, `proportional-nums`,
    *  `lining-nums`, `oldstyle-nums`, `slashed-zero`, `diagonal-fractions`,
    *  `stacked-fractions`, `ordinal`, or `normal`. One keyword per group (figure,

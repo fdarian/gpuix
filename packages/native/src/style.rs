@@ -850,6 +850,9 @@ pub struct StyleDesc {
     pub text_decoration_color: Option<String>,
     /// `auto`, `from-font` or a length.
     pub text_decoration_thickness: Option<String>,
+    /// CSS `text-underline-offset`: `auto`, or a length or percentage (of `1em`).
+    /// Inherited; the box that declares an underline decides where it sits.
+    pub text_underline_offset: Option<crate::css::text_underline_offset::TextUnderlineOffset>,
     /// CSS `font-variant-numeric` keywords, e.g. `"tabular-nums slashed-zero"`.
     /// Inherited. Not supported inside `hover`/`active`/`focusVisible`.
     pub font_variant_numeric: Option<String>,

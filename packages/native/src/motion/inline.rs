@@ -304,6 +304,7 @@ mod tests {
                 &ColorContext::root(Scheme::Light),
                 &LengthContext::initial(800.0, 600.0),
                 &FontFeatureState::default(),
+                Default::default(),
                 &|_, _| PointerStates::default(),
                 styles,
             )

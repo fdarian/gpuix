@@ -21,6 +21,7 @@ use crate::css::font_features::FontFeatureState;
 use crate::css::length::LengthContext;
 use crate::css::text_decoration;
 use crate::css::vertical_align::ResolvedVerticalAlign;
+use crate::css::text_underline_offset::TextUnderlineOffset;
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -138,8 +139,8 @@ pub struct BoxStyle {
 /// The runs of `paragraph`, covering its text exactly. Empty when no box
 /// restyles anything, so the caller can paint it as plain text.
 ///
-/// `colors`, `lengths` and `font_state` are the container's, as its children
-/// inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
+/// `colors`, `lengths`, `font_state` and `underline_offset` are the container's, as its
+/// children inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
 /// `focusWithin` and `focusVisible` styles are folded into the run it paints.
 /// `motion` holds the boxes whose colours a transition or an animation moves.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -149,10 +150,21 @@ pub fn run_styles(
     colors: &ColorContext,
     lengths: &LengthContext,
     font_state: &FontFeatureState,
+    underline_offset: TextUnderlineOffset,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     motion: &InlineStyles,
 ) -> Vec<RunStyle> {
-    styles(tree, paragraph, colors, lengths, font_state, states, motion).runs
+    styles(
+        tree,
+        paragraph,
+        colors,
+        lengths,
+        font_state,
+        underline_offset,
+        states,
+        motion,
+    )
+    .runs
 }
 
 /// What [`styles`] reads off the boxes of a paragraph.
@@ -171,6 +183,7 @@ pub fn styles(
     colors: &ColorContext,
     lengths: &LengthContext,
     font_state: &FontFeatureState,
+    underline_offset: TextUnderlineOffset,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     motion: &InlineStyles,
 ) -> Styles {
@@ -184,6 +197,7 @@ pub fn styles(
         let mut colors = *colors;
         let mut lengths = *lengths;
         let mut font_state = font_state.clone();
+        let mut underline_offset = underline_offset;
         let mut opacity = 1.0;
         let mut parent = None;
         for id in &piece.boxes {
@@ -198,6 +212,7 @@ pub fn styles(
             // A `display: contents` box has a font size too, and its children
             // inherit it.
             lengths = lengths.descend(declared.font_size.as_ref(), false);
+            underline_offset = underline_offset.inherit(declared.text_underline_offset.as_ref(), &lengths);
             // It has no box, so what it declares reaches the text only as far as
             // it is inherited.
             let has_box = declared.display.as_deref() != Some("contents");
@@ -237,7 +252,8 @@ pub fn styles(
             // CSS draws a decoration over the whole box and a descendant cannot
             // take it off, so `none` on a box adds nothing and removes nothing.
             if has_box {
-                if let Some(decoration) = text_decoration::of(declared) {
+                if let Some(mut decoration) = text_decoration::of(declared) {
+                    decoration.underline_offset = underline_offset;
                     let color = fade(decoration.resolve_color(&colors), opacity);
                     style.add_decoration(&decoration, color, &lengths);
                 }
@@ -718,6 +734,7 @@ mod tests {
             &ColorContext::root(Scheme::Light),
             &container_lengths(),
             &FontFeatureState::default(),
+                Default::default(),
             states,
             &InlineStyles::default(),
         )
@@ -751,6 +768,7 @@ mod tests {
             &ColorContext::root(Scheme::Light),
             &container_lengths(),
             &FontFeatureState::default(),
+                Default::default(),
             &|_, _| PointerStates::default(),
             &InlineStyles::default(),
         );
@@ -1314,6 +1332,7 @@ mod tests {
             &ColorContext::root(Scheme::Light),
             &container_lengths(),
             &FontFeatureState::default(),
+            Default::default(),
             &|_, _| PointerStates::default(),
             &InlineStyles::default(),
         )

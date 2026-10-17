@@ -177,7 +177,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         font_size, font_family, font_weight, font_variant_numeric, font_feature_settings, text_align, line_height, white_space, tab_size, word_break, overflow_wrap, text_overflow, vertical_align,
         table_layout, border_spacing, border_collapse, caption_side, empty_cells,
         line_clamp, text_decoration, text_decoration_line, text_decoration_style,
-        text_decoration_color, text_decoration_thickness,
+        text_decoration_color, text_decoration_thickness, text_underline_offset,
         overflow, overflow_x, overflow_y, scrollbar_color, scrollbar_width,
         cursor, pointer_events, app_region, user_select, selection_color,
         transition, transition_property, transition_duration, transition_timing_function,
