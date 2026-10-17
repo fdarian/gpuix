@@ -260,6 +260,9 @@ pub enum Child {
     /// cell CSS 2.1 section 17.2.1 puts around consecutive ones. It has no element: it is a
     /// plain block with the role of a cell.
     AnonymousCell(Vec<(Child, u32)>),
+    /// Table parts that are not in a table, consecutive ones, in the anonymous table CSS
+    /// 2.1 section 17.2.1 puts around them. Each is the id of a part and its document position.
+    AnonymousTable(Vec<(u64, u32)>),
 }
 
 /// Collects one paragraph and applies `white-space` as it goes: what is pushed
@@ -486,7 +489,9 @@ pub fn plan_children_at(tree: &RetainedTree, container: &RetainedElement) -> Vec
     if let Some(plan) = crate::layout::table::plan_children(tree, container, &children, content) {
         return plan;
     }
-    plan_flow(tree, container, &children, content, element_lays_out_items(container), &mut 0)
+    let items = element_lays_out_items(container);
+    let plan = plan_flow(tree, container, &children, content, items, &mut 0);
+    if items { plan } else { crate::layout::table::wrap_loose_parts(tree, plan) }
 }
 
 /// The children of `container` in paint order, each with its document position, see
@@ -604,7 +609,7 @@ pub fn accessible_text<'a>(plan: impl IntoIterator<Item = &'a Child>) -> Option<
                 text.extend(paragraph.text.chars().filter(|c| *c != gpui::OBJECT_REPLACEMENT_CHARACTER))
             }
             Child::AnonymousCell(cell) => cell.iter().for_each(|(child, _)| collect(child, text)),
-            Child::Block(_) => {}
+            Child::Block(_) | Child::AnonymousTable(_) => {}
         }
     }
     let mut text = String::new();
@@ -658,7 +663,7 @@ mod tests {
         plan.iter()
             .filter_map(|child| match child {
                 Child::Paragraph(paragraph) => Some(paragraph),
-                Child::Block(_) | Child::AnonymousCell(_) => None,
+                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) => None,
             })
             .collect()
     }
@@ -1457,6 +1462,7 @@ mod tests {
                     Child::Paragraph(_) => "paragraph",
                     Child::Block(_) => "block",
                     Child::AnonymousCell(_) => "cell",
+                    Child::AnonymousTable(_) => "table",
                 })
                 .collect()
         };

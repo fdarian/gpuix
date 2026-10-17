@@ -12,7 +12,7 @@ use std::sync::Arc;
 use gpui::Styled;
 
 use crate::css::table::TableInherited;
-use crate::layout::table_grid::CellKey;
+use crate::layout::table_grid::BoxKey;
 use crate::layout::box_generation::is_display_none;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
@@ -170,19 +170,23 @@ fn span_prop(element: &RetainedElement, name: &str, default: u16, min: u16, max:
 /// border widths here when it is built, after the table.
 #[derive(Default)]
 pub(crate) struct Collapsed {
-    cells: HashMap<CellKey, [f32; 4]>,
-    tables: HashMap<u64, ([f32; 4], Arc<gpui::CollapsedBorders>)>,
+    cells: HashMap<BoxKey, [f32; 4]>,
+    tables: HashMap<BoxKey, ([f32; 4], Arc<gpui::CollapsedBorders>)>,
 }
 
 impl Collapsed {
-    pub(crate) fn insert(&mut self, table: u64, resolved: super::collapse::Resolved) {
+    pub(crate) fn insert(&mut self, table: BoxKey, resolved: super::collapse::Resolved) {
         self.cells.extend(resolved.cells);
         self.tables.insert(table, (resolved.table, resolved.borders));
     }
 
+    pub(crate) fn table(&self, key: BoxKey) -> Option<&([f32; 4], Arc<gpui::CollapsedBorders>)> {
+        self.tables.get(&key)
+    }
+
     /// The border widths of a cell of a table with collapsed borders, `[top, right, bottom, left]`: a cell
     /// that is in no table has none.
-    pub(crate) fn cell(&self, key: CellKey) -> [f32; 4] {
+    pub(crate) fn cell(&self, key: BoxKey) -> [f32; 4] {
         self.cells.get(&key).copied().unwrap_or_default()
     }
 }
@@ -223,20 +227,8 @@ pub(crate) fn apply<E: Styled + gpui::InteractiveElement>(
             if style.table_layout == Some(crate::css::table::TableLayout::Fixed) {
                 el = el.table_layout(gpui::TableLayout::Fixed);
             }
-            if let Some((halves, borders)) = table.collapse.then(|| collapsed.tables.get(&element.id)).flatten() {
-                el = collapsed_widths(el, *halves);
-                // The padding of a table does not apply with collapsed borders, nor does its radius.
-                let sides = |side| gpui::EdgesRefinement { top: side, right: side, bottom: side, left: side };
-                let style = el.style();
-                style.padding = sides(Some(gpui::px(0.0).into()));
-                let square = Some(gpui::CornerRadius::default());
-                style.corner_radii = gpui::CornersRefinement {
-                    top_left: square,
-                    top_right: square,
-                    bottom_right: square,
-                    bottom_left: square,
-                };
-                el = el.collapsed_borders(borders.clone());
+            if let Some(collapsed) = table.collapse.then(|| collapsed.tables.get(&BoxKey::Element(element.id))).flatten() {
+                el = collapsed_table(el, collapsed);
             }
         }
         // Borders of these apply only through the borders of the cells they meet, when collapsed.
@@ -254,7 +246,7 @@ pub(crate) fn apply<E: Styled + gpui::InteractiveElement>(
             el = el.table_role(gpui::TableRole::Cell { col_span: col_span as u16, row_span: row_span as u16 });
             el = el.cell_vertical_align(cell_vertical_align(style));
             if table.collapse {
-                el = collapsed_widths(el, collapsed.cell(CellKey::Element(element.id)));
+                el = collapsed_widths(el, collapsed.cell(BoxKey::Element(element.id)));
             } else if table.hide_empty_cells && is_empty(tree, element) {
                 el = without_decoration(el);
             }
@@ -265,6 +257,22 @@ pub(crate) fn apply<E: Styled + gpui::InteractiveElement>(
         }
     }
     el
+}
+
+/// A table with collapsed borders: the widths its outer borders leave it, no padding and no radius (they do not
+/// apply to it), and the borders to paint.
+fn collapsed_table<E: Styled + gpui::InteractiveElement>(
+    mut el: E,
+    (halves, borders): &([f32; 4], Arc<gpui::CollapsedBorders>),
+) -> E {
+    el = collapsed_widths(el, *halves);
+    let zero = Some(gpui::px(0.0).into());
+    let square = Some(gpui::CornerRadius::default());
+    let style = el.style();
+    style.padding = gpui::EdgesRefinement { top: zero, right: zero, bottom: zero, left: zero };
+    style.corner_radii =
+        gpui::CornersRefinement { top_left: square, top_right: square, bottom_right: square, bottom_left: square };
+    el.collapsed_borders(borders.clone())
 }
 
 /// The border widths of a box of a table with collapsed borders, which the table paints.
@@ -335,6 +343,67 @@ pub(crate) fn anonymous_cell(collapsed: Option<[f32; 4]>) -> gpui::Div {
         Some(halves) => collapsed_widths(cell, halves),
         None => cell,
     }
+}
+
+/// The anonymous table CSS 2.1 section 17.2.1 puts around table parts that are not in a table: a block with no style
+/// of its own, which has the spacing and the collapsed borders its parent's style gives it.
+pub(crate) fn anonymous_table(
+    inherited: &TableInherited,
+    collapsed: Option<&([f32; 4], Arc<gpui::CollapsedBorders>)>,
+) -> gpui::Div {
+    use gpui::prelude::*;
+    let mut table = gpui::div()
+        .table()
+        .border_spacing(gpui::px(inherited.spacing.horizontal as f32), gpui::px(inherited.spacing.vertical as f32));
+    table.style().position = Some(gpui::Position::Static);
+    if inherited.collapse {
+        table = table.border_collapse();
+    }
+    match collapsed {
+        Some(collapsed) if inherited.collapse => collapsed_table(table, collapsed),
+        _ => table,
+    }
+}
+
+/// Wraps each run of table parts in `plan`, a flow container's, in an anonymous table (CSS 2.1 section 17.2.1): a
+/// row, a row group, a cell, a caption, a column or a column group whose parent is not a table. White space between
+/// the parts of a run makes nothing. Out of flow parts are blockified, and so are the parts of a flex or grid container,
+/// which does not call this.
+pub(crate) fn wrap_loose_parts(tree: &RetainedTree, plan: Vec<(Child, u32)>) -> Vec<(Child, u32)> {
+    let is_loose = |child: &Child| match child {
+        Child::Block(id) => tree
+            .elements
+            .get(id)
+            .is_some_and(|element| matches!(part(element), Some(part) if part != Part::Table) && !is_out_of_flow(element)),
+        _ => false,
+    };
+    if !plan.iter().any(|(child, _)| is_loose(child)) {
+        return plan;
+    }
+    let mut out = Vec::with_capacity(plan.len());
+    let mut run: Vec<(u64, u32)> = Vec::new();
+    // White space after the last part of the run, which stays if nothing of the run follows it.
+    let mut spaces: Vec<(Child, u32)> = Vec::new();
+    fn close(out: &mut Vec<(Child, u32)>, run: &mut Vec<(u64, u32)>, spaces: &mut Vec<(Child, u32)>) {
+        if let Some((_, at)) = run.first().copied() {
+            out.push((Child::AnonymousTable(std::mem::take(run)), at));
+        }
+        out.append(spaces);
+    }
+    for (child, at) in plan {
+        if is_loose(&child) {
+            let Child::Block(id) = child else { unreachable!("only a block is loose") };
+            run.push((id, at));
+            spaces.clear();
+        } else if !run.is_empty() && matches!(&child, Child::Paragraph(paragraph) if is_blank(&paragraph.text)) {
+            spaces.push((child, at));
+        } else {
+            close(&mut out, &mut run, &mut spaces);
+            out.push((child, at));
+        }
+    }
+    close(&mut out, &mut run, &mut spaces);
+    out
 }
 
 #[cfg(test)]
@@ -494,7 +563,7 @@ mod tests {
             match child {
                 Child::Paragraph(paragraph) => out.push(paragraph),
                 Child::AnonymousCell(cell) => cell.iter().for_each(|(child, _)| collect(child, out)),
-                Child::Block(_) => {}
+                Child::Block(_) | Child::AnonymousTable(_) => {}
             }
         }
         let mut out = Vec::new();
@@ -513,6 +582,7 @@ mod tests {
                     let cell: Vec<Child> = cell.iter().map(|(child, _)| child.clone()).collect();
                     format!("cell[{}]", shape(&cell))
                 }
+                Child::AnonymousTable(parts) => format!("table{:?}", parts.iter().map(|(id, _)| *id).collect::<Vec<_>>()),
             })
             .collect::<Vec<_>>()
             .join(" ")
@@ -596,5 +666,41 @@ mod tests {
         let keys: Vec<_> = paragraphs(&plan).iter().map(|paragraph| paragraph.key()).collect();
         assert_eq!(keys.len(), 2);
         assert_ne!(keys[0], keys[1]);
+    }
+
+    #[test]
+    fn consecutive_table_parts_in_a_block_are_one_anonymous_table() {
+        let mut f = Fixture::new("block");
+        f.part(2, "table-cell").part(3, "table-cell");
+        f.part(4, "table-row");
+        assert_eq!(shape(&f.plan()), "table[2, 3, 4]");
+    }
+
+    #[test]
+    fn white_space_between_parts_makes_nothing_but_text_or_a_block_ends_the_table() {
+        let mut f = Fixture::new("block");
+        f.part(2, "table-row").text(1, 3, " \n ");
+        f.part(4, "table-row");
+        f.text(1, 5, "x");
+        f.part(6, "table-cell");
+        f.add(1, 7, "div");
+        f.part(8, "table-caption");
+        assert_eq!(shape(&f.plan()), r#"table[2, 4] "x" table[6] #7 table[8]"#);
+    }
+
+    #[test]
+    fn a_table_inside_a_block_is_a_block_and_so_is_a_part_of_a_flex_container_or_out_of_flow() {
+        let mut f = Fixture::new("block");
+        f.part(2, "table").part(3, "table-cell");
+        f.part(4, "table-cell");
+        f.styled(4, serde_json::json!({"display": "table-cell", "position": "absolute"}));
+        assert_eq!(shape(&f.plan()), "#2 table[3] #4");
+        let mut f = Fixture::new("flex");
+        f.part(2, "table-cell").part(3, "table-row");
+        assert_eq!(shape(&f.plan()), "#2 #3");
+        // A cell holds blocks, so a part in a cell is wrapped as in any block.
+        let mut f = Fixture::new("table-cell");
+        f.part(2, "table-cell");
+        assert_eq!(shape(&f.plan()), "table[2]");
     }
 }

@@ -715,6 +715,11 @@ fn collect_plan(tree: &RetainedTree, plan: Vec<super::inline::Child>, out: &mut 
             super::inline::Child::AnonymousCell(cell) => {
                 collect_plan(tree, cell.into_iter().map(|(child, _)| child).collect(), out)
             }
+            super::inline::Child::AnonymousTable(parts) => {
+                for (part, _) in parts {
+                    collect_into(tree, part, false, out);
+                }
+            }
         }
     }
 }

@@ -2201,6 +2201,151 @@ describeNative("tables: border-collapse", () => {
     expect(paint("collapse-on", ui(true)).at(1, 1)).toEqual(RED)
   })
 
+  /**
+   * Table parts whose parent is not a table get an anonymous table, one for each run of them: the cells `a` and `b`
+   * are one table, a block ends it, and the row `r` and the row group `g` after it are another, as wide as the widest
+   * of their cells. Another run of cells does not make a column of the first table.
+   *
+   * ```html
+   * <div id="p">
+   *   <div id="h" style="height:5px"></div>
+   *   <div id="a" style="display:table-cell"><div id="a1" style="width:30px;height:10px"></div></div>
+   *   <div id="b" style="display:table-cell"><div id="b1" style="width:20px;height:20px"></div></div>
+   *   <div id="m" style="height:7px"></div>
+   *   <div id="r" style="display:table-row"><div id="c" style="display:table-cell"><div id="c1" style="width:10px;height:10px"></div></div></div>
+   *   <div id="g" style="display:table-row-group"><div id="r2" style="display:table-row"><div id="d" style="display:table-cell"><div id="d1" style="width:40px;height:6px"></div></div></div></div>
+   *   <div id="e" style="height:3px"></div>
+   * </div>
+   * ```
+   */
+  it("wraps runs of table parts that are not in a table in an anonymous table", () => {
+    expectBoxes(
+      <div testId="p">
+        <Box id="h" w={300} h={5} />
+        <Cell id="a">
+          <Box id="a1" w={30} h={10} />
+        </Cell>
+        <Cell id="b">
+          <Box id="b1" w={20} h={20} />
+        </Cell>
+        <Box id="m" w={300} h={7} />
+        <Row id="r">
+          <Cell id="c">
+            <Box id="c1" w={10} h={10} />
+          </Cell>
+        </Row>
+        <Body id="g">
+          <Row id="r2">
+            <Cell id="d">
+              <Box id="d1" w={40} h={6} />
+            </Cell>
+          </Row>
+        </Body>
+        <Box id="e" w={300} h={3} />
+      </div>,
+      {
+        // oracle:begin
+        p: [0, 0, 300, 51],
+        h: [0, 0, 300, 5],
+        a: [0, 5, 30, 20],
+        a1: [0, 15, 30, 10],
+        b: [30, 5, 20, 20],
+        b1: [30, 5, 20, 20],
+        m: [0, 25, 300, 7],
+        r: [0, 32, 40, 10],
+        c: [0, 32, 40, 10],
+        c1: [0, 32, 10, 10],
+        g: [0, 42, 40, 6],
+        r2: [0, 42, 40, 6],
+        d: [0, 42, 40, 6],
+        d1: [0, 42, 40, 6],
+        e: [0, 48, 300, 3],
+        // oracle:end
+      }
+    )
+  })
+
+  it("leaves a table part alone in a flex container, where it is a flex item, and drops white space between parts", () => {
+    expectBoxes(
+      <div testId="p" style={{ display: "flex" }}>
+        <Cell id="a">
+          <Box id="a1" w={30} h={10} />
+        </Cell>
+        <Cell id="b">
+          <Box id="b1" w={20} h={20} />
+        </Cell>
+      </div>,
+      { a: [0, 0, 30, 20], b: [30, 0, 20, 20] }
+    )
+    expectBoxes(
+      <div testId="p">
+        <Cell id="a">
+          <Box id="a1" w={30} h={10} />
+        </Cell>{" "}
+        <Cell id="b">
+          <Box id="b1" w={20} h={20} />
+        </Cell>
+      </div>,
+      { b: [30, 0, 20, 20] }
+    )
+  })
+
+  /**
+   * The anonymous table inherits `border-collapse`, so cells in a block with it collapse their borders.
+   *
+   * ```html
+   * <div id="p" style="border-collapse:collapse">
+   *   <div id="a" style="display:table-cell;border:4px solid #ff0000"><div id="a1" style="width:20px;height:10px"></div></div>
+   *   <div id="b" style="display:table-cell;border:2px solid #0000ff"><div id="b1" style="width:20px;height:10px"></div></div>
+   * </div>
+   * ```
+   * `R` red, `B` blue, 52 by 18 pixels.
+   */
+  it("collapses the borders of cells in an anonymous table when the parent says so", () => {
+    const ui = (
+      <div testId="p" style={{ borderCollapse: "collapse" }}>
+        <Cell id="a" style={{ border: "4px solid #ff0000" }}>
+          <Box id="a1" w={20} h={10} />
+        </Cell>
+        <Cell id="b" style={{ border: "2px solid #0000ff" }}>
+          <Box id="b1" w={20} h={10} />
+        </Cell>
+      </div>
+    )
+    expectBoxes(ui, {
+      // oracle:begin
+      a: [2, 2, 24, 14],
+      a1: [4, 4, 20, 10],
+      b: [26, 2, 23, 14],
+      b1: [28, 4, 20, 10],
+      // oracle:end
+    })
+    expectMap(
+      paint("collapse-anonymous", ui),
+      [
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRR........................",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRR....................RRRR....................BB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRR....................BB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRRBBBBBBBBBBBBBBBBBBBBBB..",
+        "RRRRRRRRRRRRRRRRRRRRRRRRRRRR........................"
+      ],
+      { R: RED, B: BLUE }
+    )
+  })
+
   it("paints a collapsed table's borders under its opacity", () => {
     const solid = paint(
       "collapse-opaque",

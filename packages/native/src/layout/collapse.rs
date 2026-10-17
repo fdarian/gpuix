@@ -18,14 +18,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::css::border::{LineStyle, SideBorder};
-use crate::layout::table_grid::{CellKey, Grid};
-use crate::retained_tree::{RetainedElement, RetainedTree};
+use crate::layout::table_grid::{BoxKey, Grid};
 
 /// What the table and its cells are laid out with, and what is painted.
 pub(crate) struct Resolved {
     /// The border widths of the table, `[top, right, bottom, left]`, in px.
     pub table: [f32; 4],
-    pub cells: HashMap<CellKey, [f32; 4]>,
+    pub cells: HashMap<BoxKey, [f32; 4]>,
     pub borders: Arc<gpui::CollapsedBorders>,
 }
 
@@ -142,16 +141,15 @@ impl Slots<'_> {
     }
 }
 
-/// The borders of `table`, or `None` for a table without a slot. `borders_of` has the borders of every box of the
-/// table, the table included. `scale` is the device pixels to a pixel.
+/// The borders of the table whose cells `grid` places, or `None` for a table without a slot. `own` is the borders of
+/// the table itself. `borders_of` has the borders of every other box of the table. `scale` is the device pixels to a
+/// pixel.
 pub(crate) fn resolve(
-    tree: &RetainedTree,
-    table: &RetainedElement,
-    merge_empty_columns: bool,
+    grid: Grid,
+    own: [SideBorder; 4],
     scale: f32,
     borders_of: &dyn Fn(u64) -> [SideBorder; 4],
 ) -> Option<Resolved> {
-    let grid = Grid::build(tree, table, merge_empty_columns);
     let (columns, rows) = (grid.columns, grid.rows.len());
     if columns == 0 || rows == 0 {
         return None;
@@ -165,14 +163,13 @@ pub(crate) fn resolve(
         }
     }
 
-    let own = borders_of(table.id);
     let element_borders = |id: Option<u64>| id.map(borders_of);
     let cell_borders: Vec<Option<[SideBorder; 4]>> = grid
         .cells
         .iter()
         .map(|cell| match cell.key {
-            CellKey::Element(id) => Some(borders_of(id)),
-            CellKey::Anonymous { .. } => None,
+            BoxKey::Element(id) => Some(borders_of(id)),
+            BoxKey::Anonymous { .. } => None,
         })
         .collect();
     let row_borders: Vec<Option<[SideBorder; 4]>> = grid.rows.iter().map(|row| element_borders(row.element)).collect();
@@ -338,6 +335,7 @@ pub(crate) fn resolve(
 mod tests {
     use super::*;
     use crate::css::border::LineStyle;
+    use crate::retained_tree::RetainedTree;
 
     const SCALE: f32 = 1.0;
 
@@ -396,13 +394,14 @@ mod tests {
         }
 
         fn resolve(&self) -> Resolved {
-            resolve(&self.tree, &self.tree.elements[&1], true, SCALE, &|id| self.borders.get(&id).copied().unwrap_or(NONE))
-                .expect("a table with cells")
+            let borders_of = |id: u64| self.borders.get(&id).copied().unwrap_or(NONE);
+            let grid = Grid::build(&self.tree, &self.tree.elements[&1], true);
+            resolve(grid, borders_of(1), SCALE, &borders_of).expect("a table with cells")
         }
     }
 
     fn halves(resolved: &Resolved, id: u64) -> [f32; 4] {
-        resolved.cells[&CellKey::Element(id)]
+        resolved.cells[&BoxKey::Element(id)]
     }
 
     /// Two rows of two cells, the case the layout tests of zed check against Chrome: a 4px table border and cells of 3,

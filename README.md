@@ -6155,6 +6155,14 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   nothing, and neither does a `position: absolute` or `fixed` child, which the
   table places by its insets. Children of a `table-column` are not built, and a
   `table-column-group` builds only its `table-column` children.
+- **Anonymous tables.** A row, row group, cell, caption, column or column group whose
+  parent is not a table (a plain `div`, a `table-cell`) gets an anonymous table around
+  it, one for each run of consecutive ones, as in CSS 2.1 section 17.2.1: bare cells
+  form a row, the table shrinks to its content, and white space between the parts
+  makes nothing. Text or a block ends the run. The table has no element or style of its
+  own and inherits `borderSpacing` and `borderCollapse` from its parent. In a `flex` or
+  `grid` container, or with `position: absolute` or `fixed`, a part is a plain item and
+  is not wrapped.
 - **Collapsed borders.** With `borderCollapse: "collapse"` (inherited) the borders of
   the table, its cells, rows, row groups, columns and column groups share the edges of
   the grid, and each edge has one: `hidden` removes it, otherwise the wider wins, then
@@ -6184,8 +6192,6 @@ Differences from Chrome:
   with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
   percentage of a parent with no width draws no collapsed borders.
 - `inline-table` is a `table`: it is block-level until the `inline-*` values exist.
-- A table part outside a table, row group or row (a `table-row`, or a `table-cell`
-  in a plain `div`) is a block with no anonymous table around it.
 - A cell, row or group with a percentage `height` has an `auto` one.
 - A cell with text, or any leaf the layout measures, has no first baseline, so a
   `baseline`-aligned cell lines up by the bottom of its content, where Chrome uses the

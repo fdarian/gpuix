@@ -8,17 +8,17 @@ use crate::layout::table::{Part, cell_spans, column_span, is_out_of_flow, part};
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::text::inline::Child;
 
-/// What a cell is called in the map of its borders: the element of a cell, or the n-th anonymous cell a
-/// part holds.
+/// What a cell or a table is called in the maps of collapsed borders: its element, or the n-th anonymous cell a
+/// table part holds, or the n-th anonymous table another box holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CellKey {
+pub(crate) enum BoxKey {
     Element(u64),
     Anonymous { container: u64, ordinal: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Cell {
-    pub key: CellKey,
+    pub key: BoxKey,
     pub row: usize,
     pub col: usize,
     pub col_span: usize,
@@ -86,7 +86,7 @@ struct SectionSource {
 /// A cell before it has a place.
 #[derive(Clone, Copy)]
 struct Placed {
-    key: CellKey,
+    key: BoxKey,
     col_span: usize,
     row_span: usize,
 }
@@ -98,6 +98,16 @@ impl Grid {
     /// The grid of `table`. `merge_empty_columns` is what the layout does unless the table has a fixed
     /// layout and a width: a column no cell starts in joins the one before it.
     pub(crate) fn build(tree: &RetainedTree, table: &RetainedElement, merge_empty_columns: bool) -> Grid {
+        Self::from_items(tree, items(tree, table), merge_empty_columns)
+    }
+
+    /// The grid of an anonymous table, which holds `parts` and nothing else.
+    pub(crate) fn build_anonymous(tree: &RetainedTree, parts: &[u64], merge_empty_columns: bool) -> Grid {
+        let items = parts.iter().filter_map(|id| tree.elements.get(id)).map(Item::Element).collect();
+        Self::from_items(tree, items, merge_empty_columns)
+    }
+
+    fn from_items(tree: &RetainedTree, children: Vec<Item>, merge_empty_columns: bool) -> Grid {
         let mut grid = Grid::default();
         let mut sources: Vec<SectionSource> = Vec::new();
         let mut explicit_columns = 0;
@@ -105,10 +115,10 @@ impl Grid {
         let mut column_nodes = Vec::new();
         let mut column_groups = Vec::new();
 
-        for item in items(tree, table) {
+        for item in children {
             let (key, element) = match item {
                 Item::Anonymous(key) => (key, None),
-                Item::Element(element) => (CellKey::Element(element.id), Some(element)),
+                Item::Element(element) => (BoxKey::Element(element.id), Some(element)),
             };
             let Some(element) = element else {
                 run.push(Placed { key, col_span: 1, row_span: 1 });
@@ -296,15 +306,15 @@ fn placed(element: &RetainedElement) -> Placed {
     match part(element) {
         Some(Part::Cell) => {
             let (col_span, row_span) = cell_spans(element);
-            Placed { key: CellKey::Element(element.id), col_span, row_span }
+            Placed { key: BoxKey::Element(element.id), col_span, row_span }
         }
-        _ => Placed { key: CellKey::Element(element.id), col_span: 1, row_span: 1 },
+        _ => Placed { key: BoxKey::Element(element.id), col_span: 1, row_span: 1 },
     }
 }
 
 /// A child of a table part as the plan gives it: an element, or a cell with none.
 enum Item<'a> {
-    Anonymous(CellKey),
+    Anonymous(BoxKey),
     Element(&'a RetainedElement),
 }
 
@@ -318,9 +328,9 @@ fn items<'a>(tree: &'a RetainedTree, container: &'a RetainedElement) -> Vec<Item
             Child::Block(id) => tree.elements.get(&id).map(Item::Element),
             Child::AnonymousCell(_) => {
                 ordinal += 1;
-                Some(Item::Anonymous(CellKey::Anonymous { container: container.id, ordinal: ordinal - 1 }))
+                Some(Item::Anonymous(BoxKey::Anonymous { container: container.id, ordinal: ordinal - 1 }))
             }
-            Child::Paragraph(_) => None,
+            Child::Paragraph(_) | Child::AnonymousTable(_) => None,
         })
         .collect()
 }
@@ -409,8 +419,8 @@ mod tests {
         grid.cells
             .iter()
             .map(|cell| match cell.key {
-                CellKey::Element(id) => (id, cell.row, cell.col, cell.col_span, cell.row_span),
-                CellKey::Anonymous { container, ordinal } => (container * 100 + ordinal as u64, cell.row, cell.col, cell.col_span, cell.row_span),
+                BoxKey::Element(id) => (id, cell.row, cell.col, cell.col_span, cell.row_span),
+                BoxKey::Anonymous { container, ordinal } => (container * 100 + ordinal as u64, cell.row, cell.col, cell.col_span, cell.row_span),
             })
             .collect()
     }

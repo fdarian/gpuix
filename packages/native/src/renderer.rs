@@ -8039,7 +8039,7 @@ pub(crate) fn build_host_container(
     }
 
     if ctx.inherited.table.collapse && crate::layout::table::part(element) == Some(crate::layout::table::Part::Table) {
-        resolve_collapsed_borders(ctx, element, style, window.scale_factor());
+        resolve_collapsed_borders(ctx, CollapsedTable::Element(element, style), window.scale_factor());
     }
     el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
@@ -8151,14 +8151,17 @@ pub(crate) fn build_host_container(
     el.into_any_element()
 }
 
-/// The borders of the table `element` with collapsed borders, resolved for its cells and itself.
-fn resolve_collapsed_borders(
-    ctx: &mut BuildCtx,
-    element: &crate::retained_tree::RetainedElement,
-    style: Option<&StyleDesc>,
-    scale: f32,
-) {
+/// The table a collapsed border is resolved for.
+enum CollapsedTable<'a> {
+    Element(&'a crate::retained_tree::RetainedElement, Option<&'a StyleDesc>),
+    /// The anonymous table around these table parts, which has no style of its own.
+    Anonymous(crate::layout::table_grid::BoxKey, &'a [u64]),
+}
+
+/// Resolves the collapsed borders of `table` for its cells and itself, and hands them to `ctx.collapsed`.
+fn resolve_collapsed_borders(ctx: &mut BuildCtx, table: CollapsedTable, scale: f32) {
     use crate::css::border::{LineStyle, SideBorder};
+    use crate::layout::table_grid::{BoxKey, Grid};
 
     /// The borders of `element` and, below a table, row group, row or column group, of its children, each read
     /// with the colours and lengths it inherits. They see the pointer's states but not transitions, animations
@@ -8181,38 +8184,61 @@ fn resolve_collapsed_borders(
         }
         let children = crate::layout::order::children_in_order(ctx.tree, element, element.style.as_deref());
         for child in children.iter().filter_map(|id| ctx.tree.elements.get(id)) {
-            if crate::layout::box_generation::is_display_none(child) {
-                continue;
-            }
-            let states = child
-                .style
-                .as_deref()
-                .map(|style| ctx.pointer_states(child.id, style, child.has_inert_prop()))
-                .unwrap_or_default();
-            let folded = child
-                .style
-                .as_deref()
-                .filter(|_| states.any())
-                .map(|style| crate::events::state_styles::resolve_pointer_states(style, states));
-            let child_style = folded.as_ref().or(child.style.as_deref());
-            let child_inherited = inherited.clone().descend(child_style, child.has_inert_prop());
-            walk(ctx, child, child_style, &child_inherited, false, sides);
+            walk_child(ctx, child, inherited, sides);
         }
     }
 
-    let mut sides = HashMap::new();
-    walk(ctx, element, style, &ctx.inherited, true, &mut sides);
-    // A table whose width is definite lays its columns out fixed when it says so, and keeps the columns no cell starts in.
-    let fixed = style.is_some_and(|style| {
-        style.table_layout == Some(crate::css::table::TableLayout::Fixed)
-            && style.width.as_ref().is_some_and(|width| !matches!(width, crate::style::DimensionValue::Auto))
-    });
+    fn walk_child(
+        ctx: &BuildCtx,
+        child: &crate::retained_tree::RetainedElement,
+        inherited: &Inherited,
+        sides: &mut HashMap<u64, [SideBorder; 4]>,
+    ) {
+        if crate::layout::box_generation::is_display_none(child) {
+            return;
+        }
+        let states = child
+            .style
+            .as_deref()
+            .map(|style| ctx.pointer_states(child.id, style, child.has_inert_prop()))
+            .unwrap_or_default();
+        let folded = child
+            .style
+            .as_deref()
+            .filter(|_| states.any())
+            .map(|style| crate::events::state_styles::resolve_pointer_states(style, states));
+        let child_style = folded.as_ref().or(child.style.as_deref());
+        let child_inherited = inherited.clone().descend(child_style, child.has_inert_prop());
+        walk(ctx, child, child_style, &child_inherited, false, sides);
+    }
+
     let none = || SideBorder { style: LineStyle::None, width: gpui::px(0.0), color: gpui::transparent_black() };
-    let resolved = crate::layout::collapse::resolve(ctx.tree, element, !fixed, scale, &|id| {
-        sides.get(&id).copied().unwrap_or([none(); 4])
-    });
+    let mut sides = HashMap::new();
+    let (key, grid, own) = match table {
+        CollapsedTable::Element(element, style) => {
+            walk(ctx, element, style, &ctx.inherited, true, &mut sides);
+            // A table whose width is definite lays its columns out fixed when it says so, and keeps the columns no
+            // cell starts in.
+            let fixed = style.is_some_and(|style| {
+                style.table_layout == Some(crate::css::table::TableLayout::Fixed)
+                    && style.width.as_ref().is_some_and(|width| !matches!(width, crate::style::DimensionValue::Auto))
+            });
+            (
+                BoxKey::Element(element.id),
+                Grid::build(ctx.tree, element, !fixed),
+                sides[&element.id],
+            )
+        }
+        CollapsedTable::Anonymous(key, parts) => {
+            for part in parts.iter().filter_map(|id| ctx.tree.elements.get(id)) {
+                walk_child(ctx, part, &ctx.inherited, &mut sides);
+            }
+            (key, Grid::build_anonymous(ctx.tree, parts, true), [none(); 4])
+        }
+    };
+    let resolved = crate::layout::collapse::resolve(grid, own, scale, &|id| sides.get(&id).copied().unwrap_or([none(); 4]));
     if let Some(resolved) = resolved {
-        ctx.collapsed.insert(element.id, resolved);
+        ctx.collapsed.insert(key, resolved);
     }
 }
 
@@ -8257,7 +8283,7 @@ fn build_content(
 }
 
 /// Builds the children `plan` of `element` into `content_elements`, with the paint rank of each.
-/// `anonymous` counts the anonymous cells of `element` built so far.
+/// `anonymous` counts the anonymous cells and tables of `element` built so far.
 fn build_plan(
     element: &crate::retained_tree::RetainedElement,
     plan: Vec<(crate::text::inline::Child, u32)>,
@@ -8273,20 +8299,42 @@ fn build_plan(
 
     for (child, at) in plan {
         // The cell is no element: what it holds sits at its own document positions.
-        if let crate::text::inline::Child::AnonymousCell(cell) = child {
-            let mut inside = Vec::new();
-            let mut inside_ranks = Vec::new();
-            build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
-            let key = crate::layout::table_grid::CellKey::Anonymous { container: element.id, ordinal: *anonymous };
-            *anonymous += 1;
-            let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
-            let mut cell = crate::layout::table::anonymous_cell(halves);
-            if inside_ranks.iter().any(|rank| *rank != 0) {
-                cell = cell.paint_ranks(inside_ranks);
+        match child {
+            crate::text::inline::Child::AnonymousCell(cell) => {
+                let mut inside = Vec::new();
+                let mut inside_ranks = Vec::new();
+                build_plan(element, cell, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                let key = crate::layout::table_grid::BoxKey::Anonymous { container: element.id, ordinal: *anonymous };
+                *anonymous += 1;
+                let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
+                let mut cell = crate::layout::table::anonymous_cell(halves);
+                if inside_ranks.iter().any(|rank| *rank != 0) {
+                    cell = cell.paint_ranks(inside_ranks);
+                }
+                paint_ranks.push(0);
+                content_elements.push(cell.children(inside).into_any_element());
+                continue;
             }
-            paint_ranks.push(0);
-            content_elements.push(cell.children(inside).into_any_element());
-            continue;
+            crate::text::inline::Child::AnonymousTable(parts) => {
+                let key = crate::layout::table_grid::BoxKey::Anonymous { container: element.id, ordinal: *anonymous };
+                *anonymous += 1;
+                if ctx.inherited.table.collapse {
+                    let ids: Vec<u64> = parts.iter().map(|(id, _)| *id).collect();
+                    resolve_collapsed_borders(ctx, CollapsedTable::Anonymous(key, &ids), window.scale_factor());
+                }
+                let blocks = parts.into_iter().map(|(id, at)| (crate::text::inline::Child::Block(id), at)).collect();
+                let mut inside = Vec::new();
+                let mut inside_ranks = Vec::new();
+                build_plan(element, blocks, probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
+                if inside_ranks.iter().any(|rank| *rank != 0) {
+                    table = table.paint_ranks(inside_ranks);
+                }
+                paint_ranks.push(0);
+                content_elements.push(table.children(inside).into_any_element());
+                continue;
+            }
+            _ => {}
         }
         ctx.doc_path.push(at);
         match child {
@@ -8342,7 +8390,9 @@ fn build_plan(
                 content_elements.push(paragraph_content(&paragraph, ctx, window, cx));
                 ctx.inherited = own;
             }
-            crate::text::inline::Child::AnonymousCell(_) => unreachable!("handled before"),
+            crate::text::inline::Child::AnonymousCell(_) | crate::text::inline::Child::AnonymousTable(_) => {
+                unreachable!("handled before")
+            }
         }
         ctx.doc_path.pop();
     }
