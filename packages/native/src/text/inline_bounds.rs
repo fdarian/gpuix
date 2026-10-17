@@ -83,7 +83,7 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels, own_te
             ));
             Row {
                 line: row.rect,
-                baseline: own_baseline(layout, row.start, row.row.baseline, own_text),
+                baseline: own_baseline(layout, row.start..row.end, row.row.baseline, own_text),
                 ascent,
                 descent,
             }
@@ -91,18 +91,18 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels, own_te
         .collect()
 }
 
-/// The baseline of the first text of the box on the row that starts at `start`, or the row's.
-fn own_baseline(layout: &TextLayout, start: usize, row_baseline: Pixels, own_text: &[Range<usize>]) -> Pixels {
+/// The baseline of the first text of the box in `start..end`, the bytes of a row, or the row's.
+fn own_baseline(
+    layout: &TextLayout,
+    bytes: Range<usize>,
+    row_baseline: Pixels,
+    own_text: &[Range<usize>],
+) -> Pixels {
     own_text
         .iter()
-        .filter(|text| text.end > start)
-        .map(|text| text.start.max(start))
-        .find(|index| {
-            layout
-                .row_for_index(*index)
-                .is_some_and(|row| row.baseline == row_baseline)
-        })
-        .and_then(|index| layout.baseline_for_index(index))
+        .map(|text| text.start.max(bytes.start)..text.end.min(bytes.end))
+        .find(|text| !text.is_empty())
+        .and_then(|text| layout.baseline_for_index(text.start))
         .unwrap_or(row_baseline)
 }
 

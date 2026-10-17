@@ -906,6 +906,10 @@ pub struct RangeRow {
     pub rect: Bounds<gpui::Pixels>,
     /// The byte the part starts at, which is where its line's metrics are found.
     pub start: usize,
+    /// The byte the part ends at. The glyph at `end` is on the next row when this one is
+    /// followed by another: a wrap boundary is the end of the row above for an index, and the
+    /// start of the row below for a glyph.
+    pub end: usize,
     /// The row the part is on.
     pub row: TextRow,
 }
@@ -973,6 +977,7 @@ fn range_rows_with_positions(
                         size(p2.x - p1.x + px(2.0 * pad_x), row.height - px(2.0 * inset_y)),
                     ),
                     start: cur,
+                    end: seg_end,
                     row,
                 });
             }
@@ -1039,9 +1044,10 @@ mod tests {
     }
 
     #[test]
-    fn a_row_names_the_byte_it_starts_at() {
+    fn a_row_names_the_bytes_it_starts_and_ends_at() {
         let rows = wrapped_range_rows(2..9);
         assert_eq!(rows.iter().map(|row| row.start).collect::<Vec<_>>(), vec![2, 5]);
+        assert_eq!(rows.iter().map(|row| row.end).collect::<Vec<_>>(), vec![5, 9]);
     }
 
     #[test]
