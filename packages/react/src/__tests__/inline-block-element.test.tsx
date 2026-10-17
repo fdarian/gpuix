@@ -215,7 +215,8 @@ describeNative("the text style of an inline-block", () => {
   })
 
   /** The x of the dark pixels in the rows where an underline of a 20px Menlo in a 30px line is, from
-   *  `from` to `to`. The baseline is 22px down and "A" has nothing below it. */
+   *  `from` to `to`. The baseline is 22px down and "A" has nothing below it. An auto underline
+   *  starts half its 2px thickness under the baseline, so it is in rows 23 and 24. */
   function underlined(tree: React.ReactNode, ranges: (box: { x: number; width: number }) => [number, number][]) {
     const { bounds, renderer, unmount } = setup(tree)
     try {
@@ -226,7 +227,7 @@ describeNative("the text style of an inline-block", () => {
       return ranges(bounds("ib")).map(([from, to]) => {
         let count = 0
         for (let x = Math.floor(from); x < to; x++) {
-          for (let y = 25; y < 30; y++) {
+          for (let y = 23; y < 30; y++) {
             const [r, g, b] = pixels.at(x, y)
             if (r < 128 && g < 128 && b < 128) count++
           }
