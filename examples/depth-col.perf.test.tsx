@@ -2,7 +2,8 @@
  * Layout cost of nested auto-width flex columns (issue #36). The shape is the
  * demo's `perf-micro depth-col`: D nested `display: flex; flex-direction:
  * column` divs around one 20x20 box, N such instances inside a flex column.
- * The demo measured about x1.9 cost per level (22 us at D=1, 8930 us at D=12).
+ * Before the taffy measure cache was made fully associative the cost doubled
+ * per level (11 us at D=1, 6174 us at D=12 per instance); now it is linear.
  *
  * The frame is `renderer.flush()`: it rebuilds the root view and draws inline,
  * so it covers the gpuix build, GPUI/taffy layout, prepaint and paint, with
@@ -10,7 +11,8 @@
  * The `row`, `block` and `col-full` kinds are the demo's controls: they do not
  * blow up.
  *
- * It profiles, it does not guard: no budgets. Run it through
+ * The one budget is a guard against that blow-up: D=12 may cost at most
+ * `LINEAR_SLACK` times the linear extrapolation of D=1. Run it through
  * `bun run test:perf:depth` (NODE_ENV=production, like `test:perf`).
  */
 
@@ -29,6 +31,9 @@ const SAMPLES = 40
 type Kind = 'col' | 'col-full' | 'row' | 'block'
 
 const DEPTHS = [1, 4, 6, 8, 10, 12]
+const GUARD_DEPTH = 12
+// Linear growth measures about 0.7x the extrapolation; the exponential bug measured about 47x.
+const LINEAR_SLACK = 3
 const CONTROLS: Array<{ kind: Kind; depth: number }> = [
   { kind: 'row', depth: 10 },
   { kind: 'block', depth: 10 },
@@ -95,14 +100,24 @@ describeNative('nested auto-width flex columns: layout cost per instance', () =>
       ...DEPTHS.map((depth) => ({ kind: 'col' as const, depth })),
       ...CONTROLS,
     ]
+    const perInstanceUsByDepth = new Map<number, number>()
     for (const entry of cases) {
       const run = frameP50(INSTANCES, entry.depth, entry.kind)
       const perInstanceUs = ((run.summary.cpuP50 - empty.summary.cpuP50) / INSTANCES) * 1000
+      if (entry.kind === 'col') perInstanceUsByDepth.set(entry.depth, perInstanceUs)
       console.log(
         `[depth-col.perf] ${entry.kind} D=${entry.depth} N=${INSTANCES} elements=${run.elements} ` +
           `per-instance=${perInstanceUs.toFixed(0)}us | ${formatSummary(run.summary)}`,
       )
     }
     expect(empty.elements).toBeGreaterThan(0)
+
+    const shallow = perInstanceUsByDepth.get(1)!
+    const deep = perInstanceUsByDepth.get(GUARD_DEPTH)!
+    const budget = LINEAR_SLACK * GUARD_DEPTH * shallow
+    expect(
+      deep,
+      `D=${GUARD_DEPTH} costs ${deep.toFixed(0)}us per instance, over ${budget.toFixed(0)}us (${LINEAR_SLACK}x linear in D=1's ${shallow.toFixed(0)}us)`,
+    ).toBeLessThan(budget)
   }, 300_000)
 })
