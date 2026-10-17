@@ -86,7 +86,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 
 Adapters: `packages/react/src` (`reconciler/`, `components/`, `hooks/`) and `packages/solid/src` (`host.ts`, `primitives.ts`, `components/`). The rest of the repo: `cli/` (`gpuix new`), `examples/`, `example-app/`, `disktree/`, `docs/`.
 
-**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` / `groupFocusWithin` fold from `PointerState` and the focus state, then CSS transitions, then `motion` `animate`, then motion values, then CSS animations (which skip a property a CSS transition is running on, as a transition beats an animation; they advance first, inside `resolve_declared_style`, so a property one drives starts no transition), then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
+**`build_element` resolves a style in a fixed order**, and each stage reads the one before: the base style, then the `hover` / `active` / `groupHover` / `groupActive` / `groupFocusWithin` / `hasHover` / `hasActive` / `hasFocus` fold from `PointerState` and the focus state (the order is in `resolve_pointer_states`), then CSS transitions, then `motion` `animate`, then motion values, then CSS animations (which skip a property a CSS transition is running on, as a transition beats an animation; they advance first, inside `resolve_declared_style`, so a property one drives starts no transition), then the `display: contents` overlay and `anchor-size()`. A stage that needs to change a style copies it first: `RetainedElement.style` is a shared `Arc<StyleDesc>`.
 
 ## Shared JavaScript runtime
 
@@ -443,9 +443,10 @@ A custom element builds its root through `custom_surface` in
 `position` to static, records bounds, and wires the accessibility node. Give the
 root its `host_element_id` first.
 
-`hover`, `active`, `groupHover`, `groupActive` and `groupFocusWithin` are folded into the style in
+`hover`, `active`, `groupHover`, `groupActive`, `groupFocusWithin` and the relational `hasHover`,
+`hasActive` and `hasFocus` are folded into the style in
 `build_element` before any builder runs, so a builder only applies the style it
-is given (`apply_interactive_styles`). `focusVisible` and `focusWithin` need the
+is given (`apply_interactive_styles`). `focusVisible`, `focusWithin` and `hasFocusVisible` need the
 focus state, so `focus::apply_focus_styles` and `apply_focus_within` apply them
 where the element calls `track_focus`.
 

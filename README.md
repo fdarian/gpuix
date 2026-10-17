@@ -6389,6 +6389,8 @@ way, overflow included.
 
 **Ancestor state:** `group`, `groupHover`, `groupActive`, `groupFocusWithin`. See [Group state styles](#group-state-styles)
 
+**Descendant state:** `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`. See [Relational state (`:has()`)](#relational-state-has)
+
 **Every element:** `<UniversalStyle>`, a `* { ... }` layer under all own styles. See [Universal style](#universal-style)
 
 ### Group state styles
@@ -6418,9 +6420,70 @@ drives `hover` and `active`, and the focus state is the one behind `focusWithin`
 A group applies to its descendants, not to its own element. They fold in with the
 element's own states, later winning: base, `groupHover`, `hover`, `groupActive`,
 `active`, `groupFocusWithin`, then `focusWithin` and `focusVisible`, which the
-focus code applies after the fold. Focus states sit above the pointer ones. So a
+focus code applies after the fold. Focus states sit above the pointer ones. The
+[`has*` keys](#relational-state-has) fold in between these. So a
 `color` set by a group state reaches the descendants' `currentColor` like one set
 by `hover`.
+
+### Relational state (`:has()`)
+
+An element can also react to what its **descendants** are doing, which is what
+`:has()` does in CSS. Four nested style objects, like `hover`:
+
+| Key | CSS | Applies while |
+|---|---|---|
+| `hasHover` | `:has(:hover)` | a descendant is under the pointer |
+| `hasActive` | `:has(:active)` | the mouse is down on a descendant |
+| `hasFocus` | `:has(:focus)` | a descendant has focus |
+| `hasFocusVisible` | `:has(:focus-visible)` | a descendant matches `:focus-visible` |
+
+```tsx
+<div
+  style={{
+    borderWidth: 1,
+    borderColor: '#ccc',
+    hasFocus: { borderColor: '#06f' },        // an input inside has focus
+    hasHover: { backgroundColor: '#f6f6f6' }, // the pointer is over a child
+  }}
+>
+  <input />
+  <div tabIndex={0}>Save</div>
+</div>
+```
+
+The match is on a **strict descendant**: the element being hovered, pressed or
+focused itself does not count, so `hasHover` is not `hover`. `hover` also applies
+while a child is hovered, because it applies to each ancestor of the target; use
+`hasHover` when you need to tell "over the element" from "over something inside
+it". Likewise `hasFocus` differs from `focusWithin`, which also applies to the
+focused element. A descendant is one in the logical tree, the same chain that
+drives `hover` and `focusWithin`: a [portal](#portals) child counts for the
+element it is mounted under, wherever it is painted. In an `inert` subtree
+`hasHover`, `hasActive` and `hasFocus` do nothing, as `hover` does not, since
+nothing inside it can be hovered, pressed or focused.
+
+They fold in with the element's own states. An element's own state beats what
+its descendants cause, and that beats a group. Later wins: base, `groupHover`,
+`hasHover`, `hover`, `groupActive`, `hasActive`, `active`, `groupFocusWithin`,
+`hasFocus`, `focusWithin`, `hasFocusVisible`, `focusVisible`. The ancestor
+restyles in the same frame the pointer or focus moves. Everything a state style
+can hold works: layout, `position`, `color` (which reaches the descendants'
+`currentColor`), [transitions](#css-transitions) and
+[animations](#css-animations) declared inside them, and
+[`<UniversalStyle>`](#universal-style) refinements. They work on every element
+that `hover` does, including an inline `<span>`: a span restyles while a span
+inside it is hovered.
+
+There is no stylesheet, so this is not the whole of `:has()`. It cannot express:
+
+- An arbitrary selector. `:has(.error)`, `:has(img)` and `:has(+ x)` need a
+  selector engine; the four keys cover the four pseudo-classes gpuix tracks
+- A direct child only (`:has(> x)`). The match is on any descendant
+- `:has(:checked)`, `:has(:disabled)` and the like. gpuix has no `checked` or
+  `disabled` state style, so there is no `hasChecked` either. Derive those in
+  your component and pass the style
+- Anything about a sibling or an ancestor of the descendant. Only the four states
+  of a descendant are tracked
 
 ### Hover and active
 
@@ -6619,8 +6682,8 @@ render per frame.
   transition, but dropping its property from `transitionProperty` cancels it. A
   negative delay starts part-way through
 - **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
-  `groupActive` and `groupFocusWithin` are folded into the style that is compared, so they animate in and
-  out. A `transition` set inside `hover` is the one used while entering hover; the
+  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and `hasFocusVisible` are folded
+  into the style that is compared, so they animate in and out. A `transition` set inside `hover` is the one used while entering hover; the
   base one is used leaving it. An
   element that declares a transition has its state styles applied by gpuix instead
   of GPUI's per-element refinements, so they show one frame after the pointer
@@ -6703,7 +6766,8 @@ defineKeyframes('pulse', {
   / `both` fill, `paused` (freezes where it is and resumes from there), a negative
   delay that starts part-way through, and a restart when `animationName` changes
 - **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
-  `groupActive` and `groupFocusWithin` may declare `animation`. It starts when the state applies and is
+  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and `hasFocusVisible` may declare
+  `animation`. It starts when the state applies and is
   cancelled when it ends
 - **`display: none`.** Going `display: none` cancels the element's animations and
   those of its descendants, and they start over when it shows again
@@ -6766,8 +6830,8 @@ does not use a component.
   `style`. A string child is a text node, not an element, and gets nothing; a
   `<text>` element does
 - **State refinements.** The layer may carry `hover`, `active`, `focusVisible`,
-  `focusWithin`, `groupHover`, `groupActive` and `groupFocusWithin`, like
-  `*:hover`. Where the element declares the same refinement the two merge, the
+  `focusWithin`, `groupHover`, `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and
+  `hasFocusVisible`, like `*:hover`. Where the element declares the same refinement the two merge, the
   element's winning per property; where only one does, that one is used
 - **Not inherited.** It is a declaration on each element, as `* {}` is, so a
   property that does not inherit does not start to
