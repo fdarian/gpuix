@@ -3294,7 +3294,9 @@ paragraph it is in lays it out, and everything else about it is the element's ow
 - **Width.** `width: auto` is shrink-to-fit: the content's width, but at most the
   width the paragraph is laid out in and at least its min-content width. A `width`
   in `%` (or a `calc()` with one) is of the paragraph's width, and a percentage on a
-  child of an `auto` box is of the width the box came to. `margin` in `%` is of the paragraph's
+  child of an `auto` box is of the width the box came to. A `minWidth` or `maxWidth` in `%`
+  is of the paragraph's width too, and `width: 'fit-content'` under a `maxWidth: '50%'` hugs
+  its content up to half of it. `margin` in `%` is of the paragraph's
   width as well, and an `auto` margin is 0.
 - **Relative position.** `position: relative` moves the box by `left` or `right` and `top` or `bottom`, and
   nothing else on the line moves with it. A percentage `left` or `right` is of the width of the block
@@ -5877,6 +5879,14 @@ does not shrink below its longest word without `minWidth: 0`.
   <div style={{ width: 'fit-content', maxWidth: '50%' }}>a label that wraps</div>
 </div>
 ```
+
+`fit-content` is the preferred width `min(max-content, max(min-content, available width))`,
+and then `minWidth` and `maxWidth` apply to it, `minWidth` winning, as in CSS. A
+`maxWidth` under the min-content width is therefore the width (the content overflows), and a
+`maxWidth` in `%` over the max-content width does not widen the box: it hugs its content.
+A child with `width: '100%'` does not count in the box's content sizes (a percentage of a
+width that depends on the child is `auto` there), and gets the final width of the box
+afterwards, so a `100%` child of a box that hugs its other content is as wide as they are.
 
 A layout pre-pass measures them, so each node with a keyword costs extra layouts
 of its subtree every frame, and nesting multiplies it. Use them where the content

@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  Oracle for fit-content.test.tsx: the expected numbers there are what headless Chrome lays out for
+  these pages (`box-sizing: border-box` everywhere, as gpuix has it). Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-out="[^"]*"' | sed 's/&quot;/"/g'
+
+  Each case is `name: [box width, ...child widths, box height]`. A case is a `parent` holding a `box` holding
+  the children: a number is a fixed-size div of that width (and 10px high), `100%` a child that asks for the
+  width of the box, text is GpuixTestSquare at 20px (every character 20px wide, a line 20px high).
+  Chrome has no `fit-content(<limit>)` for `width`, so none is here; the test derives those from
+  `min(max-content, max(min-content, limit))`.
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:GpuixTestSquare;src:url(gpuix-test-square.ttf)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;font:16px/1 sans-serif}
+.tx{font:20px/20px GpuixTestSquare}
+.k{height:10px}
+</style></head><body>
+<div id="root"></div>
+<script>
+// [name, parentStyle, boxStyle, children: array of [width, extraStyle]]
+const C = [];
+const B = 'display:block;width:400px';
+const F = 'width:fit-content';
+const kid = (w, s='', t='') => [w, s, t];
+function add(n, p, b, k){ C.push([n,p,b,k]); }
+// text (GpuixTestSquare 20px: every character 20px wide, a line 20px high)
+const TB = B+';font:20px/20px GpuixTestSquare';
+add('txt fit %flexchild short', TB, F, [kid('100%','display:flex','AAAAA')]);
+add('txt fit max50 %flexchild short', TB, F+';max-width:50%', [kid('100%','display:flex','AAAAA')]);
+add('txt fit max50 long', TB, F+';max-width:50%', [kid('auto','','AAAA AAAA AAAA AAAA')]);
+add('txt fit long', TB, F, [kid('auto','','AAAA AAAA AAAA AAAA')]);
+add('txt fit max10% long', TB, F+';max-width:10%', [kid('auto','','AAAA AAAA AAAA AAAA')]);
+add('txt fit max%100 %flexchild long', TB, F+';max-width:100%', [kid('100%','display:flex','AAAA AAAA AAAA AAAA AAAA AAAA')]);
+add('txtcol fit %flexchild short', 'display:flex;flex-direction:column;width:600px;font:20px/20px GpuixTestSquare', F, [kid('100%','display:flex','AAAAA')]);
+add('txtcol fit max% %flexchild short', 'display:flex;flex-direction:column;width:600px;font:20px/20px GpuixTestSquare', F+';max-width:100%', [kid('100%','display:flex','AAAAA')]);
+// rigid text (white-space: pre) in a scroll container, the shapes of a code block in a popup
+const PRE = 'A'.repeat(100);
+const TC = 'display:flex;flex-direction:column;width:600px;font:20px/20px GpuixTestSquare';
+add('pre col fit scroll', TC, F+';overflow-x:scroll', [kid('auto','white-space:pre',PRE)]);
+add('pre col fit scroll max%', TC, F+';overflow-x:scroll;max-width:100%', [kid('auto','white-space:pre',PRE)]);
+add('pre col fit scroll max400', TC, F+';overflow-x:scroll;max-width:400px', [kid('auto','white-space:pre',PRE)]);
+add('pre col start scroll max%', TC+';align-items:flex-start', 'overflow-x:scroll;max-width:100%', [kid('auto','white-space:pre',PRE)]);
+add('pre col fit max% short', TC, F+';max-width:100%', [kid('auto','white-space:pre','AAAAA')]);
+// a fit-content box in a parent that is itself shrink-to-fit: `nest` cases also report the parent first
+const AP = 'position:absolute;left:0;top:0';
+add('nest abs parent fit max% c120', AP+';display:block', F+';max-width:100%', [kid(120)]);
+add('nest abs parent fit max% c120 %child', AP+';display:block', F+';max-width:100%', [kid(120), ['100%','']]);
+add('nest abs parent fit max50 c300', AP+';display:block;max-width:400px', F+';max-width:50%', [kid(300)]);
+add('nest abs col parent fit max% c120', AP+';display:flex;flex-direction:column', F+';max-width:100%', [kid(120)]);
+add('nest abs col parent fit max% c120 %child', AP+';display:flex;flex-direction:column', F+';max-width:100%', [kid(120), ['100%','']]);
+add('nest abs col parent fit max% c900', AP+';display:flex;flex-direction:column;max-width:600px', F+';max-width:100%', [kid(900)]);
+// block parent 400
+add('blk fit max50 c300', B, F+';max-width:50%', [kid(300)]);
+add('blk fit max50 c120', B, F+';max-width:50%', [kid(120)]);
+add('blk fit max200px c300', B, F+';max-width:200px', [kid(300)]);
+add('blk fit max200px c120', B, F+';max-width:200px', [kid(120)]);
+add('blk fit min50 c120', B, F+';min-width:50%', [kid(120)]);
+add('blk fit min350 max200 c100', B, F+';min-width:350px;max-width:200px', [kid(100)]);
+add('blk fit c500', B, F, [kid(500)]);
+add('blk fit max100% c500', B, F+';max-width:100%', [kid(500)]);
+add('blk fit(100px) max50 c300', B, 'width:fit-content(100px);max-width:50%', [kid(300)]);
+add('blk fit(300px) max50 c120', B, 'width:fit-content(300px);max-width:50%', [kid(120)]);
+add('blk fit(50%) max100% c500', B, 'width:fit-content(50%);max-width:100%', [kid(500)]);
+add('blk fit(50%) c120', B, 'width:fit-content(50%)', [kid(120)]);
+add('blk fit + %child c120 sib', B, F, [kid(120), ['100%','']]);
+add('blk fit + %child only', B, F, [['100%','']]);
+add('blk fit max50 + %child c300', B, F+';max-width:50%', [kid(300), ['100%','']]);
+add('blk fit max50 + %child c120', B, F+';max-width:50%', [kid(120), ['100%','']]);
+add('blk fit + %child pad', B, F+';padding:0 10px', [kid(120), ['100%','']]);
+add('blk fit max50 pad c300', B, F+';padding:0 10px;max-width:50%', [kid(300)]);
+add('blk fit max50 pad bbox c300', B, F+';padding:0 10px;max-width:50%;box-sizing:border-box', [kid(300)]);
+// flex column 600
+const FC = 'display:flex;flex-direction:column;width:600px';
+add('col fit c120', FC, F, [kid(120)]);
+add('col fit max% c120', FC, F+';max-width:100%', [kid(120)]);
+add('col fit max% c900', FC, F+';max-width:100%', [kid(900)]);
+add('col fit max400 c900', FC, F+';max-width:400px', [kid(900)]);
+add('col fit max400 c120', FC, F+';max-width:400px', [kid(120)]);
+add('col fit max50% c900', FC, F+';max-width:50%', [kid(900)]);
+add('col fit max50% c120', FC, F+';max-width:50%', [kid(120)]);
+add('col fit min50% c120', FC, F+';min-width:50%', [kid(120)]);
+add('col fit max% + %child c120', FC, F+';max-width:100%', [kid(120), ['100%','']]);
+add('col start max% c120', FC+';align-items:flex-start', 'max-width:100%', [kid(120)]);
+add('col fit scroll c900', FC, F+';overflow-x:scroll', [kid(900)]);
+add('col fit scroll max% c900', FC, F+';overflow-x:scroll;max-width:100%', [kid(900)]);
+add('col fit scroll max400 c900', FC, F+';overflow-x:scroll;max-width:400px', [kid(900)]);
+add('col start scroll max% c900', FC+';align-items:flex-start', 'overflow-x:scroll;max-width:100%', [kid(900)]);
+add('col fit(200px) c300', FC, 'width:fit-content(200px)', [kid(300)]);
+// flex row 400
+const FR = 'display:flex;width:400px';
+add('row fit max50 c300', FR, F+';max-width:50%', [kid(300)]);
+add('row fit max50 c120', FR, F+';max-width:50%', [kid(120)]);
+add('row fit c500', FR, F, [kid(500)]);
+add('row fit max200px c300', FR, F+';max-width:200px', [kid(300)]);
+add('row fit min50 c120', FR, F+';min-width:50%', [kid(120)]);
+add('row fit max50 + %child c120', FR, F+';max-width:50%', [kid(120), ['100%','']]);
+// grid 400
+const G = 'display:grid;width:400px;grid-template-columns:400px';
+add('grid fit max50 c300', G, F+';max-width:50%', [kid(300)]);
+add('grid fit max50 c120', G, F+';max-width:50%', [kid(120)]);
+add('grid fit max200px c300', G, F+';max-width:200px', [kid(300)]);
+add('grid fit c120', G, F, [kid(120)]);
+add('grid fit min50 c120', G, F+';min-width:50%', [kid(120)]);
+add('grid fit %child c120', G, F, [kid(120), ['100%','']]);
+add('grid 1fr fit max50 c120', 'display:grid;width:400px', F+';max-width:50%', [kid(120)]);
+add('grid 1fr fit max50 c300', 'display:grid;width:400px', F+';max-width:50%', [kid(300)]);
+// inline-block
+add('ib fit max50 c300', B, 'display:inline-block;width:fit-content;max-width:50%', [kid(300)]);
+add('ib fit max50 c120', B, 'display:inline-block;width:fit-content;max-width:50%', [kid(120)]);
+add('ib fit min50 c120', B, 'display:inline-block;width:fit-content;min-width:50%', [kid(120)]);
+add('ib fit max50 %child c120', B, 'display:inline-block;width:fit-content;max-width:50%', [kid(120), ['100%','']]);
+// absolute
+add('abs fit max50 c300', 'position:relative;height:60px;width:400px', 'position:absolute;left:0;width:fit-content;max-width:50%', [kid(300)]);
+add('abs fit max50 c120', 'position:relative;height:60px;width:400px', 'position:absolute;left:0;width:fit-content;max-width:50%', [kid(120)]);
+add('abs fit max50 %child c120', 'position:relative;height:60px;width:400px', 'position:absolute;left:0;width:fit-content;max-width:50%', [kid(120), ['100%','']]);
+// min/max keyword
+add('blk max-width fit-content c300', B, 'max-width:fit-content', [kid(300)]);
+add('blk w100% max fit c120', B, 'max-width:fit-content', [kid(120)]);
+add('blk min-width fit-content c120', B, 'min-width:fit-content', [kid(120)]);
+add('row basis fit-content c300 sib', FR, 'flex-basis:fit-content', [kid(300)]);
+add('row basis fit-content max50 c300', FR, 'flex-basis:fit-content;max-width:50%', [kid(300)]);
+
+document.fonts.load('20px GpuixTestSquare', 'A').then(() => {
+const out = {};
+const root = document.getElementById('root');
+for (const [n,p,b,ks] of C) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = p;
+  const box = document.createElement('div');
+  box.style.cssText = b;
+  const kids = [];
+  for (const [w,s,t] of ks) {
+    const k = document.createElement('div');
+    k.style.cssText = (t ? '' : 'height:10px;')+'flex:none;width:'+(typeof w==='number'?w+'px':w)+';'+s;
+    k.textContent = t;
+    box.appendChild(k); kids.push(k);
+  }
+  wrap.appendChild(box); root.appendChild(wrap);
+  const r = box.getBoundingClientRect();
+  out[n] = [...(n.startsWith('nest') ? [wrap.getBoundingClientRect().width] : []), r.width, ...kids.map(k=>k.getBoundingClientRect().width), r.height];
+}
+document.body.setAttribute('data-out', JSON.stringify(out));
+});
+</script></body></html>
