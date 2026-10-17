@@ -29,8 +29,8 @@ pub(crate) enum Part {
     ColumnGroup,
 }
 
-/// The table part a `display` value stands for. `inline-table` is a `table`: the inline
-/// formatting context does not place atomic inline boxes yet.
+/// The table part a `display` value stands for. `inline-table` is a `table` that the inline
+/// formatting context places as an atomic inline.
 pub(crate) fn part_of(display: &str) -> Option<Part> {
     Some(match display {
         "table" | "inline-table" => Part::Table,
@@ -139,7 +139,8 @@ fn plan_cells(
         .filter_map(|(id, at)| Some((tree.elements.get(id)?, *at)))
         .filter(|(child, _)| !is_display_none(child))
     {
-        if part(child).is_some() || is_out_of_flow(child) {
+        // A table in a table part is not a part of it: it is content of a cell, as CSS wraps it.
+        if part(child).is_some_and(|part| part != Part::Table) || is_out_of_flow(child) {
             cells.close();
             cells.out.push((Child::Block(child.id), at));
         } else {

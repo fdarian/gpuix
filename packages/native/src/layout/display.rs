@@ -3,10 +3,10 @@
 //! type, so the inline-level spelling of a value only matters to the inline
 //! planner ([`crate::text::inline`]): everywhere else `inline-flex` is `flex`.
 
-/// `inline-block`, `inline-flex` or `inline-grid`: a box that sits on a line of
+/// `inline-block`, `inline-flex`, `inline-grid` or `inline-table`: a box that sits on a line of
 /// text as one unit (an atomic inline).
 pub(crate) fn is_atomic_inline(display: Option<&str>) -> bool {
-    matches!(display, Some("inline-block" | "inline-flex" | "inline-grid"))
+    matches!(display, Some("inline-block" | "inline-flex" | "inline-grid" | "inline-table"))
 }
 
 /// The inner display type, which is what gpui lays the box out as. A
@@ -17,6 +17,7 @@ pub(crate) fn inner(display: Option<&str>) -> Option<&str> {
         Some("inline-block") => Some("block"),
         Some("inline-flex") => Some("flex"),
         Some("inline-grid") => Some("grid"),
+        Some("inline-table") => Some("table"),
         display => display,
     }
 }
@@ -35,16 +36,17 @@ mod tests {
         assert_eq!(inner(Some("inline-block")), Some("block"));
         assert_eq!(inner(Some("inline-flex")), Some("flex"));
         assert_eq!(inner(Some("inline-grid")), Some("grid"));
+        assert_eq!(inner(Some("inline-table")), Some("table"));
         assert_eq!(inner(Some("flex")), Some("flex"));
         assert_eq!(inner(None), None);
     }
 
     #[test]
-    fn only_the_three_inline_level_values_are_atomic() {
-        for display in ["inline-block", "inline-flex", "inline-grid"] {
+    fn only_the_four_inline_level_values_are_atomic() {
+        for display in ["inline-block", "inline-flex", "inline-grid", "inline-table"] {
             assert!(is_atomic_inline(Some(display)), "{display}");
         }
-        for display in ["inline", "block", "flex", "grid", "contents", "none"] {
+        for display in ["inline", "block", "flex", "grid", "table", "table-cell", "contents", "none"] {
             assert!(!is_atomic_inline(Some(display)), "{display}");
         }
         assert!(!is_atomic_inline(None));

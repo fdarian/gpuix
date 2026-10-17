@@ -12,8 +12,8 @@
 //! - In a flex or grid container, children are blockified: each contiguous run
 //!   of raw text nodes becomes one anonymous item, and every element child is an
 //!   item of its own (a `<span>` there lays out its own content as a paragraph).
-//! - A child with `display: inline-block`, `inline-flex` or `inline-grid` is an
-//!   atomic inline: it takes the place of one U+FFFC in the paragraph and is
+//! - A child with `display: inline-block`, `inline-flex`, `inline-grid` or
+//!   `inline-table` is an atomic inline: it takes the place of one U+FFFC in the paragraph and is
 //!   built as an element of its own, which the paragraph sits on its line. It
 //!   is a box of the paragraph, not of its own, even when nothing but it is in
 //!   the container.
@@ -124,7 +124,7 @@ fn is_out_of_flow(element: &RetainedElement) -> bool {
 }
 
 /// Whether `element` is an atomic inline of the paragraph around it: an
-/// `inline-block`, `inline-flex` or `inline-grid` box that is in the flow. One
+/// `inline-block`, `inline-flex`, `inline-grid` or `inline-table` box that is in the flow. One
 /// that is positioned absolutely or fixed is blockified, as CSS says.
 pub fn is_atomic(element: &RetainedElement) -> bool {
     display::is_atomic_inline(display_of(element).as_deref())

@@ -452,13 +452,13 @@ export interface LinearGradientBackground {
 export interface StyleDesc {
   /** `"flex"`, `"grid"`, `"block"` (the default), `"none"`, which builds no box at all, or
    *  `"contents"`, which builds no box either and lays its children out as the parent's own.
-   *  `"inline-block"`, `"inline-flex"` and `"inline-grid"` put the box on a line of text as one
-   *  unit, as CSS does (an atomic inline); where the parent lays out items, or the box is
-   *  `position: absolute` or `fixed`, they are `"block"`, `"flex"` and `"grid"`.
+   *  `"inline-block"`, `"inline-flex"`, `"inline-grid"` and `"inline-table"` put the box on a line of
+   *  text as one unit, as CSS does (an atomic inline); where the parent lays out items, or the box is
+   *  `position: absolute` or `fixed`, they are `"block"`, `"flex"`, `"grid"` and `"table"`.
    *  The table values: `"table"`, `"table-row-group"`, `"table-header-group"`,
    *  `"table-footer-group"`, `"table-row"`, `"table-cell"`, `"table-caption"`, `"table-column"`
    *  and `"table-column-group"` (see the README's Tables section; `colSpan`, `rowSpan` and
-   *  `span` are props of the element). `"inline-table"` is a `"table"` for now. */
+   *  `span` are props of the element). */
   display?: string
   visibility?: string
   /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */

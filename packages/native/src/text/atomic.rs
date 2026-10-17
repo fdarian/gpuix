@@ -350,6 +350,8 @@ pub enum Kind {
     LastLine,
     /// An `inline-flex` or `inline-grid`: the first baseline of the container.
     FirstItem,
+    /// An `inline-table`: the first baseline of the table, which its layout knows.
+    TableFirstRow,
     /// A box with no baseline of its own: an `inline-block` whose `overflow`
     /// is `hidden`, `scroll` or `auto`.
     BottomMarginEdge,
@@ -361,6 +363,7 @@ pub fn kind(display: Option<&str>, style: Option<&StyleDesc>) -> Kind {
     let Some(style) = style else { return Kind::LastLine };
     match display {
         Some("inline-flex" | "inline-grid") => Kind::FirstItem,
+        Some("inline-table") => Kind::TableFirstRow,
         _ => {
             // `clip` is not a scroll container, and Chrome keeps the baseline of the text in it.
             let visible = |own: &Option<String>| {
@@ -404,6 +407,7 @@ pub fn baseline(
     };
     match kind {
         Kind::BottomMarginEdge => AtomicBaseline::BottomMarginEdge,
+        Kind::TableFirstRow => AtomicBaseline::Measured(Box::new(|window, root, _| window.layout_table_first_baseline(root))),
         Kind::LastLine => match texts.last() {
             Some((_, layout)) => from_text(layout, true),
             None => AtomicBaseline::BottomMarginEdge,
@@ -526,6 +530,7 @@ mod tests {
         assert_eq!(kind(Some("inline-flex"), Some(&block)), Kind::FirstItem, "the display a container block gave");
         assert_eq!(kind_of(serde_json::json!({"display": "inline-flex"})), Kind::FirstItem);
         assert_eq!(kind_of(serde_json::json!({"display": "inline-grid"})), Kind::FirstItem);
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-table"})), Kind::TableFirstRow);
         for overflow in [
             serde_json::json!({"overflow": "hidden"}),
             serde_json::json!({"overflowY": "auto"}),

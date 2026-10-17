@@ -2835,7 +2835,7 @@ wrapped row breaks where the sized text actually ends.
 A `<span>` with a style that needs a box of its own (`position: absolute`,
 `display: block`, `flex` or `grid`) is laid out as a block instead. `display:
 inline-block`, `inline-flex` and `inline-grid` keep it on its line, as a box of its own,
-see [Inline-block, inline-flex and inline-grid](#inline-block-inline-flex-and-inline-grid).
+see [Inline-block, inline-flex, inline-grid and inline-table](#inline-block-inline-flex-inline-grid-and-inline-table).
 
 ### Space around an inline box
 
@@ -3261,12 +3261,12 @@ wraps to without the cut:
 character along one line, so a tab counts as the font's own width of one, not as a
 tab stop, and `lineClamp` is a line of `n` times the width.
 
-### Inline-block, inline-flex and inline-grid
+### Inline-block, inline-flex, inline-grid and inline-table
 
-`display: 'inline-block'`, `'inline-flex'` and `'inline-grid'` make an element an
+`display: 'inline-block'`, `'inline-flex'`, `'inline-grid'` and `'inline-table'` make an element an
 atomic inline: a box that sits on a line of text as one unit, wraps with the text
-around it, and is an ordinary element inside (a block, a flex container or a grid
-container). It is a `<div>`, `<span>`, `<text>` or any other element; the
+around it, and is an ordinary element inside (a block, a flex container, a grid
+container or a [table](#tables)). It is a `<div>`, `<span>`, `<text>` or any other element; the
 paragraph it is in lays it out, and everything else about it is the element's own.
 
 ```tsx
@@ -3289,7 +3289,8 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   browser. Where the parent lays out items (a `flex` or `grid` container, `inline-flex` and
   `inline-grid` included) or the child is `position: absolute` or `fixed`, `display` is
   blockified as CSS Display 3 says: `inline-block` is `block`, `inline-flex` is `flex`,
-  `inline-grid` is `grid`. `inline-table` and `table` are not supported.
+  `inline-grid` is `grid`, `inline-table` is `table`. A table or an `inline-table` that is a child of a table, row
+  group or row is not a part of it: it is content of a cell, which an anonymous cell wraps.
 - **Width.** `width: auto` is shrink-to-fit: the content's width, but at most the
   width the paragraph is laid out in and at least its min-content width. A `width`
   in `%` (or a `calc()` with one) is of the paragraph's width, and a percentage on a
@@ -3303,7 +3304,9 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   in-flow content, or on its bottom margin edge when it has none or its `overflow` is
   `hidden`, `scroll` or `auto` (`clip` keeps the baseline). An `inline-flex` or `inline-grid` sits on the first
   baseline of its container: the first item's (in `order`), the first line of its text
-  or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. Absolutely positioned
+  or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. An `inline-table`
+  sits on the first baseline of its table: that of its first row (below the captions above it, the border, the padding and the
+  spacing), or the bottom of that row when none of its cells is on the baseline. Absolutely positioned
   content has no baseline, and a box inside another atomic inline is its own.
 - **It is an element.** `getBoundingClientRect()`, `onLayout`, `ResizeObserver` and
   `IntersectionObserver` report its border box, pointer events, `hover` and `active`
@@ -3330,8 +3333,9 @@ CSS 10.8 makes it: the container's strut and every box on the baseline around th
 baseline, then the `top` and `bottom` ones. A span has its strut (its font's ascent and descent with the
 half-leading of its `lineHeight`) in every line it has something on, whatever it holds: a span with a
 `lineHeight` of its own around nothing but a box makes the line as tall as that strut. The bounds, the background, the border and the
-outline of a span that is raised or lowered move with its text. `verticalAlign` on a table cell
-belongs to tables, which are not supported yet.
+outline of a span that is raised or lowered move with its text. `verticalAlign` on a table cell is
+the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see [Tables](#tables)), and an
+`inline-table` is aligned on its line by its own `verticalAlign` like any other atomic inline.
 
 #### Deviations
 
@@ -5786,7 +5790,7 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-and-inline-grid)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
@@ -6006,8 +6010,8 @@ so that animation starts at `0`.
   any of its descendants (`mouseenter` and `pointerenter` fire once for the
   whole group), keys and focus inside it, and `click()` on it. It is never the
   target of a pointer event, as it has no box to hit. `inline-block`, `inline-flex`
-  and `inline-grid` are [atomic inlines](#inline-block-inline-flex-and-inline-grid);
-  `inline-table` is a `table` for now (see [Tables](#tables)).
+  and `inline-grid` are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table);
+  `inline-table` is an atomic inline whose inside is a `table` (see [Tables](#tables)).
 - **`visibility: "hidden"`** keeps the layout box and every report of it
   (`getBoundingClientRect`, `onLayout`, `ResizeObserver`, `IntersectionObserver`),
   and paints nothing of its own: no background, border, shadow, outline or text.
@@ -6115,6 +6119,10 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
 </div>
 ```
 
+- **`inline-table`.** `display: 'inline-table'` is a table that sits on a line of text as one unit, as an
+  [atomic inline](#inline-block-inline-flex-inline-grid-and-inline-table) does: it shrinks to fit (a `width` in `%` is
+  of the paragraph, and it is never narrower than its columns' least widths), wraps with the text around it and
+  sits on the baseline of its first row. Where the parent lays out items it is a `table`.
 - **Props.** `colSpan` and `rowSpan` on a `table-cell`, `span` on a `table-column`
   or `table-column-group`, as the DOM names them. A number or a string of digits;
   `colSpan` and `span` are at least 1 and at most 1000, a `rowSpan` of `0` reaches
@@ -6194,7 +6202,6 @@ Differences from Chrome:
   starts in joins the one before it in the layout, and the borders predict that: a table
   with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
   percentage of a parent with no width draws no collapsed borders.
-- `inline-table` is a `table`: it is block-level until the `inline-*` values exist.
 - A cell, row or group with a percentage `height` has an `auto` one.
 - A cell with text, or any leaf the layout measures, has no first baseline, so a
   `baseline`-aligned cell lines up by the bottom of its content, where Chrome uses the
@@ -6813,7 +6820,7 @@ a narrow one. A block cannot hold another `"@container"`, and a state style
 layout, `display: none`, `color` for `currentColor`, transitions and animations
 (a flip starts the transition), and `<UniversalStyle>` blocks, which come before the
 element's own. Blocks do not apply to an inline `<span>`: put the style on a `<text>`, or
-use a container unit. An [`inline-block`](#inline-block-inline-flex-and-inline-grid) span is a box of its own and
+use a container unit. An [`inline-block`](#inline-block-inline-flex-inline-grid-and-inline-table) span is a box of its own and
 takes them.
 
 **Container units.** `cqw` and `cqi` are 1% of the width of the nearest ancestor
