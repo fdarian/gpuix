@@ -1448,8 +1448,9 @@ initial value (`0` for padding, margin and radii, `1` for `opacity`,
 `outlineColor` and `textDecorationColor`), or the inherited value for `color`: the parent's colour, or the
 scheme's black or white at the root. An unset `width`, `height`, `minWidth`,
 `minHeight`, `maxWidth` or `maxHeight` starts from the size layout gave the
-element, read back from the previous frame, so the clock starts on the first
-frame that has it.
+element, read back from the previous frame. The measurement only fixes the
+numbers: the clock starts at the style change, as for any other animation, so a
+measurement that arrives frames later starts the animation that far in.
 
 Where CSS computes an unset property to a keyword (`top`, `right`, `bottom`,
 `left`, `flexBasis` and `aspectRatio` are `auto`, `lineHeight` is `normal`),
@@ -1465,29 +1466,57 @@ list can be animated, in `animate`, `initial` and `exit`:
 
 | Target | Range or unit |
 |---|---|
-| `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | pixels or `%`, zero or greater, or `"auto"` (see below) |
-| `top`, `right`, `bottom`, `left` | pixels or `%`, may be negative |
-| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | pixels or `%`, may be negative |
-| `paddingTop` ... `paddingLeft`, `flexBasis` | pixels or `%`, zero or greater |
-| `outlineOffset` | pixels, may be negative |
-| `rowGap`, `columnGap`, `borderTopWidth` ... `borderLeftWidth`, the four `border*Radius` corners, `outlineWidth`, `scrollbarWidth`, `fontSize`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `aspectRatio` | zero or greater |
+| `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | any length, zero or greater, or `"auto"` (see below) |
+| `top`, `right`, `bottom`, `left` | any length, may be negative |
+| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | any length, may be negative; not `"auto"` |
+| `paddingTop` ... `paddingLeft`, `flexBasis` | any length, zero or greater |
+| `rowGap`, `columnGap`, the four `border*Radius` corners | any length, zero or greater |
+| `borderTopWidth` ... `borderLeftWidth`, `outlineWidth`, `fontSize` | any length without a `%` (a `fontSize` `%` is of the parent's, so px), zero or greater |
+| `outlineOffset` | any length without a `%`, may be negative |
+| `scrollbarWidth`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `aspectRatio` | numbers, zero or greater |
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
+| `fontVariationSettings` | `'"wght" 650, "wdth" 90'`, or `normal` |
 | `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
 
-`padding`, `margin`, `borderWidth`, `borderColor`, `borderRadius` and `gap` are shorthands that
+`padding`, `margin`, `inset`, `borderWidth`, `borderColor`, `borderRadius` and `gap` are shorthands that
 expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
 `borderTopLeftRadius` in `style`. When a description names a shorthand and one of
-its longhands, the longhand wins.
+its longhands, the longhand wins. (`flex` and the logical shorthands such as
+`paddingBlock` are not targets: animate `flexGrow`, `flexShrink` and `flexBasis`, or the sides.)
+
+A shorthand written with several values gives each side, axis or corner its own
+value, and each animates on its own:
+
+```tsx
+<motion.div
+  initial={{ padding: '4px 8px', borderRadius: '10px 20px / 5px' }}
+  animate={{ padding: '12px 24px 12px 8px', borderRadius: '50%' }}
+/>
+```
+
+A corner moves both its radii, so `"50%"` is an ellipse on a wide box and
+`"10px / 20px"` to `"30px / 40px"` is `"20px / 30px"` halfway. Keyframes of such
+strings split frame by frame. A margin side cannot animate to or from `auto`, so a
+`margin` with `auto` in it is an error.
 
 Naming a discrete property (`display`, `position`, ...) or an unknown key is an
 error, not a silent no-op.
 
-**Layout-resolved lengths.** The sizes, insets, margins, padding and `flexBasis` move between units, and
-`height` and `width` also move to or from `"auto"`:
+**Lengths.** A length is its px and its percentage, whatever unit it is written
+in, and two lengths blend part by part, as Chrome blends them: `calc(100% - 20px)`
+to `calc(50% + 10px)` is `calc(75% - 5px)` halfway, and `20px` to `50%` is
+`calc(10px + 25%)`. `em`, `rem` and the viewport units are px by then, from the
+element's font size and the window. A `calc()` that comes out negative is clamped,
+and a target that is negative whatever the basis is an error, as is a `%` where CSS
+takes none (the border widths and the outline). A spring or a retarget keeps its
+speed on each part. The percentage stays a share of its basis, so a parent that
+resizes mid-animation is followed exactly and nothing is measured. The basis is
+the containing block, or the border box for a corner radius. `height` and `width`
+also move to or from `"auto"`:
 
-- `px` to `%` and back runs in px, with the percentage resolved against the
+- The sizes, insets, margins, padding and `flexBasis` resolve a `%` against the
   parent's content box, along the axis CSS uses: `width`, `minWidth`, `maxWidth`,
   `left`, `right`, all four margins and all four paddings against its width
   (`marginTop` and `paddingTop` too, as in CSS), `height`, `minHeight`,
@@ -1521,13 +1550,11 @@ error, not a silent no-op.
   `interpolateSize: "allow-keywords"`, as for `height`, and `animate` is not gated
   by it. The content's width needs an extra layout of the element's subtree, so
   an element that can animate `width` to or from `auto` pays one more layout per
-  frame, and the target is available one frame after the element is first
-  measured.
+  frame, and the natural width is measured one frame after the element is first
+  painted. The clock still starts at the style change.
 
-Only pixels and the `%` and `auto` cases above animate. A length that needs the
-element's context (`em`, `rem`, `vw`, `calc()`, a mix of a length and a `%`) is
-not animatable: a `motion` or keyframe target written that way throws an error
-naming the property, and a CSS transition from or to such a value jumps.
+Only `auto` and an unset start (see above) need a measurement; every other
+length, `calc()` and mixed unit included, is exact from the first frame.
 
 **Colours** interpolate with premultiplied alpha, so a fade to `transparent`
 keeps its hue. The space depends on who animates. In `motion` (`animate`,
@@ -1564,6 +1591,14 @@ motion value is not tied to one element, so its colours resolve as on a root wit
 lists differ in length, the shorter one is padded with `0 0 0 0 transparent`
 layers, as CSS does. If a layer's `inset` differs between the two lists, the
 shadow switches at the halfway point instead of interpolating.
+
+**`fontVariationSettings`** blends per axis between two values that name the same
+axes (in any order). Any other pair, `normal` against a list included, is discrete
+and flips at the halfway point. `animate`, keyframes and `@keyframes` flip with no
+opt-in; a CSS transition runs the flip only with `allow-discrete`
+(`transition: 'font-variation-settings 1s allow-discrete'`). A keyframe track of three or more
+values flips as a whole when any two of its values differ. An unset start is the
+inherited value. A `<span>` does not animate it.
 
 The **transition** uses seconds, like Motion for React:
 
@@ -1629,8 +1664,8 @@ These apply to every spring:
 | Option | Default | Values |
 |---|---:|---|
 | `delay` | `0` | Non-negative seconds. The element holds its start until the delay passes |
-| `restDelta` | `0.5`, or `0.005` when the move is under 5 | Distance from the target, in the property's unit, under which the spring may settle |
-| `restSpeed` | `2`, or `0.01` when the move is under 5 | Speed, in units per second, under which the spring may settle |
+| `restDelta` | `0.5`, or `0.005` when the move is under 5 | Distance from the target, in the property's unit, under which the spring may settle. The percentage part of a length is in percentage points, and its defaults are the tight ones |
+| `restSpeed` | `2`, or `0.01` when the move is under 5 | Speed, in units per second, under which the spring may settle (percentage points per second for the percentage part) |
 
 `ease` is not accepted with `type: "spring"`, and the spring options are not
 accepted without it.
@@ -1974,8 +2009,8 @@ JavaScript, the stale completion is ignored.
 
 ### Motion values
 
-A **motion value** holds a number, a colour string, a list of numbers or
-box shadows that changes over time. Put one in `style` where a property
+A **motion value** holds a number, a colour string, a CSS length string, a
+multi-value string, a list of numbers or box shadows that changes over time. Put one in `style` where a property
 `motion` can animate takes a plain value, and the element follows it every
 frame in Rust, with no render and no N-API call per frame. `motion.div` accepts
 them too. A bound value is applied after `animate` and `transition`.
@@ -2041,6 +2076,20 @@ needs it, then gives it back. A value drives one window at a time.
   [Keyframes](#keyframes)); `complete()` goes to the last one. A repeating
   animation never finishes on its own. `animate(element, ...)` is not
   supported.
+- **Lengths.** A motion value reads `"20px"`, `"50%"`, `"2em"`, `"calc(100% - 20px)"`
+  and the other [length](#lengths) syntaxes as a px part and a percentage part, and
+  animates between any two lengths as the mix of the parts: `"20px"` to `"50%"` is
+  `"calc(10px + 25%)"` halfway. A binding to `width` follows its parent's size exactly.
+  `get()` reads a length back as px, a percentage or a `calc()`. The motion value is
+  not tied to an element, so `em` and `rem` resolve when the value is written, against
+  16px, and `vw`, `vh`, `vmin` and `vmax` against the window at that moment.
+- **Multi-value strings.** `"0.5em 0.75em"`, `"10px / 20px"` or `"red blue"` is held
+  and blended component by component. Bound to a shorthand (`padding`, `margin`,
+  `inset`, `gap`, `borderWidth`, `borderColor`, `borderRadius`), each side, axis or
+  corner follows its own component. Two strings with different numbers of values that
+  a shorthand can fill out alike animate instead of jumping: `"8px"` to `"8px 16px"`
+  moves the left and right from 8 to 16 and leaves top and bottom at 8. Counts no
+  shorthand could pair (`"1px 2px"` against five values) flip at the halfway point.
 - **Transforms.** The output range holds numbers, colours or shadows, and the
   input range may descend or repeat a value, which makes a step. `clamp: false`
   extrapolates, and `ease` is one easing or one per segment. A bad range is an
@@ -7237,27 +7286,31 @@ render per frame.
   `lineHeight` (`normal`), `scrollbarWidth` and an unset `width`. `fontSize`
   and `fontWeight` are inherited too: an unset one runs from the parent's
   computed value. `zIndex` is not animatable
-- **`px` and `%`.** A `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
-  `maxHeight`, `top`, `right`, `bottom`, `left`, margin, padding or `flexBasis`
-  that moves between a pixel length and a percentage transitions in px, with the
-  percentage resolved against the parent's content box (the window's content size
-  for a root), along the axis CSS uses: the width for `left`, `right`, every
-  margin and padding side, the height for `top` and `bottom`, and for `flexBasis`
-  the main axis of the flex container. It follows the parent while it runs and settles on the
-  literal target unit. Two percentages interpolate as percentages
+- **Lengths.** Lengths blend as a px part and a percentage part, whatever unit
+  they are written in (the Lengths paragraph of [Targets and timing](#targets-and-timing)): `px` to `%`, `em`,
+  `rem`, the viewport units and `calc()` all transition, from and to each other.
+  A `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, `top`,
+  `right`, `bottom`, `left`, margin, padding or `flexBasis` resolves the
+  percentage against the parent's content box (the window's content size for a
+  root), along the axis CSS uses: the width for `left`, `right`, every margin and
+  padding side, the height for `top` and `bottom`, and for `flexBasis` the main
+  axis of the flex container. It follows the parent while it runs and settles on
+  the literal target unit
 - **`auto` sizes.** As in a browser, a change between a length and `auto` is
   discrete unless `interpolateSize: 'allow-keywords'` is set on the element or an
   ancestor (it inherits, default `'numeric-only'`). That covers `height` and
   `width` to or from `auto` or unset, and an unset `minHeight` / `maxHeight` (CSS
   computes them to `auto` / `none`). With it set, the transition starts from the
   laid-out size and runs to the content's size, follows the content while it
-  grows, and hands back to `auto` at the end. A `width` that animates costs an
+  grows, and hands back to `auto` at the end. Its clock starts at the style
+  change, not at the frame that has the measurement. A `width` that animates costs an
   extra layout per frame (see [Intrinsic widths](#intrinsic-widths)). `motion`
   animates to `height: 'auto'` and `width: 'auto'` whatever `interpolateSize` is,
   since that is Framer's behaviour
-- **Lengths in context.** A length written with `em`, `rem`, `vw`, `vh`, `vmin`,
-  `vmax` or `calc()`, or a length and a `%` mixed, has no pixel value to
-  interpolate until layout. A transition from or to one changes at once
+- **Multi-value shorthands.** `padding: '4px 8px'`, `gap: '4px 8px'`,
+  `borderRadius: '10px / 20px'` and the other shorthands of
+  [Targets and timing](#targets-and-timing) transition per side, axis or corner, in
+  CSS transitions and in keyframes
 - **Interrupts.** A change mid-flight starts from the visible value, not the old
   target. Returning to where the transition began shortens the way back in
   proportion, as CSS specifies. Changing `transition*` does not touch a running
