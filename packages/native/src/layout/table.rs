@@ -259,4 +259,31 @@ mod tests {
         }
         assert_eq!(cell_vertical_align(&StyleDesc::default()), gpui::CellVerticalAlign::Baseline);
     }
+
+    #[test]
+    fn a_cell_is_empty_for_empty_cells_without_content_or_with_only_white_space_and_hidden_boxes() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        fn add(tree: &mut RetainedTree, id: u64, kind: &str, text: Option<&str>, style: Option<serde_json::Value>) {
+            tree.create_element(id, kind.to_string());
+            if let Some(text) = text {
+                tree.set_text(id, text.to_string());
+            }
+            if let Some(style) = style {
+                tree.set_style(id, std::sync::Arc::new(serde_json::from_value(style).unwrap()));
+            }
+            tree.append_child(1, id);
+        }
+        assert!(is_empty(&tree, &tree.elements[&1]));
+        add(&mut tree, 2, "text", Some(" \n "), None);
+        add(&mut tree, 3, "div", None, Some(serde_json::json!({"display": "none"})));
+        assert!(is_empty(&tree, &tree.elements[&1]));
+        add(&mut tree, 4, "text", Some("\u{a0}"), None);
+        assert!(!is_empty(&tree, &tree.elements[&1]), "a no-break space is content");
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.append_child(1, 2);
+        assert!(!is_empty(&tree, &tree.elements[&1]), "a box is content even when it paints nothing");
+    }
 }

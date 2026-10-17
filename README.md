@@ -6187,6 +6187,9 @@ Differences from Chrome:
 - `mask` and `clipPath` reference the whole box, with the captions.
 - `emptyCells` does nothing with `borderCollapse: "collapse"`, and an element that paints
   nothing (`visibility: hidden`) counts as content in a cell.
+- Copying a selection across cells joins their text with line breaks, where Chrome puts a
+  tab between the cells of a row.
+- The table styles are not animatable by `motion`, a keyframe or a CSS transition.
 - A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
   block with no table role.
 
