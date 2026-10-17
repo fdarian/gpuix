@@ -754,6 +754,22 @@ export interface StyleDesc {
    *  where it overflows, when no earlier place on the line will do. Only a
    *  container sets it. */
   overflowWrap?: "normal" | "break-word" | "anywhere"
+  /** CSS `vertical-align`, not inherited: where an inline box sits on its line (CSS 2.1 §10.8.1).
+   *  `"baseline"`, `"sub"`, `"super"`, `"text-top"`, `"text-bottom"` and `"middle"` are relative to the
+   *  parent's text; `"top"` and `"bottom"` align the box with the line box. A number is px and a string
+   *  with a unit is a length that raises the box's baseline (negative lowers it); a `%` is of the
+   *  element's own `lineHeight`. Anything else throws. */
+  verticalAlign?:
+    | "baseline"
+    | "sub"
+    | "super"
+    | "text-top"
+    | "text-bottom"
+    | "middle"
+    | "top"
+    | "bottom"
+    | number
+    | (string & {})
   textOverflow?: "ellipsis" | "ellipsis-start"
   lineClamp?: number
   /** CSS `text-decoration`: lines, a style, a colour and a thickness in any order,

@@ -705,6 +705,8 @@ pub struct StyleDesc {
     /// its line overflows it. Only a container sets it.
     pub overflow_wrap: Option<crate::css::word_break::OverflowWrap>,
     pub text_overflow: Option<String>,
+    /// CSS `vertical-align`. Not inherited. Parsed only: it has no effect yet.
+    pub vertical_align: Option<crate::css::vertical_align::VerticalAlign>,
     pub line_clamp: Option<f64>,
     /// CSS `text-decoration` and its longhands. `css::text_decoration` says what
     /// is drawn.
