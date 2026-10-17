@@ -1428,6 +1428,9 @@ impl GpuixRenderer {
             let now = view.clock.now();
             view.motion_values
                 .set_appearance(color_scheme_of(window.appearance()));
+            let viewport = window.viewport_size();
+            view.motion_values
+                .set_viewport(f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
             let result = run(view, now);
             if repaint {
                 cx.notify();

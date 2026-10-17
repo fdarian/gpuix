@@ -526,7 +526,7 @@ impl Track {
                 active: !at_rest,
             };
         }
-        let evolved = evolve_all(spring, start, to, &self.from_velocity, t);
+        let evolved = evolve_all(&self.layout, spring, start, to, &self.from_velocity, t);
         if evolved.at_rest {
             return Sample {
                 position: to.clone(),
@@ -576,7 +576,7 @@ impl Track {
             Direction::Reversed => (first, last, self.settle - local, &still, -1.0),
             Direction::Mirrored => (last, first, local, &still, 1.0),
         };
-        let evolved = evolve_all(spring, start, to, speed, time);
+        let evolved = evolve_all(&self.layout, spring, start, to, speed, time);
         Sample {
             position: evolved.position,
             velocity: evolved.velocity.iter().map(|rate| rate * sign).collect(),
@@ -598,7 +598,7 @@ impl Track {
         (1..=steps)
             .map(|step| f64::from(step) * SPRING_SETTLE_STEP)
             .find(|t| {
-                evolve_all(spring, &self.frames[0], &self.frames[1], &self.from_velocity, *t).at_rest
+                evolve_all(&self.layout, spring, &self.frames[0], &self.frames[1], &self.from_velocity, *t).at_rest
             })
             .unwrap_or(SPRING_SETTLE_LIMIT)
     }
@@ -612,13 +612,21 @@ struct Evolved {
 
 /// Every channel of a spring that left `start` at `rate` and is pulled to `to`,
 /// `t` seconds in.
-fn evolve_all(spring: &Spring, start: &[f64], to: &[f64], rate: &[f64], t: f64) -> Evolved {
+fn evolve_all(
+    layout: &Layout,
+    spring: &Spring,
+    start: &[f64],
+    to: &[f64],
+    rate: &[f64],
+    t: f64,
+) -> Evolved {
     let mut position = Vec::with_capacity(to.len());
     let mut velocity = Vec::with_capacity(to.len());
     let mut at_rest = true;
-    for ((start, to), start_velocity) in start.iter().zip(to).zip(rate) {
+    for (channel, ((start, to), start_velocity)) in start.iter().zip(to).zip(rate).enumerate() {
         let (offset, speed) = spring.evolve(start - to, *start_velocity, t);
-        let (rest_speed, rest_delta) = spring.rest_thresholds(start - to);
+        let (rest_speed, rest_delta) =
+            spring.rest_thresholds(start - to, layout.is_percent_channel(channel));
         at_rest &= offset.abs() <= rest_delta && speed.abs() <= rest_speed;
         position.push(to + offset);
         velocity.push(speed);

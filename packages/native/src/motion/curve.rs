@@ -399,6 +399,9 @@ const GRANULAR_REST_SPEED: f64 = 0.01;
 const DEFAULT_REST_SPEED: f64 = 2.0;
 const GRANULAR_REST_DELTA: f64 = 0.005;
 const DEFAULT_REST_DELTA: f64 = 0.5;
+/// What one unit of a percentage channel (a fraction of the basis) is worth next
+/// to a px one: the thresholds are written in px, or in percentage points.
+const PERCENT_REST_SCALE: f64 = 0.01;
 /// Largest `sqrt(stiffness / mass)` and `damping / (2 * mass)` in rad/s. Past
 /// this the closed-form terms can overflow to infinity and NaN out a frame.
 const MAX_SPRING_RATE: f64 = 1e6;
@@ -493,19 +496,26 @@ impl Spring {
 
     /// Rest thresholds as `(speed, displacement)`. Short moves use tighter
     /// ones, as motion-dom's `setRestThresholds` does.
-    pub(super) fn rest_thresholds(&self, distance: f64) -> (f64, f64) {
-        let granular = distance.abs() < GRANULAR_DISTANCE;
+    ///
+    /// A `percent` channel is a fraction of a basis that is usually hundreds of px,
+    /// so its thresholds are the tight ones divided by 100 whatever the distance:
+    /// the default 0.005 of a fraction would snap by 2px of a 400px parent, where
+    /// this snaps by under 0.1px up to a 1000px one. `restSpeed` and `restDelta`
+    /// are in percentage points there.
+    pub(super) fn rest_thresholds(&self, distance: f64, percent: bool) -> (f64, f64) {
+        let granular = percent || distance.abs() < GRANULAR_DISTANCE;
+        let unit = if percent { PERCENT_REST_SCALE } else { 1.0 };
         (
             self.rest_speed.unwrap_or(if granular {
                 GRANULAR_REST_SPEED
             } else {
                 DEFAULT_REST_SPEED
-            }),
+            }) * unit,
             self.rest_delta.unwrap_or(if granular {
                 GRANULAR_REST_DELTA
             } else {
                 DEFAULT_REST_DELTA
-            }),
+            }) * unit,
         )
     }
 
@@ -1078,5 +1088,31 @@ mod tests {
                 assert!(ease_slope(progress, &curve).is_finite(), "{text} at {progress}");
             }
         }
+    }
+
+    #[test]
+    fn a_percentage_channel_rests_at_a_hundredth_of_the_tight_thresholds() {
+        let spring = Spring::from_raw(&RawTransition {
+            kind: Some("spring".to_string()),
+            ..RawTransition::default()
+        })
+        .unwrap();
+        // px: tight under 5px, loose beyond.
+        assert_eq!(spring.rest_thresholds(1.0, false), (0.01, 0.005));
+        assert_eq!(spring.rest_thresholds(100.0, false), (2.0, 0.5));
+        // A fraction of 1 is the whole basis, so even a full-width move is tight:
+        // 5e-5 of a 1000px basis is 0.05px.
+        assert_eq!(spring.rest_thresholds(1.0, true), (0.0001, 0.00005));
+        assert_eq!(spring.rest_thresholds(0.01, true), (0.0001, 0.00005));
+
+        let explicit = Spring::from_raw(&RawTransition {
+            kind: Some("spring".to_string()),
+            rest_speed: Some(3.0),
+            rest_delta: Some(0.2),
+            ..RawTransition::default()
+        })
+        .unwrap();
+        assert_eq!(explicit.rest_thresholds(100.0, false), (3.0, 0.2));
+        assert_eq!(explicit.rest_thresholds(1.0, true), (0.03, 0.002));
     }
 }

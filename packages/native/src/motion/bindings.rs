@@ -18,6 +18,8 @@ use super::property::{check_finite, expand_shorthand, parse_shadow_list, shadow_
 use super::value::{AnimValue, Color};
 use super::values::{MotionValues, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
+use crate::css::dimension::parse_linear_length;
+use crate::css::length::LengthContext;
 use crate::style::StyleDesc;
 
 const NAME: &str = "motion value";
@@ -68,6 +70,9 @@ pub(crate) struct MotionValueStore {
     /// `light-dark()` follows this and `currentColor` is the initial black. A
     /// colour keeps what it resolved to when it was written.
     appearance: Scheme,
+    /// The window's size in px, which `vw` and `vh` mean. Like a colour, a length
+    /// keeps what it resolved to when it was written.
+    viewport: (f64, f64),
     graph: MotionValues,
     watches: HashMap<ValueId, Watch>,
     /// What the last frame sampled for the values elements bind.
@@ -89,15 +94,24 @@ impl MotionValueStore {
         self.appearance = appearance;
     }
 
-    fn colors(&self) -> ColorContext {
-        ColorContext::root(self.appearance).descend(&StyleDesc {
-            color_scheme: Some("light dark".to_string()),
-            ..Default::default()
-        })
+    pub(crate) fn set_viewport(&mut self, width: f64, height: f64) {
+        self.viewport = (width, height);
+    }
+
+    /// What a value's colours and lengths mean. It is not tied to an element, so
+    /// `em` and `rem` are the initial 16px.
+    fn context(&self) -> ValueContext {
+        ValueContext {
+            colors: ColorContext::root(self.appearance).descend(&StyleDesc {
+                color_scheme: Some("light dark".to_string()),
+                ..Default::default()
+            }),
+            lengths: LengthContext::initial(self.viewport.0, self.viewport.1),
+        }
     }
 
     pub(crate) fn create_source(&mut self, id: f64, initial: &Value) -> Result<(), String> {
-        self.graph.source(value_id(id)?, parse_value(initial, &self.colors())?)
+        self.graph.source(value_id(id)?, parse_value(initial, &self.context())?)
     }
 
     pub(crate) fn create_transform(
@@ -108,12 +122,12 @@ impl MotionValueStore {
         output_range: &Value,
         options: Option<&Value>,
     ) -> Result<(), String> {
-        let colors = self.colors();
+        let context = self.context();
         let outputs = output_range
             .as_array()
             .ok_or_else(|| format!("a {NAME} transform's output range must be an array"))?
             .iter()
-            .map(|output| parse_value(output, &colors))
+            .map(|output| parse_value(output, &context))
             .collect::<Result<Vec<_>, _>>()?;
         self.graph.transform(
             value_id(id)?,
@@ -145,7 +159,7 @@ impl MotionValueStore {
         now: Instant,
     ) -> Result<(), String> {
         self.graph
-            .spring(value_id(id)?, parse_value(initial, &self.colors())?, parse_spring(config)?, now)
+            .spring(value_id(id)?, parse_value(initial, &self.context())?, parse_spring(config)?, now)
     }
 
     pub(crate) fn dispose(&mut self, id: f64) -> Result<bool, String> {
@@ -173,13 +187,13 @@ impl MotionValueStore {
     }
 
     pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.set(value_id(id)?, parse_value(value, &self.colors())?, now)?;
+        self.graph.set(value_id(id)?, parse_value(value, &self.context())?, now)?;
         self.observe(now);
         Ok(())
     }
 
     pub(crate) fn jump(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.jump(value_id(id)?, parse_value(value, &self.colors())?, now)?;
+        self.graph.jump(value_id(id)?, parse_value(value, &self.context())?, now)?;
         self.observe(now);
         Ok(())
     }
@@ -201,7 +215,7 @@ impl MotionValueStore {
         };
         let id = value_id(id)?;
         let holds = self.graph.get(id, now)?;
-        match parse_keyframes(target, &holds, &self.colors())? {
+        match parse_keyframes(target, &holds, &self.context())? {
             Keyframes::Single(target) => self.graph.animate(id, target, transition, now)?,
             Keyframes::Many(frames) => self.graph.animate_keyframes(id, frames, transition, now)?,
         }
@@ -405,9 +419,17 @@ fn value_id(id: f64) -> Result<ValueId, String> {
     Ok(ValueId(id as u32))
 }
 
-/// A number, a percentage or colour string, a list of numbers, or a
-/// `boxShadow` layer or list.
-fn parse_value(value: &Value, colors: &ColorContext) -> Result<AnimValue, String> {
+/// What a value's strings are read against.
+struct ValueContext {
+    colors: ColorContext,
+    lengths: LengthContext,
+}
+
+/// A number, a CSS length or colour string, a list of numbers, or a `boxShadow`
+/// layer or list. A length string (`20px`, `50%`, `2em`, `calc(100% - 20px)`)
+/// is its px and its share of the percentage basis, as in a motion property:
+/// one with only one of the two reads as the number or the percentage.
+fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, String> {
     match value {
         Value::Number(number) => {
             let number = number
@@ -415,18 +437,19 @@ fn parse_value(value: &Value, colors: &ColorContext) -> Result<AnimValue, String
                 .ok_or_else(|| format!("a {NAME} number must fit a double"))?;
             Ok(AnimValue::Number(check_finite(NAME, number)?))
         }
-        Value::String(text) => match text.strip_suffix('%') {
-            Some(percent) => {
-                let percent: f64 = percent
-                    .trim()
-                    .parse()
-                    .map_err(|_| format!("a {NAME} is not a valid percentage: {text}"))?;
-                Ok(AnimValue::Percent(check_finite(NAME, percent / 100.0)?))
+        Value::String(text) => {
+            // A plain percentage stays one, so `0%` is not read as the number 0.
+            if let Some(percent) = text.strip_suffix('%').and_then(|percent| percent.trim().parse::<f64>().ok()) {
+                return Ok(AnimValue::Percent(check_finite(NAME, percent / 100.0)?));
             }
-            None => Color::parse(text, colors)
+            if let Some(length) = parse_linear_length(text) {
+                let (px, percent) = context.lengths.split(&length);
+                return Ok(AnimValue::length(check_finite(NAME, px)?, check_finite(NAME, percent)?));
+            }
+            Color::parse(text, &context.colors)
                 .map(AnimValue::Color)
-                .ok_or_else(|| format!("a {NAME} string must be a colour or a percentage: {text}")),
-        },
+                .ok_or_else(|| format!("a {NAME} string must be a colour or a CSS length: {text}"))
+        }
         Value::Array(items) if !items.is_empty() && items.iter().all(Value::is_number) => {
             items
                 .iter()
@@ -438,7 +461,7 @@ fn parse_value(value: &Value, colors: &ColorContext) -> Result<AnimValue, String
                 .map(AnimValue::Numbers)
         }
         Value::Array(_) | Value::Object(_) => {
-            parse_shadow_list(NAME, value, colors).map(AnimValue::Shadows)
+            parse_shadow_list(NAME, value, &context.colors).map(AnimValue::Shadows)
         }
         other => Err(format!("a {NAME} cannot hold {other}")),
     }
@@ -455,10 +478,10 @@ enum Keyframes {
 fn parse_keyframes(
     target: &Value,
     holds: &AnimValue,
-    colors: &ColorContext,
+    context: &ValueContext,
 ) -> Result<Keyframes, String> {
     let Value::Array(items) = target else {
-        return parse_value(target, colors).map(Keyframes::Single);
+        return parse_value(target, context).map(Keyframes::Single);
     };
     let is_value = match holds {
         AnimValue::Numbers(_) => items.iter().all(Value::is_number),
@@ -466,13 +489,13 @@ fn parse_keyframes(
         _ => false,
     };
     if is_value {
-        return parse_value(target, colors).map(Keyframes::Single);
+        return parse_value(target, context).map(Keyframes::Single);
     }
     let frames = items
         .iter()
         .map(|item| match item {
             Value::Null => Ok(None),
-            item => parse_value(item, colors).map(Some),
+            item => parse_value(item, context).map(Some),
         })
         .collect::<Result<Vec<_>, _>>()?;
     match frames.as_slice() {
@@ -1098,5 +1121,132 @@ mod tests {
         assert!(!store.dispose(1.0).unwrap());
         assert!(store.get(1.0, clock.at(0)).is_err());
         assert!(store.frame([&json!({ "opacity": 1 })], &[], clock.at(0)).events.is_empty());
+    }
+
+    #[test]
+    fn a_calc_string_is_held_as_its_px_and_percentage() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("calc(100% - 20px)")).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(100% - 20px)"));
+        store.set(1.0, &json!("calc(50% + 10px)"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(50% + 10px)"));
+
+        // A length with only one part is the number or the percentage, `0%` included.
+        store.set(1.0, &json!("20px"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!(20.0));
+        store.set(1.0, &json!("calc(50% + 20px - 50%)"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!(20.0));
+        store.set(1.0, &json!("0%"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("0%"));
+
+        assert!(store.set(1.0, &json!("calc(100% - )"), clock.at(0)).is_err());
+        assert!(store.set(1.0, &json!("wide"), clock.at(0)).is_err());
+    }
+
+    #[test]
+    fn relative_units_resolve_to_px_when_a_value_is_written() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.set_viewport(800.0, 600.0);
+        store.create_source(1.0, &json!("calc(100% - 2em)")).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(100% - 32px)"));
+        store.set(1.0, &json!("calc(1rem + 50vw)"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!(416.0));
+        store.set(1.0, &json!("calc(2 * (10% + 1em))"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(20% + 32px)"));
+    }
+
+    #[test]
+    fn two_calcs_animate_as_the_mix_of_their_parts() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("calc(100% - 20px)")).unwrap();
+        store.animate(2.0, &json!("calc(50% + 10px)"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        // calc(75% - 5px) is 295px of 400px.
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("calc(75% - 5px)"));
+        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!("calc(50% + 10px)"));
+    }
+
+    #[test]
+    fn a_px_length_or_percentage_animates_to_a_calc_and_back() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("20px")).unwrap();
+        store.animate(2.0, &json!("calc(100% - 20px)"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        // The px parts cancel (20px to -20px is a 0 midpoint), leaving the percentage.
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("50%"));
+        store.animate(2.0, &json!("50%"), Some(&linear(1.0)), clock.at(1000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(1500)).unwrap(), json!("calc(75% - 10px)"));
+        store.animate(2.0, &json!(["calc(100% - 20px)", "calc(50% + 10px)", 40]), Some(&linear(2.0)), clock.at(2000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(3000)).unwrap(), json!("calc(50% + 10px)"));
+        assert_eq!(store.get(2.0, clock.at(4000)).unwrap(), json!(40.0));
+    }
+
+    #[test]
+    fn a_transform_maps_to_calc_outputs() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store
+            .create_transform(2.0, 1.0, vec![0.0, 1.0], &json!(["calc(100% - 20px)", "calc(50% + 10px)"]), None)
+            .unwrap();
+        store.set(1.0, &json!(0.5), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!("calc(75% - 5px)"));
+        assert!(store
+            .create_transform(3.0, 1.0, vec![0.0, 1.0], &json!(["calc(100% - 20px)", "#fff"]), None)
+            .is_err());
+    }
+
+    #[test]
+    fn a_calc_binds_to_a_length_and_is_clamped_where_the_property_is_non_negative() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("calc(100% - 20px)")).unwrap();
+        let binding = json!({ "width": 1, "marginLeft": 1 });
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        let calc = LinearLength { px: -20.0, percent: 1.0, ..Default::default() };
+        assert_eq!(style.width, Some(crate::style::DimensionValue::Calc(calc)));
+        assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Calc(calc)));
+
+        store.set(1.0, &json!("calc(-100% - 20px)"), clock.at(10)).unwrap();
+        store.frame([&binding], &[], clock.at(10));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style);
+        assert_eq!(style.width, Some(crate::style::DimensionValue::Pixels(0.0)));
+    }
+
+    /// The fraction a percentage or the percentage part of a calc reads.
+    fn fraction_of(value: &Value) -> f64 {
+        let text = value.as_str().unwrap().trim_start_matches("calc(");
+        text[..text.find('%').unwrap()].parse::<f64>().unwrap() / 100.0
+    }
+
+    /// How far the percentage channel of `from` to `to` is from `to` when the
+    /// spring stops, a fraction of the basis.
+    fn percent_snap(from: Value, to: Value) -> f64 {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_spring(1.0, &from, &json!({ "stiffness": 200, "damping": 20 }), clock.at(0)).unwrap();
+        store.set(1.0, &to, clock.at(0)).unwrap();
+        let target = fraction_of(&to);
+        let mut last_active = None;
+        for millis in 1..20_000 {
+            if !store.is_animating(1.0, clock.at(millis)).unwrap() {
+                break;
+            }
+            last_active = Some(clock.at(millis));
+        }
+        let before = fraction_of(&store.get(1.0, last_active.unwrap()).unwrap());
+        (before - target).abs()
+    }
+
+    #[test]
+    fn a_spring_on_a_percentage_rests_within_a_tenth_of_a_pixel_of_a_1000px_basis() {
+        // 0.1px of 1000px is 1e-4 of the basis; the fraction's old threshold was 5e-3.
+        let snap = percent_snap(json!("0%"), json!("100%"));
+        assert!(snap < 1e-4, "snapped {snap} of the basis");
+        let snap = percent_snap(json!("20px"), json!("calc(100% - 20px)"));
+        assert!(snap < 1e-4, "snapped {snap} of the basis");
     }
 }

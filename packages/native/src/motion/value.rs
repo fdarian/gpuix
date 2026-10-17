@@ -482,6 +482,15 @@ impl Layout {
         }
     }
 
+    /// Whether `channel` is a fraction of the percentage basis rather than px.
+    pub(super) fn is_percent_channel(&self, channel: usize) -> bool {
+        match self {
+            Self::Percent => true,
+            Self::Calc => channel == 1,
+            _ => false,
+        }
+    }
+
     /// A velocity measured in `self`'s channels as `other`'s, so a retarget can
     /// carry it over; `None` where it means nothing there. A length moves between
     /// px, percentage and `calc` channels, keeping the part it has.

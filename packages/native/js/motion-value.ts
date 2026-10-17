@@ -27,7 +27,11 @@ import type { MotionValueSink } from "./renderer-state.js"
 /** A renderer that owns a motion value graph. */
 export type MotionValueRenderer = NativeRenderer & MotionValueHost
 
-/** What a motion value can hold: a number, a colour or percentage string, a list of numbers, or box shadows. */
+/**
+ * What a motion value can hold: a number, a colour string, a CSS length string
+ * (`"50%"`, `"2em"`, `"calc(100% - 20px)"`), a list of numbers, or box shadows.
+ * Lengths of different units animate as the two parts of a `calc()`.
+ */
 export type MotionData = number | string | number[] | BoxShadow | BoxShadow[]
 
 /** `motionValue(0)` is a `MotionValue<number>`, not a `MotionValue<0>`. */
