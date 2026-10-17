@@ -452,7 +452,10 @@ export interface LinearGradientBackground {
 export interface StyleDesc {
   /** `"flex"`, `"grid"`, `"block"` (the default), `"none"`, which builds no box at all, or
    *  `"contents"`, which builds no box either and lays its children out as the parent's own.
-   *  The `inline-*` values are not supported. */
+   *  `"inline-block"`, `"inline-flex"` and `"inline-grid"` put the box on a line of text as one
+   *  unit, as CSS does (an atomic inline); where the parent lays out items, or the box is
+   *  `position: absolute` or `fixed`, they are `"block"`, `"flex"` and `"grid"`. `"inline-table"`
+   *  and `"table"` are not supported. */
   display?: string
   visibility?: string
   /** `"row"`, `"row-reverse"`, `"column"` or `"column-reverse"`. */

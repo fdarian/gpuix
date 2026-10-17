@@ -27,6 +27,7 @@ macro_rules! overlay_fields {
             container_unit_axes: $base.container_unit_axes.union($over.container_unit_axes),
             measure_natural_width: false,
             flex_or_grid_item: false,
+            atomic_inline: false,
         }
     };
 }

@@ -774,6 +774,10 @@ pub struct StyleDesc {
     /// `position`. Only set when it has a `z-index`.
     #[serde(skip)]
     pub flex_or_grid_item: bool,
+    /// Set by the renderer on the copy of the style it builds an element from, never by JS: the
+    /// element is an atomic inline, which the text decoration of the boxes around it does not reach.
+    #[serde(skip)]
+    pub atomic_inline: bool,
 
     // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
     // over the `animation` shorthand. Names refer to `defineKeyframes`.

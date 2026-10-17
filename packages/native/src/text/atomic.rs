@@ -25,6 +25,8 @@ pub struct Extracted {
     /// The `width` of the box when it is a percentage of the width of the
     /// paragraph, which the box cannot resolve as the root of a layout of its own.
     pub width: Option<DefiniteLength>,
+    /// How far `position: relative` moves the box from where the line puts it.
+    pub offset: gpui::Point<Pixels>,
 }
 
 impl Extracted {
@@ -32,8 +34,31 @@ impl Extracted {
         Self {
             margin: Edges::default(),
             width: None,
+            offset: gpui::Point::default(),
         }
     }
+}
+
+/// The offset of a `position: relative` box: `left` before `right` and `top` before `bottom`. A
+/// percentage is of a containing block the paragraph does not have, and counts as `auto`.
+fn relative_offset(style: &StyleDesc, lengths: &LengthContext) -> gpui::Point<Pixels> {
+    if style.position.as_deref() != Some("relative") {
+        return gpui::Point::default();
+    }
+    let px = |value: &Option<DimensionValue>| {
+        let linear = match value.as_ref()? {
+            DimensionValue::Pixels(pixels) => return Some(*pixels as f32),
+            DimensionValue::Calc(length) => length,
+            DimensionValue::Percentage(_)
+            | DimensionValue::Auto
+            | DimensionValue::Intrinsic(_)
+            | DimensionValue::AnchorSize(_) => return None,
+        };
+        lengths.resolve_definite(linear).map(|pixels| pixels as f32)
+    };
+    let x = px(&style.left).or_else(|| px(&style.right).map(|right| -right)).unwrap_or(0.);
+    let y = px(&style.top).or_else(|| px(&style.bottom).map(|bottom| -bottom)).unwrap_or(0.);
+    gpui::point(gpui::px(x), gpui::px(y))
 }
 
 /// `style` without what the paragraph handles for the box: its margin, which
@@ -53,6 +78,7 @@ pub fn strip(style: &StyleDesc, lengths: &LengthContext) -> (StyleDesc, Extracte
         left: side(&style.margin_left),
     };
     let mut stripped = style.clone();
+    stripped.atomic_inline = true;
     stripped.margin = None;
     stripped.margin_top = None;
     stripped.margin_right = None;
@@ -68,7 +94,14 @@ pub fn strip(style: &StyleDesc, lengths: &LengthContext) -> (StyleDesc, Extracte
     if width.is_some() {
         stripped.width = Some(DimensionValue::Auto);
     }
-    (stripped, Extracted { margin, width })
+    (
+        stripped,
+        Extracted {
+            margin,
+            width,
+            offset: relative_offset(style, lengths),
+        },
+    )
 }
 
 /// The `line-height` of the box in px, which a percentage `vertical-align` is of:
@@ -273,7 +306,7 @@ pub enum Kind {
     /// An `inline-flex` or `inline-grid`: the first baseline of the container.
     FirstItem,
     /// A box with no baseline of its own: an `inline-block` whose `overflow`
-    /// is not `visible`.
+    /// is `hidden`, `scroll` or `auto`.
     BottomMarginEdge,
 }
 
@@ -283,8 +316,9 @@ pub fn kind(style: Option<&StyleDesc>) -> Kind {
     match style.display.as_deref() {
         Some("inline-flex" | "inline-grid") => Kind::FirstItem,
         _ => {
+            // `clip` is not a scroll container, and Chrome keeps the baseline of the text in it.
             let visible = |own: &Option<String>| {
-                matches!(own.as_deref().or(style.overflow.as_deref()), None | Some("visible"))
+                matches!(own.as_deref().or(style.overflow.as_deref()), None | Some("visible" | "clip"))
             };
             if visible(&style.overflow_x) && visible(&style.overflow_y) {
                 Kind::LastLine
@@ -381,6 +415,7 @@ mod tests {
         assert_eq!(extracted.margin.top, px(0.).into());
         assert_eq!(extracted.margin.bottom, relative(0.1));
         assert!(stripped.margin.is_none() && stripped.margin_left.is_none() && stripped.margin_bottom.is_none());
+        assert!(stripped.atomic_inline, "the decorations of the boxes around it stop at it");
         assert_eq!(extracted.width, None, "a width in px stays on the box");
         assert_eq!(stripped.width, style(serde_json::json!({"width": 50})).width);
     }
@@ -401,6 +436,19 @@ mod tests {
     }
 
     #[test]
+    fn a_relative_box_is_offset_by_left_before_right_and_top_before_bottom() {
+        let offset = |json: serde_json::Value| strip(&style(json), &lengths()).1.offset;
+        assert_eq!(offset(serde_json::json!({"position": "relative", "left": 7, "top": 5})), gpui::point(px(7.), px(5.)));
+        assert_eq!(
+            offset(serde_json::json!({"position": "relative", "left": 7, "right": 3, "bottom": 4})),
+            gpui::point(px(7.), px(-4.))
+        );
+        assert_eq!(offset(serde_json::json!({"position": "relative", "right": "2em"})), gpui::point(px(-20.), px(0.)));
+        assert_eq!(offset(serde_json::json!({"position": "relative", "left": "50%"})), gpui::Point::default());
+        assert_eq!(offset(serde_json::json!({"left": 7, "top": 5})), gpui::Point::default(), "static");
+    }
+
+    #[test]
     fn the_baseline_comes_from_the_display_and_the_overflow() {
         assert_eq!(kind(Some(&style(serde_json::json!({"display": "inline-block"})))), Kind::LastLine);
         assert_eq!(kind(None), Kind::LastLine);
@@ -413,6 +461,7 @@ mod tests {
         ] {
             assert_eq!(kind(Some(&style(overflow))), Kind::BottomMarginEdge);
         }
+        assert_eq!(kind(Some(&style(serde_json::json!({"overflow": "clip"})))), Kind::LastLine);
         assert_eq!(kind(Some(&style(serde_json::json!({"overflow": "visible"})))), Kind::LastLine);
     }
 

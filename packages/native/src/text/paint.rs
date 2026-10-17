@@ -875,12 +875,21 @@ pub fn range_rects(
         range,
         pad_x,
         inset_y,
-        |index| layout.position_for_index(index),
+        |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
     )
     .into_iter()
     .map(|row| row.rect)
     .collect()
+}
+
+/// Where the byte `index` is along its row, and the top of the row. gpui puts the placeholder
+/// of an atomic inline at the top of the margin box of the box, which is not on the top of the
+/// row, and a range along a row is measured from the row.
+fn position_on_row(layout: &TextLayout, index: usize) -> Option<gpui::Point<gpui::Pixels>> {
+    let position = layout.position_for_index(index)?;
+    let row = layout.row_for_index(index)?;
+    Some(point(position.x, row.top))
 }
 
 /// A visual line a byte range covers.
@@ -900,7 +909,7 @@ pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
         range,
         0.0,
         0.0,
-        |index| layout.position_for_index(index),
+        |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
     )
 }

@@ -62,7 +62,8 @@ impl Row {
 
 /// The line box of each line `range` covers, in window coordinates, with the
 /// baseline of the row and the metrics of the font of size `font_size` the box
-/// has. A range that wraps has one per line, and one that covers no glyph has none.
+/// has. A range that wraps has one per line, and one that covers no glyph has none. A range of
+/// nothing but atomic inlines has the metrics of its row.
 ///
 /// `own_text` is the bytes of `range` that the box holds itself: its baseline is that of
 /// the text there, which a `vertical-align` of the box has moved from the row's.
@@ -71,15 +72,21 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels, own_te
     if rows.is_empty() {
         return Vec::new();
     }
-    let (ascent, descent) = layout
-        .content_extent(range.clone(), font_size)
-        .expect("a range with a row has a glyph");
+    // A box that holds nothing but atomic inlines has no text to take the metrics of: its content
+    // area is the line's, the whole row around the baseline.
+    let extent = layout.content_extent(range.clone(), font_size);
     rows.into_iter()
-        .map(|row| Row {
-            line: row.rect,
-            baseline: own_baseline(layout, row.start, row.row.baseline, own_text),
-            ascent,
-            descent,
+        .map(|row| {
+            let (ascent, descent) = extent.unwrap_or((
+                row.row.baseline - row.row.top,
+                row.row.top + row.row.height - row.row.baseline,
+            ));
+            Row {
+                line: row.rect,
+                baseline: own_baseline(layout, row.start, row.row.baseline, own_text),
+                ascent,
+                descent,
+            }
         })
         .collect()
 }

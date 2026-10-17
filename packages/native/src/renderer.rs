@@ -8482,6 +8482,7 @@ fn build_atomics(
         let mut inline = gpui::AtomicInline::new(piece.range.start, built);
         inline.margin = extracted.margin;
         inline.width = extracted.width;
+        inline.offset = extracted.offset;
         inline.vertical_align = crate::text::paragraph::vertical_align(around.align);
         inline.line_height = around.line_height;
         inline.parent = piece
@@ -8761,6 +8762,10 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         if clamp >= 1.0 {
             el = el.line_clamp(clamp as usize);
         }
+    }
+    // CSS draws the decoration of a box over the inline boxes in it, and not into an atomic inline.
+    if style.atomic_inline {
+        el.text_style().reset_decorations = Some(true);
     }
     if let Some(decoration) = crate::css::text_decoration::of(style) {
         el = apply_text_decoration(el, &decoration, colors, lengths);

@@ -132,6 +132,7 @@ pub struct BoxStyle {
 /// inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
 /// `focusWithin` and `focusVisible` styles are folded into the run it paints.
 /// `motion` holds the boxes whose colours a transition or an animation moves.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn run_styles(
     tree: &RetainedTree,
     paragraph: &Paragraph,
@@ -297,6 +298,9 @@ pub fn listed_boxes(
     boxes: &[BoxStyle],
     shifted: &HashSet<u64>,
 ) -> Vec<BoxStyle> {
+    if shifted.is_empty() && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline) {
+        return Vec::new();
+    }
     let by_id: HashMap<u64, &BoxStyle> = boxes.iter().map(|style| (style.id, style)).collect();
     let mut needed: HashSet<u64> = HashSet::new();
     let mut need_chain = |mut id: Option<u64>| {

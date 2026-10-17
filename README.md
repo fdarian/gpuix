@@ -2833,7 +2833,9 @@ its own size or line height adds its line height around the same baseline. A
 wrapped row breaks where the sized text actually ends.
 
 A `<span>` with a style that needs a box of its own (`position: absolute`,
-`display: block`, `flex` or `grid`) is laid out as a block instead.
+`display: block`, `flex` or `grid`) is laid out as a block instead. `display:
+inline-block`, `inline-flex` and `inline-grid` keep it on its line, as a box of its own,
+see [Inline-block, inline-flex and inline-grid](#inline-block-inline-flex-and-inline-grid).
 
 ### Space around an inline box
 
@@ -3258,6 +3260,94 @@ wraps to without the cut:
 `textOverflow: 'ellipsis-start'` still decides where to cut by the width of each
 character along one line, so a tab counts as the font's own width of one, not as a
 tab stop, and `lineClamp` is a line of `n` times the width.
+
+### Inline-block, inline-flex and inline-grid
+
+`display: 'inline-block'`, `'inline-flex'` and `'inline-grid'` make an element an
+atomic inline: a box that sits on a line of text as one unit, wraps with the text
+around it, and is an ordinary element inside (a block, a flex container or a grid
+container). It is a `<div>`, `<span>`, `<text>` or any other element; the
+paragraph it is in lays it out, and everything else about it is the element's own.
+
+```tsx
+<text>
+  Status{' '}
+  <div style={{ display: 'inline-flex', gap: 4, padding: 2, backgroundColor: '#1f6feb' }}>
+    <svg source={dot} style={{ width: 8, height: 8 }} />
+    <span>online</span>
+  </div>{' '}
+  since <span style={{ verticalAlign: 'super', fontSize: 12 }}>3</span> days
+</text>
+```
+
+- **Where it is atomic.** In a block container (and inside the spans of a
+  paragraph) each `inline-*` child is one unit of the paragraph, with a margin box
+  that takes the line the way a word does: `margin` is around it, the line is as
+  tall as it needs, and the text around it wraps before and after it. An `inline-*`
+  child with no text around it still sits on a line, with the strut of the
+  container's font: a lone 30px box is 30px plus the descender gap tall, as in a
+  browser. Where the parent lays out items (a `flex` or `grid` container, `inline-flex` and
+  `inline-grid` included) or the child is `position: absolute` or `fixed`, `display` is
+  blockified as CSS Display 3 says: `inline-block` is `block`, `inline-flex` is `flex`,
+  `inline-grid` is `grid`. `inline-table` and `table` are not supported.
+- **Width.** `width: auto` is shrink-to-fit: the content's width, but at most the
+  width the paragraph is laid out in and at least its min-content width. A `width`
+  in `%` (or a `calc()` with one) is of the paragraph's width, and a percentage on a
+  child of an `auto` box is of the width the box came to. `margin` in `%` is of the paragraph's
+  width as well, and an `auto` margin is 0.
+- **Baseline.** An `inline-block` sits on the baseline of the last line box of its
+  in-flow content, or on its bottom margin edge when it has none or its `overflow` is
+  `hidden`, `scroll` or `auto` (`clip` keeps the baseline). An `inline-flex` or `inline-grid` sits on the first
+  baseline of its container: the first item's (in `order`), the first line of its text
+  or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. Absolutely positioned
+  content has no baseline, and a box inside another atomic inline is its own.
+- **It is an element.** `getBoundingClientRect()`, `onLayout`, `ResizeObserver` and
+  `IntersectionObserver` report its border box, pointer events, `hover` and `active`
+  styles and hit testing see it where it is painted (the span around it is its parent for events and
+  `:hover`), it takes `tabIndex`, focus and `focusVisible`, `scrollIntoView` scrolls
+  to it, its text is selected, copied and found by `highlight`, `transition`, `animate` and
+  `motion` run on it, and `display: 'none'` removes it. Order, `key`s and reordering are the
+  tree's.
+- **Text decoration and colour.** A `textDecoration` of the container or of a span around the box
+  is not drawn under it or into it, as in CSS. It inherits the text style of the boxes around it (`color`, `fontSize`,
+  `fontFamily`, `lineHeight`...) like any child.
+
+#### Vertical alignment
+
+`verticalAlign` places an inline box on its line, on a `<span>` or on an atomic
+inline: `baseline` (the default), `sub` and `super` (lowered by a fifth of the
+font size of the box around it plus 1px, raised by a third plus 1px, as Chrome does),
+`text-top` and `text-bottom` (the top and bottom of the content area of the font of the
+box around it), `middle` (half the x-height of that font above its baseline), `top` and `bottom` (the top and bottom
+of the line box, which grows to hold the box), a length (raises the box by it, a negative one lowers it) and a percentage
+(of the box's own `lineHeight`, which an `inline-block` inherits from the boxes around it
+like any text style). A nested box is aligned to the box around it, and the shifts add up. A line is as tall as
+CSS 10.8 makes it: the container's strut and every box on the baseline around the shared
+baseline, then the `top` and `bottom` ones. The bounds, the background, the border and the
+outline of a span that is raised or lowered move with its text. `verticalAlign` on a table cell
+belongs to tables, which are not supported yet.
+
+#### Deviations
+
+- gpui measures a text to the next whole pixel, so a box as wide as its text is up to 1px wider than
+  Chrome's, and what follows it is that much later. Positions are snapped to device pixels, where
+  Chrome's are in 1/64 of a pixel. Chrome rounds the ascent and descent of a font to whole pixels,
+  gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
+- The underline, line-through or overline of a span that wraps and is raised is drawn at the baseline of the
+  row, not at the raised one. Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
+  its own: what it holds goes with it. A span that holds nothing but atomic inlines does not make the line
+  taller with its own `lineHeight`: its strut is made of its text.
+- An `absolute` descendant of an atomic inline is positioned against the atomic inline (it is a layout root),
+  and the box is its own stacking context. A percentage `height` inside it sees an `auto` height, which CSS
+  does for a shrink-to-fit box too.
+- `position: relative` moves the box by `left` or `right` and `top` or `bottom` in px, `em`, `calc()`...;
+  a percentage offset counts as `auto`.
+- `textOverflow` and `lineClamp` ignore a paragraph with an atomic inline in it: cutting the text would cut its
+  placeholder, so it overflows.
+- The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search):
+  a drag across the box selects the paragraph around it and then the box's text, in painting order, not in
+  document order, and the matches of a `highlight` are numbered in painting order too (the box's after the
+  paragraph's). What is copied leaves the placeholder out, and a match cannot cross the box.
 
 ## Text input
 
@@ -5685,7 +5775,7 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"none"` | `"contents"`), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"`; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-and-inline-grid)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
@@ -5903,8 +5993,9 @@ so that animation starts at `0`.
   `currentTarget` set to it: a click on a child, the pointer entering or leaving
   any of its descendants (`mouseenter` and `pointerenter` fire once for the
   whole group), keys and focus inside it, and `click()` on it. It is never the
-  target of a pointer event, as it has no box to hit. The `inline-*` values and
-  `table` are not supported (the layout engine has no such box types).
+  target of a pointer event, as it has no box to hit. `inline-block`, `inline-flex`
+  and `inline-grid` are [atomic inlines](#inline-block-inline-flex-and-inline-grid);
+  `inline-table` and `table` are not supported (the layout engine has no such box types).
 - **`visibility: "hidden"`** keeps the layout box and every report of it
   (`getBoundingClientRect`, `onLayout`, `ResizeObserver`, `IntersectionObserver`),
   and paints nothing of its own: no background, border, shadow, outline or text.

@@ -39,7 +39,7 @@
 //! a percentage counts as 0, as CSS does for the intrinsic sizes.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -239,15 +239,31 @@ impl InsetSpec {
             .iter()
             .map(|(id, lengths)| (*id, px(lengths.font_size as f32)))
             .collect();
+        // A box shares its baseline with the text of the boxes inside it that are not aligned to
+        // anything else, and with the text it holds itself.
+        let shifted: HashSet<u64> = paragraph
+            .boxes
+            .iter()
+            .filter(|(id, _)| {
+                tree.elements
+                    .get(id)
+                    .and_then(|element| element.style.as_deref())
+                    .is_some_and(|base| {
+                        folded(base, states(*id, base))
+                            .vertical_align
+                            .is_some_and(|align| align != crate::css::vertical_align::VerticalAlign::Baseline)
+                    })
+            })
+            .map(|(id, _)| *id)
+            .collect();
         let mut own_text: HashMap<u64, Vec<Range<usize>>> = HashMap::new();
         for piece in paragraph.pieces.iter().filter(|piece| piece.atomic.is_none()) {
-            let innermost = piece
-                .boxes
-                .iter()
-                .rev()
-                .find(|id| paragraph.boxes.iter().any(|(box_id, _)| box_id == *id));
-            if let Some(id) = innermost {
-                own_text.entry(*id).or_default().push(piece.range.clone());
+            for (depth, id) in piece.boxes.iter().enumerate() {
+                if paragraph.boxes.iter().any(|(box_id, _)| box_id == id)
+                    && !piece.boxes[depth + 1..].iter().any(|inner| shifted.contains(inner))
+                {
+                    own_text.entry(*id).or_default().push(piece.range.clone());
+                }
             }
         }
         Rc::new(Self {

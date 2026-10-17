@@ -578,8 +578,9 @@ fn matches_in(
 /// single logical line the author wrote.
 #[derive(Debug)]
 pub struct Group {
-    /// Selection key of each painted run, with its byte range inside `text`.
-    pub parts: Vec<(Arc<str>, Range<usize>)>,
+    /// Selection key of each painted run, with its byte range inside `text` and the byte
+    /// of the run's own text that range starts at (0 unless a run is split into groups).
+    pub parts: Vec<(Arc<str>, Range<usize>, usize)>,
     pub text: String,
     folded: String,
     fold_map: Vec<u32>,
@@ -587,6 +588,17 @@ pub struct Group {
 
 impl Group {
     fn new(parts: Vec<(Arc<str>, Range<usize>)>, text: String) -> Self {
+        let parts = parts.into_iter().map(|(key, range)| (key, range, 0)).collect();
+        Self::of_parts(parts, text)
+    }
+
+    /// The group of the bytes of the painted run `key` from `start` on, which are `text`.
+    fn within_run(key: Arc<str>, start: usize, text: String) -> Self {
+        let len = text.len();
+        Self::of_parts(vec![(key, 0..len, start)], text)
+    }
+
+    fn of_parts(parts: Vec<(Arc<str>, Range<usize>, usize)>, text: String) -> Self {
         let (folded, fold_map) = fold(&text);
         Self {
             parts,
@@ -751,10 +763,7 @@ fn collect_paragraph(tree: &RetainedTree, paragraph: &super::inline::Paragraph, 
     let mut start = 0;
     let mut push = |range: Range<usize>, out: &mut Vec<Group>| {
         if !range.is_empty() {
-            out.push(Group::new(
-                vec![(key.clone(), range.clone())],
-                paragraph.text[range].to_string(),
-            ));
+            out.push(Group::within_run(key.clone(), range.start, paragraph.text[range].to_string()));
         }
     };
     for (atomic, piece) in paragraph.atomics() {
@@ -888,7 +897,7 @@ fn push_match(
     spec: usize,
     index: usize,
 ) {
-    for (key, part) in &group.parts {
+    for (key, part, run_start) in &group.parts {
         let lo = range.start.max(part.start);
         let hi = range.end.min(part.end);
         if lo >= hi {
@@ -899,7 +908,7 @@ fn push_match(
             .entry(key.clone())
             .or_default()
             .push(MatchRef {
-                range: (lo - part.start)..(hi - part.start),
+                range: (lo - part.start + run_start)..(hi - part.start + run_start),
                 spec,
                 index,
             });
@@ -981,7 +990,7 @@ mod tests {
         ordinal_frame_reset(window());
         let mut out = HashMap::new();
         for group in &groups.groups {
-            for (key, _) in &group.parts {
+            for (key, _, _) in &group.parts {
                 let washes = washes_for_retained_run(window(), ctx, key);
                 if !washes.is_empty() {
                     out.insert(key.clone(), washes);
@@ -1136,6 +1145,43 @@ mod tests {
         let ctx = context(&groups, set);
         assert_eq!(ctx.matches.total, 1);
         assert_eq!(paint(&ctx, &groups)[&Arc::from("1:0")][0].range, 4..7);
+    }
+
+    /// "a " + inline-block("b a") + " a": the text before the box, the box's own text and the
+    /// text after it are three groups in document order, and the two around the placeholder
+    /// paint into the same run of the paragraph at their own bytes.
+    #[test]
+    fn an_atomic_inline_splits_its_paragraph_in_document_order() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "text".to_string());
+        tree.create_element(2, "text".to_string());
+        tree.append_child(1, 2);
+        tree.set_text(2, "a ".to_string());
+        tree.create_element(3, "div".to_string());
+        tree.append_child(1, 3);
+        tree.set_style(
+            3,
+            Arc::new(serde_json::from_value(serde_json::json!({"display": "inline-block"})).expect("a style")),
+        );
+        tree.create_element(4, "text".to_string());
+        tree.append_child(3, 4);
+        tree.set_text(4, "b a".to_string());
+        tree.create_element(5, "text".to_string());
+        tree.append_child(1, 5);
+        tree.set_text(5, " a".to_string());
+        let groups = GroupList::collect(&tree, 1);
+        let texts: Vec<_> = groups.groups.iter().map(|group| group.text.as_str()).collect();
+        assert_eq!(texts, vec!["a ", "b a", " a"]);
+        let ctx = context(&groups, HighlightSet { specs: vec![spec("a")] });
+        assert_eq!(ctx.matches.total, 3);
+        let painted = paint(&ctx, &groups);
+        let outer = &painted[&Arc::from("1:0")];
+        assert_eq!(
+            outer.iter().map(|wash| wash.range.clone()).collect::<Vec<_>>(),
+            vec![0..1, 6..7],
+            "'a' at the start and 'a' after the space that follows the 3 bytes of the placeholder"
+        );
+        assert_eq!(painted[&Arc::from("3:0")][0].range, 2..3);
     }
 
     /// Text children of an element the renderer does not lay out itself still
