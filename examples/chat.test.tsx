@@ -168,7 +168,7 @@ describeNative('chat example', () => {
     expect(transcript).toBeDefined()
     expect(
       transcript.children.map((id) => renderer.getElement(id)?.style.width)
-    ).toEqual(Array(transcript.children.length).fill(1))
+    ).toEqual(Array(transcript.children.length).fill('100%'))
 
     const painted = renderer.getPaintedText()
 
