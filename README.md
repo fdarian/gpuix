@@ -6092,10 +6092,11 @@ Widths, colours and corners can differ per side:
 (`"dotted dashed"` is dotted top and bottom, dashed left and right), and
 `borderTopStyle`, `borderRightStyle`, `borderBottomStyle` and `borderLeftStyle`
 set one side. `border` and `borderTop` / `borderRight` / `borderBottom` /
-`borderLeft` take `<width> <style> <color>` in any order. A missing colour is
+`borderLeft` take `<width> <style> <color>` in any order, and `borderBlock` and
+`borderInline` the same for the top and bottom or the left and right. A missing colour is
 `currentColor`, and a missing width is 3px (`medium`; `thin` is 1px and `thick`
 5px). A width is any [length](#lengths) without a `%`, so `border: '0.1em solid red'`
-works. `border` is applied first, then the side shorthands, then `borderStyle`,
+works. `border` is applied first, then `borderBlock` and `borderInline`, then the side shorthands, then `borderStyle`,
 then the longhands (`borderWidth`, `borderTopColor`, `borderTopStyle`, ...). An
 invalid value, such as a style that is not in the list below, is ignored.
 
@@ -6106,7 +6107,9 @@ borderColor: 'red' }` and `{ border: '1px red' }` draw nothing, and `{ borderWid
 1, borderStyle: 'solid', borderColor: 'red' }` does. The other way round, a side
 with a visible style and no width is `medium` (3px). Only the sides that name a
 style have a border, so `{ borderBottomWidth: 2, borderBottomStyle: 'solid' }` is a
-bottom border and the other sides stay at 0. A motion animation or a
+bottom border and the other sides stay at 0. A border on one side of a box with no
+content on that axis, such as a `borderTop` hairline on an empty `div`, paints its
+whole width. A motion animation or a
 [CSS transition](#css-transitions) of a border width shows the width a side has,
 so a side with no style stays at 0.
 
