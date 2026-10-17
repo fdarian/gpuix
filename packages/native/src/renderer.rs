@@ -4920,6 +4920,7 @@ pub(crate) struct GpuixView {
     /// Stands in for the window when a press in a drag region asks it to move or zoom: the
     /// test renderer's offscreen window has no current mouse event to start a drag from.
     simulated_window_actions: Option<crate::events::app_region::SimulatedWindowActions>,
+    resync_by_frame: bool,
     /// The window draws its own titlebar (`titlebarTransparent`), so `appRegion` applies.
     frameless: bool,
     window_media_change: bool,
@@ -5393,6 +5394,7 @@ impl GpuixView {
             media_viewport: gpui::Size::default(),
             simulated_platform: None,
             simulated_window_actions: None,
+            resync_by_frame: false,
             frameless: false,
             window_media_change: false,
             #[cfg(target_os = "macos")]
@@ -5741,6 +5743,10 @@ impl GpuixView {
 
     pub(crate) fn set_frameless(&mut self, frameless: bool) {
         self.frameless = frameless;
+    }
+
+    pub(crate) fn resync_hover_by_frame(&mut self) {
+        self.resync_by_frame = true;
     }
 
     pub(crate) fn simulate_window_actions(
@@ -7308,6 +7314,7 @@ impl gpui::Render for GpuixView {
                         pointer: self.pointer.clone(),
                         activation: activation.clone(),
                         window_actions: self.simulated_window_actions.clone(),
+                        resync_by_frame: self.resync_by_frame,
                     },
                     self.pointer.borrow().observed(),
                 ))

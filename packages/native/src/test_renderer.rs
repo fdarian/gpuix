@@ -231,6 +231,17 @@ fn draw_pending_changes() -> Result<gpui::WindowId> {
     })
 }
 
+/// Delivers the frame callbacks the last draw queued, as a display link would before the next
+/// draw. GPUI's test mode draws a dirty window inline and never runs them, so `flush` is the
+/// frame boundary. A read or an input is not one: `flush_if_dirty`, which every `nativeSimulate*`
+/// ends with, leaves the resync its draw queued for the next `flush`, so the input's own effect
+/// can be seen.
+fn deliver_frame() -> Result<()> {
+    window_call(|window, cx| {
+        window.simulate_next_frame(cx);
+    })
+}
+
 fn test_window_id() -> Result<gpui::WindowId> {
     window_call(|window, _cx| window.window_handle().window_id())
 }
@@ -568,6 +579,7 @@ impl TestGpuixRenderer {
                         view.force_scroller_style(crate::scrollbar::ScrollerStyle::Overlay);
                         view.simulate_platform_pointer_lock(simulated_platform_clone);
                         view.simulate_window_actions(window_actions_clone);
+                        view.resync_hover_by_frame();
                         view.set_frameless(frameless);
                         crate::events::enable_dom_hit_testing(window);
                         crate::layout::container::allow_redraw_passes(window);
@@ -703,6 +715,7 @@ impl TestGpuixRenderer {
     pub fn flush(&self) -> Result<()> {
         // From a sync event handler this only marks the view dirty: the frame
         // is drawn once the input that is being dispatched has returned.
+        deliver_frame()?;
         update_view_or_defer(|_view, _window, cx| cx.notify())
     }
 

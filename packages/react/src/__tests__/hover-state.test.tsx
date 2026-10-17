@@ -104,3 +104,51 @@ describeNative("a filled or positioned child does not block its parent's hover",
     })
   })
 })
+
+describeNative("a state style that moves the element out from under the pointer", () => {
+  const left = (testRoot: TestRoot, testId: string) =>
+    testRoot.renderer.getElementBounds(testRoot.renderer.findByTestId(testId).id).x
+
+  // A window resyncs hover once per frame, so the element flips once per frame; the test renderer
+  // has no display link, so a flush is the frame. Resyncing inside the flush that drew would never
+  // return.
+  it("hover flips once per flush", () => {
+    const tree = <div testId="box" style={{ width: 100, height: 100, hover: { marginLeft: 200 } }} />
+    withRoot(tree, (testRoot) => {
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      const moved = left(testRoot, "box")
+      expect(moved).toBe(200)
+      for (let flush = 0; flush < 4; flush++) {
+        testRoot.renderer.flush()
+        expect(left(testRoot, "box")).toBe(flush % 2 === 0 ? 0 : 200)
+      }
+    })
+  })
+
+  it("hasHover on a parent flips once per flush", () => {
+    const tree = (
+      <div testId="box" style={{ width: 100, height: 100, hasHover: { marginLeft: 200 } }}>
+        <div style={{ width: 40, height: 40 }} />
+      </div>
+    )
+    withRoot(tree, (testRoot) => {
+      testRoot.renderer.nativeSimulateMouseMove(20, 20)
+      expect(left(testRoot, "box")).toBe(200)
+      for (let flush = 0; flush < 4; flush++) {
+        testRoot.renderer.flush()
+        expect(left(testRoot, "box")).toBe(flush % 2 === 0 ? 0 : 200)
+      }
+    })
+  })
+
+  it("a flush that changes nothing under the pointer leaves hover where it is", () => {
+    const tree = <div testId="box" style={{ width: 100, height: 100, hover: { marginLeft: 20 } }} />
+    withRoot(tree, (testRoot) => {
+      testRoot.renderer.nativeSimulateMouseMove(50, 50)
+      for (let flush = 0; flush < 3; flush++) {
+        testRoot.renderer.flush()
+        expect(left(testRoot, "box")).toBe(20)
+      }
+    })
+  })
+})

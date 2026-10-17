@@ -112,6 +112,11 @@ pub(crate) struct PointerDispatch {
     /// Stands in for the window when a press in a drag region asks it to move: the test
     /// renderer's offscreen window has no current mouse event to start a drag from.
     pub window_actions: Option<SimulatedWindowActions>,
+    /// Whether the resync after a draw waits for the next frame. A window draws once per
+    /// display frame, so a layout that moves out from under the pointer flips hover once a
+    /// frame. The test renderer has no display link and GPUI draws a dirty window inline there,
+    /// so a resync applied at once would flip hover again within the same flush, forever.
+    pub resync_by_frame: bool,
 }
 
 impl PointerDispatch {
@@ -230,6 +235,52 @@ fn wheel_tick(event: &ScrollWheelEvent) -> WheelTick {
 }
 
 impl PointerDispatch {
+    /// Follows a layout that moved under a still pointer: if the chain painted now is not the
+    /// one the last input saw, dispatches a resync. `frame_due` is true from the frame callback
+    /// that a deferred resync queued.
+    fn resync(
+        &self,
+        view: &WeakEntity<GpuixView>,
+        observed: &ObservedChain,
+        frame_due: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let resync = sample(
+            window,
+            PointerAction::Resync,
+            window.mouse_position(),
+            window.modifiers(),
+        );
+        // What the page would see: a pointer the dispatcher hides has no chain, or this
+        // would resync on every frame.
+        let seen = if app_region::hides_pointer(&self.pointer.borrow(), &resync) {
+            &[]
+        } else {
+            resync.hits.as_slice()
+        };
+        if !chain_changed(observed, seen) {
+            return;
+        }
+        if self.resync_by_frame && !frame_due {
+            if !std::mem::replace(&mut self.pointer.borrow_mut().resync_queued, true) {
+                let dispatch = self.clone();
+                let view = view.clone();
+                let observed = observed.clone();
+                window.on_next_frame(move |window, cx| {
+                    dispatch.pointer.borrow_mut().resync_queued = false;
+                    dispatch.resync(&view, &observed, true, window, cx);
+                });
+            }
+            return;
+        }
+        if self.pointer.borrow().file_drag.is_some() {
+            self.file_drag(view, resync, window, cx);
+        } else {
+            submit(view, resync, cx);
+        }
+    }
+
     /// Dispatches a wheel tick, then cancels the scroll it would cause if a
     /// handler prevented its default.
     fn wheel(&self, sample: PointerSample, window: &mut Window, cx: &mut App) {
@@ -487,26 +538,7 @@ pub(crate) fn pointer_frame(
             // frame being painted are readable only from then on, so a drag region that appeared
             // under a still pointer is seen by this resync and not a frame late.
             window.defer(cx, move |window, cx| {
-                let resync = sample(
-                    window,
-                    PointerAction::Resync,
-                    window.mouse_position(),
-                    window.modifiers(),
-                );
-                // What the page would see: a pointer the dispatcher hides has no chain, or this
-                // would resync on every frame.
-                let seen = if app_region::hides_pointer(&hover.borrow(), &resync) {
-                    &[]
-                } else {
-                    resync.hits.as_slice()
-                };
-                if chain_changed(&observed, seen) {
-                    if file_drag.pointer.borrow().file_drag.is_some() {
-                        file_drag.file_drag(&view, resync, window, cx);
-                    } else {
-                        submit(&view, resync, cx);
-                    }
-                }
+                file_drag.resync(&view, &observed, false, window, cx);
             });
         },
     )

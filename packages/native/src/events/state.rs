@@ -236,6 +236,8 @@ pub struct PointerState {
     /// A press on a `draggable` element that has not moved far enough to drag it.
     pub(super) pending_drag: Option<PendingDrag>,
     pub(super) element_drag: Option<ElementDrag>,
+    /// A resync waits for the next frame (see `PointerDispatch::resync_by_frame`).
+    pub(super) resync_queued: bool,
     observed: ObservedChain,
 }
 
