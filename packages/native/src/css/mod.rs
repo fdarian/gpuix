@@ -10,6 +10,7 @@ pub(crate) mod clip_path;
 pub(crate) mod color_function;
 pub(crate) mod color_mix;
 pub(crate) mod color_space;
+pub(crate) mod container_query;
 pub(crate) mod dimension;
 pub(crate) mod filter;
 pub(crate) mod font_features;

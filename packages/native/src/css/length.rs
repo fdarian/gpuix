@@ -16,7 +16,9 @@ use super::dimension::{parse_linear_length, MAX_LENGTH};
 /// `px + percent * basis + em * font-size + ...`. The relative terms are
 /// fractions or multipliers: `50%` and `50vw` are `0.5`, `2em` is `2.0`.
 /// `vmin` and `vmax` stay separate because which viewport side they follow is
-/// only known against a window.
+/// only known against a window; `cqmin` and `cqmax` because which side of the
+/// query container is smaller is only known against a container. `cqi` and
+/// `cqb` are `cqw` and `cqh`: gpuix has no vertical writing mode.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LinearLength {
     pub(crate) px: f64,
@@ -27,11 +29,28 @@ pub struct LinearLength {
     pub(crate) vh: f64,
     pub(crate) vmin: f64,
     pub(crate) vmax: f64,
+    pub(crate) cqw: f64,
+    pub(crate) cqh: f64,
+    pub(crate) cqmin: f64,
+    pub(crate) cqmax: f64,
 }
 
 impl LinearLength {
     pub(crate) const fn px(px: f64) -> Self {
-        Self { px, percent: 0.0, em: 0.0, rem: 0.0, vw: 0.0, vh: 0.0, vmin: 0.0, vmax: 0.0 }
+        Self {
+            px,
+            percent: 0.0,
+            em: 0.0,
+            rem: 0.0,
+            vw: 0.0,
+            vh: 0.0,
+            vmin: 0.0,
+            vmax: 0.0,
+            cqw: 0.0,
+            cqh: 0.0,
+            cqmin: 0.0,
+            cqmax: 0.0,
+        }
     }
 
     /// `fraction` is `0.5` for `50%`.
@@ -39,11 +58,24 @@ impl LinearLength {
         Self { percent: fraction, ..Self::default() }
     }
 
-    fn terms(&self) -> [f64; 8] {
-        [self.px, self.percent, self.em, self.rem, self.vw, self.vh, self.vmin, self.vmax]
+    fn terms(&self) -> [f64; 12] {
+        [
+            self.px,
+            self.percent,
+            self.em,
+            self.rem,
+            self.vw,
+            self.vh,
+            self.vmin,
+            self.vmax,
+            self.cqw,
+            self.cqh,
+            self.cqmin,
+            self.cqmax,
+        ]
     }
 
-    fn from_terms(terms: [f64; 8]) -> Self {
+    fn from_terms(terms: [f64; 12]) -> Self {
         Self {
             px: terms[0],
             percent: terms[1],
@@ -53,6 +85,10 @@ impl LinearLength {
             vh: terms[5],
             vmin: terms[6],
             vmax: terms[7],
+            cqw: terms[8],
+            cqh: terms[9],
+            cqmin: terms[10],
+            cqmax: terms[11],
         }
     }
 
@@ -92,7 +128,7 @@ impl LinearLength {
         terms.iter().all(|term| *term <= 0.0) && terms.iter().any(|term| *term < 0.0)
     }
 
-    /// Whether the px of this length depend on the font size or the viewport.
+    /// Whether the px of this length depend on the font size, the viewport or a query container.
     pub(crate) fn is_relative(&self) -> bool {
         self.terms()[2..].iter().any(|term| *term != 0.0)
     }
@@ -129,6 +165,12 @@ pub(crate) struct LengthContext {
     pub(crate) root_font_size: f64,
     pub(crate) viewport_width: f64,
     pub(crate) viewport_height: f64,
+    /// The content box of the nearest ancestor query container that contains the
+    /// inline axis, which `cqw` and `cqi` mean. `None` with no such container, or
+    /// while its size is not known yet: the small viewport width, as the spec says.
+    pub(crate) container_width: Option<f64>,
+    /// The same for the block axis (`cqh`, `cqb`): the nearest `size` container.
+    pub(crate) container_height: Option<f64>,
 }
 
 impl LengthContext {
@@ -140,7 +182,20 @@ impl LengthContext {
             root_font_size: INITIAL_FONT_SIZE,
             viewport_width,
             viewport_height,
+            container_width: None,
+            container_height: None,
         }
+    }
+
+    /// The context of the descendants of a query container that contains the
+    /// inline axis: `cqw` is `width` of its content box, `None` until that is known.
+    pub(crate) fn with_container_width(self, width: Option<f64>) -> Self {
+        Self { container_width: width, ..self }
+    }
+
+    /// The same for the block axis (`cqh`), for a container of type `size`.
+    pub(crate) fn with_container_height(self, height: Option<f64>) -> Self {
+        Self { container_height: height, ..self }
     }
 
     pub(crate) fn with_viewport(self, viewport_width: f64, viewport_height: f64) -> Self {
@@ -186,6 +241,10 @@ impl LengthContext {
         } else {
             (self.viewport_height, self.viewport_width)
         };
+        let (container_width, container_height) = (
+            self.container_width.unwrap_or(self.viewport_width),
+            self.container_height.unwrap_or(self.viewport_height),
+        );
         length.px
             + length.percent * percent_basis
             + length.em * self.font_size
@@ -194,6 +253,10 @@ impl LengthContext {
             + length.vh * self.viewport_height
             + length.vmin * min_side
             + length.vmax * max_side
+            + length.cqw * container_width
+            + length.cqh * container_height
+            + length.cqmin * container_width.min(container_height)
+            + length.cqmax * container_width.max(container_height)
     }
 
     /// The px of a length that does not depend on a containing block.
@@ -214,6 +277,7 @@ pub(crate) struct LengthReads {
     font_size: bool,
     root_font_size: bool,
     viewport: bool,
+    container: bool,
 }
 
 impl LengthReads {
@@ -232,6 +296,8 @@ impl LengthReads {
             };
             if starts("rem") {
                 reads.root_font_size = true;
+            } else if starts("cqw") || starts("cqh") || starts("cqi") || starts("cqb") || starts("cqmin") || starts("cqmax") {
+                reads.container = true;
             } else if starts("em") {
                 reads.font_size = true;
             } else if starts("vw") || starts("vh") || starts("vmin") || starts("vmax") {
@@ -242,7 +308,35 @@ impl LengthReads {
     }
 
     pub(crate) fn any(&self) -> bool {
-        self.font_size || self.root_font_size || self.viewport
+        self.font_size || self.root_font_size || self.viewport || self.container
+    }
+
+    /// The axes of a query container the container units in `text` read: `cqw` and
+    /// `cqi` the inline one, `cqh` and `cqb` the block one, `cqmin` and `cqmax` both.
+    /// Conservative like [`LengthReads::of`].
+    pub(crate) fn container_axes(text: &str) -> super::container_query::Axes {
+        use super::container_query::Axes;
+        let bytes = text.as_bytes();
+        let mut axes = Axes::NONE;
+        for (index, byte) in bytes.iter().enumerate() {
+            if !(byte.is_ascii_digit() || *byte == b'.') {
+                continue;
+            }
+            let unit = &bytes[index + 1..];
+            if unit.len() < 3 || !unit[..2].eq_ignore_ascii_case(b"cq") {
+                continue;
+            }
+            match unit[2].to_ascii_lowercase() {
+                b'w' | b'i' => axes.width = true,
+                b'h' | b'b' => axes.height = true,
+                b'm' if unit.len() >= 5 => {
+                    axes.width = true;
+                    axes.height = true;
+                }
+                _ => {}
+            }
+        }
+        axes
     }
 }
 
@@ -256,6 +350,11 @@ impl LengthContext {
             && (!reads.viewport
                 || (self.viewport_width == other.viewport_width
                     && self.viewport_height == other.viewport_height))
+            && (!reads.container
+                || (self.container_width.unwrap_or(self.viewport_width)
+                    == other.container_width.unwrap_or(other.viewport_width)
+                    && self.container_height.unwrap_or(self.viewport_height)
+                        == other.container_height.unwrap_or(other.viewport_height)))
     }
 }
 
@@ -280,6 +379,10 @@ impl fmt::Display for LinearLength {
             (self.vh * 100.0, "vh"),
             (self.vmin * 100.0, "vmin"),
             (self.vmax * 100.0, "vmax"),
+            (self.cqw * 100.0, "cqw"),
+            (self.cqh * 100.0, "cqh"),
+            (self.cqmin * 100.0, "cqmin"),
+            (self.cqmax * 100.0, "cqmax"),
             (self.px, "px"),
         ]
         .into_iter()
@@ -452,6 +555,8 @@ mod tests {
         root_font_size: 16.0,
         viewport_width: 800.0,
         viewport_height: 600.0,
+        container_width: None,
+        container_height: None,
     };
 
     #[test]
@@ -559,5 +664,61 @@ mod tests {
         assert_eq!(element.for_state(Some(&parse("1.5em"))).font_size, 30.0);
         assert_eq!(element.for_state(None), element);
         assert_eq!(element.for_state(Some(&parse("1.5em"))).root_font_size, 20.0);
+    }
+
+    #[test]
+    fn container_units_follow_the_nearest_container_and_fall_back_to_the_viewport() {
+        let container = CONTEXT.with_container_width(Some(400.0)).with_container_height(Some(300.0));
+        assert_eq!(container.resolve(&parse("10cqw"), 0.0), 40.0);
+        assert_eq!(container.resolve(&parse("10cqh"), 0.0), 30.0);
+        assert_eq!(container.resolve(&parse("10cqi"), 0.0), 40.0);
+        assert_eq!(container.resolve(&parse("10cqb"), 0.0), 30.0);
+        assert_eq!(container.resolve(&parse("10cqmin"), 0.0), 30.0);
+        assert_eq!(container.resolve(&parse("10cqmax"), 0.0), 40.0);
+        assert_eq!(container.resolve(&parse("calc(50cqw - 2em)"), 0.0), 160.0);
+        // No container: the small viewport, 800 by 600.
+        assert_eq!(CONTEXT.resolve(&parse("10cqw"), 0.0), 80.0);
+        assert_eq!(CONTEXT.resolve(&parse("10cqh"), 0.0), 60.0);
+        assert_eq!(CONTEXT.resolve(&parse("10cqmin"), 0.0), 60.0);
+        // An inline-size container leaves the block axis to the viewport (or an outer `size` one).
+        let inline_only = CONTEXT.with_container_width(Some(400.0));
+        assert_eq!(inline_only.resolve(&parse("10cqh"), 0.0), 60.0);
+        assert_eq!(inline_only.resolve(&parse("10cqmin"), 0.0), 40.0);
+        assert_eq!(inline_only.resolve(&parse("10cqmax"), 0.0), 60.0);
+    }
+
+    #[test]
+    fn container_units_display_and_parse_back_with_the_logical_names_folded() {
+        for text in ["10cqw", "calc(1em + 5cqh)", "calc(10cqmin - 2cqmax)"] {
+            let length = parse(text);
+            assert_eq!(length.to_string(), text);
+            assert_eq!(parse(&length.to_string()), length, "{text}");
+        }
+        assert_eq!(parse("10cqi"), parse("10cqw"));
+        assert_eq!(parse("10CQB"), parse("10cqh"));
+        assert!(parse("1cqw").is_relative());
+    }
+
+    #[test]
+    fn container_axes_names_the_axes_a_text_reads() {
+        use super::super::container_query::Axes;
+        assert_eq!(LengthReads::container_axes(r#"{"width":"50cqw"}"#), Axes::WIDTH);
+        assert_eq!(LengthReads::container_axes(r#"{"height":"calc(5CQB + 1px)"}"#), Axes::HEIGHT);
+        assert_eq!(LengthReads::container_axes(r#"{"a":"1cqi","b":"2cqh"}"#), Axes::BOTH);
+        assert_eq!(LengthReads::container_axes(r#"{"a":"1cqmin"}"#), Axes::BOTH);
+        assert_eq!(LengthReads::container_axes(r#"{"width":"50vw","height":10}"#), Axes::NONE);
+        assert_eq!(LengthReads::container_axes(r#"{"fontFamily":"cqwerty"}"#), Axes::NONE);
+    }
+
+    #[test]
+    fn container_units_read_the_container_part_of_the_context() {
+        assert!(LengthReads::of("calc(100% - 10cqw)").any());
+        assert!(!LengthReads::of("10px").any());
+        let reads = LengthReads::of("10cqw");
+        let narrow = CONTEXT.with_container_width(Some(300.0));
+        let wide = CONTEXT.with_container_width(Some(500.0));
+        assert!(!narrow.resolves_like(&wide, reads));
+        assert!(narrow.resolves_like(&wide, LengthReads::of("10em")));
+        assert!(CONTEXT.resolves_like(&CONTEXT.with_container_width(Some(800.0)), reads));
     }
 }

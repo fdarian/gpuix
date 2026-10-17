@@ -67,6 +67,10 @@ fn quantity(value: f64, unit: &str) -> Option<Quantity> {
         "vh" => linear(LinearLength { vh: fraction, ..LinearLength::default() }, Units::RELATIVE),
         "vmin" => linear(LinearLength { vmin: fraction, ..LinearLength::default() }, Units::RELATIVE),
         "vmax" => linear(LinearLength { vmax: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "cqw" | "cqi" => linear(LinearLength { cqw: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "cqh" | "cqb" => linear(LinearLength { cqh: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "cqmin" => linear(LinearLength { cqmin: fraction, ..LinearLength::default() }, Units::RELATIVE),
+        "cqmax" => linear(LinearLength { cqmax: fraction, ..LinearLength::default() }, Units::RELATIVE),
         _ => linear(LinearLength::px(value * px_per(unit)?), Units::ABSOLUTE),
     }
 }
