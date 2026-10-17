@@ -21,7 +21,9 @@
  *
  * It logs the numbers and guards two things: that the clipped boxes are skipped (counted, so noise
  * cannot hide a regression), and that a frame with them is cheaper than the same frame with
- * every box visible, by a margin well inside what it measures. Run it through
+ * every box visible, by a margin well inside what it measures. Both groups run with the test
+ * window's pretend screen reader on, which builds an accessibility tree that holds the clipped
+ * boxes too, and off. Run it through
  * `bun run test:perf:clipped` (NODE_ENV=production, like `test:perf`).
  */
 
@@ -92,11 +94,10 @@ function Table({ clip }: { clip: Clip }) {
   )
 }
 
-function frame(node: React.ReactNode): { summary: Summary; elements: number; culled: number } {
+function frame(node: React.ReactNode, a11y: boolean): { summary: Summary; elements: number; culled: number } {
   const root = createTestRoot(WINDOW)
   try {
-    // An app without a screen reader, which gpui skips clipped content for.
-    root.renderer.setA11yActive(false)
+    root.renderer.setA11yActive(a11y)
     root.render(<div style={{ width: WINDOW.width, height: WINDOW.height }}>{node}</div>)
     const summary = summarize(sample(() => root.renderer.flush(), WARMUP, SAMPLES))
     const before = root.renderer.getCulledSubtreeCount()
@@ -110,17 +111,17 @@ function frame(node: React.ReactNode): { summary: Summary; elements: number; cul
 /** What a clipped frame may cost against the same frame unclipped. Measured: 0.66 to 0.70. */
 const CLIPPED_OVER_VISIBLE = 0.85
 
-describeNative('clipped and off-screen content', () => {
+describeNative.each([{ a11y: true }, { a11y: false }])('clipped and off-screen content, a11y $a11y', ({ a11y }) => {
   it('boxes: per-box cost by clip', () => {
-    const empty = frame(<Boxes count={0} clip="hidden" />)
+    const empty = frame(<Boxes count={0} clip="hidden" />, a11y)
     const largest: Partial<Record<Clip, ReturnType<typeof frame>>> = {}
     for (const clip of ['visible', 'hidden', 'scroll', 'none'] as const) {
       for (const count of BOX_COUNTS) {
         if (count === 0) continue
-        const run = frame(<Boxes count={count} clip={clip} />)
+        const run = frame(<Boxes count={count} clip={clip} />, a11y)
         const perBoxUs = ((run.summary.cpuP50 - empty.summary.cpuP50) / count) * 1000
         console.log(
-          `[clipped.perf] boxes ${clip} N=${count} elements=${run.elements} skipped=${run.culled} per-box=${perBoxUs.toFixed(2)}us | ${formatSummary(run.summary)}`,
+          `[clipped.perf] a11y=${a11y} boxes ${clip} N=${count} elements=${run.elements} skipped=${run.culled} per-box=${perBoxUs.toFixed(2)}us | ${formatSummary(run.summary)}`,
         )
         if (count === Math.max(...BOX_COUNTS)) largest[clip] = run
       }
@@ -141,9 +142,9 @@ describeNative('clipped and off-screen content', () => {
   it('table: the scroll-area demo shape', () => {
     const runs: Partial<Record<Clip, ReturnType<typeof frame>>> = {}
     for (const clip of ['visible', 'hidden', 'scroll', 'none'] as const) {
-      const run = frame(<Table clip={clip} />)
+      const run = frame(<Table clip={clip} />, a11y)
       runs[clip] = run
-      console.log(`[clipped.perf] table ${COLUMNS}x${ROWS} ${clip} elements=${run.elements} skipped=${run.culled} | ${formatSummary(run.summary)}`)
+      console.log(`[clipped.perf] a11y=${a11y} table ${COLUMNS}x${ROWS} ${clip} elements=${run.elements} skipped=${run.culled} | ${formatSummary(run.summary)}`)
       expect(run.elements).toBeGreaterThan(0)
     }
     expect(runs.visible!.culled).toBe(0)

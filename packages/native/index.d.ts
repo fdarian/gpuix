@@ -477,8 +477,8 @@ export declare class TestGpuixRenderer {
   getLayoutPassCount(): number
   /**
    * Pretends a screen reader is connected, or not. The test window starts with one, so every
-   * flush builds an accessibility tree. An app without one lets gpui skip the subtrees that lie
-   * outside their clip (`getCulledSubtreeCount`), which an accessibility tree has to hold.
+   * flush builds an accessibility tree. Without one nothing builds it, which is what a benchmark
+   * of the draw alone wants.
    */
   setA11yActive(active: boolean): void
   /**

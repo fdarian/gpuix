@@ -3,9 +3,9 @@
  * Content outside an ancestor's clip is not prepainted or painted (issue #38), and everything JS
  * can read of it is still there: boxes, observers, scroll metrics, container sizes, tab order.
  *
- * gpui skips a subtree only without a screen reader, so these roots turn the test window's
- * pretend one off. `getCulledSubtreeCount` says that something was skipped, so a test of what
- * stays true of a skipped subtree cannot pass by nothing having been skipped.
+ * `getCulledSubtreeCount` says that something was skipped, so a test of what stays true of a
+ * skipped subtree cannot pass by nothing having been skipped. The test window pretends a screen
+ * reader is connected, so the accessibility tree is built here too.
  */
 
 import fs from "fs"
@@ -29,7 +29,6 @@ const CLIP = { width: 200, height: 100 }
 
 function setup(element: React.ReactElement, size = { width: 300, height: 400 }) {
   const root = createTestRoot(size)
-  root.renderer.setA11yActive(false)
   const refs = new Map()
   const ref = (name: string) => (instance) => {
     if (instance) refs.set(name, instance)
@@ -343,6 +342,58 @@ describeNative("content outside a clip", () => {
       expect(refs.get("child").getBoundingClientRect().width).toBe(77)
     } finally {
       unmount()
+    }
+  })
+
+  it("keeps a skipped button in the accessibility tree, with its box and relations", () => {
+    const buttons = (ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 150, flexShrink: 0 }} />
+          <div
+            ref={ref("clipped")}
+            id="clipped.button"
+            role="button"
+            aria-label="Clipped"
+            aria-describedby="clipped.hint"
+            tabIndex={0}
+            onClick={() => {}}
+            style={{ width: 120, height: 30, flexShrink: 0 }}
+          >
+            <text style={{ fontSize: 12 }}>inside the button</text>
+          </div>
+          <div id="clipped.hint" role="note" aria-label="Hint" style={{ width: 50, height: 10, flexShrink: 0 }} />
+        </>
+      )
+    const { skippedPerFrame, refs, ...root } = setup(buttons)
+    try {
+      expect(skippedPerFrame()).toBeGreaterThan(0)
+      const tree = root.renderer.getA11yTree()
+      const nodes = Object.entries(tree.nodes ?? {})
+      const find = (authorId: string) => {
+        const found = nodes.find(([, node]) => node.aria?.author_id === authorId)
+        if (!found) throw new Error(`no a11y node with author id ${authorId}`)
+        return found
+      }
+      const [, button] = find("clipped.button")
+      const [hintKey] = find("clipped.hint")
+      expect(button.aria?.role).toBe("Button")
+      expect(button.aria?.label).toBe("Clipped")
+      expect(button.aria?.on_action).toContain("Click")
+      expect(button.aria?.described_by).toEqual([hintKey])
+
+      const scale = tree.frame?.scale_factor ?? 1
+      const rect = refs.get("clipped").getBoundingClientRect()
+      expect(rect.y).toBe(150)
+      expect(button.bounds).toEqual({
+        x0: rect.x * scale,
+        y0: rect.y * scale,
+        x1: (rect.x + rect.width) * scale,
+        y1: (rect.y + rect.height) * scale,
+      })
+    } finally {
+      root.unmount()
     }
   })
 })

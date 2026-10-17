@@ -290,6 +290,9 @@ export interface TestElement {
 
 /** GPUI `debug_a11y_tree_json` dump. Node keys are ephemeral (`a`, `b`, …). */
 export interface A11yTreeNode {
+  /** In device pixels from the window's content origin: clipped and off-screen
+   *  nodes are in the tree, with the box they have. */
+  bounds?: { x0: number; y0: number; x1: number; y1: number }
   aria?: {
     role?: string
     label?: string
@@ -903,7 +906,7 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** Pretends a screen reader is connected, as the test window starts out,
-   *  or not. gpui skips what lies outside its clip only without one. */
+   *  or not. Without one no accessibility tree is built. */
   setA11yActive(active: boolean): void {
     this.native.setA11yActive(active)
   }

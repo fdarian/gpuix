@@ -616,12 +616,8 @@ impl TestGpuixRenderer {
         // The offscreen window is also never key. GPUI reports focus paths
         // only for an active window, so without this onFocus / onBlur never
         // fire in tests. Real activation would take the user's keyboard.
-        //
-        // `GPUIX_TEST_A11Y_OFF` runs a suite as an app without a screen reader runs, in which
-        // gpui skips what lies outside its clip: see `setA11yActive`.
-        let a11y_active = std::env::var_os("GPUIX_TEST_A11Y_OFF").is_none();
         cx.update_window(window, |_, window, cx| {
-            window.set_a11y_active_for_tests(a11y_active);
+            window.set_a11y_active_for_tests(true);
             window.set_active_for_tests(true, cx);
         })
         .map_err(|e| Error::from_reason(e.to_string()))?;
@@ -715,8 +711,8 @@ impl TestGpuixRenderer {
     }
 
     /// Pretends a screen reader is connected, or not. The test window starts with one, so every
-    /// flush builds an accessibility tree. An app without one lets gpui skip the subtrees that lie
-    /// outside their clip (`getCulledSubtreeCount`), which an accessibility tree has to hold.
+    /// flush builds an accessibility tree. Without one nothing builds it, which is what a benchmark
+    /// of the draw alone wants.
     #[napi(js_name = "setA11yActive")]
     pub fn set_a11y_active(&self, active: bool) -> Result<()> {
         update_view(|_view, window, _cx| window.set_a11y_active_for_tests(active))

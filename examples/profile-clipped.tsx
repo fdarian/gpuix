@@ -4,7 +4,8 @@
  *   bun profile-clipped.tsx &
  *   sample $! 5 -file /tmp/clipped.txt
  *
- * `CLIP=hidden|visible|scroll` picks the container (default hidden).
+ * `CLIP=hidden|visible|scroll` picks the container (default hidden). `A11Y=off` drops the test
+ * window's pretend screen reader, so no accessibility tree is built.
  */
 
 import React from 'react'
@@ -13,7 +14,7 @@ import { createTestRoot } from '@gpuix/react/testing'
 const clip = process.env.CLIP ?? 'hidden'
 const seconds = Number(process.env.SECONDS ?? '12')
 const root = createTestRoot({ width: 1240, height: 1100 })
-root.renderer.setA11yActive(false)
+root.renderer.setA11yActive(process.env.A11Y !== 'off')
 root.render(
   <div style={{ width: 1240, height: 1100 }}>
     <div

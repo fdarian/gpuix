@@ -1,7 +1,7 @@
 /**
  * Content outside an ancestor's clip is not prepainted or painted (issue #38), and what JS can
- * read of it stays true. gpui skips a subtree only without a screen reader, which the test window
- * pretends to have, so these roots turn it off.
+ * read of it stays true. The test window pretends a screen reader is connected, so the
+ * accessibility tree is built here too.
  */
 import { createSignal, For } from "solid-js"
 import { describe, expect, it } from "bun:test"
@@ -15,7 +15,6 @@ const CLIP = { width: 200, height: 100 }
 
 function mount(code: () => unknown) {
   const app = createTestRoot({ width: 300, height: 400 })
-  app.renderer.setA11yActive(false)
   app.render(code as never)
   /** How many subtrees one more frame skips. */
   const skippedPerFrame = () => {
