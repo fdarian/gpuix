@@ -95,6 +95,7 @@ function calls(r, ids) {
     getElementBounds: () => r.getElementBounds(ids.box),
     getElementsAt: () => r.getElementsAt(5, 5),
     getFocusedElementId: () => r.getFocusedElementId(),
+    getLayoutCounters: () => r.getLayoutCounters(),
     getLayoutPassCount: () => r.getLayoutPassCount(),
     getListScrollTop: () => r.getListScrollTop(ids.scroller),
     getMediaFeatures: () => r.getMediaFeatures(),
