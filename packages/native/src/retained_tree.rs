@@ -460,6 +460,9 @@ pub struct RetainedTree {
     dirty: bool,
     /// An element was given `autoFocus` since the last `take_auto_focus_request`.
     auto_focus_requested: bool,
+    /// How many elements this tree has ever destroyed, for caches keyed by element id to know when
+    /// to look for the ones that are gone.
+    removals: u64,
 }
 
 impl RetainedTree {
@@ -484,11 +487,16 @@ impl RetainedTree {
             next_revision: 1,
             dirty: false,
             auto_focus_requested: false,
+            removals: 0,
         }
     }
 
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn removals(&self) -> u64 {
+        self.removals
     }
 
     /// Whether a frame drawn now would differ from the last one, clearing the
@@ -720,6 +728,7 @@ impl RetainedTree {
 
     fn destroy_element_recursive(&mut self, id: u64, destroyed: &mut Vec<u64>) {
         if let Some(element) = self.elements.remove(&id) {
+            self.removals += 1;
             self.motion_ids.remove(&id);
             self.image_ids.remove(&id);
             self.motion_value_ids.remove(&id);

@@ -563,6 +563,8 @@ pub(crate) struct Retain {
     records: FxHashMap<u64, Record>,
     /// The elements whose last build found a motion, transition or animation running.
     dynamic: FxHashSet<u64>,
+    /// `RetainedTree::removals` when `records` and `dynamic` last dropped the destroyed elements.
+    pruned_at: u64,
     seen: Seen,
     deltas: Deltas,
     summary: Summary,
@@ -636,6 +638,7 @@ impl Retain {
             moved: Vec::new(),
             records: FxHashMap::default(),
             dynamic: FxHashSet::default(),
+            pruned_at: 0,
             seen: Seen::default(),
             deltas: Deltas::default(),
             summary: Summary::default(),
@@ -714,6 +717,10 @@ impl Retain {
         std::mem::take(&mut self.frame_log)
     }
 
+    pub(crate) fn record_counts(&self) -> [usize; 2] {
+        [self.records.len(), self.dynamic.len()]
+    }
+
     pub(crate) fn mismatches(&self) -> &[String] {
         &self.mismatches
     }
@@ -726,6 +733,7 @@ impl Retain {
     /// Starts the build of a frame. `selection` in `sources` is the identity of the selected
     /// text, 0 for none: text that is in a selection that moved paints differently.
     pub(crate) fn begin_frame(&mut self, sources: Sources) {
+        self.prune(sources.tree);
         self.pass = sources.pass;
         self.elements = sources.tree.elements.len();
         self.backoff.resting = self.enabled && self.rests(&sources);
@@ -742,6 +750,18 @@ impl Retain {
         if self.open && self.planning {
             self.find_deltas(&sources);
         }
+    }
+
+    /// Forgets the elements the tree destroyed. A record of one is never read again (ids are not
+    /// reused), but it would stay for as long as the window lives, so a page that mounts and
+    /// unmounts rows grows it for good. Looks only when the tree destroyed something.
+    fn prune(&mut self, tree: &crate::retained_tree::RetainedTree) {
+        if tree.removals() == self.pruned_at {
+            return;
+        }
+        self.pruned_at = tree.removals();
+        self.records.retain(|id, _| tree.elements.contains_key(id));
+        self.dynamic.retain(|id| tree.elements.contains_key(id));
     }
 
     /// Whether the frame about to be built is one that is not recorded, see [`Backoff`].

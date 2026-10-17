@@ -474,6 +474,12 @@ export declare class TestGpuixRenderer {
    */
   getRetentionMismatches(): Array<string>
   /**
+   * How many elements the retention bookkeeping holds a record of, and how many of those it
+   * takes to have motion running. Like `getRetainedElementCount` it proves a removal freed
+   * something: both stay bounded by the elements that are alive.
+   */
+  getRetainRecordCounts(): Array<number>
+  /**
    * Whether a frame skips what it judges unchanged since the frame before, handing it to gpui
    * as a retained subtree that is replayed. On unless `GPUIX_RETAIN_OFF`; turning it on after it
    * was off starts from a frame that builds everything.

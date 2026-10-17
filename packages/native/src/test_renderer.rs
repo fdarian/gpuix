@@ -798,6 +798,16 @@ impl TestGpuixRenderer {
         window_call(|window, _cx| window.retention_mismatches().to_vec())
     }
 
+    /// How many elements the retention bookkeeping holds a record of, and how many of those it
+    /// takes to have motion running. Like `getRetainedElementCount` it proves a removal freed
+    /// something: both stay bounded by the elements that are alive.
+    #[napi]
+    pub fn get_retain_record_counts(&self) -> Result<Vec<f64>> {
+        update_view(|view, _window, _cx| {
+            view.retain.record_counts().into_iter().map(|count| count as f64).collect()
+        })
+    }
+
     /// Whether a frame skips what it judges unchanged since the frame before, handing it to gpui
     /// as a retained subtree that is replayed. On unless `GPUIX_RETAIN_OFF`; turning it on after it
     /// was off starts from a frame that builds everything.
