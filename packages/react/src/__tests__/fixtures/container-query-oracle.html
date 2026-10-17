@@ -9,6 +9,10 @@
 
   Every box is a fixed-size div, so fonts do not matter. `data-id` names a box in the test as
   `case.name`. The window is the test renderer's 1280x800.
+
+  Not in the numbers: a `z-index: 5` child of a container paints above a later sibling with
+  `z-index: 1` (`document.elementFromPoint` finds the child), so a container makes no stacking
+  context; `contain: layout` in its place makes the sibling win.
 -->
 <html>
 <head>
@@ -207,6 +211,15 @@
   <div data-id="n-landscape.box" style="container-type: size; width: 400px; height: 200px"><div data-id="n-landscape.child" class="n-child"></div></div>
   <div data-id="n-portrait.box" style="container-type: size; width: 200px; height: 400px"><div data-id="n-portrait.child" class="n-child"></div></div>
   <div data-id="n-wide.box" style="container-type: size; width: 320px; height: 180px"><div data-id="n-wide.child" class="n-child"></div></div>
+</section>
+
+<!-- P: a container is no containing block for an absolute child, and no stacking context -->
+<section>
+  <div data-id="p-abs.outer" style="position: relative; height: 100px; margin-top: 50px">
+    <div data-id="p-abs.box" class="cq" style="width: 100px; height: 50px; margin-left: 30px">
+      <div data-id="p-abs.child" style="position: absolute; left: 0; top: 0; width: 5px; height: 5px"></div>
+    </div>
+  </div>
 </section>
 
 <script>

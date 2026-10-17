@@ -922,3 +922,36 @@ describeNative("container queries: text and virtual lists", () => {
     })
   })
 })
+
+describeNative("container queries: a container is no layout-contained box", () => {
+  it("an absolute child is placed against the positioned ancestor outside the container", () => {
+    withRoot((testRoot) => {
+      testRoot.render(
+        <div>
+          <div testId="outer" style={{ position: "relative", height: 100, marginTop: 50 }}>
+            <div testId="box" style={{ containerType: "inline-size", width: 100, height: 50, marginLeft: 30 }}>
+              <div testId="child" style={{ position: "absolute", left: 0, top: 0, width: 5, height: 5 }} />
+            </div>
+          </div>
+        </div>
+      )
+      expectChrome(testRoot, ["outer", "p-abs.outer"], ["box", "p-abs.box"], ["child", "p-abs.child"])
+    })
+  })
+
+  it("a positioned child with a z-index paints above a later sibling with a lower one", () => {
+    // The oracle page paints the child on top as well (`document.elementFromPoint`), while
+    // `contain: layout` would put the sibling over it.
+    withRoot((testRoot) => {
+      testRoot.render(
+        <div>
+          <div style={{ containerType: "inline-size", width: 100, height: 50 }}>
+            <div style={{ position: "relative", zIndex: 5, width: 50, height: 50, backgroundColor: "#ff0000" }} />
+          </div>
+          <div style={{ position: "relative", zIndex: 1, marginTop: -50, width: 50, height: 50, backgroundColor: "#0000ff" }} />
+        </div>
+      )
+      expect(sample(testRoot, "stacking", 10, 10)).toEqual(RED)
+    })
+  })
+})

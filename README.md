@@ -6603,7 +6603,11 @@ container fills its parent as any block does. `"size"` contains the height too, 
 a container with no `height` is as tall as its padding and border. `minWidth`,
 `maxWidth` and the like still clamp. A container also lays its content out in a
 formatting context of its own, so the margins of its children do not collapse
-through it.
+through it. That is all it does to its box, as in the browser (CSS Containment 3
+gives `container-type` size and style containment, not layout containment): it is
+not the containing block of its `position: absolute` and `fixed` descendants, which
+resolve against the positioned ancestor outside it, and it makes no stacking context,
+so a `zIndex` inside it competes with the boxes outside.
 
 **The style is right in the frame that lays the container out.** Layout knows a
 container's size only after the tree has been built from the style the size picks,
@@ -6635,9 +6639,6 @@ too, since the app has to render and the frame draws afterwards.
 
 Differences from the browser:
 
-- A container is not the containing block of its `position: absolute` and `fixed`
-  descendants and does not make a stacking context, as CSS layout containment does for
-  `container-type`: add `position: relative` where you rely on it
 - `style()` queries and `scroll-state()` are unknown (false), and `container-type:
   scroll-state` does not exist
 - Only host boxes are containers (`div`, `text`, `label`, ...); not a `<span>`, an
