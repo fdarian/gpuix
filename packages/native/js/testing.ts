@@ -141,6 +141,7 @@ interface NativeTestRendererApi
   resetBuildCounters(): void
   setRetainVerify(verify: boolean): void
   setRetainPlanning(planning: boolean): void
+  setRetainEnabled(enabled: boolean): void
   setRetainLift(names: string[]): void
   getRetainMismatches(): string[]
   getPaintedFrameCount(): number
@@ -934,6 +935,13 @@ export class TestRenderer implements NativeRenderer {
    *  builds every element, the way `GPUIX_RETAIN_OFF` makes it for the whole run. */
   setRetainPlanning(planning: boolean): void {
     this.native.setRetainPlanning(planning)
+  }
+
+  /** Whether a frame records what it builds at all (on by default): off, a frame costs what it did
+   *  before retention, as `GPUIX_RETAIN_OFF` makes it for the whole run. Turning it on starts
+   *  from a frame that builds everything. */
+  setRetainEnabled(enabled: boolean): void {
+    this.native.setRetainEnabled(enabled)
   }
 
   /** Counts as if these exclusions (`svg`, `overflow-hidden`, `custom-element`, ...) were lifted,

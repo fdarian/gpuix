@@ -7413,6 +7413,7 @@ impl gpui::Render for GpuixView {
                 .map(|(id, _)| *id)
                 .collect(),
             selection: self.selection.lock().identity(),
+            pass: window.draw_pass(),
         });
         let result = match tree.root_id {
             Some(root_id) => {

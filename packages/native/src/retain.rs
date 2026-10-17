@@ -468,6 +468,9 @@ pub(crate) struct Sources<'a> {
     /// The elements with a motion that is running.
     pub motion: Vec<u64>,
     pub selection: u64,
+    /// The pass of the draw the frame is built in, counted from 1, or 0 for a frame built outside
+    /// a draw. Only the first pass of a draw is a frame to the back-off.
+    pub pass: usize,
 }
 
 /// What the sources were at the frame before, to tell what changed.
@@ -495,11 +498,39 @@ struct Deltas {
     spine: FxHashSet<u64>,
     /// The elements whose scroll offset moved, which moves what is below them.
     scrolled: FxHashSet<u64>,
+    /// Whether a scroller that the frame before had is somewhere else, as opposed to new.
+    scrolling: bool,
+}
+
+/// The most frames that follow a recorded frame which found nothing a later frame could skip,
+/// before one is recorded again to look.
+const BACKOFF_CAP: u32 = 8;
+
+/// Recording a frame costs about 5% of building it. A page with nothing a later frame could skip
+/// (a scroller whose rows move with every frame, boxes too small to be a subtree) gains nothing
+/// from it, so after a recorded frame that found no such element the frames that follow are not
+/// recorded, in stretches that double up to [`BACKOFF_CAP`], and one frame in nine looks again.
+/// Recording starts again at once when the scrollers stop moving, since the page is then still.
+#[derive(Default)]
+struct Backoff {
+    /// Frames still to go unrecorded.
+    rest: u32,
+    /// The length of the next stretch: 0 while recorded frames find something to skip.
+    gap: u32,
+    /// Whether the frame being built is one of the unrecorded.
+    resting: bool,
+    /// Whether a scroller moved in the last frame, recorded or not.
+    scrolling: bool,
 }
 
 pub(crate) struct Retain {
     /// `GPUIX_RETAIN_OFF` stops recording, to time a build without it.
     enabled: bool,
+    /// Whether skipping was asked for, which `enabled` can still turn off.
+    planning_wanted: bool,
+    backoff: Backoff,
+    /// The pass of the draw the frame being built is in, see [`Sources::pass`].
+    pass: usize,
     /// Whether a frame skips the building of what the sources say did not change, and hands it
     /// to gpui as a retained subtree. Off, the elements are only recorded and judged, which is
     /// what the tests of the judgement read.
@@ -574,6 +605,9 @@ impl Retain {
         let enabled = std::env::var_os("GPUIX_RETAIN_OFF").is_none();
         Self {
             enabled,
+            planning_wanted: !cfg!(test),
+            backoff: Backoff::default(),
+            pass: 1,
             planning: enabled && !cfg!(test),
             lifted: 0,
             verify: cfg!(test) || std::env::var_os("GPUIX_RETAIN_VERIFY").is_some(),
@@ -621,8 +655,27 @@ impl Retain {
     /// Turns the skipping of unchanged subtrees on or off, which the next frame starts from
     /// nothing for.
     pub(crate) fn set_planning(&mut self, planning: bool) {
+        self.planning_wanted = planning;
         self.planning = planning && self.enabled;
-        self.seen = Seen::default();
+        self.forget();
+    }
+
+    /// Turns recording on or off, as `GPUIX_RETAIN_OFF` does for a whole run. The next frame
+    /// starts from nothing.
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        self.planning = enabled && self.planning_wanted;
+        self.forget();
+    }
+
+    /// Drops what the frames before recorded: the next recorded frame builds everything.
+    fn forget(&mut self) {
+        // The offsets stay, for the next frame to tell whether a scroller moved since.
+        let scrolls = std::mem::take(&mut self.seen.scrolls);
+        self.seen = Seen { scrolls, ..Seen::default() };
+        self.records.clear();
+        self.dynamic.clear();
+        self.backoff = Backoff::default();
     }
 
     /// Counts as if the exclusions named here, by `Exclusion::name`, were lifted.
@@ -657,15 +710,50 @@ impl Retain {
     /// Starts the build of a frame. `selection` in `sources` is the identity of the selected
     /// text, 0 for none: text that is in a selection that moved paints differently.
     pub(crate) fn begin_frame(&mut self, sources: Sources) {
-        self.open = self.enabled;
+        self.pass = sources.pass;
+        self.backoff.resting = self.enabled && self.rests(&sources);
+        self.open = self.enabled && !self.backoff.resting;
         self.deferred = false;
         self.selection = sources.selection;
         self.nodes.clear();
         self.stack.clear();
         crate::tape::clear_build_effects();
-        if self.planning {
+        if self.open && self.planning {
             self.find_deltas(&sources);
         }
+    }
+
+    /// Whether the frame about to be built is one that is not recorded, see [`Backoff`].
+    fn rests(&mut self, sources: &Sources) -> bool {
+        if !self.backs_off() {
+            self.backoff = Backoff::default();
+            return false;
+        }
+        // The passes after the first of a draw see the scrollers where the first left them, and
+        // are not frames of their own: they follow the first, or the stretch it began.
+        if sources.pass != 1 {
+            return self.backoff.resting || self.backoff.rest > 0;
+        }
+        if self.backoff.rest == 0 {
+            return false;
+        }
+        let scrolls = scroll_bits(sources.scrolls);
+        let moving = scrolls != self.seen.scrolls;
+        self.seen.scrolls = scrolls;
+        let backoff = &mut self.backoff;
+        let stopped = backoff.scrolling && !moving;
+        backoff.scrolling = moving;
+        if stopped {
+            backoff.rest = 0;
+            return false;
+        }
+        backoff.rest -= 1;
+        true
+    }
+
+    /// A verified run records every frame, since it is the recording that it checks.
+    fn backs_off(&self) -> bool {
+        self.planning && !self.verify
     }
 
     /// What changed in `sources` since the frame before, as the elements that differ and their
@@ -703,15 +791,16 @@ impl Retain {
         }
 
         let mut scrolled = FxHashSet::default();
-        let mut scrolls = FxHashMap::default();
-        for (id, handle) in sources.scrolls {
-            let offset = handle.offset();
-            let bits = (f32::from(offset.x).to_bits(), f32::from(offset.y).to_bits());
-            if seen.scrolls.get(id) != Some(&bits) {
-                changed.push(*id);
-                scrolled.insert(*id);
+        let scrolls = scroll_bits(sources.scrolls);
+        let mut scrolling = false;
+        for (id, bits) in &scrolls {
+            match seen.scrolls.get(id) {
+                Some(before) if before == bits => continue,
+                Some(_) => scrolling = true,
+                None => {}
             }
-            scrolls.insert(*id, bits);
+            changed.push(*id);
+            scrolled.insert(*id);
         }
         changed.extend(seen.scrolls.keys().filter(|id| !scrolls.contains_key(id)));
 
@@ -752,20 +841,20 @@ impl Retain {
                 at = sources.tree.elements.get(&id).and_then(|element| element.parent);
             }
         }
-        self.deltas = Deltas { all, spine, scrolled };
+        self.deltas = Deltas { all, spine, scrolled, scrolling };
     }
 
     /// Starts the build of a subtree that gpui asked for after the frame was built, because the
     /// frame before did not leave it recorded as the same, or does not lay out where it was.
     pub(crate) fn begin_deferred(&mut self) {
-        self.open = self.enabled;
+        self.open = self.enabled && !self.backoff.resting;
         self.deferred = true;
         self.nodes.clear();
         self.stack.clear();
     }
 
     pub(crate) fn finish_deferred(&mut self) {
-        self.finish_session();
+        let _ = self.finish_session();
         self.deferred = false;
     }
 
@@ -1021,14 +1110,32 @@ impl Retain {
 
     /// Ends the build of a frame.
     pub(crate) fn finish_frame(&mut self) {
-        self.finish_session();
+        let recorded = self.open;
+        let candidates = self.finish_session();
+        if recorded && self.backs_off() && self.pass == 1 {
+            self.back_off(candidates);
+        }
+    }
+
+    /// Plans the frames that follow a recorded one that found `candidates`, or none, to skip.
+    fn back_off(&mut self, candidates: bool) {
+        if candidates {
+            self.backoff.gap = 0;
+            return;
+        }
+        self.backoff.gap = (self.backoff.gap * 2).clamp(1, BACKOFF_CAP);
+        let scrolling = self.deltas.scrolling;
+        let gap = self.backoff.gap;
+        self.forget();
+        self.backoff = Backoff { rest: gap, gap, resting: false, scrolling };
     }
 
     /// Decides what this build would have reused, counts it, and keeps what the next build compares
-    /// itself with.
-    fn finish_session(&mut self) {
+    /// itself with. Returns whether some element in it could be skipped by a frame that finds it
+    /// unchanged and unmoved.
+    fn finish_session(&mut self) -> bool {
         if !self.open {
-            return;
+            return false;
         }
         self.open = false;
         debug_assert!(self.stack.is_empty(), "an element was entered and never exited");
@@ -1093,6 +1200,7 @@ impl Retain {
         self.summary = Summary { roots: Vec::new(), elements_in_roots: 0, elements: count };
         let mut counts = [0u64; SLOTS];
         let mut large = 0;
+        let mut candidates = false;
         let all_effects = crate::tape::build_effects_since(0);
         for at in 0..count {
             let node = &self.nodes[at];
@@ -1101,6 +1209,7 @@ impl Retain {
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
             self.moved[at] = parent.is_some_and(|parent| self.moved[parent] || self.below[parent].scrolled);
+            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !node.moved && !self.moved[at]);
 
             if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
@@ -1175,7 +1284,19 @@ impl Retain {
         counts[RETAINED] = self.summary.elements_in_roots as u64;
         crate::perf_counters::retain_slots(&counts);
         crate::perf_counters::retained(self.summary.roots.len() as u64, large as u64);
+        candidates
     }
+}
+
+/// The scroll offsets of the scrollers, as the bits that tell one frame's from another's.
+fn scroll_bits(scrolls: &HashMap<u64, gpui::ScrollHandle>) -> FxHashMap<u64, (u32, u32)> {
+    scrolls
+        .iter()
+        .map(|(id, handle)| {
+            let offset = handle.offset();
+            (*id, (f32::from(offset.x).to_bits(), f32::from(offset.y).to_bits()))
+        })
+        .collect()
 }
 
 /// The ids that are in one of `before` and `now`, not in both, added to `changed`.
@@ -1290,6 +1411,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             selection: 0,
+            pass: 1,
         });
         retain.enter(Entry {
             id: 1,

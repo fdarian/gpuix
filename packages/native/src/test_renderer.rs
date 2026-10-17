@@ -806,6 +806,14 @@ impl TestGpuixRenderer {
         update_view(move |view, _window, _cx| view.retain.set_planning(planning))
     }
 
+    /// Whether a frame records what it builds at all, which `GPUIX_RETAIN_OFF` turns off for a whole
+    /// run. Off, a frame costs what it did before retention; turning it on starts from a frame
+    /// that builds everything.
+    #[napi]
+    pub fn set_retain_enabled(&self, enabled: bool) -> Result<()> {
+        update_view(move |view, _window, _cx| view.retain.set_enabled(enabled))
+    }
+
     /// Builds each frame that replayed a retained subtree once more, whole, and compares the two:
     /// the scene, the hitboxes, the accessibility tree and the registries gpuix keeps (painted
     /// boxes, text and selection regions, measurements). A difference is counted in
