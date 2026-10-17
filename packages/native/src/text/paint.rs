@@ -282,6 +282,11 @@ pub struct SelectableText {
     /// and border behind the glyphs, outline over them, see
     /// [`super::inline_decoration`].
     pub inline_decorations: Vec<super::inline_decoration::BoxDecoration>,
+    /// The boxes of a paragraph the line layout aligns to their lines, see
+    /// [`super::paragraph::listed_boxes`].
+    pub aligned_boxes: Vec<super::paragraph::BoxStyle>,
+    /// The atomic inlines of a paragraph. `parent` of each is an index of `aligned_boxes`.
+    pub atomics: Vec<gpui::AtomicInline>,
 }
 
 impl SelectableText {
@@ -316,6 +321,8 @@ impl SelectableText {
             inline_insets: None,
             inline_focus: Vec::new(),
             inline_decorations: Vec::new(),
+            aligned_boxes: Vec::new(),
+            atomics: Vec::new(),
         }
     }
 }
@@ -345,6 +352,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_insets,
         inline_focus,
         inline_decorations,
+        aligned_boxes,
+        atomics,
     } = opts;
     let key = selection_key(element_id, sub);
     let doc = selection::DocPos::new(path, sub);
@@ -364,13 +373,15 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         };
         (styled.layout().clone(), styled.into_any_element())
     } else {
-        let inline = super::paragraph::InlineText::new(text.clone(), run_styles);
+        let inline = super::paragraph::InlineText::new(text.clone(), run_styles)
+            .with_boxes(aligned_boxes, atomics);
         let inline = match inline_insets {
             Some(spec) => inline.with_insets_for_width(move |width| spec.at(width).text()),
             None => inline,
         };
         (inline.layout().clone(), inline.into_any_element())
     };
+    super::atomic::note(element_id, &layout);
 
     let behind: Vec<_> = inline_decorations
         .iter()

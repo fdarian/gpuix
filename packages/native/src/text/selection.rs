@@ -372,7 +372,13 @@ fn join_spans(spans: &[Span]) -> String {
                 out.push('\n');
             }
         }
-        out.push_str(&span.text[span.range.clone()]);
+        // The placeholder of an atomic inline is not text; what is inside the box is a
+        // text of its own.
+        out.extend(
+            span.text[span.range.clone()]
+                .chars()
+                .filter(|c| *c != gpui::OBJECT_REPLACEMENT_CHARACTER),
+        );
         previous = Some(span.group);
     }
     out

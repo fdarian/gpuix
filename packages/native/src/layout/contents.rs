@@ -112,6 +112,15 @@ impl StyleDesc {
         part
     }
 
+    /// What the boxes of `chain` pass down to a box inside them all, outermost first.
+    pub(crate) fn inherited_through<'a>(chain: impl IntoIterator<Item = &'a StyleDesc>) -> StyleDesc {
+        let mut inherited = StyleDesc::default();
+        for style in chain {
+            inherited.take_inheritable_from(style);
+        }
+        inherited
+    }
+
     /// Fills the inheritable properties this style leaves unset from `overlay`.
     pub(crate) fn with_inherited_overlay(&self, overlay: &StyleDesc) -> StyleDesc {
         let mut result = self.clone();

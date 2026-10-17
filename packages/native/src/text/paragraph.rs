@@ -8,17 +8,19 @@
 //! box does not restyle keeps the container's colour, weight and family, which
 //! only gpui knows once the element is in the tree.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 use gpui::{
-    px, DefiniteLength, ExtraDecoration, FontWeight, Hsla, OverlineStyle, Pixels, SharedString, StrikethroughStyle,
-    StyledText, TextInset, TextLayout, TextRun, UnderlineStyle,
+    px, AtomicInline, DefiniteLength, ExtraDecoration, FontWeight, Hsla, InlineBox, InlineContent, OverlineStyle,
+    Pixels, SharedString, StrikethroughStyle, StyledText, TextInset, TextLayout, TextRun, UnderlineStyle,
 };
 
 use crate::color::ColorContext;
 use crate::css::font_features::FontFeatureState;
 use crate::css::length::LengthContext;
 use crate::css::text_decoration;
+use crate::css::vertical_align::ResolvedVerticalAlign;
 use crate::events::state_styles::{folded, PointerStates};
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -57,10 +59,17 @@ pub struct RunStyle {
     pub strikethrough: Option<StrikethroughStyle>,
     pub overline: Option<OverlineStyle>,
     pub extra_decorations: Vec<ExtraDecoration>,
+    /// The placeholder of an atomic inline. CSS propagates neither a decoration
+    /// nor the text of a box to an atomic inline, so it is a run of its own with
+    /// the lines of none of the boxes around it.
+    pub atomic: bool,
 }
 
 impl RunStyle {
     fn same_style(&self, other: &Self) -> bool {
+        if self.atomic || other.atomic {
+            return false;
+        }
         Self {
             len: 0,
             ..self.clone()
@@ -102,6 +111,20 @@ impl RunStyle {
     }
 }
 
+/// An inline box of a paragraph as the line layout needs to know it: where it is
+/// and how it sits on its line. See [`listed_boxes`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoxStyle {
+    pub id: u64,
+    pub range: Range<usize>,
+    /// The box around it that has a box of its own.
+    pub parent: Option<u64>,
+    /// What the box changes about the text style it inherits, with everything the
+    /// boxes around it declared: the style of its own text.
+    pub style: RunStyle,
+    pub align: ResolvedVerticalAlign,
+}
+
 /// The runs of `paragraph`, covering its text exactly. Empty when no box
 /// restyles anything, so the caller can paint it as plain text.
 ///
@@ -118,7 +141,30 @@ pub fn run_styles(
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     motion: &InlineStyles,
 ) -> Vec<RunStyle> {
+    styles(tree, paragraph, colors, lengths, font_state, states, motion).runs
+}
+
+/// What [`styles`] reads off the boxes of a paragraph.
+pub struct Styles {
+    /// See [`run_styles`]. A paragraph with an atomic inline always has runs: the
+    /// placeholder is a run of its own.
+    pub runs: Vec<RunStyle>,
+    /// The boxes with a box of their own, outermost first.
+    pub boxes: Vec<BoxStyle>,
+}
+
+/// [`run_styles`], with the style and alignment of each inline box too.
+pub fn styles(
+    tree: &RetainedTree,
+    paragraph: &Paragraph,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+    font_state: &FontFeatureState,
+    states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    motion: &InlineStyles,
+) -> Styles {
     let mut runs: Vec<RunStyle> = Vec::with_capacity(paragraph.pieces.len());
+    let mut boxes: Vec<BoxStyle> = Vec::new();
     for piece in &paragraph.pieces {
         let mut style = RunStyle {
             len: piece.range.len(),
@@ -128,8 +174,12 @@ pub fn run_styles(
         let mut lengths = *lengths;
         let mut font_state = font_state.clone();
         let mut opacity = 1.0;
+        let mut parent = None;
         for id in &piece.boxes {
             let Some(base) = motion.declared_by(tree, *id) else {
+                // A box with no style inherits everything, and is still a box.
+                note_box(&mut boxes, paragraph, *id, parent, &style, ResolvedVerticalAlign::Baseline);
+                parent = Some(*id);
                 continue;
             };
             let declared = &*motion.declared(*id, base, states(*id, base));
@@ -180,21 +230,97 @@ pub fn run_styles(
                     let color = fade(decoration.resolve_color(&colors), opacity);
                     style.add_decoration(&decoration, color, &lengths);
                 }
+                let align = declared
+                    .vertical_align
+                    .as_ref()
+                    .map_or(ResolvedVerticalAlign::Baseline, |align| align.resolve(&lengths));
+                note_box(&mut boxes, paragraph, *id, parent, &style, align);
+                parent = Some(*id);
             }
         }
         // The glyphs are the group of every box around them.
         if opacity < 1.0 {
             style.color = Some(fade(style.color.unwrap_or_else(|| colors.current.into()), opacity));
         }
+        if piece.atomic.is_some() {
+            style = RunStyle {
+                len: piece.range.len(),
+                atomic: true,
+                ..RunStyle::default()
+            };
+        }
         match runs.last_mut() {
             Some(last) if last.same_style(&style) => last.len += style.len,
             _ => runs.push(style),
         }
     }
-    if runs.iter().all(RunStyle::inherits_everything) {
-        return Vec::new();
+    // A box that only changes its alignment still needs the runs: the line layout
+    // splits them where the box starts and ends.
+    if runs.iter().all(RunStyle::inherits_everything)
+        && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline)
+    {
+        runs.clear();
     }
-    runs
+    Styles { runs, boxes }
+}
+
+/// Records the first sight of the box `id`, whose text has `style`.
+fn note_box(
+    boxes: &mut Vec<BoxStyle>,
+    paragraph: &Paragraph,
+    id: u64,
+    parent: Option<u64>,
+    style: &RunStyle,
+    align: ResolvedVerticalAlign,
+) {
+    if boxes.iter().any(|known| known.id == id) {
+        return;
+    }
+    if let Some((_, range)) = paragraph.boxes.iter().find(|(box_id, _)| *box_id == id) {
+        boxes.push(BoxStyle {
+            id,
+            range: range.clone(),
+            parent,
+            style: RunStyle { len: 0, ..style.clone() },
+            align,
+        });
+    }
+}
+
+/// The boxes of a paragraph the line layout is told about, outermost first: those
+/// aligned to something other than the baseline, and those around a box that is,
+/// or around an atomic inline that is (`shifted`), since the alignment of a box
+/// is relative to the font of the box it is in. A baseline-aligned box with
+/// nothing shifted in it has nothing to say.
+pub fn listed_boxes(
+    paragraph: &Paragraph,
+    boxes: &[BoxStyle],
+    shifted: &HashSet<u64>,
+) -> Vec<BoxStyle> {
+    let by_id: HashMap<u64, &BoxStyle> = boxes.iter().map(|style| (style.id, style)).collect();
+    let mut needed: HashSet<u64> = HashSet::new();
+    let mut need_chain = |mut id: Option<u64>| {
+        while let Some(current) = id {
+            if !needed.insert(current) {
+                break;
+            }
+            id = by_id.get(&current).and_then(|style| style.parent);
+        }
+    };
+    for style in boxes.iter().filter(|style| style.align != ResolvedVerticalAlign::Baseline) {
+        need_chain(Some(style.id));
+    }
+    for (atomic, piece) in paragraph.atomics() {
+        if shifted.contains(&atomic) {
+            need_chain(piece.boxes.iter().rev().find(|id| by_id.contains_key(id)).copied());
+        }
+    }
+    paragraph
+        .boxes
+        .iter()
+        .filter_map(|(id, _)| by_id.get(id).filter(|_| needed.contains(id)))
+        .map(|style| (*style).clone())
+        .collect()
 }
 
 /// What a box's `opacity` leaves of the painting inside it. A paragraph has no
@@ -263,6 +389,10 @@ fn run_line_height(
 pub struct InlineText {
     styled: StyledText,
     styles: Vec<RunStyle>,
+    /// The boxes the line layout aligns, see [`listed_boxes`].
+    boxes: Vec<BoxStyle>,
+    /// The atomic inlines. `parent` of each is an index of `boxes`.
+    atomics: Vec<AtomicInline>,
 }
 
 impl InlineText {
@@ -275,7 +405,16 @@ impl InlineText {
         Self {
             styled: StyledText::new(text),
             styles,
+            boxes: Vec::new(),
+            atomics: Vec::new(),
         }
+    }
+
+    /// Aligns `boxes` on their lines and puts `atomics` in the text.
+    pub fn with_boxes(mut self, boxes: Vec<BoxStyle>, atomics: Vec<AtomicInline>) -> Self {
+        self.boxes = boxes;
+        self.atomics = atomics;
+        self
     }
 
     /// Lays the text out with the space `insets` put around ranges of it at the
@@ -294,61 +433,122 @@ impl InlineText {
 
     /// `snap` rounds a height to the device pixel as `TextLayout::layout` does
     /// the line's.
+    fn run(
+        style: &RunStyle,
+        base: &gpui::TextStyle,
+        rem_size: Pixels,
+        snap: impl Fn(Pixels) -> Pixels,
+    ) -> TextRun {
+        let base_font_size = base.font_size.to_pixels(rem_size);
+        let mut run = base.to_run(style.len);
+        if style.atomic {
+            run.background_color = None;
+            run.underline = None;
+            run.strikethrough = None;
+            run.overline = None;
+            run.extra_decorations.clear();
+            return run;
+        }
+        run.font_size = style
+            .font_size
+            .map(px)
+            .filter(|size| (f32::from(*size) - f32::from(base_font_size)).abs() > 1e-3);
+        run.line_height = run_line_height(style, run.font_size, base, rem_size).map(&snap);
+        if let Some(color) = style.color {
+            run.color = color;
+        }
+        if let Some(weight) = style.weight {
+            run.font.weight = weight;
+        }
+        if let Some(font_style) = style.font_style {
+            run.font.style = font_style;
+        }
+        if let Some(family) = &style.family {
+            run.font.family = family.clone();
+        }
+        if let Some(features) = &style.features {
+            run.font.features = features.clone();
+        }
+        // The lines the text inherits from the boxes around the paragraph
+        // stay under the ones the run's own boxes declare.
+        if let Some(underline) = style.underline {
+            if let Some(outer) = run.underline.replace(underline) {
+                run.extra_decorations.push(ExtraDecoration::Underline(outer));
+            }
+        }
+        if let Some(strikethrough) = style.strikethrough {
+            if let Some(outer) = run.strikethrough.replace(strikethrough) {
+                run.extra_decorations
+                    .push(ExtraDecoration::Strikethrough(outer));
+            }
+        }
+        if let Some(overline) = style.overline {
+            if let Some(outer) = run.overline.replace(overline) {
+                run.extra_decorations.push(ExtraDecoration::Overline(outer));
+            }
+        }
+        run.extra_decorations
+            .extend(style.extra_decorations.iter().copied());
+        run
+    }
+
     fn runs(
         &self,
         base: &gpui::TextStyle,
         rem_size: Pixels,
         snap: impl Fn(Pixels) -> Pixels,
     ) -> Vec<TextRun> {
-        let base_font_size = base.font_size.to_pixels(rem_size);
         self.styles
             .iter()
+            .map(|style| Self::run(style, base, rem_size, &snap))
+            .collect()
+    }
+
+    /// The boxes as the line layout takes them: the font of a box is that of its
+    /// own text, and its line height the one its runs have.
+    fn inline_boxes(
+        &self,
+        base: &gpui::TextStyle,
+        rem_size: Pixels,
+        snap: impl Fn(Pixels) -> Pixels,
+    ) -> Vec<InlineBox> {
+        let base_font_size = base.font_size.to_pixels(rem_size);
+        self.boxes
+            .iter()
             .map(|style| {
-                let mut run = base.to_run(style.len);
-                run.font_size = style
-                    .font_size
-                    .map(px)
-                    .filter(|size| (f32::from(*size) - f32::from(base_font_size)).abs() > 1e-3);
-                run.line_height =
-                    run_line_height(style, run.font_size, base, rem_size).map(&snap);
-                if let Some(color) = style.color {
-                    run.color = color;
+                let run = Self::run(&style.style, base, rem_size, &snap);
+                InlineBox {
+                    range: style.range.clone(),
+                    parent: style
+                        .parent
+                        .and_then(|parent| self.boxes.iter().position(|listed| listed.id == parent)),
+                    align: vertical_align(style.align),
+                    line_height: run.line_height,
+                    content: InlineContent::Text {
+                        font: run.font,
+                        font_size: run.font_size.unwrap_or(base_font_size),
+                    },
                 }
-                if let Some(weight) = style.weight {
-                    run.font.weight = weight;
-                }
-                if let Some(font_style) = style.font_style {
-                    run.font.style = font_style;
-                }
-                if let Some(family) = &style.family {
-                    run.font.family = family.clone();
-                }
-                if let Some(features) = &style.features {
-                    run.font.features = features.clone();
-                }
-                // The lines the text inherits from the boxes around the paragraph
-                // stay under the ones the run's own boxes declare.
-                if let Some(underline) = style.underline {
-                    if let Some(outer) = run.underline.replace(underline) {
-                        run.extra_decorations.push(ExtraDecoration::Underline(outer));
-                    }
-                }
-                if let Some(strikethrough) = style.strikethrough {
-                    if let Some(outer) = run.strikethrough.replace(strikethrough) {
-                        run.extra_decorations
-                            .push(ExtraDecoration::Strikethrough(outer));
-                    }
-                }
-                if let Some(overline) = style.overline {
-                    if let Some(outer) = run.overline.replace(overline) {
-                        run.extra_decorations.push(ExtraDecoration::Overline(outer));
-                    }
-                }
-                run.extra_decorations
-                    .extend(style.extra_decorations.iter().copied());
-                run
             })
             .collect()
+    }
+}
+
+/// `align` as the line layout takes it.
+pub fn vertical_align(align: ResolvedVerticalAlign) -> gpui::VerticalAlign {
+    match align {
+        ResolvedVerticalAlign::Baseline => gpui::VerticalAlign::Baseline,
+        ResolvedVerticalAlign::Sub => gpui::VerticalAlign::Sub,
+        ResolvedVerticalAlign::Super => gpui::VerticalAlign::Super,
+        ResolvedVerticalAlign::TextTop => gpui::VerticalAlign::TextTop,
+        ResolvedVerticalAlign::TextBottom => gpui::VerticalAlign::TextBottom,
+        ResolvedVerticalAlign::Middle => gpui::VerticalAlign::Middle,
+        ResolvedVerticalAlign::Top => gpui::VerticalAlign::Top,
+        ResolvedVerticalAlign::Bottom => gpui::VerticalAlign::Bottom,
+        ResolvedVerticalAlign::Offset { px: length, line_height_fraction } => gpui::VerticalAlign::Offset {
+            length: px(length as f32),
+            line_height_fraction: line_height_fraction as f32,
+        },
     }
 }
 
@@ -380,13 +580,16 @@ impl gpui::Element for InlineText {
         cx: &mut gpui::App,
     ) -> (gpui::LayoutId, ()) {
         let rem_size = window.rem_size();
-        let runs = self.runs(&window.text_style(), rem_size, |height| {
-            window.pixel_snap(height)
-        });
+        let text_style = window.text_style();
+        let runs = self.runs(&text_style, rem_size, |height| window.pixel_snap(height));
+        let boxes = self.inline_boxes(&text_style, rem_size, |height| window.pixel_snap(height));
         // `with_runs` takes the element by value. The placeholder is dropped
         // at once; the layout cell that callers cloned lives in `styled`.
         let styled = std::mem::replace(&mut self.styled, StyledText::new(""));
-        self.styled = styled.with_runs(runs);
+        self.styled = styled
+            .with_runs(runs)
+            .with_inline_boxes(boxes)
+            .with_atomic_inlines(std::mem::take(&mut self.atomics));
         gpui::Element::request_layout(&mut self.styled, id, inspector_id, window, cx)
     }
 
@@ -1057,6 +1260,108 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(both[1].color, focus_only[1].color);
+    }
+
+    /// "a " + span(3, "bold" + span(5, "red")) + atomic(8) + " end"
+    fn tree_with_atomic(styles: &[(u64, serde_json::Value)]) -> RetainedTree {
+        let mut tree = tree_with(styles);
+        tree.create_element(8, "div".to_string());
+        tree.append_child(3, 8);
+        tree.set_style(
+            8,
+            Arc::new(serde_json::from_value(serde_json::json!({"display": "inline-block"})).expect("a style")),
+        );
+        tree
+    }
+
+    fn styles_of(tree: &RetainedTree) -> Styles {
+        let plan = plan_children(tree, &tree.elements[&1]);
+        let Child::Paragraph(paragraph) = &plan[0] else {
+            panic!("a paragraph")
+        };
+        styles(
+            tree,
+            paragraph,
+            &ColorContext::root(Scheme::Light),
+            &container_lengths(),
+            &FontFeatureState::default(),
+            &|_, _| PointerStates::default(),
+            &InlineStyles::default(),
+        )
+    }
+
+    #[test]
+    fn an_atomic_placeholder_is_a_run_of_its_own_with_none_of_the_boxes_lines() {
+        let tree = tree_with_atomic(&[(3, serde_json::json!({"textDecoration": "underline", "color": "#ff0000"}))]);
+        let runs = styles_of(&tree).runs;
+        let atomic: Vec<_> = runs.iter().filter(|run| run.atomic).collect();
+        assert_eq!(atomic.len(), 1);
+        assert_eq!(atomic[0].len, 3, "one U+FFFC");
+        assert_eq!(atomic[0].underline, None);
+        assert_eq!(atomic[0].color, None);
+        assert!(runs.iter().any(|run| run.underline.is_some()), "the span's text is underlined");
+
+        let base = gpui::TextStyle {
+            underline: Some(gpui::UnderlineStyle::default()),
+            background_color: Some(gpui::red()),
+            ..Default::default()
+        };
+        let run = InlineText::run(atomic[0], &base, px(16.0), |height| height);
+        assert_eq!((run.underline, run.background_color), (None, None), "not even the container's");
+        assert!(run.extra_decorations.is_empty());
+    }
+
+    #[test]
+    fn a_paragraph_with_an_atomic_always_has_runs() {
+        assert!(!styles_of(&tree_with_atomic(&[])).runs.is_empty());
+        assert!(styles_of(&tree_with(&[])).runs.is_empty());
+    }
+
+    #[test]
+    fn a_box_that_only_moves_on_its_line_keeps_the_runs() {
+        let tree = tree_with(&[(3, serde_json::json!({"verticalAlign": "super"}))]);
+        let styles = styles_of(&tree);
+        assert!(!styles.runs.is_empty());
+        assert_eq!(styles.boxes[0].align, ResolvedVerticalAlign::Super);
+    }
+
+    #[test]
+    fn vertical_align_percentages_are_of_the_boxs_own_line_height_and_lengths_are_its_own() {
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "verticalAlign": "2em"})), (5, serde_json::json!({"verticalAlign": "50%"}))]);
+        let styles = styles_of(&tree);
+        assert_eq!(
+            styles.boxes[0].align,
+            ResolvedVerticalAlign::Offset { px: 40.0, line_height_fraction: 0.0 }
+        );
+        assert_eq!(
+            styles.boxes[1].align,
+            ResolvedVerticalAlign::Offset { px: 0.0, line_height_fraction: 0.5 }
+        );
+        assert_eq!(styles.boxes[1].parent, Some(3));
+        assert_eq!(styles.boxes[1].style.font_size, Some(20.0), "the text of a nested box has its parent's size");
+    }
+
+    #[test]
+    fn the_boxes_the_line_layout_hears_of_are_the_shifted_ones_and_those_around_them() {
+        let paragraph_of = |tree: &RetainedTree| match plan_children(tree, &tree.elements[&1]).remove(0) {
+            Child::Paragraph(paragraph) => paragraph,
+            Child::Block(_) => panic!("a paragraph"),
+        };
+        let ids = |tree: &RetainedTree, shifted: &[u64]| {
+            let paragraph = paragraph_of(tree);
+            let styles = styles_of(tree);
+            listed_boxes(&paragraph, &styles.boxes, &shifted.iter().copied().collect())
+                .iter()
+                .map(|style| style.id)
+                .collect::<Vec<_>>()
+        };
+        let plain = tree_with_atomic(&[]);
+        assert_eq!(ids(&plain, &[]), Vec::<u64>::new(), "nothing is shifted");
+        assert_eq!(ids(&plain, &[8]), vec![3], "the span around a shifted atomic");
+        let nested = tree_with(&[(5, serde_json::json!({"verticalAlign": "sub"}))]);
+        assert_eq!(ids(&nested, &[]), vec![3, 5], "and the one around a shifted span");
+        let own = tree_with(&[(3, serde_json::json!({"verticalAlign": "top"}))]);
+        assert_eq!(ids(&own, &[]), vec![3], "a shifted span with nothing shifted inside it");
     }
 
     #[test]

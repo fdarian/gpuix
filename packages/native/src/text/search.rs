@@ -720,10 +720,9 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
         for child in super::inline::plan_children(tree, element) {
             match child {
                 super::inline::Child::Block(child_id) => collect_into(tree, child_id, false, out),
-                super::inline::Child::Paragraph(paragraph) => out.push(Group::new(
-                    vec![(paragraph.key(), 0..paragraph.text.len())],
-                    paragraph.text,
-                )),
+                super::inline::Child::Paragraph(paragraph) => {
+                    collect_paragraph(tree, &paragraph, out)
+                }
             }
         }
         return;
@@ -742,6 +741,28 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
         collect_into(tree, child_id, false, out);
     }
     flush(tree, element, &mut run, out);
+}
+
+/// A paragraph is one painted string, so it is one group; but an atomic inline in it
+/// is a placeholder no match can cross, and the text inside the box is the box's own
+/// elements', in document order between the text before and after it.
+fn collect_paragraph(tree: &RetainedTree, paragraph: &super::inline::Paragraph, out: &mut Vec<Group>) {
+    let key = paragraph.key();
+    let mut start = 0;
+    let mut push = |range: Range<usize>, out: &mut Vec<Group>| {
+        if !range.is_empty() {
+            out.push(Group::new(
+                vec![(key.clone(), range.clone())],
+                paragraph.text[range].to_string(),
+            ));
+        }
+    };
+    for (atomic, piece) in paragraph.atomics() {
+        push(start..piece.range.start, out);
+        collect_into(tree, atomic, false, out);
+        start = piece.range.end;
+    }
+    push(start..paragraph.text.len(), out);
 }
 
 fn flush(tree: &RetainedTree, parent: &RetainedElement, run: &mut Vec<u64>, out: &mut Vec<Group>) {

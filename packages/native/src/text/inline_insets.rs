@@ -200,6 +200,9 @@ pub struct InsetSpec {
     spaces: Vec<BoxSpace>,
     /// The font size of every box, which sets the content area of its fragments.
     font_sizes: HashMap<u64, Pixels>,
+    /// The bytes of text that belong to each box itself, not to a box inside it and not to an
+    /// atomic inline: where its baseline is, which a `vertical-align` moves.
+    own_text: HashMap<u64, Vec<Range<usize>>>,
     /// The last width asked for, as the layout and the paint ask for the same one.
     memo: RefCell<Option<(Option<Pixels>, Rc<Insets>)>>,
 }
@@ -236,10 +239,22 @@ impl InsetSpec {
             .iter()
             .map(|(id, lengths)| (*id, px(lengths.font_size as f32)))
             .collect();
+        let mut own_text: HashMap<u64, Vec<Range<usize>>> = HashMap::new();
+        for piece in paragraph.pieces.iter().filter(|piece| piece.atomic.is_none()) {
+            let innermost = piece
+                .boxes
+                .iter()
+                .rev()
+                .find(|id| paragraph.boxes.iter().any(|(box_id, _)| box_id == *id));
+            if let Some(id) = innermost {
+                own_text.entry(*id).or_default().push(piece.range.clone());
+            }
+        }
         Rc::new(Self {
             boxes: paragraph.boxes.clone(),
             spaces,
             font_sizes,
+            own_text,
             memo: RefCell::new(None),
         })
     }
@@ -304,6 +319,11 @@ impl BoxEdges {
     /// The font size of the box, whatever the font sizes of the runs in it.
     pub fn font_size(&self) -> Pixels {
         self.spec.font_sizes[&self.id]
+    }
+
+    /// The bytes of the text the box holds itself, see [`InsetSpec`].
+    pub fn own_text(&self) -> &[Range<usize>] {
+        self.spec.own_text.get(&self.id).map_or(&[], Vec::as_slice)
     }
 
     /// The padding and border of the box, as an element reports them.

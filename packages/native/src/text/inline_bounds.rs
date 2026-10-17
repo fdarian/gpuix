@@ -63,7 +63,10 @@ impl Row {
 /// The line box of each line `range` covers, in window coordinates, with the
 /// baseline of the row and the metrics of the font of size `font_size` the box
 /// has. A range that wraps has one per line, and one that covers no glyph has none.
-pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels) -> Vec<Row> {
+///
+/// `own_text` is the bytes of `range` that the box holds itself: its baseline is that of
+/// the text there, which a `vertical-align` of the box has moved from the row's.
+pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels, own_text: &[Range<usize>]) -> Vec<Row> {
     let rows = range_rows(layout, range);
     if rows.is_empty() {
         return Vec::new();
@@ -74,11 +77,26 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels) -> Vec
     rows.into_iter()
         .map(|row| Row {
             line: row.rect,
-            baseline: row.row.baseline,
+            baseline: own_baseline(layout, row.start, row.row.baseline, own_text),
             ascent,
             descent,
         })
         .collect()
+}
+
+/// The baseline of the first text of the box on the row that starts at `start`, or the row's.
+fn own_baseline(layout: &TextLayout, start: usize, row_baseline: Pixels, own_text: &[Range<usize>]) -> Pixels {
+    own_text
+        .iter()
+        .filter(|text| text.end > start)
+        .map(|text| text.start.max(start))
+        .find(|index| {
+            layout
+                .row_for_index(*index)
+                .is_some_and(|row| row.baseline == row_baseline)
+        })
+        .and_then(|index| layout.baseline_for_index(index))
+        .unwrap_or(row_baseline)
 }
 
 /// The border box of a box with these `edges`, one rect for each line fragment of
@@ -87,7 +105,7 @@ pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels) -> Vec
 /// before it. A fragment in the middle, or one that continues onto another line,
 /// is as wide as its line's part of the range.
 pub fn border_box_rows(layout: &TextLayout, range: &Range<usize>, edges: &BoxEdges) -> Vec<Bounds<Pixels>> {
-    border_box(rows(layout, range, edges.font_size()), edges.at(layout))
+    border_box(rows(layout, range, edges.font_size(), edges.own_text()), edges.at(layout))
 }
 
 /// [`border_box_rows`] of `rows`.

@@ -12,6 +12,11 @@
 //! - In a flex or grid container, children are blockified: each contiguous run
 //!   of raw text nodes becomes one anonymous item, and every element child is an
 //!   item of its own (a `<span>` there lays out its own content as a paragraph).
+//! - A child with `display: inline-block`, `inline-flex` or `inline-grid` is an
+//!   atomic inline: it takes the place of one U+FFFC in the paragraph and is
+//!   built as an element of its own, which the paragraph sits on its line. It
+//!   is a box of the paragraph, not of its own, even when nothing but it is in
+//!   the container.
 //! - A paragraph that holds nothing but collapsible whitespace generates no box,
 //!   and neither does a child with `display: none`.
 //!
@@ -22,6 +27,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::layout::contents::is_display_contents;
+use crate::layout::display;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
 
@@ -77,7 +83,7 @@ pub fn is_raw_text(element: &RetainedElement) -> bool {
 /// `build_host_container`.
 pub fn lays_out_items(style: Option<&StyleDesc>) -> bool {
     let Some(style) = style else { return false };
-    if matches!(style.display.as_deref(), Some("flex") | Some("grid")) {
+    if display::lays_out_items(style.display.as_deref()) {
         return true;
     }
     let x = style.overflow_x.as_deref().or(style.overflow.as_deref());
@@ -102,11 +108,31 @@ pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool
     read(old) == read(new)
 }
 
+fn is_out_of_flow(element: &RetainedElement) -> bool {
+    matches!(
+        element.style.as_deref().and_then(|style| style.position.as_deref()),
+        Some("absolute") | Some("fixed")
+    )
+}
+
+/// Whether `element` is an atomic inline of the paragraph around it: an
+/// `inline-block`, `inline-flex` or `inline-grid` box that is in the flow. One
+/// that is positioned absolutely or fixed is blockified, as CSS says.
+pub fn is_atomic(element: &RetainedElement) -> bool {
+    display::is_atomic_inline(display_of(element))
+        && !is_out_of_flow(element)
+        && !matches!(element.element_type.as_str(), "anchored" | "virtual-list")
+}
+
 /// Whether `element`, a child of `parent` in a block container, is inline-level
 /// together with everything inside it. An inline box holding a block is itself
 /// laid out as a block, so a paragraph never has to split around it.
 fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &RetainedElement) -> bool {
     if is_raw_text(element) {
+        return true;
+    }
+    // Whatever is inside it is its own, so the paragraph never splits around it.
+    if is_atomic(element) {
         return true;
     }
     // A label or a form has behaviour of its own, so it is a block.
@@ -127,10 +153,8 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     if element.element_type == "text" && element.needs_focus() {
         return false;
     }
-    if let Some(style) = element.style.as_deref() {
-        if matches!(style.position.as_deref(), Some("absolute") | Some("fixed")) {
-            return false;
-        }
+    if is_out_of_flow(element) {
+        return false;
     }
     let inline_by_default = match element.element_type.as_str() {
         "span" => true,
@@ -163,6 +187,9 @@ pub struct Piece {
     /// `display: contents` element is in the list, because its descendants
     /// inherit from it, although it has no box of its own.
     pub boxes: Vec<u64>,
+    /// The atomic inline this piece stands for: `range` is its U+FFFC, and it is
+    /// not text.
+    pub atomic: Option<u64>,
 }
 
 /// A run of inline content, painted as one string.
@@ -184,6 +211,14 @@ pub struct Paragraph {
 impl Paragraph {
     pub fn key(&self) -> std::sync::Arc<str> {
         super::selection_key(self.container, self.index)
+    }
+
+    /// The atomic inlines of the paragraph, in order, with the piece that holds
+    /// each one's U+FFFC.
+    pub fn atomics(&self) -> impl Iterator<Item = (u64, &Piece)> {
+        self.pieces
+            .iter()
+            .filter_map(|piece| piece.atomic.map(|id| (id, piece)))
     }
 
     /// Innermost inline box at `byte`, if any, with or without a box of its own
@@ -296,8 +331,24 @@ impl Builder {
             self.pieces.push(Piece {
                 range: start..self.text.len(),
                 boxes: boxes.to_vec(),
+                atomic: None,
             });
         }
+    }
+
+    /// An atomic inline is content: it ends a collapsible space before it and
+    /// starts one after it.
+    fn push_atomic(&mut self, element: &RetainedElement, boxes: &[u64]) {
+        self.has_text = true;
+        self.only_whitespace = false;
+        self.tail = Tail::Content;
+        let start = self.text.len();
+        self.text.push(gpui::OBJECT_REPLACEMENT_CHARACTER);
+        self.pieces.push(Piece {
+            range: start..self.text.len(),
+            boxes: boxes.to_vec(),
+            atomic: Some(element.id),
+        });
     }
 
     fn push_element(
@@ -310,6 +361,10 @@ impl Builder {
             if let Some(content) = element.content.as_deref() {
                 self.push_text(content, chain);
             }
+            return;
+        }
+        if is_atomic(element) {
+            self.push_atomic(element, chain);
             return;
         }
         // A `display: contents` element passes its inherited style and its
@@ -499,7 +554,8 @@ pub fn leaf_run(tree: &RetainedTree, parent: &RetainedElement, leaves: &[u64]) -
 }
 
 /// The text an inline formatting context reads out, as painted: that of every
-/// paragraph in `plan`, in order.
+/// paragraph in `plan`, in order. The placeholders of atomic inlines are not
+/// text.
 pub fn accessible_text<'a>(plan: impl IntoIterator<Item = &'a Child>) -> Option<String> {
     let text: String = plan
         .into_iter()
@@ -507,6 +563,8 @@ pub fn accessible_text<'a>(plan: impl IntoIterator<Item = &'a Child>) -> Option<
             Child::Paragraph(paragraph) => Some(paragraph.text.as_str()),
             Child::Block(_) => None,
         })
+        .flat_map(str::chars)
+        .filter(|c| *c != gpui::OBJECT_REPLACEMENT_CHARACTER)
         .collect();
     (!text.is_empty()).then_some(text)
 }
@@ -1313,6 +1371,115 @@ mod tests {
         let normal = style(serde_json::json!({"color": "red"}));
         let pre = style(serde_json::json!({"color": "red", "whiteSpace": "pre"}));
         assert!(!same_paragraphs(Some(&normal), Some(&pre)));
+    }
+
+    const OBJECT: char = gpui::OBJECT_REPLACEMENT_CHARACTER;
+
+    fn inline_block(f: &mut Fixture, parent: u64, id: u64, display: &str) {
+        f.add(parent, id, "div");
+        f.styled(id, serde_json::json!({"display": display, "width": 10, "height": 10}));
+    }
+
+    #[test]
+    fn an_inline_block_is_one_placeholder_in_the_paragraph() {
+        for display in ["inline-block", "inline-flex", "inline-grid"] {
+            let mut f = Fixture::new();
+            f.text(1, 2, "a ");
+            inline_block(&mut f, 1, 3, display);
+            f.text(1, 4, " b");
+            let plan = f.plan(1);
+            assert_eq!(plan.len(), 1, "{display}: {plan:?}");
+            let paragraph = paragraphs(&plan)[0];
+            assert_eq!(paragraph.text, format!("a {OBJECT} b"), "{display}");
+            assert_eq!(paragraph.atomics().map(|(id, _)| id).collect::<Vec<_>>(), vec![3]);
+            let piece = paragraph.atomics().next().unwrap().1;
+            assert_eq!(piece.range, 2..5);
+            assert_eq!(piece.atomic, Some(3));
+            let covered: usize = paragraph.pieces.iter().map(|piece| piece.range.len()).sum();
+            assert_eq!(covered, paragraph.text.len(), "the pieces cover the text exactly");
+        }
+    }
+
+    #[test]
+    fn a_lone_inline_block_is_a_paragraph_so_it_has_a_line_to_sit_on() {
+        let mut f = Fixture::new();
+        inline_block(&mut f, 1, 2, "inline-block");
+        let plan = f.plan(1);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(paragraphs(&plan)[0].text, OBJECT.to_string());
+    }
+
+    #[test]
+    fn white_space_around_a_placeholder_is_kept_between_content_and_dropped_at_the_ends() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "  ");
+        inline_block(&mut f, 1, 3, "inline-block");
+        f.text(1, 4, "  ");
+        assert_eq!(text_of(&f, 1), OBJECT.to_string(), "the spaces at the ends of the line go");
+
+        let mut f = Fixture::new();
+        inline_block(&mut f, 1, 2, "inline-block");
+        f.text(1, 3, "   ");
+        inline_block(&mut f, 1, 4, "inline-block");
+        assert_eq!(text_of(&f, 1), format!("{OBJECT} {OBJECT}"), "one space between two boxes");
+    }
+
+    #[test]
+    fn an_inline_block_in_a_span_is_in_its_chain() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "span").text(3, 4, "b");
+        inline_block(&mut f, 3, 5, "inline-block");
+        let plan = f.plan(1);
+        assert_eq!(plan.len(), 1);
+        let paragraph = paragraphs(&plan)[0];
+        assert_eq!(paragraph.text, format!("ab{OBJECT}"));
+        assert_eq!(paragraph.boxes, vec![(3, 1..5)], "the span covers the placeholder");
+        assert_eq!(paragraph.atomics().next().unwrap().1.boxes, vec![3]);
+    }
+
+    #[test]
+    fn an_inline_block_that_is_positioned_out_of_the_flow_or_in_an_item_container_is_a_block() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        inline_block(&mut f, 1, 3, "inline-block");
+        f.styled(3, serde_json::json!({"display": "inline-block", "position": "absolute"}));
+        assert_eq!(f.plan(1)[1], Child::Block(3));
+
+        for container in ["flex", "grid", "inline-flex", "inline-grid"] {
+            let mut f = Fixture::new();
+            f.styled(1, serde_json::json!({"display": container}));
+            f.text(1, 2, "a");
+            inline_block(&mut f, 1, 3, "inline-block");
+            let plan = f.plan(1);
+            assert_eq!(plan[1], Child::Block(3), "{container}");
+        }
+    }
+
+    #[test]
+    fn a_span_holding_an_inline_block_stays_inline() {
+        let mut f = Fixture::new();
+        f.text(1, 2, "a");
+        f.add(1, 3, "span");
+        inline_block(&mut f, 3, 4, "inline-flex");
+        assert_eq!(f.plan(1).len(), 1);
+    }
+
+    #[test]
+    fn the_placeholder_is_not_read_out() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "text").text(2, 3, "a ");
+        inline_block(&mut f, 2, 4, "inline-block");
+        assert_eq!(accessible_text(&f.plan(2)).as_deref(), Some("a "));
+    }
+
+    #[test]
+    fn the_inline_level_values_change_the_paragraphs() {
+        let block = style(serde_json::json!({"display": "inline-block"}));
+        let flex = style(serde_json::json!({"display": "inline-flex"}));
+        assert!(!same_paragraphs(Some(&block), Some(&flex)));
+        assert!(lays_out_items(Some(&flex)));
+        assert!(!lays_out_items(Some(&block)));
     }
 
     #[test]

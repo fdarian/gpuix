@@ -7,6 +7,7 @@ pub(crate) mod box_generation;
 pub(crate) mod container;
 pub(crate) mod containing_block;
 pub(crate) mod contents;
+pub(crate) mod display;
 pub mod grid;
 pub mod grid_values;
 pub(crate) mod order;

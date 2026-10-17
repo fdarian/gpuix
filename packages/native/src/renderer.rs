@@ -5944,6 +5944,9 @@ impl GpuixView {
             anchor_scope: None,
             stacking_root: true,
             stacking_item: false,
+            atomic_root: false,
+            atomic_extracted: None,
+            baseline_probe: None,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         drop(pointer);
@@ -6109,6 +6112,13 @@ pub(crate) struct BuildCtx<'a> {
     /// Set while building a child of a flex or grid container, which its `z-index` applies to
     /// without a `position`. Taken by `build_element`.
     pub stacking_item: bool,
+    /// Set while building an atomic inline, taken by `build_element`, which takes the
+    /// margin and a percentage width off its style into `atomic_extracted`.
+    pub atomic_root: bool,
+    pub atomic_extracted: Option<crate::text::atomic::Extracted>,
+    /// The flex or grid container whose first item `build_content` is to watch, for the
+    /// baseline of an `inline-flex` or `inline-grid` box.
+    pub baseline_probe: Option<crate::text::atomic::Probe>,
 }
 
 impl BuildCtx<'_> {
@@ -6122,6 +6132,19 @@ impl BuildCtx<'_> {
         inert: bool,
     ) -> crate::events::state_styles::PointerStates {
         pointer_states_of(&self.inherited, self.pointer, &self.focus_styles, id, style, inert)
+    }
+
+    /// The states of an inline box, for the style it shows.
+    fn inline_states(&self) -> impl Fn(u64, &StyleDesc) -> crate::events::state_styles::PointerStates + '_ {
+        move |id: u64, style: &StyleDesc| {
+            let inert = self
+                .tree
+                .elements
+                .get(&id)
+                .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+            self.focus_styles
+                .states_of(id, style, self.pointer_states(id, style, inert))
+        }
     }
 
     /// The transitions and animations of the colours of the inline boxes of
@@ -7201,6 +7224,9 @@ impl gpui::Render for GpuixView {
                     anchor_scope: None,
                     stacking_root: true,
                     stacking_item: false,
+                    atomic_root: false,
+                    atomic_extracted: None,
+                    baseline_probe: None,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
@@ -7340,6 +7366,7 @@ fn build_element_unpumped(
     let tree = ctx.tree;
     let stacking_root = std::mem::take(&mut ctx.stacking_root);
     let stacking_item = std::mem::take(&mut ctx.stacking_item);
+    let atomic_root = std::mem::take(&mut ctx.atomic_root);
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
@@ -7544,6 +7571,17 @@ fn build_element_unpumped(
     ctx.inherited = parent_inherited
         .clone()
         .descend(style, element.has_inert_prop());
+    // An atomic inline's margin and percentage width are the paragraph's to lay out. They
+    // resolve against the font of the box, which is known now.
+    let atomic_style = atomic_root.then(|| {
+        let (stripped, extracted) = crate::text::atomic::strip(
+            style.unwrap_or(&EMPTY_STYLE),
+            &ctx.inherited.lengths,
+        );
+        ctx.atomic_extracted = Some(extracted);
+        stripped
+    });
+    let style = atomic_style.as_ref().or(style);
     // After the fold above: a group is its descendants' to follow, so the
     // element's own `groupHover` reads the groups outside it.
     if let Some(name) = style.and_then(StyleDesc::declared_group) {
@@ -8098,16 +8136,20 @@ fn build_content(
     // Children. Consecutive inline children are one paragraph, see
     // `text::inline`; the rest are elements of their own.
     if !element.children.is_empty() {
+        // The baseline of an `inline-flex` or `inline-grid` box is its first item's.
+        let probe = ctx
+            .baseline_probe
+            .as_ref()
+            .filter(|probe| probe.container == element.id)
+            .map(crate::text::atomic::Probe::clone_handle);
         for (child, at) in plan {
             ctx.doc_path.push(at);
             match child {
                 crate::text::inline::Child::Block(child_id) => {
                     let item = crate::layout::stacking::is_flex_or_grid_container(element);
+                    let child_element = ctx.tree.elements.get(&child_id);
                     paint_ranks.push(crate::layout::stacking::paint_rank(
-                        ctx.tree
-                            .elements
-                            .get(&child_id)
-                            .and_then(|child| child.style.as_deref()),
+                        child_element.and_then(|child| child.style.as_deref()),
                         item,
                         &ctx.inherited.colors,
                         &ctx.inherited.lengths,
@@ -8115,9 +8157,26 @@ fn build_content(
                     ctx.contents_overlay =
                         crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
                     ctx.stacking_item = item;
-                    content_elements.push(build_element(child_id, ctx, window, cx));
+                    let out_of_flow = child_element.is_some_and(|child| {
+                        matches!(
+                            child.style.as_deref().and_then(|style| style.position.as_deref()),
+                            Some("absolute" | "fixed")
+                        )
+                    });
+                    let built = if out_of_flow {
+                        crate::text::atomic::out_of_flow(|| build_element(child_id, ctx, window, cx))
+                    } else {
+                        build_element(child_id, ctx, window, cx)
+                    };
+                    content_elements.push(match &probe {
+                        Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
+                        _ => built,
+                    });
                 }
                 crate::text::inline::Child::Paragraph(paragraph) => {
+                    if let Some(probe) = &probe {
+                        probe.first_is_text();
+                    }
                     paint_ranks.push(0);
                     // A span's container units are fractions of the container it sits in, which
                     // may be this element.
@@ -8132,7 +8191,7 @@ fn build_content(
                             }
                         }
                     }
-                    content_elements.push(paragraph_content(&paragraph, ctx));
+                    content_elements.push(paragraph_content(&paragraph, ctx, window, cx));
                     ctx.inherited = own;
                 }
             }
@@ -8226,18 +8285,25 @@ fn text_content(
 fn paragraph_content(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
 ) -> gpui::AnyElement {
     let motion = ctx.inline_styles(paragraph);
-    let ctx = &*ctx;
-    let states = |id: u64, style: &StyleDesc| {
-        let inert = ctx
-            .tree
-            .elements
-            .get(&id)
-            .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-        ctx.focus_styles
-            .states_of(id, style, ctx.pointer_states(id, style, inert))
+    let styles = {
+        let ctx = &*ctx;
+        crate::text::paragraph::styles(
+            ctx.tree,
+            paragraph,
+            &ctx.inherited.colors,
+            &ctx.inherited.lengths,
+            &ctx.inherited.font_state,
+            &ctx.inline_states(),
+            &motion,
+        )
     };
+    let (aligned_boxes, atomics) = build_atomics(paragraph, &styles, &motion, ctx, window, cx);
+    let ctx = &*ctx;
+    let states = ctx.inline_states();
     let insets = crate::text::inline_insets::InsetSpec::of(
         ctx.tree,
         paragraph,
@@ -8253,15 +8319,9 @@ fn paragraph_content(
             .highlight
             .clone()
             .map(crate::text::HighlightSource::Resolved),
-        run_styles: crate::text::paragraph::run_styles(
-            ctx.tree,
-            paragraph,
-            &ctx.inherited.colors,
-            &ctx.inherited.lengths,
-            &ctx.inherited.font_state,
-            &states,
-            &motion,
-        ),
+        run_styles: styles.runs,
+        aligned_boxes,
+        atomics,
         inline_targets: crate::text::inline_hit::Targets::of(
             ctx.tree,
             paragraph,
@@ -8311,6 +8371,128 @@ fn paragraph_content(
             ctx.inherited.selection_wash,
         )
     })
+}
+
+/// The atomic inlines of `paragraph`, built as the elements they are, and the inline boxes the
+/// line layout aligns them and the text around them to.
+fn build_atomics(
+    paragraph: &crate::text::inline::Paragraph,
+    styles: &crate::text::paragraph::Styles,
+    motion: &crate::motion::InlineStyles,
+    ctx: &mut BuildCtx,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<GpuixView>,
+) -> (Vec<crate::text::paragraph::BoxStyle>, Vec<gpui::AtomicInline>) {
+    use crate::css::vertical_align::ResolvedVerticalAlign;
+
+    let tree = ctx.tree;
+    // What each atomic inherits from the boxes around it, and how it is aligned.
+    struct Around {
+        inherited: Inherited,
+        overlay: Option<StyleDesc>,
+        align: ResolvedVerticalAlign,
+        line_height: Option<gpui::Pixels>,
+    }
+    let around: Vec<(u64, &crate::text::inline::Piece, Around)> = paragraph
+        .atomics()
+        .map(|(id, piece)| {
+            let states = ctx.inline_states();
+            let chain: Vec<StyleDesc> = piece
+                .boxes
+                .iter()
+                .filter_map(|box_id| {
+                    let base = motion.declared_by(tree, *box_id)?;
+                    Some(motion.declared(*box_id, base, states(*box_id, base)).into_owned())
+                })
+                .collect();
+            let mut inherited = ctx.inherited.clone();
+            for (box_id, declared) in piece
+                .boxes
+                .iter()
+                .filter(|box_id| motion.declared_by(tree, **box_id).is_some())
+                .zip(&chain)
+            {
+                let inert = tree
+                    .elements
+                    .get(box_id)
+                    .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+                inherited = inherited.descend(Some(declared), inert);
+            }
+            let overlay = (!chain.is_empty()).then(|| {
+                let mut overlay = StyleDesc::inherited_through(&chain);
+                if overlay.font_size.is_some() {
+                    // Resolved here: `em` means the font of the box that declared it.
+                    overlay.font_size = Some(crate::css::length::LinearLength::px(inherited.lengths.font_size));
+                }
+                overlay
+            });
+            let own = tree.elements.get(&id).and_then(|element| element.style.as_deref());
+            let declared = own.map(|base| crate::events::state_styles::folded(base, states(id, base)));
+            let lengths = inherited
+                .lengths
+                .descend(declared.as_ref().and_then(|style| style.font_size.as_ref()), false);
+            let line_height = declared
+                .as_ref()
+                .and_then(|style| style.line_height)
+                .or(overlay.as_ref().and_then(|overlay| overlay.line_height));
+            let align = declared
+                .as_ref()
+                .and_then(|style| style.vertical_align.as_ref())
+                .map_or(ResolvedVerticalAlign::Baseline, |align| align.resolve(&lengths));
+            (
+                id,
+                piece,
+                Around {
+                    inherited: inherited.clone(),
+                    overlay,
+                    align,
+                    line_height: crate::text::atomic::line_height(line_height.as_ref(), &lengths),
+                },
+            )
+        })
+        .collect();
+
+    let shifted: HashSet<u64> = around
+        .iter()
+        .filter(|(_, _, around)| around.align != ResolvedVerticalAlign::Baseline)
+        .map(|(id, _, _)| *id)
+        .collect();
+    let listed = crate::text::paragraph::listed_boxes(paragraph, &styles.boxes, &shifted);
+
+    let mut atomics = Vec::with_capacity(around.len());
+    for (id, piece, around) in around {
+        let kind = crate::text::atomic::kind(tree.elements.get(&id).and_then(|element| element.style.as_deref()));
+        let probe = (kind == crate::text::atomic::Kind::FirstItem)
+            .then(|| crate::text::atomic::Probe::new(id));
+        let outer = (
+            std::mem::replace(&mut ctx.inherited, around.inherited),
+            std::mem::replace(&mut ctx.baseline_probe, probe.as_ref().map(crate::text::atomic::Probe::clone_handle)),
+        );
+        ctx.contents_overlay = around.overlay;
+        ctx.atomic_root = true;
+        ctx.atomic_extracted = None;
+        let (built, texts) = crate::text::atomic::collecting(|| build_element(id, ctx, window, cx));
+        ctx.inherited = outer.0;
+        ctx.baseline_probe = outer.1;
+        // A box that built nothing (a `display` transition is hiding it) has no margin.
+        let extracted = ctx
+            .atomic_extracted
+            .take()
+            .unwrap_or_else(crate::text::atomic::Extracted::none);
+        let mut inline = gpui::AtomicInline::new(piece.range.start, built);
+        inline.margin = extracted.margin;
+        inline.width = extracted.width;
+        inline.vertical_align = crate::text::paragraph::vertical_align(around.align);
+        inline.line_height = around.line_height;
+        inline.parent = piece
+            .boxes
+            .iter()
+            .rev()
+            .find_map(|box_id| listed.iter().position(|listed| listed.id == *box_id));
+        inline.baseline = crate::text::atomic::baseline(tree, kind, &texts, probe.as_ref());
+        atomics.push(inline);
+    }
+    (listed, atomics)
 }
 
 /// The inline elements of a paragraph that report their own box.

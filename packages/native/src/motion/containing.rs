@@ -28,7 +28,7 @@ enum Layout {
 
 impl Layout {
     fn of(style: &StyleDesc) -> Self {
-        if style.display.as_deref() != Some("flex") {
+        if crate::layout::display::inner(style.display.as_deref()) != Some("flex") {
             return Self::Other;
         }
         Self::Flex {

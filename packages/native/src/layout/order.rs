@@ -16,10 +16,7 @@ pub(crate) fn children_in_order<'a>(
     style: Option<&StyleDesc>,
 ) -> Cow<'a, [u64]> {
     let children = super::contents::flatten(tree, &element.children);
-    let is_flex_or_grid = matches!(
-        style.and_then(|style| style.display.as_deref()),
-        Some("flex") | Some("grid")
-    );
+    let is_flex_or_grid = super::display::lays_out_items(style.and_then(|style| style.display.as_deref()));
     if !is_flex_or_grid || !children.iter().any(|id| order_of(tree, *id) != 0) {
         return children;
     }

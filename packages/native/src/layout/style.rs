@@ -23,7 +23,7 @@ fn linear(value: &LinearLength, lengths: &LengthContext) -> gpui::DefiniteLength
 /// `None` for `auto`, `anchor-size()` and the intrinsic size keywords, which leave the
 /// property to layout. A keyword reaches `length` only from a field that rejects it when
 /// it is deserialized, so those arms are never taken for a style that came from JS.
-fn definite(value: &DimensionValue, lengths: &LengthContext) -> Option<gpui::DefiniteLength> {
+pub(crate) fn definite(value: &DimensionValue, lengths: &LengthContext) -> Option<gpui::DefiniteLength> {
     match value {
         DimensionValue::Pixels(pixels) => Some(gpui::px(*pixels as f32).into()),
         DimensionValue::Percentage(fraction) => Some(gpui::relative(*fraction as f32)),
@@ -116,7 +116,7 @@ pub(crate) fn apply<E: Styled>(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> E {
-    match style.display.as_deref() {
+    match super::display::inner(style.display.as_deref()) {
         Some("flex") => el = el.flex(),
         Some("grid") => el = el.grid(),
         Some("block") => el = el.block(),
