@@ -30,8 +30,8 @@ export type MotionValueRenderer = NativeRenderer & MotionValueHost
 /**
  * What a motion value can hold: a number, a colour string, a CSS length string
  * (`"50%"`, `"2em"`, `"calc(100% - 20px)"`), a multi-value string of those
- * (`"0.5em 0.75em"`, `"10px / 20px"`, `"red blue"`), a list of numbers, or box
- * shadows. Lengths of different units animate as the two parts of a `calc()`, and
+ * (`"0.5em 0.75em"`, `"10px / 20px"`, `"red blue"`), a list of numbers, a
+ * `fontVariationSettings` string, or box shadows. Lengths of different units animate as the two parts of a `calc()`, and
  * a multi-value string animates component by component. Bound to a shorthand
  * (`padding`, `margin`, `inset`, `gap`, `borderWidth`, `borderColor`,
  * `borderRadius`) it gives each side, axis or corner its own component, and

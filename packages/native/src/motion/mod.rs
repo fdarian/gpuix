@@ -352,7 +352,7 @@ impl MotionState {
         let (tracks, pending) = mount_tracks(&description, base, measurement, painted, now)?;
         Ok(Self {
             source: source.clone(),
-            colors: *base.colors(),
+            colors: base.colors().clone(),
             needs_settle: description.is_exit
                 || !pending.is_empty()
                 || tracks.values().any(Track::has_motion),
@@ -422,7 +422,7 @@ impl MotionState {
         }
 
         let previous_generation = self.generation;
-        self.colors = *base.colors();
+        self.colors = base.colors().clone();
         let description = match parse_description(source, base.target(), base.colors())
             .and_then(|description| check_scope(&description, scope).map(|()| description))
         {
@@ -4628,9 +4628,10 @@ mod tests {
                     .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
                 above_root: false,
                 weight: 700.0,
+                variations: Default::default(),
             };
             let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
-            let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
+            let state = MotionState::new(&description, None, colors.clone(), None, 0, started).unwrap();
             let font_at = |at_time: Instant| {
                 let style = style_at(&state, at_time);
                 (
@@ -4645,7 +4646,7 @@ mod tests {
             // A declared `em` size is relative to the parent's, whatever the style says.
             let base = StyleDesc { font_size: Some(crate::css::length::LinearLength { em: 2.0, ..Default::default() }), ..Default::default() };
             let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, Some(&base));
-            let state = MotionState::new(&description, Some(&base), colors, None, 0, started).unwrap();
+            let state = MotionState::new(&description, Some(&base), colors.clone(), None, 0, started).unwrap();
             assert_eq!(AnimProp::FontSize.read(&style_at(&state, started), &colors), Some(AnimValue::Number(40.0)));
         }
 
@@ -4685,10 +4686,10 @@ mod tests {
         fn an_unchanged_context_keeps_the_running_tracks() {
             let started = Instant::now();
             let colors = Colors::of(&parent(Scheme::Light, "#000000"), None);
-            let mut state = MotionState::new(&description(), None, colors, None, 0, started).unwrap();
+            let mut state = MotionState::new(&description(), None, colors.clone(), None, 0, started).unwrap();
             let middle = at(started, 0.5);
             let before = channels(&style_at(&state, middle)).0;
-            state.sync(&description(), None, colors, None, 0, middle).unwrap();
+            state.sync(&description(), None, colors.clone(), None, 0, middle).unwrap();
             assert_eq!(channels(&style_at(&state, middle)).0, before);
             near(channels(&end_of(&state, started)).0, "#ff0000");
         }
@@ -4720,6 +4721,77 @@ mod tests {
             store.create_source(1.0, &json!("light-dark(#ffffff, #0000ff)")).unwrap();
             let value = store.get(1.0, now).unwrap();
             near(rgba(value.as_str().unwrap()), "#0000ff");
+        }
+    }
+
+    mod variations {
+        use serde_json::json;
+
+        use super::*;
+        use crate::color::{ColorContext, Scheme};
+
+        #[test]
+        fn font_variation_settings_animate_per_axis_from_initial_to_animate() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "fontVariationSettings": "'wght' 400, 'wdth' 100" },
+                "animate": { "fontVariationSettings": "'wdth' 50, 'wght' 800" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let colors = Colors::root();
+            let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
+            let settings = |at_time: Instant| {
+                String::from(style_at(&state, at_time).font_variation_settings.expect("animated"))
+            };
+            assert_eq!(settings(started), r#""wdth" 100, "wght" 400"#);
+            assert_eq!(settings(at(started, 0.5)), r#""wdth" 75, "wght" 600"#);
+            assert_eq!(settings(at(started, 1.0)), r#""wdth" 50, "wght" 800"#);
+        }
+
+        #[test]
+        fn font_variation_settings_flip_at_half_when_the_axes_differ() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "fontVariationSettings": "'wght' 400" },
+                "animate": { "fontVariationSettings": "normal" },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            let settings = |at_time: Instant| {
+                String::from(style_at(&state, at_time).font_variation_settings.expect("animated"))
+            };
+            assert_eq!(settings(at(started, 0.49)), r#""wght" 400"#);
+            assert_eq!(settings(at(started, 0.5)), "normal");
+        }
+
+        #[test]
+        fn font_variation_settings_keyframes_and_an_unset_start() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "opacity": 1.0 },
+                "animate": { "fontVariationSettings": [null, "'wght' 900", "'wght' 100"] },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            let parent_font = ParentFont {
+                variations: gpui::FontVariations::new([(u32::from_be_bytes(*b"wght"), 300.0)]),
+                ..ParentFont::initial()
+            };
+            let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
+            let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
+            let settings = |seconds: f64| {
+                String::from(style_at(&state, at(started, seconds)).font_variation_settings.expect("animated"))
+            };
+            assert_eq!(settings(0.0), r#""wght" 300"#);
+            assert_eq!(settings(0.5), r#""wght" 600"#);
+            assert_eq!(settings(1.0), r#""wght" 900"#);
+            assert_eq!(settings(1.5), r#""wght" 500"#);
+        }
+
+        #[test]
+        fn a_font_variation_settings_target_that_is_not_settings_is_an_error() {
+            let description = json!({ "animate": { "fontVariationSettings": "wght 700" } });
+            let error = MotionState::new(&description, None, Colors::root(), None, 0, Instant::now()).err().unwrap();
+            assert!(error.contains("fontVariationSettings"), "{error}");
         }
     }
 }

@@ -951,7 +951,7 @@ impl Run {
         let colors = Colors::inheriting(parent_colors, parent_font, Some(underlying));
         let key = PlanKey {
             timing: self.params.timing.clone(),
-            colors,
+            colors: colors.clone(),
             allow_keywords,
             underlying: self
                 .properties
@@ -2384,6 +2384,7 @@ mod tests {
                 .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
             above_root: false,
             weight: 700.0,
+            variations: Default::default(),
         };
         frames.define("grow", r#"{ "to": { "fontSize": 40, "fontWeight": 300 } }"#);
         let animated = fading("grow 1s linear");
@@ -2791,5 +2792,43 @@ mod tests {
         assert!(frames.animations.wants(1, None));
         frames.animations.retain(|_| false);
         assert!(!frames.animations.wants(1, None));
+    }
+
+    fn variation_axes(style: &StyleDesc) -> String {
+        String::from(style.font_variation_settings.clone().expect("declared"))
+    }
+
+    #[test]
+    fn font_variation_keyframes_blend_the_same_axes_and_flip_otherwise() {
+        let mut frames = Frames::new();
+        frames.define(
+            "weigh",
+            r#"{ "from": { "fontVariationSettings": "'wght' 100, 'wdth' 100" },
+                 "to": { "fontVariationSettings": "'wdth' 50, 'wght' 900" } }"#,
+        );
+        let animated = fading("weigh 1s linear");
+        assert_eq!(variation_axes(&frames.frame(0, &animated)), r#""wdth" 100, "wght" 100"#);
+        assert_eq!(variation_axes(&frames.frame(500, &animated)), r#""wdth" 75, "wght" 500"#);
+
+        // An animation flips with no `allow-discrete` to ask for.
+        frames.define(
+            "swap",
+            r#"{ "from": { "fontVariationSettings": "'wght' 100" },
+                 "to": { "fontVariationSettings": "normal" } }"#,
+        );
+        let swapped = fading("swap 1s linear");
+        assert_eq!(variation_axes(&frames.frame(0, &swapped)), r#""wght" 100"#);
+        assert_eq!(variation_axes(&frames.frame(499, &swapped)), r#""wght" 100"#);
+        assert_eq!(variation_axes(&frames.frame(500, &swapped)), "normal");
+    }
+
+    #[test]
+    fn a_missing_font_variation_endpoint_is_the_inherited_settings() {
+        let mut frames = Frames::new();
+        frames.parent_font.variations = gpui::FontVariations::new([(u32::from_be_bytes(*b"wght"), 300.0)]);
+        frames.define("grow", r#"{ "to": { "fontVariationSettings": "'wght' 700" } }"#);
+        let animated = fading("grow 1s linear");
+        assert_eq!(variation_axes(&frames.frame(0, &animated)), r#""wght" 300"#);
+        assert_eq!(variation_axes(&frames.frame(500, &animated)), r#""wght" 500"#);
     }
 }

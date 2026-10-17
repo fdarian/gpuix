@@ -11,6 +11,7 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
+use crate::css::font_variations::{axes_of, VariationSettings};
 use crate::css::flex::Flex;
 use crate::css::outline::Outline;
 use crate::css::line_height::LineHeight;
@@ -38,6 +39,9 @@ enum Kind {
     Color,
     FontWeight,
     Shadow,
+    /// `font-variation-settings`: blends per axis when two values name the same
+    /// axes, and is discrete otherwise.
+    Variations,
     Keyword,
 }
 
@@ -64,6 +68,8 @@ enum Initial {
     FontSize,
     /// The element's computed `font-weight`, inherited when it declares none.
     FontWeight,
+    /// The element's computed `font-variation-settings`, inherited when it declares none.
+    FontVariations,
     Transparent,
     /// The element's own `color`.
     CurrentColor,
@@ -336,6 +342,19 @@ impl Field for Option<FontWeightValue> {
     }
 }
 
+impl Field for Option<VariationSettings> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
+        Some(AnimValue::Variations(self.as_ref()?.axes()))
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Variations(axes) => *self = Some(VariationSettings::from_axes(&axes)),
+            other => unreachable!("a variation settings field was given {other:?}"),
+        }
+    }
+}
+
 impl Field for Option<BoxShadowValues> {
     fn read(&self, cx: &Reading) -> Option<AnimValue> {
         shadows_from("boxShadow", self.as_ref()?.as_slice(), cx.colors)
@@ -561,6 +580,7 @@ properties! {
 
     FontSize "fontSize" FontSize NonNegative Initial::FontSize, font_size;
     FontWeight "fontWeight" FontWeight Weight Initial::FontWeight, font_weight;
+    FontVariationSettings "fontVariationSettings" Variations None Initial::FontVariations, font_variation_settings;
     LineHeight "lineHeight" Number NonNegative Unresolved, line_height;
 
     ScrollbarColor "scrollbarColor" Color None Unresolved, scrollbar_color;
@@ -868,6 +888,7 @@ impl AnimProp {
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::FontSize => Some(AnimValue::Number(colors.font.size)),
             Initial::FontWeight => Some(AnimValue::Number(colors.font.weight)),
+            Initial::FontVariations => Some(AnimValue::Variations(axes_of(&colors.font.variations))),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
             Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, false))),
             // The context keeps the resolved colour, not the syntax it was
@@ -937,6 +958,18 @@ impl AnimProp {
                 let weight: FontWeightValue = serde_json::from_value(value.clone())
                     .map_err(|_| format!("motion {name} must be a number or a font weight"))?;
                 AnimValue::Number(font_weight(&weight))
+            }
+            Kind::Variations => {
+                let text = value
+                    .as_str()
+                    .ok_or_else(|| format!("motion {name} must be a font-variation-settings string"))?;
+                let settings = VariationSettings::try_from(text.to_string())
+                    .map_err(|error| format!("motion {name}: {error}"))?;
+                let axes = settings.axes();
+                for (_, axis) in &axes {
+                    check_finite(name, *axis)?;
+                }
+                AnimValue::Variations(axes)
             }
             Kind::Dimension => {
                 let dimension: DimensionValue = serde_json::from_value(value.clone())
@@ -1034,6 +1067,7 @@ impl AnimProp {
                 | (Kind::Corner, AnimValue::Ellipse { .. })
                 | (Kind::Color, AnimValue::Color(_))
                 | (Kind::Shadow, AnimValue::Shadows(_))
+                | (Kind::Variations, AnimValue::Variations(_))
         )
     }
 
@@ -1398,7 +1432,7 @@ mod tests {
 
     #[test]
     fn an_unset_font_size_and_weight_are_the_computed_ones() {
-        let font = crate::motion::value::Font { size: 18.0, weight: 700.0 };
+        let font = crate::motion::value::Font { size: 18.0, weight: 700.0, variations: Default::default() };
         let mut colors = Colors::root();
         colors.font = font;
         assert_eq!(AnimProp::FontSize.initial(&colors), Some(AnimValue::Number(18.0)));
@@ -1735,5 +1769,58 @@ mod tests {
         ] {
             assert!(prop.parse(&value, &Colors::root()).is_err(), "{prop:?} {value}");
         }
+    }
+
+    #[test]
+    fn font_variation_settings_read_write_and_parse_by_axis() {
+        let colors = Colors::root();
+        let tag = |name: &str| u32::from_be_bytes(name.as_bytes().try_into().unwrap());
+        let read = |json: &str| {
+            let style: StyleDesc = serde_json::from_str(json).unwrap();
+            AnimProp::FontVariationSettings.read(&style, &colors)
+        };
+        assert_eq!(read("{}"), None);
+        assert_eq!(read(r#"{ "fontVariationSettings": "normal" }"#), Some(AnimValue::Variations(Vec::new())));
+        assert_eq!(
+            read(r#"{ "fontVariationSettings": "'wght' 700, \"wdth\" 80" }"#),
+            Some(AnimValue::Variations(vec![(tag("wdth"), 80.0), (tag("wght"), 700.0)]))
+        );
+
+        // Reordered and repeated tags are the same value, as in Chrome's computed style.
+        let parse = |text: &str| AnimProp::FontVariationSettings.parse(&serde_json::json!(text), &colors);
+        assert_eq!(parse(r#""wght" 400, "wdth" 80"#).unwrap(), parse(r#""wdth" 80, "wght" 100, "wght" 400"#).unwrap());
+        assert_eq!(parse("normal").unwrap(), AnimValue::Variations(Vec::new()));
+        for bad in ["wght 400", r#""wght""#, r#""wght" 4 5"#, ""] {
+            let error = parse(bad).unwrap_err();
+            assert!(error.starts_with("motion fontVariationSettings: invalid fontVariationSettings"), "{error}");
+        }
+        assert!(AnimProp::FontVariationSettings.parse(&serde_json::json!(400), &colors).is_err());
+        assert!(AnimProp::FontVariationSettings.accepts(&AnimValue::Variations(Vec::new())));
+        assert!(!AnimProp::FontVariationSettings.accepts(&AnimValue::Number(1.0)));
+        assert!(!AnimProp::FontVariationSettings.is_discrete());
+        assert!(AnimProp::from_name("fontVariationSettings").is_some());
+        assert!(Scope::Element.animates(AnimProp::FontVariationSettings));
+        assert!(!Scope::InlineBox.animates(AnimProp::FontVariationSettings));
+
+        let mut style = StyleDesc::default();
+        AnimProp::FontVariationSettings.write(&mut style, AnimValue::Variations(vec![(tag("wght"), 550.0)]));
+        assert_eq!(String::from(style.font_variation_settings.clone().unwrap()), "\"wght\" 550");
+        AnimProp::FontVariationSettings.write(&mut style, AnimValue::Variations(Vec::new()));
+        assert_eq!(String::from(style.font_variation_settings.unwrap()), "normal");
+    }
+
+    #[test]
+    fn an_unset_font_variation_settings_is_the_computed_one() {
+        let tag = u32::from_be_bytes(*b"wght");
+        let mut colors = Colors::root();
+        assert_eq!(
+            AnimProp::FontVariationSettings.initial(&colors),
+            Some(AnimValue::Variations(Vec::new()))
+        );
+        colors.font.variations = gpui::FontVariations::new([(tag, 650.0)]);
+        assert_eq!(
+            AnimProp::FontVariationSettings.initial(&colors),
+            Some(AnimValue::Variations(vec![(tag, 650.0)]))
+        );
     }
 }

@@ -812,7 +812,7 @@ impl ElementState {
         // is a change like any other. The before-change style is the last
         // frame's, in the colours of the last frame.
         let colors = Colors::inheriting(parent_colors, parent_font, Some(after));
-        let previous_colors = std::mem::replace(&mut self.colors, colors);
+        let previous_colors = std::mem::replace(&mut self.colors, colors.clone());
         let colors_changed = colors != previous_colors;
         let style_changed = self.previous != *after;
         if style_changed || config_changed || colors_changed {
@@ -3279,6 +3279,7 @@ mod tests {
                     .descend(Some(&LinearLength::px(20.0)), true),
                 above_root: false,
                 weight: 700.0,
+                variations: Default::default(),
             };
         }
 
@@ -3315,6 +3316,108 @@ mod tests {
                 AnimProp::LineHeight.read(&clock.frame(500, &target), &Colors::root()),
                 Some(AnimValue::Number(30.0))
             );
+        }
+    }
+
+    /// `font-variation-settings` blends per axis between values that name the same
+    /// axes, and is discrete otherwise, as in Chrome.
+    mod variations {
+        use super::*;
+
+        fn with(settings: &str, behavior: &str) -> StyleDesc {
+            style(&format!(
+                r#"{{ "fontVariationSettings": "{settings}",
+                     "transition": "font-variation-settings 1s linear {behavior}" }}"#
+            ))
+        }
+
+        fn axes(style: &StyleDesc) -> Vec<(String, f64)> {
+            let text = String::from(style.font_variation_settings.clone().expect("declared"));
+            if text == "normal" {
+                return Vec::new();
+            }
+            text.split(", ")
+                .map(|axis| {
+                    let (tag, value) = axis.split_once(' ').unwrap();
+                    (tag.trim_matches('"').to_string(), value.parse().unwrap())
+                })
+                .collect()
+        }
+
+        fn wght(value: f64) -> Vec<(String, f64)> {
+            vec![("wght".to_string(), value)]
+        }
+
+        #[test]
+        fn the_same_axes_blend_without_allow_discrete() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with("'wght' 400", ""));
+            let to = with("'wght' 700", "");
+            assert_eq!(axes(&clock.frame(0, &to)), wght(400.0));
+            assert_eq!(axes(&clock.frame(500, &to)), wght(550.0));
+            assert_eq!(axes(&clock.frame(1000, &to)), wght(700.0));
+        }
+
+        #[test]
+        fn two_axes_blend_in_any_order() {
+            let mut clock = Clock::new();
+            clock.frame(0, &with("'wght' 400, 'wdth' 100", ""));
+            let to = with("'wdth' 50, 'wght' 800", "");
+            clock.frame(0, &to);
+            assert_eq!(
+                axes(&clock.frame(500, &to)),
+                vec![("wdth".to_string(), 75.0), ("wght".to_string(), 600.0)]
+            );
+        }
+
+        #[test]
+        fn other_axes_and_normal_do_not_transition_by_default() {
+            for (from, to) in [
+                ("'wght' 400", "'wdth' 80"),
+                ("'wght' 400", "'wght' 400, 'wdth' 80"),
+                ("normal", "'wght' 700"),
+                ("'wght' 700", "normal"),
+            ] {
+                let mut clock = Clock::new();
+                clock.frame(0, &with(from, ""));
+                let end = clock.frame(10, &with(to, ""));
+                assert_eq!(end.font_variation_settings, with(to, "").font_variation_settings, "{from} to {to}");
+                assert!(clock.events().is_empty(), "{from} to {to}: {:?}", clock.events());
+            }
+        }
+
+        #[test]
+        fn other_axes_and_normal_flip_at_half_with_allow_discrete() {
+            for (from, to, before, after) in [
+                ("'wght' 400", "'wdth' 80", wght(400.0), vec![("wdth".to_string(), 80.0)]),
+                ("normal", "'wght' 700", Vec::new(), wght(700.0)),
+                ("'wght' 700", "normal", wght(700.0), Vec::new()),
+            ] {
+                let mut clock = Clock::new();
+                clock.frame(0, &with(from, "allow-discrete"));
+                let end = with(to, "allow-discrete");
+                assert_eq!(axes(&clock.frame(0, &end)), before, "{from} to {to}");
+                assert_eq!(axes(&clock.frame(499, &end)), before, "{from} to {to}");
+                assert_eq!(axes(&clock.frame(500, &end)), after, "{from} to {to}");
+                assert_eq!(axes(&clock.frame(1000, &end)), after, "{from} to {to}");
+            }
+        }
+
+        #[test]
+        fn an_unset_value_leaves_from_the_inherited_settings() {
+            let mut clock = Clock::new();
+            clock.parent_font.variations = gpui::FontVariations::new([(u32::from_be_bytes(*b"wght"), 300.0)]);
+            let unset = style(r#"{ "transition": "font-variation-settings 1s linear" }"#);
+            clock.frame(0, &unset);
+            let to = with("'wght' 700", "");
+            clock.frame(0, &to);
+            assert_eq!(axes(&clock.frame(500, &to)), wght(500.0));
+
+            // Inheriting nothing, `normal` names no axis, so the change is discrete.
+            let mut clock = Clock::new();
+            clock.frame(0, &unset);
+            assert_eq!(axes(&clock.frame(500, &to)), wght(700.0));
+            assert!(clock.events().is_empty());
         }
     }
 }

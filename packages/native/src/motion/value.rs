@@ -5,6 +5,8 @@
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
 use super::list::ListValue;
+use gpui::FontVariations;
+
 use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
@@ -16,7 +18,7 @@ use crate::style::StyleDesc;
 /// `currentColor`, `light-dark()` and `color-mix()` mean what they mean in CSS
 /// at that element. Resolved colours do not keep the context: a holder
 /// compares `Colors` to know when to resolve again.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Colors {
     /// What every colour property but `color` resolves in: the element's own.
     pub(super) element: ColorContext,
@@ -30,28 +32,35 @@ pub(crate) struct Colors {
     pub(super) lengths: LengthContext,
 }
 
-/// A computed `font-size` in px and `font-weight`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// A computed `font-size` in px, `font-weight` and `font-variation-settings`.
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Font {
     pub(super) size: f64,
     pub(super) weight: f64,
+    pub(super) variations: FontVariations,
 }
 
 /// The font an element inherits, with what its own `font-size` needs to resolve:
 /// `em` and `%` are of the parent's size, `rem` of the root's, `vw` of the window.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ParentFont {
     /// The parent's context, as `LengthContext::descend` takes it.
     pub(crate) lengths: LengthContext,
     /// The element is the root, whose `rem` is its own computed size.
     pub(crate) above_root: bool,
     pub(crate) weight: f64,
+    pub(crate) variations: FontVariations,
 }
 
 impl ParentFont {
     /// The font above everything: the initial size and weight, in a window of unknown size.
     pub(crate) fn initial() -> Self {
-        Self { lengths: LengthContext::initial(0.0, 0.0), above_root: true, weight: INITIAL_FONT_WEIGHT }
+        Self {
+            lengths: LengthContext::initial(0.0, 0.0),
+            above_root: true,
+            weight: INITIAL_FONT_WEIGHT,
+            variations: FontVariations::default(),
+        }
     }
 
     /// What children of an element styled by `style` inherit.
@@ -61,6 +70,7 @@ impl ParentFont {
             lengths: self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root),
             above_root: false,
             weight: font.weight,
+            variations: font.variations,
         }
     }
 
@@ -74,6 +84,9 @@ impl ParentFont {
             weight: style
                 .and_then(|style| style.font_weight.as_ref())
                 .map_or(self.weight, super::property::font_weight),
+            variations: style
+                .and_then(|style| style.font_variation_settings.as_ref())
+                .map_or_else(|| self.variations.clone(), |settings| settings.variations()),
         }
     }
 }
@@ -112,7 +125,7 @@ impl Colors {
     /// while a `light-dark()` that picks another branch is.
     pub(super) fn with_current_color_pinned(&self) -> Self {
         const PINNED: gpui::Rgba = gpui::Rgba { r: 0.2, g: 0.4, b: 0.6, a: 1.0 };
-        let mut pinned = *self;
+        let mut pinned = self.clone();
         pinned.element.current = PINNED;
         pinned.text.current = PINNED;
         pinned
@@ -328,6 +341,8 @@ pub(super) enum AnimValue {
     Shadows(Vec<Shadow>),
     /// A list of numbers, such as `stroke-dasharray`.
     Numbers(Vec<f64>),
+    /// `font-variation-settings`: axis tags and values, sorted by tag. Empty is `normal`.
+    Variations(Vec<(u32, f64)>),
     /// SVG path data, normalised to absolute commands.
     Path(PathData),
     /// `height: auto`. Never interpolated: a track swaps it for the measured
@@ -389,6 +404,7 @@ impl AnimValue {
             Self::Color(_) => "a colour",
             Self::Shadows(_) => "a shadow list",
             Self::Numbers(_) => "a list of numbers",
+            Self::Variations(_) => "variation settings",
             Self::Path(_) => "path data",
             Self::Auto => "auto",
             Self::Keyword(_) => "a keyword",
@@ -421,6 +437,11 @@ pub(super) enum Layout {
     /// flips at the halfway point between them.
     DiscreteShadows(Vec<Vec<Shadow>>),
     Numbers,
+    /// Settings that name the same axes: the channels are their values, in tag order.
+    Variations(Vec<u32>),
+    /// Settings that name other axes, or `normal` against some: one channel runs from
+    /// option to option and the value flips at the halfway point between them.
+    DiscreteVariations(Vec<Vec<(u32, f64)>>),
     /// Paths with the same commands: the channels are their numbers, in order.
     Path(PathData),
     /// Paths with different commands cannot blend: one channel runs from
@@ -512,6 +533,12 @@ impl Layout {
                 AnimValue::Shadows(options[option_index(channels[0], options.len())].clone())
             }
             Self::Numbers => AnimValue::Numbers(channels.to_vec()),
+            Self::Variations(tags) => {
+                AnimValue::Variations(tags.iter().copied().zip(channels.iter().copied()).collect())
+            }
+            Self::DiscreteVariations(options) => {
+                AnimValue::Variations(options[option_index(channels[0], options.len())].clone())
+            }
             Self::Path(template) => AnimValue::Path(template.with_numbers(channels)),
             Self::DiscretePath(options) => {
                 AnimValue::Path(options[option_index(channels[0], options.len())].clone())
@@ -578,6 +605,7 @@ impl Layout {
             | (Self::Color(_), Self::Color(_))
             | (Self::Numbers, Self::Numbers) => true,
             (Self::Shadows { insets: a, .. }, Self::Shadows { insets: b, .. }) => a.len() == b.len(),
+            (Self::Variations(a), Self::Variations(b)) => a == b,
             (Self::Path(a), Self::Path(b)) => a.same_structure(b),
             _ => false,
         };
@@ -664,6 +692,7 @@ impl Pair {
             Layout::DiscreteShadows(_)
                 | Layout::DiscretePath(_)
                 | Layout::DiscreteList(_)
+                | Layout::DiscreteVariations(_)
                 | Layout::Keyword { .. }
         )
     }
@@ -762,6 +791,10 @@ pub(super) fn align_in(
                 _ => unreachable!("kinds were checked"),
             }),
         ),
+        AnimValue::Variations(_) => Ok(align_variations(&unwrap_each(values, |value| match value {
+            AnimValue::Variations(axes) => axes.as_slice(),
+            _ => unreachable!("kinds were checked"),
+        }))),
         AnimValue::Path(_) => Ok(align_paths(&unwrap_each(values, |value| match value {
             AnimValue::Path(path) => path,
             _ => unreachable!("kinds were checked"),
@@ -842,6 +875,30 @@ fn align_numbers(name: &str, lists: &[&[f64]]) -> Result<Aligned, String> {
             .map(|list| list.iter().copied().cycle().take(length).collect())
             .collect(),
     })
+}
+
+/// Settings interpolate per axis when they name the same axes, as Chrome's
+/// `CSSFontVariationSettingsInterpolationType` does. `normal` names none, so it is
+/// discrete against any list. Chrome decides each pair of keyframes on its own; a track
+/// flips as a whole when any two differ, as shadow lists do.
+fn align_variations(lists: &[&[(u32, f64)]]) -> Aligned {
+    let same_axes = !lists[0].is_empty()
+        && lists.iter().all(|list| {
+            list.len() == lists[0].len() && list.iter().zip(lists[0]).all(|(a, b)| a.0 == b.0)
+        });
+    if same_axes {
+        return Aligned {
+            layout: Layout::Variations(lists[0].iter().map(|(tag, _)| *tag).collect()),
+            frames: lists
+                .iter()
+                .map(|list| list.iter().map(|(_, value)| *value).collect())
+                .collect(),
+        };
+    }
+    Aligned {
+        layout: Layout::DiscreteVariations(lists.iter().map(|list| list.to_vec()).collect()),
+        frames: (0..lists.len()).map(|index| vec![index as f64]).collect(),
+    }
 }
 
 fn align_paths(paths: &[&PathData]) -> Aligned {
@@ -1414,5 +1471,69 @@ mod tests {
         let refs: Vec<&AnimValue> = values.iter().collect();
         let error = align("width", &refs).unwrap_err();
         assert!(error.contains("from a number or px length to a colour"), "{error}");
+    }
+
+    fn tag(name: &str) -> u32 {
+        u32::from_be_bytes(name.as_bytes().try_into().unwrap())
+    }
+
+    fn axes(list: &[(&str, f64)]) -> AnimValue {
+        AnimValue::Variations(list.iter().map(|(name, value)| (tag(name), *value)).collect())
+    }
+
+    #[test]
+    fn variations_naming_the_same_axes_blend_per_axis() {
+        let blended = pair("fontVariationSettings", &axes(&[("wght", 400.0)]), &axes(&[("wght", 700.0)])).unwrap();
+        assert!(!blended.is_discrete());
+        assert_eq!(blended.at(0.5), axes(&[("wght", 550.0)]));
+
+        let from = axes(&[("wdth", 100.0), ("wght", 400.0)]);
+        let to = axes(&[("wdth", 50.0), ("wght", 800.0)]);
+        let blended = pair("fontVariationSettings", &from, &to).unwrap();
+        assert_eq!(blended.at(0.25), axes(&[("wdth", 87.5), ("wght", 500.0)]));
+        assert_eq!(blended.at(1.5), axes(&[("wdth", 25.0), ("wght", 1000.0)]), "an overshoot extrapolates");
+    }
+
+    #[test]
+    fn variations_naming_other_axes_flip_at_half() {
+        let wght = axes(&[("wght", 400.0)]);
+        for to in [
+            axes(&[("wdth", 80.0)]),
+            axes(&[("wght", 700.0), ("wdth", 80.0)]),
+            axes(&[]),
+        ] {
+            let flipped = pair("fontVariationSettings", &wght, &to).unwrap();
+            assert!(flipped.is_discrete(), "{to:?}");
+            assert_eq!(flipped.at(0.0), wght);
+            assert_eq!(flipped.at(0.49), wght);
+            assert_eq!(flipped.at(0.5), to);
+            assert_eq!(flipped.at(1.0), to);
+
+            let back = pair("fontVariationSettings", &to, &wght).unwrap();
+            assert!(back.is_discrete());
+            assert_eq!(back.at(0.49), to);
+            assert_eq!(back.at(0.5), wght);
+        }
+    }
+
+    #[test]
+    fn normal_is_discrete_even_against_normal() {
+        let normal = axes(&[]);
+        assert!(pair("fontVariationSettings", &normal, &normal).unwrap().is_discrete());
+    }
+
+    #[test]
+    fn a_track_of_variations_that_differ_anywhere_flips_as_a_whole() {
+        let values = [axes(&[("wght", 100.0)]), axes(&[("wght", 500.0)]), axes(&[("wdth", 60.0)])];
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let aligned = align("fontVariationSettings", &refs).unwrap();
+        assert!(matches!(aligned.layout, Layout::DiscreteVariations(_)));
+        for (channel, expected) in [(0.0, 0), (0.6, 1), (1.4, 1), (1.5, 2)] {
+            assert_eq!(aligned.layout.decode(&[channel]), values[expected], "{channel}");
+        }
+
+        let same = [axes(&[("wght", 100.0)]), axes(&[("wght", 500.0)]), axes(&[("wght", 300.0)])];
+        let refs: Vec<&AnimValue> = same.iter().collect();
+        assert!(matches!(align("fontVariationSettings", &refs).unwrap().layout, Layout::Variations(_)));
     }
 }

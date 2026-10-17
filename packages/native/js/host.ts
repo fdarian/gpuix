@@ -188,6 +188,7 @@ export type MotionStyleTargets = Pick<
   | "textDecorationColor"
   | "fontSize"
   | "fontWeight"
+  | "fontVariationSettings"
   | "lineHeight"
   | "scrollbarColor"
   | "scrollbarWidth"
@@ -970,7 +971,10 @@ export interface StyleDesc {
    *  axis; an axis the font does not have is ignored, and a tag named twice takes its last
    *  value. On a variable font `fontWeight` already sets `wght` (to any weight, not only the
    *  named ones), and a `wght` here wins over it. A value CSS does not have throws, as
-   *  `textWrap` does. Not available inside a state style. */
+   *  `textWrap` does. Animates per axis between two values that name the same axes
+   *  (in any order); otherwise, and against `normal`, it flips halfway, and a CSS
+   *  transition runs that only with `transitionBehavior: "allow-discrete"`. Not
+   *  available inside a state style. */
   fontVariationSettings?: string
 
   /** `"visible"` (default); `"clip"` clips; `"hidden"` clips and is a scroll container that

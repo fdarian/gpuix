@@ -24,6 +24,7 @@ use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
 use crate::css::length::LengthContext;
 use crate::css::syntax::split_slash_tokens;
+use crate::css::font_variations::VariationSettings;
 use crate::style::StyleDesc;
 
 const NAME: &str = "motion value";
@@ -464,9 +465,9 @@ struct ValueContext {
     lengths: LengthContext,
 }
 
-/// A number, a CSS length or colour string, a multi-value string of those
-/// (`0.5em 0.75em`, `10px / 20px`, `red blue`), a list of numbers, or a
-/// `boxShadow` layer or list. A length string (`20px`, `50%`, `2em`,
+/// A number, a CSS length, colour or `fontVariationSettings` string, a
+/// multi-value string of those (`0.5em 0.75em`, `10px / 20px`, `red blue`), a list
+/// of numbers, or a `boxShadow` layer or list. A length string (`20px`, `50%`, `2em`,
 /// `calc(100% - 20px)`) is its px and its share of the percentage basis, as in a
 /// motion property: one with only one of the two reads as the number or the
 /// percentage.
@@ -481,6 +482,9 @@ fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, Strin
         Value::String(text) => {
             if let Some(value) = parse_component(text, context)? {
                 return Ok(value);
+            }
+            if let Ok(settings) = VariationSettings::try_from(text.clone()) {
+                return Ok(AnimValue::Variations(settings.axes()));
             }
             if split_slash_tokens(text).len() < 2 {
                 return Err(format!("a {NAME} string must be a colour or a CSS length: {text}"));
@@ -579,6 +583,9 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
             .map(|value| number(*value))
             .collect::<Result<_, _>>()
             .map(Value::Array),
+        AnimValue::Variations(axes) => {
+            Ok(Value::String(VariationSettings::from_axes(axes).into()))
+        }
         AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
             Err(format!("a {NAME} cannot hold {value:?}"))
         }
@@ -973,6 +980,23 @@ mod tests {
         store.animate(2.0, &json!(20), Some(&linear(1.0)), clock.at(0)).unwrap();
         assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("calc(25% + 10px)"));
         assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!(20.0));
+    }
+
+    #[test]
+    fn font_variation_settings_are_values_that_blend_per_axis() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("'wght' 400, 'wdth' 100")).unwrap();
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!("\"wdth\" 100, \"wght\" 400"));
+        store
+            .animate(2.0, &json!("'wght' 800, 'wdth' 50"), Some(&linear(1.0)), clock.at(0))
+            .unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("\"wdth\" 75, \"wght\" 600"));
+
+        // Other axes, and normal, flip halfway.
+        store.animate(2.0, &json!("normal"), Some(&linear(1.0)), clock.at(2000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(2499)).unwrap(), json!("\"wdth\" 50, \"wght\" 800"));
+        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("normal"));
+        assert!(store.animate(2.0, &json!("#ff0000"), None, clock.at(3000)).is_err());
     }
 
     #[test]

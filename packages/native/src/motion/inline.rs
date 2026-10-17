@@ -88,7 +88,7 @@ impl InlineStyles {
         let mut stepped = HashSet::new();
         for piece in &paragraph.pieces {
             let mut colors = *colors;
-            let mut font = *font;
+            let mut font = font.clone();
             for id in &piece.boxes {
                 let Some(element) = tree.elements.get(id) else {
                     continue;

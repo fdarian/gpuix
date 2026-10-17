@@ -17,6 +17,23 @@ impl VariationSettings {
     pub(crate) fn variations(&self) -> FontVariations {
         self.0.clone()
     }
+
+    /// The axes sorted by tag, which is what motion blends.
+    pub(crate) fn axes(&self) -> Vec<(u32, f64)> {
+        axes_of(&self.0)
+    }
+
+    pub(crate) fn from_axes(axes: &[(u32, f64)]) -> Self {
+        Self(FontVariations::new(axes.iter().map(|(tag, value)| (*tag, *value as f32))))
+    }
+}
+
+pub(crate) fn axes_of(variations: &FontVariations) -> Vec<(u32, f64)> {
+    variations
+        .tag_value_list()
+        .iter()
+        .map(|(tag, value)| (*tag, f64::from(*value)))
+        .collect()
 }
 
 impl TryFrom<String> for VariationSettings {

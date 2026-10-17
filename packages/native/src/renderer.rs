@@ -5126,10 +5126,10 @@ fn parent_inherited(
     known: &mut HashMap<u64, (crate::color::ColorContext, crate::motion::ParentFont)>,
 ) -> (crate::color::ColorContext, crate::motion::ParentFont) {
     let Some(parent) = tree.elements.get(&id).and_then(|element| element.parent) else {
-        return *root;
+        return root.clone();
     };
     if let Some(inherited) = known.get(&parent) {
-        return *inherited;
+        return inherited.clone();
     }
     let above = parent_inherited(tree, parent, root, known);
     let style = tree.elements.get(&parent).and_then(|element| element.style.as_deref());
@@ -5137,7 +5137,7 @@ fn parent_inherited(
         Some(style) => (above.0.descend(style), above.1.descend(Some(style))),
         None => (above.0, above.1.descend(None)),
     };
-    known.insert(parent, inherited);
+    known.insert(parent, inherited.clone());
     inherited
 }
 
@@ -5181,13 +5181,13 @@ fn sync_motion_states(
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let created = match svg_attributes {
                     Some(attributes) => {
-                        crate::motion::MotionState::new_svg(source, attributes, colors, now)
+                        crate::motion::MotionState::new_svg(source, attributes, colors.clone(), now)
                     }
-                    None if inline => crate::motion::MotionState::new_inline(source, base, colors, now),
+                    None if inline => crate::motion::MotionState::new_inline(source, base, colors.clone(), now),
                     None => crate::motion::MotionState::new(
                         source,
                         base,
-                        colors,
+                        colors.clone(),
                         measurement.as_ref(),
                         painted,
                         now,
@@ -5197,14 +5197,14 @@ fn sync_motion_states(
                     Ok(state) => entry.insert(state),
                     Err(error) => {
                         log::warn!("Invalid motion description for element {id}: {error}");
-                        entry.insert(crate::motion::MotionState::invalid(source, colors, now))
+                        entry.insert(crate::motion::MotionState::invalid(source, colors.clone(), now))
                     }
                 }
             }
         };
         let synced = match svg_attributes {
-            Some(attributes) => state.sync_svg(source, attributes, colors, now),
-            None if inline => state.sync_inline(source, base, colors, now),
+            Some(attributes) => state.sync_svg(source, attributes, colors.clone(), now),
+            None if inline => state.sync_inline(source, base, colors.clone(), now),
             None => state.sync(source, base, colors, measurement.as_ref(), painted, now),
         };
         if let Err(error) = synced {
@@ -6293,6 +6293,8 @@ pub(crate) struct Inherited {
     above_root: bool,
     /// `fontVariantNumeric` and `fontFeatureSettings` as inherited so far.
     pub font_state: crate::css::font_features::FontFeatureState,
+    /// Computed `font-variation-settings`, which an unset one of a transition or motion starts from.
+    pub computed_variations: gpui::FontVariations,
     /// The combined features, only on the element whose style declares one of the
     /// two: gpui inherits a text style on its own, so descendants add nothing.
     pub font_features: Option<gpui::FontFeatures>,
@@ -6338,7 +6340,12 @@ struct GroupState {
 impl Inherited {
     /// The font the element being built inherits.
     fn parent_font(&self) -> crate::motion::ParentFont {
-        crate::motion::ParentFont { lengths: self.lengths, above_root: self.above_root, weight: self.font_weight }
+        crate::motion::ParentFont {
+            lengths: self.lengths,
+            above_root: self.above_root,
+            weight: self.font_weight,
+            variations: self.computed_variations.clone(),
+        }
     }
 
     /// The state of the nearest ancestor `group` called `name`; all false when
@@ -6381,6 +6388,7 @@ impl Inherited {
             font_state: Default::default(),
             font_features: None,
             font_variations: None,
+            computed_variations: Default::default(),
             interpolate_size: Default::default(),
             table: Default::default(),
             table_row: None,
@@ -6435,6 +6443,9 @@ impl Inherited {
             style.font_feature_settings.as_deref(),
         );
         self.font_variations = style.font_variation_settings.as_ref().map(|settings| settings.variations());
+        if let Some(variations) = &self.font_variations {
+            self.computed_variations = variations.clone();
+        }
         match style.user_select.as_deref() {
             Some("none") => self.selectable = false,
             Some("text") | Some("auto") if !self.inert => self.selectable = true,
