@@ -116,9 +116,10 @@ describeNative("alignItems: baseline", () => {
       render(row("baseline"))
       const big = rect(renderer, "big")
       const small = rect(renderer, "small")
-      // The small text drops so that its bottom edge meets the big text's.
+      // The small text drops so that its baseline meets the big text's: it has less below the baseline, so its
+      // bottom edge is above the big text's (the exact numbers are in text-baselines.test.tsx).
       expect(small.y).toBeGreaterThan(big.y)
-      expect(Math.abs(small.y + small.height - (big.y + big.height))).toBeLessThanOrEqual(2)
+      expect(small.y + small.height).toBeLessThan(big.y + big.height)
     } finally {
       unmount()
     }
