@@ -46,6 +46,13 @@ pub(crate) fn part_of(display: &str) -> Option<Part> {
     })
 }
 
+/// Whether `containerType` makes the element a query container (and gives it size containment). In CSS
+/// the table box and the internal table boxes (row groups, rows, cells, columns and column groups) are not
+/// containers, whatever they declare; a caption is.
+pub(crate) fn can_be_container(element: &RetainedElement) -> bool {
+    matches!(part(element), None | Some(Part::Caption))
+}
+
 pub(crate) fn part(element: &RetainedElement) -> Option<Part> {
     element
         .style

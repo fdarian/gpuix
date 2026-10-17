@@ -7641,6 +7641,7 @@ fn build_element_unpumped(
     // children see it, its own style does not (`Inherited::enter_children`).
     if crate::text::inline::is_host_type(&element.element_type)
         && !crate::layout::contents::is_display_contents(element)
+        && crate::layout::table::can_be_container(element)
     {
         if let Some(declaration) = style.and_then(crate::layout::container::declared) {
             ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::new(

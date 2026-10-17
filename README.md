@@ -6884,6 +6884,11 @@ Differences from the browser:
   `<img>`, an `<svg>`, an `<input>`, a `display: contents` element or a
   `<virtual-list>` itself. Its rows can sit under one. An `inline-block`, `inline-flex` or
   `inline-grid` box is a container like any other, and so is every box inside one
+- A [table](#tables) is not a container, and neither is an `inline-table`, a row group, a row, a column, a
+  column group or a cell, whatever `containerType` they declare, and they are not size contained either:
+  CSS Containment 3 leaves `container-type` out of table boxes and internal table boxes, and Chrome ignores it.
+  A caption is a container. A cell is laid out by the table algorithm and what is in it is queried against
+  the container around it (or one in the cell) in the frame that lays the table out
 - `<virtual-list>` takes no `@container` blocks (it takes no `hover` either), and
   neither does an inline `<span>`
 - A block is evaluated where the element is built, so `elementsAt`, stacking and the
