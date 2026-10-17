@@ -28,6 +28,7 @@ macro_rules! overlay_fields {
             measure_natural_width: false,
             flex_or_grid_item: false,
             atomic_inline: false,
+            clone_probe: Default::default(),
         }
     };
 }

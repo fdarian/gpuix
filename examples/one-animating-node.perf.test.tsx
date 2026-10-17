@@ -81,6 +81,7 @@ describeNative('one animating node over a large static tree', () => {
           renderer.clockPause()
           const elements = renderer.getRetainedElementCount()
           const draws = renderer.getDebugFrameOverlayStats().frames
+          renderer.resetBuildCounters()
           const frames = sample(
             // The clock moves and notifies the view, which draws once: one frame.
             () => renderer.clockFastForward(FRAME_MS),
@@ -88,11 +89,15 @@ describeNative('one animating node over a large static tree', () => {
             SAMPLES,
           )
           const drawn = renderer.getDebugFrameOverlayStats().frames - draws
+          const built = renderer.getBuildCounters()
+          const perFrame = (count: number) => (count / (WARMUP + SAMPLES)).toFixed(1)
           const highlight = renderer.findByTestId('highlight')
           const highlightY = highlight ? ` highlight-y=${renderer.getElementBounds(highlight.id)!.y.toFixed(1)}` : ''
           console.log(
             `[animating.perf] ${variant}${highlightY} cards=${cards} elements=${elements} ` +
-              `draws/frame=${(drawn / (WARMUP + SAMPLES)).toFixed(2)} | ${formatSummary(summarize(frames))}`,
+              `draws/frame=${(drawn / (WARMUP + SAMPLES)).toFixed(2)} ` +
+              `built/frame=${perFrame(built.elementsBuilt)} style-clones/frame=${perFrame(built.styleDescClones)} ` +
+              `inherited-clones/frame=${perFrame(built.inheritedClones)} | ${formatSummary(summarize(frames))}`,
           )
           expect(elements).toBeGreaterThan(0)
         } finally {

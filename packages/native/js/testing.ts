@@ -13,6 +13,7 @@ import {
   hasTestGpuixRenderer,
   TestGpuixRenderer,
   validateKeyframes,
+  type BuildCounters,
   type EventPayload,
   type MediaFeatures,
   type WindowOptions,
@@ -131,6 +132,8 @@ interface NativeTestRendererApi
   getA11yTree(): string
   getAutomationTree(): string
   getRetainedElementCount(): number
+  getBuildCounters(): BuildCounters
+  resetBuildCounters(): void
   getPaintedFrameCount(): number
   getLayoutPassCount(): number
   setInlineDraws(enabled: boolean): void
@@ -858,6 +861,17 @@ export class TestRenderer implements NativeRenderer {
    *  from the root, so only this can see a node that was detached and leaked. */
   getRetainedElementCount(): number {
     return this.native.getRetainedElementCount()
+  }
+
+  /** What the element build has done since the last `resetBuildCounters()`:
+   *  elements built and `StyleDesc` / `Inherited` clones. A draw builds every
+   *  element, so divide by the frames drawn for the per-frame figure. */
+  getBuildCounters(): BuildCounters {
+    return this.native.getBuildCounters()
+  }
+
+  resetBuildCounters(): void {
+    this.native.resetBuildCounters()
   }
 
   /** Frames the window has painted. A test compares it before and after to

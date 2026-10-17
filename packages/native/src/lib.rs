@@ -31,6 +31,7 @@ mod motion;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod platform;
 mod observers;
+pub mod perf_counters;
 mod renderer;
 mod scroll;
 mod scrollbar;

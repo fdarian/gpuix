@@ -27,6 +27,17 @@ use crate::renderer::{
 };
 use crate::retained_tree::RetainedTree;
 
+/// Counts of the work the element build did, see `get_build_counters`.
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct BuildCounters {
+    /// Elements `build_element` ran for. Text and inline boxes a paragraph builds itself are not counted.
+    pub elements_built: f64,
+    /// `StyleDesc` values cloned, a state style inside a style counted as its own.
+    pub style_desc_clones: f64,
+    pub inherited_clones: f64,
+}
+
 // ── Thread-local storage for !Send GPUI types ────────────────────────
 
 /// Bundles VisualTestAppContext + window handle + view entity.
@@ -665,6 +676,23 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_retained_element_count(&self) -> u32 {
         self.tree.lock().unwrap().elements.len() as u32
+    }
+
+    /// What the element build has done since the last `resetBuildCounters`. A draw builds every
+    /// element, so divide by the frames drawn to get the per-frame figure.
+    #[napi]
+    pub fn get_build_counters(&self) -> BuildCounters {
+        let counts = crate::perf_counters::snapshot();
+        BuildCounters {
+            elements_built: counts.elements_built as f64,
+            style_desc_clones: counts.style_desc_clones as f64,
+            inherited_clones: counts.inherited_clones as f64,
+        }
+    }
+
+    #[napi]
+    pub fn reset_build_counters(&self) {
+        crate::perf_counters::reset();
     }
 
     /// How many frames the window has painted. A test that must prove a read did not draw once

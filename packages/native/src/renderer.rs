@@ -6335,6 +6335,8 @@ pub(crate) struct Inherited {
     /// The container this element is, once it is built. Its children's `containers` begin
     /// with it (`enter_children`); the element's own style never sees it.
     self_container: Option<Arc<crate::layout::container::ContainerScope>>,
+    /// Counts the clones of this struct for the test renderer. Carries no data.
+    clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::INHERITED }>,
 }
 
 /// One `group` declaration on the way down the tree.
@@ -6412,6 +6414,7 @@ impl Inherited {
             groups: None,
             containers: None,
             self_container: None,
+            clone_probe: Default::default(),
         }
     }
 
@@ -7464,6 +7467,7 @@ fn build_element_unpumped(
     let Some(element) = tree.elements.get(&id) else {
         return gpui::Empty.into_any_element();
     };
+    crate::perf_counters::element_built();
 
     // `@container` blocks fold into the declared style before anything reads it, so state
     // styles, transitions and motion all see the style the containers above select.

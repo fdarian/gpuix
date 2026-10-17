@@ -1000,6 +1000,9 @@ pub struct StyleDesc {
     /// styles included) read. Set when the style is interned, never by JS.
     #[serde(skip)]
     pub container_unit_axes: crate::css::container_query::Axes,
+    /// Counts the clones of this struct for the test renderer. Carries no data.
+    #[serde(skip)]
+    pub clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::STYLE_DESC }>,
 }
 
 pub use crate::color::{parse_color, parse_color_hex};

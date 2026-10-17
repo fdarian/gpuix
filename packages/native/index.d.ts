@@ -459,6 +459,12 @@ export declare class TestGpuixRenderer {
    */
   getRetainedElementCount(): number
   /**
+   * What the element build has done since the last `resetBuildCounters`. A draw builds every
+   * element, so divide by the frames drawn to get the per-frame figure.
+   */
+  getBuildCounters(): BuildCounters
+  resetBuildCounters(): void
+  /**
    * How many frames the window has painted. A test that must prove a read did not draw once
    * per call compares this before and after. A bounds or scroll read lays out and paints
    * nothing: those passes are `getLayoutPassCount`.
@@ -892,6 +898,15 @@ export declare class TestGpuixRenderer {
    * listening window queues a `mediaChange` event.
    */
   setWindowSize(width: number, height: number): void
+}
+
+/** Counts of the work the element build did, see `get_build_counters`. */
+export interface BuildCounters {
+  /** Elements `build_element` ran for. Text and inline boxes a paragraph builds itself are not counted. */
+  elementsBuilt: number
+  /** `StyleDesc` values cloned, a state style inside a style counted as its own. */
+  styleDescClones: number
+  inheritedClones: number
 }
 
 /**
