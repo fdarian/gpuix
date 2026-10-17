@@ -6139,7 +6139,7 @@ pub(crate) struct BuildCtx<'a> {
     pub pointer: &'a crate::events::state::PointerState,
     /// Inheritable style of the `display: contents` ancestors of the child about to be
     /// built, taken by `build_element`.
-    pub contents_overlay: Option<StyleDesc>,
+    pub contents_overlay: Option<Box<StyleDesc>>,
     /// Set to an `<anchored>` element's id while building its direct children, taken by
     /// `build_element` to resolve `anchor-size()`.
     pub anchor_scope: Option<u64>,
@@ -7805,7 +7805,7 @@ fn build_element_unpumped(
                     })
                     .collect()
             };
-            let inherited = ctx.inherited.clone();
+            let inherited = &ctx.inherited;
             let render_ctx = CustomRenderContext {
                 id,
                 doc_path: ctx.doc_path(),
@@ -8722,7 +8722,7 @@ fn build_atomics(
     // What each atomic inherits from the boxes around it, and how it is aligned.
     struct Around {
         inherited: Inherited,
-        overlay: Option<StyleDesc>,
+        overlay: Option<Box<StyleDesc>>,
         align: ResolvedVerticalAlign,
         line_height: Option<gpui::Pixels>,
     }
@@ -8757,7 +8757,7 @@ fn build_atomics(
                     // Resolved here: `em` means the font of the box that declared it.
                     overlay.font_size = Some(crate::css::length::LinearLength::px(inherited.lengths.font_size));
                 }
-                overlay
+                Box::new(overlay)
             });
             let own = tree.elements.get(&id).and_then(|element| element.style.as_deref());
             let declared = own.map(|base| crate::events::state_styles::folded(base, states(id, base)));

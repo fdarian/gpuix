@@ -15,7 +15,7 @@
  * frame runs, minus GPU submission. Slope between card counts is the cost per
  * live node (the demo measured about 0.5 ms + 10 us per node).
  *
- * It profiles, it does not guard: no budgets. Run it through
+ * It profiles and has no time budgets; the build counters it prints are guarded. Run it through
  * `bun run test:perf:animating` (NODE_ENV=production, like `test:perf`).
  */
 
@@ -100,6 +100,10 @@ describeNative('one animating node over a large static tree', () => {
               `inherited-clones/frame=${perFrame(built.inheritedClones)} | ${formatSummary(summarize(frames))}`,
           )
           expect(elements).toBeGreaterThan(0)
+          // The work counters do not depend on the clock: a frame of a static tree copies one
+          // Inherited per element it builds and no style except the animated element's own.
+          expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt)
+          expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
         } finally {
           root.unmount()
         }

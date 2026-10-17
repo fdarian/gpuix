@@ -62,7 +62,7 @@ pub(crate) fn inherited_overlay(
     tree: &RetainedTree,
     parent: &RetainedElement,
     child_id: u64,
-) -> Option<StyleDesc> {
+) -> Option<Box<StyleDesc>> {
     let chain = contents_between(tree, parent, child_id)?;
     if chain.is_empty() {
         return None;
@@ -75,7 +75,7 @@ pub(crate) fn inherited_overlay(
             overlay.take_inheritable_from(style);
         }
     }
-    Some(overlay)
+    Some(Box::new(overlay))
 }
 
 impl StyleDesc {
