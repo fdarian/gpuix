@@ -1,0 +1,147 @@
+<!doctype html>
+<!--
+  Oracle for text-baselines.test.tsx: the expected numbers there are what headless Chrome
+  lays out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  The text is GpuixTestSquare: every character is one em wide ("A", "m"; "B" is two), the ascent is
+  the whole em and there is no descent, so the baseline of a line of text is the half-leading
+  ((line height - font size) / 2) plus the font size below the top of the line. `data-id` names a
+  box in the test as `case.name`, and the numbers are relative to the `data-case` box it is in.
+-->
+<html>
+<head>
+<style>
+  @font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .line { font: 20px/20px GpuixTestSquare; color: #000; width: 300px; }
+  .big { font-size: 40px; line-height: 40px; }
+  .t { display: table; }
+  .r { display: table-row; }
+  .c { display: table-cell; }
+  .flex { display: flex; align-items: baseline; }
+  .grid { display: grid; grid-template-columns: 50px 50px 50px; align-items: baseline; }
+  .box { width: 20px; height: 20px; }
+</style>
+</head>
+<body>
+
+<!-- cells on the baseline with text: the row has the baseline of the tallest ascent -->
+<div class="line" data-case data-id="cell-sizes"><div class="t" data-id="cell-sizes.t"><div class="r" data-id="cell-sizes.r">
+  <div class="c" data-id="cell-sizes.c1"><span data-id="cell-sizes.s1">A</span></div>
+  <div class="c big" data-id="cell-sizes.c2"><span data-id="cell-sizes.s2">A</span></div>
+  <div class="c" style="font-size: 30px; line-height: 60px" data-id="cell-sizes.c3"><span data-id="cell-sizes.s3">A</span></div>
+</div></div></div>
+
+<!-- the baseline of a cell is its first line -->
+<div class="line" data-case data-id="cell-lines"><div class="t" data-id="cell-lines.t"><div class="r" data-id="cell-lines.r">
+  <div class="c" style="white-space: pre" data-id="cell-lines.c1"><span data-id="cell-lines.s1">A
+A
+A</span></div>
+  <div class="c big" data-id="cell-lines.c2"><span data-id="cell-lines.s2">A</span></div>
+</div></div></div>
+
+<!-- the first line of the first block in the cell, below its padding and margin -->
+<div class="line" data-case data-id="cell-blocks"><div class="t" data-id="cell-blocks.t"><div class="r" data-id="cell-blocks.r">
+  <div class="c" style="padding: 5px" data-id="cell-blocks.c1"><div style="margin-top: 7px; padding-top: 3px" data-id="cell-blocks.d1"><span data-id="cell-blocks.s1">A</span></div><div data-id="cell-blocks.d2"><span data-id="cell-blocks.s2">A</span></div></div>
+  <div class="c big" data-id="cell-blocks.c2"><span data-id="cell-blocks.s3">A</span></div>
+</div></div></div>
+
+<!-- a cell without text has its bottom for the baseline, next to cells with text -->
+<div class="line" data-case data-id="cell-mixed"><div class="t" data-id="cell-mixed.t"><div class="r" data-id="cell-mixed.r">
+  <div class="c" data-id="cell-mixed.c1"><span data-id="cell-mixed.s1">A</span></div>
+  <div class="c" data-id="cell-mixed.c2"><div style="width: 30px; height: 30px" data-id="cell-mixed.b2"></div></div>
+  <div class="c big" data-id="cell-mixed.c3"><span data-id="cell-mixed.s3">A</span></div>
+</div></div></div>
+
+<!-- a cell that is not on the baseline is not moved by text in the others -->
+<div class="line" data-case data-id="cell-aligns"><div class="t" data-id="cell-aligns.t"><div class="r" data-id="cell-aligns.r">
+  <div class="c" style="vertical-align: top" data-id="cell-aligns.c1"><span data-id="cell-aligns.s1">A</span></div>
+  <div class="c big" data-id="cell-aligns.c2"><span data-id="cell-aligns.s2">A</span></div>
+  <div class="c" style="vertical-align: bottom" data-id="cell-aligns.c3"><span data-id="cell-aligns.s3">A</span></div>
+</div></div></div>
+
+<!-- two rows: each has its own baseline -->
+<div class="line" data-case data-id="cell-rows"><div class="t" data-id="cell-rows.t">
+  <div class="r" data-id="cell-rows.r1"><div class="c" data-id="cell-rows.c1"><span data-id="cell-rows.s1">A</span></div><div class="c big" data-id="cell-rows.c2"><span data-id="cell-rows.s2">A</span></div></div>
+  <div class="r" data-id="cell-rows.r2"><div class="c big" data-id="cell-rows.c3"><span data-id="cell-rows.s3">A</span></div><div class="c" data-id="cell-rows.c4"><span data-id="cell-rows.s4">A</span></div></div>
+</div></div>
+
+<!-- an inline-table sits on the baseline of the text in its first row -->
+<div class="line" data-case data-id="inline-table"><span data-id="inline-table.t1">AA</span><div class="t" style="display: inline-table" data-id="inline-table.t"><div class="r" data-id="inline-table.r1"><div class="c" style="font-size: 30px; line-height: 30px" data-id="inline-table.c1"><span data-id="inline-table.s1">A</span></div><div class="c" data-id="inline-table.c2"><span data-id="inline-table.s2">A</span></div></div><div class="r" data-id="inline-table.r2"><div class="c big" data-id="inline-table.c3"><span data-id="inline-table.s3">A</span></div></div></div><span data-id="inline-table.t2">AA</span></div>
+
+<!-- below the border, padding and spacing, and a caption -->
+<div class="line" data-case data-id="inline-table-frame"><span data-id="inline-table-frame.t1">AA</span><div class="t" style="display: inline-table; border: 2px solid #000; padding: 1px; border-spacing: 3px" data-id="inline-table-frame.t"><div style="display: table-caption; height: 12px" data-id="inline-table-frame.cap"></div><div class="r" data-id="inline-table-frame.r1"><div class="c big" data-id="inline-table-frame.c1"><span data-id="inline-table-frame.s1">A</span></div></div></div><span data-id="inline-table-frame.t2">AA</span></div>
+
+<!-- an inline-table whose first row has no cell on the baseline: the bottom of the row -->
+<div class="line" data-case data-id="inline-table-bottom"><span data-id="inline-table-bottom.t1">AA</span><div class="t" style="display: inline-table" data-id="inline-table-bottom.t"><div class="r" data-id="inline-table-bottom.r1"><div class="c big" style="vertical-align: top" data-id="inline-table-bottom.c1"><span data-id="inline-table-bottom.s1">A</span></div></div></div><span data-id="inline-table-bottom.t2">AA</span></div>
+
+<!-- flex items on the baseline: text, text in a bigger font, text in a padded box, a box without text -->
+<div class="line flex" data-case data-id="flex"><div data-id="flex.a">A</div><div class="big" data-id="flex.b">A</div><div style="padding: 10px; font-size: 30px; line-height: 30px" data-id="flex.c">A</div><div class="box" data-id="flex.d"></div></div>
+
+<!-- the first line of an item with several -->
+<div class="line flex" data-case data-id="flex-lines"><div style="white-space: pre" data-id="flex-lines.a">A
+A</div><div class="big" data-id="flex-lines.b">A</div></div>
+
+<!-- text that is not in a box of its own is an item of its own -->
+<div class="line flex" data-case data-id="flex-raw">A<div class="big" data-id="flex-raw.b">A</div></div>
+
+<!-- a block in the item: the margin above it is above the baseline -->
+<div class="line flex" data-case data-id="flex-block"><div data-id="flex-block.a"><div style="margin-top: 7px" data-id="flex-block.a1"><span data-id="flex-block.s1">A</span></div></div><div class="big" data-id="flex-block.b">A</div></div>
+
+<!-- line-height: the half-leading is above the baseline -->
+<div class="line flex" data-case data-id="flex-leading"><div style="line-height: 60px" data-id="flex-leading.a">A</div><div class="big" data-id="flex-leading.b">A</div></div>
+
+<!-- the baseline of a flex container is the one of its first item -->
+<div class="line flex" data-case data-id="flex-nested"><div data-id="flex-nested.a">A</div><div style="display: flex; align-items: flex-start" data-id="flex-nested.inner"><div class="big" data-id="flex-nested.ia">A</div><div class="box" data-id="flex-nested.ib"></div></div></div>
+
+<!-- align-self on the item -->
+<div class="line" style="display: flex; align-items: center; height: 60px" data-case data-id="flex-self"><div style="align-self: baseline" data-id="flex-self.a">A</div><div style="align-self: baseline" class="big" data-id="flex-self.b">A</div><div data-id="flex-self.c">A</div></div>
+
+<!-- a flex column: the first item's baseline is the container's -->
+<div class="line flex" data-case data-id="flex-column"><div data-id="flex-column.a">A</div><div style="display: flex; flex-direction: column" data-id="flex-column.col"><div class="big" data-id="flex-column.c1">A</div><div data-id="flex-column.c2">A</div></div></div>
+
+<!-- a table in a flex row on the baseline -->
+<div class="line flex" data-case data-id="flex-table"><div data-id="flex-table.a">A</div><div class="t" data-id="flex-table.t"><div class="r"><div class="c big" data-id="flex-table.c1"><span data-id="flex-table.s1">A</span></div></div></div></div>
+
+<!-- an item that clips: its baseline is still the text's, clamped to the box -->
+<div class="line flex" data-case data-id="flex-clip"><div style="overflow: hidden; height: 10px" data-id="flex-clip.a">A</div><div class="big" data-id="flex-clip.b">A</div></div>
+
+<!-- wrapped lines, each with its own baseline -->
+<div class="line flex" style="flex-wrap: wrap; width: 70px" data-case data-id="flex-wrap"><div data-id="flex-wrap.a">A</div><div class="big" data-id="flex-wrap.b">A</div><div data-id="flex-wrap.c">A</div><div class="big" data-id="flex-wrap.d">A</div></div>
+
+<!-- grid items on the baseline of their row -->
+<div class="line grid" data-case data-id="grid"><div data-id="grid.a">A</div><div class="big" data-id="grid.b">A</div><div style="padding: 10px; font-size: 30px; line-height: 30px" data-id="grid.c">A</div><div class="big" data-id="grid.d">A</div><div data-id="grid.e">A</div><div style="padding: 5px" data-id="grid.f">A</div></div>
+
+<!-- grid: a box without text, text with a bigger line height -->
+<div class="line grid" data-case data-id="grid-mixed"><div class="box" data-id="grid-mixed.a"></div><div style="line-height: 60px" data-id="grid-mixed.b">A</div><div data-id="grid-mixed.c">A</div></div>
+
+<!-- grid: align-self baseline for one item, the others at start -->
+<div class="line grid" style="align-items: start" data-case data-id="grid-self"><div style="align-self: baseline" data-id="grid-self.a">A</div><div class="big" style="align-self: baseline" data-id="grid-self.b">A</div><div data-id="grid-self.c">A</div></div>
+
+<!-- a grid in a flex row, the grid has the baseline of its first row -->
+<div class="line flex" data-case data-id="flex-grid"><div data-id="flex-grid.a">A</div><div style="display: grid; grid-template-columns: 40px" data-id="flex-grid.g"><div class="big" data-id="flex-grid.g1">A</div></div></div>
+
+<!-- the baseline of a grid is below the margin of its first item -->
+<div class="line flex" data-case data-id="flex-grid-margin"><div data-id="flex-grid-margin.a">A</div><div style="display: grid; grid-template-columns: 40px" data-id="flex-grid-margin.g"><div class="big" style="margin-top: 5px; padding-bottom: 10px" data-id="flex-grid-margin.g1">A</div></div></div>
+
+<!-- an inline-flex and an inline-block that hold text -->
+<div class="line" data-case data-id="inline-flex"><span data-id="inline-flex.t1">AA</span><div style="display: inline-flex; padding: 3px" data-id="inline-flex.f"><div class="big" data-id="inline-flex.i1">A</div></div><span data-id="inline-flex.t2">AA</span></div>
+
+<script>
+  document.fonts.load('20px GpuixTestSquare').then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

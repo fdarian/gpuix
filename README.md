@@ -6203,9 +6203,6 @@ Differences from Chrome:
   with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
   percentage of a parent with no width draws no collapsed borders.
 - A cell, row or group with a percentage `height` has an `auto` one.
-- A cell with text, or any leaf the layout measures, has no first baseline, so a
-  `baseline`-aligned cell lines up by the bottom of its content, where Chrome uses the
-  first line (until a later change gives text a baseline).
 - `direction: rtl` does not mirror the columns.
 - Rows and cells with `rowSpan`s that leave rows without a cell of their own and no height
   can share a spanning cell's height out differently, and percentage rows past 100% are

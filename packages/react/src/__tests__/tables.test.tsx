@@ -22,8 +22,8 @@
 /// (`chrome-headless-shell --headless --dump-dom`) on those blocks and reads `getBoundingClientRect` of every element
 /// with an `id`. A `<col>` has no `id`: Chrome gives it a box that is not its layout.
 ///
-/// Text in a cell is not compared with Chrome, whose fonts are not gpuix's. A cell with text has no baseline here:
-/// it is aligned by the bottom of its content, see the README's Tables section.
+/// Text in a cell is not compared with Chrome here, whose fonts are not gpuix's; `text-baselines.test.tsx` does,
+/// with a font of its own.
 
 import fs from "fs"
 import React from "react"
