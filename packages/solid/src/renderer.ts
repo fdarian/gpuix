@@ -6,6 +6,7 @@ import {
   installBrowserAutomation,
   startFrameLoop,
   type FrameLoop,
+  type FrameLoopOptions,
 } from "@gpuix/native/runtime"
 import { createRoot, type Root } from "./root.js"
 
@@ -20,6 +21,11 @@ interface RenderSlot {
 export interface RenderOptions extends WindowOptions, RootEventHandlers {
   renderer?: NativeRenderer
   debugFrameOverlay?: "hidden" | "minimal" | "full"
+  /**
+   * How the native event loop is pumped. On macOS the default is paced by the
+   * display link; `frameMs` opts into polling with a timer instead.
+   */
+  frameLoop?: Pick<FrameLoopOptions, "frameMs">
 }
 
 export function createRenderer(
@@ -41,6 +47,7 @@ export function render(code: () => JSX.Element, options: RenderOptions = {}): Ro
   const {
     renderer: injected,
     debugFrameOverlay,
+    frameLoop,
     onEvent,
     onKeyDown,
     onKeyUp,
@@ -76,6 +83,7 @@ export function render(code: () => JSX.Element, options: RenderOptions = {}): Ro
   })
   if (!injected && host.renderer instanceof GpuixRenderer && !host.loop) {
     host.loop = startFrameLoop(host.renderer, {
+      ...frameLoop,
       onTerminated: () => {
         if (typeof process !== "undefined") process.exit(0)
       },

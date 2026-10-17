@@ -47,14 +47,16 @@ export function createNativeRenderer(
   return renderer
 }
 
+export interface FrameLoopOptions {
+  frameMs?: number
+  onTerminated?: () => void
+  onError?: (error: unknown) => void
+}
+
 export function startFrameLoop(
   renderer: Pick<GpuixRenderer, "requiresTick" | "tick"> &
     Partial<Pick<GpuixRenderer, "setFrameWakeCallback">>,
-  options: {
-    frameMs?: number
-    onTerminated?: () => void
-    onError?: (error: unknown) => void
-  } = {}
+  options: FrameLoopOptions = {}
 ): FrameLoop {
   if (!renderer.requiresTick()) return { stop() {} }
   let timer: ReturnType<typeof setTimeout> | undefined
