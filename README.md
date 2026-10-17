@@ -3349,6 +3349,11 @@ belongs to tables, which are not supported yet.
   before it, the box's text and the text after it, in that order; the copied text reads `a b c` for
   `a <box>b</box> c` (the placeholder is left out, and the text of a block in the box starts a line of its own,
   as the DOM does); and the matches of a `highlight` are numbered in the same order. A match cannot cross the box.
+- A box is a [query container](#container-queries) like any other box (`containerType` on it works, and an
+  `inline-size` one without a `width` is as wide as its padding and border), and the boxes inside it or inside a
+  container around its paragraph read `@container` blocks and `cq` units in the frame that lays them out. Hovering
+  or pressing something in it restyles the `hasHover` and `hasActive` of its ancestors, the paragraph's element
+  and its own `has*` styles included.
 
 ## Text input
 
@@ -6673,8 +6678,9 @@ a narrow one. A block cannot hold another `"@container"`, and a state style
 (`hover`, ...) cannot hold one. Everything else a style holds works in a block:
 layout, `display: none`, `color` for `currentColor`, transitions and animations
 (a flip starts the transition), and `<UniversalStyle>` blocks, which come before the
-element's own. Blocks do not apply to a `<span>`: put the style on a `<text>`, or
-use a container unit.
+element's own. Blocks do not apply to an inline `<span>`: put the style on a `<text>`, or
+use a container unit. An [`inline-block`](#inline-block-inline-flex-and-inline-grid) span is a box of its own and
+takes them.
 
 **Container units.** `cqw` and `cqi` are 1% of the width of the nearest ancestor
 container that contains the width, `cqh` and `cqb` 1% of the height of the nearest
@@ -6733,16 +6739,17 @@ Differences from the browser:
 
 - `style()` queries and `scroll-state()` are unknown (false), and `container-type:
   scroll-state` does not exist
-- Only host boxes are containers (`div`, `text`, `label`, ...); not a `<span>`, an
+- Only host boxes are containers (`div`, `text`, `label`, ...); not an inline `<span>`, an
   `<img>`, an `<svg>`, an `<input>`, a `display: contents` element or a
-  `<virtual-list>` itself. Its rows can sit under one
+  `<virtual-list>` itself. Its rows can sit under one. An `inline-block`, `inline-flex` or
+  `inline-grid` box is a container like any other, and so is every box inside one
 - `<virtual-list>` takes no `@container` blocks (it takes no `hover` either), and
-  neither does a `<span>`
+  neither does an inline `<span>`
 - A block is evaluated where the element is built, so `elementsAt`, stacking and the
   paragraph planner read the style without it. `display: none` is the exception: the
   parent is rebuilt when a block hides or shows its child. `position`, `zIndex`,
   `display: contents` and `display` values that change how the parent lays out text
-  (`inline`) are not taken from a block by those readers
+  (`inline`, `inline-block`, `inline-flex`, `inline-grid`) are not taken from a block by those readers
 - Vertical writing modes do not exist, so `cqi` is `cqw` and `cqb` is `cqh`, and
   `inline-size` is `width`
 - Sizes are snapped to sixty-fourths of a pixel, the unit browsers lay out in

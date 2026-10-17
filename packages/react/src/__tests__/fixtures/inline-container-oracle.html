@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Oracle for inline-container-query.test.tsx: the expected numbers there are what headless Chrome
+  lays out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  The text is GpuixTestSquare at 20px with a line height of 20px: every character is 20px wide,
+  the ascent is the whole em and there is no descent. `data-id` names a box in the test as
+  `case.name`, and the numbers are relative to the `data-case` box it is in.
+-->
+<html>
+<head>
+<style>
+  @font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .line { font: 20px/20px GpuixTestSquare; color: #000; }
+  .ib { display: inline-block; }
+
+  /* A: an inline-block that is an inline-size container, with its own width. */
+  .a-box { container-type: inline-size; height: 30px; }
+  .a-child { display: block; height: 10px; width: 50px; }
+  @container (min-width: 80px) { .a-child { width: 70px; height: 12px; } }
+  .a-cq { display: block; width: 50cqw; height: 6px; }
+
+  /* B: size containment: an inline-size container is as wide as its padding and border. */
+  .b-box { container-type: inline-size; padding: 0 5px; height: 20px; }
+  .b-child { display: block; width: 80px; height: 10px; }
+
+  /* C: an inline-block inside a container, sized by cqw and styled by a query. */
+  .c-outer { container-type: inline-size; }
+  .c-box { height: 20px; }
+  .c-child { display: block; width: 50cqw; height: 10px; }
+  @container (min-width: 250px) { .c-child { height: 14px; } }
+  .c-text { display: block; }
+
+  /* D: container in a container in a line: the inner one is as wide as half the outer. */
+  .d-outer { container-type: inline-size; }
+  .d-box { container-type: inline-size; width: 50cqw; height: 40px; }
+  .d-child { display: block; width: 30px; height: 10px; }
+  @container (min-width: 100px) { .d-child { width: 90px; } }
+
+  /* E: a size container with a size of its own. */
+  .e-box { container-type: size; width: 100px; height: 40px; }
+  .e-child { display: block; width: 10cqw; height: 50cqh; }
+  @container (min-height: 30px) { .e-child { margin-left: 4px; } }
+  @container (min-height: 50px) { .e-child { margin-left: 8px; } }
+
+  /* F: a query on the box itself changes its width, and the text after it moves. */
+  .f-outer { container-type: inline-size; }
+  .f-box { width: 40px; height: 20px; margin-left: 6px; }
+  @container (min-width: 250px) { .f-box { width: 100px; margin-left: 10px; } }
+</style>
+</head>
+<body>
+
+<div class="line" data-case data-id="a-100" style="width: 300px">
+  <span data-id="a-100.t1">AA</span><span class="ib a-box" data-id="a-100.box" style="width: 100px"><span class="a-child" data-id="a-100.child"></span><span class="a-cq" data-id="a-100.cq"></span></span><span data-id="a-100.t2">AA</span>
+</div>
+<div class="line" data-case data-id="a-60" style="width: 300px">
+  <span data-id="a-60.t1">AA</span><span class="ib a-box" data-id="a-60.box" style="width: 60px"><span class="a-child" data-id="a-60.child"></span><span class="a-cq" data-id="a-60.cq"></span></span><span data-id="a-60.t2">AA</span>
+</div>
+
+<div class="line" data-case data-id="b" style="width: 300px">
+  <span data-id="b.t1">AA</span><span class="ib b-box" data-id="b.box"><span class="b-child" data-id="b.child"></span></span><span data-id="b.t2">AA</span>
+</div>
+
+<div class="line" data-case data-id="c-300" style="width: 300px">
+  <div class="c-outer" data-id="c-300.outer">AA<span class="ib c-box" data-id="c-300.box"><span class="c-child" data-id="c-300.child"></span></span>AA</div>
+</div>
+<div class="line" data-case data-id="c-200" style="width: 200px">
+  <div class="c-outer" data-id="c-200.outer">AA<span class="ib c-box" data-id="c-200.box"><span class="c-child" data-id="c-200.child"></span></span>AA</div>
+</div>
+
+<div class="line" data-case data-id="d-300" style="width: 300px">
+  <div class="d-outer" data-id="d-300.outer">A<span class="ib d-box" data-id="d-300.box"><span class="d-child" data-id="d-300.child"></span></span>A</div>
+</div>
+<div class="line" data-case data-id="d-160" style="width: 160px">
+  <div class="d-outer" data-id="d-160.outer">A<span class="ib d-box" data-id="d-160.box"><span class="d-child" data-id="d-160.child"></span></span>A</div>
+</div>
+
+<div class="line" data-case data-id="e" style="width: 300px">
+  <span data-id="e.t1">A</span><span class="ib e-box" data-id="e.box"><span class="e-child" data-id="e.child"></span></span><span data-id="e.t2">A</span>
+</div>
+
+<div class="line" data-case data-id="f-300" style="width: 300px">
+  <div class="f-outer" data-id="f-300.outer"><span data-id="f-300.t1">AA</span><span class="ib f-box" data-id="f-300.box"></span><span data-id="f-300.t2">AA</span></div>
+</div>
+<div class="line" data-case data-id="f-200" style="width: 200px">
+  <div class="f-outer" data-id="f-200.outer"><span data-id="f-200.t1">AA</span><span class="ib f-box" data-id="f-200.box"></span><span data-id="f-200.t2">AA</span></div>
+</div>
+
+<script>
+  document.fonts.load('20px GpuixTestSquare').then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>
