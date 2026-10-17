@@ -1,0 +1,221 @@
+<!doctype html>
+<!--
+  Oracle for container-query.test.tsx: the expected numbers there are what headless Chrome lays
+  out for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  Every box is a fixed-size div, so fonts do not matter. `data-id` names a box in the test as
+  `case.name`. The window is the test renderer's 1280x800.
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  section { width: 1280px; }
+  .cq { container-type: inline-size; }
+  .box { width: 10px; height: 10px; }
+
+  /* A: the same box in a wide, a middle and a narrow container; the later block wins. */
+  .a-child { height: 20px; width: 100px; }
+  @container (min-width: 350px) { .a-child { height: 40px; } }
+  @container (min-width: 400px) { .a-child { width: 300px; height: 30px; } }
+
+  /* B: names and the nearest ancestor. */
+  .b-outer { container: outer / inline-size; width: 600px; }
+  .b-inner { container: inner / inline-size; width: 200px; }
+  .b-child { width: 10px; height: 10px; }
+  @container (min-width: 400px) { .b-child { width: 111px; } }
+  @container outer (min-width: 400px) { .b-child { height: 22px; } }
+  @container inner (min-width: 300px) { .b-child { margin-left: 5px; } }
+  @container inner (max-width: 200px) { .b-child { margin-top: 7px; } }
+
+  /* C: size against inline-size. */
+  .c-inline { container-type: inline-size; width: 400px; height: 300px; }
+  .c-size { container-type: size; width: 400px; height: 300px; }
+  .c-child { width: 100px; height: 10px; }
+  @container (min-height: 200px) { .c-child { width: 150px; } }
+  @container (orientation: landscape) { .c-child { height: 20px; } }
+  @container (min-width: 300px) { .c-child { margin-top: 3px; } }
+  .c-nest { container-type: inline-size; width: 200px; }
+  .c-nested-child { width: 100px; height: 10px; }
+  @container (min-height: 250px) { .c-nested-child { width: 160px; } }
+  @container (min-width: 300px) { .c-nested-child { height: 20px; } }
+
+  /* D: container units. */
+  .d-size { container-type: size; width: 400px; height: 300px; }
+  .d-inline { container-type: inline-size; width: 400px; height: 300px; }
+  .d-nest { container-type: inline-size; width: 200px; }
+  .d-cqw { width: 50cqw; height: 10cqh; }
+  .d-min { width: 10cqmin; height: 10px; }
+  .d-max { width: 10cqmax; height: 10px; }
+  .d-calc { width: calc(50cqw - 10px); height: 10px; }
+  .d-logical { width: 25cqi; height: 5cqb; }
+  .d-fallback { width: 10cqw; height: 10cqh; }
+  .d-inner-container { container-type: inline-size; width: 50cqw; height: 40px; }
+  .d-on-inline { width: 10cqw; height: 10cqh; }
+
+  /* E: a container whose size a query changes, with a query on it below. */
+  .e-outer { container-type: inline-size; }
+  .e-inner { container-type: inline-size; width: 100%; height: 30px; }
+  @container (min-width: 500px) { .e-inner { width: 40%; } }
+  .e-grand { width: 10px; height: 10px; }
+  @container (min-width: 250px) { .e-grand { width: 77px; } }
+
+  /* G: size containment. */
+  .g-row { display: flex; width: 600px; align-items: flex-start; }
+  .g-item { padding: 10px; border: 2px solid; }
+  .g-contained { container-type: inline-size; }
+  .g-size { container-type: size; }
+  .g-wide { width: 200px; height: 50px; }
+  .g-grow { flex-grow: 1; }
+  .g-column { display: flex; flex-direction: column; align-items: flex-start; width: 600px; }
+  .g-relative { position: relative; width: 600px; height: 100px; }
+  .g-absolute { position: absolute; left: 10px; top: 5px; padding: 10px; border: 2px solid; }
+
+  /* H: display: none from a block takes no flex slot. */
+  .h-wrap { container-type: inline-size; }
+  .h-row { display: flex; gap: 10px; }
+  .h-item { width: 50px; height: 20px; }
+  @container (max-width: 350px) { .h-hide { display: none; } }
+
+  /* I and J: units of a query, and the content box. */
+  .i-container { container-type: inline-size; font-size: 20px; width: 400px; }
+  .i-child { width: 10px; height: 10px; }
+  @container (min-width: 20em) { .i-child { width: 20px; } }
+  @container (min-width: 25rem) { .i-child { height: 25px; } }
+  @container (min-width: 401px) { .i-child { margin-left: 9px; } }
+  .j-container { container-type: inline-size; width: 400px; padding: 20px; border: 5px solid; }
+  .j-child { width: 10px; height: 10px; }
+  @container (min-width: 350px) { .j-child { width: 20px; } }
+  @container (min-width: 351px) { .j-child { height: 30px; } }
+
+  /* L and M: the range syntax and the combinators, by container width. */
+  .l-child { width: 10px; height: 10px; }
+  @container (400px <= width < 800px) { .l-child { width: 20px; } }
+  @container (width > 399px) and (width <= 400px) { .l-child { height: 20px; } }
+  @container (width < 400px) or (width >= 800px) { .l-child { margin-left: 5px; } }
+  @container not (width < 800px) { .l-child { margin-top: 4px; } }
+  @container (width = 800px) { .l-child { padding-left: 1px; width: 11px; } }
+
+  /* N: aspect ratio and orientation of a size container. */
+  .n-child { width: 10px; height: 10px; }
+  @container (aspect-ratio: 2/1) { .n-child { width: 20px; } }
+  @container (orientation: landscape) { .n-child { height: 20px; } }
+  @container (min-aspect-ratio: 16/9) { .n-child { margin-left: 3px; } }
+  @container (max-aspect-ratio: 1/1) { .n-child { margin-top: 6px; } }
+</style>
+</head>
+<body>
+
+<!-- A -->
+<section>
+  <div style="width: 500px"><div class="cq" style="width: 100%" data-id="a-wide.box"><div data-id="a-wide.child" class="a-child"></div></div></div>
+  <div style="width: 380px"><div class="cq" style="width: 100%" data-id="a-mid.box"><div data-id="a-mid.child" class="a-child"></div></div></div>
+  <div style="width: 300px"><div class="cq" style="width: 100%" data-id="a-narrow.box"><div data-id="a-narrow.child" class="a-child"></div></div></div>
+</section>
+
+<!-- B -->
+<section>
+  <div class="b-outer"><div class="b-inner" data-id="b.box"><div data-id="b.child" class="b-child"></div></div></div>
+</section>
+
+<!-- C -->
+<section>
+  <div class="c-inline" data-id="c-inline.box"><div data-id="c-inline.child" class="c-child"></div></div>
+  <div class="c-size" data-id="c-size.box"><div data-id="c-size.child" class="c-child"></div></div>
+  <div class="c-size" data-id="c-nested.outer"><div class="c-nest" data-id="c-nested.box"><div data-id="c-nested.child" class="c-nested-child"></div></div></div>
+</section>
+
+<!-- D -->
+<section>
+  <div class="d-size" data-id="d.box">
+    <div data-id="d.cqw" class="d-cqw"></div>
+    <div data-id="d.min" class="d-min"></div>
+    <div data-id="d.max" class="d-max"></div>
+    <div data-id="d.calc" class="d-calc"></div>
+    <div data-id="d.logical" class="d-logical"></div>
+    <div data-id="d.container" class="d-inner-container"></div>
+  </div>
+  <div class="d-inline" data-id="d-inline.box"><div data-id="d.on-inline" class="d-on-inline"></div></div>
+  <div data-id="d.fallback" class="d-fallback"></div>
+  <div class="d-size" data-id="d-nested.outer">
+    <div class="d-nest" data-id="d-nested.box">
+      <div data-id="d-nested.cqw" style="width: 10cqw; height: 10cqh"></div>
+      <div data-id="d-nested.min" style="width: 10cqmin; height: 10px"></div>
+      <div data-id="d-nested.max" style="width: 10cqmax; height: 10px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- E -->
+<section>
+  <div class="e-outer" style="width: 600px"><div class="e-inner" data-id="e-wide.inner"><div data-id="e-wide.grand" class="e-grand"></div></div></div>
+  <div class="e-outer" style="width: 300px"><div class="e-inner" data-id="e-narrow.inner"><div data-id="e-narrow.grand" class="e-grand"></div></div></div>
+</section>
+
+<!-- G -->
+<section>
+  <div class="g-row">
+    <div data-id="g-row.plain" class="g-item"><div class="g-wide"></div></div>
+    <div data-id="g-row.contained" class="g-item g-contained"><div class="g-wide"></div></div>
+    <div data-id="g-row.sized" class="g-item g-contained" style="width: 100px"><div class="g-wide"></div></div>
+    <div data-id="g-row.grow" class="g-item g-contained g-grow"><div class="g-wide"></div></div>
+  </div>
+  <div class="g-row">
+    <div data-id="g-min.contained" class="g-item g-contained" style="min-width: 100px"><div class="g-wide"></div></div>
+  </div>
+  <div class="g-column">
+    <div data-id="g-column.plain" class="g-item"><div class="g-wide"></div></div>
+    <div data-id="g-column.contained" class="g-item g-contained"><div class="g-wide"></div></div>
+    <div data-id="g-column.size" class="g-item g-size"><div class="g-wide"></div></div>
+  </div>
+  <div class="g-relative" data-id="g-abs.plain-box">
+    <div data-id="g-abs.plain" class="g-absolute"><div class="g-wide"></div></div>
+  </div>
+  <div class="g-relative" data-id="g-abs.contained-box">
+    <div data-id="g-abs.contained" class="g-absolute g-contained"><div class="g-wide"></div></div>
+  </div>
+  <div data-id="g-block.size" class="g-item g-size" style="width: 300px"><div class="g-wide"></div></div>
+</section>
+
+<!-- H -->
+<section>
+  <div class="h-wrap" style="width: 500px"><div class="h-row"><div data-id="h-wide.a" class="h-item"></div><div data-id="h-wide.b" class="h-item h-hide"></div><div data-id="h-wide.c" class="h-item"></div></div></div>
+  <div class="h-wrap" style="width: 300px"><div class="h-row"><div data-id="h-narrow.a" class="h-item"></div><div class="h-item h-hide"></div><div data-id="h-narrow.c" class="h-item"></div></div></div>
+</section>
+
+<!-- I, J -->
+<section>
+  <div class="i-container" data-id="i.box"><div data-id="i.child" class="i-child"></div></div>
+  <div class="j-container" data-id="j.box"><div data-id="j.child" class="j-child"></div></div>
+</section>
+
+<!-- L: container widths 399, 400, 799, 800 -->
+<section>
+  <div class="cq" data-id="l-399.box" style="width: 399px"><div data-id="l-399.child" class="l-child"></div></div>
+  <div class="cq" data-id="l-400.box" style="width: 400px"><div data-id="l-400.child" class="l-child"></div></div>
+  <div class="cq" data-id="l-799.box" style="width: 799px"><div data-id="l-799.child" class="l-child"></div></div>
+  <div class="cq" data-id="l-800.box" style="width: 800px"><div data-id="l-800.child" class="l-child"></div></div>
+</section>
+
+<!-- N -->
+<section>
+  <div data-id="n-landscape.box" style="container-type: size; width: 400px; height: 200px"><div data-id="n-landscape.child" class="n-child"></div></div>
+  <div data-id="n-portrait.box" style="container-type: size; width: 200px; height: 400px"><div data-id="n-portrait.child" class="n-child"></div></div>
+  <div data-id="n-wide.box" style="container-type: size; width: 320px; height: 180px"><div data-id="n-wide.child" class="n-child"></div></div>
+</section>
+
+<script>
+  const rects = {}
+  for (const element of document.querySelectorAll('[data-id]')) {
+    const { x, y, width, height } = element.getBoundingClientRect()
+    rects[element.dataset.id] = [x, y, width, height]
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(rects))
+</script>
+</body>
+</html>
