@@ -5786,7 +5786,7 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"`; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-and-inline-grid)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-and-inline-grid)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `gap`, `rowGap`, `columnGap`. Grid: see [Grid](#grid)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
@@ -5825,6 +5825,7 @@ The fields:
   `clipPath` shapes
 - Grid: the track sizes of `gridTemplateColumns`, `gridTemplateRows`,
   `gridAutoColumns` and `gridAutoRows`
+- Tables: `borderSpacing` (one or two lengths, no `%`, nothing negative)
 
 `borderRadius` and the corner radii are not in this list.
 
@@ -6006,7 +6007,7 @@ so that animation starts at `0`.
   whole group), keys and focus inside it, and `click()` on it. It is never the
   target of a pointer event, as it has no box to hit. `inline-block`, `inline-flex`
   and `inline-grid` are [atomic inlines](#inline-block-inline-flex-and-inline-grid);
-  `inline-table` and `table` are not supported (the layout engine has no such box types).
+  `inline-table` is a `table` for now (see [Tables](#tables)).
 - **`visibility: "hidden"`** keeps the layout box and every report of it
   (`getBoundingClientRect`, `onLayout`, `ResizeObserver`, `IntersectionObserver`),
   and paints nothing of its own: no background, border, shadow, outline or text.
@@ -6091,6 +6092,103 @@ Also: `gridAutoColumns`, `gridAutoRows`, `gridAutoFlow` (`"row"`, `"column"`,
 `gridArea`, `gridColumn`, `gridRow`, `gridColumnStart/End`, `gridRowStart/End`
 (a line number, negative counted from the end, `"span n"`, a line or area name),
 `justifyItems` and `justifySelf`.
+
+#### Tables
+
+`display` takes the CSS table values: `table`, `table-row-group`,
+`table-header-group`, `table-footer-group`, `table-row`, `table-cell`,
+`table-caption`, `table-column` and `table-column-group`. They are the layout of
+CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
+
+```tsx
+<div style={{ display: 'table', borderSpacing: 4 }}>
+  <div style={{ display: 'table-caption' }}>Totals</div>
+  <div style={{ display: 'table-row' }}>
+    <div style={{ display: 'table-cell' }}>Rent</div>
+    <div style={{ display: 'table-cell', verticalAlign: 'top' }} rowSpan={2}>
+      1,200
+    </div>
+  </div>
+  <div style={{ display: 'table-row' }}>
+    <div style={{ display: 'table-cell' }}>Food</div>
+  </div>
+</div>
+```
+
+- **Props.** `colSpan` and `rowSpan` on a `table-cell`, `span` on a `table-column`
+  or `table-column-group`, as the DOM names them. A number or a string of digits;
+  `colSpan` and `span` are at least 1 and at most 1000, a `rowSpan` of `0` reaches
+  the end of its row group and the most is 65534. Anything else is `1`.
+- **Styles.** `borderSpacing` is one length for both axes or two, horizontal then
+  vertical (`"4px 8px"`, `2`, `"1em"`; any [length](#lengths) but a `%`, and
+  nothing negative). `tableLayout` is `"auto"` or `"fixed"`: a fixed table takes its
+  columns from its `table-column`s and the cells of its first row, and needs a
+  `width`, else it is auto. `captionSide` is `"top"` or `"bottom"`. `emptyCells`
+  `"hide"` leaves a cell with nothing in it, or only white space and `display:
+  none`, without its background, border and shadow. `borderSpacing`, `captionSide`,
+  `borderCollapse` and `emptyCells` inherit as in CSS (a table inside a cell has
+  the spacing of the table around it), `tableLayout` does not. `verticalAlign` on
+  a `table-cell` is `"top"`, `"middle"`, `"bottom"` or `"baseline"` (the default);
+  any other value is `"baseline"` there. An invalid value throws.
+- **Layout.** The table is shrink-to-fit, or `max(width, least width of the
+  columns)` with a `width`. Column widths come from the cells' content, their
+  `width` (px or `%`) and the `table-column`s'; columns no cell starts in take no
+  width; a spanning cell's extra width is shared out as Chrome does. Rows are as
+  tall as their tallest cell, a spanning cell's extra height is shared between its
+  rows, and a table with a `height` grows its body rows, not the header and footer
+  groups. A `table-header-group` goes before the other row groups and a
+  `table-footer-group` after them, wherever they are in the source (focus and
+  selection keep the source order). `table-caption`s go above or below the grid and
+  are as wide as the table. `border` and `padding` of the table wrap the grid
+  alone, and the cell spacing goes around and between the cells. A table is a
+  block-level box in flex and grid as it is in CSS.
+- **Painting.** The table's background, border, `boxShadow` and `outline` surround
+  its grid, not its captions, and `getBoundingClientRect` of the table includes
+  them (Chrome draws and measures it the same). `opacity`, `filter`, `mask` and
+  `clipPath` apply to the whole box.
+- **Anonymous cells.** Consecutive children of a table, a row group or a row that
+  are not table parts (a block, a `span`, text that is not white space only) are
+  wrapped in one anonymous cell, as in CSS 2.1 section 17.2.1, so they stack in one
+  cell. The cell has no element, no style and no id: it inherits the text style,
+  and an event on its content bubbles to the row or table. Cells directly in a
+  table or a row group form an implicit row. White space between parts makes
+  nothing, and neither does a `position: absolute` or `fixed` child, which the
+  table places by its insets. Children of a `table-column` are not built, and a
+  `table-column-group` builds only its `table-column` children.
+- **Parts are elements.** Cells, rows, groups and captions take events, `hover`
+  and `active` styles, focus (`tabIndex`), `overflow`, `zIndex`, transitions and
+  motion, `ResizeObserver`, `getBoundingClientRect`, selection and search like any
+  box. A row or group paints its own background below its cells'.
+
+Differences from Chrome:
+
+- `borderCollapse: "collapse"` is parsed and laid out (no spacing, the borders of the
+  table and its cells count as half widths), but the collapsed borders are not resolved
+  or painted: each cell paints its own border.
+- `inline-table` is a `table`: it is block-level until the `inline-*` values exist.
+- A table part outside a table, row group or row (a `table-row`, or a `table-cell`
+  in a plain `div`) is a block with no anonymous table around it.
+- A cell, row or group with a percentage `height` has an `auto` one.
+- A cell with text, or any leaf the layout measures, has no first baseline, so a
+  `baseline`-aligned cell lines up by the bottom of its content, where Chrome uses the
+  first line (until a later change gives text a baseline).
+- `direction: rtl` does not mirror the columns.
+- Rows and cells with `rowSpan`s that leave rows without a cell of their own and no height
+  can share a spanning cell's height out differently, and percentage rows past 100% are
+  not shrunk.
+- A table that is a flex item narrower than its least width reports that least width but is
+  positioned for the width it asked for; the maximum width of a table with columns that add up
+  to 100% next to columns without a percentage is what the columns ask for, where Chrome
+  makes it unbounded.
+- An absolutely positioned child of a table is placed by its insets: `margin: auto` does
+  not centre it.
+- Sums are floats, where Chrome counts in 1/64 of a pixel, so widths shared out can differ in
+  the second decimal; the painted box is snapped to the device pixel.
+- `mask` and `clipPath` reference the whole box, with the captions.
+- `emptyCells` does nothing with `borderCollapse: "collapse"`, and an element that paints
+  nothing (`visibility: hidden`) counts as content in a cell.
+- A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
+  block with no table role.
 
 ### Cursors
 
