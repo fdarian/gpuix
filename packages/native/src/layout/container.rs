@@ -29,7 +29,7 @@ use crate::style::StyleDesc;
 // ── Declaration ───────────────────────────────────────────────────────────
 
 /// `container-type`. `normal` makes no query container.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ContainerType {
     #[default]
     Normal,
@@ -385,6 +385,30 @@ const WIDTH: u8 = 1;
 const HEIGHT: u8 = 2;
 
 impl ContainerScope {
+    /// This container and the ones above it, as the build below sees them, for the key of a
+    /// retained subtree. The size is the one the build assumed, so a container that laid out
+    /// differently changes the key of what it holds.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        let mut scope = Some(self);
+        while let Some(container) = scope {
+            fp.word(container.id);
+            fp.hash(&container.kind);
+            for name in container.names.0.iter() {
+                fp.str(name);
+            }
+            fp.word(u64::MAX);
+            match container.size {
+                Some(size) => {
+                    fp.f64(size.width);
+                    fp.f64(size.height);
+                }
+                None => fp.word(u64::MAX),
+            }
+            container.lengths.fingerprint(fp);
+            scope = container.parent.as_deref();
+        }
+    }
+
     pub(crate) fn new(
         id: u64,
         declared: Declared,

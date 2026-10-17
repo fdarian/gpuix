@@ -33,6 +33,7 @@ mod platform;
 mod observers;
 pub mod perf_counters;
 mod renderer;
+mod retain;
 mod scroll;
 mod scrollbar;
 mod slot;

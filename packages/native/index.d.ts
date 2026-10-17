@@ -463,6 +463,14 @@ export declare class TestGpuixRenderer {
    * element, so divide by the frames drawn to get the per-frame figure.
    */
   getBuildCounters(): BuildCounters
+  /**
+   * Makes every element hash what it builds and compare it with the last build when the key
+   * says nothing changed, see `retain`. Counted in `retainMismatches`. Costs a formatted style
+   * per element, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on for a run.
+   */
+  setRetainVerify(verify: boolean): void
+  /** What the elements judged unchanged were built differently by, one line each. */
+  getRetainMismatches(): Array<string>
   resetBuildCounters(): void
   /**
    * How many frames the window has painted. A test that must prove a read did not draw once
@@ -918,6 +926,20 @@ export interface BuildCounters {
   /** `StyleDesc` values cloned, a state style inside a style counted as its own. */
   styleDescClones: number
   inheritedClones: number
+  /** The maximal unchanged subtrees a retained replay could have reused, see `retain`. */
+  retainableRoots: number
+  /** Elements in them, of `elementsBuilt`. */
+  retainableElements: number
+  /** Elements in those roots that hold at least eight. */
+  retainableElementsLarge: number
+  /** Elements judged unchanged that were built differently. Always 0 unless `setRetainVerify`. */
+  retainMismatches: number
+  /**
+   * A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
+   * the builds since the reset. `retained` is the share that is; every built element is counted
+   * once.
+   */
+  retainReasons: string
 }
 
 /**

@@ -36,6 +36,18 @@ pub struct BuildCounters {
     /// `StyleDesc` values cloned, a state style inside a style counted as its own.
     pub style_desc_clones: f64,
     pub inherited_clones: f64,
+    /// The maximal unchanged subtrees a retained replay could have reused, see `retain`.
+    pub retainable_roots: f64,
+    /// Elements in them, of `elementsBuilt`.
+    pub retainable_elements: f64,
+    /// Elements in those roots that hold at least eight.
+    pub retainable_elements_large: f64,
+    /// Elements judged unchanged that were built differently. Always 0 unless `setRetainVerify`.
+    pub retain_mismatches: f64,
+    /// A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
+    /// the builds since the reset. `retained` is the share that is; every built element is counted
+    /// once.
+    pub retain_reasons: String,
 }
 
 // ── Thread-local storage for !Send GPUI types ────────────────────────
@@ -687,7 +699,32 @@ impl TestGpuixRenderer {
             elements_built: counts.elements_built as f64,
             style_desc_clones: counts.style_desc_clones as f64,
             inherited_clones: counts.inherited_clones as f64,
+            retainable_roots: counts.retainable_roots as f64,
+            retainable_elements: counts.retainable_elements as f64,
+            retainable_elements_large: counts.retainable_elements_large as f64,
+            retain_mismatches: counts.retain_mismatches as f64,
+            retain_reasons: serde_json::Value::Object(
+                crate::perf_counters::retain_reasons()
+                    .into_iter()
+                    .map(|(reason, count)| (reason, serde_json::Value::from(count)))
+                    .collect(),
+            )
+            .to_string(),
         }
+    }
+
+    /// Makes every element hash what it builds and compare it with the last build when the key
+    /// says nothing changed, see `retain`. Counted in `retainMismatches`. Costs a formatted style
+    /// per element, so a benchmark leaves it off; `GPUIX_RETAIN_VERIFY` turns it on for a run.
+    #[napi]
+    pub fn set_retain_verify(&self, verify: bool) -> Result<()> {
+        update_view(|view, _window, _cx| view.retain.set_verify(verify))
+    }
+
+    /// What the elements judged unchanged were built differently by, one line each.
+    #[napi]
+    pub fn get_retain_mismatches(&self) -> Result<Vec<String>> {
+        update_view(|view, _window, _cx| view.retain.mismatches().to_vec())
     }
 
     #[napi]

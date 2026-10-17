@@ -53,3 +53,35 @@ export function formatSummary(summary: Summary): string {
     `wall p50=${summary.wallP50.toFixed(2)}ms min=${summary.wallMin.toFixed(2)}ms`
   )
 }
+
+/** The part of `getBuildCounters()` that says how much of the build a retained replay could skip (#37 step 4a). */
+export interface RetainCounters {
+  elementsBuilt: number
+  retainableRoots: number
+  retainableElements: number
+  retainableElementsLarge: number
+  retainMismatches: number
+  retainReasons: string
+}
+
+/**
+ * Share of the built elements that are in an unchanged, retainable subtree, and the reasons the
+ * rest are not, largest first. Every built element is counted under exactly one reason.
+ */
+export function formatRetain(counters: RetainCounters, top = 6): string {
+  const percent = (count: number) => ((100 * count) / counters.elementsBuilt).toFixed(1)
+  const reasons = Object.entries(JSON.parse(counters.retainReasons) as Record<string, number>)
+    .filter(([reason]) => reason !== 'retained')
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, top)
+    .map(([reason, count]) => `${reason}=${percent(count)}%`)
+  return (
+    `retainable=${percent(counters.retainableElements)}% roots=${counters.retainableRoots} ` +
+    `in-large-roots=${percent(counters.retainableElementsLarge)}% not-because: ${reasons.join(' ')}`
+  )
+}
+
+/** Every built element is counted once, as retainable or under one reason. */
+export function countedReasons(counters: RetainCounters): number {
+  return Object.values(JSON.parse(counters.retainReasons) as Record<string, number>).reduce((sum, count) => sum + count, 0)
+}

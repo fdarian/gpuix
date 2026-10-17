@@ -441,7 +441,7 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
 /// CSS `interpolate-size`: whether a transition may run between a length and a
 /// sizing keyword (`auto`, or the `auto`/`none` an unset size computes to).
 /// Inherited, as in CSS.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) enum InterpolateSize {
     #[default]
     NumericOnly,

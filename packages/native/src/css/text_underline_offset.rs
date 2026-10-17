@@ -49,6 +49,17 @@ impl TextUnderlineOffset {
         }
     }
 
+    /// What the offset holds, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        match self {
+            Self::Auto => fp.word(0),
+            Self::Length(length) => {
+                fp.word(1);
+                length.fingerprint(fp);
+            }
+        }
+    }
+
     /// The offset in px for a line drawn by the box that has `lengths`; `None` is
     /// `auto`.
     pub(crate) fn resolve(self, lengths: &LengthContext) -> Option<gpui::Pixels> {

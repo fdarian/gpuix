@@ -21,7 +21,7 @@ use gpui::{App, InteractiveElement, MouseButton, Pixels, Point, Window, WindowCo
 use super::dispatcher::{PointerAction, PointerSample};
 use super::state::PointerState;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AppRegion {
     Drag,
     NoDrag,

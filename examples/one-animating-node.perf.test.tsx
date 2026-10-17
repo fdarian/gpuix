@@ -23,7 +23,7 @@ import React from 'react'
 import { describe, expect, it } from 'vitest'
 import { motion } from '@gpuix/react'
 import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
-import { formatSummary, sample, summarize } from './perf-harness'
+import { countedReasons, formatRetain, formatSummary, sample, summarize } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -99,11 +99,14 @@ describeNative('one animating node over a large static tree', () => {
               `built/frame=${perFrame(built.elementsBuilt)} style-clones/frame=${perFrame(built.styleDescClones)} ` +
               `inherited-clones/frame=${perFrame(built.inheritedClones)} | ${formatSummary(summarize(frames))}`,
           )
+          console.log(`[animating.perf]   ${formatRetain(built)}`)
           expect(elements).toBeGreaterThan(0)
           // The work counters do not depend on the clock: a frame of a static tree copies one
           // Inherited per element it builds and no style except the animated element's own.
           expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt)
           expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
+          // Every built element is counted once, as in a retainable subtree or under the reason it is not.
+          expect(countedReasons(built)).toBe(built.elementsBuilt)
         } finally {
           root.unmount()
         }

@@ -1083,7 +1083,7 @@ impl AnimationStyle {
 }
 
 /// Whether `style` sets an animation name that is not `none`.
-fn declares_animation(style: &StyleDesc) -> bool {
+pub(super) fn declares_animation(style: &StyleDesc) -> bool {
     [&style.animation, &style.animation_name]
         .into_iter()
         .any(|text| text.as_deref().is_some_and(|text| !text.trim().eq_ignore_ascii_case("none")))

@@ -46,6 +46,16 @@ pub(crate) struct Timeline<'a> {
 pub(crate) struct InlineStyles(HashMap<u64, StyleDesc>);
 
 impl InlineStyles {
+    /// Whether a box shows something other than what it declares, or declares an animation: the
+    /// paragraph paints differently from one frame to the next without the tree changing.
+    pub(crate) fn is_active(&self, tree: &RetainedTree, states: &dyn Fn(u64, &StyleDesc) -> PointerStates) -> bool {
+        self.0.iter().any(|(id, sampled)| {
+            tree.elements.get(id).and_then(|element| element.style.as_deref()).is_none_or(|style| {
+                *sampled != *folded(style, states(*id, style)) || super::css_animation::declares_animation(style)
+            })
+        })
+    }
+
     /// The style the box `id` declares. A box that declares none and has `motion`
     /// (`<motion.span animate>`) has the one motion sampled for it.
     pub(crate) fn declared_by<'a>(&'a self, tree: &'a RetainedTree, id: u64) -> Option<&'a StyleDesc> {

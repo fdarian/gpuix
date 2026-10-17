@@ -24,6 +24,11 @@ use crate::renderer::{emit_event_full, EventCallback, SharedPaintReports};
 pub(crate) const RESIZE_EVENT: &str = "resizeObserve";
 pub(crate) const INTERSECTION_EVENT: &str = "intersectObserve";
 
+/// Whether the element is watched for its size or its place in a clip, which its prepaint reports.
+pub(crate) fn watches_paint(events: &HashSet<String>) -> bool {
+    events.contains(RESIZE_EVENT) || events.contains(INTERSECTION_EVENT)
+}
+
 /// Values closer than this are the same value; absorbs float noise from
 /// fractional scale factors.
 const EPSILON: f32 = 0.01;

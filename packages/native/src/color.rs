@@ -99,6 +99,29 @@ pub(crate) struct ColorContext {
     canvas_text: bool,
 }
 
+impl ColorContext {
+    /// Everything a colour is resolved from, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        let rgba = |fp: &mut crate::retain::Fingerprint, color: gpui::Rgba| {
+            fp.f32(color.r);
+            fp.f32(color.g);
+            fp.f32(color.b);
+            fp.f32(color.a);
+        };
+        rgba(fp, self.current);
+        rgba(fp, self.inherited);
+        if let Some(declared) = self.declared {
+            rgba(fp, declared);
+        }
+        fp.bits(&[
+            self.scheme == Scheme::Dark,
+            self.appearance == Scheme::Dark,
+            self.declared.is_some(),
+            self.canvas_text,
+        ]);
+    }
+}
+
 /// CSS `CanvasText`: the initial `color`, black on a light scheme and white on a dark one.
 fn canvas_text(scheme: Scheme) -> gpui::Rgba {
     let value = match scheme {

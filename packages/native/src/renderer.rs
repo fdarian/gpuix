@@ -5003,6 +5003,8 @@ pub(crate) struct GpuixView {
     /// The content box layout last produced for each query container, which the next build
     /// reads: see `layout::container`.
     containers: crate::layout::container::ContainerStore,
+    /// What the last build recorded of each element, for deciding what a replay could reuse.
+    pub(crate) retain: crate::retain::Retain,
     /// Where the pointer is and what it is pressing.
     /// Shared with the window's mouse-down listener, which dispatches a press
     /// without reaching the view.
@@ -5443,6 +5445,7 @@ impl GpuixView {
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
             containers: Default::default(),
+            retain: crate::retain::Retain::new(),
             pointer: Rc::new(RefCell::new(crate::events::state::PointerState::with_requests(
                 pointer_requests,
             ))),
@@ -5979,8 +5982,11 @@ impl GpuixView {
             collapsed: Default::default(),
             text_box_trim: Default::default(),
             subtree: crate::layout::cull::Subtree::empty(),
+            retain: &mut self.retain,
         };
+        build_ctx.retain.enter_row();
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
+        build_ctx.retain.leave_row();
         drop(pointer);
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
@@ -6171,6 +6177,8 @@ pub(crate) struct BuildCtx<'a> {
     /// What the element being built has under it so far: how far it draws past its boxes, and
     /// whether gpui may skip it outside its clip. See `layout::cull`.
     pub subtree: crate::layout::cull::Subtree,
+    /// What this build is recording for the next, see `retain`.
+    pub retain: &'a mut crate::retain::Retain,
 }
 
 impl BuildCtx<'_> {
@@ -6294,7 +6302,7 @@ pub(crate) struct Inherited {
     /// frameless: a window with a titlebar of its own has nothing to drag.
     pub app_region: Option<AppRegion>,
     /// Whether this window has regions at all (`titlebarTransparent`).
-    frameless: bool,
+    pub(crate) frameless: bool,
     /// Computed `color` and `colorScheme`, which `currentColor` and
     /// `light-dark()` resolve against.
     pub colors: crate::color::ColorContext,
@@ -6309,7 +6317,7 @@ pub(crate) struct Inherited {
     pub underline_offset: crate::css::text_underline_offset::TextUnderlineOffset,
     /// No element has been built yet: the next one is the root, whose computed
     /// font size becomes the `rem`.
-    above_root: bool,
+    pub(crate) above_root: bool,
     /// `fontVariantNumeric` and `fontFeatureSettings` as inherited so far.
     pub font_state: crate::css::font_features::FontFeatureState,
     /// Computed `font-variation-settings`, which an unset one of a transition or motion starts from.
@@ -6338,24 +6346,24 @@ pub(crate) struct Inherited {
     pub containers: Option<Arc<crate::layout::container::ContainerScope>>,
     /// The container this element is, once it is built. Its children's `containers` begin
     /// with it (`enter_children`); the element's own style never sees it.
-    self_container: Option<Arc<crate::layout::container::ContainerScope>>,
+    pub(crate) self_container: Option<Arc<crate::layout::container::ContainerScope>>,
     /// Counts the clones of this struct for the test renderer. Carries no data.
     clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::INHERITED }>,
 }
 
 /// One `group` declaration on the way down the tree.
 pub(crate) struct GroupScope {
-    name: gpui::SharedString,
-    state: GroupState,
-    parent: Option<Arc<GroupScope>>,
+    pub(crate) name: gpui::SharedString,
+    pub(crate) state: GroupState,
+    pub(crate) parent: Option<Arc<GroupScope>>,
 }
 
 #[derive(Clone, Copy, Default)]
-struct GroupState {
-    hovered: bool,
-    active: bool,
+pub(crate) struct GroupState {
+    pub(crate) hovered: bool,
+    pub(crate) active: bool,
     /// The group element or a descendant has focus, the source `focusWithin` reads.
-    focused_within: bool,
+    pub(crate) focused_within: bool,
 }
 
 impl Inherited {
@@ -6382,7 +6390,7 @@ impl Inherited {
         GroupState::default()
     }
 
-    fn root(
+    pub(crate) fn root(
         theme: &Theme,
         appearance: gpui::WindowAppearance,
         frameless: bool,
@@ -7280,6 +7288,7 @@ impl gpui::Render for GpuixView {
         let pointer = pointer_state.borrow();
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
+        self.retain.begin_frame(self.selection.lock().identity());
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -7327,11 +7336,13 @@ impl gpui::Render for GpuixView {
                     collapsed: Default::default(),
                     text_box_trim: Default::default(),
                     subtree: crate::layout::cull::Subtree::empty(),
+                    retain: &mut self.retain,
                 };
                 build_element(root_id, &mut ctx, window, cx)
             }
             None => gpui::Empty.into_any_element(),
         };
+        self.retain.finish_frame();
         drop(pointer);
         self.custom_registry
             .load_hidden_images(&tree, &callback, window, cx);
@@ -7447,7 +7458,24 @@ pub(crate) fn build_element(
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
 ) -> gpui::AnyElement {
+    if let Some(known) = ctx.tree.elements.get(&id) {
+        ctx.retain.enter(crate::retain::Entry {
+            id,
+            revision: known.subtree_revision,
+            inherited: &ctx.inherited,
+            at: ctx.doc_path.last().copied().unwrap_or(0),
+            stacking_root: ctx.stacking_root,
+            stacking_item: ctx.stacking_item,
+            atomic_root: ctx.atomic_root,
+            contents_overlay: ctx.contents_overlay.is_some(),
+            anchor_scope: ctx.anchor_scope.is_some(),
+            text_box_trim: ctx.text_box_trim,
+        });
+    }
     let element = build_element_unpumped(id, ctx, window, cx);
+    if ctx.tree.elements.contains_key(&id) {
+        ctx.retain.exit();
+    }
     // Every style resolves while its element is built, and a virtual-list row is
     // built in list layout, so this is the one place that sees both.
     crate::background_images::pump(window, cx);
@@ -7495,6 +7523,9 @@ fn build_element_unpumped(
     }
     // Its container units read the axes their containers contain.
     let reads_containers = element.style.as_deref().is_some_and(StyleDesc::reads_containers);
+    if reads_containers {
+        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
+    }
     if let (Some(style), Some(scope)) = (element.style.as_deref(), ctx.inherited.container_chain()) {
         scope.note_reads_from(style.container_unit_axes);
     }
@@ -7523,6 +7554,8 @@ fn build_element_unpumped(
             .then(|| crate::events::state_styles::resolve_pointer_states(style, pointer_states))
     });
     let base_style = state_style.as_ref().or(declared);
+    ctx.retain.pointer(pointer_states);
+    ctx.retain.focus(&ctx.focus_styles, id, ctx.focus_handles.contains_key(&id));
 
     // State styles and CSS transitions come before motion: an `animate` value
     // is an inline style and beats a transition. CSS animations come last of
@@ -7538,6 +7571,19 @@ fn build_element_unpumped(
     // the root render prunes the measurement of any element that was not.
     let measured = has_motion || transitions_wanted || animations_wanted;
     let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
+    ctx.retain.measurement(measurement.as_ref());
+    if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
+        ctx.retain.dynamic(crate::retain::Dynamic::Motion);
+    }
+    if motion_binding.is_some() {
+        ctx.retain.dynamic(crate::retain::Dynamic::MotionValues);
+    }
+    if layout_source.is_some() {
+        ctx.retain.exclude(crate::retain::Exclusion::LayoutAnimation);
+    }
+    if animations_wanted {
+        ctx.retain.dynamic(crate::retain::Dynamic::Animation);
+    }
     let transitioned = (transitions_wanted || animations_wanted).then(|| {
         let focus_visible = crate::motion::FocusVisible {
             own: ctx
@@ -7547,6 +7593,7 @@ fn build_element_unpumped(
                 && window.last_input_was_keyboard(),
             descendant: ctx.focus_styles.has_focus_visible(id),
         };
+        ctx.retain.focus_visible_own(focus_visible.own);
         crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
@@ -7573,6 +7620,9 @@ fn build_element_unpumped(
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
         return gpui::Empty.into_any_element();
+    }
+    if transitioned.as_ref().is_some_and(|declared| declared.transitions.is_some()) {
+        ctx.retain.dynamic(crate::retain::Dynamic::Transition);
     }
     let declared_style = transitioned
         .as_ref()
@@ -7672,6 +7722,12 @@ fn build_element_unpumped(
     });
     let style = offset_style.as_ref().or(style);
 
+    match style.and_then(|style| style.position.as_deref()) {
+        Some("sticky") => ctx.retain.exclude(crate::retain::Exclusion::Sticky),
+        Some("fixed") => ctx.retain.exclude(crate::retain::Exclusion::Fixed),
+        _ => {}
+    }
+
     // Inheritable style resolves once here so both built-ins and custom
     // elements see the same cascade.
     let descended = ctx.inherited.clone().descend(style, element.has_inert_prop());
@@ -7689,6 +7745,13 @@ fn build_element_unpumped(
         stripped
     });
     let style = atomic_style.as_ref().or(style);
+    let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
+    ctx.retain.stacking(|| {
+        (
+            crate::layout::stacking::lift_z(style, stacking_item, colors, lengths).is_some(),
+            crate::layout::stacking::forms_context(style, stacking_root, colors, lengths),
+        )
+    });
     // After the fold above: a group is its descendants' to follow, so the
     // element's own `groupHover` reads the groups outside it.
     if let Some(name) = style.and_then(StyleDesc::declared_group) {
@@ -7710,6 +7773,7 @@ fn build_element_unpumped(
         && crate::layout::table::can_be_container(element)
     {
         if let Some(declaration) = style.and_then(crate::layout::container::declared) {
+            ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
             ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::new(
                 id,
                 declaration,
@@ -7724,6 +7788,7 @@ fn build_element_unpumped(
     // and `GroupList::collect` skips nested declarations so an ancestor never
     // resolves or counts matches that will not paint.
     if let Some(value) = element.custom_props().get("highlight") {
+        ctx.retain.exclude(crate::retain::Exclusion::Highlight);
         let has_listener = element.events().contains("highlight");
         let resolved = resolve_highlight(
             ctx.highlights,
@@ -7750,6 +7815,7 @@ fn build_element_unpumped(
         host if crate::text::inline::is_host_type(host) => {
             ctx.custom_registry.destroy(id);
             if crate::layout::contents::is_display_contents(element) {
+                ctx.retain.exclude(crate::retain::Exclusion::DisplayContents);
                 build_contents_container(element, style, stacking_root, ctx, window, cx)
             } else {
                 ctx.text_box_trim = crate::css::text_box::requested(
@@ -7764,6 +7830,7 @@ fn build_element_unpumped(
         "virtual-list" => {
             ctx.custom_registry.destroy(id);
             ctx.subtree.block();
+            ctx.retain.exclude(crate::retain::Exclusion::VirtualList);
             build_virtual_list(element, ctx, window, cx)
         }
 
@@ -7772,6 +7839,13 @@ fn build_element_unpumped(
             // An `<svg>` paints its shape children as one image, so they are
             // serialised instead of built.
             let is_svg = custom_type == "svg";
+            ctx.retain.exclude(if is_svg {
+                crate::retain::Exclusion::Svg
+            } else if custom_type == "anchored" {
+                crate::retain::Exclusion::Anchored
+            } else {
+                crate::retain::Exclusion::CustomElement
+            });
             let svg_markup = is_svg
                 .then(|| ctx.svg_trees
                     .markup(ctx.tree, id, ctx.motion_states, &ctx.inherited.colors, ctx.now))
@@ -8146,6 +8220,15 @@ pub(crate) fn build_host_container(
     }
     el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
+    if let Some(handle) = ctx.scroll_handles.get(&element.id) {
+        ctx.retain.scroll(handle.offset());
+        let user = style.map(crate::scroll::Axes::of).is_some_and(|axes| axes.x.scrolls_for_user() || axes.y.scrolls_for_user());
+        ctx.retain.exclude(if user {
+            crate::retain::Exclusion::Scroller
+        } else {
+            crate::retain::Exclusion::OverflowHidden
+        });
+    }
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
     // attach it via track_focus. This makes the element focusable — clicking it
@@ -8163,6 +8246,12 @@ pub(crate) fn build_host_container(
     } else {
         selection_start_flag(style)
     };
+    if element.events().contains("layout")
+        || element.events().contains("scroll")
+        || crate::observers::watches_paint(element.events())
+    {
+        ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
+    }
     el = crate::automation::track_host_bounds(
         el,
         element.id,
@@ -8221,6 +8310,9 @@ pub(crate) fn build_host_container(
             el = el.aria_value(content);
         }
     }
+    if is_label {
+        ctx.retain.exclude(crate::retain::Exclusion::Label);
+    }
     if is_label && !inert {
         el = crate::accessibility::label::describe(el, element.id);
     }
@@ -8229,7 +8321,9 @@ pub(crate) fn build_host_container(
     // dispatcher (`crate::events`) finds the target and runs them along the
     // retained tree. What is left are the events GPUI still owns.
     if !inert {
-        el = apply_a11y_click(el, click_path(ctx.tree, element), ctx.activation);
+        let path = click_path(ctx.tree, element);
+        ctx.retain.shape(path.len() as u64);
+        el = apply_a11y_click(el, path, ctx.activation);
     }
 
     // Key and focus events are not wired per element either: one event per keystroke
@@ -8255,6 +8349,7 @@ pub(crate) fn build_host_container(
     if let Some(outset) = ctx.subtree.outset() {
         host = host.cullable(outset);
     }
+    ctx.retain.digest(|| format!("{:?} {} {:?}", host.style(), content.len(), paint_ranks));
     host.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         host = host.paint_ranks(paint_ranks);
@@ -8375,6 +8470,8 @@ fn build_content(
     let trim = std::mem::take(&mut ctx.text_box_trim);
     if element.children.is_empty() {
         if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
+            ctx.retain.text();
+            ctx.retain.digest(|| content.to_string());
             content_elements.push(text_content(element, &content, trim, ctx));
             ctx.subtree.merge(crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32));
             paint_ranks.push(0);
@@ -8650,6 +8747,23 @@ fn paragraph_content(
     cx: &mut gpui::Context<GpuixView>,
 ) -> (gpui::AnyElement, crate::layout::cull::Subtree) {
     let motion = ctx.inline_styles(paragraph);
+    if ctx.retain.recording() {
+        ctx.retain.text();
+        let inline_pointer = {
+            let states = ctx.inline_states();
+            let mut mixed = 0;
+            for (index, id) in paragraph.pieces.iter().flat_map(|piece| piece.boxes.iter()).enumerate() {
+                if let Some(style) = ctx.tree.elements.get(id).and_then(|span| span.style.as_deref()) {
+                    mixed = crate::retain::mix_pointer(mixed, index, states(*id, style));
+                }
+            }
+            mixed
+        };
+        ctx.retain.inline_pointer(inline_pointer);
+        if motion.is_active(ctx.tree, &ctx.inline_states()) {
+            ctx.retain.dynamic(crate::retain::Dynamic::InlineMotion);
+        }
+    }
     let styles = {
         let ctx = &*ctx;
         crate::text::paragraph::styles(
@@ -8663,6 +8777,7 @@ fn paragraph_content(
             &motion,
         )
     };
+    ctx.retain.digest(|| format!("{} {:?}", paragraph.text, styles.runs));
     // A box in the paragraph, or the paragraph being inline content of a box, puts the texts around
     // and inside the boxes on one line for copy.
     let line = ctx

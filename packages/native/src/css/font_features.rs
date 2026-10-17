@@ -101,6 +101,17 @@ pub(crate) struct FontFeatureState {
 }
 
 impl FontFeatureState {
+    /// What the state holds, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        for features in [&self.numeric, &self.settings] {
+            for (tag, value) in features.iter() {
+                fp.str(tag);
+                fp.word(u64::from(*value));
+            }
+            fp.word(u64::MAX);
+        }
+    }
+
     /// The state below an element styled with these two declarations, and the
     /// features to hand to GPUI when this element declares either. An invalid
     /// value is ignored and leaves the inherited one in place.

@@ -53,6 +53,18 @@ pub(crate) struct Measurement {
 }
 
 impl Measurement {
+    /// Everything in it, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        fp.f32(f32::from(self.border_box.width));
+        fp.f32(f32::from(self.border_box.height));
+        fp.f32(f32::from(self.natural_height));
+        fp.f32(self.natural_width.map_or(f32::NAN, f32::from));
+        fp.f32(f32::from(self.parent_content.width));
+        fp.f32(f32::from(self.parent_content.height));
+        fp.f32(self.scale_factor);
+        fp.bits(&[self.percent_height_resolves, self.flex_main == Axis::Width]);
+    }
+
     /// The natural size along the axis `prop` sizes, rounded up to a whole
     /// device pixel, so content that ends part-way through a pixel is not
     /// clipped by a size that stops short of it. The epsilon keeps a size that

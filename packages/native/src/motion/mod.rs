@@ -692,6 +692,11 @@ impl MotionState {
         })
     }
 
+    /// Whether a track is still moving at `now`: what it shows differs from one frame to the next.
+    pub(crate) fn is_animating(&self, now: Instant) -> bool {
+        self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))
+    }
+
     pub(crate) fn frame(&mut self, now: Instant) -> MotionFrame {
         let active = self.valid
             && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active));

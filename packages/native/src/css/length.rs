@@ -36,6 +36,16 @@ pub struct LinearLength {
 }
 
 impl LinearLength {
+    /// Every term of the length, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        for term in [
+            self.px, self.percent, self.em, self.rem, self.vw, self.vh, self.vmin, self.vmax,
+            self.cqw, self.cqh, self.cqmin, self.cqmax,
+        ] {
+            fp.f64(term);
+        }
+    }
+
     pub(crate) const fn px(px: f64) -> Self {
         Self {
             px,
@@ -174,6 +184,17 @@ pub(crate) struct LengthContext {
 }
 
 impl LengthContext {
+    /// Everything a length is resolved from, for the key of a retained subtree.
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        fp.f64(self.font_size);
+        fp.f64(self.parent_font_size);
+        fp.f64(self.root_font_size);
+        fp.f64(self.viewport_width);
+        fp.f64(self.viewport_height);
+        fp.option_f64(self.container_width);
+        fp.option_f64(self.container_height);
+    }
+
     /// The context above the root element: every font size is the initial one.
     pub(crate) fn initial(viewport_width: f64, viewport_height: f64) -> Self {
         Self {

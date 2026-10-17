@@ -15,7 +15,7 @@
 use super::property::Axis;
 use crate::style::{DimensionValue, StyleDesc};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Layout {
     Other,
     Flex {
@@ -47,7 +47,7 @@ impl Layout {
 
 /// What an element is as the containing block of its children, as far as its
 /// style and its own container tell.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Container {
     height_definite: bool,
     layout: Layout,
