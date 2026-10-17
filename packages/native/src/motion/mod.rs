@@ -267,8 +267,10 @@ pub(crate) struct MotionFrame {
 }
 
 /// An animation that cannot begin until its element has been measured: it
-/// starts from the laid-out value, or runs to `height: auto`. The clock starts
-/// on the first frame a measurement exists.
+/// starts from the laid-out value, or runs to `height: auto`. The measurement
+/// only fixes the numbers; the clock started when the style changed, as it does
+/// for a px to px animation and in a browser, so the frame that resolves it is
+/// already one frame in.
 ///
 /// An element that was not measured by the frame painted after the animation
 /// was set is not painted at all (inside a `display: none` subtree, say), so
@@ -281,6 +283,8 @@ struct Pending {
     transition: Transition,
     /// The count of painted frames when the animation was set.
     painted: u64,
+    /// The frame clock when the animation was set: the resolved track starts here.
+    started: Instant,
 }
 
 pub(crate) struct MotionState {
@@ -555,7 +559,7 @@ impl MotionState {
                 &waiting.transition,
                 measurement,
                 painted,
-                now,
+                waiting.started,
             ) {
                 Ok(Begun::Track(track)) => {
                     self.tracks.insert(prop, track);
@@ -982,6 +986,7 @@ fn begin(
             goal: goal.clone(),
             transition: transition.clone(),
             painted,
+            started: now,
         })
     };
 
@@ -1058,6 +1063,7 @@ fn begin_keyframes(
             goal: goal.clone(),
             transition: transition.clone(),
             painted,
+            started: now,
         })
     };
     let last = goal.last();
@@ -2822,15 +2828,16 @@ mod tests {
             assert!(!waiting.just_settled);
             assert!(state.owns(AnimProp::Height), "a transition must not take it over");
 
-            // The clock starts at the first frame that has a measurement.
-            let measured_at = at(started, 0.3);
+            // The clock started when the style changed, not at the first frame
+            // that has a measurement.
+            let measured_at = at(started, 0.25);
             let measured = measurement(100.0, 0.0, 80.0);
             state.sync(&open(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             assert!(state.frame(measured_at).active);
-            assert_eq!(pixels(height(&state, measured_at)), 0.0);
-            assert_eq!(pixels(height(&state, at(measured_at, 0.5))), 40.0);
+            assert_eq!(pixels(height(&state, measured_at)), 20.0);
+            assert_eq!(pixels(height(&state, at(started, 0.5))), 40.0);
 
-            let end = at(measured_at, 1.0);
+            let end = at(started, 1.0);
             state.sync(&open(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             let frame = state.frame(end);
             assert!(!frame.active);
@@ -3054,7 +3061,7 @@ mod tests {
                 .sync(&open(), None, Colors::root(), Some(&measurement(100.0, 0.0, 80.0)), 4, measured_at)
                 .unwrap();
             assert!(state.pending.is_empty());
-            assert_eq!(pixels(height(&state, at(measured_at, 0.5))), 40.0);
+            assert_eq!(pixels(height(&state, at(started, 0.5))), 40.0);
         }
 
         #[test]
@@ -3073,7 +3080,7 @@ mod tests {
             let measured_at = at(started, 0.2);
             let measured = measurement(60.0, 40.0, 40.0);
             state.sync(&description, None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
-            let halfway = style_at(&state, at(measured_at, 0.5));
+            let halfway = style_at(&state, at(started, 0.5));
             assert_eq!(halfway.width, Some(DimensionValue::Pixels(80.0)));
             assert_eq!(halfway.max_height, Some(DimensionValue::Pixels(20.0)));
             assert_eq!(halfway.min_height, Some(DimensionValue::Pixels(65.0)));
@@ -3150,14 +3157,14 @@ mod tests {
             assert!(state.frame(laid_out_at).active);
             assert_eq!(pixels(style_at(&state, at(laid_out_at, 0.5)).width), 0.0);
 
-            let measured_at = at(started, 0.3);
+            let measured_at = at(started, 0.25);
             let measured = wide(0.0, 120.0);
             state.sync(&open_wide(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
-            assert_eq!(pixels(style_at(&state, measured_at).width), 0.0);
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 60.0);
-            assert!(state.needs_natural_width(at(measured_at, 0.5)), "it follows the width while it runs");
+            assert_eq!(pixels(style_at(&state, measured_at).width), 30.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).width), 60.0);
+            assert!(state.needs_natural_width(at(started, 0.5)), "it follows the width while it runs");
 
-            let end = at(measured_at, 1.0);
+            let end = at(started, 1.0);
             state.sync(&open_wide(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             let frame = state.frame(end);
             assert!(!frame.active);
@@ -3244,7 +3251,108 @@ mod tests {
 
             let measured_at = at(now, 0.1);
             state.sync(&open_wide(), None, Colors::root(), Some(&wide(50.0, 120.0)), 0, measured_at).unwrap();
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 85.0);
+            assert_eq!(pixels(style_at(&state, at(now, 0.5)).width), 85.0);
+        }
+
+        const FRAME: f64 = 0.016;
+
+        fn transitions() -> [(&'static str, serde_json::Value); 2] {
+            [
+                ("linear", serde_json::json!({ "duration": 0.1, "ease": "linear" })),
+                ("spring", serde_json::json!({ "type": "spring", "stiffness": 170.0, "damping": 26.0 })),
+            ]
+        }
+
+        fn width_motion(
+            animate: serde_json::Value,
+            initial: serde_json::Value,
+            transition: &serde_json::Value,
+        ) -> serde_json::Value {
+            serde_json::json!({ "initial": initial, "animate": animate, "transition": transition })
+        }
+
+        /// The width on the first two frames after the style changed, a frame
+        /// apart. `mounted` is the measurement the changing frame had; `next`
+        /// the one the following frame has.
+        fn widths_after_the_change(
+            description: &serde_json::Value,
+            mounted: Option<&Measurement>,
+            next: &Measurement,
+        ) -> [f64; 2] {
+            let started = Instant::now();
+            let mut state = MotionState::new(description, None, Colors::root(), mounted, 0, started).unwrap();
+            let first = at(started, FRAME);
+            state.sync(description, None, Colors::root(), Some(next), 0, first).unwrap();
+            [pixels(style_at(&state, first).width), pixels(style_at(&state, at(started, 2.0 * FRAME)).width)]
+        }
+
+        #[test]
+        fn an_auto_width_is_as_far_along_as_a_px_one_on_the_frame_after_the_change() {
+            let measured = wide(0.0, 120.0);
+            for (name, transition) in transitions() {
+                let animate = |width: serde_json::Value| {
+                    width_motion(serde_json::json!({ "width": width }), serde_json::json!({ "width": 0.0 }), &transition)
+                };
+                let px = widths_after_the_change(&animate(120.0.into()), Some(&measured), &measured);
+                let auto = widths_after_the_change(&animate("auto".into()), None, &measured);
+                assert!(px[0] > 0.0, "{name}: the px animation moved on the first frame after the change");
+                assert_eq!(auto, px, "{name}: 0 to auto");
+            }
+            let linear = &transitions()[0].1;
+            let auto = widths_after_the_change(
+                &width_motion(serde_json::json!({ "width": "auto" }), serde_json::json!({ "width": 0.0 }), linear),
+                None,
+                &measured,
+            );
+            assert!((auto[0] - 0.16 * 120.0).abs() < 1e-3, "16ms of 100ms: {}", auto[0]);
+        }
+
+        #[test]
+        fn a_width_retargeted_to_or_from_auto_is_as_far_along_as_a_px_one_on_the_frame_after_the_change() {
+            for (name, transition) in transitions() {
+                let fixed = |width: f64| width_motion(serde_json::json!({ "width": width }), serde_json::json!(false), &transition);
+                let to_auto = width_motion(serde_json::json!({ "width": "auto" }), serde_json::json!(false), &transition);
+                let to_zero = fixed(0.0);
+
+                // A px width heading for auto, then for 0 again from there.
+                let started = Instant::now();
+                let mut auto =
+                    MotionState::new(&fixed(50.0), None, Colors::root(), Some(&wide(50.0, 50.0)), 0, started).unwrap();
+                auto.sync(&to_auto, None, Colors::root(), Some(&measurement(50.0, 30.0, 30.0)), 0, started).unwrap();
+                let first = at(started, FRAME);
+                auto.sync(&to_auto, None, Colors::root(), Some(&wide(50.0, 120.0)), 0, first).unwrap();
+                let mut px =
+                    MotionState::new(&fixed(50.0), None, Colors::root(), Some(&wide(50.0, 50.0)), 0, started).unwrap();
+                px.sync(&fixed(120.0), None, Colors::root(), Some(&wide(50.0, 120.0)), 0, started).unwrap();
+                for frame in [first, at(started, 2.0 * FRAME)] {
+                    assert_eq!(
+                        pixels(style_at(&auto, frame).width),
+                        pixels(style_at(&px, frame).width),
+                        "{name}: px to auto"
+                    );
+                }
+                assert!(pixels(style_at(&auto, first).width) > 50.0, "{name}: moved on the first frame");
+
+                // A settled auto width collapsing: the width it had comes from layout.
+                let settled = |state: &mut MotionState| {
+                    state.sync(&to_zero, None, Colors::root(), None, 0, started).unwrap();
+                };
+                let mut from_auto =
+                    MotionState::new(&to_auto, None, Colors::root(), None, 0, started).unwrap();
+                settled(&mut from_auto);
+                from_auto.sync(&to_zero, None, Colors::root(), Some(&wide(100.0, 100.0)), 0, first).unwrap();
+                let mut from_px =
+                    MotionState::new(&fixed(100.0), None, Colors::root(), Some(&wide(100.0, 100.0)), 0, started).unwrap();
+                from_px.sync(&to_zero, None, Colors::root(), Some(&wide(100.0, 100.0)), 0, started).unwrap();
+                for frame in [first, at(started, 2.0 * FRAME)] {
+                    assert_eq!(
+                        pixels(style_at(&from_auto, frame).width),
+                        pixels(style_at(&from_px, frame).width),
+                        "{name}: auto to px"
+                    );
+                }
+                assert!(pixels(style_at(&from_auto, first).width) < 100.0, "{name}: moved on the first frame");
+            }
         }
 
         #[test]
@@ -3342,8 +3450,8 @@ mod tests {
             let measured = in_parent(measurement(100.0, 10.0, 10.0), 200.0, 80.0);
             state.sync(&description, None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
             assert!(state.pending.is_empty());
-            assert_eq!(pixels(width(&state, measured_at)), 100.0);
-            assert_eq!(pixels(width(&state, at(measured_at, 0.5))), 70.0);
+            assert_eq!(pixels(width(&state, measured_at)), 82.0);
+            assert_eq!(pixels(width(&state, at(started, 0.5))), 70.0);
         }
 
         #[test]
@@ -4110,10 +4218,10 @@ mod tests {
             let measured_at = at(started, 0.2);
             let measured = measurement(800.0, 80.0);
             state.sync(&auto_keyframes(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).height), 50.0);
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.75)).height), 65.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).height), 50.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.75)).height), 65.0);
 
-            let end = at(measured_at, 1.0);
+            let end = at(started, 1.0);
             state.sync(&auto_keyframes(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             let frame = state.frame(end);
             assert!(!frame.active && frame.just_settled);
@@ -4141,10 +4249,10 @@ mod tests {
                 ..measurement(800.0, 0.0)
             };
             state.sync(&wide_keyframes(), None, Colors::root(), Some(&measured), 0, measured_at).unwrap();
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.5)).width), 50.0);
-            assert_eq!(pixels(style_at(&state, at(measured_at, 0.75)).width), 65.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.5)).width), 50.0);
+            assert_eq!(pixels(style_at(&state, at(started, 0.75)).width), 65.0);
 
-            let end = at(measured_at, 1.0);
+            let end = at(started, 1.0);
             state.sync(&wide_keyframes(), None, Colors::root(), Some(&measured), 0, end).unwrap();
             assert!(state.frame(end).just_settled);
             assert_eq!(style_at(&state, end).width, Some(DimensionValue::Auto));

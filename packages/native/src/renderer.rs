@@ -12783,16 +12783,46 @@ mod dimension_length_tests {
             set_motion(&page, cx, open_width());
             // The first frame has nothing measured: it holds the start.
             near(page.size(2), (0.0, 100.0));
-            // The next one has the width, and the clock starts there.
-            step(&page, cx, 500.0);
-            near(page.size(2), (0.0, 100.0));
-            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
+            // The next one has the width, and the clock started at the style change.
             step(&page, cx, 500.0);
             near(page.size(2), (60.0, 100.0));
+            assert_eq!(natural_width(&page, cx, 2), Some(120.0));
             step(&page, cx, 500.0);
             near(page.size(2), (120.0, 100.0));
             step(&page, cx, 500.0);
             near(page.size(2), (120.0, 100.0));
+        }
+
+        /// The width at each of two frames 16ms apart after the style changed.
+        fn first_frames(page: &Page, cx: &mut gpui::TestAppContext, description: serde_json::Value) -> [f64; 3] {
+            set_motion(page, cx, description);
+            let mut widths = [page.size(2).0, 0.0, 0.0];
+            for width in &mut widths[1..] {
+                step(page, cx, 16.0);
+                *width = page.size(2).0;
+            }
+            widths
+        }
+
+        fn linear_width(from: serde_json::Value, to: serde_json::Value) -> serde_json::Value {
+            serde_json::json!({
+                "initial": { "width": from },
+                "animate": { "width": to },
+                "transition": { "duration": 0.1, "ease": "linear" }
+            })
+        }
+
+        #[gpui::test]
+        fn an_auto_width_animation_is_as_far_along_as_a_px_one_on_the_frame_after_the_change(
+            cx: &mut gpui::TestAppContext,
+        ) {
+            let px = first_frames(&page(cx, r#"{"display": "flex"}"#), cx, linear_width(0.into(), 120.into()));
+            let auto = first_frames(&page(cx, r#"{"display": "flex"}"#), cx, linear_width(0.into(), "auto".into()));
+            assert_eq!(auto[0], 0.0);
+            for (frame, (auto, px)) in auto.iter().zip(px).enumerate() {
+                assert!((auto - px).abs() < 0.01, "frame {frame}: auto {auto}, px {px}");
+            }
+            assert!(auto[1] > 0.0, "the first frame after the change already moved");
         }
 
         #[gpui::test]
