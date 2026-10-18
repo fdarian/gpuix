@@ -1,0 +1,81 @@
+{
+  "rect": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "clientRects": 0,
+  "offsetHeight": 0,
+  "rowFocusable": false,
+  "childFocusable": "a",
+  "click": [
+    [
+      "capture",
+      "row",
+      "a"
+    ],
+    [
+      "bubble",
+      "row",
+      "a"
+    ]
+  ],
+  "fromPoint": [
+    "a",
+    "scroller",
+    "",
+    ""
+  ],
+  "io": [
+    {
+      "isIntersecting": false,
+      "ratio": 0,
+      "rect": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ro": {
+    "contents": [
+      [
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "none": [
+      [
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "plain": [
+      [
+        400,
+        10,
+        400,
+        10
+      ]
+    ]
+  },
+  "ax": [
+    "row",
+    "after",
+    "row-a",
+    "row-b"
+  ],
+  "tab": [
+    "row-a",
+    "row-b",
+    "aria-hidden-child",
+    "after",
+    "BODY"
+  ]
+}

@@ -2,10 +2,19 @@
  * `display: contents` where there is no parent to splice into (the root, a
  * virtual-list row), and the listeners of an element that has no box.
  */
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import React from "react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
+import type { PublicInstance } from "../types/host.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
+
+/** What Chrome reports for the same shapes: `fixtures/display-contents-oracle.html`. */
+const oracle = JSON.parse(
+  fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/display-contents-oracle.json"), "utf8")
+)
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -212,6 +221,67 @@ describeNative("display: contents", () => {
       expect(seen, "moving from one descendant to the next stays inside").toEqual([])
       move(10, 120)
       expect(seen).toEqual(["pointerleave", "mouseleave"])
+    })
+  })
+  describe("what an element with no box lets a reader see", () => {
+    const focused = () => testRoot.renderer.getElement(testRoot.renderer.getFocusedElementId())?.testId ?? null
+
+    it("answers a zero rect from getBoundingClientRect, as the root and spliced into a parent", () => {
+      const instances: Record<string, PublicInstance> = {}
+      const ref = (name: string) => (instance: PublicInstance | null) => {
+        if (instance) instances[name] = instance
+      }
+      testRoot.render(
+        <div ref={ref("root")} style={{ display: "contents" }}>
+          <div ref={ref("spliced")} style={{ display: "contents" }}>
+            <div style={{ width: 50, height: 50 }} />
+          </div>
+        </div>
+      )
+
+      const [x, y, width, height] = oracle.rect
+      const zero = { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height }
+      expect(instances.root!.getBoundingClientRect()).toEqual(zero)
+      expect(instances.spliced!.getBoundingClientRect()).toEqual(zero)
+    })
+
+    it("cannot be focused, takes no Tab stop, and leaves its children their own", () => {
+      testRoot.render(
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="contents" tabIndex={0} style={{ display: "contents" }}>
+            <div testId="a" tabIndex={0} style={{ width: 50, height: 20 }} />
+          </div>
+          <div testId="b" tabIndex={0} style={{ width: 50, height: 20 }} />
+        </div>
+      )
+
+      testRoot.renderer.focusElement(id("contents"))
+      expect(focused()).toBe(null)
+      expect(oracle.rowFocusable).toBe(false)
+
+      testRoot.renderer.simulateKeystrokes("Tab")
+      expect(focused()).toBe("a")
+      testRoot.renderer.simulateKeystrokes("Tab")
+      expect(focused()).toBe("b")
+    })
+
+    it("can be focused again once it stops being display: contents", () => {
+      const app = (display: "contents" | "block") => (
+        <div style={{ width: 200, height: 100 }}>
+          <div testId="element" tabIndex={0} style={{ display, height: 20 }} />
+        </div>
+      )
+      testRoot.render(app("contents"))
+      testRoot.renderer.focusElement(id("element"))
+      expect(focused()).toBe(null)
+
+      testRoot.render(app("block"))
+      testRoot.renderer.focusElement(id("element"))
+      expect(focused()).toBe("element")
+
+      testRoot.render(app("contents"))
+      testRoot.renderer.flush()
+      expect(focused(), "a focused element that loses its box blurs").toBe(null)
     })
   })
 })

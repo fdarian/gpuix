@@ -168,6 +168,10 @@ impl RetainedElement {
     /// A key or focus listener does not make an element focusable; an ancestor's
     /// key listener still hears the keys of a focused descendant.
     pub fn needs_focus(&self) -> bool {
+        // No box, nothing to focus or draw a ring on; Chrome skips it too.
+        if crate::layout::contents::is_display_contents(self) {
+            return false;
+        }
         if crate::focus::is_text_control(&self.element_type) {
             // `disabled` outranks `tabIndex`: a disabled control cannot be focused at all.
             !self.is_disabled()
@@ -420,7 +424,7 @@ struct StyleChange {
     changed: bool,
     regrouped: bool,
     text_reprocessed: bool,
-    visibility_changed: bool,
+    focusability_changed: bool,
 }
 
 impl StyleChange {
@@ -428,7 +432,7 @@ impl StyleChange {
         self.changed |= other.changed;
         self.regrouped |= other.regrouped;
         self.text_reprocessed |= other.text_reprocessed;
-        self.visibility_changed |= other.visibility_changed;
+        self.focusability_changed |= other.focusability_changed;
     }
 }
 
@@ -941,7 +945,7 @@ impl RetainedTree {
         for id in ids {
             total.absorb(self.refresh_effective_style(id));
         }
-        if total.visibility_changed {
+        if total.focusability_changed {
             // One pass from the tops of the trees instead of a walk below every element.
             let tops: Vec<u64> = self
                 .elements
@@ -996,6 +1000,7 @@ impl RetainedTree {
             return StyleChange::default();
         }
         let was_declared = element.declared_hidden();
+        let was_contents = crate::layout::contents::is_display_contents(element);
         let regrouped =
             !crate::text::inline::same_paragraphs(element.style.as_deref(), style.as_deref());
         let text_reprocessed = element.style.as_deref().and_then(|old| old.white_space.as_deref())
@@ -1031,12 +1036,13 @@ impl RetainedTree {
             changed: true,
             regrouped,
             text_reprocessed,
-            visibility_changed,
+            focusability_changed: visibility_changed
+                || was_contents != crate::layout::contents::is_display_contents(element),
         }
     }
 
     fn settle_style_change(&mut self, id: u64, change: StyleChange) {
-        if change.visibility_changed {
+        if change.focusability_changed {
             self.track_focusable_subtree(id);
         }
         if change.text_reprocessed {
@@ -1901,6 +1907,33 @@ mod tests {
             tree.focusable_ids.is_empty(),
             "destroying a subtree forgets its ids"
         );
+    }
+
+    #[test]
+    fn a_display_contents_element_is_not_focusable_until_it_stops_being_one() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "div".to_string());
+        tree.create_element(3, "input".to_string());
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        tree.set_custom_prop(2, "tabIndex".to_string(), serde_json::json!(0));
+        let focusable =
+            |tree: &RetainedTree| tree.focusable_ids.iter().copied().collect::<Vec<_>>();
+        assert_eq!(focusable(&tree), vec![2, 3]);
+
+        let display = |value: &str| {
+            let style = serde_json::json!({ "display": value });
+            Arc::new(serde_json::from_value::<StyleDesc>(style).expect("a style"))
+        };
+        tree.set_style(2, display("contents"));
+        tree.set_style(3, display("contents"));
+        assert!(focusable(&tree).is_empty(), "no box, nothing to focus");
+
+        tree.set_style(2, display("block"));
+        assert_eq!(focusable(&tree), vec![2], "a box again");
+        tree.set_style(3, display("block"));
+        assert_eq!(focusable(&tree), vec![2, 3]);
     }
 
     /// 1 div > [2 input, 3 div(formControl) > 4 div, 5 div(plain `disabled`) > 6 div].

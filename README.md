@@ -2708,6 +2708,8 @@ Each **direct host child** is one virtual row. Give every row a stable React key
 
 A row can contain nested `<div>`, `<text>`, `<markdown>`, `<code>`, `<diff>`, `<input>`, and `<textarea>` elements. Focusable rows stay active when they move offscreen, so keyboard input and native editor state are preserved. A scroller inside a row takes the wheel first. When it is at its limit the list takes the event, and when the list is at its limit the scrollers around it do (see [Scrolling](#scrolling)).
 
+A row can be `display: "contents"`. It has no box, so its `height`, `padding`, `margin`, `border` and `backgroundColor` do nothing, and the list measures it as its children stacked as a block: children 30 and 25 px tall make a 55 px row, and a row with no children (or only `display: "none"` ones) is 0 px. A browser has no such list, so this is the list's own definition. Its text style, `inert`, `pointerEvents` and `visibility` pass down to the children, and its own listeners hear them (see [Layout like CSS](#layout-like-css)). It can be keyed, reordered and switched to or from a block like any row, and Tab walks its children, never the row.
+
 ### Chat tail behavior
 
 Combine `alignment="bottom"` and `followTail` for a chat thread:
@@ -6433,7 +6435,14 @@ so that animation starts at `0`.
   `currentTarget` set to it: a click on a child, the pointer entering or leaving
   any of its descendants (`mouseenter` and `pointerenter` fire once for the
   whole group), keys and focus inside it, and `click()` on it. It is never the
-  target of a pointer event, as it has no box to hit. `inline-block`, `inline-flex`
+  target of a pointer event, as it has no box to hit, and it is not focusable
+  (Chrome skips it too, `tabIndex` or not; its children keep their own Tab
+  stops). `getBoundingClientRect()` is a zero rect and an `IntersectionObserver`
+  reports it as not intersecting with a zero rect, as in Chrome. As a root or a
+  `<virtual-list>` row it keeps its `role` and `aria-*` in the accessibility tree
+  around its children, and `aria-hidden` hides them; spliced into a parent it has
+  no element to carry a node, so they are ignored there (Chrome keeps the node).
+  `inline-block`, `inline-flex`
   and `inline-grid` are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table);
   `inline-table` is an atomic inline whose inside is a `table` (see [Tables](#tables)).
 - **`visibility: "hidden"`** keeps the layout box and every report of it

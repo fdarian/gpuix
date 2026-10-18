@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<body style="margin: 0">
+<!-- Regenerate display-contents-oracle.json with display-contents-oracle.sh. -->
+<div id="scroller" style="width: 400px; height: 200px; overflow: auto">
+  <div id="row" role="group" aria-label="row" tabindex="0" style="display: contents">
+    <button id="a" aria-label="row-a" tabindex="0" style="display: block; height: 20px; width: 100px"></button>
+    <button id="b" aria-label="row-b" tabindex="0" style="display: block; height: 20px; width: 100px"></button>
+  </div>
+  <div id="hidden-row" aria-hidden="true" style="display: contents">
+    <button id="c" aria-label="aria-hidden-child" tabindex="0" style="display: block; height: 20px"></button>
+  </div>
+  <div id="inert-row" inert style="display: contents">
+    <button id="d" aria-label="inert-child" tabindex="0" style="display: block; height: 20px"></button>
+  </div>
+  <div id="none" style="display: none"></div>
+  <div id="plain" style="height: 10px"></div>
+  <button id="e" aria-label="after" tabindex="0" style="display: block; height: 20px"></button>
+</div>
+<script>
+const out = {}
+const row = document.getElementById("row")
+const rect = (r) => [r.x, r.y, r.width, r.height]
+out.rect = rect(row.getBoundingClientRect())
+out.clientRects = row.getClientRects().length
+out.offsetHeight = row.offsetHeight
+if (location.search !== "?tab") {
+  row.focus()
+  out.rowFocusable = document.activeElement === row
+  document.getElementById("a").focus()
+  out.childFocusable = document.activeElement.id
+  document.activeElement.blur()
+}
+
+const seen = []
+row.addEventListener("click", (e) => seen.push(["bubble", e.currentTarget.id, e.target.id]))
+row.addEventListener("click", (e) => seen.push(["capture", e.currentTarget.id, e.target.id]), true)
+document.getElementById("a").click()
+out.click = seen
+out.fromPoint = document.elementsFromPoint(10, 10).map((e) => e.id)
+
+out.io = []
+new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    out.io.push({ isIntersecting: e.isIntersecting, ratio: e.intersectionRatio, rect: rect(e.boundingClientRect) })
+  }
+}).observe(row)
+out.ro = { contents: [], none: [], plain: [] }
+for (const name of ["contents", "none", "plain"]) {
+  const target = document.getElementById(name === "contents" ? "row" : name)
+  new ResizeObserver((entries) => {
+    for (const e of entries) out.ro[name].push([e.contentRect.width, e.contentRect.height, e.borderBoxSize[0].inlineSize, e.borderBoxSize[0].blockSize])
+  }).observe(target)
+}
+requestAnimationFrame(() => setTimeout(() => document.documentElement.setAttribute("data-oracle", JSON.stringify(out)), 100))
+</script>
+</body>
+</html>

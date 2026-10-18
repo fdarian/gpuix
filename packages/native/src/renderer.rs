@@ -9188,9 +9188,11 @@ fn build_plan(
 }
 
 /// A `display: contents` element that has no parent to splice into: the root, or
-/// a virtual-list row. It generates no box, so it has no id, hitbox or bounds.
+/// a virtual-list row. It generates no box, so it has no hitbox or bounds.
 /// Its children lay out in an anonymous block in its place, and keep the text
-/// style it passes down.
+/// style it passes down. The block carries the element's accessibility node
+/// (role, `aria-*`), as Chrome keeps one for a `display: contents` element: its
+/// id is not a host id, so the block is never a pointer target.
 fn build_contents_container(
     element: &crate::retained_tree::RetainedElement,
     style: Option<&StyleDesc>,
@@ -9201,7 +9203,10 @@ fn build_contents_container(
 ) -> gpui::AnyElement {
     use gpui::prelude::*;
 
-    let mut el = gpui::div();
+    let mut el = gpui::div().id(gpui::ElementId::Name(gpui::SharedString::from(format!(
+        "__gpuix_contents_{}",
+        element.id
+    ))));
     el.style().position = Some(gpui::Position::Static);
     if stacking_root {
         el = el.stacking_context();
@@ -9209,6 +9214,7 @@ fn build_contents_container(
     if let Some(style) = style {
         el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors, &ctx.inherited.lengths);
     }
+    el = apply_accessibility(el, element.id, element.custom_props(), None);
     ctx.inherited.direction.apply(&mut el);
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
