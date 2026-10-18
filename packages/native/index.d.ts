@@ -1471,6 +1471,15 @@ export interface LayoutCounters {
   passes: number
   /** Calls to the measure functions of text and other measured leaves. */
   measures: number
+  /** Lines the platform shaped, since the window was made: the line layout cache missed. */
+  shapes: number
+  /**
+   * Wrapped line layouts computed (shaped and wrapped) because neither the frame nor the one
+   * before had them.
+   */
+  wrappedLayouts: number
+  /** Line layout lookups that found a layout of this frame or the frame before. */
+  lineLayoutHits: number
 }
 
 /** The OS accessibility preferences that media queries expose. */

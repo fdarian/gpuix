@@ -8,6 +8,12 @@ import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
+/** A text is as wide as its advance up to 1/64 of a pixel, and the box is painted on device pixels. */
+function expectNear(actual: number, advance: number, message?: string) {
+  const laidOut = Math.ceil(advance * 64 - 0.064) / 64
+  expect(Math.abs(actual - laidOut), `${message ?? "width"}: ${actual} != ${laidOut}`).toBeLessThanOrEqual(0.5)
+}
+
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
 
@@ -56,7 +62,7 @@ describeNative("min-content width of a paragraph", () => {
   it("is the longest word, without the space that hangs after it", () => {
     const column = columnWidth()
     const box = minContentBox(<text style={TEXT}>{PROSE}</text>)
-    expect(box.width).toBeCloseTo(Math.ceil(6 * column), 1)
+    expectNear(box.width, 6 * column)
     expect(box.height).toBeCloseTo(3 * LINE, 1)
   })
 
@@ -64,10 +70,10 @@ describeNative("min-content width of a paragraph", () => {
     const column = columnWidth()
     const width = (overflowWrap: "normal" | "break-word" | "anywhere") =>
       minContentBox(<text style={{ ...TEXT, overflowWrap }}>{PROSE}</text>).width
-    expect(width("normal")).toBeCloseTo(Math.ceil(6 * column), 1)
+    expectNear(width("normal"), 6 * column)
     // break-word breaks a word only once it does not fit, so it is no narrower.
     expect(width("break-word")).toBeCloseTo(width("normal"), 1)
-    expect(width("anywhere")).toBeCloseTo(Math.ceil(column), 1)
+    expectNear(width("anywhere"), column)
     expect(width("anywhere")).toBeLessThan(width("normal"))
   })
 
@@ -75,20 +81,20 @@ describeNative("min-content width of a paragraph", () => {
     const column = columnWidth()
     for (const wordBreak of ["break-all", "break-word"] as const) {
       const box = minContentBox(<text style={{ ...TEXT, wordBreak }}>{PROSE}</text>)
-      expect(box.width, wordBreak).toBeCloseTo(Math.ceil(column), 1)
+      expectNear(box.width, column, wordBreak)
     }
     // keep-all only keeps CJK together: text in letters is as wide as without it.
     const kept = minContentBox(<text style={{ ...TEXT, wordBreak: "keep-all" }}>{PROSE}</text>)
-    expect(kept.width).toBeCloseTo(Math.ceil(6 * column), 1)
+    expectNear(kept.width, 6 * column)
   })
 
   it("keeps the trailing space of a word when spaces do not hang", () => {
     const column = columnWidth()
     const box = minContentBox(<text style={{ ...TEXT, whiteSpace: "break-spaces" }}>{"aaaa bb"}</text>)
     // break-spaces keeps the space at the end of the line, and it takes room.
-    expect(box.width).toBeCloseTo(Math.ceil(5 * column), 1)
+    expectNear(box.width, 5 * column)
     const hung = minContentBox(<text style={TEXT}>{"aaaa bb"}</text>)
-    expect(hung.width).toBeCloseTo(Math.ceil(4 * column), 1)
+    expectNear(hung.width, 4 * column)
   })
 
   it("counts the tab stops of the text", () => {
@@ -98,11 +104,11 @@ describeNative("min-content width of a paragraph", () => {
     )
     // The tab goes to the stop at 4 columns, and it is a place to break after it; the
     // spaces and tabs at the end of a line hang in pre-wrap, so the line is "ab".
-    expect(box.width).toBeCloseTo(Math.ceil(2 * column), 1)
+    expectNear(box.width, 2 * column)
     const unhung = minContentBox(
       <text style={{ ...TEXT, whiteSpace: "break-spaces", tabSize: 4 }}>{"ab\tc"}</text>
     )
-    expect(unhung.width).toBeCloseTo(Math.ceil(4 * column), 1)
+    expectNear(unhung.width, 4 * column)
   })
 
   it("counts the space of the inline boxes in it, in the units of the style", () => {
@@ -114,6 +120,6 @@ describeNative("min-content width of a paragraph", () => {
     )
     const col20 = (column * 20) / 16
     // The span's line is its two letters and its padding: 20 + 12 around them.
-    expect(box.width).toBeCloseTo(Math.ceil(2 * col20 + 20 + 12), 1)
+    expectNear(box.width, 2 * col20 + 20 + 12)
   })
 })

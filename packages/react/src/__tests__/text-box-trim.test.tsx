@@ -19,10 +19,11 @@ const EX = (1120 / 2048) * FONT_SIZE
 const HALF_LEADING = (LINE - ASCENT - DESCENT) / 2
 const BASELINE = HALF_LEADING + ASCENT
 
-/** A box is laid out up to the next whole pixel of a 1x window, so a height is the
- *  ceiling of what the metrics say; the geometry of the lines themselves is exact. */
+/** A box is as tall as the metrics say to the nearest 1/64 of a pixel, as in Chrome, and its edges are
+ *  painted on device pixels, which `getBoundingClientRect` reports: within a pixel of a 1x window.
+ *  The layout before the snap is checked to 1/64 against Chrome in gpui (`chrome_layout_units`). */
 function near(actual: number, expected: number) {
-  expect(actual, `${expected} laid out`).toBe(Math.ceil(expected - 1e-4))
+  expect(Math.abs(actual - expected), `${expected} laid out, ${actual} painted`).toBeLessThanOrEqual(1)
 }
 
 let measuredColumn: number | undefined
@@ -286,8 +287,8 @@ describeNative("text-box-trim through blocks", () => {
       near(rect("first").height, LINE - (BASELINE - CAP))
       near(rect("middle").height, LINE)
       near(rect("last").height, BASELINE)
-      // The boxes are laid out to whole pixels one by one.
-      expect(rect("box").height).toBe(Math.ceil(LINE - (BASELINE - CAP)) + LINE + Math.ceil(BASELINE))
+      // The boxes are laid out in fractions of a pixel, and the block is as tall as they are together.
+      near(rect("box").height, LINE - (BASELINE - CAP) + LINE + BASELINE)
     } finally {
       unmount()
     }

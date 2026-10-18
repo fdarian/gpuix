@@ -25,11 +25,11 @@ const TEXT = { fontFamily: "GpuixTestSquare", fontSize: 20, lineHeight: "20px", 
 type Rect = [number, number, number, number]
 
 /**
- * The width of a text is its shaped width rounded up to a whole pixel, and the font's units make 20px of "A"
- * 20.000002, so each text in a row is a pixel wider than in Chrome and moves what follows it. The baselines are
+ * The width of a text is its shaped width up to 1/64 of a pixel, and the font's units make 20px of "A"
+ * 20.000002, which does not move what follows it by more than a unit; boxes are painted on device pixels. The baselines are
  * vertical: `y` and `height` are compared exactly.
  */
-const WIDTH_TOLERANCE = 4
+const WIDTH_TOLERANCE = 0.51
 
 type Style = Record<string, number | string>
 

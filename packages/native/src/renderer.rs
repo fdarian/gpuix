@@ -12893,8 +12893,12 @@ mod dimension_length_tests {
     const LONG: &str = "hello wonderful world";
     const COLUMN: &str = r#"{"width": 600}"#;
 
+    /// The width of the text up to 1/64 of a pixel, as layout has it, and then the right edge at the
+    /// nearest of the device pixels of the 2x test window (the box is at the origin, and a half
+    /// rounds toward it), as the box is painted.
     fn text_width(characters: usize) -> f64 {
-        (characters as f64 * CHAR).ceil()
+        let laid_out = (characters as f64 * CHAR * 64.0).ceil() / 64.0;
+        ((laid_out * 2.0) - 0.5).ceil() / 2.0
     }
 
     /// Element 1 is `parent`, 2 a child with `style` holding the text `content`.

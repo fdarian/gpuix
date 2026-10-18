@@ -201,7 +201,7 @@ describeNative("the text style of an inline-block", () => {
     )
     try {
       const ib = bounds("ib")
-      // Two 10px characters, which gpui measures to the next whole pixel.
+      // Two 10px characters.
       expect(ib.width).toBeGreaterThanOrEqual(19.5)
       expect(ib.width).toBeLessThanOrEqual(21.5)
       expect(ib.height).toBeCloseTo(10, 0)
@@ -425,7 +425,8 @@ describeNative("bounds and observers of an inline-block", () => {
 })
 
 describeNative("text inside an inline-block", () => {
-  // GpuixTestSquare has "A" and "m" one em wide.
+  // GpuixTestSquare has "A" and "m" one em wide. It has no space: Helvetica Neue's, 569/2048 em, is used.
+  const SPACE = (569 / 2048) * 20
   const page = (query: string) => (
     <div testId="root" style={{ width: 300, ...TEXT }} highlight={{ query }}>
       AA{" "}
@@ -453,8 +454,8 @@ describeNative("text inside an inline-block", () => {
     try {
       const washes = second.renderer.getPaintedHighlights()
       expect(washes).toHaveLength(1)
-      // "AA", a space (another font's, 6.1px), the 40px box and a space.
-      expect(washes[0]!.rects[0]!.x).toBeCloseTo(40 + 6.1 + 40 + 6.1, 0)
+      // "AA", a space (another font's), the 40px box and a space.
+      expect(washes[0]!.rects[0]!.x).toBeCloseTo(40 + SPACE + 40 + SPACE, 1)
       expect(washes[0]!.rects[0]!.width).toBeCloseTo(60, 0)
     } finally {
       second.unmount()
@@ -472,12 +473,13 @@ describeNative("text inside an inline-block", () => {
     try {
       const washes = renderer.getPaintedHighlights()
       expect(washes).toHaveLength(3)
-      // "m", then "A" and a space (6.1px, another font's), then the 20px box with the second match, a
+      // "m", then "A" and a space (another font's), then the 20px box with the second match, a
       // space, "A" and the third. The paragraph paints before the box, so the order here is paint order.
       const xs = washes.map((wash) => wash.rects[0]!.x).sort((a, b) => a - b)
       expect(xs[0]).toBeCloseTo(0, 0)
-      expect(xs[1]).toBeCloseTo(40 + 6.1, 0)
-      expect(xs[2]).toBeCloseTo(40 + 6.1 + 20 + 6.1 + 20, 0)
+      // The box is painted on a device pixel, and so is the match in it.
+      expect(Math.abs(xs[1]! - (40 + SPACE))).toBeLessThanOrEqual(0.5)
+      expect(xs[2]).toBeCloseTo(40 + SPACE + 20 + SPACE + 20, 1)
     } finally {
       unmount()
     }

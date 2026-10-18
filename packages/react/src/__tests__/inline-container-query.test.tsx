@@ -233,7 +233,7 @@ describeNative("inline-block inside a query container", () => {
     try {
       expect(paintedFrames(() => render(app(ref, 400)))).toBe(1)
       const [, , wide, tall] = rect("box")
-      // One A is a square of the font size, 10% of the 400px container (text widths are whole pixels).
+      // One A is a square of the font size, 10% of the 400px container (a text is as wide as its advance up to 1/64 of a pixel).
       expect(wide).toBeGreaterThanOrEqual(40)
       expect(wide).toBeLessThanOrEqual(41)
       expect(tall).toBeGreaterThan(40)

@@ -91,7 +91,7 @@ function widths(parent: Style, box: Style, kids: Kid[]) {
   return layout(parent, box, kids).slice(0, -1)
 }
 
-/** Every width is checked, so one run lists all the cases that differ. `tolerance` is 1px for text, which is laid out in whole pixels. */
+/** Every width is checked, so one run lists all the cases that differ. `tolerance` is half a pixel: boxes are painted on device pixels. */
 function expectWidths(actual: number[], expected: number[], context: string, tolerance = 0.5) {
   expect.soft(actual.length, context).toBe(expected.length)
   actual.forEach((width, index) =>
@@ -142,8 +142,8 @@ describeNative("width: fit-content", () => {
   it("hugs a text child that is 100% wide, and wraps it at the limit", () => {
     // txt fit %flexchild short, txt fit max50 %flexchild short, txt fit max50 long, txt fit max10% long,
     // txt fit max%100 %flexchild long
-    expectWidths(widths(TEXT_BLOCK, FIT, [SHORT]), [100, 100], "short", 1.01)
-    expectWidths(widths(TEXT_BLOCK, { ...FIT, maxWidth: "50%" }, [SHORT]), [100, 100], "max50 short", 1.01)
+    expectWidths(widths(TEXT_BLOCK, FIT, [SHORT]), [100, 100], "short")
+    expectWidths(widths(TEXT_BLOCK, { ...FIT, maxWidth: "50%" }, [SHORT]), [100, 100], "max50 short")
     const wraps = layout(TEXT_BLOCK, { ...FIT, maxWidth: "50%" }, [{ width: "auto", text: LONG.slice(0, 19) }])
     expect.soft(wraps[0], "wraps width").toBeCloseTo(200, 0)
     expect.soft(wraps[2], "wraps height").toBeCloseTo(40, 0)
@@ -203,8 +203,8 @@ describeNative("width: fit-content", () => {
     it("hugs a child that asks for 100% of it", () => {
       // col fit max% + %child c120, txtcol fit %flexchild short, txtcol fit max% %flexchild short
       expectWidths(widths(COLUMN, { ...FIT, maxWidth: "100%" }, [120, PERCENT]), [120, 120, 120], "%child")
-      expectWidths(widths(TEXT_COLUMN, FIT, [SHORT]), [100, 100], "text %child", 1.01)
-      expectWidths(widths(TEXT_COLUMN, { ...FIT, maxWidth: "100%" }, [SHORT]), [100, 100], "max% text %child", 1.01)
+      expectWidths(widths(TEXT_COLUMN, FIT, [SHORT]), [100, 100], "text %child")
+      expectWidths(widths(TEXT_COLUMN, { ...FIT, maxWidth: "100%" }, [SHORT]), [100, 100], "max% text %child")
     })
 
     it("is the same as alignSelf: flex-start with a percentage max-width", () => {
@@ -233,9 +233,9 @@ describeNative("width: fit-content", () => {
       // pre col fit scroll, pre col fit scroll max%, pre col fit scroll max400, pre col start scroll max%,
       // pre col fit max% short
       const scroll = { ...FIT, overflowX: "scroll" } as const
-      expectWidths(widths(TEXT_COLUMN, scroll, [PRE]), [2000, 2000], "pre scroll", 1.01)
-      expectWidths(widths(TEXT_COLUMN, { ...scroll, maxWidth: "100%" }, [PRE]), [600, 600], "pre scroll max%", 1.01)
-      expectWidths(widths(TEXT_COLUMN, { ...scroll, maxWidth: 400 }, [PRE]), [400, 400], "pre scroll max400", 1.01)
+      expectWidths(widths(TEXT_COLUMN, scroll, [PRE]), [2000, 2000], "pre scroll")
+      expectWidths(widths(TEXT_COLUMN, { ...scroll, maxWidth: "100%" }, [PRE]), [600, 600], "pre scroll max%")
+      expectWidths(widths(TEXT_COLUMN, { ...scroll, maxWidth: 400 }, [PRE]), [400, 400], "pre scroll max400")
       expectWidths(
         widths({ ...TEXT_COLUMN, alignItems: "flex-start" }, { overflowX: "scroll", maxWidth: "100%" }, [PRE]),
         [600, 600],

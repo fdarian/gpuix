@@ -7,7 +7,7 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 const fixture = (name: string) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url))
 
 // "A" is one em wide and "B" two, both drawn as squares, so "AB" at 20px is 60
-// wide in this font (layout rounds to a whole pixel) and nowhere near that in
+// wide in this font and nowhere near that in
 // the system fonts it falls back to.
 const SQUARE_FONT = fixture("gpuix-test-square.ttf")
 

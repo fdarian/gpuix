@@ -281,6 +281,23 @@ impl InsetSpec {
         self.spaces.iter().any(BoxSpace::takes_space_along_the_line)
     }
 
+    /// Stands for the insets [`Insets::text`] gives at every width: what a text keeps its measure
+    /// by. The padding, border and margin on the block axis and the colors do not move the text.
+    pub fn text_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for space in &self.spaces {
+            space.range.hash(&mut hasher);
+            for extent in [space.margin_start, space.margin_end, space.padding_start, space.padding_end] {
+                extent.px.to_bits().hash(&mut hasher);
+                extent.percent.to_bits().hash(&mut hasher);
+            }
+            space.border.left.to_bits().hash(&mut hasher);
+            space.border.right.to_bits().hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
     /// The space resolved for a paragraph laid out `width` wide, or measured for
     /// its content when there is none.
     pub fn at(&self, width: Option<Pixels>) -> Rc<Insets> {

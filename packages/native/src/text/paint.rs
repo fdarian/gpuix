@@ -404,7 +404,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             None => StyledText::new(text.clone()),
         };
         let styled = match inline_insets {
-            Some(spec) => styled.with_insets_for_width(move |width| spec.at(width).text()),
+            Some(spec) => styled.with_insets_for_width(spec.text_key(), move |width| spec.at(width).text()),
             None => styled,
         }
         .with_text_box_trim(text_box_trim);
@@ -413,7 +413,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         let inline = super::paragraph::InlineText::new(text.clone(), run_styles)
             .with_boxes(aligned_boxes, atomics);
         let inline = match inline_insets {
-            Some(spec) => inline.with_insets_for_width(move |width| spec.at(width).text()),
+            Some(spec) => inline.with_insets_for_width(spec.text_key(), move |width| spec.at(width).text()),
             None => inline,
         }
         .with_text_box_trim(text_box_trim);

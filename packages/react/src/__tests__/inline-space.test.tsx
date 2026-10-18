@@ -113,10 +113,10 @@ describeNative("space of an inline box", () => {
         t.unmount()
       }
     }
-    // The container takes its text's width rounded up to a whole pixel.
+    // The container takes its text's width up to 1/64 of a pixel, and its edge is painted on a device pixel.
     const plain = widthOf({})
-    expect(plain).toBeGreaterThanOrEqual(8 * columnWidth() - 0.01)
-    expect(plain).toBeLessThan(8 * columnWidth() + 1)
+    expect(plain).toBeGreaterThanOrEqual(8 * columnWidth() - 0.5)
+    expect(plain).toBeLessThan(8 * columnWidth() + 0.5)
     expect(Math.abs(widthOf(SPACE) - plain - (LEADING + TRAILING))).toBeLessThan(1)
   })
 

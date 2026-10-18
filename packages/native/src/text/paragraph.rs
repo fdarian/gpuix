@@ -470,9 +470,10 @@ impl InlineText {
     /// width the text is laid out in, see [`super::inline_insets`].
     pub fn with_insets_for_width(
         mut self,
+        key: u64,
         insets: impl Fn(Option<gpui::Pixels>) -> Vec<TextInset> + 'static,
     ) -> Self {
-        self.styled = self.styled.with_insets_for_width(insets);
+        self.styled = self.styled.with_insets_for_width(key, insets);
         self
     }
 

@@ -21,7 +21,7 @@
 /// 360x20, post (360,0); in a grid item the item is 400x20 and the rest as text.
 /// With `font:20px/24px "Helvetica Neue"`, root 400 wide, `<div id=item>before <lab 400|600/> after</div>` (hidden copy
 /// weight 600, "Label"): g (62.6,0) 52.2x24 at both weights; as a flex row `<div>before</div><lab/><div>after</div>`:
-/// g x 57, 52.2 wide, post x 109.3. Gpuix rounds a shrink-to-fit text width up to a pixel, so those compare at 1px.
+/// g x 57, 52.2 wide, post x 109.3. A text is as wide as its advance up to 1/64 of a pixel, as in Chrome, and boxes are painted on device pixels, so those compare at half a pixel.
 /// With `font:20px/24px "Helvetica Neue"` and the first shape: s is x 51.1, 51.8 wide at W=400 and 55.1 wide at
 /// W=700; in flex the item is 134.4 wide at 400 and 137.7 at 700.
 
@@ -95,8 +95,7 @@ describeNative("inline content in a grid or flex item", () => {
             </div>
           </div>
         )
-        // A shrink-to-fit text width is rounded up to a whole pixel and a bit, so it is 141 here.
-        expectRect(rect("item"), { x: 0, y: 0, w: 140, h: 20 }, "item", 1.01)
+        expectRect(rect("item"), { x: 0, y: 0, w: 140, h: 20 }, "item")
         expectRect(rect("s"), { x: 40, y: 0, w: 60, h: 20 }, "s")
       } finally {
         unmount()
@@ -194,10 +193,9 @@ describeNative("the stable label: a weight change does not move what is around a
     </span>
   )
   const WORD = "Label"
-  // A shrink-to-fit text width is rounded up to a whole pixel (and 40.000004 from the font's f32 advances to 41),
-  // so each item of a row is up to a pixel wider than Chrome's and a row of three drifts by up to 2.
+  // Boxes are painted on device pixels, so each item of a row is up to half a pixel off Chrome's.
   const near = (actual: number, expected: number, context: string) =>
-    expect(Math.abs(actual - expected), `${context}: ${actual} != ${expected}`).toBeLessThanOrEqual(2)
+    expect(Math.abs(actual - expected), `${context}: ${actual} != ${expected}`).toBeLessThanOrEqual(0.51)
 
   it("sits on the line between the text before and after it, whatever the weight", () => {
     const { render, ref, rect, unmount } = setup()
@@ -262,8 +260,8 @@ describeNative("the stable label: a weight change does not move what is around a
             </div>
           </div>
         )
-        expectRect(rect("pre"), { x: 0, y: 0, w: 40, h: 20 }, `${container} pre`, 1.01)
-        expectRect(rect("g"), { x: 40, y: 0, w: 80, h: 20 }, `${container} g`, 1.01)
+        expectRect(rect("pre"), { x: 0, y: 0, w: 40, h: 20 }, `${container} pre`)
+        expectRect(rect("g"), { x: 40, y: 0, w: 80, h: 20 }, `${container} g`)
         expectRect(rect("h"), { x: 40, y: 0, w: 80, h: 20 }, `${container} h`, 1.6)
         expectRect(rect("v"), { x: 40, y: 0, w: 80, h: 20 }, `${container} v`, 1.6)
         expectRect(rect("post"), { x: 120, y: 0, w: 40, h: 20 }, `${container} post`, 1.6)

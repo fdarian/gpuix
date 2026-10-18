@@ -154,7 +154,6 @@ describeNative("inline-block", () => {
     // <div id=root style="width:300px;font:20px/20px GpuixTestSquare"><span id=t1>A</span>
     //   <span id=ib style="display:inline-block;white-space:pre-line">AA
     // AAA</span><span id=t2>A</span><span id=ib2 style="display:inline-block;width:50px"><span id=inner>AAA AAA</span></span></div>
-    // gpui measures a text to the next whole pixel, so a box as wide as its text is up to 1px wider than Chrome's.
     const { render, ref, rect, unmount } = setup()
     try {
       render(
@@ -169,11 +168,11 @@ describeNative("inline-block", () => {
           </span>
         </div>
       )
-      expectRect(rect("root"), { x: 0, y: 0, w: 300, h: 40 }, "root", 1.01)
-      expectRect(rect("t1"), { x: 0, y: 20, w: 20, h: 20 }, "t1", 1.01)
-      expectRect(rect("ib"), { x: 20, y: 0, w: 60, h: 40 }, "ib", 1.01)
-      expectRect(rect("t2"), { x: 80, y: 20, w: 20, h: 20 }, "t2", 1.01)
-      expectRect(rect("ib2"), { x: 100, y: 0, w: 50, h: 40 }, "ib2", 1.01)
+      expectRect(rect("root"), { x: 0, y: 0, w: 300, h: 40 }, "root")
+      expectRect(rect("t1"), { x: 0, y: 20, w: 20, h: 20 }, "t1")
+      expectRect(rect("ib"), { x: 20, y: 0, w: 60, h: 40 }, "ib")
+      expectRect(rect("t2"), { x: 80, y: 20, w: 20, h: 20 }, "t2")
+      expectRect(rect("ib2"), { x: 100, y: 0, w: 50, h: 40 }, "ib2")
     } finally {
       unmount()
     }
@@ -325,12 +324,12 @@ describeNative("inline-flex and inline-grid", () => {
           </span>
         </div>
       )
-      expectRect(rect("root"), { x: 0, y: 0, w: 300, h: 40 }, "root", 1.01)
-      expectRect(rect("t1"), { x: 0, y: 15, w: 40, h: 20 }, "t1", 1.01)
-      expectRect(rect("f"), { x: 40, y: 25, w: 50, h: 15 }, "f", 1.01)
-      expectRect(rect("f1"), { x: 40, y: 25, w: 30, h: 15 }, "f1", 1.01)
-      expectRect(rect("t2"), { x: 90, y: 15, w: 20, h: 20 }, "t2", 1.01)
-      expectRect(rect("g"), { x: 110, y: 0, w: 30, h: 40 }, "g", 1.01)
+      expectRect(rect("root"), { x: 0, y: 0, w: 300, h: 40 }, "root")
+      expectRect(rect("t1"), { x: 0, y: 15, w: 40, h: 20 }, "t1")
+      expectRect(rect("f"), { x: 40, y: 25, w: 50, h: 15 }, "f")
+      expectRect(rect("f1"), { x: 40, y: 25, w: 30, h: 15 }, "f1")
+      expectRect(rect("t2"), { x: 90, y: 15, w: 20, h: 20 }, "t2")
+      expectRect(rect("g"), { x: 110, y: 0, w: 30, h: 40 }, "g")
     } finally {
       unmount()
     }

@@ -66,6 +66,13 @@ pub struct LayoutCounters {
     pub passes: f64,
     /// Calls to the measure functions of text and other measured leaves.
     pub measures: f64,
+    /// Lines the platform shaped, since the window was made: the line layout cache missed.
+    pub shapes: f64,
+    /// Wrapped line layouts computed (shaped and wrapped) because neither the frame nor the one
+    /// before had them.
+    pub wrapped_layouts: f64,
+    /// Line layout lookups that found a layout of this frame or the frame before.
+    pub line_layout_hits: f64,
 }
 
 /// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
@@ -890,6 +897,7 @@ impl TestGpuixRenderer {
     pub fn get_layout_counters(&self) -> Result<LayoutCounters> {
         update_view(|_view, window, _cx| {
             let counters = window.layout_counters();
+            let text = window.text_system().text_counters();
             LayoutCounters {
                 nodes_created: counters.nodes_created as f64,
                 nodes_reused: counters.nodes_reused as f64,
@@ -898,6 +906,9 @@ impl TestGpuixRenderer {
                 children_set: counters.children_set as f64,
                 passes: counters.passes as f64,
                 measures: counters.measures as f64,
+                shapes: text.shapes as f64,
+                wrapped_layouts: text.wrapped_layouts as f64,
+                line_layout_hits: text.hits as f64,
             }
         })
     }
