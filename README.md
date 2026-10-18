@@ -1452,9 +1452,16 @@ element, read back from the previous frame. The measurement only fixes the
 numbers: the clock starts at the style change, as for any other animation, so a
 measurement that arrives frames later starts the animation that far in.
 
-Where CSS computes an unset property to a keyword (`top`, `right`, `bottom`,
-`left`, `flexBasis` and `aspectRatio` are `auto`, `lineHeight` is `normal`),
-there is nothing to blend from, so as in CSS that property begins at its target.
+An unset border width (`borderTopWidth` and the other three sides) is what CSS
+computes it to: `0` while the side's `borderStyle` is `none` or `hidden` (or unset),
+and otherwise the width a `border` shorthand gives, or `medium` (`3px`). So
+`animate={{ borderTopWidth: 4 }}` under `borderStyle: "solid"` leaves from `3px`.
+`outlineWidth` follows `outlineStyle` (and the `outline` shorthand) the same way.
+
+Where CSS computes an unset property to a keyword there is nothing to blend from:
+`aspectRatio` is `auto` and `lineHeight` is `normal`, and as in CSS those begin at
+their target. The unset `top`, `right`, `bottom`, `left` and `flexBasis` are `auto` too,
+but `auto` is a value of its own there: it flips with a length, see below.
 `fontSize` and `fontWeight` are inherited, so an unset one starts from the
 computed value: the parent's (`fontSize: "2em"` computes against it as well),
 or the initial `16px` and `400` at the root.
@@ -1467,9 +1474,10 @@ list can be animated, in `animate`, `initial` and `exit`:
 | Target | Range or unit |
 |---|---|
 | `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | any length, zero or greater, or `"auto"` (see below) |
-| `top`, `right`, `bottom`, `left` | any length, may be negative |
-| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | any length, may be negative; not `"auto"` |
-| `paddingTop` ... `paddingLeft`, `flexBasis` | any length, zero or greater |
+| `top`, `right`, `bottom`, `left` | any length, may be negative, or `"auto"` (discrete, see below) |
+| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | any length, may be negative, or `"auto"` (discrete, see below) |
+| `paddingTop` ... `paddingLeft` | any length, zero or greater |
+| `flexBasis` | any length, zero or greater, or `"auto"` (discrete, see below) |
 | `rowGap`, `columnGap`, the four `border*Radius` corners | any length, zero or greater |
 | `borderTopWidth` ... `borderLeftWidth`, `outlineWidth`, `fontSize` | any length without a `%` (a `fontSize` `%` is of the parent's, so px), zero or greater |
 | `outlineOffset` | any length without a `%`, may be negative |
@@ -1480,11 +1488,14 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
 
-`padding`, `margin`, `inset`, `borderWidth`, `borderColor`, `borderRadius` and `gap` are shorthands that
+`padding`, `margin`, `inset`, `borderWidth`, `borderColor`, `borderRadius`, `gap` and `flex` are shorthands that
 expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
 `borderTopLeftRadius` in `style`. When a description names a shorthand and one of
-its longhands, the one written later wins, as in CSS. (`flex` and the logical shorthands such as
-`paddingBlock` are not targets: animate `flexGrow`, `flexShrink` and `flexBasis`, or the sides.)
+its longhands, the one written later wins, as in CSS. `flex` is `flexGrow`, `flexShrink`
+and `flexBasis`, as CSS animates it, written as it is in a style (`"1 1 0px"`, a lone
+number `n` is `n 1 0%`): `"1 1 0px"` to `"3 1 100px"` is `"2 1 50px"` halfway. (The logical
+shorthands such as `paddingBlock` are not targets: animate the sides. A motion value cannot be
+bound to `flex`: bind the three longhands.)
 
 A shorthand written with several values gives each side, axis or corner its own
 value, and each animates on its own:
@@ -1498,8 +1509,14 @@ value, and each animates on its own:
 
 A corner moves both its radii, so `"50%"` is an ellipse on a wide box and
 `"10px / 20px"` to `"30px / 40px"` is `"20px / 30px"` halfway. Keyframes of such
-strings split frame by frame. A margin side cannot animate to or from `auto`, so a
-`margin` with `auto` in it is an error.
+strings split frame by frame.
+
+**`auto` margins, insets and `flexBasis`.** CSS cannot interpolate `auto` with a length,
+so a pair of them is discrete: `marginLeft: "auto"` to `100` is `auto` until the eased progress
+reaches a half and `100px` after, in `animate`, keyframes and CSS animations, and a CSS
+transition runs it only under `transition-behavior: allow-discrete` (otherwise it jumps).
+An unset margin is `0`, which blends, and an unset inset or `flexBasis` is `auto`, which flips.
+`margin: "0 auto"` gives each side its own.
 
 Naming a discrete property (`display`, `position`, ...) or an unknown key is an
 error, not a silent no-op.
@@ -1508,7 +1525,8 @@ error, not a silent no-op.
 in, and two lengths blend part by part, as Chrome blends them: `calc(100% - 20px)`
 to `calc(50% + 10px)` is `calc(75% - 5px)` halfway, and `20px` to `50%` is
 `calc(10px + 25%)`. `em`, `rem` and the viewport units are px by then, from the
-element's font size and the window. A `calc()` that comes out negative is clamped,
+element's font size and the window (a motion value keeps `em` and `rem` until it is
+applied, see [Motion values](#motion-values)). A `calc()` that comes out negative is clamped,
 and a target that is negative whatever the basis is an error, as is a `%` where CSS
 takes none (the border widths and the outline). A spring or a retarget keeps its
 speed on each part. The percentage stays a share of its basis, so a parent that
@@ -2091,9 +2109,13 @@ needs it, then gives it back. A value drives one window at a time.
   and the other [length](#lengths) syntaxes as a px part and a percentage part, and
   animates between any two lengths as the mix of the parts: `"20px"` to `"50%"` is
   `"calc(10px + 25%)"` halfway. A binding to `width` follows its parent's size exactly.
-  `get()` reads a length back as px, a percentage or a `calc()`. The motion value is
-  not tied to an element, so `em` and `rem` resolve when the value is written, against
-  16px, and `vw`, `vh`, `vmin` and `vmax` against the window at that moment.
+  `get()` reads a length back as px, a percentage, a font-relative length or a `calc()`.
+  The motion value is not tied to an element, so `em` and `rem` stay multiples of the
+  font size and resolve where the value is applied, against each bound element: `em` is
+  that element's computed `font-size` (the parent's, for `fontSize` itself) and `rem` the
+  root's, so `"2em"` bound to `marginLeft` is `40px` on a `20px` element and `20px` on a
+  `10px` one, and `get()` reads `"2em"`. `vw`, `vh`, `vmin` and `vmax` resolve against the
+  window when the value is written.
 - **Multi-value strings.** `"0.5em 0.75em"`, `"10px / 20px"` or `"red blue"` is held
   and blended component by component. Bound to a shorthand (`padding`, `margin`,
   `inset`, `gap`, `borderWidth`, `borderColor`, `borderRadius`), each side, axis or
@@ -7330,8 +7352,13 @@ render per frame.
   parent's colour, so `color` unset to `color: 'blue'` runs from it, and a
   `color` dropped runs back to it). One whose computed value is a keyword CSS
   does not blend with a number, length or colour changes instantly: an unset
-  `top`, `right`, `bottom`, `left`, `flexBasis` and `aspectRatio` (`auto`),
-  `lineHeight` (`normal`), `scrollbarWidth` and an unset `width`. `fontSize`
+  `aspectRatio` (`auto`), `lineHeight` (`normal`), `scrollbarWidth` and an unset `width`.
+  An unset `top`, `right`, `bottom`, `left` or `flexBasis` is `auto`, and a margin
+  `auto`, which is discrete against a length: it changes instantly unless the
+  transition has `transition-behavior: allow-discrete`, and then flips at the halfway
+  point. An unset border or outline width is `0` under a `none` or `hidden` style and
+  `medium` otherwise, so adding `borderStyle: 'solid'` to a box with a `border-width`
+  transition runs from `0` to `3px`. `fontSize`
   and `fontWeight` are inherited too: an unset one runs from the parent's
   computed value. `zIndex` is not animatable
 - **Lengths.** Lengths blend as a px part and a percentage part, whatever unit

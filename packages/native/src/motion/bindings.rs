@@ -18,11 +18,11 @@ use super::list::ListValue;
 use super::property::{
     check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp,
 };
-use super::value::{AnimValue, Color};
+use super::value::{AnimValue, Color, ParentFont};
 use super::values::{MotionValues, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
-use crate::css::length::LengthContext;
+use crate::css::length::{LengthContext, LinearLength};
 use crate::css::syntax::split_slash_tokens;
 use crate::css::font_variations::VariationSettings;
 use crate::style::StyleDesc;
@@ -76,7 +76,7 @@ pub(crate) struct MotionValueStore {
     /// colour keeps what it resolved to when it was written.
     appearance: Scheme,
     /// The window's size in px, which `vw` and `vh` mean. Like a colour, a length
-    /// keeps what it resolved to when it was written.
+    /// keeps what it resolved to when it was written, unlike `em` and `rem`.
     viewport: (f64, f64),
     graph: MotionValues,
     watches: HashMap<ValueId, Watch>,
@@ -103,8 +103,9 @@ impl MotionValueStore {
         self.viewport = (width, height);
     }
 
-    /// What a value's colours and lengths mean. It is not tied to an element, so
-    /// `em` and `rem` are the initial 16px.
+    /// What a value's colours and lengths mean. It is not tied to an element, so `em`
+    /// and `rem` stay multiples of the font size ([`AnimValue::Relative`]) and resolve
+    /// against each element the value is bound to; `lengths` is for the other units.
     fn context(&self) -> ValueContext {
         ValueContext {
             colors: ColorContext::root(self.appearance).descend(&StyleDesc {
@@ -324,12 +325,13 @@ impl MotionValueStore {
                 Err(error) => self.warn(error),
             }
         }
+        let lengths = LengthContext::initial(self.viewport.0, self.viewport.1);
         let rejected: Vec<String> = parsed
             .iter()
             .flatten()
             .filter_map(|bound| match (bound, self.frame_values.get(&bound.id())) {
                 (Bound::Shorthand { name, props, .. }, Some(AnimValue::List(list))) => {
-                    split_for(name, props, list).err()
+                    split_for(name, props, list, &lengths).err()
                 }
                 _ => None,
             })
@@ -360,24 +362,48 @@ impl MotionValueStore {
         }
     }
 
-    /// Lays the bound values the last frame sampled over `style`. A multi-value
-    /// string bound to a shorthand gives each longhand its own component.
-    pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc) {
+    /// Lays the bound values the last frame sampled over `style`, the style of an
+    /// element whose parent has the font `parent`. A multi-value string bound to a
+    /// shorthand gives each longhand its own component. `em` and `rem` resolve here,
+    /// against this element, so one value bound to two elements can be two sizes.
+    pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentFont) {
         let Ok(bound) = parse_binding(binding) else {
             return;
         };
-        for bound in bound {
+        // The `em` of a font size is the parent's and every other `em` is of the
+        // element's own size, so the size is applied first.
+        let (sizes, others): (Vec<&Bound>, Vec<&Bound>) = bound
+            .iter()
+            .partition(|bound| matches!(bound, Bound::Longhand { prop: AnimProp::FontSize, .. }));
+        for bound in sizes {
             let Some(value) = self.frame_values.get(&bound.id()) else {
                 continue;
             };
-            let write = |style: &mut StyleDesc, prop: AnimProp, value: &AnimValue| {
-                if prop.accepts(value) {
-                    prop.write(style, prop.clamp_value(value.clone()));
+            let value = match value {
+                AnimValue::Relative { px, percent, em, rem } => {
+                    let declared = LinearLength { px: *px, percent: *percent, em: *em, rem: *rem, ..Default::default() };
+                    AnimValue::Number(parent.lengths.descend(Some(&declared), parent.above_root).font_size)
                 }
+                other => other.clone(),
             };
-            match (&bound, value) {
+            if AnimProp::FontSize.accepts(&value) {
+                AnimProp::FontSize.write(style, AnimProp::FontSize.clamp_value(value));
+            }
+        }
+        let lengths = parent.lengths_of(Some(style));
+        let write = |style: &mut StyleDesc, prop: AnimProp, value: &AnimValue| {
+            let value = value.resolved_in(&lengths);
+            if prop.accepts(&value) {
+                prop.write(style, prop.clamp_value(value));
+            }
+        };
+        for bound in others {
+            let Some(value) = self.frame_values.get(&bound.id()) else {
+                continue;
+            };
+            match (bound, value) {
                 (Bound::Shorthand { name, props, .. }, AnimValue::List(list)) => {
-                    if let Ok(values) = split_for(name, props, list) {
+                    if let Ok(values) = split_for(name, props, list, &lengths) {
                         for (prop, value) in props.iter().zip(&values) {
                             write(style, *prop, value);
                         }
@@ -517,8 +543,13 @@ fn parse_component(text: &str, context: &ValueContext) -> Result<Option<AnimValu
         return Ok(Some(AnimValue::Percent(check_finite(NAME, percent / 100.0)?)));
     }
     if let Some(length) = parse_linear_length(text) {
-        let (px, percent) = context.lengths.split(&length);
-        return Ok(Some(AnimValue::length(check_finite(NAME, px)?, check_finite(NAME, percent)?)));
+        let (px, percent) = context.lengths.split(&LinearLength { em: 0.0, rem: 0.0, ..length });
+        return Ok(Some(AnimValue::relative(
+            check_finite(NAME, px)?,
+            check_finite(NAME, percent)?,
+            check_finite(NAME, length.em)?,
+            check_finite(NAME, length.rem)?,
+        )));
     }
     Ok(Color::parse(text, &context.colors).map(AnimValue::Color))
 }
@@ -572,7 +603,10 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
         AnimValue::Number(value) => number(*value),
         AnimValue::Percent(fraction) => Ok(Value::String(format!("{}%", fraction * 100.0))),
         AnimValue::Calc { px, percent } => Ok(Value::String(
-            crate::css::length::LinearLength { px: *px, percent: *percent, ..Default::default() }.to_string(),
+            LinearLength { px: *px, percent: *percent, ..Default::default() }.to_string(),
+        )),
+        AnimValue::Relative { px, percent, em, rem } => Ok(Value::String(
+            LinearLength { px: *px, percent: *percent, em: *em, rem: *rem, ..Default::default() }.to_string(),
         )),
         AnimValue::Color(color) => Ok(Value::String(color.to_css())),
         AnimValue::List(list) => list.to_css().map(Value::String),
@@ -657,6 +691,9 @@ fn parse_binding(binding: &Value) -> Result<Vec<Bound>, String> {
         )?;
         match (AnimProp::from_name(name), expand_shorthand(name)) {
             (Some(prop), _) => bound.push(Bound::Longhand { prop, id }),
+            (None, Some(_)) if name == "flex" => {
+                return Err("motionValues cannot bind flex: bind flexGrow, flexShrink and flexBasis".to_string());
+            }
             (None, Some(props)) => bound.push(Bound::Shorthand { name: name.clone(), props, id }),
             (None, None) => return Err(format!("motionValues cannot bind {name}")),
         }
@@ -666,11 +703,20 @@ fn parse_binding(binding: &Value) -> Result<Vec<Bound>, String> {
 
 /// What each longhand of the shorthand `name` takes from a multi-value string,
 /// or why the string is no value of it.
-fn split_for(name: &str, props: &[AnimProp], list: &ListValue) -> Result<Vec<AnimValue>, String> {
+fn split_for(
+    name: &str,
+    props: &[AnimProp],
+    list: &ListValue,
+    lengths: &LengthContext,
+) -> Result<Vec<AnimValue>, String> {
     let rejected = |reason: String| {
         format!("motionValues.{name} cannot take {}: {reason}", list.to_css().unwrap_or_default())
     };
-    let values = split_list(name, list.horizontal(), list.vertical()).map_err(rejected)?;
+    let resolved = ListValue {
+        items: list.items.iter().map(|item| item.resolved_in(lengths)).collect(),
+        slash: list.slash,
+    };
+    let values = split_list(name, resolved.horizontal(), resolved.vertical()).map_err(rejected)?;
     match props.iter().zip(&values).find(|(prop, value)| !prop.accepts(value)) {
         Some((prop, _)) => Err(rejected(format!("{} takes no such component", prop.name()))),
         None => Ok(values),
@@ -1160,7 +1206,7 @@ mod tests {
         store.frame([&binding], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, Some(0.5));
         assert!(style.background_color.as_deref().unwrap().starts_with("rgba("));
         assert_eq!(style.padding_top, Some(LinearLength::px(8.0)));
@@ -1178,11 +1224,11 @@ mod tests {
         store.frame([&binding, &mismatch], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, Some(1.0));
 
         let mut style = StyleDesc::default();
-        store.apply(&mismatch, &mut style);
+        store.apply(&mismatch, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, None);
     }
 
@@ -1198,14 +1244,14 @@ mod tests {
         store.create_source(2.0, &json!(0.75)).unwrap();
         let row = json!({ "opacity": 2 });
         let mut style = StyleDesc::default();
-        store.apply(&row, &mut style);
+        store.apply(&row, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, None, "the frame never sampled it");
 
         store.set(1.0, &json!(0.5), clock.at(10)).unwrap();
         store.sample_unsampled([&root, &row], &[], clock.at(10));
-        store.apply(&row, &mut style);
+        store.apply(&row, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, Some(0.75));
-        store.apply(&root, &mut style);
+        store.apply(&root, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, Some(0.25), "the frame's own sample is kept");
     }
 
@@ -1254,16 +1300,98 @@ mod tests {
     }
 
     #[test]
-    fn relative_units_resolve_to_px_when_a_value_is_written() {
+    fn viewport_units_resolve_when_a_value_is_written_and_em_and_rem_stay_unresolved() {
         let clock = clock();
         let mut store = MotionValueStore::default();
         store.set_viewport(800.0, 600.0);
         store.create_source(1.0, &json!("calc(100% - 2em)")).unwrap();
-        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(100% - 32px)"));
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(100% - 2em)"));
         store.set(1.0, &json!("calc(1rem + 50vw)"), clock.at(0)).unwrap();
-        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!(416.0));
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(1rem + 400px)"));
         store.set(1.0, &json!("calc(2 * (10% + 1em))"), clock.at(0)).unwrap();
-        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(20% + 32px)"));
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("calc(20% + 2em)"));
+        store.set(1.0, &json!("2em"), clock.at(0)).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("2em"));
+    }
+
+    /// The font of an element whose parent has `parent` px text and a root of `root` px.
+    fn font_of(parent: f64, root: f64) -> ParentFont {
+        let mut lengths = LengthContext::initial(800.0, 600.0);
+        lengths = lengths.descend(Some(&LinearLength::px(root)), true);
+        let mut font = ParentFont::initial().descend(None);
+        font.lengths = lengths.descend(Some(&LinearLength::px(parent)), false);
+        font.above_root = false;
+        font
+    }
+
+    #[test]
+    fn em_and_rem_resolve_against_each_element_a_value_is_bound_to() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("2em")).unwrap();
+        store.create_source(2.0, &json!("calc(1rem + 50%)")).unwrap();
+        let binding = json!({ "marginLeft": 1, "paddingTop": 2 });
+        store.frame([&binding], &[], clock.at(0));
+        for (own, root, margin, padding) in [(20.0, 10.0, 40.0, 10.0), (10.0, 10.0, 20.0, 10.0), (10.0, 20.0, 20.0, 20.0)] {
+            let mut style = StyleDesc { font_size: Some(LinearLength::px(own)), ..Default::default() };
+            store.apply(&binding, &mut style, &font_of(own, root));
+            assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Pixels(margin)), "{own}px");
+            assert_eq!(
+                style.padding_top,
+                Some(LinearLength { px: padding, percent: 0.5, ..Default::default() }),
+                "{own}px, root {root}px"
+            );
+        }
+    }
+
+    #[test]
+    fn em_in_a_bound_font_size_is_of_the_parent_and_in_the_rest_of_the_element() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("2em")).unwrap();
+        store.create_source(2.0, &json!("1.5em")).unwrap();
+        let binding = json!({ "marginLeft": 2, "fontSize": 1 });
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &font_of(10.0, 16.0));
+        assert_eq!(style.font_size, Some(LinearLength::px(20.0)));
+        assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Pixels(30.0)));
+    }
+
+    #[test]
+    fn a_relative_value_on_a_number_property_resolves_to_the_number() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("0.05em")).unwrap();
+        let binding = json!({ "opacity": 1 });
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &font_of(10.0, 16.0));
+        assert_eq!(style.opacity, Some(0.5));
+    }
+
+    #[test]
+    fn em_and_rem_animate_as_parts_and_mix_with_px_and_percentages() {
+        let (clock, mut store) = keyframes_store();
+        store.create_source(2.0, &json!("1em")).unwrap();
+        store.animate(2.0, &json!("3rem"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("calc(0.5em + 1.5rem)"));
+        store.animate(2.0, &json!("20px"), Some(&linear(1.0)), clock.at(1000)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(1500)).unwrap(), json!("calc(1.5rem + 10px)"));
+        assert_eq!(store.get(2.0, clock.at(2000)).unwrap(), json!(20.0));
+    }
+
+    #[test]
+    fn flex_cannot_be_bound() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(1)).unwrap();
+        let binding = json!({ "flex": 1 });
+        assert!(parse_binding(&binding).is_err());
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &ParentFont::initial());
+        assert_eq!(style.flex_grow, None);
     }
 
     #[test]
@@ -1313,7 +1441,7 @@ mod tests {
         let binding = json!({ "width": 1, "marginLeft": 1 });
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         let calc = LinearLength { px: -20.0, percent: 1.0, ..Default::default() };
         assert_eq!(style.width, Some(crate::style::DimensionValue::Calc(calc)));
         assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Calc(calc)));
@@ -1321,7 +1449,7 @@ mod tests {
         store.set(1.0, &json!("calc(-100% - 20px)"), clock.at(10)).unwrap();
         store.frame([&binding], &[], clock.at(10));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         assert_eq!(style.width, Some(crate::style::DimensionValue::Pixels(0.0)));
     }
 
@@ -1364,7 +1492,7 @@ mod tests {
         let clock = clock();
         let mut store = MotionValueStore::default();
         store.create_source(1.0, &json!("0.5em 0.75em")).unwrap();
-        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("8px 12px"));
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("0.5em 0.75em"));
         store.set(1.0, &json!("10px / 20px"), clock.at(0)).unwrap();
         assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("10px / 20px"));
         store.set(1.0, &json!("calc(100% - 4px)  50% 0"), clock.at(0)).unwrap();
@@ -1398,12 +1526,12 @@ mod tests {
         let (clock, mut store) = keyframes_store();
         store.create_source(2.0, &json!("0.5em 0.75em")).unwrap();
         store.animate(2.0, &json!("1em 1.5em"), Some(&linear(1.0)), clock.at(0)).unwrap();
-        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("12px 18px"));
-        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!("16px 24px"));
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("0.75em 1.125em"));
+        assert_eq!(store.get(2.0, clock.at(1000)).unwrap(), json!("1em 1.5em"));
 
         // Lengths of different units mix as calc() parts, per component.
         store.animate(2.0, &json!("50% calc(100% - 4px)"), Some(&linear(1.0)), clock.at(2000)).unwrap();
-        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("calc(25% + 8px) calc(50% + 10px)"));
+        assert_eq!(store.get(2.0, clock.at(2500)).unwrap(), json!("calc(25% + 0.5em) calc(50% + 0.75em - 2px)"));
 
         store.create_source(3.0, &json!("10px / 20px")).unwrap();
         store.animate(3.0, &json!("30px / 40px"), Some(&linear(1.0)), clock.at(0)).unwrap();
@@ -1489,7 +1617,7 @@ mod tests {
     fn applied(store: &mut MotionValueStore, clock: &Clock, binding: Value) -> StyleDesc {
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         style
     }
 
@@ -1621,7 +1749,7 @@ mod tests {
         store.animate(2.0, &json!("1em 1.5em"), Some(&linear(1.0)), clock.at(0)).unwrap();
         assert!(store.frame([&binding], &[], clock.at(500)).active);
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style);
+        store.apply(&binding, &mut style, &ParentFont::initial());
         assert_eq!(style.padding_top, Some(LinearLength::px(12.0)));
         assert_eq!(style.padding_left, Some(LinearLength::px(18.0)));
     }

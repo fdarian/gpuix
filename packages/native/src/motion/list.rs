@@ -12,7 +12,7 @@ use crate::css::syntax::{expand_sides, split_slash_tokens};
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ListValue {
     /// Lengths and colours: [`AnimValue::Number`], [`AnimValue::Percent`],
-    /// [`AnimValue::Calc`] or [`AnimValue::Color`].
+    /// [`AnimValue::Calc`], [`AnimValue::Relative`] or [`AnimValue::Color`].
     pub(super) items: Vec<AnimValue>,
     pub(super) slash: Option<usize>,
 }
@@ -41,7 +41,7 @@ impl ListValue {
             return Err(format!("nothing after the / in \"{text}\""));
         }
         let list = Self { items, slash };
-        if list.slash.is_some() && list.items.iter().any(|item| item.as_length().is_none()) {
+        if list.slash.is_some() && list.items.iter().any(|item| item.as_terms().is_none()) {
             return Err(format!("only lengths can stand on either side of the / in \"{text}\""));
         }
         Ok(list)
@@ -69,8 +69,8 @@ impl ListValue {
             match item {
                 AnimValue::Color(color) => text.push_str(&color.to_css()),
                 item => {
-                    let (px, percent) = item.as_length().ok_or_else(|| format!("a list cannot hold {item:?}"))?;
-                    text.push_str(&LinearLength { px, percent, ..Default::default() }.to_string());
+                    let [px, percent, em, rem] = item.as_terms().ok_or_else(|| format!("a list cannot hold {item:?}"))?;
+                    text.push_str(&LinearLength { px, percent, em, rem, ..Default::default() }.to_string());
                 }
             }
         }
@@ -82,7 +82,11 @@ impl ListValue {
 fn components(value: &AnimValue) -> Option<(&[AnimValue], Option<&[AnimValue]>)> {
     match value {
         AnimValue::List(list) => Some((list.horizontal(), list.vertical())),
-        AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Color(_) => {
+        AnimValue::Number(_)
+        | AnimValue::Percent(_)
+        | AnimValue::Calc { .. }
+        | AnimValue::Relative { .. }
+        | AnimValue::Color(_) => {
             Some((std::slice::from_ref(value), None))
         }
         _ => None,

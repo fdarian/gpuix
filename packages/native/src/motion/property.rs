@@ -12,7 +12,8 @@ use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
 use crate::css::font_variations::{axes_of, VariationSettings};
-use crate::css::flex::Flex;
+use crate::css::border::Side;
+use crate::css::flex::{deserialize_flex, Flex};
 use crate::css::outline::Outline;
 use crate::css::line_height::LineHeight;
 use crate::css::border_radius::parse_radii;
@@ -36,6 +37,9 @@ enum Kind {
     /// A `font-size`, where `em` and `%` are of the parent's size, so it is plain px.
     FontSize,
     Dimension,
+    /// A `Dimension` where `auto` is a value: a margin, an inset or `flex-basis`. CSS cannot
+    /// interpolate `auto` with a length, so a pair of them is discrete.
+    Offset,
     Color,
     FontWeight,
     Shadow,
@@ -63,7 +67,13 @@ enum Initial {
     /// `auto`, `none`, `normal`: CSS does not interpolate these with a length,
     /// number or colour, so nothing animates from them.
     Unresolved,
+    /// `auto` as a value of its own, which a pair with a length flips at the halfway point.
+    Auto,
     Number(f64),
+    /// A border side's width: 0 under a `none` or `hidden` style, else `medium` or what a shorthand gives.
+    BorderWidth(Side),
+    /// The outline's width, by the same rule.
+    OutlineWidth,
     /// The element's computed `font-size`, inherited when it declares none.
     FontSize,
     /// The element's computed `font-weight`, inherited when it declares none.
@@ -268,6 +278,7 @@ impl Field for Option<DimensionValue> {
             AnimValue::Percent(value) => DimensionValue::Percentage(value),
             AnimValue::Calc { .. } => DimensionValue::Calc(linear_length(value)),
             AnimValue::Auto => DimensionValue::Auto,
+            value if value.is_auto_keyword() => DimensionValue::Auto,
             other => unreachable!("a dimension field was given {other:?}"),
         });
     }
@@ -381,6 +392,14 @@ fn keyword_write(slot: &mut Option<String>, value: AnimValue) {
     }
 }
 
+/// A margin, inset or `flex-basis`, where `auto` is a value and not the absence of one.
+fn offset_read(slot: &Option<DimensionValue>, cx: &Reading) -> Option<AnimValue> {
+    match slot {
+        Some(DimensionValue::Auto) => Some(AnimValue::auto_keyword()),
+        slot => Field::read(slot, cx),
+    }
+}
+
 /// `Option<String>` holds both colours and keywords, so the kind of the row
 /// picks the conversion.
 fn font_size_read(slot: &Option<LinearLength>, cx: &Reading) -> Option<AnimValue> {
@@ -394,6 +413,9 @@ macro_rules! read_field {
     };
     (FontSize, $slot:expr, $cx:expr) => {
         font_size_read(&$slot, $cx)
+    };
+    (Offset, $slot:expr, $cx:expr) => {
+        offset_read(&$slot, $cx)
     };
     ($kind:ident, $slot:expr, $cx:expr) => {
         Field::read(&$slot, $cx)
@@ -509,7 +531,7 @@ macro_rules! properties {
                 // A `calc()` clamps to the range of its property, which only a
                 // resolved length can be held to.
                 value.map(|value| match self.kind() {
-                    Kind::Length | Kind::Corner | Kind::Dimension => self.clamp_value(value),
+                    Kind::Length | Kind::Corner | Kind::Dimension | Kind::Offset => self.clamp_value(value),
                     _ => value,
                 })
             }
@@ -523,12 +545,12 @@ macro_rules! properties {
     };
 }
 
-use Initial::{ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
+use Initial::{BorderWidth, ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
 
 properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow | flex.grow();
     FlexShrink "flexShrink" Number NonNegative Number(1.0), flex_shrink | flex.shrink();
-    FlexBasis "flexBasis" Dimension NonNegative Unresolved, flex_basis | flex.basis();
+    FlexBasis "flexBasis" Offset NonNegative Initial::Auto, flex_basis | flex.basis();
     RowGap "rowGap" Length NonNegative Number(0.0), row_gap | gap.row();
     ColumnGap "columnGap" Length NonNegative Number(0.0), column_gap | gap.column();
 
@@ -544,24 +566,24 @@ properties! {
     PaddingBottom "paddingBottom" Length NonNegative Number(0.0), padding_bottom | padding.bottom();
     PaddingLeft "paddingLeft" Length NonNegative Number(0.0), padding_left | padding.left();
 
-    MarginTop "marginTop" Dimension None Number(0.0), margin_top | margin.top();
-    MarginRight "marginRight" Dimension None Number(0.0), margin_right | margin.right();
-    MarginBottom "marginBottom" Dimension None Number(0.0), margin_bottom | margin.bottom();
-    MarginLeft "marginLeft" Dimension None Number(0.0), margin_left | margin.left();
+    MarginTop "marginTop" Offset None Number(0.0), margin_top | margin.top();
+    MarginRight "marginRight" Offset None Number(0.0), margin_right | margin.right();
+    MarginBottom "marginBottom" Offset None Number(0.0), margin_bottom | margin.bottom();
+    MarginLeft "marginLeft" Offset None Number(0.0), margin_left | margin.left();
 
-    Top "top" Dimension None Unresolved, top | inset.top();
-    Right "right" Dimension None Unresolved, right | inset.right();
-    Bottom "bottom" Dimension None Unresolved, bottom | inset.bottom();
-    Left "left" Dimension None Unresolved, left | inset.left();
+    Top "top" Offset None Initial::Auto, top | inset.top();
+    Right "right" Offset None Initial::Auto, right | inset.right();
+    Bottom "bottom" Offset None Initial::Auto, bottom | inset.bottom();
+    Left "left" Offset None Initial::Auto, left | inset.left();
 
     BackgroundColor "backgroundColor" Color None Transparent, background_color;
     Color "color" Color None ComputedColor, color;
     Opacity "opacity" Number Unit Number(1.0), opacity;
 
-    BorderTopWidth "borderTopWidth" Length NonNegative Number(0.0), border_top_width | border_width.top();
-    BorderRightWidth "borderRightWidth" Length NonNegative Number(0.0), border_right_width | border_width.right();
-    BorderBottomWidth "borderBottomWidth" Length NonNegative Number(0.0), border_bottom_width | border_width.bottom();
-    BorderLeftWidth "borderLeftWidth" Length NonNegative Number(0.0), border_left_width | border_width.left();
+    BorderTopWidth "borderTopWidth" Length NonNegative BorderWidth(Side::Top), border_top_width | border_width.top();
+    BorderRightWidth "borderRightWidth" Length NonNegative BorderWidth(Side::Right), border_right_width | border_width.right();
+    BorderBottomWidth "borderBottomWidth" Length NonNegative BorderWidth(Side::Bottom), border_bottom_width | border_width.bottom();
+    BorderLeftWidth "borderLeftWidth" Length NonNegative BorderWidth(Side::Left), border_left_width | border_width.left();
     BorderTopColor "borderTopColor" Color None CurrentColor, border_top_color | border_color;
     BorderRightColor "borderRightColor" Color None CurrentColor, border_right_color | border_color;
     BorderBottomColor "borderBottomColor" Color None CurrentColor, border_bottom_color | border_color;
@@ -573,7 +595,7 @@ properties! {
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
-    OutlineWidth "outlineWidth" Length NonNegative Number(0.0), outline_width | outline.width();
+    OutlineWidth "outlineWidth" Length NonNegative Initial::OutlineWidth, outline_width | outline.width();
     OutlineColor "outlineColor" Color None CurrentColor, outline_color | outline.color();
     TextDecorationColor "textDecorationColor" Color None CurrentColor, text_decoration_color;
     OutlineOffset "outlineOffset" Length None Number(0.0), outline_offset;
@@ -661,6 +683,7 @@ pub(super) fn expand_shorthand(name: &str) -> Option<&'static [AnimProp]> {
         ],
         "gap" => &[RowGap, ColumnGap],
         "inset" => &[Top, Right, Bottom, Left],
+        "flex" => &[FlexGrow, FlexShrink, FlexBasis],
         _ => return None,
     })
 }
@@ -700,6 +723,7 @@ pub(super) fn split_shorthand(name: &str, value: &Value) -> Option<Result<Split,
 
 fn split_value(name: &str, channels: usize, value: &Value) -> Result<Vec<Value>, String> {
     match value {
+        Value::String(_) | Value::Number(_) if name == "flex" => split_flex(value),
         Value::String(text) => {
             Ok(split_text(name, text)?.into_iter().map(Value::String).collect())
         }
@@ -783,6 +807,15 @@ fn split_text(name: &str, text: &str) -> Result<Vec<String>, String> {
         }
         _ => parse_sides(text, token).map(|sides| vec![sides.top, sides.right, sides.bottom, sides.left]),
     }
+}
+
+/// `flex` as its longhands, which CSS animates it by: grow and shrink as numbers, the basis as
+/// the text of a length. A lone number is `n 1 0%`, as it is in a style.
+fn split_flex(value: &Value) -> Result<Vec<Value>, String> {
+    let flex = deserialize_flex(value.clone())
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "expected a number or a CSS flex value".to_string())?;
+    Ok(vec![Value::from(flex.grow), Value::from(flex.shrink), Value::String(flex.basis.to_string())])
 }
 
 /// The axis of a box: the side of the border box a size property measures, or
@@ -881,11 +914,19 @@ impl AnimProp {
     /// The value before the style sets it: the CSS computed value of an unset
     /// property. `None` where that is `auto`, `normal` or a size layout decides,
     /// which a track cannot blend from, or an inherited value the renderer does
-    /// not carry yet.
-    pub(super) fn initial(self, colors: &Colors) -> Option<AnimValue> {
+    /// not carry yet. `style` is the element's own: a border width computes from
+    /// its border style.
+    pub(super) fn initial(self, style: Option<&StyleDesc>, colors: &Colors) -> Option<AnimValue> {
         match self.initial_rule() {
             Initial::Unresolved => None,
+            Initial::Auto => Some(AnimValue::auto_keyword()),
             Initial::Number(value) => Some(AnimValue::Number(value)),
+            Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(0.0, |style| {
+                crate::css::border::computed_width(style, &colors.element, &colors.lengths, side)
+            }))),
+            Initial::OutlineWidth => Some(AnimValue::Number(style.map_or(0.0, |style| {
+                crate::css::border::computed_outline_width(style, &colors.element, &colors.lengths)
+            }))),
             Initial::FontSize => Some(AnimValue::Number(colors.font.size)),
             Initial::FontWeight => Some(AnimValue::Number(colors.font.weight)),
             Initial::FontVariations => Some(AnimValue::Variations(axes_of(&colors.font.variations))),
@@ -971,7 +1012,7 @@ impl AnimProp {
                 }
                 AnimValue::Variations(axes)
             }
-            Kind::Dimension => {
+            Kind::Dimension | Kind::Offset => {
                 let dimension: DimensionValue = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
                 match dimension {
@@ -992,6 +1033,7 @@ impl AnimProp {
                         ));
                     }
                     DimensionValue::Auto if matches!(self, Self::Width | Self::Height) => AnimValue::Auto,
+                    DimensionValue::Auto if self.kind() == Kind::Offset => AnimValue::auto_keyword(),
                     DimensionValue::Auto => {
                         return Err(format!(
                             "motion cannot animate {name} to or from auto: only width and height can, \
@@ -1057,18 +1099,19 @@ impl AnimProp {
 
     /// Whether `write` can put `value` in this property.
     pub(super) fn accepts(self, value: &AnimValue) -> bool {
-        matches!(
-            (self.kind(), value),
-            (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
-                | (
-                    Kind::Dimension | Kind::Length | Kind::Corner,
-                    AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. }
-                )
-                | (Kind::Corner, AnimValue::Ellipse { .. })
-                | (Kind::Color, AnimValue::Color(_))
-                | (Kind::Shadow, AnimValue::Shadows(_))
-                | (Kind::Variations, AnimValue::Variations(_))
-        )
+        (self.kind() == Kind::Offset && value.is_auto_keyword())
+            || matches!(
+                (self.kind(), value),
+                (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
+                    | (
+                        Kind::Dimension | Kind::Offset | Kind::Length | Kind::Corner,
+                        AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. }
+                    )
+                    | (Kind::Corner, AnimValue::Ellipse { .. })
+                    | (Kind::Color, AnimValue::Color(_))
+                    | (Kind::Shadow, AnimValue::Shadows(_))
+                    | (Kind::Variations, AnimValue::Variations(_))
+            )
     }
 
     /// Springs overshoot their target, so what is applied has to stay inside
@@ -1176,9 +1219,9 @@ mod tests {
     #[test]
     fn an_unset_discrete_property_starts_from_its_initial_keyword() {
         let colors = Colors::root();
-        assert_eq!(AnimProp::Display.initial(&colors), Some(AnimValue::Keyword(None)));
+        assert_eq!(AnimProp::Display.initial(None, &colors), Some(AnimValue::Keyword(None)));
         assert_eq!(
-            AnimProp::Visibility.initial(&colors),
+            AnimProp::Visibility.initial(None, &colors),
             Some(AnimValue::Keyword(Some("visible".to_string())))
         );
         let style = StyleDesc { display: Some("grid".to_string()), ..Default::default() };
@@ -1435,8 +1478,8 @@ mod tests {
         let font = crate::motion::value::Font { size: 18.0, weight: 700.0, variations: Default::default() };
         let mut colors = Colors::root();
         colors.font = font;
-        assert_eq!(AnimProp::FontSize.initial(&colors), Some(AnimValue::Number(18.0)));
-        assert_eq!(AnimProp::FontWeight.initial(&colors), Some(AnimValue::Number(700.0)));
+        assert_eq!(AnimProp::FontSize.initial(None, &colors), Some(AnimValue::Number(18.0)));
+        assert_eq!(AnimProp::FontWeight.initial(None, &colors), Some(AnimValue::Number(700.0)));
     }
 
     #[test]
@@ -1475,14 +1518,14 @@ mod tests {
         assert_eq!(AnimProp::OutlineOffset.parse(&serde_json::json!(-1), &colors).unwrap(), AnimValue::Number(-1.0));
     }
     #[test]
-    fn flex_basis_animates_between_lengths_and_percentages_but_not_auto() {
+    fn flex_basis_animates_between_lengths_and_percentages_and_auto_is_a_keyword() {
         let colors = sized_colors();
         let read = |json: &str| {
             AnimProp::FlexBasis.read(&serde_json::from_str::<StyleDesc>(json).unwrap(), &colors)
         };
         assert_eq!(read(r#"{ "flexBasis": 40 }"#), Some(AnimValue::Number(40.0)));
         assert_eq!(read(r#"{ "flexBasis": "50%" }"#), Some(AnimValue::Percent(0.5)));
-        assert_eq!(read(r#"{ "flexBasis": "auto" }"#), None);
+        assert_eq!(read(r#"{ "flexBasis": "auto" }"#), Some(AnimValue::auto_keyword()));
         assert_eq!(
             read(r#"{ "flexBasis": "calc(100% - 40px)" }"#),
             Some(AnimValue::Calc { px: -40.0, percent: 1.0 })
@@ -1496,7 +1539,7 @@ mod tests {
             AnimProp::FlexBasis.parse(&serde_json::json!("calc(100% - 2em)"), &colors).unwrap(),
             AnimValue::Calc { px: -40.0, percent: 1.0 }
         );
-        assert!(AnimProp::FlexBasis.parse(&serde_json::json!("auto"), &colors).is_err());
+        assert_eq!(AnimProp::FlexBasis.parse(&serde_json::json!("auto"), &colors).unwrap(), AnimValue::auto_keyword());
 
         let mut style = StyleDesc::default();
         AnimProp::FlexBasis.write(&mut style, AnimValue::Percent(0.5));
@@ -1721,13 +1764,13 @@ mod tests {
         };
         let colors = Colors::of(&ColorContext::root(Scheme::Light), Some(&style));
         assert_eq!(
-            AnimProp::BorderTopColor.initial(&colors),
+            AnimProp::BorderTopColor.initial(None, &colors),
             AnimProp::Color.read(&style, &colors)
         );
         // With no `color` of its own it is the inherited one.
         let inherited = Colors::of(&ColorContext::root(Scheme::Light), None);
         assert_eq!(
-            AnimProp::BorderTopColor.initial(&inherited),
+            AnimProp::BorderTopColor.initial(None, &inherited),
             Some(AnimValue::Color(Color::from_rgba(gpui::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }, false)))
         );
     }
@@ -1814,12 +1857,12 @@ mod tests {
         let tag = u32::from_be_bytes(*b"wght");
         let mut colors = Colors::root();
         assert_eq!(
-            AnimProp::FontVariationSettings.initial(&colors),
+            AnimProp::FontVariationSettings.initial(None, &colors),
             Some(AnimValue::Variations(Vec::new()))
         );
         colors.font.variations = gpui::FontVariations::new([(tag, 650.0)]);
         assert_eq!(
-            AnimProp::FontVariationSettings.initial(&colors),
+            AnimProp::FontVariationSettings.initial(None, &colors),
             Some(AnimValue::Variations(vec![(tag, 650.0)]))
         );
     }

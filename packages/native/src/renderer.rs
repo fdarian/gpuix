@@ -7962,7 +7962,7 @@ fn build_element_unpumped(
             .or(declared_style)
             .cloned()
             .unwrap_or_default();
-        ctx.motion_values.apply(binding, &mut resolved);
+        ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_font());
         resolved
     });
     let underlying_style = bound_style

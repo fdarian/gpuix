@@ -3420,4 +3420,108 @@ mod tests {
             assert!(clock.events().is_empty());
         }
     }
+
+    mod auto_and_border_widths {
+        use super::*;
+
+        fn margin(value: &str, behavior: &str) -> StyleDesc {
+            style(&format!(
+                r#"{{ "marginLeft": {value}, "transition": "margin-left 1s linear {behavior}" }}"#
+            ))
+        }
+
+        #[test]
+        fn auto_to_a_length_is_discrete_so_it_jumps_without_allow_discrete() {
+            let mut clock = Clock::new();
+            clock.frame(0, &margin(r#""auto""#, ""));
+            let end = margin("100", "");
+            assert_eq!(clock.frame(10, &end).margin_left, Some(DimensionValue::Pixels(100.0)));
+            assert!(clock.events().is_empty());
+            let mut clock = Clock::new();
+            clock.frame(0, &margin("100", ""));
+            assert_eq!(clock.frame(10, &margin(r#""auto""#, "")).margin_left, Some(DimensionValue::Auto));
+            assert!(clock.events().is_empty());
+        }
+
+        #[test]
+        fn allow_discrete_flips_auto_and_a_length_at_half() {
+            let mut clock = Clock::new();
+            clock.frame(0, &margin(r#""auto""#, "allow-discrete"));
+            let end = margin("100", "allow-discrete");
+            assert_eq!(clock.frame(0, &end).margin_left, Some(DimensionValue::Auto));
+            assert_eq!(clock.frame(400, &end).margin_left, Some(DimensionValue::Auto));
+            assert_eq!(clock.frame(600, &end).margin_left, Some(DimensionValue::Pixels(100.0)));
+            assert_eq!(clock.frame(1000, &end).margin_left, Some(DimensionValue::Pixels(100.0)));
+        }
+
+        #[test]
+        fn an_unset_margin_is_zero_and_blends_with_a_length() {
+            let mut clock = Clock::new();
+            clock.frame(0, &style(r#"{ "transition": "margin-left 1s linear" }"#));
+            let end = margin("100", "");
+            assert_eq!(clock.frame(0, &end).margin_left, Some(DimensionValue::Pixels(0.0)));
+            assert_eq!(clock.frame(400, &end).margin_left, Some(DimensionValue::Pixels(40.0)));
+        }
+
+        #[test]
+        fn an_unset_inset_is_auto_and_flips_with_allow_discrete_only() {
+            let inset = |value: &str, behavior: &str| {
+                style(&format!(r#"{{ "top": {value}, "transition": "top 1s linear {behavior}" }}"#))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &style(r#"{ "transition": "top 1s linear allow-discrete" }"#));
+            let end = inset("100", "allow-discrete");
+            clock.frame(0, &end);
+            assert_eq!(clock.frame(400, &end).top, Some(DimensionValue::Auto));
+            assert_eq!(clock.frame(600, &end).top, Some(DimensionValue::Pixels(100.0)));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &style(r#"{ "transition": "top 1s linear" }"#));
+            assert_eq!(clock.frame(10, &inset("100", "")).top, Some(DimensionValue::Pixels(100.0)));
+            assert!(clock.events().is_empty());
+        }
+
+        fn border(extra: &str) -> StyleDesc {
+            style(&format!(r#"{{ {extra} "transition": "border-top-width 1s linear" }}"#))
+        }
+
+        #[test]
+        fn an_unset_border_width_goes_between_zero_and_medium_with_the_style() {
+            let mut clock = Clock::new();
+            clock.frame(0, &border(""));
+            let solid = border(r#""borderTopStyle": "solid","#);
+            // No style: 0. A visible style: medium, which is a change CSS transitions.
+            assert_eq!(clock.frame(0, &solid).border_top_width, Some(LinearLength::px(0.0)));
+            assert_eq!(clock.frame(500, &solid).border_top_width, Some(LinearLength::px(1.5)));
+            // Finished, the transition leaves the style as it declares it: no width, which computes to medium.
+            assert_eq!(clock.frame(1000, &solid).border_top_width, None);
+            assert!(clock.events().iter().any(|event| event.0 == TransitionEventKind::End));
+        }
+
+        #[test]
+        fn a_width_set_to_a_length_from_an_unset_one_under_a_visible_style_starts_at_medium() {
+            let mut clock = Clock::new();
+            clock.frame(0, &border(r#""borderTopStyle": "solid","#));
+            let wide = border(r#""borderTopStyle": "solid", "borderTopWidth": 7,"#);
+            clock.frame(0, &wide);
+            assert_eq!(clock.frame(0, &wide).border_top_width, Some(LinearLength::px(3.0)));
+            assert_eq!(clock.frame(500, &wide).border_top_width, Some(LinearLength::px(5.0)));
+        }
+
+        #[test]
+        fn an_outline_width_starts_at_medium_only_under_an_outline_style() {
+            let outline = |extra: &str| style(&format!(r#"{{ {extra} "transition": "outline-width 1s linear" }}"#));
+            let mut clock = Clock::new();
+            clock.frame(0, &outline(r#""outlineStyle": "solid","#));
+            let wide = outline(r#""outlineStyle": "solid", "outlineWidth": 7,"#);
+            clock.frame(0, &wide);
+            assert_eq!(clock.frame(500, &wide).outline_width, Some(LinearLength::px(5.0)));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &outline(""));
+            let wide = outline(r#""outlineWidth": 7,"#);
+            clock.frame(0, &wide);
+            assert_eq!(clock.frame(500, &wide).outline_width, Some(LinearLength::px(3.5)));
+        }
+    }
 }

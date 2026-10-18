@@ -96,7 +96,9 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
 /**
  * Every `StyleDesc` longhand whose value is a number, a length, a colour or a
  * shadow list can be animated, plus the `padding`, `margin`, `borderWidth`,
- * `borderRadius`, `borderColor`, `gap` and `inset` shorthands, which expand to their longhands.
+ * `borderRadius`, `borderColor`, `gap`, `inset` and `flex` shorthands, which expand to their longhands.
+ * `flex` is `flexGrow`, `flexShrink` and `flexBasis`, as CSS animates it: `"1 1 0px"` to
+ * `"3 1 100px"` is `"2 1 50px"` halfway, and a lone number is `n 1 0%`.
  * A shorthand written with several values (`padding: "0.5em 0.75em"`, `gap: "4px 8px"`,
  * `borderRadius: "10px 20px / 5px"`) gives each side, axis or corner its own value, and
  * each animates on its own; keyframes of such strings split frame by frame.
@@ -106,6 +108,8 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
  * blend part by part, as Chrome blends them: `calc(100% - 20px)` to `calc(50% + 10px)`
  * is `calc(75% - 5px)` halfway, and `20px` to `50%` is `calc(10px + 25%)`. `em`, `rem`
  * and the viewport units are px by then, from the element's font size and the window.
+ * (A motion value keeps its `em` and `rem` until it is applied, so one value bound to two
+ * elements is two sizes.)
  * The percentage stays a share of its basis (the containing block, or the border box for
  * a corner radius), so a parent that resizes mid-animation is followed exactly, and a
  * spring or a retarget keeps its speed on each part. This holds for the sizes, the
@@ -115,8 +119,11 @@ export type OutlineStyle = Exclude<LineStyle, "hidden"> | "auto"
  * the parent's font size, so it is px. A target that is negative whatever the basis is an
  * error, and one that only comes out negative is clamped. A corner moves
  * both its radii (`"50%"` is an ellipse on a wide box, as in CSS), so `"10px / 20px"`
- * to `"30px / 40px"` is `"20px / 30px"` halfway. A margin side cannot animate to or from
- * `auto`, so a `margin` with `auto` in it is an error. `width` and `height` also take `"auto"`, the size the content
+ * to `"30px / 40px"` is `"20px / 30px"` halfway. The margins, the insets and `flexBasis` also take
+ * `"auto"`, which CSS cannot interpolate with a length: the pair is discrete, so it flips
+ * at the halfway point of the eased progress, and a CSS transition runs it only under
+ * `transition-behavior: allow-discrete`. An unset margin is `0` and an unset inset is `auto`.
+ * `width` and `height` also take `"auto"`, the size the content
  * wants (the min and max sizes do not). The width is measured by an extra layout of the
  * tree while the element animates it, one frame late like the height. The size keywords
  * (`min-content` and the like) are an error, and a CSS transition or animation to or from
@@ -146,6 +153,7 @@ export type MotionStyleTargets = Pick<
   | "right"
   | "bottom"
   | "left"
+  | "flex"
   | "flexGrow"
   | "flexShrink"
   | "flexBasis"
@@ -209,8 +217,8 @@ export type MotionLength = DimensionValue
  * `StyleDesc` where each animatable property may hold a motion value instead.
  * The adapter binds it to the element rather than sending it as style.
  */
-export type MotionValueStyle = Omit<StyleDesc, keyof MotionStyle> & {
-  [Property in keyof MotionStyle]?: StyleDesc[Property] | MotionValue
+export type MotionValueStyle = Omit<StyleDesc, Exclude<keyof MotionStyle, "flex">> & {
+  [Property in Exclude<keyof MotionStyle, "flex">]?: StyleDesc[Property] | MotionValue
 }
 
 export type MotionEase =
@@ -481,8 +489,9 @@ export interface StyleDesc {
    *  `"2 100px"`, `"100px 2"`, `"1 1 0"`, and a lone basis (`"100px"`, `"50%"`,
    *  `"fit-content"`) is `1 1 <basis>`. The basis takes what `flexBasis` does, so not
    *  `content`. A unitless `0` is a factor unless two factors come before it. `flexGrow`,
-   *  `flexShrink` and `flexBasis` win over it. It is not an `animate` target: animate those
-   *  three; `transition: flex` covers them. */
+   *  `flexShrink` and `flexBasis` win over it. As an `animate`, `initial`, `exit` or keyframes
+   *  target it animates those three, and `transition: flex` covers them; a motion value cannot
+   *  be bound to it (bind the three). */
   flex?: number | string
   /** CSS `flex-flow`: `"<direction> || <wrap>"` in either order (`"column wrap"`,
    *  `"wrap-reverse"`); a missing part is `row` or `nowrap`. `flexDirection` and `flexWrap`

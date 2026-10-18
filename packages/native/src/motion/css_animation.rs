@@ -551,7 +551,7 @@ enum Underlying {
 }
 
 fn underlying_of(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Underlying {
-    match prop.read(style, colors).or_else(|| prop.initial(colors)) {
+    match prop.read(style, colors).or_else(|| prop.initial(Some(style), colors)) {
         Some(value) => Underlying::Value(value),
         None if prop.size_axis().is_some() => Underlying::Keyword,
         None => Underlying::Unknown,

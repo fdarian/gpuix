@@ -11,7 +11,7 @@ use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
 use crate::css::color_space::Space;
-use crate::css::length::LengthContext;
+use crate::css::length::{LengthContext, LinearLength};
 use crate::style::StyleDesc;
 
 /// The colour contexts an element's animated colours resolve in, so
@@ -74,7 +74,9 @@ impl ParentFont {
         }
     }
 
-    fn lengths_of(&self, style: Option<&StyleDesc>) -> LengthContext {
+    /// The context of an element styled by `style` whose parent has this font: what its
+    /// own `em`, `rem` and viewport units mean.
+    pub(crate) fn lengths_of(&self, style: Option<&StyleDesc>) -> LengthContext {
         self.lengths.descend(style.and_then(|style| style.font_size.as_ref()), self.above_root)
     }
 
@@ -333,6 +335,11 @@ pub(super) enum AnimValue {
     /// already px. Built through [`AnimValue::length`], which keeps a length that
     /// has only one of the two as a [`Self::Number`] or [`Self::Percent`].
     Calc { px: f64, percent: f64 },
+    /// A length that keeps `em` and `rem` as multiples of the font size, because the
+    /// element it lands on is not known yet: only a motion value holds one, and it
+    /// resolves against each element it is bound to. Built through
+    /// [`AnimValue::relative`], which keeps a length with neither as a plain one.
+    Relative { px: f64, percent: f64, em: f64, rem: f64 },
     /// A corner radius whose horizontal and vertical radii differ, each a length as
     /// in [`Self::Calc`]. Built through [`AnimValue::ellipse`], which keeps a circular
     /// one as a length.
@@ -357,6 +364,16 @@ pub(super) enum AnimValue {
 }
 
 impl AnimValue {
+    /// `auto` for a margin, an inset or `flex-basis`: a keyword that is no length, so it
+    /// blends with none and a pair of it with a length flips at the halfway point.
+    pub(super) fn auto_keyword() -> Self {
+        Self::Keyword(Some("auto".to_string()))
+    }
+
+    pub(super) fn is_auto_keyword(&self) -> bool {
+        matches!(self, Self::Keyword(Some(keyword)) if keyword == "auto")
+    }
+
     /// The simplest value for `px` plus `percent` of the basis.
     pub(super) fn length(px: f64, percent: f64) -> Self {
         if percent == 0.0 {
@@ -366,6 +383,32 @@ impl AnimValue {
         } else {
             Self::Calc { px, percent }
         }
+    }
+
+    pub(super) fn relative(px: f64, percent: f64, em: f64, rem: f64) -> Self {
+        if em == 0.0 && rem == 0.0 {
+            Self::length(px, percent)
+        } else {
+            Self::Relative { px, percent, em, rem }
+        }
+    }
+
+    /// The four parts of a length, whichever of the four it is held as.
+    pub(super) fn as_terms(&self) -> Option<[f64; 4]> {
+        match self {
+            Self::Relative { px, percent, em, rem } => Some([*px, *percent, *em, *rem]),
+            other => other.as_length().map(|(px, percent)| [px, percent, 0.0, 0.0]),
+        }
+    }
+
+    /// This value with `em` and `rem` resolved against `lengths`: a length that has neither,
+    /// and every value that is no length, is returned as it is.
+    pub(super) fn resolved_in(&self, lengths: &LengthContext) -> Self {
+        let Self::Relative { px, percent, em, rem } = self else {
+            return self.clone();
+        };
+        let (px, percent) = lengths.split(&LinearLength { px: *px, percent: *percent, em: *em, rem: *rem, ..Default::default() });
+        Self::length(px, percent)
     }
 
     /// A corner of radii `x` and `y`, each its px and its share of the border box's side.
@@ -400,6 +443,7 @@ impl AnimValue {
             Self::Number(_) => "a number or px length",
             Self::Percent(_) => "a percentage",
             Self::Calc { .. } => "a length mixing px and a percentage",
+            Self::Relative { .. } => "a length in em or rem",
             Self::Ellipse { .. } => "an elliptical corner",
             Self::Color(_) => "a colour",
             Self::Shadows(_) => "a shadow list",
@@ -421,6 +465,9 @@ pub(super) enum Layout {
     /// `[px, percent]`: lengths that are not all px or all percentages blend as
     /// the two parts of a `calc()`, each on its own channel.
     Calc,
+    /// `[px, percent, em, rem]`: lengths of which one is in `em` or `rem`, kept apart
+    /// from px until they are applied to an element.
+    Relative,
     /// `[x px, x percent, y px, y percent]`: a corner radius with two radii, which
     /// blend part by part like the two parts of a [`Self::Calc`].
     Ellipse,
@@ -516,6 +563,7 @@ impl Layout {
             Self::Number => AnimValue::Number(channels[0]),
             Self::Percent => AnimValue::Percent(channels[0]),
             Self::Calc => AnimValue::length(channels[0], channels[1]),
+            Self::Relative => AnimValue::relative(channels[0], channels[1], channels[2], channels[3]),
             Self::Ellipse => AnimValue::ellipse((channels[0], channels[1]), (channels[2], channels[3])),
             Self::Color(blends) => AnimValue::Color(Color::from_channels(channels, all_srgb(blends))),
             Self::Shadows { insets, blends } => AnimValue::Shadows(
@@ -564,7 +612,7 @@ impl Layout {
     pub(super) fn is_percent_channel(&self, channel: usize) -> bool {
         match self {
             Self::Percent => true,
-            Self::Calc => channel == 1,
+            Self::Calc | Self::Relative => channel == 1,
             Self::Ellipse => channel % 2 == 1,
             Self::List { parts, .. } => {
                 let mut start = 0;
@@ -601,6 +649,7 @@ impl Layout {
             (Self::Number, Self::Number)
             | (Self::Percent, Self::Percent)
             | (Self::Calc, Self::Calc)
+            | (Self::Relative, Self::Relative)
             | (Self::Ellipse, Self::Ellipse)
             | (Self::Color(_), Self::Color(_))
             | (Self::Numbers, Self::Numbers) => true,
@@ -615,6 +664,12 @@ impl Layout {
         match (self, other) {
             (Self::Number, Self::Calc) => Some(vec![rate[0], 0.0]),
             (Self::Percent, Self::Calc) => Some(vec![0.0, rate[0]]),
+            (Self::Number, Self::Relative) => Some(vec![rate[0], 0.0, 0.0, 0.0]),
+            (Self::Percent, Self::Relative) => Some(vec![0.0, rate[0], 0.0, 0.0]),
+            (Self::Calc, Self::Relative) => Some(vec![rate[0], rate[1], 0.0, 0.0]),
+            (Self::Relative, Self::Number) => Some(vec![rate[0]]),
+            (Self::Relative, Self::Percent) => Some(vec![rate[1]]),
+            (Self::Relative, Self::Calc) => Some(vec![rate[0], rate[1]]),
             (Self::Calc, Self::Number) => Some(vec![rate[0]]),
             (Self::Calc, Self::Percent) => Some(vec![rate[1]]),
             // A circular corner moves both radii at the one rate.
@@ -741,6 +796,21 @@ pub(super) fn align_in(
     if values.iter().any(|value| matches!(value, AnimValue::List(_))) {
         return super::list::align(name, values, interpolation);
     }
+    if values.iter().any(|value| value.is_auto_keyword())
+        && values.iter().all(|value| value.is_auto_keyword() || value.as_length().is_some())
+    {
+        return Ok(Aligned {
+            layout: Layout::DiscreteList(values.iter().map(|value| (*value).clone()).collect()),
+            frames: (0..values.len()).map(|index| vec![index as f64]).collect(),
+        });
+    }
+    if values.iter().any(|value| matches!(value, AnimValue::Relative { .. }))
+        && values.iter().all(|value| value.as_terms().is_some())
+    {
+        return Ok(simple(Layout::Relative, values, |value| {
+            value.as_terms().expect("kinds were checked").to_vec()
+        }));
+    }
     for window in values.windows(2) {
         let lengths = window.iter().all(|value| value.as_ellipse().is_some());
         if !lengths && std::mem::discriminant(window[0]) != std::mem::discriminant(window[1]) {
@@ -761,6 +831,7 @@ pub(super) fn align_in(
         AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } => {
             Ok(align_lengths(values))
         }
+        AnimValue::Relative { .. } => unreachable!("a relative length was aligned above"),
         AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
         AnimValue::List(_) => unreachable!("a list was aligned above"),
         AnimValue::Color(_) => {

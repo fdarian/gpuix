@@ -888,7 +888,7 @@ fn resolve_start(key: PropKey, base: Base) -> Option<AnimValue> {
     match (key, base) {
         (PropKey::Style(prop), Base::Style(style, colors)) => style
             .and_then(|style| prop.read(style, colors))
-            .or_else(|| prop.initial(colors)),
+            .or_else(|| prop.initial(style, colors)),
         (PropKey::Svg(attr), Base::Svg(attributes, colors)) => {
             attr.read(attributes, &colors.element).or_else(|| attr.initial())
         }
@@ -2362,17 +2362,168 @@ mod tests {
     }
 
     #[test]
-    fn auto_in_a_margin_is_an_error_for_the_side_that_has_it() {
-        let single = describe_error(serde_json::json!({ "animate": { "margin": "auto" } }));
-        assert!(single.contains("margin") && single.contains("auto"), "{single}");
-        let two = describe_error(serde_json::json!({ "animate": { "margin": "0 auto" } }));
-        assert!(two.contains("marginRight") && two.contains("auto"), "{two}");
+    fn auto_is_an_error_where_there_is_no_auto_to_measure_or_flip() {
+        let single = describe_error(serde_json::json!({ "animate": { "minWidth": "auto" } }));
+        assert!(single.contains("minWidth") && single.contains("auto"), "{single}");
         let sides = describe_error(serde_json::json!({ "animate": { "padding": "1px 2px 3px 4px 5px" } }));
         assert!(sides.contains("padding") && sides.contains("one to four values"), "{sides}");
         let sign = describe_error(serde_json::json!({ "animate": { "padding": "1px -2px" } }));
         assert!(sign.contains("paddingRight") && sign.contains("non-negative"), "{sign}");
         let same = describe_error(serde_json::json!({ "animate": { "padding": -2 } }));
         assert!(same.contains("motion padding must"), "{same}");
+    }
+
+    /// The style `base` animates to under `animate` (from `initial`, when given) one second
+    /// linear, `seconds` in.
+    fn run_to(base: serde_json::Value, initial: serde_json::Value, animate: serde_json::Value, seconds: f64) -> StyleDesc {
+        let started = Instant::now();
+        let base: StyleDesc = serde_json::from_value(base).unwrap();
+        let description = serde_json::json!({
+            "initial": initial,
+            "animate": animate,
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
+        style_at(&state, at(started, seconds))
+    }
+
+    #[test]
+    fn a_margin_flips_between_auto_and_a_length_at_the_halfway_point() {
+        let flip = |initial: serde_json::Value, animate: serde_json::Value, seconds| {
+            run_to(serde_json::json!({}), initial, animate, seconds)
+        };
+        let from_auto = serde_json::json!({ "marginLeft": "auto" });
+        let to_length = serde_json::json!({ "marginLeft": 100 });
+        assert_eq!(flip(from_auto.clone(), to_length.clone(), 0.4).margin_left, Some(DimensionValue::Auto));
+        assert_eq!(flip(from_auto.clone(), to_length.clone(), 0.6).margin_left, Some(DimensionValue::Pixels(100.0)));
+        assert_eq!(flip(to_length.clone(), from_auto.clone(), 0.4).margin_left, Some(DimensionValue::Pixels(100.0)));
+        assert_eq!(flip(to_length, from_auto, 0.6).margin_left, Some(DimensionValue::Auto));
+
+        // An unset margin is 0, not auto: it blends.
+        let blended = flip(serde_json::json!({}), serde_json::json!({ "marginLeft": 100 }), 0.4);
+        assert_eq!(blended.margin_left, Some(DimensionValue::Pixels(40.0)));
+
+        // `margin: auto` covers the four sides.
+        let all = flip(serde_json::json!({ "margin": 0 }), serde_json::json!({ "margin": "auto" }), 0.6);
+        for side in [all.margin_top, all.margin_right, all.margin_bottom, all.margin_left] {
+            assert_eq!(side, Some(DimensionValue::Auto));
+        }
+    }
+
+    #[test]
+    fn a_declared_auto_margin_in_the_style_is_where_an_animation_starts() {
+        let style = run_to(
+            serde_json::json!({ "margin": "0 auto" }),
+            serde_json::json!({ "opacity": 0 }),
+            serde_json::json!({ "marginLeft": 100, "marginTop": 10 }),
+            0.4,
+        );
+        assert_eq!(style.margin_left, Some(DimensionValue::Auto));
+        assert_eq!(style.margin_top, Some(DimensionValue::Pixels(4.0)));
+    }
+
+    #[test]
+    fn an_unset_inset_is_auto_and_flips_to_a_length_at_the_halfway_point() {
+        let at = |seconds| {
+            run_to(serde_json::json!({}), serde_json::json!({ "opacity": 0 }), serde_json::json!({ "top": 12 }), seconds)
+        };
+        assert_eq!(at(0.4).top, Some(DimensionValue::Auto));
+        assert_eq!(at(0.6).top, Some(DimensionValue::Pixels(12.0)));
+    }
+
+    #[test]
+    fn an_unset_border_width_starts_at_medium_under_a_visible_style_and_at_zero_otherwise() {
+        let width = |base: serde_json::Value| {
+            run_to(base, serde_json::json!({ "opacity": 0 }), serde_json::json!({ "borderTopWidth": 7 }), 0.5).border_top_width
+        };
+        assert_eq!(width(serde_json::json!({ "borderStyle": "solid" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({ "borderTopStyle": "dashed" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({ "borderStyle": "none" })), Some(LinearLength::px(3.5)));
+        assert_eq!(width(serde_json::json!({ "borderStyle": "hidden" })), Some(LinearLength::px(3.5)));
+        assert_eq!(width(serde_json::json!({})), Some(LinearLength::px(3.5)));
+        // Another side's style says nothing about this one.
+        assert_eq!(width(serde_json::json!({ "borderBottomStyle": "solid" })), Some(LinearLength::px(3.5)));
+        // A shorthand names the width it starts from.
+        assert_eq!(width(serde_json::json!({ "border": "1px solid red" })), Some(LinearLength::px(4.0)));
+        assert_eq!(width(serde_json::json!({ "borderStyle": "solid", "borderWidth": 1 })), Some(LinearLength::px(4.0)));
+    }
+
+    #[test]
+    fn an_unset_outline_width_starts_at_medium_under_a_visible_style_and_at_zero_otherwise() {
+        let width = |base: serde_json::Value| {
+            run_to(base, serde_json::json!({ "opacity": 0 }), serde_json::json!({ "outlineWidth": 7 }), 0.5).outline_width
+        };
+        assert_eq!(width(serde_json::json!({ "outlineStyle": "solid" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({ "outline": "dotted" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({ "outline": "1px solid" })), Some(LinearLength::px(4.0)));
+        assert_eq!(width(serde_json::json!({ "outlineStyle": "none" })), Some(LinearLength::px(3.5)));
+        assert_eq!(width(serde_json::json!({})), Some(LinearLength::px(3.5)));
+    }
+
+    #[test]
+    fn flex_animates_as_its_three_longhands() {
+        let at = |seconds| {
+            run_to(
+                serde_json::json!({}),
+                serde_json::json!({ "flex": "1 1 0px" }),
+                serde_json::json!({ "flex": "3 1 100px" }),
+                seconds,
+            )
+        };
+        let midpoint = at(0.5);
+        assert_eq!(midpoint.flex_grow, Some(2.0));
+        assert_eq!(midpoint.flex_shrink, Some(1.0));
+        assert_eq!(midpoint.flex_basis, Some(DimensionValue::Pixels(50.0)));
+
+        // A lone number is `n 1 0%`.
+        let number = run_to(
+            serde_json::json!({}),
+            serde_json::json!({ "flex": 0 }),
+            serde_json::json!({ "flex": 4 }),
+            0.5,
+        );
+        assert_eq!(
+            (number.flex_grow, number.flex_shrink, number.flex_basis),
+            (Some(2.0), Some(1.0), Some(DimensionValue::Percentage(0.0)))
+        );
+
+        // Under a `flex` in the style the longhands start from what it says.
+        let from_style = run_to(
+            serde_json::json!({ "flex": "2 3 20px" }),
+            serde_json::json!({ "opacity": 0 }),
+            serde_json::json!({ "flex": "4 1 40px" }),
+            0.5,
+        );
+        assert_eq!(
+            (from_style.flex_grow, from_style.flex_shrink, from_style.flex_basis),
+            (Some(3.0), Some(2.0), Some(DimensionValue::Pixels(30.0)))
+        );
+    }
+
+    #[test]
+    fn flex_with_an_auto_basis_animates_grow_and_shrink_and_flips_the_basis() {
+        let at = |seconds| {
+            run_to(
+                serde_json::json!({}),
+                serde_json::json!({ "flex": "0 0 100px" }),
+                serde_json::json!({ "flex": "auto" }),
+                seconds,
+            )
+        };
+        assert_eq!(at(0.4).flex_basis, Some(DimensionValue::Pixels(100.0)));
+        assert_eq!(at(0.6).flex_basis, Some(DimensionValue::Auto));
+        assert_eq!(at(0.5).flex_grow, Some(0.5));
+    }
+
+    #[test]
+    fn a_bad_flex_target_is_an_error_naming_flex() {
+        let error = describe_error(serde_json::json!({ "animate": { "flex": "wide" } }));
+        assert!(error.contains("flex"), "{error}");
+        let transition = serde_json::json!({
+            "animate": { "flex": 2 },
+            "transition": { "flex": { "duration": 3.0 } }
+        });
+        assert!(MotionState::new(&transition, None, Colors::root(), None, 0, Instant::now()).is_ok());
     }
 
     #[test]
@@ -2440,12 +2591,12 @@ mod tests {
         let started = Instant::now();
         let description = serde_json::json!({
             "initial": { "opacity": 0.0 },
-            "animate": { "opacity": 1.0, "top": 12.0, "borderColor": "#ff0000" },
+            "animate": { "opacity": 1.0, "aspectRatio": 2.0, "borderColor": "#ff0000" },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
         let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
         let style = style_at(&state, started);
-        assert_eq!(style.top, Some(DimensionValue::Pixels(12.0)));
+        assert_eq!(style.aspect_ratio, Some(crate::layout::aspect_ratio::AspectRatio::Ratio(2.0)));
         // A colour has a start without layout: `currentColor`, inherited black.
         assert_eq!(rgba(style.border_top_color.as_deref().unwrap()), rgba("#000000"));
         // `borderColor` is the shorthand of the four sides, and animates each.
