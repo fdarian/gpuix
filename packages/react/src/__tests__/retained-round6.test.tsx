@@ -11,7 +11,8 @@
 
 import React from "react"
 import { expect, it } from "vitest"
-import { Card, describeNative, Page, setup } from "./retained-harness.js"
+import { motion } from "../index"
+import { Card, describeNative, Page, setup, verifying } from "./retained-harness.js"
 
 const PROSE = "aaaa bbbb cccc dddd eeeeeeee"
 const WORLD = { fontFamily: "Menlo", fontSize: 12, lineHeight: "15px" }
@@ -290,5 +291,200 @@ describeNative("text-box-trim handed down to blocks that are retained", () => {
     } finally {
       unmount()
     }
+  })
+})
+
+describeNative("round 6 properties in the state styles of replayed cards", () => {
+  const states = {
+    hover: {
+      outline: "3px solid #00ff00",
+      outlineOffset: 2,
+      padding: "2px 4px 6px",
+      borderBlock: "1px solid #ffffff",
+      textWrap: "nowrap",
+      textUnderlineOffset: 4,
+      textDecorationLine: "underline",
+      fontVariationSettings: '"wght" 900',
+      gap: "2px 6px",
+    },
+    focusWithin: { outline: "2px dashed #00ff00", outlineOffset: -4, paddingInline: "3px 5px", textBoxTrim: "trim-both", textBoxEdge: "cap alphabetic" },
+  }
+  const page = () => (
+    <World>
+      <Page card={(index) => <ProseCard key={index} index={index} style={{ height: "auto", alignSelf: "flex-start", ...states }} />} />
+      <div testId="after" style={{ height: 10 }} />
+    </World>
+  )
+
+  it("shows the hover style of one card, on the card and on what it holds, and then takes it away", () => {
+    const { renderer, settle, center, expectWhatABuildShows, finish, unmount } = setup(page())
+    try {
+      settle()
+      const rest = expectWhatABuildShows("rest", proseIds)
+      settle()
+      renderer.nativeSimulateMouseMove(...center("title-3"))
+      renderer.flush()
+      const hovered = expectWhatABuildShows("hover", proseIds)
+      expect(hovered.picture === rest.picture).toBe(false)
+      expect(hovered.watched).not.toEqual(rest.watched)
+      renderer.nativeSimulateMouseMove(...center("title-4"))
+      renderer.flush()
+      expectWhatABuildShows("hover-next", proseIds)
+      renderer.nativeSimulateMouseMove(639, 479)
+      renderer.flush()
+      settle()
+      const away = expectWhatABuildShows("hover-off", proseIds)
+      expect(away.picture === rest.picture).toBe(true)
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+
+  it("shows the focus-within style of the card whose button Tab reaches", () => {
+    const render = () => (
+      <World>
+        <Page
+          card={(index) => (
+            <ProseCard
+              key={index}
+              index={index}
+              style={{ height: "auto", alignSelf: "flex-start", ...states }}
+            />
+          )}
+        />
+        <div testId="after" style={{ height: 10 }} />
+      </World>
+    )
+    const { renderer, settle, expectWhatABuildShows, finish, unmount } = setup(render())
+    try {
+      settle()
+      const rest = expectWhatABuildShows("focus-rest", proseIds)
+      settle()
+      renderer.simulateKeystrokes("Tab")
+      renderer.flush()
+      expect(renderer.getElement(renderer.getFocusedElementId())?.testId).toBe("button-0")
+      const first = expectWhatABuildShows("focus-first", proseIds)
+      renderer.simulateKeystrokes("Tab")
+      renderer.flush()
+      expectWhatABuildShows("focus-second", proseIds)
+      expect(first.picture === rest.picture).toBe(false)
+      finish()
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describeNative("motion of round 6 inside a page of retained cards", () => {
+  const LINEAR = { duration: 1, ease: "linear" } as const
+  const MOVER = 2
+  const STEPS = 14
+
+  /**
+   * Plays the page through the commit of the change and fourteen steps of 100 ms, and keeps what each
+   * frame shows. A page played with retention off is the frames a full build gives.
+   */
+  function play(mover: (state: string) => React.ReactNode, retention: boolean) {
+    const watch = ["mover", `card-${MOVER}`, "after"]
+    const render = (state: string) => (
+      <World>
+        <Page
+          card={(index) =>
+            index === MOVER ? <Card key={index} index={index} extra={mover(state)} style={{ height: "auto", alignSelf: "flex-start" }} /> : null
+          }
+        />
+        <div testId="after" style={{ height: 10, backgroundColor: "#ff00ff" }} />
+      </World>
+    )
+    const page = setup(render("from"))
+    try {
+      page.renderer.setRetainPlanning(retention)
+      page.renderer.clockPause()
+      page.settle()
+      const frames = [page.snapshot("rest", watch)]
+      const replays = page.counters().replays
+      const built = page.built()
+      const painted = page.renderer.getPaintedFrameCount()
+      // The commit frame: the animation is asked for and starts in the frame that lays out the change.
+      page.render(render("to"))
+      page.renderer.flush()
+      frames.push(page.snapshot("commit", watch))
+      for (let step = 0; step < STEPS; step++) {
+        page.renderer.clockFastForward(100)
+        frames.push(page.snapshot(`step-${step}`, watch))
+      }
+      const result = {
+        frames,
+        replays: page.counters().replays - replays,
+        builtPerFrame: (page.built() - built) / (page.renderer.getPaintedFrameCount() - painted),
+      }
+      page.settle()
+      frames.push(page.snapshot("end", watch))
+      expect(page.counters().mismatches, page.renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return result
+    } finally {
+      page.unmount()
+    }
+  }
+
+  function expectTheFramesOfABuild(mover: (state: string) => React.ReactNode) {
+    const kept = play(mover, true)
+    const whole = play(mover, false)
+    kept.frames.forEach((frame, index) => {
+      const name = index === 0 ? "rest" : index === 1 ? "commit" : index === STEPS + 2 ? "end" : `step ${index - 2}`
+      expect(frame.watched, `${name}: boxes`).toEqual(whole.frames[index].watched)
+      expect(frame.boxes, `${name}: cards`).toEqual(whole.frames[index].boxes)
+      expect(frame.a11y, `${name}: accessibility`).toEqual(whole.frames[index].a11y)
+      expect(frame.picture === whole.frames[index].picture, `${name}: picture`).toBe(true)
+    })
+    expect(new Set(kept.frames.map((frame) => frame.picture)).size, "the animation shows").toBeGreaterThan(4)
+    expect(kept.replays, "the cards beside the mover are replayed").toBeGreaterThan(STEPS)
+    // A frame builds the mover and its card, not the page.
+    if (!verifying) expect(kept.builtPerFrame).toBeLessThan(CARDS * 8 * 0.5)
+  }
+
+  it("animates a calc() width of a box in a card while the other cards are replayed", () => {
+    expectTheFramesOfABuild((state) => (
+      <motion.div
+        testId="mover"
+        initial={{ width: "calc(100% - 20px)" }}
+        animate={{ width: state === "from" ? "calc(100% - 20px)" : "calc(50% + 10px)" }}
+        transition={LINEAR}
+        style={{ height: 10, backgroundColor: "#ff0000" }}
+      />
+    ))
+  })
+
+  it("animates a width to auto from the frame that commits it, while the other cards are replayed", () => {
+    expectTheFramesOfABuild((state) => (
+      <div style={{ display: "flex", alignItems: "flex-start" }}>
+        <motion.div
+          testId="mover"
+          initial={{ width: 20 }}
+          animate={{ width: state === "from" ? 20 : "auto" }}
+          transition={LINEAR}
+          style={{ overflow: "hidden", backgroundColor: "#ff0000" }}
+        >
+          <div style={{ width: 100, height: 10 }} />
+        </motion.div>
+      </div>
+    ))
+  })
+
+  it("animates a width from auto and a calc() height in the same box", () => {
+    expectTheFramesOfABuild((state) => (
+      <div style={{ display: "flex", alignItems: "flex-start" }}>
+        <motion.div
+          testId="mover"
+          initial={{ width: "auto", height: "calc(50% + 4px)" }}
+          animate={state === "from" ? { width: "auto", height: "calc(50% + 4px)" } : { width: 30, height: "calc(100% - 4px)" }}
+          transition={LINEAR}
+          style={{ overflow: "hidden", backgroundColor: "#ff0000" }}
+        >
+          <div style={{ width: 100, height: 20 }} />
+        </motion.div>
+      </div>
+    ))
   })
 })

@@ -76,7 +76,11 @@ export function setup(element: React.ReactElement, options = {}) {
   const root = createTestRoot({ ...WINDOW, ...options })
   const { renderer } = root
   root.render(element)
-  const idOf = (testId: string) => renderer.findByTestId(testId).id
+  const idOf = (testId: string) => {
+    const element = renderer.findByTestId(testId)
+    if (!element) throw new Error(`no element has the testId ${testId}`)
+    return element.id
+  }
   const bounds = (testId: string) => renderer.getElementBounds(idOf(testId))
   const center = (testId: string) => {
     const box = bounds(testId)
