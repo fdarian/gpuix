@@ -100,11 +100,12 @@ export function setup(element: React.ReactElement, options = {}) {
     return [box.x + box.width - 10, box.y + box.height - 10]
   }
   /** What the frame shows and answers, as bytes and text. */
-  const snapshot = (name: string) => {
+  const snapshot = (name: string, watch: string[] = []) => {
     const file = `${SHOTS_DIR}/retained-replay-${name}.png`
     fs.rmSync(file, { force: true })
     renderer.captureScreenshot(file)
-    const boxes = Array.from({ length: CARDS }, (_, index) => {
+    const hasCards = renderer.findByTestId("card-0") !== undefined
+    const boxes = Array.from({ length: hasCards ? CARDS : 0 }, (_, index) => {
       const card = bounds(`card-${index}`)
       const button = bounds(`button-${index}`)
       return [card.x, card.y, card.width, card.height, button.x, button.y]
@@ -113,25 +114,31 @@ export function setup(element: React.ReactElement, options = {}) {
       picture: fs.readFileSync(file).toString("base64"),
       a11y: JSON.stringify(renderer.getA11yTree(), (key, value) => (key === "frame" ? undefined : value)),
       boxes,
+      watched: watch.map((testId) => {
+        const box = bounds(testId)
+        return [box.x, box.y, box.width, box.height]
+      }),
       text: renderer.getAllText(),
     }
   }
   /** The frame as it is, then the same state built whole: they have to be the same. */
-  const expectWhatABuildShows = (name: string) => {
-    const replayed = snapshot(`${name}-replayed`)
+  const expectWhatABuildShows = (name: string, watch: string[] = []) => {
+    const replayed = snapshot(`${name}-replayed`, watch)
     renderer.setRetainPlanning(false)
     renderer.flush()
-    const whole = snapshot(`${name}-built`)
+    const whole = snapshot(`${name}-built`, watch)
     renderer.setRetainPlanning(true)
     renderer.flush()
     expect(replayed.boxes).toEqual(whole.boxes)
+    expect(replayed.watched).toEqual(whole.watched)
     expect(replayed.text).toEqual(whole.text)
     expect(replayed.a11y).toEqual(whole.a11y)
     expect(replayed.picture === whole.picture).toBe(true)
+    return replayed
   }
   const finish = (replayed = true) => {
     expect(counters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
     if (replayed) expect(counters().replays).toBeGreaterThan(0)
   }
-  return { ...root, idOf, bounds, center, counters, built, settle, sample, inside, expectWhatABuildShows, finish }
+  return { ...root, idOf, bounds, center, counters, built, settle, sample, snapshot, inside, expectWhatABuildShows, finish }
 }
