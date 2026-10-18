@@ -147,7 +147,8 @@ fn group_fingerprint(scope: &GroupScope, fp: &mut Fingerprint) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum Exclusion {
-    /// `onLayout`, `onScroll`, `onResize` or `onIntersect`: its prepaint calls the listener.
+    /// `onScroll` on an element that scrolls: its paint calls the listener. `onLayout` and the
+    /// observers are read from the published boxes after the draw (`observers::frame_sweep`).
     PaintReporter,
     /// It declares a query container, or its style reads one.
     ContainerQuery,

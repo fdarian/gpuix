@@ -575,7 +575,7 @@ impl CustomElement for ImgElement {
         );
         el = crate::accessibility::apply_image_label(el, ctx.props, &self.alt);
         let el = super::wire_host_events(el, &ctx);
-        crate::automation::track_own_bounds(el, ctx.id, ctx.observe.clone()).into_any_element()
+        crate::automation::track_own_bounds(el, ctx.id).into_any_element()
     }
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {

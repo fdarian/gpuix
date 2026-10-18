@@ -5015,12 +5015,10 @@ pub(crate) struct GpuixView {
 
 #[derive(Default)]
 pub(crate) struct PaintReports {
-    /// Border-box size last delivered through `onLayout`.
-    sizes: HashMap<u64, (f32, f32)>,
     /// Scroll offset last seen for `onScroll`. Recorded on the first paint
     /// without an event, so only movement is reported.
     scrolls: HashMap<u64, (f32, f32)>,
-    /// What `ResizeObserver` and `IntersectionObserver` last saw.
+    /// What `onLayout`, `ResizeObserver` and `IntersectionObserver` last saw.
     pub(crate) observers: crate::observers::ObserverReports,
 }
 
@@ -7332,13 +7330,6 @@ impl gpui::Render for GpuixView {
         // back reports the size again, like a fresh observer.
         {
             let mut reports = self.paint_reports.borrow_mut();
-            if !reports.sizes.is_empty() {
-                reports.sizes.retain(|id, _| {
-                    tree.elements
-                        .get(id)
-                        .is_some_and(|element| element.events().contains("layout"))
-                });
-            }
             if !reports.scrolls.is_empty() {
                 reports.scrolls.retain(|id, _| {
                     tree.elements
@@ -7506,6 +7497,7 @@ impl gpui::Render for GpuixView {
         // the root wrapper. Without it the selection registry accumulates stale
         // entries across frames and a drag resolves against elements that are no
         // longer on screen.
+        let observing = !tree.geometry_ids.is_empty() || self.paint_reports.borrow().observers.is_observing();
         let result = {
             use gpui::prelude::*;
             let drag_move_view = cx.weak_entity();
@@ -7557,7 +7549,9 @@ impl gpui::Render for GpuixView {
                 .child(crate::automation::bounds_frame_reset())
                 .child(crate::observers::frame_sweep(
                     self.paint_reports.clone(),
+                    tree_arc.clone(),
                     callback.clone(),
+                    observing,
                 ))
                 .child(result)
                 .into_any_element()
@@ -8161,12 +8155,10 @@ fn build_element_unpumped(
             if !ctx.inherited.inert {
                 ctx.retain.shape(click_path.len() as u64);
             }
-            if element.events().contains("layout")
-                || element.events().contains("scroll")
-                || crate::observers::watches_paint(element.events())
-            {
-                ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
-            }
+            ctx.paint_reports
+                .borrow_mut()
+                .observers
+                .note_clip_origin(id, element.events(), None);
             let inherited = &ctx.inherited;
             let render_ctx = CustomRenderContext {
                 id,
@@ -8193,16 +8185,6 @@ fn build_element_unpumped(
                 pointer_events_none: inherited.pointer_events_none,
                 app_region: inherited.app_region,
                 stacking_root,
-                // Built from every listener: the registry hands the element only
-                // the events it declares support for.
-                observe: crate::observers::reporter(
-                    id,
-                    element.events(),
-                    ctx.tree,
-                    None,
-                    ctx.paint_reports,
-                    ctx.event_callback,
-                ),
             };
             let built = ctx
                 .custom_registry
@@ -8544,18 +8526,20 @@ pub(crate) fn build_host_container(
     } else {
         selection_start_flag(style)
     };
-    if element.events().contains("layout")
-        || element.events().contains("scroll")
-        || crate::observers::watches_paint(element.events())
-    {
+    let scroll_report = scroll_reporter(element.id, element.events(), ctx);
+    if scroll_report.is_some() {
         ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
     }
+    ctx.paint_reports
+        .borrow_mut()
+        .observers
+        .note_clip_origin(element.id, element.events(), None);
     el = crate::automation::track_host_bounds(
         el,
         element.id,
         selection_start,
         style.map(|style| ctx.focus_styles.position(element.id, style, ctx.focus_handles.contains_key(&element.id))),
-        paint_reporter(element.id, element.events(), None, ctx),
+        scroll_report,
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
         el = el.track_focus(handle);
@@ -9085,13 +9069,6 @@ fn paragraph_content(
         )
     };
     ctx.retain.digest(|| format!("{} {:?}", paragraph.text, styles.runs));
-    if paragraph.boxes.iter().any(|(id, _)| {
-        ctx.tree.elements.get(id).is_some_and(|span| {
-            span.events().contains("layout") || span.events().contains("scroll") || crate::observers::watches_paint(span.events())
-        })
-    }) {
-        ctx.retain.exclude(crate::retain::Exclusion::PaintReporter);
-    }
     // A box in the paragraph, or the paragraph being inline content of a box, puts the texts around
     // and inside the boxes on one line for copy.
     let line = ctx
@@ -9336,21 +9313,28 @@ fn build_atomics(
 }
 
 /// The inline elements of a paragraph that report their own box.
+///
+/// An inline element paints in its paragraph's container, which clips it and what reaches it,
+/// and the spans in between have no box to clip it, whatever their `overflow`: that is what
+/// an `IntersectionObserver` on it needs to know of the paragraph.
 fn inline_boxes(
     paragraph: &crate::text::inline::Paragraph,
     ctx: &BuildCtx,
     insets: &Rc<crate::text::inline_insets::InsetSpec>,
 ) -> Vec<crate::text::inline_bounds::InlineBox> {
+    let mut reports = ctx.paint_reports.borrow_mut();
     paragraph
         .boxes
         .iter()
-        .map(|(id, range)| crate::text::inline_bounds::InlineBox {
-            id: *id,
-            range: range.clone(),
-            edges: insets.edges_of(*id),
-            report: ctx.tree.elements.get(id).and_then(|element| {
-                paint_reporter(*id, element.events(), Some(paragraph.container), ctx)
-            }),
+        .map(|(id, range)| {
+            if let Some(element) = ctx.tree.elements.get(id) {
+                reports.observers.note_clip_origin(*id, element.events(), Some(paragraph.container));
+            }
+            crate::text::inline_bounds::InlineBox {
+                id: *id,
+                range: range.clone(),
+                edges: insets.edges_of(*id),
+            }
         })
         .collect()
 }
@@ -9762,87 +9746,31 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
     }
 }
 
-/// The paint-driven events of one element, as one reporter for `on_painted`.
-///
-/// `onLayout`: its border box after the first paint with the listener, then again
-/// each time its size changes. A move without a resize reports nothing, so
-/// scrolling a list does not queue an event per row.
-///
-/// `onScroll`: its scroll offset each time it differs from the last paint,
-/// whatever moved it. The wheel is only one cause; a scrollbar drag or
-/// `scrollTo` moves it too, and gpui raises no event for those.
+/// `onScroll`: the scroll offset of the element each time it differs from the last paint,
+/// whatever moved it. The wheel is only one cause; a scrollbar drag or `scrollTo` moves it
+/// too, and gpui raises no event for those. `None` for an element that listens for nothing
+/// or has no scroll handle.
 ///
 /// Events are queued after the paint that saw the change, never from inside it.
 /// The browser build calls the listener synchronously, and a handler that sets
 /// state would re-enter the frame that is being painted.
-fn paint_reporter(
+///
+/// `onLayout` and the observers are not here: they are read from the published boxes after
+/// the draw, see `observers::frame_sweep`.
+fn scroll_reporter(
     id: u64,
     events: &HashSet<String>,
-    clips_from: Option<u64>,
     ctx: &BuildCtx,
 ) -> Option<crate::automation::PaintReporter> {
-    let layout = events.contains("layout");
-    let scroll = events
-        .contains("scroll")
-        .then(|| ctx.scroll_handles.get(&id).cloned())
-        .flatten();
-    let observe = crate::observers::reporter(
-        id,
-        events,
-        ctx.tree,
-        clips_from,
-        ctx.paint_reports,
-        ctx.event_callback,
-    );
-    if !layout && scroll.is_none() && observe.is_none() {
+    if !events.contains("scroll") {
         return None;
     }
+    let handle = ctx.scroll_handles.get(&id)?.clone();
     let callback = ctx.event_callback.clone()?;
     let reports = ctx.paint_reports.clone();
-    Some(Rc::new(move |bounds, insets, window, cx| {
-        if layout {
-            report_layout(id, bounds, &reports, &callback, cx);
-        }
-        if let Some(handle) = &scroll {
-            report_scroll(id, handle.offset(), &reports, &callback, cx);
-        }
-        if let Some(observe) = &observe {
-            observe(bounds, insets, window, cx);
-        }
+    Some(Rc::new(move |_, _, _, cx| {
+        report_scroll(id, handle.offset(), &reports, &callback, cx);
     }))
-}
-
-fn report_layout(
-    id: u64,
-    bounds: gpui::Bounds<gpui::Pixels>,
-    reports: &SharedPaintReports,
-    callback: &EventCallback,
-    cx: &mut gpui::App,
-) {
-    let size = (
-        f32::from(bounds.size.width),
-        f32::from(bounds.size.height),
-    );
-    {
-        let mut reports = reports.borrow_mut();
-        let unchanged = reports.sizes.get(&id).is_some_and(|last| {
-            (last.0 - size.0).abs() < PAINT_REPORT_EPSILON
-                && (last.1 - size.1).abs() < PAINT_REPORT_EPSILON
-        });
-        if unchanged {
-            return;
-        }
-        reports.sizes.insert(id, size);
-    }
-    let callback = Some(callback.clone());
-    cx.defer(move |_| {
-        emit_event_full(&callback, id, "layout", |payload| {
-            payload.x = Some(f64::from(f32::from(bounds.origin.x)));
-            payload.y = Some(f64::from(f32::from(bounds.origin.y)));
-            payload.width = Some(f64::from(size.0));
-            payload.height = Some(f64::from(size.1));
-        });
-    });
 }
 
 fn report_scroll(

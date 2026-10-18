@@ -616,7 +616,7 @@ impl CustomElement for TextEditorElement {
         // `Some(false)` also claims the same box as a non-selectable
         // selection-start region: a drag inside an editor must move the caret,
         // not start a document selection.
-        editor = crate::automation::track_host_bounds(editor, ctx.id, Some(false), None, ctx.observe.clone());
+        editor = crate::automation::track_host_bounds(editor, ctx.id, Some(false), None, None);
         // A disabled control gets no events, like the DOM.
         if !disabled {
             editor = super::wire_host_events(editor, &ctx);

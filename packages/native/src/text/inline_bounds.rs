@@ -3,8 +3,8 @@
 //! A `<span>` has no host element to report its own box, so the paragraph that
 //! paints it does: each line fragment of its bytes, joined into the one rect
 //! `getBoundingClientRect` answers with in the DOM. It is recorded during paint
-//! like every other element's bounds, and so are the observers' reports, which
-//! is why a span can be observed and reads as gone when it stops painting.
+//! like every other element's bounds, which is what the observers' reports read, and why a span
+//! can be observed and reads as gone when it stops painting.
 //!
 //! The box is the border box, as in CSS, and [`border_box_rows`] is the one place
 //! that works it out for every consumer (bounds, hit testing, cursor hitboxes,
@@ -18,9 +18,9 @@
 
 use std::ops::Range;
 
-use gpui::{point, size, App, Bounds, Pixels, TextLayout, Window};
+use gpui::{point, size, Bounds, Pixels, TextLayout, Window};
 
-use crate::automation::{record_bounds, PaintReporter};
+use crate::automation::record_bounds;
 
 use super::inline_insets::{BoxEdges, Edges};
 use super::paint::range_rows;
@@ -30,9 +30,6 @@ pub struct InlineBox {
     pub id: u64,
     pub range: Range<usize>,
     pub edges: BoxEdges,
-    /// Paint-driven events and observers on the element, see
-    /// [`crate::automation::PaintReporter`].
-    pub report: Option<PaintReporter>,
 }
 
 /// One line fragment of a box: the line box it is on, where the baseline of that
@@ -151,8 +148,8 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
 }
 
 /// Records the painted box of every inline element of the paragraph `layout`
-/// belongs to and reports it to the element's listeners. Call it from paint.
-pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &mut Window, cx: &mut App) {
+/// belongs to. Call it from paint.
+pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &Window) {
     for inline in boxes {
         let Some(bounds) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
             continue;
@@ -160,9 +157,6 @@ pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &mut Window, cx:
         // An inline box has no layout node: its padding and border are its style's.
         let insets = inline.edges.layout_insets(layout);
         record_bounds(window.window_handle().window_id(), inline.id, bounds, insets);
-        if let Some(report) = &inline.report {
-            report(bounds, insets, window, cx);
-        }
     }
 }
 

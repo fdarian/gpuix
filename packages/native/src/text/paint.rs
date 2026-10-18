@@ -457,8 +457,8 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             if window.is_layout_pass() && !boxes_to_record.is_empty() {
                 let layout = layout_of_boxes.clone();
                 let boxes = boxes_to_record.clone();
-                window.publish_layout(move |window, cx| {
-                    super::inline_bounds::record(&layout, &boxes, window, cx)
+                window.publish_layout(move |window, _| {
+                    super::inline_bounds::record(&layout, &boxes, window)
                 });
             }
             let Some((source, key, doc, text)) = &announced else {
@@ -553,7 +553,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     targets.clone(),
                 );
             }
-            super::inline_bounds::record(&layout, &inline_boxes, window, cx);
+            super::inline_bounds::record(&layout, &inline_boxes, window);
             super::inline_focus::focus_on_press(window, element_id, press_focus.clone());
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);

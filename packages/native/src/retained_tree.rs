@@ -431,6 +431,9 @@ pub struct RetainedTree {
     /// per-frame focus sync visits these few instead of every retained element:
     /// a large tree retains thousands, and nearly none are focusable.
     pub focusable_ids: std::collections::BTreeSet<u64>,
+    /// Elements with an `onLayout`, `ResizeObserver` or `IntersectionObserver` listener, which
+    /// `observers::frame_sweep` reads the published boxes of.
+    pub geometry_ids: HashSet<u64>,
     /// How many elements carry `inert`. While it is zero, no mutation has to
     /// look at ancestors to decide what is focusable.
     inert_count: usize,
@@ -475,6 +478,7 @@ impl RetainedTree {
             image_ids: HashSet::new(),
             motion_value_ids: HashSet::new(),
             focusable_ids: Default::default(),
+            geometry_ids: Default::default(),
             inert_count: 0,
             visibility_count: 0,
             anchored_count: 0,
@@ -648,6 +652,12 @@ impl RetainedTree {
         }
     }
 
+    /// Moves with every change to an element, so a cache of what depends on the tree can tell
+    /// that it is current.
+    pub fn revision(&self) -> u64 {
+        self.next_revision
+    }
+
     fn take_revision(&mut self) -> u64 {
         // Every content change takes a revision to invalidate caches, so this is
         // the one place that covers style, text, structure and custom props.
@@ -733,6 +743,7 @@ impl RetainedTree {
             self.image_ids.remove(&id);
             self.motion_value_ids.remove(&id);
             self.focusable_ids.remove(&id);
+            self.geometry_ids.remove(&id);
             self.inert_count -= usize::from(element.has_inert_prop());
             self.visibility_count -= usize::from(element.declared_hidden().is_some());
             self.anchored_count -= usize::from(element.element_type == "anchored");
@@ -967,6 +978,7 @@ impl RetainedTree {
     }
 
     pub fn set_event_listener(&mut self, id: u64, event_type: String, has_handler: bool) {
+        let geometry = crate::observers::reports_geometry(&event_type);
         if let Some(element) = self.elements.get_mut(&id) {
             let changed = if has_handler {
                 element.extras_mut().events.insert(event_type)
@@ -981,6 +993,17 @@ impl RetainedTree {
             // `retain` keys what it reuses by it. For a `<text>` it also decides whether it is
             // raw text (`is_raw_text`), which the paragraph builder and search read it by.
             if changed {
+                if geometry {
+                    let reports = self
+                        .elements
+                        .get(&id)
+                        .is_some_and(|element| element.events().iter().any(|event| crate::observers::reports_geometry(event)));
+                    if reports {
+                        self.geometry_ids.insert(id);
+                    } else {
+                        self.geometry_ids.remove(&id);
+                    }
+                }
                 if self
                     .elements
                     .get(&id)
@@ -1919,6 +1942,10 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    padding_left: 0.0,
+                    padding_top: 0.0,
+                    padding_right: 0.0,
+                    padding_bottom: 0.0,
                     position: None,
                 })
         };
@@ -1977,6 +2004,10 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    padding_left: 0.0,
+                    padding_top: 0.0,
+                    padding_right: 0.0,
+                    padding_bottom: 0.0,
                     position: None,
                 })
         };
@@ -2081,6 +2112,10 @@ mod tests {
                     client_top: 0.0,
                     border_right: 0.0,
                     border_bottom: 0.0,
+                    padding_left: 0.0,
+                    padding_top: 0.0,
+                    padding_right: 0.0,
+                    padding_bottom: 0.0,
                     position: None,
                 })
         }
@@ -2182,6 +2217,10 @@ mod tests {
                 client_top: 0.0,
                 border_right: 0.0,
                 border_bottom: 0.0,
+                padding_left: 0.0,
+                padding_top: 0.0,
+                padding_right: 0.0,
+                padding_bottom: 0.0,
                 position: None,
             })
         };

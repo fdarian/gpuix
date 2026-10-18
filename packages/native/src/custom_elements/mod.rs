@@ -92,9 +92,6 @@ pub struct CustomRenderContext<'a> {
     /// The first element of a build, the window root or a virtual-list row: no stacking context
     /// is around it, so `custom_surface` makes it one.
     pub stacking_root: bool,
-    /// Reports this element's painted box to the observers that watch it. Pass it
-    /// to whichever of `track_host_bounds` or `track_own_bounds` records the box.
-    pub observe: Option<crate::automation::PaintReporter>,
 }
 
 impl CustomRenderContext<'_> {
@@ -190,7 +187,7 @@ pub(crate) fn custom_surface(
         None,
         ctx.style
             .map(|style| ctx.focus_styles.position(ctx.id, style, ctx.focus_handle.is_some())),
-        ctx.observe.clone(),
+        None,
     );
     el = match ctx.focus_handle {
         Some(handle) => crate::focus::apply_focus_styles(

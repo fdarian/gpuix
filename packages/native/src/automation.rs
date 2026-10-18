@@ -34,6 +34,11 @@ pub struct ElementBounds {
     pub client_top: f64,
     pub border_right: f64,
     pub border_bottom: f64,
+    /// The padding as laid out, so the content box is what the border box has left of it and of the border.
+    pub padding_left: f64,
+    pub padding_top: f64,
+    pub padding_right: f64,
+    pub padding_bottom: f64,
     /// The `position` the element was built with once its state styles were folded in. `None`
     /// when the builder did not say, and the declared one stands.
     pub position: Option<Position>,
@@ -50,6 +55,10 @@ impl ElementBounds {
             client_top: f64::from(f32::from(insets.border.top)),
             border_right: f64::from(f32::from(insets.border.right)),
             border_bottom: f64::from(f32::from(insets.border.bottom)),
+            padding_left: f64::from(f32::from(insets.padding.left)),
+            padding_top: f64::from(f32::from(insets.padding.top)),
+            padding_right: f64::from(f32::from(insets.padding.right)),
+            padding_bottom: f64::from(f32::from(insets.padding.bottom)),
             position: None,
         }
     }
@@ -106,17 +115,10 @@ fn forget_window(window: WindowId) {
 /// Wrapping the leaf in a div instead would move the layout box: the wrapper
 /// would become the flex item and the image would lose intrinsic sizing and
 /// corner clipping.
-pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
-    el: E,
-    id: u64,
-    report: Option<PaintReporter>,
-) -> E {
-    el.on_painted_layout(move |bounds, layout_id, window, cx| {
+pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(el: E, id: u64) -> E {
+    el.on_painted_layout(move |bounds, layout_id, window, _| {
         let insets = window.layout_insets(layout_id);
         record_bounds(window.window_handle().window_id(), id, bounds, insets);
-        if let Some(report) = &report {
-            report(bounds, insets, window, cx);
-        }
     })
 }
 
@@ -138,7 +140,9 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(
 /// the declared one to stand for a reader of the retained tree.
 ///
 /// `report` sees the painted box right after it is recorded. `on_painted_layout`
-/// takes one listener, so the paint-driven events share this one.
+/// takes one listener, so it shares this one. It is for what cannot be read from the recorded
+/// boxes afterwards (`onScroll`); `onLayout` and the observers are read from them by
+/// [`crate::observers::frame_sweep`], which is what lets a replayed subtree report.
 pub fn track_host_bounds<E>(
     el: E,
     id: u64,
@@ -167,10 +171,8 @@ where
 }
 
 /// Called with an element's painted box and the padding and border it was laid
-/// out with, on every paint, from inside paint. It is how `onLayout`,
-/// `onScroll` and the observers see what the frame produced. The window is the
-/// one being painted, so a reporter can read the content mask the element was
-/// painted under.
+/// out with, on every paint, from inside paint. It is how `onScroll` sees what the
+/// frame produced. The window is the one being painted.
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
 pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
