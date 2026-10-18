@@ -55,6 +55,34 @@ pub(crate) fn contents_between<'a>(
     Some(chain)
 }
 
+/// The `display: contents` elements that `child_id` was spliced out of, for the build of a child
+/// that is not built by the parent it was spliced into: the nearest ancestor that is not one.
+pub(crate) fn splice_parent(tree: &RetainedTree, child_id: u64) -> Option<&RetainedElement> {
+    let mut current = tree.elements.get(&child_id)?.parent?;
+    loop {
+        let ancestor = tree.elements.get(&current)?;
+        if !is_display_contents(ancestor) {
+            return Some(ancestor);
+        }
+        current = ancestor.parent?;
+    }
+}
+
+/// What a frame that skips the spliced child needs to tell that `inherited_overlay` would give
+/// it the same style: the `display: contents` ancestors between `parent` and the child, and the
+/// style each had when it last changed. 0 for a direct child.
+pub(crate) fn overlay_key(tree: &RetainedTree, parent: &RetainedElement, child_id: u64) -> u64 {
+    let mut fp = crate::retain::Fingerprint::new();
+    let mut current = tree.elements.get(&child_id).and_then(|child| child.parent);
+    while let Some(id) = current.filter(|id| *id != parent.id) {
+        let Some(wrapper) = tree.elements.get(&id) else { break };
+        fp.word(id);
+        fp.word(wrapper.style_serial);
+        current = wrapper.parent;
+    }
+    fp.finish()
+}
+
 /// The inheritable style the `display: contents` ancestors between `parent` and a
 /// spliced `child` would have passed down, for `build_element` to fill into the
 /// child's own style. `None` for a direct child.

@@ -5972,6 +5972,7 @@ impl GpuixView {
             focus_styles,
             pointer: &pointer,
             contents_overlay: None,
+            contents_key: 0,
             anchor_scope: None,
             stacking_root: true,
             stacking_item: false,
@@ -6150,6 +6151,8 @@ pub(crate) struct BuildCtx<'a> {
     /// Inheritable style of the `display: contents` ancestors of the child about to be
     /// built, taken by `build_element`.
     pub contents_overlay: Option<Box<StyleDesc>>,
+    /// `layout::contents::overlay_key` of the overlay, set with it.
+    pub contents_key: u64,
     /// Set to an `<anchored>` element's id while building its direct children, taken by
     /// `build_element` to resolve `anchor-size()`.
     pub anchor_scope: Option<u64>,
@@ -7199,6 +7202,8 @@ impl GpuixView {
         let pointer = pointer_state.borrow();
         let mut highlight_events = Vec::new();
         self.retain.begin_deferred(env.relocatable);
+        // The parent that spliced the element out of its wrappers is not there to say what they hand down.
+        let splice = crate::layout::contents::splice_parent(&tree, id);
         let element = {
             let mut ctx = BuildCtx {
                 tree: &tree,
@@ -7228,7 +7233,8 @@ impl GpuixView {
                 highlight_events: &mut highlight_events,
                 focus_styles: env.focus_styles,
                 pointer: &pointer,
-                contents_overlay: None,
+                contents_overlay: splice.and_then(|parent| crate::layout::contents::inherited_overlay(&tree, parent, id)),
+                contents_key: splice.map_or(0, |parent| crate::layout::contents::overlay_key(&tree, parent, id)),
                 anchor_scope: None,
                 stacking_root: env.stacking_root,
                 stacking_item: env.stacking_item,
@@ -7458,6 +7464,7 @@ impl gpui::Render for GpuixView {
                     focus_styles,
                     pointer: &pointer,
                     contents_overlay: None,
+                    contents_key: 0,
                     anchor_scope: None,
                     stacking_root: true,
                     stacking_item: false,
@@ -7632,7 +7639,7 @@ fn build_element_in(
             stacking_root: ctx.stacking_root,
             stacking_item: ctx.stacking_item,
             atomic_root: ctx.atomic_root,
-            contents_overlay: ctx.contents_overlay.is_some(),
+            contents_overlay: ctx.contents_overlay.is_some().then_some(ctx.contents_key),
             anchor_scope: ctx.anchor_scope.is_some(),
             text_box_trim: ctx.text_box_trim,
             plain,
@@ -8144,6 +8151,7 @@ fn build_element_unpumped(
                     .map(|(ix, child_id)| {
                         ctx.contents_overlay =
                             crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                        ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
                         if custom_type == "anchored" {
                             ctx.anchor_scope = Some(id);
                         }
@@ -8873,6 +8881,7 @@ fn build_plan(
                 ));
                 ctx.contents_overlay =
                     crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
+                ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
                 ctx.stacking_item = item;
                 ctx.text_box_trim = child_trim;
                 let out_of_flow = child_element.is_some_and(|child| {
@@ -9272,6 +9281,8 @@ fn build_atomics(
             std::mem::replace(&mut ctx.baseline_probe, probe.as_ref().map(crate::text::atomic::Probe::clone_handle)),
         );
         ctx.contents_overlay = around.overlay;
+        // An atomic inline is never a root, so nothing reads the key of its boxes' styles.
+        ctx.contents_key = 0;
         ctx.atomic_root = true;
         ctx.atomic_extracted = None;
         ctx.atomic_height_definite = height_definite;

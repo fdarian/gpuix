@@ -100,6 +100,10 @@ pub struct RetainedElement {
     /// that finds another answer asks for the frame to be built again. Read it through
     /// [`Self::display`].
     pub container_display: std::cell::RefCell<Option<Option<String>>>,
+    /// Counts the times the effective style of the element was replaced: all that a build of
+    /// the child of a `display: contents` element reads of it is its style, and not the
+    /// revisions that its descendants move. Not zero once the element has a style.
+    pub style_serial: u64,
     /// Last mutation applied to this element or one of its descendants.
     pub subtree_revision: u64,
     /// Last change to the searchable TEXT of this subtree: content, structure,
@@ -216,6 +220,7 @@ impl RetainedElement {
             extras: None,
             auto_focus: false,
             container_display: Default::default(),
+            style_serial: 0,
             subtree_revision: revision,
             search_revision: revision,
             test_id: None,
@@ -445,6 +450,8 @@ pub struct RetainedTree {
     /// How many elements are `position: absolute` or `fixed` in some state, which a clip above may
     /// not reach.
     escaping_count: usize,
+    /// The last `RetainedElement::style_serial` handed out.
+    style_serials: u64,
     /// How many elements have `@container` blocks, so a tree without any skips looking for
     /// the children they keep from being built.
     container_rule_count: usize,
@@ -483,6 +490,7 @@ impl RetainedTree {
             visibility_count: 0,
             anchored_count: 0,
             escaping_count: 0,
+            style_serials: 0,
             container_rule_count: 0,
             styles: StyleTable::default(),
             universal: None,
@@ -922,6 +930,8 @@ impl RetainedTree {
             element.release_empty_extras();
         }
         element.style = style;
+        self.style_serials += 1;
+        element.style_serial = self.style_serials;
         *element.container_display.borrow_mut() = None;
         let escaped_after = containing_block::may_escape(element);
         self.escaping_count += usize::from(escaped_after);

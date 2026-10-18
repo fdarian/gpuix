@@ -679,7 +679,9 @@ pub(crate) struct Entry<'a> {
     pub stacking_root: bool,
     pub stacking_item: bool,
     pub atomic_root: bool,
-    pub contents_overlay: bool,
+    /// `Some` for a child spliced out of `display: contents` elements: the key of the styles they
+    /// hand down (`layout::contents::overlay_key`).
+    pub contents_overlay: Option<u64>,
     pub anchor_scope: bool,
     /// What an ancestor's `text-box-trim` asks of the ends of the element's lines.
     pub text_box_trim: gpui::TextBoxTrim,
@@ -1085,11 +1087,11 @@ impl Retain {
                 shape.word(u64::from(entry.at));
                 shape.word(self.nodes.get(parent as usize).map_or(0, |parent| parent.key.shape));
                 shape.word(entry.container.map_or(0, |size| size | 1));
+                shape.word(entry.contents_overlay.map_or(0, |key| key | 1));
                 shape.bits(&[
                     entry.stacking_root,
                     entry.stacking_item,
                     entry.atomic_root,
-                    entry.contents_overlay,
                     entry.anchor_scope,
                     entry.text_box_trim.start,
                     entry.text_box_trim.end,
@@ -1106,8 +1108,6 @@ impl Retain {
         });
         let exclusion = if entry.atomic_root {
             self.unless_lifted(Exclusion::AtomicInline)
-        } else if entry.contents_overlay {
-            self.unless_lifted(Exclusion::DisplayContents)
         } else if entry.anchor_scope {
             self.unless_lifted(Exclusion::Anchored)
         } else if entry.inherited.highlight.is_some() {
@@ -1677,7 +1677,7 @@ mod tests {
             stacking_root: true,
             stacking_item: false,
             atomic_root: false,
-            contents_overlay: false,
+            contents_overlay: None,
             anchor_scope: false,
             text_box_trim: Default::default(),
             plain: true,
