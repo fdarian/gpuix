@@ -38,8 +38,9 @@ import type {
 } from "@gpuix/native/host"
 import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
+import type { HostElement } from "../host.js"
 import { useContext } from "solid-js"
-import { PresenceContext, PresenceGroupContext } from "./animate-presence.js"
+import { PresenceGroupContext, useIsPresent } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
 
@@ -93,7 +94,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       "layoutId",
       "layoutDrag",
     ])
-    const presence = useContext(PresenceContext)
+    const isPresent = useIsPresent()
     const group = useContext(PresenceGroupContext)
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
@@ -105,7 +106,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
         : resolveExit(motionProps.exit as ExitTarget<object> | undefined, group?.custom() ?? motionProps.custom)
     const span = () =>
       resolveSpanMotion({
-        initial: presence?.initial === false ? false : (motionProps.initial as MotionSpanAnimation["initial"]),
+        initial: motionProps.initial as MotionSpanAnimation["initial"],
         animate: motionProps.animate as MotionSpanAnimation["animate"],
         exit: declaredExit() as Parameters<typeof resolveSpanMotion>[0]["exit"],
         variants: motionProps.variants,
@@ -117,14 +118,11 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
       onCleanup(release)
     })
-    createRenderEffect(() => {
-      if (presence && !presence.isPresent() && !exit()) {
-        presence.safeToRemove()
-      }
-    })
     const element = createElement(tag)
     let generation = 0
     let targetKey: string | undefined
+    let applied: object | undefined
+    let leaving = false
     const resolvedTransition = (variantTransition?: MotionTransition) =>
       wireMotionTransition(
         variantTransition ?? (motionProps.transition !== undefined ? motionProps.transition : config?.transition())
@@ -140,22 +138,31 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
         })
       },
       get motion() {
-        const isExit = Boolean(presence && !presence.isPresent() && exit())
+        // `AnimatePresence` sets the exit target of a leaving element, and this
+        // component stays alive while it leaves: following its props again
+        // would undo that.
+        if (!isPresent()) {
+          leaving = true
+          return applied
+        }
+        if (leaving) {
+          leaving = false
+          targetKey = undefined
+          generation = ((element as HostElement).props.get("motion") as { generation?: number } | undefined)?.generation ?? generation
+        }
         const resolved = inline ? span() : undefined
-        const initial = resolved ? resolved.initial : presence?.initial === false ? false : motionProps.initial
-        const animate = isExit ? exit()! : resolved ? resolved.animate : motionProps.animate
-        if (animate === undefined) return undefined
-        const transition = withoutLayoutTransition(
-          resolvedTransition(isExit ? resolved?.exitTransition : resolved?.animateTransition)
-        )
-        const nextKey = JSON.stringify([isExit, initial, animate, transition, reduced()])
+        const initial = resolved ? resolved.initial : motionProps.initial
+        const animate = resolved ? resolved.animate : motionProps.animate
+        if (animate === undefined) return applied = undefined
+        const transition = withoutLayoutTransition(resolvedTransition(resolved?.animateTransition))
+        const nextKey = JSON.stringify([initial, animate, transition, reduced()])
         if (nextKey !== targetKey) {
           targetKey = nextKey
           generation += 1
         }
-        return {
+        return applied = {
           generation,
-          isExit,
+          isExit: false,
           initial,
           animate,
           exit: exit(),
@@ -166,7 +173,6 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       onMotionComplete(event: DomEvent) {
         if (event.motionGeneration !== generation) return
         ;(hostProps as { onMotionComplete?: (event: DomEvent) => void }).onMotionComplete?.(event)
-        if (presence && !presence.isPresent()) presence.safeToRemove()
       },
     }))
     return element as never

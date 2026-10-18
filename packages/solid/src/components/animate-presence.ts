@@ -5,8 +5,8 @@ import {
   createRenderEffect,
   createSignal,
   For,
+  onCleanup,
   untrack,
-  useContext,
   type Accessor,
   type JSX,
   type Signal,
@@ -14,20 +14,27 @@ import {
 import type { DomEvent } from "@gpuix/native/host"
 import { measurePopLayout } from "@gpuix/native/host"
 import type { MotionProps, PresenceMode, StyleDesc } from "@gpuix/native/host"
-import { HostElement, setHostProperty } from "../host.js"
-
-export interface PresenceContextValue {
-  isPresent: Accessor<boolean>
-  initial: false | undefined
-  safeToRemove(): void
-}
-
-export const PresenceContext = createContext<PresenceContextValue>()
+import { HostElement, setHostProperty, type HostNode } from "../host.js"
+import {
+  anchorHost,
+  disposePresenceScope,
+  enterPresenceGroup,
+  isHostNode,
+  isWithin,
+  madeUnder,
+  ownPresenceGroup,
+  registerPresence,
+  type PresenceRegistration,
+  type PresenceScope,
+  type PresenceScopeGroup,
+} from "../presence-scope.js"
 
 /**
- * What a `motion.*` can see of its `AnimatePresence`. `PresenceContext` cannot
- * reach it: the children resolve before `AnimatePresence` wraps each one, so
- * the exit itself is driven from the outside (see the render effect below).
+ * What a `motion.*` can see of its `AnimatePresence`. The children resolve
+ * before `AnimatePresence` sees them, so context cannot carry the presence of
+ * a child: that is found from where a component's output sits (see
+ * `presence-scope.ts`), and the exit itself is driven from the outside (see
+ * the render effect below).
  */
 export interface PresenceGroupContextValue {
   custom: Accessor<unknown>
@@ -36,20 +43,35 @@ export interface PresenceGroupContextValue {
 export const PresenceGroupContext = createContext<PresenceGroupContextValue>()
 
 /**
- * Always present outside a `motion.*`'s own `PresenceContext`: a leaving child's
- * owner is disposed when it leaves, which disposes every effect a descendant
- * made, so a descendant could not observe `isPresent` flipping. React's
- * `usePresence` parity would need `AnimatePresence` to own each child's scope.
+ * Always present outside an `AnimatePresence`. Inside one it flips to false
+ * when the child the caller sits in leaves, and the child stays until
+ * `safeToRemove` is called (and until the child's own exit animation, if it has
+ * one, is done). Call it from a component: a component's output is what places
+ * it in a child.
  */
 export function usePresence(): [Accessor<boolean>, () => void] {
-  const context = useContext(PresenceContext)
-  return context
-    ? [context.isPresent, context.safeToRemove]
-    : [() => true, () => {}]
+  return presenceOf(true)
 }
 
+/** Does not hold the child back: only reads whether it is leaving. */
 export function useIsPresent(): Accessor<boolean> {
-  return usePresence()[0]
+  return presenceOf(false)[0]
+}
+
+function presenceOf(waits: boolean): [Accessor<boolean>, () => void] {
+  const registration = registerPresence(waits)
+  if (!registration) return [() => true, () => {}]
+  onCleanup(registration.unregister)
+  return [registration.isPresent, registration.safeToRemove]
+}
+
+type Consumer = {
+  readonly scope: PresenceScope
+  readonly waits: boolean
+  readonly present: Signal<boolean>
+  /** Set while the child the consumer sits in is leaving. */
+  leaving: JSX.Element | undefined
+  done: boolean
 }
 
 export interface AnimatePresenceProps {
@@ -79,16 +101,93 @@ function normalize(value: JSX.Element): JSX.Element[] {
 
 export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   const group: PresenceGroupContextValue = { custom: () => props.custom }
+  const consumers = new Set<Consumer>()
+  /** Scopes kept alive for a leaving child, disposed when it is removed. */
+  const retained = new Map<JSX.Element, Set<PresenceScope>>()
+  /** Children whose own exit animation has not settled. */
+  const animating = new Set<JSX.Element>()
+  let unmounted = false
+  const scopeGroup: PresenceScopeGroup = {
+    retain(scope, owner) {
+      if (unmounted) return false
+      const anchor = anchorHost(scope)
+      if (!anchor) return false
+      const item = untrack(rendered).find(
+        (candidate): candidate is HostNode & JSX.Element => isHostNode(candidate) && isWithin(anchor, candidate)
+      )
+      // Cleaning an owner inside the child leaves the child where it is.
+      if (!item || !madeUnder(item, owner)) return false
+      const scopes = retained.get(item) ?? new Set()
+      scopes.add(scope)
+      retained.set(item, scopes)
+      return true
+    },
+    register(scope, waits) {
+      const consumer: Consumer = {
+        scope,
+        waits,
+        present: createSignal(true),
+        leaving: undefined,
+        done: false,
+      }
+      consumers.add(consumer)
+      return {
+        isPresent: consumer.present[0],
+        safeToRemove() {
+          if (consumer.present[0]() || !consumers.has(consumer)) return
+          consumer.done = true
+          if (consumer.leaving) settle(consumer.leaving)
+        },
+        unregister() {
+          consumers.delete(consumer)
+          if (consumer.leaving) settle(consumer.leaving)
+        },
+      } satisfies PresenceRegistration
+    },
+  }
+  enterPresenceGroup()
+  onCleanup(() => {
+    unmounted = true
+    for (const scopes of retained.values()) for (const scope of scopes) disposePresenceScope(scope)
+    retained.clear()
+  })
   const resolved = children(() =>
     createComponent(PresenceGroupContext.Provider, {
       value: group,
-      get children() { return props.children },
+      get children() {
+        ownPresenceGroup(scopeGroup)
+        return props.children
+      },
     })
   )
   const [rendered, setRendered] = createSignal(normalize(resolved()))
   const presence = new Map<JSX.Element, Signal<boolean>>()
   const unpopped = new Map<HostElement, StyleDesc>()
   let initial = true
+
+  const disposeRetained = (item: JSX.Element) => {
+    const scopes = retained.get(item)
+    if (!scopes) return
+    retained.delete(item)
+    for (const scope of scopes) disposePresenceScope(scope)
+  }
+
+  const consumersIn = (item: JSX.Element) => {
+    if (!isHostNode(item)) return []
+    return [...consumers].filter((consumer) => {
+      const anchor = anchorHost(consumer.scope)
+      return consumer.leaving === undefined && anchor !== undefined && isWithin(anchor, item)
+    })
+  }
+
+  const blocked = (item: JSX.Element) =>
+    animating.has(item) ||
+    [...consumers].some((consumer) => consumer.leaving === item && consumer.waits && !consumer.done)
+
+  const settle = (item: JSX.Element) => {
+    const entry = presence.get(item)
+    if (entry && !blocked(item)) remove(item, entry)
+  }
 
   const pop = (item: HostElement) => {
     if (!item.root || !item.mounted || unpopped.has(item)) return
@@ -115,8 +214,10 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   const remove = (item: JSX.Element, entry: Signal<boolean>) => {
     if (entry[0]() || !presence.has(item)) return
     presence.delete(item)
+    animating.delete(item)
     if (item instanceof HostElement) unpopped.delete(item)
     setRendered(rendered().filter((candidate) => candidate !== item))
+    disposeRetained(item)
     if (![...presence.values()].some(([present]) => !present())) {
       if (props.mode === "wait") setRendered(normalize(untrack(resolved)))
       props.onExitComplete?.()
@@ -129,8 +230,19 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
     const exiting = previous.filter((item) => !current.includes(item))
     for (const item of current) {
       const entry = presence.get(item)
-      if (entry) entry[1](true)
-      else presence.set(item, createSignal(true))
+      if (entry) {
+        if (!entry[0]()) {
+          animating.delete(item)
+          for (const consumer of consumers) {
+            if (consumer.leaving !== item) continue
+            consumer.leaving = undefined
+            consumer.done = false
+            consumer.present[1](true)
+          }
+        }
+        entry[1](true)
+        disposeRetained(item)
+      } else presence.set(item, createSignal(true))
       if (item instanceof HostElement) unpop(item)
       if (initial && props.initial === false && item instanceof HostElement) {
         const motion = item.props.get("motion") as MotionProps | undefined
@@ -141,16 +253,21 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       const entry = presence.get(item)
       if (!entry || !entry[0]()) continue
       entry[1](false)
+      for (const consumer of consumersIn(item)) {
+        consumer.leaving = item
+        consumer.present[1](false)
+      }
       if (item instanceof HostElement && props.mode === "popLayout") pop(item)
       if (!(item instanceof HostElement)) {
-        remove(item, entry)
+        settle(item)
         continue
       }
       const motion = item.props.get("motion") as NativeMotionProps | undefined
       if (!motion?.exit) {
-        remove(item, entry)
+        settle(item)
         continue
       }
+      animating.add(item)
       const previous = item.props.get("onMotionComplete") as
         | ((event: DomEvent) => void)
         | undefined
@@ -170,7 +287,8 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
             event.motionGeneration !== active.generation
           ) return
           previous?.(event)
-          remove(item, entry)
+          animating.delete(item)
+          settle(item)
         },
         previous
       )
@@ -198,16 +316,8 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   return createComponent(For as any, {
     get each() { return rendered() },
     children(item: JSX.Element) {
-      const entry = presence.get(item) ?? createSignal(true)
-      presence.set(item, entry)
-      return createComponent(PresenceContext.Provider, {
-        value: {
-          isPresent: entry[0],
-          initial: initial && props.initial === false ? false : undefined,
-          safeToRemove: () => remove(item, entry),
-        },
-        get children() { return item },
-      })
+      presence.set(item, presence.get(item) ?? createSignal(true))
+      return item
     },
   })
 }

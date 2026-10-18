@@ -15,6 +15,7 @@ import {
   type HostNode,
   type HostParent,
 } from "./host.js"
+import { notePresenceHost, runInPresenceScope } from "./presence-scope.js"
 
 const runtime = createRenderer<HostNode | HostParent>({
   createElement: createHostElement,
@@ -65,8 +66,13 @@ export function universalRender(code: () => JSX.Element, root: HostParent): () =
 
 export const effect = runtime.effect
 export const memo = runtime.memo
-export const createComponent = runtime.createComponent
-export const createElement = runtime.createElement
+export const createComponent: typeof runtime.createComponent = (component, props) =>
+  runInPresenceScope(() => runtime.createComponent(component, props))
+export const createElement: typeof runtime.createElement = (tag) => {
+  const element = runtime.createElement(tag)
+  notePresenceHost(element as HostNode)
+  return element
+}
 export const createTextNode = runtime.createTextNode
 export const insertNode = runtime.insertNode
 export const insert = runtime.insert

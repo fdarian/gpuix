@@ -1920,7 +1920,24 @@ window, or when invalid runtime data makes the native target unusable.
 `AnimatePresence` also accepts **`onExitComplete`**, which runs after every
 leaving child is gone. `useIsPresent()` reports whether a custom descendant is
 leaving. `usePresence()` returns the same status plus `safeToRemove`, for a
-custom exit that decides when the retained child can unmount.
+custom exit that decides when the retained child can unmount. Any component
+below a child of `AnimatePresence` can call them, at any depth: while the child
+leaves, `isPresent` is false there, and a child whose descendants called
+`usePresence()` stays until each of them has called `safeToRemove` (and until its
+own `exit` animation, if it has one, is done). A caller that never calls
+`safeToRemove` keeps the child for good; unmounting it counts as done. Outside an
+`AnimatePresence` the status is always present.
+
+In Solid both return an accessor (`usePresence()` is `[isPresent, safeToRemove]`
+with `isPresent: () => boolean`). Solid disposes the effects of whatever a `Show`,
+a `For` item or `{cond && <Item/>}` stops rendering, so inside an
+`AnimatePresence` each component runs in a scope of its own that is kept until
+the child it sits in is removed: effects and `onCleanup` of a leaving child's
+descendants run on until then, and `useIsPresent()` can be read in an effect or
+in JSX. A component that renders nothing is placed in the child by the element
+written around it. Elements and effects written directly in a `Show` or `For`
+callback (outside a component) are not kept: they stop updating when the child
+leaves, as before.
 
 ```tsx
 import { usePresence } from '@gpuix/react'
@@ -1995,13 +2012,7 @@ has none. An `exit` function is only called inside an `AnimatePresence`.
 ```
 
 Variants do not exist in GPUIX, so `exit` is either a target or a function of
-`custom` that returns one. `useIsPresent()` and `usePresence()` work in React. In
-Solid, `AnimatePresence` drives the exit from outside the child, so a descendant
-component reads them as present: Solid disposes the scope of a child that leaves
-(its `Show`, `For` item or `{cond && <Item/>}` re-runs), and with it every effect
-the descendant created, so an accessor could never report the change. Use the
-`exit` of a `motion.*` for leaving animations; React is the only adapter whose
-descendants see presence.
+`custom` that returns one.
 
 `motion.div` accepts **`onMotionComplete`**. It runs when the current native
 target settles. If React changes the target before an older completion reaches

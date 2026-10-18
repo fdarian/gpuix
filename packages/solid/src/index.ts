@@ -56,7 +56,6 @@ export { UniversalStyle } from "./components/universal-style.js"
 export type { UniversalStyleProps } from "./components/universal-style.js"
 export {
   AnimatePresence,
-  PresenceContext,
   useIsPresent,
   usePresence,
 } from "./components/animate-presence.js"
