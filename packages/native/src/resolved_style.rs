@@ -140,6 +140,9 @@ fn display_flags(element: &RetainedElement, display: Option<&str>) -> (bool, boo
 #[derive(Default)]
 pub(crate) struct ResolvedStyles {
     by_element: FxHashMap<u64, Resolved>,
+    /// The borders a part of a table with collapsed borders was painted with, which the table reads
+    /// to share the edges between its parts. See [`Self::record_borders`].
+    borders: FxHashMap<u64, [crate::css::border::SideBorder; 4]>,
     /// How many entries are `absolute` or `fixed`: a clip above them may not reach them.
     escaping: usize,
 }
@@ -152,9 +155,21 @@ impl ResolvedStyles {
     }
 
     pub(crate) fn forget(&mut self, id: u64) {
+        self.borders.remove(&id);
         if let Some(before) = self.by_element.remove(&id) {
             self.escaping -= usize::from(before.escapes());
         }
+    }
+
+    /// The borders `id`, a part of a table with collapsed borders, declares as painted this pass:
+    /// transitions, animations and `motion` included. The table is built first, so it reads
+    /// the last pass's and builds again when a part has moved since.
+    pub(crate) fn record_borders(&mut self, id: u64, borders: [crate::css::border::SideBorder; 4]) {
+        self.borders.insert(id, borders);
+    }
+
+    pub(crate) fn borders_of(&self, id: u64) -> Option<[crate::css::border::SideBorder; 4]> {
+        self.borders.get(&id).copied()
     }
 
     fn get(&self, id: u64) -> Option<Resolved> {

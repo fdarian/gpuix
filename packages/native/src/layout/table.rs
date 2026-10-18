@@ -178,9 +178,25 @@ fn span_prop(element: &RetainedElement, name: &str, default: u16, min: u16, max:
 pub(crate) struct Collapsed {
     cells: HashMap<BoxKey, [f32; 4]>,
     tables: HashMap<BoxKey, ([f32; 4], Arc<gpui::CollapsedBorders>)>,
+    /// The borders of the parts of a table, as it resolved the edges with them. A part that is painted
+    /// with others afterwards (it moves in a transition) makes the table resolve again.
+    used: Vec<(u64, [crate::css::border::SideBorder; 4])>,
 }
 
 impl Collapsed {
+    pub(crate) fn note_used(&mut self, used: impl IntoIterator<Item = (u64, [crate::css::border::SideBorder; 4])>) {
+        self.used.extend(used);
+    }
+
+    /// Takes the parts noted since `from`: the ones of the table that was just built.
+    pub(crate) fn used_since(&mut self, from: usize) -> Vec<(u64, [crate::css::border::SideBorder; 4])> {
+        self.used.split_off(from)
+    }
+
+    pub(crate) fn used_len(&self) -> usize {
+        self.used.len()
+    }
+
     pub(crate) fn insert(&mut self, table: BoxKey, resolved: super::collapse::Resolved) {
         self.cells.extend(resolved.cells);
         self.tables.insert(table, (resolved.table, resolved.borders));

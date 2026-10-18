@@ -6558,7 +6558,11 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   borders; the table paints each edge once, after its cells, so a border covers their
   backgrounds, in the border's colour and style, and where borders cross the strongest
   covers the others and the others run under it. Rows, groups and columns paint no
-  border at all when the borders are separate.
+  border at all when the borders are separate. A part's border is the one it is painted with, so a
+  transition, a CSS animation, `motion` or a state style on the border of a cell, row, group or column
+  moves its neighbours' share of the edge every frame. The parts are built after the table, so a table
+  that finds one painted with other borders than it shared the edges by is built again before the frame
+  is presented.
 - **Copying.** A selection across cells copies as `getSelection().toString()` does in Chrome:
   a tab between the cells of a row and a line break between rows and between the blocks of
   one cell (the cells of an anonymous table and the anonymous cells included).
@@ -6569,12 +6573,9 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
 
 Differences from Chrome:
 
-- Collapsed borders are resolved from the style a part declares with the pointer's states
-  (`hover`, `active`, groups) folded in: a transition, animation or `motion` of a border
-  of a row, cell or column is not seen by its neighbours until it ends. A column no cell
-  starts in joins the one before it in the layout, and the borders predict that: a table
-  with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
-  percentage of a parent with no width draws no collapsed borders.
+- A column no cell starts in joins the one before it in the layout, and the collapsed borders
+  predict that: a table with `tableLayout: "fixed"` and a `width` keeps them, so one whose
+  `width` is a percentage of a parent with no width draws no collapsed borders.
 - Rows and cells with `rowSpan`s that leave rows without a cell of their own and no height
   can share a spanning cell's height out differently.
 - A table that is a flex item narrower than its least width reports that least width but is

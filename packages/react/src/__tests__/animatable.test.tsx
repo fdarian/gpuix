@@ -11,6 +11,7 @@ import path from "path"
 import React from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
+import { motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { elementsOf } from "./oracle-boxes.js"
 import { readLogicalPixels } from "./test-utils.js"
@@ -192,6 +193,53 @@ describeNative("empty-cells in the middle of a transition", () => {
       expect(Object.keys(source.samples)).toContain("0.5")
       expect(source.samples["0.25"]!.value).toBe("show")
       expect(source.samples["0.5"]!.value).toBe("hide")
+    } finally {
+      unmount()
+    }
+  })
+})
+
+describeNative("collapsed borders follow the border of a part that moves", () => {
+  const source = ORACLE.cases["collapsed border of a cell"]!
+
+  it("a motion on a cell moves the cell next to it, as a transition does in Chrome", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      const cell = (id: string, border: string, width: number, children?: React.ReactNode) => (
+        <div testId={id} style={{ display: "table-cell", border }}>
+          {children ?? <div style={{ width, height: 10 }} />}
+        </div>
+      )
+      renderer.clockPause()
+      render(
+        <div style={{ width: 300 }}>
+          <div testId="t" style={{ display: "table", borderCollapse: "collapse" }}>
+            <div style={{ display: "table-row" }}>
+              <motion.div
+                testId="a"
+                style={{ display: "table-cell", border: "2px solid #000000" }}
+                initial={{ borderWidth: 2 }}
+                animate={{ borderWidth: 10 }}
+                transition={{ duration: 1, ease: "linear" }}
+              >
+                <div style={{ width: 20, height: 10 }} />
+              </motion.div>
+              {cell("b", "2px solid #ff0000", 30)}
+            </div>
+          </div>
+        </div>
+      )
+      let elapsed = 0
+      for (const time of [0, 0.25, 0.5, 0.75, 1]) {
+        renderer.clockFastForward(Math.round(time * 1000) - elapsed)
+        elapsed = Math.round(time * 1000)
+        renderer.dispatchNativeEvents()
+        const want = source.samples[String(time)]!
+        const probe = renderer.getElementBounds(renderer.findByTestId("b").id)
+        expect([probe.x, probe.y, probe.width, probe.height], `b at ${time}`).toEqual(want.probe)
+        const subject = renderer.getElementBounds(renderer.findByTestId("a").id)
+        expect([subject.x, subject.y, subject.width, subject.height], `a at ${time}`).toEqual(want.subject)
+      }
     } finally {
       unmount()
     }
