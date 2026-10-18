@@ -101,6 +101,8 @@ function normalize(value: JSX.Element): JSX.Element[] {
 
 export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   const group: PresenceGroupContextValue = { custom: () => props.custom }
+  /** Declared before the children resolve: a child that throws while creating releases its scopes. */
+  const [rendered, setRendered] = createSignal<JSX.Element[]>([])
   const consumers = new Set<Consumer>()
   /** Scopes kept alive for a leaving child, disposed when it is removed. */
   const retained = new Map<JSX.Element, Set<PresenceScope>>()
@@ -160,7 +162,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       },
     })
   )
-  const [rendered, setRendered] = createSignal(normalize(resolved()))
+  setRendered(normalize(resolved()))
   const presence = new Map<JSX.Element, Signal<boolean>>()
   const unpopped = new Map<HostElement, StyleDesc>()
   let initial = true
