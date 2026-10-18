@@ -27,6 +27,7 @@ pub fn plain_runs(text: &str, font: &Font, color: Hsla) -> Vec<TextRun> {
         line_height: None,
         overline: None,
         extra_decorations: Vec::new(),
+        group: 0,
     }]
 }
 
@@ -51,6 +52,7 @@ pub fn runs_for_spans(
         line_height: None,
         overline: None,
         extra_decorations: Vec::new(),
+        group: 0,
     };
     let mut runs = Vec::with_capacity(spans.len() * 2 + 1);
     let mut at = 0usize;

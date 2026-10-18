@@ -3093,14 +3093,15 @@ search match lies over them.
   `boxShadow` and `filter` are not read there. The metrics are the
   line's, so a span in a font whose ascent and descent differ from the rest of the
   line has the line's content area, not its own.
-- **`opacity` fades what the box paints.** Its text, text decorations, background,
-  border and outline are painted with that fraction of their alpha, and a box
-  inside another is faded by both (`display: contents` has no box, so its
-  `opacity` does nothing). **Deviation: it is not a group.** A paragraph has no
-  layer to composite a box into, so each thing is faded on its own: where two of
-  them overlap, such as the glyphs over the box's own background, the one
-  underneath shows through a little more than in a browser. An element's `opacity`
-  is a real group.
+- **`opacity` is a compositing group.** A box with an `opacity` below one paints its
+  background, border, outline, glyphs and text decorations, and what the boxes inside it
+  paint, opaque into a layer that is faded as a whole, as CSS does: the glyphs over the
+  box's own background do not show it through twice, and a box inside another is faded
+  by both. Like a stacking context it paints after the text around it, so it lies over
+  what that text overlaps, and the group follows the box across the lines it wraps over.
+  `display: contents` has no box, so its `opacity` does nothing. Selection and find
+  washes on its text are painted under the group. An atomic inline inside the box is an
+  element of its own: `opacity` on the box does not fade it.
 - **The colours of a box transition and animate.** `color`, `backgroundColor`,
   `textDecorationColor`, `outlineColor` and the border colours (`borderColor` and
   `borderTopColor` ... `borderLeftColor`) take part in [CSS transitions](#css-transitions)

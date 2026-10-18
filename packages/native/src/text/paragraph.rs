@@ -65,6 +65,9 @@ pub struct RunStyle {
     /// nor the text of a box to an atomic inline, so it is a run of its own with
     /// the lines of none of the boxes around it.
     pub atomic: bool,
+    /// The [`OpacityGroup`] the run is painted in: the id of the innermost box around it whose
+    /// `opacity` is below one, or `0`.
+    pub group: u64,
     /// The text nodes the run is made of, as the index of the piece and its length. Not part
     /// of the style: it lets a run split again where a pattern of the paragraph's own
     /// decoration starts over, see [`InlineText::runs`].
@@ -201,11 +204,26 @@ pub fn run_styles(
     .runs
 }
 
+/// An inline box with an `opacity` below one. CSS composites it as a unit: everything it
+/// paints (its background, border and outline, its glyphs and decoration lines, and what its
+/// descendants paint) is drawn opaque into a layer that is then faded. It is painted after the
+/// text around it, as a stacking context is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OpacityGroup {
+    /// The id of the box, which is also what [`RunStyle::group`] and the decorations name.
+    pub id: u64,
+    /// The group around it, `0` for none.
+    pub parent: u64,
+    pub opacity: f32,
+}
+
 /// What [`styles`] reads off the boxes of a paragraph.
 pub struct Styles {
     /// See [`run_styles`]. A paragraph with an atomic inline always has runs: the
     /// placeholder is a run of its own.
     pub runs: Vec<RunStyle>,
+    /// The boxes whose `opacity` is below one, outermost first.
+    pub groups: Vec<OpacityGroup>,
     /// The boxes with a box of their own, outermost first.
     pub boxes: Vec<BoxStyle>,
 }
@@ -223,6 +241,7 @@ pub fn styles(
 ) -> Styles {
     let mut runs: Vec<RunStyle> = Vec::with_capacity(paragraph.pieces.len());
     let mut boxes: Vec<BoxStyle> = Vec::new();
+    let mut groups: Vec<OpacityGroup> = Vec::new();
     for (piece_ix, piece) in paragraph.pieces.iter().enumerate() {
         let mut style = RunStyle {
             len: piece.range.len(),
@@ -233,7 +252,7 @@ pub fn styles(
         let mut lengths = *lengths;
         let mut font_state = font_state.clone();
         let mut underline_offset = underline_offset;
-        let mut opacity = 1.0;
+        let mut group = 0;
         let mut parent = None;
         let mut wraps = None;
         for id in &piece.boxes {
@@ -254,7 +273,13 @@ pub fn styles(
             // it is inherited.
             let has_box = declared.display.as_deref() != Some("contents");
             if has_box {
-                opacity *= box_opacity(declared);
+                let opacity = box_opacity(declared);
+                if opacity < 1.0 {
+                    if !groups.iter().any(|known| known.id == *id) {
+                        groups.push(OpacityGroup { id: *id, parent: group, opacity });
+                    }
+                    group = *id;
+                }
             }
             if declared.font_size.is_some() {
                 style.font_size = Some(lengths.font_size as f32);
@@ -297,7 +322,7 @@ pub fn styles(
             if has_box {
                 if let Some(mut decoration) = text_decoration::of(declared) {
                     decoration.underline_offset = underline_offset;
-                    let color = fade(decoration.resolve_color(&colors), opacity);
+                    let color = decoration.resolve_color(&colors);
                     style.add_decoration(&decoration, color, &lengths, *id, piece_ix as u32 + 1);
                     decorates = decoration.underline;
                     strikes = decoration.line_through;
@@ -310,10 +335,7 @@ pub fn styles(
                 parent = Some(*id);
             }
         }
-        // The glyphs are the group of every box around them.
-        if opacity < 1.0 {
-            style.color = Some(fade(style.color.unwrap_or_else(|| colors.current.into()), opacity));
-        }
+        style.group = group;
         if piece.atomic.is_some() {
             style = RunStyle {
                 len: piece.range.len(),
@@ -339,7 +361,7 @@ pub fn styles(
     {
         runs.clear();
     }
-    Styles { runs, boxes }
+    Styles { runs, groups, boxes }
 }
 
 /// Records the first sight of the box `id`, whose text has `style`.
@@ -443,10 +465,7 @@ pub fn listed_boxes(
         .collect()
 }
 
-/// What a box's `opacity` leaves of the painting inside it. A paragraph has no
-/// layer to composite a box into, so the alpha of each thing it paints is scaled
-/// instead: where two of them overlap (the glyphs over the box's own background),
-/// the one underneath shows through a little more than it does in CSS.
+/// The `opacity` of a box, which is a compositing group ([`OpacityGroup`]) below one.
 pub(crate) fn box_opacity(style: &StyleDesc) -> f32 {
     style.opacity.map_or(1.0, |opacity| opacity.clamp(0.0, 1.0) as f32)
 }
@@ -579,6 +598,7 @@ impl InlineText {
     ) -> TextRun {
         let base_font_size = base.font_size.to_pixels(rem_size);
         let mut run = base.to_run(style.len);
+        run.group = style.group;
         if style.atomic {
             run.background_color = None;
             run.underline = None;
@@ -1186,6 +1206,7 @@ mod tests {
             runs[0],
             RunStyle {
                 len: 2,
+                pieces: runs[0].pieces.clone(),
                 ..RunStyle::default()
             }
         );
@@ -1198,6 +1219,7 @@ mod tests {
             runs[3],
             RunStyle {
                 len: 4,
+                pieces: runs[3].pieces.clone(),
                 ..RunStyle::default()
             }
         );
@@ -1403,43 +1425,48 @@ mod tests {
     }
 
     #[test]
-    fn opacity_scales_the_text_colour_and_multiplies_through_nested_boxes() {
+    fn a_box_with_an_opacity_is_a_group_that_holds_the_boxes_in_it() {
         let tree = tree_with(&[
             (3, serde_json::json!({"opacity": 0.5, "color": "#ff0000"})),
-            (5, serde_json::json!({"opacity": 0.5})),
+            (5, serde_json::json!({"opacity": 0.25})),
         ]);
-        let runs = runs_of(&tree);
-        assert_eq!(runs[0].color, None, "text outside the boxes is not faded");
-        assert_eq!(runs[3].color, None);
-        let outer = gpui::Rgba::from(runs[1].color.expect("the text of the box is faded"));
-        let inner = gpui::Rgba::from(runs[2].color.expect("the text of the nested box is faded"));
-        assert_eq!((outer.r, outer.a), (1.0, 0.5));
-        assert_eq!((inner.r, inner.a), (1.0, 0.25), "inside the group of the box around it");
+        let styles = styles_of(&tree);
+        assert_eq!(
+            styles.groups,
+            vec![
+                OpacityGroup { id: 3, parent: 0, opacity: 0.5 },
+                OpacityGroup { id: 5, parent: 3, opacity: 0.25 },
+            ]
+        );
+        let groups: Vec<_> = styles.runs.iter().map(|run| run.group).collect();
+        assert_eq!(groups, vec![0, 3, 5, 0], "the text outside the boxes is in no group");
+        let outer = gpui::Rgba::from(styles.runs[1].color.expect("the colour of the box"));
+        assert_eq!((outer.r, outer.a), (1.0, 1.0), "a group is faded as a whole, not its colours");
     }
 
     #[test]
-    fn a_faded_box_that_sets_no_colour_fades_the_colour_it_inherits() {
-        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5}))]);
-        let faded = gpui::Rgba::from(runs_of(&tree)[1].color.expect("the text is faded"));
-        assert_eq!((faded.r, faded.g, faded.b, faded.a), (0.0, 0.0, 0.0, 0.5), "black, as the container's");
+    fn a_box_that_is_not_faded_is_in_the_group_around_it() {
+        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5})), (5, serde_json::json!({"color": "#ff0000"}))]);
+        let groups: Vec<_> = runs_of(&tree).iter().map(|run| run.group).collect();
+        assert_eq!(groups, vec![0, 3, 3, 0]);
     }
 
     #[test]
-    fn a_display_contents_box_has_no_opacity_to_give() {
-        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5, "display": "contents"}))]);
-        assert!(runs_of(&tree).iter().all(|run| run.color.is_none()));
-    }
-
-    #[test]
-    fn a_line_is_faded_by_the_box_that_draws_it_and_not_by_the_boxes_inside() {
+    fn a_line_goes_in_the_group_of_the_text_it_is_drawn_over_unfaded() {
         let tree = tree_with(&[
             (3, serde_json::json!({"opacity": 0.5, "textDecoration": "underline #ff0000"})),
             (5, serde_json::json!({"opacity": 0.5})),
         ]);
         let run = &runs_of(&tree)[2];
         let line = gpui::Rgba::from(run.underline.expect("the line of the outer box").color.expect("a colour"));
-        assert_eq!(line.a, 0.5);
-        assert_eq!(gpui::Rgba::from(run.color.expect("the text is faded")).a, 0.25);
+        assert_eq!(line.a, 1.0);
+        assert_eq!(run.group, 5);
+    }
+
+    #[test]
+    fn a_display_contents_box_has_no_opacity_to_give() {
+        let tree = tree_with(&[(3, serde_json::json!({"opacity": 0.5, "display": "contents"}))]);
+        assert!(runs_of(&tree).iter().all(|run| run.color.is_none()));
     }
 
     #[test]

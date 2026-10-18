@@ -149,6 +149,7 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
             line_height: None,
             overline: None,
             extra_decorations: Vec::new(),
+            group: 0,
         });
     }
 

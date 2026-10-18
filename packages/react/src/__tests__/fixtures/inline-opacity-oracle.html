@@ -1,0 +1,48 @@
+<!doctype html>
+<!--
+  Oracle for inline-opacity.test.tsx: the colours headless Chrome paints for an inline box with an `opacity` below one,
+  which composites the box with what it holds as a group. Every case is a band with one line of text. `data-pad` names
+  a span whose padding is sampled, 4px into the box and half way down the line, and `data-stem` one whose first glyph
+  is, at the middle of the stem of its "M" (the `x` of 7px past the padding); `inline-opacity-oracle.sh` reads the
+  colours of those points off the screenshot, at device scale 1.
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:#fff}
+.band{position:absolute;left:0;width:300px;height:80px;background:#fff;color:#000;font:700 48px/60px Helvetica;padding-top:10px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const span = (name, style, inner, probe = 'both') =>
+  `<span data-${probe === 'pad' ? 'pad' : probe === 'stem' ? 'stem' : 'both'}="${name}" style="${style}">${inner}</span>`;
+// [name, html]
+const cases = [
+  ['text over its own background', span('a', 'opacity:.5;background:#f00;color:#00f;padding-left:12px', 'MM')],
+  ['opacity 0.25', span('a', 'opacity:.25;background:#f00;color:#00f;padding-left:12px', 'MM')],
+  ['full opacity is no group', span('a', 'opacity:1;background:#f00;color:#00f;padding-left:12px', 'MM')],
+  ['nested groups', span('outer', 'opacity:.5;background:#f00;padding-left:12px', span('inner', 'opacity:.5;background:#0f0;color:#00f;padding-left:12px', 'MM'))],
+  ['a box inside a faded box', span('outer', 'opacity:.5;background:#f00;color:#00f;padding-left:12px', span('inner', 'background:#0f0;padding-left:12px', 'MM'))],
+  ['a faded box after another', span('first', 'background:#f00;color:#00f;padding-left:12px', 'M') + span('second', 'opacity:.5;background:#0f0;padding-left:12px', 'M')],
+];
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+cases.forEach(([name, html], i) => {
+  const band = document.createElement('div');
+  band.className = 'band';
+  band.style.cssText = `top:${i * 80}px`;
+  band.innerHTML = html;
+  scene.appendChild(band);
+  const points = {};
+  for (const el of band.querySelectorAll('[data-pad],[data-stem],[data-both]')) {
+    const rect = el.getBoundingClientRect();
+    const name = el.dataset.pad ?? el.dataset.stem ?? el.dataset.both;
+    const padding = parseFloat(getComputedStyle(el).paddingLeft);
+    points[`${name} padding`] = [Math.round(rect.left + 4), i * 80 + 40];
+    points[`${name} stem`] = [Math.round(rect.left + padding + 7), i * 80 + 40];
+  }
+  out.cases[name] = { top: i * 80, html, points };
+});
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify({ ...out, total: cases.length * 80 }));
+document.body.appendChild(holder);
+</script></body></html>

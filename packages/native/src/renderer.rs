@@ -9312,6 +9312,7 @@ fn paragraph_content(
             .clone()
             .map(crate::text::HighlightSource::Resolved),
         run_styles: styles.runs,
+        opacity_groups: styles.groups,
         aligned_boxes,
         atomics,
         inline_targets: crate::text::inline_hit::Targets::of(

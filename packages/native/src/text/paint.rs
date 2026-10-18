@@ -307,6 +307,9 @@ pub struct SelectableText {
     /// and border behind the glyphs, outline over them, see
     /// [`super::inline_decoration`].
     pub inline_decorations: Vec<super::inline_decoration::BoxDecoration>,
+    /// The inline boxes with an `opacity` below one, painted as groups after the rest of the
+    /// text, see [`super::paragraph::OpacityGroup`].
+    pub opacity_groups: Vec<super::paragraph::OpacityGroup>,
     /// The boxes of a paragraph the line layout aligns to their lines, see
     /// [`super::paragraph::listed_boxes`].
     pub aligned_boxes: Vec<super::paragraph::BoxStyle>,
@@ -352,6 +355,7 @@ impl SelectableText {
             inline_insets: None,
             inline_focus: Vec::new(),
             inline_decorations: Vec::new(),
+            opacity_groups: Vec::new(),
             aligned_boxes: Vec::new(),
             atomics: Vec::new(),
             cull_outset: None,
@@ -387,6 +391,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         inline_insets,
         inline_focus,
         inline_decorations,
+        opacity_groups,
         aligned_boxes,
         atomics,
         cull_outset,
@@ -423,15 +428,18 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
 
     let behind: Vec<_> = inline_decorations
         .iter()
-        .filter(|decoration| decoration.paint.paints())
+        .filter(|decoration| decoration.group == 0 && decoration.paint.paints())
         .cloned()
         .collect();
     let rings: Vec<_> = inline_decorations
-        .into_iter()
-        .filter(|decoration| decoration.outline.is_some())
+        .iter()
+        .filter(|decoration| decoration.group == 0 && decoration.outline.is_some())
+        .cloned()
         .collect();
     let decorations = (!rings.is_empty())
         .then(|| super::inline_decoration::overlay(layout.clone(), rings));
+    let groups = (!opacity_groups.is_empty())
+        .then(|| opacity_group_pass(layout.clone(), text.clone(), opacity_groups, inline_decorations));
     let cursor_hitboxes = (!inline_cursors.is_empty())
         .then(|| super::inline_cursor::hitboxes(layout.clone(), inline_cursors));
     let region_hitboxes = (!inline_regions.is_empty())
@@ -576,10 +584,62 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
         .child(underlay)
         .child(glyphs)
         .children(decorations)
+        .children(groups)
         .children(cursor_hitboxes)
         .children(region_hitboxes)
         .children(super::inline_focus::anchors(inline_focus))
         .into_any_element()
+}
+
+/// Paints every opacity group of a paragraph, after its glyphs and rings: CSS paints a box with
+/// an `opacity` below one after the inline content of the stacking context around it.
+fn opacity_group_pass(
+    layout: TextLayout,
+    text: SharedString,
+    groups: Vec<super::paragraph::OpacityGroup>,
+    decorations: Vec<super::inline_decoration::BoxDecoration>,
+) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |_, _, window, cx| {
+            if window.visibility() == gpui::Visibility::Hidden {
+                return;
+            }
+            for root in groups.iter().filter(|group| group.parent == 0) {
+                paint_opacity_group(&layout, &text, &groups, &decorations, root, window, cx);
+            }
+        },
+    )
+    .absolute()
+    .size_full()
+}
+
+/// One group: what it paints, composited at its `opacity`, with its own groups inside it, over
+/// its glyphs.
+fn paint_opacity_group(
+    layout: &TextLayout,
+    text: &str,
+    groups: &[super::paragraph::OpacityGroup],
+    decorations: &[super::inline_decoration::BoxDecoration],
+    group: &super::paragraph::OpacityGroup,
+    window: &mut Window,
+    cx: &mut gpui::App,
+) {
+    let effect = gpui::GroupEffect { opacity: group.opacity, ..Default::default() };
+    window.with_effect_group(effect, None, |window| {
+        let own: Vec<_> = decorations
+            .iter()
+            .filter(|decoration| decoration.group == group.id)
+            .cloned()
+            .collect();
+        let behind: Vec<_> = own.iter().filter(|decoration| decoration.paint.paints()).cloned().collect();
+        super::inline_decoration::paint_behind(layout, &behind, window, cx);
+        layout.paint_group(text, group.id, window, cx);
+        super::inline_decoration::paint_rings(layout, &own, window, cx);
+        for inner in groups.iter().filter(|inner| inner.parent == group.id) {
+            paint_opacity_group(layout, text, groups, decorations, inner, window, cx);
+        }
+    });
 }
 
 /// Paint one run's highlight washes and log their geometry.

@@ -307,6 +307,20 @@ mod tests {
             styles.declared(id, base, PointerStates::default()).into_owned()
         }
 
+        fn groups(&self, styles: &InlineStyles) -> Vec<crate::text::paragraph::OpacityGroup> {
+            crate::text::paragraph::styles(
+                &self.tree,
+                &self.paragraph(),
+                &ColorContext::root(Scheme::Light),
+                &LengthContext::initial(800.0, 600.0),
+                &FontFeatureState::default(),
+                Default::default(),
+                &|_, _| PointerStates::default(),
+                styles,
+            )
+            .groups
+        }
+
         fn runs(&self, styles: &InlineStyles) -> Vec<RunStyle> {
             run_styles(
                 &self.tree,
@@ -789,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn opacity_moves_on_a_span_and_the_paragraph_fades_what_it_paints() {
+    fn opacity_moves_on_a_span_and_the_paragraph_fades_the_group_it_is() {
         let mut page = Page::new();
         page.style(3, r#"{ "backgroundColor": "red", "color": "blue" }"#);
         page.describe(3, &description(r#"{ "opacity": 0 }"#, r#"{ "opacity": 1 }"#))
@@ -797,17 +811,17 @@ mod tests {
 
         let start = page.frame(0);
         assert_eq!(page.shown(&start, 3).opacity, Some(0.0));
-        let alpha = |styles: &InlineStyles, page: &Page| {
-            gpui::Rgba::from(page.runs(styles)[0].color.expect("a faded run is coloured")).a
+        let opacity = |page: &Page, styles: &InlineStyles| {
+            page.groups(styles).first().map(|group| group.opacity)
         };
-        assert_eq!(alpha(&start, &page), 0.0);
+        assert_eq!(opacity(&page, &start), Some(0.0));
 
         let middle = page.frame(500);
-        let halfway = alpha(&middle, &page);
+        let halfway = opacity(&page, &middle).expect("a group");
         assert!(halfway > 0.4 && halfway < 0.6, "{halfway}");
         let end = page.frame(1000);
         assert_eq!(page.shown(&end, 3).opacity, Some(1.0));
-        assert_eq!(alpha(&end, &page), 1.0);
+        assert_eq!(opacity(&page, &end), None, "a box at full opacity is no group");
         assert!(page.motion_frame(3, 1000).just_settled);
     }
 

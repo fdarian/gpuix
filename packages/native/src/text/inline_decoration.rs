@@ -11,6 +11,10 @@
 //!   with and `hover` / `active` can declare as well, painted by [`overlay`]. It
 //!   rings the border box of each fragment and follows its corners.
 //!
+//! A box with an `opacity` below one, and what is inside it, paints in a group instead
+//! ([`BoxDecoration::group`]): `text/paint.rs` paints the group's backgrounds, glyphs and rings
+//! as one unit and fades that.
+//!
 //! Fragments are cut as `box-decoration-break: slice` does ([`quads`]): the box
 //! is laid out as if it were one strip and then cut at the line breaks, so only
 //! the first fragment has the left border and the left corners, only the last has
@@ -40,12 +44,16 @@ use crate::style::StyleDesc;
 use super::inline::Paragraph;
 use super::inline_bounds::border_box_rows;
 use super::inline_insets::{border_widths, BoxEdges, InsetSpec};
-use super::paragraph::{box_opacity, fade};
+use super::paragraph::box_opacity;
 
 /// The decorations of one inline box.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoxDecoration {
     pub range: Range<usize>,
+    /// The [`OpacityGroup`](super::paragraph::OpacityGroup) the box paints in, `0` for none:
+    /// the box itself when its `opacity` is below one, else the innermost box around it
+    /// whose is.
+    pub group: u64,
     pub edges: BoxEdges,
     pub outline: Option<Outline>,
     pub paint: BoxPaint,
@@ -63,20 +71,6 @@ pub struct BoxPaint {
 }
 
 impl BoxPaint {
-    /// The paint of a box whose painting is `opacity` opaque.
-    fn faded(self, opacity: f32) -> Self {
-        Self {
-            background: self.background.map(|color| fade(color, opacity)),
-            colors: gpui::Edges {
-                top: fade(self.colors.top, opacity),
-                right: fade(self.colors.right, opacity),
-                bottom: fade(self.colors.bottom, opacity),
-                left: fade(self.colors.left, opacity),
-            },
-            ..self
-        }
-    }
-
     /// What `style` declares, with `colors` the context of the box itself, so that
     /// `currentColor` is its own `color`.
     ///
@@ -232,11 +226,11 @@ pub fn of(
 ) -> Vec<BoxDecoration> {
     // A box is declared the same way around every piece of text it holds, so the
     // first one decides.
-    let mut looks: HashMap<u64, Option<(Option<Outline>, BoxPaint)>> = HashMap::new();
+    let mut looks: HashMap<u64, Option<(Option<Outline>, BoxPaint, u64)>> = HashMap::new();
     for piece in &paragraph.pieces {
         let mut colors = *colors;
         let mut lengths = *lengths;
-        let mut opacity = 1.0;
+        let mut group = 0;
         for id in &piece.boxes {
             let Some(base) = motion.declared_by(tree, *id) else {
                 continue;
@@ -247,24 +241,25 @@ pub fn of(
             if declared.display.as_deref() == Some("contents") {
                 continue;
             }
-            opacity *= box_opacity(&declared);
+            if box_opacity(&declared) < 1.0 {
+                group = *id;
+            }
             if looks.contains_key(id) {
                 continue;
             }
-            let outline = border::outline(&declared, &colors, &lengths)
-                .filter(is_visible)
-                .map(|outline| Outline { color: fade(outline.color, opacity), ..outline });
-            let paint = BoxPaint::of(&declared, &colors, &lengths).faded(opacity);
-            looks.insert(*id, (outline.is_some() || paint.paints()).then_some((outline, paint)));
+            let outline = border::outline(&declared, &colors, &lengths).filter(is_visible);
+            let paint = BoxPaint::of(&declared, &colors, &lengths);
+            looks.insert(*id, (outline.is_some() || paint.paints()).then_some((outline, paint, group)));
         }
     }
     paragraph
         .boxes
         .iter()
         .filter_map(|(id, range)| {
-            let (outline, paint) = looks.get(id)?.clone()?;
+            let (outline, paint, group) = looks.get(id)?.clone()?;
             Some(BoxDecoration {
                 range: range.clone(),
+                group,
                 edges: insets.edges_of(*id),
                 outline,
                 paint,
@@ -297,25 +292,34 @@ pub fn paint_behind(
     }
 }
 
+/// Paints the rings of `decorations` over `layout`, which has its bounds once the glyphs have
+/// prepainted.
+pub fn paint_rings(
+    layout: &TextLayout,
+    decorations: &[BoxDecoration],
+    window: &mut Window,
+    cx: &mut App,
+) {
+    for decoration in decorations {
+        let Some(outline) = decoration.outline else {
+            continue;
+        };
+        let rows = border_box_rows(layout, &decoration.range, &decoration.edges);
+        for quad in quads(&rows, &decoration.paint) {
+            // The element's own painter, so the ring has the geometry and
+            // colour handling of an element's outline.
+            quad.ring(outline).paint(quad.bounds, window, cx, |_, _| {});
+        }
+    }
+}
+
 /// The rings painted over `layout`, which has its bounds once the glyphs have
 /// prepainted. It must come after the glyphs among its siblings, so that it
 /// paints above them.
 pub fn overlay(layout: TextLayout, decorations: Vec<BoxDecoration>) -> impl IntoElement {
     canvas(
         |_, _, _| (),
-        move |_, _, window, cx| {
-            for decoration in &decorations {
-                let Some(outline) = decoration.outline else {
-                    continue;
-                };
-                let rows = border_box_rows(&layout, &decoration.range, &decoration.edges);
-                for quad in quads(&rows, &decoration.paint) {
-                    // The element's own painter, so the ring has the geometry and
-                    // colour handling of an element's outline.
-                    quad.ring(outline).paint(quad.bounds, window, cx, |_, _| {});
-                }
-            }
-        },
+        move |_, _, window, cx| paint_rings(&layout, &decorations, window, cx),
     )
     .keeps_no_position()
     .absolute()
@@ -395,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn the_opacity_of_a_box_and_the_boxes_around_it_scales_what_it_paints() {
+    fn a_box_with_an_opacity_paints_in_its_own_group_unfaded_and_so_do_the_boxes_in_it() {
         let look = |opacity: f64| {
             serde_json::json!({
                 "opacity": opacity, "backgroundColor": "#ff0000", "borderWidth": 2,
@@ -411,8 +415,10 @@ mod tests {
                 decoration.outline.expect("an outline").color.a,
             )
         };
-        assert_eq!(alphas(&found[0]), (0.5, 0.5, 0.5));
-        assert_eq!(alphas(&found[1]), (0.25, 0.25, 0.25), "the box inside is inside the group of the one around it");
+        assert_eq!(alphas(&found[0]), (1.0, 1.0, 1.0), "the group is faded, not its colours");
+        assert_eq!((found[0].group, found[1].group), (3, 5));
+        let unfaded = resting(&fixture(&[(3, look(0.5)), (5, look(1.0))]));
+        assert_eq!(unfaded[1].group, 3, "a box without an opacity is in the group around it");
     }
 
     #[test]
