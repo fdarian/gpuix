@@ -592,6 +592,20 @@ impl InlineText {
     }
 }
 
+/// How far from the baseline the underlines of `runs` are put and how thick they are, in px.
+pub fn line_reach(runs: &[RunStyle]) -> f32 {
+    let reach = |line: &UnderlineStyle| line.offset.map_or(0.0, |offset| f32::from(offset).abs()) + f32::from(line.thickness);
+    runs.iter()
+        .flat_map(|run| {
+            run.underline.iter().chain(run.extra_decorations.iter().filter_map(|extra| match extra {
+                ExtraDecoration::Underline(line) => Some(line),
+                _ => None,
+            }))
+        })
+        .map(reach)
+        .fold(0.0, f32::max)
+}
+
 /// `align` as the line layout takes it.
 pub fn vertical_align(align: ResolvedVerticalAlign) -> gpui::VerticalAlign {
     match align {

@@ -6321,6 +6321,9 @@ pub(crate) struct Inherited {
     /// Computed `text-underline-offset`, which an underline takes from the box
     /// that declares it.
     pub underline_offset: crate::css::text_underline_offset::TextUnderlineOffset,
+    /// The farthest an underline of an element above, or of this one, is put from its baseline
+    /// and thick, in px, which a text below inks past the box of its line by (culling).
+    pub underline_reach: f32,
     /// No element has been built yet: the next one is the root, whose computed
     /// font size becomes the `rem`.
     pub(crate) above_root: bool,
@@ -6419,6 +6422,7 @@ impl Inherited {
             ),
             font_weight: crate::motion::INITIAL_FONT_WEIGHT,
             underline_offset: Default::default(),
+            underline_reach: 0.0,
             above_root: true,
             font_state: Default::default(),
             font_features: None,
@@ -6471,6 +6475,11 @@ impl Inherited {
         self.underline_offset = self
             .underline_offset
             .inherit(style.text_underline_offset.as_ref(), &self.lengths);
+        self.underline_reach = self.underline_reach.max(crate::layout::cull::line_reach(
+            style,
+            self.underline_offset,
+            &self.lengths,
+        ));
         if let Some(weight) = &style.font_weight {
             self.font_weight = f64::from(parse_font_weight(weight).0);
         }
@@ -8740,7 +8749,10 @@ fn build_content(
             ctx.retain.text();
             ctx.retain.digest(|| content.to_string());
             content_elements.push(text_content(element, &content, trim, ctx));
-            ctx.subtree.merge(crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32));
+            ctx.subtree.merge(crate::layout::cull::Subtree::of_text(
+                ctx.inherited.lengths.font_size as f32,
+                ctx.inherited.underline_reach,
+            ));
             paint_ranks.push(0);
         }
     }
@@ -8992,7 +9004,11 @@ fn text_content(
             .highlight
             .clone()
             .map(crate::text::HighlightSource::Resolved),
-        cull_outset: crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32).outset(),
+        cull_outset: crate::layout::cull::Subtree::of_text(
+            ctx.inherited.lengths.font_size as f32,
+            ctx.inherited.underline_reach,
+        )
+        .outset(),
         ..crate::text::SelectableText::new(
             element.id,
             0,
@@ -9102,7 +9118,10 @@ fn paragraph_content(
         && inline_focus.is_empty()
         && !insets.takes_space_along_the_line();
     let subtree = if plain {
-        crate::layout::cull::Subtree::of_text(ctx.inherited.lengths.font_size as f32)
+        crate::layout::cull::Subtree::of_text(
+            ctx.inherited.lengths.font_size as f32,
+            ctx.inherited.underline_reach.max(crate::text::paragraph::line_reach(&styles.runs)),
+        )
     } else {
         crate::layout::cull::Subtree::blocked()
     };

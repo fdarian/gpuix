@@ -27,9 +27,10 @@ impl Subtree {
     }
 
     /// A text of this font size: its glyphs may reach a line height past the box of a line that
-    /// is shorter than they are.
-    pub(crate) fn of_text(font_size: f32) -> Self {
-        Self { ink: Some(font_size + 2.0) }
+    /// is shorter than they are. `line_reach` is how far its underlines are put from the baseline
+    /// and thick (see [`line_reach`]), which the box of the line does not bound.
+    pub(crate) fn of_text(font_size: f32, line_reach: f32) -> Self {
+        Self { ink: Some(font_size + 2.0 + line_reach) }
     }
 
     /// Something here may draw or be hit outside its box in a way this cannot bound, or needs its
@@ -119,6 +120,26 @@ pub(crate) fn ink_outset(
     Some(reach)
 }
 
+/// How far from the baseline an underline of `style` or of a state of it can be drawn, and how
+/// thick, in px: the offset it declares or else `offset`, the one the element inherits. A line
+/// declared far below its text sits outside the box of the line.
+pub(crate) fn line_reach(
+    style: &StyleDesc,
+    offset: crate::css::text_underline_offset::TextUnderlineOffset,
+    lengths: &LengthContext,
+) -> f32 {
+    std::iter::once(style)
+        .chain(variants(style))
+        .map(|style| {
+            let offset = offset.inherit(style.text_underline_offset.as_ref(), lengths);
+            let away = offset.resolve(lengths).map_or(0.0, |offset| f32::from(offset).abs());
+            let thickness = crate::css::text_decoration::of(style)
+                .map_or(0.0, |decoration| decoration.thickness_reach(lengths));
+            away + thickness
+        })
+        .fold(0.0, f32::max)
+}
+
 /// A gaussian of standard deviation `sigma` is gone by about three of them.
 const SIGMAS: f32 = 3.0;
 
@@ -203,6 +224,24 @@ mod tests {
     fn a_state_style_counts_for_the_reach() {
         let reach = ink(r#"{"focusVisible": {"outlineWidth": 2, "outlineStyle": "solid", "outlineOffset": 2, "outlineColor": "red"}, "hover": {"boxShadow": "0 0 8px red"}}"#);
         assert_eq!(reach, Some(12.0));
+    }
+
+    #[test]
+    fn an_underline_reaches_by_its_offset_and_thickness() {
+        let lengths = LengthContext::for_tests();
+        let auto = crate::css::text_underline_offset::TextUnderlineOffset::Auto;
+        let reach = |json: &str| line_reach(&style(json), auto, &lengths);
+        assert_eq!(reach(r#"{"width": 20}"#), 0.0);
+        assert_eq!(reach(r#"{"textDecorationLine": "underline", "textDecorationThickness": "3px", "textUnderlineOffset": 40}"#), 43.0);
+        assert_eq!(reach(r#"{"textUnderlineOffset": -25}"#), 25.0);
+        assert_eq!(reach(r#"{"textUnderlineOffset": "2em"}"#), 40.0);
+        // A state style puts the line elsewhere while it applies.
+        assert_eq!(reach(r#"{"textUnderlineOffset": 4, "hover": {"textUnderlineOffset": 30}}"#), 30.0);
+        // A line that declares no offset takes the one it inherits, and `auto` is a tenth of the font size thick.
+        let inherited = crate::css::text_underline_offset::TextUnderlineOffset::Length(
+            crate::css::length::LinearLength::px(50.0),
+        );
+        assert_eq!(line_reach(&style(r#"{"textDecorationLine": "underline"}"#), inherited, &lengths), 52.0);
     }
 
     #[test]

@@ -112,6 +112,7 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     inherited.lengths.fingerprint(&mut fp);
     fp.f64(inherited.font_weight);
     inherited.underline_offset.fingerprint(&mut fp);
+    fp.f32(inherited.underline_reach);
     fp.hash(&inherited.computed_variations);
     inherited.font_state.fingerprint(&mut fp);
     fp.hash(&inherited.interpolate_size);

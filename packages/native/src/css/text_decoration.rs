@@ -61,6 +61,11 @@ impl TextDecoration {
         }
     }
 
+    /// How thick the lines of the declaration are, in px, for the declaring element's `lengths`.
+    pub(crate) fn thickness_reach(&self, lengths: &LengthContext) -> f32 {
+        f32::from(self.thickness.fallback(lengths))
+    }
+
     pub fn strikethrough_style(&self, color: gpui::Hsla, lengths: &LengthContext) -> gpui::StrikethroughStyle {
         gpui::StrikethroughStyle {
             thickness: self.thickness.fallback(lengths),

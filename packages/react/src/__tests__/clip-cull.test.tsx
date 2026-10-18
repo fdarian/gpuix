@@ -397,3 +397,252 @@ describeNative("content outside a clip", () => {
     }
   })
 })
+
+/** The first red pixel in a rectangle of the frame, in logical pixels, or null. */
+function findRed(testRoot, name: string, x0: number, y0: number, x1: number, y1: number): [number, number] | null {
+  const file = `${SHOTS_DIR}/clip-cull-${name}.png`
+  fs.rmSync(file, { force: true })
+  testRoot.renderer.captureScreenshot(file)
+  const pixels = readLogicalPixels(file, testRoot.renderer)
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const [red, green, blue] = pixels.at(x, y)
+      if (red > 128 && green < 128 && blue < 128) return [x, y]
+    }
+  }
+  return null
+}
+
+/** Ink that round 6 made reach past the box that draws it, from just outside the clip into it. */
+describeNative("content outside a clip whose ink reaches in, from round 6", () => {
+  const white = { backgroundColor: "#ffffff" }
+
+  it("keeps a child whose outline stands off its box into the clip", () => {
+    const outlined = (ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 106, flexShrink: 0 }} />
+          <div style={{ width: 150, height: 40, flexShrink: 0, outline: "4px solid #ff0000", outlineOffset: 8 }} />
+        </>,
+        white
+      )
+    const { skippedPerFrame, ...root } = setup(outlined)
+    try {
+      // The box starts at 106; its outline reaches from 94 to 98.
+      expect(skippedPerFrame()).toBe(0)
+      expect(sample(root, "outline-in", 50, 96)).toEqual(RED)
+      expect(sample(root, "outline-in", 50, 90)).toEqual(WHITE)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps a child whose outline, in a state style, would reach into the clip", () => {
+    const outlined = (ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 106, flexShrink: 0 }} />
+          <div
+            style={{
+              width: 150,
+              height: 40,
+              flexShrink: 0,
+              focusWithin: { outline: "4px solid #ff0000", outlineOffset: 8 },
+            }}
+          />
+        </>,
+        white
+      )
+    const { skippedPerFrame, unmount } = setup(outlined)
+    try {
+      expect(skippedPerFrame()).toBe(0)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("is skipped once its outline cannot reach the clip", () => {
+    const { skippedPerFrame, unmount } = setup((ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 130, flexShrink: 0 }} />
+          <div style={{ width: 150, height: 40, flexShrink: 0, outline: "4px solid #ff0000", outlineOffset: 8 }} />
+        </>
+      )
+    )
+    try {
+      expect(skippedPerFrame()).toBeGreaterThan(0)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("keeps a text above the clip whose underline sits far below its baseline", () => {
+    const underlined = (offset: string | number) => (ref) =>
+      clip(
+        ref,
+        <div style={{ width: 150, height: 20, marginTop: -52, flexShrink: 0 }}>
+          <text
+            style={{
+              fontSize: 14,
+              lineHeight: "20px",
+              textDecorationLine: "underline",
+              textDecorationColor: "#ff0000",
+              textDecorationThickness: "4px",
+              textUnderlineOffset: offset,
+            }}
+          >
+            Hello
+          </text>
+        </div>,
+        white
+      )
+    // The line box is at -52 to -32, and the baseline about 15 below its top.
+    const near = setup(underlined(2))
+    try {
+      expect(findRed(near, "underline-near", 0, 0, 200, 100)).toBeNull()
+    } finally {
+      near.unmount()
+    }
+    const far = setup(underlined(60))
+    try {
+      const hit = findRed(far, "underline-far", 0, 0, 200, 100)
+      expect(hit, "the underline is painted inside the clip").not.toBeNull()
+    } finally {
+      far.unmount()
+    }
+  })
+
+  it("keeps a text whose underline offset is inherited from an ancestor that declares the line", () => {
+    const { ...root } = setup((ref) =>
+      clip(
+        ref,
+        <div
+          style={{
+            width: 150,
+            height: 20,
+            marginTop: -52,
+            flexShrink: 0,
+            textDecorationLine: "underline",
+            textDecorationColor: "#ff0000",
+            textDecorationThickness: "4px",
+            textUnderlineOffset: 60,
+            fontSize: 14,
+            lineHeight: "20px",
+          }}
+        >
+          <div style={{ textUnderlineOffset: "auto" }}>
+            <text>Hello</text>
+          </div>
+        </div>,
+        white
+      )
+    )
+    try {
+      expect(findRed(root, "underline-inherited", 0, 0, 200, 100), "the underline is painted inside the clip").not.toBeNull()
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps a text in a paragraph whose span has the underline far below the line", () => {
+    const { ...root } = setup((ref) =>
+      clip(
+        ref,
+        <div style={{ width: 150, height: 20, marginTop: -52, flexShrink: 0, fontSize: 14, lineHeight: "20px" }}>
+          plain
+          <span
+            style={{
+              textDecorationLine: "underline",
+              textDecorationColor: "#ff0000",
+              textDecorationThickness: "4px",
+              textUnderlineOffset: 60,
+            }}
+          >
+            underlined
+          </span>
+        </div>,
+        white
+      )
+    )
+    try {
+      expect(findRed(root, "underline-span", 0, 0, 200, 100), "the underline is painted inside the clip").not.toBeNull()
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps a trimmed text below the clip whose capitals stand above its box into the clip", () => {
+    // The x-height edge cuts the box 8 px under the tops of the capitals, which stand in the clip.
+    const { skippedPerFrame, ...root } = setup((ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 102, flexShrink: 0 }} />
+          <div
+            style={{
+              width: 150,
+              flexShrink: 0,
+              color: "#ff0000",
+              fontSize: 40,
+              lineHeight: "100px",
+              textBox: "trim-both ex alphabetic",
+            }}
+          >
+            HHHH
+          </div>
+        </>,
+        white
+      )
+    )
+    try {
+      expect(skippedPerFrame()).toBe(0)
+      expect(findRed(root, "trim-ink", 0, 90, 200, 100), "the capitals are painted inside the clip").not.toBeNull()
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps the rule of a one-sided border on a box with no height at the edge of the clip", () => {
+    const { skippedPerFrame, ...root } = setup((ref) =>
+      clip(
+        ref,
+        <>
+          <div style={{ width: 150, height: 97, flexShrink: 0 }} />
+          <div style={{ width: 150, height: 0, flexShrink: 0, borderTop: "6px solid #ff0000" }} />
+        </>,
+        white
+      )
+    )
+    try {
+      expect(skippedPerFrame()).toBe(0)
+      // The rule is 97 to 103, and the clip ends at 100.
+      expect(sample(root, "rule-top", 50, 98)).toEqual(RED)
+      expect(sample(root, "rule-top", 50, 96)).toEqual(WHITE)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps the rule of a one-sided border on a box with no width at the edge of the clip", () => {
+    const { ...root } = setup((ref) =>
+      clip(
+        ref,
+        <div style={{ flexDirection: "row", display: "flex", height: 100 }}>
+          <div style={{ width: 197, height: 100, flexShrink: 0 }} />
+          <div style={{ width: 0, height: 100, flexShrink: 0, borderLeft: "6px solid #ff0000" }} />
+        </div>,
+        white
+      )
+    )
+    try {
+      expect(sample(root, "rule-left", 198, 50)).toEqual(RED)
+      expect(sample(root, "rule-left", 195, 50)).toEqual(WHITE)
+    } finally {
+      root.unmount()
+    }
+  })
+})
