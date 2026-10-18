@@ -6,7 +6,12 @@
 //! side, their rows, row groups and columns, column groups, and the table on its outer edges. CSS 2.1 section
 //! 17.6.2.1 says which wins: `hidden` removes the border, otherwise the wider one wins, then the more elaborate style
 //! (`double` over `solid` over `dashed`...), then the closer to the cell: cell, row, row group, column, column group,
-//! table, and between two of a kind the one that is left or above.
+//! table, and between two of a kind the one that is left or above (right or above in a `direction: rtl` table, where
+//! the first column is the rightmost).
+//!
+//! The grid is walked in the order of the table, column 0 first, and the sides of the boxes mirror in an rtl table: the
+//! border on the end of a cell is its left one. Only what leaves here is in the order of the screen, left to right: the
+//! halves and the edges `gpui` paints. The sides themselves, `border-left` and `border-right`, do not swap.
 //!
 //! Layout is handed the halves of the border of an edge: each cell gets the widest border of each of its sides,
 //! halved, as its border width, and the table the same for its outer edges. The table box holds the outer halves
@@ -148,6 +153,7 @@ pub(crate) fn resolve(
     grid: Grid,
     own: [SideBorder; 4],
     scale: f32,
+    rtl: bool,
     borders_of: &dyn Fn(u64) -> [SideBorder; 4],
 ) -> Option<Resolved> {
     let (columns, rows) = (grid.columns, grid.rows.len());
@@ -183,6 +189,8 @@ pub(crate) fn resolve(
     let candidate = |borders: &[SideBorder; 4], side: usize, class: Class, order: u8, owner: (usize, usize)| {
         Candidate::of(borders, side, class, order, owner, scale)
     };
+    // The side of a box that faces the end of the row, and the one that faces its start
+    let (end_side, start_side) = if rtl { (LEFT, RIGHT) } else { (RIGHT, LEFT) };
 
     // The edge above row `row` at column `col`, `row` up to the number of rows.
     let horizontal = |row: usize, col: usize| -> Option<Candidate> {
@@ -244,13 +252,13 @@ pub(crate) fn resolve(
         let mut found = Vec::new();
         let owner = |order: u8| if order == 0 { (row, col.saturating_sub(1)) } else { (row, col.min(columns - 1)) };
         if let Some(Some(borders)) = left.map(|cell| &cell_borders[cell]) {
-            found.push(candidate(borders, RIGHT, Class::Cell, 0, owner(0)));
+            found.push(candidate(borders, end_side, Class::Cell, 0, owner(0)));
         }
         if let Some(Some(borders)) = right.map(|cell| &cell_borders[cell]) {
-            found.push(candidate(borders, LEFT, Class::Cell, 1, owner(1)));
+            found.push(candidate(borders, start_side, Class::Cell, 1, owner(1)));
         }
         if col == 0 || col == columns {
-            let side = if col == 0 { LEFT } else { RIGHT };
+            let side = if col == 0 { start_side } else { end_side };
             if let Some(borders) = &row_borders[row] {
                 found.push(candidate(borders, side, Class::Row, 0, owner(0)));
             }
@@ -259,17 +267,17 @@ pub(crate) fn resolve(
             }
             found.push(candidate(&own, side, Class::Table, 0, owner(0)));
         }
-        // A column or a column group has its left border on its first column and its right border on its last.
+        // A column or a column group has its border of the start on its first column and the one of the end on its last.
         for (nodes, borders, class) in [
             (&grid.column_nodes, &column_borders, Class::Column),
             (&grid.column_groups, &group_borders, Class::ColumnGroup),
         ] {
             for (index, node) in nodes.iter().enumerate() {
                 if node.span > 0 && node.first + node.span == col {
-                    found.push(candidate(&borders[index], RIGHT, class, 0, owner(0)));
+                    found.push(candidate(&borders[index], end_side, class, 0, owner(0)));
                 }
                 if node.span > 0 && node.first == col {
-                    found.push(candidate(&borders[index], LEFT, class, 1, owner(1)));
+                    found.push(candidate(&borders[index], start_side, class, 1, owner(1)));
                 }
             }
         }
@@ -287,23 +295,25 @@ pub(crate) fn resolve(
     };
     let h = |row: usize, col: usize| &horizontal_edges[row * columns + col];
     let v = |row: usize, col: usize| &vertical_edges[row * (columns + 1) + col];
+    // `[top, right, bottom, left]` from the halves at the start and the end of the row
+    let physical = |top: f32, start: f32, bottom: f32, end: f32| if rtl { [top, start, bottom, end] } else { [top, end, bottom, start] };
     let mut cells = HashMap::new();
     for cell in &grid.cells {
         let (cols, row_span) = (cell.col..cell.col + cell.col_span, cell.row..cell.row + cell.row_span);
-        let halves = [
+        let halves = physical(
             widest(&mut cols.clone().map(|col| h(cell.row, col))),
-            widest(&mut row_span.clone().map(|row| v(row, cell.col + cell.col_span))),
+            widest(&mut row_span.clone().map(|row| v(row, cell.col))),
             widest(&mut cols.map(|col| h(cell.row + cell.row_span, col))),
-            widest(&mut row_span.map(|row| v(row, cell.col))),
-        ];
+            widest(&mut row_span.map(|row| v(row, cell.col + cell.col_span))),
+        );
         cells.insert(cell.key, halves);
     }
-    let table_halves = [
+    let table_halves = physical(
         widest(&mut (0..columns).map(|col| h(0, col))),
-        widest(&mut (0..rows).map(|row| v(row, columns))),
-        widest(&mut (0..columns).map(|col| h(rows, col))),
         widest(&mut (0..rows).map(|row| v(row, 0))),
-    ];
+        widest(&mut (0..columns).map(|col| h(rows, col))),
+        widest(&mut (0..rows).map(|row| v(row, columns))),
+    );
 
     // Where borders cross, the stronger covers the other: the strength is the place of a border among all of them.
     let mut keys: Vec<_> =
@@ -322,12 +332,16 @@ pub(crate) fn resolve(
             }
         })
     };
-    let borders = gpui::CollapsedBorders::new(
-        columns,
-        rows,
-        horizontal_edges.iter().map(border).collect(),
-        vertical_edges.iter().map(border).collect(),
-    );
+    // The edges are for gpui in the order of the screen: the first column of an rtl table is the last of its lines
+    let horizontal_painted: Vec<_> = (0..=rows)
+        .flat_map(|row| (0..columns).map(move |col| (row, if rtl { columns - 1 - col } else { col })))
+        .map(|(row, col)| border(h(row, col)))
+        .collect();
+    let vertical_painted: Vec<_> = (0..rows)
+        .flat_map(|row| (0..=columns).map(move |line| (row, if rtl { columns - line } else { line })))
+        .map(|(row, line)| border(v(row, line)))
+        .collect();
+    let borders = gpui::CollapsedBorders::new(columns, rows, horizontal_painted, vertical_painted);
     Some(Resolved { table: table_halves, cells, borders: Arc::new(borders) })
 }
 
@@ -396,7 +410,7 @@ mod tests {
         fn resolve(&self) -> Resolved {
             let borders_of = |id: u64| self.borders.get(&id).copied().unwrap_or(NONE);
             let grid = Grid::build(&self.tree, &self.tree.elements[&1], true);
-            resolve(grid, borders_of(1), SCALE, &borders_of).expect("a table with cells")
+            resolve(grid, borders_of(1), SCALE, false, &borders_of).expect("a table with cells")
         }
     }
 

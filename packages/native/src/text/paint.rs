@@ -1011,6 +1011,7 @@ pub fn range_rects(
         inset_y,
         |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
+        |index| layout.align_offset_at(index),
     )
     .into_iter()
     .map(|row| row.rect)
@@ -1049,9 +1050,11 @@ pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
         0.0,
         |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
+        |index| layout.align_offset_at(index),
     )
 }
 
+/// `align_offset` is how far text alignment moves the row a byte is on from the left of `bounds`.
 fn range_rows_with_positions(
     bounds: Bounds<gpui::Pixels>,
     range: &Range<usize>,
@@ -1059,6 +1062,7 @@ fn range_rows_with_positions(
     inset_y: f32,
     position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
     row_for_index: impl Fn(usize) -> Option<TextRow>,
+    align_offset: impl Fn(usize) -> gpui::Pixels,
 ) -> Vec<RangeRow> {
     let mut rects = Vec::new();
     let mut cur = range.start;
@@ -1073,7 +1077,7 @@ fn range_rows_with_positions(
         let mut row_index = cur;
         if let Some(after) = position_for_index(cur.saturating_add(1)) {
             if after.y > p1.y {
-                p1 = point(bounds.left(), after.y);
+                p1 = point(bounds.left() + align_offset(cur + 1), after.y);
                 row_index = cur + 1;
             }
         }
@@ -1154,6 +1158,7 @@ mod tests {
             0.0,
             wrapped_position,
             even_row,
+            |_| px(0.0),
         )
     }
 
@@ -1216,6 +1221,7 @@ mod tests {
             0.0,
             uneven_positions,
             uneven_row,
+            |_| px(0.0),
         );
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].rect.origin, point(px(20.0), px(0.0)));
@@ -1235,6 +1241,7 @@ mod tests {
             1.5,
             uneven_positions,
             uneven_row,
+            |_| px(0.0),
         );
         assert_eq!(rows[0].rect.size.height, px(27.0));
         assert_eq!(rows[1].rect.origin.y, px(31.5));

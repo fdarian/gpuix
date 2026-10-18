@@ -6427,6 +6427,8 @@ pub(crate) struct Inherited {
     pub interpolate_size: crate::motion::InterpolateSize,
     /// `border-spacing`, `border-collapse`, `caption-side` and `empty-cells`, which inherit.
     pub table: crate::css::table::TableInherited,
+    /// `direction` and `text-align`, which resolves against it.
+    pub direction: crate::css::direction::Inherited,
     /// The row and cell of a table the element is in, for copied text.
     pub table_row: Option<u64>,
     pub table_cell: Option<crate::text::selection::TableCell>,
@@ -6518,6 +6520,7 @@ impl Inherited {
             computed_variations: Default::default(),
             interpolate_size: Default::default(),
             table: Default::default(),
+            direction: Default::default(),
             table_row: None,
             table_cell: None,
             container: crate::motion::containing::Container::WINDOW,
@@ -6565,6 +6568,7 @@ impl Inherited {
         self.font_features = None;
         self.font_variations = None;
         self.container = self.container.within(style.unwrap_or(&EMPTY_STYLE));
+        self.direction = self.direction.descend(style.unwrap_or(&EMPTY_STYLE));
         self.inert |= inert;
         if self.inert {
             self.selectable = false;
@@ -8682,6 +8686,7 @@ pub(crate) fn build_host_container(
             el = el.font_variations(variations);
         }
     }
+    el = ctx.inherited.direction.apply(el);
     if let Some(scope) = ctx.inherited.self_container.clone().filter(|scope| scope.is_sized()) {
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
@@ -8925,7 +8930,7 @@ fn resolve_collapsed_borders(ctx: &mut BuildCtx, table: CollapsedTable, scale: f
             (key, Grid::build_anonymous(ctx.tree, parts, true), [none(); 4])
         }
     };
-    let resolved = crate::layout::collapse::resolve(grid, own, scale, &|id| sides.get(&id).copied().unwrap_or([none(); 4]));
+    let resolved = crate::layout::collapse::resolve(grid, own, scale, ctx.inherited.direction.direction.is_rtl(), &|id| sides.get(&id).copied().unwrap_or([none(); 4]));
     if let Some(resolved) = resolved {
         ctx.collapsed.insert(key, resolved);
     }
@@ -9026,7 +9031,7 @@ fn build_plan(
                 build_plan(element, cell, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 ctx.inherited.table_cell = outside;
                 let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
-                let mut cell = crate::layout::table::anonymous_cell(halves);
+                let mut cell = ctx.inherited.direction.apply(crate::layout::table::anonymous_cell(halves));
                 if inside_ranks.iter().any(|rank| *rank != 0) {
                     cell = cell.paint_ranks(inside_ranks);
                 }
@@ -9048,7 +9053,10 @@ fn build_plan(
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
                 build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
-                let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
+                let mut table = ctx
+                    .inherited
+                    .direction
+                    .apply(crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key)));
                 if inside_ranks.iter().any(|rank| *rank != 0) {
                     table = table.paint_ranks(inside_ranks);
                 }
@@ -9153,6 +9161,7 @@ fn build_contents_container(
     if let Some(style) = style {
         el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors, &ctx.inherited.lengths);
     }
+    el = ctx.inherited.direction.apply(el);
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }
@@ -9790,7 +9799,8 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     match style.text_align.as_deref() {
         Some("center") => el = el.text_center(),
         Some("right") => el = el.text_right(),
-        Some("left") | Some("start") => el = el.text_left(),
+        Some("left") => el = el.text_left(),
+        // `start` and `end` depend on the direction of the element: `Inherited::direction`.
         _ => {}
     }
     // Collapsing is the paragraph builder's (`text::inline`); gpui wraps and hangs.

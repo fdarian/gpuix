@@ -119,6 +119,8 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     fp.f32(inherited.underline_reach);
     fp.hash(&inherited.computed_variations);
     inherited.font_state.fingerprint(&mut fp);
+    inherited.direction.fingerprint(&mut fp);
+    inherited.custom.fingerprint(&mut fp);
     fp.hash(&inherited.interpolate_size);
     fp.f64(inherited.table.spacing.horizontal);
     fp.f64(inherited.table.spacing.vertical);
@@ -1829,7 +1831,7 @@ mod tests {
     fn the_fingerprint_names_every_field_of_inherited() {
         // `inherited_fingerprint` lists the fields by hand. Adding one changes this size, and the
         // fingerprint has to learn it or the key will not see it change.
-        assert_eq!(std::mem::size_of::<Inherited>(), 408);
+        assert_eq!(std::mem::size_of::<Inherited>(), 424);
     }
 
     fn root_inherited() -> Inherited {

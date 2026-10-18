@@ -59,6 +59,14 @@ fn is_inherit(value: &str) -> bool {
 }
 
 impl CustomProperties {
+    pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        for (name, value) in self.0.iter() {
+            fp.str(name);
+            fp.str(value);
+        }
+        fp.word(0);
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

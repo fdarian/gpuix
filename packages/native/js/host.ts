@@ -824,7 +824,14 @@ export interface StyleDesc {
   fontWeight?: string | number
   /** CSS `font-style`, inherited. Applies to the element and to inline runs. */
   fontStyle?: "normal" | "italic" | "oblique"
+  /** CSS `text-align`, inherited: `start` (the default) and `end` are the left or the right of the
+   *  element's own `direction`, `left`, `right`, `center`. */
   textAlign?: string
+  /** CSS `direction`, inherited. `"rtl"` mirrors what runs along the inline axis: the columns of a
+   *  table and of a grid, a row flex container's main axis, the side `textAlign: "start"` is,
+   *  where a block narrower than its parent sits, and the side of a vertical scrollbar. Physical
+   *  properties (`left`, `borderLeft`, `marginLeft`) do not swap. Not animatable. */
+  direction?: "ltr" | "rtl"
   /** CSS `line-height`, inherited. A number multiplies the element's font size, as in CSS and React DOM:
    *  `1.5` is one and a half times the font size, and a child with another `fontSize` gets its own multiple.
    *  `"normal"` is the font's default leading. A string with a unit is a length (see `DimensionValue`),

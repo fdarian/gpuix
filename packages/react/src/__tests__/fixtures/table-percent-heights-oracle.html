@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  Oracle for table-percent-heights.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of
+  every element with an `id` that headless Chrome lays out for tables with percentage heights on rows, row
+  groups and cells. Every cell holds a 30px wide box of the height the case names. Regenerate with
+
+    sh table-percent-heights-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+table{border-spacing:0;border-collapse:separate}
+td,th,thead,tbody,tfoot,tr{vertical-align:baseline}
+#case{position:absolute;left:0;top:0;width:300px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+let n = 0;
+const row = (style, h, cellStyle) => { n++; return `<tr id="r${n}" style="${style || ''}"><td id="c${n}" style="${cellStyle || ''}"><div id="d${n}" style="width:30px;height:${h}px"></div></td></tr>`; };
+const T = (style, inner) => `<table id="t" style="${style}">${inner}</table>`;
+const G = (id, style, inner, tag = 'tbody') => `<${tag} id="${id}" style="${style}">${inner}</${tag}>`;
+const cases = {
+  'a row takes its percentage of the table': () => T('height:200px', row('height:50%', 10) + row('', 10)),
+  'an auto table ignores percentages': () => T('', row('height:50%', 10) + row('', 10)),
+  'a cell percentage counts for its row': () => T('height:200px', row('', 10, 'height:50%') + row('', 10)),
+  'a cell percentage of an auto table is ignored': () => T('', row('', 10, 'height:50%') + row('', 10)),
+  'the largest of a row and its cells': () => { n = 1; return T('height:200px', `<tr id="r1" style="height:20%"><td id="c1" style="height:40%"><div id="d1" style="width:30px;height:10px"></div></td></tr>` + row('', 10)); },
+  'a cell taller than its percentage': () => T('height:200px', row('', 90, 'height:20%') + row('', 10)),
+  'percentages past 100% are cut off': () => T('height:200px', row('height:70%', 10) + row('height:70%', 10)),
+  'percentages past 100% share what is left by what each lacks': () => T('height:200px', row('height:70%', 10) + row('height:70%', 10) + row('', 10)),
+  'percentages past 100% with a tall row': () => T('height:200px', row('height:70%', 10) + row('height:70%', 10) + row('', 50)),
+  'three rows of 50%': () => T('height:200px', row('height:50%', 10) + row('height:50%', 10) + row('height:50%', 10)),
+  'three rows of 40%': () => T('height:200px', row('height:40%', 10) + row('height:40%', 10) + row('height:40%', 10)),
+  'a percentage row and auto rows': () => T('height:300px', row('height:20%', 10) + row('', 10) + row('', 30)),
+  'a percentage row and an auto row without height': () => T('height:200px', row('height:20%', 10) + row('', 0)),
+  'a percentage row and two auto rows without height': () => T('height:200px', row('height:20%', 10) + row('', 0) + row('', 0)),
+  'two percentage rows share what is left by their height': () => T('height:200px', row('height:10%', 10) + row('height:30%', 10)),
+  'a percentage row taller than its percentage': () => T('height:200px', row('height:10%', 70) + row('height:30%', 10)),
+  'a percentage row and a row with a height': () => T('height:200px', row('height:20%', 10) + row('height:30px', 10)),
+  'a row with a height and an auto row without': () => T('height:200px', row('height:30px', 10) + row('', 0)),
+  'a percentage row, a row with a height and an auto row': () => T('height:200px', row('height:20%', 10) + row('height:30px', 10) + row('', 10)),
+  'a percentage of 0': () => T('height:200px', row('height:0%', 10) + row('height:50%', 10)),
+  'spacing is not part of the height': () => T('height:300px;border-spacing:10px', row('height:30%', 10) + row('', 10) + row('', 10)),
+  'padding and border are not part of the height': () => T('height:200px;padding:10px;border-width:5px;border-style:solid', row('height:30%', 10) + row('', 10)),
+  'a min-height makes the table taller': () => T('min-height:100px', row('height:80%', 10) + row('', 10)),
+  'a min-height shorter than the rows': () => T('min-height:10px', row('height:80%', 10) + row('', 10)),
+  'a max-height caps the height': () => T('height:300px;max-height:100px', row('height:50%', 10) + row('', 10)),
+  'a percentage height of the table': () => `<div style="height:400px">${T('height:50%', row('height:30%', 10) + row('', 10))}</div>`,
+  'a cell with spacing': () => T('height:200px;border-spacing:10px 20px', row('', 10, 'height:50%') + row('', 10)),
+  'a colspan cell with a percentage': () => T('height:200px', `<tr id="r1"><td id="c1" colspan="2" style="height:50%"><div id="d1" style="height:10px"></div></td></tr><tr id="r2"><td id="c2"><div id="d2" style="height:10px"></div></td><td id="c3"><div id="d3" style="height:10px"></div></td></tr>`),
+  'a rowspan cell with a percentage': () => T('height:200px', `<tr id="r1"><td id="c1" rowspan="2" style="height:50%"><div id="d1" style="height:10px"></div></td><td id="c2"><div id="d2" style="height:10px"></div></td></tr><tr id="r2"><td id="c3"><div id="d3" style="height:10px"></div></td></tr><tr id="r3"><td id="c4" colspan="2"><div id="d4" style="height:10px"></div></td></tr>`),
+  'a row group with a percentage': () => T('height:200px', G('g1', 'height:50%', row('', 10)) + G('g2', '', row('', 10))),
+  'a row group alone with a percentage': () => T('height:200px', G('g1', 'height:30%', row('', 10))),
+  'two row groups past 100%': () => T('height:300px', G('g1', 'height:80%', row('', 10)) + G('g2', 'height:40%', row('', 10))),
+  'row groups with percentages and no auto group': () => T('height:300px', G('g1', 'height:10%', row('', 10)) + G('g2', 'height:30%', row('', 10))),
+  'a percentage group, a group with a length and an auto group': () => T('height:300px', G('g1', 'height:10%', row('', 10)) + G('g2', 'height:50px', row('', 10)) + G('g3', '', row('', 0))),
+  'a percentage group and a group with a length': () => T('height:300px', G('g1', 'height:20%', row('', 10)) + G('g3', 'height:50px', row('', 10))),
+  'a header group with a percentage': () => T('height:300px', G('g1', 'height:30%', row('', 10), 'thead') + G('g2', '', row('', 10))),
+  'a footer group stays as tall as it is': () => T('height:300px', G('g1', 'height:30%', row('', 10)) + G('g2', '', row('', 10), 'tfoot')),
+  'rows of a group take the group height': () => T('height:200px', G('g1', 'height:50%', row('height:50%', 10) + row('', 10)) + G('g2', '', row('', 10))),
+  'rows of a group with a length': () => T('height:200px', G('g1', 'height:100px', row('height:50%', 10) + row('', 10)) + G('g2', '', row('', 10))),
+  'rows of a group in an auto table': () => T('', G('g1', 'height:100px', row('height:50%', 10) + row('', 10)) + G('g2', '', row('', 10))),
+  'rows of groups with spacing': () => T('height:300px;border-spacing:10px', G('g1', '', row('height:50%', 10) + row('', 10)) + G('g2', '', row('height:50%', 10) + row('', 10))),
+  'a percentage group with spacing': () => T('height:200px;border-spacing:10px', G('g1', 'height:50%', row('', 10) + row('', 10)) + G('g2', '', row('', 10))),
+  'a caption is not part of the height': () => T('height:200px', `<caption id="cap" style="height:30px"></caption>` + row('height:50%', 10) + row('', 10)),
+};
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  n = 0;
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-oracle', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

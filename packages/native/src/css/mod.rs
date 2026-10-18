@@ -14,6 +14,7 @@ pub(crate) mod container_query;
 pub(crate) mod covers;
 pub(crate) mod custom_properties;
 pub(crate) mod dimension;
+pub(crate) mod direction;
 pub(crate) mod filter;
 pub(crate) mod flex;
 pub(crate) mod font_features;

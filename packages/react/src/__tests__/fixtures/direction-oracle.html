@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Oracle for direction.test.tsx: the border boxes (`[x, y, width, height]` relative to the 300px case box
+  at the top left of the page, of every element with an `id`) that headless Chrome lays out for these
+  pages under `direction: rtl`. `html` is the case. Regenerate with
+
+    sh direction-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+table{border-spacing:0;border-collapse:separate}
+td,th,thead,tbody,tfoot,tr{vertical-align:baseline}
+body{font:16px/20px Menlo;color:#000}
+#case{position:absolute;left:0;top:0;width:300px;direction:rtl}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const box = (id, w, h, extra = '') => `<div id="${id}" style="width:${w}px;height:${h}px;${extra}"></div>`;
+const cell = (id, w, h, attrs = '', style = '') => `<td id="${id}" ${attrs} style="${style}">${box(id + 'b', w, h)}</td>`;
+const cases = {
+  'block children sit at the right edge': `${box('a', 100, 20)}<div id="b" style="width:100px;height:20px;margin-left:10px"></div><div id="c" style="height:20px"></div><div id="d" style="width:50px;height:20px;margin:0 auto"></div><div id="e" style="width:80px;height:20px;margin-right:30px"></div>`,
+  'a block that goes back to ltr': `<div id="o" style="direction:ltr">${box('a', 100, 20)}</div><div id="p">${box('b', 100, 20)}</div>`,
+  'padding and border do not swap': `<div id="a" style="padding-left:30px;border-right:5px solid #000;border-left:2px solid #f00">${box('b', 50, 10)}</div>`,
+  'absolute boxes keep the static side': `<div id="r" style="position:relative;height:50px">${box('a', 20, 20, 'position:absolute')}${box('b', 20, 20, 'position:absolute;left:10px')}${box('c', 20, 20, 'position:absolute;right:10px')}</div>`,
+  'a scroller has its scrollbar on the left': `<div id="s" style="width:100px;height:50px;overflow:scroll;scrollbar-width:thin">${box('a', 40, 100)}</div>`,
+  'flex row starts at the right': `<div id="f" style="display:flex">${box('a', 50, 20)}${box('b', 60, 20)}${box('c', 70, 20)}</div>`,
+  'flex row with gap and margin': `<div id="f" style="display:flex;gap:10px">${box('a', 50, 20)}${box('b', 60, 20, 'margin-left:5px')}${box('c', 70, 20, 'margin-right:7px')}</div>`,
+  'flex row justify-content flex-end': `<div id="f" style="display:flex;justify-content:flex-end">${box('a', 50, 20)}${box('b', 60, 20)}</div>`,
+  'flex row justify-content start and end': `<div id="f" style="display:flex;justify-content:start">${box('a', 50, 20)}${box('b', 60, 20)}</div><div id="g" style="display:flex;justify-content:end">${box('c', 50, 20)}${box('d', 60, 20)}</div>`,
+  'flex row justify-content center and space-between': `<div id="f" style="display:flex;justify-content:center">${box('a', 50, 20)}${box('b', 60, 20)}</div><div id="g" style="display:flex;justify-content:space-between">${box('c', 50, 20)}${box('d', 60, 20)}${box('e', 30, 20)}</div>`,
+  'flex row-reverse': `<div id="f" style="display:flex;flex-direction:row-reverse">${box('a', 50, 20)}${box('b', 60, 20)}${box('c', 70, 20)}</div>`,
+  'flex margin auto': `<div id="f" style="display:flex">${box('a', 50, 20)}${box('b', 60, 20, 'margin-left:auto')}${box('c', 30, 20)}</div>`,
+  'flex grow': `<div id="f" style="display:flex">${box('a', 50, 20)}<div id="b" style="flex:1;height:20px"></div>${box('c', 30, 20)}</div>`,
+  'flex wrap': `<div id="f" style="display:flex;flex-wrap:wrap;width:100px">${box('a', 40, 20)}${box('b', 40, 20)}${box('c', 40, 20)}${box('d', 40, 20)}</div>`,
+  'flex column align-items': `<div id="f" style="display:flex;flex-direction:column;width:200px;align-items:flex-start">${box('a', 50, 20)}${box('b', 60, 20)}</div><div id="g" style="display:flex;flex-direction:column;width:200px;align-items:flex-end">${box('c', 50, 20)}${box('d', 60, 20)}</div><div id="h" style="display:flex;flex-direction:column;width:200px;align-items:center">${box('e', 50, 20)}</div><div id="i" style="display:flex;flex-direction:column;width:200px">${box('j', 50, 20)}</div>`,
+  'flex align-self and start': `<div id="f" style="display:flex;flex-direction:column;width:200px;align-items:start">${box('a', 50, 20)}</div><div id="g" style="display:flex;flex-direction:column;width:200px;align-items:end">${box('b', 50, 20)}</div>`,
+  'grid columns': `<div id="g" style="display:grid;grid-template-columns:50px 100px 1fr">${box('a', 20, 20)}${box('b', 20, 20)}${box('c', 20, 20)}${box('d', 20, 20)}</div>`,
+  'grid lines and gap': `<div id="g" style="display:grid;grid-template-columns:50px 100px 1fr;gap:5px 10px">${box('a', 20, 20, 'grid-column:2/4')}${box('b', 20, 20, 'grid-column:1')}${box('c', 20, 20, 'grid-column:3;grid-row:2')}</div>`,
+  'grid justify-items': `<div id="g" style="display:grid;grid-template-columns:100px 100px;justify-items:start">${box('a', 20, 20)}${box('b', 20, 20)}</div><div id="h" style="display:grid;grid-template-columns:100px 100px;justify-items:end">${box('c', 20, 20)}${box('d', 20, 20)}</div>`,
+  'table columns run from the right': `<table id="t"><tr id="r1">${cell('a', 30, 10)}${cell('b', 50, 20)}${cell('c', 20, 10)}</tr><tr id="r2">${cell('d', 40, 10)}${cell('e', 10, 10)}${cell('f', 10, 10)}</tr></table>`,
+  'table with spacing': `<table id="t" style="border-spacing:5px 3px"><tr id="r1">${cell('a', 30, 10)}${cell('b', 50, 20)}</tr><tr id="r2">${cell('c', 40, 10)}${cell('d', 10, 10)}</tr></table>`,
+  'table with colspan and rowspan': `<table id="t"><tr id="r1">${cell('a', 60, 10, 'colspan=2')}${cell('b', 30, 30, 'rowspan=2')}</tr><tr id="r2">${cell('c', 40, 10)}${cell('d', 50, 20)}</tr><tr id="r3">${cell('e', 20, 10)}${cell('f', 20, 10)}${cell('g', 20, 10)}</tr></table>`,
+  'table with colspan next to the left edge': `<table id="t"><tr id="r1">${cell('a', 30, 10)}${cell('b', 30, 10)}${cell('c', 30, 10)}</tr><tr id="r2">${cell('d', 80, 10)}${cell('e', 20, 10, 'colspan=2')}</tr><tr id="r3">${cell('f', 20, 10, 'colspan=2')}${cell('g', 70, 10)}</tr></table>`,
+  'table with a fixed width, cols and caption': `<table id="t" style="width:300px;table-layout:fixed"><caption id="cap" style="text-align:left"><div style="height:12px;width:20px"></div></caption><colgroup><col style="width:60px"><col style="width:100px"><col></colgroup><tr id="r1">${cell('a', 10, 10)}${cell('b', 10, 10)}${cell('c', 10, 10)}</tr></table>`,
+  'table with percentage columns': `<table id="t" style="width:300px"><tr id="r1"><td id="a" style="width:20%">${box('ab', 10, 10)}</td><td id="b" style="width:50%">${box('bb', 10, 10)}</td><td id="c">${box('cb', 10, 10)}</td></tr></table>`,
+  'table with cell padding and border': `<table id="t"><tr id="r1"><td id="a" style="padding:0 7px 0 2px;border-left:3px solid #000">${box('ab', 30, 10)}</td><td id="b" style="padding:0 1px 0 9px;border-right:4px solid #000">${box('bb', 30, 10)}</td></tr></table>`,
+  'table with row groups': `<table id="t"><thead id="h"><tr id="r1">${cell('a', 30, 10)}${cell('b', 30, 10)}</tr></thead><tbody id="g"><tr id="r2">${cell('c', 50, 10)}${cell('d', 10, 10)}</tr></tbody></table>`,
+  'table in a flex row': `<div id="f" style="display:flex"><table id="t"><tr>${cell('a', 30, 10)}${cell('b', 50, 10)}</tr></table>${box('x', 40, 20)}</div>`,
+  'table that goes back to ltr': `<table id="t" style="direction:ltr"><tr id="r1">${cell('a', 30, 10)}${cell('b', 50, 20)}</tr></table>`,
+  'nested table in a cell': `<table id="t"><tr>${cell('a', 30, 10)}<td id="b"><table id="n"><tr>${cell('c', 20, 10)}${cell('d', 40, 10)}</tr></table></td></tr></table>`,
+  'collapsed table with differing widths': `<table id="t" style="border-collapse:collapse"><tr id="r1"><td id="a" style="border:6px solid #000">${box('ab', 20, 10)}</td><td id="b" style="border:2px solid #f00">${box('bb', 30, 10)}</td><td id="c" style="border:4px solid #0f0">${box('cb', 20, 10)}</td></tr></table>`,
+  'collapsed table with a wider left than right': `<table id="t" style="border-collapse:collapse;border:8px solid #00f"><tr id="r1"><td id="a" style="border-left:10px solid #000;border-right:2px solid #000">${box('ab', 20, 10)}</td><td id="b" style="border-left:2px solid #000;border-right:6px solid #000">${box('bb', 30, 10)}</td></tr></table>`,
+  'collapsed table with colspan': `<table id="t" style="border-collapse:collapse"><tr id="r1"><td id="a" colspan="2" style="border:4px solid #000">${box('ab', 60, 10)}</td><td id="b" style="border:2px solid #000">${box('bb', 20, 10)}</td></tr><tr id="r2"><td id="c" style="border:6px solid #000">${box('cb', 20, 10)}</td><td id="d" style="border:2px solid #000">${box('db', 20, 10)}</td><td id="e" style="border:2px solid #000">${box('eb', 20, 10)}</td></tr></table>`,
+  'text aligns to the start': `<div id="p" style="width:200px"><span id="s">aaaa</span></div><div id="q" style="width:200px;text-align:end"><span id="t">aaaa</span></div><div id="r" style="width:200px;text-align:left"><span id="u">aaaa</span></div><div id="v" style="width:200px;text-align:right"><span id="w">aaaa</span></div><div id="x" style="width:200px;text-align:center"><span id="y">aaaa</span></div>`,
+  'text align inherits as start': `<div id="o" style="width:200px"><div id="p" style="direction:ltr"><span id="s">aaaa</span></div><div id="q" style="text-align:end"><div id="r" style="direction:ltr"><span id="t">aaaa</span></div></div></div>`,
+  'every line of text is aligned to the start': `<div id="p" style="width:150px;white-space:pre-line"><span id="s">aaaa bbbb\ncc\ndddddd</span></div><div id="q" style="width:150px;white-space:pre-line;text-align:end"><span id="t">aaaa bbbb\ncc\ndddddd</span></div><div id="r" style="width:150px;white-space:pre-line;text-align:center"><span id="u">aaaa bbbb\ncc\ndddddd</span></div>`,
+};
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, html] of Object.entries(cases)) {
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const o = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) {
+    if (el.tagName === 'COL') continue;
+    const r = el.getBoundingClientRect();
+    o[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height];
+  }
+  out[name] = { html, boxes: o }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-oracle', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

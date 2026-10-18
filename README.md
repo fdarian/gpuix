@@ -6545,7 +6545,8 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   the more elaborate style (`double`, `solid`, `dashed`, `dotted`, `ridge`, `outset`,
   `groove`, `inset`; `none` loses to any), then the closer box (cell, row, row group,
   column, column group, table), then the one on the left or above (CSS 2.1 section
-  17.6.2.1). A border is centred on its grid line: each cell and the table get half of
+  17.6.2.1; the one on the right in a `direction: rtl` table, where the first column is
+  the rightmost). A border is centred on its grid line: each cell and the table get half of
   the widest border along each side as their border width, exactly (a 3px border leaves
   1.5px on each side, as in Chrome), so the table's border box holds the outer half of
   its outer borders, and `borderSpacing`, the table's `padding` and `borderRadius`, and
@@ -6570,11 +6571,8 @@ Differences from Chrome:
   starts in joins the one before it in the layout, and the borders predict that: a table
   with `tableLayout: "fixed"` and a `width` keeps them, so one whose `width` is a
   percentage of a parent with no width draws no collapsed borders.
-- A cell, row or group with a percentage `height` has an `auto` one.
-- `direction: rtl` does not mirror the columns.
 - Rows and cells with `rowSpan`s that leave rows without a cell of their own and no height
-  can share a spanning cell's height out differently, and percentage rows past 100% are
-  not shrunk.
+  can share a spanning cell's height out differently.
 - A table that is a flex item narrower than its least width reports that least width but is
   positioned for the width it asked for; the maximum width of a table with columns that add up
   to 100% next to columns without a percentage is what the columns ask for, where Chrome
@@ -6592,6 +6590,41 @@ Differences from Chrome:
 - The table styles are not animatable by `motion`, a keyframe or a CSS transition.
 - A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
   block with no table role.
+
+#### Direction
+
+`direction: 'rtl'` (inherited, `'ltr'` by default) makes the inline axis run right to left, as in CSS.
+Everything that lays out along it mirrors: the main axis of a `row` flex container (and what
+`justifyContent`, `alignItems` and `marginLeft: 'auto'` do on it), the columns of a grid and where an item
+sits in its area, the columns of a table (the first column is the rightmost, a cell that spans columns is where
+they are, the border of a `collapse` table that is on the end of a cell is its left one), a block narrower than
+its parent, which sits at the right edge, a `position: absolute` box with no `left` or `right`, and the side a
+vertical scrollbar takes. Physical properties do not swap: `paddingLeft`, `borderRight`, `left` stay where they
+say.
+
+```tsx
+<div style={{ direction: 'rtl', width: 300 }}>
+  <div style={{ display: 'flex' }}>
+    <div style={{ width: 50 }}>first, at the right edge</div>
+    <div style={{ width: 60 }}>second, to its left</div>
+  </div>
+  <div style={{ textAlign: 'start' }}>starts at the right</div>
+</div>
+```
+
+`textAlign`'s `start` (the default) and `end` are the right and the left of the element's own `direction`, and a
+child that declares another `direction` gets its own side, as it does in CSS. Positions and hit tests of text,
+which the selection, the highlights and the bounds of a `<span>` are made of, follow `textAlign`
+(`'center'` and `'right'` included).
+
+Differences from Chrome:
+
+- The writing direction of a paragraph is the one CoreText finds in its text (the first strong character), not
+  the `direction` of the element, so a Latin sentence in an rtl block puts its punctuation as it does in an ltr
+  one, and the order of mixed-direction text is CoreText's. Wrapping and hit tests inside a right-to-left run are
+  approximate.
+- `marginInline`, `paddingInline` and `insetInline` keep the left as their start.
+- `direction` is not animatable.
 
 ### Cursors
 
@@ -6992,7 +7025,7 @@ way, overflow included.
 
 **Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
 
-**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign`, `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`, `textUnderlineOffset` (see [Inline text](#inline-text)), `textWrap`, `textWrapMode` and `textWrapStyle` (see [Balanced and pretty lines](#balanced-and-pretty-lines)), `textBox`, `textBoxTrim` and `textBoxEdge` (see [Trimming text boxes](#trimming-text-boxes))
+**Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `textAlign` (`"start"` | `"end"` | `"left"` | `"right"` | `"center"`, inherited), `direction` (`"ltr"` | `"rtl"`, inherited; see [Direction](#direction)), `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`, `textUnderlineOffset` (see [Inline text](#inline-text)), `textWrap`, `textWrapMode` and `textWrapStyle` (see [Balanced and pretty lines](#balanced-and-pretty-lines)), `textBox`, `textBoxTrim` and `textBoxEdge` (see [Trimming text boxes](#trimming-text-boxes))
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 

@@ -826,6 +826,9 @@ pub struct StyleDesc {
     /// CSS `font-style`: `normal`, `italic` or `oblique`. Inherited.
     pub font_style: Option<String>,
     pub text_align: Option<String>,
+    /// CSS `direction`, inherited: mirrors flex rows, grids and tables, and decides which side
+    /// `text-align: start` and `end` are. Not animatable.
+    pub direction: Option<crate::css::direction::Direction>,
     /// CSS `line-height`: a number multiplies the element's font size, `"normal"`,
     /// or a length where `%` is of the font size. Inherited.
     pub line_height: Option<crate::css::line_height::LineHeight>,
