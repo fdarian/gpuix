@@ -221,8 +221,7 @@ impl Transitions {
         };
 
         let mut per_prop = BTreeMap::new();
-        // Shorthands first, so a longhand named beside them is the more specific.
-        by_prop.sort_by_key(|(key, _)| shorthand(target, key).is_none());
+        // In written order, so a shorthand and a longhand it covers resolve as in CSS: the later one wins.
         for (key, value) in by_prop {
             let transition = Transition::parse(value)?;
             if let Some(props) = shorthand(target, &key) {
@@ -1281,7 +1280,7 @@ fn parse_initial(
 
 /// Expands shorthands (`padding`, `margin`, `inset`, `borderRadius`, `borderWidth`,
 /// `borderColor`, `gap`) into longhands, a multi-value string giving each its own
-/// value. Where both are given the longhand wins, as the more specific one does in CSS.
+/// value. Where both are given the one written later wins, as in CSS.
 fn parse_goals(
     context: &str,
     style: &Map<String, Value>,
@@ -1289,7 +1288,6 @@ fn parse_goals(
     colors: &Colors,
 ) -> Result<Goals, String> {
     let mut goals = Goals::new();
-    let mut longhands = Vec::new();
     for (key, value) in style {
         let split = match target {
             Target::Style => property::split_shorthand(key, value),
@@ -1303,7 +1301,7 @@ fn parse_goals(
                 goals.insert(PropKey::Style(*prop), parsed);
             }
         } else if let Some(prop) = PropKey::from_name(target, key) {
-            longhands.push((prop, value));
+            goals.insert(prop, parse_goal(prop, value, colors)?);
         } else {
             return Err(match target {
                 Target::Style => format!(
@@ -1314,9 +1312,6 @@ fn parse_goals(
                 ),
             });
         }
-    }
-    for (prop, value) in longhands {
-        goals.insert(prop, parse_goal(prop, value, colors)?);
     }
     Ok(goals)
 }
@@ -2323,7 +2318,7 @@ mod tests {
     #[test]
     fn an_elliptical_corner_longhand_and_a_shorthand_corner_blend_per_axis() {
         let style = halfway(
-            serde_json::json!({ "borderTopLeftRadius": "10px 20px", "borderRadius": 8 }),
+            serde_json::json!({ "borderRadius": 8, "borderTopLeftRadius": "10px 20px" }),
             serde_json::json!({ "borderTopLeftRadius": "0 0" }),
         );
         assert_eq!(
@@ -2350,13 +2345,20 @@ mod tests {
     }
 
     #[test]
-    fn a_longhand_still_beats_a_multi_value_shorthand() {
-        let style = halfway(
+    fn a_longhand_written_after_a_multi_value_shorthand_beats_it_and_one_before_loses() {
+        let after = halfway(
+            serde_json::json!({ "padding": "20px 40px", "paddingLeft": 100 }),
+            serde_json::json!({ "padding": 0 }),
+        );
+        assert_eq!(after.padding_left, Some(LinearLength::px(50.0)));
+        assert_eq!(after.padding_right, Some(LinearLength::px(20.0)));
+
+        let before = halfway(
             serde_json::json!({ "paddingLeft": 100, "padding": "20px 40px" }),
             serde_json::json!({ "padding": 0 }),
         );
-        assert_eq!(style.padding_left, Some(LinearLength::px(50.0)));
-        assert_eq!(style.padding_right, Some(LinearLength::px(20.0)));
+        assert_eq!(before.padding_left, Some(LinearLength::px(20.0)));
+        assert_eq!(before.padding_right, Some(LinearLength::px(20.0)));
     }
 
     #[test]
@@ -2374,16 +2376,41 @@ mod tests {
     }
 
     #[test]
-    fn a_longhand_beats_the_shorthand_in_the_same_description() {
+    fn the_later_of_a_longhand_and_a_shorthand_wins_in_the_same_description() {
         let now = Instant::now();
-        let description = serde_json::json!({
-            "initial": false,
-            "animate": { "paddingLeft": 3.0, "padding": 9.0 }
-        });
-        let state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
-        let style = style_at(&state, now);
-        assert_eq!(style.padding_left, Some(LinearLength::px(3.0)));
-        assert_eq!(style.padding_top, Some(LinearLength::px(9.0)));
+        for (animate, left) in [
+            (serde_json::json!({ "padding": 9.0, "paddingLeft": 3.0 }), 3.0),
+            (serde_json::json!({ "paddingLeft": 3.0, "padding": 9.0 }), 9.0),
+        ] {
+            let description = serde_json::json!({ "initial": false, "animate": animate });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
+            let style = style_at(&state, now);
+            assert_eq!(style.padding_left, Some(LinearLength::px(left)), "{description}");
+            assert_eq!(style.padding_top, Some(LinearLength::px(9.0)), "{description}");
+        }
+    }
+
+    #[test]
+    fn the_later_of_a_transition_for_a_longhand_and_one_for_its_shorthand_wins() {
+        let now = Instant::now();
+        let slow_left = |first_left: bool| {
+            let slow = serde_json::json!({ "duration": 10.0, "ease": "linear" });
+            let fast = serde_json::json!({ "duration": 1.0, "ease": "linear" });
+            let transition = if first_left {
+                serde_json::json!({ "paddingLeft": slow, "padding": fast })
+            } else {
+                serde_json::json!({ "padding": fast, "paddingLeft": slow })
+            };
+            let description = serde_json::json!({
+                "initial": { "padding": 0.0 },
+                "animate": { "padding": 100.0 },
+                "transition": transition
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
+            style_at(&state, at(now, 1.0)).padding_left
+        };
+        assert_eq!(slow_left(false), Some(LinearLength::px(10.0)), "paddingLeft written last keeps its slow curve");
+        assert_eq!(slow_left(true), Some(LinearLength::px(100.0)), "padding written last runs on every side");
     }
 
     #[test]

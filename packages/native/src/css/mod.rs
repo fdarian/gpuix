@@ -11,6 +11,7 @@ pub(crate) mod color_function;
 pub(crate) mod color_mix;
 pub(crate) mod color_space;
 pub(crate) mod container_query;
+pub(crate) mod covers;
 pub(crate) mod dimension;
 pub(crate) mod filter;
 pub(crate) mod flex;

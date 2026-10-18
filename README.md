@@ -1483,7 +1483,7 @@ list can be animated, in `animate`, `initial` and `exit`:
 `padding`, `margin`, `inset`, `borderWidth`, `borderColor`, `borderRadius` and `gap` are shorthands that
 expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
 `borderTopLeftRadius` in `style`. When a description names a shorthand and one of
-its longhands, the longhand wins. (`flex` and the logical shorthands such as
+its longhands, the one written later wins, as in CSS. (`flex` and the logical shorthands such as
 `paddingBlock` are not targets: animate `flexGrow`, `flexShrink` and `flexBasis`, or the sides.)
 
 A shorthand written with several values gives each side, axis or corner its own
@@ -2847,8 +2847,8 @@ children join the paragraph and inherit from it.
 
 `textDecoration` is the CSS shorthand (`"underline line-through"`,
 `"underline wavy red 2px"`), and `textDecorationLine`, `textDecorationStyle`,
-`textDecorationColor` and `textDecorationThickness` are its longhands, which win
-over it. A line is drawn over the whole box in the colour its own box had, so a
+`textDecorationColor` and `textDecorationThickness` are its longhands, and one
+written after it wins over it. A line is drawn over the whole box in the colour its own box had, so a
 descendant that changes `color` does not recolour it, and a descendant cannot
 take it off, `none` included. Lines accumulate, as in CSS: a nested box, inline or
 block, that declares a line the box around it already draws gets its own beside
@@ -2921,8 +2921,8 @@ on a CSS inline box: the text after the box moves right by their sum, the line
 and the container that wraps around it grow by it, and wrapping counts it, so a
 word followed by the closing padding of its span moves to the next line when the
 padding does not fit. The shorthands `margin`, `padding`, `borderWidth`, `border`,
-`borderLeft` and `borderRight` set the same sides, and a longhand wins over its
-shorthand. `hover`, `active` and the other state styles change the space too.
+`borderLeft` and `borderRight` set the same sides, and of a shorthand and a longhand
+it covers the one written later wins. `hover`, `active` and the other state styles change the space too.
 
 ```tsx
 <text>
@@ -3321,8 +3321,9 @@ Deviations, where GPUI's text layout cannot build the DOM model:
 `textWrap` is the inherited shorthand of `textWrapMode` (`wrap`, `nowrap`) and
 `textWrapStyle` (`auto`, `balance`, `pretty`, `stable`): a mode, a style, or both in
 either order (`"balance"`, `"nowrap"`, `"nowrap pretty"`). What it leaves out is the
-longhand's initial value, so `"balance"` also turns wrapping on. A longhand on the same
-element wins over the shorthand. A value CSS does not have throws. Only a container sets
+longhand's initial value, so `"balance"` also turns wrapping on. Of the shorthand and a
+longhand on the same element the one written later wins, and in a state style the
+shorthand resets the base's `textWrapMode` and `textWrapStyle`. A value CSS does not have throws. Only a container sets
 them: a `<span>` inside a paragraph uses the paragraph's.
 
 ```tsx
@@ -3394,8 +3395,8 @@ the space that shows.
   `"cap"` is `"cap text"` and `"ex"` is `"ex text"`. Chrome rejects a lone `cap` or `ex`
   today; the spec allows it.
 - **`textBox`** is the shorthand: `normal`, or a trim and an edge in either order. A
-  trim left out is `trim-both`, not `none`, and an edge left out is `auto`. The longhands
-  win over it. An invalid value is ignored.
+  trim left out is `trim-both`, not `none`, and an edge left out is `auto`. A longhand
+  written after it wins over it. An invalid value is ignored.
 - **Which lines.** Only the first and last line of text are trimmed. The trim goes
   down through block children to their first or last line, and stops at one with
   padding or a border on that side, or with no line of text to start with. An absolutely
@@ -5937,9 +5938,9 @@ CSS-like styling via the `style` prop:
 >   `position: "absolute"` children: they resolve against the nearest
 >   `relative`, `absolute` or `fixed` ancestor. Put `position: "relative"` on
 >   the parent of anything you place with `top`/`right`/`bottom`/`left`.
-> - **A longhand beats its shorthand, whatever the key order.** `{ paddingLeft: 4,
->   padding: 8 }` and `{ padding: 8, paddingLeft: 4 }` both leave the left at 4.
->   In React DOM the later key wins. See [Shorthands](#shorthands).
+> - **Of a shorthand and a longhand it covers, the key written later wins**, as in
+>   CSS and React DOM. `{ paddingLeft: 4, padding: 8 }` pads the left by 8 and
+>   `{ padding: 8, paddingLeft: 4 }` by 4. See [Shorthands](#shorthands).
 > - **`boxShadow` takes the CSS string or a structured object.** See below.
 > - **No `<button>`.** Use `<div onClick>` with `cursor: "pointer"`.
 > - **Do not nest `<text>` in `<text>`.** Adjacent `<text>` siblings merge
@@ -6020,8 +6021,8 @@ a `%` skips the special case for a zero-length repeat.
 
 ### Shorthands
 
-A shorthand is its own style field, and the longhands it covers keep winning
-over it. The ones below take CSS's several-value syntax.
+A shorthand is its own style field. Of a shorthand and a longhand it covers the key
+written later wins, as in CSS. The ones below take CSS's several-value syntax.
 
 ```tsx
 <div style={{ display: 'flex', flex: '1 0 200px', padding: '8px 12px', margin: '0 auto', gap: '4px 8px' }} />
@@ -6038,13 +6039,12 @@ over it. The ones below take CSS's several-value syntax.
 | `placeItems`, `placeContent`, `placeSelf` | `"<align> <justify>"`; one value is both (`"center"`, `"center end"`). Each value is one the longhand takes, so `placeItems: "left"` throws as in CSS |
 | `outline` | See [Outline](#outline) |
 
-- **A longhand wins, whatever the order of the keys.** From weakest to strongest:
-  `padding`, `paddingBlock` / `paddingInline`, then `paddingTop` ... `paddingLeft`;
-  `margin`, `inset` and the gaps (`gap`, then `rowGap` and `columnGap`) work the same,
-  and `border`, `borderBlock` / `borderInline`, the side shorthands, `borderStyle`, then
-  the longhands. React DOM and Chrome apply the later of two keys instead, so a style
-  object that writes the longhand first and the shorthand after it reads differently
-  here.
+- **The later key wins.** `{ paddingLeft: 4, padding: 8 }` pads the left by 8 and
+  `{ padding: 8, paddingLeft: 4 }` by 4, whatever the shorthand covers: `paddingBlock`
+  and `paddingInline` between `padding` and the sides, `border` over `borderBlock`, the
+  side shorthands and `borderWidth`, and so on for every shorthand in this page. The
+  same holds in each state style, in the keys a `UniversalStyle` layer sets again, and
+  in the `animate`, `initial`, `exit`, variant and `transition` maps of `motion`.
 - **In a state style** (`hover`, `focusVisible`, ...) a shorthand replaces the base
   style's longhands it covers: `hover: { padding: 12 }` over a base `paddingLeft: 4`
   pads 12 on the left. A state's longhand only changes its own side.
@@ -6171,7 +6171,7 @@ dashed side follows the border's width on that side.
 or percentages for top-left, top-right, bottom-right and bottom-left (the `margin`
 expansion), then optionally `/` and one to four vertical radii. The four corner
 longhands (`borderTopLeftRadius` ...) take a number or `"<horizontal>
-[<vertical>]"` and win over the shorthand.
+[<vertical>]"` and win over the shorthand when written after it.
 
 ```tsx
 <div style={{ borderRadius: 8 }} />
@@ -6514,7 +6514,7 @@ layers, `position / size`, repeat, origin and clip boxes, and a final colour.
 <div style={{ background: 'repeating-linear-gradient(45deg, #0001 0 8px, transparent 8px 16px) #fff' }} />
 ```
 
-Longhands win over the shorthand. Limits:
+A longhand written after the shorthand wins over it. Limits:
 - `image-set()` is valid but not drawn: that layer is skipped and the others still
   paint.
 - Interpolation spaces other than `srgb` and `oklab` skip the layer.
@@ -6748,7 +6748,7 @@ images. With the default `maskMode` a layer's alpha is what counts, so `transpar
 hides and any opaque colour shows. `maskSize`, `maskPosition`,
 `maskRepeat`, `maskOrigin` and `maskClip` are comma lists that repeat to cover the
 layers, and `mask` is the shorthand (layers, `position / size`, repeat, origin
-and clip boxes, a mode and a composite keyword). The longhands win over it.
+and clip boxes, a mode and a composite keyword). A longhand written after it wins over it.
 `maskOrigin` and `maskClip` start at
 `border-box`, not at the `padding-box` a background starts from. A layer that does
 not cover an area leaves it hidden, so a non-repeating mask hides what it does not
@@ -6987,7 +6987,7 @@ fractions of it:
 |---|---|
 | `containerType` | `"normal"` (default, not a container), `"inline-size"` (queries read the width) or `"size"` (the width and the height) |
 | `containerName` | names a query can pick the container by: `"card"`, `"card panel"`, `"none"` |
-| `container` | `"<name> [ / <type> ]"`, both in one (`"card / inline-size"`); a type left out is `"normal"`; the longhands win |
+| `container` | `"<name> [ / <type> ]"`, both in one (`"card / inline-size"`); a type left out is `"normal"`; a longhand written after it wins |
 | `"@container"` | an object of `query: style`, in written order |
 
 **Which container answers.** A query is about the **nearest ancestor container**,
@@ -7241,7 +7241,7 @@ layout space**, so a ring you add with `focusVisible` moves nothing. It follows
   `currentColor`.
 - **`outline`** is `<width> <style> <colour>` in any order, each part at most
   once. A part it leaves out is that default. `hidden` throws. `outlineWidth`,
-  `outlineStyle` and `outlineColor` win over it, whatever the key order.
+  `outlineStyle` and `outlineColor` win over it when written after it.
   `outlineOffset` is not part of it.
 - **Styles.** `solid`, `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset` and
   `outset`, as for [borders](#borders). `auto` is accepted and paints as `solid`.
@@ -7272,7 +7272,7 @@ render per frame.
 - **Properties.** `transition` is a comma list of `<property> <duration> <timing
   function> <delay>` in any order, plus `all` and `none`. `transitionProperty`,
   `transitionDuration`, `transitionTimingFunction`, `transitionDelay` and
-  `transitionBehavior` win over the shorthand, and shorter lists repeat to the
+  `transitionBehavior` win over the shorthand when written after it, and shorter lists repeat to the
   length of `transitionProperty`.
   Every property `motion` can animate (see [Targets and timing](#targets-and-timing))
   can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
@@ -7422,7 +7422,7 @@ defineKeyframes('pulse', {
   order: the first time is the duration, the second the delay. `animationName`,
   `animationDuration`, `animationTimingFunction`, `animationDelay`,
   `animationIterationCount`, `animationDirection`, `animationFillMode` and
-  `animationPlayState` win over the shorthand, and shorter lists repeat to the
+  `animationPlayState` win over the shorthand when written after it, and shorter lists repeat to the
   length of `animationName`. The timing functions are the ones
   [CSS transitions](#css-transitions) take. An invalid value is rejected when the
   style is set. A name with no keyframes animates nothing, as in a browser
@@ -7502,7 +7502,9 @@ does not use a component.
   property that does not inherit does not start to
 - **Stacking.** Several `<UniversalStyle>` at once are spread over each other in
   mount order, top-level properties only: a later one replaces a shared
-  property, and a nested `hover` object whole. Unmounting one leaves the others
+  property, and a nested `hover` object whole. A property a later one sets again
+  goes after the earlier layers' keys, so its `paddingLeft` beats an earlier
+  `padding`, and its `padding` an earlier `paddingLeft`. Unmounting one leaves the others
 - **One restyle.** A change of the layer restyles every element once, in one
   frame, with no per-element JavaScript. The result is the same as having set
   every element's style to its new combined one

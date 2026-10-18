@@ -11,7 +11,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["raw_value"] }
+# preserve_order: a style or motion object is read in written order, since of a shorthand and a longhand it
+# covers the later one wins.
+serde_json = { version = "1", features = ["raw_value", "preserve_order"] }
 anyhow = "1"
 base64 = "0.22"
 csscolorparser = "0.8.3"

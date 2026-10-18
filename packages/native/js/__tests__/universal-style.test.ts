@@ -26,6 +26,16 @@ describe("pushUniversalStyle", () => {
     ])
   })
 
+  it("moves a property a later entry sets again to the end, as native reads the keys in written order", () => {
+    const renderer = {}
+    const target = recordingTarget()
+    pushUniversalStyle(renderer, target, { padding: 8 })
+    pushUniversalStyle(renderer, target, { paddingLeft: 4 })
+    pushUniversalStyle(renderer, target, { padding: 6 })
+    expect(Object.keys(target.layers.at(-1)!)).toEqual(["paddingLeft", "padding"])
+    expect(target.layers.at(-1)).toEqual({ paddingLeft: 4, padding: 6 })
+  })
+
   it("spreads top-level properties, so a later entry replaces a nested style whole", () => {
     const renderer = {}
     const target = recordingTarget()

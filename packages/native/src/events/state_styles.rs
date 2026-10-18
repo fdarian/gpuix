@@ -254,6 +254,13 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
     cleaned.map_or(Cow::Borrowed(over), Cow::Owned)
 }
 
+/// Which of the all-sides border values [`split_border_all_sides`] spreads.
+pub(crate) struct AllSides {
+    pub width: bool,
+    pub color: bool,
+    pub style: bool,
+}
+
 /// The border all-sides longhands (`borderWidth`, `borderColor`, `borderStyle`)
 /// are applied after every side shorthand, so a base one would beat a state's
 /// `borderTop` on the side it covers. In CSS the state's shorthand is the later
@@ -263,48 +270,47 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
 ///
 /// Must run before the drops below: an all-sides value `over` sets itself
 /// drops these per-side values again, as it should.
-fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
+///
+/// `all` names the all-sides values that sit below the shorthand. Within one style object
+/// that is the ones written before it.
+pub(crate) fn split_border_all_sides(base: &mut StyleDesc, covered_sides: [bool; 4], all: AllSides) {
     let sides = [
         (
-            over.border_top.as_deref().or(over.border_block.as_deref()),
+            covered_sides[0],
             &mut base.border_top_width,
             &mut base.border_top_color,
             &mut base.border_top_style,
         ),
         (
-            over.border_right.as_deref().or(over.border_inline.as_deref()),
+            covered_sides[1],
             &mut base.border_right_width,
             &mut base.border_right_color,
             &mut base.border_right_style,
         ),
         (
-            over.border_bottom.as_deref().or(over.border_block.as_deref()),
+            covered_sides[2],
             &mut base.border_bottom_width,
             &mut base.border_bottom_color,
             &mut base.border_bottom_style,
         ),
         (
-            over.border_left.as_deref().or(over.border_inline.as_deref()),
+            covered_sides[3],
             &mut base.border_left_width,
             &mut base.border_left_color,
             &mut base.border_left_style,
         ),
     ];
-    if sides.iter().all(|(shorthand, ..)| shorthand.is_none()) {
+    if sides.iter().all(|(covered, ..)| !covered) {
         return;
     }
-    let all_width = base.border_width.take();
+    let all_width = if all.width { base.border_width.take() } else { None };
     // An invalid `borderColor` or `borderStyle` paints nothing, so it spreads nothing.
-    let all_colors = base
-        .border_color
-        .take()
+    let all_colors = if all.color { base.border_color.take() } else { None }
         .and_then(|value| parse_color_sides(&value).map(|sides| sides.map(str::to_owned)));
-    let all_styles = base
-        .border_style
-        .take()
+    let all_styles = if all.style { base.border_style.take() } else { None }
         .and_then(|value| parse_style_sides(&value).map(|sides| sides.map(str::to_owned)));
-    for (index, (shorthand, width, color, style)) in sides.into_iter().enumerate() {
-        if shorthand.is_some() {
+    for (index, (covered, width, color, style)) in sides.into_iter().enumerate() {
+        if covered {
             continue;
         }
         // A side's own longhand already beats the all-sides value.
@@ -324,256 +330,17 @@ fn split_border_all_sides(base: &mut StyleDesc, over: &StyleDesc) {
 /// declaration does. `apply_styles` reads longhands after their shorthand, so a
 /// base longhand would otherwise beat a state style's shorthand.
 fn drop_shadowed_longhands(base: &mut Cow<'_, StyleDesc>, over: &StyleDesc) {
-    // Each clear copies the base the first time it finds something to clear, and never when the
-    // base has nothing there: a state style usually shadows nothing.
-    macro_rules! clear {
-        ($($field:ident),+) => {
-            $(if base.$field.is_some() {
-                base.to_mut().$field = None;
-            })+
-        };
+    let covered_sides = [
+        over.border_top.is_some() || over.border_block.is_some(),
+        over.border_right.is_some() || over.border_inline.is_some(),
+        over.border_bottom.is_some() || over.border_block.is_some(),
+        over.border_left.is_some() || over.border_inline.is_some(),
+    ];
+    // A state style usually shadows nothing: the base is copied only once something is cleared.
+    if covered_sides.contains(&true) {
+        split_border_all_sides(base.to_mut(), covered_sides, AllSides { width: true, color: true, style: true });
     }
-    if over.border_top.is_some()
-        || over.border_right.is_some()
-        || over.border_bottom.is_some()
-        || over.border_left.is_some()
-        || over.border_block.is_some()
-        || over.border_inline.is_some()
-    {
-        split_border_all_sides(base.to_mut(), over);
-    }
-    // `outlineOffset` is not part of `outline`.
-    if over.outline.is_some() {
-        clear!(outline_width);
-        clear!(outline_style);
-        clear!(outline_color);
-    }
-    if over.flex.is_some() {
-        clear!(flex_grow);
-        clear!(flex_shrink);
-        clear!(flex_basis);
-    }
-    if over.flex_flow.is_some() {
-        clear!(flex_direction);
-        clear!(flex_wrap);
-    }
-    if over.place_items.is_some() {
-        clear!(align_items);
-        clear!(justify_items);
-    }
-    if over.place_content.is_some() {
-        clear!(align_content);
-        clear!(justify_content);
-    }
-    if over.place_self.is_some() {
-        clear!(align_self);
-        clear!(justify_self);
-    }
-    if over.gap.is_some() {
-        clear!(row_gap);
-        clear!(column_gap);
-    }
-    // A shorthand beats the broader ones and loses to the narrower ones, whatever order they are
-    // written in, so a state's one resets the base's broader and narrower ones it covers.
-    if over.padding.is_some() {
-        clear!(padding_block);
-        clear!(padding_inline);
-    }
-    if over.padding.is_some() || over.padding_block.is_some() {
-        clear!(padding_top);
-        clear!(padding_bottom);
-    }
-    if over.padding.is_some() || over.padding_inline.is_some() {
-        clear!(padding_left);
-        clear!(padding_right);
-    }
-    if over.margin.is_some() {
-        clear!(margin_block);
-        clear!(margin_inline);
-    }
-    if over.margin.is_some() || over.margin_block.is_some() {
-        clear!(margin_top);
-        clear!(margin_bottom);
-    }
-    if over.margin.is_some() || over.margin_inline.is_some() {
-        clear!(margin_left);
-        clear!(margin_right);
-    }
-    if over.inset.is_some() {
-        clear!(inset_block);
-        clear!(inset_inline);
-    }
-    if over.inset.is_some() || over.inset_block.is_some() {
-        clear!(top);
-        clear!(bottom);
-    }
-    if over.inset.is_some() || over.inset_inline.is_some() {
-        clear!(left);
-        clear!(right);
-    }
-    if over.border_width.is_some() {
-        clear!(border_top_width);
-        clear!(border_right_width);
-        clear!(border_bottom_width);
-        clear!(border_left_width);
-    }
-    if over.border_radius.is_some() {
-        clear!(border_top_left_radius);
-        clear!(border_top_right_radius);
-        clear!(border_bottom_left_radius);
-        clear!(border_bottom_right_radius);
-    }
-    if over.transition.is_some() {
-        clear!(transition_property);
-        clear!(transition_duration);
-        clear!(transition_timing_function);
-        clear!(transition_delay);
-        clear!(transition_behavior);
-    }
-    if over.animation.is_some() {
-        clear!(animation_name);
-        clear!(animation_duration);
-        clear!(animation_timing_function);
-        clear!(animation_delay);
-        clear!(animation_iteration_count);
-        clear!(animation_direction);
-        clear!(animation_fill_mode);
-        clear!(animation_play_state);
-    }
-    if over.text_decoration.is_some() {
-        clear!(text_decoration_line);
-        clear!(text_decoration_style);
-        clear!(text_decoration_color);
-        clear!(text_decoration_thickness);
-    }
-    if over.text_box.is_some() {
-        clear!(text_box_trim);
-        clear!(text_box_edge);
-    }
-    if over.overflow.is_some() {
-        clear!(overflow_x);
-        clear!(overflow_y);
-    }
-    if over.container.is_some() {
-        clear!(container_type);
-        clear!(container_name);
-    }
-    if over.overscroll_behavior.is_some() {
-        clear!(overscroll_behavior_x);
-        clear!(overscroll_behavior_y);
-    }
-    // `gridArea` covers both axes, `gridColumn` / `gridRow` one each, and the
-    // start and end longhands a single line.
-    if over.grid_area.is_some() {
-        clear!(grid_column);
-        clear!(grid_row);
-    }
-    if over.grid_area.is_some() || over.grid_column.is_some() {
-        clear!(grid_column_start);
-        clear!(grid_column_end);
-    }
-    if over.grid_area.is_some() || over.grid_row.is_some() {
-        clear!(grid_row_start);
-        clear!(grid_row_end);
-    }
-    // `border` covers every side's width, colour and style, and a side
-    // shorthand its own. The longhands win over the shorthands, so a base
-    // longhand would beat a state's shorthand.
-    if over.border.is_some() {
-        clear!(border_block);
-        clear!(border_inline);
-        clear!(border_top);
-        clear!(border_right);
-        clear!(border_bottom);
-        clear!(border_left);
-        clear!(border_width);
-        clear!(border_color);
-    }
-    // `borderBlock` and `borderInline` sit between `border` and the side shorthands, and reset the
-    // side shorthands and longhands of their axis.
-    if over.border_block.is_some() {
-        clear!(border_top);
-        clear!(border_bottom);
-        clear!(border_top_width);
-        clear!(border_top_color);
-        clear!(border_top_style);
-        clear!(border_bottom_width);
-        clear!(border_bottom_color);
-        clear!(border_bottom_style);
-    }
-    if over.border_inline.is_some() {
-        clear!(border_left);
-        clear!(border_right);
-        clear!(border_left_width);
-        clear!(border_left_color);
-        clear!(border_left_style);
-        clear!(border_right_width);
-        clear!(border_right_color);
-        clear!(border_right_style);
-    }
-    if over.border.is_some() || over.border_width.is_some() {
-        clear!(border_top_width);
-        clear!(border_right_width);
-        clear!(border_bottom_width);
-        clear!(border_left_width);
-    }
-    if over.border.is_some() || over.border_color.is_some() {
-        clear!(border_top_color);
-        clear!(border_right_color);
-        clear!(border_bottom_color);
-        clear!(border_left_color);
-    }
-    if over.border.is_some() || over.border_style.is_some() {
-        clear!(border_style);
-        clear!(border_top_style);
-        clear!(border_right_style);
-        clear!(border_bottom_style);
-        clear!(border_left_style);
-    }
-    if over.border_top.is_some() {
-        clear!(border_top_width);
-        clear!(border_top_color);
-        clear!(border_top_style);
-    }
-    if over.border_right.is_some() {
-        clear!(border_right_width);
-        clear!(border_right_color);
-        clear!(border_right_style);
-    }
-    if over.border_bottom.is_some() {
-        clear!(border_bottom_width);
-        clear!(border_bottom_color);
-        clear!(border_bottom_style);
-    }
-    if over.border_left.is_some() {
-        clear!(border_left_width);
-        clear!(border_left_color);
-        clear!(border_left_style);
-    }
-    // The `mask` shorthand resets every layer longhand, as `background` does.
-    if over.mask.is_some() {
-        clear!(mask_image);
-        clear!(mask_size);
-        clear!(mask_position);
-        clear!(mask_repeat);
-        clear!(mask_origin);
-        clear!(mask_clip);
-        clear!(mask_mode);
-        clear!(mask_composite);
-    }
-    // `background_color` wins over `background` when both are set, so a base
-    // colour would beat a state's shorthand. A state's colour alone leaves the
-    // base shorthand: its layers still paint, as under a `background-color`.
-    // The `background` shorthand also resets every layer longhand.
-    if over.background.is_some() {
-        clear!(background_color);
-        clear!(background_image);
-        clear!(background_size);
-        clear!(background_position);
-        clear!(background_repeat);
-        clear!(background_origin);
-        clear!(background_clip);
-    }
+    crate::css::covers::shadow(base, over);
 }
 
 #[cfg(test)]
@@ -704,10 +471,30 @@ mod tests {
     }
 
     #[test]
+    fn a_state_text_wrap_resets_the_base_wrap_mode_and_style() {
+        let base = style(
+            r##"{ "textWrapMode": "nowrap", "textWrapStyle": "pretty", "hover": { "textWrap": "balance" } }"##,
+        );
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.text_wrap_mode, None);
+        assert_eq!(hovered.text_wrap_style, None);
+        assert!(hovered.text_wrap.is_some());
+        assert!(resolve_state_styles(&base, false, false).text_wrap_mode.is_some());
+    }
+
+    #[test]
+    fn a_state_longhand_written_before_its_shorthand_is_covered_by_it() {
+        let base = style(r##"{ "hover": { "paddingLeft": 4, "padding": 8 } }"##);
+        let hovered = resolve_state_styles(&base, true, false);
+        assert_eq!(hovered.padding_left, None);
+        assert_eq!(hovered.padding, Some(Sides::all(LinearLength::px(8.0))));
+    }
+
+    #[test]
     fn a_state_radius_replaces_the_elliptical_corners_of_the_base() {
         let base = style(
             r##"{
-                "borderTopLeftRadius": "50% 20px", "borderRadius": "4px / 8px",
+                "borderRadius": "4px / 8px", "borderTopLeftRadius": "50% 20px",
                 "hover": { "borderRadius": "10px", "borderBottomRightRadius": "30% 5px" }
             }"##,
         );
@@ -852,8 +639,8 @@ mod tests {
     fn a_state_border_block_resets_the_base_top_and_bottom_but_not_left_and_right() {
         let base = style(
             r##"{
-                "border": "1px solid red", "borderTop": "5px solid red", "borderBottomWidth": 6, "borderLeft": "2px solid blue",
-                "borderInline": "3px dashed red",
+                "border": "1px solid red", "borderInline": "3px dashed red", "borderTop": "5px solid red",
+                "borderBottomWidth": 6, "borderLeft": "2px solid blue",
                 "hover": { "borderBlock": "4px solid green" },
                 "active": { "borderInline": "7px solid green" },
                 "focusWithin": { "border": "8px solid green" }
@@ -1139,11 +926,18 @@ mod tests {
 
     #[test]
     fn a_state_side_shorthand_keeps_the_base_all_sides_longhands_it_does_not_cover() {
-        let base = style(r##"{"borderWidth":2,"borderColor":"red","active":{"borderWidth":4,"borderTop":"1px solid blue"}}"##);
+        let base = style(r##"{"borderWidth":2,"borderColor":"red","active":{"borderTop":"1px solid blue","borderWidth":4}}"##);
         let pressed = resolve_state_styles(&base, false, true);
         assert_eq!(pressed.border_width, Some(Sides::all(LinearLength::px(4.0))), "the state's own all-sides value is its own");
         assert_eq!(pressed.border_top_width, None);
         assert_eq!(pressed.border_right_width, None, "the state's borderWidth resets the base sides");
+        assert_eq!(pressed.border_right_color.as_deref(), Some("red"));
+
+        let base = style(r##"{"borderWidth":2,"borderColor":"red","active":{"borderWidth":4,"borderTop":"1px solid blue"}}"##);
+        let pressed = resolve_state_styles(&base, false, true);
+        assert_eq!(pressed.border_width, None, "the state's borderTop is written after its borderWidth");
+        assert_eq!(pressed.border_top_width, None);
+        assert_eq!(pressed.border_right_width, Some(LinearLength::px(4.0)));
         assert_eq!(pressed.border_right_color.as_deref(), Some("red"));
     }
 

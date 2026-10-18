@@ -272,6 +272,10 @@ export function isReservedProp(name: string): boolean {
  *
  * Only plain objects, arrays and primitives are compared. A function or class
  * instance is equal to itself and nothing else.
+ *
+ * Key order counts: native reads a style's keys in written order, and of a
+ * shorthand and a longhand it covers the one written later wins, so
+ * `{ padding: 8, paddingLeft: 4 }` and `{ paddingLeft: 4, padding: 8 }` differ.
  */
 export function sameMutationValue(left: unknown, right: unknown): boolean {
   if (left === right) return true
@@ -304,7 +308,17 @@ export function sameMutationValue(left: unknown, right: unknown): boolean {
   for (const key in rightRecord) {
     if (rightRecord[key] !== undefined) rightDefined++
   }
-  return defined === rightDefined
+  if (defined !== rightDefined) return false
+  if (defined < 2) return true
+  // Same keys and values: they still differ when written in another order.
+  const rightKeys = Object.keys(rightRecord)
+  let position = 0
+  for (const key in leftRecord) {
+    if (leftRecord[key] === undefined) continue
+    while (rightRecord[rightKeys[position]!] === undefined) position++
+    if (rightKeys[position++] !== key) return false
+  }
+  return true
 }
 
 export function serializeCustomProp(

@@ -962,9 +962,12 @@ mod tests {
         assert_eq!(used(r#"{"borderColor":"red","borderStyle":"dashed double"}"#, 16.0), [3.0; 4]);
         assert_eq!(used(r#"{"borderTopStyle":"solid"}"#, 16.0), [3.0, 0.0, 0.0, 0.0]);
         assert_eq!(used(r#"{"border":"solid"}"#, 16.0), [3.0; 4]);
-        // The shorthand named no width, so it is the initial one for the sides it covers.
-        assert_eq!(used(r#"{"borderWidth":6,"border":"solid"}"#, 16.0), [6.0; 4]);
-        assert_eq!(used(r#"{"borderWidth":6,"borderTop":"solid"}"#, 16.0), [6.0, 0.0, 0.0, 0.0]);
+        // The shorthand named no width, so it is the initial one for the sides it covers, unless a
+        // width is written after it.
+        assert_eq!(used(r#"{"border":"solid","borderWidth":6}"#, 16.0), [6.0; 4]);
+        assert_eq!(used(r#"{"borderWidth":6,"border":"solid"}"#, 16.0), [3.0; 4]);
+        assert_eq!(used(r#"{"borderTop":"solid","borderWidth":6}"#, 16.0), [6.0, 0.0, 0.0, 0.0]);
+        assert_eq!(used(r#"{"borderWidth":6,"borderTop":"solid"}"#, 16.0), [3.0, 0.0, 0.0, 0.0]);
         assert_eq!(used(r#"{"borderTopWidth":0,"borderStyle":"solid"}"#, 16.0), [0.0, 3.0, 3.0, 3.0]);
     }
 

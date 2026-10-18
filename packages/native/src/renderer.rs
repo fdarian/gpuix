@@ -11269,7 +11269,9 @@ mod batch_tests {
 
     /// Interning keys on raw bytes, so re-ordered keys are two `Arc`s. They are
     /// still the same style, and a repaint per key order would be a real cost
-    /// on any app that builds style objects conditionally.
+    /// on any app that builds style objects conditionally. A shorthand and a
+    /// longhand it covers are the exception: the later one wins, so the order is
+    /// part of the style.
     #[test]
     fn a_reordered_style_does_not_repaint() {
         let mut tree = RetainedTree::new();
@@ -11284,6 +11286,23 @@ mod batch_tests {
         assert_eq!(
             tree.elements[&1].subtree_revision, revision,
             "the same style in another key order is not a change"
+        );
+    }
+
+    #[test]
+    fn reordering_a_shorthand_and_a_longhand_it_covers_repaints() {
+        let mut tree = RetainedTree::new();
+        apply(
+            &mut tree,
+            r#"[["createElement",1,"div"],["setStyle",1,{"padding":8,"paddingLeft":4}]]"#,
+        )
+        .expect("valid batch");
+        let revision = tree.elements[&1].subtree_revision;
+
+        apply(&mut tree, r#"[["setStyle",1,{"paddingLeft":4,"padding":8}]]"#).expect("valid batch");
+        assert_ne!(
+            tree.elements[&1].subtree_revision, revision,
+            "the later of a shorthand and a longhand wins, so another order is another style"
         );
     }
 
@@ -12562,7 +12581,7 @@ mod dimension_length_tests {
     }
 
     #[gpui::test]
-    fn row_gap_and_column_gap_beat_gap(cx: &mut gpui::TestAppContext) {
+    fn the_later_of_gap_and_row_gap_column_gap_wins(cx: &mut gpui::TestAppContext) {
         let page = flowing(
             cx,
             r#"{"display": "flex", "flexWrap": "wrap", "alignContent": "flex-start", "width": 100, "fontSize": 10,
@@ -12577,7 +12596,7 @@ mod dimension_length_tests {
             r#"{"display": "flex", "flexWrap": "wrap", "alignContent": "flex-start", "width": 100, "fontSize": 10,
                 "columnGap": "2em", "gap": "1em"}"#,
         );
-        near(page.offset(4, 2), (60.0, 0.0));
+        near(page.offset(4, 2), (50.0, 0.0));
         near(page.offset(5, 2), (0.0, 30.0));
     }
 
@@ -12711,7 +12730,7 @@ mod dimension_length_tests {
     fn a_hover_border_width_in_em_replaces_the_base_one(cx: &mut gpui::TestAppContext) {
         let page = bordered(
             cx,
-            r#""fontSize": 20, "borderLeftWidth": "0.5em", "borderWidth": 1, "borderStyle": "solid", "hover": {"borderWidth": "1em"}"#,
+            r#""fontSize": 20, "borderWidth": 1, "borderLeftWidth": "0.5em", "borderStyle": "solid", "hover": {"borderWidth": "1em"}"#,
         );
         assert_eq!(border_of(&page, 2), (10.0, 1.0, 1.0, 1.0));
         let bounds = page.bounds(2);

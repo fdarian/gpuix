@@ -29,7 +29,9 @@ const stacks = new WeakMap<object, Stack>()
  * every element's own style (CSS `* { ... }`). The layer native holds is the
  * entries' styles spread over each other in mount order, top-level properties
  * only, so a later entry wins a property it shares and removing one never
- * clears another.
+ * clears another. A property a later entry sets again moves to the end of the
+ * layer: native reads the keys in written order, and a shorthand written after a
+ * longhand covers it.
  *
  * The change goes through `mutations`, ordered with the element mutations it
  * queues. Flushing it is the caller's.
@@ -63,11 +65,19 @@ export function pushUniversalStyle(
 }
 
 function publish(stack: Stack, mutations: Pick<MutationRenderer, "setUniversalStyle">): void {
-  const layer =
-    stack.entries.length === 0
-      ? null
-      : Object.assign({}, ...stack.entries.map((entry) => entry.style))
+  const layer = stack.entries.length === 0 ? null : mergeInMountOrder(stack.entries)
   if (sameMutationValue(layer, stack.sent)) return
   stack.sent = layer
   mutations.setUniversalStyle(layer)
+}
+
+function mergeInMountOrder(entries: Entry[]): StyleDesc {
+  const merged: Record<string, unknown> = {}
+  for (const entry of entries) {
+    for (const [key, value] of Object.entries(entry.style)) {
+      delete merged[key]
+      merged[key] = value
+    }
+  }
+  return merged as StyleDesc
 }

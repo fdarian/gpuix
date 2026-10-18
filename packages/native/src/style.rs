@@ -577,7 +577,7 @@ impl<'de> Deserialize<'de> for DimensionValue {
 /// Style description that can be serialized from JS
 /// Note: This is only used for JSON deserialization, not direct napi binding
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", remote = "Self")]
 pub struct StyleDesc {
     // Display
     pub display: Option<String>,
@@ -1015,6 +1015,20 @@ pub struct StyleDesc {
     /// Counts the clones of this struct for the test renderer. Carries no data.
     #[serde(skip)]
     pub clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::STYLE_DESC }>,
+}
+
+/// The derived deserialiser is wrapped so that a shorthand drops the longhands written before it:
+/// see [`crate::css::covers`].
+impl<'de> Deserialize<'de> for StyleDesc {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        crate::css::covers::deserialize_ordered(deserializer)
+    }
+}
+
+impl Serialize for StyleDesc {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        StyleDesc::serialize(self, serializer)
+    }
 }
 
 pub use crate::color::{parse_color, parse_color_hex};
