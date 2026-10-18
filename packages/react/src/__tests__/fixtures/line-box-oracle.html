@@ -1,0 +1,583 @@
+<!doctype html>
+<!--
+  Oracle for the line box height of a block of text: how tall Chrome makes a block container for
+  a font, weight, size and line height, and for a container with a span of another weight or size.
+  Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
+      | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
+
+  Every box is `[x, y, width, height]` relative to its `data-case` box, so the case itself reads
+  `[0, 0, 1280, height]`. A `.text` or `.span` rect is the inline box: its height is the font's
+  rounded ascent plus rounded descent, whatever the line height is.
+  The fonts are macOS system fonts: Helvetica Neue, Helvetica, system-ui, Menlo, and Times and
+  Courier (with Helvetica, the families Blink widens the ascent of). Inter is not installed on
+  this machine, so it is not in the matrix; `-apple-system` is left out because this Chromium
+  does not resolve it to the system font (it measures as Times).
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .box { color: #000; }
+</style>
+</head>
+<body>
+
+<!-- font, weight, size and line height of a single-run block: the id is family.weight.size.lineHeight -->
+<div class="box" style="font: 400 12px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.12.normal"><span data-id="helvetica-neue.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.12.1"><span data-id="helvetica-neue.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.12.1_2"><span data-id="helvetica-neue.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.12.24px"><span data-id="helvetica-neue.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.12.20px"><span data-id="helvetica-neue.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.13.normal"><span data-id="helvetica-neue.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.13.1"><span data-id="helvetica-neue.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.13.1_2"><span data-id="helvetica-neue.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.13.24px"><span data-id="helvetica-neue.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.13.20px"><span data-id="helvetica-neue.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.14.normal"><span data-id="helvetica-neue.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.14.1"><span data-id="helvetica-neue.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.14.1_2"><span data-id="helvetica-neue.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.14.24px"><span data-id="helvetica-neue.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.14.20px"><span data-id="helvetica-neue.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.16.normal"><span data-id="helvetica-neue.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.16.1"><span data-id="helvetica-neue.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.16.1_2"><span data-id="helvetica-neue.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.16.24px"><span data-id="helvetica-neue.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.16.20px"><span data-id="helvetica-neue.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.20.normal"><span data-id="helvetica-neue.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.20.1"><span data-id="helvetica-neue.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.20.1_2"><span data-id="helvetica-neue.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.20.24px"><span data-id="helvetica-neue.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.20.20px"><span data-id="helvetica-neue.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.400.24.normal"><span data-id="helvetica-neue.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.400.24.1"><span data-id="helvetica-neue.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.400.24.1_2"><span data-id="helvetica-neue.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.24.24px"><span data-id="helvetica-neue.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.400.24.20px"><span data-id="helvetica-neue.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.12.normal"><span data-id="helvetica-neue.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.12.1"><span data-id="helvetica-neue.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.12.1_2"><span data-id="helvetica-neue.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.12.24px"><span data-id="helvetica-neue.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.12.20px"><span data-id="helvetica-neue.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.13.normal"><span data-id="helvetica-neue.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.13.1"><span data-id="helvetica-neue.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.13.1_2"><span data-id="helvetica-neue.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.13.24px"><span data-id="helvetica-neue.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.13.20px"><span data-id="helvetica-neue.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.14.normal"><span data-id="helvetica-neue.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.14.1"><span data-id="helvetica-neue.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.14.1_2"><span data-id="helvetica-neue.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.14.24px"><span data-id="helvetica-neue.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.14.20px"><span data-id="helvetica-neue.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.16.normal"><span data-id="helvetica-neue.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.16.1"><span data-id="helvetica-neue.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.16.1_2"><span data-id="helvetica-neue.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.16.24px"><span data-id="helvetica-neue.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.16.20px"><span data-id="helvetica-neue.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.20.normal"><span data-id="helvetica-neue.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.20.1"><span data-id="helvetica-neue.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.20.1_2"><span data-id="helvetica-neue.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.20.24px"><span data-id="helvetica-neue.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.20.20px"><span data-id="helvetica-neue.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal 'Helvetica Neue'" data-case data-id="helvetica-neue.700.24.normal"><span data-id="helvetica-neue.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 'Helvetica Neue'" data-case data-id="helvetica-neue.700.24.1"><span data-id="helvetica-neue.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 'Helvetica Neue'" data-case data-id="helvetica-neue.700.24.1_2"><span data-id="helvetica-neue.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.24.24px"><span data-id="helvetica-neue.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px 'Helvetica Neue'" data-case data-id="helvetica-neue.700.24.20px"><span data-id="helvetica-neue.700.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/normal Helvetica" data-case data-id="helvetica.400.12.normal"><span data-id="helvetica.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 Helvetica" data-case data-id="helvetica.400.12.1"><span data-id="helvetica.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 Helvetica" data-case data-id="helvetica.400.12.1_2"><span data-id="helvetica.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px Helvetica" data-case data-id="helvetica.400.12.24px"><span data-id="helvetica.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px Helvetica" data-case data-id="helvetica.400.12.20px"><span data-id="helvetica.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal Helvetica" data-case data-id="helvetica.400.13.normal"><span data-id="helvetica.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 Helvetica" data-case data-id="helvetica.400.13.1"><span data-id="helvetica.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 Helvetica" data-case data-id="helvetica.400.13.1_2"><span data-id="helvetica.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px Helvetica" data-case data-id="helvetica.400.13.24px"><span data-id="helvetica.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px Helvetica" data-case data-id="helvetica.400.13.20px"><span data-id="helvetica.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal Helvetica" data-case data-id="helvetica.400.14.normal"><span data-id="helvetica.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 Helvetica" data-case data-id="helvetica.400.14.1"><span data-id="helvetica.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 Helvetica" data-case data-id="helvetica.400.14.1_2"><span data-id="helvetica.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px Helvetica" data-case data-id="helvetica.400.14.24px"><span data-id="helvetica.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px Helvetica" data-case data-id="helvetica.400.14.20px"><span data-id="helvetica.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal Helvetica" data-case data-id="helvetica.400.16.normal"><span data-id="helvetica.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 Helvetica" data-case data-id="helvetica.400.16.1"><span data-id="helvetica.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 Helvetica" data-case data-id="helvetica.400.16.1_2"><span data-id="helvetica.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px Helvetica" data-case data-id="helvetica.400.16.24px"><span data-id="helvetica.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px Helvetica" data-case data-id="helvetica.400.16.20px"><span data-id="helvetica.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal Helvetica" data-case data-id="helvetica.400.20.normal"><span data-id="helvetica.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 Helvetica" data-case data-id="helvetica.400.20.1"><span data-id="helvetica.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 Helvetica" data-case data-id="helvetica.400.20.1_2"><span data-id="helvetica.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px Helvetica" data-case data-id="helvetica.400.20.24px"><span data-id="helvetica.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px Helvetica" data-case data-id="helvetica.400.20.20px"><span data-id="helvetica.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal Helvetica" data-case data-id="helvetica.400.24.normal"><span data-id="helvetica.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 Helvetica" data-case data-id="helvetica.400.24.1"><span data-id="helvetica.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 Helvetica" data-case data-id="helvetica.400.24.1_2"><span data-id="helvetica.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px Helvetica" data-case data-id="helvetica.400.24.24px"><span data-id="helvetica.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px Helvetica" data-case data-id="helvetica.400.24.20px"><span data-id="helvetica.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal Helvetica" data-case data-id="helvetica.700.12.normal"><span data-id="helvetica.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 Helvetica" data-case data-id="helvetica.700.12.1"><span data-id="helvetica.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 Helvetica" data-case data-id="helvetica.700.12.1_2"><span data-id="helvetica.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px Helvetica" data-case data-id="helvetica.700.12.24px"><span data-id="helvetica.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px Helvetica" data-case data-id="helvetica.700.12.20px"><span data-id="helvetica.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal Helvetica" data-case data-id="helvetica.700.13.normal"><span data-id="helvetica.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 Helvetica" data-case data-id="helvetica.700.13.1"><span data-id="helvetica.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 Helvetica" data-case data-id="helvetica.700.13.1_2"><span data-id="helvetica.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px Helvetica" data-case data-id="helvetica.700.13.24px"><span data-id="helvetica.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px Helvetica" data-case data-id="helvetica.700.13.20px"><span data-id="helvetica.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal Helvetica" data-case data-id="helvetica.700.14.normal"><span data-id="helvetica.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 Helvetica" data-case data-id="helvetica.700.14.1"><span data-id="helvetica.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 Helvetica" data-case data-id="helvetica.700.14.1_2"><span data-id="helvetica.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px Helvetica" data-case data-id="helvetica.700.14.24px"><span data-id="helvetica.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px Helvetica" data-case data-id="helvetica.700.14.20px"><span data-id="helvetica.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal Helvetica" data-case data-id="helvetica.700.16.normal"><span data-id="helvetica.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 Helvetica" data-case data-id="helvetica.700.16.1"><span data-id="helvetica.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 Helvetica" data-case data-id="helvetica.700.16.1_2"><span data-id="helvetica.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px Helvetica" data-case data-id="helvetica.700.16.24px"><span data-id="helvetica.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px Helvetica" data-case data-id="helvetica.700.16.20px"><span data-id="helvetica.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal Helvetica" data-case data-id="helvetica.700.20.normal"><span data-id="helvetica.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 Helvetica" data-case data-id="helvetica.700.20.1"><span data-id="helvetica.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 Helvetica" data-case data-id="helvetica.700.20.1_2"><span data-id="helvetica.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px Helvetica" data-case data-id="helvetica.700.20.24px"><span data-id="helvetica.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px Helvetica" data-case data-id="helvetica.700.20.20px"><span data-id="helvetica.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal Helvetica" data-case data-id="helvetica.700.24.normal"><span data-id="helvetica.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 Helvetica" data-case data-id="helvetica.700.24.1"><span data-id="helvetica.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 Helvetica" data-case data-id="helvetica.700.24.1_2"><span data-id="helvetica.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px Helvetica" data-case data-id="helvetica.700.24.24px"><span data-id="helvetica.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px Helvetica" data-case data-id="helvetica.700.24.20px"><span data-id="helvetica.700.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/normal system-ui" data-case data-id="system-ui.400.12.normal"><span data-id="system-ui.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 system-ui" data-case data-id="system-ui.400.12.1"><span data-id="system-ui.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 system-ui" data-case data-id="system-ui.400.12.1_2"><span data-id="system-ui.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px system-ui" data-case data-id="system-ui.400.12.24px"><span data-id="system-ui.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px system-ui" data-case data-id="system-ui.400.12.20px"><span data-id="system-ui.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal system-ui" data-case data-id="system-ui.400.13.normal"><span data-id="system-ui.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 system-ui" data-case data-id="system-ui.400.13.1"><span data-id="system-ui.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 system-ui" data-case data-id="system-ui.400.13.1_2"><span data-id="system-ui.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px system-ui" data-case data-id="system-ui.400.13.24px"><span data-id="system-ui.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px system-ui" data-case data-id="system-ui.400.13.20px"><span data-id="system-ui.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal system-ui" data-case data-id="system-ui.400.14.normal"><span data-id="system-ui.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 system-ui" data-case data-id="system-ui.400.14.1"><span data-id="system-ui.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 system-ui" data-case data-id="system-ui.400.14.1_2"><span data-id="system-ui.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px system-ui" data-case data-id="system-ui.400.14.24px"><span data-id="system-ui.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px system-ui" data-case data-id="system-ui.400.14.20px"><span data-id="system-ui.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal system-ui" data-case data-id="system-ui.400.16.normal"><span data-id="system-ui.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 system-ui" data-case data-id="system-ui.400.16.1"><span data-id="system-ui.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 system-ui" data-case data-id="system-ui.400.16.1_2"><span data-id="system-ui.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px system-ui" data-case data-id="system-ui.400.16.24px"><span data-id="system-ui.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px system-ui" data-case data-id="system-ui.400.16.20px"><span data-id="system-ui.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal system-ui" data-case data-id="system-ui.400.20.normal"><span data-id="system-ui.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 system-ui" data-case data-id="system-ui.400.20.1"><span data-id="system-ui.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 system-ui" data-case data-id="system-ui.400.20.1_2"><span data-id="system-ui.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px system-ui" data-case data-id="system-ui.400.20.24px"><span data-id="system-ui.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px system-ui" data-case data-id="system-ui.400.20.20px"><span data-id="system-ui.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal system-ui" data-case data-id="system-ui.400.24.normal"><span data-id="system-ui.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 system-ui" data-case data-id="system-ui.400.24.1"><span data-id="system-ui.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 system-ui" data-case data-id="system-ui.400.24.1_2"><span data-id="system-ui.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px system-ui" data-case data-id="system-ui.400.24.24px"><span data-id="system-ui.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px system-ui" data-case data-id="system-ui.400.24.20px"><span data-id="system-ui.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal system-ui" data-case data-id="system-ui.700.12.normal"><span data-id="system-ui.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 system-ui" data-case data-id="system-ui.700.12.1"><span data-id="system-ui.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 system-ui" data-case data-id="system-ui.700.12.1_2"><span data-id="system-ui.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px system-ui" data-case data-id="system-ui.700.12.24px"><span data-id="system-ui.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px system-ui" data-case data-id="system-ui.700.12.20px"><span data-id="system-ui.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal system-ui" data-case data-id="system-ui.700.13.normal"><span data-id="system-ui.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 system-ui" data-case data-id="system-ui.700.13.1"><span data-id="system-ui.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 system-ui" data-case data-id="system-ui.700.13.1_2"><span data-id="system-ui.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px system-ui" data-case data-id="system-ui.700.13.24px"><span data-id="system-ui.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px system-ui" data-case data-id="system-ui.700.13.20px"><span data-id="system-ui.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal system-ui" data-case data-id="system-ui.700.14.normal"><span data-id="system-ui.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 system-ui" data-case data-id="system-ui.700.14.1"><span data-id="system-ui.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 system-ui" data-case data-id="system-ui.700.14.1_2"><span data-id="system-ui.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px system-ui" data-case data-id="system-ui.700.14.24px"><span data-id="system-ui.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px system-ui" data-case data-id="system-ui.700.14.20px"><span data-id="system-ui.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal system-ui" data-case data-id="system-ui.700.16.normal"><span data-id="system-ui.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 system-ui" data-case data-id="system-ui.700.16.1"><span data-id="system-ui.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 system-ui" data-case data-id="system-ui.700.16.1_2"><span data-id="system-ui.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px system-ui" data-case data-id="system-ui.700.16.24px"><span data-id="system-ui.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px system-ui" data-case data-id="system-ui.700.16.20px"><span data-id="system-ui.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal system-ui" data-case data-id="system-ui.700.20.normal"><span data-id="system-ui.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 system-ui" data-case data-id="system-ui.700.20.1"><span data-id="system-ui.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 system-ui" data-case data-id="system-ui.700.20.1_2"><span data-id="system-ui.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px system-ui" data-case data-id="system-ui.700.20.24px"><span data-id="system-ui.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px system-ui" data-case data-id="system-ui.700.20.20px"><span data-id="system-ui.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal system-ui" data-case data-id="system-ui.700.24.normal"><span data-id="system-ui.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 system-ui" data-case data-id="system-ui.700.24.1"><span data-id="system-ui.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 system-ui" data-case data-id="system-ui.700.24.1_2"><span data-id="system-ui.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px system-ui" data-case data-id="system-ui.700.24.24px"><span data-id="system-ui.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px system-ui" data-case data-id="system-ui.700.24.20px"><span data-id="system-ui.700.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/normal Menlo" data-case data-id="menlo.400.12.normal"><span data-id="menlo.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 Menlo" data-case data-id="menlo.400.12.1"><span data-id="menlo.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 Menlo" data-case data-id="menlo.400.12.1_2"><span data-id="menlo.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px Menlo" data-case data-id="menlo.400.12.24px"><span data-id="menlo.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px Menlo" data-case data-id="menlo.400.12.20px"><span data-id="menlo.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal Menlo" data-case data-id="menlo.400.13.normal"><span data-id="menlo.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 Menlo" data-case data-id="menlo.400.13.1"><span data-id="menlo.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 Menlo" data-case data-id="menlo.400.13.1_2"><span data-id="menlo.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px Menlo" data-case data-id="menlo.400.13.24px"><span data-id="menlo.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px Menlo" data-case data-id="menlo.400.13.20px"><span data-id="menlo.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal Menlo" data-case data-id="menlo.400.14.normal"><span data-id="menlo.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 Menlo" data-case data-id="menlo.400.14.1"><span data-id="menlo.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 Menlo" data-case data-id="menlo.400.14.1_2"><span data-id="menlo.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px Menlo" data-case data-id="menlo.400.14.24px"><span data-id="menlo.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px Menlo" data-case data-id="menlo.400.14.20px"><span data-id="menlo.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal Menlo" data-case data-id="menlo.400.16.normal"><span data-id="menlo.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 Menlo" data-case data-id="menlo.400.16.1"><span data-id="menlo.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 Menlo" data-case data-id="menlo.400.16.1_2"><span data-id="menlo.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px Menlo" data-case data-id="menlo.400.16.24px"><span data-id="menlo.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px Menlo" data-case data-id="menlo.400.16.20px"><span data-id="menlo.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal Menlo" data-case data-id="menlo.400.20.normal"><span data-id="menlo.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 Menlo" data-case data-id="menlo.400.20.1"><span data-id="menlo.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 Menlo" data-case data-id="menlo.400.20.1_2"><span data-id="menlo.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px Menlo" data-case data-id="menlo.400.20.24px"><span data-id="menlo.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px Menlo" data-case data-id="menlo.400.20.20px"><span data-id="menlo.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal Menlo" data-case data-id="menlo.400.24.normal"><span data-id="menlo.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 Menlo" data-case data-id="menlo.400.24.1"><span data-id="menlo.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 Menlo" data-case data-id="menlo.400.24.1_2"><span data-id="menlo.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px Menlo" data-case data-id="menlo.400.24.24px"><span data-id="menlo.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px Menlo" data-case data-id="menlo.400.24.20px"><span data-id="menlo.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal Menlo" data-case data-id="menlo.700.12.normal"><span data-id="menlo.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 Menlo" data-case data-id="menlo.700.12.1"><span data-id="menlo.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 Menlo" data-case data-id="menlo.700.12.1_2"><span data-id="menlo.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px Menlo" data-case data-id="menlo.700.12.24px"><span data-id="menlo.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px Menlo" data-case data-id="menlo.700.12.20px"><span data-id="menlo.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal Menlo" data-case data-id="menlo.700.13.normal"><span data-id="menlo.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 Menlo" data-case data-id="menlo.700.13.1"><span data-id="menlo.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 Menlo" data-case data-id="menlo.700.13.1_2"><span data-id="menlo.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px Menlo" data-case data-id="menlo.700.13.24px"><span data-id="menlo.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px Menlo" data-case data-id="menlo.700.13.20px"><span data-id="menlo.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal Menlo" data-case data-id="menlo.700.14.normal"><span data-id="menlo.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 Menlo" data-case data-id="menlo.700.14.1"><span data-id="menlo.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 Menlo" data-case data-id="menlo.700.14.1_2"><span data-id="menlo.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px Menlo" data-case data-id="menlo.700.14.24px"><span data-id="menlo.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px Menlo" data-case data-id="menlo.700.14.20px"><span data-id="menlo.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal Menlo" data-case data-id="menlo.700.16.normal"><span data-id="menlo.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 Menlo" data-case data-id="menlo.700.16.1"><span data-id="menlo.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 Menlo" data-case data-id="menlo.700.16.1_2"><span data-id="menlo.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px Menlo" data-case data-id="menlo.700.16.24px"><span data-id="menlo.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px Menlo" data-case data-id="menlo.700.16.20px"><span data-id="menlo.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal Menlo" data-case data-id="menlo.700.20.normal"><span data-id="menlo.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 Menlo" data-case data-id="menlo.700.20.1"><span data-id="menlo.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 Menlo" data-case data-id="menlo.700.20.1_2"><span data-id="menlo.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px Menlo" data-case data-id="menlo.700.20.24px"><span data-id="menlo.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px Menlo" data-case data-id="menlo.700.20.20px"><span data-id="menlo.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal Menlo" data-case data-id="menlo.700.24.normal"><span data-id="menlo.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 Menlo" data-case data-id="menlo.700.24.1"><span data-id="menlo.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 Menlo" data-case data-id="menlo.700.24.1_2"><span data-id="menlo.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px Menlo" data-case data-id="menlo.700.24.24px"><span data-id="menlo.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px Menlo" data-case data-id="menlo.700.24.20px"><span data-id="menlo.700.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/normal Times" data-case data-id="times.400.12.normal"><span data-id="times.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 Times" data-case data-id="times.400.12.1"><span data-id="times.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 Times" data-case data-id="times.400.12.1_2"><span data-id="times.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px Times" data-case data-id="times.400.12.24px"><span data-id="times.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px Times" data-case data-id="times.400.12.20px"><span data-id="times.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal Times" data-case data-id="times.400.13.normal"><span data-id="times.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 Times" data-case data-id="times.400.13.1"><span data-id="times.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 Times" data-case data-id="times.400.13.1_2"><span data-id="times.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px Times" data-case data-id="times.400.13.24px"><span data-id="times.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px Times" data-case data-id="times.400.13.20px"><span data-id="times.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal Times" data-case data-id="times.400.14.normal"><span data-id="times.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 Times" data-case data-id="times.400.14.1"><span data-id="times.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 Times" data-case data-id="times.400.14.1_2"><span data-id="times.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px Times" data-case data-id="times.400.14.24px"><span data-id="times.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px Times" data-case data-id="times.400.14.20px"><span data-id="times.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal Times" data-case data-id="times.400.16.normal"><span data-id="times.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 Times" data-case data-id="times.400.16.1"><span data-id="times.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 Times" data-case data-id="times.400.16.1_2"><span data-id="times.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px Times" data-case data-id="times.400.16.24px"><span data-id="times.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px Times" data-case data-id="times.400.16.20px"><span data-id="times.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal Times" data-case data-id="times.400.20.normal"><span data-id="times.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 Times" data-case data-id="times.400.20.1"><span data-id="times.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 Times" data-case data-id="times.400.20.1_2"><span data-id="times.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px Times" data-case data-id="times.400.20.24px"><span data-id="times.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px Times" data-case data-id="times.400.20.20px"><span data-id="times.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal Times" data-case data-id="times.400.24.normal"><span data-id="times.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 Times" data-case data-id="times.400.24.1"><span data-id="times.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 Times" data-case data-id="times.400.24.1_2"><span data-id="times.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px Times" data-case data-id="times.400.24.24px"><span data-id="times.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px Times" data-case data-id="times.400.24.20px"><span data-id="times.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal Times" data-case data-id="times.700.12.normal"><span data-id="times.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 Times" data-case data-id="times.700.12.1"><span data-id="times.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 Times" data-case data-id="times.700.12.1_2"><span data-id="times.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px Times" data-case data-id="times.700.12.24px"><span data-id="times.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px Times" data-case data-id="times.700.12.20px"><span data-id="times.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal Times" data-case data-id="times.700.13.normal"><span data-id="times.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 Times" data-case data-id="times.700.13.1"><span data-id="times.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 Times" data-case data-id="times.700.13.1_2"><span data-id="times.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px Times" data-case data-id="times.700.13.24px"><span data-id="times.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px Times" data-case data-id="times.700.13.20px"><span data-id="times.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal Times" data-case data-id="times.700.14.normal"><span data-id="times.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 Times" data-case data-id="times.700.14.1"><span data-id="times.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 Times" data-case data-id="times.700.14.1_2"><span data-id="times.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px Times" data-case data-id="times.700.14.24px"><span data-id="times.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px Times" data-case data-id="times.700.14.20px"><span data-id="times.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal Times" data-case data-id="times.700.16.normal"><span data-id="times.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 Times" data-case data-id="times.700.16.1"><span data-id="times.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 Times" data-case data-id="times.700.16.1_2"><span data-id="times.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px Times" data-case data-id="times.700.16.24px"><span data-id="times.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px Times" data-case data-id="times.700.16.20px"><span data-id="times.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal Times" data-case data-id="times.700.20.normal"><span data-id="times.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 Times" data-case data-id="times.700.20.1"><span data-id="times.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 Times" data-case data-id="times.700.20.1_2"><span data-id="times.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px Times" data-case data-id="times.700.20.24px"><span data-id="times.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px Times" data-case data-id="times.700.20.20px"><span data-id="times.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal Times" data-case data-id="times.700.24.normal"><span data-id="times.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 Times" data-case data-id="times.700.24.1"><span data-id="times.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 Times" data-case data-id="times.700.24.1_2"><span data-id="times.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px Times" data-case data-id="times.700.24.24px"><span data-id="times.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px Times" data-case data-id="times.700.24.20px"><span data-id="times.700.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/normal Courier" data-case data-id="courier.400.12.normal"><span data-id="courier.400.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1 Courier" data-case data-id="courier.400.12.1"><span data-id="courier.400.12.1.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/1.2 Courier" data-case data-id="courier.400.12.1_2"><span data-id="courier.400.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/24px Courier" data-case data-id="courier.400.12.24px"><span data-id="courier.400.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 12px/20px Courier" data-case data-id="courier.400.12.20px"><span data-id="courier.400.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/normal Courier" data-case data-id="courier.400.13.normal"><span data-id="courier.400.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1 Courier" data-case data-id="courier.400.13.1"><span data-id="courier.400.13.1.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/1.2 Courier" data-case data-id="courier.400.13.1_2"><span data-id="courier.400.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/24px Courier" data-case data-id="courier.400.13.24px"><span data-id="courier.400.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 13px/20px Courier" data-case data-id="courier.400.13.20px"><span data-id="courier.400.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/normal Courier" data-case data-id="courier.400.14.normal"><span data-id="courier.400.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1 Courier" data-case data-id="courier.400.14.1"><span data-id="courier.400.14.1.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/1.2 Courier" data-case data-id="courier.400.14.1_2"><span data-id="courier.400.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/24px Courier" data-case data-id="courier.400.14.24px"><span data-id="courier.400.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 14px/20px Courier" data-case data-id="courier.400.14.20px"><span data-id="courier.400.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/normal Courier" data-case data-id="courier.400.16.normal"><span data-id="courier.400.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1 Courier" data-case data-id="courier.400.16.1"><span data-id="courier.400.16.1.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/1.2 Courier" data-case data-id="courier.400.16.1_2"><span data-id="courier.400.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/24px Courier" data-case data-id="courier.400.16.24px"><span data-id="courier.400.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 16px/20px Courier" data-case data-id="courier.400.16.20px"><span data-id="courier.400.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/normal Courier" data-case data-id="courier.400.20.normal"><span data-id="courier.400.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1 Courier" data-case data-id="courier.400.20.1"><span data-id="courier.400.20.1.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/1.2 Courier" data-case data-id="courier.400.20.1_2"><span data-id="courier.400.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/24px Courier" data-case data-id="courier.400.20.24px"><span data-id="courier.400.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 20px/20px Courier" data-case data-id="courier.400.20.20px"><span data-id="courier.400.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/normal Courier" data-case data-id="courier.400.24.normal"><span data-id="courier.400.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1 Courier" data-case data-id="courier.400.24.1"><span data-id="courier.400.24.1.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/1.2 Courier" data-case data-id="courier.400.24.1_2"><span data-id="courier.400.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/24px Courier" data-case data-id="courier.400.24.24px"><span data-id="courier.400.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 400 24px/20px Courier" data-case data-id="courier.400.24.20px"><span data-id="courier.400.24.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/normal Courier" data-case data-id="courier.700.12.normal"><span data-id="courier.700.12.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1 Courier" data-case data-id="courier.700.12.1"><span data-id="courier.700.12.1.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/1.2 Courier" data-case data-id="courier.700.12.1_2"><span data-id="courier.700.12.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/24px Courier" data-case data-id="courier.700.12.24px"><span data-id="courier.700.12.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 12px/20px Courier" data-case data-id="courier.700.12.20px"><span data-id="courier.700.12.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/normal Courier" data-case data-id="courier.700.13.normal"><span data-id="courier.700.13.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1 Courier" data-case data-id="courier.700.13.1"><span data-id="courier.700.13.1.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/1.2 Courier" data-case data-id="courier.700.13.1_2"><span data-id="courier.700.13.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/24px Courier" data-case data-id="courier.700.13.24px"><span data-id="courier.700.13.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 13px/20px Courier" data-case data-id="courier.700.13.20px"><span data-id="courier.700.13.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/normal Courier" data-case data-id="courier.700.14.normal"><span data-id="courier.700.14.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1 Courier" data-case data-id="courier.700.14.1"><span data-id="courier.700.14.1.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/1.2 Courier" data-case data-id="courier.700.14.1_2"><span data-id="courier.700.14.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/24px Courier" data-case data-id="courier.700.14.24px"><span data-id="courier.700.14.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 14px/20px Courier" data-case data-id="courier.700.14.20px"><span data-id="courier.700.14.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/normal Courier" data-case data-id="courier.700.16.normal"><span data-id="courier.700.16.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1 Courier" data-case data-id="courier.700.16.1"><span data-id="courier.700.16.1.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/1.2 Courier" data-case data-id="courier.700.16.1_2"><span data-id="courier.700.16.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/24px Courier" data-case data-id="courier.700.16.24px"><span data-id="courier.700.16.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 16px/20px Courier" data-case data-id="courier.700.16.20px"><span data-id="courier.700.16.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/normal Courier" data-case data-id="courier.700.20.normal"><span data-id="courier.700.20.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1 Courier" data-case data-id="courier.700.20.1"><span data-id="courier.700.20.1.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/1.2 Courier" data-case data-id="courier.700.20.1_2"><span data-id="courier.700.20.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/24px Courier" data-case data-id="courier.700.20.24px"><span data-id="courier.700.20.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 20px/20px Courier" data-case data-id="courier.700.20.20px"><span data-id="courier.700.20.20px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/normal Courier" data-case data-id="courier.700.24.normal"><span data-id="courier.700.24.normal.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1 Courier" data-case data-id="courier.700.24.1"><span data-id="courier.700.24.1.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/1.2 Courier" data-case data-id="courier.700.24.1_2"><span data-id="courier.700.24.1_2.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/24px Courier" data-case data-id="courier.700.24.24px"><span data-id="courier.700.24.24px.text">Hxg</span></div>
+<div class="box" style="font: 700 24px/20px Courier" data-case data-id="courier.700.24.20px"><span data-id="courier.700.24.20px.text">Hxg</span></div>
+
+<!-- a container of one font with a span of another: id is mixed.family.container-span.lineHeight -->
+<div class="box" style="font: 400 16px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica-neue.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica-neue.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica-neue.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica-neue.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica-neue.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica-neue.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica-neue.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica-neue.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica-neue.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica-neue.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica-neue.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px 'Helvetica Neue'" data-case data-id="mixed.helvetica-neue.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica-neue.bold16-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Helvetica" data-case data-id="mixed.helvetica.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Helvetica" data-case data-id="mixed.helvetica.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal Helvetica" data-case data-id="mixed.helvetica.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Helvetica" data-case data-id="mixed.helvetica.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Helvetica" data-case data-id="mixed.helvetica.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal Helvetica" data-case data-id="mixed.helvetica.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Helvetica" data-case data-id="mixed.helvetica.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Helvetica" data-case data-id="mixed.helvetica.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 Helvetica" data-case data-id="mixed.helvetica.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Helvetica" data-case data-id="mixed.helvetica.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Helvetica" data-case data-id="mixed.helvetica.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 Helvetica" data-case data-id="mixed.helvetica.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Helvetica" data-case data-id="mixed.helvetica.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Helvetica" data-case data-id="mixed.helvetica.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 Helvetica" data-case data-id="mixed.helvetica.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Helvetica" data-case data-id="mixed.helvetica.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Helvetica" data-case data-id="mixed.helvetica.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 Helvetica" data-case data-id="mixed.helvetica.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Helvetica" data-case data-id="mixed.helvetica.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Helvetica" data-case data-id="mixed.helvetica.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px Helvetica" data-case data-id="mixed.helvetica.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Helvetica" data-case data-id="mixed.helvetica.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Helvetica" data-case data-id="mixed.helvetica.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px Helvetica" data-case data-id="mixed.helvetica.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Helvetica" data-case data-id="mixed.helvetica.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.helvetica.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Helvetica" data-case data-id="mixed.helvetica.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px Helvetica" data-case data-id="mixed.helvetica.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.helvetica.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Helvetica" data-case data-id="mixed.helvetica.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Helvetica" data-case data-id="mixed.helvetica.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.helvetica.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px Helvetica" data-case data-id="mixed.helvetica.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.helvetica.bold16-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal system-ui" data-case data-id="mixed.system-ui.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.system-ui.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal system-ui" data-case data-id="mixed.system-ui.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal system-ui" data-case data-id="mixed.system-ui.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal system-ui" data-case data-id="mixed.system-ui.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal system-ui" data-case data-id="mixed.system-ui.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.system-ui.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal system-ui" data-case data-id="mixed.system-ui.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 system-ui" data-case data-id="mixed.system-ui.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.system-ui.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 system-ui" data-case data-id="mixed.system-ui.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 system-ui" data-case data-id="mixed.system-ui.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 system-ui" data-case data-id="mixed.system-ui.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 system-ui" data-case data-id="mixed.system-ui.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.system-ui.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 system-ui" data-case data-id="mixed.system-ui.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 system-ui" data-case data-id="mixed.system-ui.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.system-ui.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 system-ui" data-case data-id="mixed.system-ui.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 system-ui" data-case data-id="mixed.system-ui.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 system-ui" data-case data-id="mixed.system-ui.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 system-ui" data-case data-id="mixed.system-ui.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.system-ui.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 system-ui" data-case data-id="mixed.system-ui.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px system-ui" data-case data-id="mixed.system-ui.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.system-ui.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px system-ui" data-case data-id="mixed.system-ui.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px system-ui" data-case data-id="mixed.system-ui.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px system-ui" data-case data-id="mixed.system-ui.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px system-ui" data-case data-id="mixed.system-ui.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.system-ui.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px system-ui" data-case data-id="mixed.system-ui.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px system-ui" data-case data-id="mixed.system-ui.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.system-ui.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px system-ui" data-case data-id="mixed.system-ui.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px system-ui" data-case data-id="mixed.system-ui.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.system-ui.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px system-ui" data-case data-id="mixed.system-ui.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px system-ui" data-case data-id="mixed.system-ui.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.system-ui.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px system-ui" data-case data-id="mixed.system-ui.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.system-ui.bold16-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Menlo" data-case data-id="mixed.menlo.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.menlo.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Menlo" data-case data-id="mixed.menlo.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal Menlo" data-case data-id="mixed.menlo.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Menlo" data-case data-id="mixed.menlo.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Menlo" data-case data-id="mixed.menlo.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.menlo.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal Menlo" data-case data-id="mixed.menlo.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Menlo" data-case data-id="mixed.menlo.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.menlo.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Menlo" data-case data-id="mixed.menlo.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 Menlo" data-case data-id="mixed.menlo.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Menlo" data-case data-id="mixed.menlo.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Menlo" data-case data-id="mixed.menlo.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.menlo.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 Menlo" data-case data-id="mixed.menlo.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Menlo" data-case data-id="mixed.menlo.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.menlo.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Menlo" data-case data-id="mixed.menlo.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 Menlo" data-case data-id="mixed.menlo.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Menlo" data-case data-id="mixed.menlo.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Menlo" data-case data-id="mixed.menlo.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.menlo.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 Menlo" data-case data-id="mixed.menlo.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Menlo" data-case data-id="mixed.menlo.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.menlo.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Menlo" data-case data-id="mixed.menlo.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px Menlo" data-case data-id="mixed.menlo.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Menlo" data-case data-id="mixed.menlo.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Menlo" data-case data-id="mixed.menlo.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.menlo.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px Menlo" data-case data-id="mixed.menlo.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Menlo" data-case data-id="mixed.menlo.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.menlo.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Menlo" data-case data-id="mixed.menlo.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px Menlo" data-case data-id="mixed.menlo.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.menlo.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Menlo" data-case data-id="mixed.menlo.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Menlo" data-case data-id="mixed.menlo.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.menlo.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px Menlo" data-case data-id="mixed.menlo.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.menlo.bold16-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Times" data-case data-id="mixed.times.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.times.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Times" data-case data-id="mixed.times.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal Times" data-case data-id="mixed.times.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Times" data-case data-id="mixed.times.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Times" data-case data-id="mixed.times.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.times.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal Times" data-case data-id="mixed.times.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Times" data-case data-id="mixed.times.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.times.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Times" data-case data-id="mixed.times.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 Times" data-case data-id="mixed.times.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Times" data-case data-id="mixed.times.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Times" data-case data-id="mixed.times.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.times.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 Times" data-case data-id="mixed.times.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Times" data-case data-id="mixed.times.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.times.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Times" data-case data-id="mixed.times.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 Times" data-case data-id="mixed.times.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Times" data-case data-id="mixed.times.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Times" data-case data-id="mixed.times.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.times.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 Times" data-case data-id="mixed.times.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Times" data-case data-id="mixed.times.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.times.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Times" data-case data-id="mixed.times.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px Times" data-case data-id="mixed.times.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Times" data-case data-id="mixed.times.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Times" data-case data-id="mixed.times.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.times.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px Times" data-case data-id="mixed.times.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Times" data-case data-id="mixed.times.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.times.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Times" data-case data-id="mixed.times.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px Times" data-case data-id="mixed.times.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.times.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Times" data-case data-id="mixed.times.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Times" data-case data-id="mixed.times.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.times.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px Times" data-case data-id="mixed.times.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.times.bold16-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Courier" data-case data-id="mixed.courier.reg16-bold16.normal">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.courier.reg16-bold16.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/normal Courier" data-case data-id="mixed.courier.reg16-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg16-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/normal Courier" data-case data-id="mixed.courier.reg20-bold20.normal">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg20-bold20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Courier" data-case data-id="mixed.courier.bold20-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold20-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/normal Courier" data-case data-id="mixed.courier.bold20-reg16.normal">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.courier.bold20-reg16.normal.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/normal Courier" data-case data-id="mixed.courier.bold16-reg20.normal">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold16-reg20.normal.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Courier" data-case data-id="mixed.courier.reg16-bold16.1">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.courier.reg16-bold16.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1 Courier" data-case data-id="mixed.courier.reg16-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg16-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1 Courier" data-case data-id="mixed.courier.reg20-bold20.1">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg20-bold20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Courier" data-case data-id="mixed.courier.bold20-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold20-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1 Courier" data-case data-id="mixed.courier.bold20-reg16.1">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.courier.bold20-reg16.1.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1 Courier" data-case data-id="mixed.courier.bold16-reg20.1">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold16-reg20.1.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Courier" data-case data-id="mixed.courier.reg16-bold16.1_2">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.courier.reg16-bold16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/1.2 Courier" data-case data-id="mixed.courier.reg16-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg16-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/1.2 Courier" data-case data-id="mixed.courier.reg20-bold20.1_2">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg20-bold20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Courier" data-case data-id="mixed.courier.bold20-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold20-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/1.2 Courier" data-case data-id="mixed.courier.bold20-reg16.1_2">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.courier.bold20-reg16.1_2.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/1.2 Courier" data-case data-id="mixed.courier.bold16-reg20.1_2">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold16-reg20.1_2.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Courier" data-case data-id="mixed.courier.reg16-bold16.24px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.courier.reg16-bold16.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/24px Courier" data-case data-id="mixed.courier.reg16-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg16-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/24px Courier" data-case data-id="mixed.courier.reg20-bold20.24px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg20-bold20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Courier" data-case data-id="mixed.courier.bold20-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold20-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/24px Courier" data-case data-id="mixed.courier.bold20-reg16.24px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.courier.bold20-reg16.24px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/24px Courier" data-case data-id="mixed.courier.bold16-reg20.24px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold16-reg20.24px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Courier" data-case data-id="mixed.courier.reg16-bold16.20px">H<span style="font-weight: 700; font-size: 16px" data-id="mixed.courier.reg16-bold16.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 16px/20px Courier" data-case data-id="mixed.courier.reg16-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg16-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 400 20px/20px Courier" data-case data-id="mixed.courier.reg20-bold20.20px">H<span style="font-weight: 700; font-size: 20px" data-id="mixed.courier.reg20-bold20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Courier" data-case data-id="mixed.courier.bold20-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold20-reg20.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 20px/20px Courier" data-case data-id="mixed.courier.bold20-reg16.20px">H<span style="font-weight: 400; font-size: 16px" data-id="mixed.courier.bold20-reg16.20px.span">xg</span>H</div>
+<div class="box" style="font: 700 16px/20px Courier" data-case data-id="mixed.courier.bold16-reg20.20px">H<span style="font-weight: 400; font-size: 20px" data-id="mixed.courier.bold16-reg20.20px.span">xg</span>H</div>
+
+<script>
+  const rects = {}
+  for (const element of document.querySelectorAll('[data-id]')) {
+    const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+    const { x, y, width, height } = element.getBoundingClientRect()
+    rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(rects))
+</script>
+</body>
+</html>
