@@ -1486,6 +1486,122 @@
     ]
    }
   },
+  "invalid border after top width": {
+   "host": {
+    "borderStyle": "solid",
+    "borderTopWidth": 5,
+    "border": "garbage"
+   },
+   "child": {},
+   "child2": {},
+   "rects": {
+    "child": [
+     3,
+     5,
+     20,
+     10
+    ],
+    "child2": [
+     23,
+     5,
+     20,
+     10
+    ],
+    "host": [
+     0,
+     0,
+     120,
+     90
+    ]
+   }
+  },
+  "invalid border-block after top width": {
+   "host": {
+    "borderStyle": "solid",
+    "borderTopWidth": 5,
+    "borderBlock": "1px 2px"
+   },
+   "child": {},
+   "child2": {},
+   "rects": {
+    "child": [
+     3,
+     5,
+     20,
+     10
+    ],
+    "child2": [
+     23,
+     5,
+     20,
+     10
+    ],
+    "host": [
+     0,
+     0,
+     120,
+     90
+    ]
+   }
+  },
+  "invalid border-color after top width": {
+   "host": {
+    "borderStyle": "solid",
+    "borderTopWidth": 5,
+    "borderColor": "red bogus"
+   },
+   "child": {},
+   "child2": {},
+   "rects": {
+    "child": [
+     3,
+     5,
+     20,
+     10
+    ],
+    "child2": [
+     23,
+     5,
+     20,
+     10
+    ],
+    "host": [
+     0,
+     0,
+     120,
+     90
+    ]
+   }
+  },
+  "invalid border-style after top style": {
+   "host": {
+    "borderWidth": 4,
+    "borderTopStyle": "solid",
+    "borderStyle": "wavy"
+   },
+   "child": {},
+   "child2": {},
+   "rects": {
+    "child": [
+     0,
+     4,
+     20,
+     10
+    ],
+    "child2": [
+     20,
+     4,
+     20,
+     10
+    ],
+    "host": [
+     0,
+     0,
+     120,
+     90
+    ]
+   }
+  },
   "grid-column then start": {
    "host": {
     "display": "grid",

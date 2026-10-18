@@ -135,6 +135,16 @@ pub(crate) fn parse_line(value: &str, parse_style: fn(&str) -> Option<LineStyle>
     })
 }
 
+/// Whether CSS keeps a `border` (or side) shorthand: the grammar holds and the colour resolves.
+pub(crate) fn is_valid_shorthand(value: &str, colors: &crate::color::ColorContext) -> bool {
+    parse_border(value).is_some_and(|side| colors.resolve(side.color).is_some())
+}
+
+/// Whether CSS keeps a `border-color`: one to four colours that resolve.
+pub(crate) fn is_valid_colors(value: &str, colors: &crate::color::ColorContext) -> bool {
+    parse_color_sides(value).is_some_and(|sides| sides.iter().all(|color| colors.resolve(color).is_some()))
+}
+
 pub(crate) const MEDIUM: LinearLength = LinearLength::px(3.0);
 
 /// A border or outline width: `thin`, `medium`, `thick` (Chrome's 1, 3 and 5px)

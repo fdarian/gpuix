@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::color::{ColorContext, Scheme};
 use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
-use crate::css::border::{parse_color_sides, parse_style_sides};
+use crate::css::border::{self, parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
 use crate::css::{clip_path, filter, text_box, text_decoration};
 use crate::style::{BackgroundValue, StyleDesc};
@@ -205,7 +205,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
 /// in for it, and so does the initial length context: whether a length is valid
 /// never depends on what it resolves to. Parsing here is not reused for
 /// painting: the style holds the text.
-fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
+pub(crate) fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
     let colors = ColorContext::root(Scheme::Light);
     let lengths = LengthContext::initial(0.0, 0.0);
     let mut cleaned: Option<StyleDesc> = None;
@@ -236,6 +236,15 @@ fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         background_repeat: |value| background::is_valid_list::<Background>(Property::Repeat, value, &lengths),
         background_origin: |value| background::is_valid_list::<Background>(Property::Origin, value, &lengths),
         background_clip: |value| background::is_valid_list::<Background>(Property::Clip, value, &lengths),
+        border: |value| border::is_valid_shorthand(value, &colors),
+        border_block: |value| border::is_valid_shorthand(value, &colors),
+        border_inline: |value| border::is_valid_shorthand(value, &colors),
+        border_top: |value| border::is_valid_shorthand(value, &colors),
+        border_right: |value| border::is_valid_shorthand(value, &colors),
+        border_bottom: |value| border::is_valid_shorthand(value, &colors),
+        border_left: |value| border::is_valid_shorthand(value, &colors),
+        border_color: |value| border::is_valid_colors(value, &colors),
+        border_style: |value| border::parse_style_sides(value).is_some(),
         text_decoration: |value| text_decoration::is_valid_shorthand(value),
         text_box: |value| text_box::is_valid_shorthand(value),
     );
@@ -480,6 +489,24 @@ mod tests {
         assert_eq!(hovered.text_wrap_style, None);
         assert!(hovered.text_wrap.is_some());
         assert!(resolve_state_styles(&base, false, false).text_wrap_mode.is_some());
+    }
+
+    #[test]
+    fn an_invalid_state_shorthand_leaves_the_base_longhands_alone() {
+        let base = style(
+            r##"{
+                "borderTopWidth": 3, "borderTopColor": "red", "borderTopStyle": "solid",
+                "hover": { "border": "garbage" }, "active": { "borderColor": "red bogus", "borderStyle": "wavy" }
+            }"##,
+        );
+        for (hovered, pressed) in [(true, false), (false, true)] {
+            let resolved = resolve_state_styles(&base, hovered, pressed);
+            assert_eq!(resolved.border_top_width, Some(LinearLength::px(3.0)));
+            assert_eq!(resolved.border_top_color.as_deref(), Some("red"));
+            assert_eq!(resolved.border_top_style.as_deref(), Some("solid"));
+        }
+        let valid = style(r##"{ "borderTopWidth": 3, "hover": { "border": "1px solid blue" } }"##);
+        assert_eq!(resolve_state_styles(&valid, true, false).border_top_width, None);
     }
 
     #[test]

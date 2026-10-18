@@ -19,7 +19,7 @@ use std::sync::LazyLock;
 use rustc_hash::FxHashMap;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 
-use crate::events::state_styles::{split_border_all_sides, AllSides};
+use crate::events::state_styles::{split_border_all_sides, without_invalid_values, AllSides};
 use crate::style::StyleDesc;
 
 type KeyId = usize;
@@ -213,8 +213,20 @@ impl Covers {
     /// shorthand for some sides is pushed down to the other sides, as in
     /// [`drop_shadowed_longhands`](crate::events::state_styles).
     fn normalise(&self, style: &mut StyleDesc, written: &[KeyId]) {
+        if !written.iter().skip(1).any(|&key| self.is_shorthand(key)) {
+            return;
+        }
+        // CSS drops an invalid declaration whole, so one that is invalid covers nothing.
+        let invalid: Vec<KeyId> = {
+            let valid = without_invalid_values(style);
+            written
+                .iter()
+                .copied()
+                .filter(|&key| self.is_shorthand(key) && (self.keys[key].is_set)(style) && !(self.keys[key].is_set)(&valid))
+                .collect()
+        };
         for (index, &key) in written.iter().enumerate() {
-            if !self.is_shorthand(key) || !(self.keys[key].is_set)(style) {
+            if !self.is_shorthand(key) || !(self.keys[key].is_set)(style) || invalid.contains(&key) {
                 continue;
             }
             let later = &written[index + 1..];
@@ -535,6 +547,35 @@ mod tests {
         assert_eq!(style.padding_left, None);
         let hover = style.hover.expect("hover");
         assert_eq!(hover.padding_left, Some(LinearLength::px(2.0)));
+    }
+
+    #[test]
+    fn an_invalid_shorthand_covers_nothing_as_css_drops_the_declaration() {
+        // Each: a longhand, an invalid shorthand after it, and the longhand's key.
+        for (longhand, shorthand, probe) in [
+            (r#""borderTopWidth": 3"#, r#""border": "garbage""#, "borderTopWidth"),
+            (r#""borderTopWidth": 3"#, r#""border": "1px solid not-a-colour""#, "borderTopWidth"),
+            (r#""borderTopWidth": 3"#, r#""borderBlock": "1px 2px""#, "borderTopWidth"),
+            (r#""borderLeftWidth": 3"#, r#""borderLeft": "solid solid""#, "borderLeftWidth"),
+            (r#""borderTopColor": "red""#, r#""borderColor": "red bogus""#, "borderTopColor"),
+            (r#""borderTopStyle": "solid""#, r#""borderStyle": "wavy""#, "borderTopStyle"),
+            (r#""backgroundColor": "red""#, r#""background": "nonsense""#, "backgroundColor"),
+            (r#""maskImage": "none""#, r#""mask": "bogus bogus""#, "maskImage"),
+            (r#""textDecorationColor": "red""#, r#""textDecoration": "bogus""#, "textDecorationColor"),
+            (r#""textBoxTrim": "trim-start""#, r#""textBox": "bogus""#, "textBoxTrim"),
+        ] {
+            let style = parse(&format!("{{ {longhand}, {shorthand} }}"));
+            assert!(is_set(&style, probe), "{shorthand} after {longhand} is invalid and covers nothing");
+        }
+        let valid = parse(r#"{ "borderTopWidth": 3, "border": "1px solid red" }"#);
+        assert!(!is_set(&valid, "borderTopWidth"));
+    }
+
+    #[test]
+    fn a_typed_shorthand_with_an_invalid_value_fails_the_style_instead() {
+        for json in [r#"{ "paddingLeft": 4, "padding": "1px foo" }"#, r#"{ "flexGrow": 1, "flex": "nonsense" }"#] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
     }
 
     #[test]
