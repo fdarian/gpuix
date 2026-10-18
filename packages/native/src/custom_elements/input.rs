@@ -1819,7 +1819,7 @@ impl TextEditorState {
         // Taffy measures after parent `with_text_style` is gone, so
         // `window.line_height()` is always 16×φ. Use the style captured during
         // request_layout instead.
-        self.line_height = style.line_height_in_pixels(rem_size);
+        self.line_height = window.pixel_snap(window.text_system().line_height(style, rem_size));
         let color = if is_placeholder {
             gpui::rgba(0x8f8f8fff).into()
         } else if self.disabled {

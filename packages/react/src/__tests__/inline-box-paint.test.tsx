@@ -13,8 +13,9 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
-/** The content area of Menlo at 16px: its ascent plus its descent. */
-const CONTENT = 18.625
+/** The content area of Menlo at 16px: its ascent plus its descent, which Chrome rounds to
+ *  whole pixels (14.85 to 15, 3.77 to 4). */
+const CONTENT = 19
 const PAGE = { width: 300, height: 120, padding: 20, backgroundColor: "#ffffff" } as const
 
 type Rgba = [number, number, number, number]
@@ -69,8 +70,9 @@ describeNative("background and border on inline boxes", () => {
     return { testRoot, renderer, shoot, paragraph, bounds }
   }
 
-  /** The line `line`'s content area starts this far below the top of the line. */
-  const inset = (lineHeight: number) => (lineHeight - CONTENT) / 2
+  /** The line `line`'s content area starts this far below the top of the line: half the
+   *  leading, rounded down. */
+  const inset = (lineHeight: number) => Math.floor((lineHeight - CONTENT) / 2)
 
   it("paints a span's background and padding as the content area plus the padding", () => {
     const { testRoot, shoot, paragraph } = setup(

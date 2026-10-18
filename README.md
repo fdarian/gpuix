@@ -2913,6 +2913,20 @@ A `<span>` with a style that needs a box of its own (`position: absolute`,
 inline-block`, `inline-flex` and `inline-grid` keep it on its line, as a box of its own,
 see [Inline-block, inline-flex, inline-grid and inline-table](#inline-block-inline-flex-inline-grid-and-inline-table).
 
+### Line height
+
+A line is as tall as Chrome on macOS makes it. The ascent, descent and line gap of a
+font are each rounded to a whole pixel at the size it is used, so a font's lines do not
+scale with its size, and Times, Helvetica and Courier get a taller ascent, as in Chrome.
+`lineHeight: 'normal'`, which is also what an element that sets none has, is the three
+together (Helvetica at 16px is 18px, Menlo 19px). What a line has over the font's ascent
+and descent is shared around them, the half above rounded down.
+
+The strut of a line is the element's own font and line height. A run in another weight,
+family or size is a box of its own on the line, and the line is as tall as the strut and
+every box together need, so a bold span in a regular paragraph can make its line a pixel
+taller. `normal` on a span is the height of the span's font.
+
 ### Space around an inline box
 
 `marginLeft`, `marginRight`, `paddingLeft`, `paddingRight`, `borderLeftWidth` and
@@ -3561,7 +3575,8 @@ when the operating system includes their paths as fallback text. Mixed text and
 image clipboard content still pastes its text.
 
 **`fontSize` and `lineHeight`** in `style` size each row. Without `lineHeight`,
-the row uses GPUI's default leading, so a larger `fontSize` grows the box.
+the row is `normal`, the height of the font (see [Line height](#line-height)), so a
+larger `fontSize` grows the box.
 Pass `lineHeight` to set the row (`1.4` times the font size, or a length like
 `"20px"`). `minRows` and `maxRows` multiply
 that height. An explicit `height` still overrides both.

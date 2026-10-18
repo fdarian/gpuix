@@ -596,8 +596,9 @@ describeNative("native text editors", () => {
 
   it("scales a row from fontSize when lineHeight is unset", () => {
     testRoot.render(<input value="one" style={{ width: 300, fontSize: 28 }} />)
-    // GPUI default leading is phi, so 28px * 1.618 rounds to 45.
-    expect(editorBounds("input").height).toBe(45)
+    // `line-height: normal` is the height of the font, and an input is set in the system UI font:
+    // Chrome makes a `system-ui` line 33px tall at 28px.
+    expect(editorBounds("input").height).toBe(33)
   })
 
   it("uses lineHeight on a single-line input", () => {

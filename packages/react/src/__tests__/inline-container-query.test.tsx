@@ -236,7 +236,9 @@ describeNative("inline-block inside a query container", () => {
       // One A is a square of the font size, 10% of the 400px container (a text is as wide as its advance up to 1/64 of a pixel).
       expect(wide).toBeGreaterThanOrEqual(40)
       expect(wide).toBeLessThanOrEqual(41)
-      expect(tall).toBeGreaterThan(40)
+      // GpuixTestSquare rises one em above the baseline and falls none below, so `line-height: normal`
+      // is the font size.
+      expect(tall).toBe(40)
       expect(paintedFrames(() => render(app(ref, 200)))).toBe(1)
       const [, , narrow, short] = rect("box")
       expect(Math.abs(narrow - wide / 2)).toBeLessThanOrEqual(1)

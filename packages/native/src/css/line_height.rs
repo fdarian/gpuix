@@ -32,10 +32,10 @@ impl LineHeight {
     }
 
     /// The text-style line height an element declaring this sets.
-    pub(crate) fn text_style_value(&self, lengths: &LengthContext) -> gpui::DefiniteLength {
+    pub(crate) fn text_style_value(&self, lengths: &LengthContext) -> gpui::LineHeight {
         match self {
-            Self::Normal => gpui::phi(),
-            Self::Multiplier(multiplier) => gpui::relative(*multiplier as f32),
+            Self::Normal => gpui::LineHeight::Normal,
+            Self::Multiplier(multiplier) => gpui::relative(*multiplier as f32).into(),
             Self::Length(_) => {
                 let px = self.resolve_px(lengths).expect("a length resolves to px");
                 gpui::px(px.min(MAX_LENGTH) as f32).into()
@@ -204,11 +204,11 @@ mod tests {
     #[test]
     fn the_text_style_value_is_a_fraction_for_a_multiplier_and_px_for_a_length() {
         let lengths = lengths();
-        assert_eq!(LineHeight::Multiplier(2.0).text_style_value(&lengths), gpui::relative(2.0));
-        assert_eq!(LineHeight::Normal.text_style_value(&lengths), gpui::phi());
+        assert_eq!(LineHeight::Multiplier(2.0).text_style_value(&lengths), gpui::relative(2.0).into());
+        assert_eq!(LineHeight::Normal.text_style_value(&lengths), gpui::LineHeight::Normal);
         assert_eq!(
             parse(r#""1.5em""#).unwrap().text_style_value(&lengths),
-            gpui::DefiniteLength::from(gpui::px(30.0))
+            gpui::LineHeight::from(gpui::px(30.0))
         );
     }
 }

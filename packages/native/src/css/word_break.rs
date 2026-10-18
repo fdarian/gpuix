@@ -201,7 +201,7 @@ mod tests {
             let mut element = gpui::TextStyleRefinement::default();
             apply(&mut element, word_break, overflow_wrap);
             text.refine(&element);
-            text.layout_options()
+            text.layout_options(&gpui::TextSystem::new(std::sync::Arc::new(gpui::NoopTextSystem::new())))
         };
         let initial = options(None, None);
         assert_eq!(initial.word_break, gpui::WordBreak::Normal);

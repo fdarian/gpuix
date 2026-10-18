@@ -11,13 +11,16 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 const LINE = 20
 const TEXT = { fontSize: 16, lineHeight: `${LINE}px`, fontFamily: "Menlo", color: "#000000" } as const
-/** What the box of a span is tall: the content area of Menlo at 16px (its ascent
- *  plus its descent), centred in the line box, not the 20px line. */
-const CONTENT = 18.625
-const INSET = (LINE - CONTENT) / 2
-/** Menlo's ascent and descent in em: 1901 and 483 units of 2048. */
-const ASCENT = 1901 / 2048
-const DESCENT = 483 / 2048
+/** What the box of a span is tall: the content area of Menlo at 16px, centred in the line
+ *  box, not the 20px line. Chrome rounds Menlo's ascent (1901 units of 2048, 14.85px) and
+ *  descent (483, 3.77px) to whole pixels, 15 and 4, and the half-leading above them down. */
+const ASCENT = 15
+const DESCENT = 4
+const CONTENT = ASCENT + DESCENT
+const INSET = Math.floor((LINE - CONTENT) / 2)
+/** The same at 32px: 29.7 and 7.55px rounded. */
+const BIG_ASCENT = 30
+const BIG_DESCENT = 8
 
 let measuredColumn: number | undefined
 
@@ -150,11 +153,11 @@ describeNative("bounds of an inline element", () => {
       const big = element("big").getBoundingClientRect()
 
       expect(small.height).toBeCloseTo(CONTENT, 2)
-      expect(big.height, "twice the size is twice the content area").toBeCloseTo(2 * CONTENT, 2)
+      expect(big.height, "the content area of the bigger font").toBeCloseTo(BIG_ASCENT + BIG_DESCENT, 2)
       expect(big.width).toBeCloseTo(2 * 2 * column, 2)
       expect(big.x).toBeCloseTo(small.right, 2)
-      expect(small.y - big.y, "the tops differ by the difference of the ascents").toBeCloseTo(16 * ASCENT, 0)
-      expect(big.bottom - small.bottom, "the bottoms by that of the descents").toBeCloseTo(16 * DESCENT, 0)
+      expect(small.y - big.y, "the tops differ by the difference of the ascents").toBeCloseTo(BIG_ASCENT - ASCENT, 2)
+      expect(big.bottom - small.bottom, "the bottoms by that of the descents").toBeCloseTo(BIG_DESCENT - DESCENT, 2)
       expect(text.height, "the larger text grows its line").toBeGreaterThan(LINE)
     } finally {
       unmount()

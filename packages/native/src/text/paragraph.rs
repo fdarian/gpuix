@@ -45,7 +45,7 @@ use super::inline::Paragraph;
 pub struct RunStyle {
     pub len: usize,
     pub font_size: Option<f32>,
-    pub line_height: Option<DefiniteLength>,
+    pub line_height: Option<gpui::LineHeight>,
     pub color: Option<Hsla>,
     pub weight: Option<FontWeight>,
     pub font_style: Option<gpui::FontStyle>,
@@ -413,25 +413,38 @@ pub fn box_lengths(
     of_box
 }
 
+/// What turns the line height of a run into the pixels its line box is laid out with.
+pub struct RunHeights<'a> {
+    /// Rounds a height as `TextLayout::layout` does the line's.
+    pub snap: &'a dyn Fn(Pixels) -> Pixels,
+    /// The height `line-height: normal` gives text of a font and size.
+    pub normal: &'a dyn Fn(&gpui::Font, Pixels) -> Pixels,
+}
+
 /// The line height a run contributes to its line box, or `None` when it takes
 /// the line's. A run with its own size has one even when no box declared a line
-/// height, because the line height it inherits is a multiple of that size.
+/// height, because the line height it inherits is a multiple of that size, and
+/// so does a run in another font when the line height is `normal`, which is the
+/// height of the font.
 fn run_line_height(
     style: &RunStyle,
+    run_font: &gpui::Font,
     run_font_size: Option<Pixels>,
     base: &gpui::TextStyle,
     rem_size: Pixels,
+    heights: &RunHeights,
 ) -> Option<Pixels> {
-    if style.line_height.is_none() && run_font_size.is_none() {
+    let line_height = style.line_height.unwrap_or(base.line_height);
+    let own = style.line_height.is_some()
+        || run_font_size.is_some()
+        || (line_height == gpui::LineHeight::Normal && *run_font != base.font());
+    if !own {
         return None;
     }
     let font_size = run_font_size.unwrap_or_else(|| base.font_size.to_pixels(rem_size));
-    Some(
-        style
-            .line_height
-            .unwrap_or(base.line_height)
-            .to_pixels(font_size.into(), rem_size),
-    )
+    Some((heights.snap)(line_height.to_pixels(font_size.into(), rem_size, || {
+        (heights.normal)(run_font, font_size)
+    })))
 }
 
 /// `StyledText` whose runs are `styles` laid over the inherited text style.
@@ -487,13 +500,11 @@ impl InlineText {
         self.styled.layout()
     }
 
-    /// `snap` rounds a height to the device pixel as `TextLayout::layout` does
-    /// the line's.
     fn run(
         style: &RunStyle,
         base: &gpui::TextStyle,
         rem_size: Pixels,
-        snap: impl Fn(Pixels) -> Pixels,
+        heights: &RunHeights,
     ) -> TextRun {
         let base_font_size = base.font_size.to_pixels(rem_size);
         let mut run = base.to_run(style.len);
@@ -509,7 +520,6 @@ impl InlineText {
             .font_size
             .map(px)
             .filter(|size| (f32::from(*size) - f32::from(base_font_size)).abs() > 1e-3);
-        run.line_height = run_line_height(style, run.font_size, base, rem_size).map(&snap);
         if let Some(color) = style.color {
             run.color = color;
         }
@@ -528,6 +538,7 @@ impl InlineText {
         if let Some(variations) = &style.variations {
             run.font.variations = variations.clone();
         }
+        run.line_height = run_line_height(style, &run.font, run.font_size, base, rem_size, heights);
         // The lines the text inherits from the boxes around the paragraph
         // stay under the ones the run's own boxes declare.
         if let Some(underline) = style.underline {
@@ -551,15 +562,10 @@ impl InlineText {
         run
     }
 
-    fn runs(
-        &self,
-        base: &gpui::TextStyle,
-        rem_size: Pixels,
-        snap: impl Fn(Pixels) -> Pixels,
-    ) -> Vec<TextRun> {
+    fn runs(&self, base: &gpui::TextStyle, rem_size: Pixels, heights: &RunHeights) -> Vec<TextRun> {
         self.styles
             .iter()
-            .map(|style| Self::run(style, base, rem_size, &snap))
+            .map(|style| Self::run(style, base, rem_size, heights))
             .collect()
     }
 
@@ -569,13 +575,13 @@ impl InlineText {
         &self,
         base: &gpui::TextStyle,
         rem_size: Pixels,
-        snap: impl Fn(Pixels) -> Pixels,
+        heights: &RunHeights,
     ) -> Vec<InlineBox> {
         let base_font_size = base.font_size.to_pixels(rem_size);
         self.boxes
             .iter()
             .map(|style| {
-                let run = Self::run(&style.style, base, rem_size, &snap);
+                let run = Self::run(&style.style, base, rem_size, heights);
                 InlineBox {
                     range: style.range.clone(),
                     parent: style
@@ -654,8 +660,17 @@ impl gpui::Element for InlineText {
     ) -> (gpui::LayoutId, ()) {
         let rem_size = window.rem_size();
         let text_style = window.text_style();
-        let runs = self.runs(&text_style, rem_size, |height| window.pixel_snap(height));
-        let boxes = self.inline_boxes(&text_style, rem_size, |height| window.pixel_snap(height));
+        let text_system = window.text_system().clone();
+        let heights = RunHeights {
+            snap: &|height| window.pixel_snap(height),
+            normal: &|font, font_size| {
+                text_system
+                    .line_box(text_system.resolve_font(font), font_size)
+                    .normal_line_height()
+            },
+        };
+        let runs = self.runs(&text_style, rem_size, &heights);
+        let boxes = self.inline_boxes(&text_style, rem_size, &heights);
         // `with_runs` takes the element by value. The placeholder is dropped
         // at once; the layout cell that callers cloned lives in `styled`.
         let styled = std::mem::replace(&mut self.styled, StyledText::new(""));
@@ -810,6 +825,15 @@ mod tests {
         )
     }
 
+    /// Heights as the font and the device would give them if neither rounded: a `normal`
+    /// line is a quarter taller than its text.
+    fn exact_heights() -> RunHeights<'static> {
+        RunHeights {
+            snap: &|height| height,
+            normal: &|_, font_size| font_size * 1.25,
+        }
+    }
+
     /// A container with `fontSize: 10`, which is the root's too.
     fn container_lengths() -> LengthContext {
         LengthContext::initial(800.0, 600.0)
@@ -822,7 +846,7 @@ mod tests {
 
     /// The runs gpui gets for `tree`'s paragraph in a container of 10px text
     /// whose line height is `container_line_height`.
-    fn text_runs(tree: &RetainedTree, container_line_height: DefiniteLength) -> Vec<TextRun> {
+    fn text_runs(tree: &RetainedTree, container_line_height: gpui::LineHeight) -> Vec<TextRun> {
         let plan = plan_children(tree, &tree.elements[&1]);
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
@@ -842,7 +866,7 @@ mod tests {
             &|_, _| PointerStates::default(),
             &InlineStyles::default(),
         );
-        InlineText::new(paragraph.text.clone().into(), styles).runs(&base, px(16.0), |height| height)
+        InlineText::new(paragraph.text.clone().into(), styles).runs(&base, px(16.0), &exact_heights())
     }
 
     fn line_heights(runs: &[TextRun]) -> Vec<Option<f32>> {
@@ -895,7 +919,7 @@ mod tests {
     #[test]
     fn a_line_height_number_is_a_multiple_of_the_runs_own_size() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
-        let runs = text_runs(&tree, gpui::relative(1.5));
+        let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
         assert_eq!(runs[1].font_size, Some(px(20.0)));
         assert_eq!(runs[0].font_size, None);
@@ -911,18 +935,18 @@ mod tests {
     #[test]
     fn a_spans_own_line_height_is_resolved_where_it_is_declared() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": 2}))]);
-        let runs = text_runs(&tree, gpui::relative(1.5));
+        let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert_eq!(line_heights(&runs), vec![None, Some(40.0), None]);
 
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": "1.5em"}))]);
-        let runs = text_runs(&tree, gpui::relative(1.0));
+        let runs = text_runs(&tree, gpui::relative(1.0).into());
         assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
 
         let tree = tree_with(&[
             (3, serde_json::json!({"lineHeight": "1.5em"})),
             (5, serde_json::json!({"fontSize": 30})),
         ]);
-        let runs = text_runs(&tree, gpui::relative(1.0));
+        let runs = text_runs(&tree, gpui::relative(1.0).into());
         assert_eq!(
             line_heights(&runs),
             vec![None, Some(15.0), Some(15.0), None],
@@ -936,14 +960,14 @@ mod tests {
             (3, serde_json::json!({"lineHeight": 2})),
             (5, serde_json::json!({"fontSize": 30})),
         ]);
-        let runs = text_runs(&tree, gpui::relative(1.0));
+        let runs = text_runs(&tree, gpui::relative(1.0).into());
         assert_eq!(line_heights(&runs), vec![None, Some(20.0), Some(60.0), None]);
     }
 
     #[test]
     fn a_span_with_only_a_line_height_has_one_and_keeps_the_size() {
         let tree = tree_with(&[(3, serde_json::json!({"lineHeight": 3}))]);
-        let runs = text_runs(&tree, gpui::relative(1.5));
+        let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
         assert_eq!(runs[1].font_size, None);
     }
@@ -951,15 +975,45 @@ mod tests {
     #[test]
     fn a_span_that_sets_nothing_about_size_takes_the_lines() {
         let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
-        let runs = text_runs(&tree, gpui::relative(1.5));
+        let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert_eq!(line_heights(&runs), vec![None; 3]);
         assert!(runs.iter().all(|run| run.font_size.is_none()));
     }
 
     #[test]
+    fn under_a_normal_line_height_a_span_in_another_font_has_the_height_of_that_font() {
+        // The fake `normal` of `exact_heights` is a quarter more than the size: 12.5px at 10px.
+        let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
+        let runs = text_runs(&tree, gpui::LineHeight::Normal);
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+
+        let tree = tree_with(&[(3, serde_json::json!({"fontFamily": "Menlo"}))]);
+        let runs = text_runs(&tree, gpui::LineHeight::Normal);
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+
+        let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
+        let runs = text_runs(&tree, gpui::LineHeight::Normal);
+        assert_eq!(line_heights(&runs), vec![None, Some(25.0), None]);
+    }
+
+    #[test]
+    fn under_a_normal_line_height_a_span_in_the_font_of_the_container_takes_the_lines() {
+        let tree = tree_with(&[(3, serde_json::json!({"color": "#ff0000"}))]);
+        let runs = text_runs(&tree, gpui::LineHeight::Normal);
+        assert_eq!(line_heights(&runs), vec![None; 3]);
+    }
+
+    #[test]
+    fn a_span_that_declares_normal_has_the_height_of_its_font_under_a_length() {
+        let tree = tree_with(&[(3, serde_json::json!({"lineHeight": "normal"}))]);
+        let runs = text_runs(&tree, gpui::relative(2.0).into());
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+    }
+
+    #[test]
     fn a_font_size_equal_to_the_containers_is_no_size_of_its_own() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": "1em", "fontWeight": 700}))]);
-        let runs = text_runs(&tree, gpui::relative(1.5));
+        let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert!(runs.iter().all(|run| run.font_size.is_none()));
         assert_eq!(line_heights(&runs), vec![None; 3]);
     }
@@ -1232,7 +1286,7 @@ mod tests {
         };
         let tree = tree_with(&[(3, serde_json::json!({"textDecoration": "underline dotted"}))]);
         let styles = runs_of(&tree);
-        let runs = InlineText::new("a boldred end".into(), styles).runs(&base, px(16.0), |height| height);
+        let runs = InlineText::new("a boldred end".into(), styles).runs(&base, px(16.0), &exact_heights());
         assert_eq!(runs[0].underline, Some(outer), "text outside the box keeps its underline");
         assert!(runs[0].extra_decorations.is_empty());
         let inner = runs[1].underline.expect("the box's underline");
@@ -1424,7 +1478,7 @@ mod tests {
             background_color: Some(gpui::red()),
             ..Default::default()
         };
-        let run = InlineText::run(atomic[0], &base, px(16.0), |height| height);
+        let run = InlineText::run(atomic[0], &base, px(16.0), &exact_heights());
         assert_eq!((run.underline, run.background_color), (None, None), "not even the container's");
         assert!(run.extra_decorations.is_empty());
     }

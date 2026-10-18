@@ -229,7 +229,9 @@ describeNative('chat example', () => {
       expect(renderer.getPaintedText()).toContain('Claude Opus 4.6')
       expect(
         renderer.getElementBounds(renderer.findByTestId('model-opus-4.6').id).height,
-      ).toBeGreaterThanOrEqual(26)
+        // The 12.5px text is a 15px line in Chrome (`line-height: normal`), with 5px of padding
+        // on each side.
+      ).toBe(25)
 
       const shot = path.join(SHOTS, 'chat-model-picker.png')
       renderer.captureScreenshot(shot)

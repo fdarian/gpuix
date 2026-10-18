@@ -11733,15 +11733,21 @@ const TEST_VIEWPORT: gpui::Size<gpui::Pixels> = gpui::Size {
     height: gpui::px(600.0),
 };
 
-/// The computed `font-size` through a real build, read back as the height of a
-/// line of text: gpui's line height is a fixed multiple of the font size.
+/// The computed `font-size` through a real build, read back as the height of a line of text: with
+/// `line-height: normal` the test renderer's font makes a line as tall as its ascent and descent,
+/// 1.025em and 0.275em, each rounded to a whole pixel.
 #[cfg(test)]
 mod font_size_cascade_tests {
     use super::*;
 
-    const CALIBRATION: u64 = 9999;
-    /// Line heights are rounded to the pixel grid.
+    /// A height is rounded to the pixel grid.
     const TOLERANCE: f64 = 0.5;
+
+    /// The height of a `normal` line of the test renderer's font at `size`.
+    fn normal_line(size: f64) -> f64 {
+        let rounded = |length: f64| (length + 0.5).floor();
+        rounded(1025.0 * size / 1000.0) + rounded(275.0 * size / 1000.0)
+    }
 
     struct Node {
         id: u64,
@@ -11765,7 +11771,6 @@ mod font_size_cascade_tests {
     struct Page {
         tree: Arc<Mutex<RetainedTree>>,
         window: gpui::WindowHandle<GpuixView>,
-        height_per_px: f64,
     }
 
     impl Page {
@@ -11776,8 +11781,7 @@ mod font_size_cascade_tests {
             let root = nodes[0].id;
             {
                 let mut tree = tree.lock().unwrap();
-                let calibration = node(CALIBRATION, Some(root), r#"{"fontSize": 100}"#);
-                for node in nodes.iter().chain([&calibration]) {
+                for node in nodes {
                     let style: StyleDesc = serde_json::from_str(node.style).unwrap();
                     tree.create_element(node.id, node.element_type.to_owned());
                     tree.set_style(node.id, Arc::new(style));
@@ -11804,10 +11808,8 @@ mod font_size_cascade_tests {
                     crate::events::state::PointerRequests::default(),
                 )
             });
-            let mut page = Self { tree, window, height_per_px: 0.0 };
+            let page = Self { tree, window };
             page.draw(cx);
-            page.height_per_px = page.height(probe(CALIBRATION)) / 100.0;
-            assert!(page.height_per_px > 0.0, "the calibration text has no height");
             page
         }
 
@@ -11819,23 +11821,22 @@ mod font_size_cascade_tests {
             .unwrap();
         }
 
-        fn height(&self, id: u64) -> f64 {
+        fn bounds(&self, id: u64) -> crate::automation::ElementBounds {
             crate::automation::get_bounds(self.window.window_id(), id)
                 .unwrap_or_else(|| panic!("element {id} was not painted"))
-                .height
         }
 
-        /// The computed font size of node `id`, from its probe.
-        fn font_size(&self, id: u64) -> f64 {
-            self.height(probe(id)) / self.height_per_px
+        fn height(&self, id: u64) -> f64 {
+            self.bounds(id).height
         }
 
+        /// Each node computes its size if its probe is as tall as a line of text of that size.
         fn assert_font_sizes(&self, expected: &[(u64, f64)]) {
             for (id, size) in expected {
-                let measured = self.font_size(*id);
+                let (measured, line) = (self.height(probe(*id)), normal_line(*size));
                 assert!(
-                    (measured - size).abs() <= TOLERANCE,
-                    "node {id} should compute {size}px but measures {measured}px"
+                    (measured - line).abs() <= TOLERANCE,
+                    "node {id} should compute {size}px, a line of {line}px, but its probe is {measured}px"
                 );
             }
         }
@@ -12059,8 +12060,10 @@ mod font_size_cascade_tests {
         assert_line_heights(&page, &[(2, 20.0)]);
         page.set_style(cx, 2, r#"{"fontSize": 10, "lineHeight": "30px"}"#);
         assert_line_heights(&page, &[(2, 30.0)]);
+        // No line height is `normal`: the font is 13px tall at 10px, its ascent of 10.25px and
+        // descent of 2.75px rounded to whole pixels.
         page.set_style(cx, 2, r#"{"fontSize": 10}"#);
-        assert_line_heights(&page, &[(2, 16.0)]);
+        assert_line_heights(&page, &[(2, 13.0)]);
     }
 
     #[gpui::test]
@@ -12951,10 +12954,12 @@ mod dimension_length_tests {
     }
 
     // The test renderer's font is monospace: a character is 0.6em wide, so 9.6px at the default
-    // 16px, and a line is 26px high. `min-content` is the widest word: the space after it hangs
-    // and is not counted, as the text is laid out.
+    // 16px, and a line is 20px high: `line-height: normal` is the ascent and descent of the font,
+    // 1.025em and 0.275em, which are 16.4px and 4.4px at 16px and each round to whole pixels.
+    // `min-content` is the widest word: the space after it hangs and is not counted, as the text
+    // is laid out.
     const CHAR: f64 = 9.6;
-    const LINE: f64 = 26.0;
+    const LINE: f64 = 20.0;
     const HELLO_WORLD: &str = "hello world";
     const LONG: &str = "hello wonderful world";
     const COLUMN: &str = r#"{"width": 600}"#;
@@ -13031,12 +13036,14 @@ mod dimension_length_tests {
     #[gpui::test]
     fn a_fit_content_limit_in_em_follows_the_elements_font_size(cx: &mut gpui::TestAppContext) {
         let page = text_box(cx, COLUMN, r#"{"fontSize": 20, "width": "fit-content(15em)"}"#, LONG);
-        // 20px: a character is 12px, min-content 120px, max-content 252px, and 15em is 300px.
-        near(page.size(2), (252.0, 32.5));
+        // 20px: a character is 12px, min-content 120px, max-content 252px, and 15em is 300px. A line
+        // is 27px: the ascent 20.5px and the descent 5.5px round up to 21px and 6px.
+        near(page.size(2), (252.0, 27.0));
         page.set_style(cx, 2, r#"{"fontSize": 20, "width": "fit-content(10em)"}"#);
-        near(page.size(2), (200.0, 65.0));
+        near(page.size(2), (200.0, 54.0));
+        // 10px: 10.25px and 2.75px round to 10px and 3px, a line of 13px.
         page.set_style(cx, 2, r#"{"fontSize": 10, "width": "fit-content(10em)"}"#);
-        near(page.size(2), (100.0, 32.0));
+        near(page.size(2), (100.0, 26.0));
     }
 
     #[gpui::test]
@@ -13648,7 +13655,8 @@ mod inline_run_size_tests {
     struct Spans {
         container: crate::automation::ElementBounds,
         spans: Vec<crate::automation::ElementBounds>,
-        /// The ascent and descent of the font of the text at each of the sizes asked for.
+        /// The ascent and descent of the font of the text at each of the sizes asked for, each
+        /// rounded to a whole pixel as Chrome does.
         metrics: Vec<(f64, f64)>,
     }
 
@@ -13699,9 +13707,10 @@ mod inline_run_size_tests {
                     .iter()
                     .map(|size| {
                         let size = gpui::px(*size);
+                        let line_box = text_system.line_box(font, size);
                         (
-                            f64::from(f32::from(text_system.ascent(font, size))),
-                            f64::from(f32::from(text_system.descent(font, size))),
+                            f64::from(f32::from(line_box.ascent)),
+                            f64::from(f32::from(line_box.descent)),
                         )
                     })
                     .collect()
@@ -13738,10 +13747,10 @@ mod inline_run_size_tests {
         let span = painted.spans[0];
         assert_near(span.height, ascent + descent, "a height");
         // The only thing on the row, so its line box is 45px and its font is
-        // centred in it.
+        // centred in it, with the half-leading above it rounded down.
         assert_near(
             span.y - painted.container.y,
-            (45.0 - ascent - descent) / 2.0,
+            ((45.0 - ascent - descent) / 2.0_f64).floor(),
             "a top",
         );
     }
@@ -14601,7 +14610,9 @@ mod decoration_paint_tests {
     fn the_style_and_thickness_of_an_overline_reach_the_scene(cx: &mut gpui::TestAppContext) {
         let solid = lines("{}", r#"{"textDecoration": "overline"}"#, cx);
         let dotted = lines("{}", r#"{"textDecoration": "overline dotted 3px"}"#, cx);
-        let double = lines("{}", r#"{"textDecoration": "overline double"}"#, cx);
+        // The outer band of a double overline is above the top of the line, which in a line as
+        // tall as its font is the top of the window unless the text is moved down.
+        let double = lines(r#"{"paddingTop": 10}"#, r#"{"textDecoration": "overline double"}"#, cx);
         assert_eq!(dotted.len(), 1);
         assert_ne!(dotted[0].style, solid[0].style);
         let three_px = lines("{}", r#"{"textDecoration": "overline 3px"}"#, cx);

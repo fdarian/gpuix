@@ -11,12 +11,16 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 const FONT_SIZE = 16
 const LINE = 24
 const TEXT = { fontSize: FONT_SIZE, lineHeight: 1.5, fontFamily: "Menlo", color: "#000000" } as const
-/** Menlo's metrics in em, units of 2048. */
-const ASCENT = (1901 / 2048) * FONT_SIZE
-const DESCENT = (483 / 2048) * FONT_SIZE
+/** Menlo's ascent and descent, which Chrome rounds to whole pixels: 1901 and 483 units of 2048
+ *  are 14.85px and 3.77px at 16px. Its cap height and x-height (1493 and 1120 units) are not
+ *  rounded. */
+const ASCENT = 15
+const DESCENT = 4
 const CAP = (1493 / 2048) * FONT_SIZE
 const EX = (1120 / 2048) * FONT_SIZE
-const HALF_LEADING = (LINE - ASCENT - DESCENT) / 2
+/** What the line height has over the content area is shared out around it, and the share above is
+ *  rounded down. */
+const HALF_LEADING = Math.floor((LINE - ASCENT - DESCENT) / 2)
 const BASELINE = HALF_LEADING + ASCENT
 
 /** A box is as tall as the metrics say to the nearest 1/64 of a pixel, as in Chrome, and its edges are

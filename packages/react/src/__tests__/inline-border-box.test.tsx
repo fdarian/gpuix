@@ -25,8 +25,9 @@ const SPACE = {
   borderRightStyle: "solid",
   paddingRight: 3,
 } as const
-/** What a span is tall: the content area of Menlo at 16px, not the 20px line. */
-const CONTENT = 18.625
+/** What a span is tall: the content area of Menlo at 16px, not the 20px line. Chrome rounds
+ *  its ascent (14.85px) and descent (3.77px) to whole pixels: 15 and 4. */
+const CONTENT = 19
 const LEADING = 16
 const TRAILING = 10
 

@@ -77,6 +77,10 @@ describe("text selection", () => {
       </div>
     )
     const expected = "first line\nsecond line\nthird line"
+    // A row of the default sans at 20px is 23px tall in Chrome (`line-height: normal`), and the rows
+    // are 8px apart below the 20px of padding.
+    const ROW = 23
+    const rowMiddle = (row: number) => 20 + row * (ROW + 8) + ROW / 2
 
     it("copies a position: relative sibling where it sits in the document", () => {
       const { render, renderer } = createTestRoot()
@@ -87,21 +91,21 @@ describe("text selection", () => {
     it("keeps a reversed drag in document order over a positioned sibling", () => {
       const { render, renderer } = createTestRoot()
       render(lines({ position: "relative" }))
-      expect(renderer.dragSelect(900, 105, 21, 30)).toBe(expected)
+      expect(renderer.dragSelect(900, rowMiddle(2), 21, rowMiddle(0))).toBe(expected)
     })
 
     it("starts at the positioned sibling and ends in the middle of the document", () => {
       const { render, renderer } = createTestRoot()
       render(lines({ position: "relative" }))
       // Down on "first line", up past the end of "second line".
-      expect(renderer.dragSelect(21, 30, 900, 70)).toBe("first line\nsecond line")
+      expect(renderer.dragSelect(21, rowMiddle(0), 900, rowMiddle(1))).toBe("first line\nsecond line")
     })
 
     it("selects from a later line up into a positioned sibling", () => {
       const { render, renderer } = createTestRoot()
       render(lines({}, { position: "relative" }))
       // Down on "third line", up onto "second line".
-      expect(renderer.dragSelect(900, 105, 21, 70)).toBe("second line\nthird line")
+      expect(renderer.dragSelect(900, rowMiddle(2), 21, rowMiddle(1))).toBe("second line\nthird line")
     })
 
     it("keeps a z-index: -1 sibling in document order", () => {
@@ -121,7 +125,7 @@ describe("text selection", () => {
       render(lines({ order: 2 }))
       // Painted top to bottom: second, third, first. A drag from the start of "third" to the end
       // of "first" selects what the document holds between them.
-      expect(renderer.dragSelect(21, 70, 900, 105)).toBe("second line")
+      expect(renderer.dragSelect(21, rowMiddle(1), 900, rowMiddle(2))).toBe("second line")
     })
 
     it("orders nested positioned text inside later siblings", () => {
