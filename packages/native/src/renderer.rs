@@ -7604,10 +7604,11 @@ static EMPTY_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(St
 /// What an element that has no box in the layout is built as. It has the id of the element, like
 /// every host does, and not the id-less `Empty`: a retained root names its layout node by its
 /// path, and an element without an id of its own is named by its parent's, which is the node of
-/// whatever else under that parent has none.
+/// whatever else under that parent has none. It is `display: none` all the same: a block would be
+/// an item of a flex or grid parent, with the gap around it.
 fn absent_host(id: u64) -> gpui::AnyElement {
-    use gpui::{InteractiveElement, IntoElement};
-    gpui::div().id(crate::events::ids::host_element_id(id)).into_any_element()
+    use gpui::{InteractiveElement, IntoElement, Styled};
+    gpui::div().id(crate::events::ids::host_element_id(id)).hidden().into_any_element()
 }
 
 pub(crate) fn build_element(
@@ -7680,6 +7681,8 @@ fn build_element_in(
 
 /// What a deferred build needs of the build around the element, which is over by then.
 pub(crate) struct FrameEnv {
+            ctx.contents_overlay = None;
+            ctx.anchor_scope = None;
     inherited: Inherited,
     doc_path: Vec<u32>,
     now: web_time::Instant,
@@ -7793,6 +7796,9 @@ fn build_element_unpumped(
     let declared = container_style.as_ref().or(element.style.as_deref());
     // The style it had before it declared a transition went through the same containers.
     let before_transition = element
+    // Meant for this element, and not for the next one built when it returns early.
+    let contents_overlay = ctx.contents_overlay.take();
+    let anchor_scope = ctx.anchor_scope.take();
         .style_before_transition()
         .and_then(|before| crate::layout::container::fold(before, &containers));
     // A parent builds its children by whether this element has a box, before this element is
@@ -7966,12 +7972,10 @@ fn build_element_unpumped(
         })
         .flatten();
     let current_style = css_animated.as_ref().or(underlying_style);
-    let overlaid_style = ctx
-        .contents_overlay
-        .take()
+    let overlaid_style = contents_overlay
         .map(|overlay| current_style.unwrap_or(&EMPTY_STYLE).with_inherited_overlay(&overlay));
     let style = overlaid_style.as_deref().or(current_style);
-    let anchored_style = ctx.anchor_scope.take().and_then(|anchored_id| {
+    let anchored_style = anchor_scope.and_then(|anchored_id| {
         style.and_then(|style| crate::layout::anchor_size::resolve(anchored_id, style))
     });
     let style = anchored_style.as_ref().or(style);
