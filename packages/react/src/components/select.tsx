@@ -189,7 +189,9 @@ export function Select({
 
   return (
     <SelectContext.Provider value={context}>
-      <div {...props} style={floatingRootStyle(style)}>{children}</div>
+      <div {...props} formControl={disabled ? "disabled" : "enabled"} style={floatingRootStyle(style)}>
+        {children}
+      </div>
     </SelectContext.Provider>
   )
 }
@@ -224,6 +226,7 @@ export const SelectTrigger = forwardRef<PublicInstance, SelectTriggerProps>(
     }
     const triggerProps: Props = {
       ...props,
+      formControl: disabled ? "disabled" : "enabled",
       tabIndex: disabled ? -1 : props.tabIndex,
       style: resolveStyle(style, state),
       onMouseDown: (event) => {

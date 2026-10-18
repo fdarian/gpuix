@@ -236,6 +236,7 @@ const UNIVERSAL_PROPS: ReadonlySet<string> = new Set([
   "motion",
   "layout",
   "testId",
+  "formControl",
   "highlight",
   "role",
   "id",

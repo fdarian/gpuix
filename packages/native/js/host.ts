@@ -1147,6 +1147,21 @@ export interface StyleDesc {
   /** While a strict descendant matches `:focus-visible`, like CSS
    *  `:has(:focus-visible)`. Above `focusWithin`, below `focusVisible`. */
   hasFocusVisible?: StateStyleDesc
+  /** While the element is a disabled form control, like CSS `:disabled`: an `<input>` or
+   *  `<textarea>` with `disabled`, or a `Button` or `Select` trigger that is. A `div` with a
+   *  `disabled` prop does not match, as in a DOM. Hover and press still apply to a disabled
+   *  control, as `:hover` does; this sits above them, so it wins a field they both set. Unlike
+   *  `hover`, it also applies inside an `inert` subtree. */
+  disabled?: StateStyleDesc
+  /** While the element is an enabled form control, like CSS `:enabled`. Same elements as
+   *  `disabled`. */
+  enabled?: StateStyleDesc
+  /** While a strict descendant is a disabled form control, like CSS `:has(:disabled)`. Above
+   *  `active`, below `enabled` and `disabled`. */
+  hasDisabled?: StateStyleDesc
+  /** While a strict descendant is an enabled form control, like CSS `:has(:enabled)`. Above
+   *  `active`, below `hasDisabled`. */
+  hasEnabled?: StateStyleDesc
   /** While the element matches `:focus-visible`: focused by the keyboard (Tab),
    *  or a text control, or focus moved there by script from an element that
    *  matched. A mouse press on a button never shows it. Needs a focusable
@@ -1251,6 +1266,10 @@ export type StateStyleDesc = Omit<
   | "hasActive"
   | "hasFocus"
   | "hasFocusVisible"
+  | "disabled"
+  | "enabled"
+  | "hasDisabled"
+  | "hasEnabled"
   | "fontVariantNumeric"
   | "fontFeatureSettings"
   | "fontVariationSettings"
@@ -1607,6 +1626,13 @@ export interface HostProps
   id?: string
   /** Stable locator id for automation. */
   testId?: string
+  /**
+   * Internal: set by `Button`, `Select` and the other components that stand in for a `<button>`
+   * or `<select>`, so their element matches the `disabled` and `enabled` state styles (and its
+   * ancestors `hasDisabled` and `hasEnabled`). `disabled` itself reaches native only on
+   * `<input>` and `<textarea>`, so a `<div disabled>` is not a form control, as in a DOM.
+   */
+  formControl?: "enabled" | "disabled"
   /** Internal native animation description used by motion components. */
   motion?: MotionProps
 }

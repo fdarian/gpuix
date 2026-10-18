@@ -5971,6 +5971,7 @@ impl GpuixView {
             containers: &self.containers,
             highlight_events: &mut highlight_events,
             focus_styles,
+            control_styles: Default::default(),
             pointer: &pointer,
             contents_overlay: None,
             contents_key: 0,
@@ -6154,6 +6155,8 @@ pub(crate) struct BuildCtx<'a> {
     highlight_events: &'a mut Vec<(u64, usize)>,
     /// See `crate::focus::FocusState::styles`.
     pub focus_styles: crate::focus::FocusStyles,
+    /// The ancestors of the form controls, for `hasDisabled` and `hasEnabled`.
+    pub control_styles: crate::retained_tree::ControlStyles,
     /// Which elements are hovered or pressed, for their `hover` / `active` styles.
     pub pointer: &'a crate::events::state::PointerState,
     /// Inheritable style of the `display: contents` ancestors of the child about to be
@@ -6214,7 +6217,15 @@ impl BuildCtx<'_> {
         style: &StyleDesc,
         inert: bool,
     ) -> crate::events::state_styles::PointerStates {
-        pointer_states_of(&self.inherited, self.pointer, &self.focus_styles, id, style, inert)
+        pointer_states_of(
+            &self.inherited,
+            self.pointer,
+            &self.focus_styles,
+            ControlSource { tree: self.tree, styles: &self.control_styles },
+            id,
+            style,
+            inert,
+        )
     }
 
     /// The states of an inline box, for the style it shows.
@@ -6238,12 +6249,25 @@ impl BuildCtx<'_> {
         let inherited = &self.inherited;
         let pointer = self.pointer;
         let focus_styles = &self.focus_styles;
+        let controls = &self.control_styles;
         let states = |id: u64, style: &StyleDesc| {
             let inert = tree
                 .elements
                 .get(&id)
                 .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-            focus_styles.states_of(id, style, pointer_states_of(inherited, pointer, focus_styles, id, style, inert))
+            focus_styles.states_of(
+                id,
+                style,
+                pointer_states_of(
+                    inherited,
+                    pointer,
+                    focus_styles,
+                    ControlSource { tree, styles: controls },
+                    id,
+                    style,
+                    inert,
+                ),
+            )
         };
         crate::motion::InlineStyles::resolve(
             tree,
@@ -6262,16 +6286,41 @@ impl BuildCtx<'_> {
     }
 }
 
+/// Where `:disabled` and `:enabled` are read from.
+struct ControlSource<'a> {
+    tree: &'a crate::retained_tree::RetainedTree,
+    styles: &'a crate::retained_tree::ControlStyles,
+}
+
+impl ControlSource<'_> {
+    /// `disabled`, `enabled`, `hasDisabled` and `hasEnabled` of `id`, for the ones `style` declares.
+    /// Not pointer state: an `inert` subtree keeps them, as `:disabled` still matches in one.
+    fn states(&self, id: u64, style: &StyleDesc) -> crate::events::state_styles::PointerStates {
+        let control = (style.disabled.is_some() || style.enabled.is_some())
+            .then(|| self.tree.elements.get(&id)?.control_disabled())
+            .flatten();
+        crate::events::state_styles::PointerStates {
+            disabled: style.disabled.is_some() && control == Some(true),
+            enabled: style.enabled.is_some() && control == Some(false),
+            has_disabled: style.has_disabled.is_some() && self.styles.has_disabled(self.tree, id),
+            has_enabled: style.has_enabled.is_some() && self.styles.has_enabled(self.tree, id),
+            ..Default::default()
+        }
+    }
+}
+
 fn pointer_states_of(
     inherited: &Inherited,
     pointer: &crate::events::state::PointerState,
     focus: &crate::focus::FocusStyles,
+    controls: ControlSource,
     id: u64,
     style: &StyleDesc,
     inert: bool,
 ) -> crate::events::state_styles::PointerStates {
+    let controls = controls.states(id, style);
     if inert || inherited.inert {
-        return Default::default();
+        return controls;
     }
     let followed = |refinement: &Option<Box<StyleDesc>>| {
         refinement
@@ -6288,7 +6337,7 @@ fn pointer_states_of(
         has_hovered: style.has_hover.is_some() && pointer.has_hovered(id),
         has_active: style.has_active.is_some() && pointer.has_active(id),
         has_focused: style.has_focus.is_some() && focus.has_focus(id),
-        ..Default::default()
+        ..controls
     }
 }
 
@@ -7474,6 +7523,7 @@ impl gpui::Render for GpuixView {
                     containers: &self.containers,
                     highlight_events: &mut highlight_events,
                     focus_styles,
+                    control_styles: Default::default(),
                     pointer: &pointer,
                     contents_overlay: None,
                     contents_key: 0,

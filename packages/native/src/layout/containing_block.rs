@@ -62,6 +62,10 @@ pub(crate) fn may_escape(element: &RetainedElement) -> bool {
             &style.has_active,
             &style.has_focus,
             &style.has_focus_visible,
+            &style.disabled,
+            &style.enabled,
+            &style.has_disabled,
+            &style.has_enabled,
         ]
         .into_iter()
         .any(|state| state.as_deref().is_some_and(escapes))

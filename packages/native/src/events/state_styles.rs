@@ -23,6 +23,10 @@ macro_rules! overlay_fields {
             has_hover: None,
             has_active: None,
             has_focus: None,
+            disabled: None,
+            enabled: None,
+            has_disabled: None,
+            has_enabled: None,
             container_rules: None,
             container_unit_axes: $base.container_unit_axes.union($over.container_unit_axes),
             measure_natural_width: false,
@@ -40,6 +44,10 @@ macro_rules! overlay_fields {
 /// `has_hovered`, `has_active` and `has_focused` say a strict descendant is
 /// hovered, pressed or focused: `:has(:hover)`, `:has(:active)`, `:has(:focus)`.
 ///
+/// `disabled` and `enabled` say the element is a disabled or an enabled form control, and
+/// `has_disabled` and `has_enabled` that a strict descendant is: `:disabled`, `:enabled`,
+/// `:has(:disabled)`, `:has(:enabled)`.
+///
 /// `focus_within`, `has_focus_visible` and `focus_visible` are set only for an
 /// inline box. Any other element applies those focus styles where it tracks focus
 /// ([`crate::focus::apply_focus_styles`]), which an inline box has no element for.
@@ -53,6 +61,10 @@ pub struct PointerStates {
     pub has_hovered: bool,
     pub has_active: bool,
     pub has_focused: bool,
+    pub disabled: bool,
+    pub enabled: bool,
+    pub has_disabled: bool,
+    pub has_enabled: bool,
     pub focus_within: bool,
     pub has_focus_visible: bool,
     pub focus_visible: bool,
@@ -68,6 +80,10 @@ impl PointerStates {
             || self.has_hovered
             || self.has_active
             || self.has_focused
+            || self.disabled
+            || self.enabled
+            || self.has_disabled
+            || self.has_enabled
             || self.focus_within
             || self.has_focus_visible
             || self.focus_visible
@@ -102,11 +118,14 @@ pub fn resolve_state_styles(style: &StyleDesc, hovered: bool, active: bool) -> S
 
 /// `style` with the refinements of `states` folded in and every state style
 /// cleared. Later wins: `groupHover`, `hasHover`, `hover`, `groupActive`,
-/// `hasActive`, `active`, `groupFocusWithin`, `hasFocus`, `focusWithin`,
-/// `hasFocusVisible`, `focusVisible`. A group refinement is one more variant of
-/// the element, so the element's own `hover` beats a `groupHover` that sets the
+/// `hasActive`, `active`, `hasEnabled`, `hasDisabled`, `enabled`, `disabled`,
+/// `groupFocusWithin`, `hasFocus`, `focusWithin`, `hasFocusVisible`, `focusVisible`. A group
+/// refinement is one more variant of the element, so the element's own `hover` beats a `groupHover` that sets the
 /// same field (as in Tailwind). A relational refinement sits between the two: an
 /// element's own state beats what its descendants cause, and that beats a group.
+///
+/// The control layers sit after the pointer ones, as in Tailwind, so a disabled control keeps
+/// its disabled look while hovered or pressed.
 ///
 /// Focus styles sit above the pointer ones, so `groupFocusWithin` comes after
 /// them, and `focusWithin`, `hasFocusVisible` and `focusVisible` after that. The
@@ -121,6 +140,10 @@ pub fn resolve_pointer_states(style: &StyleDesc, states: PointerStates) -> Style
         (states.group_active, style.group_active.as_deref(), true),
         (states.has_active, style.has_active.as_deref(), false),
         (states.active, style.active.as_deref(), false),
+        (states.has_enabled, style.has_enabled.as_deref(), false),
+        (states.has_disabled, style.has_disabled.as_deref(), false),
+        (states.enabled, style.enabled.as_deref(), false),
+        (states.disabled, style.disabled.as_deref(), false),
         (
             states.group_focused_within,
             style.group_focus_within.as_deref(),
@@ -1329,6 +1352,62 @@ mod tests {
         }
         assert_eq!((all.has_hover, all.has_active, all.has_focus), (None, None, None));
         assert!(all.has_focus_visible.is_some(), "kept for the element that applies it after the fold, like focusVisible");
+    }
+
+    /// Same shape as the test above: each layer sets `opacity` and one property of its own.
+    #[test]
+    fn the_control_layers_sit_after_active_and_before_the_focus_ones() {
+        let base = style(
+            r##"{
+                "opacity": 0,
+                "active": { "opacity": 0.1, "width": 1 },
+                "hasEnabled": { "opacity": 0.2, "height": 2 },
+                "hasDisabled": { "opacity": 0.3, "minWidth": 3 },
+                "enabled": { "opacity": 0.4, "minHeight": 4 },
+                "disabled": { "opacity": 0.5, "maxWidth": 5 },
+                "groupFocusWithin": { "opacity": 0.6 }
+            }"##,
+        );
+        let none = PointerStates::default();
+        let opacity = |states: PointerStates| resolve_pointer_states(&base, states).opacity;
+
+        assert_eq!(opacity(PointerStates { active: true, has_enabled: true, ..none }), Some(0.2));
+        assert_eq!(opacity(PointerStates { has_enabled: true, has_disabled: true, ..none }), Some(0.3));
+        assert_eq!(opacity(PointerStates { has_disabled: true, enabled: true, ..none }), Some(0.4));
+        let all = PointerStates {
+            hovered: true,
+            active: true,
+            has_enabled: true,
+            has_disabled: true,
+            enabled: true,
+            disabled: true,
+            ..none
+        };
+        assert_eq!(opacity(all), Some(0.5), "a disabled control stays disabled-looking while pressed");
+        assert_eq!(opacity(PointerStates { disabled: true, group_focused_within: true, ..none }), Some(0.6));
+
+        let folded = resolve_pointer_states(&base, all);
+        for (what, set) in [
+            ("active", folded.width.is_some()),
+            ("hasEnabled", folded.height.is_some()),
+            ("hasDisabled", folded.min_width.is_some()),
+            ("enabled", folded.min_height.is_some()),
+            ("disabled", folded.max_width.is_some()),
+        ] {
+            assert!(set, "{what} contributes what the layers above it leave");
+        }
+        assert!(
+            folded.disabled.is_none() && folded.enabled.is_none() && folded.has_disabled.is_none() && folded.has_enabled.is_none(),
+            "no control refinement is left to apply a second time"
+        );
+        for states in [
+            PointerStates { disabled: true, ..none },
+            PointerStates { enabled: true, ..none },
+            PointerStates { has_disabled: true, ..none },
+            PointerStates { has_enabled: true, ..none },
+        ] {
+            assert!(states.any(), "{states:?}");
+        }
     }
 
     #[test]

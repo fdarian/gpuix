@@ -224,6 +224,7 @@ export function ComboboxTrigger(props: ComboboxTriggerProps): JSX.Element {
     asChild: props.asChild,
     children: props.children,
     props: overrideProps(props, {
+      get formControl() { return disabled() ? "disabled" : "enabled" },
       get tabIndex() { return disabled() ? -1 : props.tabIndex },
       onClick(event: HostPointerEvent) {
         props.onClick?.(event)

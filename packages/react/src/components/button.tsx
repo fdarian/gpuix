@@ -49,6 +49,7 @@ export function buttonProps(
   }
   return {
     role: "button",
+    formControl: disabled ? "disabled" : "enabled",
     // Unset keeps an `asChild` child's own tabIndex; renderSlot defaults to 0.
     tabIndex: disabled && !focusableWhenDisabled ? -1 : tabIndex,
     onClick: (event: HostPointerEvent) => {

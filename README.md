@@ -3645,7 +3645,8 @@ Select-on-focus works with `onFocus`, for keyboard focus and for a click.
 a click does not focus it, and focus leaves it when it becomes disabled. It
 shows no caret, takes no editing, and gets no `click` or `keydown` events. Its
 text is painted in the theme's muted colour (`theme.textMuted`), and it is
-reported as disabled to assistive technology.
+reported as disabled to assistive technology. The `disabled` and `enabled`
+[state styles](#form-control-state-disabled-enabled) follow it.
 
 `type` on an `<input>` is `'text'` (the default), `'password'`, `'number'`,
 `'email'`, `'search'`, `'tel'` or `'url'`. `type` on a `<textarea>` is ignored.
@@ -5823,7 +5824,8 @@ ancestors' `onClick`. A host ref has the same `click()`, and
 `renderer.clickElement(elementId)` is the same call on the renderer. In your own
 `onKeyDown` or `onKeyUp`, call `click()` on the ref of the element that listens.
 `click()` and the VoiceOver Press do nothing on a `button`, `input`, `textarea` or
-`select` that is `disabled`, or on an element inside one, as in HTML.
+`select` that is `disabled`, or on an element inside one, as in HTML. A disabled
+`Button` or `SelectTrigger` is one too (see [Form control state](#form-control-state-disabled-enabled)).
 Every mouse and pointer event type has `pointerId` and `pointerType` as required
 fields: `1` and `"mouse"` for the mouse.
 
@@ -6924,7 +6926,9 @@ way, overflow included.
 
 **Ancestor state:** `group`, `groupHover`, `groupActive`, `groupFocusWithin`. See [Group state styles](#group-state-styles)
 
-**Descendant state:** `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`. See [Relational state (`:has()`)](#relational-state-has)
+**Descendant state:** `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`, `hasDisabled`, `hasEnabled`. See [Relational state (`:has()`)](#relational-state-has)
+
+**Form control state:** `disabled`, `enabled`. See [Form control state](#form-control-state-disabled-enabled)
 
 **Container queries:** `containerType`, `containerName`, `container`, `"@container"`. See [Container queries](#container-queries)
 
@@ -6958,14 +6962,15 @@ A group applies to its descendants, not to its own element. They fold in with th
 element's own states, later winning: base, `groupHover`, `hover`, `groupActive`,
 `active`, `groupFocusWithin`, then `focusWithin` and `focusVisible`, which the
 focus code applies after the fold. Focus states sit above the pointer ones. The
-[`has*` keys](#relational-state-has) fold in between these. So a
+[`has*` keys](#relational-state-has) and the
+[control states](#form-control-state-disabled-enabled) fold in between these. So a
 `color` set by a group state reaches the descendants' `currentColor` like one set
 by `hover`.
 
 ### Relational state (`:has()`)
 
 An element can also react to what its **descendants** are doing, which is what
-`:has()` does in CSS. Four nested style objects, like `hover`:
+`:has()` does in CSS. Six nested style objects, like `hover`:
 
 | Key | CSS | Applies while |
 |---|---|---|
@@ -6973,6 +6978,8 @@ An element can also react to what its **descendants** are doing, which is what
 | `hasActive` | `:has(:active)` | the mouse is down on a descendant |
 | `hasFocus` | `:has(:focus)` | a descendant has focus |
 | `hasFocusVisible` | `:has(:focus-visible)` | a descendant matches `:focus-visible` |
+| `hasDisabled` | `:has(:disabled)` | a descendant is a [disabled form control](#form-control-state-disabled-enabled) |
+| `hasEnabled` | `:has(:enabled)` | a descendant is an enabled form control |
 
 ```tsx
 <div
@@ -7002,8 +7009,10 @@ nothing inside it can be hovered, pressed or focused.
 They fold in with the element's own states. An element's own state beats what
 its descendants cause, and that beats a group. Later wins: base, `groupHover`,
 `hasHover`, `hover`, `groupActive`, `hasActive`, `active`, `groupFocusWithin`,
-`hasFocus`, `focusWithin`, `hasFocusVisible`, `focusVisible`. The ancestor
-restyles in the same frame the pointer or focus moves. Everything a state style
+`hasFocus`, `focusWithin`, `hasFocusVisible`, `focusVisible`; `hasEnabled`,
+`hasDisabled`, `enabled` and `disabled` come after `active`, before the focus
+ones. The ancestor restyles in the same frame the pointer or focus moves, or a
+control is enabled or disabled. Everything a state style
 can hold works: layout, `position`, `color` (which reaches the descendants'
 `currentColor`), [transitions](#css-transitions) and
 [animations](#css-animations) declared inside them, and
@@ -7014,13 +7023,53 @@ inside it is hovered.
 There is no stylesheet, so this is not the whole of `:has()`. It cannot express:
 
 - An arbitrary selector. `:has(.error)`, `:has(img)` and `:has(+ x)` need a
-  selector engine; the four keys cover the four pseudo-classes gpuix tracks
+  selector engine; the six keys cover the pseudo-classes gpuix tracks
 - A direct child only (`:has(> x)`). The match is on any descendant
-- `:has(:checked)`, `:has(:disabled)` and the like. gpuix has no `checked` or
-  `disabled` state style, so there is no `hasChecked` either. Derive those in
-  your component and pass the style
-- Anything about a sibling or an ancestor of the descendant. Only the four states
+- `:has(:checked)` and the like. There is no `checked` state style, so there is no
+  `hasChecked` either: see [`:checked`](#form-control-state-disabled-enabled).
+  Derive it in your component and pass the style
+- Anything about a sibling or an ancestor of the descendant. Only the six states
   of a descendant are tracked
+
+### Form control state (`:disabled`, `:enabled`)
+
+`disabled` and `enabled` are nested style objects like `hover`: `:disabled` and
+`:enabled`. Their `has*` counterparts, `hasDisabled` and `hasEnabled`
+(`:has(:disabled)`, `:has(:enabled)`), are [relational](#relational-state-has):
+they apply to a strict ancestor of such a control.
+
+```tsx
+<div style={{ hasDisabled: { opacity: 0.6 } }}>
+  <input
+    disabled={saving}
+    style={{ borderColor: '#ccc', disabled: { backgroundColor: '#eee' }, enabled: { borderColor: '#999' } }}
+  />
+  <Button disabled={saving} style={{ disabled: { opacity: 0.5 } }}>Save</Button>
+</div>
+```
+
+What counts as a form control is what gpuix has: an `<input>`, a `<textarea>`,
+and the components that stand in for a `<button>` or a `<select>`: `Button`, the
+triggers of `Dialog`, `Select` and `Combobox`, and the root of a `Select`. A
+control is `:enabled` unless it is `disabled`. A plain `<div disabled>` is not a
+control and matches neither, as in a DOM (`disabled` is not forwarded to a `div`),
+and nothing else is: there is no `<fieldset>`, so no control is disabled by its
+ancestor. A custom component that wants the same passes `buttonProps(...)`, which
+carries the marker.
+
+They fold in with the pointer states, after `active`: a disabled control keeps
+its `disabled` look while it is hovered or pressed, which still apply to it as
+`:hover` does in CSS. Unlike `hover`, they also apply in an `inert` subtree, where
+`:disabled` still matches. A change to `disabled` restyles the control and the
+ancestors that declare `hasDisabled` or `hasEnabled` in the same frame.
+[Transitions](#css-transitions), [animations](#css-animations) and
+[`<UniversalStyle>`](#universal-style) refinements work in them as in `hover`.
+
+**`:checked` is not available.** It needs a checkable element, and gpuix has none:
+every `<input type>` is text-like, and there is no checkbox, radio or `<option>`
+to be checked or selected. So there is no `checked` or `hasChecked` key; derive the
+state in your component and pass the style, as for a custom checkbox built from a
+`div`. It can be added together with a native checkbox control.
 
 ### Container queries
 
@@ -7419,7 +7468,8 @@ render per frame.
   transition, but dropping its property from `transitionProperty` cancels it. A
   negative delay starts part-way through
 - **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
-  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and `hasFocusVisible` are folded
+  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`, `disabled`,
+  `enabled`, `hasDisabled` and `hasEnabled` are folded
   into the style that is compared, so they animate in and out. A `transition` set inside `hover` is the one used while entering hover; the
   base one is used leaving it. An
   element that declares a transition has its state styles applied by gpuix instead
@@ -7503,7 +7553,8 @@ defineKeyframes('pulse', {
   / `both` fill, `paused` (freezes where it is and resumes from there), a negative
   delay that starts part-way through, and a restart when `animationName` changes
 - **State styles.** `hover`, `active`, `focusVisible`, `groupHover`,
-  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and `hasFocusVisible` may declare
+  `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus`, `hasFocusVisible`, `disabled`,
+  `enabled`, `hasDisabled` and `hasEnabled` may declare
   `animation`. It starts when the state applies and is
   cancelled when it ends
 - **`display: none`.** Going `display: none` cancels the element's animations and
@@ -7567,8 +7618,8 @@ does not use a component.
   `style`. A string child is a text node, not an element, and gets nothing; a
   `<text>` element does
 - **State refinements.** The layer may carry `hover`, `active`, `focusVisible`,
-  `focusWithin`, `groupHover`, `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus` and
-  `hasFocusVisible`, like `*:hover`. Where the element declares the same refinement the two merge, the
+  `focusWithin`, `groupHover`, `groupActive`, `groupFocusWithin`, `hasHover`, `hasActive`, `hasFocus`,
+  `hasFocusVisible`, `disabled`, `enabled`, `hasDisabled` and `hasEnabled`, like `*:hover`. Where the element declares the same refinement the two merge, the
   element's winning per property; where only one does, that one is used
 - **Not inherited.** It is a declaration on each element, as `* {}` is, so a
   property that does not inherit does not start to

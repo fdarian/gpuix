@@ -1438,7 +1438,7 @@ mod tests {
             .unwrap_err();
         assert!(error.starts_with("hover.animationDelay:"), "{error}");
         assert!(validate_animations(&style(r#"{ "focusVisible": { "animation": "a b" } }"#)).is_err());
-        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible"] {
+        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible", "disabled", "enabled", "hasDisabled", "hasEnabled"] {
             let error = validate_animations(&style(&format!(r#"{{ "{name}": {{ "animationDelay": "soon" }} }}"#)))
                 .unwrap_err();
             assert!(error.starts_with(&format!("{name}.animationDelay:")), "{error}");
@@ -1823,7 +1823,7 @@ mod tests {
         assert!(frames
             .animations
             .wants(1, Some(&style(r#"{ "hover": { "animation": "fade 1s" } }"#))));
-        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible"] {
+        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible", "disabled", "enabled", "hasDisabled", "hasEnabled"] {
             assert!(frames
                 .animations
                 .wants(1, Some(&style(&format!(r#"{{ "{name}": {{ "animation": "fade 1s" }} }}"#)))));

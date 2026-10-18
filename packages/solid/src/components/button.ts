@@ -41,6 +41,9 @@ export function buttonProps(
   const disabled = () => behavior.disabled ?? false
   return {
     role: "button",
+    get formControl() {
+      return disabled() ? "disabled" : "enabled"
+    },
     // Unset keeps an `asChild` child's own tabIndex; renderSlot defaults to 0.
     get tabIndex() {
       return disabled() && !behavior.focusableWhenDisabled ? -1 : behavior.tabIndex

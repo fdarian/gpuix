@@ -307,6 +307,7 @@ export const ComboboxTrigger = forwardRef<PublicInstance, ComboboxTriggerProps>(
       children,
       props: {
         ...props,
+        formControl: disabled ? "disabled" : "enabled",
         tabIndex: disabled ? -1 : props.tabIndex,
         onClick: (event) => {
           onClick?.(event)

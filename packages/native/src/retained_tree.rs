@@ -209,6 +209,25 @@ impl RetainedElement {
             .unwrap_or(false)
     }
 
+    /// `Some(disabled)` for a form control, which is what `:disabled` and `:enabled` match, and
+    /// `None` for every other element.
+    ///
+    /// `<input>` and `<textarea>` are controls, and so are the `button` and `select` types the
+    /// tree is also handed in tests. The React and Solid `Button` and `Select` are `div`s that
+    /// stand in for them: they say so with the `formControl` prop (`"enabled"` or `"disabled"`),
+    /// which the host forwards for a `div`, unlike `disabled`. That keeps a plain `<div disabled>`
+    /// from matching, as in a DOM.
+    pub fn control_disabled(&self) -> Option<bool> {
+        if is_control_type(&self.element_type) {
+            return Some(self.is_disabled());
+        }
+        match self.custom_props().get(FORM_CONTROL_PROP)?.as_str()? {
+            "disabled" => Some(true),
+            "enabled" => Some(false),
+            _ => None,
+        }
+    }
+
     pub fn new(id: u64, element_type: String, revision: u64) -> Self {
         Self {
             id,
@@ -422,6 +441,60 @@ fn same_style(a: Option<&Arc<StyleDesc>>, b: Option<&Arc<StyleDesc>>) -> bool {
     }
 }
 
+/// The prop a `div` that stands in for a form control carries. See
+/// [`RetainedElement::control_disabled`].
+const FORM_CONTROL_PROP: &str = "formControl";
+
+fn is_control_type(element_type: &str) -> bool {
+    matches!(element_type, "button" | "input" | "textarea" | "select")
+}
+
+/// The strict ancestors of the disabled and of the enabled form controls: the elements
+/// `:has(:disabled)` and `:has(:enabled)` match.
+#[derive(Default)]
+pub(crate) struct ControlAncestors {
+    pub disabled: HashSet<u64>,
+    pub enabled: HashSet<u64>,
+}
+
+/// [`ControlAncestors`] of one frame, worked out the first time a style that declares
+/// `hasDisabled` or `hasEnabled` asks. Cloning shares the answer, so a virtual list's rows read
+/// the one the root render worked out.
+#[derive(Clone, Default)]
+pub(crate) struct ControlStyles {
+    ancestors: std::sync::Arc<std::sync::OnceLock<ControlAncestors>>,
+}
+
+impl ControlStyles {
+    fn ancestors(&self, tree: &RetainedTree) -> &ControlAncestors {
+        self.ancestors.get_or_init(|| {
+            let mut found = ControlAncestors::default();
+            for control in &tree.control_ids {
+                let Some(disabled) = tree.elements.get(control).and_then(RetainedElement::control_disabled) else {
+                    continue;
+                };
+                let ancestors = if disabled { &mut found.disabled } else { &mut found.enabled };
+                let mut current = tree.elements.get(control).and_then(|element| element.parent);
+                // An ancestor already in the set has the rest of the chain in it too.
+                while let Some(id) = current.filter(|id| ancestors.insert(*id)) {
+                    current = tree.elements.get(&id).and_then(|element| element.parent);
+                }
+            }
+            found
+        })
+    }
+
+    /// `:has(:disabled)`: a strict descendant of `id` is a disabled form control.
+    pub fn has_disabled(&self, tree: &RetainedTree, id: u64) -> bool {
+        self.ancestors(tree).disabled.contains(&id)
+    }
+
+    /// `:has(:enabled)`: a strict descendant of `id` is an enabled form control.
+    pub fn has_enabled(&self, tree: &RetainedTree, id: u64) -> bool {
+        self.ancestors(tree).enabled.contains(&id)
+    }
+}
+
 pub struct RetainedTree {
     /// Never shared by two trees of this process, unlike the tree's address,
     /// which a later tree can reuse. Caches that outlive a tree key on it.
@@ -433,6 +506,9 @@ pub struct RetainedTree {
     pub image_ids: HashSet<u64>,
     /// Elements that bind motion values to style properties.
     pub motion_value_ids: HashSet<u64>,
+    /// Every form control, which `ControlStyles` walks up from, so a frame does not scan
+    /// every element for them.
+    control_ids: HashSet<u64>,
     /// Elements that `needs_focus`, in id order. Kept as mutations arrive so the
     /// per-frame focus sync visits these few instead of every retained element:
     /// a large tree retains thousands, and nearly none are focusable.
@@ -487,6 +563,7 @@ impl RetainedTree {
             motion_ids: HashSet::new(),
             image_ids: HashSet::new(),
             motion_value_ids: HashSet::new(),
+            control_ids: HashSet::new(),
             focusable_ids: Default::default(),
             geometry_ids: Default::default(),
             inert_count: 0,
@@ -555,6 +632,9 @@ impl RetainedTree {
         if element_type == "img" {
             self.image_ids.insert(id);
         }
+        if is_control_type(&element_type) {
+            self.control_ids.insert(id);
+        }
         self.dirty = true;
         let revision = self.take_revision();
         self.elements
@@ -609,11 +689,8 @@ impl RetainedTree {
             let Some(element) = self.elements.get(&current_id) else {
                 return false;
             };
-            if matches!(
-                element.element_type.as_str(),
-                "button" | "input" | "textarea" | "select"
-            ) {
-                return element.is_disabled();
+            if let Some(disabled) = element.control_disabled() {
+                return disabled;
             }
             current = element.parent;
         }
@@ -754,6 +831,7 @@ impl RetainedTree {
             self.motion_ids.remove(&id);
             self.image_ids.remove(&id);
             self.motion_value_ids.remove(&id);
+            self.control_ids.remove(&id);
             self.focusable_ids.remove(&id);
             self.geometry_ids.remove(&id);
             self.inert_count -= usize::from(element.has_inert_prop());
@@ -1045,6 +1123,7 @@ impl RetainedTree {
         let is_motion_values = key == "motionValues" || key == "layout";
         let affects_focusability = key == "tabIndex" || key == "disabled";
         let is_inert = key == "inert";
+        let is_form_control = key == FORM_CONTROL_PROP;
         let was_inert = self
             .elements
             .get(&id)
@@ -1092,6 +1171,13 @@ impl RetainedTree {
                 .is_some_and(|element| element.element_type == "text")
             {
                 self.mark_changed(id);
+            }
+        }
+        if is_form_control {
+            if self.elements.get(&id).is_some_and(|element| element.control_disabled().is_some()) {
+                self.control_ids.insert(id);
+            } else {
+                self.control_ids.remove(&id);
             }
         }
         if is_inert {
@@ -1815,6 +1901,74 @@ mod tests {
             tree.focusable_ids.is_empty(),
             "destroying a subtree forgets its ids"
         );
+    }
+
+    /// 1 div > [2 input, 3 div(formControl) > 4 div, 5 div(plain `disabled`) > 6 div].
+    fn control_tree() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        for (id, element_type) in [(1, "div"), (2, "input"), (3, "div"), (4, "div"), (5, "div"), (6, "div")] {
+            tree.create_element(id, element_type.to_string());
+        }
+        for (parent, child) in [(1, 2), (1, 3), (3, 4), (1, 5), (5, 6)] {
+            tree.append_child(parent, child);
+        }
+        tree
+    }
+
+    #[test]
+    fn only_form_controls_are_disabled_or_enabled() {
+        let mut tree = control_tree();
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("enabled"));
+        tree.set_custom_prop(5, "disabled".to_string(), serde_json::json!(true));
+        let state = |tree: &RetainedTree, id: u64| tree.elements[&id].control_disabled();
+        assert_eq!(state(&tree, 2), Some(false), "an input is a control");
+        assert_eq!(state(&tree, 3), Some(false), "so is a div standing in for a button");
+        assert_eq!(state(&tree, 5), None, "a plain div with `disabled` is not one, as in a DOM");
+        assert_eq!(state(&tree, 1), None);
+
+        tree.set_custom_prop(2, "disabled".to_string(), serde_json::json!(true));
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("disabled"));
+        assert_eq!((state(&tree, 2), state(&tree, 3)), (Some(true), Some(true)));
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("nonsense"));
+        assert_eq!(state(&tree, 3), None);
+    }
+
+    #[test]
+    fn in_disabled_form_control_agrees_with_control_disabled() {
+        let mut tree = control_tree();
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("disabled"));
+        tree.set_custom_prop(5, "disabled".to_string(), serde_json::json!(true));
+        assert!(tree.in_disabled_form_control(3) && tree.in_disabled_form_control(4));
+        assert!(!tree.in_disabled_form_control(5) && !tree.in_disabled_form_control(6));
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("enabled"));
+        assert!(!tree.in_disabled_form_control(4));
+    }
+
+    #[test]
+    fn the_ancestors_of_controls_follow_what_the_controls_become() {
+        let mut tree = control_tree();
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("enabled"));
+        let ancestors = |tree: &RetainedTree| {
+            let styles = ControlStyles::default();
+            let ids = |has: &dyn Fn(u64) -> bool| (1..=6).filter(|id| has(*id)).collect::<Vec<_>>();
+            (
+                ids(&|id| styles.has_disabled(tree, id)),
+                ids(&|id| styles.has_enabled(tree, id)),
+            )
+        };
+        assert_eq!(ancestors(&tree), (vec![], vec![1]), "a control is not its own ancestor");
+
+        tree.set_custom_prop(2, "disabled".to_string(), serde_json::json!(true));
+        assert_eq!(ancestors(&tree), (vec![1], vec![1]));
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::json!("disabled"));
+        assert_eq!(ancestors(&tree), (vec![1], vec![]));
+
+        tree.append_child(3, 2);
+        assert_eq!(ancestors(&tree), (vec![1, 3], vec![]), "a nested control marks every ancestor");
+        tree.set_custom_prop(3, "formControl".to_string(), serde_json::Value::Null);
+        assert_eq!(ancestors(&tree), (vec![1, 3], vec![]));
+        tree.destroy_element(2);
+        assert_eq!(ancestors(&tree), (vec![], vec![]), "a destroyed control marks nothing");
     }
 
     #[test]

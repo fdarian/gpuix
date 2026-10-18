@@ -756,7 +756,7 @@ pub(crate) fn wants_natural_width(
 /// The state styles `fold_state_styles` can lay over `style`, by the name a
 /// validation error gives them. A transition or animation declared in any of
 /// them has to take part, or it never runs.
-pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 10] {
+pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDesc>); 14] {
     [
         ("hover", style.hover.as_deref()),
         ("active", style.active.as_deref()),
@@ -768,6 +768,10 @@ pub(super) fn state_styles(style: &StyleDesc) -> [(&'static str, Option<&StyleDe
         ("hasActive", style.has_active.as_deref()),
         ("hasFocus", style.has_focus.as_deref()),
         ("hasFocusVisible", style.has_focus_visible.as_deref()),
+        ("disabled", style.disabled.as_deref()),
+        ("enabled", style.enabled.as_deref()),
+        ("hasDisabled", style.has_disabled.as_deref()),
+        ("hasEnabled", style.has_enabled.as_deref()),
     ]
 }
 
@@ -869,6 +873,10 @@ fn fold_state_styles(
         folded.has_hover = style.has_hover.clone();
         folded.has_active = style.has_active.clone();
         folded.has_focus = style.has_focus.clone();
+        folded.disabled = style.disabled.clone();
+        folded.enabled = style.enabled.clone();
+        folded.has_disabled = style.has_disabled.clone();
+        folded.has_enabled = style.has_enabled.clone();
         std::borrow::Cow::Owned(folded)
     } else {
         // Borrowed: `resolve_pointer_states` copies the style itself, so cloning
@@ -2863,6 +2871,29 @@ mod tests {
         let both = fold_state_styles(&style, FocusVisible { own: true, descendant: true }, Default::default());
         assert_eq!(both.opacity, Some(0.4), "focusVisible beats hasFocusVisible");
         assert!(focused.has_focus_visible.is_none() && both.focus_visible.is_none());
+    }
+
+    #[test]
+    fn control_styles_survive_the_focus_pass_and_are_cleared_after_it() {
+        use crate::events::state_styles::PointerStates;
+        let style: StyleDesc = serde_json::from_str(
+            r##"{
+                "opacity": 1,
+                "focusVisible": { "opacity": 0.4, "color": "#444444" },
+                "hasEnabled": { "opacity": 0.5, "width": 5 },
+                "disabled": { "opacity": 0.6 }
+            }"##,
+        )
+        .unwrap();
+        let own = FocusVisible { own: true, descendant: false };
+        let states = PointerStates { has_enabled: true, disabled: true, ..Default::default() };
+        let folded = fold_state_styles(&style, own, states);
+        assert_eq!(folded.opacity, Some(0.6), "disabled comes after the focus layer it sits over");
+        assert_eq!(folded.color.as_deref(), Some("#444444"));
+        assert_eq!(folded.width, style.has_enabled.as_ref().unwrap().width);
+        assert!(folded.disabled.is_none() && folded.has_enabled.is_none());
+        let focus_only = fold_state_styles(&style, own, Default::default());
+        assert_eq!(focus_only.opacity, Some(0.4), "the control layers do not apply unless their state does");
     }
 
     #[test]

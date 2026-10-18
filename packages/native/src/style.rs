@@ -992,6 +992,14 @@ pub struct StyleDesc {
     pub has_focus: Option<Box<StyleDesc>>,
     /// While a strict descendant matches `:focus-visible`, like CSS `:has(:focus-visible)`.
     pub has_focus_visible: Option<Box<StyleDesc>>,
+    /// While the element is a disabled form control, like CSS `:disabled`.
+    pub disabled: Option<Box<StyleDesc>>,
+    /// While the element is an enabled form control, like CSS `:enabled`.
+    pub enabled: Option<Box<StyleDesc>>,
+    /// While a strict descendant is a disabled form control, like CSS `:has(:disabled)`.
+    pub has_disabled: Option<Box<StyleDesc>>,
+    /// While a strict descendant is an enabled form control, like CSS `:has(:enabled)`.
+    pub has_enabled: Option<Box<StyleDesc>>,
     /// `false` keeps this element at full opacity while another control has
     /// keyboard focus. Not inherited.
     pub keyboard_focus_dim: Option<bool>,

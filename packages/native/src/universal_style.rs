@@ -38,6 +38,10 @@ pub fn layer_under(universal: &StyleDesc, own: &StyleDesc) -> StyleDesc {
         universal.has_focus_visible.as_deref(),
         own.has_focus_visible.as_deref(),
     );
+    layered.disabled = refine(universal.disabled.as_deref(), own.disabled.as_deref());
+    layered.enabled = refine(universal.enabled.as_deref(), own.enabled.as_deref());
+    layered.has_disabled = refine(universal.has_disabled.as_deref(), own.has_disabled.as_deref());
+    layered.has_enabled = refine(universal.has_enabled.as_deref(), own.has_enabled.as_deref());
     // The universal blocks come first, so the element's own win when both match.
     layered.container_rules = crate::layout::container::ContainerRules::concat(
         universal.container_rules.as_ref(),
@@ -192,6 +196,25 @@ mod tests {
         assert_eq!(layered.has_focus_visible, universal.has_focus_visible);
         assert_eq!(layered.has_active, own.has_active);
         assert_eq!(layered.has_focus, own.has_focus);
+    }
+
+    #[test]
+    fn the_control_refinements_merge_like_the_others() {
+        let universal = style(
+            r##"{ "disabled": { "opacity": 0.5, "color": "#aaaaaa" },
+                  "hasEnabled": { "outlineWidth": 2 } }"##,
+        );
+        let own = style(
+            r##"{ "disabled": { "color": "#bbbbbb" },
+                  "enabled": { "color": "#cccccc" },
+                  "hasDisabled": { "color": "#dddddd" } }"##,
+        );
+        let layered = layer_under(&universal, &own);
+        let disabled = layered.disabled.as_deref().unwrap();
+        assert_eq!((disabled.color.as_deref(), disabled.opacity), (Some("#bbbbbb"), Some(0.5)));
+        assert_eq!(layered.has_enabled, universal.has_enabled);
+        assert_eq!(layered.enabled, own.enabled);
+        assert_eq!(layered.has_disabled, own.has_disabled);
     }
 
     #[test]

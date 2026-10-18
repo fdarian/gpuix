@@ -131,6 +131,7 @@ export function Select(props: SelectProps): JSX.Element {
     value: valueContext,
     get children() {
       return jsx("div", overrideProps(props, {
+        get formControl() { return props.disabled ? "disabled" : "enabled" },
         style: floatingRootStyle(props.style),
         get children() { return props.children },
       }))
@@ -158,6 +159,7 @@ export function SelectTrigger(props: SelectTriggerProps): JSX.Element {
         state.trigger.current = element
         props.ref?.(element)
       },
+      get formControl() { return disabled() ? "disabled" : "enabled" },
       get tabIndex() { return disabled() ? -1 : props.tabIndex },
       get style() {
         return resolveStyle(props.style, {

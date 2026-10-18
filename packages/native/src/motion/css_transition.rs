@@ -1351,7 +1351,7 @@ mod tests {
             .unwrap_err();
         assert!(error.starts_with("hover.transitionDelay"), "{error}");
         assert!(validate_transitions(&style(r#"{ "transition": "width bogus" }"#)).is_err());
-        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible"] {
+        for name in ["groupHover", "groupActive", "groupFocusWithin", "hasHover", "hasActive", "hasFocus", "hasFocusVisible", "disabled", "enabled", "hasDisabled", "hasEnabled"] {
             let error = validate_transitions(&style(&format!(r#"{{ "{name}": {{ "transitionDelay": "soon" }} }}"#)))
                 .unwrap_err();
             assert!(error.starts_with(&format!("{name}.transitionDelay")), "{error}");
@@ -2128,7 +2128,7 @@ mod tests {
         assert!(clock.wants(1, Some(&style(r#"{ "groupHover": { "transition": "all 1s" } }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "groupActive": { "transitionDuration": "1s" } }"#))));
         assert!(clock.wants(1, Some(&style(r#"{ "groupFocusWithin": { "transition": "all 1s" } }"#))));
-        for name in ["hasHover", "hasActive", "hasFocus", "hasFocusVisible"] {
+        for name in ["hasHover", "hasActive", "hasFocus", "hasFocusVisible", "disabled", "enabled", "hasDisabled", "hasEnabled"] {
             assert!(clock.wants(1, Some(&style(&format!(r#"{{ "{name}": {{ "transition": "all 1s" }} }}"#)))), "{name}");
         }
     }
@@ -2153,6 +2153,28 @@ mod tests {
         assert_ne!(halfway, "#ffffff");
         assert_ne!(halfway, "#000000");
         assert_eq!(clock.frame(1000, &hovered).background_color.as_deref(), Some("#ffffff"));
+    }
+
+    #[test]
+    fn a_transition_declared_only_in_disabled_runs() {
+        use crate::events::state_styles::{resolve_pointer_states, PointerStates};
+        let base = style(
+            r##"{
+                "backgroundColor": "#000000",
+                "disabled": { "backgroundColor": "#ffffff", "transition": "background-color 1s linear" }
+            }"##,
+        );
+        let mut transitions = CssTransitions::default();
+        assert!(transitions.wants(1, Some(&base)));
+        let mut clock = Clock::new();
+        let rest = resolve_pointer_states(&base, PointerStates::default());
+        let disabled = resolve_pointer_states(&base, PointerStates { disabled: true, ..Default::default() });
+        clock.frame(0, &rest);
+        clock.frame(0, &disabled);
+        let halfway = clock.frame(500, &disabled).background_color.unwrap();
+        assert_ne!(halfway, "#ffffff");
+        assert_ne!(halfway, "#000000");
+        assert_eq!(clock.frame(1000, &disabled).background_color.as_deref(), Some("#ffffff"));
     }
 
     #[test]
