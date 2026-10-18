@@ -270,26 +270,31 @@ describeNative("transitions and animations of an inline box's colours", () => {
     testRoot.unmount()
   })
 
-  it("does not move the layout properties of a span", () => {
+  it("moves the space a span takes along the line, and not a property it does not have", () => {
     const testRoot = createTestRoot({ width: 300, height: 120 })
     const renderer = testRoot.renderer
     const events: string[] = []
-    const tree = (padding: number) => (
+    const tree = (padding: number, width: number) => (
       <div style={PAGE} onTransitionRun={(event) => events.push(event.propertyName)}>
         <text testId="p" style={TEXT}>
-          <span style={{ paddingLeft: padding, transition: "all 1s linear" }}>aaaa</span> tail
+          <span style={{ paddingLeft: padding, width, transition: "all 1s linear" }}>aaaa</span>
+          <span testId="tail">tail</span>
         </text>
       </div>
     )
+    const tailAt = () => renderer.getElementBounds(renderer.findByTestId("tail")!.id)!.x
     renderer.clockPause()
-    testRoot.render(tree(0))
-    const narrow = renderer.getElementBounds(renderer.findByTestId("p")!.id)!
-    testRoot.render(tree(40))
+    testRoot.render(tree(0, 10))
+    const narrow = tailAt()
+    testRoot.render(tree(40, 200))
     renderer.clockFastForward(500)
     renderer.dispatchNativeEvents()
-    const halfway = renderer.getElementBounds(renderer.findByTestId("p")!.id)!
-    expect(halfway.width).toBe(narrow.width)
-    expect(events).toEqual([])
+    renderer.flush()
+    // The padding is half way to its 40px, so the text after the span is that much later; a span has no width.
+    expect(tailAt() - narrow).toBeGreaterThan(18)
+    expect(tailAt() - narrow).toBeLessThan(22)
+    expect(events).toContain("padding-left")
+    expect(events).not.toContain("width")
     testRoot.unmount()
   })
 })

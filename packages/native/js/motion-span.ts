@@ -2,7 +2,7 @@
 /// properties an inline span can animate, `variants`, the gesture targets, and the
 /// props that have no effect on a box a paragraph paints.
 
-import type { MotionStyle, MotionTransition } from "./host.js"
+import type { LayoutDrag, MotionLayoutProps, MotionStyle, MotionTransition } from "./host.js"
 import type { MotionValue } from "./motion-value.js"
 
 /**
@@ -170,20 +170,29 @@ const DRAG_PROPS = [
   "whileDrag",
 ] as const
 
-export const IGNORED_PROPS: readonly string[] = [...LAYOUT_PROPS, ...DRAG_PROPS]
+const IGNORED_PROP_NAMES = [...LAYOUT_PROPS, ...DRAG_PROPS] as const
+
+/** The props a `motion.span` takes and ignores. */
+export const IGNORED_SPAN_PROPS: readonly string[] = IGNORED_PROP_NAMES
 
 /**
  * Framer's layout and drag props. A layout animation moves a box with a transform and a drag moves it
  * the same way, which does nothing to a non-atomic inline box, so a `motion.span` takes them and they
  * have no effect: no layout animation runs and no callback of one is called.
  */
-export type MotionSpanIgnoredProps = { [Prop in (typeof IGNORED_PROPS)[number]]?: unknown }
+export type MotionSpanIgnoredProps = {
+  [Prop in Exclude<(typeof IGNORED_PROP_NAMES)[number], "layout" | "layoutId" | "layoutDrag">]?: unknown
+} & {
+  layout?: MotionLayoutProps["layout"]
+  layoutId?: string
+  layoutDrag?: LayoutDrag
+}
 
 /** `props` without the ones a span ignores, which must not reach the host as the props of an element. */
 export function withoutIgnoredSpanProps<Props extends object>(props: Props): Props {
   const kept: Record<string, unknown> = {}
   for (const key of Object.keys(props)) {
-    if (!IGNORED_PROPS.includes(key)) kept[key] = Reflect.get(props, key)
+    if (!IGNORED_SPAN_PROPS.includes(key)) kept[key] = Reflect.get(props, key)
   }
   return kept as Props
 }

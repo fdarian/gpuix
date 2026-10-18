@@ -2,7 +2,7 @@ import { createEffect, createRenderEffect, createSignal, mergeProps, onCleanup, 
 import type { DomEvent, MotionValueStyle } from "@gpuix/native/host"
 import {
   gestureDescription,
-  IGNORED_PROPS,
+  IGNORED_SPAN_PROPS,
   IntersectionObserver,
   layoutDescription,
   reduceMotionValues,
@@ -104,7 +104,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       ...(inline ? (["whileHover", "whileTap", "whileFocus", "whileInView", "viewport"] as const) : []),
     ])
     // A span takes no layout, drag or transform: what Framer would move with one is left where it is.
-    const [, withoutIgnored] = splitProps(ownProps, inline ? (IGNORED_PROPS as string[]) : [])
+    const [, withoutIgnored] = splitProps(ownProps, inline ? (IGNORED_SPAN_PROPS as string[]) : [])
     const hostProps = inline
       ? mergeProps(withoutIgnored, {
           get style() {
