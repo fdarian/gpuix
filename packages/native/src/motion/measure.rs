@@ -212,7 +212,19 @@ impl Measurements {
             |(by_element, id, measurement), _| {
                 by_element.borrow_mut().insert(*id, *measurement);
             },
-            |(_, id, measurement), _| format!("measured {id} {measurement:?}"),
+            // Not the parent's content box: it changes without the subtree being built when a
+            // sibling resizes the parent, and a replay keeps the one it recorded (see FORK.md).
+            |(_, id, measurement), _| {
+                format!(
+                    "measured {id} {:?} {:?} {:?} {} {:?} {:?}",
+                    measurement.border_box,
+                    measurement.natural_height,
+                    measurement.natural_width,
+                    measurement.scale_factor,
+                    measurement.percent_height_resolves,
+                    measurement.flex_main
+                )
+            },
         );
     }
 

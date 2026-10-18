@@ -17,8 +17,10 @@
 //! ancestors of changed elements are the *spine*, which builds anyway.
 //!
 //! A subtree is *retained* when nothing in it changed and nothing in it is on the exclusion list
-//! (`Exclusion`), and when it is a stacking context or has nothing in it that is lifted out of it.
-//! The maximal such subtrees are the would-be placeholders. They are counted, and every other
+//! (`Exclusion`), and no absolute box in it has its containing block above it. What it lifts into the
+//! stacking context around it does not matter: gpui keeps a lifted element that is a root of its own
+//! as a hole in the recording of the subtree around it, and any other as a fragment of it. The
+//! maximal such subtrees are the would-be placeholders. They are counted, and every other
 //! element is counted under the first reason it is not in one.
 //!
 //! What an element reads of other elements is in its key, or the element is excluded: a link
@@ -364,6 +366,11 @@ struct Record {
     token: u64,
     lift_z: Option<i32>,
     forms_context: bool,
+    /// The element or something in it is lifted out of it, which a recording is not moved with.
+    lifts: bool,
+    /// What `Below::holes` added up to when it was built: what the lifted elements in it, however
+    /// deep, were keyed by.
+    holes: u64,
     /// Elements in the subtree.
     size: u32,
     subtree: crate::layout::cull::Subtree,
@@ -380,8 +387,7 @@ const EXCLUDED: usize = 0;
 const UNDER: usize = EXCLUDED + Exclusion::ALL.len();
 const CHANGED: usize = UNDER + Exclusion::ALL.len();
 const SPINE: usize = CHANGED + Cause::ALL.len();
-const LIFTS: usize = SPINE + 1;
-const ESCAPES: usize = LIFTS + 1;
+const ESCAPES: usize = SPINE + 1;
 const MOVED: usize = ESCAPES + 1;
 const OVERSIZED: usize = MOVED + 1;
 pub(crate) const RETAINED: usize = OVERSIZED + 1;
@@ -394,7 +400,6 @@ pub(crate) fn slot_name(slot: usize) -> String {
         UNDER..CHANGED => format!("under:{}", Exclusion::ALL[slot - UNDER].name()),
         CHANGED..SPINE => format!("changed:{}", Cause::ALL[slot - CHANGED].name()),
         SPINE => "spine".to_owned(),
-        LIFTS => "lifts".to_owned(),
         ESCAPES => "escapes".to_owned(),
         MOVED => "moved:scroll".to_owned(),
         OVERSIZED => "oversized:scroll".to_owned(),
@@ -512,6 +517,11 @@ struct Below {
     excluded: Option<Exclusion>,
     /// Something below is lifted out of the elements between it and here.
     lifts: bool,
+    /// The tokens of the lifted elements below that this one's recording holds a hole or a
+    /// fragment for.
+    holes: u64,
+    epoch: u64,
+    token: u64,
     /// Something below is absolutely positioned against a containing block that is not below this
     /// element, or is this element.
     escapes: bool,
@@ -1213,7 +1223,7 @@ impl Retain {
                 crate::perf_counters::elements_skipped(u64::from(record.size));
                 let overscan = node
                     .scroller
-                    .filter(|scroller| scroller.holds(node.id))
+                    .filter(|scroller| scroller.holds(node.id) && !record.lifts)
                     .map(|scroller| scroller.overscan());
                 let planned = overscan.is_some() && moved && record.seasoned;
                 let skip = Skip {
@@ -1240,8 +1250,10 @@ impl Retain {
 
     /// Whether a move of the element by its scroller is not a reason to build it: it is recorded
     /// to be moved, and frames are not resting from planning on it.
-    fn relocates(&self, node: &Node) -> bool {
-        !self.relocation.resting && node.scroller.is_some_and(|scroller| scroller.holds(node.id))
+    fn relocates(&self, node: &Node, record: Option<&Record>) -> bool {
+        !self.relocation.resting
+            && record.is_some_and(|record| !record.lifts)
+            && node.scroller.is_some_and(|scroller| scroller.holds(node.id))
     }
 
     /// The record of the last build of the element if the frame can leave it unbuilt, or the
@@ -1271,7 +1283,7 @@ impl Retain {
         // another cannot be put elsewhere on its own.
         if self.inside_relocatable
             || node.scroller.is_some_and(|scroller| scroller.too_big(node.id))
-            || (node.moved && !self.relocates(node))
+            || (node.moved && !self.relocates(node, self.records.get(&node.id)))
         {
             return Err(Kept::Moved);
         }
@@ -1495,6 +1507,29 @@ impl Retain {
             let own = self.below[at];
             let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
             let escaped = node.absolute || (!node.positioned && own.escapes);
+            let (epoch, token, holes) = match (&node.skipped, self.records.get(&node.id)) {
+                (Some(_), Some(record)) => (record.epoch, record.token, record.holes),
+                (Some(_), None) => unreachable!("an element is skipped by the record of its last build"),
+                (None, before) => {
+                    let epoch = match (before, self.deferred) {
+                        (Some(before), true) => before.epoch,
+                        (Some(before), false) => before.epoch + 1,
+                        (None, _) => 1,
+                    };
+                    let mut token = Fingerprint::new();
+                    token.word(node.enter.revision);
+                    token.word(node.enter.inherited);
+                    token.word(node.enter.shape);
+                    token.word(epoch);
+                    // A hole is not asked for alone: the recording around it is of the build that
+                    // made it, so it is not the one for another build of the hole.
+                    token.word(own.holes);
+                    (epoch, token.finish(), own.holes)
+                }
+            };
+            self.below[at].epoch = epoch;
+            self.below[at].token = token;
+            self.below[at].holes = holes;
             let digest = match &node.skipped {
                 Some(skipped) => skipped.digest,
                 None => {
@@ -1516,6 +1551,11 @@ impl Retain {
             let parent = &mut self.below[node.parent as usize];
             parent.changed_below |= own.changed.is_some() || own.changed_below;
             parent.lifts |= escapes;
+            if node.lift_z.is_some() {
+                parent.holes = parent.holes.rotate_left(7) ^ token;
+            } else if !node.forms_context {
+                parent.holes = parent.holes.rotate_left(7) ^ holes;
+            }
             parent.escapes |= escaped;
             parent.size += size;
             if let Some(excluded) = node.exclusion.or(own.excluded) {
@@ -1540,13 +1580,15 @@ impl Retain {
             let node = &self.nodes[at];
             let own = self.below[at];
             let escaped = node.absolute || (!node.positioned && own.escapes);
-            let eligible = node.exclusion.is_none() && own.excluded.is_none() && (node.forms_context || !own.lifts) && !escaped;
+            let eligible = node.exclusion.is_none() && own.excluded.is_none() && !escaped;
+            let lifts = node.lift_z.is_some() || (!node.forms_context && own.lifts);
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
             self.moved[at] = parent.is_some_and(|parent| self.moved[parent] || self.below[parent].scrolled);
             // A root under a scroller that gpui can record to move is skipped by a frame that finds
             // the scroller moved. One that it cannot is built when it does.
             let holds = eligible
+                && !lifts
                 && node.skipped.is_none()
                 && node.scroller.is_some_and(|scroller| scroller.holds(node.id));
             let relocates = holds && !self.relocation.resting;
@@ -1585,10 +1627,9 @@ impl Retain {
                     SPINE
                 } else if let Some(excluded) = own.excluded {
                     UNDER + excluded as usize
-                } else if escaped {
-                    ESCAPES
                 } else {
-                    LIFTS
+                    debug_assert!(escaped, "an element that is not retained is changed, excluded or escaped");
+                    ESCAPES
                 };
                 counts[slot] += 1;
                 slot
@@ -1609,19 +1650,9 @@ impl Retain {
             } else {
                 self.dynamic.remove(&node.id);
             }
-            let before = self.records.get(&node.id);
-            let epoch = match (before, self.deferred) {
-                (Some(before), true) => before.epoch,
-                (Some(before), false) => before.epoch + 1,
-                (None, _) => 1,
-            };
+            let (epoch, token, holes) = (own.epoch, own.token, own.holes);
             let effects = (node.effects_end > node.effects_start)
                 .then(|| Rc::<[BuildEffect]>::from(&all_effects[node.effects_start..node.effects_end]));
-            let mut token = Fingerprint::new();
-            token.word(node.enter.revision);
-            token.word(node.enter.inherited);
-            token.word(node.enter.shape);
-            token.word(epoch);
             self.records.insert(
                 node.id,
                 Record {
@@ -1631,9 +1662,11 @@ impl Retain {
                     digest: own.digest,
                     eligible,
                     epoch,
-                    token: token.finish(),
+                    token,
                     lift_z: node.lift_z,
                     forms_context: node.forms_context,
+                    lifts,
+                    holes,
                     size: own.size,
                     subtree: node.subtree,
                     effects,

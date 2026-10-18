@@ -227,7 +227,7 @@ impl Retain {
             },
             "deferred": {
                 "count": self.debug.deferred.len(),
-                "top": self.debug.deferred.iter().take(10).map(|(id, size)| json!({"label": label(*id), "nodes": size})).collect::<Vec<_>>(),
+                "top": self.debug.deferred.iter().take(10).map(|(id, size)| json!({"id": id, "label": label(*id), "nodes": size})).collect::<Vec<_>>(),
             },
         })
         .to_string()

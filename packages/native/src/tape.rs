@@ -30,6 +30,14 @@ pub(crate) enum Phase {
     /// A pass that lays out and does not paint: the writes of both phases that such a pass makes
     /// too, see [`write_in_layout`].
     Layout,
+    /// [`Phase::Layout`] for a subtree that the stacking context around its parent paints (a
+    /// hole): its prepaint was replayed with the parent's, so only the writes that paint makes in
+    /// such a pass are left.
+    LayoutPaint,
+    /// What an element the subtree handed to the stacking context around it wrote while the context
+    /// painted it, by the ordinal of the element counted from the first the subtree handed over. It
+    /// is outside the paint of the subtree, though a replay of the subtree writes it again.
+    Lifted(u32),
 }
 
 /// A registry write that can be made again, and said in words. A write that holds a position is
@@ -75,6 +83,7 @@ type Entry = (Effect, Point<Pixels>);
 pub(crate) struct Tape {
     prepaint: Vec<Entry>,
     paint: Vec<Entry>,
+    lifted: Vec<Vec<Entry>>,
 }
 
 impl Tape {
@@ -82,7 +91,16 @@ impl Tape {
         match phase {
             Phase::Prepaint => &mut self.prepaint,
             Phase::Paint => &mut self.paint,
-            Phase::Layout => unreachable!("nothing records into the layout phase: it replays the other two"),
+            Phase::Lifted(rel) => {
+                let rel = rel as usize;
+                if self.lifted.len() <= rel {
+                    self.lifted.resize_with(rel + 1, Vec::new);
+                }
+                &mut self.lifted[rel]
+            }
+            Phase::Layout | Phase::LayoutPaint => {
+                unreachable!("nothing records into the layout phases: they replay the others")
+            }
         }
     }
 
@@ -91,11 +109,18 @@ impl Tape {
     pub(crate) fn replay(&self, phase: Phase, delta: Point<Pixels>) {
         let effects = match phase {
             // A pass that only lays out records no tape, so this is not part of one. It makes the
-            // writes of prepaint, and those of paint that it makes from prepaint too.
+            // writes of prepaint, and those of paint and of the elements handed to the stacking
+            // context that it makes from prepaint too.
             Phase::Layout => {
                 for (effect, offset) in &self.prepaint {
                     effect.apply(*offset + delta);
                 }
+                for (effect, offset) in self.paint.iter().chain(self.lifted.iter().flatten()).filter(|(effect, _)| effect.in_layout()) {
+                    effect.apply(*offset + delta);
+                }
+                return;
+            }
+            Phase::LayoutPaint => {
                 for (effect, offset) in self.paint.iter().filter(|(effect, _)| effect.in_layout()) {
                     effect.apply(*offset + delta);
                 }
@@ -103,13 +128,25 @@ impl Tape {
             }
             Phase::Prepaint => &self.prepaint,
             Phase::Paint => &self.paint,
+            Phase::Lifted(rel) => match self.lifted.get(rel as usize) {
+                Some(effects) => effects,
+                None => return,
+            },
         };
         for (effect, offset) in effects {
             effect.apply(*offset + delta);
         }
         RECORDING.with(|recordings| {
             for recording in recordings.borrow().iter() {
-                debug_assert_eq!(recording.phase, phase, "a subtree is replayed in the phase it is recorded in");
+                // What the context paints, of the subtree or of what it handed over, is replayed
+                // inside whichever of the two is being recorded.
+                debug_assert!(
+                    match phase {
+                        Phase::Prepaint => recording.phase == Phase::Prepaint,
+                        _ => matches!(recording.phase, Phase::Paint | Phase::Lifted(_)),
+                    },
+                    "a subtree is replayed in the phase it is recorded in"
+                );
                 recording
                     .tape
                     .borrow_mut()
@@ -121,20 +158,29 @@ impl Tape {
 
     /// What the tape writes `delta` from where it wrote it, as text, one line per write.
     pub(crate) fn describe(&self, delta: Point<Pixels>) -> String {
-        let lines = |phase: &str, effects: &[Entry]| {
-            effects
-                .iter()
-                .map(|(effect, offset)| {
-                    format!(
-                        "{phase}{} {}\n",
-                        if effect.in_layout() { "+layout" } else { "" },
-                        effect.describe(*offset + delta)
-                    )
-                })
-                .collect::<String>()
-        };
-        lines("prepaint", &self.prepaint) + &lines("paint", &self.paint)
+        let lifted = (0..self.lifted.len() as u32).map(|rel| self.describe_lifted(rel)).collect::<String>();
+        describe_effects("prepaint", &self.prepaint, delta) + &describe_effects("paint", &self.paint, delta) + &lifted
     }
+
+    /// What the element handed to the stacking context as `rel` wrote, as text.
+    fn describe_lifted(&self, rel: u32) -> String {
+        self.lifted
+            .get(rel as usize)
+            .map_or_else(String::new, |effects| describe_effects(&format!("lifted {rel} "), effects, Point::default()))
+    }
+}
+
+fn describe_effects(phase: &str, effects: &[Entry], delta: Point<Pixels>) -> String {
+    effects
+        .iter()
+        .map(|(effect, offset)| {
+            format!(
+                "{phase}{} {}\n",
+                if effect.in_layout() { "+layout" } else { "" },
+                effect.describe(*offset + delta)
+            )
+        })
+        .collect()
 }
 
 pub(crate) type SharedTape = Rc<RefCell<Tape>>;
@@ -147,6 +193,9 @@ pub(crate) struct TapeStore {
     /// root that replayed was, when it was replayed.
     verifying: std::cell::Cell<bool>,
     replayed: RefCell<Vec<(u64, String)>>,
+    /// The writes of elements handed to the stacking context that a replay put back, by root and
+    /// ordinal: a root that replayed has to have put back every one it wrote when it was built.
+    replayed_lifted: RefCell<Vec<(u64, u32, String)>>,
 }
 
 pub(crate) type Tapes = Rc<TapeStore>;
@@ -164,10 +213,38 @@ impl TapeStore {
             .get(&root)
             .expect("a replayed root has the tape of the build it was recorded from")
             .clone();
-        if self.verifying.get() && phase == Phase::Prepaint {
-            self.replayed.borrow_mut().push((root, tape.borrow().describe(delta)));
+        if self.verifying.get() {
+            match phase {
+                Phase::Prepaint => self.replayed.borrow_mut().push((root, tape.borrow().describe(delta))),
+                Phase::Lifted(rel) => self.replayed_lifted.borrow_mut().push((root, rel, tape.borrow().describe_lifted(rel))),
+                _ => {}
+            }
         }
         tape.borrow().replay(phase, delta);
+    }
+
+    /// The context starts to paint an element that `root` handed to it: what the element writes
+    /// until [`Self::end_lifted`] is on the tape of `root`, under `rel`.
+    pub(crate) fn begin_lifted(&self, root: u64, rel: u32) {
+        let tape = self
+            .tapes
+            .borrow()
+            .get(&root)
+            .expect("a root that hands an element to the stacking context has the tape of its build")
+            .clone();
+        tape.borrow_mut().of(Phase::Lifted(rel)).clear();
+        RECORDING.with(|recordings| recordings.borrow_mut().push(Recording { tape, phase: Phase::Lifted(rel) }));
+    }
+
+    pub(crate) fn end_lifted(&self, root: u64) {
+        RECORDING.with(|recordings| {
+            let recording = recordings.borrow_mut().pop().expect("a lifted element that begun is ended");
+            debug_assert!(
+                matches!(recording.phase, Phase::Lifted(_))
+                    && self.tapes.borrow().get(&root).is_some_and(|tape| Rc::ptr_eq(tape, &recording.tape)),
+                "the ends of lifted elements come in the reverse order of their beginnings"
+            );
+        });
     }
 
     pub(crate) fn verify(&self, verifying: bool) {
@@ -177,6 +254,7 @@ impl TapeStore {
     /// Forgets the roots that replayed in the pass before.
     pub(crate) fn forget_replays(&self) {
         self.replayed.borrow_mut().clear();
+        self.replayed_lifted.borrow_mut().clear();
     }
 
     /// What the roots that replayed wrote: in the pass that replayed them, what their tapes said
@@ -187,15 +265,27 @@ impl TapeStore {
         replayed
             .into_iter()
             .map(|(root, replayed)| {
-                let tape = if built {
-                    self.tapes
-                        .borrow()
-                        .get(&root)
-                        .map_or_else(String::new, |tape| tape.borrow().describe(Point::default()))
+                let (tape, lifted) = if built {
+                    self.tapes.borrow().get(&root).map_or_else(Default::default, |tape| {
+                        let tape = tape.borrow();
+                        let lifted = (0..tape.lifted.len() as u32)
+                            .map(|rel| tape.describe_lifted(rel))
+                            .filter(|slice| !slice.is_empty())
+                            .collect::<String>();
+                        (tape.describe(Point::default()), lifted)
+                    })
                 } else {
-                    replayed
+                    let mut slices: Vec<(u32, String)> = self
+                        .replayed_lifted
+                        .borrow()
+                        .iter()
+                        .filter(|(replayed_root, _, slice)| *replayed_root == root && !slice.is_empty())
+                        .map(|(_, rel, slice)| (*rel, slice.clone()))
+                        .collect();
+                    slices.sort_by_key(|(rel, _)| *rel);
+                    (replayed, slices.into_iter().map(|(_, slice)| slice).collect())
                 };
-                format!("tape {root}\n{tape}")
+                format!("tape {root}\n{tape}put back\n{lifted}")
             })
             .collect()
     }
@@ -343,6 +433,7 @@ impl Element for Taped {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.tape.borrow_mut().lifted.clear();
         let _recording = Recorder::begin(&self.tape, Phase::Prepaint);
         self.child.prepaint(window, cx);
     }

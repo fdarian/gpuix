@@ -7745,14 +7745,11 @@ fn retained_root(
         let phase = match phase {
             gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
             gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
-            gpui::RetainedPhase::Layout | gpui::RetainedPhase::LayoutPaint => crate::tape::Phase::Layout,
-            // Elements that a root hands to the stacking context around it are painted by that
-            // context, outside the tape of the root. Those with a lift of their own make the
-            // root ineligible (`Below::lifts`); what remains is lifted by gpui alone (the focus
-            // anchors of inline spans) and writes nothing.
-            gpui::RetainedPhase::LiftedBegin(_)
-            | gpui::RetainedPhase::LiftedEnd
-            | gpui::RetainedPhase::LiftedPaint(_) => return,
+            gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
+            gpui::RetainedPhase::LayoutPaint => crate::tape::Phase::LayoutPaint,
+            gpui::RetainedPhase::LiftedBegin(rel) => return tapes.begin_lifted(id, rel),
+            gpui::RetainedPhase::LiftedEnd => return tapes.end_lifted(id),
+            gpui::RetainedPhase::LiftedPaint(rel) => crate::tape::Phase::Lifted(rel),
         };
         tapes.replay(id, phase, delta);
     });

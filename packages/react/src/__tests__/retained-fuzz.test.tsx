@@ -35,7 +35,7 @@ function rng(seed: number) {
   }
 }
 
-type CardState = { label: string; hue: number; extra: boolean; wide: boolean; pad: number }
+type CardState = { label: string; hue: number; extra: boolean; wide: boolean; pad: number; tag: number }
 
 function Card({ i, st }: { i: number; st: CardState }) {
   const variant = i % 6
@@ -55,6 +55,9 @@ function Card({ i, st }: { i: number; st: CardState }) {
         hasHover: variant === 3 ? { outline: "2px solid #00ff00" } : undefined,
         focusWithin: variant === 4 ? { backgroundColor: "#228822" } : undefined,
         overflow: variant === 5 ? "hidden" : undefined,
+        position: i % 2 === 0 ? "relative" : undefined,
+        zIndex: i % 6 === 2 ? 1 : undefined,
+        opacity: i % 5 === 4 ? 0.85 : undefined,
       }}
     >
       <div testId={`title-${i}`} id={`t-${i}`} style={{ height: 18, backgroundColor: "#00000055" }}>
@@ -92,6 +95,41 @@ function Card({ i, st }: { i: number; st: CardState }) {
       {i % 4 === 3 ? (
         <div style={{ position: "absolute", right: 2, bottom: 2, width: 20, height: 10, backgroundColor: "#ff00ff", zIndex: 3 }}>
           <text>z</text>
+        </div>
+      ) : null}
+      {i % 2 === 0 ? (
+        <div
+          testId={`row-${i}`}
+          style={{
+            position: "relative",
+            zIndex: st.tag % 3 === 0 ? 10 : undefined,
+            opacity: st.tag % 3 === 1 ? 0.8 : undefined,
+            height: 12,
+            backgroundColor: "#00000033",
+            hover: { backgroundColor: "#77777799" },
+          }}
+        >
+          <div
+            testId={`pill-${i}`}
+            style={{
+              position: "absolute",
+              right: st.tag % 4,
+              top: 0,
+              width: 16 + st.tag,
+              height: 10,
+              backgroundColor: "#ff8800",
+              zIndex: st.tag % 5 === 0 ? 2 : undefined,
+              hover: { backgroundColor: "#ffff00" },
+            }}
+          >
+            <text>{`p${st.tag}`}</text>
+            {st.tag % 2 === 0 ? (
+              <div style={{ position: "relative", opacity: 0.7, height: 4, width: 8, backgroundColor: "#0088ff" }}>
+                <div style={{ position: "absolute", left: 2, top: 1, width: 3, height: 3, backgroundColor: "#ffffff" }} />
+              </div>
+            ) : null}
+          </div>
+          <text>{`row ${i}`}</text>
         </div>
       ) : null}
       {i % 8 === 4 ? (
@@ -134,7 +172,7 @@ function run(seed: number, steps: number) {
   function App() {
     const [state, setState] = React.useState({
       order: Array.from({ length: N }, (_, i) => i),
-      cards: Array.from({ length: N }, (_, i) => ({ label: `card ${i}`, hue: i * 20, extra: i % 3 === 0, wide: false, pad: 0 })),
+      cards: Array.from({ length: N }, (_, i) => ({ label: `card ${i}`, hue: i * 20, extra: i % 3 === 0, wide: false, pad: 0, tag: i % 7 })),
       scrollerHeight: 260,
       rootFont: 16,
     })
@@ -165,7 +203,7 @@ function run(seed: number, steps: number) {
     const scroller = renderer.findByTestId("scroller").id
     const point = () => [Math.floor(random() * 640), Math.floor(random() * 400)] as const
     for (let step = 0; step < steps; step++) {
-      const op = pick(23)
+      const op = pick(24)
       let name = ""
       try {
         switch (op) {
@@ -293,6 +331,12 @@ function run(seed: number, steps: number) {
             renderer.setRetainPlanning(random() < 0.5)
             break
           }
+          case 23: {
+            const i = pick(N)
+            name = `tag ${i}`
+            flushSync(() => apply((s) => ({ ...s, cards: s.cards.map((c, k) => (k === i ? { ...c, tag: pick(7) } : c)) })))
+            break
+          }
           case 17: {
             name = "scroller height"
             flushSync(() => apply((s) => ({ ...s, scrollerHeight: 150 + pick(250) })))
@@ -322,7 +366,7 @@ function run(seed: number, steps: number) {
     for (let f = 0; f < 6; f++) renderer.flush()
     // snapshot replayed vs whole
     const ids = ["scroller", "footer", "tbl"]
-    for (let i = 0; i < N; i++) ids.push(`card-${i}`, `title-${i}`, `span-${i}`, `btn-${i}`)
+    for (let i = 0; i < N; i++) ids.push(`card-${i}`, `title-${i}`, `span-${i}`, `btn-${i}`, `row-${i}`, `pill-${i}`)
     const snap = (name: string) => {
       const file = `${SHOTS_DIR}/retained-fuzz-${seed}-${name}.png`
       fs.rmSync(file, { force: true })
