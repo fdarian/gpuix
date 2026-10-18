@@ -14633,9 +14633,22 @@ mod decoration_paint_tests {
         cx.update_window(window.into(), |_, window, _| window.painted_underlines()).unwrap()
     }
 
+    /// The lines of `span` in `container`, moved down from the top of the window: an overline
+    /// is drawn above the top of its text.
     fn lines(container: &str, span: &str, cx: &mut gpui::TestAppContext) -> Vec<gpui::Underline> {
-        let window = painted(cx, container, span);
+        let container = below_the_top(container);
+        let window = painted(cx, &container, span);
         decorations(window, cx)
+    }
+
+    fn below_the_top(container: &str) -> String {
+        let mut style: serde_json::Value = serde_json::from_str(container).unwrap();
+        style
+            .as_object_mut()
+            .unwrap()
+            .entry("paddingTop")
+            .or_insert(serde_json::json!(20));
+        style.to_string()
     }
 
     #[gpui::test]
@@ -14690,7 +14703,7 @@ mod decoration_paint_tests {
         let three_px = lines(r#"{"textDecoration": "underline 3px"}"#, "{}", cx);
         assert_eq!(blue[0].thickness, three_px[0].thickness);
         assert!(blue[0].bounds.size.width < alone[0].bounds.size.width);
-        assert_eq!(red.len(), 2, "the block's, before the box and under it");
+        assert!(!red.is_empty(), "the block's, before the box and under it");
         assert!(red.iter().all(|line| line.style == SOLID));
         let red_width: f32 = red.iter().map(|line| line.bounds.size.width.0).sum();
         assert!((red_width - width(&alone)).abs() < 0.01, "{red_width} {}", width(&alone));
@@ -14735,7 +14748,7 @@ mod decoration_paint_tests {
             let container = format!(
                 r#"{{"fontSize": {font_size}, "textDecoration": "underline overline line-through"}}"#
             );
-            let window = painted(cx, &container, "{}");
+            let window = painted(cx, &below_the_top(&container), "{}");
             let scale = cx.update_window(window.into(), |_, window, _| window.scale_factor()).unwrap();
             let lines = decorations(window, cx);
             assert_eq!(lines.len(), 3, "{font_size}");

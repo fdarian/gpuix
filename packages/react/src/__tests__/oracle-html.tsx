@@ -18,15 +18,17 @@ export function textOf(html: string): string {
   return html.replace(/<[^>]*>/g, "")
 }
 
-/** The spans of `html` nested as they are, with the `data-seg` attribute dropped. */
+/** The spans of `html` nested as they are, with the `data-seg` attribute dropped. A `<!---->` ends a text node: the text after it is another one. */
 export function nodesOf(html: string): React.ReactNode[] {
   const root: React.ReactNode[] = []
   const open: { style: string; children: React.ReactNode[] }[] = []
   let key = 0
-  for (const token of html.split(/(<span(?: [a-z-]+="[^"]*")*>|<\/span>)/).filter(Boolean)) {
+  for (const token of html.split(/(<span(?: [a-z-]+="[^"]*")*>|<\/span>|<!---->)/).filter(Boolean)) {
     const opening = /^<span((?: [a-z-]+="[^"]*")*)>$/.exec(token)
     if (opening) {
       open.push({ style: /style="([^"]*)"/.exec(opening[1]!)?.[1] ?? "", children: [] })
+    } else if (token === "<!---->") {
+      continue
     } else if (token === "</span>") {
       const span = open.pop()!
       const element = (

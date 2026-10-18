@@ -2892,6 +2892,16 @@ the outer one, each with its own style, colour and thickness, so `underline wavy
 red` inside `underline` draws both. Each is drawn where its kind sits, so two
 lines of one kind with the same thickness and style overlap exactly.
 
+Where a line is, follows Chrome. An underline is drawn at the baseline of the box that
+declared it, level under text that a nested box raises or lowers. A line-through is
+centred two thirds of the ascent of the declaring box's font below the top of the text
+it crosses, and an overline sits on the top of that text with its bottom edge there and
+the thickness growing upward, so each goes up and down with the text it is drawn over
+(a raised or bigger nested box has its own piece at its own height), and takes its
+thickness from the declaring box. Underlines and overlines are painted under the glyphs
+and a line-through over them. Where a nested box declares a line again, the outer box's
+is under the inner one's.
+
 A declaration gives every line it names one style, one colour and one
 thickness, as in CSS. The styles are `solid`, `double` (two lines a thickness
 apart), `dotted` (round dots), `dashed` and `wavy`, on `underline`, `line-through`
@@ -2905,10 +2915,17 @@ an inline box declaring it with its own `fontSize` uses that size. The lines a
 descendant inherits keep the thickness resolved there; a descendant with a bigger
 font does not thicken them. A negative length and a bare non-zero number are
 invalid and ignored, like in every other length in a style string. Dots and dashes
-follow Chrome's proportions (a dot is a thickness across, dashes are three
-thicknesses long with a gap of two, two long with a gap of one from a thickness
-of 3px) but do not stretch to end on a mark, so a line that is not a whole
-number of marks ends on a partial one. `auto` and `from-font` stay fractional; a
+are laid out as Chrome does, in device pixels: a dash is three thicknesses long
+with a gap of two (two long with a gap of one from a thickness of 3px), the gaps
+stretch or shrink so that the last dash ends where the line does, and a line
+shorter than two dashes is solid. A dotted line under four device pixels thick is
+square marks one thickness long and two apart, which are not fitted; a thicker one
+is round dots with the first and the last centred half a thickness in from the ends,
+and the gaps fitted between them. A pattern starts over with every **text
+fragment**, which is a text node in one inline box on one row: an outer dashed
+underline starts again after a nested box and between two text nodes, and on every
+wrapped row, and the spaces that hang past the end of a row are not drawn under.
+(A paragraph in which no `<span>` restyles anything is one fragment: see FORK.md.) `auto` and `from-font` stay fractional; a
 solid or double line floors them to a device pixel (at least one) when it paints,
 and a dotted or dashed one rounds them. A length is rounded to the nearest device
 pixel, a half up, and is at least one, `0px` included, as in Chrome: `1.5px` is two
@@ -3565,8 +3582,7 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   fractions of a pixel. Their positions are snapped to device pixels when painted (and in
   `getBoundingClientRect`), where Chrome's are in 1/64 of a pixel. Chrome rounds the ascent and descent of a font to whole pixels,
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
-- The underline, line-through or overline of a span that wraps and is raised is drawn at the baseline of the
-  row, not at the raised one. Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
+- Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
   inlines is its line box, since it has no text to take the content area of its font from (a browser
   reports that content area).

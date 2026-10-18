@@ -62,6 +62,7 @@ impl TextDecoration {
             style: self.style,
             offset: self.underline_offset.resolve(lengths),
             decorator: None,
+            fragment: 0,
         }
     }
 
@@ -76,6 +77,8 @@ impl TextDecoration {
             thickness_kind: self.thickness.kind(),
             color: Some(color),
             style: self.style,
+            decorator: None,
+            fragment: 0,
         }
     }
 
@@ -85,7 +88,13 @@ impl TextDecoration {
             thickness_kind: self.thickness.kind(),
             color: Some(color),
             style: self.style,
+            fragment: 0,
         }
+    }
+
+    /// Whether the line has a pattern that Chrome starts over with every text fragment.
+    pub fn is_patterned(&self) -> bool {
+        is_patterned(self.style)
     }
 
     /// The colour of every line: the declared one when it resolves, else the
@@ -98,6 +107,14 @@ impl TextDecoration {
             .unwrap_or(colors.current)
             .into()
     }
+}
+
+/// Whether a line of `style` has a pattern that Chrome starts over with every text fragment.
+pub fn is_patterned(style: gpui::TextDecorationStyle) -> bool {
+    matches!(
+        style,
+        gpui::TextDecorationStyle::Dotted | gpui::TextDecorationStyle::Dashed | gpui::TextDecorationStyle::Wavy
+    )
 }
 
 impl Thickness {

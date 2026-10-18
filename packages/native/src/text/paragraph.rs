@@ -19,7 +19,7 @@ use gpui::{
 use crate::color::ColorContext;
 use crate::css::font_features::FontFeatureState;
 use crate::css::length::LengthContext;
-use crate::css::text_decoration;
+use crate::css::text_decoration::{self, is_patterned};
 use crate::css::vertical_align::ResolvedVerticalAlign;
 use crate::css::text_underline_offset::TextUnderlineOffset;
 use crate::events::state_styles::{folded, PointerStates};
@@ -65,6 +65,10 @@ pub struct RunStyle {
     /// nor the text of a box to an atomic inline, so it is a run of its own with
     /// the lines of none of the boxes around it.
     pub atomic: bool,
+    /// The text nodes the run is made of, as the index of the piece and its length. Not part
+    /// of the style: it lets a run split again where a pattern of the paragraph's own
+    /// decoration starts over, see [`InlineText::runs`].
+    pub pieces: Vec<(usize, usize)>,
 }
 
 impl RunStyle {
@@ -74,24 +78,30 @@ impl RunStyle {
         }
         Self {
             len: 0,
+            pieces: Vec::new(),
             ..self.clone()
         } == Self {
             len: 0,
+            pieces: Vec::new(),
             ..other.clone()
         }
     }
 
-    /// `decorator` is the box that declared the decoration.
+    /// `decorator` is the box that declared the decoration, and `fragment` the text node the
+    /// run is, which a patterned line starts its pattern over with.
     fn add_decoration(
         &mut self,
         decoration: &text_decoration::TextDecoration,
         color: Hsla,
         lengths: &LengthContext,
         decorator: u64,
+        fragment: u32,
     ) {
+        let fragment = if decoration.is_patterned() { fragment } else { 0 };
         if decoration.underline {
             let underline = UnderlineStyle {
                 decorator: Some(decorator),
+                fragment,
                 ..decoration.underline_style(color, lengths)
             };
             if let Some(outer) = self.underline.replace(underline) {
@@ -99,16 +109,22 @@ impl RunStyle {
             }
         }
         if decoration.line_through {
-            if let Some(outer) = self
-                .strikethrough
-                .replace(decoration.strikethrough_style(color, lengths))
-            {
+            let strikethrough = StrikethroughStyle {
+                decorator: Some(decorator),
+                fragment,
+                ..decoration.strikethrough_style(color, lengths)
+            };
+            if let Some(outer) = self.strikethrough.replace(strikethrough) {
                 self.extra_decorations
                     .push(ExtraDecoration::Strikethrough(outer));
             }
         }
         if decoration.overline {
-            if let Some(outer) = self.overline.replace(decoration.overline_style(color, lengths)) {
+            let overline = OverlineStyle {
+                fragment,
+                ..decoration.overline_style(color, lengths)
+            };
+            if let Some(outer) = self.overline.replace(overline) {
                 self.extra_decorations.push(ExtraDecoration::Overline(outer));
             }
         }
@@ -150,6 +166,8 @@ pub struct BoxStyle {
     pub declares_wrap: bool,
     /// Whether the box declares an underline, which is drawn at the baseline of the box.
     pub decorates: bool,
+    /// Whether the box declares a strike-through, which is drawn by the ascent of its font.
+    pub strikes: bool,
 }
 
 /// The runs of `paragraph`, covering its text exactly. Empty when no box
@@ -205,9 +223,10 @@ pub fn styles(
 ) -> Styles {
     let mut runs: Vec<RunStyle> = Vec::with_capacity(paragraph.pieces.len());
     let mut boxes: Vec<BoxStyle> = Vec::new();
-    for piece in &paragraph.pieces {
+    for (piece_ix, piece) in paragraph.pieces.iter().enumerate() {
         let mut style = RunStyle {
             len: piece.range.len(),
+            pieces: vec![(piece_ix, piece.range.len())],
             ..RunStyle::default()
         };
         let mut colors = *colors;
@@ -218,10 +237,10 @@ pub fn styles(
         let mut parent = None;
         let mut wraps = None;
         for id in &piece.boxes {
-            let mut decorates = false;
+            let (mut decorates, mut strikes) = (false, false);
             let Some(base) = motion.declared_by(tree, *id) else {
                 // A box with no style inherits everything, and is still a box.
-                note_box(&mut boxes, paragraph, *id, parent, &style, ResolvedVerticalAlign::Baseline, wraps, (false, false));
+                note_box(&mut boxes, paragraph, *id, parent, &style, ResolvedVerticalAlign::Baseline, wraps, (false, false, false));
                 parent = Some(*id);
                 continue;
             };
@@ -279,14 +298,15 @@ pub fn styles(
                 if let Some(mut decoration) = text_decoration::of(declared) {
                     decoration.underline_offset = underline_offset;
                     let color = fade(decoration.resolve_color(&colors), opacity);
-                    style.add_decoration(&decoration, color, &lengths, *id);
+                    style.add_decoration(&decoration, color, &lengths, *id, piece_ix as u32 + 1);
                     decorates = decoration.underline;
+                    strikes = decoration.line_through;
                 }
                 let align = declared
                     .vertical_align
                     .as_ref()
                     .map_or(ResolvedVerticalAlign::Baseline, |align| align.resolve(&lengths));
-                note_box(&mut boxes, paragraph, *id, parent, &style, align, wraps, (declared_wraps.is_some(), decorates));
+                note_box(&mut boxes, paragraph, *id, parent, &style, align, wraps, (declared_wraps.is_some(), decorates, strikes));
                 parent = Some(*id);
             }
         }
@@ -298,11 +318,15 @@ pub fn styles(
             style = RunStyle {
                 len: piece.range.len(),
                 atomic: true,
+                pieces: vec![(piece_ix, piece.range.len())],
                 ..RunStyle::default()
             };
         }
         match runs.last_mut() {
-            Some(last) if last.same_style(&style) => last.len += style.len,
+            Some(last) if last.same_style(&style) => {
+                last.len += style.len;
+                last.pieces.extend(style.pieces);
+            }
             _ => runs.push(style),
         }
     }
@@ -327,7 +351,7 @@ fn note_box(
     style: &RunStyle,
     align: ResolvedVerticalAlign,
     wraps: Option<bool>,
-    (declares_wrap, decorates): (bool, bool),
+    (declares_wrap, decorates, strikes): (bool, bool, bool),
 ) {
     if boxes.iter().any(|known| known.id == id) {
         return;
@@ -342,6 +366,7 @@ fn note_box(
             wraps,
             declares_wrap,
             decorates,
+            strikes,
         });
     }
 }
@@ -373,11 +398,16 @@ pub fn listed_boxes(
     // An underline is drawn at the baseline of its box, which only differs from that of its
     // row where a box is aligned to something else.
     let aligned = boxes.iter().any(|style| style.align != ResolvedVerticalAlign::Baseline);
+    // A strike-through goes by the ascent of the font of the box that declared it, which
+    // the line layout reads off the box, so a box in another font than the text it is over is
+    // listed.
+    let fonts_differ = boxes.iter().any(|style| style.style.changes_strut());
     let needs_listing = |style: &BoxStyle| {
         mixed_wrap
             || style.align != ResolvedVerticalAlign::Baseline
             || style.declares_wrap
             || (aligned && style.decorates)
+            || (fonts_differ && style.strikes)
     };
     if shifted.is_empty()
         && !boxes.iter().any(needs_listing)
@@ -603,10 +633,40 @@ impl InlineText {
         run
     }
 
+    /// The runs of the text over `base`. Where a line the paragraph's own block declares has a
+    /// pattern (dotted, dashed or wavy), a run is cut into the text nodes it holds, and each
+    /// has its own fragment of the line, which Chrome draws with the pattern started over.
     fn runs(&self, base: &gpui::TextStyle, rem_size: Pixels, heights: &RunHeights) -> Vec<TextRun> {
+        let patterned = base.underline.is_some_and(|line| is_patterned(line.style))
+            || base.strikethrough.is_some_and(|line| is_patterned(line.style))
+            || base.overline.is_some_and(|line| is_patterned(line.style));
         self.styles
             .iter()
-            .map(|style| Self::run(style, base, rem_size, heights))
+            .flat_map(|style| {
+                if !patterned || style.atomic || style.pieces.is_empty() {
+                    return vec![Self::run(style, base, rem_size, heights)];
+                }
+                style
+                    .pieces
+                    .iter()
+                    .map(|(piece, len)| {
+                        let mut piece_style = style.clone();
+                        piece_style.len = *len;
+                        let mut base = base.clone();
+                        let fragment = *piece as u32 + 1;
+                        for line in base.underline.iter_mut().filter(|line| is_patterned(line.style)) {
+                            line.fragment = fragment;
+                        }
+                        for line in base.strikethrough.iter_mut().filter(|line| is_patterned(line.style)) {
+                            line.fragment = fragment;
+                        }
+                        for line in base.overline.iter_mut().filter(|line| is_patterned(line.style)) {
+                            line.fragment = fragment;
+                        }
+                        Self::run(&piece_style, &base, rem_size, heights)
+                    })
+                    .collect()
+            })
             .collect()
     }
 
@@ -1297,9 +1357,14 @@ mod tests {
         let inner = runs[2].underline.expect("inner");
         assert_eq!((inner.style, inner.thickness), (TextDecorationStyle::Dashed, gpui::px(1.0)));
         assert_ne!(inner.color, outer.color);
+        // A line with a pattern starts over with every text node, so this one is another fragment.
+        let ExtraDecoration::Underline(carried) = runs[2].extra_decorations[0] else {
+            panic!("an underline")
+        };
+        assert_ne!(carried.fragment, outer.fragment);
         assert_eq!(
             runs[2].extra_decorations,
-            vec![ExtraDecoration::Underline(outer)],
+            vec![ExtraDecoration::Underline(UnderlineStyle { fragment: carried.fragment, ..outer })],
             "the outer underline is still there, with its own style, colour and thickness"
         );
         assert_eq!((outer.style, outer.thickness), (TextDecorationStyle::Wavy, gpui::px(2.0)));
