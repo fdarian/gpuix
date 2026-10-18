@@ -125,6 +125,7 @@ pub fn hitboxes(layout: TextLayout, boxes: Vec<CursorBox>) -> impl IntoElement {
             }
         },
     )
+    .keeps_no_position()
     .absolute()
     .size_full()
 }

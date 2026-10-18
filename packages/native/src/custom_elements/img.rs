@@ -904,6 +904,7 @@ impl CustomElement for SvgElement {
                         paint_svg(&paint, &renderer, &bytes, bounds, color, window, cx);
                     },
                 )
+                .keeps_no_position()
                 // In flow, not absolute: an absolute child is sized against the padding box.
                 .size_full(),
             );

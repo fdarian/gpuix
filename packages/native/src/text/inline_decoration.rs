@@ -317,6 +317,7 @@ pub fn overlay(layout: TextLayout, decorations: Vec<BoxDecoration>) -> impl Into
             }
         },
     )
+    .keeps_no_position()
     .absolute()
     .size_full()
 }

@@ -1584,6 +1584,18 @@ export interface RetainedCounters {
   mismatches: number
   /** A JSON object: the recordings that could not be replayed, by the first reason. */
   nonReusable: string
+  /** Replays of a subtree that a scroller had moved, which are builds that were not made. */
+  relocations: number
+  /**
+   * A JSON object: the recordings of subtrees that a scroller moves that cannot be put
+   * elsewhere, by the first reason.
+   */
+  nonRelocatable: string
+  /**
+   * A JSON object: the subtrees that a scroller had moved and that were built again though
+   * they were the same but for where they are, by the reason.
+   */
+  relocationMisses: string
 }
 
 /** What the sync handler returns. */

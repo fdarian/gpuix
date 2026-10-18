@@ -113,11 +113,19 @@ function frame(node: React.ReactNode, a11y: boolean): { summary: Summary; elemen
 
 /**
  * What a frame of a scroller may cost with retention on against off. Retention records what it
- * builds, which a scroller gives it nothing to skip from: its rows are somewhere else with each
- * frame, or are too small to be a subtree. A frame that found nothing to skip stops recording for
- * a while, so the two cost the same. Measured: 1.00 to 1.02, which noise is of the order of.
+ * builds; a scroller that nothing in it can be skipped from (rows that are too small to be a
+ * subtree, or too big to be a root) stops recording for a while, so the two cost the same.
+ * Measured: 1.00 to 1.02, which noise is of the order of.
  */
 const SCROLL_RETAIN_OVER_OFF = 1.05
+
+/**
+ * What a frame of a scroller whose rows a scroll moves may cost with retention on against off:
+ * the rows are put where the scroll put them and not built again, so a frame that scrolls a few
+ * pixels does a fifth of the work. Measured: 0.17 to 0.2 at 3 px a frame, 0.35 at 400 and 0.5 at
+ * 2000; the margin is for a loaded machine.
+ */
+const SCROLL_RELOCATED_OVER_OFF = 0.5
 
 function Cards() {
   return (
@@ -210,15 +218,15 @@ describeNative.each([{ a11y: true }, { a11y: false }])('clipped and off-screen c
     }
   }, 300_000)
 
-  it('scroll: retention costs no more than none', () => {
+  it('scroll: retention costs no more than none, and a scroll moves the rows it does not build again', () => {
     const shapes = [
-      { name: 'boxes in a scroller, unchanged', node: <Boxes count={2000} clip="scroll" />, scrolls: false },
-      { name: 'cards in a scroller, scrolled every frame', node: <Cards />, scrolls: true },
+      { name: 'boxes in a scroller, unchanged', node: <Boxes count={2000} clip="scroll" />, scrolls: false, limit: SCROLL_RETAIN_OVER_OFF },
+      { name: 'cards in a scroller, moved by the scroll every frame', node: <Cards />, scrolls: true, limit: SCROLL_RELOCATED_OVER_OFF },
     ]
     for (const shape of shapes) {
       const { on, off } = retentionOverOff(shape.node, a11y, shape.scrolls)
       console.log(`[clipped.perf] a11y=${a11y} ${shape.name}: retention on=${on.toFixed(2)}ms off=${off.toFixed(2)}ms ratio=${(on / off).toFixed(3)}`)
-      expect(on / off, `${shape.name}: ${on.toFixed(2)}ms against ${off.toFixed(2)}ms`).toBeLessThan(SCROLL_RETAIN_OVER_OFF)
+      expect(on / off, `${shape.name}: ${on.toFixed(2)}ms against ${off.toFixed(2)}ms`).toBeLessThan(shape.limit)
     }
   }, 300_000)
 

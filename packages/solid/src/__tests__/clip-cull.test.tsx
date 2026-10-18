@@ -68,7 +68,8 @@ describe.skipIf(!hasNativeTestRenderer)("content outside a clip", () => {
     let target!: HostElement
     const app = mount(() => (
       <div ref={(host) => (scroller = host)} style={{ ...CLIP, overflow: "auto" }}>
-        <div style={{ width: 150, height: 150, flexShrink: 0 }} />
+        {/* Past the clip and the overscan of the rows a scroll can move. */}
+        <div style={{ width: 150, height: 250, flexShrink: 0 }} />
         <div ref={(host) => (target = host)} style={{ width: 150, height: 30, flexShrink: 0 }} />
       </div>
     ))
@@ -83,7 +84,7 @@ describe.skipIf(!hasNativeTestRenderer)("content outside a clip", () => {
     expect(intersections).toEqual([false])
     expect(sizes).toEqual([30])
 
-    scroller.scrollTop = 100
+    scroller.scrollTop = 200
     app.renderer.flush()
     app.renderer.dispatchNativeEvents()
     expect(intersections).toEqual([false, true])

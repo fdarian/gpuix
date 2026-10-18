@@ -149,8 +149,8 @@ pub fn selection_frame_reset(
 pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
     crate::tape::write(
         (window, bounds, selectable),
-        |(window, bounds, selectable)| push_start_region(*window, *bounds, *selectable),
-        |(_, bounds, selectable)| format!("start region {bounds:?} {selectable}"),
+        |(window, bounds, selectable), offset| push_start_region(*window, Bounds::new(bounds.origin + offset, bounds.size), *selectable),
+        |(_, bounds, selectable), offset| format!("start region {:?} {selectable}", Bounds::new(bounds.origin + offset, bounds.size)),
     );
 }
 
@@ -196,8 +196,8 @@ fn utf16_offset(text: &str, byte: usize) -> usize {
 pub fn log_painted_text(window: WindowId, text: SharedString) {
     crate::tape::write(
         (window, text),
-        |(window, text)| with_frame(*window, |frame| frame.painted.push(text.clone())),
-        |(_, text)| format!("painted {text:?}"),
+        |(window, text), _| with_frame(*window, |frame| frame.painted.push(text.clone())),
+        |(_, text), _| format!("painted {text:?}"),
     );
 }
 
@@ -217,6 +217,7 @@ pub fn chrome_text(text: SharedString, runs: Option<Vec<TextRun>>) -> gpui::AnyE
             }
         },
     )
+    .keeps_no_position()
     .absolute()
     .unlifted()
     .w(px(0.0))
@@ -527,8 +528,9 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                 };
                 crate::tape::write(
                     (window_id, entry),
-                    |(window, entry)| with_frame(*window, |frame| frame.registry.push(entry.clone())),
-                    |(_, entry)| {
+                    // Its layout is moved by the frame, with the subtree.
+                    |(window, entry), _| with_frame(*window, |frame| frame.registry.push(entry.clone())),
+                    |(_, entry), _| {
                         format!(
                             "text {} {:?} {:?} {:?} {:?} {:?} {:?}",
                             entry.key,
@@ -558,6 +560,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             }
         },
     )
+    .keeps_no_position()
     .absolute()
     .unlifted()
     .size_full();

@@ -369,6 +369,9 @@ struct Record {
     size: u32,
     subtree: crate::layout::cull::Subtree,
     effects: Option<Rc<[BuildEffect]>>,
+    /// Whether gpui has a recording of the subtree to replay: it asked for the build, or the frame
+    /// before skipped the subtree.
+    seasoned: bool,
 }
 
 const NO_PARENT: u32 = u32::MAX;
@@ -380,7 +383,8 @@ const CHANGED: usize = UNDER + Exclusion::ALL.len();
 const SPINE: usize = CHANGED + Cause::ALL.len();
 const LIFTS: usize = SPINE + 1;
 const MOVED: usize = LIFTS + 1;
-pub(crate) const RETAINED: usize = MOVED + 1;
+const OVERSIZED: usize = MOVED + 1;
+pub(crate) const RETAINED: usize = OVERSIZED + 1;
 pub(crate) const SLOTS: usize = RETAINED + 1;
 
 /// What a counted slot is called in a report.
@@ -392,8 +396,73 @@ pub(crate) fn slot_name(slot: usize) -> String {
         SPINE => "spine".to_owned(),
         LIFTS => "lifts".to_owned(),
         MOVED => "moved:scroll".to_owned(),
+        OVERSIZED => "oversized:scroll".to_owned(),
         RETAINED => "retained".to_owned(),
         _ => unreachable!("no slot {slot}"),
+    }
+}
+
+/// A scroller, or other clip scrolled by script, that an element is inside of. A subtree inside it
+/// that is skipped is recorded to be put elsewhere when the scroller moves it, see
+/// [`gpui::Retained::relocatable`].
+#[derive(Clone, Copy)]
+pub(crate) struct Scroller {
+    pub window: gpui::WindowId,
+    /// The size of its box, which bounds what a root is worth recording.
+    pub viewport: gpui::Size<gpui::Pixels>,
+    /// How far it scrolls with one step of the viewport: its height, its width, or the larger.
+    pub reach: gpui::Pixels,
+}
+
+/// Roots of at most this many viewports (per axis) are recorded to be moved by their scroller. A
+/// bigger one is not a root: it is built, and what is below it is judged by itself.
+const ROOT_VIEWPORTS: f32 = 2.0;
+
+/// How far past the clip of its scroller a root is recorded, in viewports of the scroller. The
+/// recording of a root is put elsewhere while the scroll since it was made is within it, so a
+/// bigger one is built fewer times and replays more roots that are not shown.
+const OVERSCAN_VIEWPORTS: f32 = 0.5;
+
+impl Scroller {
+    /// The scroller `handle` is, if its content can move: it scrolls for the user or by script
+    /// along an axis, and it has been laid out.
+    pub(crate) fn of(handle: &gpui::ScrollHandle, window: gpui::WindowId) -> Option<Self> {
+        let viewport = handle.padding_box().size;
+        if viewport.width <= gpui::px(0.0) || viewport.height <= gpui::px(0.0) {
+            return None;
+        }
+        let (offset, max, user) = (handle.offset(), handle.max_offset(), handle.user_scrollable());
+        let moves_x = (user.x && max.x > gpui::px(0.0)) || offset.x != gpui::px(0.0);
+        let moves_y = (user.y && max.y > gpui::px(0.0)) || offset.y != gpui::px(0.0);
+        let reach = match (moves_x, moves_y) {
+            (false, false) => return None,
+            (true, false) => viewport.width,
+            (false, true) => viewport.height,
+            (true, true) => viewport.width.max(viewport.height),
+        };
+        Some(Self { window, viewport, reach })
+    }
+
+    /// Whether the element's last box is small enough to be recorded to move: one that has no box
+    /// yet (it never painted) is not.
+    fn holds(&self, id: u64) -> bool {
+        self.fits(id) == Some(true)
+    }
+
+    /// Whether the element's last box is too big for a root, if it has one.
+    fn too_big(&self, id: u64) -> bool {
+        self.fits(id) == Some(false)
+    }
+
+    fn fits(&self, id: u64) -> Option<bool> {
+        crate::automation::get_bounds(self.window, id).map(|bounds| {
+            bounds.width <= f64::from(f32::from(self.viewport.width) * ROOT_VIEWPORTS)
+                && bounds.height <= f64::from(f32::from(self.viewport.height) * ROOT_VIEWPORTS)
+        })
+    }
+
+    fn overscan(&self) -> gpui::Pixels {
+        self.reach * OVERSCAN_VIEWPORTS
     }
 }
 
@@ -416,6 +485,8 @@ struct Node {
     forms_context: bool,
     /// Something above scrolled, so the box this one was recorded at is not where it is.
     moved: bool,
+    /// The scroller around it, if it is one gpui can move recordings for.
+    scroller: Option<Scroller>,
     /// Only with `verify`: a hash of what the build made of the element itself.
     digest: u64,
     subtree: crate::layout::cull::Subtree,
@@ -472,6 +543,13 @@ pub(crate) struct Sources<'a> {
     /// The pass of the draw the frame is built in, counted from 1, or 0 for a frame built outside
     /// a draw. Only the first pass of a draw is a frame to the back-off.
     pub pass: usize,
+    /// How many subtrees gpui has built late (it could not use the recording it had of them) and
+    /// how many it has put elsewhere than they were recorded, since the window was made.
+    pub lazy_builds: u64,
+    pub relocations: u64,
+    /// The frame is built again to be compared with the one that was shown: it is the same frame,
+    /// and its roots are planned as that one's were.
+    pub reference: bool,
 }
 
 /// What the sources were at the frame before, to tell what changed.
@@ -527,12 +605,35 @@ struct Backoff {
     elements: usize,
 }
 
+/// Whether the roots a scroller moved were put elsewhere or built again, which tells a frame
+/// whether to plan on it: a scroller whose rows gpui cannot move (a page whose rows keep a
+/// position, or sit under a rounded clip) is no better off with its rows skipped than built, and
+/// is worse for the recording that follows.
+#[derive(Default)]
+struct Relocation {
+    /// Roots the last first pass planned to have moved.
+    planned: u32,
+    /// `Sources::lazy_builds` and `Sources::relocations` at the first pass before.
+    lazy_builds: u64,
+    relocations: u64,
+    /// Frames still to go without planning to move roots.
+    rest: u32,
+    /// The length of the next stretch: 0 while the roots that were planned to move did.
+    gap: u32,
+    /// Whether the frame being built plans to move roots.
+    resting: bool,
+}
+
 pub(crate) struct Retain {
     /// `GPUIX_RETAIN_OFF` stops recording, to time a build without it.
     enabled: bool,
     /// Whether skipping was asked for, which `enabled` can still turn off.
     planning_wanted: bool,
     backoff: Backoff,
+    relocation: Relocation,
+    /// A subtree gpui asked for is being built inside one that is recorded to move: what is in it
+    /// is built, since the recording of a subtree in another cannot be put elsewhere on its own.
+    inside_relocatable: bool,
     /// The pass of the draw the frame being built is in, see [`Sources::pass`].
     pass: usize,
     /// How many elements the tree has in the frame being built.
@@ -594,6 +695,8 @@ pub(crate) struct Entry<'a> {
     pub boxed: bool,
     /// The key of a subtree that was deferred, which the frame that deferred it computed.
     pub prekeyed: Option<EnterKey>,
+    /// The scroller the element is inside of.
+    pub scroller: Option<Scroller>,
 }
 
 /// An element that was skipped, and what its parent and the frame need of it.
@@ -603,6 +706,9 @@ pub(crate) struct Skip {
     pub lift_z: Option<i32>,
     pub subtree: crate::layout::cull::Subtree,
     pub effects: Option<Rc<[BuildEffect]>>,
+    /// How far past the clip of its scroller the subtree is recorded, if it is to be put
+    /// elsewhere when the scroller moves it.
+    pub overscan: Option<gpui::Pixels>,
 }
 
 /// Elements below this many are not worth a retained element of their own: it costs about what
@@ -617,6 +723,8 @@ impl Retain {
             enabled,
             planning_wanted: !cfg!(test),
             backoff: Backoff::default(),
+            relocation: Relocation::default(),
+            inside_relocatable: false,
             pass: 1,
             elements: 0,
             #[cfg(test)]
@@ -664,6 +772,13 @@ impl Retain {
     #[cfg(test)]
     pub(crate) fn set_min_root(&mut self, min_root: u32) {
         self.min_root = min_root;
+    }
+
+    /// As if the roots that frames planned to have a scroller move were found built again, for
+    /// as long as a test draws.
+    #[cfg(test)]
+    pub(crate) fn stop_relocating(&mut self) {
+        self.relocation.rest = u32::MAX;
     }
 
     /// Turns the skipping of unchanged subtrees on or off, which the next frame starts from
@@ -736,6 +851,9 @@ impl Retain {
     pub(crate) fn begin_frame(&mut self, sources: Sources) {
         self.prune(sources.tree);
         self.pass = sources.pass;
+        if sources.pass == 1 && !sources.reference {
+            self.learn_relocation(sources.lazy_builds, sources.relocations);
+        }
         self.elements = sources.tree.elements.len();
         self.backoff.resting = self.enabled && self.rests(&sources);
         #[cfg(test)]
@@ -751,6 +869,30 @@ impl Retain {
         if self.open && self.planning {
             self.find_deltas(&sources);
         }
+    }
+
+    /// Judges the roots the frame before planned to have moved, by how many gpui had to build
+    /// anyway, and decides whether this frame plans on moving any.
+    fn learn_relocation(&mut self, lazy_builds: u64, relocations: u64) {
+        let relocation = &mut self.relocation;
+        let built = lazy_builds.wrapping_sub(relocation.lazy_builds);
+        let moved = relocations.wrapping_sub(relocation.relocations);
+        relocation.lazy_builds = lazy_builds;
+        relocation.relocations = relocations;
+        if relocation.planned > 0 {
+            // A root put elsewhere is a build that was not made, and one built late costs about a
+            // fifth of a build more than building it in the frame: a few that are put are worth
+            // many that are not.
+            if moved * 4 < built {
+                relocation.gap = (relocation.gap * 2).clamp(1, BACKOFF_CAP);
+                relocation.rest = relocation.gap;
+            } else {
+                relocation.gap = 0;
+            }
+        }
+        relocation.planned = 0;
+        relocation.resting = relocation.rest > 0;
+        relocation.rest = relocation.rest.saturating_sub(1);
     }
 
     /// Forgets the elements the tree destroyed. A record of one is never read again (ids are not
@@ -892,9 +1034,10 @@ impl Retain {
 
     /// Starts the build of a subtree that gpui asked for after the frame was built, because the
     /// frame before did not leave it recorded as the same, or does not lay out where it was.
-    pub(crate) fn begin_deferred(&mut self) {
+    pub(crate) fn begin_deferred(&mut self, inside_relocatable: bool) {
         self.open = self.enabled && !self.backoff.resting;
         self.deferred = true;
+        self.inside_relocatable = inside_relocatable;
         self.nodes.clear();
         self.stack.clear();
     }
@@ -902,6 +1045,7 @@ impl Retain {
     pub(crate) fn finish_deferred(&mut self) {
         let _ = self.finish_session();
         self.deferred = false;
+        self.inside_relocatable = false;
     }
 
     /// Whether the element being built is recorded, so the caller can skip work only the record needs.
@@ -982,6 +1126,7 @@ impl Retain {
             lift_z: None,
             forms_context: false,
             moved,
+            scroller: entry.scroller,
             digest: 0,
             subtree: crate::layout::cull::Subtree::empty(),
             effects_start: crate::tape::build_effects_len(),
@@ -998,14 +1143,24 @@ impl Retain {
             node.end = at + 1;
             node.skipped = Some(Skipped { size: record.size, digest: record.digest });
             crate::perf_counters::elements_skipped(u64::from(record.size));
+            let overscan = node
+                .scroller
+                .filter(|scroller| scroller.holds(node.id))
+                .map(|scroller| scroller.overscan());
+            let planned = overscan.is_some() && moved && record.seasoned;
             let skip = Skip {
                 token: record.token,
                 enter: EnterKey(enter),
                 lift_z: record.lift_z,
                 subtree: record.subtree,
                 effects: record.effects.clone(),
+                overscan,
             };
             self.nodes.push(node);
+            self.relocation.planned += u32::from(planned);
+            if let Some(record) = self.records.get_mut(&entry.id) {
+                record.seasoned = true;
+            }
             return Some(skip);
         }
         self.stack.push(at);
@@ -1013,12 +1168,28 @@ impl Retain {
         None
     }
 
+    /// Whether a move of the element by its scroller is not a reason to build it: it is recorded
+    /// to be moved, and frames are not resting from planning on it.
+    fn relocates(&self, node: &Node) -> bool {
+        !self.relocation.resting && node.scroller.is_some_and(|scroller| scroller.holds(node.id))
+    }
+
     /// The record of the last build of the element if the frame can leave it unbuilt.
     fn skippable(&self, node: &Node, entry: &Entry) -> Option<&Record> {
         if !self.planning || self.lifted != 0 || self.deltas.all || !entry.plain || !entry.boxed || entry.prekeyed.is_some() {
             return None;
         }
-        if node.exclusion.is_some() || node.moved || self.deltas.spine.contains(&node.id) {
+        if node.exclusion.is_some() || self.deltas.spine.contains(&node.id) {
+            return None;
+        }
+        // A root under a scroller is one gpui can move or one that is built: a box too big to be
+        // recorded to move is not a root, and what is moved by a scroller is built unless it can be.
+        // What a subtree built late holds is built with it, since the recording of a subtree in
+        // another cannot be put elsewhere on its own.
+        if self.inside_relocatable
+            || node.scroller.is_some_and(|scroller| scroller.too_big(node.id))
+            || (node.moved && !self.relocates(node))
+        {
             return None;
         }
         let record = self.records.get(&node.id)?;
@@ -1255,13 +1426,25 @@ impl Retain {
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
             self.moved[at] = parent.is_some_and(|parent| self.moved[parent] || self.below[parent].scrolled);
+            // A root under a scroller that gpui can record to move is skipped by a frame that finds
+            // the scroller moved. One that it cannot is built when it does.
+            let holds = eligible
+                && node.skipped.is_none()
+                && node.scroller.is_some_and(|scroller| scroller.holds(node.id));
+            let relocates = holds && !self.relocation.resting;
+            let too_big = eligible
+                && node.skipped.is_none()
+                && node.scroller.is_some_and(|scroller| scroller.too_big(node.id));
+            let oversized = clean && too_big;
             // What a scroller that only appeared moves is not a loss: the frame after it finds the rows still.
-            let carried = (node.moved || self.moved[at]) && self.deltas.scrolling;
-            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !carried);
+            let carried = (node.moved || self.moved[at]) && self.deltas.scrolling && !relocates;
+            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !carried && !too_big);
 
             if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
-            } else if node.skipped.is_none() && clean && eligible && self.moved[at] {
+            } else if oversized {
+                counts[OVERSIZED] += 1;
+            } else if node.skipped.is_none() && clean && eligible && self.moved[at] && !relocates {
                 counts[MOVED] += 1;
             } else if node.skipped.is_some() || (clean && eligible) {
                 self.retained[at] = true;
@@ -1325,6 +1508,7 @@ impl Retain {
                     size: own.size,
                     subtree: node.subtree,
                     effects,
+                    seasoned: self.deferred,
                 },
             );
         }
@@ -1460,6 +1644,9 @@ mod tests {
             motion: Vec::new(),
             selection: 0,
             pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
         });
         retain.enter(Entry {
             id: 1,
@@ -1475,6 +1662,7 @@ mod tests {
             plain: true,
             boxed: true,
             prekeyed: None,
+            scroller: None,
         });
         retain.stacking(|| (None, true));
         retain.digest(|| built.to_owned());
@@ -1968,8 +2156,30 @@ mod tests {
     }
 
     #[gpui::test]
-    fn frames_are_recorded_again_the_moment_the_scrollers_stop(cx: &mut gpui::TestAppContext) {
+    fn a_scroller_whose_cards_can_be_moved_is_recorded_every_frame_it_moves(cx: &mut gpui::TestAppContext) {
         let scene = backing_off(cx, scroller_page());
+        scene.notified_draw(cx);
+        scene.notified_draw(cx);
+        let moving = frame_log(&scene, cx, |scene, cx| {
+            (1..=12).for_each(|top| {
+                scene
+                    .window
+                    .update(cx, |view, _, _| {
+                        view.scroll_handles[&2].set_offset(gpui::point(gpui::px(0.), gpui::px(-(top as f32))));
+                    })
+                    .unwrap();
+                scene.draw(cx);
+            })
+        });
+        // The cards are not in the same place twice, and a frame can put them where they are.
+        assert!(moving.iter().all(|recorded| *recorded), "{moving:?}");
+    }
+
+    #[gpui::test]
+    fn frames_are_recorded_again_the_moment_the_scrollers_stop(cx: &mut gpui::TestAppContext) {
+        // A scroller whose cards gpui was found not to be moving: they are built when it moves.
+        let scene = backing_off(cx, scroller_page());
+        scene.window.update(cx, |view, _, _| view.retain.stop_relocating()).unwrap();
         scene.notified_draw(cx);
         let scroll = |scene: &Scene, cx: &mut gpui::TestAppContext, top: f32| {
             scene
@@ -1997,6 +2207,37 @@ mod tests {
         let before = retained_counters(&scene, cx);
         scene.notified_draw(cx);
         assert!(retained_counters(&scene, cx).replays > before.replays, "and the cards are replayed again");
+    }
+
+    #[test]
+    fn roots_gpui_builds_again_after_a_scroll_are_not_planned_to_move_for_a_while() {
+        let mut retain = Retain::new();
+        retain.relocation.planned = 20;
+        // Twenty planned, five put elsewhere and as many built again as were put: kept.
+        retain.learn_relocation(5, 5);
+        assert!(!retain.relocation.resting);
+        retain.relocation.planned = 20;
+        // Built again more often than put elsewhere: rests for 1, then 2, then 4 frames, up to 8,
+        // counting the frame that follows the judged one, which rests too.
+        let mut lazy = 5;
+        for gap in [1, 2, 4, 8, 8] {
+            lazy += 10;
+            retain.relocation.planned = 20;
+            retain.learn_relocation(lazy, 5);
+            assert!(retain.relocation.resting, "{gap}: the frame after the one that was found built again");
+            let rested = (0..gap + 3)
+                .map(|_| {
+                    retain.learn_relocation(lazy, 5);
+                    retain.relocation.resting
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(rested.iter().filter(|resting| **resting).count(), gap - 1, "{gap}: {rested:?}");
+            assert!(!rested[gap], "{gap}: looks again after the stretch: {rested:?}");
+        }
+        // And once the roots that were planned to move did, the next stretch starts from one again.
+        retain.relocation.planned = 20;
+        retain.learn_relocation(lazy, 100);
+        assert_eq!(retain.relocation.gap, 0);
     }
 
     #[gpui::test]
@@ -2203,8 +2444,9 @@ mod tests {
             })
             .unwrap();
         scene.draw(cx);
-        // The card read a new offset, and its lines sit somewhere else because of it.
-        assert_eq!(scene.roots(cx), vec![20, 30]);
+        // The card read a new offset, and its lines sit somewhere else because of it: they are
+        // roots that a frame can put where they are, as the lines of a scroller are.
+        assert_eq!(scene.roots(cx), vec![11, 12, 13, 20, 30]);
         assert_eq!(Scene::counted("changed:scroll"), 1);
         scene.settle(cx);
         assert_eq!(scene.roots(cx), vec![1]);

@@ -159,7 +159,8 @@ describeNative("content outside a clip", () => {
       </div>
     ))
     try {
-      expect(skippedPerFrame()).toBeGreaterThanOrEqual(7)
+      // Row 3 is within the overscan of a row a scroll can move, which keeps it ready: rows 4 to 9 are skipped.
+      expect(skippedPerFrame()).toBeGreaterThanOrEqual(6)
       // Row 5 is 200 to 240; the scroller shows 100 high.
       expect(sample({ renderer }, "scroll-out", 20, 20)).not.toEqual(RED)
       element("scroller").scrollTop = 160
@@ -168,7 +169,7 @@ describeNative("content outside a clip", () => {
       expect(sample({ renderer }, "scroll-in", 20, 60)).toEqual(RED)
       expect(element("row5").getBoundingClientRect().y).toBe(5 * ROW - 160)
       element("scroller").scrollTop = 0
-      expect(skippedPerFrame()).toBeGreaterThanOrEqual(7)
+      expect(skippedPerFrame()).toBeGreaterThanOrEqual(6)
       expect(sample({ renderer }, "scroll-back", 20, 60)).not.toEqual(RED)
     } finally {
       unmount()
@@ -296,7 +297,8 @@ describeNative("content outside a clip", () => {
     const entries: boolean[] = []
     const { renderer, skippedPerFrame, refs, unmount } = setup((ref) => (
       <div ref={ref("scroller")} style={{ ...CLIP, overflow: "auto" }}>
-        <div style={{ width: 150, height: 150, flexShrink: 0 }} />
+        {/* Past the clip and the overscan of the rows a scroll can move. */}
+        <div style={{ width: 150, height: 250, flexShrink: 0 }} />
         <div ref={ref("target")} style={{ width: 150, height: 30, flexShrink: 0 }} />
       </div>
     ))
@@ -308,7 +310,7 @@ describeNative("content outside a clip", () => {
       renderer.dispatchNativeEvents()
       expect(entries).toEqual([false])
 
-      refs.get("scroller").scrollTop = 100
+      refs.get("scroller").scrollTop = 200
       renderer.flush()
       renderer.dispatchNativeEvents()
       expect(entries).toEqual([false, true])

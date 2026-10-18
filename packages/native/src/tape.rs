@@ -21,7 +21,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window};
+use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Point, Window};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -32,28 +32,30 @@ pub(crate) enum Phase {
     Layout,
 }
 
-/// A registry write that can be made again, and said in words.
+/// A registry write that can be made again, and said in words. A write that holds a position is
+/// made `offset` away from where it was recorded: a subtree that a scroller moved is replayed
+/// where the scroll put it.
 trait Replay {
-    fn apply(&self);
-    fn describe(&self) -> String;
+    fn apply(&self, offset: Point<Pixels>);
+    fn describe(&self, offset: Point<Pixels>) -> String;
     /// Whether a pass that only lays out makes the write too, from prepaint.
     fn in_layout(&self) -> bool;
 }
 
 struct Write<D> {
     data: D,
-    apply: fn(&D),
-    describe: fn(&D) -> String,
+    apply: fn(&D, Point<Pixels>),
+    describe: fn(&D, Point<Pixels>) -> String,
     in_layout: bool,
 }
 
 impl<D> Replay for Write<D> {
-    fn apply(&self) {
-        (self.apply)(&self.data);
+    fn apply(&self, offset: Point<Pixels>) {
+        (self.apply)(&self.data, offset);
     }
 
-    fn describe(&self) -> String {
-        (self.describe)(&self.data)
+    fn describe(&self, offset: Point<Pixels>) -> String {
+        (self.describe)(&self.data, offset)
     }
 
     fn in_layout(&self) -> bool {
@@ -63,15 +65,20 @@ impl<D> Replay for Write<D> {
 
 type Effect = Rc<dyn Replay>;
 
+/// A write and how far from where it was made it is to be made again. A tape that replays a
+/// tape inside it holds the inner writes with the distance the inner one was replayed at, so
+/// that replaying the outer one moves them by that and by its own.
+type Entry = (Effect, Point<Pixels>);
+
 /// The registry writes of one subtree, in the order they were made.
 #[derive(Default)]
 pub(crate) struct Tape {
-    prepaint: Vec<Effect>,
-    paint: Vec<Effect>,
+    prepaint: Vec<Entry>,
+    paint: Vec<Entry>,
 }
 
 impl Tape {
-    fn of(&mut self, phase: Phase) -> &mut Vec<Effect> {
+    fn of(&mut self, phase: Phase) -> &mut Vec<Entry> {
         match phase {
             Phase::Prepaint => &mut self.prepaint,
             Phase::Paint => &mut self.paint,
@@ -79,37 +86,51 @@ impl Tape {
         }
     }
 
-    /// Writes again what `phase` of the subtree wrote. A subtree inside another that is being
-    /// recorded is part of its tape too.
-    pub(crate) fn replay(&self, phase: Phase) {
+    /// Writes again what `phase` of the subtree wrote, `delta` from where it wrote it. A subtree
+    /// inside another that is being recorded is part of its tape too.
+    pub(crate) fn replay(&self, phase: Phase, delta: Point<Pixels>) {
         let effects = match phase {
             // A pass that only lays out records no tape, so this is not part of one. It makes the
             // writes of prepaint, and those of paint that it makes from prepaint too.
             Phase::Layout => {
-                self.prepaint.iter().for_each(|effect| effect.apply());
-                self.paint.iter().filter(|effect| effect.in_layout()).for_each(|effect| effect.apply());
+                for (effect, offset) in &self.prepaint {
+                    effect.apply(*offset + delta);
+                }
+                for (effect, offset) in self.paint.iter().filter(|(effect, _)| effect.in_layout()) {
+                    effect.apply(*offset + delta);
+                }
                 return;
             }
             Phase::Prepaint => &self.prepaint,
             Phase::Paint => &self.paint,
         };
-        for effect in effects {
-            effect.apply();
+        for (effect, offset) in effects {
+            effect.apply(*offset + delta);
         }
         RECORDING.with(|recordings| {
             for recording in recordings.borrow().iter() {
                 debug_assert_eq!(recording.phase, phase, "a subtree is replayed in the phase it is recorded in");
-                recording.tape.borrow_mut().of(recording.phase).extend(effects.iter().cloned());
+                recording
+                    .tape
+                    .borrow_mut()
+                    .of(recording.phase)
+                    .extend(effects.iter().map(|(effect, offset)| (effect.clone(), *offset + delta)));
             }
         });
     }
 
-    /// What the tape writes, as text, one line per write.
-    pub(crate) fn describe(&self) -> String {
-        let lines = |phase: &str, effects: &[Effect]| {
+    /// What the tape writes `delta` from where it wrote it, as text, one line per write.
+    pub(crate) fn describe(&self, delta: Point<Pixels>) -> String {
+        let lines = |phase: &str, effects: &[Entry]| {
             effects
                 .iter()
-                .map(|effect| format!("{phase}{} {}\n", if effect.in_layout() { "+layout" } else { "" }, effect.describe()))
+                .map(|(effect, offset)| {
+                    format!(
+                        "{phase}{} {}\n",
+                        if effect.in_layout() { "+layout" } else { "" },
+                        effect.describe(*offset + delta)
+                    )
+                })
                 .collect::<String>()
         };
         lines("prepaint", &self.prepaint) + &lines("paint", &self.paint)
@@ -135,8 +156,8 @@ impl TapeStore {
         self.tapes.borrow_mut().insert(root, tape);
     }
 
-    /// Replays what the last build of `root` wrote in `phase`.
-    pub(crate) fn replay(&self, root: u64, phase: Phase) {
+    /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
+    pub(crate) fn replay(&self, root: u64, phase: Phase, delta: Point<Pixels>) {
         let tape = self
             .tapes
             .borrow()
@@ -144,9 +165,9 @@ impl TapeStore {
             .expect("a replayed root has the tape of the build it was recorded from")
             .clone();
         if self.verifying.get() && phase == Phase::Prepaint {
-            self.replayed.borrow_mut().push((root, tape.borrow().describe()));
+            self.replayed.borrow_mut().push((root, tape.borrow().describe(delta)));
         }
-        tape.borrow().replay(phase);
+        tape.borrow().replay(phase, delta);
     }
 
     pub(crate) fn verify(&self, verifying: bool) {
@@ -167,7 +188,10 @@ impl TapeStore {
             .into_iter()
             .map(|(root, replayed)| {
                 let tape = if built {
-                    self.tapes.borrow().get(&root).map_or_else(String::new, |tape| tape.borrow().describe())
+                    self.tapes
+                        .borrow()
+                        .get(&root)
+                        .map_or_else(String::new, |tape| tape.borrow().describe(Point::default()))
                 } else {
                     replayed
                 };
@@ -195,18 +219,30 @@ thread_local! {
 /// Makes a registry write with `apply`, and notes it on the tape of the subtree being prepainted
 /// or painted, if there is one, for `describe` to say in words and a frame that replays the
 /// subtree to make again. A frame without retained subtrees pays one thread-local read per write.
-pub(crate) fn write<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String) {
+///
+/// Both functions take how far from `data` the write is made, which is zero when it is made for
+/// the first time: a write that holds a position moves by it, any other ignores it.
+pub(crate) fn write<D: 'static>(data: D, apply: fn(&D, Point<Pixels>), describe: fn(&D, Point<Pixels>) -> String) {
     write_with(data, apply, describe, false);
 }
 
 /// [`write`] for a registry that a pass which only lays out (a bounds read) writes too, from
 /// prepaint: the painted boxes. A subtree that such a pass does not build repeats it from its tape.
-pub(crate) fn write_in_layout<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String) {
+pub(crate) fn write_in_layout<D: 'static>(
+    data: D,
+    apply: fn(&D, Point<Pixels>),
+    describe: fn(&D, Point<Pixels>) -> String,
+) {
     write_with(data, apply, describe, true);
 }
 
-fn write_with<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String, in_layout: bool) {
-    apply(&data);
+fn write_with<D: 'static>(
+    data: D,
+    apply: fn(&D, Point<Pixels>),
+    describe: fn(&D, Point<Pixels>) -> String,
+    in_layout: bool,
+) {
+    apply(&data, Point::default());
     RECORDING.with(|recordings| {
         let recordings = recordings.borrow();
         if recordings.is_empty() {
@@ -214,7 +250,7 @@ fn write_with<D: 'static>(data: D, apply: fn(&D), describe: fn(&D) -> String, in
         }
         let effect: Effect = Rc::new(Write { data, apply, describe, in_layout });
         for recording in recordings.iter() {
-            recording.tape.borrow_mut().of(recording.phase).push(effect.clone());
+            recording.tape.borrow_mut().of(recording.phase).push((effect.clone(), Point::default()));
         }
     });
 }

@@ -123,6 +123,7 @@ pub fn regions(layout: TextLayout, boxes: Vec<RegionBox>) -> impl IntoElement {
             }
         },
     )
+    .keeps_no_position()
     .absolute()
     .size_full()
 }

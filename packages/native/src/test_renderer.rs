@@ -97,6 +97,14 @@ pub struct RetainedCounters {
     pub mismatches: f64,
     /// A JSON object: the recordings that could not be replayed, by the first reason.
     pub non_reusable: String,
+    /// Replays of a subtree that a scroller had moved, which are builds that were not made.
+    pub relocations: f64,
+    /// A JSON object: the recordings of subtrees that a scroller moves that cannot be put
+    /// elsewhere, by the first reason.
+    pub non_relocatable: String,
+    /// A JSON object: the subtrees that a scroller had moved and that were built again though
+    /// they were the same but for where they are, by the reason.
+    pub relocation_misses: String,
 }
 
 // ── Thread-local storage for !Send GPUI types ────────────────────────
@@ -784,6 +792,21 @@ impl TestGpuixRenderer {
                     gpui::NonReusable::ALL
                         .into_iter()
                         .map(|reason| (format!("{reason:?}"), serde_json::Value::from(counters.non_reusable(reason))))
+                        .collect(),
+                )
+                .to_string(),
+                relocations: counters.relocations as f64,
+                non_relocatable: serde_json::Value::Object(
+                    gpui::NonRelocatable::ALL
+                        .into_iter()
+                        .map(|reason| (format!("{reason:?}"), serde_json::Value::from(counters.non_relocatable(reason))))
+                        .collect(),
+                )
+                .to_string(),
+                relocation_misses: serde_json::Value::Object(
+                    gpui::RelocationMiss::ALL
+                        .into_iter()
+                        .map(|reason| (format!("{reason:?}"), serde_json::Value::from(counters.relocation_misses(reason))))
                         .collect(),
                 )
                 .to_string(),

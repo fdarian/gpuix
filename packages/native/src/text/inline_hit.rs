@@ -167,8 +167,9 @@ pub fn frame_reset(window: WindowId) {
 pub fn register(window: WindowId, container: u64, layout: TextLayout, targets: Arc<Targets>) {
     crate::tape::write(
         (window, container, layout, targets),
-        |(window, container, layout, targets)| push(*window, *container, layout.clone(), targets.clone()),
-        |(_, container, layout, targets)| {
+        // Its layout is moved by the frame, with the subtree.
+        |(window, container, layout, targets), _| push(*window, *container, layout.clone(), targets.clone()),
+        |(_, container, layout, targets), _| {
             format!("paragraph {container} {:?} {}", layout.bounds(), targets.describe())
         },
     );

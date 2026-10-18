@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use gpui::{
     canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, LayoutInsets,
-    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput, Point,
     Styled, Window, WindowId,
 };
 use web_time::Instant;
@@ -51,6 +51,17 @@ impl ElementBounds {
             border_right: f64::from(f32::from(insets.border.right)),
             border_bottom: f64::from(f32::from(insets.border.bottom)),
             position: None,
+        }
+    }
+
+    /// The box `offset` away, in the single precision it is measured in, which is what painting
+    /// it there measures.
+    fn translated(self, offset: Point<Pixels>) -> Self {
+        let moved = |value: f64, by: Pixels| f64::from(f32::from(px(value as f32) + by));
+        Self {
+            x: moved(self.x, offset.x),
+            y: moved(self.y, offset.y),
+            ..self
         }
     }
 }
@@ -165,8 +176,8 @@ pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &m
 pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
     crate::tape::write_in_layout(
         (window, id, ElementBounds::from_gpui(bounds, insets)),
-        |(window, id, bounds)| insert_bounds(*window, *id, *bounds),
-        |(_, id, bounds)| format!("bounds {id} {bounds:?}"),
+        |(window, id, bounds), offset| insert_bounds(*window, *id, bounds.translated(offset)),
+        |(_, id, bounds), offset| format!("bounds {id} {:?}", bounds.translated(offset)),
     );
 }
 
@@ -179,8 +190,8 @@ fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
 fn record_position(window: WindowId, id: u64, position: Position) {
     crate::tape::write_in_layout(
         (window, id, position),
-        |(window, id, position)| set_position(*window, *id, *position),
-        |(_, id, position)| format!("position {id} {position:?}"),
+        |(window, id, position), _| set_position(*window, *id, *position),
+        |(_, id, position), _| format!("position {id} {position:?}"),
     );
 }
 

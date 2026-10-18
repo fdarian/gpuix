@@ -209,10 +209,10 @@ impl Measurements {
         }
         crate::tape::write(
             (self.by_element.clone(), id, measurement),
-            |(by_element, id, measurement)| {
+            |(by_element, id, measurement), _| {
                 by_element.borrow_mut().insert(*id, *measurement);
             },
-            |(_, id, measurement)| format!("measured {id} {measurement:?}"),
+            |(_, id, measurement), _| format!("measured {id} {measurement:?}"),
         );
     }
 

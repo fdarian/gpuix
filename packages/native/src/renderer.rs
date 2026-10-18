@@ -5985,6 +5985,7 @@ impl GpuixView {
             collapsed: Default::default(),
             text_box_trim: Default::default(),
             subtree: crate::layout::cull::Subtree::empty(),
+            scroller: None,
             retain: &mut self.retain,
             tapes: &self.tapes,
         };
@@ -6181,6 +6182,8 @@ pub(crate) struct BuildCtx<'a> {
     /// What the element being built has under it so far: how far it draws past its boxes, and
     /// whether gpui may skip it outside its clip. See `layout::cull`.
     pub subtree: crate::layout::cull::Subtree,
+    /// The scroller the element being built is inside of, see `retain::Scroller`.
+    pub scroller: Option<crate::retain::Scroller>,
     /// What this build is recording for the next, see `retain`.
     pub retain: &'a mut crate::retain::Retain,
     /// See `GpuixView::tapes`.
@@ -7197,7 +7200,7 @@ impl GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let mut highlight_events = Vec::new();
-        self.retain.begin_deferred();
+        self.retain.begin_deferred(env.relocatable);
         let element = {
             let mut ctx = BuildCtx {
                 tree: &tree,
@@ -7239,6 +7242,7 @@ impl GpuixView {
                 collapsed: Default::default(),
                 text_box_trim: env.text_box_trim,
                 subtree: crate::layout::cull::Subtree::empty(),
+                scroller: env.scroller,
                 retain: &mut self.retain,
                 tapes: &self.tapes,
             };
@@ -7423,6 +7427,9 @@ impl gpui::Render for GpuixView {
                 .collect(),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
+            lazy_builds: window.retained_counters().lazy_builds,
+            relocations: window.retained_counters().relocations,
+            reference: window.is_retention_reference(),
         });
         let result = match tree.root_id {
             Some(root_id) => {
@@ -7471,6 +7478,7 @@ impl gpui::Render for GpuixView {
                     collapsed: Default::default(),
                     text_box_trim: Default::default(),
                     subtree: crate::layout::cull::Subtree::empty(),
+                    scroller: None,
                     retain: &mut self.retain,
                     tapes: &self.tapes,
                 };
@@ -7644,6 +7652,7 @@ fn build_element_in(
                 )
             ),
             prekeyed,
+            scroller: ctx.scroller,
         });
         if let Some(skip) = skip {
             return retained_root(id, skip, ctx, window, cx);
@@ -7669,6 +7678,9 @@ pub(crate) struct FrameEnv {
     text_box_trim: gpui::TextBoxTrim,
     enter: crate::retain::EnterKey,
     focus_styles: crate::focus::FocusStyles,
+    scroller: Option<crate::retain::Scroller>,
+    /// Whether the subtree is recorded to be put elsewhere by its scroller.
+    relocatable: bool,
 }
 
 /// The element standing for a subtree the frame found unchanged. gpui builds the subtree from
@@ -7701,6 +7713,8 @@ fn retained_root(
         text_box_trim: std::mem::take(&mut ctx.text_box_trim),
         enter: skip.enter,
         focus_styles: ctx.focus_styles.clone(),
+        scroller: ctx.scroller,
+        relocatable: skip.overscan.is_some(),
     };
     let view = cx.weak_entity();
     let tapes = ctx.tapes.clone();
@@ -7712,7 +7726,7 @@ fn retained_root(
                 .expect("the view of a window lives as long as the window draws")
         },
     )
-    .on_replay(move |phase, _, _| {
+    .on_replay_translated(move |phase, delta, _, _| {
         tapes.replay(
             id,
             match phase {
@@ -7720,8 +7734,12 @@ fn retained_root(
                 gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
                 gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
             },
+            delta,
         );
     });
+    if let Some(overscan) = skip.overscan {
+        retained = retained.relocatable(overscan);
+    }
     retained = retained.cull_outset(skip.subtree.outset());
     if let Some(z) = skip.lift_z {
         retained = retained.lift_z(z);
@@ -8497,14 +8515,17 @@ pub(crate) fn build_host_container(
     }
     el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);
     el = crate::scroll::apply_container(el, element.id, style, &ctx.inherited.colors, ctx.scroll_handles);
+    let outer_scroller = ctx.scroller;
     if let Some(handle) = ctx.scroll_handles.get(&element.id) {
         // Its offset is part of what the build read (the key sees it move), and so is where its
         // children are. A hidden one is only moved by script, and that is a change like any other.
-        ctx.retain.scroll(handle.offset());
+        let offset = handle.offset();
+        ctx.retain.scroll(offset);
         let user = style.map(crate::scroll::Axes::of).is_some_and(|axes| axes.x.scrolls_for_user() || axes.y.scrolls_for_user());
         if user {
             ctx.retain.exclude(crate::retain::Exclusion::Scroller);
         }
+        ctx.scroller = crate::retain::Scroller::of(handle, window.window_handle().window_id()).or(ctx.scroller);
     }
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),
@@ -8608,6 +8629,7 @@ pub(crate) fn build_host_container(
     // input like the pointer's (`events::listeners`).
 
     let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
+    ctx.scroller = outer_scroller;
     crate::text::atomic::report_containing_height(el, containing_heights);
     if crate::layout::stacking::forms_context(style, stacking_root, &ctx.inherited.colors, &ctx.inherited.lengths) {
         host = host.stacking_context();
