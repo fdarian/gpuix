@@ -5558,7 +5558,7 @@ text imports no longer need a runtime flag.
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`, `relatedTarget`. Bubbles |
 | Wheel | `onWheel`, `onWheelCapture` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons`, `precise`, `touchPhase`, `modifiers`. Bubbles, cancelable. See [The wheel](#the-wheel) |
 | Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
-| Layout | `onLayout` | `width`, `height`, `x`, `y` — `<div>` and `<text>` only. See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
+| Layout | `onLayout` | `width`, `height`, `x`, `y` — any element a `ResizeObserver` works on (`<div>`, `<text>`, `<input>`, `<img>`, `<svg>` and the other built-in elements). See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value`, `inputType`, `data`, `isComposing` — `<input>` and `<textarea>` only, once per edit like the DOM `input`. See [The change event](#the-change-event) |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
@@ -5720,7 +5720,8 @@ offset at the first paint is the baseline and is not reported. Use
 </div>
 ```
 
-**`onLayout`** is `ResizeObserver` for an element. It fires after the first paint
+**`onLayout`** is `ResizeObserver` for an element, so it works on every element a
+`ResizeObserver` does, built-in ones such as `<input>` and `<img>` included. It fires after the first paint
 that has the listener and again each time the element's **size** changes, with
 its border box: `width` and `height`, and `x` and `y` in window pixels. Moving
 without resizing, as a row does when a list scrolls, fires nothing. Removing the
@@ -7936,9 +7937,11 @@ off the renderer:
 - `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
   and skipped, and the style and inherited-state copies the build made.
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
-  child lists set, passes, and measure calls, since the window was made.
+  child lists set, passes, and measure calls, since the window was made, and the
+  text system's lines shaped, wrapped layouts built and line layout hits.
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
-  and why a recording could not be replayed.
+  how many a scroller moved without building them (`relocations`), and why a
+  recording could not be replayed or moved.
 - `getCulledSubtreeCount()`: subtrees skipped for lying outside their clip. A test
   of what a clipped box still reports (its box, observers, tab order) reads it to
   be sure something was skipped.
@@ -7948,7 +7951,8 @@ off the renderer:
   stops that and `drawFrame()` ends a frame the way the display does.
 
 `setA11yActive(false)` removes the pretend screen reader the test window starts
-with. Set `GPUIX_RETAIN_OFF=1` to build every frame in full, for timing, and
+with. Set `GPUIX_RETAIN_OFF=1` (or call `setRetainEnabled(false)` on one window)
+to build every frame in full, for timing, and
 `GPUIX_RETAIN_VERIFY=1` to build each frame that replayed a second time, whole,
 and compare the two: a difference is printed as `[retained]` and fails
 `unmount()`. Run your suite with it on after a change to a custom element.
