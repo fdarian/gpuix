@@ -1,0 +1,315 @@
+<!doctype html>
+<!--
+  Oracle for resolved-style.test.tsx: what headless Chrome reports for `document.elementsFromPoint`,
+  `getBoundingClientRect` and `IntersectionObserver` when a style that decides them comes from a state, a
+  transition or an animation rather than from the element's base style.
+
+  A case is a `scene` (a tree of `{ id, tag?, style, children }`) and the `state` styles laid over some of its
+  nodes (`{ id: style }`). `kind: "hit"` lists the ids `elementsFromPoint` gives at each probe before and after the
+  state applies; `"timeline"` starts a CSS transition (`transition`) or a Web Animation (`keyframes`) on `target`
+  and lists them at fractions of its one second; `"rect"` reports the bounding boxes before and after;
+  `"intersection"` the `isIntersecting` and `intersectionRatio` of `target` before and after. Regenerate with
+  `./resolved-style-oracle.sh`: Chrome reports an IntersectionObserver once per page load in this mode, so the
+  script loads each `intersection` state alone (`#intersection=<case>|<base or after>`) and merges the reports.
+
+  The scene is 300x200 and `box-sizing: border-box`, as gpuix has it.
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;font:16px/1 sans-serif}
+#scene{position:relative;width:300px;height:200px}
+input{border:0;background:none;font:inherit}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const box = (id, style, children = []) => ({ id, style: { display: 'block', ...style }, children });
+const abs = (id, style, children) => box(id, { position: 'absolute', ...style }, children);
+const root = (children) => box('root', { position: 'relative', width: '300px', height: '200px' }, children);
+
+const cases = {
+  'opacity zero is still hit': {
+    kind: 'hit',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('over', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+    ]),
+    state: { over: { opacity: '0' } },
+    probes: [[50, 50]],
+  },
+  'pointer-events none lets the hit through': {
+    kind: 'hit',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('over', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+    ]),
+    state: { over: { opacity: '0', pointerEvents: 'none' } },
+    probes: [[50, 50]],
+  },
+  'opacity below one lifts a static box over a positioned one': {
+    kind: 'hit',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      box('over', { width: '100px', height: '100px' }),
+    ]),
+    state: { over: { opacity: '0.5' } },
+    probes: [[50, 50]],
+  },
+  'z-index reorders positioned siblings': {
+    kind: 'hit',
+    scene: root([
+      abs('a', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('b', { left: '50px', top: '0px', width: '100px', height: '100px' }),
+    ]),
+    state: { a: { zIndex: '5' } },
+    probes: [[75, 50]],
+  },
+  'z-index reorders flex items': {
+    kind: 'hit',
+    scene: box('root', { position: 'relative', display: 'flex', width: '300px', height: '200px' }, [
+      box('a', { width: '100px', height: '100px', flexShrink: '0' }),
+      box('b', { width: '100px', height: '100px', flexShrink: '0', marginLeft: '-50px' }),
+    ]),
+    state: { a: { zIndex: '1' } },
+    probes: [[75, 50]],
+  },
+  'visibility hidden lets the hit through': {
+    kind: 'hit',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('over', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+    ]),
+    state: { over: { visibility: 'hidden' } },
+    probes: [[50, 50]],
+  },
+  'overflow hidden clips a child': {
+    kind: 'hit',
+    scene: root([
+      box('clip', { width: '100px', height: '100px' }, [box('tall', { width: '100px', height: '200px' })]),
+    ]),
+    state: { clip: { overflow: 'hidden' } },
+    probes: [[50, 50], [50, 150]],
+  },
+  'position relative makes an overflow clip reach an absolute child': {
+    kind: 'hit',
+    scene: root([
+      box('clip', { width: '100px', height: '100px', overflow: 'hidden' }, [
+        abs('far', { left: '80px', top: '0px', width: '60px', height: '60px' }),
+      ]),
+    ]),
+    state: { clip: { position: 'relative' } },
+    probes: [[90, 30], [120, 30]],
+  },
+  'an input outside a clip once it is absolute': {
+    kind: 'hit',
+    scene: root([
+      box('clip', { width: '100px', height: '100px', overflow: 'hidden' }, [
+        { id: 'field', tag: 'input', style: { display: 'block', width: '80px', height: '24px' }, children: [] },
+      ]),
+    ]),
+    state: { field: { position: 'absolute', left: '150px', top: '60px' } },
+    probes: [[10, 10], [160, 70]],
+  },
+  'an input wider than a box that a state clips': {
+    kind: 'hit',
+    scene: root([
+      box('clip', { width: '100px', height: '100px' }, [
+        { id: 'field', tag: 'input', style: { display: 'block', width: '200px', height: '24px' }, children: [] },
+      ]),
+    ]),
+    state: { clip: { position: 'relative', overflow: 'hidden' } },
+    probes: [[50, 10], [150, 10]],
+  },
+  'display grid children stack by z-index': {
+    kind: 'hit',
+    scene: root([
+      abs('layer', { left: '10px', top: '10px', display: 'grid', gridTemplateColumns: '60px', gridTemplateRows: '60px' }, [
+        box('a', { gridArea: '1 / 1' }),
+        box('b', { gridArea: '1 / 1' }),
+      ]),
+    ]),
+    state: { a: { zIndex: '1' } },
+    probes: [[30, 30]],
+  },
+  'display flex lays children out in a row': {
+    kind: 'rect',
+    scene: root([
+      abs('layer', { left: '10px', top: '10px', display: 'flex' }, [
+        box('a', { width: '40px', height: '20px' }),
+        box('b', { width: '30px', height: '20px' }),
+      ]),
+    ]),
+    state: {},
+    ids: ['layer', 'a', 'b'],
+  },
+  'an input absolute by a state': {
+    kind: 'rect',
+    scene: root([
+      box('clip', { width: '100px', height: '100px', overflow: 'hidden' }, [
+        { id: 'field', tag: 'input', style: { display: 'block', width: '80px', height: '24px' }, children: [] },
+      ]),
+    ]),
+    state: { field: { position: 'absolute', left: '150px', top: '60px' } },
+    ids: ['field'],
+  },
+  'visibility transition from hidden': {
+    kind: 'timeline',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('target', { left: '0px', top: '0px', width: '100px', height: '100px', visibility: 'hidden' }),
+    ]),
+    transition: 'visibility 1s linear',
+    state: { target: { visibility: 'visible' } },
+    probes: [[50, 50]],
+  },
+  'visibility animation to hidden': {
+    kind: 'timeline',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      abs('target', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+    ]),
+    keyframes: { visibility: ['visible', 'hidden'] },
+    probes: [[50, 50]],
+  },
+  'opacity transition lifts a static box over a positioned one': {
+    kind: 'timeline',
+    scene: root([
+      abs('under', { left: '0px', top: '0px', width: '100px', height: '100px' }),
+      box('over', { width: '100px', height: '100px', opacity: '1' }),
+    ]),
+    transition: 'opacity 1s linear',
+    state: { over: { opacity: '0.5' } },
+    probes: [[50, 50]],
+  },
+  'intersection of a child once a state clips it': {
+    kind: 'intersection',
+    scene: root([
+      box('clip', { width: '100px', height: '100px' }, [
+        abs('target', { left: '50px', top: '0px', width: '100px', height: '50px' }),
+      ]),
+    ]),
+    state: { clip: { position: 'relative', overflow: 'hidden' } },
+    target: 'target',
+  },
+  'intersection of a child once a state stops clipping it': {
+    kind: 'intersection',
+    scene: root([
+      box('clip', { width: '100px', height: '100px', position: 'relative', overflow: 'hidden' }, [
+        abs('target', { left: '50px', top: '0px', width: '100px', height: '50px' }),
+      ]),
+    ]),
+    state: { clip: { position: 'static' } },
+    target: 'target',
+  },
+};
+
+const scene = document.getElementById('scene');
+
+function build(node, overlay) {
+  const el = document.createElement(node.tag ?? 'div');
+  el.id = node.id;
+  Object.assign(el.style, node.style, overlay[node.id] ?? {});
+  for (const child of node.children) el.appendChild(build(child, overlay));
+  return el;
+}
+
+function ids(node) {
+  return [node.id, ...node.children.flatMap(ids)];
+}
+
+function render(spec, overlay) {
+  scene.textContent = '';
+  const el = build(spec.scene, overlay);
+  el.removeAttribute('id');
+  el.id = 'root';
+  scene.appendChild(el);
+  return el;
+}
+
+function hits(spec, probes) {
+  const known = new Set(ids(spec.scene));
+  return probes.map(([x, y]) => document.elementsFromPoint(x, y).map((el) => el.id).filter((id) => known.has(id)));
+}
+
+function rects(spec) {
+  const origin = scene.getBoundingClientRect();
+  return Object.fromEntries(
+    spec.ids.map((id) => {
+      const r = document.getElementById(id).getBoundingClientRect();
+      return [id, [r.x - origin.x, r.y - origin.y, r.width, r.height].map((n) => Math.round(n * 1000) / 1000)];
+    }),
+  );
+}
+
+/** Chrome delivers an observer's first report only once per page load in this mode, so each state loads alone. */
+function loadIntersection(spec, overlay) {
+  render(spec, overlay);
+  const observer = new IntersectionObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    document.body.setAttribute(
+      'data-intersection',
+      JSON.stringify({ isIntersecting: entry.isIntersecting, ratio: Math.round(entry.intersectionRatio * 1000) / 1000 }),
+    );
+  });
+  observer.observe(document.getElementById(spec.target));
+}
+
+const times = [0, 0.5, 1];
+
+async function main() {
+  const out = { cases: {} };
+  for (const [name, spec] of Object.entries(cases)) {
+    const result = { ...spec };
+    if (spec.kind === 'hit') {
+      render(spec, {});
+      result.base = hits(spec, spec.probes);
+      render(spec, spec.state);
+      result.after = hits(spec, spec.probes);
+    } else if (spec.kind === 'rect') {
+      render(spec, {});
+      result.base = rects(spec);
+      render(spec, spec.state);
+      result.after = rects(spec);
+    } else if (spec.kind === 'timeline') {
+      render(spec, {});
+      const target = document.getElementById('target') ?? document.getElementById(Object.keys(spec.state ?? {})[0]);
+      getComputedStyle(target).width;
+      if (spec.keyframes) {
+        target.animate(spec.keyframes, { duration: 1000, easing: 'linear', fill: 'both' });
+      } else {
+        target.style.transition = spec.transition;
+        getComputedStyle(target).width;
+        Object.assign(target.style, spec.state[target.id]);
+      }
+      const animations = target.getAnimations();
+      result.animations = animations.length;
+      result.samples = {};
+      for (const time of times) {
+        for (const animation of animations) {
+          animation.pause();
+          animation.currentTime = time * 1000;
+        }
+        result.samples[time] = hits(spec, spec.probes);
+      }
+      result.times = times;
+    }
+    out.cases[name] = result;
+    document.body.setAttribute('data-progress', name);
+  }
+  const holder = document.createElement('div');
+  holder.id = 'out';
+  holder.setAttribute('data-oracle', JSON.stringify(out));
+  document.body.appendChild(holder);
+}
+const [, request] = location.hash.match(/^#intersection=(.*)$/) ?? [];
+if (request) {
+  const [name, state] = decodeURIComponent(request).split('|');
+  loadIntersection(cases[name], state === 'after' ? cases[name].state : {});
+} else {
+  main().catch((error) => {
+  const holder = document.createElement('div');
+  holder.id = 'error';
+  holder.textContent = String(error && error.stack);
+  document.body.appendChild(holder);
+  });
+}
+</script></body></html>

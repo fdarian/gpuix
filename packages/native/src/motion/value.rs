@@ -748,7 +748,9 @@ impl Pair {
                 | Layout::DiscretePath(_)
                 | Layout::DiscreteList(_)
                 | Layout::DiscreteVariations(_)
-                | Layout::Keyword { .. }
+        ) || matches!(
+            self.layout,
+            Layout::Keyword { rule, .. } if rule != KeywordRule::Visibility
         )
     }
 }

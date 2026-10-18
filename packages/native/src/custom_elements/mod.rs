@@ -92,6 +92,8 @@ pub struct CustomRenderContext<'a> {
     /// The first element of a build, the window root or a virtual-list row: no stacking context
     /// is around it, so `custom_surface` makes it one.
     pub stacking_root: bool,
+    /// What the walks over the retained tree read of this element's final style.
+    pub resolved: crate::resolved_style::Resolved,
 }
 
 impl CustomRenderContext<'_> {
@@ -180,13 +182,14 @@ pub(crate) fn custom_surface(
     {
         el.style().position = Some(gpui::Position::Static);
     }
-    el = crate::layout::stacking::apply_context(el, ctx.style, ctx.stacking_root, &ctx.colors, &ctx.lengths);
+    let focus_folded = ctx
+        .style
+        .map(|style| ctx.focus_styles.folded(ctx.id, style, ctx.focus_handle.is_some()));
+    el = crate::layout::stacking::apply_context(el, focus_folded.as_deref(), ctx.stacking_root, &ctx.colors, &ctx.lengths);
     el = crate::automation::track_host_bounds(
         el,
         ctx.id,
         None,
-        ctx.style
-            .map(|style| ctx.focus_styles.position(ctx.id, style, ctx.focus_handle.is_some())),
         None,
     );
     el = match ctx.focus_handle {

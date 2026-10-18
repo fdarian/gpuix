@@ -11,6 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, LazyLock};
 
 use crate::layout::containing_block;
+use crate::resolved_style::{PointerEvents, Visibility};
 use crate::style::StyleDesc;
 
 /// What one `elements_at` walk carries along.
@@ -456,6 +457,8 @@ pub struct RetainedTree {
     /// the children they keep from being built.
     container_rule_count: usize,
     pub styles: StyleTable,
+    /// What each built element was painted with, for the walks that read the tree.
+    pub(crate) resolved: std::cell::RefCell<crate::resolved_style::ResolvedStyles>,
     /// The style layer under every element's own style, a CSS `* { ... }` rule.
     universal: Option<Arc<StyleDesc>>,
     /// The root element ID set by appendChildToContainer.
@@ -493,6 +496,7 @@ impl RetainedTree {
             style_serials: 0,
             container_rule_count: 0,
             styles: StyleTable::default(),
+            resolved: Default::default(),
             universal: None,
             root_id: None,
             keyboard_focus_dim: true,
@@ -757,6 +761,7 @@ impl RetainedTree {
             self.anchored_count -= usize::from(element.element_type == "anchored");
             self.escaping_count -= usize::from(containing_block::may_escape(&element));
             self.container_rule_count -= usize::from(has_container_rules(&element));
+            self.resolved.get_mut().forget(id);
             destroyed.push(id);
             for child_id in element.children {
                 self.destroy_element_recursive(child_id, destroyed);
@@ -1177,10 +1182,11 @@ impl RetainedTree {
     /// outside the clipping box. `pointer-events: none` is inherited, like in
     /// CSS, and `auto` restores it.
     ///
-    /// Styles are the declared ones: a `hover` state or a motion value that moves a box into
-    /// or out of a context is not seen. The exception is `position`, which the clips follow as
-    /// painted (`ElementBounds::position`): a dropdown that a state makes `absolute` is hit
-    /// outside a static `overflow: hidden` card, and one that a state makes `static` is not.
+    /// Styles are the ones each element was last built with (`resolved_style`), so a `hover`
+    /// state, an `@container` block, a transition, a CSS animation or a motion value that sets
+    /// `position`, `z-index`, `opacity`, `visibility`, `pointer-events` or `overflow` counts. An
+    /// element that was never built (a virtual-list row outside the window) has its declared
+    /// style.
     pub fn elements_at(
         &self,
         x: f64,
@@ -1233,7 +1239,7 @@ impl RetainedTree {
         let Some(element) = self.elements.get(&id) else {
             return Vec::new();
         };
-        let style = element.style.as_deref();
+        let resolved = self.resolved_of(element, &walk.colors, &walk.lengths);
         let own_box = (walk.painted_box)(id);
         let (x, y) = (walk.x, walk.y);
         let inside = |bounds: &crate::automation::ElementBounds, horizontal: bool, vertical: bool| {
@@ -1241,35 +1247,32 @@ impl RetainedTree {
                 && (!vertical || (y >= bounds.y && y < bounds.y + bounds.height))
         };
 
-        let painted_box = walk.painted_box;
-        let painted_position = |id| painted_box(id).and_then(|bounds| bounds.position);
-        let mut clipped = match containing_block::escape(element, &painted_position) {
+        let mut clipped = match containing_block::escape(self, element) {
             None => clipped,
             Some(gpui::Escape::Viewport) => false,
             Some(gpui::Escape::ContainingBlock) => walk.frames.last().copied().unwrap_or(false),
         };
-        if let (Some(style), Some(bounds)) = (style, &own_box) {
-            let axes = crate::scroll::Axes::of(style);
-            let (clip_x, clip_y) = (axes.x.clips(), axes.y.clips());
+        if let Some(bounds) = &own_box {
+            let (clip_x, clip_y) = (resolved.overflow.x.clips(), resolved.overflow.y.clips());
             if (clip_x || clip_y) && !inside(bounds, clip_x, clip_y) {
-                if self.anchored_count == 0 && self.escaping_count == 0 {
+                if self.anchored_count == 0 && self.escaping_count == 0 && !self.resolved.borrow().any_escaping() {
                     return Vec::new();
                 }
                 clipped = true;
             }
         }
 
-        let none = match style.and_then(|style| style.pointer_events.as_deref()) {
-            Some("none") => true,
-            Some("auto") => false,
-            _ => none,
+        let none = match resolved.pointer_events {
+            PointerEvents::None => true,
+            PointerEvents::Auto => false,
+            PointerEvents::Inherit => none,
         };
         let inert = inert || element.has_inert_prop();
         let none = none || inert;
-        let hidden = match style.and_then(|style| style.visibility.as_deref()) {
-            Some("hidden") => true,
-            Some("visible") => false,
-            _ => hidden,
+        let hidden = match resolved.visibility {
+            Visibility::Hidden => true,
+            Visibility::Visible => false,
+            Visibility::Inherit => hidden,
         };
 
         if element.element_type == "anchored" {
@@ -1290,15 +1293,16 @@ impl RetainedTree {
                 walk.frames.push(false);
                 let in_flow = self.paint_children(element, none, inert, false, hidden, walk, Some(&mut layer));
                 walk.frames.pop();
-                walk.layers[met].2 = layer.paint_order(None, in_flow);
+                // The layer's own box is a hit too, below what it holds: no ancestor clips it.
+                let own = (!none && !hidden && own_box.is_some_and(|bounds| inside(&bounds, true, true))).then_some(id);
+                walk.layers[met].2 = layer.paint_order(own, in_flow);
                 return Vec::new();
             }
         }
 
         let item = crate::layout::stacking::is_item(self, element);
         let mut own_context = (crate::layout::stacking::is_forced_context(self, element)
-            || (!crate::layout::contents::is_display_contents(element)
-                && crate::layout::stacking::creates_context(style, item, &walk.colors, &walk.lengths)))
+            || (!resolved.contents && crate::layout::stacking::creates_context(&resolved, item)))
         .then(Context::default);
         // Nothing under a hidden element is painted by a context above it: a `visible`
         // descendant is, in place, by `paint_rank`.
@@ -1308,7 +1312,7 @@ impl RetainedTree {
             None => context,
         };
 
-        let opens_frame = containing_block::is_positioned(element, &painted_position) || element.element_type == "virtual-list";
+        let opens_frame = containing_block::is_positioned(self, element) || element.element_type == "virtual-list";
         if opens_frame {
             walk.frames.push(clipped);
         }
@@ -1371,13 +1375,12 @@ impl RetainedTree {
                     .children
                     .iter()
                     .map(|&child| {
-                        let element = self.elements.get(&child);
-                        let rank = crate::layout::stacking::paint_rank(
-                            element.and_then(|child| child.style.as_deref()),
-                            element.is_some_and(|child| crate::layout::stacking::is_item(self, child)),
-                            &walk.colors,
-                            &walk.lengths,
-                        );
+                        let rank = self.elements.get(&child).map_or(0, |element| {
+                            crate::layout::stacking::paint_rank(
+                                &self.resolved_of(element, &walk.colors, &walk.lengths),
+                                crate::layout::stacking::is_item(self, element),
+                            )
+                        });
                         (rank, child)
                     })
                     .collect();
@@ -1956,7 +1959,6 @@ mod tests {
                     padding_top: 0.0,
                     padding_right: 0.0,
                     padding_bottom: 0.0,
-                    position: None,
                 })
         };
         (tree, lookup)
@@ -2018,7 +2020,6 @@ mod tests {
                     padding_top: 0.0,
                     padding_right: 0.0,
                     padding_bottom: 0.0,
-                    position: None,
                 })
         };
         (tree, lookup)
@@ -2051,6 +2052,90 @@ mod tests {
         });
         tree.set_style(3, in_flow);
         assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![1]);
+    }
+
+    fn built(tree: &RetainedTree, id: u64, json: &str) {
+        let style: StyleDesc = serde_json::from_str(json).unwrap();
+        let resolved = crate::resolved_style::Resolved::of(
+            &tree.elements[&id],
+            Some(&style),
+            &crate::color::ColorContext::root(crate::color::Scheme::Light),
+            &crate::css::length::LengthContext::for_tests(),
+        );
+        tree.resolved.borrow_mut().record(id, resolved);
+    }
+
+    #[test]
+    fn elements_at_follows_the_position_and_overflow_an_element_was_built_with() {
+        // A state made the static box absolute: it leaves the clip it was declared inside.
+        let (tree, painted) = escaping_tree(None, "static");
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![1]);
+        built(&tree, 3, r#"{"position":"absolute"}"#);
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![3, 1]);
+
+        // A state made the clip a containing block, so the absolute box is cut by it again.
+        let (tree, painted) = escaping_tree(None, "absolute");
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![3, 1]);
+        built(&tree, 2, r#"{"position":"relative","overflow":"hidden"}"#);
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![1]);
+
+        // And a clip that a state removed clips nothing.
+        let (tree, painted) = escaping_tree(None, "static");
+        built(&tree, 2, r#"{"overflow":"visible"}"#);
+        assert_eq!(tree.elements_at(20.0, 20.0, &painted), vec![3, 1]);
+    }
+
+    #[test]
+    fn elements_at_follows_the_pointer_events_and_visibility_an_element_was_built_with() {
+        let (tree, painted) = hit_test_tree();
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![4, 2, 1]);
+        built(&tree, 4, r#"{"pointerEvents":"none"}"#);
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![2, 1]);
+        built(&tree, 4, r#"{"visibility":"hidden"}"#);
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![2, 1]);
+        built(&tree, 4, "{}");
+        assert_eq!(tree.elements_at(45.0, 10.0, &painted), vec![4, 2, 1]);
+    }
+
+    #[test]
+    fn elements_at_orders_by_the_z_index_and_opacity_an_element_was_built_with() {
+        // 2 and 3 are siblings that overlap at (45, 45) in the root; the later one is on top.
+        let mut tree = RetainedTree::new();
+        for id in 1..=3 {
+            tree.create_element(id, "div".to_string());
+            tree.set_style(id, Arc::new(StyleDesc::default()));
+        }
+        tree.set_root(1);
+        tree.append_child(1, 2);
+        tree.append_child(1, 3);
+        let painted = |id: u64| {
+            Some(crate::automation::ElementBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                client_left: 0.0,
+                client_top: 0.0,
+                border_right: 0.0,
+                border_bottom: 0.0,
+                padding_left: 0.0,
+                padding_top: 0.0,
+                padding_right: 0.0,
+                padding_bottom: 0.0,
+            })
+            .filter(|_| id != 0)
+        };
+        assert_eq!(tree.elements_at(45.0, 45.0, &painted), vec![3, 2, 1]);
+        // A state gave the first one a `z-index` as a positioned box.
+        built(&tree, 2, r#"{"position":"relative","zIndex":1}"#);
+        assert_eq!(tree.elements_at(45.0, 45.0, &painted), vec![2, 3, 1]);
+        // A motion value made the second one translucent, which lifts it to the 0 layer.
+        built(&tree, 2, "{}");
+        built(&tree, 3, r#"{"opacity":0.5}"#);
+        assert_eq!(tree.elements_at(45.0, 45.0, &painted), vec![3, 2, 1]);
+        built(&tree, 2, r#"{"position":"absolute"}"#);
+        built(&tree, 3, "{}");
+        assert_eq!(tree.elements_at(45.0, 45.0, &painted), vec![2, 3, 1]);
     }
 
     #[test]
@@ -2126,7 +2211,6 @@ mod tests {
                     padding_top: 0.0,
                     padding_right: 0.0,
                     padding_bottom: 0.0,
-                    position: None,
                 })
         }
     }
@@ -2231,7 +2315,6 @@ mod tests {
                 padding_top: 0.0,
                 padding_right: 0.0,
                 padding_bottom: 0.0,
-                position: None,
             })
         };
         (tree, lookup)
@@ -2503,8 +2586,8 @@ mod tests {
             (5, 2, "div", flow()),
             (6, 1, "div", at("absolute", Some(99.0))),
         ]);
-        // The layer is above the tree whatever 6 asks for, and 4 rises above 5 inside it.
-        assert_eq!(order, [4, 5, 3, 6, 1]);
+        // The layer (2, which is hit too) is above the tree whatever 6 asks for, and 4 rises above 5 inside it.
+        assert_eq!(order, [4, 5, 3, 2, 6, 1]);
     }
 
     #[test]

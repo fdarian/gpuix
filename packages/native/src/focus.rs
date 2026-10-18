@@ -7,6 +7,7 @@
 //! subscription order, so per-element listeners fired in whatever order the
 //! elements were created rather than blur(old) before focus(new).
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -16,7 +17,6 @@ use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
 use crate::events::state_styles::PointerStates;
 use crate::events::sync_dispatch;
-use crate::layout::containing_block::Position;
 use crate::renderer::GpuixView;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -58,19 +58,27 @@ pub(crate) struct FocusStyles {
 }
 
 impl FocusStyles {
-    /// The `position` of element `id` once `apply_focus_styles` (`focusable`) or
-    /// `apply_focus_within` has applied its focus variants over `style`, which already has the
+    /// `style` with the focus variants that apply to element `id` laid over it, as
+    /// `apply_focus_variants` applies them to the element: `focusWithin`, `hasFocusVisible`,
+    /// `focusVisible` (which needs a `focusable` element), weakest first. `style` already has the
     /// pointer states folded in.
-    pub fn position(&self, id: u64, style: &StyleDesc, focusable: bool) -> Position {
-        fn variant(variant: &Option<Box<StyleDesc>>, applies: bool) -> Option<&str> {
-            variant.as_deref().filter(|_| applies)?.position.as_deref()
+    pub fn folded<'a>(&self, id: u64, style: &'a StyleDesc, focusable: bool) -> Cow<'a, StyleDesc> {
+        let mut folded = Cow::Borrowed(style);
+        for declared in self.applying(id, style, focusable) {
+            folded = Cow::Owned(crate::events::state_styles::overlay(&folded, declared));
         }
-        Position::parse(
-            variant(&style.focus_visible, focusable && self.visible == Some(id))
-                .or_else(|| variant(&style.has_focus_visible, self.has_focus_visible(id)))
-                .or_else(|| variant(&style.focus_within, self.within.contains(&id)))
-                .or(style.position.as_deref()),
-        )
+        folded
+    }
+
+    /// The focus variants of `style` that apply to element `id`, weakest first.
+    fn applying<'a>(&self, id: u64, style: &'a StyleDesc, focusable: bool) -> impl Iterator<Item = &'a StyleDesc> {
+        [
+            (style.focus_within.as_deref(), self.within.contains(&id)),
+            (style.has_focus_visible.as_deref(), self.has_focus_visible(id)),
+            (style.focus_visible.as_deref(), focusable && self.visible == Some(id)),
+        ]
+        .into_iter()
+        .filter_map(|(declared, applies)| declared.filter(|_| applies))
     }
 
     /// `:has(:focus)`: a strict descendant of `id` is focused. `within` starts
@@ -475,16 +483,8 @@ fn apply_focus_variants<E: gpui::Styled>(
     focus: &crate::focus::FocusStyles,
 ) -> E {
     let Some(base) = style else { return el };
-    let variants = [
-        (base.focus_within.as_deref(), focus.within.contains(&id)),
-        (base.has_focus_visible.as_deref(), focus.has_focus_visible(id)),
-        (base.focus_visible.as_deref(), focusable && focus.visible == Some(id)),
-    ];
     let mut beneath = std::borrow::Cow::Borrowed(base);
-    for (declared, applies) in variants {
-        let Some(declared) = declared.filter(|_| applies) else {
-            continue;
-        };
+    for declared in focus.applying(id, base, focusable) {
         el = crate::renderer::apply_state_styles(
             el,
             &beneath,
@@ -787,28 +787,33 @@ mod tests {
     }
 
     #[test]
-    fn a_focus_variant_decides_position_where_it_applies_and_visible_wins_over_within() {
+    fn a_focus_variant_decides_a_field_where_it_applies_and_visible_wins_over_within() {
         let styles = FocusStyles {
             visible: Some(3),
             within: Arc::from([3, 2, 1]),
             ..Default::default()
         };
         let style = serde_json::from_str::<StyleDesc>(
-            r#"{"position":"relative","focusWithin":{"position":"absolute"},"focusVisible":{"position":"fixed"}}"#,
+            r#"{"position":"relative","focusWithin":{"position":"absolute","opacity":0.5},"focusVisible":{"position":"fixed"}}"#,
         )
         .unwrap();
-        assert_eq!(styles.position(3, &style, true), Position::Fixed);
+        let position = |id, focusable| styles.folded(id, &style, focusable).position.clone();
+        assert_eq!(position(3, true).as_deref(), Some("fixed"));
         // An element that does not track focus gets no focus-visible variant.
-        assert_eq!(styles.position(3, &style, false), Position::Absolute);
-        assert_eq!(styles.position(2, &style, true), Position::Absolute);
-        assert_eq!(styles.position(9, &style, true), Position::Relative);
+        assert_eq!(position(3, false).as_deref(), Some("absolute"));
+        assert_eq!(position(2, true).as_deref(), Some("absolute"));
+        assert_eq!(position(9, true).as_deref(), Some("relative"));
+        // What a weaker variant sets and a stronger one leaves alone stays.
+        assert_eq!(styles.folded(3, &style, true).opacity, Some(0.5));
+        assert_eq!(styles.folded(9, &style, true).opacity, None);
 
         let relational = serde_json::from_str::<StyleDesc>(
             r#"{"focusWithin":{"position":"absolute"},"hasFocusVisible":{"position":"sticky"}}"#,
         )
         .unwrap();
-        assert_eq!(styles.position(2, &relational, true), Position::Sticky, "hasFocusVisible beats focusWithin");
-        assert_eq!(styles.position(3, &relational, true), Position::Absolute, "and is not the element's own");
+        let position = |id| styles.folded(id, &relational, true).position.clone();
+        assert_eq!(position(2).as_deref(), Some("sticky"), "hasFocusVisible beats focusWithin");
+        assert_eq!(position(3).as_deref(), Some("absolute"), "and is not the element's own");
     }
 
     #[test]

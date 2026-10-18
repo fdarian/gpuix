@@ -5576,10 +5576,7 @@ impl GpuixView {
             if key.activates_controls && element.events().contains("click") {
                 return false;
             }
-            let window_id = window.window_handle().window_id();
-            let reaching = crate::layout::containing_block::reaching_ancestors(&tree, focused, &|id| {
-                crate::automation::get_bounds(window_id, id).and_then(|bounds| bounds.position)
-            });
+            let reaching = crate::layout::containing_block::reaching_ancestors(&tree, focused);
             for id in std::iter::once(focused).chain(reaching) {
                 if let Some(handle) = self.scroll_handles.get(&id) {
                     scrollers.push((id, handle));
@@ -5626,8 +5623,7 @@ impl GpuixView {
         let mut child = id;
         // Only the ancestors that move the element: an absolute one stays put under a static
         // scroller, and a fixed one under all of them.
-        let painted_position = |ancestor| crate::automation::get_bounds(window_id, ancestor).and_then(|bounds| bounds.position);
-        for ancestor_id in crate::layout::containing_block::reaching_ancestors(&tree, id, &painted_position) {
+        for ancestor_id in crate::layout::containing_block::reaching_ancestors(&tree, id) {
             if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
                 if let Some(index) = entry.logical_index_of(child) {
                     let viewport = entry.state.viewport_bounds();
@@ -7844,6 +7840,7 @@ fn build_element_unpumped(
     let provisional = reads_containers
         && ctx.inherited.container_chain().is_some_and(|scope| !scope.is_known());
     if crate::layout::box_generation::is_display_none(element) {
+        tree.resolved.borrow_mut().forget(id);
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
         return absent_host(id);
@@ -7929,6 +7926,7 @@ fn build_element_unpumped(
             .as_ref()
             .is_none_or(|declared| declared.style.display.as_deref() == Some("none"))
     {
+        tree.resolved.borrow_mut().forget(id);
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
         return absent_host(id);
@@ -8060,11 +8058,24 @@ fn build_element_unpumped(
         stripped
     });
     let style = atomic_style.as_ref().or(style);
+    // What the walks over the retained tree read (`resolved_style`): the style as painted, with
+    // the focus variants, which the builders lay over the element, folded in.
+    let focus_folded = style.map(|style| {
+        ctx.focus_styles
+            .folded(id, style, ctx.focus_handles.contains_key(&id))
+    });
+    let resolved = crate::resolved_style::Resolved::of(
+        element,
+        focus_folded.as_deref(),
+        &ctx.inherited.colors,
+        &ctx.inherited.lengths,
+    );
+    tree.resolved.borrow_mut().record(id, resolved);
     let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
     ctx.retain.stacking(|| {
         (
-            crate::layout::stacking::lift_z(style, stacking_item, colors, lengths),
-            crate::layout::stacking::forms_context(style, stacking_root, colors, lengths),
+            crate::layout::stacking::lift_z(&resolved, stacking_item),
+            crate::layout::stacking::forms_context(focus_folded.as_deref(), stacking_root, colors, lengths),
         )
     });
     // After the fold above: a group is its descendants' to follow, so the
@@ -8190,6 +8201,7 @@ fn build_element_unpumped(
                         ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
                         if custom_type == "anchored" {
                             ctx.anchor_scope = Some(id);
+                            ctx.stacking_item = resolved.lays_out_items;
                         }
                         ctx.doc_path.push(ix as u32);
                         let child = build_element(child_id, ctx, window, cx);
@@ -8233,6 +8245,7 @@ fn build_element_unpumped(
                 pointer_events_none: inherited.pointer_events_none,
                 app_region: inherited.app_region,
                 stacking_root,
+                resolved,
             };
             let built = ctx
                 .custom_registry
@@ -8586,7 +8599,6 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
-        style.map(|style| ctx.focus_styles.position(element.id, style, ctx.focus_handles.contains_key(&element.id))),
         scroll_report,
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
@@ -8661,7 +8673,16 @@ pub(crate) fn build_host_container(
     let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
     ctx.scroller = outer_scroller;
     crate::text::atomic::report_containing_height(el, containing_heights);
-    if crate::layout::stacking::forms_context(style, stacking_root, &ctx.inherited.colors, &ctx.inherited.lengths) {
+    let focus_folded = style.map(|style| {
+        ctx.focus_styles
+            .folded(element.id, style, ctx.focus_handles.contains_key(&element.id))
+    });
+    if crate::layout::stacking::forms_context(
+        focus_folded.as_deref(),
+        stacking_root,
+        &ctx.inherited.colors,
+        &ctx.inherited.lengths,
+    ) {
         host = host.stacking_context();
     }
     ctx.subtree = crate::layout::cull::Subtree::of_element(
@@ -8907,13 +8928,15 @@ fn build_plan(
         ctx.doc_path.push(at);
         match child {
             crate::text::inline::Child::Block(child_id) => {
-                let item = crate::layout::stacking::is_flex_or_grid_container(element);
+                let item = crate::layout::stacking::is_flex_or_grid_container(ctx.tree, element);
                 let child_element = ctx.tree.elements.get(&child_id);
                 paint_ranks.push(crate::layout::stacking::paint_rank(
-                    child_element.and_then(|child| child.style.as_deref()),
+                    &child_element
+                        .and_then(|child| child.style.as_deref())
+                        .map_or(crate::resolved_style::Resolved::UNSTYLED, |style| {
+                            crate::resolved_style::Resolved::of_style(style, &ctx.inherited.colors, &ctx.inherited.lengths)
+                        }),
                     item,
-                    &ctx.inherited.colors,
-                    &ctx.inherited.lengths,
                 ));
                 ctx.contents_overlay =
                     crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);

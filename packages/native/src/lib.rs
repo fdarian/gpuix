@@ -34,6 +34,7 @@ mod observers;
 pub mod perf_counters;
 mod renderer;
 mod retain;
+mod resolved_style;
 mod scroll;
 mod scrollbar;
 mod slot;

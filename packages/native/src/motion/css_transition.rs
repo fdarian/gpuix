@@ -3022,6 +3022,21 @@ mod tests {
         }
 
         #[test]
+        fn visibility_needs_no_allow_discrete_and_display_does() {
+            // Chrome animates `visibility` by its own rule, so a plain `transition` runs it.
+            let mut clock = Clock::new();
+            clock.frame(0, &with("visibility", "hidden", ""));
+            let visible = with("visibility", "visible", "");
+            assert_eq!(visibility(&clock.frame(0, &visible)), Some("hidden"));
+            assert_eq!(visibility(&clock.frame(1, &visible)), Some("visible"));
+            assert_eq!(visibility(&clock.frame(1000, &visible)), Some("visible"));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &with("display", "flex", ""));
+            assert_eq!(display(&clock.frame(100, &with("display", "block", ""))), Some("block"));
+        }
+
+        #[test]
         fn an_unset_visibility_is_visible() {
             let mut clock = Clock::new();
             let unset = style(r#"{ "transition": "visibility 1s linear allow-discrete" }"#);

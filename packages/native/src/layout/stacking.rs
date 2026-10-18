@@ -20,17 +20,10 @@ use gpui::{Div, Stateful, Styled};
 
 use crate::color::ColorContext;
 use crate::css::length::LengthContext;
+use crate::layout::containing_block::Position;
+use crate::resolved_style::Resolved;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
-
-/// An author-set `position` other than `static`. An element with none is in flow, whatever
-/// zed's own default for `Style::position` is.
-pub(crate) fn is_positioned(style: Option<&StyleDesc>) -> bool {
-    matches!(
-        style.and_then(|style| style.position.as_deref()),
-        Some("relative" | "absolute" | "fixed" | "sticky")
-    )
-}
 
 /// The `z-index` of an element that is lifted into the nearest stacking context, `auto` being 0.
 /// `None` for one in flow, which is not lifted and has no index.
@@ -38,24 +31,17 @@ pub(crate) fn is_positioned(style: Option<&StyleDesc>) -> bool {
 /// Lifted are a positioned element, a flex or grid item (`item`) with a `z-index` (the index
 /// does not apply to a static box otherwise), and anything that forms a context by its effect
 /// group, at 0: its own `z-index` only counts where it applies.
-pub(crate) fn lift_z(
-    style: Option<&StyleDesc>,
-    item: bool,
-    colors: &ColorContext,
-    lengths: &LengthContext,
-) -> Option<i32> {
-    let style = style?;
-    let z = style.z_index.map(round_z);
-    if is_positioned(Some(style)) {
-        return Some(z.unwrap_or(0));
+pub(crate) fn lift_z(resolved: &Resolved, item: bool) -> Option<i32> {
+    if resolved.position != Position::Static {
+        return Some(resolved.z_index.unwrap_or(0));
     }
-    if item && z.is_some() {
-        return z;
+    if item && resolved.z_index.is_some() {
+        return resolved.z_index;
     }
-    has_effect_group(style, colors, lengths).then_some(0)
+    resolved.effect_group.then_some(0)
 }
 
-fn round_z(z: f64) -> i32 {
+pub(crate) fn round_z(z: f64) -> i32 {
     z.round().clamp(-1_000_000.0, 1_000_000.0) as i32
 }
 
@@ -65,50 +51,36 @@ fn round_z(z: f64) -> i32 {
 /// CSS paints negative `z-index` positioned boxes, then in-flow boxes, then positioned boxes by
 /// `z-index` (`auto` is 0) in tree order. Only an author-set `position` other than `static`
 /// counts as positioned; a lifted static box ranks as one (see `lift_z`).
-pub(crate) fn paint_rank(
-    style: Option<&StyleDesc>,
-    item: bool,
-    colors: &ColorContext,
-    lengths: &LengthContext,
-) -> i32 {
-    match lift_z(style, item, colors, lengths) {
+pub(crate) fn paint_rank(resolved: &Resolved, item: bool) -> i32 {
+    match lift_z(resolved, item) {
         None => 0,
         Some(z) if z < 0 => z,
         Some(z) => z + 1,
     }
 }
 
-/// Whether `style` forms a stacking context of its own: a positioned element with a `z-index`
-/// (not `auto`), a `fixed` or `sticky` one, a flex or grid item (`item`) with a `z-index`, and
-/// anything whose composite is applied as a whole, which is what zed's `effects.rs` does with
-/// an effect group. zed cannot see the latter
+/// Whether the element forms a stacking context of its own: a positioned element with a
+/// `z-index` (not `auto`), a `fixed` or `sticky` one, a flex or grid item (`item`) with a
+/// `z-index`, and anything whose composite is applied as a whole, which is what zed's
+/// `effects.rs` does with an effect group. zed cannot see the latter
 /// (`element_opacity` is paint-only state), so every one must be flagged.
-///
-/// `colors` and `lengths` only decide whether a `filter` or `mask` value is valid, and a value
-/// that does not parse makes no group. Not `transform`: gpuix has no such style.
-pub(crate) fn creates_context(
-    style: Option<&StyleDesc>,
-    item: bool,
-    colors: &ColorContext,
-    lengths: &LengthContext,
-) -> bool {
-    let Some(style) = style else {
-        return false;
-    };
-    if is_positioned(Some(style)) {
-        let fixed_or_sticky = matches!(style.position.as_deref(), Some("fixed" | "sticky"));
-        if fixed_or_sticky || style.z_index.is_some() {
+pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
+    if resolved.position != Position::Static {
+        let fixed_or_sticky = matches!(resolved.position, Position::Fixed | Position::Sticky);
+        if fixed_or_sticky || resolved.z_index.is_some() {
             return true;
         }
-    } else if item && style.z_index.is_some() {
+    } else if item && resolved.z_index.is_some() {
         return true;
     }
-    has_effect_group(style, colors, lengths)
+    resolved.effect_group
 }
 
 /// The condition of zed's `Style::group_effect`: opacity below 1, a non-empty `filter` or
-/// `backdrop-filter`, a mask layer, or a clip path other than `none`.
-fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
+/// `backdrop-filter`, a mask layer, or a clip path other than `none`. `colors` and `lengths`
+/// only decide whether a `filter` or `mask` value is valid, and a value that does not parse
+/// makes no group. Not `transform`: gpuix has no such style.
+pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
     let filters = |value: &Option<String>| {
         value
             .as_deref()
@@ -138,9 +110,10 @@ pub(crate) fn apply_z_index<E: Styled>(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> E {
-    if let Some(z) = lift_z(Some(style), style.flex_or_grid_item, colors, lengths) {
+    let resolved = Resolved::of_style(style, colors, lengths);
+    if let Some(z) = lift_z(&resolved, style.flex_or_grid_item) {
         el.style().z_index = Some(z);
-        if !is_positioned(Some(style)) {
+        if resolved.position == Position::Static {
             el = el.lifted();
         }
     }
@@ -173,12 +146,9 @@ pub(crate) fn forms_context(
     lengths: &LengthContext,
 ) -> bool {
     forced
-        || creates_context(
-            style,
-            style.is_some_and(|style| style.flex_or_grid_item),
-            colors,
-            lengths,
-        )
+        || style.is_some_and(|style| {
+            creates_context(&Resolved::of_style(style, colors, lengths), style.flex_or_grid_item)
+        })
 }
 
 /// The retained-tree counterpart of what zed lifts: the `z-index` of `element` if its parent
@@ -190,19 +160,17 @@ pub(crate) fn lifted_z(
     colors: &ColorContext,
     lengths: &LengthContext,
 ) -> Option<i32> {
-    if element.element_type == "anchored"
-        || super::contents::is_display_contents(element)
-        || is_virtual_row(tree, element)
-    {
+    let resolved = tree.resolved_of(element, colors, lengths);
+    if element.element_type == "anchored" || resolved.contents || is_virtual_row(tree, element) {
         return None;
     }
-    lift_z(element.style.as_deref(), is_item(tree, element), colors, lengths)
+    lift_z(&resolved, is_item(tree, element))
 }
 
 /// Whether `element` is an item of a flex or grid container: its box is a child of one. A
 /// `display: contents` parent makes no box, so its children are items of the container around
-/// it. Only a `div`, `text`, `span`, `label` or `form` parent counts, as those are the ones
-/// that lay their children out by their own `display`.
+/// it. Only a `div`, `text`, `span`, `label`, `form` or `anchored` parent counts, as those are
+/// the ones that lay their children out by their own `display`.
 pub(crate) fn is_item(tree: &RetainedTree, element: &RetainedElement) -> bool {
     if is_virtual_row(tree, element) {
         return false;
@@ -212,19 +180,21 @@ pub(crate) fn is_item(tree: &RetainedTree, element: &RetainedElement) -> bool {
         let Some(container) = tree.elements.get(&id) else {
             return false;
         };
-        if super::contents::is_display_contents(container) {
+        if tree.display_of(container).0 {
             parent = container.parent;
             continue;
         }
-        return is_flex_or_grid_container(container);
+        return is_flex_or_grid_container(tree, container);
     }
     false
 }
 
-/// Whether `element` lays its children out as a flex or grid container.
-pub(crate) fn is_flex_or_grid_container(element: &RetainedElement) -> bool {
-    crate::text::inline::is_host_container(element)
-        && super::display::lays_out_items(element.display().as_deref())
+/// Whether `element` lays its children out as a flex or grid container. Of the custom elements
+/// only `<anchored>` has children that are laid out; the others (`<input>`, `<img>`, `<code>`,
+/// ...) draw themselves.
+pub(crate) fn is_flex_or_grid_container(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    (crate::text::inline::is_host_container(element) || element.element_type == "anchored")
+        && tree.display_of(element).1
 }
 
 /// Whether `element` is a context whatever its style says. The counterpart of the `forced`
@@ -261,31 +231,20 @@ mod tests {
         item_context_of(style, false)
     }
 
+    fn resolved(style: &StyleDesc) -> Resolved {
+        Resolved::of_style(style, &ColorContext::root(Scheme::Light), &LengthContext::for_tests())
+    }
+
     fn item_context_of(style: &StyleDesc, item: bool) -> bool {
-        creates_context(
-            Some(style),
-            item,
-            &ColorContext::root(Scheme::Light),
-            &LengthContext::for_tests(),
-        )
+        creates_context(&resolved(style), item)
     }
 
     fn lift_of(style: &StyleDesc, item: bool) -> Option<i32> {
-        lift_z(
-            Some(style),
-            item,
-            &ColorContext::root(Scheme::Light),
-            &LengthContext::for_tests(),
-        )
+        lift_z(&resolved(style), item)
     }
 
     fn rank_of(style: Option<&StyleDesc>, item: bool) -> i32 {
-        paint_rank(
-            style,
-            item,
-            &ColorContext::root(Scheme::Light),
-            &LengthContext::for_tests(),
-        )
+        paint_rank(&style.map_or(Resolved::UNSTYLED, resolved), item)
     }
 
     #[test]
@@ -308,7 +267,7 @@ mod tests {
 
     #[test]
     fn only_a_positioned_element_has_a_z_index_and_auto_is_zero() {
-        assert_eq!(lift_z(None, false, &ColorContext::root(Scheme::Light), &LengthContext::for_tests()), None);
+        assert_eq!(lift_z(&Resolved::UNSTYLED, false), None);
         assert_eq!(lift_of(&style(None, Some(5.0)), false), None);
         assert_eq!(lift_of(&style(Some("static"), Some(5.0)), false), None);
         for position in ["relative", "absolute", "fixed", "sticky"] {
@@ -505,8 +464,13 @@ mod tests {
         assert!(item(Some("grid"), "span"));
         assert!(!item(Some("block"), "div"));
         assert!(!item(None, "div"));
-        // A custom element lays its children out in a box of its own.
-        assert!(!item(Some("flex"), "anchored"));
+        // `<anchored>` is a flex column unless the author gives it a `display`.
+        assert!(item(None, "anchored"));
+        assert!(item(Some("grid"), "anchored"));
+        assert!(!item(Some("block"), "anchored"));
+        // The other custom elements draw themselves and have no laid out children.
+        assert!(!item(Some("flex"), "input"));
+        assert!(!item(Some("flex"), "img"));
     }
 
     #[test]

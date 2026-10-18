@@ -4553,6 +4553,13 @@ is transparent for the one frame before the trigger is first measured). And
 natively on every layout, with no JS round trip. An explicit `anchor` corner
 keeps the older corner-based placement.
 
+An `<anchored>` lays its children out as a box with the `display` its style gives
+it (`flex`, `grid`, `block`, with `flexDirection`, `gap`, `gridTemplateColumns` and
+the rest), and its children are the items of that box: a `zIndex` on a child of
+a `flex` or `grid` one stacks as it does on any item, without a `position`. With no
+`display` it is a flex column; with `display: "flex"` and no `flexDirection` it is a
+row, as in CSS.
+
 `fill="window"` makes an `<anchored>` cover the whole window, like
 `Dialog.Portal`. Native reads the viewport size every frame, so the layer
 follows a resize in the same frame. It ignores `position`, `side`, `align`,
@@ -4716,7 +4723,9 @@ that never paints reports not intersecting) and then one per threshold crossing
 or `isIntersecting` flip. The intersection is the target's border box clipped by
 every ancestor's `overflow` between it and the root, then by the root. For an
 `absolute` target those are the ancestors from its containing block up, and a
-`fixed` one is clipped by none. As in the DOM, an element root and an `overflow` ancestor clip at their padding box: a
+`fixed` one is clipped by none. The `overflow` and `position` are the ones each
+ancestor is painted with, so a `hover` style that makes an ancestor `relative`
+with `overflow: hidden` clips its absolute targets while it applies. As in the DOM, an element root and an `overflow` ancestor clip at their padding box: a
 target that lies entirely under their border does not intersect, and `rootBounds`
 is the root's padding box.
 `rootMargin` takes 1 to 4 lengths in `px` or `%` (a percentage is of the padding
@@ -4760,7 +4769,13 @@ const [topmost] = renderer.getElementsAt?.(event.x, event.y) ?? []
 
 It answers from the last frame, so an element that did not paint (outside a
 virtual list's window) is never listed, and neither is one with
-`visibility: "hidden"` (a descendant with `visibility: "visible"` is).
+`visibility: "hidden"` (a descendant with `visibility: "visible"` is). The
+styles it reads (`visibility`, `pointerEvents`, `overflow`, `position`, `zIndex`,
+`opacity` and the other effects that make a stacking context, `display`) are the
+ones each element was painted with, so a `hover`, `active` or focus state, a
+group or `has*` state, an `@container` block, a transition, a CSS animation or a
+`motion` value that changes them counts, as `document.elementsFromPoint` does.
+A deferred [`<anchored>`](#overlay-menus) layer is listed too, below what it holds.
 `overflow: hidden` and
 `scroll` clip what lies outside them (not an `absolute` or `fixed` descendant whose
 containing block is outside), `pointer-events: none` is skipped (and
@@ -6286,8 +6301,8 @@ so that animation starts at `0`.
   `position` that only a state style sets (`hover`, `active`, `focusVisible`,
   `focusWithin`, the group variants) escapes the same way while the state
   applies, and a state that sets it back to `static` puts the clip back.
-  `getElementsAt` and `scrollIntoView` follow the position as painted;
-  `IntersectionObserver` reads the declared one. An `opacity`,
+  `getElementsAt`, `scrollIntoView` and `IntersectionObserver` follow the position as painted,
+  which includes one an `@container` block, a transition or a motion value sets. An `opacity`,
   `filter`, `mask` or `clipPath` group composites an escaped box with the rest
   of the group, so a card with `opacity` on a clipped scroller no longer cuts
   its dropdown at the scroller's edge. Known difference: a `filter` also lets
@@ -6316,11 +6331,21 @@ so that animation starts at `0`.
   one cannot rise above what is outside it. An `<anchored>` layer and each row
   of a `<virtual-list>` is a context of its own too, and nothing is lifted out
   of a row: a row's content never rises above the next row. The children of a
-  `display: contents` element are items of the container around it; the
-  children of a custom element (`<img>`, `<anchored>`, ...) are not items.
-  There is no `transform`. Styles that appear only in a `hover`, `active` or
-  focus state, a `motion` animation or a transition do not move an element
-  between layers in `getElementsAt`.
+  `display: contents` element are items of the container around it, and so are
+  the children of an `<anchored>` (see [Overlay menus](#overlay-menus)). The
+  other custom elements (`<input>`, `<textarea>`, `<img>`, `<svg>`, `<code>`,
+  `<diff>`, `<markdown>`, `<virtual-list>`) draw themselves and do not lay
+  their children out as a flex or grid container, so a child of one is no item
+  and takes no `zIndex` without a `position`.
+  There is no `transform`. `getElementsAt` and the stacking contexts it models
+  read the style an element was last painted with, so an `opacity`, `zIndex`,
+  `visibility`, `pointerEvents`, `overflow` or `position` that comes from a
+  state style, an `@container` block, a transition, a CSS animation or a motion
+  value moves the element between layers there, as in a browser. An element
+  that was never painted (a virtual list row outside the window) has its declared
+  style. Known difference: Chrome gives an element a stacking context for as
+  long as an `opacity` animation or transition is on it, even at the instant the
+  `opacity` is still 1; gpuix does once it is below 1.
 - **`order`** stable-sorts the children of a flex or grid container. Layout and
   paint follow it; tab order stays in document order.
 - **Baselines.** Text has a first baseline: that of its first line. A flex or grid
@@ -7335,9 +7360,10 @@ render per frame.
   (the exit animation pattern), and `visibility` is `visible` for the whole duration
   when either end is. A `boxShadow` change between lists that differ in `inset`
   flips the same way. The events are the ones other properties fire.
+  `visibility` is the exception to `allow-discrete`: as in CSS it transitions without it, and
+  `motion`'s `animate` and keyframes take it (`visible`, `hidden`, `collapse`).
   Other discrete properties (`position`, `overflow`, `pointerEvents`, ...) are not
-  transitionable: parts of gpuix read them from the declared style, not from the
-  running transition
+  transitionable.
 - **Timing functions.** `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`,
   `cubic-bezier()` (it may overshoot), `steps(n, jump-start | jump-end |
   jump-none | jump-both | start | end)`, `step-start`, `step-end` and `linear()`

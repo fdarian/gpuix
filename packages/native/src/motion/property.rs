@@ -1,10 +1,11 @@
 //! The animatable properties: one `AnimProp` per `StyleDesc` longhand whose
 //! value is a number, a length, a colour or a shadow list.
 //!
-//! Discrete properties (`display`, `visibility`, ...) are `Kind::Keyword`. Only
+//! Discrete properties (`display`, `flexDirection`, ...) are `Kind::Keyword`. Only
 //! a CSS transition with `transition-behavior: allow-discrete` runs them;
 //! [`AnimProp::from_name`] leaves them out, so naming one in `animate` is an
-//! error instead of a silent no-op.
+//! error instead of a silent no-op. `visibility` is a keyword too, but CSS animates it
+//! without `allow-discrete`, and so does `animate`.
 
 use serde_json::Value;
 
@@ -839,7 +840,9 @@ impl AnimProp {
     /// Whether the value flips instead of blending, so only a transition with
     /// `allow-discrete` runs it.
     pub(super) fn is_discrete(self) -> bool {
-        self.kind() == Kind::Keyword
+        // `visibility` has its own animation type in CSS: `visible` shows for the whole duration
+        // when either end has it, and it needs no `allow-discrete`.
+        self.kind() == Kind::Keyword && self != Self::Visibility
     }
 
     /// The axis whose laid-out size an unset value of this property is, so an
@@ -1048,6 +1051,10 @@ impl AnimProp {
                 )
             }
             Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value, colors)?),
+            Kind::Keyword if self == Self::Visibility => match value.as_str() {
+                Some(keyword @ ("visible" | "hidden" | "collapse")) => AnimValue::Keyword(Some(keyword.to_string())),
+                _ => return Err(format!("motion {name} must be visible, hidden or collapse")),
+            },
             Kind::Keyword => {
                 return Err(format!("motion cannot animate {name}: it is discrete"));
             }
@@ -1203,11 +1210,14 @@ mod tests {
 
     #[test]
     fn discrete_properties_are_css_names_but_not_animatable() {
-        for name in ["display", "visibility", "flexDirection", "justifySelf"] {
+        for name in ["display", "flexDirection", "justifySelf"] {
             let prop = AnimProp::from_css_name(name).unwrap();
             assert!(prop.is_discrete(), "{name}");
             assert!(AnimProp::from_name(name).is_none(), "{name}");
         }
+        // Visibility is the keyword CSS animates without `allow-discrete`.
+        assert!(!AnimProp::Visibility.is_discrete());
+        assert!(AnimProp::from_name("visibility").is_some());
         assert!(!AnimProp::from_css_name("opacity").unwrap().is_discrete());
         assert!(AnimProp::from_css_name("position").is_none());
     }

@@ -28,25 +28,13 @@ impl Position {
             _ => Self::Static,
         }
     }
-
-    fn declared(element: &RetainedElement) -> Self {
-        Self::parse(element.style.as_deref().and_then(|style| style.position.as_deref()))
-    }
 }
 
-/// The `position` an element was painted with, for a walk over the retained tree, which only
-/// has the declared style. It differs when a `hover`, `active`, `focusVisible`, `focusWithin`, group or
-/// `has*` refinement sets `position`: `build_element` folds the state in and the painted box
-/// records it (`ElementBounds::position`). `None` is no record, and the declared one stands.
-pub(crate) type PaintedPosition<'a> = &'a dyn Fn(u64) -> Option<Position>;
-
-fn position(element: &RetainedElement, painted: PaintedPosition) -> Position {
-    painted(element.id).unwrap_or_else(|| Position::declared(element))
-}
-
-/// What the element escapes to, which is what `layout::style::apply_position` asked zed for.
-pub(crate) fn escape(element: &RetainedElement, painted: PaintedPosition) -> Option<gpui::Escape> {
-    match position(element, painted) {
+/// What the element escapes to, which is what `layout::style::apply_position` asked zed for. The
+/// `position` is the one the element was last built with (`RetainedTree::position_of`): a state
+/// style, a transition or a motion value can set it.
+pub(crate) fn escape(tree: &RetainedTree, element: &RetainedElement) -> Option<gpui::Escape> {
+    match tree.position_of(element) {
         Position::Absolute => Some(gpui::Escape::ContainingBlock),
         Position::Fixed => Some(gpui::Escape::Viewport),
         _ => None,
@@ -81,17 +69,17 @@ pub(crate) fn may_escape(element: &RetainedElement) -> bool {
 
 /// A containing block for the boxes that escape to one. `<anchored>` counts: zed lays it out as
 /// absolute whatever its style says. A `display: contents` element generates no box.
-pub(crate) fn is_positioned(element: &RetainedElement, painted: PaintedPosition) -> bool {
-    if super::contents::is_display_contents(element) {
+pub(crate) fn is_positioned(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    if tree.display_of(element).0 {
         return false;
     }
-    element.element_type == "anchored" || position(element, painted) != Position::Static
+    element.element_type == "anchored" || tree.position_of(element) != Position::Static
 }
 
 /// The nearest positioned ancestor of `element`, or the row of a `<virtual-list>` it sits in: a
 /// row is laid out as a root of its own, which is the containing block when nothing inside it is
 /// positioned. `None` is the window.
-fn containing_block(tree: &RetainedTree, element: &RetainedElement, painted: PaintedPosition) -> Option<u64> {
+fn containing_block(tree: &RetainedTree, element: &RetainedElement) -> Option<u64> {
     let mut current = element.parent;
     while let Some(id) = current {
         let ancestor = tree.elements.get(&id)?;
@@ -99,7 +87,7 @@ fn containing_block(tree: &RetainedTree, element: &RetainedElement, painted: Pai
             .parent
             .and_then(|parent| tree.elements.get(&parent))
             .is_some_and(|parent| parent.element_type == "virtual-list");
-        if is_positioned(ancestor, painted) || is_row {
+        if is_positioned(tree, ancestor) || is_row {
             return Some(id);
         }
         current = ancestor.parent;
@@ -108,13 +96,13 @@ fn containing_block(tree: &RetainedTree, element: &RetainedElement, painted: Pai
 }
 
 /// The ancestors that clip and scroll `id`, nearest first.
-pub(crate) fn reaching_ancestors(tree: &RetainedTree, id: u64, painted: PaintedPosition) -> Vec<u64> {
+pub(crate) fn reaching_ancestors(tree: &RetainedTree, id: u64) -> Vec<u64> {
     let mut found = Vec::new();
     let mut current = id;
     while let Some(element) = tree.elements.get(&current) {
-        let next = match escape(element, painted) {
+        let next = match escape(tree, element) {
             None => element.parent,
-            Some(gpui::Escape::ContainingBlock) => containing_block(tree, element, painted),
+            Some(gpui::Escape::ContainingBlock) => containing_block(tree, element),
             Some(gpui::Escape::Viewport) => None,
         };
         let Some(next) = next else {
@@ -130,10 +118,6 @@ pub(crate) fn reaching_ancestors(tree: &RetainedTree, id: u64, painted: PaintedP
 mod tests {
     use super::*;
     use std::sync::Arc;
-
-    fn declared(_: u64) -> Option<Position> {
-        None
-    }
 
     fn tree(nodes: &[(u64, &str, Option<&str>)]) -> RetainedTree {
         let mut tree = RetainedTree::new();
@@ -154,7 +138,7 @@ mod tests {
     #[test]
     fn an_in_flow_element_is_reached_by_every_ancestor() {
         let tree = tree(&[(1, "div", None), (2, "div", Some("relative")), (3, "div", None)]);
-        assert_eq!(reaching_ancestors(&tree, 3, &declared), [2, 1]);
+        assert_eq!(reaching_ancestors(&tree, 3), [2, 1]);
     }
 
     #[test]
@@ -166,7 +150,7 @@ mod tests {
             (4, "div", None),
             (5, "div", Some("absolute")),
         ]);
-        assert_eq!(reaching_ancestors(&tree, 5, &declared), [2, 1]);
+        assert_eq!(reaching_ancestors(&tree, 5), [2, 1]);
     }
 
     #[test]
@@ -179,15 +163,15 @@ mod tests {
             (2, "div", Some("absolute")),
             (3, "div", Some("absolute")),
         ]);
-        assert_eq!(reaching_ancestors(&tree, 3, &declared), [2, 1]);
+        assert_eq!(reaching_ancestors(&tree, 3), [2, 1]);
     }
 
     #[test]
     fn a_fixed_element_is_reached_by_nothing_and_an_unanchored_absolute_by_the_window() {
         let tree = tree(&[(1, "div", Some("relative")), (2, "div", Some("fixed"))]);
-        assert!(reaching_ancestors(&tree, 2, &declared).is_empty());
+        assert!(reaching_ancestors(&tree, 2).is_empty());
         let tree = self::tree(&[(1, "div", None), (2, "div", Some("absolute"))]);
-        assert!(reaching_ancestors(&tree, 2, &declared).is_empty());
+        assert!(reaching_ancestors(&tree, 2).is_empty());
     }
 
     #[test]
@@ -199,7 +183,7 @@ mod tests {
             (4, "div", None),
             (5, "div", Some("absolute")),
         ]);
-        assert_eq!(reaching_ancestors(&tree, 5, &declared), [3, 2, 1]);
+        assert_eq!(reaching_ancestors(&tree, 5), [3, 2, 1]);
     }
 
     #[test]
@@ -216,31 +200,37 @@ mod tests {
             ..Default::default()
         };
         tree.set_style(3, Arc::new(contents));
-        let positioned = |id| is_positioned(&tree.elements[&id], &declared);
+        let positioned = |id| is_positioned(&tree, &tree.elements[&id]);
         assert!(!positioned(1));
         assert!(positioned(2));
         assert!(!positioned(3));
     }
 
+    fn painted(tree: &RetainedTree, id: u64, position: Position) {
+        tree.resolved.borrow_mut().record(
+            id,
+            crate::resolved_style::Resolved {
+                position,
+                ..crate::resolved_style::Resolved::UNSTYLED
+            },
+        );
+    }
+
     #[test]
     fn a_painted_position_replaces_the_declared_one() {
-        let tree = tree(&[
-            (1, "div", Some("relative")),
-            (2, "div", None),
-            (3, "div", None),
-            (4, "div", None),
-        ]);
-        let painted = |id| (id == 4).then_some(Position::Absolute);
-        assert_eq!(reaching_ancestors(&tree, 4, &declared), [3, 2, 1]);
-        assert_eq!(reaching_ancestors(&tree, 4, &painted), [1]);
+        let nodes = [(1, "div", Some("relative")), (2, "div", None), (3, "div", None), (4, "div", None)];
+        let tree = tree(&nodes);
+        assert_eq!(reaching_ancestors(&tree, 4), [3, 2, 1]);
+        painted(&tree, 4, Position::Absolute);
+        assert_eq!(reaching_ancestors(&tree, 4), [1]);
         // A box that was declared absolute and painted static is in flow again.
         let tree = self::tree(&[(1, "div", Some("relative")), (2, "div", None), (3, "div", Some("absolute"))]);
-        let painted = |id| (id == 3).then_some(Position::Static);
-        assert_eq!(reaching_ancestors(&tree, 3, &painted), [2, 1]);
+        painted(&tree, 3, Position::Static);
+        assert_eq!(reaching_ancestors(&tree, 3), [2, 1]);
         // And a painted containing block is one.
-        let painted = |id| (id == 2).then_some(Position::Relative);
         let tree = self::tree(&[(1, "div", Some("relative")), (2, "div", None), (3, "div", Some("absolute"))]);
-        assert_eq!(reaching_ancestors(&tree, 3, &painted), [2, 1]);
+        painted(&tree, 2, Position::Relative);
+        assert_eq!(reaching_ancestors(&tree, 3), [2, 1]);
     }
 
     #[test]

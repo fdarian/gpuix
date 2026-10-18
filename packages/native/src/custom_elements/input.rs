@@ -558,11 +558,7 @@ impl CustomElement for TextEditorElement {
             &ctx.lengths,
             &ctx.focus_styles,
         );
-        if ctx
-            .style
-            .and_then(|style| style.position.as_deref())
-            .is_none()
-        {
+        if ctx.resolved.position == crate::layout::containing_block::Position::Static {
             // A containing block for the editor's own parts, not an author's `position`: it must
             // not rise above its later siblings.
             editor = editor.relative().unlifted();
@@ -616,7 +612,7 @@ impl CustomElement for TextEditorElement {
         // `Some(false)` also claims the same box as a non-selectable
         // selection-start region: a drag inside an editor must move the caret,
         // not start a document selection.
-        editor = crate::automation::track_host_bounds(editor, ctx.id, Some(false), None, None);
+        editor = crate::automation::track_host_bounds(editor, ctx.id, Some(false), None);
         // A disabled control gets no events, like the DOM.
         if !disabled {
             editor = super::wire_host_events(editor, &ctx);

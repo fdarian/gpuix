@@ -375,9 +375,12 @@ impl CustomElement for AnchoredElement {
         // box has to be this content div after `anchored` placed it. Only gpui
         // knows where that is, so it reports its own painted box instead of
         // carrying a `bounds_tracker` child.
-        let mut content = gpui::div()
-            .id(crate::events::ids::host_element_id(ctx.id))
-            .flex_col();
+        let mut content = gpui::div().id(crate::events::ids::host_element_id(ctx.id));
+        // A flex column unless the author gives a `display`: then the box is that one with CSS's
+        // defaults (a flex container lays out in a row), and the children are its items.
+        if ctx.style.is_none_or(|style| style.display.is_none()) {
+            content = content.flex_col();
+        }
         content = crate::events::ids::host_hitbox(content, ctx.pointer_events_none);
         content = crate::events::app_region::mark(content, ctx.app_region);
         content = crate::automation::track_own_bounds(content, ctx.id);

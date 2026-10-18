@@ -241,25 +241,19 @@ struct ClippingAncestor {
 /// is not its parent, an inline element's paragraph container, which clips it and what reaches it.
 fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
-    // Computed from the tree when the frame is built, before it is laid out, so a position that
-    // a state style or a transition changes is not known yet: the declared ones decide, and a
-    // state that moves an observed box out of a clip is not seen.
-    let declared = |_| None;
+    // The ancestors were built before this element, so their resolved style is this frame's.
     let reaching = match first {
-        None => crate::layout::containing_block::reaching_ancestors(tree, id, &declared),
+        None => crate::layout::containing_block::reaching_ancestors(tree, id),
         Some(first) => std::iter::once(first)
-            .chain(crate::layout::containing_block::reaching_ancestors(tree, first, &declared))
+            .chain(crate::layout::containing_block::reaching_ancestors(tree, first))
             .collect(),
     };
     for ancestor in reaching {
         let Some(element) = tree.elements.get(&ancestor) else {
             break;
         };
-        let style = element.style.as_deref();
-        let (mut clip_x, mut clip_y) = style.map_or((false, false), |style| {
-            let axes = crate::scroll::Axes::of(style);
-            (axes.x.clips(), axes.y.clips())
-        });
+        let axes = tree.overflow_of(element);
+        let (mut clip_x, mut clip_y) = (axes.x.clips(), axes.y.clips());
         if element.element_type == "virtual-list" {
             clip_x = true;
             clip_y = true;
