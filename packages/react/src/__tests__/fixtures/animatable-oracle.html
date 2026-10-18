@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+  Oracle for animatable.test.tsx: what headless Chrome shows part of the way through a CSS transition of
+  `border-spacing`, `z-index`, `vertical-align` and the discrete properties (`table-layout`, `border-collapse`,
+  `caption-side`, `empty-cells`, `position`, `overflow-x`, `overflow-y`, `pointer-events`). A case is the
+  element and a style before and after; its transition is paused at the fractions of its second and the
+  computed `property` is read, with the `box` the `probe` element has at that point. Regenerate with
+
+    sh animatable-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+body{font:16px/20px Menlo;color:#000}
+#case{position:absolute;left:0;top:0;width:300px}
+table{border-spacing:0;border-collapse:separate}
+td{vertical-align:baseline}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const box = (id, w, h) => `<div id="${id}" style="width:${w}px;height:${h}px"></div>`;
+const table = (id, inner) => `<table id="${id}"><tr><td id="a">${box('ab', 30, 10)}</td><td id="b">${box('bb', 40, 10)}</td></tr><tr><td id="c">${box('cb', 30, 10)}</td><td id="d">${box('db', 40, 10)}</td></tr>${inner || ''}</table>`;
+const VA = `<div id="p" style="width:300px"><span id="x">aaaa</span><span id="s">bbbb</span>cccc</div>`;
+const TIMES = [0, 0.25, 0.5, 0.75, 1];
+// [name, html, subject id, probe id, property (CSS name), before, after, transition, points]
+// `points` are where `elementsFromPoint` is asked, for the properties that change what is hit.
+const cases = [
+  ['border-spacing both lengths', table('t'), 't', 'd', 'border-spacing', '4px 8px', '12px 20px', 'border-spacing 1s linear'],
+  ['border-spacing one length', table('t'), 't', 'd', 'border-spacing', '0px', '10px', 'border-spacing 1s linear'],
+  ['border-spacing on an easing', table('t'), 't', 'd', 'border-spacing', '2px 2px', '10px 6px', 'border-spacing 1s ease-in'],
+  ['border-spacing in em', table('t'), 't', 'd', 'border-spacing', '1em 2px', '0.5em 12px', 'border-spacing 1s linear'],
+  ['z-index 0 to 10', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', '0', '10', 'z-index 1s linear'],
+  ['z-index 3 to 8', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', '3', '8', 'z-index 1s linear'],
+  ['z-index negative to positive', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', '-5', '4', 'z-index 1s linear'],
+  ['z-index auto to 5', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', 'auto', '5', 'z-index 1s linear'],
+  ['z-index 5 to auto', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', '5', 'auto', 'z-index 1s linear'],
+  ['z-index on an ease', `<div id="s" style="position:relative;height:20px"></div>`, 's', 's', 'z-index', '0', '9', 'z-index 1s ease-in'],
+  ['vertical-align length', VA, 's', 'x', 'vertical-align', '0px', '20px', 'vertical-align 1s linear'],
+  ['vertical-align negative length', VA, 's', 'x', 'vertical-align', '10px', '-10px', 'vertical-align 1s linear'],
+  ['vertical-align percentage', VA, 's', 'x', 'vertical-align', '10%', '60%', 'vertical-align 1s linear'],
+  ['vertical-align length to percentage', VA, 's', 'x', 'vertical-align', '0px', '100%', 'vertical-align 1s linear'],
+  ['vertical-align baseline to length', VA, 's', 'x', 'vertical-align', 'baseline', '12px', 'vertical-align 1s linear'],
+  ['vertical-align keyword to keyword', VA, 's', 'x', 'vertical-align', 'sub', 'super', 'vertical-align 1s linear allow-discrete'],
+  ['vertical-align length to sub', VA, 's', 'x', 'vertical-align', '4px', 'sub', 'vertical-align 1s linear allow-discrete'],
+  ['vertical-align on a cell', `<table id="t"><tr><td id="s" style="height:40px">${box('sb', 10, 10)}</td><td id="o">${box('ob', 10, 10)}</td></tr></table>`, 's', 'sb', 'vertical-align', 'top', 'bottom', 'vertical-align 1s linear allow-discrete'],
+  ['table-layout', `<table id="t" style="width:200px"><tr><td id="a">${box('ab', 30, 10)}</td><td id="b">${box('bb', 40, 10)}</td></tr></table>`, 't', 'a', 'table-layout', 'auto', 'fixed', 'table-layout 1s linear allow-discrete'],
+  ['border-collapse', `<table id="t"><tr><td id="a" style="border:6px solid #000">${box('ab', 30, 10)}</td></tr></table>`, 't', 'a', 'border-collapse', 'separate', 'collapse', 'border-collapse 1s linear allow-discrete'],
+  ['caption-side', `<table id="t"><caption id="cap"><div style="height:12px;width:20px"></div></caption><tr><td id="a">${box('ab', 30, 10)}</td></tr></table>`, 't', 'a', 'caption-side', 'top', 'bottom', 'caption-side 1s linear allow-discrete'],
+  ['empty-cells', `<table id="t"><tr><td id="a" style="border:2px solid #000"></td></tr></table>`, 't', 'a', 'empty-cells', 'show', 'hide', 'empty-cells 1s linear allow-discrete'],
+  ['position', `<div id="s" style="height:20px;top:10px;left:10px"></div>`, 's', 's', 'position', 'static', 'relative', 'position 1s linear allow-discrete'],
+  ['overflow-x', `<div id="s" style="width:50px;height:20px;overflow:hidden"></div>`, 's', 's', 'overflow-x', 'hidden', 'scroll', 'overflow-x 1s linear allow-discrete'],
+  ['overflow clips the box it leaves', `<div id="s" style="width:50px;height:20px"><div id="k" style="width:100px;height:20px"></div></div>`, 's', 's', 'overflow', 'visible', 'hidden', 'overflow 1s linear allow-discrete', [[80, 10]]],
+  ['overflow-y', `<div id="s" style="width:50px;height:20px;overflow:hidden"></div>`, 's', 's', 'overflow-y', 'hidden', 'scroll', 'overflow-y 1s linear allow-discrete'],
+  ['pointer-events', `<div id="s" style="width:50px;height:20px"></div>`, 's', 's', 'pointer-events', 'auto', 'none', 'pointer-events 1s linear allow-discrete', [[10, 10]]],
+  ['pointer-events from none', `<div id="s" style="width:50px;height:20px"></div>`, 's', 's', 'pointer-events', 'none', 'auto', 'pointer-events 1s linear allow-discrete', [[10, 10]]],
+  ['position without allow-discrete', `<div id="s" style="height:20px;top:10px;left:10px"></div>`, 's', 's', 'position', 'static', 'relative', 'position 1s linear'],
+  ['table-layout without allow-discrete', table('t'), 't', 'd', 'table-layout', 'auto', 'fixed', 'table-layout 1s linear'],
+  ['all without allow-discrete', table('t'), 't', 'd', 'table-layout', 'auto', 'fixed', 'all 1s linear'],
+];
+const out = { times: TIMES, cases: {} };
+const scene = document.getElementById('scene');
+for (const [name, html, subject, probe, property, before, after, transition, points = []] of cases) {
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const el = c.querySelector('#' + subject);
+  const camel = property.replace(/-([a-z])/g, (_, l) => l.toUpperCase());
+  el.style.setProperty(property, before);
+  el.style.transition = transition;
+  getComputedStyle(el).getPropertyValue(property);
+  c.getBoundingClientRect();
+  el.style.setProperty(property, after);
+  getComputedStyle(el).getPropertyValue(property);
+  const animations = el.getAnimations().filter((a) => a instanceof CSSTransition);
+  const samples = {};
+  const chains = () => points.map(([x, y]) => document.elementsFromPoint(x, y).map((e) => e.id).filter(Boolean));
+  const rect = (id) => { const r = c.querySelector('#' + id).getBoundingClientRect(); const o = c.getBoundingClientRect(); return [r.left - o.left, r.top - o.top, r.width, r.height]; };
+  if (animations.length === 0) {
+    samples.immediate = { value: getComputedStyle(el).getPropertyValue(property), subject: rect(subject), probe: rect(probe), chains: chains() };
+  } else {
+    for (const a of animations) a.pause();
+    for (const t of TIMES) {
+      for (const a of animations) a.currentTime = t * 1000;
+      samples[t] = { value: getComputedStyle(el).getPropertyValue(property), subject: rect(subject), probe: rect(probe), chains: chains() };
+    }
+  }
+  out.cases[name] = { html, subject, probe, property, before, after, transition, points, running: animations.length > 0, samples };
+  scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-oracle', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

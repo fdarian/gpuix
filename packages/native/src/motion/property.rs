@@ -12,6 +12,8 @@ use serde_json::Value;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
+use crate::css::table::{BorderCollapse, BorderSpacing, CaptionSide, EmptyCells, KeywordValue, TableLayout};
+use crate::css::vertical_align::VerticalAlign;
 use crate::css::font_variations::{axes_of, VariationSettings};
 use crate::css::border::Side;
 use crate::css::flex::{deserialize_flex, Flex};
@@ -55,6 +57,14 @@ enum Kind {
     /// `text-decoration-thickness`: a length, or `auto` or `from-font`, which are no length.
     Thickness,
     Keyword,
+    /// A keyword property whose value is a typed enum in the style, with the same flip as `Keyword`.
+    TypedKeyword,
+    /// `border-spacing`: two lengths, horizontal then vertical, held as the two radii of an ellipse.
+    Spacing,
+    /// A number that is an integer where it is applied (`z-index`): blended as a real and rounded half up.
+    Integer,
+    /// `vertical-align`: a length (or a percentage of the line height), or a keyword, which no length blends with.
+    VerticalAlign,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -237,6 +247,23 @@ impl ShorthandFlex for Option<Flex> {
     }
 }
 
+/// `overflow` seen from one axis, which is what `overflow-x` and `overflow-y` read when they are unset. It is
+/// one keyword for both.
+trait ShorthandOverflow {
+    fn x(&self) -> Option<String>;
+    fn y(&self) -> Option<String>;
+}
+
+impl ShorthandOverflow for Option<String> {
+    fn x(&self) -> Option<String> {
+        self.clone()
+    }
+
+    fn y(&self) -> Option<String> {
+        self.clone()
+    }
+}
+
 /// `outline` seen as the longhand a transition reads when it is unset.
 trait ShorthandOutline {
     fn width(&self) -> Option<LinearLength>;
@@ -363,6 +390,50 @@ impl Field for Option<String> {
     }
 }
 
+impl<T: KeywordValue + Copy> Field for Option<T> {
+    fn read(&self, _cx: &Reading) -> Option<AnimValue> {
+        self.map(|value| AnimValue::Keyword(Some(value.keyword().to_string())))
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        match value {
+            AnimValue::Keyword(keyword) => *self = keyword.as_deref().and_then(T::from_keyword),
+            other => unreachable!("a keyword field was given {other:?}"),
+        }
+    }
+}
+
+impl Field for Option<BorderSpacing> {
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        let spacing = self.as_ref()?.resolve(cx.lengths);
+        Some(AnimValue::ellipse((spacing.horizontal, 0.0), (spacing.vertical, 0.0)))
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        let ((horizontal, _), (vertical, _)) = value
+            .as_ellipse()
+            .unwrap_or_else(|| unreachable!("a border spacing field was given {value:?}"));
+        *self = Some(BorderSpacing { horizontal: LinearLength::px(horizontal), vertical: LinearLength::px(vertical) });
+    }
+}
+
+impl Field for Option<VerticalAlign> {
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        Some(match self.as_ref()? {
+            VerticalAlign::Length(length) => resolved(length, cx.lengths),
+            keyword => AnimValue::Keyword(Some(keyword.keyword().expect("not a length").to_string())),
+        })
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        *self = Some(match &value {
+            AnimValue::Keyword(Some(keyword)) => VerticalAlign::parse(keyword)
+                .unwrap_or_else(|| unreachable!("a vertical align field was given {keyword}")),
+            _ => VerticalAlign::Length(linear_length(value)),
+        });
+    }
+}
+
 impl Field for Option<FontWeightValue> {
     fn read(&self, _cx: &Reading) -> Option<AnimValue> {
         Some(AnimValue::Number(font_weight(self.as_ref()?)))
@@ -450,6 +521,14 @@ fn thickness_write(slot: &mut Option<String>, value: AnimValue) {
 
 const FROM_FONT: &str = "from-font";
 
+fn integer_write(slot: &mut Option<f64>, value: AnimValue) {
+    match value {
+        // Half way between two integers rounds up, as in Chrome.
+        AnimValue::Number(value) => *slot = Some((value + 0.5).floor()),
+        other => unreachable!("an integer field was given {other:?}"),
+    }
+}
+
 macro_rules! read_field {
     (Keyword, $slot:expr, $cx:expr) => {
         keyword_read(&$slot)
@@ -471,6 +550,9 @@ macro_rules! read_field {
 macro_rules! write_field {
     (Keyword, $slot:expr, $value:expr) => {
         keyword_write(&mut $slot, $value)
+    };
+    (Integer, $slot:expr, $value:expr) => {
+        integer_write(&mut $slot, $value)
     };
     (Thickness, $slot:expr, $value:expr) => {
         thickness_write(&mut $slot, $value)
@@ -580,7 +662,7 @@ macro_rules! properties {
                 // A `calc()` clamps to the range of its property, which only a
                 // resolved length can be held to.
                 value.map(|value| match self.kind() {
-                    Kind::Length | Kind::Corner | Kind::Dimension | Kind::Offset => self.clamp_value(value),
+                    Kind::Length | Kind::Corner | Kind::Spacing | Kind::Dimension | Kind::Offset => self.clamp_value(value),
                     _ => value,
                 })
             }
@@ -660,7 +742,19 @@ properties! {
     ScrollbarWidth "scrollbarWidth" Number NonNegative Unresolved, scrollbar_width;
     SelectionColor "selectionColor" Color None Unresolved, selection_color;
 
+    BorderSpacing "borderSpacing" Spacing NonNegative Number(0.0), border_spacing;
+    VerticalAlign "verticalAlign" VerticalAlign None InitialKeyword("baseline"), vertical_align;
+    ZIndex "zIndex" Integer None Unresolved, z_index;
+
     Display "display" Keyword None Unset, display;
+    Position "position" Keyword None InitialKeyword("static"), position;
+    OverflowX "overflowX" Keyword None InitialKeyword("visible"), overflow_x | overflow.x();
+    OverflowY "overflowY" Keyword None InitialKeyword("visible"), overflow_y | overflow.y();
+    PointerEvents "pointerEvents" Keyword None Unset, pointer_events;
+    TableLayout "tableLayout" TypedKeyword None InitialKeyword("auto"), table_layout;
+    BorderCollapse "borderCollapse" TypedKeyword None Unset, border_collapse;
+    CaptionSide "captionSide" TypedKeyword None Unset, caption_side;
+    EmptyCells "emptyCells" TypedKeyword None Unset, empty_cells;
     Visibility "visibility" Keyword None InitialKeyword("visible"), visibility;
     FlexDirection "flexDirection" Keyword None Unset, flex_direction;
     FlexWrap "flexWrap" Keyword None Unset, flex_wrap;
@@ -690,7 +784,7 @@ impl Scope {
     /// What an error names as the properties of [`Scope::InlineBox`].
     pub(super) const INLINE_BOX_PROPERTIES: &'static str = "colours (color, backgroundColor, textDecorationColor, \
          outlineColor, borderColor and the four border side colours), opacity, fontSize, fontWeight, \
-         fontVariationSettings, lineHeight, textUnderlineOffset, textDecorationThickness, padding, margin, \
+         fontVariationSettings, lineHeight, verticalAlign, textUnderlineOffset, textDecorationThickness, padding, margin, \
          border widths, border radii, outlineWidth and outlineOffset";
 
     pub(super) fn animates(self, prop: AnimProp) -> bool {
@@ -715,6 +809,7 @@ impl Scope {
                     | AnimProp::FontSize
                     | AnimProp::FontWeight
                     | AnimProp::LineHeight
+                    | AnimProp::VerticalAlign
                     | AnimProp::PaddingTop
                     | AnimProp::PaddingRight
                     | AnimProp::PaddingBottom
@@ -923,7 +1018,7 @@ impl AnimProp {
     pub(super) fn is_discrete(self) -> bool {
         // `visibility` has its own animation type in CSS: `visible` shows for the whole duration
         // when either end has it, and it needs no `allow-discrete`.
-        self.kind() == Kind::Keyword && self != Self::Visibility
+        matches!(self.kind(), Kind::Keyword | Kind::TypedKeyword) && self != Self::Visibility
     }
 
     /// Whether a CSS transition between two values that cannot blend (`auto` and a
@@ -1052,7 +1147,24 @@ impl AnimProp {
                      the tree is applied"
                 ));
             }
-            Kind::Number => AnimValue::Number(parse_number(name, value)?),
+            Kind::Number | Kind::Integer => AnimValue::Number(parse_number(name, value)?),
+            Kind::Spacing => {
+                let spacing: BorderSpacing = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be a number or one or two CSS lengths: {error}"))?;
+                let spacing = spacing.resolve(lengths);
+                AnimValue::ellipse(
+                    (check_finite(name, spacing.horizontal)?, 0.0),
+                    (check_finite(name, spacing.vertical)?, 0.0),
+                )
+            }
+            Kind::VerticalAlign => {
+                let align: VerticalAlign = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be a keyword, a CSS length or a percentage: {error}"))?;
+                match align {
+                    VerticalAlign::Length(length) => self.resolve_length(&length, lengths)?,
+                    keyword => AnimValue::Keyword(Some(keyword.keyword().expect("not a length").to_string())),
+                }
+            }
             Kind::Length => {
                 let length: LinearLength = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
@@ -1166,7 +1278,7 @@ impl AnimProp {
                 Some(keyword @ ("visible" | "hidden" | "collapse")) => AnimValue::Keyword(Some(keyword.to_string())),
                 _ => return Err(format!("motion {name} must be visible, hidden or collapse")),
             },
-            Kind::Keyword => {
+            Kind::Keyword | Kind::TypedKeyword => {
                 return Err(format!("motion cannot animate {name}: it is discrete"));
             }
         };
@@ -1217,12 +1329,20 @@ impl AnimProp {
             || (self.kind() == Kind::Thickness && matches!(value, AnimValue::Keyword(Some(keyword)) if keyword == FROM_FONT))
             || matches!(
                 (self.kind(), value),
-                (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
+                (Kind::Number | Kind::Integer | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
                     | (
-                        Kind::Dimension | Kind::Offset | Kind::Length | Kind::Corner | Kind::UnderlineOffset | Kind::Thickness,
+                        Kind::Dimension
+                            | Kind::Offset
+                            | Kind::Length
+                            | Kind::Corner
+                            | Kind::UnderlineOffset
+                            | Kind::Thickness
+                            | Kind::VerticalAlign,
                         AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. }
                     )
-                    | (Kind::Corner, AnimValue::Ellipse { .. })
+                    | (Kind::VerticalAlign, AnimValue::Keyword(Some(_)))
+                    | (Kind::Spacing, AnimValue::Number(_))
+                    | (Kind::Corner | Kind::Spacing, AnimValue::Ellipse { .. })
                     | (Kind::Color, AnimValue::Color(_))
                     | (Kind::Shadow, AnimValue::Shadows(_))
                     | (Kind::Variations, AnimValue::Variations(_))
@@ -1322,7 +1442,19 @@ mod tests {
 
     #[test]
     fn discrete_properties_are_css_names_but_not_animatable() {
-        for name in ["display", "flexDirection", "justifySelf"] {
+        for name in [
+            "display",
+            "flexDirection",
+            "justifySelf",
+            "position",
+            "overflowX",
+            "overflowY",
+            "pointerEvents",
+            "tableLayout",
+            "borderCollapse",
+            "captionSide",
+            "emptyCells",
+        ] {
             let prop = AnimProp::from_css_name(name).unwrap();
             assert!(prop.is_discrete(), "{name}");
             assert!(AnimProp::from_name(name).is_none(), "{name}");
@@ -1331,7 +1463,7 @@ mod tests {
         assert!(!AnimProp::Visibility.is_discrete());
         assert!(AnimProp::from_name("visibility").is_some());
         assert!(!AnimProp::from_css_name("opacity").unwrap().is_discrete());
-        assert!(AnimProp::from_css_name("position").is_none());
+        assert!(AnimProp::from_css_name("transform").is_none());
     }
 
     #[test]

@@ -105,7 +105,7 @@ impl Inherited {
 
     /// Sets what an element with this context needs beyond its style: its `direction`, and the
     /// text alignment when it is not the one the parent's text style hands down.
-    pub(crate) fn apply<E: gpui::Styled>(&self, mut el: E) -> E {
+    pub(crate) fn apply<E: gpui::Styled>(&self, el: &mut E) {
         if self.direction.is_rtl() {
             el.style().direction = Some(self.direction.to_gpui());
         }
@@ -113,7 +113,6 @@ impl Inherited {
         if resolved != self.parent_resolved {
             el.text_style().text_align = Some(resolved);
         }
-        el
     }
 }
 

@@ -1484,6 +1484,9 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `outlineOffset` | any length without a `%`, may be negative |
 | `scrollbarWidth`, `lineHeight` (a number), `flexGrow`, `flexShrink`, `aspectRatio` | numbers, zero or greater |
 | `opacity` | `0` through `1` |
+| `zIndex` | an integer: it blends as a real and rounds half up, as in Chrome (`0` to `10` is `3` a quarter in and `8` at three quarters); an unset one is `auto`, which does not blend |
+| `borderSpacing` | one or two lengths without a `%`, zero or greater; both blend, and layout is given whole pixels (Chrome keeps the spacing in a `short`, so `2.5px` is `2px`) |
+| `verticalAlign` | a length or a percentage of the line height (a length and a percentage blend as a `calc()`); a keyword (`baseline`, `sub`, `top`, ...) is discrete against a length and another keyword |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
 | `fontVariationSettings` | `'"wght" 650, "wdth" 90'`, or `normal` |
 | `textUnderlineOffset` | `auto`, or any length or percentage, may be negative |
@@ -1521,8 +1524,9 @@ transition runs it only under `transition-behavior: allow-discrete` (otherwise i
 An unset margin is `0`, which blends, and an unset inset or `flexBasis` is `auto`, which flips.
 `margin: "0 auto"` gives each side its own.
 
-Naming a discrete property (`display`, `position`, ...) or an unknown key is an
-error, not a silent no-op.
+Naming a discrete property (`display`, `position`, `overflowX`, `pointerEvents`, `tableLayout`, ...) or an
+unknown key is an error, not a silent no-op; a CSS transition runs them (see
+[CSS transitions](#css-transitions)).
 
 **Lengths.** A length is its px and its percentage, whatever unit it is written
 in, and two lengths blend part by part, as Chrome blends them: `calc(100% - 20px)`
@@ -1839,7 +1843,7 @@ A span is text that its paragraph paints, not a box of its own, so it animates
 what CSS lets an inline box show and gpuix's inline model draws: `opacity`, the
 colours (`color`, `backgroundColor`, `textDecorationColor`, `outlineColor`,
 `borderColor` and the four `border*Color` sides), the font of its text
-(`fontSize`, `fontWeight`, `fontVariationSettings`, `lineHeight`), its `padding`,
+(`fontSize`, `fontWeight`, `fontVariationSettings`, `lineHeight`, `verticalAlign`), its `padding`,
 `margin` and `borderWidth` (with their sides), `borderRadius` (and its corners),
 `outlineWidth` and `outlineOffset`, and `textUnderlineOffset` and
 `textDecorationThickness`. They blend as on a `motion.div`, and run natively
@@ -3132,7 +3136,7 @@ search match lies over them.
 - **What a box shows transitions and animates.** `color`, `backgroundColor`,
   `textDecorationColor`, `outlineColor`, `outlineWidth`, `outlineOffset`, the border
   colours and widths, the radii, `opacity`, the padding and margins, `fontSize`,
-  `fontWeight`, `fontVariationSettings`, `lineHeight`, `textUnderlineOffset` and
+  `fontWeight`, `fontVariationSettings`, `lineHeight`, `verticalAlign`, `textUnderlineOffset` and
   `textDecorationThickness` take part in [CSS transitions](#css-transitions) and
   [CSS animations](#css-animations) as an element's do, natively and without a
   render per frame, with the same timing, delay, `transition-behavior` and
@@ -6587,7 +6591,9 @@ Differences from Chrome:
 - Copying a selection across cells puts a tab between the cells of a row and a line break
   between rows, as Chrome does, but after a cell that ends in a block (a `div` of its own,
   not text) Chrome drops the tab and this does not.
-- The table styles are not animatable by `motion`, a keyframe or a CSS transition.
+- The table styles are not animatable by `motion` or a keyframe, which take no discrete property
+  (and `borderSpacing` is only a transition target when it is declared: an unset one starts from `0`
+  and not from the spacing it inherits).
 - A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
   block with no table role.
 
@@ -7579,9 +7585,10 @@ render per frame.
   any other invalid style
 - **Inline boxes.** A `<span>` transitions what an inline box shows too, and only that (see
   [Painting an inline box](#painting-an-inline-box))
-- **Discrete properties.** `display`, `visibility`, `flexDirection`, `flexWrap`,
-  `alignItems`, `alignSelf`, `alignContent`, `justifyContent`, `justifyItems` and
-  `justifySelf` have no in-between values, so they change at once unless the
+- **Discrete properties.** `display`, `visibility`, `position`, `overflow`, `overflowX`,
+  `overflowY`, `pointerEvents`, `tableLayout`, `borderCollapse`, `captionSide`, `emptyCells`,
+  `flexDirection`, `flexWrap`, `alignItems`, `alignSelf`, `alignContent`, `justifyContent`,
+  `justifyItems` and `justifySelf` have no in-between values, so they change at once unless the
   transition says `allow-discrete`, as in CSS Transitions Level 2:
   `transition: 'display 1s allow-discrete'`, or `transitionBehavior` (a list of
   `normal` and `allow-discrete`). `all` covers them only with `allow-discrete`.
@@ -7593,8 +7600,10 @@ render per frame.
   flips the same way. The events are the ones other properties fire.
   `visibility` is the exception to `allow-discrete`: as in CSS it transitions without it, and
   `motion`'s `animate` and keyframes take it (`visible`, `hidden`, `collapse`).
-  Other discrete properties (`position`, `overflow`, `pointerEvents`, ...) are not
-  transitionable.
+  A `verticalAlign` keyword against a length or another keyword is discrete the same way.
+  `borderSpacing` and `zIndex` blend, as the table above says. A transition of an inherited
+  property that is unset (`borderSpacing`, `borderCollapse`, `captionSide`, `emptyCells`,
+  `pointerEvents`) starts from the initial value, not from the parent's.
 - **Timing functions.** `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`,
   `cubic-bezier()` (it may overshoot), `steps(n, jump-start | jump-end |
   jump-none | jump-both | start | end)`, `step-start`, `step-end` and `linear()`

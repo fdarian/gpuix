@@ -427,6 +427,7 @@ fn css_props(ident: &str) -> Vec<AnimProp> {
         "outline" => vec![OutlineWidth, OutlineColor],
         "textDecoration" | "text-decoration" => vec![TextDecorationColor],
         "flex" => vec![FlexGrow, FlexShrink, FlexBasis],
+        "overflow" => vec![OverflowX, OverflowY],
         "background" => vec![BackgroundColor],
         _ => {
             let camel = camel_case(ident);
@@ -2995,6 +2996,125 @@ mod tests {
             let mut clock = Clock::new();
             clock.frame(0, &all("row", ""));
             assert_eq!(clock.frame(0, &all("column", "")).flex_direction.as_deref(), Some("column"));
+        }
+
+        #[test]
+        fn position_overflow_and_pointer_events_flip_at_half_with_allow_discrete() {
+            fn flips<T: PartialEq + std::fmt::Debug>(
+                property: &str,
+                from: &str,
+                to: &str,
+                read: impl Fn(&StyleDesc) -> T,
+            ) {
+                let mut clock = Clock::new();
+                let start = with(property, from, "allow-discrete");
+                let end = with(property, to, "allow-discrete");
+                let first = read(&clock.frame(0, &start));
+                assert_eq!(read(&clock.frame(0, &end)), first, "{property}");
+                assert_eq!(read(&clock.frame(499, &end)), first, "{property}");
+                let last = read(&clock.frame(500, &end));
+                assert_ne!(last, first, "{property}");
+                assert_eq!(read(&clock.frame(1000, &end)), last, "{property}");
+                // Without allow-discrete it jumps
+                let mut clock = Clock::new();
+                clock.frame(0, &with(property, from, ""));
+                assert_eq!(read(&clock.frame(0, &with(property, to, ""))), last, "{property}");
+            }
+            flips("position", "static", "relative", |style| style.position.clone());
+            flips("overflowX", "hidden", "scroll", |style| style.overflow_x.clone());
+            flips("overflowY", "visible", "hidden", |style| style.overflow_y.clone());
+            flips("pointerEvents", "auto", "none", |style| style.pointer_events.clone());
+            flips("tableLayout", "auto", "fixed", |style| style.table_layout);
+            flips("borderCollapse", "separate", "collapse", |style| style.border_collapse);
+            flips("captionSide", "top", "bottom", |style| style.caption_side);
+            flips("emptyCells", "show", "hide", |style| style.empty_cells);
+        }
+
+        #[test]
+        fn the_overflow_shorthand_covers_both_axes() {
+            let mut clock = Clock::new();
+            let with_overflow = |overflow: &str| {
+                style(&format!(
+                    r#"{{ "overflow": "{overflow}", "transition": "overflow 1s linear allow-discrete" }}"#
+                ))
+            };
+            clock.frame(0, &with_overflow("visible"));
+            let hidden = with_overflow("hidden");
+            let before = clock.frame(100, &hidden);
+            assert_eq!((before.overflow_x.as_deref(), before.overflow_y.as_deref()), (Some("visible"), Some("visible")));
+            let after = clock.frame(600, &hidden);
+            assert_eq!((after.overflow_x.as_deref(), after.overflow_y.as_deref()), (Some("hidden"), Some("hidden")));
+        }
+
+        #[test]
+        fn border_spacing_blends_both_lengths() {
+            let mut clock = Clock::new();
+            let spaced = |spacing: &str| {
+                style(&format!(r#"{{ "borderSpacing": "{spacing}", "transition": "border-spacing 1s linear" }}"#))
+            };
+            clock.frame(0, &spaced("4px 8px"));
+            let end = spaced("12px 20px");
+            let at = |clock: &mut Clock, ms| {
+                let spacing = clock.frame(ms, &end).border_spacing.expect("a spacing");
+                spacing.resolve(&crate::css::length::LengthContext::for_tests())
+            };
+            clock.frame(0, &end);
+            let half = at(&mut clock, 500);
+            assert_eq!((half.horizontal, half.vertical), (8.0, 14.0));
+            let quarter = at(&mut clock, 250);
+            assert_eq!((quarter.horizontal, quarter.vertical), (6.0, 11.0));
+        }
+
+        #[test]
+        fn z_index_blends_as_an_integer_rounding_half_up() {
+            let mut clock = Clock::new();
+            let stacked = |z: i32| style(&format!(r#"{{ "position": "relative", "zIndex": {z}, "transition": "z-index 1s linear" }}"#));
+            clock.frame(0, &stacked(-5));
+            let end = stacked(4);
+            clock.frame(0, &end);
+            let z = |clock: &mut Clock, ms| clock.frame(ms, &end).z_index.expect("a z-index");
+            assert_eq!(z(&mut clock, 250), -3.0);
+            assert_eq!(z(&mut clock, 500), 0.0);
+            assert_eq!(z(&mut clock, 750), 2.0);
+            // Without a z-index there is no number to blend from
+            let mut clock = Clock::new();
+            clock.frame(0, &style(r#"{ "position": "relative", "transition": "z-index 1s linear" }"#));
+            let auto_to_five = style(r#"{ "position": "relative", "zIndex": 5, "transition": "z-index 1s linear" }"#);
+            assert_eq!(clock.frame(10, &auto_to_five).z_index, Some(5.0));
+        }
+
+        #[test]
+        fn vertical_align_blends_lengths_and_flips_against_keywords() {
+            let mut clock = Clock::new();
+            let aligned = |align: &str, behavior: &str| {
+                style(&format!(r#"{{ "verticalAlign": "{align}", "transition": "vertical-align 1s linear {behavior}" }}"#))
+            };
+            clock.frame(0, &aligned("0px", ""));
+            let end = aligned("100%", "");
+            clock.frame(0, &end);
+            let resolved = |style: StyleDesc| {
+                style.vertical_align.expect("an alignment").resolve(&crate::css::length::LengthContext::for_tests())
+            };
+            // 0px against 100% mixes the two parts of a calc(): a quarter of the line height
+            match resolved(clock.frame(250, &end)) {
+                crate::css::vertical_align::ResolvedVerticalAlign::Offset { px, line_height_fraction } => {
+                    assert_eq!((px, line_height_fraction), (0.0, 0.25));
+                }
+                other => panic!("{other:?}"),
+            }
+            // A keyword against a length is discrete: no transition without allow-discrete
+            let mut clock = Clock::new();
+            clock.frame(0, &aligned("baseline", ""));
+            let length = aligned("12px", "");
+            assert!(matches!(
+                resolved(clock.frame(0, &length)),
+                crate::css::vertical_align::ResolvedVerticalAlign::Offset { px, .. } if px == 12.0
+            ));
+            let mut clock = Clock::new();
+            clock.frame(0, &aligned("sub", "allow-discrete"));
+            let sup = aligned("super", "allow-discrete");
+            assert!(matches!(resolved(clock.frame(0, &sup)), crate::css::vertical_align::ResolvedVerticalAlign::Sub));
+            assert!(matches!(resolved(clock.frame(500, &sup)), crate::css::vertical_align::ResolvedVerticalAlign::Super));
         }
 
         #[test]

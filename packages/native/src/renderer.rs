@@ -8686,7 +8686,7 @@ pub(crate) fn build_host_container(
             el = el.font_variations(variations);
         }
     }
-    el = ctx.inherited.direction.apply(el);
+    ctx.inherited.direction.apply(&mut el);
     if let Some(scope) = ctx.inherited.self_container.clone().filter(|scope| scope.is_sized()) {
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
@@ -9031,7 +9031,8 @@ fn build_plan(
                 build_plan(element, cell, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 ctx.inherited.table_cell = outside;
                 let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
-                let mut cell = ctx.inherited.direction.apply(crate::layout::table::anonymous_cell(halves));
+                let mut cell = crate::layout::table::anonymous_cell(halves);
+                ctx.inherited.direction.apply(&mut cell);
                 if inside_ranks.iter().any(|rank| *rank != 0) {
                     cell = cell.paint_ranks(inside_ranks);
                 }
@@ -9053,10 +9054,8 @@ fn build_plan(
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
                 build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
-                let mut table = ctx
-                    .inherited
-                    .direction
-                    .apply(crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key)));
+                let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
+                ctx.inherited.direction.apply(&mut table);
                 if inside_ranks.iter().any(|rank| *rank != 0) {
                     table = table.paint_ranks(inside_ranks);
                 }
@@ -9161,7 +9160,7 @@ fn build_contents_container(
     if let Some(style) = style {
         el = apply_styles(el, &style.inheritable_part(), &ctx.inherited.colors, &ctx.inherited.lengths);
     }
-    el = ctx.inherited.direction.apply(el);
+    ctx.inherited.direction.apply(&mut el);
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }

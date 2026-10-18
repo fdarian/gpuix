@@ -64,7 +64,7 @@ impl VerticalAlign {
         }
     }
 
-    fn keyword(&self) -> Option<&'static str> {
+    pub(crate) fn keyword(&self) -> Option<&'static str> {
         Some(match self {
             Self::Baseline => "baseline",
             Self::Sub => "sub",
@@ -78,7 +78,7 @@ impl VerticalAlign {
         })
     }
 
-    fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         let text = text.trim();
         let keywords = [
             Self::Baseline,

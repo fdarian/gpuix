@@ -53,22 +53,32 @@ function parse(html: string): (Node | string)[] {
   return root.children
 }
 
-function render(nodes: (Node | string)[], key = ""): React.ReactNode[] {
+/** Style to lay over the element with this `id`. */
+export interface Override {
+  id: string
+  style: Record<string, unknown>
+}
+
+function render(nodes: (Node | string)[], override: Override | undefined, key = ""): React.ReactNode[] {
   return nodes.map((node, index) => {
     if (typeof node === "string") return node
     const props: Record<string, unknown> = { key: `${key}${index}` }
     if (node.attrs.id) props.testId = node.attrs.id
     for (const [name, prop] of Object.entries(COUNTS)) if (node.attrs[name]) props[prop] = Number(node.attrs[name])
     const display = DISPLAY[node.tag]
-    const style = { ...(display ? { display } : {}), ...styleOf(node.attrs.style ?? "") }
+    const style = {
+      ...(display ? { display } : {}),
+      ...styleOf(node.attrs.style ?? ""),
+      ...(override && node.attrs.id === override.id ? override.style : {}),
+    }
     const Tag = node.tag === "span" ? "span" : "div"
-    return React.createElement(Tag, { ...props, style }, ...render(node.children, `${key}${index}.`))
+    return React.createElement(Tag, { ...props, style }, ...render(node.children, override, `${key}${index}.`))
   })
 }
 
 /** The elements of `html`. */
-export function elementsOf(html: string): React.ReactNode[] {
-  return render(parse(html))
+export function elementsOf(html: string, override?: Override): React.ReactNode[] {
+  return render(parse(html), override)
 }
 
 type Rect = [number, number, number, number]

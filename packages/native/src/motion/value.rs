@@ -803,8 +803,14 @@ pub(super) fn align_in(
     if values.iter().any(|value| matches!(value, AnimValue::List(_))) {
         return super::list::align(name, values, interpolation);
     }
-    if values.iter().any(|value| value.is_length_keyword())
-        && values.iter().all(|value| value.is_length_keyword() || value.as_length().is_some())
+    // A keyword that is no length (`auto`, `from-font`, the `vertical-align` keywords) against a length: one
+    // channel runs from option to option, and the value flips at the halfway point.
+    let keyword = |value: &AnimValue| matches!(value, AnimValue::Keyword(Some(_)));
+    if (values.iter().any(|value| value.is_length_keyword())
+        && values.iter().all(|value| value.is_length_keyword() || value.as_length().is_some()))
+        || (values.iter().any(|value| keyword(value))
+            && values.iter().any(|value| value.as_length().is_some())
+            && values.iter().all(|value| keyword(value) || value.as_length().is_some()))
     {
         return Ok(Aligned {
             layout: Layout::DiscreteList(values.iter().map(|value| (*value).clone()).collect()),

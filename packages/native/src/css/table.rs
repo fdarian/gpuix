@@ -12,6 +12,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use super::dimension::parse_definite_length;
 use super::length::{LengthContext, LinearLength};
 
+/// A property whose values are a few keywords, which a transition flips between.
+pub(crate) trait KeywordValue: Sized {
+    fn keyword(self) -> &'static str;
+    fn from_keyword(text: &str) -> Option<Self>;
+}
+
 macro_rules! keyword {
     ($(#[$meta:meta])* $name:ident, $property:literal, $($variant:ident => $text:literal),+ $(,)?) => {
         $(#[$meta])*
@@ -19,6 +25,21 @@ macro_rules! keyword {
         #[serde(rename_all = "kebab-case", try_from = "String")]
         pub enum $name {
             $($variant),+
+        }
+
+        impl KeywordValue for $name {
+            fn keyword(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $text),+
+                }
+            }
+
+            fn from_keyword(text: &str) -> Option<Self> {
+                match text {
+                    $($text => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
         }
 
         impl TryFrom<String> for $name {
@@ -76,6 +97,15 @@ pub struct BorderSpacing {
 pub struct ResolvedSpacing {
     pub horizontal: f64,
     pub vertical: f64,
+}
+
+impl ResolvedSpacing {
+    /// What layout is given. Chrome keeps the spacing in whole pixels (a `short`), so a fraction is cut
+    /// off, in the middle of a transition too. A value a hair under a whole number is that number.
+    pub(crate) fn used(self) -> Self {
+        let whole = |px: f64| (px + 0.01).floor();
+        Self { horizontal: whole(self.horizontal), vertical: whole(self.vertical) }
+    }
 }
 
 const RULE: &str = "one or two non-negative CSS lengths";
@@ -194,7 +224,7 @@ impl TableInherited {
     /// context, in which a declared spacing resolves.
     pub(crate) fn descend(mut self, style: &crate::style::StyleDesc, lengths: &LengthContext) -> Self {
         if let Some(spacing) = &style.border_spacing {
-            self.spacing = spacing.resolve(lengths);
+            self.spacing = spacing.resolve(lengths).used();
         }
         if let Some(collapse) = style.border_collapse {
             self.collapse = collapse == BorderCollapse::Collapse;

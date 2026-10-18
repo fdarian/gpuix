@@ -260,14 +260,12 @@ impl InsetSpec {
             .boxes
             .iter()
             .filter(|(id, _)| {
-                tree.elements
-                    .get(id)
-                    .and_then(|element| element.style.as_deref())
-                    .is_some_and(|base| {
-                        folded(base, states(*id, base))
-                            .vertical_align
-                            .is_some_and(|align| align != crate::css::vertical_align::VerticalAlign::Baseline)
-                    })
+                motion.declared_by(tree, *id).is_some_and(|base| {
+                    motion
+                        .declared(*id, base, states(*id, base))
+                        .vertical_align
+                        .is_some_and(|align| align != crate::css::vertical_align::VerticalAlign::Baseline)
+                })
             })
             .map(|(id, _)| *id)
             .collect();
