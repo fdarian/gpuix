@@ -6056,6 +6056,13 @@ impl GpuixView {
         id: u64,
         offset: gpui::Point<gpui::Pixels>,
     ) -> bool {
+    /// The scroll handle of `id` unless the element has no box (`display: none` on it or above):
+    /// there is nothing to scroll, and a script's `scrollTo` or `scrollTop` does nothing.
+    pub(crate) fn scrollable_handle(&self, id: u64) -> Option<&gpui::ScrollHandle> {
+        let handle = self.scroll_handles.get(&id)?;
+        crate::scroll::has_scrolling_box(&self.tree.lock().unwrap(), id).then_some(handle)
+    }
+
         let Some(entry) = self.virtual_lists.get(&id) else {
             return false;
         };
@@ -7579,6 +7586,9 @@ impl gpui::Render for GpuixView {
         });
         VIRTUAL_LIST_STATES.with(|cell| {
             let mut states = cell.borrow_mut();
+                if !crate::scroll::has_scrolling_box(&tree, id) {
+                    continue;
+                }
             states.clear();
             for (&id, entry) in &self.virtual_lists {
                 states.insert(id, entry.state.clone());

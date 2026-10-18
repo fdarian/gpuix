@@ -1657,7 +1657,7 @@ impl TestGpuixRenderer {
             if view.set_virtual_list_offset(id, offset) {
                 return;
             }
-            if let Some(handle) = view.scroll_handles.get(&id) {
+            if let Some(handle) = view.scrollable_handle(id) {
                 crate::scroll::scroll_to(id, handle, offset, behavior);
             }
         })
@@ -1997,7 +1997,7 @@ impl TestGpuixRenderer {
         let id = to_element_id(element_id)?;
         update_view(|view, _window, _cx| {
             view.virtual_list_offset(id)
-                .or_else(|| view.scroll_handles.get(&id).map(|handle| handle.offset()))
+                .or_else(|| view.scrollable_handle(id).map(|handle| handle.offset()))
                 .map(|offset| crate::scroll::dom_position(offset).to_vec())
         })
     }
