@@ -7751,6 +7751,7 @@ fn retained_root(
     };
     let view = cx.weak_entity();
     let tapes = ctx.tapes.clone();
+    let measurements = ctx.measurements.clone();
     let mut retained = gpui::retained(
         gpui::ElementId::NamedInteger(gpui::SharedString::new_static("gpuix-retained"), id),
         skip.token,
@@ -7759,10 +7760,16 @@ fn retained_root(
                 .expect("the view of a window lives as long as the window draws")
         },
     )
-    .on_replay_translated(move |phase, delta, _, _| {
+    .on_replay_translated(move |phase, delta, window, _| {
         let phase = match phase {
-            gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
-            gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
+            gpui::RetainedPhase::Prepaint => {
+                measurements.republish_parent_content(id, window);
+                crate::tape::Phase::Prepaint
+            }
+            gpui::RetainedPhase::Paint => {
+                measurements.republish_parent_content(id, window);
+                crate::tape::Phase::Paint
+            }
             gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
             gpui::RetainedPhase::LayoutPaint => crate::tape::Phase::LayoutPaint,
             gpui::RetainedPhase::LiftedBegin(rel) => return tapes.begin_lifted(id, rel),

@@ -127,7 +127,12 @@ pub(crate) struct Measurements {
     painted_frames: Rc<Cell<u64>>,
     /// The elements whose measurement differs from the one before, since the last `take_changed`.
     changed: Rc<RefCell<Vec<u64>>>,
+    /// The parent content box each element's last recording says, shared with the write that
+    /// recording keeps on its tape, see [`Self::republish_parent_content`].
+    parents: Rc<RefCell<HashMap<u64, ParentContent>>>,
 }
+
+type ParentContent = Rc<Cell<Size<Pixels>>>;
 
 impl Measurements {
     pub(crate) fn get(&self, id: u64) -> Option<Measurement> {
@@ -146,6 +151,7 @@ impl Measurements {
         self.by_element
             .borrow_mut()
             .retain(|id, _| wrapped.contains(id) && exists(*id));
+        self.parents.borrow_mut().retain(|id, _| wrapped.contains(id));
         wrapped.clear();
     }
 
@@ -207,25 +213,57 @@ impl Measurements {
         if self.by_element.borrow().get(&id) != Some(&measurement) {
             self.changed.borrow_mut().push(id);
         }
+        let parent_content: ParentContent = Rc::new(Cell::new(measurement.parent_content));
+        self.parents.borrow_mut().insert(id, parent_content.clone());
         crate::tape::write(
-            (self.by_element.clone(), id, measurement),
-            |(by_element, id, measurement), _| {
-                by_element.borrow_mut().insert(*id, *measurement);
+            (self.by_element.clone(), id, measurement, parent_content),
+            |(by_element, id, measurement, parent_content), _| {
+                by_element.borrow_mut().insert(
+                    *id,
+                    Measurement {
+                        parent_content: parent_content.get(),
+                        ..*measurement
+                    },
+                );
             },
-            // Not the parent's content box: it changes without the subtree being built when a
-            // sibling resizes the parent, and a replay keeps the one it recorded (see FORK.md).
-            |(_, id, measurement), _| {
+            |(_, id, measurement, parent_content), _| {
                 format!(
-                    "measured {id} {:?} {:?} {:?} {} {:?} {:?}",
-                    measurement.border_box,
-                    measurement.natural_height,
-                    measurement.natural_width,
-                    measurement.scale_factor,
-                    measurement.percent_height_resolves,
-                    measurement.flex_main
+                    "measured {id} {:?}",
+                    Measurement {
+                        parent_content: parent_content.get(),
+                        ..*measurement
+                    }
                 )
             },
         );
+    }
+
+    /// Reads the parent content box of the retained root `id` again, for the replay of it that
+    /// `window` is running. A replay writes the measurement its build made, and the content box of
+    /// the parent changes without the root: a sibling resizes it, or it gains padding. What a
+    /// build of the root would measure is a measurement that differs from the one before, which
+    /// the frame after builds the root for, as it would have.
+    ///
+    /// Only the root's own measurement can be out of date: any other element measured inside it
+    /// has its parent inside it too, and the root is replayed only while its layout is the one
+    /// that was recorded.
+    pub(crate) fn republish_parent_content(&self, id: u64, window: &mut Window) {
+        let Some(recorded) = self.parents.borrow().get(&id).cloned() else {
+            return;
+        };
+        let root = window
+            .replayed_root()
+            .expect("a replay listener of a root is run with the root in the window");
+        let current = window
+            .layout_parent_content_size(root)
+            .unwrap_or_else(|| window.viewport_size());
+        if recorded.replace(current) == current {
+            return;
+        }
+        if let Some(measurement) = self.by_element.borrow_mut().get_mut(&id) {
+            measurement.parent_content = current;
+        }
+        self.changed.borrow_mut().push(id);
     }
 
     /// The elements whose measurement changed since this was last called.
