@@ -5,7 +5,7 @@
 import type { MotionStyle, MotionTransition } from "./host.js"
 import { isMotionValue } from "./motion-value.js"
 
-/** The properties a paragraph repaints without laying out again. Mirrors `Scope::InlineBox`. */
+/** The properties a paragraph takes from the sampled style of a span when it builds its text. Mirrors `Scope::InlineBox`. */
 const MOTION_SPAN_KEYS = [
   "opacity",
   "color",
@@ -17,13 +17,16 @@ const MOTION_SPAN_KEYS = [
   "borderRightColor",
   "borderBottomColor",
   "borderLeftColor",
+  "textUnderlineOffset",
+  "textDecorationThickness",
+  "fontVariationSettings",
 ] as const
 
 export type MotionSpanKey = (typeof MOTION_SPAN_KEYS)[number]
 
 /**
- * What a `motion.span` can animate: colours, and the opacity they are painted
- * with. A span is not a box of its own but text a paragraph paints, so a size,
+ * What a `motion.span` can animate: colours, the opacity they are painted with, the
+ * offset and thickness of its underline and its font variation settings. A span is not a box of its own but text a paragraph paints, so a size,
  * padding, font or `layout` has nothing to move.
  */
 export type MotionSpanStyle = Pick<MotionStyle, MotionSpanKey>
@@ -127,7 +130,7 @@ function assertSpanStyle(where: string, style: object): void {
   for (const key of Object.keys(style)) {
     if (!(MOTION_SPAN_KEYS as readonly string[]).includes(key)) {
       throw new Error(
-        `motion.span cannot animate "${key}" in ${where}: an inline span can only animate colours and opacity (${MOTION_SPAN_KEYS.join(", ")})`
+        `motion.span cannot animate "${key}" in ${where}: an inline span can only animate colours, opacity, its underline and its font variations (${MOTION_SPAN_KEYS.join(", ")})`
       )
     }
   }

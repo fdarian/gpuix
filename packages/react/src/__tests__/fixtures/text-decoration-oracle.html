@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  Oracle for text-underline-offset.test.tsx and text-decoration-thickness.test.tsx: where headless Chrome draws the
+  underline of a decorating box and of the boxes inside it. Every case is a 60px band with one line of text; a
+  `data-seg` element is a stretch of it whose underline rows are read off the screenshot (`text-decoration-oracle.sh`
+  regenerates the JSON, at device scale 1 and 2).
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;background:#fff}
+.band{position:absolute;left:0;width:600px;height:60px;background:#fff;color:#000;font:16px/24px Helvetica;padding-top:10px}
+.u{text-decoration:underline #f00}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const U = (extra) => `text-decoration:underline #f00;${extra}`;
+const seg = (name, style, html) => `<span data-seg="${name}" style="${style}">${html}</span>`;
+// [name, band style, html]
+const cases = [];
+for (const offset of ['auto', '0px', '4px', '8px', '-3px', '0.25em', '25%']) {
+  cases.push([`plain offset ${offset}`, '', `<span style="${U(`text-underline-offset:${offset}`)}">${seg('a', '', 'xxxx')}</span>`]);
+}
+for (const [name, style] of [
+  ['super', 'vertical-align:super'],
+  ['sub', 'vertical-align:sub'],
+  ['text-top', 'vertical-align:text-top'],
+  ['text-bottom', 'vertical-align:text-bottom'],
+  ['middle', 'vertical-align:middle'],
+  ['length', 'vertical-align:6px'],
+  ['negative length', 'vertical-align:-5px'],
+  ['percent', 'vertical-align:50%'],
+  ['bigger font', 'font-size:28px'],
+  ['smaller font', 'font-size:10px'],
+  ['super smaller font', 'vertical-align:super;font-size:10px'],
+  ['bigger font super', 'vertical-align:super;font-size:28px'],
+]) {
+  for (const offset of ['0px', 'auto', '4px', '0.25em']) {
+    cases.push([`parent ${offset} child ${name}`, '',
+      `<span style="${U(`text-underline-offset:${offset}`)}">${seg('before', '', 'xx')}${seg('child', style, 'xx')}${seg('after', '', 'xx')}</span>`]);
+  }
+}
+cases.push(['nested super super', '',
+  `<span style="${U('text-underline-offset:4px')}">${seg('before', '', 'xx')}<span style="vertical-align:super">${seg('mid', '', 'xx')}<span style="vertical-align:super">${seg('inner', '', 'xx')}</span></span>${seg('after', '', 'xx')}</span>`]);
+cases.push(['nested sub inside super', '',
+  `<span style="${U('text-underline-offset:4px')}">${seg('before', '', 'xx')}<span style="vertical-align:super">${seg('mid', '', 'xx')}<span style="vertical-align:sub">${seg('inner', '', 'xx')}</span></span>${seg('after', '', 'xx')}</span>`]);
+// A decorating box that is raised itself.
+for (const offset of ['0px', 'auto', '4px']) {
+  cases.push([`raised decorating box ${offset}`, '',
+    `${seg('before', '', 'xx')}<span style="vertical-align:super;${U(`text-underline-offset:${offset}`)}">${seg('own', '', 'xx')}${seg('plain child', '', '<span>xx</span>')}<span style="vertical-align:sub">${seg('lowered child', '', 'xx')}</span></span>${seg('after', '', 'xx')}`]);
+}
+// The decoration of an outer box over an inner box that declares its own.
+cases.push(['inner box declares its own offset', '',
+  `<span style="${U('text-underline-offset:8px')}">${seg('before', '', 'xx')}<span style="vertical-align:super;text-underline-offset:2px;text-decoration:underline #00f">${seg('inner', '', 'xx')}</span>${seg('after', '', 'xx')}</span>`]);
+// Thickness: an explicit length and what each font gives `auto`.
+for (const thickness of ['auto', 'from-font', '0px', '0.01px', '0.3px', '0.5px', '0.7px', '1px', '1.25px', '1.5px', '2px', '2.6px', '3.4px', '3.5px', '0.1em', '0.04em', '10%']) {
+  for (const size of [16, 33]) {
+    cases.push([`thickness ${thickness} size ${size}`, `font-size:${size}px;line-height:${size + 8}px`,
+      `<span style="${U(`text-decoration-thickness:${thickness}`)}">${seg('a', '', 'xxxx')}</span>`]);
+  }
+}
+// The font of the decorating box or of the text for the thickness and the auto position.
+for (const thickness of ['auto', '2px']) {
+  cases.push([`thickness ${thickness} bigger child`, '',
+    `<span style="${U(`text-decoration-thickness:${thickness}`)}">${seg('before', '', 'xx')}${seg('child', 'font-size:40px', 'xx')}${seg('after', '', 'xx')}</span>`]);
+}
+
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+cases.forEach(([name, bandStyle, html], i) => {
+  const band = document.createElement('div');
+  band.className = 'band';
+  band.style.cssText = `top:${i * 60}px;${bandStyle}`;
+  band.innerHTML = html;
+  scene.appendChild(band);
+  const segs = {};
+  for (const el of band.querySelectorAll('[data-seg]')) {
+    const rect = el.getBoundingClientRect();
+    segs[el.dataset.seg] = [rect.left, rect.top, rect.right, rect.bottom];
+  }
+  out.cases[name] = { top: i * 60, bandStyle, html, segs };
+});
+document.body.style.height = `${cases.length * 60}px`;
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

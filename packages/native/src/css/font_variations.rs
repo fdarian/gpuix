@@ -1,14 +1,15 @@
 //! `font-variation-settings`, the axes of a variable font.
 
 use gpui::FontVariations;
-use serde::{Deserialize, Serialize};
+use serde::de::IgnoredAny;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::dimension::parse_number;
 use super::font_features::parse_tag;
 use super::syntax::{split_commas, split_whitespace};
 
-/// `font-variation-settings`. The style fails to parse for a value CSS does not
-/// have, as `textWrap` does, so a typo is an error where it is written.
+/// `font-variation-settings`. Parsing a string that CSS does not have fails; a style
+/// ignores such a declaration instead ([`deserialize_ignoring_invalid`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct VariationSettings(FontVariations);
@@ -26,6 +27,24 @@ impl VariationSettings {
     pub(crate) fn from_axes(axes: &[(u32, f64)]) -> Self {
         Self(FontVariations::new(axes.iter().map(|(tag, value)| (*tag, *value as f32))))
     }
+}
+
+/// What a style does with `fontVariationSettings`: a value CSS does not have is an invalid
+/// declaration, which is dropped and leaves what the element inherits, or what the style
+/// beneath it declares, as it is.
+pub(crate) fn deserialize_ignoring_invalid<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<VariationSettings>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Declared {
+        Settings(VariationSettings),
+        Invalid(IgnoredAny),
+    }
+    Ok(match Option::<Declared>::deserialize(deserializer)? {
+        Some(Declared::Settings(settings)) => Some(settings),
+        Some(Declared::Invalid(_)) | None => None,
+    })
 }
 
 pub(crate) fn axes_of(variations: &FontVariations) -> Vec<(u32, f64)> {
@@ -164,13 +183,14 @@ mod tests {
     }
 
     #[test]
-    fn a_style_with_an_invalid_value_fails_to_parse() {
-        let parsed: Result<crate::style::StyleDesc, _> =
-            serde_json::from_str(r#"{"fontVariationSettings": "wght 650"}"#);
-        assert!(parsed
-            .expect_err("invalid")
-            .to_string()
-            .contains("fontVariationSettings"));
+    fn a_style_ignores_an_invalid_value() {
+        for invalid in [r#""wght 650""#, "650", "true", r#""""#, "null"] {
+            let parsed: crate::style::StyleDesc =
+                serde_json::from_str(&format!(r#"{{"fontVariationSettings": {invalid}, "color": "red"}}"#))
+                    .expect("an invalid declaration is dropped, not an error");
+            assert_eq!(parsed.font_variation_settings, None, "{invalid}");
+            assert_eq!(parsed.color.as_deref(), Some("red"), "the rest of the style stays");
+        }
         let parsed: crate::style::StyleDesc =
             serde_json::from_str(r#"{"fontVariationSettings": "\"wght\" 650"}"#).expect("valid");
         assert_eq!(

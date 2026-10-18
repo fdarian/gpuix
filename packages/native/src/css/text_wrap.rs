@@ -159,6 +159,23 @@ pub fn apply(
     }
 }
 
+/// Whether the box `style` declares that a line may break in its text, for a box inside
+/// a paragraph: `text-wrap-mode` alone or in the shorthand, else the wrap component of
+/// `white-space`, as [`apply`] has it. `None` leaves it to the box around.
+pub fn declared_wraps(style: &crate::style::StyleDesc) -> Option<bool> {
+    style
+        .text_wrap_mode
+        .or(style.text_wrap.map(|shorthand| shorthand.mode))
+        .map(|mode| mode == TextWrapMode::Wrap)
+        .or_else(|| {
+            style
+                .white_space
+                .as_deref()
+                .and_then(crate::text::white_space::WhiteSpace::parse)
+                .map(crate::text::white_space::WhiteSpace::wraps)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +244,23 @@ mod tests {
             let error = table.intern(json).unwrap_err();
             assert!(error.contains(name), "{error}");
         }
+    }
+
+    #[test]
+    fn a_box_declares_its_mode_by_the_longhand_the_shorthand_or_white_space_in_that_order() {
+        let declared = |json: &str| {
+            let style: crate::style::StyleDesc = serde_json::from_str(json).unwrap();
+            declared_wraps(&style)
+        };
+        assert_eq!(declared("{}"), None);
+        assert_eq!(declared(r#"{"textWrapStyle": "balance"}"#), None, "the style says nothing of the mode");
+        assert_eq!(declared(r#"{"whiteSpace": "nowrap"}"#), Some(false));
+        assert_eq!(declared(r#"{"whiteSpace": "pre"}"#), Some(false));
+        assert_eq!(declared(r#"{"whiteSpace": "pre-wrap"}"#), Some(true));
+        assert_eq!(declared(r#"{"whiteSpace": "nowrap", "textWrapMode": "wrap"}"#), Some(true));
+        assert_eq!(declared(r#"{"whiteSpace": "nowrap", "textWrap": "balance"}"#), Some(true));
+        assert_eq!(declared(r#"{"textWrap": "nowrap", "textWrapMode": "wrap"}"#), Some(true));
+        assert_eq!(declared(r#"{"textWrap": "nowrap balance"}"#), Some(false));
     }
 
     #[test]

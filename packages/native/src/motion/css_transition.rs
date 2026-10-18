@@ -611,7 +611,7 @@ impl Running {
     ) -> Option<Self> {
         let segment = pair_in(prop.name(), from, to, Interpolation::Css)
             .ok()
-            .filter(|pair| entry.allow_discrete || !pair.is_discrete())?;
+            .filter(|pair| entry.allow_discrete || !pair.is_discrete() || prop.flips_without_allow_discrete())?;
         Some(Self {
             measured: end != *to,
             started: now,

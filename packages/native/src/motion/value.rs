@@ -374,6 +374,11 @@ impl AnimValue {
         matches!(self, Self::Keyword(Some(keyword)) if keyword == "auto")
     }
 
+    /// `auto`, or `from-font` for a decoration thickness: a keyword no length blends with.
+    fn is_length_keyword(&self) -> bool {
+        self.is_auto_keyword() || matches!(self, Self::Keyword(Some(keyword)) if keyword == "from-font")
+    }
+
     /// The simplest value for `px` plus `percent` of the basis.
     pub(super) fn length(px: f64, percent: f64) -> Self {
         if percent == 0.0 {
@@ -798,8 +803,8 @@ pub(super) fn align_in(
     if values.iter().any(|value| matches!(value, AnimValue::List(_))) {
         return super::list::align(name, values, interpolation);
     }
-    if values.iter().any(|value| value.is_auto_keyword())
-        && values.iter().all(|value| value.is_auto_keyword() || value.as_length().is_some())
+    if values.iter().any(|value| value.is_length_keyword())
+        && values.iter().all(|value| value.is_length_keyword() || value.as_length().is_some())
     {
         return Ok(Aligned {
             layout: Layout::DiscreteList(values.iter().map(|value| (*value).clone()).collect()),

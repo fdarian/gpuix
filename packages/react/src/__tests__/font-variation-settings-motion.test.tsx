@@ -208,3 +208,82 @@ describeNative("transitioning fontVariationSettings", () => {
     }
   })
 })
+
+describeNative("fontVariationSettings of a span in motion", () => {
+  const paragraph = (settings: string, extra: Record<string, unknown> = {}) => (
+    <div style={column}>
+      <text testId="text">
+        WWWW<span style={{ fontVariationSettings: settings, ...extra }}>WWWWWW</span>WWWW
+      </text>
+    </div>
+  )
+
+  /** The width of the paragraph when its span is styled `settings` from the start. */
+  function staticSpanWidth(settings: string): number {
+    const { render, width, unmount } = setup()
+    try {
+      render(paragraph(settings))
+      return width()
+    } finally {
+      unmount()
+    }
+  }
+
+  it("blends a CSS transition of the same axes, and the paragraph follows", () => {
+    const [light, middle, heavy] = [LIGHT, MIDDLE, HEAVY].map(staticSpanWidth) as [number, number, number]
+    expect(heavy).toBeGreaterThan(light + 5)
+    const { render, width, advance, unmount } = setup()
+    try {
+      const transition = "font-variation-settings 1s linear"
+      render(paragraph(LIGHT, { transition }))
+      render(paragraph(HEAVY, { transition }))
+      const samples = [width(), advance(250), advance(250), advance(250), advance(250)]
+      expect(samples[0]).toBeCloseTo(light, 1)
+      expect(samples[2]!).toBeCloseTo(middle, 0)
+      expect(samples[4]).toBeCloseTo(heavy, 1)
+      for (let index = 1; index < samples.length; index++) {
+        expect(samples[index]!, `sample ${index}`).toBeGreaterThan(samples[index - 1]! + 0.3)
+      }
+    } finally {
+      unmount()
+    }
+  })
+
+  it("flips values that name other axes halfway under allow-discrete", () => {
+    const [heavy, narrow] = [HEAVY, NARROW].map(staticSpanWidth) as [number, number]
+    const { render, width, advance, unmount } = setup()
+    try {
+      const transition = "font-variation-settings 1s linear allow-discrete"
+      render(paragraph(HEAVY, { transition }))
+      render(paragraph(NARROW, { transition }))
+      expect(width()).toBeCloseTo(heavy, 1)
+      expect(advance(490)).toBeCloseTo(heavy, 1)
+      expect(advance(20)).toBeCloseTo(narrow, 1)
+    } finally {
+      unmount()
+    }
+  })
+
+  it("a motion span animates it", () => {
+    const [light, middle, heavy] = [LIGHT, MIDDLE, HEAVY].map(staticSpanWidth) as [number, number, number]
+    const { render, width, advance, unmount } = setup()
+    try {
+      render(
+        <div style={column}>
+          <text testId="text">
+            WWWW
+            <motion.span initial={{ fontVariationSettings: LIGHT }} animate={{ fontVariationSettings: HEAVY }} transition={linear}>
+              WWWWWW
+            </motion.span>
+            WWWW
+          </text>
+        </div>
+      )
+      expect(width()).toBeCloseTo(light, 1)
+      expect(advance(500)).toBeCloseTo(middle, 0)
+      expect(advance(500)).toBeCloseTo(heavy, 1)
+    } finally {
+      unmount()
+    }
+  })
+})

@@ -253,27 +253,63 @@ describeNative("fontVariationSettings on form fields", () => {
   }
 })
 
-describeNative("an invalid fontVariationSettings is an uncaught error", () => {
-  function errorsOf(style: Record<string, unknown>) {
+const INVALID = ["wght 900", '"wgh" 900', '"wght"', '"wght" 900,', '"wght" 900px', '"wght" on', "bold", ""]
+
+describeNative("an invalid fontVariationSettings is ignored, as an invalid declaration is", () => {
+  it("is no error, and the element looks as if it declared nothing", () => {
     const errors: Error[] = []
     const { render, unmount } = createTestRoot({ onUncaughtError: (error) => errors.push(error) })
     try {
-      render(<div style={style} />)
-      return errors.map((error) => error.message).join("\n")
+      for (const value of INVALID) render(<div style={{ fontVariationSettings: value }} />)
+      expect(errors.map((error) => error.message)).toEqual([])
     } finally {
       unmount()
     }
-  }
-
-  it("names the property and the value", () => {
-    for (const value of ["wght 900", '"wgh" 900', '"wght"', '"wght" 900,', '"wght" 900px', '"wght" on', "bold"]) {
-      expect(errorsOf({ fontVariationSettings: value }), value).toContain(`invalid fontVariationSettings: ${JSON.stringify(value)}`)
+    const plain = capture("invalid-plain", line({})).file
+    for (const [ix, value] of INVALID.entries()) {
+      expectScreenshotsEqual(capture(`invalid-${ix}`, line({ fontVariationSettings: value })).file, plain)
     }
   })
 
+  it("leaves the value the element inherits", () => {
+    const heavy = capture("invalid-inherits-ref", line({}, { fontVariationSettings: HEAVY })).file
+    expectScreenshotsEqual(
+      capture("invalid-inherits", line({ fontVariationSettings: "wght 100" }, { fontVariationSettings: HEAVY })).file,
+      heavy
+    )
+  })
+
+  it("leaves the value the base style declares, in a state style", () => {
+    const base = capture("invalid-state-ref", line({ fontVariationSettings: HEAVY })).file
+    expectScreenshotsEqual(
+      capture("invalid-state", line({ fontVariationSettings: HEAVY, hover: { fontVariationSettings: "wght 100" } })).file,
+      base
+    )
+  })
+
+  it("leaves the value of the box around a span", () => {
+    const tree = (inner: string) => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", fontSize: 32 }}>
+        <text testId="text">
+          <span style={{ fontVariationSettings: HEAVY }}>
+            WWWWW<span style={{ fontVariationSettings: inner }}>WWWWW</span>
+          </span>
+        </text>
+      </div>
+    )
+    expect(capture("invalid-span", tree("wght 100")).width()).toBeCloseTo(capture("invalid-span-ref", tree(HEAVY)).width(), 0)
+  })
+
   it("accepts what CSS has", () => {
-    for (const value of ["normal", '"wght" 900', "'wght' 900, \"wdth\" 90.5", '"slnt" -10', '"wght" 1e3', '"wght" .5']) {
-      expect(errorsOf({ fontVariationSettings: value }), value).toBe("")
+    const errors: Error[] = []
+    const { render, unmount } = createTestRoot({ onUncaughtError: (error) => errors.push(error) })
+    try {
+      for (const value of ["normal", '"wght" 900', "'wght' 900, \"wdth\" 90.5", '"slnt" -10', '"wght" 1e3', '"wght" .5']) {
+        render(<div style={{ fontVariationSettings: value }} />)
+      }
+      expect(errors).toEqual([])
+    } finally {
+      unmount()
     }
   })
 })

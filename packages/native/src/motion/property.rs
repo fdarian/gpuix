@@ -17,6 +17,8 @@ use crate::css::border::Side;
 use crate::css::flex::{deserialize_flex, Flex};
 use crate::css::outline::Outline;
 use crate::css::line_height::LineHeight;
+use crate::css::text_decoration::{parse_thickness, Thickness};
+use crate::css::text_underline_offset::TextUnderlineOffset;
 use crate::css::border_radius::parse_radii;
 use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
 use crate::css::syntax::{expand_sides, split_slash_tokens};
@@ -47,6 +49,11 @@ enum Kind {
     /// `font-variation-settings`: blends per axis when two values name the same
     /// axes, and is discrete otherwise.
     Variations,
+    /// `text-underline-offset`: a length, or `auto`, which is no length: a pair of them flips
+    /// at the halfway point.
+    UnderlineOffset,
+    /// `text-decoration-thickness`: a length, or `auto` or `from-font`, which are no length.
+    Thickness,
     Keyword,
 }
 
@@ -293,6 +300,23 @@ impl Field for Option<LinearLength> {
     }
 }
 
+impl Field for Option<TextUnderlineOffset> {
+    fn read(&self, cx: &Reading) -> Option<AnimValue> {
+        Some(match self.as_ref()? {
+            TextUnderlineOffset::Auto => AnimValue::auto_keyword(),
+            TextUnderlineOffset::Length(length) => resolved(length, cx.lengths),
+        })
+    }
+
+    fn write(&mut self, value: AnimValue) {
+        *self = Some(if value.is_auto_keyword() {
+            TextUnderlineOffset::Auto
+        } else {
+            TextUnderlineOffset::Length(linear_length(value))
+        });
+    }
+}
+
 impl Field for Option<LineHeight> {
     /// Only a multiplier is a number a track can run from: `normal` has no value
     /// and a length needs the element's font size.
@@ -406,9 +430,32 @@ fn font_size_read(slot: &Option<LinearLength>, cx: &Reading) -> Option<AnimValue
     Some(AnimValue::Number(px))
 }
 
+/// `text-decoration-thickness` is held as the string it was written in.
+fn thickness_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
+    Some(match parse_thickness(slot.as_deref()?)? {
+        Thickness::Auto => AnimValue::auto_keyword(),
+        Thickness::FromFont => AnimValue::Keyword(Some(FROM_FONT.to_string())),
+        Thickness::Length(length) => resolved(&length, cx.lengths),
+    })
+}
+
+fn thickness_write(slot: &mut Option<String>, value: AnimValue) {
+    *slot = Some(match value {
+        value if value.is_auto_keyword() => "auto".to_string(),
+        AnimValue::Keyword(Some(keyword)) if keyword == FROM_FONT => keyword,
+        // A percentage is of 1em and was folded into px when the value was parsed.
+        value => format!("{}px", value.as_length().unwrap_or_else(|| unreachable!("a thickness was given {value:?}")).0),
+    });
+}
+
+const FROM_FONT: &str = "from-font";
+
 macro_rules! read_field {
     (Keyword, $slot:expr, $cx:expr) => {
         keyword_read(&$slot)
+    };
+    (Thickness, $slot:expr, $cx:expr) => {
+        thickness_read(&$slot, $cx)
     };
     (FontSize, $slot:expr, $cx:expr) => {
         font_size_read(&$slot, $cx)
@@ -424,6 +471,9 @@ macro_rules! read_field {
 macro_rules! write_field {
     (Keyword, $slot:expr, $value:expr) => {
         keyword_write(&mut $slot, $value)
+    };
+    (Thickness, $slot:expr, $value:expr) => {
+        thickness_write(&mut $slot, $value)
     };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
@@ -603,6 +653,8 @@ properties! {
     FontWeight "fontWeight" FontWeight Weight Initial::FontWeight, font_weight;
     FontVariationSettings "fontVariationSettings" Variations None Initial::FontVariations, font_variation_settings;
     LineHeight "lineHeight" Number NonNegative Unresolved, line_height;
+    TextUnderlineOffset "textUnderlineOffset" UnderlineOffset None Initial::Auto, text_underline_offset;
+    TextDecorationThickness "textDecorationThickness" Thickness NonNegative Initial::Auto, text_decoration_thickness;
 
     ScrollbarColor "scrollbarColor" Color None Unresolved, scrollbar_color;
     ScrollbarWidth "scrollbarWidth" Number NonNegative Unresolved, scrollbar_width;
@@ -634,7 +686,8 @@ pub(crate) enum Scope {
 impl Scope {
     /// What an error names as the properties of [`Scope::InlineBox`].
     pub(super) const INLINE_BOX_PROPERTIES: &'static str = "colours (color, backgroundColor, textDecorationColor, \
-         outlineColor, borderColor and the four border side colours) and opacity";
+         outlineColor, borderColor and the four border side colours), opacity, textUnderlineOffset, \
+         textDecorationThickness and fontVariationSettings";
 
     pub(super) fn animates(self, prop: AnimProp) -> bool {
         match self {
@@ -650,6 +703,9 @@ impl Scope {
                     | AnimProp::BorderBottomColor
                     | AnimProp::BorderLeftColor
                     | AnimProp::OutlineColor
+                    | AnimProp::TextUnderlineOffset
+                    | AnimProp::TextDecorationThickness
+                    | AnimProp::FontVariationSettings
             ),
         }
     }
@@ -845,6 +901,13 @@ impl AnimProp {
         self.kind() == Kind::Keyword && self != Self::Visibility
     }
 
+    /// Whether a CSS transition between two values that cannot blend (`auto` and a
+    /// length) flips at the halfway point without `allow-discrete`, as Chrome's do for
+    /// these two.
+    pub(super) fn flips_without_allow_discrete(self) -> bool {
+        matches!(self, Self::TextUnderlineOffset | Self::TextDecorationThickness)
+    }
+
     /// The axis whose laid-out size an unset value of this property is, so an
     /// animation can start from what layout produced.
     pub(super) fn size_axis(self) -> Option<Axis> {
@@ -1011,6 +1074,29 @@ impl AnimProp {
                 }
                 AnimValue::Variations(axes)
             }
+            Kind::UnderlineOffset => {
+                let offset: TextUnderlineOffset = serde_json::from_value(value.clone())
+                    .map_err(|error| format!("motion {name} must be auto or a CSS length: {error}"))?;
+                match offset {
+                    TextUnderlineOffset::Auto => AnimValue::auto_keyword(),
+                    TextUnderlineOffset::Length(length) => self.resolve_length(&length, lengths)?,
+                }
+            }
+            Kind::Thickness => {
+                let text = match value {
+                    Value::Number(number) => format!("{number}px"),
+                    Value::String(text) => text.clone(),
+                    _ => return Err(format!("motion {name} must be auto, from-font or a CSS length")),
+                };
+                let thickness = parse_thickness(&text).ok_or_else(|| {
+                    format!("motion {name} must be auto, from-font or a non-negative CSS length: {text}")
+                })?;
+                match thickness {
+                    Thickness::Auto => AnimValue::auto_keyword(),
+                    Thickness::FromFont => AnimValue::Keyword(Some(FROM_FONT.to_string())),
+                    Thickness::Length(length) => self.resolve_length(&length, lengths)?,
+                }
+            }
             Kind::Dimension | Kind::Offset => {
                 let dimension: DimensionValue = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
@@ -1102,12 +1188,13 @@ impl AnimProp {
 
     /// Whether `write` can put `value` in this property.
     pub(super) fn accepts(self, value: &AnimValue) -> bool {
-        (self.kind() == Kind::Offset && value.is_auto_keyword())
+        (matches!(self.kind(), Kind::Offset | Kind::UnderlineOffset | Kind::Thickness) && value.is_auto_keyword())
+            || (self.kind() == Kind::Thickness && matches!(value, AnimValue::Keyword(Some(keyword)) if keyword == FROM_FONT))
             || matches!(
                 (self.kind(), value),
                 (Kind::Number | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
                     | (
-                        Kind::Dimension | Kind::Offset | Kind::Length | Kind::Corner,
+                        Kind::Dimension | Kind::Offset | Kind::Length | Kind::Corner | Kind::UnderlineOffset | Kind::Thickness,
                         AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. }
                     )
                     | (Kind::Corner, AnimValue::Ellipse { .. })
@@ -1849,13 +1936,53 @@ mod tests {
         assert!(!AnimProp::FontVariationSettings.is_discrete());
         assert!(AnimProp::from_name("fontVariationSettings").is_some());
         assert!(Scope::Element.animates(AnimProp::FontVariationSettings));
-        assert!(!Scope::InlineBox.animates(AnimProp::FontVariationSettings));
+        assert!(Scope::InlineBox.animates(AnimProp::FontVariationSettings));
 
         let mut style = StyleDesc::default();
         AnimProp::FontVariationSettings.write(&mut style, AnimValue::Variations(vec![(tag("wght"), 550.0)]));
         assert_eq!(String::from(style.font_variation_settings.clone().unwrap()), "\"wght\" 550");
         AnimProp::FontVariationSettings.write(&mut style, AnimValue::Variations(Vec::new()));
         assert_eq!(String::from(style.font_variation_settings.unwrap()), "normal");
+    }
+
+    #[test]
+    fn text_underline_offset_and_thickness_read_write_and_parse_as_lengths_or_keywords() {
+        let colors = Colors::root();
+        let parse = |prop: AnimProp, json: serde_json::Value| prop.parse(&json, &colors);
+        let offset = AnimProp::TextUnderlineOffset;
+        let thickness = AnimProp::TextDecorationThickness;
+        assert_eq!(parse(offset, serde_json::json!("4px")).unwrap(), AnimValue::Number(4.0));
+        assert_eq!(parse(offset, serde_json::json!(-3)).unwrap(), AnimValue::Number(-3.0));
+        assert_eq!(parse(offset, serde_json::json!("25%")).unwrap(), AnimValue::Percent(0.25));
+        assert_eq!(parse(offset, serde_json::json!("auto")).unwrap(), AnimValue::auto_keyword());
+        assert!(parse(offset, serde_json::json!("big")).is_err());
+        assert_eq!(parse(thickness, serde_json::json!("from-font")).unwrap(), AnimValue::Keyword(Some("from-font".into())));
+        assert_eq!(parse(thickness, serde_json::json!(2)).unwrap(), AnimValue::Number(2.0));
+        // A percentage is of 1em and is px by the time it is read.
+        assert_eq!(parse(thickness, serde_json::json!("10%")).unwrap(), AnimValue::Number(colors.lengths.font_size * 0.1));
+        assert!(parse(thickness, serde_json::json!(-1)).is_err(), "a negative thickness is refused");
+        assert!(offset.accepts(&AnimValue::auto_keyword()));
+        assert!(thickness.accepts(&AnimValue::Keyword(Some("from-font".into()))));
+        assert!(!offset.accepts(&AnimValue::Keyword(Some("from-font".into()))));
+
+        let mut style = StyleDesc::default();
+        offset.write(&mut style, AnimValue::Number(6.5));
+        thickness.write(&mut style, AnimValue::Number(2.5));
+        assert_eq!(style.text_decoration_thickness.as_deref(), Some("2.5px"));
+        assert_eq!(offset.read(&style, &colors), Some(AnimValue::Number(6.5)));
+        assert_eq!(thickness.read(&style, &colors), Some(AnimValue::Number(2.5)));
+        offset.write(&mut style, AnimValue::auto_keyword());
+        thickness.write(&mut style, AnimValue::Keyword(Some("from-font".into())));
+        assert_eq!(offset.read(&style, &colors), Some(AnimValue::auto_keyword()));
+        assert_eq!(thickness.read(&style, &colors), Some(AnimValue::Keyword(Some("from-font".into()))));
+        assert_eq!(offset.initial(None, &colors), Some(AnimValue::auto_keyword()));
+        assert_eq!(thickness.initial(None, &colors), Some(AnimValue::auto_keyword()));
+        // A pair that cannot blend flips, and a CSS transition runs it without allow-discrete.
+        assert!(!offset.is_discrete() && offset.flips_without_allow_discrete());
+        assert!(!AnimProp::PaddingTop.flips_without_allow_discrete());
+        for prop in [offset, thickness, AnimProp::FontVariationSettings] {
+            assert!(Scope::InlineBox.animates(prop), "{prop:?}");
+        }
     }
 
     #[test]

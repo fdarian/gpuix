@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Oracle for the motion tests of `textUnderlineOffset` and `textDecorationThickness`: the computed value of each
+  property at fractions of a paused 1s linear animation (`kind: "waapi"`, from keyframes) or CSS transition
+  (`kind: "transition"`, a style change from `base` to `after`), as headless Chrome reports it. `animations` counts
+  the animations a transition started (0: Chrome jumped). Regenerate with
+
+    sh text-decoration-motion-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/24px Helvetica}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const cases = [];
+const waapi = (prop, from, to, extra = {}) => cases.push({ name: `${prop} ${from} to ${to}${extra.label ? ` ${extra.label}` : ''}`, kind: 'waapi', prop, keyframes: [{ [prop]: from }, { [prop]: to }], style: extra.style ?? '' });
+const unset = (prop, to, extra = {}) => cases.push({ name: `${prop} unset to ${to}${extra.label ? ` ${extra.label}` : ''}`, kind: 'waapi', prop, keyframes: { [prop]: to }, style: extra.style ?? '' });
+const transition = (prop, from, to, extra = {}) => cases.push({ name: `${prop} transition ${from} to ${to}${extra.label ? ` ${extra.label}` : ''}`, kind: 'transition', prop, base: `${prop === 'textUnderlineOffset' ? 'text-underline-offset' : 'text-decoration-thickness'}:${from}`, after: { [prop]: to }, transition: `${prop === 'textUnderlineOffset' ? 'text-underline-offset' : 'text-decoration-thickness'} 1s linear${extra.discrete ? ' allow-discrete' : ''}`, style: extra.style ?? '' });
+for (const prop of ['textUnderlineOffset', 'textDecorationThickness']) {
+  for (const [from, to] of [['2px', '10px'], ['auto', '10px'], ['10px', 'auto'], ['0.5em', '10px'], ['10%', '20%'], ['2px', '10%'], ['2px', '1.5em'], ['2px', 'calc(4px + 1em)'], ['0px', '3px']]) waapi(prop, from, to);
+  waapi(prop, '2px', '10px', { label: 'font 32px', style: 'font-size:32px' });
+  waapi(prop, '0.5em', '2em', { label: 'font 32px', style: 'font-size:32px' });
+  unset(prop, '10px');
+  unset(prop, '4px', { label: 'inherited 12px' , style: '' });
+  transition(prop, '2px', '10px');
+  transition(prop, 'auto', '10px');
+  transition(prop, 'auto', '10px', { discrete: true });
+  transition(prop, '2px', 'auto', { discrete: true });
+}
+for (const [from, to] of [['from-font', '10px'], ['10px', 'from-font'], ['auto', 'from-font'], ['from-font', '2px']]) waapi('textDecorationThickness', from, to);
+waapi('textDecorationThickness', '-4px', '10px', { label: 'negative' });
+waapi('textUnderlineOffset', '-4px', '10px', { label: 'negative' });
+
+const times = [0, 0.25, 0.5, 0.75, 1];
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+const kebab = (prop) => prop.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+cases.forEach((spec, i) => {
+  const parent = document.createElement('div');
+  scene.appendChild(parent);
+  if (spec.name.includes('inherited 12px')) parent.style.cssText = 'text-underline-offset:12px;text-decoration-thickness:12px';
+  const child = document.createElement('span');
+  child.style.cssText = `text-decoration:underline;${spec.style};${spec.base ?? ''}`;
+  child.textContent = 'xxxx';
+  parent.appendChild(child);
+  let animations;
+  try {
+    if (spec.kind === 'waapi') {
+      child.animate(spec.keyframes, { duration: 1000, easing: 'linear', fill: 'both' });
+    } else {
+      child.style.transition = spec.transition;
+      getComputedStyle(child).textUnderlineOffset;
+      Object.assign(child.style, spec.after);
+    }
+    animations = child.getAnimations();
+  } catch (error) {
+    out.cases[spec.name] = { error: String(error) };
+    return;
+  }
+  const samples = {};
+  for (const time of times) {
+    for (const animation of animations) { animation.pause(); animation.currentTime = time * 1000; }
+    samples[time] = getComputedStyle(child)[spec.prop];
+  }
+  out.cases[spec.name] = { kind: spec.kind, prop: spec.prop, keyframes: spec.keyframes, base: spec.base, after: spec.after, style: spec.style, animations: animations.length, samples };
+});
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

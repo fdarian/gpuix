@@ -194,6 +194,8 @@ export type MotionStyleTargets = Pick<
   | "outlineColor"
   | "outlineOffset"
   | "textDecorationColor"
+  | "textUnderlineOffset"
+  | "textDecorationThickness"
   | "fontSize"
   | "fontWeight"
   | "fontVariationSettings"

@@ -13,6 +13,9 @@ use super::syntax::split_whitespace;
 use super::text_underline_offset::TextUnderlineOffset;
 use crate::style::StyleDesc;
 
+/// Less than any device pixel, so that a line of a length of zero still paints one.
+const MIN_THICKNESS: f64 = 1e-3;
+
 /// `text-decoration-thickness`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum Thickness {
@@ -58,6 +61,7 @@ impl TextDecoration {
             color: Some(color),
             style: self.style,
             offset: self.underline_offset.resolve(lengths),
+            decorator: None,
         }
     }
 
@@ -111,9 +115,13 @@ impl Thickness {
     fn fallback(self, lengths: &LengthContext) -> gpui::Pixels {
         match self {
             Thickness::Auto | Thickness::FromFont => gpui::px(lengths.font_size as f32 / 10.0),
-            Thickness::Length(length) => {
-                gpui::px(lengths.resolve(&length, 0.0).clamp(0.0, MAX_LENGTH) as f32)
-            }
+            // Chrome fills a device pixel for a thickness of zero too, which gpui does for
+            // any thickness that is not exactly none.
+            Thickness::Length(length) => gpui::px(
+                lengths
+                    .resolve(&length, 0.0)
+                    .clamp(MIN_THICKNESS, MAX_LENGTH) as f32,
+            ),
         }
     }
 }
@@ -264,7 +272,7 @@ fn parse_style(value: &str) -> Option<TextDecorationStyle> {
 /// `auto`, `from-font`, or a non-negative length or percentage. A percentage is
 /// of `1em` of the declaring element (CSS Text Decoration 4), so it is folded
 /// into the `em` term here.
-fn parse_thickness(token: &str) -> Option<Thickness> {
+pub(crate) fn parse_thickness(token: &str) -> Option<Thickness> {
     let token = token.trim();
     match token.to_ascii_lowercase().as_str() {
         "auto" => Some(Thickness::Auto),
@@ -413,9 +421,11 @@ mod tests {
     }
 
     #[test]
-    fn a_thickness_that_calc_makes_negative_is_zero() {
+    fn a_thickness_that_calc_makes_negative_is_a_device_pixel_at_most() {
+        // Chrome fills one device pixel for a length of zero, and gpui does for anything but none.
         let lengths = LengthContext::for_tests();
-        assert_eq!(underline_px("underline calc(1em - 30px)", &lengths), gpui::px(0.0));
+        assert_eq!(underline_px("underline calc(1em - 30px)", &lengths), gpui::px(MIN_THICKNESS as f32));
+        assert_eq!(underline_px("underline 0px", &lengths), gpui::px(MIN_THICKNESS as f32));
     }
 
     #[test]

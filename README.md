@@ -1486,6 +1486,8 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `opacity` | `0` through `1` |
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
 | `fontVariationSettings` | `'"wght" 650, "wdth" 90'`, or `normal` |
+| `textUnderlineOffset` | `auto`, or any length or percentage, may be negative |
+| `textDecorationThickness` | `auto`, `from-font`, or any length or percentage, zero or greater |
 | `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
 
@@ -1617,7 +1619,16 @@ and flips at the halfway point. `animate`, keyframes and `@keyframes` flip with 
 opt-in; a CSS transition runs the flip only with `allow-discrete`
 (`transition: 'font-variation-settings 1s allow-discrete'`). A keyframe track of three or more
 values flips as a whole when any two of its values differ. An unset start is the
-inherited value. A `<span>` does not animate it.
+inherited value. A `<span>` animates it too, by `motion.span`, a CSS transition or a CSS animation: the
+paragraph is laid out again each frame.
+
+**`textUnderlineOffset` and `textDecorationThickness`** blend between two lengths (a percentage is of `1em`
+and blends with px as a `calc()`), on an element and on a `<span>`. `auto` and `from-font` are no length, so a
+pair that has one flips at the halfway point, and a CSS transition runs that flip without `allow-discrete`, as
+Chrome's does for these two. An unset thickness starts from `auto`. An unset offset starts from `auto` too, where
+Chrome starts from the offset it inherits. The painted thickness is a whole number of device pixels
+(see [Inline text](#inline-text)), so an animated one steps from line to line. A negative `textDecorationThickness`
+is an error.
 
 The **transition** uses seconds, like Motion for React:
 
@@ -1804,7 +1815,7 @@ frame for a small `<svg>` and on a background thread for a large one.
 
 ### Animate an inline span
 
-`motion.span` animates the colours and the opacity of an inline `<span>` inside
+`motion.span` animates the colours, the opacity, the underline and the font variations of an inline `<span>` inside
 text, with the `initial`, `animate`, `exit`, `transition` and `variants` of
 Framer's `motion.span`. It is available in `@gpuix/react` and `@gpuix/solid`, and
 the type of its props is `MotionSpanProps`.
@@ -1823,9 +1834,11 @@ the type of its props is `MotionSpanProps`.
 ```
 
 A span is text that its paragraph paints, not a box of its own, so it animates
-only what the paragraph can repaint without laying out again: `opacity`, `color`,
-`backgroundColor`, `textDecorationColor`, `outlineColor`, `borderColor` and the
-four `border*Color` sides. They blend as on a `motion.div`, and run natively
+only what the paragraph reads from its style when it builds the text: `opacity`, `color`,
+`backgroundColor`, `textDecorationColor`, `outlineColor`, `borderColor`, the
+four `border*Color` sides, `textUnderlineOffset`, `textDecorationThickness` and
+`fontVariationSettings` (the paragraph is laid out again each frame it moves, as the
+width of the text depends on the axes). They blend as on a `motion.div`, and run natively
 without a render per frame, in the order CSS uses (the `style`, then CSS
 transitions, then `motion`, then CSS animations). `initial` is on the first frame,
 so nothing flashes the `animate` value first. A key of any other property
@@ -2897,7 +2910,9 @@ thicknesses long with a gap of two, two long with a gap of one from a thickness
 of 3px) but do not stretch to end on a mark, so a line that is not a whole
 number of marks ends on a partial one. `auto` and `from-font` stay fractional; a
 solid or double line floors them to a device pixel (at least one) when it paints,
-and a dotted or dashed one rounds them.
+and a dotted or dashed one rounds them. A length is rounded to the nearest device
+pixel, a half up, and is at least one, `0px` included, as in Chrome: `1.5px` is two
+rows on a display of scale 1 and three on one of scale 2, and `0.3px` is one.
 
 `textUnderlineOffset` is inherited and sets how far below the alphabetic baseline
 the top edge of an underline sits. `auto` (the default) leaves a gap of half the
@@ -2907,8 +2922,17 @@ a negative one above it. A percentage is of `1em`. The box that declares the
 underline decides: its own value or the one it inherits, and a descendant's offset
 does not move the line of an ancestor. `em` resolves where the value is set and
 descendants inherit the pixels; a percentage is of the font size of the box that
-draws the line. It applies to underlines only, is not animatable, and a
-`focusVisible` style that declares an underline takes the inherited offset.
+draws the line. It applies to underlines only, it animates (see
+[Targets and timing](#targets-and-timing)), and a `focusVisible` style that declares an
+underline takes the inherited offset.
+
+An underline is drawn at the baseline of the box that declared it, and the offset is
+measured from there: text inside it that is raised or lowered with `verticalAlign`
+(`sub`, `super`, a length, `text-top`, ...) or set in another size stays on the one
+line, as in Chrome, and a box that is raised itself carries its underline up with
+it. The underline of the paragraph's own container is on the baseline of the row.
+Chrome interrupts an underline where it crosses the ink of a glyph
+(`text-decoration-skip-ink: auto`); GPUIX draws it whole.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` with a `tabIndex` is a block too: it is an element of its own
@@ -3363,8 +3387,10 @@ Deviations, where GPUI's text layout cannot build the DOM model:
 either order (`"balance"`, `"nowrap"`, `"nowrap pretty"`). What it leaves out is the
 longhand's initial value, so `"balance"` also turns wrapping on. Of the shorthand and a
 longhand on the same element the one written later wins, and in a state style the
-shorthand resets the base's `textWrapMode` and `textWrapStyle`. A value CSS does not have throws. Only a container sets
-them: a `<span>` inside a paragraph uses the paragraph's.
+shorthand resets the base's `textWrapMode` and `textWrapStyle`. A value CSS does not have throws.
+The mode is inherited by the text of a `<span>` and can be set on one; the style is read from the
+container of the paragraph alone, as Chrome does, so a `textWrapStyle` on a `<span>` does nothing (it is
+inherited by a block inside it).
 
 ```tsx
 <text style={{ width: 320, textWrap: 'balance' }}>{title}</text>
@@ -3387,6 +3413,14 @@ them: a `<span>` inside a paragraph uses the paragraph's.
   part of `whiteSpace` when both are declared on the same element. It leaves what
   `whiteSpace` does to spaces and newlines alone, so `whiteSpace: 'pre'` with
   `textWrapMode: 'wrap'` is `pre-wrap`.
+- **On a `<span>`** the mode (or the wrapping part of its `whiteSpace`, which `textWrapMode` and
+  `textWrap` on the same span win over) decides where a line may break in its text, and a nested
+  span inherits it. A line does not break inside a `nowrap` span, so a span that does not fit moves to the
+  next line whole, and a long word in it overflows; a `wrap` span in a `nowrap` block breaks
+  normally, and the block wraps for it. Where a line may break at the edge of a span follows
+  Chrome: a space belongs to the box it is in, and the word before it lets the line break after it
+  too, unless a `nowrap` box starts at the space; between two letters (`wordBreak: 'break-all'`,
+  CJK) the box around both lets it, or either side.
 
 #### Truncating text
 
@@ -6916,7 +6950,7 @@ way, overflow included.
 
 `fontVariantNumeric` (`"tabular-nums"`, `"proportional-nums"`, `"lining-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"`, `"stacked-fractions"`, `"ordinal"`, `"normal"`, one keyword per group, combined with spaces) and `fontFeatureSettings` (`'"tnum" 1, "liga" 0'`) turn OpenType features on or off. Both inherit, and a descendant that sets one keeps the other. When both name a feature, `fontFeatureSettings` wins. The font needs the feature, and neither prop is available inside `hover`, `active` or `focusVisible`.
 
-`fontVariationSettings` (`'"wght" 650, "wdth" 90'`, or `normal`) sets the axes of a variable font, on macOS. It inherits, works on a `<span>` (per run) and on inputs, and is not available inside state styles. A tag is four characters and its value a number, clamped to the font's range for that axis; an axis the font does not have is ignored, and a tag named twice takes its last value. `fontWeight` already sets `wght` on a variable font, to any weight and not only the named ones (`600` is 600, not the 590 semibold instance), and a `wght` in `fontVariationSettings` wins over it. A value CSS does not have throws, where `fontFeatureSettings` ignores it. It animates: see [Targets and timing](#targets-and-timing).
+`fontVariationSettings` (`'"wght" 650, "wdth" 90'`, or `normal`) sets the axes of a variable font, on macOS. It inherits, works on a `<span>` (per run) and on inputs, and is not available inside state styles. A tag is four characters and its value a number, clamped to the font's range for that axis; an axis the font does not have is ignored, and a tag named twice takes its last value. `fontWeight` already sets `wght` on a variable font, to any weight and not only the named ones (`600` is 600, not the 590 semibold instance), and a `wght` in `fontVariationSettings` wins over it. A value CSS does not have is ignored, as an invalid declaration is, and `fontFeatureSettings` and `fontVariantNumeric` are: the element keeps what it inherits. It animates, on a `<span>` too: see [Targets and timing](#targets-and-timing).
 
 `fontFamily` resolves installed fonts. To use your own, pass the files in the `fonts` window option or call [`registerFont()`](#custom-fonts). On macOS a variable font follows `fontWeight` and `fontVariationSettings` along its axes; elsewhere it renders its default instance, so use one static file per weight. The family name must match the font's family name exactly.
 

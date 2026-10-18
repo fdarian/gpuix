@@ -1,0 +1,110 @@
+<!doctype html>
+<!--
+  Oracle for text-wrap-spans.test.tsx: where headless Chrome breaks a block of text whose spans declare
+  `text-wrap-mode` / `white-space` / `text-wrap-style`. Each case is a block `columns` wide (Menlo 16px, one
+  advance per character) with `html` inside; `rows` are the lines of the text without the spaces between them
+  and `gaps[i]` says whether there was a space between row i and row i + 1. Regenerate with
+
+    sh text-wrap-spans-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;font:16px/20px Menlo}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const NW = 'text-wrap-mode:nowrap';
+const WR = 'text-wrap-mode:wrap';
+// [name, width in columns, block style, inner html]
+const cases = [
+  ['block wraps', 20.5, '', 'aaaa bbbb cccc dddd eeee ffff'],
+  ['nowrap span in the middle', 20.5, '', `aaaa bbbb <span style="${NW}">cccc dddd eeee</span> ffff`],
+  ['nowrap span of words that fit a line', 20.5, '', `aaaa bbbb cccc <span style="${NW}">dddd eeee</span> ffff`],
+  ['nowrap span at the start', 20.5, '', `<span style="${NW}">aaaa bbbb cccc dddd eeee</span> ffff gggg`],
+  ['nowrap span at the end', 20.5, '', `aaaa bbbb cccc <span style="${NW}">dddd eeee ffff gggg</span>`],
+  ['nowrap span wider than the line', 20.5, '', `aaaa <span style="${NW}">bbbb cccc dddd eeee ffff gggg</span> hhhh`],
+  ['nowrap span with a leading space', 20.5, '', `aaaa bbbb cccc<span style="${NW}"> dddd eeee</span> ffff`],
+  ['nowrap span with a trailing space', 20.5, '', `aaaa bbbb <span style="${NW}">cccc dddd </span>eeee ffff`],
+  ['nowrap span glued to words', 20.5, '', `aaaa bbbb<span style="${NW}">cccc dddd</span>eeee ffff`],
+  ['nowrap span between spaces', 20.5, '', `aaaa bbbb <span style="${NW}">cccc</span> dddd eeee ffff`],
+  ['nowrap span then wrap span', 20.5, '', `aaaa bbbb <span style="${NW}">cccc dddd <span style="${WR}">eeee ffff</span> gggg</span> hhhh`],
+  ['nested span inherits nowrap', 20.5, '', `aaaa bbbb <span style="${NW}">cccc <span>dddd eeee</span> ffff</span> gggg`],
+  ['nested span inherits nowrap two deep', 20.5, '', `aaaa bbbb <span style="${NW}"><span><span>cccc dddd eeee</span></span></span> ffff`],
+  ['white-space nowrap span', 20.5, '', `aaaa bbbb <span style="white-space:nowrap">cccc dddd eeee</span> ffff`],
+  ['white-space pre span', 20.5, '', `aaaa bbbb <span style="white-space:pre">cccc dddd eeee</span> ffff`],
+  ['white-space pre-wrap span in nowrap block', 20.5, 'white-space:nowrap', `aaaa bbbb <span style="white-space:pre-wrap">cccc dddd eeee ffff</span> gggg`],
+  ['text-wrap-mode wrap beats white-space nowrap on a span', 20.5, '', `aaaa bbbb <span style="white-space:nowrap;${WR}">cccc dddd eeee</span> ffff`],
+  ['nowrap block', 20.5, NW, 'aaaa bbbb cccc dddd eeee ffff'],
+  ['wrap span in a nowrap block', 20.5, NW, `aaaa bbbb <span style="${WR}">cccc dddd eeee ffff</span> gggg`],
+  ['wrap span in a nowrap block, words that fit', 20.5, NW, `aaaa bbbb cccc <span style="${WR}">dddd eeee</span> ffff`],
+  ['wrap span at the start of a nowrap block', 20.5, NW, `<span style="${WR}">aaaa bbbb cccc dddd eeee</span> ffff gggg`],
+  ['wrap span with a leading space in a nowrap block', 20.5, NW, `aaaa bbbb cccc<span style="${WR}"> dddd eeee</span> ffff`],
+  ['wrap span with a trailing space in a nowrap block', 20.5, NW, `aaaa bbbb <span style="${WR}">cccc dddd </span>eeee ffff`],
+  ['nested span inherits wrap in a nowrap block', 20.5, NW, `aaaa bbbb <span style="${WR}">cccc <span>dddd eeee</span> ffff</span> gggg`],
+  ['white-space normal span in a nowrap block', 20.5, NW, `aaaa bbbb <span style="white-space:normal">cccc dddd eeee ffff</span> gggg`],
+  ['white-space pre-line span in a nowrap block', 20.5, NW, `aaaa bbbb <span style="white-space:pre-line">cccc dddd eeee ffff</span> gggg`],
+  ['block pre with a wrap span', 20.5, 'white-space:pre', `aaaa bbbb <span style="${WR}">cccc dddd eeee ffff</span> gggg`],
+  ['a plain span around the space after a wrap span in a nowrap block', 10.5, NW, `aaaa <span style="${WR}">bbbbbbbbbbbbbbbbbbbb</span><span> </span>cccc`],
+  ['a plain span around the space after a wrap span in a wrapping block', 10.5, '', `aaaa <span style="${WR}">bbbbbbbbbbbbbbbbbbbb</span><span> </span>cccc`],
+  ['long word in a nowrap span', 10.5, '', `aaaa <span style="${NW}">bbbbbbbbbbbbbbbbbbbb</span> cccc`],
+  ['long word in a wrap span of a nowrap block', 10.5, NW, `aaaa <span style="${WR}">bbbbbbbbbbbbbbbbbbbb</span> cccc`],
+  ['overflow-wrap anywhere in a nowrap span', 10.5, 'overflow-wrap:anywhere', `aaaa <span style="${NW}">bbbbbbbbbbbbbbbbbbbb</span> cccc`],
+  ['word-break break-all in a nowrap span', 10.5, 'word-break:break-all', `aaaa <span style="${NW}">bbbbbbbbbbbbbbbbbbbb</span> cccc`],
+  ['text-wrap shorthand nowrap on a span', 20.5, '', `aaaa bbbb <span style="text-wrap:nowrap">cccc dddd eeee</span> ffff`],
+  ['text-wrap shorthand balance on a span resets mode', 20.5, NW, `aaaa bbbb <span style="text-wrap:balance">cccc dddd eeee ffff</span> gggg`],
+  ['inline-block wrap inside nowrap block', 20.5, NW, `aaaa bbbb <span style="display:inline-block;${WR}">cccc dddd eeee ffff</span> gggg`],
+  // text-wrap-style
+  ['block auto', 20.5, '', 'aaaa bbbb cccc dddd eeeeeeee'],
+  ['block balance', 20.5, 'text-wrap-style:balance', 'aaaa bbbb cccc dddd eeeeeeee'],
+  ['balance on a span in an auto block', 20.5, '', `aaaa bbbb cccc <span style="text-wrap-style:balance">dddd eeeeeeee</span>`],
+  ['balance on a span wrapping all the text', 20.5, '', `<span style="text-wrap-style:balance">aaaa bbbb cccc dddd eeeeeeee</span>`],
+  ['auto on a span in a balance block', 20.5, 'text-wrap-style:balance', `<span style="text-wrap-style:auto">aaaa bbbb cccc dddd eeeeeeee</span>`],
+  ['balance inherited from the block through spans', 20.5, 'text-wrap-style:balance', `<span><span>aaaa bbbb cccc dddd eeeeeeee</span></span>`],
+  ['pretty block', 20.5, 'text-wrap-style:pretty', 'aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjjjjjj'],
+  ['pretty on a span', 20.5, '', `<span style="text-wrap-style:pretty">aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjjjjjj</span>`],
+  ['balance block with a nowrap span', 20.5, 'text-wrap-style:balance', `aaaa bbbb <span style="${NW}">cccc dddd</span> eeeeeeee`],
+  ['balance block with an inline-block', 20.5, 'text-wrap-style:balance', `aaaa bbbb <span style="display:inline-block;text-wrap-style:auto">cccc dddd</span> eeeeeeee`],
+];
+
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+for (const [name, columns, blockStyle, html] of cases) {
+  const block = document.createElement('div');
+  block.style.cssText = `width:calc(${columns} * 9.6px);${blockStyle}`;
+  block.innerHTML = html;
+  scene.appendChild(block);
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  // The line of every character that is not a space, in order; the spaces between two lines are `gaps`.
+  const chars = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    for (let i = 0; i < node.length; i++) {
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const rect = range.getClientRects()[0];
+      chars.push({ c: node.data[i], top: rect ? Math.round(rect.top * 100) / 100 : null });
+    }
+  }
+  const rows = [];
+  const gaps = [];
+  let current = null;
+  let pendingSpace = false;
+  for (const ch of chars) {
+    if (ch.c === ' ') { pendingSpace = true; continue; }
+    if (current === null || ch.top !== current.top) {
+      if (current !== null) gaps.push(pendingSpace);
+      current = { top: ch.top, text: '' };
+      rows.push(current);
+    } else if (pendingSpace) current.text += ' ';
+    current.text += ch.c;
+    pendingSpace = false;
+  }
+  const height = block.getBoundingClientRect().height;
+  const lines = rows.map((row) => row.text).join('|');
+  out.cases[name] = { columns, blockStyle, html, lines, rows: rows.map((row) => row.text), gaps, height };
+}
+const holder = document.createElement('div');
+holder.id = 'out';
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

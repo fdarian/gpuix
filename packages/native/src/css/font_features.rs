@@ -81,6 +81,40 @@ pub(crate) fn parse_feature_settings(value: &str) -> Option<Features> {
     Some(features)
 }
 
+/// What a style does with `fontVariantNumeric` and `fontFeatureSettings`: a value CSS does not
+/// have is an invalid declaration, which is dropped, so what the element inherits, or the style
+/// beneath it declares, stays.
+pub(crate) fn deserialize_ignoring_invalid<'de, D, T>(
+    deserializer: D,
+    valid: impl Fn(&str) -> Option<T>,
+) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Declared {
+        Text(String),
+        Invalid(serde::de::IgnoredAny),
+    }
+    Ok(match <Option<Declared> as serde::Deserialize>::deserialize(deserializer)? {
+        Some(Declared::Text(text)) if valid(&text).is_some() => Some(text),
+        _ => None,
+    })
+}
+
+pub(crate) fn deserialize_variant_numeric<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    deserialize_ignoring_invalid(deserializer, parse_variant_numeric)
+}
+
+pub(crate) fn deserialize_feature_settings<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    deserialize_ignoring_invalid(deserializer, parse_feature_settings)
+}
+
 /// The quoted tag at the start of `item` and what follows it.
 pub(crate) fn parse_tag(item: &str) -> Option<(&str, &str)> {
     let item = item.trim();

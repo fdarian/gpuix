@@ -115,6 +115,44 @@ describeNative("fontFeatureSettings", () => {
   })
 })
 
+describeNative("an invalid font feature declaration is ignored, not reset", () => {
+  const TABULAR = { fontFeatureSettings: '"tnum" 1' }
+
+  it("leaves the settings the element inherits", () => {
+    const inherited = capture("invalid-settings", digits({ fontFeatureSettings: "tnum 1" }, TABULAR))
+    expect(inherited.width("ones")).toBeCloseTo(inherited.width("zeros"), 1)
+    expectScreenshotsEqual(inherited.file, capture("invalid-settings-ref", digits({}, TABULAR)).file)
+  })
+
+  it("leaves the numeric variants the element inherits", () => {
+    const tabular = { fontVariantNumeric: "tabular-nums" }
+    const inherited = capture("invalid-numeric", digits({ fontVariantNumeric: "tabular-nums proportional-nums" }, tabular))
+    expect(inherited.width("ones")).toBeCloseTo(inherited.width("zeros"), 1)
+  })
+
+  it("leaves the value the base style declares, in a state style", () => {
+    const base = capture("invalid-state-ref", digits(TABULAR)).file
+    expectScreenshotsEqual(
+      capture("invalid-state", digits({ ...TABULAR, hover: { fontFeatureSettings: "tnum 1" } })).file,
+      base
+    )
+  })
+
+  it("leaves the settings the box around a span declares", () => {
+    const tree = (inner: string) => (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", fontSize: 32 }}>
+        <text testId="ones">
+          <span style={TABULAR}>
+            11111<span style={{ fontFeatureSettings: inner }}>11111</span>
+          </span>
+        </text>
+        <text testId="zeros">0000000000</text>
+      </div>
+    )
+    expect(capture("invalid-span", tree("tnum 1")).width("ones")).toBeCloseTo(capture("invalid-span-ref", tree('"tnum" 1')).width("ones"), 1)
+  })
+})
+
 describeNative("font features on form fields", () => {
   function field(
     name: string,

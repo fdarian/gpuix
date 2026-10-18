@@ -47,7 +47,7 @@ import { MotionConfigContext } from "./motion-config.js"
 export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionProps>, MotionLayoutProps {}
 
 /**
- * Props of a `motion.span`: an inline span animates its colours (`animate`,
+ * Props of a `motion.span`: an inline span animates its colours, underline and font variations (`animate`,
  * `initial`, `exit`, or the `variants` they name) and takes the props of a
  * `<span>`. It has no box to measure or drag, so `layout`, `layoutId`, `drag*`
  * and `while*` are errors.

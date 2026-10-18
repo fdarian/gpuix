@@ -81,14 +81,20 @@ impl RunStyle {
         }
     }
 
+    /// `decorator` is the box that declared the decoration.
     fn add_decoration(
         &mut self,
         decoration: &text_decoration::TextDecoration,
         color: Hsla,
         lengths: &LengthContext,
+        decorator: u64,
     ) {
         if decoration.underline {
-            if let Some(outer) = self.underline.replace(decoration.underline_style(color, lengths)) {
+            let underline = UnderlineStyle {
+                decorator: Some(decorator),
+                ..decoration.underline_style(color, lengths)
+            };
+            if let Some(outer) = self.underline.replace(underline) {
                 self.extra_decorations.push(ExtraDecoration::Underline(outer));
             }
         }
@@ -135,6 +141,15 @@ pub struct BoxStyle {
     /// boxes around it declared: the style of its own text.
     pub style: RunStyle,
     pub align: ResolvedVerticalAlign,
+    /// Whether a line may break in the box's text, as the box or the boxes around it
+    /// say; `None` when none of them does and the container's mode stands.
+    pub wraps: Option<bool>,
+    /// Whether the box itself says so. Such a box is listed to the line layout whatever
+    /// its alignment is, because a box that does not wrap takes the break before its
+    /// first space away from the word before it, whether it changes the mode or not.
+    pub declares_wrap: bool,
+    /// Whether the box declares an underline, which is drawn at the baseline of the box.
+    pub decorates: bool,
 }
 
 /// The runs of `paragraph`, covering its text exactly. Empty when no box
@@ -201,10 +216,12 @@ pub fn styles(
         let mut underline_offset = underline_offset;
         let mut opacity = 1.0;
         let mut parent = None;
+        let mut wraps = None;
         for id in &piece.boxes {
+            let mut decorates = false;
             let Some(base) = motion.declared_by(tree, *id) else {
                 // A box with no style inherits everything, and is still a box.
-                note_box(&mut boxes, paragraph, *id, parent, &style, ResolvedVerticalAlign::Baseline);
+                note_box(&mut boxes, paragraph, *id, parent, &style, ResolvedVerticalAlign::Baseline, wraps, (false, false));
                 parent = Some(*id);
                 continue;
             };
@@ -253,19 +270,23 @@ pub fn styles(
             if let Some(settings) = &declared.font_variation_settings {
                 style.variations = Some(settings.variations());
             }
+            // Inherited by what is inside whether the box has a box or not.
+            let declared_wraps = crate::css::text_wrap::declared_wraps(declared);
+            wraps = declared_wraps.or(wraps);
             // CSS draws a decoration over the whole box and a descendant cannot
             // take it off, so `none` on a box adds nothing and removes nothing.
             if has_box {
                 if let Some(mut decoration) = text_decoration::of(declared) {
                     decoration.underline_offset = underline_offset;
                     let color = fade(decoration.resolve_color(&colors), opacity);
-                    style.add_decoration(&decoration, color, &lengths);
+                    style.add_decoration(&decoration, color, &lengths, *id);
+                    decorates = decoration.underline;
                 }
                 let align = declared
                     .vertical_align
                     .as_ref()
                     .map_or(ResolvedVerticalAlign::Baseline, |align| align.resolve(&lengths));
-                note_box(&mut boxes, paragraph, *id, parent, &style, align);
+                note_box(&mut boxes, paragraph, *id, parent, &style, align, wraps, (declared_wraps.is_some(), decorates));
                 parent = Some(*id);
             }
         }
@@ -288,7 +309,9 @@ pub fn styles(
     // A box that only changes its alignment still needs the runs: the line layout
     // splits them where the box starts and ends.
     if runs.iter().all(RunStyle::inherits_everything)
-        && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline)
+        && boxes
+            .iter()
+            .all(|style| style.align == ResolvedVerticalAlign::Baseline && !style.declares_wrap)
     {
         runs.clear();
     }
@@ -303,6 +326,8 @@ fn note_box(
     parent: Option<u64>,
     style: &RunStyle,
     align: ResolvedVerticalAlign,
+    wraps: Option<bool>,
+    (declares_wrap, decorates): (bool, bool),
 ) {
     if boxes.iter().any(|known| known.id == id) {
         return;
@@ -314,6 +339,9 @@ fn note_box(
             parent,
             style: RunStyle { len: 0, ..style.clone() },
             align,
+            wraps,
+            declares_wrap,
+            decorates,
         });
     }
 }
@@ -338,8 +366,21 @@ pub fn listed_boxes(
             .filter_map(|id| by_id.get(id))
             .any(|style| style.style.changes_strut())
     };
+    // Where some box wraps, every box is listed: the ones that do not wrap are the line
+    // layout's to tell from the text around them, and a plain box is one of them where
+    // the text does not wrap.
+    let mixed_wrap = boxes.iter().any(|style| style.wraps == Some(true));
+    // An underline is drawn at the baseline of its box, which only differs from that of its
+    // row where a box is aligned to something else.
+    let aligned = boxes.iter().any(|style| style.align != ResolvedVerticalAlign::Baseline);
+    let needs_listing = |style: &BoxStyle| {
+        mixed_wrap
+            || style.align != ResolvedVerticalAlign::Baseline
+            || style.declares_wrap
+            || (aligned && style.decorates)
+    };
     if shifted.is_empty()
-        && boxes.iter().all(|style| style.align == ResolvedVerticalAlign::Baseline)
+        && !boxes.iter().any(needs_listing)
         && !paragraph.atomics().map(|(_, piece)| piece).any(|piece| struts_around(&piece))
     {
         return Vec::new();
@@ -353,7 +394,7 @@ pub fn listed_boxes(
             id = by_id.get(&current).and_then(|style| style.parent);
         }
     };
-    for style in boxes.iter().filter(|style| style.align != ResolvedVerticalAlign::Baseline) {
+    for style in boxes.iter().filter(|style| needs_listing(style)) {
         need_chain(Some(style.id));
     }
     for (atomic, piece) in paragraph.atomics() {
@@ -589,6 +630,8 @@ impl InlineText {
                         .and_then(|parent| self.boxes.iter().position(|listed| listed.id == parent)),
                     align: vertical_align(style.align),
                     line_height: run.line_height,
+                    wraps: style.wraps,
+                    key: Some(style.id),
                     content: InlineContent::Text {
                         font: run.font,
                         font_size: run.font_size.unwrap_or(base_font_size),
@@ -1554,6 +1597,48 @@ mod tests {
         assert_eq!(ids(serde_json::json!({"fontSize": 30})), vec![3]);
         assert_eq!(ids(serde_json::json!({"fontWeight": 700})), vec![3]);
         assert_eq!(ids(serde_json::json!({"color": "#ff0000"})), Vec::<u64>::new(), "its strut is the container's");
+    }
+
+    #[test]
+    fn a_box_says_how_its_text_wraps_and_the_boxes_in_it_inherit_it() {
+        let tree = tree_with(&[
+            (3, serde_json::json!({"textWrapMode": "nowrap"})),
+            (5, serde_json::json!({"whiteSpace": "pre-wrap"})),
+        ]);
+        let styles = styles_of(&tree);
+        let wraps = |id: u64| styles.boxes.iter().find(|style| style.id == id).map(|style| style.wraps);
+        assert_eq!(wraps(3), Some(Some(false)));
+        assert_eq!(wraps(5), Some(Some(true)), "the wrap component of white-space, in a box that does not wrap");
+        let inherited = tree_with(&[(3, serde_json::json!({"textWrap": "nowrap"}))]);
+        let boxes = styles_of(&inherited).boxes;
+        assert_eq!(boxes.iter().map(|style| style.wraps).collect::<Vec<_>>(), vec![Some(false), Some(false)]);
+        assert_eq!(
+            boxes.iter().map(|style| style.declares_wrap).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+        let plain = styles_of(&tree_with(&[]));
+        assert!(plain.boxes.iter().all(|style| style.wraps.is_none() && !style.declares_wrap));
+    }
+
+    #[test]
+    fn a_box_that_says_how_it_wraps_is_listed_and_where_one_wraps_every_box_is() {
+        let ids = |styles: &[(u64, serde_json::Value)]| {
+            let tree = tree_with(styles);
+            let paragraph = match plan_children(&tree, &tree.elements[&1]).remove(0) {
+                Child::Paragraph(paragraph) => paragraph,
+                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) => panic!("a paragraph"),
+            };
+            let styles = styles_of(&tree);
+            listed_boxes(&paragraph, &styles.boxes, &HashSet::new())
+                .iter()
+                .map(|style| style.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&[]), Vec::<u64>::new());
+        assert_eq!(ids(&[(5, serde_json::json!({"textWrapMode": "nowrap"}))]), vec![3, 5]);
+        // The wrap style is the container's alone.
+        assert_eq!(ids(&[(5, serde_json::json!({"textWrapStyle": "balance"}))]), Vec::<u64>::new());
+        assert_eq!(ids(&[(3, serde_json::json!({"textWrapMode": "wrap"}))]), vec![3, 5]);
     }
 
     #[test]
