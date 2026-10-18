@@ -1452,11 +1452,12 @@ element, read back from the previous frame. The measurement only fixes the
 numbers: the clock starts at the style change, as for any other animation, so a
 measurement that arrives frames later starts the animation that far in.
 
-An unset border width (`borderTopWidth` and the other three sides) is what CSS
-computes it to: `0` while the side's `borderStyle` is `none` or `hidden` (or unset),
-and otherwise the width a `border` shorthand gives, or `medium` (`3px`). So
-`animate={{ borderTopWidth: 4 }}` under `borderStyle: "solid"` leaves from `3px`.
-`outlineWidth` follows `outlineStyle` (and the `outline` shorthand) the same way.
+An unset border width (`borderTopWidth` and the other three sides) starts from the
+width a `border` shorthand gives, or `medium` (`3px`), as in Chrome, and so does an
+unset `outlineWidth`. The side's style does not enter: a `none` or `hidden` side lays
+out with no border whatever its width animates to, but the animation under it already
+runs from `3px`, so `animate={{ borderTopWidth: 7 }}` is `5px` halfway with or without a
+`borderStyle`.
 
 Where CSS computes an unset property to a keyword there is nothing to blend from:
 `aspectRatio` is `auto` and `lineHeight` is `normal`, and as in CSS those begin at
@@ -7356,9 +7357,9 @@ render per frame.
   An unset `top`, `right`, `bottom`, `left` or `flexBasis` is `auto`, and a margin
   `auto`, which is discrete against a length: it changes instantly unless the
   transition has `transition-behavior: allow-discrete`, and then flips at the halfway
-  point. An unset border or outline width is `0` under a `none` or `hidden` style and
-  `medium` otherwise, so adding `borderStyle: 'solid'` to a box with a `border-width`
-  transition runs from `0` to `3px`. `fontSize`
+  point. An unset border or outline width is `medium` (or a `border` shorthand's width)
+  whatever the style is, so a `borderStyle` that appears starts no `border-width`
+  transition. `fontSize`
   and `fontWeight` are inherited too: an unset one runs from the parent's
   computed value. `zIndex` is not animatable
 - **Lengths.** Lengths blend as a px part and a percentage part, whatever unit

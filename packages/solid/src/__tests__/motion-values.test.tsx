@@ -512,7 +512,8 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion values in style", () => {
       const padding = motionValue("0.5em 0.75em")
       const renderer = mountPadded(padding)
       expect(insets(renderer)).toEqual({ x: 12, y: 8, width: 44, height: 36 })
-      expect(padding.get()).toBe("8px 12px")
+      // em stays a multiple of the font size until it lands on an element.
+      expect(padding.get()).toBe("0.5em 0.75em")
 
       padding.set("1px 2px 3px 4px")
       renderer.flush()
@@ -529,11 +530,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion values in style", () => {
       expect(middle.x).toBeCloseTo(18, 0)
       expect(middle.width).toBeCloseTo(20 + 2 * 18, 0)
       expect(middle.height).toBeCloseTo(20 + 2 * 12, 0)
-      expect(padding.get()).toBe("12px 18px")
+      expect(padding.get()).toBe("0.75em 1.125em")
 
       frame(renderer, 1000)
       expect(insets(renderer)).toEqual({ x: 24, y: 16, width: 68, height: 52 })
-      expect(padding.get()).toBe("16px 24px")
+      expect(padding.get()).toBe("1em 1.5em")
     })
 
     it("maps through createTransform and springs to a multi-value string", () => {

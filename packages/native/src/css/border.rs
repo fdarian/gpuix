@@ -442,15 +442,12 @@ pub(crate) fn sides(style: &StyleDesc, colors: &ColorContext, lengths: &LengthCo
 }
 
 /// The computed `border-*-width` of `side` when no longhand sets it, which is what an animation
-/// starts from: 0 under a `none` or `hidden` style, else the width a shorthand gives or `medium`.
+/// starts from: the width a shorthand gives, else `medium`. The side's style does not enter: Blink
+/// zeroes the width of a `none` or `hidden` side where it is used, so a transition does not start when
+/// a style appears, and an animation under `none` already runs from `medium`.
 pub(crate) fn computed_width(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext, side: Side) -> f64 {
-    f64::from(declare(style, colors).used_width(side, lengths))
-}
-
-/// The computed `outline-width` when no longhand sets it: 0 under a style that paints nothing,
-/// else the width the shorthand gives or `medium`.
-pub(crate) fn computed_outline_width(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> f64 {
-    outline(style, colors, lengths).map_or(0.0, |outline| f64::from(outline.width))
+    let width = declare(style, colors).widths[side as usize].unwrap_or(MEDIUM);
+    f64::from(resolve_width(&width, lengths))
 }
 
 /// The border widths of the sides `style` names. A side it leaves out is not

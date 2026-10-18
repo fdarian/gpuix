@@ -70,10 +70,8 @@ enum Initial {
     /// `auto` as a value of its own, which a pair with a length flips at the halfway point.
     Auto,
     Number(f64),
-    /// A border side's width: 0 under a `none` or `hidden` style, else `medium` or what a shorthand gives.
+    /// A border side's width: what a shorthand gives, else `medium`, whatever the side's style is.
     BorderWidth(Side),
-    /// The outline's width, by the same rule.
-    OutlineWidth,
     /// The element's computed `font-size`, inherited when it declares none.
     FontSize,
     /// The element's computed `font-weight`, inherited when it declares none.
@@ -595,7 +593,7 @@ properties! {
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
-    OutlineWidth "outlineWidth" Length NonNegative Initial::OutlineWidth, outline_width | outline.width();
+    OutlineWidth "outlineWidth" Length NonNegative Number(3.0), outline_width | outline.width();
     OutlineColor "outlineColor" Color None CurrentColor, outline_color | outline.color();
     TextDecorationColor "textDecorationColor" Color None CurrentColor, text_decoration_color;
     OutlineOffset "outlineOffset" Length None Number(0.0), outline_offset;
@@ -914,19 +912,17 @@ impl AnimProp {
     /// The value before the style sets it: the CSS computed value of an unset
     /// property. `None` where that is `auto`, `normal` or a size layout decides,
     /// which a track cannot blend from, or an inherited value the renderer does
-    /// not carry yet. `style` is the element's own: a border width computes from
-    /// its border style.
+    /// not carry yet. `style` is the element's own: a border width starts from its
+    /// `border` shorthand.
     pub(super) fn initial(self, style: Option<&StyleDesc>, colors: &Colors) -> Option<AnimValue> {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Auto => Some(AnimValue::auto_keyword()),
             Initial::Number(value) => Some(AnimValue::Number(value)),
-            Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(0.0, |style| {
-                crate::css::border::computed_width(style, &colors.element, &colors.lengths, side)
-            }))),
-            Initial::OutlineWidth => Some(AnimValue::Number(style.map_or(0.0, |style| {
-                crate::css::border::computed_outline_width(style, &colors.element, &colors.lengths)
-            }))),
+            Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
+                f64::from(crate::css::border::resolve_width(&crate::css::border::MEDIUM, &colors.lengths)),
+                |style| crate::css::border::computed_width(style, &colors.element, &colors.lengths, side),
+            ))),
             Initial::FontSize => Some(AnimValue::Number(colors.font.size)),
             Initial::FontWeight => Some(AnimValue::Number(colors.font.weight)),
             Initial::FontVariations => Some(AnimValue::Variations(axes_of(&colors.font.variations))),

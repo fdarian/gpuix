@@ -3166,9 +3166,10 @@ mod tests {
                 (r#""marginLeft": 10"#, AnimProp::MarginLeft, 5.0),
                 (r#""rowGap": 10"#, AnimProp::RowGap, 5.0),
                 (r#""columnGap": 10"#, AnimProp::ColumnGap, 5.0),
-                (r#""borderBottomWidth": 10"#, AnimProp::BorderBottomWidth, 5.0),
+                // An unset width computes to `medium`, 3px, whatever the border style.
+                (r#""borderBottomWidth": 10"#, AnimProp::BorderBottomWidth, 6.5),
                 (r#""borderTopLeftRadius": 10"#, AnimProp::BorderTopLeftRadius, 5.0),
-                (r#""outlineWidth": 10"#, AnimProp::OutlineWidth, 5.0),
+                (r#""outlineWidth": 10"#, AnimProp::OutlineWidth, 6.5),
                 (r#""outlineOffset": 10"#, AnimProp::OutlineOffset, 5.0),
             ] {
                 assert_eq!(
@@ -3486,42 +3487,33 @@ mod tests {
         }
 
         #[test]
-        fn an_unset_border_width_goes_between_zero_and_medium_with_the_style() {
+        fn a_border_style_appearing_starts_no_transition_on_an_unset_width() {
             let mut clock = Clock::new();
             clock.frame(0, &border(""));
             let solid = border(r#""borderTopStyle": "solid","#);
-            // No style: 0. A visible style: medium, which is a change CSS transitions.
-            assert_eq!(clock.frame(0, &solid).border_top_width, Some(LinearLength::px(0.0)));
-            assert_eq!(clock.frame(500, &solid).border_top_width, Some(LinearLength::px(1.5)));
-            // Finished, the transition leaves the style as it declares it: no width, which computes to medium.
-            assert_eq!(clock.frame(1000, &solid).border_top_width, None);
-            assert!(clock.events().iter().any(|event| event.0 == TransitionEventKind::End));
+            assert_eq!(clock.frame(10, &solid).border_top_width, None);
+            assert!(clock.events().is_empty());
         }
 
         #[test]
-        fn a_width_set_to_a_length_from_an_unset_one_under_a_visible_style_starts_at_medium() {
-            let mut clock = Clock::new();
-            clock.frame(0, &border(r#""borderTopStyle": "solid","#));
-            let wide = border(r#""borderTopStyle": "solid", "borderTopWidth": 7,"#);
-            clock.frame(0, &wide);
-            assert_eq!(clock.frame(0, &wide).border_top_width, Some(LinearLength::px(3.0)));
-            assert_eq!(clock.frame(500, &wide).border_top_width, Some(LinearLength::px(5.0)));
+        fn an_unset_width_leaves_from_medium_with_or_without_a_style() {
+            for extra in [r#""borderTopStyle": "solid","#, ""] {
+                let mut clock = Clock::new();
+                clock.frame(0, &border(extra));
+                let wide = border(&format!(r#"{extra} "borderTopWidth": 7,"#));
+                clock.frame(0, &wide);
+                assert_eq!(clock.frame(500, &wide).border_top_width, Some(LinearLength::px(5.0)), "{extra}");
+            }
         }
 
         #[test]
-        fn an_outline_width_starts_at_medium_only_under_an_outline_style() {
+        fn an_unset_outline_width_leaves_from_medium() {
             let outline = |extra: &str| style(&format!(r#"{{ {extra} "transition": "outline-width 1s linear" }}"#));
             let mut clock = Clock::new();
             clock.frame(0, &outline(r#""outlineStyle": "solid","#));
             let wide = outline(r#""outlineStyle": "solid", "outlineWidth": 7,"#);
             clock.frame(0, &wide);
             assert_eq!(clock.frame(500, &wide).outline_width, Some(LinearLength::px(5.0)));
-
-            let mut clock = Clock::new();
-            clock.frame(0, &outline(""));
-            let wide = outline(r#""outlineWidth": 7,"#);
-            clock.frame(0, &wide);
-            assert_eq!(clock.frame(500, &wide).outline_width, Some(LinearLength::px(3.5)));
         }
     }
 }

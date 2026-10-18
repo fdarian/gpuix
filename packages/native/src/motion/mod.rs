@@ -2432,32 +2432,35 @@ mod tests {
     }
 
     #[test]
-    fn an_unset_border_width_starts_at_medium_under_a_visible_style_and_at_zero_otherwise() {
+    fn an_unset_border_width_starts_at_medium_whatever_the_style_and_at_a_shorthands_width() {
         let width = |base: serde_json::Value| {
             run_to(base, serde_json::json!({ "opacity": 0 }), serde_json::json!({ "borderTopWidth": 7 }), 0.5).border_top_width
         };
-        assert_eq!(width(serde_json::json!({ "borderStyle": "solid" })), Some(LinearLength::px(5.0)));
-        assert_eq!(width(serde_json::json!({ "borderTopStyle": "dashed" })), Some(LinearLength::px(5.0)));
-        assert_eq!(width(serde_json::json!({ "borderStyle": "none" })), Some(LinearLength::px(3.5)));
-        assert_eq!(width(serde_json::json!({ "borderStyle": "hidden" })), Some(LinearLength::px(3.5)));
-        assert_eq!(width(serde_json::json!({})), Some(LinearLength::px(3.5)));
-        // Another side's style says nothing about this one.
-        assert_eq!(width(serde_json::json!({ "borderBottomStyle": "solid" })), Some(LinearLength::px(3.5)));
-        // A shorthand names the width it starts from.
+        // Blink zeroes the width of a `none` side where it is used, not in the value an animation blends.
+        for base in [
+            serde_json::json!({ "borderStyle": "solid" }),
+            serde_json::json!({ "borderTopStyle": "dashed" }),
+            serde_json::json!({ "borderStyle": "none" }),
+            serde_json::json!({ "borderStyle": "hidden" }),
+            serde_json::json!({ "borderBottomStyle": "solid" }),
+            serde_json::json!({}),
+        ] {
+            assert_eq!(width(base.clone()), Some(LinearLength::px(5.0)), "{base}");
+        }
         assert_eq!(width(serde_json::json!({ "border": "1px solid red" })), Some(LinearLength::px(4.0)));
+        assert_eq!(width(serde_json::json!({ "borderTop": "thick solid" })), Some(LinearLength::px(6.0)));
         assert_eq!(width(serde_json::json!({ "borderStyle": "solid", "borderWidth": 1 })), Some(LinearLength::px(4.0)));
     }
 
     #[test]
-    fn an_unset_outline_width_starts_at_medium_under_a_visible_style_and_at_zero_otherwise() {
+    fn an_unset_outline_width_starts_at_medium_or_the_shorthands_width() {
         let width = |base: serde_json::Value| {
             run_to(base, serde_json::json!({ "opacity": 0 }), serde_json::json!({ "outlineWidth": 7 }), 0.5).outline_width
         };
         assert_eq!(width(serde_json::json!({ "outlineStyle": "solid" })), Some(LinearLength::px(5.0)));
-        assert_eq!(width(serde_json::json!({ "outline": "dotted" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({ "outlineStyle": "none" })), Some(LinearLength::px(5.0)));
+        assert_eq!(width(serde_json::json!({})), Some(LinearLength::px(5.0)));
         assert_eq!(width(serde_json::json!({ "outline": "1px solid" })), Some(LinearLength::px(4.0)));
-        assert_eq!(width(serde_json::json!({ "outlineStyle": "none" })), Some(LinearLength::px(3.5)));
-        assert_eq!(width(serde_json::json!({})), Some(LinearLength::px(3.5)));
     }
 
     #[test]

@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  Oracle for motion-chrome-values.test.tsx: what headless Chrome animates for `flex`, `auto` margins and insets,
+  and border widths that are unset. Each case is a Web Animation (`element.animate`, `kind: "waapi"`) or a CSS
+  transition (`kind: "transition"`, a style change from `base` to `after`) on `child`, paused and sampled at
+  `times` (fractions of a 1s linear animation). `samples[time]` is `[x, y, width, height]` of `child` and of `second`
+  (when the case has one) relative to the scene, and `computed` the computed values of the listed properties of the
+  child. `animations` counts the animations a transition started (0: Chrome jumped). Regenerate with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    $CHROME --headless --window-size=1280,800 --dump-dom file:///<this file> \
+      | grep -o 'data-oracle="[^"]*"' | sed 's/^data-oracle="//; s/"$//; s/&quot;/"/g; s/&amp;/\&/g' \
+      > motion-values-oracle.json
+
+  The scene is 300x200 and `box-sizing: border-box`, as gpuix has it.
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;font:16px/1 sans-serif}
+.scene{position:relative;width:300px;height:200px}
+</style></head><body>
+<div id="scene" class="scene"></div>
+<script>
+const row = { display: 'flex', width: '300px', height: '40px', alignItems: 'flex-start' };
+const abs = { position: 'relative', width: '300px', height: '200px' };
+const box = { width: '50px', height: '20px' };
+const inner = { width: '20px', height: '20px' };
+const dropped = { position: 'absolute', width: '50px', height: '20px', bottom: '0px' };
+
+// name, kind, parent style, child style, second child style (optional), then the animation:
+// waapi: keyframes; transition: after (a style) and transition (the CSS value).
+const cases = [
+  ['margin auto to length', 'waapi', row, { ...box, marginLeft: 'auto' }, null, { keyframes: { marginLeft: ['auto', '100px'] } }, ['marginLeft']],
+  ['margin length to auto', 'waapi', row, { ...box, marginLeft: '100px' }, null, { keyframes: { marginLeft: ['100px', 'auto'] } }, ['marginLeft']],
+  ['margin unset to length', 'waapi', row, box, null, { keyframes: { marginLeft: '100px' } }, ['marginLeft']],
+  ['margin 0 auto to length', 'waapi', row, { ...box, margin: '0 auto' }, null, { keyframes: { marginLeft: '100px' } }, ['marginLeft']],
+  ['margin transition auto to length allow-discrete', 'transition', row, { ...box, marginLeft: 'auto' }, null,
+    { after: { marginLeft: '100px' }, transition: 'margin-left 1s linear allow-discrete' }, ['marginLeft']],
+  ['margin transition length to auto allow-discrete', 'transition', row, { ...box, marginLeft: '100px' }, null,
+    { after: { marginLeft: 'auto' }, transition: 'margin-left 1s linear allow-discrete' }, ['marginLeft']],
+  ['margin transition auto to length', 'transition', row, { ...box, marginLeft: 'auto' }, null,
+    { after: { marginLeft: '100px' }, transition: 'margin-left 1s linear' }, ['marginLeft']],
+  ['margin transition unset to length', 'transition', row, box, null,
+    { after: { marginLeft: '100px' }, transition: 'margin-left 1s linear' }, ['marginLeft']],
+  ['inset unset to length', 'waapi', abs, dropped, null, { keyframes: { top: '100px' } }, []],
+  ['inset auto to length', 'waapi', abs, { ...dropped, top: 'auto' }, null, { keyframes: { top: ['auto', '100px'] } }, []],
+  ['inset transition unset to length allow-discrete', 'transition', abs, dropped, null,
+    { after: { top: '100px' }, transition: 'top 1s linear allow-discrete' }, []],
+  ['inset transition unset to length', 'transition', abs, dropped, null,
+    { after: { top: '100px' }, transition: 'top 1s linear' }, []],
+  ['border width unset under solid', 'waapi', row, { borderStyle: 'solid' }, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width unset under none', 'waapi', row, {}, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width unset under hidden', 'waapi', row, { borderStyle: 'hidden' }, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width unset beside another side solid', 'waapi', row, { borderRightStyle: 'solid' }, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width unset under a border shorthand', 'waapi', row, { border: '1px solid red' }, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width unset under borderWidth', 'waapi', row, { borderStyle: 'solid', borderWidth: '1px' }, null, { content: true, keyframes: { borderLeftWidth: '7px' } }, ['borderLeftWidth']],
+  ['border width transition when the style appears', 'transition', row, {}, null,
+    { after: { borderLeftStyle: 'solid' }, transition: 'border-left-width 1s linear' }, ['borderLeftWidth']],
+  ['border width transition unset to length under solid', 'transition', row, { borderStyle: 'solid' }, null,
+    { after: { borderLeftWidth: '7px' }, transition: 'border-left-width 1s linear' }, ['borderLeftWidth']],
+  ['outline width unset under solid', 'waapi', row, { outlineStyle: 'solid' }, null, { content: true, keyframes: { outlineWidth: '7px' } }, ['outlineWidth']],
+  ['outline width unset under none', 'waapi', row, {}, null, { content: true, keyframes: { outlineWidth: '7px' } }, ['outlineWidth']],
+  ['flex longhands', 'waapi', row, { ...box, width: 'auto', flex: '1 1 0px' }, { height: '20px', flex: '1 1 0px' },
+    { keyframes: { flex: ['1 1 0px', '3 1 100px'] } }, ['flexGrow', 'flexShrink', 'flexBasis']],
+  ['flex numbers', 'waapi', row, { height: '20px', flex: '0' }, { height: '20px', flex: '1' },
+    { keyframes: { flex: [0, 4] } }, ['flexGrow', 'flexShrink', 'flexBasis']],
+  ['flex to auto', 'waapi', row, { height: '20px', flex: '0 0 100px' }, { width: '50px', height: '20px', flex: '0 0 auto' },
+    { keyframes: { flex: ['0 0 100px', 'auto'] } }, ['flexGrow', 'flexShrink', 'flexBasis']],
+  ['flex transition', 'transition', row, { height: '20px', flex: '1 1 0px' }, { height: '20px', flex: '1 1 0px' },
+    { after: { flex: '3 1 100px' }, transition: 'flex 1s linear' }, ['flexGrow', 'flexShrink', 'flexBasis']],
+  ['flex unset to value', 'waapi', row, { height: '20px' }, { height: '20px', flex: '1 1 0px' },
+    { keyframes: { flex: '3 1 100px' } }, ['flexGrow', 'flexShrink', 'flexBasis']],
+];
+
+const times = [0, 0.4, 0.5, 0.6, 1];
+const scene = document.getElementById('scene');
+const out = { cases: {} };
+
+function rect(el) {
+  const origin = scene.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return [r.x - origin.x, r.y - origin.y, r.width, r.height].map((n) => Math.round(n * 1000) / 1000);
+}
+
+for (const [name, kind, parentStyle, childStyle, secondStyle, spec, props] of cases) {
+  scene.textContent = '';
+  const parent = document.createElement('div');
+  Object.assign(parent.style, parentStyle);
+  const child = document.createElement('div');
+  Object.assign(child.style, childStyle);
+  if (spec.content) {
+    const content = document.createElement('div');
+    Object.assign(content.style, inner);
+    child.appendChild(content);
+  }
+  parent.appendChild(child);
+  let second = null;
+  if (secondStyle) {
+    second = document.createElement('div');
+    Object.assign(second.style, secondStyle);
+    parent.appendChild(second);
+  }
+  scene.appendChild(parent);
+  getComputedStyle(child).width;
+
+  let animations;
+  if (kind === 'waapi') {
+    child.animate(spec.keyframes, { duration: 1000, easing: 'linear', fill: 'both' });
+    animations = child.getAnimations();
+  } else {
+    child.style.transition = spec.transition;
+    getComputedStyle(child).width;
+    Object.assign(child.style, spec.after);
+    animations = child.getAnimations();
+  }
+  const samples = {};
+  const computed = {};
+  for (const time of times) {
+    for (const animation of animations) {
+      animation.pause();
+      animation.currentTime = time * 1000;
+    }
+    samples[time] = { child: rect(child), second: second ? rect(second) : null };
+    const style = getComputedStyle(child);
+    computed[time] = Object.fromEntries(props.map((prop) => [prop, style[prop]]));
+  }
+  out.cases[name] = { kind, parent: parentStyle, child: childStyle, second: secondStyle, ...spec, animations: animations.length, times, samples, computed };
+}
+
+const holder = document.createElement('div');
+holder.id = 'out';
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>
