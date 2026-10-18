@@ -705,7 +705,7 @@ export class IntersectionObserver {
     const zero = { x: 0, y: 0, width: 0, height: 0 }
     const border = sample.present ? sample.border : zero
     let intersection = zero
-    let isIntersecting = false
+    let intersects = false
     if (sample.present) {
       // Clip by the ancestors between the target and the root, like the DOM.
       // Ancestors above the root, and the window edge, do not clip.
@@ -715,13 +715,16 @@ export class IntersectionObserver {
         clipped = overlap(clipped, clip.rect)
       }
       intersection = overlap(clipped, rootBounds)
-      isIntersecting =
-        area(intersection) > 0 || (area(border) === 0 && contains(rootBounds, border))
-      if (area(intersection) === 0 && !isIntersecting) intersection = zero
+      intersects = area(intersection) > 0 || (area(border) === 0 && contains(rootBounds, border))
+      if (area(intersection) === 0 && !intersects) intersection = zero
     }
-    const ratio = !isIntersecting ? 0 : area(border) === 0 ? 1 : Math.min(1, area(intersection) / area(border))
+    const ratio = !intersects ? 0 : area(border) === 0 ? 1 : Math.min(1, area(intersection) / area(border))
     let thresholdIndex = this.thresholds.findIndex((threshold) => threshold > ratio)
     if (thresholdIndex < 0) thresholdIndex = this.thresholds.length
+    // Chrome reports an intersection that is under the first threshold as not intersecting (with its
+    // ratio), which is what makes `threshold: 0.5` mean "half of it shows" to a caller that reads
+    // `isIntersecting`, as Framer's `whileInView` does.
+    const isIntersecting = intersects && thresholdIndex > 0
     if (
       thresholdIndex === record.previousThresholdIndex &&
       isIntersecting === record.previousIsIntersecting

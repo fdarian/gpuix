@@ -1818,12 +1818,76 @@ the texture atlas when it makes the next one, so an animation holds one atlas
 entry per `<svg>`, not one per frame. The cost is one rasterisation per frame, in the
 frame for a small `<svg>` and on a background thread for a large one.
 
+### Gestures and variants
+
+Every `motion.*` (`motion.div`, `motion.span` and the SVG shapes) takes Framer's
+gesture props, and answers to them natively, with no render per hover or press.
+
+```tsx
+<motion.div
+  style={{ width: 100, height: 40, backgroundColor: '#ff0000' }}
+  whileHover={{ width: 200, backgroundColor: '#0000ff' }}
+  whileTap={{ scale: 0.95, transition: { type: 'spring' } }}
+  transition={{ duration: 0.3 }}
+  onHoverStart={(event, info) => console.log(info.point)}
+/>
+```
+
+- **`whileHover`, `whileTap`, `whileFocus`, `whileInView`.** Each is a target (a
+  style object with an optional `transition` for its own animation, or variant
+  names) that the element animates to while the gesture is on it, and back from
+  when it ends, to its `animate` value or, if that does not name the property, to
+  its `style`. Hover is `:hover` (the pointer is over the element or what it
+  holds), tap is a primary press that began on it, whatever is under the pointer
+  when it is released, and focus is `:focus-visible`: a mouse press does not
+  match, Tab does, and the element needs a `tabIndex` to take focus. When several
+  apply to a property the order of priority is Framer's, lowest first: `animate`,
+  `whileInView`, `whileFocus`, `whileHover`, `whileTap`. An element that is leaving
+  `AnimatePresence` answers to none of them: what they moved goes back as the exit
+  takes over (Framer lets the active gestures go on with the properties `exit` does
+  not name).
+- **`whileInView`** is on while any of the element is in the viewport. It watches
+  the element with an `IntersectionObserver` and `viewport` takes Framer's options:
+  `once`, `root` (a ref), `margin` (the `rootMargin`) and `amount` (`"some"`,
+  `"all"` or a fraction). `onViewportEnter(entry)` and `onViewportLeave(entry)`
+  are called as it enters and leaves (never leaves with `once`).
+- **Callbacks.** `onHoverStart` and `onHoverEnd` (`pointerenter` and
+  `pointerleave`), `onTapStart` (a primary press on the element), `onTap` (the
+  press ends on the element or what it holds) and `onTapCancel` (it ends
+  elsewhere, or is cancelled), each called with `(event, { point })`, `point`
+  being the pointer's window position. They run beside the `onPointer*` handlers
+  you write, not instead of them. Framer's keyboard tap (Enter on a focused
+  element, which also adds `tabindex="0"` to an element with `whileTap`) is not
+  built.
+- **`variants`** name targets: `initial="hidden" animate="shown"`, a list of names
+  (later ones win), a function of `custom` as a variant, and a `transition` inside
+  a variant, which the animation to that variant plays with in place of the
+  component's. A name that a component with `variants` does not define throws; a
+  component with none only hands its names down.
+- **Names go down.** A component whose `initial`, `animate`, `exit` or `while*` is
+  a name controls variants, and hands those names to the `motion.*` components in
+  it that have `variants` and do not control any themselves. They take the names
+  they leave out: `initial` and `animate` as they change, `exit` while the
+  component leaves, and a `while*` while the controlling component's gesture is
+  on, whatever the pointer is over: hover the parent and the child with the same
+  names moves. A name that a child's `variants` do not define is skipped. A
+  child's own `while*` wins over the name it was handed, and answers to its own
+  gesture. A component that writes a name of its own, or `inherit={false}`, breaks
+  the chain; a name in an object (`animate={{ ... }}`) does not. Framer's
+  `staggerChildren`, `delayChildren` and `when` are not built: every child animates
+  at once.
+- **SVG shapes** take `variants` and the names handed down to them, so an icon
+  moves when the button around it is hovered. A shape takes no pointer or focus
+  event of its own (the `<svg>` is one image), so its own `whileHover`,
+  `whileTap` and `whileFocus` never turn on; `whileInView` and the viewport
+  callbacks need a box a shape does not report.
+
 ### Animate an inline span
 
 `motion.span` animates what an inline `<span>` shows inside text, with the
 `initial`, `animate`, `exit`, `transition` and `variants` of Framer's
 `motion.span`, and answers to `whileHover`, `whileTap`, `whileFocus` and
-`whileInView`. It is available in `@gpuix/react` and `@gpuix/solid`, and the type
+`whileInView` (see [Gestures and variants](#gestures-and-variants)). It is available in `@gpuix/react` and `@gpuix/solid`, and the type
 of its props is `MotionSpanProps`.
 
 ```tsx
@@ -1863,30 +1927,13 @@ as in a browser. The colours, opacity, radii and outline do not change the layou
 (Letter and word spacing and `textShadow` are not drawn on an inline box, so there
 is nothing to animate.)
 
-- **`whileHover`, `whileTap`, `whileFocus`.** Each is a target (a style object,
-  with an optional `transition` for its own animation, or variant names) that the
-  span animates to while the gesture is on it, and back from when it ends, to the
-  `animate` value of the property or to the value its own `style` has. They are the
-  states of the `hover`, `active` and `focusVisible` entries of a span's `style`,
-  with no entry needed: hover is `:hover` (the pointer is over the span or what it
-  holds), tap is a primary press that began on it, and focus is `:focus-visible`,
-  which a span takes with a `tabIndex`. Where several apply to a property the order
-  of priority is Framer's: `animate`, `whileInView`, `whileHover`, `whileTap`,
-  `whileFocus`. A span that is leaving `AnimatePresence` answers to none of them.
-- **`whileInView`** animates to its target while any of the span is in the viewport
-  and back when it is not. It watches the span with an `IntersectionObserver`, the
-  same one the `IntersectionObserver` export is, and `viewport` takes Framer's
-  options: `once`, `root` (a ref), `margin` and `amount` (`"some"`, `"all"` or a
-  fraction).
+- **Gestures and variants** are those of every `motion.*` (see
+  [Gestures and variants](#gestures-and-variants)); a span's hover, tap and
+  focus are the states of the `hover`, `active` and `focusVisible` entries of its
+  `style`, with no entry needed, and focus needs a `tabIndex`.
 - **`exit` inside `AnimatePresence`** works as on a `div`: the span stays
   mounted until its exit has finished, and is then removed. Without an `exit` it
   is removed at once.
-- **`variants`** name targets: `initial="hidden" animate="shown"`, a list of
-  names (later ones win), a function of `custom` as a variant, and a `transition`
-  inside a variant, which the animation to that variant plays with in place of
-  the component's. A name `variants` does not define throws. A name is not passed
-  on to children, so a `motion.span` inside another one names its own targets.
-  `motion.div` has no `variants`, and passing it one throws.
 - **Motion values in `style`.** A motion value in the `style` of a span (of a
   `motion.span` or a plain `<span>`) drives any of the properties above, from the
   same native sample as on an element. Binding one to any other property throws and
@@ -4806,7 +4853,9 @@ element or `null` for the window. Entries have `isIntersecting`,
 `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds`,
 `time` and `target`. Each target gets an entry after `observe()` (an element
 that never paints reports not intersecting) and then one per threshold crossing
-or `isIntersecting` flip. The intersection is the target's border box clipped by
+or `isIntersecting` flip. As in Chrome, an intersection under the first threshold
+reports `isIntersecting: false` (with its `intersectionRatio`), so `threshold: 0.5`
+means half of the target shows. The intersection is the target's border box clipped by
 every ancestor's `overflow` between it and the root, then by the root. For an
 `absolute` target those are the ancestors from its containing block up, and a
 `fixed` one is clipped by none. The `overflow` and `position` are the ones each

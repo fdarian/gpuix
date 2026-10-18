@@ -314,10 +314,5 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
       ))
       expect(error.message).toContain('names the variant "shown"')
     })
-
-    it("variants on a motion.div", () => {
-      const error = creationError(() => <motion.div {...({ variants: { a: {} } } as object)} />)
-      expect(error.message).toContain("only supported by motion.span")
-    })
   })
 })

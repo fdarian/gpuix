@@ -1,15 +1,27 @@
-import { createEffect, createRenderEffect, createSignal, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
+import {
+  createComponent,
+  createEffect,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  mergeProps,
+  onCleanup,
+  splitProps,
+  type JSX,
+} from "solid-js"
 import type { DomEvent, MotionValueStyle } from "@gpuix/native/host"
 import {
+  elementScope,
   gestureDescription,
+  gestureHandlers,
   IGNORED_SPAN_PROPS,
-  IntersectionObserver,
   layoutDescription,
+  observeViewport,
   reduceMotionValues,
   resolveExit,
-  resolveSpanMotion,
+  resolveMotion,
   scopeLayoutId,
-  viewportObserverInit,
+  SPAN_SCOPE,
   withoutIgnoredSpanStyle,
   withoutLayoutTransition,
   wireMotionTransition,
@@ -17,17 +29,21 @@ import {
 import type {
   ExitTarget,
   LayoutDrag,
+  MotionAnimation,
+  MotionGestureCallbacks,
+  MotionGestureHandlers,
+  MotionInput,
   MotionLayoutProps,
-  MotionProps,
   MotionSpanAnimation,
   MotionSpanIgnoredProps,
+  MotionStyle,
   MotionTransition,
+  SvgMotionStyle,
   SvgMotionTransition,
   SvgCircleProps,
   SvgEllipseProps,
   SvgGroupProps,
   SvgLineProps,
-  SvgMotionProps,
   SvgPathProps,
   SvgPolyProps,
   SvgRectProps,
@@ -38,7 +54,6 @@ import type {
   SvgImageProps,
   SvgTextProps,
   SvgTspanProps,
-  WithExitFunction,
 } from "@gpuix/native/host"
 import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
@@ -47,8 +62,13 @@ import { useContext } from "solid-js"
 import { PresenceGroupContext, useIsPresent } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
+import { VariantContext } from "./variant-context.js"
 
-export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionProps>, MotionLayoutProps {}
+export interface MotionDivProps
+  extends SolidHostProps,
+    MotionAnimation<MotionStyle>,
+    MotionGestureCallbacks,
+    MotionLayoutProps {}
 
 /**
  * Props of a `motion.span`: an inline span animates what an inline box shows (`animate`, `initial`,
@@ -58,26 +78,18 @@ export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionP
  */
 export type MotionSpanProps = Omit<
   SolidHostProps,
-  "style" | keyof MotionSpanAnimation | keyof MotionSpanIgnoredProps
+  "style" | keyof MotionSpanAnimation | keyof MotionGestureCallbacks | keyof MotionSpanIgnoredProps
 > &
   MotionSpanAnimation &
+  MotionGestureCallbacks &
   MotionSpanIgnoredProps & { style?: MotionValueStyle }
 
 /** A `motion.path`, `motion.circle`, ...: the shape's own props plus the animation. */
-export type MotionShapeProps<Shape> = SolidHostProps<Shape> & WithExitFunction<SvgMotionProps>
+export type MotionShapeProps<Shape> = SolidHostProps<Shape> &
+  MotionAnimation<SvgMotionStyle, SvgMotionTransition> &
+  Pick<MotionGestureCallbacks, "onViewportEnter" | "onViewportLeave">
 
-interface MotionSource {
-  initial?: object | MotionSpanAnimation["initial"]
-  animate?: object | MotionSpanAnimation["animate"]
-  exit?: ExitTarget<object> | MotionSpanAnimation["exit"]
-  variants?: MotionSpanAnimation["variants"]
-  custom?: unknown
-  transition?: MotionTransition | SvgMotionTransition
-  whileHover?: MotionSpanAnimation["whileHover"]
-  whileTap?: MotionSpanAnimation["whileTap"]
-  whileFocus?: MotionSpanAnimation["whileFocus"]
-  whileInView?: MotionSpanAnimation["whileInView"]
-  viewport?: MotionSpanAnimation["viewport"]
+interface MotionSource extends MotionAnimation<object, MotionTransition | SvgMotionTransition>, MotionGestureCallbacks {
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
   /** The drag values of a `Reorder.Item`; not part of the API. */
@@ -89,19 +101,31 @@ export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
 
 export function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
   const inline = tag === "span"
+  const scope = inline ? SPAN_SCOPE : elementScope(`motion.${tag}`)
   return function Motion(props: Props): JSX.Element {
-    if (!inline && (props as MotionSource).variants !== undefined) throw new Error("variants is only supported by motion.span")
     const [motionProps, ownProps] = splitProps(props as MotionSource & Record<string, unknown>, [
       "initial",
       "animate",
       "exit",
       "variants",
+      "inherit",
       "custom",
       "transition",
       "layout",
       "layoutId",
       "layoutDrag",
-      ...(inline ? (["whileHover", "whileTap", "whileFocus", "whileInView", "viewport"] as const) : []),
+      "whileHover",
+      "whileTap",
+      "whileFocus",
+      "whileInView",
+      "viewport",
+      "onHoverStart",
+      "onHoverEnd",
+      "onTapStart",
+      "onTap",
+      "onTapCancel",
+      "onViewportEnter",
+      "onViewportLeave",
     ])
     // A span takes no layout, drag or transform: what Framer would move with one is left where it is.
     const [, withoutIgnored] = splitProps(ownProps, inline ? (IGNORED_SPAN_PROPS as string[]) : [])
@@ -116,18 +140,21 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
     const group = useContext(PresenceGroupContext)
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
+    const parentVariants = useContext(VariantContext)
+    const inheritedVariants = () => (motionProps.inherit === false ? undefined : parentVariants?.())
     const reduced = () => config !== undefined && config.reduced()
     // An `exit` function has nothing to leave from outside an `AnimatePresence`.
     const declaredExit = () =>
       typeof motionProps.exit === "function" && !group
         ? undefined
         : resolveExit(motionProps.exit as ExitTarget<object> | undefined, group?.custom() ?? motionProps.custom)
-    const span = () =>
-      resolveSpanMotion({
-        initial: motionProps.initial as MotionSpanAnimation["initial"],
-        animate: motionProps.animate as MotionSpanAnimation["animate"],
-        exit: declaredExit() as Parameters<typeof resolveSpanMotion>[0]["exit"],
-        variants: motionProps.variants,
+    const [inView, setInView] = createSignal(false)
+    const resolved = createMemo(() =>
+      resolveMotion(scope, {
+        initial: motionProps.initial as MotionInput["initial"],
+        animate: motionProps.animate as MotionInput["animate"],
+        exit: declaredExit() as MotionInput["exit"],
+        variants: motionProps.variants as MotionInput["variants"],
         custom: group?.custom() ?? motionProps.custom,
         gestures: {
           whileHover: motionProps.whileHover,
@@ -135,9 +162,14 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
           whileFocus: motionProps.whileFocus,
           whileInView: motionProps.whileInView,
         },
+        parent: inheritedVariants(),
+        inView: inView(),
       })
-    const exit = () => (inline ? span().exit : declaredExit())
-    const [inView, setInView] = createSignal(false)
+    )
+    const handedDown = createMemo(() => resolved().controls ?? inheritedVariants(), undefined, {
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    })
+    const exit = () => resolved().exit
     createRenderEffect(() => {
       if (!reduced()) return
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
@@ -145,24 +177,18 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
     })
     const element = createElement(tag)
     createEffect(() => {
-      if (!inline || motionProps.whileInView === undefined || !isPresent()) return
-      const viewport = motionProps.viewport
-      const init = viewportObserverInit(viewport)
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const latest = entries.at(-1)
-          if (!latest) return
-          if (latest.isIntersecting) {
-            setInView(true)
-            if (viewport?.once) observer.disconnect()
-          } else if (!viewport?.once) {
-            setInView(false)
-          }
-        },
-        { root: init.root as never, rootMargin: init.rootMargin, threshold: init.threshold }
+      const watches =
+        motionProps.whileInView !== undefined ||
+        motionProps.onViewportEnter !== undefined ||
+        motionProps.onViewportLeave !== undefined
+      if (!watches || !isPresent()) return
+      onCleanup(
+        observeViewport(element as never, motionProps.viewport, (visible, entry) => {
+          setInView(visible)
+          if (visible) motionProps.onViewportEnter?.(entry)
+          else motionProps.onViewportLeave?.(entry)
+        })
       )
-      observer.observe(element as never)
-      onCleanup(() => observer.disconnect())
     })
     let generation = 0
     let targetKey: string | undefined
@@ -172,62 +198,88 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       wireMotionTransition(
         variantTransition ?? (motionProps.transition !== undefined ? motionProps.transition : config?.transition())
       )
-    spread(element, mergeProps(hostProps, {
-      get layout() {
-        // A layout animation moves a box with a transform, which a span has none of.
-        if (inline) return undefined
-        return layoutDescription({
-          layout: motionProps.layout as MotionLayoutProps["layout"],
-          layoutId: scopeLayoutId(layoutGroupId?.(), motionProps.layoutId as string | undefined),
-          transition: resolvedTransition() as MotionTransition | undefined,
-          reduced: reduced(),
-          drag: motionProps.layoutDrag,
-        })
+    const pointerHandlers = () =>
+      gestureHandlers(
+        () => ({
+          onHoverStart: motionProps.onHoverStart,
+          onHoverEnd: motionProps.onHoverEnd,
+          onTapStart: motionProps.onTapStart,
+          onTap: motionProps.onTap,
+          onTapCancel: motionProps.onTapCancel,
+        }),
+        hostProps as MotionGestureHandlers
+      )
+    return createComponent(VariantContext.Provider, {
+      value: handedDown,
+      // The element's children are read here, under the provider, so they see what it hands down.
+      get children() {
+        spread(element, mergeProps(hostProps, {
+          get onPointerEnter() {
+            return pointerHandlers().onPointerEnter ?? (hostProps as MotionGestureHandlers).onPointerEnter
+          },
+          get onPointerLeave() {
+            return pointerHandlers().onPointerLeave ?? (hostProps as MotionGestureHandlers).onPointerLeave
+          },
+          get onPointerDown() {
+            return pointerHandlers().onPointerDown ?? (hostProps as MotionGestureHandlers).onPointerDown
+          },
+          get layout() {
+            // A layout animation moves a box with a transform, which a span has none of.
+            if (inline) return undefined
+            return layoutDescription({
+              layout: motionProps.layout as MotionLayoutProps["layout"],
+              layoutId: scopeLayoutId(layoutGroupId?.(), motionProps.layoutId as string | undefined),
+              transition: resolvedTransition() as MotionTransition | undefined,
+              reduced: reduced(),
+              drag: motionProps.layoutDrag,
+            })
+          },
+          get motion() {
+            // `AnimatePresence` sets the exit target of a leaving element, and this
+            // component stays alive while it leaves: following its props again
+            // would undo that.
+            if (!isPresent()) {
+              leaving = true
+              return applied
+            }
+            if (leaving) {
+              leaving = false
+              targetKey = undefined
+              generation = ((element as HostElement).props.get("motion") as { generation?: number } | undefined)?.generation ?? generation
+            }
+            const current = resolved()
+            const gestures = gestureDescription(
+              current,
+              (own) => wireMotionTransition(own),
+              current.inherited.includes("whileInView") ? inheritedVariants()!.inView : inView()
+            )
+            const animate = current.animate ?? (gestures !== undefined ? {} : undefined)
+            if (animate === undefined) return applied = undefined
+            const transition = withoutLayoutTransition(resolvedTransition(current.animateTransition))
+            const nextKey = JSON.stringify([current.initial, animate, transition, reduced(), gestures])
+            if (nextKey !== targetKey) {
+              targetKey = nextKey
+              generation += 1
+            }
+            return applied = {
+              generation,
+              isExit: false,
+              initial: current.initial,
+              animate,
+              exit: exit(),
+              transition,
+              ...(reduced() ? { reducedMotion: true } : {}),
+              ...gestures,
+            }
+          },
+          onMotionComplete(event: DomEvent) {
+            if (event.motionGeneration !== generation) return
+            ;(hostProps as { onMotionComplete?: (event: DomEvent) => void }).onMotionComplete?.(event)
+          },
+        }))
+        return element as never
       },
-      get motion() {
-        // `AnimatePresence` sets the exit target of a leaving element, and this
-        // component stays alive while it leaves: following its props again
-        // would undo that.
-        if (!isPresent()) {
-          leaving = true
-          return applied
-        }
-        if (leaving) {
-          leaving = false
-          targetKey = undefined
-          generation = ((element as HostElement).props.get("motion") as { generation?: number } | undefined)?.generation ?? generation
-        }
-        const resolved = inline ? span() : undefined
-        const initial = resolved ? resolved.initial : motionProps.initial
-        const gestures = resolved
-          ? gestureDescription(resolved.gestures, (own) => wireMotionTransition(own), inView())
-          : undefined
-        const hasGestures = gestures !== undefined && Object.keys(gestures).length > 0
-        const animate = resolved ? (resolved.animate ?? (hasGestures ? {} : undefined)) : motionProps.animate
-        if (animate === undefined) return applied = undefined
-        const transition = withoutLayoutTransition(resolvedTransition(resolved?.animateTransition))
-        const nextKey = JSON.stringify([initial, animate, transition, reduced(), gestures])
-        if (nextKey !== targetKey) {
-          targetKey = nextKey
-          generation += 1
-        }
-        return applied = {
-          generation,
-          isExit: false,
-          initial,
-          animate,
-          exit: exit(),
-          transition,
-          ...(reduced() ? { reducedMotion: true } : {}),
-          ...gestures,
-        }
-      },
-      onMotionComplete(event: DomEvent) {
-        if (event.motionGeneration !== generation) return
-        ;(hostProps as { onMotionComplete?: (event: DomEvent) => void }).onMotionComplete?.(event)
-      },
-    }))
-    return element as never
+    }) as never
   }
 }
 

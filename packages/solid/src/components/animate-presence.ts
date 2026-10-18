@@ -89,6 +89,8 @@ export interface AnimatePresenceProps {
   custom?: unknown
 }
 
+const GESTURE_FIELDS = ["whileHover", "whileTap", "whileFocus", "whileInView", "inView", "inherit", "controls"] as const
+
 type NativeMotionProps = MotionProps & {
   generation?: number
   isExit?: boolean
@@ -273,8 +275,11 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       const previous = item.props.get("onMotionComplete") as
         | ((event: DomEvent) => void)
         | undefined
+      // A leaving node answers to no gesture: what they moved goes back as the exit takes over.
+      const leaving: NativeMotionProps = { ...motion }
+      for (const key of GESTURE_FIELDS) delete leaving[key]
       setHostProperty(item, "motion", {
-        ...motion,
+        ...leaving,
         generation: (motion.generation ?? 0) + 1,
         isExit: true,
         animate: motion.exit,

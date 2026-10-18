@@ -264,14 +264,15 @@ struct Description {
     pub in_view: bool,
 }
 
-/// What Framer's `while*` props of a `motion.*` answer to, in the order of their priority: a
-/// later one wins a property it shares with an earlier one.
+/// What Framer's `while*` props of a `motion.*` answer to, in the order of its `variantPriorityOrder`
+/// (`animate`, `whileInView`, `whileFocus`, `whileHover`, `whileTap`): a later one wins a property it
+/// shares with an earlier one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Gesture {
     InView,
+    Focus,
     Hover,
     Tap,
-    Focus,
 }
 
 /// Which gestures are on an element now. Hover is `:hover`, tap a primary press that began on
@@ -282,7 +283,7 @@ pub(crate) struct Gestures {
     pub hover: bool,
     pub tap: bool,
     pub focus: bool,
-    /// Whether the span is in view, which JS finds with an `IntersectionObserver` and
+    /// Whether the element is in view, which JS finds with an `IntersectionObserver` and
     /// writes into the description as `inView`.
     pub in_view: bool,
 }
@@ -298,10 +299,38 @@ impl Gestures {
     }
 }
 
+/// The gestures on an element and on the ancestor that controls its variants: a target that
+/// names a variant its controller's `while*` names answers to the controller's gesture, as in
+/// Framer, where the variant label goes down to the children.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct GestureStates {
+    pub own: Gestures,
+    pub controller: Gestures,
+}
+
+impl GestureStates {
+    fn has(self, target: &GestureTarget) -> bool {
+        // JS watches the viewport of whichever element owns the `whileInView` and writes the
+        // answer into this element's description, so there is only the one.
+        match (target.gesture, target.source) {
+            (Gesture::InView, _) | (_, GestureSource::Own) => self.own.has(target.gesture),
+            (_, GestureSource::Controller) => self.controller.has(target.gesture),
+        }
+    }
+}
+
+/// Whose gesture a target answers to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GestureSource {
+    Own,
+    Controller,
+}
+
 /// What one `while*` prop animates to, with the transition it carries, if it has one.
 #[derive(Clone, Debug)]
 struct GestureTarget {
     gesture: Gesture,
+    source: GestureSource,
     goals: Goals,
     transition: Option<Transitions>,
 }
@@ -314,7 +343,7 @@ fn effective_goals(
     animate: &Goals,
     transition: &Transitions,
     gestures: &[GestureTarget],
-    active: Gestures,
+    active: GestureStates,
     tracked: &dyn Fn(PropKey) -> bool,
     base: Base,
 ) -> (Goals, Transitions) {
@@ -322,7 +351,7 @@ fn effective_goals(
     let mut transitions = transition.clone();
     let mut ordered: Vec<&GestureTarget> = gestures.iter().collect();
     ordered.sort_by_key(|target| target.gesture);
-    for target in ordered.iter().filter(|target| active.has(target.gesture)) {
+    for target in ordered.iter().filter(|target| active.has(target)) {
         for (key, goal) in &target.goals {
             goals.insert(*key, goal.clone());
             match &target.transition {
@@ -376,6 +405,51 @@ struct Pending {
     started: Instant,
 }
 
+fn motion_description(tree: &crate::retained_tree::RetainedTree, id: u64) -> Option<&Value> {
+    tree.elements.get(&id)?.custom_props().get("motion")
+}
+
+/// The nearest ancestor whose `motion` hands variant names down (`controls`), which is where
+/// the gestures of a target that came from a variant label are read. Mirrors the React and Solid
+/// variant context, which nests the same way.
+pub(crate) fn gesture_controller(tree: &crate::retained_tree::RetainedTree, id: u64) -> Option<u64> {
+    let inherits = motion_description(tree, id)?
+        .get("inherit")
+        .and_then(Value::as_array)
+        .is_some_and(|names| !names.is_empty());
+    if !inherits {
+        return None;
+    }
+    let mut ancestor = tree.elements.get(&id)?.parent;
+    while let Some(candidate) = ancestor {
+        if motion_description(tree, candidate).is_some_and(|motion| motion.get("controls").is_some()) {
+            return Some(candidate);
+        }
+        ancestor = tree.elements.get(&candidate)?.parent;
+    }
+    None
+}
+
+/// Whether `name` (`whileHover`, `whileTap`) is a gesture the element has a target for or hands
+/// to its children, so that the pointer entering or leaving it has to be seen by the motion.
+pub(crate) fn listens_for_gesture(tree: &crate::retained_tree::RetainedTree, id: u64, name: &str) -> bool {
+    motion_description(tree, id).is_some_and(|motion| {
+        motion.get(name).is_some_and(|target| !target.is_null())
+            || motion
+                .get("controls")
+                .and_then(Value::as_array)
+                .is_some_and(|names| names.iter().any(|controlled| controlled.as_str() == Some(name)))
+    })
+}
+
+/// What an element's animations start from when a gesture changes, as `Base` is for the
+/// description.
+#[derive(Clone, Copy)]
+pub(crate) enum GestureBase<'a> {
+    Style(Option<&'a StyleDesc>),
+    Svg(&'a HashMap<String, Value>),
+}
+
 pub(crate) struct MotionState {
     source: Value,
     /// What the targets were resolved in. A new one resolves them again, so an
@@ -389,7 +463,7 @@ pub(crate) struct MotionState {
     generation: u64,
     /// The `while*` targets of the description, and which of them are on.
     gestures: Vec<GestureTarget>,
-    active: Gestures,
+    active: GestureStates,
     /// What the description animates to without a gesture.
     resting: Goals,
     resting_transition: Option<Transitions>,
@@ -457,7 +531,7 @@ impl MotionState {
             resting: description.animate,
             resting_transition: Some(description.transition),
             gestures: description.gestures,
-            active: Gestures::default(),
+            active: GestureStates::default(),
         })
     }
 
@@ -473,7 +547,7 @@ impl MotionState {
             resting: Goals::new(),
             resting_transition: None,
             gestures: Vec::new(),
-            active: Gestures::default(),
+            active: GestureStates::default(),
         }
     }
 
@@ -540,9 +614,24 @@ impl MotionState {
         };
 
         let resting = (description.animate.clone(), description.transition.clone());
+        if description.gestures.is_empty() && !self.gestures.is_empty() {
+            // The gestures are gone (the element is leaving, or the props dropped them): what they
+            // moved goes back to what the description asks for or the element has.
+            let tracked = |key: PropKey| self.tracks.contains_key(&key) || self.pending.contains_key(&key);
+            let (goals, transitions) = effective_goals(
+                &description.animate,
+                &description.transition,
+                &self.gestures,
+                GestureStates::default(),
+                &tracked,
+                base,
+            );
+            description.animate = goals;
+            description.transition = transitions;
+        }
         if !description.gestures.is_empty() {
             let tracked = |key: PropKey| self.tracks.contains_key(&key) || self.pending.contains_key(&key);
-            self.active.in_view = description.in_view;
+            self.active.own.in_view = description.in_view;
             let (goals, transitions) = effective_goals(
                 &description.animate,
                 &description.transition,
@@ -592,11 +681,13 @@ impl MotionState {
     /// target moves to the value it asks for, or back to the one the element has without it.
     pub(crate) fn set_gestures(
         &mut self,
-        active: Gestures,
-        base: Option<&StyleDesc>,
+        active: GestureStates,
+        base: GestureBase,
+        measurement: Option<&Measurement>,
+        painted: u64,
         now: Instant,
     ) -> Result<(), String> {
-        let active = Gestures { in_view: self.active.in_view, ..active };
+        let active = GestureStates { own: Gestures { in_view: self.active.own.in_view, ..active.own }, ..active };
         let previous = std::mem::replace(&mut self.active, active);
         let Some(resting_transition) = self.resting_transition.as_ref().filter(|_| self.valid) else {
             return Ok(());
@@ -605,7 +696,10 @@ impl MotionState {
             return Ok(());
         }
         let colors = self.colors.clone();
-        let base = Base::Style(base, &colors);
+        let base = match base {
+            GestureBase::Style(style) => Base::Style(style, &colors),
+            GestureBase::Svg(attributes) => Base::Svg(attributes, &colors),
+        };
         let tracked = |key: PropKey| self.tracks.contains_key(&key) || self.pending.contains_key(&key);
         let (animate, transition) =
             effective_goals(&self.resting, resting_transition, &self.gestures, active, &tracked, base);
@@ -618,7 +712,7 @@ impl MotionState {
             gestures: Vec::new(),
             in_view: false,
         };
-        let (tracks, pending, moving) = self.retarget_tracks(&description, base, None, 0, now)?;
+        let (tracks, pending, moving) = self.retarget_tracks(&description, base, measurement, painted, now)?;
         self.needs_settle |= moving;
         self.tracks = tracks;
         self.pending = pending;
@@ -1392,6 +1486,14 @@ fn parse_description(
             .as_bool()
             .ok_or_else(|| "motion reducedMotion must be a boolean".to_string())?,
     };
+    let inherited = match fields.get("inherit") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(names)) => names
+            .iter()
+            .map(|name| name.as_str().ok_or_else(|| "motion inherit must list gesture names".to_string()))
+            .collect::<Result<Vec<_>, _>>()?,
+        Some(_) => return Err("motion inherit must be a list of gesture names".to_string()),
+    };
     let mut gestures = Vec::new();
     for (name, gesture) in [
         ("whileInView", Gesture::InView),
@@ -1406,6 +1508,7 @@ fn parse_description(
                 let own = style.remove("transition").filter(|value| !value.is_null());
                 gestures.push(GestureTarget {
                     gesture,
+                    source: if inherited.contains(&name) { GestureSource::Controller } else { GestureSource::Own },
                     goals: parse_goals(name, &style, target, colors)?,
                     transition: own
                         .map(|own| Transitions::parse(Some(&own), target, reduced))
@@ -1631,6 +1734,45 @@ mod tests {
         assert_eq!(state.applied(now).unwrap().width, Some(260.0));
         assert!(!frame.active);
         assert!(!frame.just_settled);
+    }
+
+    #[test]
+    fn a_target_handed_down_answers_to_the_gesture_of_the_controller() {
+        let now = Instant::now();
+        let later = now + Duration::from_millis(10);
+        let description = serde_json::json!({
+            "animate": {}, "transition": { "duration": 0.0 },
+            "whileHover": { "opacity": 0.5 }, "inherit": ["whileHover"]
+        });
+        let mut state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
+        let hover = Gestures { hover: true, ..Default::default() };
+        let set = |state: &mut MotionState, states: GestureStates| {
+            state.set_gestures(states, GestureBase::Style(None), None, 0, now).unwrap();
+        };
+        set(&mut state, GestureStates { own: hover, controller: Gestures::default() });
+        assert_eq!(state.applied(later).and_then(|applied| applied.opacity), None, "its own hover is not the target's");
+        set(&mut state, GestureStates { own: Gestures::default(), controller: hover });
+        assert_eq!(state.applied(later).unwrap().opacity, Some(0.5));
+        set(&mut state, GestureStates::default());
+        assert_eq!(state.applied(later).unwrap().opacity, Some(1.0));
+    }
+
+    #[test]
+    fn dropping_the_gestures_from_the_description_sends_what_they_moved_back() {
+        let now = Instant::now();
+        let later = now + Duration::from_millis(10);
+        let with = serde_json::json!({
+            "animate": {}, "transition": { "duration": 0.0 }, "whileHover": { "opacity": 0.5 }
+        });
+        let mut state = MotionState::new(&with, None, Colors::root(), None, 0, now).unwrap();
+        let hover = Gestures { hover: true, ..Default::default() };
+        state
+            .set_gestures(GestureStates { own: hover, ..Default::default() }, GestureBase::Style(None), None, 0, now)
+            .unwrap();
+        assert_eq!(state.applied(later).unwrap().opacity, Some(0.5));
+        let without = serde_json::json!({ "animate": { "opacity": 0.8 }, "transition": { "duration": 0.0 } });
+        state.sync(&without, None, Colors::root(), None, 0, now).unwrap();
+        assert_eq!(state.applied(later).unwrap().opacity, Some(0.8));
     }
 
     #[test]

@@ -268,7 +268,13 @@ mod tests {
             self.motion
                 .get_mut(&id)
                 .expect("a mounted state")
-                .set_gestures(gestures, base.as_deref(), now)
+                .set_gestures(
+                    crate::motion::GestureStates { own: gestures, ..Default::default() },
+                    crate::motion::GestureBase::Style(base.as_deref()),
+                    None,
+                    0,
+                    now,
+                )
                 .expect("a valid gesture");
         }
 
@@ -985,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tap_beats_a_hover_and_a_focus_beats_both() {
+    fn a_tap_beats_a_hover_and_a_hover_beats_a_focus() {
         let mut page = Page::new();
         page.style(3, r#"{ "paddingLeft": 0 }"#);
         page.describe(
@@ -999,12 +1005,13 @@ mod tests {
             let styles = page.frame(millis + 10);
             page.shown(&styles, 3).padding_left
         };
-        let hover = crate::motion::Gestures { hover: true, ..Default::default() };
-        let both = crate::motion::Gestures { tap: true, ..hover };
-        let all = crate::motion::Gestures { focus: true, ..both };
-        assert_eq!(at(&mut page, hover, 0), Some(LinearLength::px(10.0)));
-        assert_eq!(at(&mut page, both, 20), Some(LinearLength::px(20.0)));
-        assert_eq!(at(&mut page, all, 40), Some(LinearLength::px(30.0)));
+        // Framer's order, lowest first: animate, whileInView, whileFocus, whileHover, whileTap.
+        let focus = crate::motion::Gestures { focus: true, ..Default::default() };
+        let hover = crate::motion::Gestures { hover: true, ..focus };
+        let all = crate::motion::Gestures { tap: true, ..hover };
+        assert_eq!(at(&mut page, focus, 0), Some(LinearLength::px(30.0)));
+        assert_eq!(at(&mut page, hover, 20), Some(LinearLength::px(10.0)));
+        assert_eq!(at(&mut page, all, 40), Some(LinearLength::px(20.0)));
         assert_eq!(at(&mut page, hover, 60), Some(LinearLength::px(10.0)));
     }
 

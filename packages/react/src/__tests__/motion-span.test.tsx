@@ -413,10 +413,5 @@ describeNative("motion.span", () => {
       )
       expect(error.message).toContain('names the variant "shown"')
     })
-
-    it("variants on a motion.div", () => {
-      const error = renderError(<motion.div {...({ variants: { a: {} } } as object)} />)
-      expect(error.message).toContain("only supported by motion.span")
-    })
   })
 })

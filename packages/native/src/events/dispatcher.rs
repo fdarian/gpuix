@@ -861,7 +861,7 @@ pub(super) fn update_hover(state: &mut PointerState, emitter: &mut Emitter, new_
             // A group's followers restyle with it.
             has_state_style(tree, *id, |style| {
                 style.hover.is_some() || style.declared_group().is_some()
-            })
+            }) || crate::motion::listens_for_gesture(tree, *id, "whileHover")
         })
         || relational_restyle(tree, &state.hovered, &new_path, |style| style.has_hover.is_some());
     state.hovered = new_path;
@@ -1020,7 +1020,7 @@ pub(super) fn set_active(state: &mut PointerState, tree: &RetainedTree, new_path
         .any(|id| {
             has_state_style(tree, *id, |style| {
                 style.active.is_some() || style.declared_group().is_some()
-            })
+            }) || crate::motion::listens_for_gesture(tree, *id, "whileTap")
         })
         || relational_restyle(tree, &state.active, &new_path, |style| style.has_active.is_some());
     state.active = new_path;
@@ -1860,6 +1860,22 @@ mod tests {
         assert!(dispatch(&mut state, &tree, &mv(chain_of(&[3, 2, 1]))).restyle);
         assert!(dispatch(&mut state, &tree, &mv(chain_of(&[4, 1]))).restyle, "the child and its parent are both left");
         assert!(!state.has_hovered(2));
+    }
+
+    #[test]
+    fn a_motion_gesture_restyles_with_no_state_style_declared() {
+        let mut tree = tree(&[]);
+        tree.set_custom_prop(2, "motion".to_string(), serde_json::json!({ "whileHover": { "opacity": 0.5 } }));
+        tree.set_custom_prop(4, "motion".to_string(), serde_json::json!({ "controls": ["whileTap"] }));
+        let mut state = PointerState::default();
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[2, 1]))).restyle, "a whileHover target is entered");
+        assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[2, 1]))).restyle);
+        assert!(dispatch(&mut state, &tree, &mv(chain_of(&[4, 1]))).restyle, "and left");
+        // 4 hands down whileTap only: entering it is no hover gesture, pressing it is a tap one.
+        assert!(!dispatch(&mut state, &tree, &mv(chain_of(&[1]))).restyle);
+        dispatch(&mut state, &tree, &mv(chain_of(&[4, 1])));
+        assert!(dispatch(&mut state, &tree, &down(0, 1, chain_of(&[4, 1]))).restyle, "a controller of whileTap is pressed");
+        assert!(dispatch(&mut state, &tree, &up(0, 1, chain_of(&[4, 1]))).restyle);
     }
 
     #[test]

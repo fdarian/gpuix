@@ -1073,6 +1073,17 @@ impl Retain {
             _ => changed.extend(sources.focusable.keys()),
         }
 
+        // A motion element answers to the gestures of the ancestor that controls its variants,
+        // which are not on its own chain.
+        if !changed.is_empty() {
+            let moved: FxHashSet<u64> = changed.iter().copied().collect();
+            for &id in &sources.tree.motion_ids {
+                if crate::motion::gesture_controller(sources.tree, id).is_some_and(|controller| moved.contains(&controller)) {
+                    changed.push(id);
+                }
+            }
+        }
+
         let mut scrolled = FxHashSet::default();
         let scrolls = scroll_bits(sources.scrolls);
         let mut scrolling = false;

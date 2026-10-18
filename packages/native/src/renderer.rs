@@ -5163,20 +5163,27 @@ fn parent_inherited(
     inherited
 }
 
-/// Which gestures are on a span: the states its `hover`, `active` and `focusVisible` styles
-/// answer to, whether or not it declares them, in a subtree that takes input.
+/// Which gestures are on an element: the states its `hover`, `active` and `focusVisible` styles
+/// answer to, whether or not it declares them, in a subtree that takes input. Targets that name
+/// a variant of a controlling ancestor answer to that ancestor's gestures.
 fn gestures_of(
     tree: &crate::retained_tree::RetainedTree,
     pointer: &crate::events::state::PointerState,
     focus: &crate::focus::FocusStyles,
     id: u64,
-) -> crate::motion::Gestures {
-    let live = !tree.elements.get(&id).is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
-    crate::motion::Gestures {
-        hover: live && pointer.is_hovered(id),
-        tap: live && pointer.is_active(id),
-        focus: focus.is_focus_visible(id),
-        ..Default::default()
+) -> crate::motion::GestureStates {
+    let states = |id: u64| {
+        let live = !tree.elements.get(&id).is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+        crate::motion::Gestures {
+            hover: live && pointer.is_hovered(id),
+            tap: live && pointer.is_active(id),
+            focus: focus.is_focus_visible(id),
+            ..Default::default()
+        }
+    };
+    crate::motion::GestureStates {
+        own: states(id),
+        controller: crate::motion::gesture_controller(tree, id).map(states).unwrap_or_default(),
     }
 }
 
@@ -5186,7 +5193,7 @@ fn sync_motion_states(
     measurements: &crate::motion::measure::Measurements,
     appearance: gpui::WindowAppearance,
     viewport: gpui::Size<gpui::Pixels>,
-    gestures: &dyn Fn(u64) -> crate::motion::Gestures,
+    gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
@@ -5250,10 +5257,13 @@ fn sync_motion_states(
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
         }
-        if inline {
-            if let Err(error) = state.set_gestures(gestures(id), base, now) {
-                log::warn!("Invalid motion gesture for element {id}: {error}");
-            }
+        let gesture_base = match svg_attributes {
+            Some(attributes) => crate::motion::GestureBase::Svg(attributes),
+            None => crate::motion::GestureBase::Style(base),
+        };
+        let gesturing = state.set_gestures(gestures(id), gesture_base, measurement.as_ref(), painted, now);
+        if let Err(error) = gesturing {
+            log::warn!("Invalid motion gesture for element {id}: {error}");
         }
         let frame = state.frame(now);
         active |= frame.active;

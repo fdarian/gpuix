@@ -18,6 +18,7 @@ import type {
 } from "./events/types.js"
 import type { ScrollEvent } from "./scroll.js"
 import type { MotionValue } from "./motion-value.js"
+import type { MotionGestureName } from "./motion-variants.js"
 
 export type {
   DebugFrameOverlayStats,
@@ -54,6 +55,7 @@ export * from "./match-media.js"
 export * from "./motion-bindings.js"
 export * from "./motion-config.js"
 export * from "./motion-span.js"
+export * from "./motion-variants.js"
 export * from "./motion-value.js"
 export * from "./mutations.js"
 export * from "./observers.js"
@@ -339,16 +341,23 @@ export interface MotionProps {
   exit?: MotionStyle
   transition?: MotionTransition
   /**
-   * What a span (`motion.span`) animates to while the pointer is over it, a press that began on it
-   * goes on, it has `:focus-visible` focus, or `inView` is true. Each takes the `transition` of its
-   * own animation. Several at once apply in this order of priority: in view, hover, tap, focus.
+   * What the element animates to while the pointer is over it, a press that began on it goes on,
+   * it has `:focus-visible` focus, or `inView` is true. Each takes the `transition` of its own
+   * animation. Several at once apply in this order of priority: in view, hover, tap, focus.
    */
   whileHover?: MotionStyle & { transition?: MotionTransition }
   whileTap?: MotionStyle & { transition?: MotionTransition }
   whileFocus?: MotionStyle & { transition?: MotionTransition }
   whileInView?: MotionStyle & { transition?: MotionTransition }
-  /** Whether the span is in view, which `whileInView` waits for. */
+  /** Whether the element is in view, which `whileInView` waits for. */
   inView?: boolean
+  /**
+   * The gestures (`"whileHover"`, ...) whose target above answers to the nearest ancestor with
+   * `controls` instead of this element: the variant names that ancestor's `while*` gave it.
+   */
+  inherit?: MotionGestureName[]
+  /** The gestures this element hands down as variant names. Its presence makes it a controller. */
+  controls?: MotionGestureName[]
 }
 
 /**
@@ -422,6 +431,13 @@ export interface SvgMotionProps {
   /** Target applied while this node is leaving `AnimatePresence`. */
   exit?: SvgMotionStyle
   transition?: SvgMotionTransition
+  whileHover?: SvgMotionStyle & { transition?: SvgMotionTransition }
+  whileTap?: SvgMotionStyle & { transition?: SvgMotionTransition }
+  whileFocus?: SvgMotionStyle & { transition?: SvgMotionTransition }
+  whileInView?: SvgMotionStyle & { transition?: SvgMotionTransition }
+  inView?: boolean
+  inherit?: MotionGestureName[]
+  controls?: MotionGestureName[]
 }
 
 /**
