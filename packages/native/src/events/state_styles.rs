@@ -5,7 +5,7 @@ use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
 use crate::css::border::{self, parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
-use crate::css::{clip_path, filter, text_box, text_decoration};
+use crate::css::{clip_path, filter, mask_border, text_box, text_decoration};
 use crate::style::{BackgroundValue, StyleDesc};
 
 /// Takes `$base`'s value for every field `$over` leaves unset. Written as a
@@ -195,7 +195,9 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         background, background_color, background_image, background_size, background_position,
         background_repeat, background_origin, background_clip, color, color_scheme, opacity,
         filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
-        mask_clip, mask_mode, mask_composite, mask, clip_path, font_style,
+        mask_clip, mask_mode, mask_composite, mask, mask_border_source, mask_border_slice,
+        mask_border_width, mask_border_outset, mask_border_repeat, mask_border_mode, mask_border,
+        clip_path, font_style,
         border, border_block, border_inline, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,
@@ -257,6 +259,13 @@ pub(crate) fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         mask_clip: |value| background::is_valid_list::<Mask>(Property::Clip, value, &lengths),
         mask_mode: |value| background::is_valid_list::<Mask>(Property::Mode, value, &lengths),
         mask_composite: |value| background::is_valid_list::<Mask>(Property::Composite, value, &lengths),
+        mask_border: |value| mask_border::is_valid_shorthand(value, &colors, &lengths),
+        mask_border_source: |value| mask_border::is_valid_source(value, &colors, &lengths),
+        mask_border_slice: |value| mask_border::is_valid_slice(value),
+        mask_border_width: |value| mask_border::is_valid_width(value, &lengths),
+        mask_border_outset: |value| mask_border::is_valid_outset(value, &lengths),
+        mask_border_repeat: |value| mask_border::is_valid_repeat(value),
+        mask_border_mode: |value| mask_border::is_valid_mode(value),
         background_color: |value| colors.resolve(value).is_some(),
         background_image: |value| background::is_valid_image_list::<Background>(value, &colors, &lengths),
         background_size: |value| background::is_valid_list::<Background>(Property::Size, value, &lengths),
@@ -1175,6 +1184,43 @@ mod tests {
         );
         assert_eq!(keeps.mask_mode.as_deref(), Some("luminance"));
         assert_eq!(keeps.mask, None);
+    }
+
+    #[test]
+    fn a_mask_border_state_replaces_the_base_parts_and_a_shorthand_resets_them() {
+        let base = r##"{"maskBorderSource":"linear-gradient(black, transparent)","maskBorderSlice":"10",
+            "maskBorderWidth":"4px","maskBorderRepeat":"round",
+            "hover":{HOVER}}"##;
+        let width = resolved_hover(&base.replace("{HOVER}", r##"{"maskBorderWidth":"8px"}"##));
+        assert_eq!(width.mask_border_width.as_deref(), Some("8px"));
+        assert_eq!(width.mask_border_slice.as_deref(), Some("10"));
+        let reset = resolved_hover(&base.replace("{HOVER}", r##"{"maskBorder":"none"}"##));
+        assert_eq!(reset.mask_border.as_deref(), Some("none"));
+        assert_eq!(
+            (reset.mask_border_source, reset.mask_border_slice, reset.mask_border_width, reset.mask_border_repeat),
+            (None, None, None, None)
+        );
+        // `mask` is another property: it leaves the border alone.
+        let mask = resolved_hover(&base.replace("{HOVER}", r##"{"mask":"none"}"##));
+        assert_eq!(mask.mask_border_width.as_deref(), Some("4px"));
+    }
+
+    #[test]
+    fn an_invalid_mask_border_state_value_keeps_the_base_one() {
+        let resolved = resolved_hover(
+            r##"{"maskBorder":"linear-gradient(black, transparent) 10","maskBorderWidth":"4px",
+                "maskBorderMode":"luminance",
+                "hover":{"maskBorder":"bogus","maskBorderWidth":"-1px","maskBorderMode":"match-source",
+                         "maskBorderRepeat":"no-repeat","maskBorderSlice":"1 2 3 4 5","maskBorderOutset":"5%",
+                         "maskBorderSource":"url(a.png), url(b.png)"}}"##,
+        );
+        assert_eq!(resolved.mask_border.as_deref(), Some("linear-gradient(black, transparent) 10"));
+        assert_eq!(resolved.mask_border_width.as_deref(), Some("4px"));
+        assert_eq!(resolved.mask_border_mode.as_deref(), Some("luminance"));
+        assert_eq!(
+            (resolved.mask_border_repeat, resolved.mask_border_slice, resolved.mask_border_outset, resolved.mask_border_source),
+            (None, None, None, None)
+        );
     }
 
     #[test]

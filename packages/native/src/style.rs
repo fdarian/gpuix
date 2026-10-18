@@ -784,6 +784,20 @@ pub struct StyleDesc {
     pub mask_composite: Option<String>,
     /// CSS `mask` shorthand. The longhands above replace its parts.
     pub mask: Option<String>,
+    /// CSS `mask-border-source`: one gradient or `url()` image, or `none`. The border is a
+    /// nine-slice of it around the border box that adds to the `mask-image` layers.
+    pub mask_border_source: Option<String>,
+    /// CSS `mask-border-slice`: one to four numbers or percentages and `fill`,
+    /// `mask-border-width`: one to four lengths, percentages, numbers or `auto`,
+    /// `mask-border-outset`: one to four lengths or numbers, `mask-border-repeat`: one or two of
+    /// `stretch`, `repeat`, `round` and `space`, and `mask-border-mode`: `alpha` or `luminance`.
+    pub mask_border_slice: Option<String>,
+    pub mask_border_width: Option<String>,
+    pub mask_border_outset: Option<String>,
+    pub mask_border_repeat: Option<String>,
+    pub mask_border_mode: Option<String>,
+    /// CSS `mask-border` shorthand. The longhands above replace its parts.
+    pub mask_border: Option<String>,
     /// CSS `clip-path`: `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`, `polygon()` or `path()` and an
     /// optional reference box, or `none`. An invalid string is ignored.
     pub clip_path: Option<String>,
@@ -1294,6 +1308,27 @@ impl StyleDesc {
                 clip: self.mask_clip.as_deref(),
                 mode: self.mask_mode.as_deref(),
                 composite: self.mask_composite.as_deref(),
+            },
+            colors,
+            lengths,
+        )
+    }
+
+    /// The `mask-border`, or `None` when the style has none.
+    pub(crate) fn resolved_mask_border(
+        &self,
+        colors: &ColorContext,
+        lengths: &LengthContext,
+    ) -> Option<gpui::MaskBorder> {
+        crate::css::mask_border::resolve(
+            &crate::css::mask_border::Inputs {
+                shorthand: self.mask_border.as_deref(),
+                source: self.mask_border_source.as_deref(),
+                slice: self.mask_border_slice.as_deref(),
+                width: self.mask_border_width.as_deref(),
+                outset: self.mask_border_outset.as_deref(),
+                repeat: self.mask_border_repeat.as_deref(),
+                mode: self.mask_border_mode.as_deref(),
             },
             colors,
             lengths,

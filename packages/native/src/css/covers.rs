@@ -108,6 +108,10 @@ covers! {
         mask_image, mask_size, mask_position, mask_repeat, mask_origin, mask_clip, mask_mode,
         mask_composite,
     ],
+    mask_border => [
+        mask_border_source, mask_border_slice, mask_border_width, mask_border_outset,
+        mask_border_repeat, mask_border_mode,
+    ],
     background => [
         background_color, background_image, background_size, background_position, background_repeat,
         background_origin, background_clip,
@@ -631,6 +635,9 @@ mod tests {
         ("textWrap", r#""balance""#, "textWrapMode", r#""nowrap""#),
         ("textWrap", r#""balance""#, "textWrapStyle", r#""pretty""#),
         ("mask", r#""linear-gradient(red, blue)""#, "maskImage", r#""none""#),
+        ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderSource", r#""none""#),
+        ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderRepeat", r#""round""#),
+        ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderMode", r#""luminance""#),
         ("background", r#""red""#, "backgroundColor", r#""blue""#),
         ("background", r#""red""#, "backgroundImage", r#""none""#),
     ];
@@ -692,6 +699,7 @@ mod tests {
             (r#""borderTopStyle": "solid""#, r#""borderStyle": "wavy""#, "borderTopStyle"),
             (r#""backgroundColor": "red""#, r#""background": "nonsense""#, "backgroundColor"),
             (r#""maskImage": "none""#, r#""mask": "bogus bogus""#, "maskImage"),
+            (r#""maskBorderWidth": "4px""#, r#""maskBorder": "bogus bogus""#, "maskBorderWidth"),
             (r#""textDecorationColor": "red""#, r#""textDecoration": "bogus""#, "textDecorationColor"),
             (r#""textBoxTrim": "trim-start""#, r#""textBox": "bogus""#, "textBoxTrim"),
         ] {

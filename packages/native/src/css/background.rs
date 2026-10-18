@@ -388,6 +388,17 @@ pub(crate) fn parse_images<K: Kind>(
         .collect()
 }
 
+/// One `<image>` for a place that takes a single one (`mask-border-source`): `None` for an
+/// invalid value, `Some(None)` for a valid one that does not paint, and else the image with the
+/// address a `url()` was made from.
+pub(crate) fn parse_source_image(
+    item: &str,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> Option<Option<(BackgroundImage, Option<String>)>> {
+    Some(parse_image::<Background>(item, colors, lengths)?.map(|slot| (slot.image, slot.url)))
+}
+
 /// `Some(None)` is a valid image that does not paint.
 fn parse_image<K: Kind>(item: &str, colors: &ColorContext, lengths: &LengthContext) -> Option<Option<SlotImage>> {
     match url::parse(item) {
@@ -412,7 +423,7 @@ fn parse_image<K: Kind>(item: &str, colors: &ColorContext, lengths: &LengthConte
 }
 
 /// Splits on whitespace, and on `/` where it stands alone or between values.
-fn shorthand_tokens(layer: &str) -> Vec<&str> {
+pub(crate) fn shorthand_tokens(layer: &str) -> Vec<&str> {
     let mut tokens = Vec::new();
     for token in split_whitespace(layer) {
         if token.contains('/') && !token.contains('(') {

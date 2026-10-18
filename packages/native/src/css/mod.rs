@@ -24,6 +24,7 @@ pub(crate) mod length;
 pub(crate) mod line_height;
 pub(crate) mod logical;
 pub(crate) mod mask;
+pub(crate) mod mask_border;
 #[cfg(test)]
 mod parse_cost;
 pub(crate) mod outline;

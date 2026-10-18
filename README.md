@@ -6099,7 +6099,7 @@ CSS-like styling via the `style` prop:
 
 **Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`), and `inset`, `insetBlock` and `insetInline` for them (`inset: 0` fills the containing block). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
-**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
+**Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `maskBorder`, `maskBorderSource`, `maskBorderSlice`, `maskBorderWidth`, `maskBorderOutset`, `maskBorderRepeat`, `maskBorderMode`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
 ### Lengths
 
@@ -6978,8 +6978,57 @@ in any order among the other parts, and resets both longhands.
 <div style={{ mask: 'url(/assets/photo-mask.png) luminance center / cover no-repeat' }} />
 ```
 
+`maskBorder` draws a nine-slice of an image around the border box and multiplies
+the element by it, like another mask layer: the top one, which adds to the
+`maskImage` layers, so the element shows where either lets it through. It is for
+frames, ticket edges and torn-paper borders that a gradient cannot draw.
+
+- `maskBorderSource`: one gradient or `url()` image, or `none`. A gradient has no
+  size of its own, so it is as large as the border image area, and `maskBorderSlice`
+  counts pixels of that. An image that has not loaded masks the element out, like a
+  `maskImage` layer.
+- `maskBorderSlice`: one to four numbers (pixels of the image) or percentages, in the
+  order of `margin`, that cut the image into nine pieces. The corners go to the corners
+  and the edges to the edges, and the middle is drawn only if `fill` comes before or
+  after the numbers. It starts at `0`: a source alone draws nothing. A number past the
+  image is the image.
+- `maskBorderWidth`: one to four lengths, percentages of the border image area,
+  numbers (times the element's border width on that side) or `auto`, which is the size
+  of the slice and what it starts as. Edges that together are wider than the area all
+  shrink by the same factor.
+- `maskBorderOutset`: one to four lengths or numbers (times the border width) that grow
+  the border image area past the border box. The element is hidden outside the area,
+  so a child that sticks out past the outset is cut off.
+- `maskBorderRepeat`: one or two of `stretch` (the default), `repeat`, `round` and
+  `space`, for the top and bottom edges and the left and right ones. `repeat` tiles an
+  edge with whole slices at the size the edge's width scales them to, centred, and cuts
+  the ones at the ends. `round` rescales them to a whole number that fits. `space` keeps
+  their size and divides what is left into equal gaps around and between them, and draws
+  nothing if not even one fits. The middle repeats the same way, scaled like the top
+  edge across and the left edge down.
+- `maskBorderMode`: `alpha` (the default) reads the image's alpha channel, `luminance`
+  its luminance scaled by its alpha.
+- `maskBorder` is the shorthand, `<source> || <slice> [ / <width>? [ / <outset> ]? ]? ||
+  <repeat> || <mode>`, and resets what it leaves out. A longhand written after it wins
+  over it, as with `mask`; `mask` and `maskBorder` do not reset each other.
+
+```tsx
+<div style={{ maskBorder: 'url(/assets/torn.png) 30 / 30px round' }} />
+// Solid but for a soft edge: the corner and edge slices of a gradient, with the middle filled.
+<div style={{ maskBorderSource: 'radial-gradient(black 60%, transparent)', maskBorderSlice: '20% fill' }} />
+```
+
+Chrome only has the prefixed `-webkit-mask-box-image-*` forms of these, which read the
+image by alpha only, imply `fill` when written in the shorthand and start `slice` at
+`0 fill`; the unprefixed names here follow the CSS Masking spec instead. A slice is
+drawn from the image's own pixels, so a vector (SVG) source that is scaled up well past
+its size has soft edges where Chrome's are sharp. A gradient source is laid out for the scaled
+size of each slice instead of being warped with it: a gradient along an axis comes out
+as Chrome's, but a radial one keeps its circle and an angled one its angle where Chrome
+stretches them with the slice. Past 4096 tiles in one edge nothing is drawn for it.
+
 Limits: `image-set()` is not drawn (that layer is skipped, as in `backgroundImage`).
-`mask-border` and the legacy `-webkit-mask-composite` keywords (`source-over`,
+The legacy `-webkit-mask-composite` keywords (`source-over`,
 `source-in`, ...) are not supported. `no-clip` and `margin-box` are not supported, so
 a value using them is ignored. `fill-box` is `content-box` and `stroke-box` and
 `view-box` are `border-box`. Masks, like the other effect groups, are drawn only on

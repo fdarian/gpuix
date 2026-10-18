@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  Oracle for mask-border.test.tsx: what headless Chrome paints for a 100x100 red box at (50, 50) of
+  a 200x200 white cell, masked by a mask border. A red child covers the whole cell, so what the
+  mask lets through outside the box shows too. Chrome only knows the prefixed
+  `-webkit-mask-box-image-*` longhands, which read the image by its alpha, so `mask-border-*` is
+  renamed to them below. A case with a `chrome` style is the same picture drawn in a way Chrome can
+  read: a luminance source as the alpha of black. Regenerate with
+
+    sh mask-border-oracle.sh
+
+  `samples` is the alpha of the mask (255 minus the green channel of red over white) averaged over
+  each 5x5 block of the cell, row by row, two hex digits each. `lines` are the same alpha at every pixel of
+  two rows and two columns of a case that tiles, as the smallest and the largest alpha within two pixels
+  across them, which tell where a tile starts.
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#fff}
+.cell{position:absolute;width:200px;height:200px}
+.box{position:absolute;left:50px;top:50px;width:100px;height:100px;background:#f00}
+.fill{position:absolute;left:-50px;top:-50px;width:200px;height:200px;background:#f00}
+</style></head><body>
+<script>
+// 30x30: nine 10px regions. `alpha(i)` is the alpha of region i, and each region darkens left to right
+// and top to bottom, so a tile's orientation and its place in a repeat can be told. The ramps are
+// smooth because Chrome draws a vector image at the size it is shown at and gpuix scales the pixels
+// it drew at the image's own size: they agree except for a pixel at a hard edge.
+const alpha = (i) => (0.1 * (i + 1)).toFixed(1);
+const marked = (paint) => {
+  const parts = [];
+  for (let i = 0; i < 9; i++) {
+    const x = (i % 3) * 10, y = Math.floor(i / 3) * 10;
+    parts.push(paint(i, x, y));
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30">${parts.join('')}</svg>`;
+};
+const url = (svg) => `url(data:image/svg+xml;base64,${btoa(svg)})`;
+const RAMPS = '<defs><linearGradient id="h"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.2"/></linearGradient>' +
+  '<linearGradient id="v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.1"/></linearGradient></defs>';
+const REGIONS = url(marked((i, x, y) =>
+  `<rect x="${x}" y="${y}" width="10" height="10" fill="#000" fill-opacity="${alpha(i)}"/>` +
+  `<rect x="${x}" y="${y}" width="10" height="10" fill="url(#h)"/><rect x="${x}" y="${y}" width="10" height="10" fill="url(#v)"/>`).replace('<rect', RAMPS + '<rect'));
+// Opaque grays whose luminance is `alpha(i)`; Chrome reads the black with that alpha instead.
+const GRAYS = url(marked((i, x, y) => {
+  const gray = Math.round(255 * alpha(i));
+  return `<rect x="${x}" y="${y}" width="10" height="10" fill="rgb(${gray},${gray},${gray})"/>`;
+}));
+const GRAYS_AS_ALPHA = url(marked((i, x, y) =>
+  `<rect x="${x}" y="${y}" width="10" height="10" fill="#000" fill-opacity="${Math.round(255 * alpha(i)) / 255}"/>`));
+const PLAIN = url(marked((i, x, y) =>
+  `<rect x="${x}" y="${y}" width="10" height="10" fill="#000" fill-opacity="${alpha(i)}"/>`));
+const RAMP = 'linear-gradient(to right, rgba(0,0,0,0.1), rgba(0,0,0,1))';
+
+const border = (extra) => ({ 'mask-border-source': REGIONS, 'mask-border-slice': '10', 'mask-border-width': '10px', ...extra });
+const cases = {
+  'stretch with fill': border({ 'mask-border-slice': '10 fill' }),
+  'stretch without fill': border({}),
+  'a lone source with a zero slice and fill is stretched whole': { 'mask-border-source': REGIONS, 'mask-border-slice': '0 fill' },
+  'repeat': border({ 'mask-border-width': '15px', 'mask-border-repeat': 'repeat' }),
+  'round': border({ 'mask-border-width': '15px', 'mask-border-repeat': 'round' }),
+  'space': border({ 'mask-border-width': '15px', 'mask-border-repeat': 'space' }),
+  'space with room for one tile': border({ 'mask-border-width': '30px', 'mask-border-repeat': 'space' }),
+  'space with no room for a tile': border({ 'mask-border-width': '40px', 'mask-border-repeat': 'space' }),
+  'repeat and round, edges of different widths': border({ 'mask-border-width': '18px 10px 10px 10px', 'mask-border-repeat': 'repeat round' }),
+  'space and stretch, edges of different widths': border({ 'mask-border-width': '10px 18px 12px 14px', 'mask-border-repeat': 'space stretch' }),
+  'repeated fill scales by the top and left edges': border({ 'mask-border-slice': '10 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'repeat' }),
+  'rounded fill': border({ 'mask-border-slice': '10 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'round' }),
+  'spaced fill': border({ 'mask-border-slice': '10 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'space' }),
+  'fill repeated across and stretched down': border({ 'mask-border-slice': '10 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'repeat stretch' }),
+  'fill with no top slice': border({ 'mask-border-slice': '0 10 10 10 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'repeat' }),
+  'fill with no left slice': border({ 'mask-border-slice': '10 10 10 0 fill', 'mask-border-width': '20px 10px 30px 15px', 'mask-border-repeat': 'repeat' }),
+  'outset in lengths': border({ 'mask-border-width': '20px', 'mask-border-outset': '10px' }),
+  'outset in numbers of the border width': { border: '5px solid #f00', ...border({ 'mask-border-width': '20px', 'mask-border-outset': '2' }) },
+  'outset on each side': border({ 'mask-border-slice': '10 fill', 'mask-border-width': '20px', 'mask-border-outset': '4px 8px 12px 16px' }),
+  'width auto is the slice': { 'mask-border-source': REGIONS, 'mask-border-slice': '10' },
+  'width auto with a border is still the slice': { border: '5px solid #f00', 'mask-border-source': REGIONS, 'mask-border-slice': '10' },
+  'width in numbers of the border width': { border: '5px solid #f00', ...border({ 'mask-border-width': '2' }) },
+  'width in percentages of the area': border({ 'mask-border-width': '20%' }),
+  'width of four sides': border({ 'mask-border-width': '5px 10px 15px 20px' }),
+  'width of zero': border({ 'mask-border-width': '0' }),
+  'widths that are too wide shrink together': border({ 'mask-border-width': '10px 60px' }),
+  'widths that are too tall shrink together': border({ 'mask-border-width': '70px 10px' }),
+  'slice of four sides': border({ 'mask-border-slice': '5 10 15 5 fill' }),
+  'slice in percentages': border({ 'mask-border-slice': '33.3333% fill' }),
+  'slice larger than the image': border({ 'mask-border-slice': '20' }),
+  'slice larger than the image, with fill': border({ 'mask-border-slice': '20 fill' }),
+  'slice beyond the image is the image': border({ 'mask-border-slice': '40 fill' }),
+  'luminance source read by luminance': { style: border({ 'mask-border-source': GRAYS, 'mask-border-slice': '10 fill', 'mask-border-mode': 'luminance' }),
+    chrome: border({ 'mask-border-source': GRAYS_AS_ALPHA, 'mask-border-slice': '10 fill' }) },
+  'luminance source read by alpha': border({ 'mask-border-source': GRAYS, 'mask-border-slice': '10 fill', 'mask-border-mode': 'alpha' }),
+  'alpha source read by luminance': { style: border({ 'mask-border-source': PLAIN, 'mask-border-slice': '10 fill', 'mask-border-mode': 'luminance' }),
+    chrome: border({ 'mask-border-source': 'linear-gradient(transparent, transparent)', 'mask-border-slice': '10 fill' }) },
+  'with a mask image the border adds': border({ 'mask-border-slice': '10 fill', 'mask-image': 'linear-gradient(to right, #000 50%, transparent 50%)' }),
+  'with a mask image, no fill': border({ 'mask-image': 'linear-gradient(to bottom, #000 30%, transparent 30%)' }),
+  'with a mask image smaller than the border image area': border({ 'mask-border-width': '20px', 'mask-image': 'linear-gradient(#000, #000)', 'mask-size': '60px 60px', 'mask-position': 'center', 'mask-repeat': 'no-repeat' }),
+  'gradient source with fill': border({ 'mask-border-source': RAMP, 'mask-border-slice': '10 fill' }),
+  'gradient source without fill': border({ 'mask-border-source': RAMP }),
+  'gradient source width auto': { 'mask-border-source': RAMP, 'mask-border-slice': '20' },
+  'gradient source repeated': border({ 'mask-border-source': RAMP, 'mask-border-width': '15px', 'mask-border-repeat': 'repeat' }),
+  'gradient source rounded and spaced': border({ 'mask-border-source': 'linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,1))', 'mask-border-width': '15px', 'mask-border-repeat': 'round space' }),
+  'gradient source in percentages': border({ 'mask-border-source': RAMP, 'mask-border-slice': '20% fill', 'mask-border-width': '20px' }),
+  'a corner radius does not round it': border({ 'border-radius': '30px' }),
+  'a missing image masks everything out': border({ 'mask-border-source': 'url(missing-mask-border.png)' }),
+  'no source': { 'mask-border-slice': '10 fill', 'mask-border-width': '10px' },
+};
+
+const entries = Object.entries(cases).map(([name, value]) => {
+  const style = value.style ?? value;
+  return { name, style, chrome: value.chrome ?? style };
+});
+const apply = (element, style) => {
+  for (const [property, text] of Object.entries(style)) {
+    const renamed = property.startsWith('mask-border-')
+      ? property.replace('mask-border-', '-webkit-mask-box-image-') : property;
+    element.style.setProperty(renamed, text);
+  }
+};
+entries.forEach((entry, index) => {
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  cell.style.left = (index % 5) * 200 + 'px';
+  cell.style.top = Math.floor(index / 5) * 200 + 'px';
+  const box = document.createElement('div');
+  box.className = 'box';
+  apply(box, entry.chrome);
+  const fill = document.createElement('div');
+  fill.className = 'fill';
+  box.appendChild(fill);
+  cell.appendChild(box);
+  document.body.appendChild(cell);
+});
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(entries.map(({ name, style }) => ({ name, style }))));
+document.body.appendChild(holder);
+</script></body></html>

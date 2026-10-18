@@ -783,8 +783,36 @@ export interface StyleDesc {
   maskComposite?: "add" | "subtract" | "intersect" | "exclude" | string
   /** CSS `mask` shorthand: layers, `position / size`, repeat, origin / clip boxes,
    *  and a mode and a composite keyword, in any order. The longhands win over it.
-   *  An invalid string is ignored. `mask-border` is not supported. */
+   *  An invalid string is ignored. It does not touch `maskBorder`. */
   mask?: string
+  /** CSS `mask-border-source`: one `linear-`, `radial-`, `conic-gradient()` (or `repeating-`
+   *  form) or `url()` image, or `none`. The element is multiplied by a nine-slice of the image
+   *  drawn around its border box (and `maskBorderOutset`), as another layer added to the
+   *  `maskImage` ones; see `maskBorder`. A gradient is as large as the border image area. A
+   *  `url()` that has not loaded, or failed to, masks the element out like a `maskImage` one.
+   *  Chrome only knows the prefixed `-webkit-mask-box-image-*` forms of these. */
+  maskBorderSource?: string
+  /** CSS `mask-border-slice`: one to four numbers (pixels of the image) or percentages, clockwise
+   *  from the top like `margin`, and `fill` before or after them to draw the middle slice too.
+   *  Starts at `0`, and unlike `-webkit-mask-box-image` does not imply `fill`. */
+  maskBorderSlice?: string
+  /** CSS `mask-border-width`: one to four lengths, percentages of the border image area, numbers
+   *  (times the element's border width) or `auto` (the size of the slice, the default). */
+  maskBorderWidth?: string
+  /** CSS `mask-border-outset`: one to four lengths or numbers (times the border width) that grow
+   *  the border image area past the border box. */
+  maskBorderOutset?: string
+  /** CSS `mask-border-repeat`: one or two of `stretch` (the default), `repeat` (whole slices,
+   *  centred and cut off at the ends), `round` (rescaled to a whole number) and `space` (whole
+   *  slices with equal gaps around and between them), for the horizontal and the vertical edges. */
+  maskBorderRepeat?: "stretch" | "repeat" | "round" | "space" | string
+  /** CSS `mask-border-mode`: `alpha` (the default) reads the alpha of the image, `luminance` its
+   *  luminance scaled by its alpha. */
+  maskBorderMode?: "alpha" | "luminance"
+  /** CSS `mask-border` shorthand: `<source> || <slice> [ / <width>? [ / <outset> ]? ]? ||
+   *  <repeat> || <mode>`, with what it leaves out at its initial value. The longhands win over
+   *  it. An invalid string is ignored. */
+  maskBorder?: string
   /** CSS `clip-path`: `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`, `polygon()` or
    *  `path()`, or `none`, with an optional `border-box` (default), `padding-box` or
    *  `content-box` before or after the shape. The element and everything in it is

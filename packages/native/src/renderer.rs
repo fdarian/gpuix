@@ -9962,6 +9962,9 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     if let Some(layers) = style.resolved_mask(colors, lengths) {
         el.style().mask_layers = Some(layers);
     }
+    if let Some(border) = style.resolved_mask_border(colors, lengths) {
+        el.style().mask_border = Some(border);
+    }
     // `Some(None)` is `none`, which a state style needs in order to clear the base clip path.
     if let Some(clip_path) = style
         .clip_path

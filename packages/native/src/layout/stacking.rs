@@ -77,7 +77,7 @@ pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
 }
 
 /// The condition of zed's `Style::group_effect`: opacity below 1, a non-empty `filter` or
-/// `backdrop-filter`, a mask layer, or a clip path other than `none`. `colors` and `lengths`
+/// `backdrop-filter`, a mask layer or a mask border, or a clip path other than `none`. `colors` and `lengths`
 /// only decide whether a `filter` or `mask` value is valid, and a value that does not parse
 /// makes no group. Not `transform`: gpuix has no such style.
 pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
@@ -93,6 +93,7 @@ pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths
         || style
             .resolved_mask(colors, lengths)
             .is_some_and(|layers| !layers.is_empty())
+        || style.resolved_mask_border(colors, lengths).is_some()
         || style
             .clip_path
             .as_deref()
@@ -339,6 +340,12 @@ mod tests {
             s.mask_image = Some("linear-gradient(black, transparent)".into())
         })));
         assert!(context_of(&with(|s| s.clip_path = Some("inset(2px)".into()))));
+        assert!(context_of(&with(|s| {
+            s.mask_border_source = Some("linear-gradient(black, transparent)".into())
+        })));
+        assert!(context_of(&with(|s| {
+            s.mask_border = Some("linear-gradient(black, transparent) 10 fill".into())
+        })));
     }
 
     #[test]
@@ -347,6 +354,9 @@ mod tests {
         assert!(!context_of(&with(|s| s.filter = Some("bogus(1)".into()))));
         assert!(!context_of(&with(|s| s.backdrop_filter = Some("none".into()))));
         assert!(!context_of(&with(|s| s.mask_image = Some("none".into()))));
+        assert!(!context_of(&with(|s| s.mask_border_source = Some("none".into()))));
+        assert!(!context_of(&with(|s| s.mask_border = Some("bogus".into()))));
+        assert!(!context_of(&with(|s| s.mask_border_slice = Some("10".into()))));
         assert!(!context_of(&with(|s| s.clip_path = Some("none".into()))));
         assert!(!context_of(&with(|s| s.clip_path = Some("bogus".into()))));
     }

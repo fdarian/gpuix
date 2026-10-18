@@ -4,8 +4,8 @@
 //!
 //! A layer is a gradient or a `url()` image, read by `mask-mode` and combined with
 //! the layers below by `mask-composite`; `match-source` reads the alpha of both.
-//! `mask-border`, `no-clip` and `margin-box` are not supported, so a value that
-//! uses them is ignored.
+//! `no-clip` and `margin-box` are not supported, so a value that uses them is
+//! ignored. `mask-border` is in `mask_border.rs`.
 
 use gpui::{BackgroundBox, BackgroundLayer};
 
