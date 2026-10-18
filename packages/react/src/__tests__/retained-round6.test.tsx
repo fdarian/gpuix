@@ -14,6 +14,8 @@ import { expect, it } from "vitest"
 import { motion } from "../index"
 import { Card, describeNative, Page, setup, verifying } from "./retained-harness.js"
 
+/** Each case builds a page twice or more, which takes seconds when the suites run in parallel. */
+const TIMEOUT = 30_000
 const PROSE = "aaaa bbbb cccc dddd eeeeeeee"
 const WORLD = { fontFamily: "Menlo", fontSize: 12, lineHeight: "15px" }
 const CARDS = 12
@@ -180,7 +182,7 @@ const CASES: Case[] = [
   },
 ]
 
-describeNative("round 6 properties against retained frames", () => {
+describeNative("round 6 properties against retained frames", { timeout: TIMEOUT }, () => {
   for (const test of CASES) {
     for (const placement of test.placements ?? ALL) {
       for (const height of ["fixed", "content"] as const) {
@@ -211,7 +213,7 @@ function Stack({ wrapper, line, first }: { wrapper?: Style; line?: Style; first?
 
 const lineIds = Array.from({ length: CARDS }, (_, index) => `line-${index}`)
 
-describeNative("text-box-trim handed down to blocks that are retained", () => {
+describeNative("text-box-trim handed down to blocks that are retained", { timeout: TIMEOUT }, () => {
   it("reaches the first and the last block, and only them", () => {
     const render = (trim: string) => <Stack wrapper={{ textBoxTrim: trim }} />
     const { renderer, render: rerender, settle, bounds, expectWhatABuildShows, finish, unmount } = setup(render("none"))
@@ -294,7 +296,7 @@ describeNative("text-box-trim handed down to blocks that are retained", () => {
   })
 })
 
-describeNative("round 6 properties in the state styles of replayed cards", () => {
+describeNative("round 6 properties in the state styles of replayed cards", { timeout: TIMEOUT }, () => {
   const states = {
     hover: {
       outline: "3px solid #00ff00",
@@ -376,7 +378,7 @@ describeNative("round 6 properties in the state styles of replayed cards", () =>
   })
 })
 
-describeNative("motion of round 6 inside a page of retained cards", () => {
+describeNative("motion of round 6 inside a page of retained cards", { timeout: TIMEOUT }, () => {
   const LINEAR = { duration: 1, ease: "linear" } as const
   const MOVER = 2
   const STEPS = 14
