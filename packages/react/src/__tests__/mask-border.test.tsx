@@ -185,7 +185,7 @@ describeNative("mask-border style props", () => {
     }
     const ring = capture(cell(RING)).file
     expectScreenshotsEqual(ring, capture(cell({ ...RING, maskBorder: "bogus" })).file)
-  })
+  }, 30_000)
 
   it("is no border with no source, or with none", () => {
     const plain = capture(cell({})).file

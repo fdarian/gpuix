@@ -1,3 +1,8 @@
+# The debug frames of a style cascade are large, and a test that nests a few elements sits within a
+# few percent of the 2 MiB a test thread gets by default. Every field a style gains moves it over.
+[env]
+RUST_MIN_STACK = { value = "8388608", force = false }
+
 # Shared-memory flags required by gpui_web and its worker dispatcher.
 [target.wasm32-unknown-unknown]
 rustflags = [
