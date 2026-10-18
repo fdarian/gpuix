@@ -5018,6 +5018,11 @@ pub(crate) struct PaintReports {
     /// Scroll offset last seen for `onScroll`. Recorded on the first paint
     /// without an event, so only movement is reported.
     scrolls: HashMap<u64, (f32, f32)>,
+    /// The scrolls the frame painted, in paint order, until the events are emitted: by the sweep of
+    /// the frame (`observers::frame_sweep`), which emits them before it reports the boxes, or by a
+    /// deferred flush if nothing listens for boxes.
+    pending_scrolls: Vec<(u64, (f32, f32))>,
+    scroll_flush_queued: bool,
     /// What `onLayout`, `ResizeObserver` and `IntersectionObserver` last saw.
     pub(crate) observers: crate::observers::ObserverReports,
 }
@@ -6051,11 +6056,6 @@ impl GpuixView {
         ])
     }
 
-    pub(crate) fn set_virtual_list_offset(
-        &self,
-        id: u64,
-        offset: gpui::Point<gpui::Pixels>,
-    ) -> bool {
     /// The scroll handle of `id` unless the element has no box (`display: none` on it or above):
     /// there is nothing to scroll, and a script's `scrollTo` or `scrollTop` does nothing.
     pub(crate) fn scrollable_handle(&self, id: u64) -> Option<&gpui::ScrollHandle> {
@@ -6063,6 +6063,11 @@ impl GpuixView {
         crate::scroll::has_scrolling_box(&self.tree.lock().unwrap(), id).then_some(handle)
     }
 
+    pub(crate) fn set_virtual_list_offset(
+        &self,
+        id: u64,
+        offset: gpui::Point<gpui::Pixels>,
+    ) -> bool {
         let Some(entry) = self.virtual_lists.get(&id) else {
             return false;
         };
@@ -7581,14 +7586,14 @@ impl gpui::Render for GpuixView {
             let mut handles = cell.borrow_mut();
             handles.clear();
             for (&id, handle) in &self.scroll_handles {
+                if !crate::scroll::has_scrolling_box(&tree, id) {
+                    continue;
+                }
                 handles.insert(id, handle.clone());
             }
         });
         VIRTUAL_LIST_STATES.with(|cell| {
             let mut states = cell.borrow_mut();
-                if !crate::scroll::has_scrolling_box(&tree, id) {
-                    continue;
-                }
             states.clear();
             for (&id, entry) in &self.virtual_lists {
                 states.insert(id, entry.state.clone());
@@ -7676,6 +7681,8 @@ fn build_element_in(
             scroller: ctx.scroller,
         });
         if let Some(skip) = skip {
+            ctx.contents_overlay = None;
+            ctx.anchor_scope = None;
             return retained_root(id, skip, ctx, window, cx);
         }
     }
@@ -7691,8 +7698,6 @@ fn build_element_in(
 
 /// What a deferred build needs of the build around the element, which is over by then.
 pub(crate) struct FrameEnv {
-            ctx.contents_overlay = None;
-            ctx.anchor_scope = None;
     inherited: Inherited,
     doc_path: Vec<u32>,
     now: web_time::Instant,
@@ -7791,6 +7796,9 @@ fn build_element_unpumped(
     let stacking_item = std::mem::take(&mut ctx.stacking_item);
     let atomic_root = std::mem::take(&mut ctx.atomic_root);
     let passed_trim = std::mem::take(&mut ctx.text_box_trim);
+    // Meant for this element, and not for the next one built when it returns early.
+    let contents_overlay = ctx.contents_overlay.take();
+    let anchor_scope = ctx.anchor_scope.take();
     let Some(element) = tree.elements.get(&id) else {
         return absent_host(id);
     };
@@ -7806,9 +7814,6 @@ fn build_element_unpumped(
     let declared = container_style.as_ref().or(element.style.as_deref());
     // The style it had before it declared a transition went through the same containers.
     let before_transition = element
-    // Meant for this element, and not for the next one built when it returns early.
-    let contents_overlay = ctx.contents_overlay.take();
-    let anchor_scope = ctx.anchor_scope.take();
         .style_before_transition()
         .and_then(|before| crate::layout::container::fold(before, &containers));
     // A parent builds its children by whether this element has a box, before this element is
@@ -9785,7 +9790,9 @@ pub(crate) fn mouse_button_to_u32(button: gpui::MouseButton) -> u32 {
 ///
 /// Events are queued after the paint that saw the change, never from inside it.
 /// The browser build calls the listener synchronously, and a handler that sets
-/// state would re-enter the frame that is being painted.
+/// state would re-enter the frame that is being painted. They go out before the frame's
+/// `onLayout` and observer reports, as the DOM's scroll events precede its observers: see
+/// [`emit_pending_scrolls`].
 ///
 /// `onLayout` and the observers are not here: they are read from the published boxes after
 /// the draw, see `observers::frame_sweep`.
@@ -9813,32 +9820,48 @@ fn report_scroll(
     cx: &mut gpui::App,
 ) {
     let offset = (f32::from(offset.x), f32::from(offset.y));
-    {
-        let mut reports = reports.borrow_mut();
-        match reports.scrolls.get(&id).copied() {
-            // The first paint only sets the baseline.
-            None => {
-                reports.scrolls.insert(id, offset);
-                return;
-            }
-            Some(last)
-                if (last.0 - offset.0).abs() < PAINT_REPORT_EPSILON
-                    && (last.1 - offset.1).abs() < PAINT_REPORT_EPSILON =>
-            {
-                return;
-            }
-            Some(_) => {
-                reports.scrolls.insert(id, offset);
-            }
+    let mut shared = reports.borrow_mut();
+    match shared.scrolls.get(&id).copied() {
+        // The first paint only sets the baseline.
+        None => {
+            shared.scrolls.insert(id, offset);
+            return;
+        }
+        Some(last)
+            if (last.0 - offset.0).abs() < PAINT_REPORT_EPSILON
+                && (last.1 - offset.1).abs() < PAINT_REPORT_EPSILON =>
+        {
+            return;
+        }
+        Some(_) => {
+            shared.scrolls.insert(id, offset);
         }
     }
-    let callback = Some(callback.clone());
-    cx.defer(move |_| {
-        emit_event_full(&callback, id, "scroll", |payload| {
+    shared.pending_scrolls.push((id, offset));
+    if !shared.scroll_flush_queued {
+        shared.scroll_flush_queued = true;
+        let reports = reports.clone();
+        let callback = Some(callback.clone());
+        cx.defer(move |_| emit_pending_scrolls(&reports, &callback));
+    }
+}
+
+/// Emits the scroll events the frame painted. Whichever runs first after the draw, the frame's
+/// sweep or this flush, emits them all; the other finds none. The sweep goes first when anything
+/// listens for boxes, which is what puts scroll before `onLayout`, `ResizeObserver` and
+/// `IntersectionObserver` in a frame. Scrollers are in paint order.
+pub(crate) fn emit_pending_scrolls(reports: &SharedPaintReports, callback: &Option<EventCallback>) {
+    let pending = {
+        let mut shared = reports.borrow_mut();
+        shared.scroll_flush_queued = false;
+        std::mem::take(&mut shared.pending_scrolls)
+    };
+    for (id, offset) in pending {
+        emit_event_full(callback, id, "scroll", |payload| {
             payload.scroll_x = Some(f64::from(offset.0));
             payload.scroll_y = Some(f64::from(offset.1));
         });
-    });
+    }
 }
 
 /// The retained path a non-pointer click on `element` bubbles along. Empty when

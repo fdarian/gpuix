@@ -2431,7 +2431,7 @@ function ProgrammaticScroll() {
 
 `scrollIntoView` works for a descendant at any depth and scrolls every scrollable ancestor, outermost last, as the DOM does. It aligns by the element's laid-out box, not by its index among its siblings. Inside a `<virtual-list>` it scrolls to the row that holds the element and aligns that row.
 
-`behavior` is `"instant"`, `"smooth"` or `"auto"`. With `"auto"`, or nothing, a scroller follows its `scrollBehavior` style. `scrollBehavior: "smooth"` makes `scrollTo` and `scrollIntoView` animate over about 300 to 450 ms (longer for longer distances), firing `onScroll` each frame. A wheel tick, another `scrollTo` or a drag ends the animation. An explicit `behavior` always wins.
+`behavior` is `"instant"`, `"smooth"` or `"auto"`. With `"auto"`, or nothing, a scroller follows its `scrollBehavior` style. `scrollBehavior: "smooth"` makes `scrollTo` and `scrollIntoView` animate over about 300 to 450 ms (longer for longer distances), firing `onScroll` each frame. A wheel tick, another `scrollTo` or a drag ends the animation. An explicit `behavior` always wins. An element under `display: none` has no box to scroll, so `scrollTo` does nothing on it, whatever the behavior, and its `scrollTop` reads 0, as in the DOM.
 
 The same calls exist on the renderer for code that holds an id. They speak the DOM's scroll positions, the same numbers as `element.scrollLeft` and `scrollTop` and the `onScroll` event (zero or more, a larger `top` is further down), on the test renderer, the live renderer and the automation protocol alike:
 
@@ -4672,14 +4672,23 @@ the target. The test is geometry only, so
 a `visibility: "hidden"` target still intersects.
 
 Callbacks run once per batch of a frame's reports, after the frame, so state set
-in one paints a frame later. `observe()` reads no layout: every observation
+in one paints a frame later. A frame's reports arrive in the order of the DOM's
+rendering steps: `onScroll` events first, then `onLayout` handlers and the
+`ResizeObserver` callbacks (`onLayout` is `ResizeObserver` for an element), then the
+`IntersectionObserver` callbacks. `onScroll` and `onLayout` run in document order
+(`onScroll` in paint order). Observer callbacks run in the order the observers were
+created, and the entries of one observer are in the order its targets were observed
+(`observe()` again moves a `ResizeObserver` target to the end), as the specs say.
+Observations are made when a frame is presented, never by a read of layout:
+`getBoundingClientRect` and the other reads lay out and deliver nothing. `observe()` reads no layout: every observation
 started since the last frame is probed together in the next step, so any number
 of observers started by one commit cost one draw. Each observer gets its own
 initial entry for a target, also when another observer already watches it. Observing an element that is not mounted yet is
 allowed, as in the DOM: it reports once it has a box, and an `IntersectionObserver`
 first reports it as not intersecting. An element that is removed behaves like one
 that lost its box: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`
-reports `isIntersecting: false`, once, and nothing after that. Call `unobserve` or
+reports `isIntersecting: false`, once, and nothing after that. The report comes with the
+next frame that is presented, not with a layout read in between. Call `unobserve` or
 `disconnect` to release it.
 
 Observers work on `<div>`, `<text>`, `<input>`, `<textarea>`, `<img>`, `<svg>`,

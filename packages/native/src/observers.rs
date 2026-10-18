@@ -11,8 +11,10 @@
 //! observed element sit in a subtree that a frame replays: a replay publishes the
 //! same boxes the build did (see `tape`), and nothing about the element has to run.
 //!
-//! Reports are queued after the draw that saw the change, never from inside
-//! it: a handler that sets state would re-enter the frame being painted.
+//! Reports are emitted after the draw that saw the change, never from inside
+//! it: a handler that sets state would re-enter the frame being painted. A frame's reports
+//! go out in the order of the DOM's rendering steps: the frame's scroll events, then
+//! `onLayout` and resize reports, then intersection reports (see `sweep`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -239,8 +241,9 @@ struct ClippingAncestor {
 /// is not its parent, an inline element's paragraph container, which clips it and what reaches it.
 fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
-    // Built before this frame paints, so the painted positions are the last frame's: the
-    // declared ones decide, and a state that moves an observed box out of a clip is not seen.
+    // Computed from the tree when the frame is built, before it is laid out, so a position that
+    // a state style or a transition changes is not known yet: the declared ones decide, and a
+    // state that moves an observed box out of a clip is not seen.
     let declared = |_| None;
     let reaching = match first {
         None => crate::layout::containing_block::reaching_ancestors(tree, id, &declared),
@@ -349,7 +352,7 @@ fn border_of(painted: &ElementBounds) -> Insets {
     }
 }
 
-/// One event to queue. `kind` orders the events of one element: `onLayout`, then the observers.
+/// One event to emit. `kind` orders the events of one element: `onLayout`, then the observers.
 struct Report {
     id: u64,
     kind: u8,
@@ -456,18 +459,18 @@ fn report_intersection(
     Some(Report { id, kind: 2, event_type: INTERSECTION_EVENT, bounds, observation: Some(observation) })
 }
 
-fn queue(cx: &mut App, callback: &EventCallback, report: Report) {
-    let callback = Some(callback.clone());
-    cx.defer(move |_| {
-        emit_event_full(&callback, report.id, report.event_type, |payload| {
-            payload.x = Some(f64::from(f32::from(report.bounds.origin.x)));
-            payload.y = Some(f64::from(f32::from(report.bounds.origin.y)));
-            payload.width = Some(f64::from(f32::from(report.bounds.size.width)));
-            payload.height = Some(f64::from(f32::from(report.bounds.size.height)));
-            payload.observation = report.observation;
-        });
+fn emit(callback: &Option<EventCallback>, report: Report) {
+    emit_event_full(callback, report.id, report.event_type, |payload| {
+        payload.x = Some(f64::from(f32::from(report.bounds.origin.x)));
+        payload.y = Some(f64::from(f32::from(report.bounds.origin.y)));
+        payload.width = Some(f64::from(f32::from(report.bounds.size.width)));
+        payload.height = Some(f64::from(f32::from(report.bounds.size.height)));
+        payload.observation = report.observation;
     });
 }
+
+/// `Report::kind` of an intersection report: the last phase of a frame.
+const INTERSECTION_KIND: u8 = 2;
 
 /// Drop what an element reported once it stopped listening, so adding the
 /// listener back reports again like a fresh observer.
@@ -528,7 +531,7 @@ pub(crate) fn frame_sweep(
             }
             let id = window.window_handle().window_id();
             let viewport = window.viewport_size();
-            cx.defer(move |cx| sweep(id, viewport, painted, &reports, &tree, &callback, cx));
+            cx.defer(move |_| sweep(id, viewport, painted, &reports, &tree, &callback));
         }
     };
     let after_layout = sweep_after(false);
@@ -553,11 +556,12 @@ fn sweep(
     reports: &SharedPaintReports,
     tree: &Mutex<RetainedTree>,
     callback: &Option<EventCallback>,
-    cx: &mut App,
 ) {
-    let Some(callback) = callback else {
+    if callback.is_none() {
         return;
-    };
+    }
+    // The scrolls of the frame come first, as the DOM runs its scroll steps before the observers.
+    crate::renderer::emit_pending_scrolls(reports, callback);
     let tree = tree.lock().unwrap();
     let mut shared = reports.borrow_mut();
     let observers = &mut shared.observers;
@@ -580,8 +584,15 @@ fn sweep(
         }
     }
     observers.targets = Some(targets);
+    // Sorted into the order of the DOM's rendering steps: `onLayout` and `ResizeObserver`, then
+    // `IntersectionObserver`; in document order within them, `onLayout` before the observers of
+    // one element. The JS side puts the callbacks of the observers in the order of the DOM
+    // (creation order of the observers, observation order of their targets): this is the order
+    // the elements are told in, which `onLayout` handlers see as it is.
     if found.len() > 1 {
-        found.sort_by_cached_key(|report| (document_order(&tree, report.id), report.kind));
+        found.sort_by_cached_key(|report| {
+            (report.kind == INTERSECTION_KIND, document_order(&tree, report.id), report.kind)
+        });
     }
 
     let mut gone_resize = Vec::new();
@@ -604,15 +615,25 @@ fn sweep(
     gone_intersection.sort_unstable();
     drop(shared);
     drop(tree);
-    for report in found {
-        queue(cx, callback, report);
-    }
     let nothing = Bounds::<Pixels>::default();
-    for (ids, event_type, kind) in [(gone_resize, RESIZE_EVENT, 1), (gone_intersection, INTERSECTION_EVENT, 2)] {
-        for id in ids {
-            let observation = Some(Observation::default());
-            queue(cx, callback, Report { id, kind, event_type, bounds: nothing, observation });
-        }
+    let gone = |ids: Vec<u64>, event_type, kind| {
+        ids.into_iter().map(move |id| Report {
+            id,
+            kind,
+            event_type,
+            bounds: nothing,
+            observation: Some(Observation::default()),
+        })
+    };
+    // A removed element is reported after the ones that are there, in the phase of its observer.
+    let (resizing, intersecting): (Vec<_>, Vec<_>) = found.into_iter().partition(|report| report.kind != INTERSECTION_KIND);
+    for report in resizing
+        .into_iter()
+        .chain(gone(gone_resize, RESIZE_EVENT, 1))
+        .chain(intersecting)
+        .chain(gone(gone_intersection, INTERSECTION_EVENT, INTERSECTION_KIND))
+    {
+        emit(callback, report);
     }
 }
 

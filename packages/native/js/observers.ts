@@ -63,9 +63,21 @@ interface Probe {
   cancelled: boolean
 }
 
+/**
+ * A callback owed to one observer. The DOM runs every `ResizeObserver` callback, then every
+ * `IntersectionObserver` callback, each kind in the order the observers were created.
+ */
 interface Delivery {
+  readonly kind: typeof RESIZE_DELIVERY | typeof INTERSECTION_DELIVERY
+  readonly order: number
   deliver(): void
 }
+
+const RESIZE_DELIVERY = 0
+const INTERSECTION_DELIVERY = 1
+
+/** Creation order of the observers of this realm, across renderers: only comparisons within one hub matter. */
+let observersCreated = 0
 
 interface Hub {
   readonly listening: Record<ObserveEvent, Map<number, Listening>>
@@ -236,7 +248,7 @@ export function flushObservations(renderer: object): void {
     cancelScheduled(hub.scheduled)
     hub.scheduled = undefined
   }
-  const queued = [...hub.queued]
+  const queued = [...hub.queued].sort((a, b) => a.kind - b.kind || a.order - b.order)
   hub.queued.clear()
   for (const delivery of queued) delivery.deliver()
 }
@@ -296,7 +308,11 @@ export class ResizeObserver {
   readonly #callback: ResizeObserverCallback
   readonly #records = new Map<ObservableElement, ResizeRecord>()
   #pending = new Map<ObservableElement, ResizeObserverEntry>()
-  readonly #delivery: Delivery = { deliver: () => this.#deliver() }
+  readonly #delivery: Delivery = {
+    kind: RESIZE_DELIVERY,
+    order: observersCreated++,
+    deliver: () => this.#deliver(),
+  }
   /** Set when the first record binds; every event arrives after that. */
   #renderer!: object
 
@@ -375,7 +391,12 @@ export class ResizeObserver {
 
   #deliver(): void {
     if (this.#pending.size === 0) return
-    const entries = [...this.#pending.values()]
+    // In the order the targets were observed, not the order the frame reported them in.
+    const entries: ResizeObserverEntry[] = []
+    for (const target of this.#records.keys()) {
+      const entry = this.#pending.get(target)
+      if (entry) entries.push(entry)
+    }
     this.#pending.clear()
     try {
       this.#callback.call(this, entries, this)
@@ -519,7 +540,11 @@ export class IntersectionObserver {
   readonly #margin: ReturnType<typeof parseRootMargin>
   readonly #records = new Map<ObservableElement, IntersectionRecord>()
   #queue: IntersectionObserverEntry[] = []
-  readonly #delivery: Delivery = { deliver: () => this.#deliver() }
+  readonly #delivery: Delivery = {
+    kind: INTERSECTION_DELIVERY,
+    order: observersCreated++,
+    deliver: () => this.#deliver(),
+  }
   #renderer!: object
   #stopWatchingRoot: (() => void) | undefined
   /** Set by the root's first report; an element root has no padding box before it. */
@@ -610,7 +635,10 @@ export class IntersectionObserver {
 
   /** Entries not yet delivered, removed from the queue. */
   takeRecords(): IntersectionObserverEntry[] {
-    const entries = this.#queue
+    // In the order the targets were observed, not the order the frame reported them in. The sort
+    // is stable, so the entries of one target stay in the order they arose.
+    const order = new Map([...this.#records.keys()].map((target, index) => [target, index]))
+    const entries = this.#queue.sort((a, b) => order.get(a.target)! - order.get(b.target)!)
     this.#queue = []
     return entries
   }
