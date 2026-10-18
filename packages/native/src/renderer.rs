@@ -8009,7 +8009,9 @@ fn build_element_unpumped(
     if style.is_some_and(StyleDesc::lays_out_unstably) {
         ctx.retain.exclude(crate::retain::Exclusion::UnstableLayout);
     }
-    match style.and_then(|style| style.position.as_deref()) {
+    let position = style.and_then(|style| style.position.as_deref());
+    ctx.retain.containing_block(position.is_some_and(|position| position != "static"), position == Some("absolute"));
+    match position {
         Some("sticky") => ctx.retain.exclude(crate::retain::Exclusion::Sticky),
         Some("fixed") => ctx.retain.exclude(crate::retain::Exclusion::Fixed),
         _ => {}

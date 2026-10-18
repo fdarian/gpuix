@@ -206,12 +206,12 @@ pub struct CornerRadiusValue {
 }
 
 impl StyleDesc {
-    /// Whether gpui's layout rewrites a box with this style after it is requested: it is absolutely
-    /// positioned, or a width is a keyword of its content.
+    /// Whether gpui's layout rewrites a box with this style after it is requested, whatever is
+    /// around it: a width is a keyword of its content. (An absolutely positioned box is rewritten
+    /// against its containing block, see `Retain::containing_block`.)
     pub(crate) fn lays_out_unstably(&self) -> bool {
         let keyword = |value: &Option<DimensionValue>| matches!(value, Some(DimensionValue::Intrinsic(_)));
         self.measure_natural_width
-            || self.position.as_deref() == Some("absolute")
             || keyword(&self.width)
             || keyword(&self.min_width)
             || keyword(&self.max_width)

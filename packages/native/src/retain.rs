@@ -381,7 +381,8 @@ const UNDER: usize = EXCLUDED + Exclusion::ALL.len();
 const CHANGED: usize = UNDER + Exclusion::ALL.len();
 const SPINE: usize = CHANGED + Cause::ALL.len();
 const LIFTS: usize = SPINE + 1;
-const MOVED: usize = LIFTS + 1;
+const ESCAPES: usize = LIFTS + 1;
+const MOVED: usize = ESCAPES + 1;
 const OVERSIZED: usize = MOVED + 1;
 pub(crate) const RETAINED: usize = OVERSIZED + 1;
 pub(crate) const SLOTS: usize = RETAINED + 1;
@@ -394,6 +395,7 @@ pub(crate) fn slot_name(slot: usize) -> String {
         CHANGED..SPINE => format!("changed:{}", Cause::ALL[slot - CHANGED].name()),
         SPINE => "spine".to_owned(),
         LIFTS => "lifts".to_owned(),
+        ESCAPES => "escapes".to_owned(),
         MOVED => "moved:scroll".to_owned(),
         OVERSIZED => "oversized:scroll".to_owned(),
         RETAINED => "retained".to_owned(),
@@ -482,6 +484,10 @@ struct Node {
     exclusion: Option<Exclusion>,
     lift_z: Option<i32>,
     forms_context: bool,
+    /// The element is a containing block for the absolutely positioned boxes below it.
+    positioned: bool,
+    /// The element is absolutely positioned: gpui rewrites its box against its containing block.
+    absolute: bool,
     /// Something above scrolled, so the box this one was recorded at is not where it is.
     moved: bool,
     /// The scroller around it, if it is one gpui can move recordings for.
@@ -506,6 +512,9 @@ struct Below {
     excluded: Option<Exclusion>,
     /// Something below is lifted out of the elements between it and here.
     lifts: bool,
+    /// Something below is absolutely positioned against a containing block that is not below this
+    /// element, or is this element.
+    escapes: bool,
     digest: u64,
     size: u32,
 }
@@ -1181,6 +1190,8 @@ impl Retain {
             exclusion,
             lift_z: None,
             forms_context: false,
+            positioned: false,
+            absolute: false,
             moved,
             scroller: entry.scroller,
             digest: 0,
@@ -1311,6 +1322,17 @@ impl Retain {
         let Some(reason) = self.unless_lifted(reason) else { return };
         if let Some(node) = self.top() {
             node.exclusion.get_or_insert(reason);
+        }
+    }
+
+    /// Whether the element is a containing block (anything but `position: static`) and whether it
+    /// is absolutely positioned. The nodes of an absolute box are rewritten by gpui's layout
+    /// against its containing block after they are requested, so a subtree can be kept only if
+    /// the containing block of every absolute box in it is in it too (gpui checks the same).
+    pub(crate) fn containing_block(&mut self, positioned: bool, absolute: bool) {
+        if let Some(node) = self.top() {
+            node.positioned = positioned;
+            node.absolute = absolute;
         }
     }
 
@@ -1472,6 +1494,7 @@ impl Retain {
             let node = &self.nodes[at];
             let own = self.below[at];
             let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
+            let escaped = node.absolute || (!node.positioned && own.escapes);
             let digest = match &node.skipped {
                 Some(skipped) => skipped.digest,
                 None => {
@@ -1493,6 +1516,7 @@ impl Retain {
             let parent = &mut self.below[node.parent as usize];
             parent.changed_below |= own.changed.is_some() || own.changed_below;
             parent.lifts |= escapes;
+            parent.escapes |= escaped;
             parent.size += size;
             if let Some(excluded) = node.exclusion.or(own.excluded) {
                 parent.excluded = Some(excluded);
@@ -1515,7 +1539,8 @@ impl Retain {
         for at in 0..count {
             let node = &self.nodes[at];
             let own = self.below[at];
-            let eligible = node.exclusion.is_none() && own.excluded.is_none() && (node.forms_context || !own.lifts);
+            let escaped = node.absolute || (!node.positioned && own.escapes);
+            let eligible = node.exclusion.is_none() && own.excluded.is_none() && (node.forms_context || !own.lifts) && !escaped;
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
             self.moved[at] = parent.is_some_and(|parent| self.moved[parent] || self.below[parent].scrolled);
@@ -1560,6 +1585,8 @@ impl Retain {
                     SPINE
                 } else if let Some(excluded) = own.excluded {
                     UNDER + excluded as usize
+                } else if escaped {
+                    ESCAPES
                 } else {
                     LIFTS
                 };
@@ -2514,6 +2541,30 @@ mod tests {
         assert_eq!(settled["builtNodes"], 0, "{settled}");
         assert_eq!(settled["skippedRoots"], 1, "{settled}");
         assert_eq!(settled["skippedElements"], 22, "{settled}");
+    }
+
+    #[gpui::test]
+    fn an_absolute_box_is_retained_with_the_positioned_box_that_places_it(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD; 3]);
+        elements.push(div(40, Some(1), r#"{"position": "relative", "width": 100, "height": 30}"#));
+        elements.push(div(41, Some(40), r#"{"height": 20}"#));
+        elements.push(div(42, Some(41), r#"{"position": "absolute", "top": 0, "left": 0, "width": 10, "height": 10}"#));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        // The box is in the relative one, which is in the page: nothing is in the way.
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn an_absolute_box_with_no_positioned_ancestor_below_a_root_ends_the_roots_above_it(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD; 3]);
+        elements.push(div(40, Some(1), r#"{"width": 100, "height": 30}"#));
+        elements.push(div(41, Some(40), r#"{"height": 20}"#));
+        elements.push(div(42, Some(41), r#"{"position": "absolute", "top": 0, "left": 0, "width": 10, "height": 10}"#));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        // Its containing block is above the page's children, so only the three cards are roots.
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
     }
 
     #[gpui::test]
