@@ -480,6 +480,12 @@ export declare class TestGpuixRenderer {
    */
   getRetainRecordCounts(): Array<number>
   /**
+   * Why the last recorded frame built what it built, as JSON: the elements it built by reason,
+   * what named them, and the ones a record said could be skipped and were not. Needs
+   * `GPUIX_RETAIN_DEBUG=1`, and is empty without it.
+   */
+  getRetainDebug(): string
+  /**
    * Whether a frame skips what it judges unchanged since the frame before, handing it to gpui
    * as a retained subtree that is replayed. On unless `GPUIX_RETAIN_OFF`; turning it on after it
    * was off starts from a frame that builds everything.

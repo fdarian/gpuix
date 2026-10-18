@@ -42,6 +42,8 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
+mod debug;
+
 use crate::renderer::{GroupScope, Inherited};
 use crate::tape::BuildEffect;
 
@@ -667,6 +669,8 @@ pub(crate) struct Retain {
     deltas: Deltas,
     summary: Summary,
     mismatches: Vec<String>,
+    /// What `getRetainDebug` reports, filled only with `GPUIX_RETAIN_DEBUG`.
+    debug: debug::Debug,
 }
 
 /// What `Retain::enter` is told about the element about to be built.
@@ -713,6 +717,47 @@ pub(crate) struct Skip {
     pub overscan: Option<gpui::Pixels>,
 }
 
+/// Why an element that is entered is built and not skipped; `getRetainDebug` reports the ones
+/// that a record said could have been.
+#[derive(Clone, Copy)]
+enum Kept {
+    PlanningOff,
+    Everything,
+    NotPlain,
+    NotBoxed,
+    Prekeyed,
+    Excluded,
+    Moved,
+    Spine,
+    NoRecord,
+    Ineligible,
+    TooSmall,
+    Revision,
+    Inherited,
+    Shape,
+}
+
+impl Kept {
+    fn name(self) -> &'static str {
+        match self {
+            Self::PlanningOff => "planning-off",
+            Self::Everything => "deltas-all",
+            Self::NotPlain => "not-plain",
+            Self::NotBoxed => "not-boxed",
+            Self::Prekeyed => "prekeyed",
+            Self::Excluded => "excluded-now",
+            Self::Moved => "moved",
+            Self::Spine => "spine",
+            Self::NoRecord => "no-record",
+            Self::Ineligible => "ineligible",
+            Self::TooSmall => "too-small",
+            Self::Revision => "enter-revision",
+            Self::Inherited => "enter-inherited",
+            Self::Shape => "enter-shape",
+        }
+    }
+}
+
 /// Elements below this many are not worth a retained element of their own. Measured on the
 /// pages of the FF demo (showcase, changelog, command menu, hover, introduction): a one-element
 /// root (a text, an icon, an empty box) costs less to replay than to build, 0.5 to 0.8 ms of 3 to
@@ -755,6 +800,7 @@ impl Retain {
             deltas: Deltas::default(),
             summary: Summary::default(),
             mismatches: Vec::new(),
+            debug: debug::Debug::from_env(),
         }
     }
 
@@ -868,6 +914,7 @@ impl Retain {
         self.selection = sources.selection;
         self.nodes.clear();
         self.stack.clear();
+        self.debug.begin_frame(sources.pass);
         crate::tape::clear_build_effects();
         if self.open && self.planning {
             self.find_deltas(&sources);
@@ -1004,6 +1051,12 @@ impl Retain {
         }
         changed.extend(seen.customs.keys().filter(|id| !customs.contains_key(id)));
 
+        self.debug.sources("pointer-focus-scroll-custom", changed.iter().copied());
+        self.debug.sources("motion-running", sources.motion.iter().copied());
+        self.debug.sources("motion-just-ended", seen.motion.iter().copied().filter(|id| !sources.motion.contains(id)));
+        self.debug.sources("dynamic-last-build", self.dynamic.iter().copied());
+        self.debug.sources("measurement", sources.measured.iter().copied());
+        self.debug.sources("link", sources.links.iter().copied());
         let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
         changed.extend(motion.union(&seen.motion));
         changed.extend(&sources.measured);
@@ -1046,6 +1099,7 @@ impl Retain {
     }
 
     pub(crate) fn finish_deferred(&mut self) {
+        self.debug.deferred(self.nodes.first(), self.nodes.len());
         let _ = self.finish_session();
         self.deferred = false;
         self.inside_relocatable = false;
@@ -1136,34 +1190,37 @@ impl Retain {
             skipped: None,
         };
         let at = self.nodes.len() as u32;
-        if let Some(record) = self.skippable(&node, &entry) {
-            node.key = record.key;
-            node.vol = record.vol;
-            node.lift_z = record.lift_z;
-            node.forms_context = record.forms_context;
-            node.subtree = record.subtree;
-            node.end = at + 1;
-            node.skipped = Some(Skipped { size: record.size, digest: record.digest });
-            crate::perf_counters::elements_skipped(u64::from(record.size));
-            let overscan = node
-                .scroller
-                .filter(|scroller| scroller.holds(node.id))
-                .map(|scroller| scroller.overscan());
-            let planned = overscan.is_some() && moved && record.seasoned;
-            let skip = Skip {
-                token: record.token,
-                enter: EnterKey(enter),
-                lift_z: record.lift_z,
-                subtree: record.subtree,
-                effects: record.effects.clone(),
-                overscan,
-            };
-            self.nodes.push(node);
-            self.relocation.planned += u32::from(planned);
-            if let Some(record) = self.records.get_mut(&entry.id) {
-                record.seasoned = true;
+        match self.skippable(&node, &entry) {
+            Ok(record) => {
+                node.key = record.key;
+                node.vol = record.vol;
+                node.lift_z = record.lift_z;
+                node.forms_context = record.forms_context;
+                node.subtree = record.subtree;
+                node.end = at + 1;
+                node.skipped = Some(Skipped { size: record.size, digest: record.digest });
+                crate::perf_counters::elements_skipped(u64::from(record.size));
+                let overscan = node
+                    .scroller
+                    .filter(|scroller| scroller.holds(node.id))
+                    .map(|scroller| scroller.overscan());
+                let planned = overscan.is_some() && moved && record.seasoned;
+                let skip = Skip {
+                    token: record.token,
+                    enter: EnterKey(enter),
+                    lift_z: record.lift_z,
+                    subtree: record.subtree,
+                    effects: record.effects.clone(),
+                    overscan,
+                };
+                self.nodes.push(node);
+                self.relocation.planned += u32::from(planned);
+                if let Some(record) = self.records.get_mut(&entry.id) {
+                    record.seasoned = true;
+                }
+                return Some(skip);
             }
-            return Some(skip);
+            Err(kept) => self.debug_kept(kept, node.id),
         }
         self.stack.push(at);
         self.nodes.push(node);
@@ -1176,13 +1233,26 @@ impl Retain {
         !self.relocation.resting && node.scroller.is_some_and(|scroller| scroller.holds(node.id))
     }
 
-    /// The record of the last build of the element if the frame can leave it unbuilt.
-    fn skippable(&self, node: &Node, entry: &Entry) -> Option<&Record> {
-        if !self.planning || self.lifted != 0 || self.deltas.all || !entry.plain || !entry.boxed || entry.prekeyed.is_some() {
-            return None;
+    /// The record of the last build of the element if the frame can leave it unbuilt, or the
+    /// first reason it cannot.
+    fn skippable(&self, node: &Node, entry: &Entry) -> Result<&Record, Kept> {
+        if !self.planning || self.lifted != 0 {
+            return Err(Kept::PlanningOff);
         }
-        if node.exclusion.is_some() || self.deltas.spine.contains(&node.id) {
-            return None;
+        if self.deltas.all {
+            return Err(Kept::Everything);
+        }
+        if !entry.plain {
+            return Err(Kept::NotPlain);
+        }
+        if !entry.boxed {
+            return Err(Kept::NotBoxed);
+        }
+        if entry.prekeyed.is_some() {
+            return Err(Kept::Prekeyed);
+        }
+        if node.exclusion.is_some() {
+            return Err(Kept::Excluded);
         }
         // A root under a scroller is one gpui can move or one that is built: a box too big to be
         // recorded to move is not a root, and what is moved by a scroller is built unless it can be.
@@ -1192,10 +1262,28 @@ impl Retain {
             || node.scroller.is_some_and(|scroller| scroller.too_big(node.id))
             || (node.moved && !self.relocates(node))
         {
-            return None;
+            return Err(Kept::Moved);
         }
-        let record = self.records.get(&node.id)?;
-        (record.eligible && record.size >= self.min_root && record.enter == node.enter).then_some(record)
+        if self.deltas.spine.contains(&node.id) {
+            return Err(Kept::Spine);
+        }
+        let record = self.records.get(&node.id).ok_or(Kept::NoRecord)?;
+        if !record.eligible {
+            return Err(Kept::Ineligible);
+        }
+        if record.size < self.min_root {
+            return Err(Kept::TooSmall);
+        }
+        if record.enter.revision != node.enter.revision {
+            return Err(Kept::Revision);
+        }
+        if record.enter.inherited != node.enter.inherited {
+            return Err(Kept::Inherited);
+        }
+        if record.enter.shape != node.enter.shape {
+            return Err(Kept::Shape);
+        }
+        Ok(record)
     }
 
     pub(crate) fn exit(&mut self) {
@@ -1422,6 +1510,8 @@ impl Retain {
         let mut candidates = false;
         let all_effects = crate::tape::build_effects_since(0);
         let mut built_dynamic = FxHashSet::default();
+        let keep_slots = self.debug_wants_slots();
+        let mut slots = Vec::new();
         for at in 0..count {
             let node = &self.nodes[at];
             let own = self.below[at];
@@ -1443,12 +1533,15 @@ impl Retain {
             let carried = (node.moved || self.moved[at]) && self.deltas.scrolling && !relocates;
             candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !carried && !too_big);
 
-            if parent.is_some_and(|parent| self.retained[parent]) {
+            let slot = if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
+                RETAINED
             } else if oversized {
                 counts[OVERSIZED] += 1;
+                OVERSIZED
             } else if node.skipped.is_none() && clean && eligible && self.moved[at] && !relocates {
                 counts[MOVED] += 1;
+                MOVED
             } else if node.skipped.is_some() || (clean && eligible) {
                 self.retained[at] = true;
                 let size = own.size as usize;
@@ -1457,6 +1550,7 @@ impl Retain {
                 if size >= LARGE_ROOT {
                     large += size;
                 }
+                RETAINED
             } else {
                 let slot = if let Some(excluded) = node.exclusion {
                     EXCLUDED + excluded as usize
@@ -1470,6 +1564,10 @@ impl Retain {
                     LIFTS
                 };
                 counts[slot] += 1;
+                slot
+            };
+            if keep_slots {
+                slots.push(slot);
             }
 
             if node.skipped.is_some() {
@@ -1519,6 +1617,9 @@ impl Retain {
 
         if !self.deferred {
             self.forget_unbuilt_dynamic(&built_dynamic);
+        }
+        if keep_slots && !self.deferred {
+            self.debug_capture(&slots);
         }
 
         counts[RETAINED] = self.summary.elements_in_roots as u64;
@@ -2389,6 +2490,30 @@ mod tests {
         scene.draw(cx);
         scene.settle(cx);
         assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn the_debug_report_names_what_a_frame_built_and_what_it_skipped(cx: &mut gpui::TestAppContext) {
+        let scene = backing_off(cx, page([CARD; 3]));
+        scene.window.update(cx, |view, _, _| view.retain.set_debug(true)).unwrap();
+        let report = |cx: &mut gpui::TestAppContext| -> serde_json::Value {
+            let report = scene
+                .window
+                .update(cx, |view, _, _| view.retain.debug_report(&scene.tree.lock().unwrap()))
+                .unwrap();
+            serde_json::from_str(&report).unwrap()
+        };
+        // The first frame builds all of the page, and calls its first element new.
+        scene.draw(cx);
+        let first = report(cx);
+        assert_eq!(first["builtNodes"], 22, "{first}");
+        assert_eq!(first["skippedRoots"], 0, "{first}");
+        // Once it is settled the page is one skipped root.
+        scene.settle(cx);
+        let settled = report(cx);
+        assert_eq!(settled["builtNodes"], 0, "{settled}");
+        assert_eq!(settled["skippedRoots"], 1, "{settled}");
+        assert_eq!(settled["skippedElements"], 22, "{settled}");
     }
 
     #[gpui::test]
