@@ -50,7 +50,7 @@ impl Flex {
         if parse_number(token).is_some() {
             return None;
         }
-        let basis = DimensionValue::parse(token).ok()?;
+        let basis = DimensionValue::parse_flex_basis(token).ok()?;
         let negative = match &basis {
             DimensionValue::Pixels(pixels) => *pixels < 0.0,
             DimensionValue::Percentage(fraction) => *fraction < 0.0,
@@ -249,6 +249,15 @@ mod tests {
         assert_eq!(parts("calc(100% - 20px)").0, 1.0);
         assert_eq!(flex("fit-content").basis, DimensionValue::parse("fit-content").unwrap());
         assert_eq!(flex("min-content").basis, DimensionValue::parse("min-content").unwrap());
+        assert_eq!(parts("content"), (1.0, 1.0, "content".to_string()));
+    }
+
+    #[test]
+    fn content_is_a_basis_in_any_place_one_goes() {
+        assert_eq!(parts("2 content"), (2.0, 1.0, "content".to_string()));
+        assert_eq!(parts("content 2"), (2.0, 1.0, "content".to_string()));
+        assert_eq!(parts("1 2 content"), (1.0, 2.0, "content".to_string()));
+        assert_eq!(parts("CONTENT 1 2"), (1.0, 2.0, "content".to_string()));
     }
 
     #[test]
@@ -285,7 +294,7 @@ mod tests {
     fn what_chrome_rejects_is_an_error() {
         for text in [
             "", "   ", "-1", "1 -1", "1 2 3", "0 1 1", "1 30px 2", "1 auto 2", "none 1", "auto auto", "initial 1",
-            "1 2 3 4", "bogus", "1 1 content", "-10px", "1 -10px", "1,2", "inherit",
+            "1 2 3 4", "bogus", "1 1 content content", "-10px", "1 -10px", "1,2", "inherit",
         ] {
             assert!(Flex::parse(text).is_err(), "{text:?} should be invalid");
         }

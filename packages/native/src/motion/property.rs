@@ -26,7 +26,7 @@ use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
 use crate::css::syntax::{expand_sides, split_slash_tokens};
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{
-    BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue,
+    BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue, IntrinsicKeyword,
     StyleDesc,
 };
 
@@ -312,6 +312,7 @@ impl Field for Option<DimensionValue> {
             AnimValue::Calc { .. } => DimensionValue::Calc(linear_length(value)),
             AnimValue::Auto => DimensionValue::Auto,
             value if value.is_auto_keyword() => DimensionValue::Auto,
+            value if value.is_content_keyword() => DimensionValue::Intrinsic(IntrinsicKeyword::Content),
             other => unreachable!("a dimension field was given {other:?}"),
         });
     }
@@ -486,10 +487,12 @@ fn keyword_write(slot: &mut Option<String>, value: AnimValue) {
     }
 }
 
-/// A margin, inset or `flex-basis`, where `auto` is a value and not the absence of one.
+/// A margin, inset or `flex-basis`, where `auto` (and `content` for the basis) is a value and not
+/// the absence of one.
 fn offset_read(slot: &Option<DimensionValue>, cx: &Reading) -> Option<AnimValue> {
     match slot {
         Some(DimensionValue::Auto) => Some(AnimValue::auto_keyword()),
+        Some(DimensionValue::Intrinsic(IntrinsicKeyword::Content)) => Some(AnimValue::content_keyword()),
         slot => Field::read(slot, cx),
     }
 }
@@ -1235,9 +1238,13 @@ impl AnimProp {
                 }
             }
             Kind::Dimension | Kind::Offset => {
-                let dimension: DimensionValue = serde_json::from_value(value.clone())
-                    .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
+                let dimension: DimensionValue = match (self, value) {
+                    (Self::FlexBasis, Value::String(text)) => DimensionValue::parse_flex_basis(text),
+                    _ => serde_json::from_value(value.clone()).map_err(|error| error.to_string()),
+                }
+                .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
                 match dimension {
+                    DimensionValue::Intrinsic(IntrinsicKeyword::Content) => AnimValue::content_keyword(),
                     DimensionValue::Pixels(value) => {
                         AnimValue::Number(check_finite(name, value)?)
                     }
@@ -1326,6 +1333,7 @@ impl AnimProp {
     /// Whether `write` can put `value` in this property.
     pub(super) fn accepts(self, value: &AnimValue) -> bool {
         (matches!(self.kind(), Kind::Offset | Kind::UnderlineOffset | Kind::Thickness) && value.is_auto_keyword())
+            || (self == Self::FlexBasis && value.is_content_keyword())
             || (self.kind() == Kind::Thickness && matches!(value, AnimValue::Keyword(Some(keyword)) if keyword == FROM_FONT))
             || matches!(
                 (self.kind(), value),
@@ -1800,6 +1808,29 @@ mod tests {
             Some(DimensionValue::Calc(LinearLength { px: 3.0, percent: 0.5, ..LinearLength::default() }))
         );
     }
+    #[test]
+    fn flex_basis_content_is_a_keyword_like_auto_and_only_the_basis_has_it() {
+        let colors = Colors::root();
+        let content = AnimValue::content_keyword();
+        let style = serde_json::from_str::<StyleDesc>(r#"{ "flexBasis": "content" }"#).unwrap();
+        assert_eq!(AnimProp::FlexBasis.read(&style, &colors), Some(content.clone()));
+        let shorthand = serde_json::from_str::<StyleDesc>(r#"{ "flex": "1 1 content" }"#).unwrap();
+        assert_eq!(AnimProp::FlexBasis.read(&shorthand, &colors), Some(content.clone()));
+        assert_eq!(AnimProp::FlexBasis.parse(&serde_json::json!("content"), &colors).unwrap(), content);
+        assert!(AnimProp::FlexBasis.accepts(&content));
+        assert!(!AnimProp::MarginLeft.accepts(&content));
+
+        let mut written = StyleDesc::default();
+        AnimProp::FlexBasis.write(&mut written, content.clone());
+        assert_eq!(written.flex_basis, Some(DimensionValue::Intrinsic(IntrinsicKeyword::Content)));
+        AnimProp::FlexBasis.write(&mut written, AnimValue::auto_keyword());
+        assert_eq!(written.flex_basis, Some(DimensionValue::Auto));
+
+        for prop in [AnimProp::MarginLeft, AnimProp::Left, AnimProp::Width, AnimProp::MinHeight] {
+            assert!(prop.parse(&serde_json::json!("content"), &colors).is_err(), "{prop:?}");
+        }
+    }
+
     #[test]
     fn an_intrinsic_size_keyword_is_not_a_start_value_or_a_target() {
         let colors = Colors::root();

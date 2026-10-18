@@ -1478,7 +1478,7 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `top`, `right`, `bottom`, `left` | any length, may be negative, or `"auto"` (discrete, see below) |
 | `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | any length, may be negative, or `"auto"` (discrete, see below) |
 | `paddingTop` ... `paddingLeft` | any length, zero or greater |
-| `flexBasis` | any length, zero or greater, or `"auto"` (discrete, see below) |
+| `flexBasis` | any length, zero or greater, or `"auto"` or `"content"` (discrete, see below) |
 | `rowGap`, `columnGap`, the four `border*Radius` corners | any length, zero or greater |
 | `borderTopWidth` ... `borderLeftWidth`, `outlineWidth`, `fontSize` | any length without a `%` (a `fontSize` `%` is of the parent's, so px), zero or greater |
 | `outlineOffset` | any length without a `%`, may be negative |
@@ -1521,6 +1521,7 @@ strings split frame by frame.
 so a pair of them is discrete: `marginLeft: "auto"` to `100` is `auto` until the eased progress
 reaches a half and `100px` after, in `animate`, keyframes and CSS animations, and a CSS
 transition runs it only under `transition-behavior: allow-discrete` (otherwise it jumps).
+`flexBasis: "content"` is a keyword of the same kind, discrete against a length and against `auto`.
 An unset margin is `0`, which blends, and an unset inset or `flexBasis` is `auto`, which flips.
 `margin: "0 auto"` gives each side its own.
 
@@ -6093,7 +6094,7 @@ CSS-like styling via the `style` prop:
 
 **Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flex`, `flexFlow`, `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `placeItems`, `placeContent`, `placeSelf`, `gap` (one or two lengths), `rowGap`, `columnGap`. Grid: see [Grid](#grid). The shorthands are in [Shorthands](#shorthands)
 
-**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
+**Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`, and `flexBasis` `content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
 **Spacing:** `padding`, `paddingBlock`, `paddingInline`, `paddingTop/Right/Bottom/Left`, `margin`, `marginBlock`, `marginInline`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); `padding` and `margin` take one to four values (`"0 auto"`, see [Shorthands](#shorthands)). A percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
@@ -6120,7 +6121,7 @@ The fields:
 
 - Sizes and offsets: `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, the margins, `top`, `right`, `bottom`, `left`, the paddings, `gap`,
-  `rowGap`, `columnGap`, and `flexBasis` (which also takes `auto`)
+  `rowGap`, `columnGap`, and `flexBasis` (which also takes `auto` and `content`)
 - Lines: `borderWidth` and the four side widths (no `%`; `thin`, `medium` and
   `thick` work), `outlineWidth` and `outlineOffset` (no `%`), and the widths in
   the `border` and `outline` shorthands
@@ -6176,7 +6177,7 @@ written later wins, as in CSS. The ones below take CSS's several-value syntax.
 | `gap` | One or two lengths: `"4px 8px"` is the gap between rows, then between columns |
 | `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: gpuix only lays out left to right and horizontally |
 | `borderBlock`, `borderInline` | Written like `border` (`"1px solid red"`), for top and bottom or left and right |
-| `flex` | A number `n` is `n 1 0%`. `none` is `0 0 auto`, `auto` is `1 1 auto`, `initial` is `0 1 auto`. Otherwise `<grow> <shrink>? \|\| <basis>`: `"2 3"`, `"2 100px"`, `"100px 2"`, and a lone basis (`"100px"`, `"50%"`, `"fit-content"`) is `1 1 <basis>`. The basis is what `flexBasis` takes, so not `content` |
+| `flex` | A number `n` is `n 1 0%`. `none` is `0 0 auto`, `auto` is `1 1 auto`, `initial` is `0 1 auto`. Otherwise `<grow> <shrink>? \|\| <basis>`: `"2 3"`, `"2 100px"`, `"100px 2"`, and a lone basis (`"100px"`, `"50%"`, `"fit-content"`) is `1 1 <basis>`. The basis is what `flexBasis` takes: `"1 1 content"` is a basis of the content size |
 | `flexFlow` | `"<direction> \|\| <wrap>"` in either order (`"column wrap"`); a part left out is `row` or `nowrap` |
 | `placeItems`, `placeContent`, `placeSelf` | `"<align> <justify>"`; one value is both (`"center"`, `"center end"`). Each value is one the longhand takes, so `placeItems: "left"` throws as in CSS |
 | `outline` | See [Outline](#outline) |
@@ -6231,18 +6232,36 @@ A child with `width: '100%'` does not count in the box's content sizes (a percen
 width that depends on the child is `auto` there), and gets the final width of the box
 afterwards, so a `100%` child of a box that hugs its other content is as wide as they are.
 
-A layout pre-pass measures them, so each node with a keyword costs extra layouts
-of its subtree every frame, and nesting multiplies it. Use them where the content
-decides the width, not on every box of a long list. A `height` keyword behaves as
+A layout pre-pass measures the width keywords (and `fit-content(<limit>)` as a `flexBasis`), so each node
+with one costs extra layouts of its subtree every frame, and nesting multiplies it. Use them where the content
+decides the width, not on every box of a long list. The `flexBasis` keywords are read by the flex layout itself
+and cost no pre-pass. A `height` keyword behaves as
 `auto`, since the block axis of CSS Sizing has no intrinsic size to ask for.
 The margins and the insets do not take the keywords.
 
-`flexBasis` measures the keyword the same way, and it wins over `width`, but only
-in a `row` or `row-reverse` flex container, where the main axis is the inline one.
-In a column, or in a parent that is not a flex container, it is `auto`. Its
-`fit-content` is `max-content`, because the container's size is not known to the
-measurement: the item's `flexShrink` brings it down to the container, so with
-`flexShrink: 0` it overflows where a browser would clamp.
+`flexBasis` takes the same keywords, and `content`, and they win over `width` (and over a basis
+length set next to them). They size the flex item from its content, as in Chrome:
+
+- In a `row` or `row-reverse` container, where the main axis is the inline one, `max-content` and
+  `min-content` are those content sizes, `content` is `max-content` whatever the item's `width` is (it
+  still counts as the item's automatic minimum size and for sizing a container that hugs its
+  items), and `fit-content` is `min(max-content, max(min-content, the container's content width less
+  the item's margins))`. `minWidth` and `maxWidth` then clamp the basis as they clamp any other.
+  An item with `flexShrink: 0` is therefore as wide as the container at most. In a container that is
+  sized by its items, with no width to fit, `fit-content` is `max-content` (or `min-content` when the
+  container is sized under that).
+- A `width: "fit-content"` on a row item with no `flexBasis` of its own is that same size as the
+  basis, and no limit: the item still grows and shrinks from it.
+- In a `column` container the main axis is the block one, and every keyword is `content`: the height
+  of the item's content at the width it gets, not its `height`. In a parent that is not a flex
+  container the keywords do nothing.
+
+```tsx
+<div style={{ display: 'flex', width: 300 }}>
+  {/* 300px wide at most, the text's own width below that */}
+  <div style={{ flexBasis: 'fit-content', flexShrink: 0 }}>some text that can wrap</div>
+</div>
+```
 
 A later `auto` or definite value in a `hover` or focus style replaces a keyword,
 and `width: "auto"` in a state style replaces the base `width`, as in CSS.

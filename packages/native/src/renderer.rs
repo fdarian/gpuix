@@ -13187,7 +13187,15 @@ mod dimension_length_tests {
     /// nearest of the device pixels of the 2x test window (the box is at the origin, and a half
     /// rounds toward it), as the box is painted.
     fn text_width(characters: usize) -> f64 {
-        let laid_out = (characters as f64 * CHAR * 64.0).ceil() / 64.0;
+        painted_edge(laid_out_text_width(characters))
+    }
+
+    fn laid_out_text_width(characters: usize) -> f64 {
+        (characters as f64 * CHAR * 64.0).ceil() / 64.0
+    }
+
+    /// The right edge of a box at the origin, as the 2x test window paints it.
+    fn painted_edge(laid_out: f64) -> f64 {
         ((laid_out * 2.0) - 0.5).ceil() / 2.0
     }
 
@@ -13456,12 +13464,45 @@ mod dimension_length_tests {
     }
 
     #[gpui::test]
-    fn a_fit_content_flex_basis_is_max_content_that_shrinks_and_a_limit_is_clamped(cx: &mut gpui::TestAppContext) {
+    fn a_fit_content_flex_basis_is_the_container_width_between_the_content_sizes(cx: &mut gpui::TestAppContext) {
         let page = basis_row(cx, ROW, r#"{"flexBasis": "fit-content", "flexShrink": 0}"#, LONG);
         near(page.size(2), (text_width(21), LINE));
-        let narrow = basis_row(cx, r#"{"width": 150, "display": "flex"}"#, r#"{"flexBasis": "fit-content"}"#, LONG);
-        near(narrow.size(2), (150.0, 2.0 * LINE));
 
+        // Narrower than the longest line it is the container, and an item that cannot shrink stays there.
+        let narrow = r#"{"width": 150, "display": "flex"}"#;
+        near(basis_row(cx, narrow, r#"{"flexBasis": "fit-content", "flexShrink": 0}"#, LONG).size(2), (150.0, 2.0 * LINE));
+        near(basis_row(cx, narrow, r#"{"flexBasis": "fit-content"}"#, LONG).size(2), (150.0, 2.0 * LINE));
+        let narrower = r#"{"width": 20, "display": "flex"}"#;
+        near(
+            basis_row(cx, narrower, r#"{"flexBasis": "fit-content", "flexShrink": 0}"#, LONG).size(2),
+            (text_width(9), 3.0 * LINE),
+        );
+
+        // The container's content box less the item's margins.
+        let padded = r#"{"width": 190, "paddingLeft": 20, "paddingRight": 20, "display": "flex"}"#;
+        near(
+            basis_row(cx, padded, r#"{"flexBasis": "fit-content", "flexShrink": 0, "marginLeft": 10}"#, LONG).size(2),
+            (140.0, 3.0 * LINE),
+        );
+    }
+
+    #[gpui::test]
+    fn a_fit_content_width_is_the_flex_base_size_of_a_row_item_without_a_basis(cx: &mut gpui::TestAppContext) {
+        let narrow = r#"{"width": 150, "display": "flex"}"#;
+        let page = basis_row(cx, narrow, r#"{"width": "fit-content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (150.0, 2.0 * LINE));
+
+        // The width is no limit: the item grows from it, sharing the free space with the sibling.
+        let growing = basis_row(cx, ROW, r#"{"width": "fit-content", "flexGrow": 1}"#, HELLO_WORLD);
+        near(growing.size(2), (painted_edge((600.0 + laid_out_text_width(11)) / 2.0), LINE));
+
+        // A basis of its own wins, and the item is held up by its content only.
+        let basis = basis_row(cx, narrow, r#"{"width": "fit-content", "flexBasis": 20, "flexShrink": 0}"#, LONG);
+        near(basis.size(2), (text_width(9), 3.0 * LINE));
+    }
+
+    #[gpui::test]
+    fn a_flex_basis_limit_is_clamped(cx: &mut gpui::TestAppContext) {
         let limited = basis_row(cx, ROW, r#"{"flexBasis": "fit-content(100px)", "flexShrink": 0}"#, LONG);
         near(limited.size(2), (100.0, 3.0 * LINE));
         limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(10px)", "flexShrink": 0}"#);
@@ -13473,16 +13514,42 @@ mod dimension_length_tests {
     }
 
     #[gpui::test]
-    fn a_flex_basis_keyword_is_auto_along_a_column_and_in_a_block(cx: &mut gpui::TestAppContext) {
+    fn a_content_flex_basis_ignores_the_width_and_is_clamped_by_the_limits(cx: &mut gpui::TestAppContext) {
+        let page = basis_row(cx, ROW, r#"{"width": 50, "flexBasis": "content", "flexShrink": 0}"#, LONG);
+        near(page.size(2), (text_width(21), LINE));
+        page.set_style(cx, 2, r#"{"width": 50, "flexBasis": "content", "flexShrink": 0, "maxWidth": 60}"#);
+        near(page.size(2), (60.0, 3.0 * LINE));
+        page.set_style(cx, 2, r#"{"width": 50, "flexBasis": "content", "flexShrink": 0, "minWidth": 300}"#);
+        near(page.size(2), (300.0, LINE));
+        // The basis of a flex item is also read from `flex`.
+        page.set_style(cx, 2, r#"{"width": 50, "flex": "0 0 content"}"#);
+        near(page.size(2), (text_width(21), LINE));
+    }
+
+    #[gpui::test]
+    fn a_flex_basis_keyword_is_content_along_a_column_and_nothing_in_a_block(cx: &mut gpui::TestAppContext) {
         let column = r#"{"width": 600, "display": "flex", "flexDirection": "column"}"#;
         let reversed = r#"{"width": 600, "display": "flex", "flexDirection": "column-reverse"}"#;
-        for parent in [column, reversed, r#"{"width": 600, "display": "block"}"#] {
-            for keyword in ["min-content", "max-content", "fit-content", "fit-content(50px)"] {
-                let item = format!(r#"{{"flexBasis": "{keyword}"}}"#);
+        for parent in [column, reversed] {
+            for keyword in ["content", "min-content", "max-content", "fit-content", "fit-content(50px)"] {
+                // The height is not the basis: the content height at the width the item gets is.
+                let item = format!(r#"{{"flexBasis": "{keyword}", "height": 100, "flexShrink": 0}}"#);
                 let page = text_box(cx, parent, &item, LONG);
                 near(page.size(2), (600.0, LINE));
             }
+            let auto = text_box(cx, parent, r#"{"flexBasis": "auto", "height": 100, "flexShrink": 0}"#, LONG);
+            near(auto.size(2), (600.0, 100.0));
         }
+        for keyword in ["content", "min-content", "max-content", "fit-content", "fit-content(50px)"] {
+            let item = format!(r#"{{"flexBasis": "{keyword}"}}"#);
+            near(text_box(cx, r#"{"width": 600, "display": "block"}"#, &item, LONG).size(2), (600.0, LINE));
+        }
+    }
+
+    #[gpui::test]
+    fn a_column_item_with_a_content_basis_wraps_to_its_width(cx: &mut gpui::TestAppContext) {
+        let column = r#"{"width": 150, "display": "flex", "flexDirection": "column"}"#;
+        near(text_box(cx, column, r#"{"flexBasis": "content", "flexShrink": 0}"#, LONG).size(2), (150.0, 2.0 * LINE));
     }
 
     #[gpui::test]
@@ -13528,7 +13595,7 @@ mod dimension_length_tests {
         let keyword = refine(&[r#"{"flexBasis": "fit-content(2em)"}"#]);
         assert_eq!(
             keyword.intrinsic_widths.flex_basis,
-            Some(Some(gpui::IntrinsicSize::FitContentLimit(gpui::px(32.0).into())))
+            Some(Some(gpui::FlexBasisKeyword::FitContentLimit(gpui::px(32.0).into())))
         );
         assert_eq!(keyword.flex_basis, Some(gpui::Length::Auto));
 
@@ -13537,11 +13604,11 @@ mod dimension_length_tests {
             assert_eq!(cleared.intrinsic_widths.flex_basis, Some(None), "{replacement}");
         }
         let back = refine(&[r#"{"flexBasis": 50}"#, r#"{"flexBasis": "min-content"}"#]);
-        assert_eq!(back.intrinsic_widths.flex_basis, Some(Some(gpui::IntrinsicSize::MinContent)));
+        assert_eq!(back.intrinsic_widths.flex_basis, Some(Some(gpui::FlexBasisKeyword::MinContent)));
         assert_eq!(back.flex_basis, Some(gpui::Length::Auto));
 
         let untouched = refine(&[r#"{"flexBasis": "max-content"}"#, r#"{"width": 5}"#]);
-        assert_eq!(untouched.intrinsic_widths.flex_basis, Some(Some(gpui::IntrinsicSize::MaxContent)));
+        assert_eq!(untouched.intrinsic_widths.flex_basis, Some(Some(gpui::FlexBasisKeyword::MaxContent)));
         assert_eq!(untouched.intrinsic_widths.width, Some(None));
     }
 

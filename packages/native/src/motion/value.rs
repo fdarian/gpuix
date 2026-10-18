@@ -374,9 +374,20 @@ impl AnimValue {
         matches!(self, Self::Keyword(Some(keyword)) if keyword == "auto")
     }
 
-    /// `auto`, or `from-font` for a decoration thickness: a keyword no length blends with.
+    /// `content` for `flex-basis`, a keyword like `auto`.
+    pub(super) fn content_keyword() -> Self {
+        Self::Keyword(Some("content".to_string()))
+    }
+
+    pub(super) fn is_content_keyword(&self) -> bool {
+        matches!(self, Self::Keyword(Some(keyword)) if keyword == "content")
+    }
+
+    /// `auto`, `content`, or `from-font` for a decoration thickness: a keyword no length blends with.
     fn is_length_keyword(&self) -> bool {
-        self.is_auto_keyword() || matches!(self, Self::Keyword(Some(keyword)) if keyword == "from-font")
+        self.is_auto_keyword()
+            || self.is_content_keyword()
+            || matches!(self, Self::Keyword(Some(keyword)) if keyword == "from-font")
     }
 
     /// The simplest value for `px` plus `percent` of the basis.

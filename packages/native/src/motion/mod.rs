@@ -1553,7 +1553,7 @@ mod tests {
 
     use super::*;
     use crate::css::length::LinearLength;
-    use crate::style::DimensionValue;
+    use crate::style::{DimensionValue, IntrinsicKeyword};
 
     /// The values a frame would lay over the element's style.
     struct Applied {
@@ -2721,6 +2721,27 @@ mod tests {
         assert_eq!(at(0.4).flex_basis, Some(DimensionValue::Pixels(100.0)));
         assert_eq!(at(0.6).flex_basis, Some(DimensionValue::Auto));
         assert_eq!(at(0.5).flex_grow, Some(0.5));
+    }
+
+    #[test]
+    fn flex_basis_flips_between_a_length_and_content_halfway() {
+        let at = |seconds| {
+            run_to(
+                serde_json::json!({}),
+                serde_json::json!({ "flexBasis": 100 }),
+                serde_json::json!({ "flexBasis": "content" }),
+                seconds,
+            )
+        };
+        assert_eq!(at(0.4).flex_basis, Some(DimensionValue::Pixels(100.0)));
+        assert_eq!(at(0.6).flex_basis, Some(DimensionValue::Intrinsic(IntrinsicKeyword::Content)));
+        let between_keywords = run_to(
+            serde_json::json!({}),
+            serde_json::json!({ "flexBasis": "auto" }),
+            serde_json::json!({ "flex": "1 1 content" }),
+            0.6,
+        );
+        assert_eq!(between_keywords.flex_basis, Some(DimensionValue::Intrinsic(IntrinsicKeyword::Content)));
     }
 
     #[test]

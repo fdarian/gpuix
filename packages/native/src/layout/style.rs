@@ -36,12 +36,25 @@ fn length(value: &DimensionValue, lengths: &LengthContext) -> gpui::Length {
     definite(value, lengths).map_or(gpui::Length::Auto, gpui::Length::Definite)
 }
 
+/// The keyword of a size property, which has no `content`: only `flexBasis` takes that, and
+/// it is rejected when the other fields are deserialized.
 fn intrinsic_size(keyword: &IntrinsicKeyword, lengths: &LengthContext) -> gpui::IntrinsicSize {
     match keyword {
         IntrinsicKeyword::MinContent => gpui::IntrinsicSize::MinContent,
         IntrinsicKeyword::MaxContent => gpui::IntrinsicSize::MaxContent,
         IntrinsicKeyword::FitContent => gpui::IntrinsicSize::FitContent,
         IntrinsicKeyword::FitContentLimit(limit) => gpui::IntrinsicSize::FitContentLimit(linear(limit, lengths)),
+        IntrinsicKeyword::Content => unreachable!("only flexBasis takes content, and it does not go through a size"),
+    }
+}
+
+fn flex_basis_keyword(keyword: &IntrinsicKeyword, lengths: &LengthContext) -> gpui::FlexBasisKeyword {
+    match keyword {
+        IntrinsicKeyword::Content => gpui::FlexBasisKeyword::Content,
+        IntrinsicKeyword::MinContent => gpui::FlexBasisKeyword::MinContent,
+        IntrinsicKeyword::MaxContent => gpui::FlexBasisKeyword::MaxContent,
+        IntrinsicKeyword::FitContent => gpui::FlexBasisKeyword::FitContent,
+        IntrinsicKeyword::FitContentLimit(limit) => gpui::FlexBasisKeyword::FitContentLimit(linear(limit, lengths)),
     }
 }
 
@@ -148,7 +161,7 @@ pub(crate) fn apply<E: Styled>(
 }
 
 /// A keyword leaves `flex_basis` `auto` for layout to fill in, and every other value clears
-/// the keyword, like `set_size`. Whether the keyword counts depends on the parent's direction,
+/// the keyword, like `set_size`. What a keyword comes to depends on the parent's direction,
 /// which only layout knows.
 fn apply_flex_basis<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthContext) -> E {
     let Some(value) = style.effective_flex_basis() else {
@@ -158,7 +171,7 @@ fn apply_flex_basis<E: Styled>(mut el: E, style: &StyleDesc, lengths: &LengthCon
     match value {
         DimensionValue::Intrinsic(keyword) => {
             refinement.flex_basis = Some(gpui::Length::Auto);
-            refinement.intrinsic_widths.flex_basis = Some(Some(intrinsic_size(keyword, lengths)));
+            refinement.intrinsic_widths.flex_basis = Some(Some(flex_basis_keyword(keyword, lengths)));
         }
         value => {
             refinement.flex_basis = Some(length(value, lengths));

@@ -373,9 +373,9 @@ pub enum DimensionValue {
     /// applied, so motion cannot run from or to it.
     Calc(LinearLength),
     Auto,
-    /// `min-content`, `max-content`, `fit-content` and `fit-content(<length>)`. Only the
-    /// six size properties and `flexBasis` take one; the others reject it when they are
-    /// deserialized.
+    /// `min-content`, `max-content`, `fit-content` and `fit-content(<length>)`, and `content`.
+    /// Only the six size properties and `flexBasis` take one (`content` only `flexBasis`); the
+    /// others reject it when they are deserialized.
     Intrinsic(IntrinsicKeyword),
     /// `anchor-size(width)` / `anchor-size(height)`: the trigger of the enclosing
     /// `<anchored>`. A direct child's sizes, margins and insets resolve it (`layout/anchor_size.rs`);
@@ -383,9 +383,12 @@ pub enum DimensionValue {
     AnchorSize(AnchorAxis),
 }
 
-/// An intrinsic size keyword of CSS Sizing 3.
+/// An intrinsic size keyword of CSS Sizing 3, or `content`, which only `flex-basis` has.
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntrinsicKeyword {
+    /// `flex-basis: content`: the size of the content, ignoring `width` and `height`.
+    /// [`IntrinsicKeyword::parse`] never reads it; only [`DimensionValue::parse_flex_basis`] does.
+    Content,
     MinContent,
     MaxContent,
     FitContent,
@@ -419,6 +422,7 @@ impl IntrinsicKeyword {
 impl std::fmt::Display for IntrinsicKeyword {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Content => formatter.write_str("content"),
             Self::MinContent => formatter.write_str("min-content"),
             Self::MaxContent => formatter.write_str("max-content"),
             Self::FitContent => formatter.write_str("fit-content"),
@@ -489,6 +493,17 @@ impl DimensionValue {
     }
 }
 
+impl DimensionValue {
+    /// A `<'flex-basis'>`: [`DimensionValue::parse`], and `content`.
+    pub(crate) fn parse_flex_basis(v: &str) -> Result<Self, String> {
+        if v.trim().eq_ignore_ascii_case("content") {
+            Ok(DimensionValue::Intrinsic(IntrinsicKeyword::Content))
+        } else {
+            Self::parse(v)
+        }
+    }
+}
+
 /// The CSS the dimension parses back from.
 impl std::fmt::Display for DimensionValue {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -529,48 +544,50 @@ impl<'de> Deserialize<'de> for DimensionValue {
     where
         D: Deserializer<'de>,
     {
-        use serde::de::{self, Visitor};
+        deserializer.deserialize_any(DimensionVisitor { flex_basis: false })
+    }
+}
 
-        struct DimensionVisitor;
+/// A `flexBasis`, which is a [`DimensionValue`] that also reads `content`.
+fn deserialize_flex_basis<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<DimensionValue>, D::Error> {
+    struct FlexBasis(DimensionValue);
 
-        impl<'de> Visitor<'de> for DimensionVisitor {
-            type Value = DimensionValue;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a number of px or a CSS length string like '100%', '2em' or 'calc(100% - 20px)', or 'auto', \
-                     'min-content', 'max-content' or 'fit-content'")
-            }
-
-            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(DimensionValue::Pixels(v))
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(DimensionValue::Pixels(v as f64))
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(DimensionValue::Pixels(v as f64))
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                DimensionValue::parse(v).map_err(de::Error::custom)
-            }
+    impl<'de> Deserialize<'de> for FlexBasis {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_any(DimensionVisitor { flex_basis: true }).map(FlexBasis)
         }
+    }
 
-        deserializer.deserialize_any(DimensionVisitor)
+    Ok(Option::<FlexBasis>::deserialize(deserializer)?.map(|basis| basis.0))
+}
+
+struct DimensionVisitor {
+    flex_basis: bool,
+}
+
+impl<'de> serde::de::Visitor<'de> for DimensionVisitor {
+    type Value = DimensionValue;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a number of px or a CSS length string like '100%', '2em' or 'calc(100% - 20px)', or 'auto', \
+             'min-content', 'max-content' or 'fit-content'")
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+        Ok(DimensionValue::Pixels(v))
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(DimensionValue::Pixels(v as f64))
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(DimensionValue::Pixels(v as f64))
+    }
+
+    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        if self.flex_basis { DimensionValue::parse_flex_basis(v) } else { DimensionValue::parse(v) }
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -588,8 +605,9 @@ pub struct StyleDesc {
     pub flex_wrap: Option<String>,
     pub flex_grow: Option<f64>,
     pub flex_shrink: Option<f64>,
-    /// A length (px, `%` of the container's main size, `em`, `calc()`, ...), `auto`, or an
-    /// intrinsic size keyword, which only counts along a row flex container's main axis.
+    /// A length (px, `%` of the container's main size, `em`, `calc()`, ...), `auto`, `content`, or
+    /// an intrinsic size keyword. Along a column container's main axis the keywords are `content`.
+    #[serde(default, deserialize_with = "deserialize_flex_basis")]
     pub flex_basis: Option<DimensionValue>,
     /// CSS `flex`: a number (`flex: 1` is `1 1 0%`), `none`, `auto`, `initial`, or
     /// `<grow> <shrink>? || <basis>`. `flexGrow`, `flexShrink` and `flexBasis` win over it.
@@ -2030,7 +2048,29 @@ mod tests {
             style_of(r#"{"flexBasis": "calc(100% - 40px)"}"#).flex_basis,
             Some(calc("calc(100% - 40px)"))
         );
-        assert!(serde_json::from_str::<StyleDesc>(r#"{"flexBasis": "content"}"#).is_err());
+    }
+
+    #[test]
+    fn only_flex_basis_takes_content() {
+        let content = DimensionValue::Intrinsic(IntrinsicKeyword::Content);
+        assert_eq!(style_of(r#"{"flexBasis": "content"}"#).flex_basis, Some(content.clone()));
+        assert_eq!(style_of(r#"{"flexBasis": "CONTENT"}"#).flex_basis, Some(content.clone()));
+        let style = style_of(r#"{"flexBasis": "content"}"#);
+        assert_eq!(style_of(&serde_json::to_string(&style).unwrap()), style);
+        assert_eq!(style_of(r#"{"flex": "1 1 content"}"#).effective_flex_basis(), Some(&content));
+        assert_eq!(style_of(r#"{"flex": "content 2 3"}"#).flex, Some(crate::css::flex::Flex { grow: 2.0, shrink: 3.0, basis: content.clone() }));
+        for json in [
+            r#"{"width": "content"}"#,
+            r#"{"height": "content"}"#,
+            r#"{"minWidth": "content"}"#,
+            r#"{"maxHeight": "content"}"#,
+            r#"{"margin": "content"}"#,
+            r#"{"top": "content"}"#,
+            r#"{"padding": "content"}"#,
+            r#"{"flex": "1 1 content content"}"#,
+        ] {
+            assert!(serde_json::from_str::<StyleDesc>(json).is_err(), "{json}");
+        }
     }
 
     #[test]

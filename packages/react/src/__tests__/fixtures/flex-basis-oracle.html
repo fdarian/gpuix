@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  Oracle for flex-basis.test.tsx: the border boxes (`[x, y, width, height]` relative to the case box at the top left of the
+  page, of every element with an `id`) that headless Chrome lays out for flex containers. The container is `c` and its items
+  `i0`, `i1`, ... The font is GpuixTestSquare at 20px/20px: a letter is 20px wide and a space 5px, so `AAAAA` is 100px wide at
+  its min-content and max-content, and `AAAA AAAA AAAA AAAA` is 80px wide at min-content and 335px at max-content.
+  Regenerate with
+
+    sh flex-basis-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:GpuixTestSquare;src:url(gpuix-test-square.ttf)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/1 sans-serif}
+#case{position:absolute;left:0;top:0;width:1280px;font:20px/20px GpuixTestSquare}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const TEXT = { s: 'AAAAA', l: 'AAAA AAAA AAAA AAAA' };
+const cases = {};
+const add = (name, container, ...items) => { cases[name] = { container, items: items.map(([css, text = '']) => ({ css, text })) }; };
+const ROW = (width) => `display:flex;width:${width}px`;
+const KEYWORDS = ['auto', 'fit-content', 'max-content', 'min-content', 'content'];
+
+// One item in a row: every keyword, in containers narrower than, as wide as and wider than the content. The item cannot
+// shrink, so the basis is the width.
+for (const width of [100, 300, 1000])
+  for (const text of ['s', 'l'])
+    for (const basis of KEYWORDS)
+      add(`row ${width} ${basis} ${text}`, ROW(width), [`flex-basis:${basis};flex-shrink:0`, text]);
+
+// The same, with the shrinking that is the default.
+for (const width of [100, 300])
+  for (const basis of ['fit-content', 'max-content', 'min-content', 'content'])
+    add(`row ${width} ${basis} l shrinks`, ROW(width), [`flex-basis:${basis}`, 'l']);
+
+// A grown item.
+for (const basis of KEYWORDS)
+  add(`row 300 ${basis} l grows`, ROW(300), [`flex-basis:${basis};flex-shrink:0;flex-grow:1`, 'l']);
+
+// The width property next to a basis.
+for (const width of [100, 300, 1000]) {
+  add(`row ${width} auto width 50 l`, ROW(width), ['width:50px;flex-shrink:0', 'l']);
+  add(`row ${width} auto width fit-content l`, ROW(width), ['width:fit-content;flex-shrink:0', 'l']);
+  add(`row ${width} auto width fit-content s`, ROW(width), ['width:fit-content;flex-shrink:0', 's']);
+  for (const basis of ['fit-content', 'max-content', 'min-content', 'content'])
+    add(`row ${width} ${basis} width 50 l`, ROW(width), [`flex-basis:${basis};width:50px;flex-shrink:0`, 'l']);
+}
+add('row 300 width fit-content basis 50', ROW(300), ['width:fit-content;flex-basis:50px;flex-shrink:0', 'l']);
+add('row 300 width fit-content grows', ROW(300), ['width:fit-content;flex-grow:1', 's']);
+add('row 300 width fit-content max-width 200', ROW(300), ['width:fit-content;max-width:200px;flex-shrink:0', 'l']);
+add('row 300 width fit-content min-width 320', ROW(300), ['width:fit-content;min-width:320px;flex-shrink:0', 's']);
+add('row 300 width fit-content max-width 50%', ROW(300), ['width:fit-content;max-width:50%;flex-shrink:0', 'l']);
+
+// min-width and max-width clamp the basis.
+for (const basis of ['fit-content', 'content', 'max-content']) {
+  add(`row 300 ${basis} max-width 60`, ROW(300), [`flex-basis:${basis};max-width:60px;flex-shrink:0`, 'l']);
+  add(`row 300 ${basis} min-width 150`, ROW(300), [`flex-basis:${basis};min-width:150px;flex-shrink:0`, 's']);
+  add(`row 300 ${basis} max-width 50%`, ROW(300), [`flex-basis:${basis};max-width:50%;flex-shrink:0`, 'l']);
+  add(`row 300 ${basis} min-width 320`, ROW(300), [`flex-basis:${basis};min-width:320px;flex-shrink:0`, 's']);
+}
+add('row 300 fit-content width 50 max-width 60', ROW(300), ['flex-basis:fit-content;width:50px;max-width:60px;flex-shrink:0', 'l']);
+
+// The automatic minimum size of an item that has a width, next to a sibling that does not shrink.
+for (const basis of ['auto', 'content', 'max-content', 'fit-content', 'min-content'])
+  for (const width of [40, 70, 150])
+    for (const text of ['s', 'l'])
+      add(`min row ${width} ${basis} ${text}`, ROW(width), [`flex-basis:${basis};width:50px`, text], ['width:5px;flex-shrink:0']);
+
+// Margins, padding and gaps of the item and of the container.
+add('row 300 fit-content margin', ROW(300), ['flex-basis:fit-content;flex-shrink:0;margin:0 20px 0 10px', 'l']);
+add('row 300 max-content margin', ROW(300), ['flex-basis:max-content;flex-shrink:0;margin:0 20px 0 10px', 'l']);
+add('row 300 fit-content item padding l', ROW(300), ['flex-basis:fit-content;flex-shrink:0;padding:0 10px', 'l']);
+add('row 300 fit-content item padding s', ROW(300), ['flex-basis:fit-content;flex-shrink:0;padding:0 10px', 's']);
+add('row 300 max-content item padding', ROW(300), ['flex-basis:max-content;flex-shrink:0;padding:0 10px', 'l']);
+add('row 300 content item padding', ROW(300), ['flex-basis:content;flex-shrink:0;padding:0 10px', 'l']);
+add('row 300 container padding', `${ROW(300)};padding:0 20px`, ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('row 300 container padding gap', `${ROW(300)};padding:0 20px;gap:30px`, ['flex-basis:fit-content;flex-shrink:0', 'l'], ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('row 300 reverse', `${ROW(300)};flex-direction:row-reverse`, ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('row 300 two fit-content', ROW(300), ['flex-basis:fit-content;flex-shrink:0', 'l'], ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('row 300 two max-content', ROW(300), ['flex-basis:max-content;flex-shrink:0', 'l'], ['flex-basis:max-content;flex-shrink:0', 'l']);
+add('row 300 fit-content then content', ROW(300), ['flex-basis:fit-content;flex-shrink:0', 'l'], ['flex-basis:content;flex-shrink:0', 'l']);
+add('row 300 wrap fit-content', `${ROW(300)};flex-wrap:wrap`, ['flex-basis:fit-content', 'l'], ['flex-basis:fit-content', 'l'], ['flex-basis:fit-content', 's']);
+add('row 300 wrap max-content', `${ROW(300)};flex-wrap:wrap`, ['flex-basis:max-content', 'l'], ['flex-basis:max-content', 'l'], ['flex-basis:max-content', 's']);
+
+// The flex shorthand.
+for (const basis of ['content', 'fit-content', 'max-content'])
+  add(`row 300 flex 1 1 ${basis}`, ROW(300), [`flex:1 1 ${basis}`, 'l'], [`flex:1 1 ${basis}`, 's']);
+add('row 300 flex 1 content', ROW(300), ['flex:1 content', 'l'], ['flex:1 content', 's']);
+add('row 300 flex 1 1 0', ROW(300), ['flex:1 1 0', 'l'], ['flex:1 1 0', 's']);
+
+// A container whose own size comes from its items.
+add('inline-flex fit-content', 'display:inline-flex', ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('inline-flex min-content', 'display:inline-flex', ['flex-basis:min-content;flex-shrink:0', 'l']);
+add('inline-flex content width 50', 'display:inline-flex', ['flex-basis:content;width:50px', 'l']);
+add('min-content container fit-content', 'display:flex;width:min-content', ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('max-content container fit-content', 'display:flex;width:max-content', ['flex-basis:fit-content;flex-shrink:0', 'l']);
+add('max-content container content width 50', 'display:flex;width:max-content', ['flex-basis:content;width:50px', 'l']);
+add('abs fit-content', 'display:flex;position:absolute;left:0', ['flex-basis:fit-content', 'l']);
+
+// A column, where every keyword is `content`: the height of the content at the width the item gets.
+for (const height of [40, 300])
+  for (const width of [100, 400])
+    for (const basis of KEYWORDS)
+      for (const extra of ['', 'height:100px', 'min-height:60px'])
+        for (const shrink of [0, 1])
+          add(`col h${height} w${width} ${basis} ${extra || 'plain'} shrink${shrink}`,
+            `display:flex;flex-direction:column;width:${width}px;height:${height}px`, [`flex-basis:${basis};${extra};flex-shrink:${shrink}`, 'l']);
+add('col content width 100', 'display:flex;flex-direction:column;width:400px;height:40px', ['flex-basis:content;width:100px;flex-shrink:0', 'l']);
+add('col two items', 'display:flex;flex-direction:column;width:100px;height:300px', ['flex-basis:max-content;height:10px', 'l'], ['flex-basis:fit-content;height:10px', 's'], ['height:10px']);
+
+document.fonts.load('20px GpuixTestSquare', 'A').then(() => {
+  const scene = document.getElementById('scene');
+  const out = {};
+  for (const [name, spec] of Object.entries(cases)) {
+    const html = `<div id="c" style="${spec.container}">${spec.items.map((item, index) => `<div id="i${index}" style="${item.css}">${TEXT[item.text] ?? ''}</div>`).join('')}</div>`;
+    const holder = document.createElement('div');
+    holder.id = 'case';
+    holder.innerHTML = html;
+    scene.appendChild(holder);
+    const origin = holder.getBoundingClientRect();
+    const boxes = {};
+    for (const element of holder.querySelectorAll('[id]')) {
+      const rect = element.getBoundingClientRect();
+      boxes[element.id] = [rect.left - origin.left, rect.top - origin.top, rect.width, rect.height];
+    }
+    out[name] = { html, boxes };
+    scene.removeChild(holder);
+  }
+  const output = document.createElement('div');
+  output.setAttribute('data-oracle', JSON.stringify(out));
+  document.body.appendChild(output);
+});
+</script></body></html>

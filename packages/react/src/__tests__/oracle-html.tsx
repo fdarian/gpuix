@@ -3,12 +3,16 @@
 
 import React from "react"
 
+/** The properties whose value is a number in a style object and not a CSS string. */
+const NUMBERS = new Set(["flexGrow", "flexShrink"])
+
 /** `text-wrap-mode:nowrap;white-space:pre` as a style object. */
-export function styleOf(css: string): Record<string, string> {
-  const style: Record<string, string> = {}
+export function styleOf(css: string): Record<string, string | number> {
+  const style: Record<string, string | number> = {}
   for (const declaration of css.split(";").filter(Boolean)) {
     const [name, value] = declaration.split(":")
-    style[name!.trim().replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())] = value!.trim()
+    const property = name!.trim().replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+    style[property] = NUMBERS.has(property) ? Number(value) : value!.trim()
   }
   return style
 }
