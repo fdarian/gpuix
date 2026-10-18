@@ -56,15 +56,16 @@ pub(crate) fn contents_between<'a>(
 }
 
 /// The `display: contents` elements that `child_id` was spliced out of, for the build of a child
-/// that is not built by the parent it was spliced into: the nearest ancestor that is not one.
+/// that is not built by the parent it was spliced into: the nearest ancestor that is not one, or
+/// the top element when every ancestor is one (a `display: contents` root builds its own children).
 pub(crate) fn splice_parent(tree: &RetainedTree, child_id: u64) -> Option<&RetainedElement> {
     let mut current = tree.elements.get(&child_id)?.parent?;
     loop {
         let ancestor = tree.elements.get(&current)?;
-        if !is_display_contents(ancestor) {
-            return Some(ancestor);
+        match ancestor.parent {
+            Some(above) if is_display_contents(ancestor) => current = above,
+            _ => return Some(ancestor),
         }
-        current = ancestor.parent?;
     }
 }
 
