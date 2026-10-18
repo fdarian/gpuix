@@ -3392,7 +3392,8 @@ the space that shows.
   nothing and passes nothing down. `none` on a descendant does not take off a trim
   from above.
 - The metrics are those of the font of the block that holds the line. A trimmed
-  box is a whole number of device pixels tall, rounded up.
+  box is as tall as the metric to the nearest 1/64 of a pixel, as in Chrome, and its edges
+  are painted on device pixels.
 
 ### Inline-block, inline-flex, inline-grid and inline-table
 
@@ -3474,9 +3475,9 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
 
 #### Deviations
 
-- gpui measures a text to the next whole pixel, so a box as wide as its text is up to 1px wider than
-  Chrome's, and what follows it is that much later. Positions are snapped to device pixels, where
-  Chrome's are in 1/64 of a pixel. Chrome rounds the ascent and descent of a font to whole pixels,
+- A text is as wide as its advance up to 1/64 of a pixel, as in Chrome, and boxes are laid out in
+  fractions of a pixel. Their positions are snapped to device pixels when painted (and in
+  `getBoundingClientRect`), where Chrome's are in 1/64 of a pixel. Chrome rounds the ascent and descent of a font to whole pixels,
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
 - The underline, line-through or overline of a span that wraps and is raised is drawn at the baseline of the
   row, not at the raised one. Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
