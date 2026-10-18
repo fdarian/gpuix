@@ -98,13 +98,29 @@ pub(crate) fn inherited_overlay(
     }
 
     let mut overlay = StyleDesc::default();
+    let mut levels = Vec::new();
     // Outermost first, so a nearer ancestor overrides a farther one.
     for ancestor in chain {
         if let Some(style) = ancestor.style.as_deref() {
             overlay.take_inheritable_from(style);
+            let declaration = crate::layout::container::declared(style).map(|declared| (ancestor.id, declared));
+            if declaration.is_some() || style.custom_properties.is_some() {
+                levels.push(ContentsLevel { declaration, custom: style.custom_properties.clone() });
+            }
         }
     }
+    overlay.contents_levels = (!levels.is_empty()).then(|| levels.into());
     Some(Box::new(overlay))
+}
+
+/// What a `display: contents` ancestor passes to the children spliced out of it that is not a
+/// field of the style: the query container it declares, which has no box, and the custom
+/// properties it sets, which a `style()` query of the child reads before the child's own build
+/// has inherited anything.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ContentsLevel {
+    pub declaration: Option<(u64, crate::layout::container::Declared)>,
+    pub custom: Option<crate::css::custom_properties::CustomProperties>,
 }
 
 impl StyleDesc {

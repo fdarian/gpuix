@@ -219,15 +219,16 @@ mod tests {
 
     #[test]
     fn container_blocks_layer_the_universal_ones_first_so_the_elements_own_win() {
-        use crate::css::container_query::{Axes, Containers, Measured};
+        use crate::css::container_query::{Containers, Measured, Needs};
 
         struct Wide;
         impl Containers for Wide {
-            fn container(&self, _: Option<&str>, _: Axes) -> Option<Measured> {
+            fn container(&self, _: Option<&str>, _: Needs) -> Option<Measured> {
                 Some(Measured {
                     width: Some(1000.0),
                     height: Some(1000.0),
                     lengths: crate::css::length::LengthContext::initial(1000.0, 1000.0),
+                    custom: Default::default(),
                 })
             }
         }

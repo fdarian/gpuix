@@ -7104,6 +7104,7 @@ fractions of it:
 | `containerName` | names a query can pick the container by: `"card"`, `"card panel"`, `"none"` |
 | `container` | `"<name> [ / <type> ]"`, both in one (`"card / inline-size"`); a type left out is `"normal"`; a longhand written after it wins |
 | `"@container"` | an object of `query: style`, in written order |
+| `"--name"` | a custom property, which inherits and which `style()` queries read ([below](#style-and-custom-properties)) |
 
 **Which container answers.** A query is about the **nearest ancestor container**,
 never the element itself, and measures its **content box**: the border box less
@@ -7111,11 +7112,14 @@ padding, border and a scrollbar gutter. Start the query with a name
 (`"card (min-width: 400px)"`) to ask the nearest container that has it instead; a
 name alone (`"card"`) is true when there is one. A feature reads one axis or both:
 `width` and `inline-size` need a container of type `inline-size` or `size`, and
-`height`, `block-size`, `aspect-ratio` and `orientation` need `size`. The nearest
-container that **contains the axes a feature reads** answers it, so a
-`(min-height: 300px)` under an `inline-size` container looks past it to a `size`
-one above. A query with no such container, or whose container has not been laid out
-yet, is false.
+`height`, `block-size`, `aspect-ratio` and `orientation` need `size`. **One
+container answers the whole query**, as in a browser: the nearest one that contains
+every axis the query's size features read, so `(max-width: 60px) and (min-height:
+0px)` is asked of the nearest `size` container for both, and a `(min-height:
+300px)` under an `inline-size` container looks past it to a `size` one above. A
+query with no such container, or whose container has not been laid out yet, is
+false. A `style()` query with no size feature and no name asks the parent element,
+see [`style()` and custom properties](#style-and-custom-properties).
 
 **The grammar** is CSS Containment 3:
 
@@ -7128,10 +7132,11 @@ yet, is false.
   `calc()`; no `%`
 - `and`, `or`, `not`, and parentheses. `and` and `or` cannot be mixed without
   parentheses, and `not` takes one condition in parentheses
-- A feature this does not know, and `style()` and `scroll-state()`, are *unknown*.
-  An unknown result is false, so `not` of one is false too. Text that is not a
-  query at all (unbalanced parentheses, `and` mixed with `or`) makes the whole style
-  invalid, like an invalid `width`
+- `style()` is [below](#style-and-custom-properties). A feature this does not know,
+  `scroll-state()`, and a normal property inside `style()` are *unknown*. An unknown
+  result is false, so `not` of one is false too. Text that is not a query at all
+  (unbalanced parentheses, `and` mixed with `or`) makes the whole style invalid, like
+  an invalid `width`
 
 **How blocks apply.** Matching blocks fold into the element's style in the order
 they are written, a later one winning over an earlier one that sets the same
@@ -7210,34 +7215,98 @@ renderer, within noise), and a frame in which every container crosses a query ta
 about 1.9 to 2 times a steady frame, which is what a restyle from the app costs
 too, since the app has to render and the frame draws afterwards.
 
+#### `style()` and custom properties
+
+A key that starts with `--` is a CSS custom property, in a style, a state style or an
+`"@container"` block. They inherit, and `style()` queries read them:
+
+```tsx
+<div style={{ '--density': 'compact', '--columns': 3 }}>
+  <div
+    style={{
+      padding: 12,
+      '@container': {
+        'style(--density: compact)': { padding: 4 },
+        'style(--columns > 2) and (min-width: 400px)': { flexDirection: 'row' },
+      },
+    }}
+  />
+</div>
+```
+
+- **Values** are text. A string is trimmed, and its `/* comments */` and a trailing
+  `!important` are dropped; a number is its decimal text (`3` is `"3"`); an empty
+  string, `null` and `undefined` declare nothing, as React DOM removes the property
+  for them. Anything else is an error. Names are case sensitive.
+- **They inherit.** An element computes its own declarations over its parent's.
+  `"initial"` clears one (it has no value below), `"inherit"` and `"unset"` keep the
+  parent's. A state style (`hover`, ...) or a matching `"@container"` block that sets
+  one changes it for the element and everything below it while it applies.
+- **`style(--name: value)`** is true when the container computes `--name` to exactly
+  that text: `style(--theme: dark)` does not match `Dark`, `style(--space: a  b)` does not
+  match `a b`, and `10px` is not `10PX`. A trailing `!important` and comments in the
+  query are ignored. **`style(--name)`** is true when the container has a value for
+  it (`0` is one), **`style(--name: initial)`** when it has none.
+  **`style(--n > 5px)`**, `<`, `>=`, `<=`, `=` and the two sided
+  `style(0 < --n <= 1)` order a number, a length (`em`, `rem` and the viewport units
+  resolve against the container's font) or a percentage against a value of the same
+  kind; text, a missing property or another kind is unknown.
+- **They combine** inside, `style((--a: 1) and (--b: 2))`, `style(not (--a: 1))`,
+  `or`, and outside, `style(--a: 1) and style(--b: 2)`, `not style(--a: 1)`, and
+  with size features, `(min-width: 400px) and style(--a: 1)`. A declaration list written
+  without parentheses (`style(--a: 1; --b: 2)`) is invalid and unknown.
+- **Which container.** Every element is a style container, so with no name and no size
+  feature a `style()` query asks the **parent element**, whatever its `containerType`;
+  with a name, the nearest element that has it, and a `containerName` with no
+  `containerType` is enough (a name alone is also a container a name-only query,
+  `"@container card"`, finds); with a size feature in the same query, the one container
+  that answers the size feature (see above), which then answers the `style()` part too.
+  The element's own custom properties are never what its own query reads.
+- **A normal property in `style()`** (`style(color: red)`, `style(display: block)`) is
+  unknown, as in Chrome, which supports custom properties only.
+
 Differences from the browser:
 
-- `style()` queries and `scroll-state()` are unknown (false), and `container-type:
-  scroll-state` does not exist
-- Only host boxes are containers (`div`, `text`, `label`, ...); not an inline `<span>`, an
-  `<img>`, an `<svg>`, an `<input>`, a `display: contents` element or a
-  `<virtual-list>` itself. Its rows can sit under one. An `inline-block`, `inline-flex` or
-  `inline-grid` box is a container like any other, and so is every box inside one
-- A [table](#tables) is not a container, and neither is an `inline-table`, a row group, a row, a column, a
-  column group or a cell, whatever `containerType` they declare, and they are not size contained either:
-  CSS Containment 3 leaves `container-type` out of table boxes and internal table boxes, and Chrome ignores it.
-  A caption is a container. A cell is laid out by the table algorithm and what is in it is queried against
-  the container around it (or one in the cell) in the frame that lays the table out
-- `<virtual-list>` takes no `@container` blocks (it takes no `hover` either), and
-  neither does an inline `<span>`
-- A block is evaluated where the element is built, so `elementsAt`, stacking and the
-  paragraph planner read the style without it. `display` is the exception for the values
-  that decide what kind of box a child is in its parent's text (`none`, `block`, `inline`,
-  `inline-block`, `inline-flex`, `inline-grid`, and `flex` or `grid` for the container
-  itself, which also decides whether `order` sorts its children and whether the `zIndex` of a
-  static child stacks) and what part of a table it is (`table`, `inline-table` and the other `table-*`
-  values, which also decide what a table, row group or row wraps in an anonymous cell, and what
-  a block wraps in an anonymous table): the parent is rebuilt when a block changes one.
-  `position`, `zIndex` and `display: contents` are not taken from a block by those readers.
-  An element a block makes `inline` is a span of its parent's text, which takes no blocks, so its
-  other blocks stop applying while it is
-- Vertical writing modes do not exist, so `cqi` is `cqw` and `cqb` is `cqh`, and
-  `inline-size` is `width`
+- `scroll-state()` is unknown (false), and `container-type: scroll-state` does not exist.
+  `var()` is not substituted into other properties: a custom property is only read by
+  `style()`. `style(--x: inherit)`, `unset` and `revert` are unknown, there is no `@property`
+  registration (every value is text, and none transitions or animates), and a custom
+  property cannot be set to `""` (that declares nothing)
+- Which elements are containers follows CSS. A `div`, `text`, `label`, `form`, an atomic
+  `span` (`inline-block`, `inline-flex`, `inline-grid`) and a table caption are size
+  contained as `containerType` says, and so are a [`<virtual-list>`](#virtual-lists) (its rows are
+  queried against it, and they follow its size in the frame that lays it out), an `<img>`
+  and an `<svg>`. An image or an `<svg>` has nothing inside to query, so for them the type is
+  only size containment: it takes the natural size, and the natural aspect ratio, away on the
+  contained axes, so an `<img>` with `containerType: "size"` and no width is 0 wide and 0
+  tall. An `<input>` and a `<textarea>` ignore `containerType`, as they do in Chrome
+- An element that cannot be size contained is still a container a query finds: an inline
+  `<span>` that is not atomic, a `display: contents` element, a [table](#tables) (and an
+  `inline-table`), a row group, a row, a column, a column group and a cell. A size feature
+  asked of it is unknown, so the query is false and **so is its negation**, and the lookup
+  does not go on to a container above it. A name still matches, `style()` reads its custom
+  properties, and a container unit (`cqw`) looks past it to the one above. A cell is laid
+  out by the table algorithm and is as wide as its content whatever it declares
+- Not containers at all: `<anchored>`, `<code>`, `<markdown>`, `<diff>`, and `<input>` (it
+  has no children). `<virtual-list>` takes no `@container` blocks itself (it takes no
+  `hover` either), and neither does an inline `<span>`
+- A block is evaluated where the element is built, and what the walks over the tree read
+  (hit testing, stacking, observers) is the style as it was painted, blocks included.
+  The paragraph planner and the table role read `display` before the element is built, so
+  `display` is settled from the blocks first (`none`, `block`, `inline`, `inline-block`,
+  `inline-flex`, `inline-grid`, and `flex` or `grid` for the container itself, which also
+  decides whether `order` sorts its children and whether the `zIndex` of a static child
+  stacks) and what part of a table it is (`table`, `inline-table` and the other
+  `table-*` values, which also decide what a table, row group or row wraps in an anonymous
+  cell, and what a block wraps in an anonymous table): the parent is rebuilt when a block
+  changes one. `display: contents` is not taken from a block, since the parent splices a
+  child in before it is built. An element a block makes `inline` is a span of its parent's
+  text, which takes no blocks, so its other blocks stop applying while it is
+- There are no vertical writing modes (`writing-mode`, `text-orientation`), so `cqi` is
+  `cqw`, `cqb` is `cqh` and `inline-size` is `width`. The vendored taffy lays out
+  horizontal-tb only (its alignment code and flexbox and grid carry TODOs for the
+  other modes) and gpui has no `writing-mode` style or vertical text, so it is a
+  rewrite of the layout and text engines, not something to wire
 - Sizes are snapped to sixty-fourths of a pixel, the unit browsers lay out in
 
 ### Hover and active

@@ -160,3 +160,82 @@ describeNative("an @container block that makes an element a flex or grid contain
     })
   })
 })
+
+/**
+ * What hit testing and stacking read of an element is the style it was painted with, the `@container`
+ * blocks the container above selects included. `b` lies exactly over `a` (pulled up by its negative
+ * margin), so which of them is at the point is decided by the property under test.
+ */
+const readerApp = (width: number, a: object, b: object): ReactElement => (
+  <div style={{ width, containerType: "inline-size" }}>
+    <div testId="a" style={{ width: 100, height: 100, "@container": { [WIDE]: a } }}>
+      a
+    </div>
+    <div testId="b" style={{ width: 100, height: 100, marginTop: -100, "@container": { [WIDE]: b } }}>
+      b
+    </div>
+  </div>
+)
+
+describeNative("an @container block that sets what hit testing and stacking read", () => {
+  const cases: {
+    name: string
+    a: object
+    b: object
+    /** The test ids at the point, topmost first, in a container wide enough for the block and in a narrow one. */
+    wide: string[]
+    narrow: string[]
+    paintedWide?: string[]
+    paintedNarrow?: string[]
+  }[] = [
+    {
+      name: "a positioned element with a zIndex goes over a later sibling",
+      a: { position: "relative", zIndex: 1 },
+      b: {},
+      wide: ["a", "b"],
+      narrow: ["b", "a"],
+      paintedWide: ["b", "a"],
+      paintedNarrow: ["a", "b"],
+    },
+    {
+      name: "opacity under 1 makes a stacking context above a later static sibling",
+      a: { opacity: 0.5 },
+      b: {},
+      wide: ["a", "b"],
+      narrow: ["b", "a"],
+      paintedWide: ["b", "a"],
+      paintedNarrow: ["a", "b"],
+    },
+    {
+      name: "visibility hidden is not hit",
+      a: {},
+      b: { visibility: "hidden" },
+      wide: ["a"],
+      narrow: ["b", "a"],
+    },
+    {
+      name: "pointerEvents none is not hit",
+      a: {},
+      b: { pointerEvents: "none" },
+      wide: ["a"],
+      narrow: ["b", "a"],
+    },
+  ]
+  for (const { name, a, b, wide, narrow, paintedWide, paintedNarrow } of cases) {
+    it(name, () => {
+      const { render, hitsAt, painted, paintedFrames, unmount } = setup()
+      try {
+        const check = (width: number, hits: string[], order?: string[]) => {
+          expect(paintedFrames(() => render(readerApp(width, a, b)))).toBe(1)
+          expect(hitsAt(50, 50).filter((id) => id === "a" || id === "b"), `${name} at ${width}`).toEqual(hits)
+          if (order) expect(painted().filter((label) => label === "a" || label === "b"), `${name} at ${width}`).toEqual(order)
+        }
+        check(300, wide, paintedWide)
+        check(200, narrow, paintedNarrow)
+        check(300, wide, paintedWide)
+      } finally {
+        unmount()
+      }
+    })
+  }
+})

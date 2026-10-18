@@ -479,6 +479,7 @@ fn img_fallback(ctx: &CustomRenderContext, alt: &str, message: &str) -> gpui::An
             .text_color(gpui::rgba(0xa4accdff)),
         ctx,
     );
+    fallback = crate::layout::container::contain_declared(fallback, ctx.style);
     fallback = crate::accessibility::apply_accessibility(
         fallback,
         ctx.id,
@@ -500,6 +501,7 @@ fn img_blank(ctx: &CustomRenderContext) -> gpui::AnyElement {
         gpui::div().id(crate::events::ids::host_element_id(ctx.id)),
         ctx,
     );
+    let blank = crate::layout::container::contain_declared(blank, ctx.style);
     crate::accessibility::apply_accessibility(blank, ctx.id, ctx.props, Some(gpui::Role::Image))
         .into_any_element()
 }
@@ -566,6 +568,7 @@ impl CustomElement for ImgElement {
                 }
             }
         }
+        el = crate::layout::container::contain_declared(el, ctx.style);
 
         let mut el = crate::accessibility::apply_accessibility(
             el,
@@ -880,6 +883,7 @@ impl CustomElement for SvgElement {
 
         let element_id = crate::events::ids::host_element_id(ctx.id);
         let mut surface = super::custom_surface(gpui::div().id(element_id).flex_none(), &ctx);
+        surface = crate::layout::container::contain_declared(surface, ctx.style);
         // An inline `<svg>` is `overflow: hidden` unless the page says otherwise, which is
         // what rounds the drawing to the box's border radii.
         let overflow_declared = ctx.style.is_some_and(|style| {

@@ -229,8 +229,9 @@ describeNative("container queries and tables", () => {
   })
 
   /**
-   * A cell, a row, a row group and a table with `container-type` are not containers: nothing under them is
-   * queried against them, and they are not size contained (a cell as wide as its content).
+   * A cell, a row, a row group and a table with `container-type` cannot be size contained (a cell is as wide as
+   * its content), so a size query under them is unknown. They are still the container a query finds, which
+   * `container-hosts.test.tsx` checks against Chrome with a container above.
    *
    * ```html
    * <div id="t" style="display:table;border-spacing:0"><div id="k" style="display:table-cell;container-type:inline-size">
@@ -239,7 +240,7 @@ describeNative("container queries and tables", () => {
    * with `table-row` and `table-row-group` for `k` (in the table, around the cell), and `inline-table` and
    * `table` for the table `t`. The same: `q1` stays 30 wide, `k` and `t` are 100 wide.
    */
-  it("ignores containerType on a cell, a row, a row group and a table", () => {
+  it("does not size contain a cell, a row, a row group and a table", () => {
     const contained = { containerType: "inline-size" } as const
     const inside = (
       <>
@@ -297,7 +298,7 @@ describeNative("container queries and tables", () => {
         const t = laidOut(testRoot, "t")
         expect(t[2], `${name}: the table is as wide as its content`).toBeCloseTo(100, 1)
         expect(laidOut(testRoot, "k")[2], `${name}: k`).toBeCloseTo(100, 1)
-        expect(laidOut(testRoot, "q1")[2], `${name}: the query finds no container`).toBeCloseTo(30, 1)
+        expect(laidOut(testRoot, "q1")[2], `${name}: the query finds no size`).toBeCloseTo(30, 1)
       })
     }
   })

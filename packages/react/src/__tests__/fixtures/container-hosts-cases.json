@@ -1,0 +1,216 @@
+{
+ "styleQueries": {
+  "d1": "style(--x: 1)",
+  "d2": "style(--x)",
+  "d3": "style(not (--x: 1))",
+  "d4": "not style(--x: 1)",
+  "d5": "style((--x: 1) and (--y: 2))",
+  "d6": "style((--x: 1) or (--y: 2))",
+  "d7": "style(--x: 1) and style(--y: 2)",
+  "d10": "style(color: rgb(255, 0, 0))",
+  "d11": "not style(color: rgb(255, 0, 0))",
+  "d12": "style(--x: initial)",
+  "d13": "style(--x: dark)",
+  "d16": "style(--x: 1 and --y: 2)",
+  "d17": "not style(--x: 1; --y: 2)",
+  "d18": "style(--x: 1 !important)",
+  "d19": "style(--x > 0)",
+  "d20": "style(--x < 5)",
+  "d21": "style(--w > 5px)",
+  "d22": "style(--w > 1em)",
+  "d23": "style(0 < --x <= 1)"
+ },
+ "styleVariants": {
+  "d1": {
+   "set": [
+    "--x: 1"
+   ],
+   "other": [
+    "--x: 2"
+   ],
+   "unset": [
+    ""
+   ],
+   "grand": [
+    "--x: 1",
+    ""
+   ],
+   "override": [
+    "--x: 2",
+    "--x: 1"
+   ],
+   "upper": [
+    "--X: 1"
+   ]
+  },
+  "d2": {
+   "set": [
+    "--x: 1"
+   ],
+   "unset": [
+    ""
+   ],
+   "zero": [
+    "--x: 0"
+   ],
+   "initial": [
+    "--x: 1",
+    "--x: initial"
+   ]
+  },
+  "d3": {
+   "set": [
+    "--x: 1"
+   ],
+   "other": [
+    "--x: 2"
+   ],
+   "unset": [
+    ""
+   ]
+  },
+  "d4": {
+   "set": [
+    "--x: 1"
+   ],
+   "other": [
+    "--x: 2"
+   ],
+   "unset": [
+    ""
+   ]
+  },
+  "d5": {
+   "both": [
+    "--x: 1; --y: 2"
+   ],
+   "one": [
+    "--x: 1"
+   ]
+  },
+  "d6": {
+   "y": [
+    "--y: 2"
+   ],
+   "none": [
+    ""
+   ]
+  },
+  "d7": {
+   "both": [
+    "--x: 1; --y: 2"
+   ],
+   "one": [
+    "--x: 1"
+   ]
+  },
+  "d10": {
+   "red": [
+    "color: red"
+   ],
+   "blue": [
+    "color: blue"
+   ]
+  },
+  "d11": {
+   "red": [
+    "color: red"
+   ],
+   "blue": [
+    "color: blue"
+   ]
+  },
+  "d12": {
+   "unset": [
+    ""
+   ],
+   "set": [
+    "--x: 1"
+   ]
+  },
+  "d13": {
+   "dark": [
+    "--x: dark"
+   ],
+   "light": [
+    "--x: light"
+   ],
+   "spaced": [
+    "--x:   dark  "
+   ]
+  },
+  "d16": {
+   "both": [
+    "--x: 1; --y: 2"
+   ]
+  },
+  "d17": {
+   "both": [
+    "--x: 1; --y: 2"
+   ]
+  },
+  "d18": {
+   "set": [
+    "--x: 1"
+   ]
+  },
+  "d19": {
+   "one": [
+    "--x: 1"
+   ],
+   "zero": [
+    "--x: 0"
+   ],
+   "minus": [
+    "--x: -1"
+   ],
+   "frac": [
+    "--x: 1.5"
+   ],
+   "text": [
+    "--x: abc"
+   ]
+  },
+  "d20": {
+   "one": [
+    "--x: 1"
+   ],
+   "six": [
+    "--x: 6"
+   ]
+  },
+  "d21": {
+   "px": [
+    "--w: 10px"
+   ],
+   "small": [
+    "--w: 4px"
+   ],
+   "em": [
+    "--w: 1em"
+   ]
+  },
+  "d22": {
+   "px": [
+    "--w: 10px"
+   ],
+   "em": [
+    "--w: 1em"
+   ],
+   "two": [
+    "--w: 2em"
+   ]
+  },
+  "d23": {
+   "one": [
+    "--x: 1"
+   ],
+   "two": [
+    "--x: 2"
+   ],
+   "zero": [
+    "--x: 0"
+   ]
+  }
+ }
+}

@@ -1,0 +1,179 @@
+<!doctype html>
+<!--
+  Oracle for container-hosts.test.tsx: the expected numbers there are what headless Chrome lays out
+  for these pages. Regenerate (and read the numbers) with
+
+    CHROME=/Users/farreldarian/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+    sh container-hosts-oracle.sh
+
+  (headless Chrome with --allow-file-access-from-files, so the page can read container-hosts-cases.json,
+  which the test reads too: the queries of group D and the custom properties they are asked against.)
+
+  Every box is a fixed-size block, so fonts do not matter. `data-id` names a box in the test as
+  `case.name`; a case's boxes are measured from the top left of the case. The window is the test
+  renderer's 1280x800.
+
+  A: an element with a container-type that cannot be size contained (a span that is not atomic,
+     `display: contents`, a table or a part of one) is still the container a query finds. Its size
+     features are unknown, so the condition is false and the lookup does not go on to the container
+     above (which is 500px wide here); a name alone still matches, `style()` still reads it, and a
+     cq unit looks past it to the container above.
+  B: a list (a scroller) is a size container for the rows in it.
+  C: replaced elements: size containment takes the natural size of the contained axes away.
+     An `<input>` and a `<textarea>` ignore it.
+  D: `style()` queries against custom properties.
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .case { width: 600px; position: relative; }
+  .outer { container-type: inline-size; width: 500px; }
+  .box { width: 10px; height: 10px; }
+  .t { display: inline-block; width: 10px; height: 10px; vertical-align: top; }
+
+  /* A */
+  .a-size .t { }
+  @container (min-width: 100px) { .a1 .t { width: 21px; } }
+  @container not (min-width: 100px) { .a2 .t { width: 22px; } }
+  @container nm { .a3 .t { width: 23px; } }
+  @container nm (min-width: 100px) { .a4 .t { width: 24px; } }
+  @container (min-width: 100px) or (max-width: 5px) { .a5 .t { width: 25px; } }
+  @container style(--x: 1) { .a6 .t { width: 26px; } }
+  @container nm style(--x: 1) { .a7 .t { width: 27px; } }
+  .a8 .t { width: 10cqw; }
+  @container (min-height: 1px) { .a9 .t { width: 29px; } }
+  .c-named { container-name: nm; container-type: inline-size; }
+
+  /* B */
+  .b-list { container-type: inline-size; overflow: auto; height: 200px; }
+  .b-row { height: 20px; width: 50cqw; }
+  @container (min-width: 250px) { .b-row { height: 40px; } }
+
+  /* D: the queries of container-hosts-cases.json are added as rules on the spot */
+  .d .t { display: block; }
+  @container (min-width: 0px) and style(--x: 1) { .d9 .t { width: 20px; } }
+  @container nm style(--x: 1) { .d8 .t { width: 20px; } }
+  @container (min-width: 100px) { .d14 .mid { --x: 1; } }
+  @container style(--x: 1) { .d14 .t { width: 20px; } }
+  @container (min-width: 0px) or style(--x: 1) { .d15 .t { width: 20px; } }
+</style>
+</head>
+<body>
+<script>
+fetch('container-hosts-cases.json').then((response) => response.json()).then((CASES) => {
+  const rects = {}
+  const add = (id, html) => {
+    const holder = document.createElement('div')
+    holder.className = 'case'
+    holder.dataset.case = ''
+    holder.dataset.id = id
+    holder.innerHTML = html
+    document.body.appendChild(holder)
+    return holder
+  }
+
+  // ── A: kinds of container that are not size contained ──
+  // `c` is the container, `t` the box in it that the query changes.
+  const kinds = {
+    span: (css) => `<div class="outer"><span class="c" style="${css}"><span class="t" data-id="@.t"></span></span></div>`,
+    contents: (css) => `<div class="outer"><div class="c" style="display: contents; ${css}"><span class="t" data-id="@.t"></span></div></div>`,
+    cell: (css) => `<div class="outer"><div style="display: table"><div class="c" style="display: table-cell; ${css}"><span class="t" data-id="@.t"></span></div></div></div>`,
+    table: (css) => `<div class="outer"><div class="c" style="display: table; ${css}"><div style="display: table-cell"><span class="t" data-id="@.t"></span></div></div></div>`,
+    row: (css) => `<div class="outer"><div style="display: table"><div class="c" style="display: table-row; ${css}"><div style="display: table-cell"><span class="t" data-id="@.t"></span></div></div></div></div>`,
+    // The control: a block with the same type is sized, and answers.
+    block: (css) => `<div class="outer"><div class="c" style="width: 300px; ${css}"><span class="t" data-id="@.t"></span></div></div>`,
+  }
+  for (const [kind, make] of Object.entries(kinds)) {
+    for (let query = 1; query <= 9; query++) {
+      const named = query === 3 || query === 4 || query === 7
+      const custom = query === 6 || query === 7
+      const css = `container-type: inline-size;${named ? ' container-name: nm;' : ''}${custom ? ' --x: 1;' : ''}`
+      const holder = add(`a-${kind}-${query}`, make(css).replace(/@/g, `a-${kind}-${query}`))
+      holder.firstElementChild.classList.add(`a${query}`)
+    }
+  }
+
+  // ── B: a list as a container ──
+  for (const width of [300, 200]) {
+    const rows = [0, 1, 2].map((ix) => `<div class="b-row" data-id="b-${width}.row${ix}"></div>`).join('')
+    add(`b-${width}`, `<div class="b-list" data-id="b-${width}.list" style="width: ${width}px">${rows}</div>`)
+  }
+
+  // ── C: replaced elements ──
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAoCAIAAAAzED4bAAAAO0lEQVR4nO3OMQ0AMAwDsPAnvYHokRyWDMB5yaD+QEtLS0tLa0N/oKWlpaWltaE/0NLS0tLS2tAfaJ19187ImtGFuc8AAAAASUVORK5CYII='
+  const replaced = {
+    'img-plain': `<img src="${PNG}">`,
+    'img-inline': `<img src="${PNG}" style="container-type: inline-size">`,
+    'img-size': `<img src="${PNG}" style="container-type: size">`,
+    'img-size-width': `<img src="${PNG}" style="container-type: size; width: 100px">`,
+    'img-inline-width': `<img src="${PNG}" style="container-type: inline-size; width: 100px">`,
+    'img-size-height': `<img src="${PNG}" style="container-type: size; height: 100px">`,
+    'img-inline-height': `<img src="${PNG}" style="container-type: inline-size; height: 100px">`,
+    'img-fixed': `<img src="${PNG}" style="container-type: size; width: 80px; height: 60px">`,
+    'svg-fixed': `<svg style="container-type: size; width: 80px; height: 60px" viewBox="0 0 50 40"></svg>`,
+    'svg-size-width': `<svg style="container-type: size; width: 100px" viewBox="0 0 50 40"></svg>`,
+    'svg-size-height': `<svg style="container-type: size; height: 50px" viewBox="0 0 50 40"></svg>`,
+    'svg-inline-height': `<svg style="container-type: inline-size; height: 50px" viewBox="0 0 50 40"></svg>`,
+    'input-plain': `<input>`,
+    'input-size': `<input style="container-type: size">`,
+    'input-inline': `<input style="container-type: inline-size">`,
+    'textarea-plain': `<textarea></textarea>`,
+    'textarea-size': `<textarea style="container-type: size"></textarea>`,
+  }
+  for (const [id, html] of Object.entries(replaced)) {
+    const holder = add(`c-${id}`, html)
+    holder.firstElementChild.dataset.id = `c-${id}.el`
+  }
+
+  // ── D: style() ──
+  const d = (id, cls, html) => add(id, `<div class="d ${cls}">${html}</div>`)
+  const t = (id) => `<div class="t" data-id="${id}.t"></div>`
+  const holder = (id, attrs, inner) => `<div style="${attrs}">${inner || t(id)}</div>`
+  const { styleQueries, styleVariants } = CASES
+  const sheet = document.createElement('style')
+  sheet.textContent = Object.entries(styleQueries)
+    .map(([cls, query]) => `@container ${query} { .${cls} .t { width: 20px; } }`)
+    .join('\n')
+  document.head.appendChild(sheet)
+  for (const [cls, cases] of Object.entries(styleVariants)) {
+    for (const [name, chain] of Object.entries(cases)) {
+      const id = `${cls}-${name}`
+      const inner = chain.reduceRight((inside, attrs) => holder(id, attrs, inside), '')
+      d(id, cls, inner)
+    }
+  }
+  // d1 self: the box's own custom property is not what its query reads, the parent's is
+  d('d1-self', 'd1', `<div style="--x: 1"><div class="t" data-id="d1-self.t" style="--x: 2"></div></div>`)
+  d('d1-selfonly', 'd1', `<div><div class="t" data-id="d1-selfonly.t" style="--x: 1"></div></div>`)
+  // d8: a named container (a name and no type), nearer elements do not count
+  d('d8-named', 'd8', `<div style="container-name: nm; --x: 1"><div style="--x: 5">${t('d8-named')}</div></div>`)
+  d('d8-namednot', 'd8', `<div style="container-name: nm; --x: 5"><div style="--x: 1">${t('d8-namednot')}</div></div>`)
+  d('d8-none', 'd8', `<div style="--x: 1">${t('d8-none')}</div>`)
+  // d9: a size and a style feature in one query are one container: the nearest size container
+  d('d9-between', 'd9', `<div class="outer" style="width: 100px"><div style="--x: 1">${t('d9-between')}</div></div>`)
+  d('d9-on', 'd9', `<div class="outer" style="width: 100px; --x: 1"><div>${t('d9-on')}</div></div>`)
+  d('d15-between', 'd15', `<div class="outer" style="width: 100px"><div style="--x: 1">${t('d15-between')}</div></div>`)
+  // d14: a block sets the property for the boxes below it
+  for (const width of [300, 50]) {
+    d(`d14-${width}`, 'd14', `<div class="outer" style="width: ${width}px"><div class="mid">${t(`d14-${width}`)}</div></div>`)
+  }
+  // a size container between the element that sets the property and the query
+  d('d1-through', 'd1', `<div style="--x: 1"><div class="outer" style="width: 100px"><div>${t('d1-through')}</div></div></div>`)
+  d('d1-above', 'd1', `<div class="outer" style="width: 100px; --x: 1"><div>${t('d1-above')}</div></div>`)
+
+  document.fonts.ready.then(() => setTimeout(() => {
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    const pre = document.createElement('pre')
+    document.body.appendChild(pre)
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  }, 500))
+})
+</script>
+</body>
+</html>

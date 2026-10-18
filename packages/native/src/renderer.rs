@@ -6417,6 +6417,8 @@ pub(crate) struct Inherited {
     /// The container this element is, once it is built. Its children's `containers` begin
     /// with it (`enter_children`); the element's own style never sees it.
     pub(crate) self_container: Option<Arc<crate::layout::container::ContainerScope>>,
+    /// The custom properties (`--name`) this element computes to, which `style()` queries read.
+    pub custom: crate::css::custom_properties::CustomProperties,
     /// Counts the clones of this struct for the test renderer. Carries no data.
     clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::INHERITED }>,
 }
@@ -6498,6 +6500,7 @@ impl Inherited {
             containers: None,
             self_container: None,
             clone_probe: Default::default(),
+            custom: Default::default(),
         }
     }
 
@@ -6505,6 +6508,16 @@ impl Inherited {
     /// itself, if it is one, then the ones above it.
     fn container_chain(&self) -> Option<&crate::layout::container::ContainerScope> {
         self.self_container.as_deref().or(self.containers.as_deref())
+    }
+
+    /// The containers a query of the element being built is evaluated against. The element this is
+    /// the context of is their parent, so `style()` with no name asks what it computes to.
+    fn chain(&self) -> crate::layout::container::Chain<'_> {
+        crate::layout::container::Chain {
+            scopes: self.container_chain(),
+            parent_custom: &self.custom,
+            parent_lengths: self.lengths,
+        }
     }
 
     /// What the children of the element this is the context of inherit as far as query
@@ -6533,6 +6546,9 @@ impl Inherited {
             self.pointer_events_none = true;
         }
         let Some(style) = style else { return self };
+        if let Some(declared) = &style.custom_properties {
+            self.custom = self.custom.descend(declared);
+        }
         self.underline_offset = self
             .underline_offset
             .inherit(style.text_underline_offset.as_ref(), &self.lengths);
@@ -7289,6 +7305,7 @@ impl GpuixView {
                 containers: &self.containers,
                 highlight_events: &mut highlight_events,
                 focus_styles: env.focus_styles,
+                control_styles: env.control_styles,
                 pointer: &pointer,
                 contents_overlay: splice.and_then(|parent| crate::layout::contents::inherited_overlay(&tree, parent, id)),
                 contents_key: splice.map_or(0, |parent| crate::layout::contents::overlay_key(&tree, parent, id)),
@@ -7735,7 +7752,13 @@ fn build_element_in(
             return retained_root(id, skip, ctx, window, cx);
         }
     }
+    // After the retained decision: what the `display: contents` ancestors pass down is covered by
+    // `contents_key`, and a deferred build of the subtree enters it again.
+    let outside = enter_contents(ctx);
     let element = build_element_unpumped(id, ctx, window, cx);
+    if let Some(outside) = outside {
+        ctx.inherited = outside;
+    }
     if ctx.tree.elements.contains_key(&id) {
         ctx.retain.exit();
     }
@@ -7755,6 +7778,7 @@ pub(crate) struct FrameEnv {
     text_box_trim: gpui::TextBoxTrim,
     enter: crate::retain::EnterKey,
     focus_styles: crate::focus::FocusStyles,
+    control_styles: crate::retained_tree::ControlStyles,
     scroller: Option<crate::retain::Scroller>,
     /// Whether the subtree is recorded to be put elsewhere by its scroller.
     relocatable: bool,
@@ -7795,6 +7819,7 @@ fn retained_root(
         text_box_trim: std::mem::take(&mut ctx.text_box_trim),
         enter: skip.enter,
         focus_styles: ctx.focus_styles.clone(),
+        control_styles: ctx.control_styles.clone(),
         scroller: ctx.scroller,
         relocatable: skip.overscan.is_some(),
     };
@@ -7837,14 +7862,37 @@ fn retained_root(
     retained.into_any_element()
 }
 
+/// Takes the query containers and custom properties of the `display: contents` ancestors a
+/// spliced child comes from into `ctx.inherited`, before its own `@container` blocks are
+/// evaluated, and returns what to put back afterwards. The rest of what such an ancestor passes
+/// down is the overlay the child's style is filled from.
+fn enter_contents(ctx: &mut BuildCtx) -> Option<Inherited> {
+    let levels = ctx.contents_overlay.as_ref()?.contents_levels.clone()?;
+    let outside = ctx.inherited.clone();
+    for level in levels.iter() {
+        if let Some(custom) = &level.custom {
+            ctx.inherited.custom = ctx.inherited.custom.descend(custom);
+        }
+        if let Some((id, declaration)) = &level.declaration {
+            ctx.inherited = ctx.inherited.clone().enter_children();
+            ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::without_size(
+                *id,
+                declaration.clone(),
+                ctx.inherited.lengths,
+                ctx.inherited.custom.clone(),
+                ctx.inherited.containers.clone(),
+            )));
+        }
+    }
+    Some(outside)
+}
+
 fn build_element_unpumped(
     id: u64,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
 ) -> gpui::AnyElement {
-    
-
     // Copy the tree reference out of `ctx`, so `element` borrows the tree and
     // not the build context, which the children below need mutably.
     let tree = ctx.tree;
@@ -7862,7 +7910,7 @@ fn build_element_unpumped(
 
     // `@container` blocks fold into the declared style before anything reads it, so state
     // styles, transitions and motion all see the style the containers above select.
-    let containers = crate::layout::container::Chain(ctx.inherited.container_chain());
+    let containers = ctx.inherited.chain();
     let container_style = element
         .style
         .as_deref()
@@ -8142,21 +8190,27 @@ fn build_element_unpumped(
         }));
     }
 
-    // A host box with a `containerType` is a query container for what is built below it. Its
-    // children see it, its own style does not (`Inherited::enter_children`).
-    if crate::text::inline::is_host_type(&element.element_type)
-        && !crate::layout::contents::is_display_contents(element)
-        && crate::layout::table::can_be_container(element)
-    {
-        if let Some(declaration) = style.and_then(crate::layout::container::declared) {
-            ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::new(
+    // An element with a `containerType` or a `containerName` is a query container for what is built
+    // below it. Its children see it, its own style does not (`Inherited::enter_children`).
+    if let (Some(declaration), Some(sized)) = (
+        style.and_then(crate::layout::container::declared),
+        crate::layout::container::can_be_sized(element),
+    ) {
+        let parent_lengths = ctx.inherited.lengths;
+        let custom = ctx.inherited.custom.clone();
+        let above = ctx.inherited.containers.clone();
+        ctx.inherited.self_container = Some(Arc::new(if sized {
+            crate::layout::container::ContainerScope::new(
                 id,
                 declaration,
                 ctx.containers.get(id),
-                ctx.inherited.lengths,
-                ctx.inherited.containers.clone(),
-            )));
-        }
+                parent_lengths,
+                custom,
+                above,
+            )
+        } else {
+            crate::layout::container::ContainerScope::without_size(id, declaration, parent_lengths, custom, above)
+        }));
     }
 
     // A `highlight` here replaces any ancestor's: the nearest declaration wins,
@@ -8231,7 +8285,7 @@ fn build_element_unpumped(
             crate::layout::container::settle_children(
                 ctx.tree,
                 element,
-                &crate::layout::container::Chain(ctx.inherited.container_chain()),
+                &ctx.inherited.chain(),
                 window,
             );
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
@@ -8512,6 +8566,9 @@ fn build_virtual_list(
             list = list.font_variations(variations);
         }
     }
+    if let Some(scope) = ctx.inherited.self_container.clone().filter(|scope| scope.is_sized()) {
+        list = crate::layout::container::contain(list, scope, ctx.containers.clone());
+    }
     let list = apply_accessibility(list, element.id, element.custom_props(), None);
     let default_style = StyleDesc::default();
     crate::scrollbar::attach_to_list(
@@ -8599,7 +8656,7 @@ pub(crate) fn build_host_container(
             el = el.font_variations(variations);
         }
     }
-    if let Some(scope) = ctx.inherited.self_container.clone() {
+    if let Some(scope) = ctx.inherited.self_container.clone().filter(|scope| scope.is_sized()) {
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
 
@@ -8689,7 +8746,7 @@ pub(crate) fn build_host_container(
     crate::layout::container::settle_children(
         ctx.tree,
         element,
-        &crate::layout::container::Chain(ctx.inherited.container_chain()),
+        &ctx.inherited.chain(),
         window,
     );
     let plan = if element.children.is_empty() {
@@ -9076,7 +9133,7 @@ fn build_contents_container(
     crate::layout::container::settle_children(
         ctx.tree,
         element,
-        &crate::layout::container::Chain(ctx.inherited.container_chain()),
+        &ctx.inherited.chain(),
         window,
     );
     if let Some(variations) = ctx.inherited.font_variations.clone() {
@@ -9333,6 +9390,16 @@ fn build_atomics(
                     .get(box_id)
                     .is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
                 inherited = inherited.descend(Some(declared), inert);
+                // A box that is not atomic cannot be size contained, but a query still finds it.
+                if let Some(declaration) = crate::layout::container::declared(declared) {
+                    inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::without_size(
+                        *box_id,
+                        declaration,
+                        inherited.lengths,
+                        inherited.custom.clone(),
+                        inherited.containers.clone(),
+                    )));
+                }
             }
             let overlay = (!chain.is_empty()).then(|| {
                 let mut overlay = StyleDesc::inherited_through(&chain);

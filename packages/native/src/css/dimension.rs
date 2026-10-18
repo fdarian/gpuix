@@ -110,6 +110,25 @@ pub(crate) fn parse_definite_length(token: &str) -> Option<LinearLength> {
     }
 }
 
+/// A value that a range comparison (`--x > 5px`) can order: the kinds do not mix.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Comparable {
+    Number(f64),
+    Length(LinearLength),
+    /// As a fraction: `50%` is `0.5`.
+    Percentage(f64),
+}
+
+/// A number, a length (still unresolved), a percentage, or a `calc()` of one kind of them.
+pub(crate) fn parse_comparable(token: &str) -> Option<Comparable> {
+    match parse_quantity(token)? {
+        Quantity::Number(value) => Some(Comparable::Number(value)),
+        Quantity::Linear(length, units) if units == Units::PERCENT => Some(Comparable::Percentage(length.percent)),
+        Quantity::Linear(length, units) if !units.percent => Some(Comparable::Length(length.clamped())),
+        Quantity::Linear(..) => None,
+    }
+}
+
 /// A length in px for a place with no percentage basis (a blur radius, a shadow
 /// offset), resolved against `lengths` and clamped to [`MAX_LENGTH`].
 pub(crate) fn parse_length(token: &str, lengths: &LengthContext) -> Option<f64> {

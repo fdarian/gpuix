@@ -3,14 +3,17 @@
 //! `(400px <= width < 800px)`, `not (aspect-ratio > 1/1)`.
 //!
 //! A query is parsed once when the style is set. It is evaluated against the
-//! containers above an element through [`Containers`], which says which
-//! container answers (the nearest one with the query's name that contains the
-//! axes the feature reads) and what its content box is. A feature the grammar
-//! does not know (`style()`, `scroll-state()`, a feature name of a later
-//! level) is *unknown*, which is false when it is the whole answer, as the
-//! spec says; text that is not a query at all is an error.
+//! containers above an element through [`Containers`], which picks the one container
+//! that answers the whole query: the nearest one with the query's name that contains
+//! every axis its size features read (for `style()` alone, the nearest element). That
+//! container's content box answers the size features and its computed custom
+//! properties the `style()` ones. A feature the grammar does not know
+//! (`scroll-state()`, a feature name of a later level, a normal property in `style()`)
+//! is *unknown*, which is false when it is the whole answer, as the spec says; text that
+//! is not a query at all is an error.
 
-use super::dimension::parse_definite_length;
+use super::custom_properties::{self, CustomProperties};
+use super::dimension::{parse_comparable, parse_definite_length, Comparable};
 use super::length::{LengthContext, LinearLength};
 
 /// A query: an optional container name and an optional condition. A query of
@@ -27,8 +30,30 @@ enum Condition {
     And(Vec<Condition>),
     Or(Vec<Condition>),
     Feature(Feature),
-    /// `style(...)`, an unknown feature, a value that is not one: neither true nor false.
+    /// One declaration of a `style()` query.
+    Style(StyleFeature),
+    /// `scroll-state(...)`, an unknown feature, a value that is not one: neither true nor false.
     Unknown,
+}
+
+/// `--name` or `--name: value` inside `style()`.
+#[derive(Debug, Clone, PartialEq)]
+struct StyleFeature {
+    name: String,
+    test: StyleTest,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum StyleTest {
+    /// `style(--x)`: the property has a value.
+    Present,
+    /// `style(--x: initial)`: it has none.
+    Initial,
+    /// `style(--x: value)`: its computed value is this text.
+    Equals(String),
+    /// `style(--x > 5px)`: the property is a number, a length or a percentage, of the kind the
+    /// operand is, and orders so against it.
+    Compare(Op, Comparable),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,21 +135,42 @@ impl Axes {
 }
 
 /// What a query container answers with: its content box and how its units mean.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Measured {
-    /// `None` until a layout has produced the size.
+    /// `None` until a layout has produced the size, and for a container the size is not
+    /// contained in (an element with no box of its own, or one the layout does not size
+    /// from outside): a size feature is unknown for it.
     pub width: Option<f64>,
     pub height: Option<f64>,
     /// The context of the container itself: `em` in a query is its font size.
     pub lengths: LengthContext,
+    /// The container's computed custom properties, which `style()` reads.
+    pub custom: CustomProperties,
+}
+
+/// What a query asks of its container.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Needs {
+    /// The axes of the content box its size features read.
+    pub axes: Axes,
+    /// Whether it has a `style()` feature.
+    pub style: bool,
+}
+
+impl Needs {
+    fn union(self, other: Self) -> Self {
+        Self { axes: self.axes.union(other.axes), style: self.style || other.style }
+    }
 }
 
 /// The containers above the element being styled.
 pub(crate) trait Containers {
-    /// The nearest container that has `name` (any, with `None`) and contains `axes`,
-    /// which is the one whose size answers a feature reading those axes. A call
-    /// is a read: the caller treats the axes as depended on.
-    fn container(&self, name: Option<&str>, axes: Axes) -> Option<Measured>;
+    /// The one container that answers a query with `name` (any, with `None`) and `needs`: the
+    /// nearest that has the name and whose type contains the axes, and with no axes the nearest
+    /// element, or with a name the nearest element called it. A call is a read: the caller treats
+    /// the axes as depended on. The container answers whether or not its size is known or
+    /// contained, and the lookup does not go past it.
+    fn container(&self, name: Option<&str>, needs: Needs) -> Option<Measured>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,29 +211,41 @@ impl ContainerQuery {
             }
             None
         } else {
-            Some(parse_condition(rest).map_err(|reason| format!("invalid container query \"{text}\": {reason}"))?)
+            Some(parse_condition(rest, Atom::Size).map_err(|reason| format!("invalid container query \"{text}\": {reason}"))?)
         };
         Ok(Self { name, condition })
     }
 
     pub(crate) fn matches(&self, containers: &dyn Containers) -> bool {
         let name = self.name.as_deref();
-        match &self.condition {
-            None => containers.container(name, Axes::NONE).is_some(),
-            Some(condition) => condition.evaluate(name, containers) == Truth::True,
-        }
+        let Some(condition) = &self.condition else {
+            return containers.container(name, Needs::default()).is_some();
+        };
+        let needs = condition.needs();
+        let container = (needs != Needs::default()).then(|| containers.container(name, needs)).flatten();
+        condition.evaluate(container.as_ref()) == Truth::True
     }
 }
 
 impl Condition {
-    fn evaluate(&self, name: Option<&str>, containers: &dyn Containers) -> Truth {
+    fn needs(&self) -> Needs {
         match self {
-            Self::Not(inner) => inner.evaluate(name, containers).not(),
+            Self::Not(inner) => inner.needs(),
+            Self::And(parts) | Self::Or(parts) => parts.iter().fold(Needs::default(), |needs, part| needs.union(part.needs())),
+            Self::Feature(feature) => Needs { axes: feature.kind.axes(), style: false },
+            Self::Style(_) => Needs { axes: Axes::NONE, style: true },
+            Self::Unknown => Needs::default(),
+        }
+    }
+
+    fn evaluate(&self, container: Option<&Measured>) -> Truth {
+        match self {
+            Self::Not(inner) => inner.evaluate(container).not(),
             // False beats unknown beats true; the dual for `or`.
             Self::And(parts) => {
                 let mut result = Truth::True;
                 for part in parts {
-                    match part.evaluate(name, containers) {
+                    match part.evaluate(container) {
                         Truth::False => return Truth::False,
                         Truth::Unknown => result = Truth::Unknown,
                         Truth::True => {}
@@ -198,7 +256,7 @@ impl Condition {
             Self::Or(parts) => {
                 let mut result = Truth::False;
                 for part in parts {
-                    match part.evaluate(name, containers) {
+                    match part.evaluate(container) {
                         Truth::True => return Truth::True,
                         Truth::Unknown => result = Truth::Unknown,
                         Truth::False => {}
@@ -206,9 +264,47 @@ impl Condition {
                 }
                 result
             }
-            Self::Feature(feature) => feature.evaluate(name, containers),
+            Self::Feature(feature) => container.map_or(Truth::Unknown, |container| feature.evaluate(container)),
+            Self::Style(feature) => container.map_or(Truth::Unknown, |container| feature.evaluate(container)),
             Self::Unknown => Truth::Unknown,
         }
+    }
+}
+
+impl StyleFeature {
+    fn evaluate(&self, container: &Measured) -> Truth {
+        let value = container.custom.get(&self.name);
+        match &self.test {
+            StyleTest::Present => Truth::of(value.is_some()),
+            StyleTest::Initial => Truth::of(value.is_none()),
+            StyleTest::Equals(text) => Truth::of(value == Some(text.as_str())),
+            StyleTest::Compare(op, operand) => {
+                // A property that is not there, or not a value of the operand's kind, orders as unknown.
+                let Some(Some(value)) = value.map(parse_comparable) else { return Truth::Unknown };
+                let resolve = |length: &LinearLength| container.lengths.resolve(length, 0.0);
+                match (value, operand) {
+                    (Comparable::Number(left), Comparable::Number(right)) => Truth::of(order(left, *op, *right)),
+                    (Comparable::Percentage(left), Comparable::Percentage(right)) => {
+                        Truth::of(order(left, *op, *right))
+                    }
+                    (Comparable::Length(left), Comparable::Length(right)) => {
+                        Truth::of(order(resolve(&left), *op, resolve(right)))
+                    }
+                    _ => Truth::Unknown,
+                }
+            }
+        }
+    }
+}
+
+/// Numbers and lengths in px compare exactly: a custom property is not a layout size.
+fn order(left: f64, op: Op, right: f64) -> bool {
+    match op {
+        Op::Lt => left < right,
+        Op::Le => left <= right,
+        Op::Gt => left > right,
+        Op::Ge => left >= right,
+        Op::Eq => left == right,
     }
 }
 
@@ -223,10 +319,7 @@ impl Kind {
 }
 
 impl Feature {
-    fn evaluate(&self, name: Option<&str>, containers: &dyn Containers) -> Truth {
-        let Some(container) = containers.container(name, self.kind.axes()) else {
-            return Truth::Unknown;
-        };
+    fn evaluate(&self, container: &Measured) -> Truth {
         match self.kind {
             Kind::Width | Kind::Height => {
                 let size = if self.kind == Kind::Width { container.width } else { container.height };
@@ -308,18 +401,26 @@ pub(crate) fn is_ident(word: &str) -> bool {
     starts && word.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || !c.is_ascii())
 }
 
+/// What the innermost parentheses of a condition hold: a size feature at the top of a query, a
+/// declaration inside `style()`.
+#[derive(Debug, Clone, Copy)]
+enum Atom {
+    Size,
+    Style,
+}
+
 /// `<query-in-parens> [ and <query-in-parens> ]* | [ or <query-in-parens> ]*`
 /// or `not <query-in-parens>`.
-fn parse_condition(text: &str) -> Result<Condition, String> {
+fn parse_condition(text: &str, atom: Atom) -> Result<Condition, String> {
     let text = text.trim();
     if let Some(rest) = strip_keyword(text, "not") {
-        let (inner, remainder) = parse_in_parens(rest)?;
+        let (inner, remainder) = parse_in_parens(rest, atom)?;
         if !remainder.trim().is_empty() {
             return Err("`not` takes one condition in parentheses; join more with parentheses".to_owned());
         }
         return Ok(Condition::Not(Box::new(inner)));
     }
-    let (first, mut remainder) = parse_in_parens(text)?;
+    let (first, mut remainder) = parse_in_parens(text, atom)?;
     let mut parts = vec![first];
     let mut joiner: Option<&str> = None;
     while !remainder.trim().is_empty() {
@@ -336,7 +437,7 @@ fn parse_condition(text: &str) -> Result<Condition, String> {
             }
             _ => joiner = Some(keyword.0),
         }
-        let (next, rest) = parse_in_parens(keyword.1)?;
+        let (next, rest) = parse_in_parens(keyword.1, atom)?;
         parts.push(next);
         remainder = rest;
     }
@@ -357,20 +458,121 @@ fn strip_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
 }
 
 /// One `( ... )` or one function `name( ... )`, and what follows it.
-fn parse_in_parens(text: &str) -> Result<(Condition, &str), String> {
+fn parse_in_parens(text: &str, atom: Atom) -> Result<(Condition, &str), String> {
     let text = text.trim_start();
     if text.starts_with('(') {
         let close = matching_paren(text, 0)?;
         let inner = &text[1..close];
-        return Ok((parse_paren_contents(inner), &text[close + 1..]));
+        return Ok((parse_paren_contents(inner, atom), &text[close + 1..]));
     }
-    // `style(...)` and `scroll-state(...)`: well formed, but nothing here answers them.
+    // `style(...)` and `scroll-state(...)`: well formed, but only `style()` is answered.
     let name_end = text.find('(').ok_or_else(|| format!("expected a condition in parentheses, found \"{}\"", text.trim()))?;
-    if name_end == 0 || !is_ident(&text[..name_end]) {
+    let name = &text[..name_end];
+    if name_end == 0 || !is_ident(name) {
         return Err(format!("expected a condition in parentheses, found \"{}\"", text.trim()));
     }
     let close = matching_paren(text, name_end)?;
-    Ok((Condition::Unknown, &text[close + 1..]))
+    let condition = match atom {
+        Atom::Size if name.eq_ignore_ascii_case("style") => parse_style_query(&text[name_end + 1..close]),
+        _ => Condition::Unknown,
+    };
+    Ok((condition, &text[close + 1..]))
+}
+
+/// What is inside `style( ... )`: a declaration, or a condition of declarations in parentheses.
+/// Anything else (a normal property, a range, bad text) is unknown, not an error.
+fn parse_style_query(inner: &str) -> Condition {
+    let inner = inner.trim();
+    if inner.starts_with('(') || strip_keyword(inner, "not").is_some() {
+        return parse_condition(inner, Atom::Style).unwrap_or(Condition::Unknown);
+    }
+    parse_style_feature(inner).unwrap_or(Condition::Unknown)
+}
+
+/// `--name`, `--name: value`, or a range: `--name > 5px`, `5px < --name`, `1 < --name <= 5`.
+fn parse_style_feature(text: &str) -> Option<Condition> {
+    let feature = |name: &str, test| Condition::Style(StyleFeature { name: name.to_owned(), test });
+    if text.contains(':') {
+        let (name, value) = text.split_once(':')?;
+        let name = name.trim();
+        if !custom_properties::is_name(name) {
+            return None;
+        }
+        let value = custom_properties::normalise(value);
+        if value.is_empty() || !is_balanced(&value) {
+            return None;
+        }
+        if custom_properties::is_initial(&value) {
+            return Some(feature(name, StyleTest::Initial));
+        }
+        // `inherit`, `unset` and `revert` need the value the container's parent has.
+        if ["inherit", "unset", "revert", "revert-layer"].iter().any(|keyword| value.eq_ignore_ascii_case(keyword)) {
+            return None;
+        }
+        return Some(feature(name, StyleTest::Equals(value)));
+    }
+    let operators = find_operators(text);
+    let compare = |name: &str, op, operand: &str| {
+        Some(feature(name, StyleTest::Compare(op, parse_comparable(operand.trim())?)))
+    };
+    match operators.as_slice() {
+        [] => {
+            let name = text.trim();
+            custom_properties::is_name(name).then(|| feature(name, StyleTest::Present))
+        }
+        [(index, Operator::Compare(op, width))] => {
+            let (left, right) = (text[..*index].trim(), text[*index + width..].trim());
+            if custom_properties::is_name(left) {
+                compare(left, *op, right)
+            } else if custom_properties::is_name(right) {
+                compare(right, op.flipped(), left)
+            } else {
+                None
+            }
+        }
+        [(first, Operator::Compare(low, low_width)), (second, Operator::Compare(high, high_width))] => {
+            let (low_value, name, high_value) = (
+                text[..*first].trim(),
+                text[*first + low_width..*second].trim(),
+                text[*second + high_width..].trim(),
+            );
+            if !custom_properties::is_name(name) {
+                return None;
+            }
+            // `a < --x < b` and `a > --x > b`; `=` has no range form.
+            let ascending = matches!((low, high), (Op::Lt | Op::Le, Op::Lt | Op::Le));
+            let descending = matches!((low, high), (Op::Gt | Op::Ge, Op::Gt | Op::Ge));
+            if !ascending && !descending {
+                return None;
+            }
+            Some(Condition::And(vec![compare(name, low.flipped(), low_value)?, compare(name, *high, high_value)?]))
+        }
+        _ => None,
+    }
+}
+
+/// Whether `value` could be the value of a custom property: its brackets close, and no `;` or
+/// `!` sits outside them.
+fn is_balanced(value: &str) -> bool {
+    let mut open = Vec::new();
+    for character in value.chars() {
+        match character {
+            '(' | '[' | '{' => open.push(character),
+            ')' | ']' | '}' => {
+                let wanted = match character {
+                    ')' => '(',
+                    ']' => '[',
+                    _ => '{',
+                };
+                if open.pop() != Some(wanted) {
+                    return false;
+                }
+            }
+            ';' | '!' if open.is_empty() => return false,
+            _ => {}
+        }
+    }
+    open.is_empty()
 }
 
 /// The index of the `)` closing the `(` at `open`.
@@ -391,15 +593,19 @@ fn matching_paren(text: &str, open: usize) -> Result<usize, String> {
     Err("unbalanced parentheses".to_owned())
 }
 
-/// What is inside one pair of parentheses: a nested condition, or a size feature.
-/// Text that is neither is *unknown*, not an error, so a later level's syntax does not
-/// invalidate the rule.
-fn parse_paren_contents(inner: &str) -> Condition {
+/// What is inside one pair of parentheses: a nested condition, or a size feature (a
+/// declaration inside `style()`). Text that is neither is *unknown*, not an error, so a later
+/// level's syntax does not invalidate the rule.
+fn parse_paren_contents(inner: &str, atom: Atom) -> Condition {
     let inner = inner.trim();
     if inner.starts_with('(') || strip_keyword(inner, "not").is_some() {
-        return parse_condition(inner).unwrap_or(Condition::Unknown);
+        return parse_condition(inner, atom).unwrap_or(Condition::Unknown);
     }
-    parse_feature(inner).unwrap_or(Condition::Unknown)
+    match atom {
+        Atom::Size => parse_feature(inner),
+        Atom::Style => parse_style_feature(inner),
+    }
+    .unwrap_or(Condition::Unknown)
 }
 
 fn parse_feature(text: &str) -> Option<Condition> {
@@ -541,7 +747,7 @@ fn parse_ratio(text: &str) -> Option<Value> {
 mod tests {
     use super::*;
 
-    /// One container per name, the way a chain of them answers.
+    /// The containers above an element, nearest first, the way a chain of them answers.
     struct Chain(Vec<Container>);
 
     struct Container {
@@ -549,29 +755,62 @@ mod tests {
         width: Option<f64>,
         height: Option<f64>,
         contains_height: bool,
+        /// Whether a size feature can be answered by this container at all.
+        contains_width: bool,
         font_size: f64,
+        custom: CustomProperties,
     }
 
     fn container(names: &[&'static str], width: f64, height: f64) -> Container {
-        Container { names: names.to_vec(), width: Some(width), height: Some(height), contains_height: true, font_size: 16.0 }
+        Container {
+            names: names.to_vec(),
+            width: Some(width),
+            height: Some(height),
+            contains_height: true,
+            contains_width: true,
+            font_size: 16.0,
+            custom: CustomProperties::default(),
+        }
     }
 
     fn inline_only(names: &[&'static str], width: f64) -> Container {
-        Container { names: names.to_vec(), width: Some(width), height: None, contains_height: false, font_size: 16.0 }
+        Container { height: None, contains_height: false, ..container(names, width, 0.0) }
+    }
+
+    /// An element with a name or a custom property and no size container type.
+    fn plain(names: &[&'static str], custom: &[(&str, &str)]) -> Container {
+        Container {
+            width: None,
+            height: None,
+            contains_height: false,
+            contains_width: false,
+            custom: CustomProperties::declared(custom.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())))
+                .unwrap_or_default(),
+            ..container(names, 0.0, 0.0)
+        }
     }
 
     impl Containers for Chain {
-        fn container(&self, name: Option<&str>, axes: Axes) -> Option<Measured> {
+        fn container(&self, name: Option<&str>, needs: Needs) -> Option<Measured> {
             // Nearest first.
             self.0
                 .iter()
                 .find(|candidate| {
-                    name.is_none_or(|name| candidate.names.contains(&name)) && (!axes.height || candidate.contains_height)
+                    name.is_none_or(|name| candidate.names.contains(&name))
+                        && (!needs.axes.width || candidate.contains_width)
+                        && (!needs.axes.height || candidate.contains_height)
+                        // A query with no axis asks the nearest element (a name picks among them).
+                        && (name.is_some() || needs.axes != Axes::NONE || needs.style)
                 })
                 .map(|candidate| {
                     let lengths = LengthContext::initial(1000.0, 800.0)
                         .descend(Some(&LinearLength::px(candidate.font_size)), false);
-                    Measured { width: candidate.width, height: candidate.height, lengths }
+                    Measured {
+                        width: candidate.width,
+                        height: candidate.height,
+                        lengths,
+                        custom: candidate.custom.clone(),
+                    }
                 })
         }
     }
@@ -752,7 +991,7 @@ mod tests {
     #[test]
     fn unknown_features_are_unknown_not_errors() {
         let chain = one(500.0, 300.0);
-        for text in ["style(--theme: dark)", "scroll-state(stuck: top)", "(foo: bar)", "(width: wide)", "(color)", "(min-orientation: portrait)", "(width > )", "(400px < width > 100px)"] {
+        for text in ["scroll-state(stuck: top)", "style(color: red)", "style(--x > 0)", "style()", "style(--x: inherit)", "(foo: bar)", "(width: wide)", "(color)", "(min-orientation: portrait)", "(width > )", "(400px < width > 100px)"] {
             assert!(!matches(text, &chain), "{text}");
             assert!(!matches(&format!("not {text}"), &chain), "not {text}");
         }
@@ -773,5 +1012,135 @@ mod tests {
         assert!(ContainerQuery::parse("none (width > 1px)").is_err());
         assert!(ContainerQuery::parse("and").is_err());
         assert!(ContainerQuery::parse("4chan (width > 1px)").is_err());
+    }
+
+    fn with_custom(mut container: Container, custom: &[(&str, &str)]) -> Container {
+        container.custom = CustomProperties::declared(custom.iter().map(|(n, v)| ((*n).to_owned(), (*v).to_owned())))
+            .unwrap_or_default();
+        container
+    }
+
+    fn styled(custom: &[(&str, &str)]) -> Chain {
+        Chain(vec![with_custom(plain(&[], &[]), custom)])
+    }
+
+    #[test]
+    fn style_compares_a_computed_custom_property_as_text() {
+        let chain = styled(&[("--theme", "dark"), ("--space", "a   b"), ("--len", "10px")]);
+        assert!(matches("style(--theme: dark)", &chain));
+        assert!(matches("style(  --theme  :  dark  )", &chain));
+        assert!(matches("style(--theme: dark !important)", &chain));
+        assert!(matches("style(--theme: dark /* c */)", &chain));
+        assert!(!matches("style(--theme: Dark)", &chain), "case matters");
+        assert!(!matches("style(--Theme: dark)", &chain), "and so does the name");
+        assert!(!matches("style(--theme: light)", &chain));
+        assert!(!matches("style(--missing: dark)", &chain));
+        assert!(matches("style(--space: a   b)", &chain));
+        assert!(!matches("style(--space: a b)", &chain), "the text inside is compared as it is");
+        assert!(matches("style(--len: 10px)", &chain));
+        assert!(!matches("style(--len: 10PX)", &chain), "no value is parsed");
+    }
+
+    #[test]
+    fn style_with_no_value_asks_whether_the_property_has_one_and_initial_whether_it_has_none() {
+        let chain = styled(&[("--on", "0")]);
+        assert!(matches("style(--on)", &chain), "0 is a value");
+        assert!(!matches("style(--off)", &chain));
+        assert!(matches("style(--off: initial)", &chain));
+        assert!(matches("style(--off: INITIAL)", &chain));
+        assert!(!matches("style(--on: initial)", &chain));
+    }
+
+    #[test]
+    fn style_combines_with_not_and_or_inside_and_outside() {
+        let chain = styled(&[("--a", "1"), ("--b", "2")]);
+        assert!(matches("style((--a: 1) and (--b: 2))", &chain));
+        assert!(!matches("style((--a: 1) and (--b: 3))", &chain));
+        assert!(matches("style((--a: 9) or (--b: 2))", &chain));
+        assert!(matches("style(not (--a: 9))", &chain));
+        assert!(!matches("style(not (--a: 1))", &chain));
+        assert!(matches("style(--a: 1) and style(--b: 2)", &chain));
+        assert!(matches("style(--a: 9) or style(--b: 2)", &chain));
+        assert!(matches("not style(--a: 9)", &chain));
+        assert!(!matches("not style(--a: 1)", &chain));
+        assert!(matches("style(((--a: 1)) and (not (--b: 3)))", &chain));
+        // Not a list of declarations: a value that has `and` in it, which is simply not equal.
+        assert!(!matches("style(--a: 1 and --b: 2)", &chain));
+        assert!(matches("not style(--a: 1 and --b: 2)", &chain));
+        assert!(matches("not style(--a: 1, --b: 2)", &chain));
+        // A value that no custom property could have, and `not` of a condition without parentheses.
+        for text in ["style(--a: 1; --b: 2)", "style(not --a: 1)", "style(--a: {)", "style(--a: )", "style(--a: 1 ! 2)"] {
+            assert!(!matches(text, &chain), "{text}");
+            assert!(!matches(&format!("not {text}"), &chain), "not {text} stays unknown");
+        }
+    }
+
+    #[test]
+    fn a_normal_property_in_style_is_unknown() {
+        let chain = styled(&[("--a", "1")]);
+        for text in ["style(color: red)", "style(display: block)", "style(--a != 0)", "style(--a == 1)", "style()", "style(--a: inherit)", "style(--a: unset)"] {
+            assert!(!matches(text, &chain), "{text}");
+            assert!(!matches(&format!("not {text}"), &chain), "not {text}");
+            assert!(matches(&format!("{text} or style(--a: 1)"), &chain), "{text} or true");
+        }
+    }
+
+    #[test]
+    fn one_container_answers_the_whole_query() {
+        // The nearest container has only the inline size, the one above has both.
+        let chain = Chain(vec![inline_only(&[], 50.0), container(&[], 100.0, 100.0)]);
+        assert!(matches("(max-width: 60px)", &chain));
+        assert!(!matches("(max-width: 60px) and (min-height: 0px)", &chain), "both come from the outer one, 100 wide");
+        assert!(!matches("(max-width: 60px) or (min-height: 99999px)", &chain));
+        assert!(matches("not ((max-width: 60px) and (min-height: 0px))", &chain));
+        assert!(matches("(max-width: 60px) and (max-width: 70px)", &chain), "no height read: the nearest answers");
+    }
+
+    #[test]
+    fn style_and_size_features_in_one_query_are_answered_by_the_size_container() {
+        // An element in between sets --x; the size container above it does not.
+        let chain = Chain(vec![with_custom(plain(&[], &[]), &[("--x", "1")]), container(&[], 100.0, 100.0)]);
+        assert!(!matches("(min-width: 1px) and style(--x: 1)", &chain));
+        assert!(matches("style(--x: 1)", &chain), "a style() alone asks the nearest element");
+    }
+
+    #[test]
+    fn a_container_without_a_size_answers_unknown_to_size_but_style_still_reads_it() {
+        let span = Chain(vec![with_custom(plain(&["nm"], &[]), &[("--x", "1")]), container(&[], 500.0, 500.0)]);
+        // `plain` has no size type: a size query goes past it, a named one is found by it.
+        assert!(matches("(min-width: 100px)", &span));
+        assert!(matches("nm style(--x: 1)", &span));
+        assert!(matches("nm", &span));
+        assert!(!matches("nm (min-width: 100px)", &span), "named: no container with a size is called nm");
+    }
+
+    #[test]
+    fn style_orders_a_numeric_custom_property_against_a_value_of_the_same_kind() {
+        let chain = styled(&[("--n", "1.5"), ("--w", "10px"), ("--em", "1em"), ("--p", "50%"), ("--t", "abc")]);
+        assert!(matches("style(--n > 1)", &chain));
+        assert!(matches("style(--n >= 1.5)", &chain));
+        assert!(!matches("style(--n < 1.5)", &chain));
+        assert!(matches("style(--n = 1.5)", &chain));
+        assert!(matches("style(1 < --n)", &chain));
+        assert!(matches("style(0 < --n <= 1.5)", &chain));
+        assert!(!matches("style(0 < --n < 1.5)", &chain));
+        assert!(matches("style(2 > --n >= 1)", &chain));
+        assert!(matches("style(--w > 5px)", &chain));
+        assert!(matches("style(--w < 1em)", &chain), "10px is less than the container's 16px em");
+        assert!(matches("style(--w = 10px)", &chain));
+        assert!(matches("style(--em = 16px)", &chain), "and 1em is 16px");
+        assert!(matches("style(--em > 5px)", &chain));
+        assert!(matches("style(--w = calc(5px * 2))", &chain));
+        assert!(matches("style(--p > 10%)", &chain));
+        // Kinds do not mix, and text is not a number: unknown, so `not` is false too.
+        for text in ["style(--w > 5)", "style(--n > 5px)", "style(--p > 10)", "style(--t > 0)", "style(--missing > 0)", "style(--p > 5px)"] {
+            assert!(!matches(text, &chain), "{text}");
+            assert!(!matches(&format!("not {text}"), &chain), "not {text}");
+        }
+        // A range that does not parse is unknown too.
+        for text in ["style(--n > )", "style(1 < 2)", "style(1 < --n > 0)", "style(--n < --w)"] {
+            assert!(!matches(text, &chain), "{text}");
+            assert!(!matches(&format!("not {text}"), &chain), "not {text}");
+        }
     }
 }

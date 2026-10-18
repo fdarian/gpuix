@@ -1023,6 +1023,14 @@ pub struct StyleDesc {
     /// Counts the clones of this struct for the test renderer. Carries no data.
     #[serde(skip)]
     pub clone_probe: crate::perf_counters::CloneProbe<{ crate::perf_counters::STYLE_DESC }>,
+    /// The `--name` keys of the style object. They are not fields of the struct: the parser in
+    /// `css/covers.rs` collects them, and the derived serializer writes them back as keys.
+    #[serde(flatten, skip_deserializing)]
+    pub custom_properties: Option<crate::css::custom_properties::CustomProperties>,
+    /// On the overlay a spliced child takes from its `display: contents` ancestors: what the
+    /// ancestors pass down that no field of this style carries. Never from JS.
+    #[serde(skip)]
+    pub(crate) contents_levels: Option<std::sync::Arc<[crate::layout::contents::ContentsLevel]>>,
 }
 
 /// The derived deserialiser is wrapped so that a shorthand drops the longhands written before it:

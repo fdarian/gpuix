@@ -1182,15 +1182,23 @@ export interface StyleDesc {
    * it is only its padding and border (a flex item or an absolutely positioned
    * box with an `inline-size` container inside shrinks to nothing, as in a
    * browser). `"size"` contains the height too. `"normal"` (the default) makes
-   * no container. Applies to `div`, `text` and the other boxes that hold
-   * children, not to `span` or the elements that paint their own content.
+   * no container. Applies to `div`, `text`, an atomic `span`, `label`, `form`,
+   * `<virtual-list>` (its rows are queried against it), `<img>` and `<svg>`
+   * (which only lose their natural size on the contained axes) as in CSS. A
+   * `span` that is not atomic, a `display: contents` element and a table or
+   * one of its internal boxes are still the container a query finds, but they
+   * cannot be size contained: a size feature asked of them is unknown (false,
+   * and the lookup does not go on to a container above), and a container unit
+   * looks past them. An `<input>` ignores it, as it does in a browser.
    */
   containerType?: "normal" | "inline-size" | "size"
   /**
    * Names the container so a query can pick it: `"@container sidebar
    * (min-width: 400px)"` asks the nearest ancestor container called `sidebar`
    * instead of the nearest one. Several names are separated by spaces;
-   * `"none"` is no name. Like CSS `container-name`.
+   * `"none"` is no name. Like CSS `container-name`. A name alone, with no
+   * `containerType`, makes the element something only a name-only query
+   * (`"@container sidebar"`) and a `style()` query naming it can find.
    */
   containerName?: string
   /**
@@ -1220,15 +1228,23 @@ export interface StyleDesc {
    * range syntax `(400px <= width < 800px)`, and `and` / `or` / `not` (mixing
    * `and` with `or` needs parentheses). Lengths take px, em (the container's
    * font size), rem, vw, vh, vmin, vmax, the container units and `calc()`.
-   * A feature, or a `style()` / `scroll-state()` query, that is not supported
-   * is unknown, and an unknown query is false. A text that is not a query at
-   * all makes the whole style invalid.
    *
-   * The query looks at the nearest ancestor container (with that name, if
-   * the query has one) that contains the axes its features read: `width`
-   * needs `"inline-size"` or `"size"`, `height`, `aspect-ratio` and
-   * `orientation` need `"size"`. It never matches the element itself, and it
-   * measures the container's content box (without padding, border and a
+   * `style(--name: value)` asks the container's computed custom property
+   * (a `"--name"` key of a style, which inherits), `style(--name)` whether it
+   * has a value, `style(--name: initial)` whether it has none, and
+   * `style(--n > 5px)` / `style(0 < --n <= 1)` orders a number, a length or a
+   * percentage. They combine as `style((--a: 1) and (--b: 2))`, `not style(...)`.
+   * A normal property in `style()` (`style(color: red)`) is unknown, as it is
+   * in a browser. A feature, or a `scroll-state()` query, that is not
+   * supported is unknown, and an unknown query is false. A text that is not a
+   * query at all makes the whole style invalid.
+   *
+   * One container answers the whole query: the nearest ancestor container
+   * (with that name, if the query has one) that contains the axes its size
+   * features read: `width` needs `"inline-size"` or `"size"`, `height`,
+   * `aspect-ratio` and `orientation` need `"size"`. A query of `style()` alone
+   * and no name asks the parent element. It never matches the element itself,
+   * and it measures the container's content box (without padding, border and a
    * scrollbar gutter). With no such container, or before the container has
    * been laid out, it is false.
    *
@@ -1245,6 +1261,17 @@ export interface StyleDesc {
    * nested containers).
    */
   "@container"?: Record<string, ContainerBlockStyleDesc>
+  /**
+   * CSS custom properties: any `"--name"` key. A number is written as its
+   * decimal text, a string is trimmed (a trailing `!important` and `/* *\/`
+   * comments go), and an empty string or `undefined` declares nothing.
+   * They inherit, `"initial"` clears one and `"inherit"` keeps the parent's,
+   * and a state style or an `"@container"` block may set them.
+   *
+   * Only `style()` container queries read them. `var()` is not substituted into
+   * other properties.
+   */
+  [customProperty: `--${string}`]: string | number | undefined
 }
 
 /** A style inside `"@container"`: any style, state styles included, except another `"@container"`. */

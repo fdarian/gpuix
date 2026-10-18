@@ -29,6 +29,11 @@ macro_rules! overlay_fields {
             has_enabled: None,
             container_rules: None,
             container_unit_axes: $base.container_unit_axes.union($over.container_unit_axes),
+            custom_properties: crate::css::custom_properties::CustomProperties::layered(
+                $base.custom_properties.as_ref(),
+                $over.custom_properties.as_ref(),
+            ),
+            contents_levels: None,
             measure_natural_width: false,
             flex_or_grid_item: false,
             atomic_inline: false,
