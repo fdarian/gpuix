@@ -367,14 +367,16 @@ function run(seed: number, steps: number) {
     // snapshot replayed vs whole
     const ids = ["scroller", "footer", "tbl"]
     for (let i = 0; i < N; i++) ids.push(`card-${i}`, `title-${i}`, `span-${i}`, `btn-${i}`, `row-${i}`, `pill-${i}`)
+    // findByTestId walks the whole tree on every call; the elements are the same in both snapshots.
+    const elementIds = new Map(ids.map((id) => [id, renderer.findByTestId(id)?.id]))
     const snap = (name: string) => {
       const file = `${SHOTS_DIR}/retained-fuzz-${seed}-${name}.png`
       fs.rmSync(file, { force: true })
       renderer.captureScreenshot(file)
       const boxes: Record<string, unknown> = {}
       for (const id of ids) {
-        const el = renderer.findByTestId(id)
-        boxes[id] = el ? renderer.getElementBounds(el.id) : null
+        const elementId = elementIds.get(id)
+        boxes[id] = elementId === undefined ? null : renderer.getElementBounds(elementId)
       }
       return {
         boxes,

@@ -72,6 +72,29 @@ export function Page({ card, style, children }: { card?: (index: number) => Reac
  *  what was built and replayed cannot be read from. */
 export const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
 
+/** The elements under each point, read from one frame. `getElementsAt` flushes, and a flush draws the
+ *  window again while draws are inline: a grid of points would be a draw of an unchanged frame each. */
+export function elementsAtPoints(renderer, points: Array<[number, number]>): number[][] {
+  renderer.flush()
+  renderer.setInlineDraws(false)
+  try {
+    return points.map(([x, y]) => renderer.getElementsAt(x, y))
+  } finally {
+    renderer.setInlineDraws(true)
+  }
+}
+
+/** The id of every element that has a testId, from one walk of the tree: `findByTestId` walks it per call. */
+export function idsByTestId(renderer): Map<string, number> {
+  const ids = new Map<string, number>()
+  const walk = (node) => {
+    if (node.testId) ids.set(node.testId, node.id)
+    for (const child of node.children ?? []) walk(child)
+  }
+  walk(renderer.toJSON())
+  return ids
+}
+
 export function setup(element: React.ReactElement, options = {}) {
   const root = createTestRoot({ ...WINDOW, ...options })
   const { renderer } = root
@@ -108,10 +131,16 @@ export function setup(element: React.ReactElement, options = {}) {
     const file = `${SHOTS_DIR}/retained-replay-${name}.png`
     fs.rmSync(file, { force: true })
     renderer.captureScreenshot(file)
-    const hasCards = renderer.findByTestId("card-0") !== undefined
+    const ids = idsByTestId(renderer)
+    const boundsOf = (testId: string) => {
+      const id = ids.get(testId)
+      if (id === undefined) throw new Error(`no element has the testId ${testId}`)
+      return renderer.getElementBounds(id)
+    }
+    const hasCards = ids.has("card-0")
     const boxes = Array.from({ length: hasCards ? CARDS : 0 }, (_, index) => {
-      const card = bounds(`card-${index}`)
-      const button = bounds(`button-${index}`)
+      const card = boundsOf(`card-${index}`)
+      const button = boundsOf(`button-${index}`)
       return [card.x, card.y, card.width, card.height, button.x, button.y]
     })
     return {
@@ -119,7 +148,7 @@ export function setup(element: React.ReactElement, options = {}) {
       a11y: JSON.stringify(renderer.getA11yTree(), (key, value) => (key === "frame" ? undefined : value)),
       boxes,
       watched: watch.map((testId) => {
-        const box = bounds(testId)
+        const box = boundsOf(testId)
         return [box.x, box.y, box.width, box.height]
       }),
       text: renderer.getAllText(),

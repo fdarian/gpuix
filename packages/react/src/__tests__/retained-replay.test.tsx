@@ -479,8 +479,10 @@ describeNative("a page of retained cards", () => {
       renderer.setInlineDraws(false)
       renderer.drawFrame()
       renderer.drawFrame()
-      const boxOf = (testId: string) => renderer.getElementBounds(renderer.findByTestId(testId).id)
       const sampled = Array.from({ length: COUNT / 20 }, (_, group) => [`card-${group * 20}`, `title-${group * 20 + 3}`, `button-${group * 20 + 7}`]).flat()
+      // findByTestId walks the whole tree of 2000 elements, so the sampled ones are looked up once.
+      const ids = new Map(sampled.map((testId) => [testId, renderer.findByTestId(testId).id]))
+      const boxOf = (testId: string) => renderer.getElementBounds(ids.get(testId)!)
       const boxes = () => Object.fromEntries(sampled.map((testId) => [testId, boxOf(testId)]))
       const before = boxes()
       const probeBefore = probe.current!.getBoundingClientRect()

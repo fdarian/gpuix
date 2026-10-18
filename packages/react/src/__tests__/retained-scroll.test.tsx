@@ -14,6 +14,7 @@ import React from "react"
 import { describe, expect, it } from "vitest"
 import { IntersectionObserver } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
+import { elementsAtPoints, idsByTestId } from "./retained-harness.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
@@ -120,12 +121,11 @@ function observe(renderer, ids: Map<string, number>, names: Map<number, string>)
   for (let row = 0; row < ROWS; row += 1) {
     for (const part of ["row", "title", "button"]) boxes[`${part}-${row}`] = box(`${part}-${row}`)
   }
-  const hits = []
+  const points: Array<[number, number]> = []
   for (let y = 10; y < 10 + SCROLLER.height; y += 23) {
-    for (const x of [14, 70, 130, 240, 300, 395]) {
-      hits.push(renderer.getElementsAt(x, y).map((id) => names.get(id) ?? id))
-    }
+    for (const x of [14, 70, 130, 240, 300, 395]) points.push([x, y])
   }
+  const hits = elementsAtPoints(renderer, points).map((ids) => ids.map((id) => names.get(id) ?? id))
   // The nodes have the bounds of every element; the frame is when and which one it was.
   const tree = renderer.getA11yTree()
   return { boxes, hits, a11y: JSON.stringify({ ...tree, frame: undefined }) }
@@ -157,17 +157,8 @@ function run(mode: Mode, retention: boolean) {
     root.render(<Page clicks={clicks} reports={reports} />)
     for (let frame = 0; frame < 5; frame++) renderer.flush()
     renderer.dispatchNativeEvents()
-    const ids = new Map<string, number>()
-    const names = new Map<number, string>()
-    for (let row = 0; row < ROWS; row += 1) {
-      for (const part of ["row", "title", "button"]) {
-        const found = renderer.findByTestId(`${part}-${row}`)
-        if (found) {
-          ids.set(`${part}-${row}`, found.id)
-          names.set(found.id, `${part}-${row}`)
-        }
-      }
-    }
+    const ids = idsByTestId(renderer)
+    const names = new Map<number, string>([...ids].map(([testId, id]) => [id, testId]))
     const scroller = renderer.findByTestId("scroller")
     const steps = []
     let top = 0

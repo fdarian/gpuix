@@ -15,7 +15,7 @@ import React from "react"
 import { expect, it } from "vitest"
 import { flushSync, type PublicInstance } from "../index"
 import { createTestRoot } from "../testing"
-import { Card, CARDS, describeNative, Page, setup, verifying, WINDOW } from "./retained-harness.js"
+import { Card, CARDS, describeNative, elementsAtPoints, idsByTestId, Page, setup, verifying, WINDOW } from "./retained-harness.js"
 import { SHOTS_DIR } from "./test-utils.js"
 
 type Kit = ReturnType<typeof setup>
@@ -26,16 +26,18 @@ function observe(kit: Kit, name: string, probes: Array<[number, number]> = [], w
   const file = `${SHOTS_DIR}/retained-lifts-${name}.png`
   fs.rmSync(file, { force: true })
   renderer.captureScreenshot(file)
-  const names = (id: number) => renderer.getElement(id)?.testId ?? `#${id}`
+  const ids = idsByTestId(renderer)
+  const testIds = new Map([...ids].map(([testId, id]) => [id, testId]))
+  const names = (id: number) => testIds.get(id) ?? `#${id}`
   return {
     picture: crypto.createHash("sha1").update(fs.readFileSync(file)).digest("hex"),
     a11y: JSON.stringify(renderer.getA11yTree(), (key, value) => (key === "frame" ? undefined : value)),
     text: renderer.getAllText(),
     painted: renderer.getPaintedText(),
-    hits: probes.map(([x, y]) => renderer.getElementsAt(x, y).map(names)),
+    hits: elementsAtPoints(renderer, probes).map((hit) => hit.map(names)),
     boxes: watch.map((testId) => {
-      const element = renderer.findByTestId(testId)
-      return element ? renderer.getElementBounds(element.id) : null
+      const id = ids.get(testId)
+      return id === undefined ? null : renderer.getElementBounds(id)
     }),
     cursor: renderer.getCursor(),
     selected: renderer.getSelectedText(),
