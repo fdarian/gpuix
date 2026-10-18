@@ -7292,6 +7292,10 @@ impl gpui::Render for GpuixView {
         self.apply_pointer_lock(window, cx);
         let verifies = self.retain.verifies_frames();
         self.tapes.verify(verifies);
+        // A build is not the same twice in a frame here (anchor-size() reads the size the trigger
+        // painted a pass ago, motions advance when they are built), so outside the subtrees that
+        // replayed the two passes differ, and every wrapper makes a dispatch node.
+        window.set_retention_whole_frame(false);
         window.set_retention_verifier(verifies.then(|| {
             let tapes = self.tapes.clone();
             Rc::new(move |window: &gpui::Window| {
@@ -7738,15 +7742,19 @@ fn retained_root(
         },
     )
     .on_replay_translated(move |phase, delta, _, _| {
-        tapes.replay(
-            id,
-            match phase {
-                gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
-                gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
-                gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
-            },
-            delta,
-        );
+        let phase = match phase {
+            gpui::RetainedPhase::Prepaint => crate::tape::Phase::Prepaint,
+            gpui::RetainedPhase::Paint => crate::tape::Phase::Paint,
+            gpui::RetainedPhase::Layout | gpui::RetainedPhase::LayoutPaint => crate::tape::Phase::Layout,
+            // Elements that a root hands to the stacking context around it are painted by that
+            // context, outside the tape of the root. Those with a lift of their own make the
+            // root ineligible (`Below::lifts`); what remains is lifted by gpui alone (the focus
+            // anchors of inline spans) and writes nothing.
+            gpui::RetainedPhase::LiftedBegin(_)
+            | gpui::RetainedPhase::LiftedEnd
+            | gpui::RetainedPhase::LiftedPaint(_) => return,
+        };
+        tapes.replay(id, phase, delta);
     });
     if let Some(overscan) = skip.overscan {
         retained = retained.relocatable(overscan);
