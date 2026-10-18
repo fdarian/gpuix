@@ -378,6 +378,9 @@ struct Record {
     /// Whether gpui has a recording of the subtree to replay: it asked for the build, or the frame
     /// before skipped the subtree.
     seasoned: bool,
+    /// The selection the element was built under. The frame that finds a new selection builds
+    /// only the elements it visits, so one it did not (under `display: none`) is still of the old.
+    selection: u64,
 }
 
 const NO_PARENT: u32 = u32::MAX;
@@ -686,6 +689,10 @@ pub(crate) struct Retain {
     pruned_at: u64,
     seen: Seen,
     deltas: Deltas,
+    /// The elements on the spine of a frame since the last build of them. A pass that does not
+    /// build one (`display: none` above it, for the layout of a read) does not see what it
+    /// changed, and `seen` has moved on, so the frame that does must still find it changed.
+    unbuilt: FxHashSet<u64>,
     summary: Summary,
     mismatches: Vec<String>,
     /// What `getRetainDebug` reports, filled only with `GPUIX_RETAIN_DEBUG`.
@@ -817,6 +824,7 @@ impl Retain {
             pruned_at: 0,
             seen: Seen::default(),
             deltas: Deltas::default(),
+            unbuilt: FxHashSet::default(),
             summary: Summary::default(),
             mismatches: Vec::new(),
             debug: debug::Debug::from_env(),
@@ -974,6 +982,7 @@ impl Retain {
         self.pruned_at = tree.removals();
         self.records.retain(|id, _| tree.elements.contains_key(id));
         self.dynamic.retain(|id| tree.elements.contains_key(id));
+        self.unbuilt.retain(|id| tree.elements.contains_key(id));
     }
 
     /// Whether the frame about to be built is one that is not recorded, see [`Backoff`].
@@ -1094,7 +1103,7 @@ impl Retain {
         seen.motion = motion;
         seen.selection = sources.selection;
 
-        let mut spine = FxHashSet::default();
+        let mut spine = self.unbuilt.clone();
         for id in changed {
             let mut at = Some(id);
             while let Some(id) = at {
@@ -1104,6 +1113,7 @@ impl Retain {
                 at = sources.tree.elements.get(&id).and_then(|element| element.parent);
             }
         }
+        self.unbuilt.clone_from(&spine);
         self.deltas = Deltas { all, spine, scrolled, scrolling };
     }
 
@@ -1263,6 +1273,9 @@ impl Retain {
             return Err(Kept::PlanningOff);
         }
         if self.deltas.all {
+            return Err(Kept::Everything);
+        }
+        if self.records.get(&node.id).is_some_and(|record| record.selection != self.selection) {
             return Err(Kept::Everything);
         }
         if !entry.plain {
@@ -1641,6 +1654,7 @@ impl Retain {
             if node.skipped.is_some() {
                 continue;
             }
+            self.unbuilt.remove(&node.id);
             if self.retained[at] && self.verify && !self.planning {
                 check(&self.records, &mut self.mismatches, node.id, own.digest, eligible);
             }
@@ -1671,6 +1685,7 @@ impl Retain {
                     subtree: node.subtree,
                     effects,
                     seasoned: self.deferred,
+                    selection: self.selection,
                 },
             );
         }
@@ -1875,6 +1890,110 @@ mod tests {
         assert_eq!(retain.summary().roots, Vec::<u64>::new());
         build(&mut retain, &inherited, "");
         assert_eq!(retain.summary().roots, vec![1]);
+    }
+
+    /// What a frame is told changed, by the sources the tests below vary.
+    #[derive(Default)]
+    struct Changes {
+        hovered: Vec<u64>,
+        active: Vec<u64>,
+        within: Vec<u64>,
+        measured: Vec<u64>,
+        links: Vec<u64>,
+        selection: u64,
+    }
+
+    /// A frame of the one element 1, which it builds or leaves unvisited (a layout-only pass with
+    /// `display: none` above it). Returns whether the frame skipped it.
+    fn frame(retain: &mut Retain, changes: Changes, visit: bool) -> bool {
+        let (tree, focus) = (RetainedTree::new(), crate::focus::FocusStyles {
+            within: changes.within.into(),
+            ..Default::default()
+        });
+        let (handles, scrolls) = (HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree: &tree,
+            hovered: &changes.hovered,
+            active: &changes.active,
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: changes.measured,
+            links: changes.links,
+            customs: Vec::new(),
+            motion: Vec::new(),
+            selection: changes.selection,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+        });
+        let inherited = root_inherited();
+        let mut skipped = false;
+        if visit {
+            skipped = retain
+                .enter(Entry {
+                    id: 1,
+                    revision: 7,
+                    inherited: &inherited,
+                    at: 0,
+                    stacking_root: true,
+                    stacking_item: false,
+                    atomic_root: false,
+                    contents_overlay: None,
+                    anchor_scope: false,
+                    text_box_trim: Default::default(),
+                    plain: true,
+                    boxed: true,
+                    container: None,
+                    prekeyed: None,
+                    scroller: None,
+                })
+                .is_some();
+            if !skipped {
+                retain.stacking(|| (None, true));
+                retain.exit();
+            }
+        }
+        retain.finish_frame();
+        skipped
+    }
+
+    #[test]
+    fn what_changed_in_a_pass_that_did_not_visit_an_element_is_found_by_the_pass_that_does() {
+        let changes: [(&str, fn() -> Changes); 5] = [
+            ("hovered", || Changes { hovered: vec![1], ..Default::default() }),
+            ("active", || Changes { active: vec![1], ..Default::default() }),
+            ("focus within", || Changes { within: vec![1], ..Default::default() }),
+            ("measured", || Changes { measured: vec![1], ..Default::default() }),
+            ("links", || Changes { links: vec![1], ..Default::default() }),
+        ];
+        for (name, change) in changes {
+            let mut retain = Retain::new();
+            retain.set_planning(true);
+            for _ in 0..3 {
+                frame(&mut retain, Changes::default(), true);
+            }
+            assert!(frame(&mut retain, Changes::default(), true), "{name}: an element that did not change is skipped");
+
+            // The pass is told, and never gets to the element: the sources do not tell again.
+            frame(&mut retain, change(), false);
+            frame(&mut retain, Changes::default(), false);
+            assert!(!frame(&mut retain, Changes::default(), true), "{name}: the element is built");
+            assert!(frame(&mut retain, Changes::default(), true), "{name}: then it is skipped again");
+        }
+    }
+
+    #[test]
+    fn an_element_a_new_selection_did_not_reach_is_built_when_it_is_visited() {
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        for _ in 0..3 {
+            frame(&mut retain, Changes::default(), true);
+        }
+        frame(&mut retain, Changes { selection: 5, ..Default::default() }, false);
+        assert!(!frame(&mut retain, Changes { selection: 5, ..Default::default() }, true));
     }
 
     /// An element of the page under test.
