@@ -415,7 +415,7 @@ pub fn box_lengths(
 
 /// What turns the line height of a run into the pixels its line box is laid out with.
 pub struct RunHeights<'a> {
-    /// Rounds a height as `TextLayout::layout` does the line's.
+    /// Lays a height out as `TextLayout::layout` does the line's.
     pub snap: &'a dyn Fn(Pixels) -> Pixels,
     /// The height `line-height: normal` gives text of a font and size.
     pub normal: &'a dyn Fn(&gpui::Font, Pixels) -> Pixels,
@@ -662,7 +662,7 @@ impl gpui::Element for InlineText {
         let text_style = window.text_style();
         let text_system = window.text_system().clone();
         let heights = RunHeights {
-            snap: &|height| window.pixel_snap(height),
+            snap: &gpui::floor_to_layout_unit,
             normal: &|font, font_size| {
                 text_system
                     .line_box(text_system.resolve_font(font), font_size)

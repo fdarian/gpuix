@@ -40,12 +40,17 @@ const FAMILIES: Record<string, string> = {
 const LINE_HEIGHTS: Record<string, number | string> = {
   normal: "normal",
   "1": 1,
+  "1_2": 1.2,
   "24px": "24px",
   "20px": "20px",
 }
 
-/** Chrome lays a height out in sixty-fourths of a pixel. */
+/** The boxes of an inline element are not on the pixel grid, so they are as exact as Chrome lays
+ *  a height out: in sixty-fourths of a pixel. */
 const TOLERANCE = 1 / 64 + 1e-3
+
+/** A block is on the device pixel grid, so its height is that of Chrome to the nearest pixel. */
+const BLOCK_TOLERANCE = 0.51
 
 const chrome = (id: string): Rect => {
   const box = ORACLE[id]
@@ -53,8 +58,8 @@ const chrome = (id: string): Rect => {
   return box ?? [0, 0, 0, 0]
 }
 
-function expectNear(id: string, what: string, actual: number, expected: number) {
-  expect(Math.abs(actual - expected), `${id}: ${what} ${actual} != ${expected}`).toBeLessThanOrEqual(TOLERANCE)
+function expectNear(id: string, what: string, actual: number, expected: number, tolerance = TOLERANCE) {
+  expect(Math.abs(actual - expected), `${id}: ${what} ${actual} != ${expected}`).toBeLessThanOrEqual(tolerance)
 }
 
 /** All the cases of the oracle in one window, one below the other: the height of each is its own. */
@@ -67,18 +72,21 @@ function layout(cases: { id: string; style: Record<string, unknown>; spanStyle?:
   root.render(
     <div style={{ width: 1280 }}>
       {cases.map(({ id, style, spanStyle }) => (
-        <div key={id} ref={ref(id)} style={{ width: 1280, color: "#000000", ...style }}>
-          {spanStyle ? (
-            <>
-              H
-              <span ref={ref(`${id}.span`)} style={spanStyle}>
-                xg
-              </span>
-              H
-            </>
-          ) : (
-            <span ref={ref(`${id}.text`)}>Hxg</span>
-          )}
+        // Each case starts on a whole pixel, so the box of one is snapped at its far edge only.
+        <div key={id} style={{ height: 40, flexShrink: 0 }}>
+          <div ref={ref(id)} style={{ width: 1280, color: "#000000", ...style }}>
+            {spanStyle ? (
+              <>
+                H
+                <span ref={ref(`${id}.span`)} style={spanStyle}>
+                  xg
+                </span>
+                H
+              </>
+            ) : (
+              <span ref={ref(`${id}.text`)}>Hxg</span>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -145,7 +153,7 @@ describeNative("a line box", () => {
       for (const { id } of cases) {
         const expected = chrome(id)
         const actual = rect(id)
-        expectNear(id, "height", actual[3], expected[3])
+        expectNear(id, "height", actual[3], expected[3], BLOCK_TOLERANCE)
         const text = chrome(`${id}.text`)
         const painted = rect(`${id}.text`)
         expectNear(id, "text height", painted[3], text[3])
@@ -162,7 +170,7 @@ describeNative("a line box", () => {
     try {
       for (const { id } of cases) {
         const expected = chrome(id)
-        expectNear(id, "height", rect(id)[3], expected[3])
+        expectNear(id, "height", rect(id)[3], expected[3], BLOCK_TOLERANCE)
         const span = chrome(`${id}.span`)
         const painted = rect(`${id}.span`)
         expectNear(id, "span height", painted[3], span[3])
@@ -185,6 +193,35 @@ describeNative("a line box", () => {
       expect(rect("mixed.helvetica-neue.reg20-bold20.24px")[3]).toBe(25)
     } finally {
       unmount()
+    }
+  })
+
+  it("lays a number or a length line height out in sixty-fourths of a pixel", () => {
+    // A block is on the pixel grid, so a stack of 64 lines is what shows the fraction of one:
+    // Chrome makes 12px text at 1.2 a line of 14.390625px, and 13px text one of 15.59375px.
+    for (const size of [12, 13, 14]) {
+      const id = `helvetica-neue.400.${size}.1_2`
+      const root = createTestRoot({ width: 1280, height: 800 })
+      const refs = new Map<string, PublicInstance>()
+      root.render(
+        <div
+          ref={(instance) => {
+            if (instance) refs.set("stack", instance)
+          }}
+          style={{ width: 1280, fontFamily: "Helvetica Neue", fontSize: size, lineHeight: 1.2, color: "#000000" }}
+        >
+          {Array.from({ length: 64 }, (_, ix) => (
+            <div key={ix}>Hxg</div>
+          ))}
+        </div>
+      )
+      root.renderer.dispatchNativeEvents()
+      try {
+        const height = refs.get("stack")?.getBoundingClientRect().height ?? 0
+        expectNear(id, "64 lines", height, 64 * chrome(id)[3], BLOCK_TOLERANCE)
+      } finally {
+        root.unmount()
+      }
     }
   })
 })

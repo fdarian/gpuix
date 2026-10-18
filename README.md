@@ -2919,8 +2919,11 @@ A line is as tall as Chrome on macOS makes it. The ascent, descent and line gap 
 font are each rounded to a whole pixel at the size it is used, so a font's lines do not
 scale with its size, and Times, Helvetica and Courier get a taller ascent, as in Chrome.
 `lineHeight: 'normal'`, which is also what an element that sets none has, is the three
-together (Helvetica at 16px is 18px, Menlo 19px). What a line has over the font's ascent
-and descent is shared around them, the half above rounded down.
+together (Helvetica at 16px is 18px, Menlo 19px). A number or a length is laid out in
+sixty-fourths of a pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not 14 or 15. What a
+line has over the font's ascent and descent is shared around them, the half above rounded
+down. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
+tall as the sum of its lines, but one box reports its height to the nearest pixel.
 
 The strut of a line is the element's own font and line height. A run in another weight,
 family or size is a box of its own on the line, and the line is as tall as the strut and
