@@ -92,6 +92,11 @@ impl FocusStyles {
         self.visible.is_some_and(|visible| visible != id) && self.within.contains(&id)
     }
 
+    /// Whether `id` is the element that matches `:focus-visible`.
+    pub fn is_focus_visible(&self, id: u64) -> bool {
+        self.visible == Some(id)
+    }
+
     /// `states` with the focus variants of `style` that apply to element `id`.
     /// For an inline box, which has no element to apply them to.
     pub fn states_of(&self, id: u64, style: &StyleDesc, states: PointerStates) -> PointerStates {

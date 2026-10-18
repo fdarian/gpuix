@@ -370,13 +370,14 @@ describeNative("motion.span", () => {
 
     it.each([
       ["animate", { animate: { width: 100 } }, 'cannot animate "width" in animate'],
-      ["initial", { initial: { paddingLeft: 4 }, animate: { color: RED } }, 'cannot animate "paddingLeft" in initial'],
+      ["initial", { initial: { height: 4 }, animate: { color: RED } }, 'cannot animate "height" in initial'],
       ["exit", { exit: { width: 10 } }, 'cannot animate "width" in exit'],
       [
         "variants",
-        { variants: { big: { fontSize: 20 } }, animate: { color: RED } },
-        'cannot animate "fontSize" in the variant "big"',
+        { variants: { big: { flexGrow: 1 } }, animate: { color: RED } },
+        'cannot animate "flexGrow" in the variant "big"',
       ],
+      ["whileHover", { whileHover: { width: 10 } }, 'cannot animate "width" in whileHover'],
     ])("a key of %s that a span cannot animate", (_name, props, message) => {
       const error = renderError(
         <div>
@@ -386,20 +387,20 @@ describeNative("motion.span", () => {
         </div>
       )
       expect(error.message).toContain(message)
-      expect(error.message).toContain("inline span")
+      expect(error.message).toContain("inline box")
     })
 
     it("a key of an exit function that a span cannot animate", () => {
       const error = renderError(
         <text>
           <AnimatePresence>
-            <motion.span key="chip" animate={{ color: RED }} exit={() => ({ fontSize: 20 }) as never}>
+            <motion.span key="chip" animate={{ color: RED }} exit={() => ({ width: 20 }) as never}>
               aaaa
             </motion.span>
           </AnimatePresence>
         </text>
       )
-      expect(error.message).toContain('cannot animate "fontSize" in exit')
+      expect(error.message).toContain('cannot animate "width" in exit')
     })
 
     it("a variant name that variants do not define", () => {
@@ -411,37 +412,6 @@ describeNative("motion.span", () => {
         </text>
       )
       expect(error.message).toContain('names the variant "shown"')
-    })
-
-    it.each([
-      ["layout", { layout: true }, "layout animation"],
-      ["layoutId", { layoutId: "chip" }, "layout animation"],
-      ["layoutDependency", { layoutDependency: 1 }, "layout animation"],
-      ["layoutScroll", { layoutScroll: true }, "layout animation"],
-      ["drag", { drag: true }, "no box to drag"],
-      ["dragConstraints", { dragConstraints: { left: 0 } }, "no box to drag"],
-      ["dragElastic", { dragElastic: 0.5 }, "no box to drag"],
-      ["whileHover", { whileHover: { color: RED } }, "hover"],
-      ["whileTap", { whileTap: { color: RED } }, "hover"],
-      ["whileFocus", { whileFocus: { color: RED } }, "hover"],
-    ])("the %s prop", (prop, props, reason) => {
-      const error = renderError(
-        <text>
-          <motion.span {...(props as object)}>aaaa</motion.span>
-        </text>
-      )
-      expect(error.message).toContain(`motion.span does not support "${prop}"`)
-      expect(error.message).toContain(reason)
-    })
-
-    it("a motion value in the style", () => {
-      const error = renderError(
-        <text>
-          <motion.span style={{ color: motionValue("#ff0000") as never }}>aaaa</motion.span>
-        </text>
-      )
-      expect(error.message).toContain("style.color")
-      expect(error.message).toContain("motion value")
     })
 
     it("variants on a motion.div", () => {

@@ -348,7 +348,7 @@ function materialize(node: HostNode): HostNodeState {
     state.container.instances.set(node.id, node)
     if (state.hidden) renderer.setStyle(node.id, hiddenStyle(node.props.style))
     else sendStyle(renderer, node.id, node.props)
-    syncMotionBindings(state.container, node.id, node.props.style)
+    syncMotionBindings(state.container, node.id, node.props.style, node.type)
     syncEventListeners(state.container, node.id, node.props)
     syncCustomProps(renderer, node.id, node.type, node.props)
   } else {
@@ -573,7 +573,7 @@ export const hostConfig = {
         instance.id,
         state.hidden ? hiddenStyle(newProps.style) : (splitMotionStyle(newProps.style).style ?? {})
       )
-      syncMotionBindings(container, instance.id, newProps.style)
+      syncMotionBindings(container, instance.id, newProps.style, instance.type)
     }
     diffEventListeners(container, instance.id, oldProps, newProps)
     // Custom prop diff (for non-div/text elements)

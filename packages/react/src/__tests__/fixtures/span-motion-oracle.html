@@ -1,0 +1,62 @@
+<!doctype html>
+<!--
+  Oracle for span-motion.test.tsx: what headless Chrome lays out when the style of an inline box moves, a paused
+  1s linear animation at fractions of it. `starts` are the left edges of the boxes of a line that the animation
+  does not touch, `height` the height of the paragraph, `box` the border box of the animated span, `font` the
+  computed font size. Regenerate with
+
+    sh span-motion-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/20px Menlo;color:#000}
+.p{position:absolute;left:0;width:300px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const cases = [
+  ['padding of a span moves what follows it', 300, '<span id="s">aaaa</span><span id="n">bbbb</span>', { paddingLeft: ['0px', '40px'], paddingRight: ['0px', '20px'] }],
+  ['margin of a span moves what follows it', 300, '<span id="s">aaaa</span><span id="n">bbbb</span>', { marginLeft: ['0px', '30px'], marginRight: ['0px', '10px'] }],
+  ['border width of a span moves what follows it', 300, '<span id="s" style="border:0 solid #f00">aaaa</span><span id="n">bbbb</span>', { borderLeftWidth: ['0px', '8px'], borderRightWidth: ['0px', '4px'] }],
+  ['font size of a span moves what follows it and grows the line', 300, '<span id="s">aaaa</span><span id="n">bbbb</span>', { fontSize: ['16px', '32px'] }],
+  ['font weight of a span', 300, '<span id="s">aaaa</span><span id="n">bbbb</span>', { fontWeight: ['400', '700'] }],
+  ['line height of a span grows the line', 300, '<span id="s">aaaa</span><span id="n">bbbb</span>', { lineHeight: ['20px', '60px'] }],
+  ['padding rewraps a paragraph', 100, 'aaaa <span id="s">bbbb</span> cccc', { paddingLeft: ['0px', '60px'] }],
+  ['font size rewraps a paragraph', 120, 'aaaa <span id="s">bbbb</span> cccc', { fontSize: ['16px', '24px'] }],
+];
+const times = [0, 0.25, 0.5, 0.75, 1];
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+let offset = 0;
+for (const [name, width, html, keyframes] of cases) {
+  const p = document.createElement('div');
+  p.className = 'p';
+  p.style.cssText = `top:${offset}px;width:${width}px`;
+  p.innerHTML = html;
+  scene.appendChild(p);
+  const span = p.querySelector('#s');
+  const next = p.querySelector('#n');
+  const frames = Object.entries(keyframes).map(([prop, [from, to]]) => [prop, from, to]);
+  const animation = span.animate(
+    [Object.fromEntries(frames.map(([prop, from]) => [prop, from])), Object.fromEntries(frames.map(([prop, , to]) => [prop, to]))],
+    { duration: 1000, easing: 'linear', fill: 'both' }
+  );
+  animation.pause();
+  const samples = {};
+  for (const time of times) {
+    animation.currentTime = time * 1000;
+    const rect = (el) => { const r = el.getBoundingClientRect(); return [r.left - p.getBoundingClientRect().left, r.top - p.getBoundingClientRect().top, r.width, r.height]; };
+    samples[time] = {
+      box: rect(span),
+      next: next ? rect(next) : null,
+      height: p.getBoundingClientRect().height,
+      font: getComputedStyle(span).fontSize,
+    };
+  }
+  out.cases[name] = { width, html, keyframes, samples };
+  offset += 200;
+}
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

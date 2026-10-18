@@ -388,7 +388,7 @@ export function setHostProperty(
     node.motionValues = split.motionValues
     if (node.root && node.mounted) {
       node.root.mutations.setStyle(node.id, node.style)
-      syncMotionBindings(node.root, node.root.mutations, node.id, node.motionValues)
+      syncMotionBindings(node.root, node.root.mutations, node.id, node.motionValues, node.kind === "element" ? node.type : undefined)
     }
     return
   }
@@ -434,7 +434,7 @@ function mount(root: HostRoot, node: HostNode): void {
     root.mutations.setText(node.id, node.text)
   } else {
     if (Object.keys(node.style).length > 0) root.mutations.setStyle(node.id, node.style)
-    syncMotionBindings(root, root.mutations, node.id, node.motionValues)
+    syncMotionBindings(root, root.mutations, node.id, node.motionValues, node.kind === "element" ? node.type : undefined)
     for (const [name, value] of node.props) {
       const eventType = eventTypeFor(name)
       if (eventType && isEventHandler(value)) {

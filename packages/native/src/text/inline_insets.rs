@@ -54,6 +54,7 @@ use crate::style::{DimensionValue, StyleDesc};
 
 use super::inline::Paragraph;
 use super::paragraph::box_lengths;
+use crate::motion::InlineStyles;
 
 /// Where a box's border box is: inside the margin box rectangles of its first
 /// and last line fragments, and around the content area of its lines.
@@ -221,13 +222,27 @@ impl InsetSpec {
         lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     ) -> Rc<Self> {
-        let box_lengths = box_lengths(tree, paragraph, lengths, states);
+        Self::of_moving(tree, paragraph, colors, lengths, states, &InlineStyles::default())
+    }
+
+    /// [`Self::of`] for the style `motion` has sampled for each box in this frame: a
+    /// transition, an animation or `motion` on a span moves its padding, margin and
+    /// border, and its font size is the `em` of what it holds.
+    pub fn of_moving(
+        tree: &RetainedTree,
+        paragraph: &Paragraph,
+        colors: &ColorContext,
+        lengths: &LengthContext,
+        states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+        motion: &InlineStyles,
+    ) -> Rc<Self> {
+        let box_lengths = box_lengths(tree, paragraph, lengths, states, motion);
         let spaces = paragraph
             .boxes
             .iter()
             .filter_map(|(id, range)| {
-                let base = tree.elements.get(id)?.style.as_deref()?;
-                let declared = folded(base, states(*id, base));
+                let base = motion.declared_by(tree, *id)?;
+                let declared = motion.declared(*id, base, states(*id, base));
                 // It has no box to put space around.
                 if declared.display.as_deref() == Some("contents") {
                     return None;

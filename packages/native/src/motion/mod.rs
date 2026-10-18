@@ -257,6 +257,95 @@ struct Description {
     initial: Option<Styles>,
     animate: Goals,
     transition: Transitions,
+    /// `whileHover`, `whileTap` and `whileFocus`: what the element animates to while a
+    /// gesture is on it.
+    gestures: Vec<GestureTarget>,
+    /// `inView`: `whileInView` is on.
+    pub in_view: bool,
+}
+
+/// What Framer's `while*` props of a `motion.*` answer to, in the order of their priority: a
+/// later one wins a property it shares with an earlier one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Gesture {
+    InView,
+    Hover,
+    Tap,
+    Focus,
+}
+
+/// Which gestures are on an element now. Hover is `:hover`, tap a primary press that began on
+/// it and focus `:focus-visible`: the states its `hover`, `active` and `focusVisible` styles
+/// answer to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Gestures {
+    pub hover: bool,
+    pub tap: bool,
+    pub focus: bool,
+    /// Whether the span is in view, which JS finds with an `IntersectionObserver` and
+    /// writes into the description as `inView`.
+    pub in_view: bool,
+}
+
+impl Gestures {
+    fn has(self, gesture: Gesture) -> bool {
+        match gesture {
+            Gesture::InView => self.in_view,
+            Gesture::Hover => self.hover,
+            Gesture::Tap => self.tap,
+            Gesture::Focus => self.focus,
+        }
+    }
+}
+
+/// What one `while*` prop animates to, with the transition it carries, if it has one.
+#[derive(Clone, Debug)]
+struct GestureTarget {
+    gesture: Gesture,
+    goals: Goals,
+    transition: Option<Transitions>,
+}
+
+/// What a description animates to with `active` gestures on: `animate`, then the target of
+/// each active gesture over it, in priority order. A property a gesture moved that nothing
+/// asks for any more goes back to the value the element has without it, which is its own
+/// style: Framer animates it back, so `tracked` says which of them have been moved.
+fn effective_goals(
+    animate: &Goals,
+    transition: &Transitions,
+    gestures: &[GestureTarget],
+    active: Gestures,
+    tracked: &dyn Fn(PropKey) -> bool,
+    base: Base,
+) -> (Goals, Transitions) {
+    let mut goals = animate.clone();
+    let mut transitions = transition.clone();
+    let mut ordered: Vec<&GestureTarget> = gestures.iter().collect();
+    ordered.sort_by_key(|target| target.gesture);
+    for target in ordered.iter().filter(|target| active.has(target.gesture)) {
+        for (key, goal) in &target.goals {
+            goals.insert(*key, goal.clone());
+            match &target.transition {
+                Some(own) => {
+                    transitions.per_prop.insert(*key, own.for_prop(*key, goal).into_owned());
+                }
+                None => {
+                    transitions.per_prop.remove(key);
+                    if let Some(own) = transition.per_prop.get(key) {
+                        transitions.per_prop.insert(*key, own.clone());
+                    }
+                }
+            }
+        }
+    }
+    for key in gestures.iter().flat_map(|target| target.goals.keys()) {
+        if !goals.contains_key(key) && tracked(*key) {
+            if let Some(rest) = resolve_start(*key, base) {
+                goals.insert(*key, Goal::single(rest));
+            }
+        }
+    }
+    (goals, transitions)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -298,6 +387,12 @@ pub(crate) struct MotionState {
     valid: bool,
     needs_settle: bool,
     generation: u64,
+    /// The `while*` targets of the description, and which of them are on.
+    gestures: Vec<GestureTarget>,
+    active: Gestures,
+    /// What the description animates to without a gesture.
+    resting: Goals,
+    resting_transition: Option<Transitions>,
 }
 
 impl MotionState {
@@ -359,6 +454,10 @@ impl MotionState {
             pending,
             valid: true,
             generation: description.generation,
+            resting: description.animate,
+            resting_transition: Some(description.transition),
+            gestures: description.gestures,
+            active: Gestures::default(),
         })
     }
 
@@ -371,6 +470,10 @@ impl MotionState {
             valid: false,
             needs_settle: source_is_exit(source),
             generation: source_generation(source),
+            resting: Goals::new(),
+            resting_transition: None,
+            gestures: Vec::new(),
+            active: Gestures::default(),
         }
     }
 
@@ -419,10 +522,9 @@ impl MotionState {
         if self.source == *source && self.colors == *base.colors() {
             return self.follow_layout(measurement, now);
         }
-
         let previous_generation = self.generation;
         self.colors = base.colors().clone();
-        let description = match parse_description(source, base.target(), base.colors())
+        let mut description = match parse_description(source, base.target(), base.colors())
             .and_then(|description| check_scope(&description, scope).map(|()| description))
         {
             Ok(description) => description,
@@ -437,6 +539,21 @@ impl MotionState {
             }
         };
 
+        let resting = (description.animate.clone(), description.transition.clone());
+        if !description.gestures.is_empty() {
+            let tracked = |key: PropKey| self.tracks.contains_key(&key) || self.pending.contains_key(&key);
+            self.active.in_view = description.in_view;
+            let (goals, transitions) = effective_goals(
+                &description.animate,
+                &description.transition,
+                &description.gestures,
+                self.active,
+                &tracked,
+                base,
+            );
+            description.animate = goals;
+            description.transition = transitions;
+        }
         let resolved = if self.valid {
             self.retarget_tracks(&description, base, measurement, painted, now)
         } else {
@@ -465,6 +582,46 @@ impl MotionState {
         self.source = source.clone();
         self.valid = true;
         self.generation = description.generation;
+        self.resting = resting.0;
+        self.resting_transition = Some(resting.1);
+        self.gestures = description.gestures;
+        Ok(())
+    }
+
+    /// Sets which gestures are on the element. One that changed sends the properties its
+    /// target moves to the value it asks for, or back to the one the element has without it.
+    pub(crate) fn set_gestures(
+        &mut self,
+        active: Gestures,
+        base: Option<&StyleDesc>,
+        now: Instant,
+    ) -> Result<(), String> {
+        let active = Gestures { in_view: self.active.in_view, ..active };
+        let previous = std::mem::replace(&mut self.active, active);
+        let Some(resting_transition) = self.resting_transition.as_ref().filter(|_| self.valid) else {
+            return Ok(());
+        };
+        if previous == active || self.gestures.is_empty() {
+            return Ok(());
+        }
+        let colors = self.colors.clone();
+        let base = Base::Style(base, &colors);
+        let tracked = |key: PropKey| self.tracks.contains_key(&key) || self.pending.contains_key(&key);
+        let (animate, transition) =
+            effective_goals(&self.resting, resting_transition, &self.gestures, active, &tracked, base);
+        let description = Description {
+            generation: self.generation,
+            is_exit: false,
+            initial: None,
+            animate,
+            transition,
+            gestures: Vec::new(),
+            in_view: false,
+        };
+        let (tracks, pending, moving) = self.retarget_tracks(&description, base, None, 0, now)?;
+        self.needs_settle |= moving;
+        self.tracks = tracks;
+        self.pending = pending;
         Ok(())
     }
 
@@ -1235,12 +1392,43 @@ fn parse_description(
             .as_bool()
             .ok_or_else(|| "motion reducedMotion must be a boolean".to_string())?,
     };
+    let mut gestures = Vec::new();
+    for (name, gesture) in [
+        ("whileInView", Gesture::InView),
+        ("whileHover", Gesture::Hover),
+        ("whileTap", Gesture::Tap),
+        ("whileFocus", Gesture::Focus),
+    ] {
+        match fields.get(name) {
+            None | Some(Value::Null) => {}
+            Some(Value::Object(style)) => {
+                let mut style = style.clone();
+                let own = style.remove("transition").filter(|value| !value.is_null());
+                gestures.push(GestureTarget {
+                    gesture,
+                    goals: parse_goals(name, &style, target, colors)?,
+                    transition: own
+                        .map(|own| Transitions::parse(Some(&own), target, reduced))
+                        .transpose()?,
+                });
+            }
+            Some(_) => return Err(format!("motion {name} must be a style object")),
+        }
+    }
+    let in_view = match fields.get("inView") {
+        None | Some(Value::Null) => false,
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| "motion inView must be a boolean".to_string())?,
+    };
     Ok(Description {
         generation,
         is_exit,
         initial,
         animate,
         transition: Transitions::parse(fields.get("transition"), target, reduced)?,
+        gestures,
+        in_view,
     })
 }
 
@@ -1251,7 +1439,16 @@ fn check_scope(description: &Description, scope: Scope) -> Result<(), String> {
         .initial
         .iter()
         .flat_map(|initial| initial.keys().map(|key| ("initial", key)))
-        .chain(description.animate.keys().map(|key| ("animate", key)));
+        .chain(description.animate.keys().map(|key| ("animate", key)))
+        .chain(description.gestures.iter().flat_map(|target| {
+            let context = match target.gesture {
+                Gesture::InView => "whileInView",
+                Gesture::Hover => "whileHover",
+                Gesture::Tap => "whileTap",
+                Gesture::Focus => "whileFocus",
+            };
+            target.goals.keys().map(move |key| (context, key))
+        }));
     for (context, key) in named {
         if let PropKey::Style(prop) = key {
             if !scope.animates(*prop) {

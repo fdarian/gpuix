@@ -1,14 +1,18 @@
 // GPUIX component definitions and native motion wrappers.
 
-import { createElement, forwardRef, useContext, useEffect, useLayoutEffect, useMemo } from "react"
+import { createElement, forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { ReactElement, ReactNode } from "react"
 import {
-  assertMotionSpanProps,
+  gestureDescription,
+  IntersectionObserver,
   layoutDescription,
   reduceMotionValues,
   resolveExit,
   resolveSpanMotion,
   scopeLayoutId,
+  viewportObserverInit,
+  withoutIgnoredSpanProps,
+  withoutIgnoredSpanStyle,
   withoutLayoutTransition,
   wireMotionTransition,
 } from "@gpuix/native/host"
@@ -19,7 +23,7 @@ import type {
   MotionLayoutProps,
   MotionProps,
   MotionSpanAnimation,
-  MotionSpanUnsupportedProps,
+  MotionSpanIgnoredProps,
   MotionTransition,
   MotionValueStyle,
   Props,
@@ -42,6 +46,7 @@ import type {
   SvgTspanProps,
   WithExitFunction,
 } from "../types/host.js"
+import { flushSync } from "../reconciler/reconciler.js"
 import { PresenceContext, usePresence } from "./animate-presence.js"
 import { LayoutGroupContext } from "./layout-group.js"
 import { MotionConfigContext } from "./motion-config.js"
@@ -108,16 +113,16 @@ export interface MotionDivProps extends WithExitFunction<MotionProps>, MotionLay
 }
 
 /**
- * Props of a `motion.span`: an inline span animates its colours, underline and font variations (`animate`,
- * `initial`, `exit`, or the `variants` they name) and takes the props of a
- * `<span>`. It has no box to measure or drag, so `layout`, `layoutId`, `drag*`
- * and `while*` are errors.
+ * Props of a `motion.span`: an inline span animates what an inline box shows (`animate`, `initial`,
+ * `exit`, `whileHover`, `whileTap`, `whileFocus`, `whileInView`, or the `variants` they name) and takes
+ * the props of a `<span>`. A non-atomic inline box takes no transform, so `layout`, `layoutId`, `drag*`
+ * and the transform keys are accepted and have no effect, as in a browser.
  */
 export interface MotionSpanProps
-  extends Omit<Props, "style" | keyof MotionSpanAnimation | keyof MotionSpanUnsupportedProps>,
+  extends Omit<Props, "style" | keyof MotionSpanAnimation | keyof MotionSpanIgnoredProps>,
     MotionSpanAnimation,
-    MotionSpanUnsupportedProps {
-  style?: StyleDesc
+    MotionSpanIgnoredProps {
+  style?: MotionValueStyle
 }
 
 /** What every `motion.*` component takes, whatever it animates. */
@@ -128,6 +133,11 @@ interface MotionSource<Style, Transition> {
   variants?: MotionSpanAnimation["variants"]
   custom?: unknown
   transition?: Transition
+  whileHover?: MotionSpanAnimation["whileHover"]
+  whileTap?: MotionSpanAnimation["whileTap"]
+  whileFocus?: MotionSpanAnimation["whileFocus"]
+  whileInView?: MotionSpanAnimation["whileInView"]
+  viewport?: MotionSpanAnimation["viewport"]
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
   /** The drag values of a `Reorder.Item`; not part of the API. */
@@ -138,11 +148,39 @@ interface MotionSource<Style, Transition> {
 export function createMotionComponent<Source extends MotionSource<object, MotionTransition | SvgMotionTransition>>(tag: string) {
   const inline = tag === "span"
   return forwardRef<PublicInstance, Source>(function Motion(
-    { initial, animate, exit: exitTarget, custom, transition, layout, layoutId, layoutDrag, variants, onMotionComplete, ...props },
+    {
+      initial,
+      animate,
+      exit: exitTarget,
+      custom,
+      transition,
+      layout,
+      layoutId,
+      layoutDrag,
+      variants,
+      whileHover,
+      whileTap,
+      whileFocus,
+      whileInView,
+      viewport,
+      onMotionComplete,
+      ...rest
+    },
     ref
   ): ReactElement {
-    if (inline) assertMotionSpanProps({ ...props, layout, layoutId, layoutDrag })
-    else if (variants !== undefined) throw new Error("variants is only supported by motion.span")
+    if (!inline && variants !== undefined) throw new Error("variants is only supported by motion.span")
+    // A span takes no transform: what Framer would move with one is accepted and left where it is.
+    const props = inline ? withoutIgnoredSpanProps({ ...rest, style: withoutIgnoredSpanStyle(Reflect.get(rest, "style")) }) : rest
+    const [inView, setInView] = useState(false)
+    const observed = useRef<PublicInstance | null>(null)
+    const setRef = useCallback(
+      (instance: PublicInstance | null) => {
+        observed.current = instance
+        if (typeof ref === "function") ref(instance)
+        else if (ref) ref.current = instance
+      },
+      [ref]
+    )
     const presence = useContext(PresenceContext)
     const config = useContext(MotionConfigContext)
     const layoutGroupId = useContext(LayoutGroupContext)
@@ -160,6 +198,7 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
           exit: exitResolved as Parameters<typeof resolveSpanMotion>[0]["exit"],
           variants,
           custom: presence?.custom ?? custom,
+          gestures: { whileHover, whileTap, whileFocus, whileInView },
         })
       : undefined
     const exit = span ? span.exit : exitResolved
@@ -173,36 +212,70 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
       if (!isPresent && !exit) safeToRemove?.()
     }, [exit, isPresent, safeToRemove])
 
+    // Gestures are over once the span is on its way out.
+    const gestures =
+      span && isPresent
+        ? gestureDescription(span.gestures, (own) => wireMotionTransition(own), inView)
+        : undefined
+    const watchesView = gestures !== undefined && "inView" in gestures
+    useEffect(() => {
+      const target = observed.current
+      if (!watchesView || !target) return
+      const init = viewportObserverInit(viewport)
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const latest = entries.at(-1)
+          
+          if (!latest) return
+          // Native delivers it from a frame, not from an event React is handling.
+          if (latest.isIntersecting) {
+            flushSync(() => setInView(true))
+            if (viewport?.once) observer.disconnect()
+          } else if (!viewport?.once) {
+            flushSync(() => setInView(false))
+          }
+        },
+        { root: init.root as never, rootMargin: init.rootMargin, threshold: init.threshold }
+      )
+      observer.observe(target)
+      return () => observer.disconnect()
+    }, [watchesView, viewport?.root, viewport?.margin, viewport?.amount, viewport?.once])
+
     const motionKey = JSON.stringify([
       isPresent,
       resolvedInitial,
       resolvedAnimate,
       motionTransition,
       reduced,
+      gestures,
     ])
     const generation = useMemo(() => ++nextMotionGeneration, [motionKey])
 
     const style: unknown = Reflect.get(props, "style")
     useLayoutEffect(() => (reduced ? reduceMotionValues(style) : undefined), [reduced, style])
 
-    const hostProps: Record<string, unknown> = { ...props, ref }
-    if (resolvedAnimate !== undefined) {
+    const hostProps: Record<string, unknown> = { ...props, ref: watchesView ? setRef : ref }
+    if (resolvedAnimate !== undefined || gestures !== undefined) {
       hostProps.motion = {
         generation,
         isExit: !isPresent && exit !== undefined,
         initial: resolvedInitial,
-        animate: resolvedAnimate,
+        animate: resolvedAnimate ?? {},
         transition: motionTransition,
         ...(reduced ? { reducedMotion: true } : {}),
+        ...gestures,
       }
     }
-    const layoutProp = layoutDescription({
-      layout,
-      layoutId: scopeLayoutId(layoutGroupId, layoutId),
-      transition: resolvedTransition as MotionTransition | undefined,
-      reduced,
-      drag: layoutDrag,
-    })
+    // A layout animation moves a box with a transform, which a span has none of.
+    const layoutProp = inline
+      ? undefined
+      : layoutDescription({
+          layout,
+          layoutId: scopeLayoutId(layoutGroupId, layoutId),
+          transition: resolvedTransition as MotionTransition | undefined,
+          reduced,
+          drag: layoutDrag,
+        })
     if (layoutProp !== undefined) hostProps.layout = layoutProp
     if (!isPresent || onMotionComplete) {
       hostProps.onMotionComplete = (event: Parameters<NonNullable<Props["onMotionComplete"]>>[0]) => {

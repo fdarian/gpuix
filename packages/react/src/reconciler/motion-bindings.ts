@@ -6,8 +6,8 @@ import {
 } from "@gpuix/native/host"
 import type { Container, Props } from "../types/host.js"
 
-export function syncMotionBindings(container: Container, id: number, style: Props["style"]): void {
-  syncBindings(container, container.renderer, id, splitMotionStyle(style).motionValues)
+export function syncMotionBindings(container: Container, id: number, style: Props["style"], type: string): void {
+  syncBindings(container, container.renderer, id, splitMotionStyle(style).motionValues, type)
 }
 
 /** Runs once the mutation batch has been applied, with the ids it destroyed. */

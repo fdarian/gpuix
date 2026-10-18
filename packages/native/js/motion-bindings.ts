@@ -4,6 +4,7 @@
 /// this; each owns a `MotionBindingHost` on its root.
 
 import type { MutationRenderer, NativeRenderer, StyleDesc } from "./host.js"
+import { assertSpanMotionValues } from "./motion-span.js"
 import { isMotionValue } from "./motion-value.js"
 import type { MotionValue } from "./motion-value.js"
 
@@ -59,8 +60,11 @@ export function syncMotionBindings(
   host: MotionBindingHost,
   mutations: Pick<MutationRenderer, "setCustomProp">,
   id: number,
-  next: Record<string, MotionValue> | undefined
+  next: Record<string, MotionValue> | undefined,
+  /** The element type: a span can only bind what an inline box shows. */
+  type?: string
 ): void {
+  if (type === "span") assertSpanMotionValues(next)
   const previous = host.motionBindings.get(id)
   if (sameBindings(previous?.values, next)) return
 

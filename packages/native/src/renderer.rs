@@ -5163,12 +5163,30 @@ fn parent_inherited(
     inherited
 }
 
+/// Which gestures are on a span: the states its `hover`, `active` and `focusVisible` styles
+/// answer to, whether or not it declares them, in a subtree that takes input.
+fn gestures_of(
+    tree: &crate::retained_tree::RetainedTree,
+    pointer: &crate::events::state::PointerState,
+    focus: &crate::focus::FocusStyles,
+    id: u64,
+) -> crate::motion::Gestures {
+    let live = !tree.elements.get(&id).is_some_and(crate::retained_tree::RetainedElement::has_inert_prop);
+    crate::motion::Gestures {
+        hover: live && pointer.is_hovered(id),
+        tap: live && pointer.is_active(id),
+        focus: focus.is_focus_visible(id),
+        ..Default::default()
+    }
+}
+
 fn sync_motion_states(
     tree: &crate::retained_tree::RetainedTree,
     states: &mut HashMap<u64, crate::motion::MotionState>,
     measurements: &crate::motion::measure::Measurements,
     appearance: gpui::WindowAppearance,
     viewport: gpui::Size<gpui::Pixels>,
+    gestures: &dyn Fn(u64) -> crate::motion::Gestures,
     now: web_time::Instant,
 ) -> (bool, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
@@ -5231,6 +5249,11 @@ fn sync_motion_states(
         };
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
+        }
+        if inline {
+            if let Err(error) = state.set_gestures(gestures(id), base, now) {
+                log::warn!("Invalid motion gesture for element {id}: {error}");
+            }
         }
         let frame = state.frame(now);
         active |= frame.active;
@@ -5897,6 +5920,9 @@ impl GpuixView {
 
         let callback = self.event_callback.clone();
         let now = self.clock.now();
+        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
         let (motion_active, motion_settled) =
             sync_motion_states(
                 &tree,
@@ -5904,6 +5930,7 @@ impl GpuixView {
                 &self.measurements,
                 window.appearance(),
                 window.viewport_size(),
+                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
                 now,
             );
         let motion_values_active =
@@ -5938,10 +5965,7 @@ impl GpuixView {
                 .map(|(context, _)| context);
         }
 
-        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
-        let pointer_state = self.pointer.clone();
-        let pointer = pointer_state.borrow();
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let mut build_ctx = BuildCtx {
@@ -6276,6 +6300,7 @@ impl BuildCtx<'_> {
             &inherited.parent_font(),
             &states,
             crate::motion::Timeline {
+                values: &*self.motion_values,
                 transitions: &mut *self.css_transitions,
                 animations: &mut *self.css_animations,
                 keyframes: self.keyframes,
@@ -7446,6 +7471,9 @@ impl gpui::Render for GpuixView {
         // measured does not seed its motion from a size laid out long ago.
         self.measurements
             .prune(|id| tree.elements.contains_key(&id));
+        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
         let (motion_active, motion_settled) =
             sync_motion_states(
                 &tree,
@@ -7453,6 +7481,7 @@ impl gpui::Render for GpuixView {
                 &self.measurements,
                 window.appearance(),
                 window.viewport_size(),
+                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
                 now,
             );
         self.motion_values
@@ -7477,10 +7506,7 @@ impl gpui::Render for GpuixView {
                 .is_some_and(|element| element.custom_props().contains_key("highlight"))
         });
         let mut highlight_events = Vec::new();
-        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         crate::accessibility::links::sync(&tree);
-        let pointer_state = self.pointer.clone();
-        let pointer = pointer_state.borrow();
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         self.retain.begin_frame(crate::retain::Sources {
@@ -9253,12 +9279,13 @@ fn paragraph_content(
     let (aligned_boxes, atomics) = build_atomics(paragraph, &styles, &motion, line.as_ref(), ctx, window, cx);
     let ctx = &*ctx;
     let states = ctx.inline_states();
-    let insets = crate::text::inline_insets::InsetSpec::of(
+    let insets = crate::text::inline_insets::InsetSpec::of_moving(
         ctx.tree,
         paragraph,
         &ctx.inherited.colors,
         &ctx.inherited.lengths,
         &states,
+        &motion,
     );
     let inline_decorations = crate::text::inline_decoration::of(
         ctx.tree,

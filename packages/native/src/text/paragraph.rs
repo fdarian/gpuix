@@ -483,20 +483,17 @@ pub fn box_lengths(
     paragraph: &Paragraph,
     lengths: &LengthContext,
     states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
+    motion: &InlineStyles,
 ) -> HashMap<u64, LengthContext> {
     let mut of_box = HashMap::with_capacity(paragraph.boxes.len());
     for piece in &paragraph.pieces {
         let mut lengths = *lengths;
         for id in &piece.boxes {
-            let Some(base) = tree
-                .elements
-                .get(id)
-                .and_then(|element| element.style.as_deref())
-            else {
+            let Some(base) = motion.declared_by(tree, *id) else {
                 of_box.entry(*id).or_insert(lengths);
                 continue;
             };
-            lengths = lengths.descend(folded(base, states(*id, base)).font_size.as_ref(), false);
+            lengths = lengths.descend(motion.declared(*id, base, states(*id, base)).font_size.as_ref(), false);
             of_box.entry(*id).or_insert(lengths);
         }
     }
@@ -1151,9 +1148,7 @@ mod tests {
         let Child::Paragraph(paragraph) = &plan[0] else {
             panic!("a paragraph")
         };
-        let lengths = box_lengths(&tree, paragraph, &container_lengths(), &|_, _| {
-            PointerStates::default()
-        });
+        let lengths = box_lengths(&tree, paragraph, &container_lengths(), &|_, _| PointerStates::default(), &InlineStyles::default());
         assert_eq!(lengths[&3].font_size, 20.0);
         assert_eq!(lengths[&5].font_size, 30.0);
     }

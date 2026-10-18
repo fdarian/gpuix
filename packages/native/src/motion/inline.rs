@@ -21,7 +21,7 @@ use web_time::Instant;
 
 use super::{
     resolve_declared_style, CssAnimations, CssTransitions, InterpolateSize, KeyframesRegistry,
-    MotionState, ParentFont, Scope,
+    MotionState, MotionValueStore, ParentFont, Scope,
 };
 use crate::color::ColorContext;
 use crate::events::state_styles::{folded, PointerStates};
@@ -33,6 +33,8 @@ static EMPTY_STYLE: std::sync::LazyLock<StyleDesc> = std::sync::LazyLock::new(St
 
 /// The clock and the state a frame's inline boxes are resolved with.
 pub(crate) struct Timeline<'a> {
+    /// What the motion values the frame sampled are, for the boxes whose `style` binds some.
+    pub values: &'a MotionValueStore,
     pub transitions: &'a mut CssTransitions,
     pub animations: &'a mut CssAnimations,
     pub keyframes: &'a KeyframesRegistry,
@@ -108,7 +110,8 @@ impl InlineStyles {
                     let transitions = timeline.transitions.wants(*id, style);
                     let animations = timeline.animations.wants(*id, style);
                     let motion = timeline.motion.get(id);
-                    if transitions || animations || motion.is_some() {
+                    let binding = element.custom_props().get("motionValues");
+                    if transitions || animations || motion.is_some() || binding.is_some() {
                         let style = style.unwrap_or(&EMPTY_STYLE);
                         let resolved = step(
                             *id,
@@ -116,7 +119,7 @@ impl InlineStyles {
                             style,
                             states(*id, style),
                             (transitions, animations),
-                            motion,
+                            (motion, binding, timeline.values),
                             (&colors, &font),
                             &mut *timeline.transitions,
                             &mut *timeline.animations,
@@ -148,7 +151,7 @@ fn step(
     style: &StyleDesc,
     pointer: PointerStates,
     (transitions_wanted, animations_wanted): (bool, bool),
-    motion: Option<&MotionState>,
+    (motion, binding, values): (Option<&MotionState>, Option<&serde_json::Value>, &MotionValueStore),
     (colors, font): (&ColorContext, &ParentFont),
     transitions: &mut CssTransitions,
     animations: &mut CssAnimations,
@@ -176,6 +179,13 @@ fn step(
         values.apply_to(&mut moved);
         moved
     });
+    // Motion values are inline style as well, and come after `motion`.
+    let bound = binding.map(|binding| {
+        let mut bound = moved.clone().unwrap_or_else(|| declared.style.clone());
+        values.apply_in(binding, &mut bound, font, Scope::InlineBox);
+        bound
+    });
+    let moved = bound.or(moved);
     let underlying = moved.as_ref().unwrap_or(&declared.style);
     let animated = animations_wanted
         .then(|| {
@@ -208,6 +218,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::css::length::LinearLength;
+    use crate::text::inline_insets::InsetSpec;
+    use std::rc::Rc;
     use crate::color::Scheme;
     use crate::css::font_features::FontFeatureState;
     use crate::css::length::LengthContext;
@@ -223,6 +236,7 @@ mod tests {
         animations: CssAnimations,
         keyframes: KeyframesRegistry,
         motion: HashMap<u64, MotionState>,
+        values: MotionValueStore,
     }
 
     impl Page {
@@ -243,7 +257,19 @@ mod tests {
                 animations: CssAnimations::default(),
                 keyframes: KeyframesRegistry::default(),
                 motion: HashMap::new(),
+                values: MotionValueStore::default(),
             }
+        }
+
+        /// What the renderer does for a gesture on a span: `sync_motion_states` tells its state.
+        fn gesture(&mut self, id: u64, gestures: crate::motion::Gestures, millis: u64) {
+            let base = self.tree.elements[&id].style.clone();
+            let now = self.origin + Duration::from_millis(millis);
+            self.motion
+                .get_mut(&id)
+                .expect("a mounted state")
+                .set_gestures(gestures, base.as_deref(), now)
+                .expect("a valid gesture");
         }
 
         /// What `sync_motion_states` does for a `motion.span`: mounts the state, or
@@ -293,6 +319,7 @@ mod tests {
                 &ParentFont::initial(),
                 &|_, _| PointerStates::default(),
                 Timeline {
+                    values: &self.values,
                     transitions: &mut self.transitions,
                     animations: &mut self.animations,
                     keyframes: &self.keyframes,
@@ -515,22 +542,26 @@ mod tests {
     }
 
     #[test]
-    fn only_colours_move_on_an_inline_box() {
+    fn what_an_inline_box_shows_moves_with_a_transition_and_the_rest_does_not() {
         let mut page = Page::new();
-        let style = |color: &str, padding: u32| {
-            format!(r#"{{ "color": "{color}", "paddingLeft": {padding}, "transition": "all 1s linear" }}"#)
+        let style = |color: &str, padding: u32, width: u32| {
+            format!(
+                r#"{{ "color": "{color}", "paddingLeft": {padding}, "width": {width}, "transition": "all 1s linear" }}"#
+            )
         };
-        page.style(3, &style("red", 0));
+        page.style(3, &style("red", 0, 0));
         page.frame(0);
-        page.style(3, &style("blue", 40));
+        page.style(3, &style("blue", 40, 100));
         page.frame(0);
         let middle = page.frame(500);
         let shown = page.shown(&middle, 3);
-        assert_eq!(shown.padding_left, crate::css::length::LinearLength::px(40.0).into());
+        assert_eq!(shown.padding_left, crate::css::length::LinearLength::px(20.0).into());
+        assert_eq!(shown.width, Some(crate::style::DimensionValue::Pixels(100.0)), "a span has no width to move");
         mid_red_to_blue(&shown.color);
         let events: Vec<TransitionEvent> = page.transitions.take_events();
-        assert!(!events.is_empty());
-        assert!(events.iter().all(|event| event.property_name() == "color"), "{} events", events.len());
+        let names: std::collections::BTreeSet<_> = events.iter().map(|event| event.property_name()).collect();
+        assert!(names.contains("color") && names.contains("padding-left"), "{names:?}");
+        assert!(!names.contains("width"), "{names:?}");
     }
 
     #[test]
@@ -716,13 +747,13 @@ mod tests {
         let mut page = Page::new();
         page.style(3, r#"{ "color": "red" }"#);
         let animate = page
-            .describe(3, &description("false", r#"{ "color": "red", "paddingLeft": 12 }"#))
-            .expect_err("padding does not move on a span");
-        assert!(animate.contains("animate") && animate.contains("paddingLeft") && animate.contains("span"), "{animate}");
+            .describe(3, &description("false", r#"{ "color": "red", "height": 12 }"#))
+            .expect_err("a height does not move on a span");
+        assert!(animate.contains("animate") && animate.contains("height") && animate.contains("span"), "{animate}");
         let initial = page
-            .describe(3, &description(r#"{ "fontSize": 20 }"#, r#"{ "color": "red" }"#))
-            .expect_err("a font size does not move on a span");
-        assert!(initial.contains("initial") && initial.contains("fontSize"), "{initial}");
+            .describe(3, &description(r#"{ "flexGrow": 1 }"#, r#"{ "color": "red" }"#))
+            .expect_err("a flex does not move on a span");
+        assert!(initial.contains("initial") && initial.contains("flexGrow"), "{initial}");
         assert!(page.motion.is_empty());
 
         page.describe(3, &description("false", r#"{ "color": "red" }"#)).unwrap();
@@ -849,5 +880,183 @@ mod tests {
         let tree = &page.tree;
         page.transitions.retain(|id| id != 3 && tree.elements.contains_key(&id));
         assert!(!page.transitions.wants(3, None), "nothing is left to settle");
+    }
+
+    fn placed(styles: &InlineStyles, page: &Page) -> Rc<crate::text::inline_insets::Insets> {
+        let lengths = LengthContext::initial(800.0, 600.0);
+        let insets = InsetSpec::of_moving(
+            &page.tree,
+            &page.paragraph(),
+            &ColorContext::root(Scheme::Light),
+            &lengths,
+            &|_, _| PointerStates::default(),
+            styles,
+        );
+        insets.at(None)
+    }
+
+    #[test]
+    fn the_padding_and_font_of_a_span_move_and_the_paragraph_reads_them_as_the_frame_has_them() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "paddingLeft": 0, "fontSize": 10, "borderLeftWidth": 0, "borderLeftStyle": "solid" }"#);
+        page.describe(
+            3,
+            &description(
+                r#"{ "paddingLeft": 0, "fontSize": 10, "borderLeftWidth": 0 }"#,
+                r#"{ "paddingLeft": 20, "fontSize": 30, "borderLeftWidth": 4 }"#,
+            ),
+        )
+        .expect("an inline box can move its padding, font and border");
+        let middle = page.frame(500);
+        let style = page.shown(&middle, 3);
+        assert_eq!(style.padding_left, Some(LinearLength::px(10.0)));
+        assert_eq!(style.font_size, Some(LinearLength::px(20.0)));
+        assert_eq!(style.border_left_width, Some(LinearLength::px(2.0)));
+        let inset = placed(&middle, &page).text();
+        assert_eq!(inset.len(), 1);
+        assert_eq!(f32::from(inset[0].leading), 12.0, "padding and border push the text");
+        let end = page.frame(1000);
+        assert_eq!(f32::from(placed(&end, &page).text()[0].leading), 24.0);
+    }
+
+    fn bind(page: &mut Page, id: u64, json: &str) -> serde_json::Value {
+        let binding: serde_json::Value = serde_json::from_str(json).expect("a binding");
+        page.tree.set_custom_prop(id, "motionValues".to_string(), binding.clone());
+        binding
+    }
+
+    #[test]
+    fn a_motion_value_in_the_style_of_a_span_moves_what_a_span_can_move() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "backgroundColor": "red" }"#);
+        page.values.create_source(1.0, &serde_json::json!(0.5)).expect("a value");
+        page.values.create_source(2.0, &serde_json::json!(16)).expect("a value");
+        page.values.create_source(3.0, &serde_json::json!(300)).expect("a value");
+        let binding = bind(&mut page, 3, r#"{ "opacity": 1, "paddingLeft": 2, "width": 3 }"#);
+        page.values.frame([&binding], &[], page.origin);
+        let styles = page.frame(0);
+        let style = page.shown(&styles, 3);
+        assert_eq!(style.opacity, Some(0.5));
+        assert_eq!(style.padding_left, Some(LinearLength::px(16.0)));
+        assert_eq!(style.width, None, "a width is nothing a span has");
+        assert_eq!(f32::from(placed(&styles, &page).text()[0].leading), 16.0);
+    }
+
+    #[test]
+    fn a_span_with_only_a_binding_has_a_style_of_its_own_for_the_frame() {
+        let mut page = Page::new();
+        page.values.create_source(1.0, &serde_json::json!(0.25)).expect("a value");
+        let binding = bind(&mut page, 3, r#"{ "opacity": 1 }"#);
+        page.values.frame([&binding], &[], page.origin);
+        let styles = page.frame(0);
+        assert_eq!(styles.declared_by(&page.tree, 3).and_then(|style| style.opacity), Some(0.25));
+    }
+
+    fn hovered() -> crate::motion::Gestures {
+        crate::motion::Gestures { hover: true, ..Default::default() }
+    }
+
+    #[test]
+    fn a_span_goes_to_its_hover_target_and_back_to_its_own_style() {
+        let mut page = Page::new();
+        page.style(3, r##"{ "color": "#ff0000", "paddingLeft": 4 }"##);
+        page.describe(
+            3,
+            r##"{ "animate": {}, "whileHover": { "color": "#0000ff", "paddingLeft": 24 },
+                 "transition": { "duration": 1, "ease": "linear" } }"##,
+        )
+        .expect("a hover target");
+        let rest = page.frame(0);
+        assert_eq!(page.shown(&rest, 3).padding_left, Some(LinearLength::px(4.0)), "no gesture, no track");
+
+        page.gesture(3, hovered(), 0);
+        let middle = page.frame(500);
+        assert_eq!(page.shown(&middle, 3).padding_left, Some(LinearLength::px(14.0)));
+        mid_red_to_blue(&page.shown(&middle, 3).color);
+        let hovered_end = page.frame(1000);
+        assert_eq!(page.shown(&hovered_end, 3).padding_left, Some(LinearLength::px(24.0)));
+
+        page.gesture(3, Default::default(), 1000);
+        let back = page.frame(1500);
+        assert_eq!(page.shown(&back, 3).padding_left, Some(LinearLength::px(14.0)), "it goes back to the 4px of its style");
+        let rested = page.frame(2000);
+        assert_eq!(page.shown(&rested, 3).padding_left, Some(LinearLength::px(4.0)));
+        assert_eq!(rgb(&page.shown(&rested, 3).color), [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_tap_beats_a_hover_and_a_focus_beats_both() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "paddingLeft": 0 }"#);
+        page.describe(
+            3,
+            r#"{ "animate": {}, "whileHover": { "paddingLeft": 10 }, "whileTap": { "paddingLeft": 20 },
+                 "whileFocus": { "paddingLeft": 30 }, "transition": { "duration": 0 } }"#,
+        )
+        .expect("targets");
+        let at = |page: &mut Page, gestures, millis| {
+            page.gesture(3, gestures, millis);
+            let styles = page.frame(millis + 10);
+            page.shown(&styles, 3).padding_left
+        };
+        let hover = crate::motion::Gestures { hover: true, ..Default::default() };
+        let both = crate::motion::Gestures { tap: true, ..hover };
+        let all = crate::motion::Gestures { focus: true, ..both };
+        assert_eq!(at(&mut page, hover, 0), Some(LinearLength::px(10.0)));
+        assert_eq!(at(&mut page, both, 20), Some(LinearLength::px(20.0)));
+        assert_eq!(at(&mut page, all, 40), Some(LinearLength::px(30.0)));
+        assert_eq!(at(&mut page, hover, 60), Some(LinearLength::px(10.0)));
+    }
+
+    #[test]
+    fn a_while_target_with_a_transition_of_its_own_animates_with_it() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "paddingLeft": 0 }"#);
+        page.describe(
+            3,
+            r#"{ "animate": {}, "whileHover": { "paddingLeft": 10, "transition": { "duration": 4, "ease": "linear" } },
+                 "transition": { "duration": 1, "ease": "linear" } }"#,
+        )
+        .expect("a target");
+        page.gesture(3, hovered(), 0);
+        let styles = page.frame(1000);
+        assert_eq!(page.shown(&styles, 3).padding_left, Some(LinearLength::px(2.5)), "a quarter of the way in 4s");
+        page.gesture(3, Default::default(), 1000);
+        let styles = page.frame(1500);
+        assert!(
+            page.shown(&styles, 3).padding_left.is_some_and(|left| left.px < 2.5),
+            "it goes back with the transition of the element"
+        );
+    }
+
+    #[test]
+    fn a_while_target_takes_the_same_properties_as_animate() {
+        let mut page = Page::new();
+        page.style(3, "{}");
+        let error = page
+            .describe(3, r#"{ "animate": {}, "whileHover": { "width": 10 } }"#)
+            .expect_err("a span has no width");
+        assert!(error.contains("whileHover") && error.contains("width"), "{error}");
+    }
+
+    #[test]
+    fn in_view_is_a_gesture_that_the_description_turns_on() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "paddingLeft": 2 }"#);
+        let describe = |in_view: bool| {
+            format!(
+                r#"{{ "animate": {{}}, "whileInView": {{ "paddingLeft": 12 }}, "inView": {in_view},
+                     "transition": {{ "duration": 0 }} }}"#
+            )
+        };
+        page.describe(3, &describe(false)).expect("a target");
+        let out = page.frame(0);
+        assert_eq!(page.shown(&out, 3).padding_left, Some(LinearLength::px(2.0)));
+        page.describe_at(3, &describe(true), 10).expect("a target");
+        let seen = page.frame(20);
+        assert_eq!(page.shown(&seen, 3).padding_left, Some(LinearLength::px(12.0)));
+        page.describe_at(3, &describe(false), 30).expect("a target");
+        let gone = page.frame(40);
+        assert_eq!(page.shown(&gone, 3).padding_left, Some(LinearLength::px(2.0)));
     }
 }

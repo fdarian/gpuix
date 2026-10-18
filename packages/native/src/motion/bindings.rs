@@ -16,7 +16,7 @@ use web_time::Instant;
 use super::curve::{parse_ease, Curve, Transition};
 use super::list::ListValue;
 use super::property::{
-    check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp,
+    check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp, Scope,
 };
 use super::value::{AnimValue, Color, ParentFont};
 use super::values::{MotionValues, TransformOptions, ValueId};
@@ -367,9 +367,19 @@ impl MotionValueStore {
     /// shorthand gives each longhand its own component. `em` and `rem` resolve here,
     /// against this element, so one value bound to two elements can be two sizes.
     pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentFont) {
-        let Ok(bound) = parse_binding(binding) else {
+        self.apply_in(binding, style, parent, Scope::Element);
+    }
+
+    /// [`Self::apply`] for the style of something that is not an element: a property
+    /// `scope` cannot move is left out, as JS refuses to bind one there.
+    pub(crate) fn apply_in(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentFont, scope: Scope) {
+        let Ok(mut bound) = parse_binding(binding) else {
             return;
         };
+        bound.retain(|bound| match bound {
+            Bound::Longhand { prop, .. } => scope.animates(*prop),
+            Bound::Shorthand { props, .. } => props.iter().all(|prop| scope.animates(*prop)),
+        });
         // The `em` of a font size is the parent's and every other `em` is of the
         // element's own size, so the size is applied first.
         let (sizes, others): (Vec<&Bound>, Vec<&Bound>) = bound

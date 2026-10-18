@@ -270,12 +270,13 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
 
     const animating: Array<[string, Record<string, unknown>, string]> = [
       ["animate", { animate: { width: 100 } }, 'cannot animate "width" in animate'],
-      ["initial", { initial: { paddingLeft: 4 }, animate: { color: RED } }, 'cannot animate "paddingLeft" in initial'],
+      ["initial", { initial: { height: 4 }, animate: { color: RED } }, 'cannot animate "height" in initial'],
+      ["whileHover", { whileHover: { width: 10 } }, 'cannot animate "width" in whileHover'],
       ["exit", { exit: { width: 10 } }, 'cannot animate "width" in exit'],
       [
         "variants",
-        { variants: { big: { fontSize: 20 } }, animate: { color: RED } },
-        'cannot animate "fontSize" in the variant "big"',
+        { variants: { big: { flexGrow: 1 } }, animate: { color: RED } },
+        'cannot animate "flexGrow" in the variant "big"',
       ],
     ]
     for (const [name, props, message] of animating) {
@@ -286,7 +287,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
           </text>
         ))
         expect(error.message).toContain(message)
-        expect(error.message).toContain("inline span")
+        expect(error.message).toContain("inline box")
       })
     }
 
@@ -294,13 +295,13 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
       const error = creationError(() => (
         <text>
           <AnimatePresence>
-            <motion.span animate={{ color: RED }} exit={(() => ({ fontSize: 20 })) as never}>
+            <motion.span animate={{ color: RED }} exit={(() => ({ width: 20 })) as never}>
               aaaa
             </motion.span>
           </AnimatePresence>
         </text>
       ))
-      expect(error.message).toContain('cannot animate "fontSize" in exit')
+      expect(error.message).toContain('cannot animate "width" in exit')
     })
 
     it("a variant name that variants do not define", () => {
@@ -312,40 +313,6 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion.span", () => {
         </text>
       ))
       expect(error.message).toContain('names the variant "shown"')
-    })
-
-    const unsupported: Array<[string, unknown, string]> = [
-      ["layout", true, "layout animation"],
-      ["layoutId", "chip", "layout animation"],
-      ["layoutDependency", 1, "layout animation"],
-      ["layoutScroll", true, "layout animation"],
-      ["drag", true, "no box to drag"],
-      ["dragConstraints", { left: 0 }, "no box to drag"],
-      ["dragElastic", 0.5, "no box to drag"],
-      ["whileHover", { color: RED }, "hover"],
-      ["whileTap", { color: RED }, "hover"],
-      ["whileFocus", { color: RED }, "hover"],
-    ]
-    for (const [prop, value, reason] of unsupported) {
-      it(`the ${prop} prop`, () => {
-        const error = creationError(() => (
-          <text>
-            <motion.span {...({ [prop]: value } as object)}>aaaa</motion.span>
-          </text>
-        ))
-        expect(error.message).toContain(`motion.span does not support "${prop}"`)
-        expect(error.message).toContain(reason)
-      })
-    }
-
-    it("a motion value in the style", () => {
-      const error = creationError(() => (
-        <text>
-          <motion.span style={{ color: motionValue("#ff0000") as never }}>aaaa</motion.span>
-        </text>
-      ))
-      expect(error.message).toContain("style.color")
-      expect(error.message).toContain("motion value")
     })
 
     it("variants on a motion.div", () => {

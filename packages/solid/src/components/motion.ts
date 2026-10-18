@@ -1,12 +1,16 @@
-import { createRenderEffect, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
-import type { DomEvent, StyleDesc } from "@gpuix/native/host"
+import { createEffect, createRenderEffect, createSignal, mergeProps, onCleanup, splitProps, type JSX } from "solid-js"
+import type { DomEvent, MotionValueStyle } from "@gpuix/native/host"
 import {
-  assertMotionSpanProps,
+  gestureDescription,
+  IGNORED_PROPS,
+  IntersectionObserver,
   layoutDescription,
   reduceMotionValues,
   resolveExit,
   resolveSpanMotion,
   scopeLayoutId,
+  viewportObserverInit,
+  withoutIgnoredSpanStyle,
   withoutLayoutTransition,
   wireMotionTransition,
 } from "@gpuix/native/host"
@@ -16,7 +20,7 @@ import type {
   MotionLayoutProps,
   MotionProps,
   MotionSpanAnimation,
-  MotionSpanUnsupportedProps,
+  MotionSpanIgnoredProps,
   MotionTransition,
   SvgMotionTransition,
   SvgCircleProps,
@@ -47,17 +51,17 @@ import { MotionConfigContext } from "./motion-config.js"
 export interface MotionDivProps extends SolidHostProps, WithExitFunction<MotionProps>, MotionLayoutProps {}
 
 /**
- * Props of a `motion.span`: an inline span animates its colours, underline and font variations (`animate`,
- * `initial`, `exit`, or the `variants` they name) and takes the props of a
- * `<span>`. It has no box to measure or drag, so `layout`, `layoutId`, `drag*`
- * and `while*` are errors.
+ * Props of a `motion.span`: an inline span animates what an inline box shows (`animate`, `initial`,
+ * `exit`, `whileHover`, `whileTap`, `whileFocus`, `whileInView`, or the `variants` they name) and takes
+ * the props of a `<span>`. A non-atomic inline box takes no transform, so `layout`, `layoutId`, `drag*`
+ * and the transform keys are accepted and have no effect, as in a browser.
  */
 export type MotionSpanProps = Omit<
   SolidHostProps,
-  "style" | keyof MotionSpanAnimation | keyof MotionSpanUnsupportedProps
+  "style" | keyof MotionSpanAnimation | keyof MotionSpanIgnoredProps
 > &
   MotionSpanAnimation &
-  MotionSpanUnsupportedProps & { style?: StyleDesc }
+  MotionSpanIgnoredProps & { style?: MotionValueStyle }
 
 /** A `motion.path`, `motion.circle`, ...: the shape's own props plus the animation. */
 export type MotionShapeProps<Shape> = SolidHostProps<Shape> & WithExitFunction<SvgMotionProps>
@@ -69,6 +73,11 @@ interface MotionSource {
   variants?: MotionSpanAnimation["variants"]
   custom?: unknown
   transition?: MotionTransition | SvgMotionTransition
+  whileHover?: MotionSpanAnimation["whileHover"]
+  whileTap?: MotionSpanAnimation["whileTap"]
+  whileFocus?: MotionSpanAnimation["whileFocus"]
+  whileInView?: MotionSpanAnimation["whileInView"]
+  viewport?: MotionSpanAnimation["viewport"]
   layout?: MotionLayoutProps["layout"]
   layoutId?: string
   /** The drag values of a `Reorder.Item`; not part of the API. */
@@ -81,9 +90,8 @@ export type MotionDragProps = MotionDivProps & { layoutDrag?: LayoutDrag }
 export function createMotionComponent<Props extends MotionSource & SolidHostProps<object>>(tag: string) {
   const inline = tag === "span"
   return function Motion(props: Props): JSX.Element {
-    if (inline) assertMotionSpanProps(props as Record<string, unknown>)
-    else if ((props as MotionSource).variants !== undefined) throw new Error("variants is only supported by motion.span")
-    const [motionProps, hostProps] = splitProps(props as MotionSource & Record<string, unknown>, [
+    if (!inline && (props as MotionSource).variants !== undefined) throw new Error("variants is only supported by motion.span")
+    const [motionProps, ownProps] = splitProps(props as MotionSource & Record<string, unknown>, [
       "initial",
       "animate",
       "exit",
@@ -93,7 +101,17 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       "layout",
       "layoutId",
       "layoutDrag",
+      ...(inline ? (["whileHover", "whileTap", "whileFocus", "whileInView", "viewport"] as const) : []),
     ])
+    // A span takes no layout, drag or transform: what Framer would move with one is left where it is.
+    const [, withoutIgnored] = splitProps(ownProps, inline ? (IGNORED_PROPS as string[]) : [])
+    const hostProps = inline
+      ? mergeProps(withoutIgnored, {
+          get style() {
+            return withoutIgnoredSpanStyle((ownProps as { style?: unknown }).style)
+          },
+        })
+      : withoutIgnored
     const isPresent = useIsPresent()
     const group = useContext(PresenceGroupContext)
     const config = useContext(MotionConfigContext)
@@ -111,14 +129,41 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
         exit: declaredExit() as Parameters<typeof resolveSpanMotion>[0]["exit"],
         variants: motionProps.variants,
         custom: group?.custom() ?? motionProps.custom,
+        gestures: {
+          whileHover: motionProps.whileHover,
+          whileTap: motionProps.whileTap,
+          whileFocus: motionProps.whileFocus,
+          whileInView: motionProps.whileInView,
+        },
       })
     const exit = () => (inline ? span().exit : declaredExit())
+    const [inView, setInView] = createSignal(false)
     createRenderEffect(() => {
       if (!reduced()) return
       const release = reduceMotionValues((hostProps as { style?: unknown }).style)
       onCleanup(release)
     })
     const element = createElement(tag)
+    createEffect(() => {
+      if (!inline || motionProps.whileInView === undefined || !isPresent()) return
+      const viewport = motionProps.viewport
+      const init = viewportObserverInit(viewport)
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const latest = entries.at(-1)
+          if (!latest) return
+          if (latest.isIntersecting) {
+            setInView(true)
+            if (viewport?.once) observer.disconnect()
+          } else if (!viewport?.once) {
+            setInView(false)
+          }
+        },
+        { root: init.root as never, rootMargin: init.rootMargin, threshold: init.threshold }
+      )
+      observer.observe(element as never)
+      onCleanup(() => observer.disconnect())
+    })
     let generation = 0
     let targetKey: string | undefined
     let applied: object | undefined
@@ -129,6 +174,8 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
       )
     spread(element, mergeProps(hostProps, {
       get layout() {
+        // A layout animation moves a box with a transform, which a span has none of.
+        if (inline) return undefined
         return layoutDescription({
           layout: motionProps.layout as MotionLayoutProps["layout"],
           layoutId: scopeLayoutId(layoutGroupId?.(), motionProps.layoutId as string | undefined),
@@ -152,10 +199,14 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
         }
         const resolved = inline ? span() : undefined
         const initial = resolved ? resolved.initial : motionProps.initial
-        const animate = resolved ? resolved.animate : motionProps.animate
+        const gestures = resolved
+          ? gestureDescription(resolved.gestures, (own) => wireMotionTransition(own), inView())
+          : undefined
+        const hasGestures = gestures !== undefined && Object.keys(gestures).length > 0
+        const animate = resolved ? (resolved.animate ?? (hasGestures ? {} : undefined)) : motionProps.animate
         if (animate === undefined) return applied = undefined
         const transition = withoutLayoutTransition(resolvedTransition(resolved?.animateTransition))
-        const nextKey = JSON.stringify([initial, animate, transition, reduced()])
+        const nextKey = JSON.stringify([initial, animate, transition, reduced(), gestures])
         if (nextKey !== targetKey) {
           targetKey = nextKey
           generation += 1
@@ -168,6 +219,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
           exit: exit(),
           transition,
           ...(reduced() ? { reducedMotion: true } : {}),
+          ...gestures,
         }
       },
       onMotionComplete(event: DomEvent) {

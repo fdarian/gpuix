@@ -677,17 +677,21 @@ properties! {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
     Element,
-    /// A `<span>`, or a `<text>` inside text: it has no layout node of its own,
-    /// so only what its paragraph paints around and in its text can move: colours,
-    /// and the opacity those are painted with.
+    /// A `<span>`, or a `<text>` inside text: it has no layout node of its own, so
+    /// only what CSS lets an inline box show moves: its colours and opacity, the
+    /// font of its text, its padding, margins, borders and outline, the corners of
+    /// its background and the lines drawn over its text. Its paragraph reads those
+    /// from the style sampled for the frame, and is laid out again when one of them
+    /// changes the width of the text or the space along the line.
     InlineBox,
 }
 
 impl Scope {
     /// What an error names as the properties of [`Scope::InlineBox`].
     pub(super) const INLINE_BOX_PROPERTIES: &'static str = "colours (color, backgroundColor, textDecorationColor, \
-         outlineColor, borderColor and the four border side colours), opacity, textUnderlineOffset, \
-         textDecorationThickness and fontVariationSettings";
+         outlineColor, borderColor and the four border side colours), opacity, fontSize, fontWeight, \
+         fontVariationSettings, lineHeight, textUnderlineOffset, textDecorationThickness, padding, margin, \
+         border widths, border radii, outlineWidth and outlineOffset";
 
     pub(super) fn animates(self, prop: AnimProp) -> bool {
         match self {
@@ -703,9 +707,30 @@ impl Scope {
                     | AnimProp::BorderBottomColor
                     | AnimProp::BorderLeftColor
                     | AnimProp::OutlineColor
+                    | AnimProp::OutlineWidth
+                    | AnimProp::OutlineOffset
                     | AnimProp::TextUnderlineOffset
                     | AnimProp::TextDecorationThickness
                     | AnimProp::FontVariationSettings
+                    | AnimProp::FontSize
+                    | AnimProp::FontWeight
+                    | AnimProp::LineHeight
+                    | AnimProp::PaddingTop
+                    | AnimProp::PaddingRight
+                    | AnimProp::PaddingBottom
+                    | AnimProp::PaddingLeft
+                    | AnimProp::MarginTop
+                    | AnimProp::MarginRight
+                    | AnimProp::MarginBottom
+                    | AnimProp::MarginLeft
+                    | AnimProp::BorderTopWidth
+                    | AnimProp::BorderRightWidth
+                    | AnimProp::BorderBottomWidth
+                    | AnimProp::BorderLeftWidth
+                    | AnimProp::BorderTopLeftRadius
+                    | AnimProp::BorderTopRightRadius
+                    | AnimProp::BorderBottomLeftRadius
+                    | AnimProp::BorderBottomRightRadius
             ),
         }
     }
