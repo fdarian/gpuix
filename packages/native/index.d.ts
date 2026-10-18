@@ -502,7 +502,7 @@ export declare class TestGpuixRenderer {
   setRetainVerify(verify: boolean): void
   /**
    * Counts as if the exclusions named here were lifted, to see which are worth lifting first:
-   * `paint-reporter`, `container-query`, `highlight`, `custom-element`, `svg`, `virtual-list`,
+   * `paint-reporter`, `highlight`, `custom-element`, `svg`, `virtual-list`,
    * `collapsed-table`, `display-contents`, `anchored`, `sticky`, `fixed`, `scroller`,
    * `overflow-hidden`, `layout-animation`, `atomic-inline`, `label`. Nothing is reused.
    */

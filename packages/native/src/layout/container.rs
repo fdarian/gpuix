@@ -300,35 +300,26 @@ pub(crate) fn settle_children(
     parent: &RetainedElement,
     containers: &dyn Containers,
     window: &mut gpui::Window,
-) -> bool {
+) {
     if !tree.has_container_rules() {
-        return false;
+        return;
     }
     let mut changed = false;
-    let mut depends = false;
-    settle_among(tree, parent, containers, &mut changed, &mut depends);
+    settle_among(tree, parent, containers, &mut changed);
     if changed {
         window.request_redraw_before_present();
     }
-    depends
 }
 
-fn settle_among(
-    tree: &RetainedTree,
-    parent: &RetainedElement,
-    containers: &dyn Containers,
-    changed: &mut bool,
-    depends: &mut bool,
-) {
+fn settle_among(tree: &RetainedTree, parent: &RetainedElement, containers: &dyn Containers, changed: &mut bool) {
     for child_id in crate::layout::contents::flatten(tree, &parent.children).iter() {
         let Some(child) = tree.elements.get(child_id) else { continue };
         if let Some(style) = child.style.as_deref().filter(|style| style.container_rules.is_some()) {
             let folded = fold(style, containers);
             *changed |= settle_display(child, folded.as_ref().or(Some(style)));
-            *depends = true;
         }
         if crate::text::inline::is_inline_wrapper(child, parent) {
-            settle_among(tree, child, containers, changed, depends);
+            settle_among(tree, child, containers, changed);
         }
     }
 }
@@ -350,6 +341,20 @@ pub(crate) struct ContainerStore(Rc<RefCell<rustc_hash::FxHashMap<u64, Size>>>);
 impl ContainerStore {
     pub(crate) fn get(&self, id: u64) -> Option<Size> {
         self.0.borrow().get(&id).copied()
+    }
+
+    /// What the size of container `id` adds to the key of the element, which builds the scope
+    /// its children are in from it.
+    pub(crate) fn key(&self, id: u64) -> u64 {
+        let mut fp = crate::retain::Fingerprint::new();
+        match self.get(id) {
+            Some(size) => {
+                fp.f64(size.width);
+                fp.f64(size.height);
+            }
+            None => fp.word(u64::MAX),
+        }
+        fp.finish()
     }
 
     fn record(&self, id: u64, size: Size) {
@@ -467,6 +472,22 @@ impl ContainerScope {
         let bits = u8::from(axes.width) * WIDTH | u8::from(axes.height) * HEIGHT;
         if bits != 0 {
             self.reads.fetch_or(bits, Ordering::Relaxed);
+            crate::tape::note_build(crate::tape::BuildEffect::ContainerRead(self.id, axes));
+        }
+    }
+
+    /// Repeats a read that the build of a subtree made of the container `id`, for a frame that
+    /// replays the subtree instead of building it. Without it the container would not know that
+    /// something is built from its size, and a layout that moves only the container would not
+    /// ask for another build. A container that is not among these is inside the subtree.
+    pub(crate) fn repeat_read(&self, id: u64, axes: Axes) {
+        let mut scope = Some(self);
+        while let Some(container) = scope {
+            if container.id == id {
+                container.note_read(axes);
+                return;
+            }
+            scope = container.parent.as_deref();
         }
     }
 

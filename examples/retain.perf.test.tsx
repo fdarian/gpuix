@@ -189,7 +189,7 @@ function frames(root: TestRoot, name: string, run: () => number): RetainCounters
 /** Exclusions lifted one step after another, to see what each is worth. */
 const LIFTS: [string, string[]][] = [
   ['+custom-element', ['custom-element']],
-  ['+scroller +display-contents +container-query +paint-reporter', ['scroller', 'display-contents', 'container-query', 'paint-reporter']],
+  ['+scroller +display-contents +paint-reporter', ['scroller', 'display-contents', 'paint-reporter']],
 ]
 
 describeNative('retainable share of a frame, by page', () => {

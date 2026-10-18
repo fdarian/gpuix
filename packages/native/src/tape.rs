@@ -370,6 +370,10 @@ pub(crate) enum BuildEffect {
     Measured(u64),
     /// A style asked for the image at the address, which keeps it loaded and from being evicted.
     Image(gpui::ImageKey, Rc<str>),
+    /// A style read the content box of a query container, which the container compares with the
+    /// one it has after layout (`ContainerScope::assumption_failed`). The container is outside the
+    /// subtree or inside it; one inside has no scope to repeat the read on, and does not need it.
+    ContainerRead(u64, crate::css::container_query::Axes),
 }
 
 thread_local! {

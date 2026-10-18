@@ -150,8 +150,6 @@ pub(crate) enum Exclusion {
     /// `onScroll` on an element that scrolls: its paint calls the listener. `onLayout` and the
     /// observers are read from the published boxes after the draw (`observers::frame_sweep`).
     PaintReporter,
-    /// It declares a query container, or its style reads one.
-    ContainerQuery,
     /// It declares a `highlight`, or is inside one.
     Highlight,
     /// A custom element that has no `retain_state`: `<input>` and `<textarea>` are views of their
@@ -182,9 +180,8 @@ pub(crate) enum Exclusion {
 }
 
 impl Exclusion {
-    const ALL: [Exclusion; 16] = [
+    const ALL: [Exclusion; 15] = [
         Self::PaintReporter,
-        Self::ContainerQuery,
         Self::Highlight,
         Self::CustomElement,
         Self::Svg,
@@ -204,7 +201,6 @@ impl Exclusion {
     fn name(self) -> &'static str {
         match self {
             Self::PaintReporter => "paint-reporter",
-            Self::ContainerQuery => "container-query",
             Self::Highlight => "highlight",
             Self::CustomElement => "custom-element",
             Self::Svg => "svg",
@@ -649,8 +645,7 @@ pub(crate) struct Retain {
     /// lifted. For measuring which to lift first; nothing reuses anything.
     lifted: u32,
     verify: bool,
-    /// The smallest subtree that is skipped. A run under `GPUIX_RETAIN_VERIFY` skips every one it
-    /// can, since the small pages of a suite have no subtree of `MIN_ROOT` elements.
+    /// The smallest subtree that is skipped.
     min_root: u32,
     open: bool,
     /// A subtree gpui asked for after the frame was built is being built.
@@ -691,6 +686,10 @@ pub(crate) struct Entry<'a> {
     /// Whether nothing around the element is waiting for something from its build that a skipped
     /// build could not give (the baseline of a box, the text of a line).
     pub plain: bool,
+    /// For an element that is a query container or has `@container` blocks: the size layout last
+    /// gave the container (`ContainerStore::key`). The scope the element builds for the elements
+    /// below it is made from it, and nothing above the element has it.
+    pub container: Option<u64>,
     /// Whether the element has a layout node of its own: a table row or row group does not, and
     /// has no layout result for a retained element to be laid out as.
     pub boxed: bool,
@@ -712,10 +711,11 @@ pub(crate) struct Skip {
     pub overscan: Option<gpui::Pixels>,
 }
 
-/// Elements below this many are not worth a retained element of their own: it costs about what
-/// it saves. A table cell is two (the cell and the text in it) and a table row cannot be a root,
-/// so a bigger bound builds every cell of a table that has a row under the pointer.
-const MIN_ROOT: u32 = 2;
+/// Elements below this many are not worth a retained element of their own. Measured on the
+/// pages of the FF demo (showcase, changelog, command menu, hover, introduction): a one-element
+/// root (a text, an icon, an empty box) costs less to replay than to build, 0.5 to 0.8 ms of 3 to
+/// 6 ms per idle frame less than a bound of 2. `GPUIX_RETAIN_MIN_ROOT` sets it, to measure.
+const MIN_ROOT: u32 = 1;
 
 impl Retain {
     pub(crate) fn new() -> Self {
@@ -736,7 +736,7 @@ impl Retain {
             min_root: std::env::var("GPUIX_RETAIN_MIN_ROOT")
                 .ok()
                 .and_then(|min| min.parse().ok())
-                .unwrap_or(if std::env::var_os("GPUIX_RETAIN_VERIFY").is_some() { 1 } else { MIN_ROOT }),
+                .unwrap_or(MIN_ROOT),
             open: false,
             deferred: false,
             rows: 0,
@@ -1084,6 +1084,7 @@ impl Retain {
                 shape.word(entry.id);
                 shape.word(u64::from(entry.at));
                 shape.word(self.nodes.get(parent as usize).map_or(0, |parent| parent.key.shape));
+                shape.word(entry.container.map_or(0, |size| size | 1));
                 shape.bits(&[
                     entry.stacking_root,
                     entry.stacking_item,
@@ -1420,6 +1421,7 @@ impl Retain {
         let mut large = 0;
         let mut candidates = false;
         let all_effects = crate::tape::build_effects_since(0);
+        let mut built_dynamic = FxHashSet::default();
         for at in 0..count {
             let node = &self.nodes[at];
             let own = self.below[at];
@@ -1478,6 +1480,7 @@ impl Retain {
             }
             if node.vol.dynamic != 0 {
                 self.dynamic.insert(node.id);
+                built_dynamic.insert(node.id);
             } else {
                 self.dynamic.remove(&node.id);
             }
@@ -1514,10 +1517,27 @@ impl Retain {
             );
         }
 
+        if !self.deferred {
+            self.forget_unbuilt_dynamic(&built_dynamic);
+        }
+
         counts[RETAINED] = self.summary.elements_in_roots as u64;
         crate::perf_counters::retain_slots(&counts);
         crate::perf_counters::retained(self.summary.roots.len() as u64, large as u64);
         candidates
+    }
+
+    /// A whole frame visits every element it does not skip, and it skips none that has a dynamic
+    /// one below it. So a dynamic element that this frame did not visit sits under one that has no
+    /// box (`display: none`), and its record is of a build that is gone: it would keep every
+    /// ancestor on the spine for as long as the window lives. Its record goes too, since a frame
+    /// that shows it again must build it, not take what was recorded while its motion ran.
+    fn forget_unbuilt_dynamic(&mut self, built: &FxHashSet<u64>) {
+        let stale: Vec<u64> = self.dynamic.iter().copied().filter(|id| !built.contains(id)).collect();
+        for id in stale {
+            self.dynamic.remove(&id);
+            self.records.remove(&id);
+        }
     }
 }
 
@@ -1662,6 +1682,7 @@ mod tests {
             text_box_trim: Default::default(),
             plain: true,
             boxed: true,
+            container: None,
             prekeyed: None,
             scroller: None,
         });
@@ -1992,7 +2013,7 @@ mod tests {
         let (built, skips, replays, builds) = pass(cx);
         assert!(built > 2, "{built}");
         // The cards moved, and so did the lines in them, which are skipped inside the cards built.
-        assert_eq!((skips, replays, builds), (11, 3, 8));
+        assert_eq!((skips, replays, builds), (17, 3, 14));
     }
 
     #[gpui::test]
@@ -2096,6 +2117,8 @@ mod tests {
             .update(cx, |view, _, _| {
                 view.retain.set_planning(true);
                 view.retain.set_verify(false);
+                // A box of one element is a subtree to skip, unless this says it is not.
+                view.retain.set_min_root(2);
             })
             .unwrap();
         scene
@@ -2337,21 +2360,35 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_container_that_resizes_is_never_retained_and_neither_is_what_reads_it(cx: &mut gpui::TestAppContext) {
+    fn a_container_that_resizes_is_retained_with_what_reads_it_once_the_size_is_settled(cx: &mut gpui::TestAppContext) {
         let mut elements = page([CARD; 3]);
         elements.push(div(40, Some(1), r#"{"width": 200, "height": 30, "containerType": "inline-size"}"#));
         elements.push(div(41, Some(40), r#"{"width": "50cqw", "height": 10}"#));
         let scene = Scene::new(cx, elements);
         scene.settle(cx);
-        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        assert_eq!(scene.roots(cx), vec![1]);
+        // The size is part of the key of the container and of what is in it: a frame that finds
+        // the container resized builds it, and the page above it.
         scene.set_style(40, r#"{"width": 100, "height": 30, "containerType": "inline-size"}"#);
         scene.draw(cx);
-        scene.draw(cx);
         assert_eq!(scene.roots(cx), vec![10, 20, 30]);
-        scene.set_style(40, r#"{"width": 100, "height": 30}"#);
-        scene.set_style(41, r#"{"width": 50, "height": 10}"#);
         scene.settle(cx);
-        assert_eq!(scene.roots(cx), vec![1], "no longer a container, so nothing in the way");
+        assert_eq!(scene.roots(cx), vec![1]);
+    }
+
+    #[gpui::test]
+    fn a_parent_of_a_child_with_container_blocks_is_retained(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD; 3]);
+        elements.push(div(40, Some(1), r#"{"width": 200, "height": 30, "containerType": "inline-size"}"#));
+        elements.push(div(41, Some(40), r#"{"height": 10}"#));
+        elements.push(div(42, Some(41), r#"{"height": 5, "@container": {"(min-width: 300px)": {"display": "none"}}}"#));
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
+        scene.set_style(40, r#"{"width": 400, "height": 30, "containerType": "inline-size"}"#);
+        scene.draw(cx);
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1]);
     }
 
     #[gpui::test]

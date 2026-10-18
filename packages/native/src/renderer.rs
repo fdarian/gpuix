@@ -7636,6 +7636,11 @@ fn build_element_in(
             anchor_scope: ctx.anchor_scope.is_some(),
             text_box_trim: ctx.text_box_trim,
             plain,
+            container: known
+                .style
+                .as_deref()
+                .filter(|style| style.container_rules.is_some() || crate::layout::container::declared(style).is_some())
+                .map(|_| ctx.containers.key(id)),
             boxed: !matches!(
                 crate::layout::table::part(known),
                 Some(
@@ -7694,6 +7699,11 @@ fn retained_root(
         match effect {
             crate::tape::BuildEffect::Measured(id) => ctx.measurements.keep(*id),
             crate::tape::BuildEffect::Image(key, url) => crate::background_images::request(*key, url),
+            crate::tape::BuildEffect::ContainerRead(container, axes) => {
+                if let Some(scope) = ctx.inherited.container_chain() {
+                    scope.repeat_read(*container, *axes);
+                }
+            }
         }
     }
     crate::background_images::pump(window, cx);
@@ -7782,9 +7792,6 @@ fn build_element_unpumped(
     }
     // Its container units read the axes their containers contain.
     let reads_containers = element.style.as_deref().is_some_and(StyleDesc::reads_containers);
-    if reads_containers {
-        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
-    }
     if let (Some(style), Some(scope)) = (element.style.as_deref(), ctx.inherited.container_chain()) {
         scope.note_reads_from(style.container_unit_axes);
     }
@@ -8038,7 +8045,6 @@ fn build_element_unpumped(
         && crate::layout::table::can_be_container(element)
     {
         if let Some(declaration) = style.and_then(crate::layout::container::declared) {
-            ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
             ctx.inherited.self_container = Some(Arc::new(crate::layout::container::ContainerScope::new(
                 id,
                 declaration,
@@ -8118,14 +8124,12 @@ fn build_element_unpumped(
             if custom_type == "anchored" {
                 crate::layout::anchor_size::begin_build(window.window_handle().window_id(), tree, element);
             }
-            if crate::layout::container::settle_children(
+            crate::layout::container::settle_children(
                 ctx.tree,
                 element,
                 &crate::layout::container::Chain(ctx.inherited.container_chain()),
                 window,
-            ) {
-                ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
-            }
+            );
             let child_ids = crate::layout::contents::flatten(ctx.tree, &element.children);
             let custom_children: Vec<gpui::AnyElement> = if is_svg {
                 Vec::new()
@@ -8576,14 +8580,12 @@ pub(crate) fn build_host_container(
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
-    if crate::layout::container::settle_children(
+    crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
         window,
-    ) {
-        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
-    }
+    );
     let plan = if element.children.is_empty() {
         Vec::new()
     } else {
@@ -8953,14 +8955,12 @@ fn build_contents_container(
     if let Some(features) = ctx.inherited.font_features.clone() {
         el = el.font_features(features);
     }
-    if crate::layout::container::settle_children(
+    crate::layout::container::settle_children(
         ctx.tree,
         element,
         &crate::layout::container::Chain(ctx.inherited.container_chain()),
         window,
-    ) {
-        ctx.retain.exclude(crate::retain::Exclusion::ContainerQuery);
-    }
+    );
     if let Some(variations) = ctx.inherited.font_variations.clone() {
         el = el.font_variations(variations);
     }
