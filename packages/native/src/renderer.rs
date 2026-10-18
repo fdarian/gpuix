@@ -7679,6 +7679,9 @@ fn build_element_in(
             ),
             prekeyed,
             scroller: ctx.scroller,
+            costly: known.content.is_some()
+                || !crate::text::inline::is_host_type(&known.element_type)
+                || known.element_type == "text",
         });
         if let Some(skip) = skip {
             ctx.contents_overlay = None;

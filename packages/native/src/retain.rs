@@ -373,6 +373,8 @@ struct Record {
     holes: u64,
     /// Elements in the subtree.
     size: u32,
+    /// The element is costly to build, see [`Entry::costly`]: all that makes a root of one worth it.
+    costly: bool,
     subtree: crate::layout::cull::Subtree,
     effects: Option<Rc<[BuildEffect]>>,
     /// Whether gpui has a recording of the subtree to replay: it asked for the build, or the frame
@@ -500,6 +502,7 @@ struct Node {
     moved: bool,
     /// The scroller around it, if it is one gpui can move recordings for.
     scroller: Option<Scroller>,
+    costly: bool,
     /// Only with `verify`: a hash of what the build made of the element itself.
     digest: u64,
     subtree: crate::layout::cull::Subtree,
@@ -729,6 +732,9 @@ pub(crate) struct Entry<'a> {
     pub prekeyed: Option<EnterKey>,
     /// The scroller the element is inside of.
     pub scroller: Option<Scroller>,
+    /// Whether building the element alone costs more than replaying it: it carries text or is
+    /// not a plain host box (an image, an `<svg>`). Only a root of one element needs this.
+    pub costly: bool,
 }
 
 /// An element that was skipped, and what its parent and the frame need of it.
@@ -784,11 +790,14 @@ impl Kept {
     }
 }
 
-/// Elements below this many are not worth a retained element of their own. Measured on the
-/// pages of the FF demo (showcase, changelog, command menu, hover, introduction): a one-element
-/// root (a text, an icon, an empty box) costs less to replay than to build, 0.5 to 0.8 ms of 3 to
-/// 6 ms per idle frame less than a bound of 2. `GPUIX_RETAIN_MIN_ROOT` sets it, to measure.
-const MIN_ROOT: u32 = 1;
+/// A root of fewer elements than this is worth a retained element of its own only if the element
+/// is costly to build (`Entry::costly`). Replaying a root has a cost of its own, about what
+/// building a plain box costs: 2000 childless boxes in a scroller that nothing changes took 1.3
+/// times as long replayed as built (a rounded box 1.0, a text 0.4, since a text is the build that
+/// is worth skipping). Measured on the pages of the FF demo (showcase, changelog, command menu,
+/// hover, introduction), the texts and icons that are roots of one element are 0.5 to 0.8 ms of
+/// 3 to 6 ms per idle frame. `GPUIX_RETAIN_MIN_ROOT=1` takes every box, to measure.
+const MIN_ROOT: u32 = 2;
 
 impl Retain {
     pub(crate) fn new() -> Self {
@@ -1017,6 +1026,12 @@ impl Retain {
         true
     }
 
+    /// Whether a root of `size` elements saves more than replaying it costs. A verified run takes
+    /// every root, since it is replay that it checks.
+    fn worth(&self, size: u32, costly: bool) -> bool {
+        self.verify || size >= self.min_root || costly
+    }
+
     /// A verified run records every frame, since it is the recording that it checks.
     fn backs_off(&self) -> bool {
         self.planning && !self.verify
@@ -1214,6 +1229,7 @@ impl Retain {
             absolute: false,
             moved,
             scroller: entry.scroller,
+            costly: entry.costly,
             digest: 0,
             subtree: crate::layout::cull::Subtree::empty(),
             effects_start: crate::tape::build_effects_len(),
@@ -1307,7 +1323,7 @@ impl Retain {
         if !record.eligible {
             return Err(Kept::Ineligible);
         }
-        if record.size < self.min_root {
+        if !self.worth(record.size, record.costly) {
             return Err(Kept::TooSmall);
         }
         if record.enter.revision != node.enter.revision {
@@ -1611,7 +1627,7 @@ impl Retain {
             let oversized = clean && too_big;
             // What a scroller that only appeared moves is not a loss: the frame after it finds the rows still.
             let carried = (node.moved || self.moved[at]) && self.deltas.scrolling && !relocates;
-            candidates |= node.skipped.is_some() || (eligible && own.size >= self.min_root && !carried && !too_big);
+            candidates |= node.skipped.is_some() || (eligible && self.worth(own.size, node.costly) && !carried && !too_big);
 
             let slot = if parent.is_some_and(|parent| self.retained[parent]) {
                 self.retained[at] = true;
@@ -1682,6 +1698,7 @@ impl Retain {
                     lifts,
                     holes,
                     size: own.size,
+                    costly: node.costly,
                     subtree: node.subtree,
                     effects,
                     seasoned: self.deferred,
@@ -1861,6 +1878,7 @@ mod tests {
             container: None,
             prekeyed: None,
             scroller: None,
+            costly: true,
         });
         retain.stacking(|| (None, true));
         retain.digest(|| built.to_owned());
@@ -1949,6 +1967,7 @@ mod tests {
                     container: None,
                     prekeyed: None,
                     scroller: None,
+                    costly: true,
                 })
                 .is_some();
             if !skipped {

@@ -115,7 +115,8 @@ function frame(node: React.ReactNode, a11y: boolean): { summary: Summary; elemen
  * What a frame of a scroller may cost with retention on against off. Retention records what it
  * builds; a scroller that nothing in it can be skipped from (rows that are too small to be a
  * subtree, or too big to be a root) stops recording for a while, so the two cost the same.
- * Measured: 1.00 to 1.02, which noise is of the order of.
+ * Measured: 1.00 to 1.02, which noise is of the order of. The rows here are plain boxes: replaying
+ * one costs about what building it does, so they are not roots (`retain::MIN_ROOT`); a text is.
  */
 const SCROLL_RETAIN_OVER_OFF = 1.05
 
@@ -126,6 +127,19 @@ const SCROLL_RETAIN_OVER_OFF = 1.05
  * 2000; the margin is for a loaded machine.
  */
 const SCROLL_RELOCATED_OVER_OFF = 0.5
+
+/** What a frame of a scroller of one-element roots that cost more to build than to replay may cost with retention on against off: they are skipped. Measured: 0.4. */
+const SCROLL_TEXTS_OVER_OFF = 0.6
+
+function Texts() {
+  return (
+    <div style={{ width: 400, height: 300, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignContent: 'flex-start' }}>
+      {Array.from({ length: 2000 }, (_, index) => (
+        <text key={index} style={{ fontSize: 12, color: '#fff', margin: 2 }}>{`t${index}`}</text>
+      ))}
+    </div>
+  )
+}
 
 function Cards() {
   return (
@@ -218,16 +232,16 @@ describeNative.each([{ a11y: true }, { a11y: false }])('clipped and off-screen c
     }
   }, 300_000)
 
-  it('scroll: retention costs no more than none, and a scroll moves the rows it does not build again', () => {
-    const shapes = [
-      { name: 'boxes in a scroller, unchanged', node: <Boxes count={2000} clip="scroll" />, scrolls: false, limit: SCROLL_RETAIN_OVER_OFF },
-      { name: 'cards in a scroller, moved by the scroll every frame', node: <Cards />, scrolls: true, limit: SCROLL_RELOCATED_OVER_OFF },
-    ]
-    for (const shape of shapes) {
-      const { on, off } = retentionOverOff(shape.node, a11y, shape.scrolls)
-      console.log(`[clipped.perf] a11y=${a11y} ${shape.name}: retention on=${on.toFixed(2)}ms off=${off.toFixed(2)}ms ratio=${(on / off).toFixed(3)}`)
-      expect(on / off, `${shape.name}: ${on.toFixed(2)}ms against ${off.toFixed(2)}ms`).toBeLessThan(shape.limit)
-    }
+  const retentionShapes = [
+    { name: 'boxes in a scroller, unchanged', node: <Boxes count={2000} clip="scroll" />, scrolls: false, limit: SCROLL_RETAIN_OVER_OFF },
+    { name: 'texts in a scroller, unchanged', node: <Texts />, scrolls: false, limit: SCROLL_TEXTS_OVER_OFF },
+    { name: 'cards in a scroller, moved by the scroll every frame', node: <Cards />, scrolls: true, limit: SCROLL_RELOCATED_OVER_OFF },
+  ]
+  // One test per shape: a failure in one does not hide the others.
+  it.each(retentionShapes)('scroll: retention, $name', (shape) => {
+    const { on, off } = retentionOverOff(shape.node, a11y, shape.scrolls)
+    console.log(`[clipped.perf] a11y=${a11y} ${shape.name}: retention on=${on.toFixed(2)}ms off=${off.toFixed(2)}ms ratio=${(on / off).toFixed(3)}`)
+    expect(on / off, `${shape.name}: ${on.toFixed(2)}ms against ${off.toFixed(2)}ms`).toBeLessThan(shape.limit)
   }, 300_000)
 
   it('table: the scroll-area demo shape', () => {
