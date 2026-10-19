@@ -963,3 +963,85 @@ describeNative("a root below a sibling whose height animates, on a clock that is
     }
   })
 })
+
+// A root keeps its snapped box while the unsnapped origin layout puts it at settles at another
+// fraction of a device pixel, and the boxes inside snap edge by edge from that origin: the label here
+// is 43.4 wide (a percentage, since a length is rounded before layout), 43 where the card begins at
+// 10 and 44 where it begins at 10.4. A replay that only knew the snapped box of the card kept the 43.
+describeNative("a root whose sibling settles at a fraction of a pixel, with a box inside that snaps with its origin", () => {
+  const ROW = 640
+  const percent = (width: number) => `${(width / ROW) * 100}%`
+  const row = (leading: React.ReactNode) => (
+    <div testId="phase-row" style={{ display: "flex", width: ROW }}>
+      {leading}
+      <Page
+        style={{ flex: "none", width: 500 }}
+        card={(index) =>
+          index === 0 ? (
+            <Card
+              key={index}
+              index={index}
+              extra={<div testId="phase-label" style={{ width: "31%", height: 10, backgroundColor: RED }} />}
+            />
+          ) : null
+        }
+      />
+    </div>
+  )
+  const lead = (width: number) => row(<div testId="phase-lead" style={{ flex: "none", width: percent(width), height: 20 }} />)
+
+  /** The width of the label in the frame, and in a build of the same state. A screenshot is a draw of its
+   *  own, which would be the build: the boxes are read first. */
+  const widths = (view) => {
+    const replayed = view.bounds("phase-label").width
+    view.renderer.setRetainPlanning(false)
+    view.renderer.flush()
+    const built = view.bounds("phase-label").width
+    view.renderer.setRetainPlanning(true)
+    view.renderer.flush()
+    return { replayed, built }
+  }
+
+  it.each([10.2, 10.4, 10.6, 10.8])("is built where the sibling settled at %d", (width) => {
+    const view = setup(lead(10))
+    try {
+      view.settle()
+      view.render(lead(width))
+      view.settle()
+      const { replayed, built } = widths(view)
+      expect(replayed).toBe(built)
+      view.expectWhatABuildShows("phase-settled", ["phase-label"])
+      view.finish()
+    } finally {
+      view.unmount()
+    }
+  })
+
+  it("is built where an animating sibling comes to rest", () => {
+    const sibling = (width: number, duration: number) => (
+      <motion.div
+        testId="phase-lead"
+        initial={{ width: percent(10) }}
+        animate={{ width: percent(width) }}
+        transition={{ duration, ease: "linear" }}
+        style={{ flex: "none", height: 20 }}
+      />
+    )
+    const view = setup(row(sibling(10, 0.01)))
+    try {
+      view.settle()
+      view.render(row(sibling(10.4, 0.3)))
+      for (let frame = 0; frame < 12; frame++) {
+        advance(view, 50)
+        view.renderer.flush()
+      }
+      view.settle()
+      const { replayed, built } = widths(view)
+      expect(replayed).toBe(built)
+      view.expectWhatABuildShows("phase-animated", ["phase-label"])
+      view.finish()
+    } finally {
+      view.unmount()
+    }
+  })
+})
