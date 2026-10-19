@@ -7938,6 +7938,47 @@ Differences from a browser:
 - A keyframe length written with `em`, `rem`, `vw`, `calc()` or a mix of a length
   and a `%` is an error that names the property, as for `motion`
 
+#### Web Animations
+
+`element.getAnimations()` on a ref returns the element's running CSS transitions,
+then its CSS animations, as `CSSTransition` and `CSSAnimation` objects. A
+transition is listed in the order of the style changes that started them, then by
+property name; animations in the order of `animation-name`. An animation is listed
+while it is before or in its active phase, running back from its end, or held by
+a fill (`forwards`, `both`): one that is paused at the end of its effect without a
+fill is not listed, as in Chrome. The same object stands for the same run on every
+call.
+
+```tsx
+const [animation] = ref.current.getAnimations()
+animation.pause()
+animation.currentTime = 250 // the next frame paints it
+await animation.finished // resolves with the animation
+```
+
+- **Members.** `pause()`, `play()`, `currentTime` (milliseconds, read and set,
+  `null` when idle), `playbackRate` (read and set, negative allowed), `playState`
+  (`idle`, `running`, `paused`, `finished`), `finished`, `animationName` on a
+  `CSSAnimation` and `transitionProperty` (`background-color`) on a `CSSTransition`
+- **Time.** `currentTime` is 0 at the start whatever the delay, which lives inside
+  the effect, and reads the time of the last frame. `pause()` holds it at once,
+  `play()` continues from it at the next frame and starts a finished animation
+  over (from the end when the rate is negative), and setting it seeks at once.
+  After `pause()` or `play()`, `animationPlayState` changes are ignored
+- **`finished`.** Resolves with the animation. It is a new promise once the
+  animation leaves `finished` again. Cancelling (the name leaves `animation`, a
+  transition is replaced, the element goes) rejects the promise that was held with
+  an `AbortError` and leaves the animation `idle`
+- **A finished transition** keeps `playState: 'finished'` and its end as
+  `currentTime`, and drops out of `getAnimations()`. Commands on it, and on a
+  cancelled animation, throw an `InvalidStateError`
+- **Not built.** `cancel()`, `finish()`, `reverse()`, `updatePlaybackRate()`,
+  `ready`, `effect`, `timeline`, `startTime`, `onfinish` and `oncancel`;
+  `getAnimations({ subtree: true })` and `document.getAnimations()`. Animations of
+  `motion`, `animate` and motion values are not listed. `Animation`, `CSSAnimation`
+  and `CSSTransition` are exported from `@gpuix/react` and `@gpuix/solid`; they
+  cannot be constructed by an app
+
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
 
 ### Universal style
