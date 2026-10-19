@@ -7,9 +7,12 @@
 
 import fs from "fs"
 import { describe, expect, it } from "vitest"
+import { defineKeyframes } from "../index"
 import { createTestRoot, hasNativeTestRenderer, TestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
+
+defineKeyframes("handler-calls-grow", { from: { width: 20 }, to: { width: 50 } })
 
 const SQUARE_FONT = fs.readFileSync(new URL("./fixtures/gpuix-test-square.ttf", import.meta.url))
 const PNG_1X1 = Buffer.from(
@@ -84,6 +87,8 @@ function calls(r, ids) {
     focusPreviousWithin: () => r.focusPreviousWithin(ids.form),
     getA11yTree: () => r.getA11yTree(),
     getAllText: () => r.getAllText(),
+    getAnimation: () => r.getAnimation(r.getAnimations(ids.box)[0].id),
+    getAnimations: () => r.getAnimations(ids.box),
     getAppearance: () => r.getAppearance(),
     getAutomationTree: () => r.getAutomationTree(),
     getBuildCounters: () => r.getBuildCounters(),
@@ -119,6 +124,8 @@ function calls(r, ids) {
     hasPointerCapture: () => r.hasPointerCapture(ids.box, 1),
     isMotionValueAnimating: () => r.isMotionValueAnimating(910),
     jumpMotionValue: () => r.jumpMotionValue(910, 2),
+    pauseAnimation: () => r.pauseAnimation(r.getAnimations(ids.box)[0].id),
+    playAnimation: () => r.playAnimation(r.getAnimations(ids.box)[0].id),
     matchesFocus: () => r.matchesFocus(ids.field, ":focus"),
     pointerLockElement: () => r.pointerLockElement(),
     readClipboardText: () => r.readClipboardText(),
@@ -134,6 +141,8 @@ function calls(r, ids) {
     scrollToItem: () => r.scrollToItem(ids.scroller, 0),
     selectText: () => r.selectText(ids.field),
     setA11yActive: () => r.setA11yActive(true),
+    setAnimationCurrentTime: () => r.setAnimationCurrentTime(r.getAnimations(ids.box)[0].id, 10),
+    setAnimationPlaybackRate: () => r.setAnimationPlaybackRate(r.getAnimations(ids.box)[0].id, 2),
     setAppearance: () => r.setAppearance("dark"),
     setDebugFrameOverlay: () => r.setDebugFrameOverlay("hidden"),
     setImage: () => r.setImage(ids.img, PNG_1X1),
@@ -209,7 +218,7 @@ describeNative("renderer calls from a sync handler", () => {
               <input testId="field" defaultValue="hi" style={{ width: 100, height: 20 }} onKeyDown={on === "keydown" ? run : undefined} />
             </form>
             <img testId="img" style={{ width: 10, height: 10 }} />
-            <div testId="box" style={{ width: 50, height: 20 }} />
+            <div testId="box" style={{ width: 50, height: 20, animation: "handler-calls-grow 1s linear forwards" }} />
             <div testId="scroller" style={{ width: 100, height: 50, overflow: "scroll" }}>
               <div style={{ height: 400 }} />
             </div>
