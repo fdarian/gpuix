@@ -931,3 +931,35 @@ describeNative("an inline span and an svg group running inside a root", () => {
   )
 })
 
+
+// The clock of every case above is paused, so the two passes of a verified frame read one instant. A
+// live clock is read by each pass on its own, and whatever animates is further along in the pass that
+// the replay is compared with, so a root below it sits somewhere else in it.
+describeNative("a root below a sibling whose height animates, on a clock that is running", () => {
+  it("is moved by layout each frame, and a verified frame finds it where a build of the same instant puts it", () => {
+    const view = setup(
+      <div>
+        <motion.div
+          testId="grower"
+          initial={{ height: 0 }}
+          animate={{ height: 400 }}
+          transition={{ duration: 2, ease: "linear" }}
+          style={{ width: 140, backgroundColor: RED }}
+        />
+        <Page />
+      </div>
+    )
+    try {
+      view.settle()
+      const tops = new Set<number>()
+      for (let frame = 0; frame < 12; frame++) {
+        view.renderer.flush()
+        tops.add(view.bounds("card-0").y)
+      }
+      expect(tops.size, "the root was moved by layout").toBeGreaterThan(3)
+      view.finish()
+    } finally {
+      view.unmount()
+    }
+  })
+})

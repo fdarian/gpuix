@@ -4994,6 +4994,8 @@ pub(crate) struct GpuixView {
     selection_scroll_task: Option<gpui::Task<()>>,
     /// Motion / review clock. Live wall time unless automation freezes it.
     pub(crate) clock: crate::automation::AutomationClock,
+    /// The instant the last pass that was not a verifier's reference was built at.
+    built_at: Option<web_time::Instant>,
     /// Resolved `highlight` state, keyed by the element that declared it.
     /// Empty in every app that does not use search.
     highlights: HashMap<u64, HighlightCacheEntry>,
@@ -5480,6 +5482,7 @@ impl GpuixView {
             selection_scroll_list: None,
             selection_scroll_task: None,
             clock: crate::automation::AutomationClock::new(),
+            built_at: None,
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
             containers: Default::default(),
@@ -7430,8 +7433,8 @@ impl gpui::Render for GpuixView {
         let verifies = self.retain.verifies_frames();
         self.tapes.verify(verifies);
         // A build is not the same twice in a frame here (anchor-size() reads the size the trigger
-        // painted a pass ago, motions advance when they are built), so outside the subtrees that
-        // replayed the two passes differ, and every wrapper makes a dispatch node.
+        // painted a pass ago), so outside the subtrees that replayed the two passes differ, and
+        // every wrapper makes a dispatch node.
         window.set_retention_whole_frame(false);
         window.set_retention_verifier(verifies.then(|| {
             let tapes = self.tapes.clone();
@@ -7497,7 +7500,20 @@ impl gpui::Render for GpuixView {
         // Build the element tree. custom_registry, focus_handles, and scroll_handles
         // are different fields of self, so Rust allows borrowing all simultaneously.
         let theme = Theme::dark();
-        let now = self.clock.now();
+        // Everything time-dependent in a pass (motions, springs, transitions, animations, scroll
+        // animations, scrollbar fades) reads this one instant. The reference pass of a verified
+        // frame takes the instant of the pass it is compared with: on a clock that runs on it
+        // would be a pass ahead, and a replayed subtree placed by something that animates would
+        // differ from it by the distance that moved. Those are all sampled at `now` and not
+        // stepped, so building again at the same instant gives the same state.
+        let now = if window.is_retention_reference() {
+            self.built_at
+                .expect("a reference pass is built right after the pass it is compared with")
+        } else {
+            let now = self.clock.now();
+            self.built_at = Some(now);
+            now
+        };
         crate::scroll::begin_frame(|id| tree.elements.contains_key(&id));
         crate::scrollbar::begin_frame(
             now,
