@@ -6240,8 +6240,8 @@ written later wins, as in CSS. The ones below take CSS's several-value syntax.
 |---|---|
 | `padding`, `margin`, `inset`, `borderWidth` | One to four values in CSS order: `"8px"` is all sides, `"8px 12px"` top and bottom then left and right, `"1px 2px 3px"` top, left and right, bottom, `"1px 2px 3px 4px"` top, right, bottom, left. `margin` and `inset` take `auto` too. `borderWidth` takes `thin`, `medium` and `thick` and no `%` |
 | `gap` | One or two lengths: `"4px 8px"` is the gap between rows, then between columns |
-| `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: gpuix only lays out left to right and horizontally |
-| `borderBlock`, `borderInline` | Written like `border` (`"1px solid red"`), for top and bottom or left and right |
+| `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: gpuix only lays out horizontally. The start of an inline pair is the left, and the right where the element's `direction` is `rtl` |
+| `borderBlock`, `borderInline` | Written like `border` (`"1px solid red"`), for top and bottom or left and right (both sides get the one value, so `direction` does not matter) |
 | `flex` | A number `n` is `n 1 0%`. `none` is `0 0 auto`, `auto` is `1 1 auto`, `initial` is `0 1 auto`. Otherwise `<grow> <shrink>? \|\| <basis>`: `"2 3"`, `"2 100px"`, `"100px 2"`, and a lone basis (`"100px"`, `"50%"`, `"fit-content"`) is `1 1 <basis>`. The basis is what `flexBasis` takes: `"1 1 content"` is a basis of the content size |
 | `flexFlow` | `"<direction> \|\| <wrap>"` in either order (`"column wrap"`); a part left out is `row` or `nowrap` |
 | `placeItems`, `placeContent`, `placeSelf` | `"<align> <justify>"`; one value is both (`"center"`, `"center end"`). Each value is one the longhand takes, so `placeItems: "left"` throws as in CSS |
@@ -6698,7 +6698,9 @@ sits in its area, the columns of a table (the first column is the rightmost, a c
 they are, the border of a `collapse` table that is on the end of a cell is its left one), a block narrower than
 its parent, which sits at the right edge, a `position: absolute` box with no `left` or `right`, and the side a
 vertical scrollbar takes. Physical properties do not swap: `paddingLeft`, `borderRight`, `left` stay where they
-say.
+say. The logical ones follow the direction: the start of `marginInline`, `paddingInline` and `insetInline` is the
+right in an rtl element (the left in one that goes back to `ltr`), also for a `<span>`, which takes the
+direction of its paragraph's container.
 
 ```tsx
 <div style={{ direction: 'rtl', width: 300 }}>
@@ -6721,7 +6723,6 @@ Differences from Chrome:
   the `direction` of the element, so a Latin sentence in an rtl block puts its punctuation as it does in an ltr
   one, and the order of mixed-direction text is CoreText's. Wrapping and hit tests inside a right-to-left run are
   approximate.
-- `marginInline`, `paddingInline` and `insetInline` keep the left as their start.
 - `direction` is not animatable.
 
 ### Cursors

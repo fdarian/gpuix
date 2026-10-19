@@ -8185,6 +8185,11 @@ fn build_element_unpumped(
     let descended = ctx.inherited.clone().descend(style, element.has_inert_prop());
     let parent_inherited = std::mem::replace(&mut ctx.inherited, descended);
     crate::layout::table::enter(&mut ctx.inherited.table_row, &mut ctx.inherited.table_cell, element);
+    // The start of a logical inline pair is the right side in an rtl element.
+    let rtl_style = style
+        .filter(|_| ctx.inherited.direction.direction.is_rtl())
+        .and_then(StyleDesc::mirrored_inline_pairs);
+    let style = rtl_style.as_ref().or(style);
     // An atomic inline's margin and percentage width are the paragraph's to lay out. They
     // resolve against the font of the box, which is known now.
     let atomic_style = atomic_root.then(|| {
@@ -9356,6 +9361,7 @@ fn paragraph_content(
             &ctx.inherited.lengths,
             &states,
             &motion,
+            ctx.inherited.direction.direction.is_rtl(),
         );
         let inline_decorations = crate::text::inline_decoration::of(
             ctx.tree,

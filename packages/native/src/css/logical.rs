@@ -2,8 +2,10 @@
 //! `padding-inline`, `inset-block` and `inset-inline`, which take one or two values for the
 //! start and the end of an axis.
 //!
-//! gpuix lays out left to right and horizontally, so the block axis is `top` and `bottom` and
-//! the inline axis `left` and `right`. Each is kept as its own style field, a rung between the
+//! gpuix lays out horizontally, so the block axis is `top` and `bottom` and the inline axis
+//! `left` and `right`: `start` is the left in `direction: ltr` and the right in `rtl`, where
+//! [`StyleDesc::mirrored_inline_pairs`] swaps the two ends of the inline pairs before they are
+//! read as sides. Each is kept as its own style field, a rung between the
 //! four-sided shorthand (`margin`) and the side longhands (`marginTop`), which win: that is
 //! the order `*_below_longhands` layers them in. `border-block` and `border-inline` are
 //! strings like `border`, and `border.rs` layers them between `border` and `borderTop`.
@@ -151,6 +153,26 @@ impl StyleDesc {
         layered(&self.inset, &self.inset_block, &self.inset_inline)
     }
 
+    /// This style as laid out for an element whose inline axis runs right to left: the start of
+    /// `margin-inline`, `padding-inline` and `inset-inline` is its right side and the end its
+    /// left, and the sides read them as left then right. `None` when the style has none of them.
+    /// `border-inline` sets both sides to one value, so it has nothing to swap.
+    pub(crate) fn mirrored_inline_pairs(&self) -> Option<StyleDesc> {
+        if self.margin_inline.is_none() && self.padding_inline.is_none() && self.inset_inline.is_none() {
+            return None;
+        }
+        fn swap<T>(pair: &mut Option<Pair<T>>) {
+            if let Some(pair) = pair {
+                std::mem::swap(&mut pair.start, &mut pair.end);
+            }
+        }
+        let mut mirrored = self.clone();
+        swap(&mut mirrored.margin_inline);
+        swap(&mut mirrored.padding_inline);
+        swap(&mut mirrored.inset_inline);
+        Some(mirrored)
+    }
+
     /// Whether the style sets `top` and `bottom` to a length or a percentage, by either name.
     pub(crate) fn has_both_vertical_insets(&self) -> bool {
         let inset = self.inset_below_longhands();
@@ -221,6 +243,27 @@ mod tests {
             (Some(DimensionValue::Auto), px(5.0), px(9.0), px(5.0))
         );
         assert_eq!(StyleDesc::default().margin_below_longhands(), Sides { top: None, right: None, bottom: None, left: None });
+    }
+
+    #[test]
+    fn the_inline_pairs_of_an_rtl_element_swap_their_ends() {
+        let style: StyleDesc = serde_json::from_str(
+            r#"{"marginInline": "10px 20px", "paddingInline": "1px 2px", "insetInline": "3px 4px", "marginBlock": "5px 6px",
+                "marginLeft": 7}"#,
+        )
+        .unwrap();
+        let mirrored = style.mirrored_inline_pairs().unwrap();
+        let px = |value: f64| Some(DimensionValue::Pixels(value));
+        let margin = mirrored.margin_below_longhands();
+        assert_eq!((margin.top, margin.right, margin.bottom, margin.left), (px(5.0), px(10.0), px(6.0), px(20.0)));
+        assert_eq!(mirrored.margin_left, px(7.0), "a side longhand is physical");
+        let padding = mirrored.padding_below_longhands();
+        assert_eq!((padding.left, padding.right), (Some(length("2px")), Some(length("1px"))));
+        let inset = mirrored.inset_below_longhands();
+        assert_eq!((inset.left, inset.right), (px(4.0), px(3.0)));
+        assert_eq!(StyleDesc::default().mirrored_inline_pairs(), None);
+        let block_only: StyleDesc = serde_json::from_str(r#"{"marginBlock": 5, "borderInline": "1px solid red"}"#).unwrap();
+        assert_eq!(block_only.mirrored_inline_pairs(), None);
     }
 
     #[test]

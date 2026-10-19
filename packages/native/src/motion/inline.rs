@@ -914,6 +914,7 @@ mod tests {
             &lengths,
             &|_, _| PointerStates::default(),
             styles,
+            false,
         );
         insets.at(None)
     }

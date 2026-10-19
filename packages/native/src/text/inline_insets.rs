@@ -222,12 +222,13 @@ impl InsetSpec {
         lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
     ) -> Rc<Self> {
-        Self::of_moving(tree, paragraph, colors, lengths, states, &InlineStyles::default())
+        Self::of_moving(tree, paragraph, colors, lengths, states, &InlineStyles::default(), false)
     }
 
     /// [`Self::of`] for the style `motion` has sampled for each box in this frame: a
     /// transition, an animation or `motion` on a span moves its padding, margin and
-    /// border, and its font size is the `em` of what it holds.
+    /// border, and its font size is the `em` of what it holds. `rtl` is the direction of the
+    /// paragraph's container, which the start of a box's logical inline pairs follows.
     pub fn of_moving(
         tree: &RetainedTree,
         paragraph: &Paragraph,
@@ -235,6 +236,7 @@ impl InsetSpec {
         lengths: &LengthContext,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
         motion: &InlineStyles,
+        rtl: bool,
     ) -> Rc<Self> {
         let box_lengths = box_lengths(tree, paragraph, lengths, states, motion);
         let spaces = paragraph
@@ -247,7 +249,8 @@ impl InsetSpec {
                 if declared.display.as_deref() == Some("contents") {
                     return None;
                 }
-                Some(space_of(&declared, *id, range, colors, &box_lengths[id]))
+                let mirrored = rtl.then(|| declared.mirrored_inline_pairs()).flatten();
+                Some(space_of(mirrored.as_ref().unwrap_or(&declared), *id, range, colors, &box_lengths[id]))
             })
             .collect();
         let font_sizes = box_lengths
