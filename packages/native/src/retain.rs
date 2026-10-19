@@ -509,6 +509,10 @@ struct Node {
     costly: bool,
     /// Only with `verify`: a hash of what the build made of the element itself.
     digest: u64,
+    /// The element was built as a `display: none` host, which paints and lays out nothing.
+    absent: bool,
+    /// Where among the children it built the ones that came back absent were.
+    absent_children: Vec<usize>,
     subtree: crate::layout::cull::Subtree,
     /// The build effects noted since the element was entered, and until it was left.
     effects_start: usize,
@@ -705,6 +709,8 @@ pub(crate) struct Retain {
     /// with it, since the spine is the upward closure of this set and what changed.
     unbuilt: FxHashSet<u64>,
     summary: Summary,
+    /// The element `exit` left was built absent, until `take_exited_absent`.
+    exited_absent: bool,
     mismatches: Vec<String>,
     /// What `getRetainDebug` reports, filled only with `GPUIX_RETAIN_DEBUG`.
     debug: debug::Debug,
@@ -843,6 +849,7 @@ impl Retain {
             deltas: Deltas::default(),
             unbuilt: FxHashSet::default(),
             summary: Summary::default(),
+            exited_absent: false,
             mismatches: Vec::new(),
             debug: debug::Debug::from_env(),
         }
@@ -1265,6 +1272,8 @@ impl Retain {
             scroller: entry.scroller,
             costly: entry.costly,
             digest: 0,
+            absent: false,
+            absent_children: Vec::new(),
             subtree: crate::layout::cull::Subtree::empty(),
             effects_start: crate::tape::build_effects_len(),
             effects_end: 0,
@@ -1373,6 +1382,7 @@ impl Retain {
     }
 
     pub(crate) fn exit(&mut self) {
+        self.exited_absent = false;
         if self.rows > 0 || !self.open {
             return;
         }
@@ -1382,6 +1392,33 @@ impl Retain {
         let node = &mut self.nodes[at as usize];
         node.end = end;
         node.effects_end = crate::tape::build_effects_len();
+        self.exited_absent = node.absent;
+    }
+
+    /// The element being built is a `display: none` host. A parent that built it anyway, because
+    /// it still counted a box for it, has the same digest as one that left it out: the frame a
+    /// `display` transition ends in is built with it, the next frame without.
+    pub(crate) fn absent(&mut self) {
+        if let Some(node) = self.top() {
+            node.absent = true;
+        }
+    }
+
+    /// Whether the element left last came back absent, once: the parent says where it put it.
+    pub(crate) fn take_exited_absent(&mut self) -> bool {
+        std::mem::take(&mut self.exited_absent)
+    }
+
+    /// The element being built put a child that came back absent at `index` among its content.
+    pub(crate) fn absent_child(&mut self, index: usize) {
+        if let Some(node) = self.top() {
+            node.absent_children.push(index);
+        }
+    }
+
+    /// Where the children of the element being built that came back absent are.
+    pub(crate) fn absent_children(&mut self) -> Vec<usize> {
+        self.top().map(|node| std::mem::take(&mut node.absent_children)).unwrap_or_default()
     }
 
     fn top(&mut self) -> Option<&mut Node> {
@@ -1626,7 +1663,9 @@ impl Retain {
             if let Some(excluded) = node.exclusion.or(own.excluded) {
                 parent.excluded = Some(excluded);
             }
-            parent.digest = parent.digest.rotate_left(5).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ digest;
+            if !node.absent {
+                parent.digest = parent.digest.rotate_left(5).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ digest;
+            }
         }
 
         self.retained.clear();

@@ -8021,6 +8021,7 @@ fn build_element_unpumped(
         tree.resolved.borrow_mut().forget(id);
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
+        ctx.retain.absent();
         return absent_host(id);
     }
     ctx.css_transitions.show(id);
@@ -8107,6 +8108,7 @@ fn build_element_unpumped(
         tree.resolved.borrow_mut().forget(id);
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
+        ctx.retain.absent();
         return absent_host(id);
     }
     if transitioned.as_ref().is_some_and(|declared| declared.transitions.is_some()) {
@@ -8910,9 +8912,16 @@ pub(crate) fn build_host_container(
         host = host.cullable(outset);
     }
     // The record the walks over the retained tree read is part of what the build made.
+    let absent_children = ctx.retain.absent_children();
     ctx.retain.digest(|| {
         let resolved = ctx.tree.resolved_of(element, &ctx.inherited.colors, &ctx.inherited.lengths);
-        format!("{:?} {} {:?} {:?}", host.style(), content.len(), paint_ranks, resolved)
+        let present_ranks: Vec<i32> = paint_ranks
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !absent_children.contains(index))
+            .map(|(_, rank)| *rank)
+            .collect();
+        format!("{:?} {} {:?} {:?}", host.style(), content.len() - absent_children.len(), present_ranks, resolved)
     });
     host.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
@@ -9196,6 +9205,9 @@ fn build_plan(
                     build_element(child_id, ctx, window, cx)
                 };
                 ctx.inline_line = outer_line;
+                if ctx.retain.take_exited_absent() {
+                    ctx.retain.absent_child(content_elements.len());
+                }
                 content_elements.push(match probe {
                     Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
                     _ => built,
