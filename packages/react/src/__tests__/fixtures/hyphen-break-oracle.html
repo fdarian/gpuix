@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  Oracle for hyphen-break.test.tsx: where headless Chrome breaks a text that has hyphens and dashes in it, and
+  how wide the text is at `width: min-content`. A case is a text, the columns (a column is one advance of Menlo 16px, measured on the page) of the
+  box it is in plus half a column, and the style that differs from the default. `lines` are the rows of the text
+  as Chrome lays it out, a row's hanging space included, and `minContent` is the width at min-content in columns.
+  Regenerate with
+
+    sh hyphen-break-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px Menlo}
+#c{position:absolute;left:0;top:0}
+</style></head><body>
+<div id="c"></div>
+<script>
+const probe = document.getElementById('c');
+probe.style.whiteSpace = 'pre';
+probe.textContent = 'aaaaaaaaaa';
+const COLUMN = probe.getBoundingClientRect().width / 10;
+probe.style.whiteSpace = '';
+const cases = [
+  ['a hyphen is a place to break', 'well-known', 6, {}],
+  ['and the hyphen stays on the row it ends', 'well-known', 4, {}],
+  ['a sentence with hyphens', 'a well-known state-of-the-art design', 12, {}],
+  ['hyphens in a row', 'a-b-c', 3, {}],
+  ['a hyphen after a space', 'a -b', 3, {}],
+  ['a hyphen before digits', '12-34', 3, {}],
+  ['a hyphen after letters before digits', 'COVID-19 cases', 8, {}],
+  ['no break before a full stop', 'ab-.cd', 3, {}],
+  ['no break before a comma', 'ab-,cd', 3, {}],
+  ['no break before a closing bracket', 'ab-)', 3, {}],
+  ['the hyphen U+2010', 'ab‐cd', 3, {}],
+  ['the en dash U+2013', 'ab–cd', 3, {}],
+  ['the non-breaking hyphen U+2011', 'ab‑cd', 3, {}],
+  ['a hyphen before a letter that is not Latin', 'ab-\u0432\u0432', 3, {}],
+  ['a word that is longer than the line', 'self-evident truths', 10, {}],
+  ['a hyphenated word that fits the line', 'self-evident truths', 20, {}],
+  ['a hyphenated compound and a space', 'e-mail e-mail', 6, {}],
+  ['without wrapping', 'well-known', 4, { whiteSpace: 'nowrap' }],
+  ['keep-all', 'well-known thing', 8, { wordBreak: 'keep-all' }],
+  ['break-all', 'well-known', 4, { wordBreak: 'break-all' }],
+  ['balanced', 'anti-establishment sentiment among well-known writers', 28, { textWrap: 'balance' }],
+];
+const kebab = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+const c = document.getElementById('c');
+function apply(style) {
+  c.style.cssText = '';
+  for (const [name, value] of Object.entries(style)) c.style.setProperty(kebab(name), value);
+}
+function lines(text, columns, style) {
+  apply(style);
+  c.style.width = `${(columns + 0.5) * COLUMN}px`;
+  c.textContent = text;
+  const node = c.firstChild;
+  const rows = [];
+  let top = null;
+  let row = '';
+  for (let i = 0; i < text.length; i++) {
+    const range = document.createRange();
+    range.setStart(node, i);
+    range.setEnd(node, i + 1);
+    const rects = range.getClientRects();
+    if (!rects.length) { row += text[i]; continue; }
+    const y = Math.round(rects[0].top);
+    if (top !== null && y !== top) { rows.push(row); row = ''; }
+    top = y;
+    row += text[i];
+  }
+  rows.push(row);
+  return rows;
+}
+function minContent(text, style) {
+  apply(style);
+  c.style.width = 'min-content';
+  c.textContent = text;
+  return c.getBoundingClientRect().width / COLUMN;
+}
+const out = { column: COLUMN, cases: {} };
+for (const [name, text, columns, style] of cases) {
+  out.cases[name] = { text, columns, style, lines: lines(text, columns, style), minContent: minContent(text, style) };
+}
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

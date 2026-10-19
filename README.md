@@ -3458,7 +3458,7 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 
 | `wordBreak` | Breaks |
 |---|---|
-| `normal` (default) | after spaces, and before and after CJK characters |
+| `normal` (default) | after spaces, after a hyphen, and before and after CJK characters |
 | `break-all` | also between any two letters, so a line is filled to its edge even when a space comes earlier |
 | `keep-all` | not between CJK characters, which behave like the letters of a word |
 | `break-word` | as `normal` with `overflowWrap: 'anywhere'`, whatever `overflowWrap` says |
@@ -3470,6 +3470,12 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 
 - Without `overflowWrap` a long word, a URL or an identifier is not broken: it
   stretches past the edge of its box, as it does in a browser.
+- A hyphen is a place to break: `well-known` wraps after `well-`, and so does a text after
+  U+2010 (the hyphen) and U+2013 (the en dash), when a letter or a digit follows. The line
+  does not break before the hyphen, nor in front of `.`, `,` or `)` after it, and U+2011
+  (the non-breaking hyphen) is glue. `width: 'min-content'` of a hyphenated word is its
+  longest piece. Chrome also breaks after a hyphen in front of `(`, a quote or a symbol
+  such as `%`; here that is only `(` and CJK.
 - `break-all` does not break before closing punctuation (`)`, `!`, `,`...), after
   opening punctuation or next to a no-break space, and a space still hangs at the
   edge as it does without it.
