@@ -10,7 +10,14 @@ import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
-export const describeNative = hasNativeTestRenderer ? describe : describe.skip
+/** Every test here runs a debug addon, and under GPUIX_RETAIN_VERIFY=1 each replayed frame is built twice:
+ *  the default 5 s is not enough on a loaded machine. */
+export const NATIVE_TEST_TIMEOUT = 60_000
+export const describeNative = (name: string, ...rest: [() => void] | [{ timeout: number }, () => void]) => {
+  const body = rest.length === 1 ? rest[0] : rest[1]
+  const options = rest.length === 1 ? { timeout: NATIVE_TEST_TIMEOUT } : rest[0]
+  return hasNativeTestRenderer ? describe(name, options, body) : describe.skip(name, body)
+}
 
 export type Rgba = [number, number, number, number]
 export const RED: Rgba = [255, 0, 0, 255]

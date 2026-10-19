@@ -522,7 +522,7 @@ describeNative("a page of retained cards", () => {
       renderer.setInlineDraws(true)
       root.unmount()
     }
-  }, 15_000)
+  })
 
   it("keeps a card out of the replays while its style is pressed, and replays it after", () => {
     const { renderer, settle, center, inside, sample, finish, unmount } = setup(

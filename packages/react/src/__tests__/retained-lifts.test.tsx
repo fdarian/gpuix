@@ -440,7 +440,7 @@ describeNative("positioned boxes inside replayed subtrees", () => {
     expect(on[0].width).toBe(30)
     expect(on[2].width).toBe(50)
     expect(on[5].width).toBe(30)
-  }, 30_000)
+  })
 
   it("hands a lifted box to the context of an opacity group that is replayed whole", () => {
     // An effect group is a context: the pill is painted inside the group, and the group is a root.
