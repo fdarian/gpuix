@@ -35,9 +35,69 @@ function rng(seed: number) {
   }
 }
 
-type CardState = { label: string; hue: number; extra: boolean; wide: boolean; pad: number; tag: number }
+/** `phase` sets the target of the card's motion, a new one each time, which starts it again; `fast` makes it end within
+ *  a few frames; `hide` puts the motion (1) or the `display: contents` wrapper above it (2) at `display: none`. */
+type CardState = { label: string; hue: number; extra: boolean; wide: boolean; pad: number; tag: number; phase: number; fast: boolean; hide: number }
 
-function Card({ i, st }: { i: number; st: CardState }) {
+/** What a card has below elements a build never enters, drawn once per seed from a stream of its own, so the
+ *  interactions of a seed stay those they were before the cards had it. */
+type CardPlan = { kind: "none" | "div" | "svg" | "span"; wrap: number; inner: number }
+
+const planCards = (seed: number): CardPlan[] => {
+  const random = rng(seed ^ 0x5bd1e995)
+  const kinds = ["div", "div", "svg", "span"] as const
+  return Array.from({ length: N }, () => ({
+    kind: random() < 0.5 ? kinds[Math.floor(random() * kinds.length)] : "none",
+    wrap: random() < 0.3 ? 1 + Math.floor(random() * 2) : 0,
+    inner: random() < 0.8 ? 1 + Math.floor(random() * 2) : 0,
+  }))
+}
+
+/** Nested `display: contents` wrappers, which a build flattens into the parent without entering them. */
+const contents = (depth: number, hidden: boolean, child: React.ReactNode): React.ReactNode =>
+  depth === 0 ? child : <div style={{ display: hidden ? "none" : "contents" }}>{contents(depth - 1, false, child)}</div>
+
+function Motion({ i, plan, st }: { i: number; plan: CardPlan; st: CardState }) {
+  const colour = ["#ff0000", "#0000ff", "#00ff00"][st.phase % 3]
+  const transition = { duration: st.fast ? 0.2 : 2, ease: "linear" }
+  const display = st.hide === 1 ? "none" : undefined
+  if (plan.kind === "div") {
+    return contents(
+      plan.inner,
+      st.hide === 2,
+      <motion.div
+        testId={`fx-${i}`}
+        style={{ position: "absolute", top: 20, width: 10, height: 8, display }}
+        initial={{ left: 10, opacity: 1, backgroundColor: "#ff0000" }}
+        animate={{ left: 10 + ((st.phase * 37) % 80), opacity: 1 - (st.phase % 3) * 0.25, backgroundColor: colour }}
+        transition={transition}
+      />
+    )
+  }
+  if (plan.kind === "svg") {
+    return contents(
+      plan.inner,
+      st.hide === 2,
+      <svg testId={`fx-${i}`} viewBox="0 0 10 10" width={18} height={12} style={{ display }}>
+        <g>
+          <motion.rect x={1} y={1} width={8} height={8} initial={{ fill: "#ff0000" }} animate={{ fill: colour }} transition={transition} />
+        </g>
+      </svg>
+    )
+  }
+  return (
+    <div style={{ height: 14 }}>
+      <text>
+        fx{" "}
+        <motion.span testId={`fx-${i}`} style={{ display }} initial={{ color: "#ff0000" }} animate={{ color: colour }} transition={transition}>
+          span
+        </motion.span>
+      </text>
+    </div>
+  )
+}
+
+function Card({ i, st, plan }: { i: number; st: CardState; plan: CardPlan }) {
   const variant = i % 6
   return (
     <div
@@ -143,6 +203,7 @@ function Card({ i, st }: { i: number; st: CardState }) {
           transition={{ duration: 1, ease: "linear" }}
         />
       ) : null}
+      {plan.kind === "none" ? null : <Motion i={i} plan={plan} st={st} />}
     </div>
   )
 }
@@ -165,15 +226,40 @@ function Table() {
 
 const N = 14
 
+/** Rows that each lift a box out of a root, in a scroller that is rounded or not. It has to be tall enough for
+ *  rows to be in view: the fault it is for is not there below about 200px. */
+function LiftedRows({ rounded }: { rounded: boolean }) {
+  return (
+    <div testId="rscroller" style={{ width: 256, height: 220, overflow: "auto", borderRadius: rounded ? 9 : 0 }}>
+      <div testId="R">
+        <div testId="C">
+          {Array.from({ length: 12 }, (_, k) => (
+            <div key={k} testId={`lrow-${k}`} style={{ height: 32, position: "relative" }}>
+              <text>{`row ${k}`}</text>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function run(seed: number, steps: number) {
   const random = rng(seed)
   const pick = (n: number) => Math.floor(random() * n)
+  const plans = planCards(seed)
+  const fxRandom = rng(seed ^ 0x2545f491)
+  const fxPick = (n: number) => Math.floor(fxRandom() * n)
+  const planned = plans.flatMap((plan, i) => (plan.kind === "none" ? [] : [i]))
+  const withCard = (i: number, change: (card: CardState) => CardState) => (s) => ({ ...s, cards: s.cards.map((c, k) => (k === i ? change(c) : c)) })
   let apply!: (fn: (state: any) => any) => void
   function App() {
     const [state, setState] = React.useState({
       order: Array.from({ length: N }, (_, i) => i),
-      cards: Array.from({ length: N }, (_, i) => ({ label: `card ${i}`, hue: i * 20, extra: i % 3 === 0, wide: false, pad: 0, tag: i % 7 })),
+      cards: Array.from({ length: N }, (_, i) => ({ label: `card ${i}`, hue: i * 20, extra: i % 3 === 0, wide: false, pad: 0, tag: i % 7, phase: 0, fast: false, hide: 0 })),
       scrollerHeight: 260,
+      tick: 0,
+      rounded: true,
       rootFont: 16,
     })
     apply = (fn) => setState((s) => fn(s))
@@ -182,10 +268,16 @@ function run(seed: number, steps: number) {
         <div testId="scroller" style={{ overflow: "auto", width: 620, height: state.scrollerHeight }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, width: 600 }}>
             {state.order.map((i) => (
-              <Card key={i} i={i} st={state.cards[i]} />
+              <React.Fragment key={i}>{contents(plans[i].wrap, false, <Card i={i} st={state.cards[i]} plan={plans[i]} />)}</React.Fragment>
             ))}
           </div>
           <Table />
+          <div testId="lifts">
+            <div testId="ctr" style={{ height: 14 }}>
+              <text>{`tick ${state.tick}`}</text>
+            </div>
+            <LiftedRows rounded={state.rounded} />
+          </div>
         </div>
         <div testId="footer" style={{ height: 40 }}>
           <text>footer</text>
@@ -196,16 +288,62 @@ function run(seed: number, steps: number) {
   const root = createTestRoot({ width: 640, height: 400 })
   const { renderer } = root
   const log: string[] = []
+  const failure: unknown[] = []
   try {
     root.render(<App />)
     for (let f = 0; f < 4; f++) renderer.flush()
     renderer.clockPause()
     const scroller = renderer.findByTestId("scroller").id
     const point = () => [Math.floor(random() * 640), Math.floor(random() * 400)] as const
+    const lifted = renderer.findByTestId("rscroller").id
+    /** Starts and stops motions below elements a build never enters, hides them while they run, and ticks
+     *  and scrolls the rows of a root that a frame skips. Drawn from its own stream. */
+    const fxStep = () => {
+      const i = planned.length === 0 ? 0 : planned[fxPick(planned.length)]
+      switch (fxPick(7)) {
+        case 0:
+        case 1: {
+          const fast = fxRandom() < 0.4
+          flushSync(() => apply(withCard(i, (c) => ({ ...c, phase: c.phase + 1, fast }))))
+          return `fx start ${i}`
+        }
+        case 2: {
+          const hide = fxPick(3)
+          flushSync(() => apply(withCard(i, (c) => ({ ...c, hide }))))
+          return `fx hide ${i} ${hide}`
+        }
+        case 3: {
+          // `lifts` is built by each of these frames and `rscroller` below it is skipped, which is what a root
+          // that lifts its rows is recorded by
+          const ticks = 3 + fxPick(4)
+          renderer.setRetainEnabled(true)
+          renderer.setRetainPlanning(true)
+          renderer.scrollTo(scroller, 0, 2000)
+          for (let tick = 0; tick < ticks; tick++) {
+            flushSync(() => apply((s) => ({ ...s, tick: s.tick + 1 })))
+            renderer.flush()
+            const moved = fxRandom()
+            if (moved < 0.3) renderer.scrollTo(lifted, 0, fxPick(300))
+            else if (moved < 0.6) renderer.scrollTo(scroller, 0, fxPick(400))
+          }
+          return `fx ticks ${ticks}`
+        }
+        case 4:
+          renderer.scrollTo(lifted, 0, fxPick(300))
+          return "fx scroll rows"
+        case 5:
+          flushSync(() => apply((s) => ({ ...s, rounded: !s.rounded })))
+          return "fx rounded"
+        default:
+          renderer.clockFastForward(60 + fxPick(240))
+          return "fx clock"
+      }
+    }
     for (let step = 0; step < steps; step++) {
       const op = pick(24)
       let name = ""
       try {
+        if (fxRandom() < 0.3) log.push(fxStep())
         switch (op) {
           case 0:
           case 1:
@@ -356,6 +494,31 @@ function run(seed: number, steps: number) {
     }
     renderer.setRetainEnabled(true)
     renderer.setRetainPlanning(true)
+    // Motions that are mid-way when the page is compared, so that one a replay left frozen shows.
+    flushSync(() => apply((s) => ({ ...s, scrollerHeight: 380, cards: s.cards.map((c) => ({ ...c, phase: c.phase + 1, fast: false, hide: 0 })) })))
+    renderer.flush()
+    const pictureOf = (name: string) => {
+      const file = `${SHOTS_DIR}/retained-fuzz-${seed}-${name}.png`
+      fs.rmSync(file, { force: true })
+      renderer.captureScreenshot(file)
+      return fs.readFileSync(file).toString("base64")
+    }
+    const moving = planned.map((i) => renderer.findByTestId(`fx-${i}`)?.id)
+    const movingBoxes = () => moving.map((id) => (id === undefined ? null : renderer.getElementBounds(id)))
+    for (let f = 0; f < 3; f++) {
+      renderer.scrollTo(scroller, 0, f * 170)
+      // the frame the clock itself draws, which a screenshot draws again
+      renderer.clockFastForward(100)
+      const replayedBoxes = movingBoxes()
+      const replayedPicture = pictureOf("m")
+      renderer.setRetainPlanning(false)
+      renderer.flush()
+      const wholePicture = pictureOf("m")
+      const wholeBoxes = movingBoxes()
+      renderer.setRetainPlanning(true)
+      expect(replayedBoxes, `seed ${seed} boxes of the motions ${f} frames into them`).toEqual(wholeBoxes)
+      expect(replayedPicture === wholePicture, `seed ${seed} picture ${f} frames into the motions\n${log.slice(-12).join("\n")}`).toBe(true)
+    }
     for (let f = 0; f < 6; f++) renderer.flush()
     // a focused input blinks its caret by real time, which is not a difference between the two builds
     const footer = renderer.getElementBounds(renderer.findByTestId("footer").id)
@@ -365,8 +528,8 @@ function run(seed: number, steps: number) {
     }
     for (let f = 0; f < 6; f++) renderer.flush()
     // snapshot replayed vs whole
-    const ids = ["scroller", "footer", "tbl"]
-    for (let i = 0; i < N; i++) ids.push(`card-${i}`, `title-${i}`, `span-${i}`, `btn-${i}`, `row-${i}`, `pill-${i}`)
+    const ids = ["scroller", "footer", "tbl", "lifts", "rscroller", "R", "ctr"]
+    for (let i = 0; i < N; i++) ids.push(`card-${i}`, `title-${i}`, `span-${i}`, `btn-${i}`, `row-${i}`, `pill-${i}`, `fx-${i}`)
     // findByTestId walks the whole tree on every call; the elements are the same in both snapshots.
     const elementIds = new Map(ids.map((id) => [id, renderer.findByTestId(id)?.id]))
     const snap = (name: string) => {
@@ -415,8 +578,16 @@ function run(seed: number, steps: number) {
     }
     expect(replayed.picture === whole.picture, `seed ${seed} picture\n${log.slice(-12).join("\n")}`).toBe(true)
     return renderer.getRetainedCounters()
+  } catch (error) {
+    failure.push(error)
+    throw error
   } finally {
-    root.unmount()
+    // dispose reports the mismatches of a verified run, which must not hide the error that ended this one
+    try {
+      root.unmount()
+    } catch (error) {
+      if (failure.length === 0) throw error
+    }
   }
 }
 
