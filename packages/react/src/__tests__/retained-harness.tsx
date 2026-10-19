@@ -19,6 +19,9 @@ export const describeNative = (name: string, ...rest: [() => void] | [{ timeout:
   return hasNativeTestRenderer ? describe(name, options, body) : describe.skip(name, body)
 }
 
+/** Test files run in parallel workers and the cases share their names: a file of a worker's own. */
+const shotFile = (name: string) => `${SHOTS_DIR}/retained-replay-${process.pid}-${name}.png`
+
 export type Rgba = [number, number, number, number]
 export const RED: Rgba = [255, 0, 0, 255]
 export const GREEN: Rgba = [0, 255, 0, 255]
@@ -123,7 +126,7 @@ export function setup(element: React.ReactElement, options = {}) {
     for (let frame = 0; frame < 5; frame++) renderer.flush()
   }
   const sample = (name: string, x: number, y: number): Rgba => {
-    const file = `${SHOTS_DIR}/retained-replay-${name}.png`
+    const file = shotFile(name)
     fs.rmSync(file, { force: true })
     renderer.captureScreenshot(file)
     return readLogicalPixels(file, renderer).at(x, y)
@@ -135,7 +138,7 @@ export function setup(element: React.ReactElement, options = {}) {
   }
   /** What the frame shows and answers, as bytes and text. */
   const snapshot = (name: string, watch: string[] = []) => {
-    const file = `${SHOTS_DIR}/retained-replay-${name}.png`
+    const file = shotFile(name)
     fs.rmSync(file, { force: true })
     renderer.captureScreenshot(file)
     const ids = idsByTestId(renderer)
