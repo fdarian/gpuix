@@ -311,6 +311,13 @@ impl InsetSpec {
         hasher.finish()
     }
 
+    /// Every box of the spec as text, in a fixed order, for the digest of a verified build.
+    pub fn digest(&self) -> String {
+        let font_sizes: std::collections::BTreeMap<_, _> = self.font_sizes.iter().collect();
+        let own_text: std::collections::BTreeMap<_, _> = self.own_text.iter().collect();
+        format!("{:?} {:?} {font_sizes:?} {own_text:?}", self.boxes, self.spaces)
+    }
+
     /// The space resolved for a paragraph laid out `width` wide, or measured for
     /// its content when there is none.
     pub fn at(&self, width: Option<Pixels>) -> Rc<Insets> {

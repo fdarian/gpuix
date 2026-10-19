@@ -121,6 +121,26 @@ pub(crate) fn apply_z_index<E: Styled>(
     el
 }
 
+/// Decides again whether `el` is lifted and by which `z-index`, for `folded`: the style it has once
+/// a state laid over it was applied. A state alone cannot say (`zIndex` over a base `position`, a
+/// `position: static` that ends the lift of a base z-index), and `Resolved` and the retained record
+/// of the element are made from the folded style.
+pub(crate) fn apply_folded_lift<E: Styled>(
+    mut el: E,
+    folded: &StyleDesc,
+    colors: &ColorContext,
+    lengths: &LengthContext,
+) -> E {
+    let resolved = Resolved::of_style(folded, colors, lengths);
+    match lift_z(&resolved, folded.flex_or_grid_item) {
+        Some(z) => {
+            el.style().z_index = Some(z);
+            el.lifted()
+        }
+        None => el.unlifted(),
+    }
+}
+
 /// Flags `el` a stacking context when the style says so, or when `forced`: the root of what is
 /// built (the window root, a virtual-list row) and an `<anchored>` layer begin with no context
 /// around them, so z-index inside them needs one of their own.
@@ -442,6 +462,35 @@ mod tests {
         assert_eq!(lifts(&style(Some("relative"), Some(3.0))), (Some(3), None));
         assert_eq!(lifts(&style(None, Some(3.0))), (None, None));
         assert_eq!(lifts(&StyleDesc::default()), (None, None));
+    }
+
+    #[test]
+    fn a_state_laid_over_an_element_decides_its_lift_from_the_folded_style() {
+        let colors = ColorContext::root(Scheme::Light);
+        let lengths = LengthContext::for_tests();
+        let lift = |base: &StyleDesc, state: &StyleDesc| {
+            // As a focus variant is applied: the element is built from the base, the state refines it
+            // on its own, and the style the two make has the last word.
+            let mut el = apply_z_index(gpui::div(), base, &colors, &lengths);
+            el = apply_z_index(el, state, &colors, &lengths);
+            let folded = crate::events::state_styles::overlay(base, state);
+            el = apply_folded_lift(el, &folded, &colors, &lengths);
+            let lift = el.style().lift_z();
+            // What the retained record says of the same style.
+            assert_eq!(lift, lift_of(&folded, base.flex_or_grid_item));
+            lift
+        };
+        let z_index = |z: f64| StyleDesc { z_index: Some(z), ..Default::default() };
+        // A z-index over a positioned base, which the state alone cannot lift.
+        assert_eq!(lift(&style(Some("relative"), None), &z_index(5.0)), Some(5));
+        // A position that ends the lift of a base z-index.
+        assert_eq!(lift(&style(Some("relative"), Some(5.0)), &style(Some("static"), None)), None);
+        // Both from the state.
+        assert_eq!(lift(&StyleDesc::default(), &style(Some("relative"), Some(5.0))), Some(5));
+        // An item of a flex container takes a z-index from the state: the flag is of the element.
+        let item = StyleDesc { flex_or_grid_item: true, ..Default::default() };
+        assert_eq!(lift(&item, &z_index(5.0)), Some(5));
+        assert_eq!(lift(&StyleDesc::default(), &z_index(5.0)), None);
     }
 
     fn container_tree(display: Option<&str>, parent_type: &str) -> RetainedTree {

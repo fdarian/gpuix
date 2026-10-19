@@ -35,7 +35,8 @@ macro_rules! overlay_fields {
             ),
             contents_levels: None,
             measure_natural_width: false,
-            flex_or_grid_item: false,
+            // What the element is, not a property: the style on top of it is the same element's.
+            flex_or_grid_item: $base.flex_or_grid_item,
             atomic_inline: false,
             clone_probe: Default::default(),
         }

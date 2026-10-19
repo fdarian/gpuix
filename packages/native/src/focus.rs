@@ -497,7 +497,9 @@ fn apply_focus_variants<E: gpui::Styled>(
             &colors.for_state(declared),
             &lengths.for_state(declared.font_size.as_ref()),
         );
-        beneath = std::borrow::Cow::Owned(crate::events::state_styles::overlay(&beneath, declared));
+        let folded = crate::events::state_styles::overlay(&beneath, declared);
+        el = crate::layout::stacking::apply_folded_lift(el, &folded, colors, lengths);
+        beneath = std::borrow::Cow::Owned(folded);
     }
     el
 }

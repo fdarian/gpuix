@@ -8153,8 +8153,9 @@ fn build_element_unpumped(
         ..style.cloned().unwrap_or_default()
     });
     let style = natural_width_style.as_ref().or(style);
-    // Only a z-index differs for an item, and it is the rare style that has one.
-    let item_style = (stacking_item && style.is_some_and(|style| style.z_index.is_some())).then(|| {
+    // Only a z-index differs for an item, and it is the rare style that has one, in the style or in
+    // a focus variant, which is laid over the element when it is built.
+    let item_style = (stacking_item && style.is_some_and(StyleDesc::declares_z_index)).then(|| {
         StyleDesc {
             flex_or_grid_item: true,
             ..style.cloned().unwrap_or_default()
@@ -8863,7 +8864,11 @@ pub(crate) fn build_host_container(
     if let Some(outset) = ctx.subtree.outset() {
         host = host.cullable(outset);
     }
-    ctx.retain.digest(|| format!("{:?} {} {:?}", host.style(), content.len(), paint_ranks));
+    // The record the walks over the retained tree read is part of what the build made.
+    ctx.retain.digest(|| {
+        let resolved = ctx.tree.resolved_of(element, &ctx.inherited.colors, &ctx.inherited.lengths);
+        format!("{:?} {} {:?} {:?}", host.style(), content.len(), paint_ranks, resolved)
+    });
     host.extend(content);
     if paint_ranks.iter().any(|rank| *rank != 0) {
         host = host.paint_ranks(paint_ranks);
@@ -9340,96 +9345,111 @@ fn paragraph_content(
         .take()
         .or_else(|| paragraph.atomics().next().is_some().then(|| paragraph.key()));
     let (aligned_boxes, atomics) = build_atomics(paragraph, &styles, &motion, line.as_ref(), ctx, window, cx);
-    let ctx = &*ctx;
-    let states = ctx.inline_states();
-    let insets = crate::text::inline_insets::InsetSpec::of_moving(
-        ctx.tree,
-        paragraph,
-        &ctx.inherited.colors,
-        &ctx.inherited.lengths,
-        &states,
-        &motion,
-    );
-    let inline_decorations = crate::text::inline_decoration::of(
-        ctx.tree,
-        paragraph,
-        &ctx.inherited.colors,
-        &ctx.inherited.lengths,
-        &states,
-        &motion,
-        &insets,
-    );
-    let inline_cursors = crate::text::inline_cursor::of(
-        ctx.tree,
-        paragraph,
-        ctx.inherited.pointer_events_none,
-        ctx.inherited.inert,
-        &states,
-        &insets,
-    );
-    let inline_regions = if ctx.inherited.frameless {
-        crate::text::inline_region::of(ctx.tree, paragraph, ctx.inherited.app_region, &states, &insets)
-    } else {
-        Vec::new()
-    };
-    let inline_focus = focusable_inline_boxes(paragraph, ctx);
-    // Plain text draws inside the boxes of its lines. What a box around part of it paints, an
-    // inline element in the line and its tab stop, is not bounded by them.
-    let plain = atomics.is_empty()
-        && inline_decorations.is_empty()
-        && inline_cursors.is_empty()
-        && inline_regions.is_empty()
-        && inline_focus.is_empty()
-        && !insets.takes_space_along_the_line();
-    let subtree = if plain {
-        crate::layout::cull::Subtree::of_text(
-            ctx.inherited.lengths.font_size as f32,
-            ctx.inherited.underline_reach.max(crate::text::paragraph::line_reach(&styles.runs)),
-        )
-    } else {
-        crate::layout::cull::Subtree::blocked()
-    };
-    let cull_outset = subtree.outset();
-    let paragraph_element = selectable_text(crate::text::SelectableText {
-        text_box_trim,
-        group: None,
-        line,
-        cell: ctx.inherited.table_cell,
-        selectable: ctx.inherited.selectable,
-        highlight: ctx
-            .inherited
-            .highlight
-            .clone()
-            .map(crate::text::HighlightSource::Resolved),
-        run_styles: styles.runs,
-        opacity_groups: styles.groups,
-        aligned_boxes,
-        atomics,
-        inline_targets: crate::text::inline_hit::Targets::of(
+    let verifying = ctx.retain.verifying();
+    let (paragraph_element, subtree, boxes_digest) = {
+        let ctx = &*ctx;
+        let states = ctx.inline_states();
+        let insets = crate::text::inline_insets::InsetSpec::of_moving(
+            ctx.tree,
+            paragraph,
+            &ctx.inherited.colors,
+            &ctx.inherited.lengths,
+            &states,
+            &motion,
+        );
+        let inline_decorations = crate::text::inline_decoration::of(
+            ctx.tree,
+            paragraph,
+            &ctx.inherited.colors,
+            &ctx.inherited.lengths,
+            &states,
+            &motion,
+            &insets,
+        );
+        // The edges of a decoration share the spec and its memo of the last width, which is no part of what was built.
+        let boxes_digest = verifying.then(|| {
+            let decorations: Vec<_> = inline_decorations
+                .iter()
+                .map(|decoration| (&decoration.range, decoration.group, &decoration.outline, &decoration.paint))
+                .collect();
+            format!("{} {decorations:?}", insets.digest())
+        });
+        let inline_cursors = crate::text::inline_cursor::of(
             ctx.tree,
             paragraph,
             ctx.inherited.pointer_events_none,
             ctx.inherited.inert,
+            &states,
             &insets,
-        )
-        .map(Arc::new),
-        inline_boxes: inline_boxes(paragraph, ctx, &insets),
-        inline_focus,
-        inline_decorations,
-        inline_cursors,
-        inline_regions,
-        inline_insets: insets.takes_space_along_the_line().then(|| insets.clone()),
-        cull_outset,
-        ..crate::text::SelectableText::new(
-            paragraph.container,
-            paragraph.index,
-            ctx.doc_path(),
-            gpui::SharedString::from(paragraph.text.clone()),
-            None,
-            ctx.selection.clone(),
-            ctx.inherited.selection_wash,
-        )
-    });
+        );
+        let inline_regions = if ctx.inherited.frameless {
+            crate::text::inline_region::of(ctx.tree, paragraph, ctx.inherited.app_region, &states, &insets)
+        } else {
+            Vec::new()
+        };
+        let inline_focus = focusable_inline_boxes(paragraph, ctx);
+        // Plain text draws inside the boxes of its lines. What a box around part of it paints, an
+        // inline element in the line and its tab stop, is not bounded by them.
+        let plain = atomics.is_empty()
+            && inline_decorations.is_empty()
+            && inline_cursors.is_empty()
+            && inline_regions.is_empty()
+            && inline_focus.is_empty()
+            && !insets.takes_space_along_the_line();
+        let subtree = if plain {
+            crate::layout::cull::Subtree::of_text(
+                ctx.inherited.lengths.font_size as f32,
+                ctx.inherited.underline_reach.max(crate::text::paragraph::line_reach(&styles.runs)),
+            )
+        } else {
+            crate::layout::cull::Subtree::blocked()
+        };
+        let cull_outset = subtree.outset();
+        let paragraph_element = selectable_text(crate::text::SelectableText {
+            text_box_trim,
+            group: None,
+            line,
+            cell: ctx.inherited.table_cell,
+            selectable: ctx.inherited.selectable,
+            highlight: ctx
+                .inherited
+                .highlight
+                .clone()
+                .map(crate::text::HighlightSource::Resolved),
+            run_styles: styles.runs,
+            opacity_groups: styles.groups,
+            aligned_boxes,
+            atomics,
+            inline_targets: crate::text::inline_hit::Targets::of(
+                ctx.tree,
+                paragraph,
+                ctx.inherited.pointer_events_none,
+                ctx.inherited.inert,
+                &insets,
+            )
+            .map(Arc::new),
+            inline_boxes: inline_boxes(paragraph, ctx, &insets),
+            inline_focus,
+            inline_decorations,
+            inline_cursors,
+            inline_regions,
+            inline_insets: insets.takes_space_along_the_line().then(|| insets.clone()),
+            cull_outset,
+            ..crate::text::SelectableText::new(
+                paragraph.container,
+                paragraph.index,
+                ctx.doc_path(),
+                gpui::SharedString::from(paragraph.text.clone()),
+                None,
+                ctx.selection.clone(),
+                ctx.inherited.selection_wash,
+            )
+        });
+        (paragraph_element, subtree, boxes_digest)
+    };
+    if let Some(boxes) = boxes_digest {
+        ctx.retain.digest(|| boxes);
+    }
     (paragraph_element, subtree)
 }
 

@@ -14,7 +14,7 @@ import { expect, it } from "vitest"
 import { motion } from "../index"
 import { Card, describeNative, Page, setup, verifying } from "./retained-harness.js"
 
-import { ALL, type Case, describeCases, CARDS, exercise, ProseCard, proseIds, type Style, TIMEOUT, WORLD, World } from "./retained-cases.js"
+import { ALL, type Case, describeCases, CARDS, expectTheFramesOfABuild, exercise, ProseCard, proseIds, type Style, TIMEOUT, WORLD, World } from "./retained-cases.js"
 
 const CASES: Case[] = [
   { name: "textWrapMode", a: { textWrapMode: "wrap" }, b: { textWrapMode: "nowrap" } },
@@ -273,71 +273,6 @@ describeNative("round 6 properties in the state styles of replayed cards", { tim
 
 describeNative("motion of round 6 inside a page of retained cards", { timeout: TIMEOUT }, () => {
   const LINEAR = { duration: 1, ease: "linear" } as const
-  const MOVER = 2
-  const STEPS = 14
-
-  /**
-   * Plays the page through the commit of the change and fourteen steps of 100 ms, and keeps what each
-   * frame shows. A page played with retention off is the frames a full build gives.
-   */
-  function play(mover: (state: string) => React.ReactNode, retention: boolean) {
-    const watch = ["mover", `card-${MOVER}`, "after"]
-    const render = (state: string) => (
-      <World>
-        <Page
-          card={(index) =>
-            index === MOVER ? <Card key={index} index={index} extra={mover(state)} style={{ height: "auto", alignSelf: "flex-start" }} /> : null
-          }
-        />
-        <div testId="after" style={{ height: 10, backgroundColor: "#ff00ff" }} />
-      </World>
-    )
-    const page = setup(render("from"))
-    try {
-      page.renderer.setRetainPlanning(retention)
-      page.renderer.clockPause()
-      page.settle()
-      const frames = [page.snapshot("rest", watch)]
-      const replays = page.counters().replays
-      const built = page.built()
-      const painted = page.renderer.getPaintedFrameCount()
-      // The commit frame: the animation is asked for and starts in the frame that lays out the change.
-      page.render(render("to"))
-      page.renderer.flush()
-      frames.push(page.snapshot("commit", watch))
-      for (let step = 0; step < STEPS; step++) {
-        page.renderer.clockFastForward(100)
-        frames.push(page.snapshot(`step-${step}`, watch))
-      }
-      const result = {
-        frames,
-        replays: page.counters().replays - replays,
-        builtPerFrame: (page.built() - built) / (page.renderer.getPaintedFrameCount() - painted),
-      }
-      page.settle()
-      frames.push(page.snapshot("end", watch))
-      expect(page.counters().mismatches, page.renderer.getRetentionMismatches().join("\n")).toBe(0)
-      return result
-    } finally {
-      page.unmount()
-    }
-  }
-
-  function expectTheFramesOfABuild(mover: (state: string) => React.ReactNode) {
-    const kept = play(mover, true)
-    const whole = play(mover, false)
-    kept.frames.forEach((frame, index) => {
-      const name = index === 0 ? "rest" : index === 1 ? "commit" : index === STEPS + 2 ? "end" : `step ${index - 2}`
-      expect(frame.watched, `${name}: boxes`).toEqual(whole.frames[index].watched)
-      expect(frame.boxes, `${name}: cards`).toEqual(whole.frames[index].boxes)
-      expect(frame.a11y, `${name}: accessibility`).toEqual(whole.frames[index].a11y)
-      expect(frame.picture === whole.frames[index].picture, `${name}: picture`).toBe(true)
-    })
-    expect(new Set(kept.frames.map((frame) => frame.picture)).size, "the animation shows").toBeGreaterThan(4)
-    expect(kept.replays, "the cards beside the mover are replayed").toBeGreaterThan(STEPS)
-    // A frame builds the mover and its card, not the page.
-    if (!verifying) expect(kept.builtPerFrame).toBeLessThan(CARDS * 8 * 0.5)
-  }
 
   it("animates a calc() width of a box in a card while the other cards are replayed", () => {
     expectTheFramesOfABuild((state) => (

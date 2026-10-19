@@ -850,6 +850,11 @@ impl Retain {
         self.verify = verify;
     }
 
+    /// Whether a build is being hashed (`digest`): the one that builds a frame whole to compare it.
+    pub(crate) fn verifying(&self) -> bool {
+        self.verify && !self.planning
+    }
+
     /// Whether gpui builds each frame that replayed something once more, whole, and compares the
     /// two.
     pub(crate) fn verifies_frames(&self) -> bool {
@@ -1806,6 +1811,10 @@ fn pointer_bits(states: crate::events::state_styles::PointerStates) -> u16 {
         states.has_hovered,
         states.has_active,
         states.has_focused,
+        states.disabled,
+        states.enabled,
+        states.has_disabled,
+        states.has_enabled,
         states.focus_within,
         states.has_focus_visible,
         states.focus_visible,
@@ -1843,6 +1852,38 @@ mod tests {
         // `inherited_fingerprint` lists the fields by hand. Adding one changes this size, and the
         // fingerprint has to learn it or the key will not see it change.
         assert_eq!(std::mem::size_of::<Inherited>(), 424);
+    }
+
+    #[test]
+    fn every_pointer_state_has_a_bit_of_its_own() {
+        use crate::events::state_styles::PointerStates;
+        // A state added to `PointerStates` changes this size, and `pointer_bits` has to learn it.
+        assert_eq!(std::mem::size_of::<PointerStates>(), 15);
+        let each = [
+            PointerStates { hovered: true, ..Default::default() },
+            PointerStates { active: true, ..Default::default() },
+            PointerStates { group_hovered: true, ..Default::default() },
+            PointerStates { group_active: true, ..Default::default() },
+            PointerStates { group_focused_within: true, ..Default::default() },
+            PointerStates { has_hovered: true, ..Default::default() },
+            PointerStates { has_active: true, ..Default::default() },
+            PointerStates { has_focused: true, ..Default::default() },
+            PointerStates { disabled: true, ..Default::default() },
+            PointerStates { enabled: true, ..Default::default() },
+            PointerStates { has_disabled: true, ..Default::default() },
+            PointerStates { has_enabled: true, ..Default::default() },
+            PointerStates { focus_within: true, ..Default::default() },
+            PointerStates { has_focus_visible: true, ..Default::default() },
+            PointerStates { focus_visible: true, ..Default::default() },
+        ];
+        let mut seen = 0;
+        for states in each {
+            assert!(states.any());
+            let bits = pointer_bits(states);
+            assert_eq!(bits.count_ones(), 1, "{states:?}");
+            assert_eq!(seen & bits, 0, "{states:?} shares a bit");
+            seen |= bits;
+        }
     }
 
     fn root_inherited() -> Inherited {

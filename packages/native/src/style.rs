@@ -206,6 +206,15 @@ pub struct CornerRadiusValue {
 }
 
 impl StyleDesc {
+    /// Whether the style, or a focus variant that may be laid over it, declares a `z-index`, which
+    /// is the only property of a style that an item of a flex or grid container reads differently.
+    pub(crate) fn declares_z_index(&self) -> bool {
+        self.z_index.is_some()
+            || [&self.focus_within, &self.has_focus_visible, &self.focus_visible]
+                .into_iter()
+                .any(|variant| variant.as_deref().is_some_and(|variant| variant.z_index.is_some()))
+    }
+
     /// Whether gpui's layout rewrites a box with this style after it is requested, whatever is
     /// around it: a width is a keyword of its content. (An absolutely positioned box is rewritten
     /// against its containing block, see `Retain::containing_block`.)
