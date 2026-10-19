@@ -286,6 +286,12 @@ pub struct EventPayload {
     /// animationcancel.
     pub animation_name: Option<String>,
 
+    /// The id of the CSS animation or transition (`getAnimation`) the event is
+    /// about. Populated for: webanimationfinish, webanimationcancel, which are
+    /// internal events for the `Animation` objects of `getAnimations()`: they
+    /// carry no path, so they reach no handler of the app.
+    pub animation_id: Option<f64>,
+
     /// Seconds of the transition's or animation's active time, as the DOM
     /// `elapsedTime`. Populated for: the transition and animation events.
     pub elapsed_time: Option<f64>,
@@ -368,6 +374,7 @@ impl Default for EventPayload {
             observation: None,
             property_name: None,
             animation_name: None,
+            animation_id: None,
             elapsed_time: None,
             pseudo_element: None,
             modifiers: None,

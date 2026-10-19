@@ -2328,6 +2328,63 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// The CSS transitions, then the CSS animations, of an element that are
+    /// running, paused or in effect through a fill. See `GpuixRenderer.getAnimations`.
+    #[napi]
+    pub fn get_animations(&self, element_id: f64) -> Result<Vec<crate::renderer::WebAnimationInfo>> {
+        let id = to_element_id(element_id)?;
+        self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
+    }
+
+    /// One CSS animation or transition by the id `getAnimations` gave. Throws
+    /// once it has finished and left its element, or was cancelled.
+    #[napi]
+    pub fn get_animation(&self, animation_id: f64) -> Result<crate::renderer::WebAnimationInfo> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(false, move |view, _now| view.web_animation(id))
+    }
+
+    /// `animation.pause()`: holds the current time at once, and from here the
+    /// style's `animation-play-state` no longer decides.
+    #[napi]
+    pub fn pause_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Pause)
+    }
+
+    /// `animation.play()`: continues from the held time at the next frame, or
+    /// from the start (the end when running backwards) if it has finished.
+    #[napi]
+    pub fn play_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Play)
+    }
+
+    /// `animation.currentTime = milliseconds`.
+    #[napi]
+    pub fn set_animation_current_time(&self, animation_id: f64, milliseconds: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::SetCurrentTime(milliseconds),
+        )
+    }
+
+    /// `animation.playbackRate = rate`, keeping the current time.
+    #[napi]
+    pub fn set_animation_playback_rate(&self, animation_id: f64, rate: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::SetPlaybackRate(rate),
+        )
+    }
+
+    fn command_animation(
+        &self,
+        animation_id: f64,
+        command: crate::motion::web_animation::Command,
+    ) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(true, move |view, _now| view.command_web_animation(id, command))
+    }
+
     /// Runs `run` against the window's motion values at the window clock's
     /// instant. A write repaints, which samples it and delivers its events.
     fn with_motion_values<R>(

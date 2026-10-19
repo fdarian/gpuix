@@ -19,6 +19,7 @@ mod svg_attr;
 mod track;
 mod value;
 mod values;
+pub(crate) mod web_animation;
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};

@@ -27,6 +27,7 @@ use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
 use super::track::{Goal, Track};
 use super::value::{AnimValue, Colors, Interpolation, ParentFont};
+use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize};
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -474,14 +475,16 @@ fn initial_elapsed(animation: &Animation) -> f64 {
     (-animation.delay).min(active_duration(animation)).max(0.0)
 }
 
-fn evaluate(animation: &Animation, local: f64) -> Evaluation {
+/// `backwards` is a negative playback rate, which gives the boundaries to the
+/// phase the time came from.
+fn evaluate(animation: &Animation, local: f64, backwards_rate: bool) -> Evaluation {
     let duration = animation.duration;
     let active_duration = active_duration(animation);
     let end_time = (animation.delay + active_duration).max(0.0);
     let before_boundary = animation.delay.min(end_time).max(0.0);
-    let phase = if local < before_boundary {
+    let phase = if local < before_boundary || (backwards_rate && local == before_boundary) {
         Phase::Before
-    } else if local >= end_time {
+    } else if local > end_time || (!backwards_rate && local == end_time) {
         Phase::After
     } else {
         Phase::Active
@@ -793,11 +796,8 @@ struct Run {
     keyframes: Arc<Keyframes>,
     properties: Vec<AnimProp>,
     params: Animation,
-    /// The animation's local time, in seconds, at `anchor`. It advances with
-    /// the clock while running and holds while paused.
-    base: f64,
-    anchor: Instant,
-    running: bool,
+    /// The animation's local time (its `currentTime`), the API controls and its id.
+    clock: Playback,
     phase: Phase,
     iteration: u64,
     /// The keyframe progress `CssAnimations::advance` found this frame, `None`
@@ -814,9 +814,7 @@ impl Run {
             properties: keyframes.properties(),
             keyframes,
             params: params.clone(),
-            base: 0.0,
-            anchor: now,
-            running: params.play_state == PlayState::Running,
+            clock: Playback::start(now, params.play_state == PlayState::Running),
             phase: Phase::Before,
             iteration: 0,
             progress: None,
@@ -836,38 +834,26 @@ impl Run {
         self.plan = None;
     }
 
+    /// Where the effect ends, in local time. Infinite for an animation that
+    /// repeats forever.
+    fn end_time(&self) -> f64 {
+        (self.params.delay + active_duration(&self.params)).max(0.0)
+    }
+
     fn local(&self, now: Instant) -> f64 {
-        if self.running {
-            self.base + now.saturating_duration_since(self.anchor).as_secs_f64()
-        } else {
-            self.base
-        }
+        self.clock.current(now, self.end_time())
     }
 
     /// When `local` is or was, for ordering events of different animations.
     fn instant_at(&self, local: f64, now: Instant) -> Instant {
-        let behind = self.local(now) - local;
-        if !self.running || behind <= 0.0 {
-            return now;
-        }
-        Duration::try_from_secs_f64(behind)
-            .ok()
-            .and_then(|behind| now.checked_sub(behind))
-            .unwrap_or(now)
+        self.clock.instant_at(local, now)
     }
 
     /// Takes the other `animation-*` values from the style; play state changes
     /// freeze or resume the clock where it is.
     fn retune(&mut self, params: &Animation, now: Instant) {
-        if self.params.play_state != params.play_state {
-            if self.running {
-                self.base = self.local(now);
-                self.running = false;
-            } else {
-                self.anchor = now;
-                self.running = true;
-            }
-        }
+        let end = self.end_time();
+        self.clock.follow_style(params.play_state == PlayState::Running, now, end);
         self.params = params.clone();
     }
 
@@ -883,7 +869,7 @@ impl Run {
     fn advance(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) -> Evaluation {
         use AnimationEventKind::{End, Iteration, Start};
         let local = self.local(now);
-        let evaluation = evaluate(&self.params, local);
+        let evaluation = evaluate(&self.params, local, self.clock.rate() < 0.0);
         let params = &self.params;
         let active_duration = active_duration(params);
         let starts = params.delay.max(0.0);
@@ -927,9 +913,11 @@ impl Run {
 
     /// Reports an animation that stops before it ended. It is brought up to
     /// `now` first: one that ran out since the last frame ended, and its
-    /// `animationend` is what is owed, not a cancel.
-    fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) {
+    /// `animationend` is what is owed, not a cancel. The API hears of the
+    /// cancel either way, as a finished animation is cancelled too.
+    fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
         self.advance(id, now, events);
+        api.push(ApiEvent { element: id, run: self.clock.id(), kind: ApiEventKind::Cancel });
         if self.phase == Phase::After {
             return;
         }
@@ -986,10 +974,30 @@ impl Run {
     }
 
     /// Whether the window needs another frame for this animation: it is moving
-    /// toward a phase change, or waiting on layout.
-    fn wants_frame(&self) -> bool {
-        (self.running && self.phase != Phase::After)
+    /// toward its end, a `play()` waits for a frame, or it waits on layout.
+    fn wants_frame(&self, now: Instant) -> bool {
+        self.clock.wants_frame(now, self.end_time())
             || self.plan.as_ref().is_some_and(|plan| plan.waiting)
+    }
+
+    /// Whether the animation is relevant in Web Animations terms: current
+    /// (before or in its active phase, or running back from after it) or in
+    /// effect through a fill.
+    fn is_relevant(&self) -> bool {
+        self.progress.is_some()
+            || matches!(self.phase, Phase::Before | Phase::Active)
+            || (self.phase == Phase::After && self.clock.rate() < 0.0)
+    }
+
+    fn info(&self, now: Instant) -> Info {
+        Info {
+            id: self.clock.id(),
+            kind: Kind::Animation,
+            name: self.name.clone(),
+            current_time: self.local(now) * 1000.0,
+            playback_rate: self.clock.rate(),
+            status: self.clock.status(now, self.end_time()),
+        }
     }
 }
 
@@ -1030,6 +1038,7 @@ impl ElementState {
         registry: &KeyframesRegistry,
         now: Instant,
         events: &mut Vec<Scheduled>,
+        api: &mut Vec<ApiEvent>,
     ) {
         let mut unclaimed: Vec<Option<Run>> =
             std::mem::take(&mut self.runs).into_iter().map(Some).collect();
@@ -1058,7 +1067,7 @@ impl ElementState {
             }
         }
         for mut run in unclaimed.into_iter().flatten() {
-            run.cancel(id, now, events);
+            run.cancel(id, now, events, api);
         }
         self.runs = runs;
     }
@@ -1106,6 +1115,8 @@ pub(crate) fn animates_width(style: &StyleDesc, registry: &KeyframesRegistry) ->
 pub(crate) struct CssAnimations {
     states: HashMap<u64, ElementState>,
     events: Vec<Scheduled>,
+    /// What the Web Animations objects of JS are told: finishes and cancels.
+    api_events: Vec<ApiEvent>,
     active: bool,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
@@ -1141,11 +1152,15 @@ impl CssAnimations {
     ) -> Vec<AnimProp> {
         let state = self.states.entry(id).or_insert_with(ElementState::new);
         state.sync_config(id, declared);
-        state.reconcile(id, registry, now, &mut self.events);
+        state.reconcile(id, registry, now, &mut self.events, &mut self.api_events);
 
         let mut covered = Vec::new();
         for run in &mut state.runs {
+            run.clock.resolve_pending(now);
             run.progress = run.advance(id, now, &mut self.events).progress;
+            if run.clock.take_finish(now, run.end_time()) {
+                self.api_events.push(ApiEvent { element: id, run: run.clock.id(), kind: ApiEventKind::Finish });
+            }
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().copied().filter(|prop| scope.animates(*prop)));
             }
@@ -1190,7 +1205,7 @@ impl CssAnimations {
                     now,
                 ));
             }
-            self.active |= run.wants_frame();
+            self.active |= run.wants_frame(now);
         }
 
         if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
@@ -1217,7 +1232,7 @@ impl CssAnimations {
                 continue;
             };
             for run in &mut state.runs {
-                run.cancel(hidden, now, &mut self.events);
+                run.cancel(hidden, now, &mut self.events, &mut self.api_events);
             }
         }
     }
@@ -1244,6 +1259,36 @@ impl CssAnimations {
     /// Whether an animation still needs frames as of the last update.
     pub(crate) fn take_active(&mut self) -> bool {
         std::mem::take(&mut self.active)
+    }
+
+    /// The animations of `element` in composite order (`animation-name` list
+    /// position) that are relevant: current, or in effect through a fill.
+    pub(crate) fn list(&self, element: u64, now: Instant) -> Vec<Info> {
+        self.states.get(&element).map_or_else(Vec::new, |state| {
+            state.runs.iter().filter(|run| run.is_relevant()).map(|run| run.info(now)).collect()
+        })
+    }
+
+    /// The animation `id`, relevant or not. `None` once it is cancelled.
+    pub(crate) fn info(&self, id: u64, now: Instant) -> Option<Info> {
+        self.run(id).map(|run| run.info(now))
+    }
+
+    /// Applies `command` to the animation `id` at `now`, the time of the last
+    /// frame. `None` for an id that is not running.
+    pub(crate) fn command(&mut self, id: u64, command: Command, now: Instant) -> Option<Result<(), String>> {
+        let run = self.states.values_mut().flat_map(|state| state.runs.iter_mut()).find(|run| run.clock.id() == id)?;
+        let end = run.end_time();
+        Some(run.clock.apply(command, now, end))
+    }
+
+    fn run(&self, id: u64) -> Option<&Run> {
+        self.states.values().flat_map(|state| state.runs.iter()).find(|run| run.clock.id() == id)
+    }
+
+    /// Finishes and cancels since the last call, for the Web Animations objects.
+    pub(crate) fn take_api_events(&mut self) -> Vec<ApiEvent> {
+        std::mem::take(&mut self.api_events)
     }
 }
 
@@ -2831,5 +2876,395 @@ mod tests {
         let animated = fading("grow 1s linear");
         assert_eq!(variation_axes(&frames.frame(0, &animated)), r#""wght" 300"#);
         assert_eq!(variation_axes(&frames.frame(500, &animated)), r#""wght" 500"#);
+    }
+
+    // ── Web Animations controls ──────────────────────────────────────
+
+    use super::super::web_animation::Status;
+
+    fn listed(frames: &Frames, millis: u64) -> Vec<Info> {
+        frames.animations.list(1, frames.at(millis))
+    }
+
+    fn only(frames: &Frames, millis: u64) -> Info {
+        let mut listed = listed(frames, millis);
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        listed.remove(0)
+    }
+
+    /// `command` between frames, at the time of the frame at `millis`.
+    fn command(frames: &mut Frames, millis: u64, id: u64, command: Command) {
+        let at = frames.at(millis);
+        frames.animations.command(id, command, at).expect("the animation exists").unwrap();
+    }
+
+    fn api_events(frames: &mut Frames) -> Vec<(ApiEventKind, u64)> {
+        frames.animations.take_api_events().into_iter().map(|event| (event.kind, event.run)).collect()
+    }
+
+    #[test]
+    fn an_animation_has_one_id_for_its_whole_run_and_each_run_its_own() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear infinite, fade 2s linear infinite");
+        frames.frame(0, &animated);
+        let first = listed(&frames, 0);
+        assert_eq!(first.len(), 2);
+        assert_ne!(first[0].id, first[1].id);
+        frames.frame(300, &animated);
+        frames.frame(900, &animated);
+        assert_eq!(listed(&frames, 900).iter().map(|info| info.id).collect::<Vec<_>>(), [first[0].id, first[1].id]);
+
+        // Changing the duration keeps the run, and so its id.
+        let changed = fading("fade 3s linear infinite, fade 2s linear infinite");
+        frames.frame(1000, &changed);
+        assert_eq!(listed(&frames, 1000)[0].id, first[0].id);
+
+        // Hidden and shown again, it starts over as a new run.
+        let mut tree = crate::retained_tree::RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        frames.animations.hide(&tree, 1, frames.at(1100));
+        frames.animations.show(1);
+        frames.frame(1200, &changed);
+        let restarted = listed(&frames, 1200);
+        assert!(restarted.iter().all(|info| !first.iter().any(|old| old.id == info.id)));
+        assert_eq!(restarted[0].name, "fade");
+        assert_eq!(restarted[0].kind, Kind::Animation);
+    }
+
+    #[test]
+    fn pause_holds_the_time_and_the_frame_paints_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        frames.frame(400, &animated);
+        let id = only(&frames, 400).id;
+        command(&mut frames, 400, id, Command::Pause);
+        assert_eq!(only(&frames, 400).status, Status::Paused);
+        near(only(&frames, 400).current_time, 400.0);
+        near(opacity(&frames.frame(900, &animated)), 0.4);
+        near(only(&frames, 900).current_time, 400.0);
+        frames.animations.take_active();
+        frames.frame(1500, &animated);
+        assert!(!frames.animations.take_active(), "a held animation asks for no frames");
+        assert!(api_events(&mut frames).is_empty());
+    }
+
+    #[test]
+    fn play_is_pending_until_the_next_frame_and_then_continues() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        frames.frame(400, &animated);
+        let id = only(&frames, 400).id;
+        command(&mut frames, 400, id, Command::Pause);
+        frames.frame(900, &animated);
+        frames.animations.take_active();
+
+        command(&mut frames, 900, id, Command::Play);
+        near(only(&frames, 900).current_time, 400.0);
+        assert_eq!(only(&frames, 900).status, Status::Running);
+        // A frame is owed even though nothing else asks for one.
+        near(opacity(&frames.frame(1000, &animated)), 0.4);
+        assert!(frames.animations.take_active());
+        near(opacity(&frames.frame(1200, &animated)), 0.6);
+    }
+
+    #[test]
+    fn seek_sets_the_time_at_once_and_the_next_frame_paints_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        command(&mut frames, 0, id, Command::SetCurrentTime(750.0));
+        near(only(&frames, 0).current_time, 750.0);
+        near(opacity(&frames.frame(100, &animated)), 0.85);
+
+        // Paused, it stays where it was put.
+        command(&mut frames, 100, id, Command::Pause);
+        command(&mut frames, 100, id, Command::SetCurrentTime(200.0));
+        near(opacity(&frames.frame(600, &animated)), 0.2);
+        assert_eq!(only(&frames, 600).status, Status::Paused);
+    }
+
+    #[test]
+    fn a_negative_delay_starts_at_time_zero_with_the_active_time_ahead() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear -500ms");
+        near(opacity(&frames.frame(0, &animated)), 0.5);
+        near(only(&frames, 0).current_time, 0.0);
+        near(opacity(&frames.frame(200, &animated)), 0.7);
+        near(only(&frames, 200).current_time, 200.0);
+        // Time 500 is the end: the delay is inside the effect.
+        assert_eq!(only(&frames, 400).status, Status::Running);
+        let id = only(&frames, 400).id;
+        frames.frame(500, &animated);
+        let finished = frames.animations.info(id, frames.at(500)).unwrap();
+        assert_eq!(finished.status, Status::Finished);
+        assert!(listed(&frames, 500).is_empty(), "finished without a fill, it is not relevant");
+    }
+
+    #[test]
+    fn a_positive_delay_is_part_of_the_time_too() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 500ms both");
+        near(opacity(&frames.frame(0, &animated)), 0.0);
+        near(opacity(&frames.frame(750, &animated)), 0.25);
+        near(only(&frames, 750).current_time, 750.0);
+        let id = only(&frames, 750).id;
+        command(&mut frames, 750, id, Command::SetCurrentTime(1000.0));
+        near(opacity(&frames.frame(750, &animated)), 0.5);
+    }
+
+    #[test]
+    fn a_rate_scales_time_and_keeps_it_continuous() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        command(&mut frames, 0, id, Command::SetPlaybackRate(2.0));
+        near(opacity(&frames.frame(250, &animated)), 0.5);
+        assert_eq!(only(&frames, 250).playback_rate, 2.0);
+
+        command(&mut frames, 250, id, Command::SetPlaybackRate(0.5));
+        near(only(&frames, 250).current_time, 500.0);
+        near(opacity(&frames.frame(750, &animated)), 0.75);
+    }
+
+    #[test]
+    fn a_negative_rate_runs_the_animation_back_and_finishes_at_time_zero() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear both");
+        frames.frame(0, &animated);
+        frames.frame(600, &animated);
+        frames.events();
+        let id = only(&frames, 600).id;
+        command(&mut frames, 600, id, Command::SetPlaybackRate(-1.0));
+        near(opacity(&frames.frame(700, &animated)), 0.5);
+        assert_eq!(only(&frames, 700).status, Status::Running);
+        assert!(frames.animations.take_active());
+
+        near(opacity(&frames.frame(1500, &animated)), 0.0);
+        let finished = only(&frames, 1500);
+        assert_eq!(finished.status, Status::Finished);
+        near(finished.current_time, 0.0);
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Finish, id)]);
+        // Back at the start it ends, as it does at the other edge going forward.
+        assert_eq!(frames.events(), [named(End, "fade", 0.0)]);
+        frames.animations.take_active();
+        frames.frame(2500, &animated);
+        assert!(!frames.animations.take_active());
+        assert!(api_events(&mut frames).is_empty());
+    }
+
+    #[test]
+    fn finish_is_reported_once_for_any_rate_sign() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear forwards");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        frames.frame(900, &animated);
+        assert!(api_events(&mut frames).is_empty());
+        near(only(&frames, 900).current_time, 900.0);
+        frames.frame(1300, &animated);
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Finish, id)]);
+        assert_eq!(only(&frames, 1300).status, Status::Finished);
+        near(only(&frames, 1300).current_time, 1000.0);
+        frames.frame(2000, &animated);
+        assert!(api_events(&mut frames).is_empty());
+        near(only(&frames, 5000).current_time, 1000.0);
+    }
+
+    #[test]
+    fn play_on_a_finished_animation_rewinds_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear forwards");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        frames.frame(1200, &animated);
+        api_events(&mut frames);
+
+        command(&mut frames, 1200, id, Command::Play);
+        near(only(&frames, 1200).current_time, 0.0);
+        assert_eq!(only(&frames, 1200).status, Status::Running);
+        near(opacity(&frames.frame(1300, &animated)), 0.0);
+        near(opacity(&frames.frame(1800, &animated)), 0.5);
+        frames.frame(2400, &animated);
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Finish, id)], "it finishes again");
+    }
+
+    #[test]
+    fn play_on_a_finished_animation_running_back_rewinds_to_the_end() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear both");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        command(&mut frames, 0, id, Command::SetPlaybackRate(-1.0));
+        frames.frame(100, &animated);
+        assert_eq!(only(&frames, 100).status, Status::Finished);
+
+        command(&mut frames, 100, id, Command::Play);
+        near(only(&frames, 100).current_time, 1000.0);
+        frames.frame(200, &animated);
+        near(opacity(&frames.frame(500, &animated)), 0.7);
+    }
+
+    #[test]
+    fn the_api_overrides_animation_play_state_for_good() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let running = fading("fade 10s linear running");
+        let paused = fading("fade 10s linear paused");
+        frames.frame(0, &running);
+        let id = only(&frames, 0).id;
+        frames.frame(1000, &paused);
+        assert_eq!(only(&frames, 1000).status, Status::Paused, "the style decides until the API is used");
+        frames.frame(2000, &running);
+        near(only(&frames, 2000).current_time, 1000.0);
+
+        command(&mut frames, 2000, id, Command::Pause);
+        near(only(&frames, 2000).current_time, 1000.0);
+        frames.frame(3000, &running);
+        assert_eq!(only(&frames, 3000).status, Status::Paused, "running in the style is ignored");
+        near(opacity(&frames.frame(4000, &running)), 0.1);
+
+        command(&mut frames, 4000, id, Command::Play);
+        frames.frame(5000, &paused);
+        frames.frame(6000, &paused);
+        assert_eq!(only(&frames, 6000).status, Status::Running, "paused in the style is ignored");
+        near(only(&frames, 6000).current_time, 2000.0);
+    }
+
+    #[test]
+    fn play_starts_an_animation_the_style_paused() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let paused = fading("fade 1s linear paused");
+        near(opacity(&frames.frame(0, &paused)), 0.0);
+        let id = only(&frames, 0).id;
+        command(&mut frames, 0, id, Command::Play);
+        frames.frame(100, &paused);
+        near(opacity(&frames.frame(600, &paused)), 0.5);
+    }
+
+    #[test]
+    fn only_relevant_animations_are_listed_in_the_order_of_animation_name() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.define("grow", r#"{ "to": { "width": 10 } }"#);
+        frames.define("tint", r#"{ "to": { "color": "red" } }"#);
+        frames.define("later", r#"{ "to": { "height": 10 } }"#);
+        let animated = fading(
+            "fade 1s linear, grow 1s linear forwards, tint 500ms linear paused, later 1s linear 5s",
+        );
+        frames.frame(0, &animated);
+        let names = |frames: &Frames, millis| {
+            listed(frames, millis).into_iter().map(|info| info.name).collect::<Vec<_>>()
+        };
+        assert_eq!(names(&frames, 0), ["fade", "grow", "tint", "later"]);
+
+        // `fade` finished without a fill; `tint` is held; `later` waits in its delay.
+        frames.frame(1500, &animated);
+        assert_eq!(names(&frames, 1500), ["grow", "tint", "later"]);
+        assert_eq!(listed(&frames, 1500)[0].status, Status::Finished);
+        assert_eq!(listed(&frames, 1500)[1].status, Status::Paused);
+
+        // Played to its end, `tint` has no fill and leaves.
+        let tint = listed(&frames, 1500)[1].id;
+        command(&mut frames, 1500, tint, Command::SetCurrentTime(400.0));
+        command(&mut frames, 1500, tint, Command::Play);
+        frames.frame(1600, &animated);
+        frames.frame(2100, &animated);
+        assert_eq!(names(&frames, 2100), ["grow", "later"]);
+    }
+
+    #[test]
+    fn a_finished_animation_run_backwards_is_current_again() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        frames.frame(2000, &animated);
+        assert!(listed(&frames, 2000).is_empty());
+        let at = frames.at(2000);
+        frames.animations.command(id, Command::SetPlaybackRate(-1.0), at).unwrap().unwrap();
+        assert_eq!(listed(&frames, 2000).len(), 1);
+    }
+
+    #[test]
+    fn an_animation_that_leaves_the_style_is_cancelled_for_the_api() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.define("grow", r#"{ "to": { "width": 10 } }"#);
+        frames.frame(0, &fading("fade 1s linear, grow 1s linear"));
+        let ids: Vec<u64> = listed(&frames, 0).iter().map(|info| info.id).collect();
+        frames.frame(300, &fading("fade 1s linear"));
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, ids[1])]);
+        assert!(frames.animations.info(ids[1], frames.at(300)).is_none());
+        assert!(frames.animations.command(ids[1], Command::Pause, frames.at(300)).is_none());
+
+        // A finished one is cancelled too: the object it is must go idle.
+        frames.frame(2000, &fading("fade 1s linear"));
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Finish, ids[0])]);
+        frames.frame(2100, &fading("none"));
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, ids[0])]);
+    }
+
+    #[test]
+    fn display_none_cancels_for_the_api_too() {
+        let mut tree = crate::retained_tree::RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        frames.animations.hide(&tree, 1, frames.at(100));
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, id)]);
+    }
+
+    #[test]
+    fn a_command_on_an_unknown_id_finds_nothing_and_a_bad_value_is_refused() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        let at = frames.at(0);
+        assert!(frames.animations.command(u64::MAX, Command::Pause, at).is_none());
+        assert!(frames.animations.info(u64::MAX, at).is_none());
+        let id = only(&frames, 0).id;
+        assert!(frames.animations.command(id, Command::SetCurrentTime(f64::NAN), at).unwrap().is_err());
+        assert!(frames.animations.command(id, Command::SetPlaybackRate(f64::INFINITY), at).unwrap().is_err());
+    }
+
+    #[test]
+    fn nothing_changes_when_the_api_is_not_used() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 100ms 2 alternate forwards");
+        frames.frame(0, &animated);
+        frames.frame(100, &animated);
+        near(opacity(&frames.frame(600, &animated)), 0.5);
+        near(opacity(&frames.frame(1600, &animated)), 0.5);
+        near(opacity(&frames.frame(5000, &animated)), 0.0);
+        assert_eq!(
+            frames.events(),
+            [
+                named(Start, "fade", 0.0),
+                named(Iteration, "fade", 1.0),
+                named(End, "fade", 2.0),
+            ]
+        );
     }
 }

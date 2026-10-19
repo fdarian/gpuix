@@ -221,6 +221,31 @@ export declare class GpuixRenderer {
    * `@gpuix/native/host`, which defines it on every renderer.
    */
   defineKeyframes(name: string, framesJson: string): void
+  /**
+   * The CSS transitions, then the CSS animations, of an element that are
+   * running, paused or in effect through a fill, in the order of the DOM's
+   * `getAnimations()`. Animations of the motion engine are not listed.
+   */
+  getAnimations(elementId: number): Array<WebAnimationInfo>
+  /**
+   * One CSS animation or transition by the id `getAnimations` gave. Throws
+   * once it has finished and left its element, or was cancelled.
+   */
+  getAnimation(animationId: number): WebAnimationInfo
+  /**
+   * `animation.pause()`: holds the current time at once, and from here the
+   * style's `animation-play-state` no longer decides.
+   */
+  pauseAnimation(animationId: number): void
+  /**
+   * `animation.play()`: continues from the held time at the next frame, or
+   * from the start (the end when running backwards) if it has finished.
+   */
+  playAnimation(animationId: number): void
+  /** `animation.currentTime = milliseconds`. */
+  setAnimationCurrentTime(animationId: number, milliseconds: number): void
+  /** `animation.playbackRate = rate`, keeping the current time. */
+  setAnimationPlaybackRate(animationId: number, rate: number): void
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -961,6 +986,30 @@ export declare class TestGpuixRenderer {
    * `GpuixRenderer.defineKeyframes`.
    */
   defineKeyframes(name: string, framesJson: string): void
+  /**
+   * The CSS transitions, then the CSS animations, of an element that are
+   * running, paused or in effect through a fill. See `GpuixRenderer.getAnimations`.
+   */
+  getAnimations(elementId: number): Array<WebAnimationInfo>
+  /**
+   * One CSS animation or transition by the id `getAnimations` gave. Throws
+   * once it has finished and left its element, or was cancelled.
+   */
+  getAnimation(animationId: number): WebAnimationInfo
+  /**
+   * `animation.pause()`: holds the current time at once, and from here the
+   * style's `animation-play-state` no longer decides.
+   */
+  pauseAnimation(animationId: number): void
+  /**
+   * `animation.play()`: continues from the held time at the next frame, or
+   * from the start (the end when running backwards) if it has finished.
+   */
+  playAnimation(animationId: number): void
+  /** `animation.currentTime = milliseconds`. */
+  setAnimationCurrentTime(animationId: number, milliseconds: number): void
+  /** `animation.playbackRate = rate`, keeping the current time. */
+  setAnimationPlaybackRate(animationId: number, rate: number): void
   /** Advance GPUI's deterministic test executor and run due timers. */
   advanceTime(milliseconds: number): void
   /** Get the root element ID, or null if no root is set. */
@@ -1382,6 +1431,13 @@ export interface EventPayload {
    */
   animationName?: string
   /**
+   * The id of the CSS animation or transition (`getAnimation`) the event is
+   * about. Populated for: webanimationfinish, webanimationcancel, which are
+   * internal events for the `Animation` objects of `getAnimations()`: they
+   * carry no path, so they reach no handler of the app.
+   */
+  animationId?: number
+  /**
    * Seconds of the transition's or animation's active time, as the DOM
    * `elapsedTime`. Populated for: the transition and animation events.
    */
@@ -1651,6 +1707,36 @@ export interface UpdaterHeader {
  * first so a bad definition throws where it is written.
  */
 export declare function validateKeyframes(name: string, framesJson: string): void
+
+/**
+ * A CSS animation or transition as `Animation.currentTime`, `playbackRate` and
+ * `playState` show it. Exactly one of `animationName` and `transitionProperty`
+ * is set.
+ */
+export interface WebAnimationInfo {
+  /**
+   * Unique among the animations and transitions of the process, and the same
+   * for one run from its start to its end.
+   */
+  id: number
+  /** `"animation"` or `"transition"`. */
+  kind: string
+  /** The `animation-name`. */
+  animationName?: string
+  /** The CSS name of the transitioned property, `background-color`. */
+  transitionProperty?: string
+  /**
+   * Milliseconds from the start of the animation, the delay inside it, as of
+   * the last frame.
+   */
+  currentTime: number
+  playbackRate: number
+  /**
+   * `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its
+   * `webanimationcancel` event is what makes the object `"idle"`.
+   */
+  playState: string
+}
 
 export interface WindowInsets {
   safeArea: EdgeInsets

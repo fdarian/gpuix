@@ -14,6 +14,7 @@ use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp, Scope};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentFont};
+use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback, Status};
 use super::MotionState;
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
@@ -562,6 +563,8 @@ impl TransitionEventKind {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TransitionEvent {
     pub(crate) id: u64,
+    /// The [`Running`] it is about, by its Web Animations id.
+    run: u64,
     pub(crate) kind: TransitionEventKind,
     prop: AnimProp,
     /// Seconds.
@@ -575,9 +578,36 @@ impl TransitionEvent {
     }
 }
 
+/// The events a step of transitions queues: what the DOM hears, and what the
+/// Web Animations objects hear, which follows from it (`transitionend` is the
+/// finish of the run, `transitioncancel` its cancel).
+#[derive(Default)]
+struct Events {
+    dom: Vec<TransitionEvent>,
+    api: Vec<ApiEvent>,
+}
+
+impl Events {
+    fn push(&mut self, event: TransitionEvent) {
+        let kind = match event.kind {
+            TransitionEventKind::End => Some(ApiEventKind::Finish),
+            TransitionEventKind::Cancel => Some(ApiEventKind::Cancel),
+            TransitionEventKind::Run | TransitionEventKind::Start => None,
+        };
+        if let Some(kind) = kind {
+            self.api.push(ApiEvent { element: event.id, run: event.run, kind });
+        }
+        self.dom.push(event);
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Running {
-    started: Instant,
+    /// Time since the transition started, with the delay inside it.
+    clock: Playback,
+    /// Which style change started it: transitions of one change are ordered by
+    /// property name, those of different changes by when they began.
+    generation: u64,
     delay: f64,
     duration: f64,
     timing: Ease,
@@ -615,7 +645,8 @@ impl Running {
             .filter(|pair| entry.allow_discrete || !pair.is_discrete() || prop.flips_without_allow_discrete())?;
         Some(Self {
             measured: end != *to,
-            started: now,
+            clock: Playback::start(now, true),
+            generation: 0,
             delay: if entry.delay >= 0.0 {
                 entry.delay
             } else {
@@ -632,8 +663,13 @@ impl Running {
         })
     }
 
+    /// Where the transition ends, in time since it started.
+    fn end_time(&self) -> f64 {
+        (self.delay + self.duration).max(0.0)
+    }
+
     fn elapsed(&self, now: Instant) -> f64 {
-        now.saturating_duration_since(self.started).as_secs_f64()
+        self.clock.current(now, self.end_time())
     }
 
     /// The eased progress. Before the delay ends it holds the start (the
@@ -676,6 +712,17 @@ impl Running {
         let current = from + (self.segment.to[0] - from) * progress;
         self.segment.from[0] = (current - end * progress) / (1.0 - progress);
         self.segment.to[0] = end;
+    }
+
+    fn info(&self, prop: AnimProp, now: Instant) -> Info {
+        Info {
+            id: self.clock.id(),
+            kind: Kind::Transition,
+            name: kebab_case(prop.name()),
+            current_time: self.elapsed(now) * 1000.0,
+            playback_rate: self.clock.rate(),
+            status: self.clock.status(now, self.end_time()),
+        }
     }
 
     /// `elapsedTime` of `transitionrun` and `transitionstart`.
@@ -755,6 +802,8 @@ struct ElementState {
     config: ConfigKey,
     list: TransitionList,
     running: BTreeMap<AnimProp, Running>,
+    /// Counts the steps, to tell which style change started a transition.
+    generation: u64,
     /// Computed end values of finished transitions, so a style that still has
     /// the end value does not start the transition again.
     completed: BTreeMap<AnimProp, AnimValue>,
@@ -775,6 +824,7 @@ impl ElementState {
             config: config_key(after),
             list: parse_config(id, after),
             running: BTreeMap::new(),
+            generation: 0,
             completed: BTreeMap::new(),
         }
     }
@@ -795,8 +845,9 @@ impl ElementState {
         interpolate_size: InterpolateSize,
         (scope, covered): (Scope, &[AnimProp]),
         now: Instant,
-        events: &mut Vec<TransitionEvent>,
+        events: &mut Events,
     ) {
+        self.generation += 1;
         let config = config_key(after);
         let config_changed = config != self.config;
         if config_changed {
@@ -853,31 +904,51 @@ impl ElementState {
     }
 
     /// Reports transitions that began and moves finished ones to `completed`.
-    fn advance(&mut self, id: u64, now: Instant, events: &mut Vec<TransitionEvent>) {
+    fn advance(&mut self, id: u64, now: Instant, events: &mut Events) {
         let mut finished = Vec::new();
         for (prop, running) in &mut self.running {
+            running.clock.resolve_pending(now);
+            let end = running.end_time();
             let elapsed = running.elapsed(now);
             if !running.began && elapsed >= running.delay {
                 running.began = true;
                 events.push(TransitionEvent {
                     id,
+                    run: running.clock.id(),
                     kind: TransitionEventKind::Start,
                     prop: *prop,
                     elapsed: running.initial_elapsed(),
                 });
             }
-            if elapsed >= running.delay + running.duration {
+            if running.clock.status(now, end) == Status::Finished {
                 finished.push(*prop);
             }
         }
         for prop in finished {
             if let Some(running) = self.running.remove(&prop) {
-                events.push(TransitionEvent {
-                    id,
-                    kind: TransitionEventKind::End,
-                    prop,
-                    elapsed: running.duration,
-                });
+                let run = running.clock.id();
+                if running.clock.rate() >= 0.0 {
+                    events.push(TransitionEvent {
+                        id,
+                        run,
+                        kind: TransitionEventKind::End,
+                        prop,
+                        elapsed: running.duration,
+                    });
+                } else if running.began {
+                    // Run back to its start, it ends at the other edge of its
+                    // active interval.
+                    events.push(TransitionEvent {
+                        id,
+                        run,
+                        kind: TransitionEventKind::End,
+                        prop,
+                        elapsed: running.initial_elapsed(),
+                    });
+                } else {
+                    // Still before its active interval: the DOM saw nothing begin.
+                    events.api.push(ApiEvent { element: id, run, kind: ApiEventKind::Finish });
+                }
                 self.completed.insert(prop, running.end_computed);
             }
         }
@@ -888,12 +959,13 @@ impl ElementState {
         id: u64,
         prop: AnimProp,
         now: Instant,
-        events: &mut Vec<TransitionEvent>,
+        events: &mut Events,
     ) {
         if let Some(running) = self.running.remove(&prop) {
             let active = running.elapsed(now) - running.delay;
             events.push(TransitionEvent {
                 id,
+                run: running.clock.id(),
                 kind: TransitionEventKind::Cancel,
                 prop,
                 elapsed: active.clamp(0.0, running.duration),
@@ -905,11 +977,13 @@ impl ElementState {
         &mut self,
         id: u64,
         prop: AnimProp,
-        running: Running,
-        events: &mut Vec<TransitionEvent>,
+        mut running: Running,
+        events: &mut Events,
     ) {
+        running.generation = self.generation;
         events.push(TransitionEvent {
             id,
+            run: running.clock.id(),
             kind: TransitionEventKind::Run,
             prop,
             elapsed: running.initial_elapsed(),
@@ -931,7 +1005,7 @@ impl ElementState {
         interpolate_size: InterpolateSize,
         covered: &[AnimProp],
         now: Instant,
-        events: &mut Vec<TransitionEvent>,
+        events: &mut Events,
     ) {
         let entry = if motion.is_some_and(|motion| motion.owns(prop)) {
             None
@@ -1056,7 +1130,7 @@ impl TransitionStyle {
 #[derive(Default)]
 pub(crate) struct CssTransitions {
     states: HashMap<u64, ElementState>,
-    events: Vec<TransitionEvent>,
+    events: Events,
     active: bool,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
@@ -1146,7 +1220,10 @@ impl CssTransitions {
             now,
             &mut self.events,
         );
-        self.active |= !state.running.is_empty();
+        self.active |= state
+            .running
+            .values()
+            .any(|running| running.clock.wants_frame(now, running.end_time()));
         let values = state.values(now);
         (!values.is_empty()).then_some(TransitionStyle(values))
     }
@@ -1185,7 +1262,50 @@ impl CssTransitions {
 
     /// Events queued since the last call, in the order they happened.
     pub(crate) fn take_events(&mut self) -> Vec<TransitionEvent> {
-        std::mem::take(&mut self.events)
+        std::mem::take(&mut self.events.dom)
+    }
+
+    /// The transitions running on `element` in composite order: by the style
+    /// change that started them, then by property name.
+    pub(crate) fn list(&self, element: u64, now: Instant) -> Vec<Info> {
+        let Some(state) = self.states.get(&element) else {
+            return Vec::new();
+        };
+        let mut running: Vec<(u64, Info)> = state
+            .running
+            .iter()
+            .map(|(prop, running)| (running.generation, running.info(*prop, now)))
+            .collect();
+        running.sort_by(|(first_generation, first), (second_generation, second)| {
+            first_generation.cmp(second_generation).then_with(|| first.name.cmp(&second.name))
+        });
+        running.into_iter().map(|(_, info)| info).collect()
+    }
+
+    /// The transition `id`. `None` once it finished or was cancelled.
+    pub(crate) fn info(&self, id: u64, now: Instant) -> Option<Info> {
+        self.states
+            .values()
+            .flat_map(|state| state.running.iter())
+            .find(|(_, running)| running.clock.id() == id)
+            .map(|(prop, running)| running.info(*prop, now))
+    }
+
+    /// Applies `command` to the transition `id` at `now`, the time of the last
+    /// frame. `None` for an id that is not running.
+    pub(crate) fn command(&mut self, id: u64, command: Command, now: Instant) -> Option<Result<(), String>> {
+        let running = self
+            .states
+            .values_mut()
+            .flat_map(|state| state.running.values_mut())
+            .find(|running| running.clock.id() == id)?;
+        let end = running.end_time();
+        Some(running.clock.apply(command, now, end))
+    }
+
+    /// Finishes and cancels since the last call, for the Web Animations objects.
+    pub(crate) fn take_api_events(&mut self) -> Vec<ApiEvent> {
+        std::mem::take(&mut self.events.api)
     }
 
     /// Whether a transition was still running at the last update, so the
@@ -3673,5 +3793,235 @@ mod tests {
             clock.frame(0, &wide);
             assert_eq!(clock.frame(500, &wide).outline_width, Some(LinearLength::px(5.0)));
         }
+    }
+
+    // ── Web Animations controls ──────────────────────────────────────
+
+    fn close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} is not {expected}");
+    }
+
+    fn listed(clock: &Clock, millis: u64) -> Vec<Info> {
+        clock.transitions.list(1, clock.at(millis))
+    }
+
+    fn only(clock: &Clock, millis: u64) -> Info {
+        let mut listed = listed(clock, millis);
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        listed.remove(0)
+    }
+
+    fn command(clock: &mut Clock, millis: u64, id: u64, command: Command) {
+        let at = clock.at(millis);
+        clock.transitions.command(id, command, at).expect("the transition exists").unwrap();
+    }
+
+    fn api_events(clock: &mut Clock) -> Vec<(ApiEventKind, u64)> {
+        clock.transitions.take_api_events().into_iter().map(|event| (event.kind, event.run)).collect()
+    }
+
+    /// A width transition of 0 to 100 that starts at 100 ms.
+    fn moving() -> (Clock, StyleDesc, u64) {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear"));
+        let target = sized(100.0, "width 1s linear");
+        clock.frame(100, &target);
+        let id = only(&clock, 100).id;
+        (clock, target, id)
+    }
+
+    #[test]
+    fn a_transition_has_one_id_for_its_run_and_each_run_its_own() {
+        let (mut clock, target, id) = moving();
+        let info = only(&clock, 100);
+        assert_eq!((info.kind, info.name.as_str()), (Kind::Transition, "width"));
+        clock.frame(300, &target);
+        clock.frame(600, &target);
+        assert_eq!(only(&clock, 600).id, id);
+
+        // Another target interrupts it: the old run is cancelled and a new one runs.
+        let back = sized(10.0, "width 1s linear");
+        clock.frame(700, &back);
+        let replaced = only(&clock, 700).id;
+        assert_ne!(replaced, id);
+        assert_eq!(api_events(&mut clock), [(ApiEventKind::Cancel, id)]);
+        assert!(clock.transitions.info(id, clock.at(700)).is_none());
+        assert!(clock.transitions.command(id, Command::Pause, clock.at(700)).is_none());
+    }
+
+    #[test]
+    fn pause_holds_the_time_and_the_value() {
+        let (mut clock, target, id) = moving();
+        close(width_of(&clock.frame(500, &target)), 40.0);
+        command(&mut clock, 500, id, Command::Pause);
+        let held = only(&clock, 500);
+        assert_eq!(held.status, Status::Paused);
+        close(held.current_time, 400.0);
+        close(width_of(&clock.frame(900, &target)), 40.0);
+        close(width_of(&clock.frame(2000, &target)), 40.0);
+        assert_eq!(only(&clock, 2000).status, Status::Paused);
+        clock.transitions.take_active();
+        clock.frame(3000, &target);
+        assert!(!clock.transitions.take_active(), "a held transition asks for no frames");
+        assert!(api_events(&mut clock).is_empty());
+        assert!(clock.events().iter().all(|(kind, ..)| *kind != End));
+    }
+
+    #[test]
+    fn play_is_pending_until_the_next_frame_and_then_continues() {
+        let (mut clock, target, id) = moving();
+        clock.frame(500, &target);
+        command(&mut clock, 500, id, Command::Pause);
+        clock.frame(900, &target);
+        clock.transitions.take_active();
+
+        command(&mut clock, 900, id, Command::Play);
+        close(only(&clock, 900).current_time, 400.0);
+        close(width_of(&clock.frame(1000, &target)), 40.0);
+        assert!(clock.transitions.take_active());
+        close(width_of(&clock.frame(1200, &target)), 60.0);
+    }
+
+    #[test]
+    fn seek_sets_the_time_at_once_and_the_next_frame_paints_it() {
+        let (mut clock, target, id) = moving();
+        command(&mut clock, 100, id, Command::SetCurrentTime(750.0));
+        close(only(&clock, 100).current_time, 750.0);
+        close(width_of(&clock.frame(200, &target)), 85.0);
+
+        command(&mut clock, 200, id, Command::Pause);
+        command(&mut clock, 200, id, Command::SetCurrentTime(200.0));
+        close(width_of(&clock.frame(900, &target)), 20.0);
+    }
+
+    #[test]
+    fn a_delay_is_part_of_the_time_too() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear 500ms"));
+        let target = sized(100.0, "width 1s linear 500ms");
+        close(width_of(&clock.frame(0, &target)), 0.0);
+        let id = only(&clock, 0).id;
+        close(width_of(&clock.frame(750, &target)), 25.0);
+        close(only(&clock, 750).current_time, 750.0);
+        command(&mut clock, 750, id, Command::SetCurrentTime(1000.0));
+        close(width_of(&clock.frame(750, &target)), 50.0);
+    }
+
+    #[test]
+    fn a_rate_scales_time_and_keeps_it_continuous() {
+        let (mut clock, target, id) = moving();
+        command(&mut clock, 100, id, Command::SetPlaybackRate(2.0));
+        close(width_of(&clock.frame(350, &target)), 50.0);
+        command(&mut clock, 350, id, Command::SetPlaybackRate(0.5));
+        close(only(&clock, 350).current_time, 500.0);
+        close(width_of(&clock.frame(850, &target)), 75.0);
+        assert_eq!(only(&clock, 850).playback_rate, 0.5);
+    }
+
+    #[test]
+    fn a_faster_rate_finishes_sooner_with_the_events() {
+        let (mut clock, target, id) = moving();
+        clock.events();
+        command(&mut clock, 100, id, Command::SetPlaybackRate(2.0));
+        close(width_of(&clock.frame(400, &target)), 60.0);
+        close(width_of(&clock.frame(700, &target)), 100.0);
+        assert_eq!(api_events(&mut clock), [(ApiEventKind::Finish, id)]);
+        assert_eq!(clock.events(), [(End, "width".to_string(), 1.0)]);
+        assert!(listed(&clock, 700).is_empty(), "a finished transition leaves the element");
+        assert!(clock.transitions.info(id, clock.at(700)).is_none());
+    }
+
+    #[test]
+    fn a_negative_rate_runs_back_and_finishes_at_time_zero() {
+        let (mut clock, target, id) = moving();
+        clock.frame(600, &target);
+        clock.events();
+        command(&mut clock, 600, id, Command::SetPlaybackRate(-1.0));
+        close(width_of(&clock.frame(700, &target)), 40.0);
+        assert_eq!(only(&clock, 700).status, Status::Running);
+        assert!(clock.transitions.take_active());
+
+        // At the start, it ends: the other edge of the active interval.
+        clock.frame(1200, &target);
+        assert_eq!(api_events(&mut clock), [(ApiEventKind::Finish, id)]);
+        assert_eq!(clock.events(), [(End, "width".to_string(), 0.0)]);
+        assert!(listed(&clock, 1200).is_empty());
+        clock.transitions.take_active();
+        clock.frame(1300, &target);
+        assert!(!clock.transitions.take_active());
+        assert!(api_events(&mut clock).is_empty());
+    }
+
+    #[test]
+    fn play_after_a_seek_to_the_end_rewinds_a_paused_transition() {
+        let (mut clock, target, id) = moving();
+        clock.frame(300, &target);
+        command(&mut clock, 300, id, Command::Pause);
+        command(&mut clock, 300, id, Command::SetCurrentTime(1000.0));
+        clock.frame(400, &target);
+        let at_end = only(&clock, 400);
+        assert_eq!(at_end.status, Status::Paused, "held at its end, it has not finished");
+        close(at_end.current_time, 1000.0);
+        assert!(api_events(&mut clock).is_empty());
+
+        command(&mut clock, 400, id, Command::Play);
+        close(only(&clock, 400).current_time, 0.0);
+        assert_eq!(only(&clock, 400).status, Status::Running);
+        clock.frame(500, &target);
+        close(width_of(&clock.frame(750, &target)), 25.0);
+    }
+
+    #[test]
+    fn a_seek_to_the_end_of_a_running_transition_finishes_it() {
+        let (mut clock, target, id) = moving();
+        command(&mut clock, 100, id, Command::SetCurrentTime(1500.0));
+        assert_eq!(only(&clock, 100).status, Status::Finished);
+        close(width_of(&clock.frame(200, &target)), 100.0);
+        assert_eq!(api_events(&mut clock), [(ApiEventKind::Finish, id)]);
+    }
+
+    #[test]
+    fn transitions_are_listed_by_the_change_that_started_them_then_by_name() {
+        let mut clock = Clock::new();
+        let declare = |width: f64, opacity: f64, height: f64| {
+            style(&format!(
+                r#"{{ "width": {width}, "opacity": {opacity}, "height": {height}, "transition": "all 1s linear" }}"#
+            ))
+        };
+        clock.frame(0, &declare(0.0, 1.0, 0.0));
+        clock.frame(100, &declare(100.0, 0.5, 0.0));
+        let names = |clock: &Clock, millis| {
+            listed(clock, millis).into_iter().map(|info| info.name).collect::<Vec<_>>()
+        };
+        assert_eq!(names(&clock, 100), ["opacity", "width"]);
+
+        // A later change adds `height` after both, though it sorts before `width`.
+        clock.frame(300, &declare(100.0, 0.5, 50.0));
+        assert_eq!(names(&clock, 300), ["opacity", "width", "height"]);
+        let ids: Vec<u64> = listed(&clock, 300).iter().map(|info| info.id).collect();
+        clock.frame(350, &declare(100.0, 0.5, 50.0));
+        assert_eq!(listed(&clock, 350).iter().map(|info| info.id).collect::<Vec<_>>(), ids);
+
+        // Finished ones are gone; the later one stays.
+        clock.frame(1200, &declare(100.0, 0.5, 50.0));
+        assert_eq!(names(&clock, 1200), ["height"]);
+    }
+
+    #[test]
+    fn display_none_cancels_for_the_api_too() {
+        let mut tree = crate::retained_tree::RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        let (mut clock, _target, id) = moving();
+        clock.transitions.hide(&tree, 1, clock.at(200));
+        assert_eq!(api_events(&mut clock), [(ApiEventKind::Cancel, id)]);
+    }
+
+    #[test]
+    fn a_bad_value_is_refused() {
+        let (mut clock, _target, id) = moving();
+        let at = clock.at(100);
+        assert!(clock.transitions.command(id, Command::SetCurrentTime(f64::NAN), at).unwrap().is_err());
+        assert!(clock.transitions.command(id, Command::SetPlaybackRate(f64::NAN), at).unwrap().is_err());
+        assert!(clock.transitions.command(u64::MAX, Command::Pause, at).is_none());
     }
 }

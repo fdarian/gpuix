@@ -2962,6 +2962,64 @@ impl GpuixRenderer {
         })
     }
 
+    /// The CSS transitions, then the CSS animations, of an element that are
+    /// running, paused or in effect through a fill, in the order of the DOM's
+    /// `getAnimations()`. Animations of the motion engine are not listed.
+    #[napi]
+    pub fn get_animations(&self, element_id: f64) -> Result<Vec<WebAnimationInfo>> {
+        let id = to_element_id(element_id)?;
+        self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
+    }
+
+    /// One CSS animation or transition by the id `getAnimations` gave. Throws
+    /// once it has finished and left its element, or was cancelled.
+    #[napi]
+    pub fn get_animation(&self, animation_id: f64) -> Result<WebAnimationInfo> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(false, move |view, _now| view.web_animation(id))
+    }
+
+    /// `animation.pause()`: holds the current time at once, and from here the
+    /// style's `animation-play-state` no longer decides.
+    #[napi]
+    pub fn pause_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Pause)
+    }
+
+    /// `animation.play()`: continues from the held time at the next frame, or
+    /// from the start (the end when running backwards) if it has finished.
+    #[napi]
+    pub fn play_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Play)
+    }
+
+    /// `animation.currentTime = milliseconds`.
+    #[napi]
+    pub fn set_animation_current_time(&self, animation_id: f64, milliseconds: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::SetCurrentTime(milliseconds),
+        )
+    }
+
+    /// `animation.playbackRate = rate`, keeping the current time.
+    #[napi]
+    pub fn set_animation_playback_rate(&self, animation_id: f64, rate: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::SetPlaybackRate(rate),
+        )
+    }
+
+    fn command_animation(
+        &self,
+        animation_id: f64,
+        command: crate::motion::web_animation::Command,
+    ) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(true, move |view, _now| view.command_web_animation(id, command))
+    }
+
     // ── Selection API ────────────────────────────────────────────────
 
     /// The current text selection joined in document order, or null.
@@ -5494,6 +5552,21 @@ fn emit_animation_events(
     }
 }
 
+/// Tells JS a CSS animation or transition finished or was cancelled. The
+/// payload has no path, so it reaches the element's own handlers only and no
+/// ancestor, and it is not subject to a listener check: the `Animation` object
+/// of `getAnimations()` listens by existing.
+fn emit_web_animation_events(
+    callback: &Option<EventCallback>,
+    events: Vec<crate::motion::web_animation::ApiEvent>,
+) {
+    for event in events {
+        emit_event_full(callback, event.element, event.kind.event_type(), |payload| {
+            payload.animation_id = Some(event.run as f64);
+        });
+    }
+}
+
 fn emit_highlight_events(callback: &Option<EventCallback>, events: &[(u64, usize)]) {
     for &(id, total) in events {
         emit_event_full(callback, id, "highlight", |payload| {
@@ -5580,6 +5653,41 @@ fn resolve_highlight(
 }
 
 impl GpuixView {
+    /// The Web Animations of `element`: its CSS transitions, then its CSS
+    /// animations, each in composite order, as of the last frame.
+    pub(crate) fn web_animations(&self, element: u64) -> Vec<WebAnimationInfo> {
+        let Some(now) = self.built_at else {
+            return Vec::new();
+        };
+        let transitions = self.css_transitions.list(element, now);
+        let animations = self.css_animations.list(element, now);
+        transitions.into_iter().chain(animations).map(WebAnimationInfo::from).collect()
+    }
+
+    pub(crate) fn web_animation(&self, id: u64) -> std::result::Result<WebAnimationInfo, String> {
+        self.built_at
+            .and_then(|now| {
+                self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
+            })
+            .map(WebAnimationInfo::from)
+            .ok_or_else(|| unknown_web_animation(id))
+    }
+
+    /// Applies `command` at the time of the last frame, which is the time the
+    /// animation reads as. The caller requests the frame that paints it.
+    pub(crate) fn command_web_animation(
+        &mut self,
+        id: u64,
+        command: crate::motion::web_animation::Command,
+    ) -> std::result::Result<(), String> {
+        let outcome = self.built_at.and_then(|now| {
+            self.css_transitions
+                .command(id, command, now)
+                .or_else(|| self.css_animations.command(id, command, now))
+        });
+        outcome.unwrap_or_else(|| Err(unknown_web_animation(id)))
+    }
+
     pub(crate) fn new(
         tree: Arc<Mutex<RetainedTree>>,
         event_callback: Option<EventCallback>,
@@ -6183,6 +6291,8 @@ impl GpuixView {
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active()
             || self.css_animations.take_active()
@@ -7545,6 +7655,8 @@ impl GpuixView {
         debug_assert!(highlight_events.is_empty(), "a highlight is never inside a retained subtree");
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
@@ -7802,6 +7914,8 @@ impl gpui::Render for GpuixView {
         emit_motion_value_events(&callback, &motion_value_frame.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
@@ -11018,6 +11132,53 @@ pub struct ElementBounds {
     /// The padding box starts at `(x + clientLeft, y + clientTop)`.
     pub client_left: f64,
     pub client_top: f64,
+}
+
+fn unknown_web_animation(id: u64) -> String {
+    format!("No running CSS animation or transition has the id {id}")
+}
+
+/// A CSS animation or transition as `Animation.currentTime`, `playbackRate` and
+/// `playState` show it. Exactly one of `animationName` and `transitionProperty`
+/// is set.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct WebAnimationInfo {
+    /// Unique among the animations and transitions of the process, and the same
+    /// for one run from its start to its end.
+    pub id: f64,
+    /// `"animation"` or `"transition"`.
+    pub kind: String,
+    /// The `animation-name`.
+    pub animation_name: Option<String>,
+    /// The CSS name of the transitioned property, `background-color`.
+    pub transition_property: Option<String>,
+    /// Milliseconds from the start of the animation, the delay inside it, as of
+    /// the last frame.
+    pub current_time: f64,
+    pub playback_rate: f64,
+    /// `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its
+    /// `webanimationcancel` event is what makes the object `"idle"`.
+    pub play_state: String,
+}
+
+impl From<crate::motion::web_animation::Info> for WebAnimationInfo {
+    fn from(info: crate::motion::web_animation::Info) -> Self {
+        use crate::motion::web_animation::Kind;
+        let (animation_name, transition_property) = match info.kind {
+            Kind::Animation => (Some(info.name), None),
+            Kind::Transition => (None, Some(info.name)),
+        };
+        Self {
+            id: info.id as f64,
+            kind: info.kind.name().to_string(),
+            animation_name,
+            transition_property,
+            current_time: info.current_time,
+            playback_rate: info.playback_rate,
+            play_state: info.status.name().to_string(),
+        }
+    }
 }
 
 impl ElementBounds {
