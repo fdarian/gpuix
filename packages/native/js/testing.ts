@@ -383,18 +383,24 @@ export interface A11yTreeDump {
 /** The test window is one per thread: making a renderer tears down the one before it. */
 let latestRenderer: TestRenderer | undefined
 
-/** Throws if a replayed frame of this window differed from a build of it, and prints the
- *  counters when GPUIX_RETAIN_VERIFY_REPORT is set. */
+/** Throws if a replayed frame of this window differed from a build of it, or if gpuix's own
+ *  check found an element judged unchanged that built differently, and prints the counters when
+ *  GPUIX_RETAIN_VERIFY_REPORT is set. The gpuix findings are read from the window's list, not
+ *  from `retainMismatches`, which is one count per thread that only `resetBuildCounters` clears. */
 function reportRetentionMismatches(native: NativeTestRendererApi): void {
   const counters = native.getRetainedCounters()
+  const findings = native.getRetainMismatches()
   if (process.env.GPUIX_RETAIN_VERIFY_REPORT !== undefined) {
     console.log(
-      `[retain-verify] verified=${counters.verified} mismatches=${counters.mismatches} replays=${counters.replays} ` +
+      `[retain-verify] verified=${counters.verified} mismatches=${counters.mismatches} gpuix-mismatches=${findings.length} replays=${counters.replays} ` +
         `hits=${counters.hits} builds=${counters.builds} lazy=${counters.lazyBuilds} non-reusable=${counters.nonReusable}`
     )
   }
   if (counters.mismatches > 0) {
     throw new Error(`${counters.mismatches} replayed frames differed from a build:\n${native.getRetentionMismatches().join('\n')}`)
+  }
+  if (findings.length > 0) {
+    throw new Error(`${findings.length} elements were judged unchanged and built differently:\n${findings.join('\n')}`)
   }
 }
 

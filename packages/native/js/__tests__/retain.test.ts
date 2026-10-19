@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
 
 // A column of three cards, each with two lines of text.
@@ -100,5 +100,30 @@ describe.skipIf(!hasNativeTestRenderer)("native retain counters", () => {
   it("rejects an exclusion it does not know", () => {
     const renderer = mount()
     expect(() => renderer.setRetainLift(["nonsense"])).toThrow(/no exclusion called nonsense/)
+  })
+
+  describe("under GPUIX_RETAIN_VERIFY", () => {
+    afterEach(() => vi.unstubAllEnvs())
+
+    // A finding of gpuix's own check is only produced by a build that disagrees with a record, which
+    // a page cannot be made to do on demand, so the finding is put where the native renderer lists it.
+    const withFinding = (renderer: TestRenderer, finding: string) => {
+      const native = (renderer as unknown as { native: { getRetainMismatches(): string[] } }).native
+      native.getRetainMismatches = () => [finding]
+    }
+
+    it("makes dispose throw on an element judged unchanged that was built differently", () => {
+      vi.stubEnv("GPUIX_RETAIN_VERIFY", "1")
+      const renderer = mount()
+      withFinding(renderer, "element 7 was judged unchanged and built differently")
+      expect(() => renderer.dispose()).toThrow("element 7 was judged unchanged and built differently")
+    })
+
+    it("lets dispose pass when the window has no finding", () => {
+      vi.stubEnv("GPUIX_RETAIN_VERIFY", "1")
+      const renderer = mount()
+      renderer.flush()
+      expect(() => renderer.dispose()).not.toThrow()
+    })
   })
 })
