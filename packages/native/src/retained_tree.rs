@@ -163,6 +163,24 @@ impl RetainedElement {
             .unwrap_or(false)
     }
 
+    /// Whether no build ever enters the element, because the element that builds what is around it
+    /// takes it in: a `display: contents` element (a root builds as a host) is spliced out of its
+    /// parent's children, an `<svg>` paints what is below it as one image, and an inline box or
+    /// text is a part of the paragraph of its container.
+    pub fn is_built_by_ancestor(&self, tree: &RetainedTree) -> bool {
+        if self.parent.is_some() && crate::layout::contents::is_display_contents(self) {
+            return true;
+        }
+        let mut above = self.parent;
+        while let Some(element) = above.and_then(|id| tree.elements.get(&id)) {
+            if element.element_type == "svg" {
+                return true;
+            }
+            above = element.parent;
+        }
+        crate::text::inline::is_part_of_paragraph(tree, self)
+    }
+
     /// Whether the element must own a gpui focus handle, which is what DOM calls
     /// focusable: an enabled text control, or any other element with a `tabIndex`.
     /// A key or focus listener does not make an element focusable; an ancestor's

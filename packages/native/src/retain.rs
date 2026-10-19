@@ -699,6 +699,10 @@ pub(crate) struct Retain {
     /// The elements on the spine of a frame since the last build of them. A pass that does not
     /// build one (`display: none` above it, for the layout of a read) does not see what it
     /// changed, and `seen` has moved on, so the frame that does must still find it changed.
+    ///
+    /// Only elements a build can enter: one it never enters (see
+    /// [`RetainedElement::is_built_by_ancestor`]) would stay here for good, and its ancestors
+    /// with it, since the spine is the upward closure of this set and what changed.
     unbuilt: FxHashSet<u64>,
     summary: Summary,
     mismatches: Vec<String>,
@@ -1138,8 +1142,11 @@ impl Retain {
         seen.motion = motion;
         seen.selection = sources.selection;
 
-        let mut spine = self.unbuilt.clone();
-        for id in changed {
+        // Closed under parent, which is what makes stopping at the first id already in it right:
+        // every id it holds had its whole chain walked. Seeding it with `unbuilt` as it is would
+        // not be, as the built ancestors of an unbuilt id have left that set.
+        let mut spine = FxHashSet::default();
+        for id in self.unbuilt.iter().copied().chain(changed) {
             let mut at = Some(id);
             while let Some(id) = at {
                 if !spine.insert(id) {
@@ -1148,7 +1155,11 @@ impl Retain {
                 at = sources.tree.elements.get(&id).and_then(|element| element.parent);
             }
         }
-        self.unbuilt.clone_from(&spine);
+        self.unbuilt = spine
+            .iter()
+            .copied()
+            .filter(|id| sources.tree.elements.get(id).is_none_or(|element| !element.is_built_by_ancestor(sources.tree)))
+            .collect();
         self.deltas = Deltas { all, spine, scrolled, scrolling };
     }
 
@@ -2069,6 +2080,128 @@ mod tests {
         }
         frame(&mut retain, Changes { selection: 5, ..Default::default() }, false);
         assert!(!frame(&mut retain, Changes { selection: 5, ..Default::default() }, true));
+    }
+
+    /// `(id, parent, type, display)` as a tree, the first being the root.
+    fn tree_of(nodes: &[(u64, Option<u64>, &str, Option<&str>)]) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        for (id, _, kind, display) in nodes {
+            tree.create_element(*id, kind.to_string());
+            tree.set_style(*id, Arc::new(crate::style::StyleDesc {
+                display: display.map(str::to_owned),
+                ..Default::default()
+            }));
+        }
+        for (id, parent, ..) in nodes {
+            if let Some(parent) = parent {
+                tree.append_child(*parent, *id);
+            }
+        }
+        tree.set_root(nodes[0].0);
+        tree
+    }
+
+    /// A frame over `tree` in which `motion` runs and a build enters `built`, nested in that order.
+    fn frame_of(retain: &mut Retain, tree: &RetainedTree, motion: &[u64], built: &[u64]) {
+        let focus = crate::focus::FocusStyles::default();
+        let (handles, scrolls) = (HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree,
+            hovered: &[],
+            active: &[],
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            customs: Vec::new(),
+            motion: motion.to_vec(),
+            selection: 0,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+        });
+        let inherited = root_inherited();
+        for id in built {
+            retain.enter(Entry {
+                id: *id,
+                revision: 7,
+                inherited: &inherited,
+                at: 0,
+                stacking_root: true,
+                stacking_item: false,
+                atomic_root: false,
+                contents_overlay: None,
+                anchor_scope: false,
+                text_box_trim: Default::default(),
+                plain: true,
+                boxed: true,
+                container: None,
+                prekeyed: None,
+                scroller: None,
+                costly: true,
+            });
+            retain.stacking(|| (None, true));
+        }
+        for _ in built {
+            retain.exit();
+        }
+        retain.finish_frame();
+    }
+
+    fn sorted(ids: &FxHashSet<u64>) -> Vec<u64> {
+        let mut ids: Vec<u64> = ids.iter().copied().collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    #[test]
+    fn a_changed_element_below_an_unbuilt_wrapper_still_has_its_ancestors_on_the_spine() {
+        // 1 > 2 > 3 (display: contents) > 4, the one that moves.
+        let tree = tree_of(&[
+            (1, None, "div", None),
+            (2, Some(1), "div", None),
+            (3, Some(2), "div", Some("contents")),
+            (4, Some(3), "div", None),
+        ]);
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        frame_of(&mut retain, &tree, &[4], &[1, 2]);
+        assert_eq!(sorted(&retain.deltas.spine), vec![1, 2, 3, 4]);
+        // 4 was not reached by the build, and 3 is spliced out of 2.
+        assert_eq!(sorted(&retain.unbuilt), vec![4]);
+        // The walk from 4 used to stop at 3, which the frame before had left in `unbuilt`.
+        frame_of(&mut retain, &tree, &[4], &[1, 2]);
+        assert_eq!(sorted(&retain.deltas.spine), vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn what_no_build_enters_is_not_carried_but_what_it_may_enter_is() {
+        let carried = |tree: &RetainedTree, id: u64, built: &[u64]| {
+            let mut retain = Retain::new();
+            retain.set_planning(true);
+            frame_of(&mut retain, tree, &[id], built);
+            sorted(&retain.unbuilt)
+        };
+        // Below an `<svg>`, which is entered and paints them as one image.
+        let svg = tree_of(&[
+            (1, None, "div", None),
+            (2, Some(1), "svg", None),
+            (3, Some(2), "g", None),
+            (4, Some(3), "path", None),
+        ]);
+        assert_eq!(carried(&svg, 4, &[1]), vec![2]);
+        // An inline `<span>` and the one in it are parts of the paragraph of the div around them.
+        let inline = tree_of(&[(1, None, "div", None), (2, Some(1), "span", None), (3, Some(2), "span", None)]);
+        assert_eq!(carried(&inline, 3, &[1]), Vec::<u64>::new());
+        // The root of a tree is built as a host, not spliced out of a parent.
+        let contents_root = tree_of(&[(1, None, "div", Some("contents")), (2, Some(1), "div", None)]);
+        assert_eq!(carried(&contents_root, 2, &[]), vec![1, 2]);
+        // A `display: none` element is not entered by a pass that skips it, and its children can be.
+        let hidden = tree_of(&[(1, None, "div", None), (2, Some(1), "div", Some("none")), (3, Some(2), "div", None)]);
+        assert_eq!(carried(&hidden, 3, &[1]), vec![2, 3]);
     }
 
     /// An element of the page under test.

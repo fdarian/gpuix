@@ -151,6 +151,16 @@ fn is_inline_box(tree: &RetainedTree, element: &RetainedElement, parent: &Retain
     is_inline_wrapper(element, parent) && children_are_inline(tree, element, element)
 }
 
+/// Whether the paragraph of the container above `element` takes it in as text or as an inline
+/// box, and no element is built for it. An atomic inline is built on its own.
+pub fn is_part_of_paragraph(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    if is_raw_text(element) {
+        return true;
+    }
+    let Some(container) = crate::layout::contents::splice_parent(tree, element.id) else { return false };
+    !element_lays_out_items(container) && !is_atomic(element) && is_inline_box(tree, element, container)
+}
+
 /// A host that is a block whatever its style says, or that is not a box to begin with.
 fn is_special_host(element: &RetainedElement) -> bool {
     matches!(element.element_type.as_str(), "label" | "form") || element.custom_props().contains_key("highlight")
