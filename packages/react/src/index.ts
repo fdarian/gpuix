@@ -22,9 +22,18 @@ export {
   useVelocity,
 } from "./hooks/use-motion-value.js"
 export { findRanges, useTextSearch } from "./hooks/use-text-search.js"
-export { animate, defineKeyframes, isMotionValue, motionValue } from "@gpuix/native/host"
+export {
+  Animation,
+  animate,
+  CSSAnimation,
+  CSSTransition,
+  defineKeyframes,
+  isMotionValue,
+  motionValue,
+} from "@gpuix/native/host"
 export type {
   AnimationControls,
+  AnimationPlayState,
   KeyframesDefinition,
   KeyframeStyle,
   MotionSpringConfig,

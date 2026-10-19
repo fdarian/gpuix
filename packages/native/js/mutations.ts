@@ -4,6 +4,7 @@ import { createBlobImageLoader, type BlobImageHost } from "./blob-images.js"
 import type { MutationHost, MutationRenderer } from "./host.js"
 import { createStyleImageLoader, type StyleImageHost } from "./style-images.js"
 import { SVG_TEXT_PROPS } from "./svg.js"
+import { cancelAnimationsOfElements } from "./web-animations.js"
 
 export type MutationValue = number | string | boolean | object | null
 export type MutationTuple = [string, ...MutationValue[]]
@@ -115,6 +116,7 @@ export function createMutationQueue(
         for (;;) {
           try {
             const destroyed = renderer.applyBatch(JSON.stringify(batch))
+            cancelAnimationsOfElements(renderer, destroyed)
             onDestroyed(destroyed)
             applied = true
             break

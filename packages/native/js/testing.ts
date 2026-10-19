@@ -18,6 +18,7 @@ import {
   type RetainedCounters,
   type EventPayload,
   type MediaFeatures,
+  type WebAnimationInfo,
   type WindowOptions,
 } from "../index.js"
 import type {
@@ -172,6 +173,12 @@ interface NativeTestRendererApi
   releasePointerCapture(elementId: number, pointerId: number): void
   hasPointerCapture(elementId: number, pointerId: number): boolean
   clickElement(elementId: number): void
+  getAnimations(elementId: number): WebAnimationInfo[]
+  getAnimation(animationId: number): WebAnimationInfo
+  pauseAnimation(animationId: number): void
+  playAnimation(animationId: number): void
+  setAnimationCurrentTime(animationId: number, milliseconds: number): void
+  setAnimationPlaybackRate(animationId: number, rate: number): void
   cancelDrag(): void
   requestPointerLock(elementId: number): void
   exitPointerLock(): void
@@ -1242,6 +1249,30 @@ export class TestRenderer implements NativeRenderer {
 
   clickElement(elementId: number): void {
     this.native.clickElement(elementId)
+  }
+
+  getAnimations(elementId: number): WebAnimationInfo[] {
+    return this.native.getAnimations(elementId)
+  }
+
+  getAnimation(animationId: number): WebAnimationInfo {
+    return this.native.getAnimation(animationId)
+  }
+
+  pauseAnimation(animationId: number): void {
+    this.native.pauseAnimation(animationId)
+  }
+
+  playAnimation(animationId: number): void {
+    this.native.playAnimation(animationId)
+  }
+
+  setAnimationCurrentTime(animationId: number, milliseconds: number): void {
+    this.native.setAnimationCurrentTime(animationId, milliseconds)
+  }
+
+  setAnimationPlaybackRate(animationId: number, rate: number): void {
+    this.native.setAnimationPlaybackRate(animationId, rate)
   }
 
   /** Applies from the next simulated pointer input. */

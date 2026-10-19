@@ -66,6 +66,7 @@ export * from "./scroll.js"
 export * from "./reorder.js"
 export * from "./svg.js"
 export * from "./universal-style.js"
+export * from "./web-animations.js"
 
 /**
  * A number is px. A string is a CSS length: `px`, `in`, `cm`, `mm`, `q`, `pt`, `pc`, `%`,
@@ -2518,6 +2519,12 @@ export type NativeRenderer = MutationHost &
       | "releasePointerCapture"
       | "hasPointerCapture"
       | "clickElement"
+      | "getAnimations"
+      | "getAnimation"
+      | "pauseAnimation"
+      | "playAnimation"
+      | "setAnimationCurrentTime"
+      | "setAnimationPlaybackRate"
       | "cancelDrag"
       | "requestPointerLock"
       | "exitPointerLock"

@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  Oracle for web-animations.test.tsx: what headless Chrome reports through `element.getAnimations()` for CSS
+  transitions and CSS animations. A case is an element with a style, optionally a second style that starts
+  transitions, and steps run on the animations `getAnimations()` returned right after that (the "tracked" ones,
+  by index). Every step records what Chrome shows at that point: the width and height of the element, and for
+  each tracked animation its class, name, `playState`, `currentTime`, `playbackRate` and which `finished` promise
+  object it holds (0 is the first one it had, 1 the one that replaced it). A `list` step records what
+  `getAnimations()` returns then. Steps run in one task, so no frame
+  passes between them; Chrome's own timeline time stays at the first frame and a running animation reads 0.
+  Changing only the playbackRate does not make Chrome sample the effect again, so a value or list read right
+  after one is the old direction's: the cases move the time after it.
+  `settle` waits two frames and records how every `finished` promise each animation held stands: a cancel
+  rejects the promise held and leaves a new pending one. Keyframes: `grow` is the width from
+  100px to 200px, `tall` the height from 10px to 30px. Regenerate with
+
+    sh web-animations-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+body{font:16px/20px Menlo;color:#000}
+</style></head><body>
+<script>
+const KEYFRAMES = {
+  grow: { from: { width: 100 }, to: { width: 200 } },
+  tall: { from: { height: 10 }, to: { height: 30 } },
+};
+const BASE = { width: '50px', height: '20px', marginLeft: '0px', marginTop: '0px' };
+const css = Object.entries(KEYFRAMES).map(([name, frames]) =>
+  `@keyframes ${name}{${Object.entries(frames).map(([k, v]) =>
+    `${k}{${Object.entries(v).map(([p, n]) => `${p}:${n}px`).join(';')}}`).join('')}}`).join('');
+const sheet = document.createElement('style'); sheet.textContent = css; document.head.appendChild(sheet);
+
+// [name, style, change, steps]
+const cases = [
+  ['a transition paused and sought',
+    { transition: 'width 1s linear' }, { width: '150px' },
+    [['pause', 0], ['seek', 0, 250], ['seek', 0, 500], ['seek', 0, 1000], ['seek', 0, 0], ['list']]],
+  ['an animation paused and sought',
+    { animation: 'grow 1s linear' }, null,
+    [['pause', 0], ['seek', 0, 250], ['seek', 0, 750], ['seek', 0, 1000], ['list']]],
+  ['a playbackRate of 2 and -1 change nothing about the value at a time',
+    { animation: 'grow 1s linear' }, null,
+    [['rate', 0, 2], ['pause', 0], ['seek', 0, 250], ['rate', 0, -1], ['seek', 0, 750], ['rate', 0, 0.5], ['seek', 0, 500]]],
+  ['a running animation keeps its time when the rate changes',
+    { animation: 'grow 1s linear' }, null,
+    [['seek', 0, 400], ['rate', 0, 2], ['rate', 0, -1], ['rate', 0, 1]]],
+  ['a positive delay is not part of currentTime at the start',
+    { animation: 'grow 1s linear 500ms, tall 1s linear -300ms' }, null,
+    [['pause', 0], ['pause', 1], ['seek', 0, 500], ['seek', 0, 750], ['seek', 1, 400], ['seek', 1, 700], ['seek', 1, 100]]],
+  ['a transition with a delay starts at 0',
+    { transition: 'width 1s linear 500ms' }, { width: '150px' },
+    [['pause', 0], ['seek', 0, 500], ['seek', 0, 1000], ['seek', 0, 1500]]],
+  ['two transitions and two animations in one style change',
+    { transition: 'margin-top 1s, margin-left 1s', animation: 'tall 1s linear, grow 1s linear' },
+    { marginTop: '10px', marginLeft: '10px' },
+    [['list']]],
+  ['transitions in the order of the style changes that started them',
+    { transition: 'margin-top 1s, margin-left 1s, width 1s' }, { marginTop: '10px' },
+    [['style', { width: '100px' }], ['style', { marginLeft: '10px' }], ['list'], ['style', { marginTop: '0px', width: '60px' }], ['list']]],
+  ['fill forwards is listed after the end',
+    { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['list'], ['settle'], ['list']]],
+  ['fill none is not listed after the end',
+    { animation: 'grow 1s linear' }, null,
+    [['seek', 0, 1000], ['list'], ['settle'], ['list']]],
+  ['fill backwards is not listed after the end',
+    { animation: 'grow 1s linear backwards' }, null,
+    [['seek', 0, 1000], ['list']]],
+  ['a paused animation at its end is not listed without a fill',
+    { animation: 'grow 1s linear' }, null,
+    [['pause', 0], ['seek', 0, 999], ['list'], ['seek', 0, 1000], ['list'], ['settle'], ['list']]],
+  ['a paused animation at its end is listed through a fill',
+    { animation: 'grow 1s linear forwards' }, null,
+    [['pause', 0], ['seek', 0, 1000], ['list'], ['settle'], ['list']]],
+  ['a paused animation run back to its start is not listed without a backwards fill',
+    { animation: 'grow 1s linear' }, null,
+    [['pause', 0], ['seek', 0, 500], ['rate', 0, -1], ['seek', 0, 1], ['list'], ['seek', 0, 0], ['list'], ['settle'], ['list']]],
+  ['a running animation run back to its start is finished and not listed',
+    { animation: 'grow 1s linear' }, null,
+    [['seek', 0, 500], ['rate', 0, -1], ['seek', 0, 0], ['list'], ['settle'], ['list']]],
+  ['a rate of -1 at the start of the delay is not listed, at the end of the effect it is',
+    { animation: 'grow 1s linear 500ms' }, null,
+    [['pause', 0], ['seek', 0, 1000], ['rate', 0, -1], ['seek', 0, 1499], ['list'], ['seek', 0, 600], ['list'], ['seek', 0, 500], ['list']]],
+  ['a backwards fill lists an animation run back to its start',
+    { animation: 'grow 1s linear backwards' }, null,
+    [['pause', 0], ['seek', 0, 500], ['rate', 0, -1], ['seek', 0, 0], ['list']]],
+  ['play after finish rewinds to 0',
+    { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 1000], ['settle'], ['play', 0], ['list']]],
+  ['play after finish at a rate of -1 goes to the end',
+    { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['rate', 0, -1], ['seek', 0, 0], ['play', 0], ['list']]],
+  ['play on a paused animation at its end rewinds to 0',
+    { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 1000], ['play', 0]]],
+  ['play on a paused animation keeps its time',
+    { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 400], ['play', 0]]],
+  ['pause then animationPlayState changes are ignored',
+    { animation: 'grow 1s linear' }, null,
+    [['pause', 0], ['style', { animationPlayState: 'paused' }], ['style', { animationPlayState: 'running' }]]],
+  ['play then animationPlayState changes are ignored',
+    { animation: 'grow 1s linear', animationPlayState: 'paused' }, null,
+    [['play', 0], ['style', { animationPlayState: 'running' }], ['style', { animationPlayState: 'paused' }]]],
+  ['animationPlayState decides until the API is used',
+    { animation: 'grow 1s linear', animationPlayState: 'paused' }, null,
+    [['style', { animationPlayState: 'running' }], ['style', { animationPlayState: 'paused' }]]],
+  ['removing the animation name cancels it',
+    { animation: 'grow 1s linear forwards' }, null,
+    [['pause', 0], ['seek', 0, 400], ['style', { animation: 'none' }], ['list'], ['settle']]],
+  ['removing the name of a finished animation cancels it too',
+    { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['settle'], ['style', { animation: 'none' }], ['settle']]],
+  ['a transition replaced by another change is cancelled',
+    { transition: 'width 1s linear' }, { width: '150px' },
+    [['pause', 0], ['seek', 0, 300], ['style', { width: '200px' }], ['list'], ['settle']]],
+  ['finished resolves with the animation',
+    { animation: 'grow 1s linear' }, null,
+    [['seek', 0, 1000], ['settle']]],
+  ['a finished transition keeps its end',
+    { transition: 'width 1s linear' }, { width: '150px' },
+    [['seek', 0, 1000], ['settle'], ['list']]],
+  ['a finished transition with a delay ends at delay plus duration',
+    { transition: 'width 1s linear 500ms' }, { width: '150px' },
+    [['seek', 0, 1500], ['settle'], ['list']]],
+  ['a transition run backwards ends at 0',
+    { transition: 'width 1s linear' }, { width: '150px' },
+    [['rate', 0, -1], ['settle']]],
+  ['removing the element cancels its animations',
+    { animation: 'grow 1s linear forwards', transition: 'margin-top 1s' }, { marginTop: '10px' },
+    [['pause', 0], ['pause', 1], ['remove'], ['settle']]],
+  ['the same animation object on every call',
+    { animation: 'grow 1s linear, tall 1s linear' }, null,
+    [['same']]],
+];
+
+// A page with nothing animating may get no frames in headless Chrome, so the wait gives up after 100ms.
+const frames = () => Promise.race([
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  new Promise((resolve) => setTimeout(resolve, 100)),
+]);
+const standing = (promise, animation) => Promise.race([
+  promise.then((value) => (value === animation ? 'resolved' : 'resolved-other'),
+    (error) => `rejected:${error instanceof DOMException ? error.name : String(error)}`),
+  new Promise((resolve) => setTimeout(() => resolve('pending'), 0)),
+]);
+const apply = (el, style) => { for (const [k, v] of Object.entries(style)) el.style[k] = v; };
+const flush = (el) => getComputedStyle(el).width;
+const pixels = (value) => (value === 'auto' ? null : parseFloat(value));
+
+(async () => { try {
+  const out = { keyframes: KEYFRAMES, base: BASE, cases: [] };
+  for (const [name, style, change, steps] of cases) {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    apply(el, BASE);
+    apply(el, style);
+    flush(el);
+    if (change) { apply(el, change); flush(el); }
+    const tracked = el.getAnimations();
+    const promises = tracked.map(() => []);
+    const read = () => ({
+      width: el.isConnected ? pixels(getComputedStyle(el).width) : null,
+      height: el.isConnected ? pixels(getComputedStyle(el).height) : null,
+      animations: tracked.map((a, index) => {
+        const seen = promises[index];
+        const finished = a.finished;
+        if (!seen.includes(finished)) seen.push(finished);
+        return {
+          kind: a.constructor.name,
+          name: a instanceof CSSAnimation ? a.animationName : a.transitionProperty,
+          playState: a.playState,
+          currentTime: a.currentTime,
+          playbackRate: a.playbackRate,
+          finishedGeneration: seen.indexOf(finished),
+        };
+      }),
+    });
+    const records = [{ step: ['start'], ...read() }];
+    for (const step of steps) {
+      const [op, a, value] = step;
+      const record = { step };
+      if (op === 'pause') tracked[a].pause();
+      else if (op === 'play') tracked[a].play();
+      else if (op === 'seek') tracked[a].currentTime = value;
+      else if (op === 'rate') tracked[a].playbackRate = value;
+      else if (op === 'style') { apply(el, a); flush(el); }
+      else if (op === 'remove') el.remove();
+      else if (op === 'settle') {
+        await frames();
+        record.finished = await Promise.all(tracked.map((x, index) => Promise.all(promises[index].map((p) => standing(p, x)))));
+      }
+      if (op === 'list') record.list = el.getAnimations().map((x) => [x.constructor.name, x instanceof CSSAnimation ? x.animationName : x.transitionProperty]);
+      if (op === 'same') {
+        const first = el.getAnimations();
+        const second = el.getAnimations();
+        record.same = first.length === second.length && first.every((x, i) => x === second[i] && x === tracked[i]);
+      }
+      Object.assign(record, read());
+      records.push(record);
+    }
+    out.cases.push({ name, style, change, steps, records });
+    el.remove();
+  }
+  const holder = document.createElement('div');
+  holder.setAttribute('data-oracle', JSON.stringify(out));
+  document.body.appendChild(holder);
+} catch (e) { const h = document.createElement('div'); h.setAttribute('data-error', String(e && e.stack)); document.body.appendChild(h); } })();
+</script></body></html>

@@ -2,6 +2,7 @@ import type { Key, ReactNode, Ref } from "react"
 import type { EventPayload } from "@gpuix/native"
 import { HOST_BINDING } from "@gpuix/native/host"
 import type {
+  Animation,
   BoundingClientRect,
   ElementIdAllocator,
   ElementType,
@@ -255,6 +256,11 @@ export interface Instance extends Partial<FocusableElement> {
    * (not painted) reports a zero rect.
    */
   getBoundingClientRect?(): BoundingClientRect
+  /**
+   * The CSS transitions, then the CSS animations, that are running, paused or
+   * in effect through a fill, as `Animation` objects. See `Animation`.
+   */
+  getAnimations?(): Animation[]
   [HOST_BINDING]?(): HostBinding | undefined
 }
 
@@ -289,7 +295,7 @@ export interface TextInstance {
 export type PublicInstance = Instance &
   FocusableElement &
   ScrollableElement &
-  Required<Pick<Instance, "getBoundingClientRect" | typeof HOST_BINDING>>
+  Required<Pick<Instance, "getBoundingClientRect" | "getAnimations" | typeof HOST_BINDING>>
 
 export interface HostContext {
   isInsideText: boolean

@@ -26,8 +26,15 @@ export type {
   WindowEventListener,
 } from "@gpuix/native/host"
 export { createRenderer, render, resetRender } from "./renderer.js"
-export { MediaQueryList, MediaQueryListEvent, matchMedia } from "@gpuix/native/host"
-export type { MatchMedia } from "@gpuix/native/host"
+export {
+  Animation,
+  CSSAnimation,
+  CSSTransition,
+  MediaQueryList,
+  MediaQueryListEvent,
+  matchMedia,
+} from "@gpuix/native/host"
+export type { AnimationPlayState, MatchMedia } from "@gpuix/native/host"
 export {
   createAppearance,
   createMatchMedia,

@@ -11,6 +11,7 @@ import type {
   WindowInsetsHost,
   WindowSizeHost,
 } from "./host.js"
+import { getElementAnimations, type Animation } from "./web-animations.js"
 
 /**
  * `setPointerCapture`, `releasePointerCapture` and `hasPointerCapture` for one
@@ -51,6 +52,15 @@ export interface PointerCaptureMethods {
 export interface ElementMethods extends PointerCaptureMethods {
   click(): void
   requestPointerLock(): void
+  /**
+   * The CSS transitions, then the CSS animations, of the element that are
+   * running, paused or in effect through a fill, in composite order. The same
+   * `Animation` object stands for a run every time. See `Animation` for what
+   * it has and what is not built. Animations of the motion engine
+   * (`motion`, `animate`) are not listed, and there is no `subtree` option.
+   * Pending changes are sent first. An element that is not in the tree has none.
+   */
+  getAnimations(): Animation[]
 }
 
 export function createElementMethods(
@@ -77,6 +87,7 @@ export function createElementMethods(
     hasPointerCapture: (pointerId) => supported("hasPointerCapture")(elementId, pointerId),
     click: () => supported("clickElement")(elementId),
     requestPointerLock: () => supported("requestPointerLock")(elementId),
+    getAnimations: () => getElementAnimations(renderer, elementId),
   }
 }
 

@@ -27,6 +27,7 @@ import {
   setTextControlSelectionRange,
 } from "@gpuix/native/host"
 import type {
+  Animation,
   ElementMethods,
   BoundingClientRect,
   ElementType,
@@ -229,6 +230,16 @@ export class HostElement {
   getBoundingClientRect(): BoundingClientRect {
     if (!this.root || !this.mounted) return toBoundingClientRect(null)
     return readBoundingClientRect(this.root.nativeRenderer, this.id)
+  }
+
+  /**
+   * The CSS transitions, then the CSS animations, that are running, paused or
+   * in effect through a fill, as `Animation` objects. An element that is not
+   * mounted has none. See `Animation`.
+   */
+  getAnimations(): Animation[] {
+    if (!this.root || !this.mounted) return []
+    return this.methods().getAnimations()
   }
 
   [HOST_MOUNT](listener: () => void): () => void {

@@ -14,6 +14,7 @@ import type {
   WindowKeyEventHandler,
 } from "./host.js"
 import { shapeScrollEvent } from "./scroll.js"
+import { deliverWebAnimationEvent, isWebAnimationEvent } from "./web-animations.js"
 
 export interface RendererRootHandlers {
   eventHandlers?: EventHandlerMap
@@ -293,6 +294,11 @@ export function createRendererState(renderer: NativeRenderer): RendererState {
             sink.animationComplete()
             return true
         }
+      }
+      if (isWebAnimationEvent(received.eventType)) {
+        // Not a DOM event: no app listener, `on*` prop or `onEvent` hears it.
+        deliverWebAnimationEvent(renderer, received)
+        return false
       }
       const root = active
       if (!root) return false
