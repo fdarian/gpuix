@@ -1201,9 +1201,16 @@ mod tests {
             (reset.mask_border_source, reset.mask_border_slice, reset.mask_border_width, reset.mask_border_repeat),
             (None, None, None, None)
         );
-        // `mask` is another property: it leaves the border alone.
+        // The `mask` shorthand resets `mask-border` too (CSS Masking).
         let mask = resolved_hover(&base.replace("{HOVER}", r##"{"mask":"none"}"##));
-        assert_eq!(mask.mask_border_width.as_deref(), Some("4px"));
+        assert_eq!(mask.mask.as_deref(), Some("none"));
+        assert_eq!(
+            (mask.mask_border_source, mask.mask_border_slice, mask.mask_border_width, mask.mask_border_repeat),
+            (None, None, None, None)
+        );
+        // A `mask` that is not valid resets nothing.
+        let invalid = resolved_hover(&base.replace("{HOVER}", r##"{"mask":"bogus bogus"}"##));
+        assert_eq!(invalid.mask_border_width.as_deref(), Some("4px"));
     }
 
     #[test]

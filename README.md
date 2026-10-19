@@ -7100,7 +7100,9 @@ frames, ticket edges and torn-paper borders that a gradient cannot draw.
   its luminance scaled by its alpha.
 - `maskBorder` is the shorthand, `<source> || <slice> [ / <width>? [ / <outset> ]? ]? ||
   <repeat> || <mode>`, and resets what it leaves out. A longhand written after it wins
-  over it, as with `mask`; `mask` and `maskBorder` do not reset each other.
+  over it, as with `mask`. The `mask` shorthand resets `maskBorder` and its longhands, as CSS Masking says
+  (`{ maskBorder: ..., mask: 'none' }` has no border, `{ mask: 'none', maskBorder: ... }` has one); Chrome,
+  which only has `-webkit-mask-box-image`, leaves that alone.
 
 ```tsx
 <div style={{ maskBorder: 'url(/assets/torn.png) 30 / 30px round' }} />

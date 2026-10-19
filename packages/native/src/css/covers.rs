@@ -106,7 +106,7 @@ covers! {
     text_wrap => [text_wrap_mode, text_wrap_style],
     mask => [
         mask_image, mask_size, mask_position, mask_repeat, mask_origin, mask_clip, mask_mode,
-        mask_composite,
+        mask_composite, mask_border,
     ],
     mask_border => [
         mask_border_source, mask_border_slice, mask_border_width, mask_border_outset,
@@ -635,6 +635,9 @@ mod tests {
         ("textWrap", r#""balance""#, "textWrapMode", r#""nowrap""#),
         ("textWrap", r#""balance""#, "textWrapStyle", r#""pretty""#),
         ("mask", r#""linear-gradient(red, blue)""#, "maskImage", r#""none""#),
+        ("mask", r#""linear-gradient(red, blue)""#, "maskBorder", r#""linear-gradient(red, blue) 10""#),
+        ("mask", r#""linear-gradient(red, blue)""#, "maskBorderSource", r#""none""#),
+        ("mask", r#""linear-gradient(red, blue)""#, "maskBorderWidth", r#""4px""#),
         ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderSource", r#""none""#),
         ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderRepeat", r#""round""#),
         ("maskBorder", r#""linear-gradient(red, blue) 10""#, "maskBorderMode", r#""luminance""#),

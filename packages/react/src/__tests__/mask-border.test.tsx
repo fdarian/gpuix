@@ -171,6 +171,20 @@ describeNative("mask-border style props", () => {
     expectScreenshotsDiffer(longhandLast, shorthandLast)
   })
 
+  it("the mask shorthand resets the mask border, and one written after it does not", () => {
+    // CSS Masking says `mask` resets `mask-border` to its initial value. Chrome has no `mask-border`
+    // (only `-webkit-mask-box-image`, which `mask` leaves alone), so this follows the specification.
+    const plain = capture(cell({})).file
+    expectScreenshotsEqual(plain, capture(cell({ ...RING, mask: "none" })).file)
+    expectScreenshotsEqual(plain, capture(cell({ maskBorder: "linear-gradient(#000, #000) 10 / 10px", mask: "none" })).file)
+    expectScreenshotsEqual(capture(cell(RING)).file, capture(cell({ mask: "none", ...RING })).file)
+    expectScreenshotsDiffer(plain, capture(cell({ mask: "none", ...RING })).file)
+  }, 30_000)
+
+  it("an invalid mask shorthand leaves the mask border", () => {
+    expectScreenshotsEqual(capture(cell(RING)).file, capture(cell({ ...RING, mask: "bogus bogus" })).file)
+  })
+
   it("ignores an invalid value as if it were not written", () => {
     for (const [key, invalid] of [
       ["maskBorderRepeat", "no-repeat"],
