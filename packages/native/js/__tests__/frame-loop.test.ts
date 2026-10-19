@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { startFrameLoop } from "../runtime.js"
 
+const nextImmediate = () => new Promise<void>((resolve) => setImmediate(resolve))
+
 const wakeableRenderer = (tick: () => boolean) => {
   const renderer = {
     wake: null as (() => unknown) | null,
@@ -15,7 +17,7 @@ const wakeableRenderer = (tick: () => boolean) => {
 }
 
 describe("startFrameLoop on a platform with display-link wakes", () => {
-  it("ticks once at start and then on every wake", () => {
+  it("ticks once at start and then on every wake", async () => {
     let ticks = 0
     const renderer = wakeableRenderer(() => {
       ticks += 1
@@ -24,10 +26,42 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     const loop = startFrameLoop(renderer)
     expect(ticks).toBe(1)
     renderer.wake?.()
+    expect(ticks).toBe(1)
+    await nextImmediate()
+    expect(ticks).toBe(2)
     renderer.wake?.()
+    await nextImmediate()
     expect(ticks).toBe(3)
     loop.stop()
     expect(renderer.wake).toBeNull()
+  })
+
+  it("ticks once for several wakes fired before the immediate runs", async () => {
+    let ticks = 0
+    const renderer = wakeableRenderer(() => {
+      ticks += 1
+      return true
+    })
+    const loop = startFrameLoop(renderer)
+    renderer.wake?.()
+    renderer.wake?.()
+    renderer.wake?.()
+    await nextImmediate()
+    expect(ticks).toBe(2)
+    loop.stop()
+  })
+
+  it("does not tick for a wake that is still scheduled when the loop stops", async () => {
+    let ticks = 0
+    const renderer = wakeableRenderer(() => {
+      ticks += 1
+      return true
+    })
+    const loop = startFrameLoop(renderer)
+    renderer.wake?.()
+    loop.stop()
+    await nextImmediate()
+    expect(ticks).toBe(1)
   })
 
   it("falls back to a slow timer when no wakes arrive", async () => {
@@ -92,13 +126,14 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     expect(cleared).toEqual([])
   })
 
-  it("reports tick errors and keeps running", () => {
+  it("reports tick errors and keeps running", async () => {
     const errors: unknown[] = []
     const renderer = wakeableRenderer(() => {
       throw new Error("boom")
     })
     const loop = startFrameLoop(renderer, { onError: (error) => errors.push(error) })
     renderer.wake?.()
+    await nextImmediate()
     loop.stop()
     expect(errors.length).toBe(2)
   })

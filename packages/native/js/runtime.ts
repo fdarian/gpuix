@@ -117,6 +117,7 @@ export function startFrameLoop(
 ): FrameLoop {
   if (!renderer.requiresTick()) return { stop() {} }
   let timer: ReturnType<typeof setTimeout> | undefined
+  let scheduledFrame: ReturnType<typeof setImmediate> | undefined
   let stopped = false
   const stop = () => {
     if (stopped) return
@@ -124,6 +125,8 @@ export function startFrameLoop(
     if (frameWake) renderer.setFrameWakeCallback?.(null)
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
+    if (scheduledFrame !== undefined) clearImmediate(scheduledFrame)
+    scheduledFrame = undefined
   }
   const loop = () => {
     if (stopped) return
@@ -147,8 +150,18 @@ export function startFrameLoop(
       : Math.max(0, (options.frameMs ?? DEFAULT_FRAME_MS) - (performance.now() - started))
     timer = setTimeout(loop, delay)
   }
+  // The frame runs as its own task, not inside the wake callback: Bun and Node run I/O
+  // and timers after the immediates phase, before the next wake's frame, while a threadsafe
+  // function callback that ticks inline keeps Bun inside its dispatch loop.
+  const wake = () => {
+    if (stopped || scheduledFrame !== undefined) return
+    scheduledFrame = setImmediate(() => {
+      scheduledFrame = undefined
+      loop()
+    })
+  }
   const frameWake = options.frameMs === undefined &&
-    renderer.setFrameWakeCallback?.(loop) === true
+    renderer.setFrameWakeCallback?.(wake) === true
   loop()
   return { stop }
 }

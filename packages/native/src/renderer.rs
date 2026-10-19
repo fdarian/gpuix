@@ -1141,10 +1141,83 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "unknown panic".to_string())
 }
 
+#[cfg(target_os = "macos")]
+type FrameWakeHook = Arc<dyn Fn() + Send + Sync>;
+
+/// The display-link wake path. `pending` is set by the wake that queues JS work and
+/// cleared only when `tick()` returns, so a wake that lands during a frame is dropped
+/// instead of queued behind it.
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct FrameWake {
+    pending: Arc<std::sync::atomic::AtomicBool>,
+    /// The closure the display link calls, kept here so the test thread calls the same one.
+    hook: Arc<Mutex<Option<FrameWakeHook>>>,
+    #[cfg(feature = "test-support")]
+    simulator: Mutex<Option<WakeSimulator>>,
+    #[cfg(feature = "test-support")]
+    tick_delay_ms: std::sync::atomic::AtomicU32,
+}
+
+#[cfg(target_os = "macos")]
+impl FrameWake {
+    fn clear(&self) {
+        gpui_macos::set_frame_wake_hook(None);
+        self.hook.lock().unwrap().take();
+        self.pending
+            .store(false, std::sync::atomic::Ordering::Release);
+        #[cfg(feature = "test-support")]
+        self.stop_simulator();
+    }
+
+    #[cfg(feature = "test-support")]
+    fn stop_simulator(&self) {
+        let simulator = self.simulator.lock().unwrap().take();
+        if let Some(simulator) = simulator {
+            simulator.stop();
+        }
+    }
+}
+
+/// Calls the wake closure from a Rust thread at a fixed interval, as the display link does.
+#[cfg(all(target_os = "macos", feature = "test-support"))]
+struct WakeSimulator {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+#[cfg(all(target_os = "macos", feature = "test-support"))]
+impl WakeSimulator {
+    fn start(interval: Duration, hook: Arc<Mutex<Option<FrameWakeHook>>>) -> Self {
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let thread = std::thread::spawn(move || {
+            // Deadlines, not a sleep per wake, so a busy machine does not stretch the period.
+            let mut next = std::time::Instant::now() + interval;
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped
+                .recv_timeout(next.saturating_duration_since(std::time::Instant::now()))
+            {
+                next += interval;
+                let wake = hook.lock().unwrap().clone();
+                if let Some(wake) = wake {
+                    wake();
+                }
+            }
+        });
+        Self { stop, thread }
+    }
+
+    fn stop(self) {
+        drop(self.stop);
+        self.thread.join().expect("the wake simulator thread panicked");
+    }
+}
+
 /// The main GPUI renderer exposed to Node.js.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[napi]
 pub struct GpuixRenderer {
+    #[cfg(target_os = "macos")]
+    frame_wake: FrameWake,
     event_callback: Mutex<Option<Arc<ThreadsafeFunction<EventPayload>>>>,
     sync_handler: crate::events::sync_dispatch::SyncHandlerOwner,
     tree: Arc<Mutex<RetainedTree>>,
@@ -1522,6 +1595,8 @@ impl GpuixRenderer {
             initialized: Arc::new(Mutex::new(false)),
             selection: SharedSelection::default(),
             pointer_requests: Default::default(),
+            #[cfg(target_os = "macos")]
+            frame_wake: FrameWake::default(),
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
             ui_commands: Mutex::new(None),
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1903,14 +1978,30 @@ impl GpuixRenderer {
         {
             // Key input is dispatched while the platform pumps, and JS handlers
             // run synchronously from there.
-            return crate::events::sync_dispatch::native_call(|| {
-                Ok(MAC_PLATFORM.with(|p| {
+            let result = crate::events::sync_dispatch::native_call(|| {
+                let running = MAC_PLATFORM.with(|p| {
                     p.borrow()
                         .as_ref()
                         .map(|platform| platform.pump_events())
                         .unwrap_or(false)
-                }))
+                });
+                #[cfg(feature = "test-support")]
+                {
+                    let delay = self
+                        .frame_wake
+                        .tick_delay_ms
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if delay > 0 {
+                        std::thread::sleep(Duration::from_millis(delay.into()));
+                    }
+                }
+                Ok(running)
             });
+            // After the frame, on every path: a wake that landed during it was dropped.
+            self.frame_wake
+                .pending
+                .store(false, std::sync::atomic::Ordering::Release);
+            return result;
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -1956,17 +2047,19 @@ impl GpuixRenderer {
     }
 
     /// Wake JavaScript after the display link queues a frame. Returns true on macOS,
-    /// false on other platforms. Call tick() in the callback; it never blocks.
-    /// Wakes coalesce while JavaScript is busy and do not keep the process alive.
+    /// false on other platforms. The callback should schedule the tick rather than run
+    /// it inline, and tick() never blocks. A wake that lands while a tick is running, or
+    /// after another wake that has not been ticked yet, is dropped: the next frame waits
+    /// for the next vsync. Wakes do not keep the process alive.
     /// Pass null to clear the callback. Already queued callbacks may still arrive.
     #[napi]
     pub fn set_frame_wake_callback(&self, callback: Option<Function<(), ()>>) -> Result<bool> {
         #[cfg(target_os = "macos")]
         {
-            use std::sync::atomic::{AtomicBool, Ordering};
+            use std::sync::atomic::Ordering;
 
             let Some(callback) = callback else {
-                gpui_macos::set_frame_wake_hook(None);
+                self.frame_wake.clear();
                 return Ok(true);
             };
             if !self.is_initialized() {
@@ -1974,23 +2067,22 @@ impl GpuixRenderer {
                     "Call init() before setting a frame wake callback",
                 ));
             }
-            let pending = Arc::new(AtomicBool::new(false));
-            let handled = pending.clone();
+            let pending = self.frame_wake.pending.clone();
+            pending.store(false, Ordering::Release);
             let wake = callback
                 .build_threadsafe_function::<()>()
                 .callee_handled::<false>()
                 .weak::<true>()
-                .build_callback(move |_| {
-                    handled.store(false, Ordering::Release);
-                    Ok(())
-                })?;
-            gpui_macos::set_frame_wake_hook(Some(Arc::new(move || {
+                .build_callback(|_| Ok(()))?;
+            let hook: FrameWakeHook = Arc::new(move || {
                 if !pending.swap(true, Ordering::AcqRel)
                     && wake.call((), ThreadsafeFunctionCallMode::NonBlocking) != napi::Status::Ok
                 {
                     pending.store(false, Ordering::Release);
                 }
-            })));
+            });
+            *self.frame_wake.hook.lock().unwrap() = Some(hook.clone());
+            gpui_macos::set_frame_wake_hook(Some(hook));
             return Ok(true);
         }
 
@@ -3968,6 +4060,57 @@ impl GpuixRenderer {
     }
 }
 
+#[cfg(all(feature = "test-support", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+#[napi]
+impl GpuixRenderer {
+    /// Calls the registered frame wake closure from a Rust thread every `intervalMs`, the
+    /// function the display link calls, so a hidden window gets deterministic wakes.
+    /// `null` stops it; clearing the wake callback stops it too.
+    #[napi]
+    pub fn simulate_frame_wakes(&self, interval_ms: Option<f64>) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            self.frame_wake.stop_simulator();
+            let Some(interval_ms) = interval_ms else {
+                return Ok(());
+            };
+            if !(interval_ms > 0.0) {
+                return Err(Error::from_reason("intervalMs must be greater than 0"));
+            }
+            let simulator = WakeSimulator::start(
+                Duration::from_secs_f64(interval_ms / 1000.0),
+                self.frame_wake.hook.clone(),
+            );
+            *self.frame_wake.simulator.lock().unwrap() = Some(simulator);
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = interval_ms;
+            Err(Error::from_reason("simulateFrameWakes needs macOS"))
+        }
+    }
+
+    /// Makes every `tick()` sleep `ms` inside its native call, a forced-slow frame. 0 turns it off.
+    #[napi]
+    pub fn set_tick_delay(&self, ms: u32) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            self.frame_wake
+                .tick_delay_ms
+                .store(ms, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = ms;
+            Err(Error::from_reason("setTickDelay needs macOS"))
+        }
+    }
+}
+
 fn collect_text(id: u64, tree: &RetainedTree, texts: &mut Vec<String>) {
     if let Some(element) = tree.elements.get(&id) {
         if let Some(ref content) = element.content {
@@ -4908,8 +5051,13 @@ impl WebGpuixRenderer {
 impl Drop for GpuixRenderer {
     fn drop(&mut self) {
         #[cfg(target_os = "macos")]
-        if *self.initialized.lock().unwrap() {
-            gpui_macos::set_frame_wake_hook(None);
+        {
+            if *self.initialized.lock().unwrap() {
+                gpui_macos::set_frame_wake_hook(None);
+            }
+            self.frame_wake.hook.lock().unwrap().take();
+            #[cfg(feature = "test-support")]
+            self.frame_wake.stop_simulator();
         }
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         self.ui_commands.lock().unwrap().take();

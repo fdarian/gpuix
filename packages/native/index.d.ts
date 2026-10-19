@@ -76,8 +76,10 @@ export declare class GpuixRenderer {
   setSyncEventHandler(handler?: ((arg: EventPayload) => SyncDispatchResult) | undefined | null): void
   /**
    * Wake JavaScript after the display link queues a frame. Returns true on macOS,
-   * false on other platforms. Call tick() in the callback; it never blocks.
-   * Wakes coalesce while JavaScript is busy and do not keep the process alive.
+   * false on other platforms. The callback should schedule the tick rather than run
+   * it inline, and tick() never blocks. A wake that lands while a tick is running, or
+   * after another wake that has not been ticked yet, is dropped: the next frame waits
+   * for the next vsync. Wakes do not keep the process alive.
    * Pass null to clear the callback. Already queued callbacks may still arrive.
    */
   setFrameWakeCallback(callback?: (() => void) | undefined | null): boolean
@@ -414,6 +416,14 @@ export declare class GpuixRenderer {
   clockFastForward(deltaMs: number): number
   clockResume(): number
   captureScreenshot(path: string): void
+  /**
+   * Calls the registered frame wake closure from a Rust thread every `intervalMs`, the
+   * function the display link calls, so a hidden window gets deterministic wakes.
+   * `null` stops it; clearing the wake callback stops it too.
+   */
+  simulateFrameWakes(intervalMs?: number | undefined | null): void
+  /** Makes every `tick()` sleep `ms` inside its native call, a forced-slow frame. 0 turns it off. */
+  setTickDelay(ms: number): void
 }
 
 /**
