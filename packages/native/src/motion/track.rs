@@ -230,6 +230,13 @@ impl Track {
         )
     }
 
+    /// The same track standing for `goal`: one that rests at the end of keyframes it does not play
+    /// must still be told apart from a new target by what was asked for, not by what it shows.
+    pub(super) fn for_goal(mut self, goal: Goal) -> Self {
+        self.goal = goal;
+        self
+    }
+
     pub(super) fn goal(&self) -> &Goal {
         &self.goal
     }
@@ -434,7 +441,14 @@ impl Track {
                 };
             }
         }
-        let iteration = (released / cycle).floor();
+        let cycles = released / cycle;
+        // An iteration owns its last instant, as in Motion: at exactly n cycles the n-th is still
+        // on its final frame, which a loop shows as the end rather than the start.
+        let iteration = if cycles >= 1.0 && (cycles - cycles.round()).abs() < 1e-9 {
+            cycles.round() - 1.0
+        } else {
+            cycles.floor()
+        };
         // The repeat delay holds the iteration's last frame.
         let local = (released - iteration * cycle).min(duration);
         Progress {

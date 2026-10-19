@@ -1436,8 +1436,15 @@ function WelcomeCard() {
 }
 ```
 
-Set **`initial={false}`** (or leave `initial` out) when the element must mount at
-its first `animate` target. Later `animate` changes still transition normally. If
+Set **`initial={false}`** when the element must mount at its `animate` target, the
+last value of a keyframe list, with nothing animating. Leave `initial` out and the
+element mounts as it is and animates to `animate`, as Motion for React does: a
+plain value runs from the element's own value, a [keyframe list](#keyframes) from
+its first keyframe, so `animate={{ opacity: [0, 1, 0] }}` with
+`transition={{ repeat: Infinity }}` pulses from the first frame. An
+`AnimatePresence` with `initial={false}` blocks the mount animation of the
+children it first renders, and an element that mounts later animates as usual.
+Later `animate` changes still transition normally. If
 a target changes while motion is active, the next transition starts from the
 current visible value, so reversing an animation does not jump.
 

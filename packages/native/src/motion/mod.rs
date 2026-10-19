@@ -250,11 +250,30 @@ fn shorthand(target: Target, name: &str) -> Option<&'static [AnimProp]> {
     }
 }
 
+/// What the element mounts at, which `initial` decides.
+enum Initial {
+    /// No `initial`: every property of `animate` starts from the element's own style,
+    /// as Motion for React reads it from the DOM, and animates on mount.
+    Unset,
+    /// `initial: false`: nothing animates on mount, every property is at its last keyframe.
+    Blocked,
+    /// Properties not named here start as they do for [`Initial::Unset`].
+    Style(Styles),
+}
+
+impl Initial {
+    fn named(&self) -> Option<&Styles> {
+        match self {
+            Initial::Style(initial) => Some(initial),
+            Initial::Unset | Initial::Blocked => None,
+        }
+    }
+}
+
 struct Description {
     generation: u64,
     is_exit: bool,
-    /// `None` for `initial: false` or no `initial`: nothing animates on mount.
-    initial: Option<Styles>,
+    initial: Initial,
     animate: Goals,
     transition: Transitions,
     /// `whileHover`, `whileTap` and `whileFocus`: what the element animates to while a
@@ -706,7 +725,7 @@ impl MotionState {
         let description = Description {
             generation: self.generation,
             is_exit: false,
-            initial: None,
+            initial: Initial::Unset,
             animate,
             transition,
             gestures: Vec::new(),
@@ -1318,10 +1337,12 @@ fn begin_keyframes(
     };
     let last = goal.last();
     let at_end = || {
-        if *last == AnimValue::Auto {
-            return Ok(Begun::Track(Track::resting_at_auto(transition.clone(), now)));
-        }
-        Track::new(name, last, last.clone(), transition.clone(), now).map(Begun::Track)
+        let track = if *last == AnimValue::Auto {
+            Track::resting_at_auto(transition.clone(), now)
+        } else {
+            Track::new(name, last, last.clone(), transition.clone(), now)?
+        };
+        Ok(Begun::Track(track.for_goal(goal.clone())))
     };
 
     let mut literal: Vec<AnimValue> = Vec::with_capacity(goal.frames().len());
@@ -1409,8 +1430,9 @@ fn mount_tracks(
     let mut pending = BTreeMap::new();
     for (prop, goal) in &description.animate {
         let start = match &description.initial {
-            None => Start::Rest,
-            Some(initial) => start_for(*prop, initial.get(prop), base),
+            Initial::Blocked => Start::Rest,
+            Initial::Unset => start_for(*prop, None, base),
+            Initial::Style(initial) => start_for(*prop, initial.get(prop), base),
         };
         let transition = description.transition.for_prop(*prop, goal);
         match begin(*prop, start, goal, &transition, measurement, painted, now)? {
@@ -1423,7 +1445,7 @@ fn mount_tracks(
         }
     }
     // A property only `initial` names is applied and then left alone.
-    for (prop, value) in description.initial.iter().flatten() {
+    for (prop, value) in description.initial.named().into_iter().flatten() {
         if !tracks.contains_key(prop) {
             let track = if *value == AnimValue::Auto {
                 Track::resting_at_auto(Transition::default(), now)
@@ -1472,8 +1494,9 @@ fn parse_description(
             .ok_or_else(|| "motion isExit must be a boolean".to_string())?,
     };
     let initial = match fields.get("initial") {
-        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Object(style)) => Some(parse_initial(style, target, colors)?),
+        None | Some(Value::Null) => Initial::Unset,
+        Some(Value::Bool(false)) => Initial::Blocked,
+        Some(Value::Object(style)) => Initial::Style(parse_initial(style, target, colors)?),
         Some(_) => return Err("motion initial only accepts false or a style object".to_string()),
     };
     let animate = match fields.get("animate") {
@@ -1540,7 +1563,8 @@ fn parse_description(
 fn check_scope(description: &Description, scope: Scope) -> Result<(), String> {
     let named = description
         .initial
-        .iter()
+        .named()
+        .into_iter()
         .flat_map(|initial| initial.keys().map(|key| ("initial", key)))
         .chain(description.animate.keys().map(|key| ("animate", key)))
         .chain(description.gestures.iter().flat_map(|target| {
@@ -4548,7 +4572,120 @@ mod tests {
         }
 
         #[test]
-        fn mounting_without_an_initial_rests_on_the_last_keyframe() {
+        fn keyframes_animate_on_mount_without_an_initial_from_the_first_keyframe() {
+            let started = Instant::now();
+            let description = json!({
+                "animate": { "width": [10.0, 110.0, 10.0], "opacity": [0.0, 1.0, 0.0] },
+                "transition": { "duration": 2.0, "ease": "linear", "repeat": "Infinity" }
+            });
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            near(width(&state, started), 10.0);
+            near(width(&state, at(started, 0.5)), 60.0);
+            near(width(&state, at(started, 1.0)), 110.0);
+            near(width(&state, at(started, 2.5)), 60.0);
+            near(opacity(&state, at(started, 0.5)), 0.5);
+            near(opacity(&state, at(started, 2.5)), 0.5);
+            for seconds in [0.5, 2.5, 4001.5] {
+                let frame = state.frame(at(started, seconds));
+                assert!(frame.active && !frame.just_settled, "{seconds}");
+            }
+        }
+
+        #[test]
+        fn initial_false_rests_on_the_last_keyframe_even_when_repeating() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": false,
+                "animate": { "width": [0.0, 100.0, 30.0] },
+                "transition": { "duration": 1.0, "repeat": "Infinity", "repeatType": "mirror" }
+            });
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            assert_eq!(state.applied(started).unwrap().width, Some(30.0));
+            assert_eq!(state.applied(at(started, 7.3)).unwrap().width, Some(30.0));
+            assert!(!state.frame(started).active);
+        }
+
+        #[test]
+        fn keyframes_resting_at_their_end_stay_there_when_only_initial_changes() {
+            let started = Instant::now();
+            let blocked = json!({
+                "generation": 1,
+                "initial": false,
+                "animate": { "width": [0.0, 100.0, 30.0] },
+                "transition": { "duration": 1.0 }
+            });
+            let mut state = MotionState::new(&blocked, None, Colors::root(), None, 0, started).unwrap();
+            // What an AnimatePresence does after its first render: `initial: false` becomes unset.
+            let unset = json!({
+                "generation": 2,
+                "animate": { "width": [0.0, 100.0, 30.0] },
+                "transition": { "duration": 1.0 }
+            });
+            state.sync(&unset, None, Colors::root(), None, 0, at(started, 5.0)).unwrap();
+            assert_eq!(state.applied(at(started, 5.5)).unwrap().width, Some(30.0));
+            assert!(!state.frame(at(started, 5.5)).active);
+        }
+
+        #[test]
+        fn an_initial_naming_other_properties_leaves_the_keyframes_animating() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "opacity": 0.25 },
+                "animate": { "width": [0.0, 100.0] },
+                "transition": { "duration": 1.0, "ease": "linear", "repeat": "Infinity" }
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            near(width(&state, at(started, 0.5)), 50.0);
+            near(opacity(&state, at(started, 0.5)), 0.25);
+        }
+
+        #[test]
+        fn a_null_first_keyframe_starts_from_the_elements_own_style_without_an_initial() {
+            let started = Instant::now();
+            let base = StyleDesc { width: Some(DimensionValue::Pixels(40.0)), ..Default::default() };
+            let description = json!({
+                "animate": { "width": [null, 100.0, 20.0], "opacity": [null, 0.0] },
+                "transition": { "duration": 2.0, "ease": "linear", "repeat": "Infinity", "repeatType": "reverse" }
+            });
+            let state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
+            near(width(&state, started), 40.0);
+            near(width(&state, at(started, 1.0)), 100.0);
+            near(width(&state, at(started, 2.5)), 60.0);
+            // Unset opacity is CSS's initial value, 1.
+            near(opacity(&state, at(started, 1.0)), 0.5);
+            near(opacity(&state, at(started, 2.5)), 0.25);
+        }
+
+        #[test]
+        fn a_plain_value_without_an_initial_animates_from_the_elements_own_style() {
+            let started = Instant::now();
+            let base = StyleDesc { width: Some(DimensionValue::Pixels(40.0)), ..Default::default() };
+            let description = json!({
+                "animate": { "width": 100.0, "opacity": 0.0 },
+                "transition": { "duration": 1.0, "ease": "linear" }
+            });
+            let mut state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
+            near(width(&state, started), 40.0);
+            near(width(&state, at(started, 0.5)), 70.0);
+            near(opacity(&state, at(started, 0.5)), 0.5);
+            assert!(state.frame(at(started, 0.5)).active);
+            assert!(state.frame(at(started, 1.0)).just_settled);
+        }
+
+        #[test]
+        fn a_value_already_at_its_target_does_not_keep_the_frames_coming() {
+            let started = Instant::now();
+            let base = StyleDesc { width: Some(DimensionValue::Pixels(100.0)), ..Default::default() };
+            let description = json!({
+                "animate": { "width": 100.0, "opacity": 1.0 },
+                "transition": { "duration": 1.0 }
+            });
+            let mut state = MotionState::new(&description, Some(&base), Colors::root(), None, 0, started).unwrap();
+            assert!(!state.frame(started).active);
+        }
+
+        #[test]
+        fn initial_false_rests_on_the_last_keyframe() {
             let started = Instant::now();
             let description = json!({
                 "initial": false,
@@ -4675,7 +4812,9 @@ mod tests {
                 json!({ "duration": 1.0, "repeat": 2 }),
             );
             near(width(&state, at(started, 0.5)), 50.0);
-            near(width(&state, at(started, 1.0)), 0.0);
+            // Motion's iteration owns its last instant, so the loop restarts just after it.
+            near(width(&state, at(started, 1.0)), 100.0);
+            near(width(&state, at(started, 1.001)), 0.1);
             near(width(&state, at(started, 1.5)), 50.0);
             near(width(&state, at(started, 2.75)), 75.0);
             assert!(state.frame(at(started, 2.75)).active);
@@ -4713,7 +4852,8 @@ mod tests {
                 json!({ "duration": 1.0, "repeat": 1, "repeatDelay": 0.5 }),
             );
             near(width(&state, at(started, 1.25)), 100.0);
-            near(width(&state, at(started, 1.5)), 0.0);
+            near(width(&state, at(started, 1.5)), 100.0);
+            near(width(&state, at(started, 1.5005)), 0.05);
             near(width(&state, at(started, 2.0)), 50.0);
             assert!(state.frame(at(started, 2.4)).active);
             let end = state.frame(at(started, 2.5));

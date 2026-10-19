@@ -155,19 +155,34 @@ describeNative("motion.span", () => {
     page.testRoot.unmount()
   })
 
-  it("shows animate at once when there is no initial", () => {
-    const page = setup()
-    page.testRoot.render(
+  it("animates from the span's own style when there is no initial, and shows animate at once with initial={false}", () => {
+    const tree = (initial?: false) => (
       <div style={PAGE}>
         <text testId="p" style={TEXT}>
-          <motion.span style={{ paddingLeft: 12, backgroundColor: RED }} animate={{ backgroundColor: BLUE }} transition={LINEAR}>
+          <motion.span
+            style={{ paddingLeft: 12, backgroundColor: RED }}
+            initial={initial}
+            animate={{ backgroundColor: BLUE }}
+            transition={LINEAR}
+          >
             aaaa
           </motion.span>
         </text>
       </div>
     )
+    const page = setup()
+    page.testRoot.render(tree())
+    expect(page.at(4, 10)).toEqual([255, 0, 0])
+    page.renderer.clockFastForward(500)
+    expectBetween(page.at(4, 10))
+    page.renderer.clockFastForward(1000)
     expect(page.at(4, 10)).toEqual([0, 0, 255])
     page.testRoot.unmount()
+
+    const blocked = setup()
+    blocked.testRoot.render(tree(false))
+    expect(blocked.at(4, 10)).toEqual([0, 0, 255])
+    blocked.testRoot.unmount()
   })
 
   it("animates the colours of an inline box that are not the text and the background", () => {
@@ -235,6 +250,7 @@ describeNative("motion.span", () => {
               base: { backgroundColor: RED },
               tinted: (colour: unknown) => ({ backgroundColor: colour as string }),
             }}
+            initial={false}
             animate={["base", "tinted"]}
           >
             aaaa

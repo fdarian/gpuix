@@ -819,7 +819,8 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
       })
       for (let second = 0; second < 30; second++) frame(renderer, 1000)
       expect(x.isAnimating()).toBe(true)
-      expect(x.get()).toBeCloseTo(0, 5)
+      // An iteration owns its last instant: a loop at an exact boundary shows the end, as Motion does.
+      expect(x.get()).toBeCloseTo(100, 5)
       frame(renderer, 250)
       expect(x.get()).toBeCloseTo(25, 5)
       expect(log).toEqual(["start"])

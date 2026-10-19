@@ -681,12 +681,29 @@ mod tests {
     }
 
     #[test]
-    fn without_initial_a_span_shows_animate_at_once() {
+    fn without_initial_a_span_animates_from_its_own_style() {
         let mut page = Page::new();
         page.style(3, r#"{ "backgroundColor": "red" }"#);
         page.describe(
             3,
             &format!(r#"{{ "generation": 1, "animate": {{ "backgroundColor": "blue" }}, "transition": {WASH} }}"#),
+        )
+        .expect("a description a span can run");
+        let start = page.frame(0);
+        is(&page.shown(&start, 3).background_color, "red");
+        let middle = page.frame(500);
+        mid_red_to_blue(&page.shown(&middle, 3).background_color);
+    }
+
+    #[test]
+    fn initial_false_shows_a_spans_animate_at_once() {
+        let mut page = Page::new();
+        page.style(3, r#"{ "backgroundColor": "red" }"#);
+        page.describe(
+            3,
+            &format!(
+                r#"{{ "generation": 1, "initial": false, "animate": {{ "backgroundColor": "blue" }}, "transition": {WASH} }}"#
+            ),
         )
         .expect("a description a span can run");
         let start = page.frame(0);
