@@ -108,6 +108,23 @@ enum Initial {
     /// A keyword whose unset value is the element's default, which the style
     /// cannot name.
     Unset,
+    /// The `text-underline-offset` the element inherits.
+    InheritedUnderlineOffset,
+    /// The `border-spacing` the element inherits.
+    InheritedSpacing,
+    /// The `border-collapse`, `caption-side` and `empty-cells` the element inherits.
+    InheritedTable(TableProperty),
+    InheritedPointerEvents,
+    InheritedVisibility,
+    /// The multiplier of the `line-height` the element inherits, when it is one.
+    InheritedLineHeight,
+}
+
+#[derive(Clone, Copy)]
+enum TableProperty {
+    BorderCollapse,
+    CaptionSide,
+    EmptyCells,
 }
 
 /// What a field is read in: the colours its value resolves in and the lengths.
@@ -679,7 +696,11 @@ macro_rules! properties {
     };
 }
 
-use Initial::{BorderWidth, ComputedColor, CurrentColor, Keyword as InitialKeyword, NoShadows, Number, Transparent, Unresolved, Unset};
+use Initial::{
+    BorderWidth, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
+    InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, Number,
+    Transparent, Unresolved, Unset,
+};
 
 properties! {
     FlexGrow "flexGrow" Number NonNegative Number(0.0), flex_grow | flex.grow();
@@ -737,15 +758,15 @@ properties! {
     FontSize "fontSize" FontSize NonNegative Initial::FontSize, font_size;
     FontWeight "fontWeight" FontWeight Weight Initial::FontWeight, font_weight;
     FontVariationSettings "fontVariationSettings" Variations None Initial::FontVariations, font_variation_settings;
-    LineHeight "lineHeight" Number NonNegative Unresolved, line_height;
-    TextUnderlineOffset "textUnderlineOffset" UnderlineOffset None Initial::Auto, text_underline_offset;
-    TextDecorationThickness "textDecorationThickness" Thickness NonNegative Initial::Auto, text_decoration_thickness;
+    LineHeight "lineHeight" Number NonNegative InheritedLineHeight, line_height;
+    TextUnderlineOffset "textUnderlineOffset" UnderlineOffset None InheritedUnderlineOffset, text_underline_offset;
+    TextDecorationThickness "textDecorationThickness" Thickness None Initial::Auto, text_decoration_thickness;
 
     ScrollbarColor "scrollbarColor" Color None Unresolved, scrollbar_color;
     ScrollbarWidth "scrollbarWidth" Number NonNegative Unresolved, scrollbar_width;
     SelectionColor "selectionColor" Color None Unresolved, selection_color;
 
-    BorderSpacing "borderSpacing" Spacing NonNegative Number(0.0), border_spacing;
+    BorderSpacing "borderSpacing" Spacing NonNegative InheritedSpacing, border_spacing;
     VerticalAlign "verticalAlign" VerticalAlign None InitialKeyword("baseline"), vertical_align;
     ZIndex "zIndex" Integer None Unresolved, z_index;
 
@@ -753,12 +774,12 @@ properties! {
     Position "position" Keyword None InitialKeyword("static"), position;
     OverflowX "overflowX" Keyword None InitialKeyword("visible"), overflow_x | overflow.x();
     OverflowY "overflowY" Keyword None InitialKeyword("visible"), overflow_y | overflow.y();
-    PointerEvents "pointerEvents" Keyword None Unset, pointer_events;
+    PointerEvents "pointerEvents" Keyword None InheritedPointerEvents, pointer_events;
     TableLayout "tableLayout" TypedKeyword None InitialKeyword("auto"), table_layout;
-    BorderCollapse "borderCollapse" TypedKeyword None Unset, border_collapse;
-    CaptionSide "captionSide" TypedKeyword None Unset, caption_side;
-    EmptyCells "emptyCells" TypedKeyword None Unset, empty_cells;
-    Visibility "visibility" Keyword None InitialKeyword("visible"), visibility;
+    BorderCollapse "borderCollapse" TypedKeyword None InheritedTable(TableProperty::BorderCollapse), border_collapse;
+    CaptionSide "captionSide" TypedKeyword None InheritedTable(TableProperty::CaptionSide), caption_side;
+    EmptyCells "emptyCells" TypedKeyword None InheritedTable(TableProperty::EmptyCells), empty_cells;
+    Visibility "visibility" Keyword None InheritedVisibility, visibility;
     FlexDirection "flexDirection" Keyword None Unset, flex_direction;
     FlexWrap "flexWrap" Keyword None Unset, flex_wrap;
     AlignItems "alignItems" Keyword None Unset, align_items;
@@ -1124,6 +1145,35 @@ impl AnimProp {
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
             Initial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
             Initial::Unset => Some(AnimValue::Keyword(None)),
+            Initial::InheritedUnderlineOffset => Some(match colors.inherited.underline_offset {
+                TextUnderlineOffset::Auto => AnimValue::auto_keyword(),
+                TextUnderlineOffset::Length(length) => resolved(&length, &colors.lengths),
+            }),
+            Initial::InheritedSpacing => {
+                let spacing = colors.inherited.table.spacing;
+                Some(AnimValue::ellipse((spacing.horizontal, 0.0), (spacing.vertical, 0.0)))
+            }
+            Initial::InheritedTable(property) => {
+                let table = colors.inherited.table;
+                Some(AnimValue::Keyword(Some(
+                    match property {
+                        TableProperty::BorderCollapse if table.collapse => "collapse",
+                        TableProperty::BorderCollapse => "separate",
+                        TableProperty::CaptionSide if table.caption_bottom => "bottom",
+                        TableProperty::CaptionSide => "top",
+                        TableProperty::EmptyCells if table.hide_empty_cells => "hide",
+                        TableProperty::EmptyCells => "show",
+                    }
+                    .to_string(),
+                )))
+            }
+            Initial::InheritedPointerEvents => Some(AnimValue::Keyword(Some(
+                if colors.inherited.pointer_events_none { "none" } else { "auto" }.to_string(),
+            ))),
+            Initial::InheritedVisibility => Some(AnimValue::Keyword(Some(
+                if colors.inherited.visibility_hidden { "hidden" } else { "visible" }.to_string(),
+            ))),
+            Initial::InheritedLineHeight => colors.inherited.line_height.map(AnimValue::Number),
         }
     }
 
@@ -1229,7 +1279,7 @@ impl AnimProp {
                     _ => return Err(format!("motion {name} must be auto, from-font or a CSS length")),
                 };
                 let thickness = parse_thickness(&text).ok_or_else(|| {
-                    format!("motion {name} must be auto, from-font or a non-negative CSS length: {text}")
+                    format!("motion {name} must be auto, from-font or a CSS length: {text}")
                 })?;
                 match thickness {
                     Thickness::Auto => AnimValue::auto_keyword(),
@@ -2148,7 +2198,7 @@ mod tests {
         assert_eq!(parse(thickness, serde_json::json!(2)).unwrap(), AnimValue::Number(2.0));
         // A percentage is of 1em and is px by the time it is read.
         assert_eq!(parse(thickness, serde_json::json!("10%")).unwrap(), AnimValue::Number(colors.lengths.font_size * 0.1));
-        assert!(parse(thickness, serde_json::json!(-1)).is_err(), "a negative thickness is refused");
+        assert_eq!(parse(thickness, serde_json::json!(-1)).unwrap(), AnimValue::Number(-1.0), "a negative thickness is animated, and painted as a device pixel");
         assert!(offset.accepts(&AnimValue::auto_keyword()));
         assert!(thickness.accepts(&AnimValue::Keyword(Some("from-font".into()))));
         assert!(!offset.accepts(&AnimValue::Keyword(Some("from-font".into()))));
@@ -2171,6 +2221,67 @@ mod tests {
         for prop in [offset, thickness, AnimProp::FontVariationSettings] {
             assert!(Scope::InlineBox.animates(prop), "{prop:?}");
         }
+    }
+
+    /// What an element whose parent declares `parent` computes to when it declares `own` itself.
+    fn inheriting(parent: &str, own: &str) -> Colors {
+        let parent: StyleDesc = serde_json::from_str(parent).unwrap();
+        let own: StyleDesc = serde_json::from_str(own).unwrap();
+        let font = super::super::value::ParentFont::initial().descend(Some(&parent));
+        Colors::inheriting(&ColorContext::root(Scheme::Light), &font, Some(&own))
+    }
+
+    fn keyword(text: &str) -> Option<AnimValue> {
+        Some(AnimValue::Keyword(Some(text.to_string())))
+    }
+
+    #[test]
+    fn an_unset_inherited_property_starts_from_the_parents_computed_value() {
+        let colors = inheriting(
+            r#"{ "textUnderlineOffset": "12px", "borderSpacing": "10px 6px", "borderCollapse": "collapse",
+                 "captionSide": "bottom", "emptyCells": "hide", "pointerEvents": "none", "visibility": "hidden",
+                 "lineHeight": 1.5 }"#,
+            "{}",
+        );
+        assert_eq!(AnimProp::TextUnderlineOffset.initial(None, &colors), Some(AnimValue::Number(12.0)));
+        assert_eq!(
+            AnimProp::BorderSpacing.initial(None, &colors),
+            Some(AnimValue::ellipse((10.0, 0.0), (6.0, 0.0)))
+        );
+        assert_eq!(AnimProp::BorderCollapse.initial(None, &colors), keyword("collapse"));
+        assert_eq!(AnimProp::CaptionSide.initial(None, &colors), keyword("bottom"));
+        assert_eq!(AnimProp::EmptyCells.initial(None, &colors), keyword("hide"));
+        assert_eq!(AnimProp::PointerEvents.initial(None, &colors), keyword("none"));
+        assert_eq!(AnimProp::Visibility.initial(None, &colors), keyword("hidden"));
+        assert_eq!(AnimProp::LineHeight.initial(None, &colors), Some(AnimValue::Number(1.5)));
+    }
+
+    #[test]
+    fn an_unset_inherited_property_under_no_declaration_starts_from_its_initial_value() {
+        let colors = inheriting("{}", "{}");
+        assert_eq!(AnimProp::TextUnderlineOffset.initial(None, &colors), Some(AnimValue::auto_keyword()));
+        assert_eq!(AnimProp::BorderSpacing.initial(None, &colors), Some(AnimValue::ellipse((0.0, 0.0), (0.0, 0.0))));
+        assert_eq!(AnimProp::BorderCollapse.initial(None, &colors), keyword("separate"));
+        assert_eq!(AnimProp::CaptionSide.initial(None, &colors), keyword("top"));
+        assert_eq!(AnimProp::EmptyCells.initial(None, &colors), keyword("show"));
+        assert_eq!(AnimProp::PointerEvents.initial(None, &colors), keyword("auto"));
+        assert_eq!(AnimProp::Visibility.initial(None, &colors), keyword("visible"));
+        assert_eq!(AnimProp::LineHeight.initial(None, &colors), None);
+    }
+
+    #[test]
+    fn a_descendant_inherits_through_an_element_that_declares_nothing_and_stops_at_one_that_does() {
+        let font = super::super::value::ParentFont::initial();
+        let parent: StyleDesc = serde_json::from_str(r#"{ "textUnderlineOffset": "1em", "fontSize": 20, "lineHeight": "30px" }"#).unwrap();
+        let middle = font.descend(Some(&parent)).descend(None);
+        let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &middle, None);
+        assert_eq!(AnimProp::TextUnderlineOffset.initial(None, &colors), Some(AnimValue::Number(20.0)), "em resolved where it was set");
+        assert_eq!(AnimProp::LineHeight.initial(None, &colors), None, "a length is not a multiplier");
+        let own: StyleDesc = serde_json::from_str(r#"{ "pointerEvents": "auto" }"#).unwrap();
+        let none: StyleDesc = serde_json::from_str(r#"{ "pointerEvents": "none" }"#).unwrap();
+        let below_none = font.descend(Some(&none));
+        let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &below_none, Some(&own));
+        assert_eq!(AnimProp::PointerEvents.initial(None, &colors), keyword("auto"));
     }
 
     #[test]

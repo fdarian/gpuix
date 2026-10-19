@@ -3438,6 +3438,7 @@ mod tests {
                 above_root: false,
                 weight: 700.0,
                 variations: Default::default(),
+                inheritable: Default::default(),
             };
         }
 

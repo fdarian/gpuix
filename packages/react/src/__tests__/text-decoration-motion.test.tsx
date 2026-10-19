@@ -6,7 +6,7 @@
 
 import fs from "fs"
 import path from "path"
-import type { CSSProperties } from "react"
+import React, { type CSSProperties } from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
 import { motion } from "../index"
@@ -24,6 +24,8 @@ interface Case {
   base?: string
   after?: Style
   style: string
+  /** What the element's parent declares, which the element inherits. */
+  parent?: string
   animations: number
   samples: Record<string, string>
   error?: string
@@ -35,10 +37,6 @@ const ORACLE: Record<string, Case> = JSON.parse(
     "utf8"
   )
 ).cases
-
-/** Chrome starts an unset `textUnderlineOffset` from the value it inherits, and animates a negative
- *  thickness; gpuix starts from `auto` and refuses a negative thickness (see FORK.md). */
-const DEVIATIONS = ["inherited 12px", "Thickness -4px"]
 
 const TIMES = [0, 0.25, 0.5, 0.75, 1]
 const linear = { duration: 1, ease: "linear" } as const
@@ -74,6 +72,11 @@ function frame(style: Style, animation: Record<string, unknown> | undefined, bas
   )
 }
 
+/** `element` inside the parent the case declares, which it inherits from. */
+function under(data: Case, element: React.ReactElement): React.ReactElement {
+  return data.parent ? <div style={styleOf(data.parent) as CSSProperties}>{element}</div> : element
+}
+
 /** The rows painted at each of `TIMES` while the case runs. */
 function animatedRows(data: Case): number[][] {
   const { render, renderer, unmount } = createTestRoot({ width: 300, height: 100 })
@@ -91,14 +94,14 @@ function animatedRows(data: Case): number[][] {
           animate[prop] = value
         }
       }
-      render(frame({}, { initial: Object.keys(initial).length ? initial : { opacity: 1 }, animate }, base))
+      render(under(data, frame({}, { initial: Object.keys(initial).length ? initial : { opacity: 1 }, animate }, base)))
     } else {
       const css = styleOf(data.base!)
       const transition = { transition: data.after && "" }
       void transition
-      render(frame({ ...css, transition: transitionOf(data) }, undefined, base))
+      render(under(data, frame({ ...css, transition: transitionOf(data) }, undefined, base)))
       renderer.flush()
-      render(frame({ ...css, ...data.after, transition: transitionOf(data) }, undefined, base))
+      render(under(data, frame({ ...css, ...data.after, transition: transitionOf(data) }, undefined, base)))
     }
     renderer.flush()
     let elapsed = 0
@@ -138,7 +141,7 @@ function transitionOf(data: Case): string {
 function staticRows(data: Case, value: string): number[] {
   const { render, renderer, unmount } = createTestRoot({ width: 300, height: 100 })
   try {
-    render(frame({ [data.prop]: value }, undefined, styleOf(data.style)))
+    render(under(data, frame({ [data.prop]: value }, undefined, styleOf(data.style))))
     renderer.flush()
     return underlineRows(renderer)
   } finally {
@@ -148,7 +151,7 @@ function staticRows(data: Case, value: string): number[] {
 
 describeNative("text decoration lengths in motion, against Chrome's computed values", () => {
   for (const [name, data] of Object.entries(ORACLE)) {
-    if (data.error || DEVIATIONS.some((deviation) => name.includes(deviation))) continue
+    if (data.error) continue
     it(name, () => {
       const painted = animatedRows(data)
       TIMES.forEach((time, index) => {

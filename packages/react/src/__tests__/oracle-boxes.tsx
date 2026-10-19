@@ -5,6 +5,7 @@
 
 import React from "react"
 import { expect } from "vitest"
+import { motion } from "../index"
 import { styleOf } from "./oracle-html.js"
 import type { createTestRoot } from "../testing.js"
 
@@ -57,6 +58,8 @@ function parse(html: string): (Node | string)[] {
 export interface Override {
   id: string
   style: Record<string, unknown>
+  /** The element is a `motion.div` with these props. */
+  motion?: Record<string, unknown>
 }
 
 function render(nodes: (Node | string)[], override: Override | undefined, key = ""): React.ReactNode[] {
@@ -72,6 +75,9 @@ function render(nodes: (Node | string)[], override: Override | undefined, key = 
       ...(override && node.attrs.id === override.id ? override.style : {}),
     }
     const Tag = node.tag === "span" ? "span" : "div"
+    if (override?.motion && node.attrs.id === override.id) {
+      return React.createElement(motion.div, { ...props, ...override.motion, style }, ...render(node.children, override, `${key}${index}.`))
+    }
     return React.createElement(Tag, { ...props, style }, ...render(node.children, override, `${key}${index}.`))
   })
 }

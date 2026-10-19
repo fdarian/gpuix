@@ -6417,6 +6417,11 @@ pub(crate) struct Inherited {
     /// Computed `text-underline-offset`, which an underline takes from the box
     /// that declares it.
     pub underline_offset: crate::css::text_underline_offset::TextUnderlineOffset,
+    /// Computed `visibility` is hidden, which an unset one of a transition or motion starts from.
+    pub visibility_hidden: bool,
+    /// The multiplier of the computed `line-height` when it is unitless, which an unset one of a
+    /// transition or motion starts from.
+    pub line_height: Option<f64>,
     /// The farthest an underline of an element above, or of this one, is put from its baseline
     /// and thick, in px, which a text below inks past the box of its line by (culling).
     pub underline_reach: f32,
@@ -6483,6 +6488,13 @@ impl Inherited {
             above_root: self.above_root,
             weight: self.font_weight,
             variations: self.computed_variations.clone(),
+            inheritable: crate::motion::Inheritable {
+                underline_offset: self.underline_offset,
+                table: self.table,
+                pointer_events_none: self.pointer_events_none,
+                visibility_hidden: self.visibility_hidden,
+                line_height: self.line_height,
+            },
         }
     }
 
@@ -6522,6 +6534,8 @@ impl Inherited {
             ),
             font_weight: crate::motion::INITIAL_FONT_WEIGHT,
             underline_offset: Default::default(),
+            visibility_hidden: false,
+            line_height: None,
             underline_reach: 0.0,
             above_root: true,
             font_state: Default::default(),
@@ -6591,6 +6605,16 @@ impl Inherited {
         self.underline_offset = self
             .underline_offset
             .inherit(style.text_underline_offset.as_ref(), &self.lengths);
+        match style.visibility.as_deref() {
+            Some("hidden") => self.visibility_hidden = true,
+            Some("visible") => self.visibility_hidden = false,
+            _ => {}
+        }
+        match &style.line_height {
+            Some(crate::css::line_height::LineHeight::Multiplier(multiplier)) => self.line_height = Some(*multiplier),
+            Some(_) => self.line_height = None,
+            None => {}
+        }
         self.underline_reach = self.underline_reach.max(crate::layout::cull::line_reach(
             style,
             self.underline_offset,

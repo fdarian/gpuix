@@ -44,7 +44,7 @@ use property::AnimProp;
 pub(crate) use property::Scope;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
-pub(crate) use value::{Colors, ParentFont, INITIAL_FONT_WEIGHT};
+pub(crate) use value::{Colors, Inheritable, ParentFont, INITIAL_FONT_WEIGHT};
 use value::{AnimValue, Interpolation};
 
 /// The animated properties' current values, ready to lay over a style.
@@ -5346,6 +5346,7 @@ mod tests {
                 above_root: false,
                 weight: 700.0,
                 variations: Default::default(),
+                inheritable: Default::default(),
             };
             let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
             let state = MotionState::new(&description, None, colors.clone(), None, 0, started).unwrap();

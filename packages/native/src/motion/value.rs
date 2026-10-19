@@ -12,6 +12,9 @@ use crate::custom_elements::svg_path::PathData;
 use crate::color::ColorContext;
 use crate::css::color_space::Space;
 use crate::css::length::{LengthContext, LinearLength};
+use crate::css::line_height::LineHeight;
+use crate::css::table::TableInherited;
+use crate::css::text_underline_offset::TextUnderlineOffset;
 use crate::style::StyleDesc;
 
 /// The colour contexts an element's animated colours resolve in, so
@@ -26,10 +29,53 @@ pub(crate) struct Colors {
     pub(super) text: ColorContext,
     /// The element's computed font, which an unset `fontSize` or `fontWeight` is.
     pub(super) font: Font,
+    /// What the element computes to for the other inherited properties a track can animate, which
+    /// an unset one starts from.
+    pub(super) inherited: Inheritable,
     /// What `em`, `rem` and the viewport units of the element's lengths mean. A length
     /// resolves to px against it when a value is parsed or read, as in a CSS computed
     /// value, so a track never holds a relative unit.
     pub(super) lengths: LengthContext,
+}
+
+/// The computed values of the inherited properties besides the font and `color` that a track
+/// animates. An element that leaves one unset computes to its parent's, so a transition or an
+/// animation without a first keyframe starts from that and not from the property's initial value.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub(crate) struct Inheritable {
+    pub(crate) underline_offset: TextUnderlineOffset,
+    pub(crate) table: TableInherited,
+    pub(crate) pointer_events_none: bool,
+    pub(crate) visibility_hidden: bool,
+    /// The multiplier of a unitless `line-height`; `None` when it is `normal` or a length, which a
+    /// multiplier does not blend with.
+    pub(crate) line_height: Option<f64>,
+}
+
+impl Inheritable {
+    /// What an element declaring `style` computes to, given what it inherits. `lengths` is the
+    /// element's own context, in which a declared offset or spacing resolves.
+    pub(crate) fn descend(&self, style: &StyleDesc, lengths: &LengthContext) -> Self {
+        let mut descended = self.clone();
+        descended.underline_offset = self.underline_offset.inherit(style.text_underline_offset.as_ref(), lengths);
+        descended.table = self.table.descend(style, lengths);
+        match style.pointer_events.as_deref() {
+            Some("none") => descended.pointer_events_none = true,
+            Some("auto") => descended.pointer_events_none = false,
+            _ => {}
+        }
+        match style.visibility.as_deref() {
+            Some("hidden") => descended.visibility_hidden = true,
+            Some("visible") => descended.visibility_hidden = false,
+            _ => {}
+        }
+        match &style.line_height {
+            Some(LineHeight::Multiplier(multiplier)) => descended.line_height = Some(*multiplier),
+            Some(_) => descended.line_height = None,
+            None => {}
+        }
+        descended
+    }
 }
 
 /// A computed `font-size` in px, `font-weight` and `font-variation-settings`.
@@ -50,6 +96,7 @@ pub(crate) struct ParentFont {
     pub(crate) above_root: bool,
     pub(crate) weight: f64,
     pub(crate) variations: FontVariations,
+    pub(crate) inheritable: Inheritable,
 }
 
 impl ParentFont {
@@ -60,6 +107,7 @@ impl ParentFont {
             above_root: true,
             weight: INITIAL_FONT_WEIGHT,
             variations: FontVariations::default(),
+            inheritable: Inheritable::default(),
         }
     }
 
@@ -71,6 +119,15 @@ impl ParentFont {
             above_root: false,
             weight: font.weight,
             variations: font.variations,
+            inheritable: self.inheritable_of(style),
+        }
+    }
+
+    /// What an element styled by `style` whose parent this is computes to.
+    pub(crate) fn inheritable_of(&self, style: Option<&StyleDesc>) -> Inheritable {
+        match style {
+            Some(style) => self.inheritable.descend(style, &self.lengths_of(Some(style))),
+            None => self.inheritable.clone(),
         }
     }
 
@@ -117,6 +174,7 @@ impl Colors {
             element: parent.descend(declared),
             text: parent.for_color_property(declared),
             font: font.of(style),
+            inherited: font.inheritable_of(style),
             lengths: font.lengths_of(style),
         }
     }

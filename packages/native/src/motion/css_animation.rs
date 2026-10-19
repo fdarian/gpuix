@@ -2385,6 +2385,7 @@ mod tests {
             above_root: false,
             weight: 700.0,
             variations: Default::default(),
+            inheritable: Default::default(),
         };
         frames.define("grow", r#"{ "to": { "fontSize": 40, "fontWeight": 300 } }"#);
         let animated = fading("grow 1s linear");

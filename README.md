@@ -1467,12 +1467,14 @@ runs from `3px`, so `animate={{ borderTopWidth: 7 }}` is `5px` halfway with or w
 `borderStyle`.
 
 Where CSS computes an unset property to a keyword there is nothing to blend from:
-`aspectRatio` is `auto` and `lineHeight` is `normal`, and as in CSS those begin at
-their target. The unset `top`, `right`, `bottom`, `left` and `flexBasis` are `auto` too,
+`aspectRatio` is `auto` and `lineHeight` is `normal` (or a length, for a `motion`, which
+takes a number only), and as in CSS those begin at their target. The unset `top`, `right`, `bottom`, `left` and `flexBasis` are `auto` too,
 but `auto` is a value of its own there: it flips with a length, see below.
 `fontSize` and `fontWeight` are inherited, so an unset one starts from the
 computed value: the parent's (`fontSize: "2em"` computes against it as well),
-or the initial `16px` and `400` at the root.
+or the initial `16px` and `400` at the root. So are `textUnderlineOffset`, `lineHeight`
+(a number, which is what a `motion` takes), `visibility`, `borderSpacing` and the
+other table properties, and `pointerEvents`: an unset one starts from the parent's.
 
 ### Targets and timing
 
@@ -1637,10 +1639,10 @@ paragraph is laid out again each frame.
 **`textUnderlineOffset` and `textDecorationThickness`** blend between two lengths (a percentage is of `1em`
 and blends with px as a `calc()`), on an element and on a `<span>`. `auto` and `from-font` are no length, so a
 pair that has one flips at the halfway point, and a CSS transition runs that flip without `allow-discrete`, as
-Chrome's does for these two. An unset thickness starts from `auto`. An unset offset starts from `auto` too, where
-Chrome starts from the offset it inherits. The painted thickness is a whole number of device pixels
-(see [Inline text](#inline-text)), so an animated one steps from line to line. A negative `textDecorationThickness`
-is an error.
+Chrome's does for these two. An unset thickness starts from `auto`, which is not inherited. An unset offset starts
+from the offset it inherits, which is `auto` when no ancestor sets one. The painted thickness is a whole number of
+device pixels (see [Inline text](#inline-text)), so an animated one steps from line to line, and a negative
+thickness (which an animation can pass through) paints one device pixel, as zero does.
 
 The **transition** uses seconds, like Motion for React:
 
@@ -6683,9 +6685,9 @@ Differences from Chrome:
 - Copying a selection across cells puts a tab between the cells of a row and a line break
   between rows, as Chrome does, but after a cell that ends in a block (a `div` of its own,
   not text) Chrome drops the tab and this does not.
-- The table styles are not animatable by `motion` or a keyframe, which take no discrete property
-  (and `borderSpacing` is only a transition target when it is declared: an unset one starts from `0`
-  and not from the spacing it inherits).
+- The table styles are not animatable by `motion` or a keyframe, which take no discrete property.
+  `borderSpacing`, `borderCollapse`, `captionSide` and `emptyCells` that an element leaves unset start
+  from the value it inherits, in a CSS transition as in Chrome.
 - A `table-*` display on a custom element (`<img>`, `<input>`, `<svg>`, ...) lays out as a
   block with no table role.
 
@@ -7747,7 +7749,8 @@ render per frame.
   A `verticalAlign` keyword against a length or another keyword is discrete the same way.
   `borderSpacing` and `zIndex` blend, as the table above says. A transition of an inherited
   property that is unset (`borderSpacing`, `borderCollapse`, `captionSide`, `emptyCells`,
-  `pointerEvents`) starts from the initial value, not from the parent's.
+  `pointerEvents`, `visibility`, `textUnderlineOffset`, a unitless `lineHeight`) starts from
+  the value the element inherits, which is the initial one when no ancestor sets it.
 - **Timing functions.** `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`,
   `cubic-bezier()` (it may overshoot), `steps(n, jump-start | jump-end |
   jump-none | jump-both | start | end)`, `step-start`, `step-end` and `linear()`
@@ -7770,8 +7773,9 @@ render per frame.
   point. An unset border or outline width is `medium` (or a `border` shorthand's width)
   whatever the style is, so a `borderStyle` that appears starts no `border-width`
   transition. `fontSize`
-  and `fontWeight` are inherited too: an unset one runs from the parent's
-  computed value. `zIndex` is not animatable
+  and `fontWeight` are inherited too, and so are `textUnderlineOffset`, `visibility`, `pointerEvents`,
+  `borderSpacing` and the other table properties and a unitless `lineHeight`: an unset one runs
+  from the parent's computed value. `zIndex` is not animatable
 - **Lengths.** Lengths blend as a px part and a percentage part, whatever unit
   they are written in (the Lengths paragraph of [Targets and timing](#targets-and-timing)): `px` to `%`, `em`,
   `rem`, the viewport units and `calc()` all transition, from and to each other.

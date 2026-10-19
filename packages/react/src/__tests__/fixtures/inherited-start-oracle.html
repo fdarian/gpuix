@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+  Oracle for inherited-start.test.tsx: what headless Chrome shows part of the way through a CSS transition of an
+  inherited property that the element leaves unset, so that the transition starts from the value it inherits from
+  its parent and not from the property's initial value. A case is the element (`html`, in which `subject` is
+  the one that changes) and the `after` value it is given; the transition is paused at the fractions of its second
+  and the boxes `subject` and `probe` have then are read, with the elements found at `points`. Regenerate with
+
+    sh inherited-start-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+body{font:16px/20px Menlo;color:#000}
+#case{position:absolute;left:0;top:0;width:300px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const box = (id, w, h) => `<div id="${id}" style="width:${w}px;height:${h}px"></div>`;
+const cell = (id, inner, style = '') => `<div id="${id}" style="display:table-cell;${style}">${inner}</div>`;
+const row = (inner) => `<div style="display:table-row">${inner}</div>`;
+const table = (id, inner, style = '') => `<div id="${id}" style="display:table;${style}">${row(cell('a', box('ab', 30, 10)) + cell('b', box('bb', 40, 10)))}${row(cell('c', box('cb', 30, 10)) + cell('d', box('db', 40, 10)))}${inner || ''}</div>`;
+const TIMES = [0, 0.25, 0.5, 0.75, 1];
+// [name, html, subject id, probe id, property (CSS name), after, transition, points]
+const cases = [
+  ['border-spacing', `<div id="w" style="border-spacing:10px 6px">${table('t')}</div>`, 't', 'd', 'border-spacing', '20px 14px', 'border-spacing 1s linear'],
+  ['border-spacing through an element that declares nothing', `<div id="w" style="border-spacing:10px 6px"><div id="m">${table('t')}</div></div>`, 't', 'd', 'border-spacing', '20px 14px', 'border-spacing 1s linear'],
+  ['border-spacing that a middle element sets again', `<div id="w" style="border-spacing:10px 6px"><div id="m" style="border-spacing:2px">${table('t')}</div></div>`, 't', 'd', 'border-spacing', '12px', 'border-spacing 1s linear'],
+  ['border-spacing from a parent in em', `<div id="w" style="border-spacing:1em 0.5em;font-size:10px">${table('t')}</div>`, 't', 'd', 'border-spacing', '20px', 'border-spacing 1s linear'],
+  ['border-collapse', `<div id="w" style="border-collapse:collapse"><div id="t" style="display:table">${row(cell('a', box('ab', 30, 10), 'border:6px solid #000'))}</div></div>`, 't', 'a', 'border-collapse', 'separate', 'border-collapse 1s linear allow-discrete'],
+  ['border-collapse to the value it inherits', `<div id="w" style="border-collapse:collapse"><div id="t" style="display:table">${row(cell('a', box('ab', 30, 10), 'border:6px solid #000'))}</div></div>`, 't', 'a', 'border-collapse', 'collapse', 'border-collapse 1s linear allow-discrete'],
+  ['caption-side', `<div id="w" style="caption-side:bottom"><div id="t" style="display:table"><div id="cap" style="display:table-caption"><div style="height:12px;width:20px"></div></div>${row(cell('a', box('ab', 30, 10)))}</div></div>`, 't', 'a', 'caption-side', 'top', 'caption-side 1s linear allow-discrete'],
+  ['empty-cells', `<div id="w" style="empty-cells:hide"><div id="t" style="display:table">${row(cell('a', '', 'border:2px solid #000'))}</div></div>`, 't', 'a', 'empty-cells', 'show', 'empty-cells 1s linear allow-discrete'],
+  ['pointer-events', `<div id="w" style="pointer-events:none"><div id="s" style="width:50px;height:20px"></div></div>`, 's', 's', 'pointer-events', 'auto', 'pointer-events 1s linear allow-discrete', [[10, 10]]],
+  ['pointer-events to the value it inherits', `<div id="w" style="pointer-events:none"><div id="s" style="width:50px;height:20px"></div></div>`, 's', 's', 'pointer-events', 'none', 'pointer-events 1s linear allow-discrete', [[10, 10]]],
+  ['pointer-events auto under none to none', `<div id="w" style="pointer-events:none"><div id="m" style="pointer-events:auto"><div id="s" style="width:50px;height:20px"></div></div></div>`, 's', 's', 'pointer-events', 'none', 'pointer-events 1s linear allow-discrete', [[10, 10]]],
+  ['visibility', `<div id="w" style="visibility:hidden"><div id="s" style="width:50px;height:20px"></div></div>`, 's', 's', 'visibility', 'visible', 'visibility 1s linear', [[10, 10]]],
+  ['visibility to the value it inherits', `<div id="w" style="visibility:hidden"><div id="s" style="width:50px;height:20px"></div></div>`, 's', 's', 'visibility', 'hidden', 'visibility 1s linear', [[10, 10]]],
+  ['line-height as a number', `<div id="w" style="line-height:1.5"><div id="s">aaaa</div></div>`, 's', 's', 'line-height', '3', 'line-height 1s linear'],
+  ['line-height as a number through an element that declares nothing', `<div id="w" style="line-height:1.5"><div id="m"><div id="s">aaaa</div></div></div>`, 's', 's', 'line-height', '3', 'line-height 1s linear'],
+  ['line-height in px is no number', `<div id="w" style="line-height:30px"><div id="s">aaaa</div></div>`, 's', 's', 'line-height', '3', 'line-height 1s linear'],
+  ['font-size', `<div id="w" style="font-size:20px"><div id="s" style="width:100px"><span id="p">aaaa</span></div></div>`, 's', 'p', 'font-size', '40px', 'font-size 1s linear'],
+];
+// The same elements animated from one keyframe, which starts from the value the element computes to. `motion`
+// takes no discrete property but `visibility`.
+const animated = ['border-spacing', 'border-spacing through an element that declares nothing', 'visibility', 'line-height as a number', 'line-height as a number through an element that declares nothing', 'font-size'];
+const out = { times: TIMES, cases: {}, animated: {} };
+const scene = document.getElementById('scene');
+for (const [name, html, subject, probe, property, after, transition, points = []] of cases) {
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const el = c.querySelector('#' + subject);
+  el.style.transition = transition;
+  getComputedStyle(el).getPropertyValue(property);
+  c.getBoundingClientRect();
+  el.style.setProperty(property, after);
+  getComputedStyle(el).getPropertyValue(property);
+  const animations = el.getAnimations().filter((a) => a instanceof CSSTransition);
+  const samples = {};
+  const chains = () => points.map(([x, y]) => document.elementsFromPoint(x, y).map((e) => e.id).filter(Boolean));
+  const rect = (id) => { const r = c.querySelector('#' + id).getBoundingClientRect(); const o = c.getBoundingClientRect(); return [r.left - o.left, r.top - o.top, r.width, r.height]; };
+  if (animations.length === 0) {
+    samples.immediate = { value: getComputedStyle(el).getPropertyValue(property), subject: rect(subject), probe: rect(probe), chains: chains() };
+  } else {
+    for (const a of animations) a.pause();
+    for (const t of TIMES) {
+      for (const a of animations) a.currentTime = t * 1000;
+      samples[t] = { value: getComputedStyle(el).getPropertyValue(property), subject: rect(subject), probe: rect(probe), chains: chains() };
+    }
+  }
+  out.cases[name] = { html, subject, probe, property, after, transition, points, running: animations.length > 0, samples };
+  scene.removeChild(c);
+  if (!animated.includes(name)) continue;
+  const d = document.createElement('div'); d.id = 'case'; d.innerHTML = html; scene.appendChild(d);
+  const target = d.querySelector('#' + subject);
+  const camelName = property.replace(/-([a-z])/g, (_, l) => l.toUpperCase());
+  const animation = target.animate({ [camelName]: after }, { duration: 1000, easing: 'linear', fill: 'both' });
+  animation.pause();
+  const keyed = {};
+  const hits = () => points.map(([x, y]) => document.elementsFromPoint(x, y).map((e) => e.id).filter(Boolean));
+  const box = (id) => { const r = d.querySelector('#' + id).getBoundingClientRect(); const o = d.getBoundingClientRect(); return [r.left - o.left, r.top - o.top, r.width, r.height]; };
+  for (const t of TIMES) {
+    animation.currentTime = t * 1000;
+    keyed[t] = { value: getComputedStyle(target).getPropertyValue(property), subject: box(subject), probe: box(probe), chains: hits() };
+  }
+  out.animated[name] = { html, subject, probe, property, after, points, samples: keyed };
+  scene.removeChild(d);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-oracle', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

@@ -63,7 +63,7 @@ cases.forEach((spec, i) => {
     for (const animation of animations) { animation.pause(); animation.currentTime = time * 1000; }
     samples[time] = getComputedStyle(child)[spec.prop];
   }
-  out.cases[spec.name] = { kind: spec.kind, prop: spec.prop, keyframes: spec.keyframes, base: spec.base, after: spec.after, style: spec.style, animations: animations.length, samples };
+  out.cases[spec.name] = { kind: spec.kind, prop: spec.prop, keyframes: spec.keyframes, base: spec.base, after: spec.after, style: spec.style, parent: parent.style.cssText, animations: animations.length, samples };
 });
 const holder = document.createElement('div');
 holder.setAttribute('data-oracle', JSON.stringify(out));

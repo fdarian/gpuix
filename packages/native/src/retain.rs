@@ -99,6 +99,7 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
         inherited.selectable,
         inherited.inert,
         inherited.pointer_events_none,
+        inherited.visibility_hidden,
         inherited.frameless,
         inherited.above_root,
         inherited.table.collapse,
@@ -116,6 +117,7 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     inherited.lengths.fingerprint(&mut fp);
     fp.f64(inherited.font_weight);
     inherited.underline_offset.fingerprint(&mut fp);
+    fp.option_f64(inherited.line_height);
     fp.f32(inherited.underline_reach);
     fp.hash(&inherited.computed_variations);
     inherited.font_state.fingerprint(&mut fp);
@@ -1851,7 +1853,7 @@ mod tests {
     fn the_fingerprint_names_every_field_of_inherited() {
         // `inherited_fingerprint` lists the fields by hand. Adding one changes this size, and the
         // fingerprint has to learn it or the key will not see it change.
-        assert_eq!(std::mem::size_of::<Inherited>(), 424);
+        assert_eq!(std::mem::size_of::<Inherited>(), 440);
     }
 
     #[test]
@@ -2691,6 +2693,13 @@ mod tests {
             ("an underline offset", r#""textUnderlineOffset": 3"#),
             ("variation settings", r#""fontVariationSettings": "\"wght\" 650""#),
             ("a text box trim", r#""textBox": "trim-both cap alphabetic""#),
+            // An unset one of these in a transition or a motion below starts from it.
+            ("a hidden visibility", r#""visibility": "hidden""#),
+            ("a unitless line height", r#""lineHeight": 1.5"#),
+            ("a pointer-events of none", r#""pointerEvents": "none""#),
+            ("a border spacing", r#""borderSpacing": "3px 5px""#),
+            // The start of a logical inline pair below it is the other side.
+            ("a right to left direction", r#""direction": "rtl""#),
         ] {
             scene.set_style(1, &page_style(extra));
             scene.draw(cx);
