@@ -1155,6 +1155,9 @@ impl Retain {
                 at = sources.tree.elements.get(&id).and_then(|element| element.parent);
             }
         }
+        if self.verify {
+            check_spine(&spine, sources.tree, &mut self.mismatches);
+        }
         self.unbuilt = spine
             .iter()
             .copied()
@@ -1795,8 +1798,11 @@ fn check(records: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64
     } else {
         return;
     };
+    report(mismatches, format!("element {id} was judged unchanged and {problem}"));
+}
+
+fn report(mismatches: &mut Vec<String>, message: String) {
     crate::perf_counters::retain_mismatch();
-    let message = format!("element {id} was judged unchanged and {problem}");
     // Loud, for a suite run under `GPUIX_RETAIN_VERIFY`: nothing reads the counter there.
     eprintln!("[retain] {message}");
     if mismatches.len() < 32 {
@@ -1804,6 +1810,16 @@ fn check(records: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64
     }
 }
 
+/// The spine has to hold the parent of every element on it: a root is skipped when it is off the
+/// spine, so one missing above a changed element replays its subtree with that element frozen.
+fn check_spine(spine: &FxHashSet<u64>, tree: &crate::retained_tree::RetainedTree, mismatches: &mut Vec<String>) {
+    for id in spine {
+        let Some(parent) = tree.elements.get(id).and_then(|element| element.parent) else { continue };
+        if !spine.contains(&parent) {
+            report(mismatches, format!("element {id} is on the spine and its parent {parent} is not"));
+        }
+    }
+}
 
 /// Roots of at least this many elements are counted again on their own: a one-element placeholder
 /// costs about what it saves.
@@ -2178,6 +2194,40 @@ mod tests {
         // The walk from 4 used to stop at 3, which the frame before had left in `unbuilt`.
         frame_of(&mut retain, &tree, &[4], &[1, 2]);
         assert_eq!(sorted(&retain.deltas.spine), vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn the_spine_missing_the_parent_of_an_element_on_it_is_a_mismatch() {
+        // 1 > 2 > 3 (display: contents) > 4.
+        let tree = tree_of(&[
+            (1, None, "div", None),
+            (2, Some(1), "div", None),
+            (3, Some(2), "div", Some("contents")),
+            (4, Some(3), "div", None),
+        ]);
+        let spine = |ids: &[u64]| ids.iter().copied().collect::<FxHashSet<u64>>();
+        let mut mismatches = Vec::new();
+        check_spine(&spine(&[1, 2, 3, 4]), &tree, &mut mismatches);
+        assert!(mismatches.is_empty(), "{mismatches:?}");
+        // What the walk that stopped at the first id it had left behind: 3 is not on it.
+        check_spine(&spine(&[1, 2, 4]), &tree, &mut mismatches);
+        assert_eq!(mismatches, vec!["element 4 is on the spine and its parent 3 is not".to_owned()]);
+    }
+
+    #[test]
+    fn a_verified_frame_finds_the_spine_closed_under_parent() {
+        let tree = tree_of(&[
+            (1, None, "div", None),
+            (2, Some(1), "div", None),
+            (3, Some(2), "div", Some("contents")),
+            (4, Some(3), "div", None),
+        ]);
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        retain.set_verify(true);
+        frame_of(&mut retain, &tree, &[4], &[1, 2]);
+        frame_of(&mut retain, &tree, &[4], &[1, 2]);
+        assert!(retain.mismatches().is_empty(), "{:?}", retain.mismatches());
     }
 
     /// A frame of 1 > 2 > 3 in which 3 is lifted out of 2 and 1, and `revision` is the revision 1
