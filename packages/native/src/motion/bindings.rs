@@ -82,6 +82,9 @@ pub(crate) struct MotionValueStore {
     watches: HashMap<ValueId, Watch>,
     /// What the last frame sampled for the values elements bind.
     frame_values: HashMap<ValueId, AnimValue>,
+    /// The values the last frame found bound to something that is not paint-only, or read for
+    /// the renderer's own use (a drag's offset), which is not known to be.
+    layout_driven: HashSet<ValueId>,
     /// Events found while writing, delivered by the next frame.
     pending: Vec<MotionValueEvent>,
     warned: HashSet<String>,
@@ -192,6 +195,14 @@ impl MotionValueStore {
         self.graph.is_animating(value_id(id)?, now)
     }
 
+    /// Whether a write to the value, or the animation that starts from it, can only change what
+    /// the elements paint, as of the last frame: no element binds it, or a value computed from it,
+    /// to a property that can move a box. A tree change since that frame is not for this to see
+    /// (it invalidates the layout on its own).
+    pub(crate) fn writes_paint_only(&self, id: f64) -> Result<bool, String> {
+        Ok(!self.graph.feeds_any(value_id(id)?, &self.layout_driven))
+    }
+
     pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
         self.graph.set(value_id(id)?, parse_value(value, &self.context())?, now)?;
         self.observe(now);
@@ -279,6 +290,7 @@ impl MotionValueStore {
         now: Instant,
     ) -> MotionValueFrame {
         self.frame_values.clear();
+        self.layout_driven.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
         active |= self.observe(now);
         MotionValueFrame {
@@ -309,6 +321,10 @@ impl MotionValueStore {
                 }
                 Err(error) => self.warn(error),
             }
+        }
+        for pairs in &parsed {
+            self.layout_driven
+                .extend(pairs.iter().filter(|bound| !bound.paints_only()).map(Bound::id));
         }
         bound.sort_unstable_by_key(|id| id.0);
         bound.dedup();
@@ -343,6 +359,7 @@ impl MotionValueStore {
             let Ok(id) = value_id(*id) else {
                 continue;
             };
+            self.layout_driven.insert(id);
             if self.frame_values.contains_key(&id) {
                 continue;
             }
@@ -684,6 +701,13 @@ impl Bound {
     fn id(&self) -> ValueId {
         match self {
             Self::Longhand { id, .. } | Self::Shorthand { id, .. } => *id,
+        }
+    }
+
+    fn paints_only(&self) -> bool {
+        match self {
+            Self::Longhand { prop, .. } => prop.paints_only(),
+            Self::Shorthand { props, .. } => props.iter().all(|prop| prop.paints_only()),
         }
     }
 }

@@ -23,7 +23,7 @@ use crate::element_tree::EventPayload;
 use crate::renderer::{
     apply_batch_to_tree, debug_frame_overlay_mode_name, debug_frame_overlay_stats_js,
     parse_debug_frame_overlay_mode, to_element_id, DebugFrameOverlayStats, EventCallback,
-    GpuixView, PathPromptOptions, PromptForPathsTask, WindowOptions,
+    GpuixView, PathPromptOptions, PromptForPathsTask, Repaint, WindowOptions,
 };
 use crate::retained_tree::RetainedTree;
 
@@ -2213,7 +2213,7 @@ impl TestGpuixRenderer {
     /// A value that is written with `set` and `jump` or animated.
     #[napi]
     pub fn create_motion_value(&self, id: f64, initial: serde_json::Value) -> Result<()> {
-        self.with_motion_values(false, move |values, _now| values.create_source(id, &initial))
+        self.with_motion_values(Repaint::None, move |values, _now| values.create_source(id, &initial))
     }
 
     /// A value mapped from the number value `input` through `inputRange` and
@@ -2227,7 +2227,7 @@ impl TestGpuixRenderer {
         output_range: serde_json::Value,
         options: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.with_motion_values(false, move |values, _now| {
+        self.with_motion_values(Repaint::None, move |values, _now| {
             values.create_transform(id, input, input_range, &output_range, options.as_ref())
         })
     }
@@ -2241,7 +2241,7 @@ impl TestGpuixRenderer {
         source: f64,
         config: serde_json::Value,
     ) -> Result<()> {
-        self.with_motion_values(false, move |values, now| {
+        self.with_motion_values(Repaint::None, move |values, now| {
             values.create_follower(id, source, &config, now)
         })
     }
@@ -2254,7 +2254,7 @@ impl TestGpuixRenderer {
         initial: serde_json::Value,
         config: serde_json::Value,
     ) -> Result<()> {
-        self.with_motion_values(false, move |values, now| {
+        self.with_motion_values(Repaint::None, move |values, now| {
             values.create_spring(id, &initial, &config, now)
         })
     }
@@ -2262,36 +2262,36 @@ impl TestGpuixRenderer {
     /// Whether the value existed. Values that read it fail from then on.
     #[napi]
     pub fn dispose_motion_value(&self, id: f64) -> Result<bool> {
-        self.with_motion_values(false, move |values, _now| values.dispose(id))
+        self.with_motion_values(Repaint::None, move |values, _now| values.dispose(id))
     }
 
     #[napi]
     pub fn get_motion_value(&self, id: f64) -> Result<serde_json::Value> {
-        self.with_motion_values(false, move |values, now| values.get(id, now))
+        self.with_motion_values(Repaint::None, move |values, now| values.get(id, now))
     }
 
     /// Units per second. Errors for a value that is not a number.
     #[napi]
     pub fn get_motion_value_velocity(&self, id: f64) -> Result<f64> {
-        self.with_motion_values(false, move |values, now| values.velocity(id, now))
+        self.with_motion_values(Repaint::None, move |values, now| values.velocity(id, now))
     }
 
     #[napi]
     pub fn is_motion_value_animating(&self, id: f64) -> Result<bool> {
-        self.with_motion_values(false, move |values, now| values.is_animating(id, now))
+        self.with_motion_values(Repaint::None, move |values, now| values.is_animating(id, now))
     }
 
     /// Writes the value. Over a running animation this does not stop it:
     /// call `stopMotionValue` first to take the value from the animation.
     #[napi]
     pub fn set_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.set(id, &value, now))
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.set(id, &value, now))
     }
 
     /// Writes the value, ending any animation and dropping its velocity.
     #[napi]
     pub fn jump_motion_value(&self, id: f64, value: serde_json::Value) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.jump(id, &value, now))
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.jump(id, &value, now))
     }
 
     /// Animates a value from where it is, with the speed it has. `transition`
@@ -2303,7 +2303,7 @@ impl TestGpuixRenderer {
         target: serde_json::Value,
         transition: Option<serde_json::Value>,
     ) -> Result<()> {
-        self.with_motion_values(true, move |values, now| {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
             values.animate(id, &target, transition.as_ref(), now)
         })
     }
@@ -2311,13 +2311,13 @@ impl TestGpuixRenderer {
     /// Ends an animation where it is, keeping the speed for the next one.
     #[napi]
     pub fn stop_motion_value(&self, id: f64) -> Result<()> {
-        self.with_motion_values(true, move |values, now| values.stop(id, now))
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.stop(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
     #[napi]
     pub fn set_motion_value_listener(&self, id: f64, change: bool, animation: bool) -> Result<()> {
-        self.with_motion_values(false, move |values, now| {
+        self.with_motion_values(Repaint::None, move |values, now| {
             values.listen(id, change, animation, now)
         })
     }
@@ -2326,7 +2326,7 @@ impl TestGpuixRenderer {
     /// `GpuixRenderer.defineKeyframes`.
     #[napi]
     pub fn define_keyframes(&self, name: String, frames_json: String) -> Result<()> {
-        self.with_motion_state(true, move |view, _now| {
+        self.with_motion_state(Repaint::Layout, move |view, _now| {
             view.keyframes.define(&name, &frames_json)
         })
     }
@@ -2336,7 +2336,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<crate::renderer::WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
-        self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
+        self.with_motion_state(Repaint::None, move |view, _now| Ok(view.web_animations(id)))
     }
 
     /// The SVG an `<svg>` element with shape children painted in the last
@@ -2345,7 +2345,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_svg_markup(&self, element_id: f64) -> Result<Option<String>> {
         let id = to_element_id(element_id)?;
-        self.with_motion_state(false, move |view, _now| Ok(view.svg_trees.current(id).map(|markup| markup.to_string())))
+        self.with_motion_state(Repaint::None, move |view, _now| Ok(view.svg_trees.current(id).map(|markup| markup.to_string())))
     }
 
     /// One CSS animation or transition by the id `getAnimations` gave. See
@@ -2353,14 +2353,14 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_animation(&self, animation_id: f64) -> Result<crate::renderer::WebAnimationInfo> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(false, move |view, _now| view.web_animation(id))
+        self.with_motion_state(Repaint::None, move |view, _now| view.web_animation(id))
     }
 
     /// See the renderer's `releaseAnimation`.
     #[napi]
     pub fn release_animation(&self, animation_id: f64) -> Result<()> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(false, move |view, _now| {
+        self.with_motion_state(Repaint::None, move |view, _now| {
             view.release_web_animation(id);
             Ok(())
         })
@@ -2404,14 +2404,14 @@ impl TestGpuixRenderer {
         command: crate::motion::web_animation::Command,
     ) -> Result<()> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(true, move |view, _now| view.command_web_animation(id, command))
+        self.with_motion_state(Repaint::Layout, move |view, _now| view.command_web_animation(id, command))
     }
 
     /// Runs `run` against the window's motion values at the window clock's
     /// instant. A write repaints, which samples it and delivers its events.
     fn with_motion_values<R>(
         &self,
-        repaint: bool,
+        repaint: Repaint,
         run: impl FnOnce(&mut crate::motion::MotionValueStore, web_time::Instant) -> std::result::Result<R, String>,
     ) -> Result<R> {
         self.with_motion_state(repaint, move |view, now| run(&mut view.motion_values, now))
@@ -2421,7 +2421,7 @@ impl TestGpuixRenderer {
     /// Only the motion state of the view is for it to touch.
     fn with_motion_state<R>(
         &self,
-        repaint: bool,
+        repaint: Repaint,
         run: impl FnOnce(&mut GpuixView, web_time::Instant) -> std::result::Result<R, String>,
     ) -> Result<R> {
         update_view(move |view, window, cx| {
@@ -2429,10 +2429,8 @@ impl TestGpuixRenderer {
                 .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
             let now = view.clock.now();
             let result = run(view, now);
-            if repaint {
-                let view = cx.entity_id();
-                crate::renderer::invalidate_after_commit(cx, view);
-            }
+            let entity = cx.entity_id();
+            repaint.invalidate(&view.motion_values, cx, entity);
             result
         })?
         .map_err(Error::from_reason)

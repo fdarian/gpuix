@@ -138,6 +138,26 @@ impl MotionValues {
         self.insert(id, Node::Spring(follower))
     }
 
+    /// Whether `id`, or a node computed from it through transforms and followers, is in
+    /// `targets`. A node that does not exist is not followed further.
+    pub(super) fn feeds_any(&self, id: ValueId, targets: &std::collections::HashSet<ValueId>) -> bool {
+        targets.iter().any(|target| {
+            let mut current = Some(*target);
+            // Inputs exist before the node that reads them, so a chain cannot loop; the bound
+            // keeps a bug from becoming a hang.
+            for _ in 0..=self.nodes.len() {
+                let Some(at) = current else {
+                    return false;
+                };
+                if at == id {
+                    return true;
+                }
+                current = self.nodes.get(&at).and_then(Node::input);
+            }
+            false
+        })
+    }
+
     /// Removes a node. A node that reads it fails to sample from then on.
     pub(super) fn remove(&mut self, id: ValueId) -> bool {
         self.caught_up = None;

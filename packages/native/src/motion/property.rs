@@ -790,6 +790,31 @@ properties! {
     JustifySelf "justifySelf" Keyword None Unset, justify_self;
 }
 
+impl AnimProp {
+    /// Whether a change of this property can only change what a box paints and never a box or
+    /// the size of a line of text, so a bounds or scroll read after it needs no layout pass
+    /// (see `Window::draw_if_dirty`). This is the one list: a property is left out unless
+    /// nothing in layout, text measure, scroll overflow or the position of a box reads it.
+    /// There is no transform property: GPUI has none, and `top`, `left` and `inset` move boxes.
+    pub(super) fn paints_only(self) -> bool {
+        matches!(
+            self,
+            Self::Opacity
+                | Self::BoxShadow
+                | Self::Color
+                | Self::BackgroundColor
+                | Self::BorderTopColor
+                | Self::BorderRightColor
+                | Self::BorderBottomColor
+                | Self::BorderLeftColor
+                | Self::OutlineColor
+                | Self::TextDecorationColor
+                | Self::ScrollbarColor
+                | Self::SelectionColor
+        )
+    }
+}
+
 /// What a style is the style of, which decides the properties its transitions and
 /// animations may move.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
