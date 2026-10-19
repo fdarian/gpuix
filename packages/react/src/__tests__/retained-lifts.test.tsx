@@ -547,3 +547,76 @@ describeNative("positioned boxes inside replayed subtrees", () => {
     }
   })
 })
+
+/** A scroller with a root R of 14 rows that each lift a box out of it, and a counter outside it that
+ *  changes with every frame, so the root is off the spine and skipped while the frame is built. */
+const LiftedRows = ({ tick, rounded }: { tick: number; rounded: boolean }) => (
+  <div testId="page" style={{ width: 640, height: 480 }}>
+    <div testId="counter">{`tick ${tick}`}</div>
+    <div testId="scroller" style={{ width: 256, height: 300, overflow: "auto", borderRadius: rounded ? 9 : 0 }}>
+      <div testId="R">
+        <div testId="C">
+          {Array.from({ length: 14 }, (_, index) => (
+            <div key={index} testId={`row-${index}`} style={{ height: 32, position: "relative" }}>
+              <text>{`row ${index}`}</text>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
+describeNative("a skipped root keeps what its last build lifted", () => {
+  for (const rounded of [true, false]) {
+    const name = rounded ? "under a rounded scroller" : "under a square scroller"
+
+    // The frame that skips R folded no lifts for it, so R was recorded as lifting nothing and the
+    // frame after built what the replay of the frame before left out.
+    it(`replays R as a build shows it, frame after frame ${name}`, () => {
+      const kit = setup(<LiftedRows tick={0} rounded={rounded} />)
+      try {
+        kit.settle()
+        for (let tick = 1; tick < 12; tick++) {
+          kit.render(<LiftedRows tick={tick} rounded={rounded} />)
+          kit.renderer.flush()
+        }
+        expect(kit.counters().mismatches, kit.renderer.getRetentionMismatches().slice(0, 3).join("\n")).toBe(0)
+        expect(kit.counters().replays).toBeGreaterThan(0)
+        if (verifying) expect(kit.counters().verified).toBeGreaterThan(0)
+      } finally {
+        kit.unmount()
+      }
+    })
+
+    // R is relocatable or not by the record of its last build, so a scroll shows which it was: the
+    // same one however many frames came before it.
+    it(`takes a scroll the same way after any number of idle frames ${name}`, () => {
+      const kit = setup(<LiftedRows tick={0} rounded={rounded} />)
+      try {
+        kit.settle()
+        const scroller = kit.idOf("scroller")
+        const scrolls: Array<{ builds: number; relocations: number }> = []
+        for (let tick = 1; tick <= 6; tick++) {
+          kit.render(<LiftedRows tick={tick} rounded={rounded} />)
+          kit.renderer.flush()
+          const before = kit.counters()
+          kit.renderer.scrollTo(scroller, 0, tick * 5)
+          kit.renderer.flush()
+          const after = kit.counters()
+          scrolls.push({ builds: after.builds - before.builds, relocations: after.relocations - before.relocations })
+        }
+        expect(kit.counters().mismatches, kit.renderer.getRetentionMismatches().slice(0, 3).join("\n")).toBe(0)
+        // Under verify every replayed frame is built a second time, which these counts include.
+        if (!verifying) {
+          expect(new Set(scrolls.map((scroll) => scroll.builds)).size, JSON.stringify(scrolls)).toBe(1)
+          expect(new Set(scrolls.map((scroll) => scroll.relocations)).size, JSON.stringify(scrolls)).toBe(1)
+          // R lifts its rows, so it is built and its rows are the roots that move.
+          if (!rounded) expect(scrolls[0].relocations).toBeGreaterThan(0)
+        }
+      } finally {
+        kit.unmount()
+      }
+    })
+  }
+})

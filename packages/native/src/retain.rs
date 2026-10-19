@@ -1565,12 +1565,14 @@ impl Retain {
         for at in (0..count).rev() {
             let node = &self.nodes[at];
             let own = self.below[at];
-            let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
             let escaped = node.absolute || (!node.positioned && own.escapes);
-            let (epoch, token, holes) = match (&node.skipped, self.records.get(&node.id)) {
-                (Some(_), Some(record)) => (record.epoch, record.token, record.holes),
+            let (escapes, epoch, token, holes) = match (&node.skipped, self.records.get(&node.id)) {
+                // Its children were never entered, so `own.lifts` is empty: what they lift is what its
+                // last build folded, which is `Record::lifts`.
+                (Some(_), Some(record)) => (record.lifts, record.epoch, record.token, record.holes),
                 (Some(_), None) => unreachable!("an element is skipped by the record of its last build"),
                 (None, before) => {
+                    let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
                     let epoch = match (before, self.deferred) {
                         (Some(before), true) => before.epoch,
                         (Some(before), false) => before.epoch + 1,
@@ -1584,7 +1586,7 @@ impl Retain {
                     // A hole is not asked for alone: the recording around it is of the build that
                     // made it, so it is not the one for another build of the hole.
                     token.word(own.holes);
-                    (epoch, token.finish(), own.holes)
+                    (escapes, epoch, token.finish(), own.holes)
                 }
             };
             self.below[at].epoch = epoch;
@@ -1801,6 +1803,7 @@ fn check(records: &FxHashMap<u64, Record>, mismatches: &mut Vec<String>, id: u64
         mismatches.push(message);
     }
 }
+
 
 /// Roots of at least this many elements are counted again on their own: a one-element placeholder
 /// costs about what it saves.
@@ -2175,6 +2178,79 @@ mod tests {
         // The walk from 4 used to stop at 3, which the frame before had left in `unbuilt`.
         frame_of(&mut retain, &tree, &[4], &[1, 2]);
         assert_eq!(sorted(&retain.deltas.spine), vec![1, 2, 3, 4]);
+    }
+
+    /// A frame of 1 > 2 > 3 in which 3 is lifted out of 2 and 1, and `revision` is the revision 1
+    /// is entered with. Returns whether the frame skipped 2.
+    fn lifted_frame(retain: &mut Retain, revision: u64) -> bool {
+        let tree = RetainedTree::new();
+        let (focus, handles, scrolls) = (crate::focus::FocusStyles::default(), HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree: &tree,
+            hovered: &[],
+            active: &[],
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            customs: Vec::new(),
+            motion: Vec::new(),
+            selection: 0,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+        });
+        let inherited = root_inherited();
+        let enter = |retain: &mut Retain, id: u64, revision: u64| {
+            retain.enter(Entry {
+                id,
+                revision,
+                inherited: &inherited,
+                at: 0,
+                stacking_root: true,
+                stacking_item: false,
+                atomic_root: false,
+                contents_overlay: None,
+                anchor_scope: false,
+                text_box_trim: Default::default(),
+                plain: true,
+                boxed: true,
+                container: None,
+                prekeyed: None,
+                scroller: None,
+                costly: true,
+            })
+        };
+        enter(retain, 1, revision);
+        retain.stacking(|| (None, false));
+        let skipped = enter(retain, 2, 7).is_some();
+        if !skipped {
+            retain.stacking(|| (None, false));
+            enter(retain, 3, 7);
+            retain.stacking(|| (Some(1), false));
+            retain.exit();
+            retain.exit();
+        }
+        retain.exit();
+        retain.finish_frame();
+        skipped
+    }
+
+    #[test]
+    fn a_skipped_element_lifts_what_its_last_build_lifted() {
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        assert!(!lifted_frame(&mut retain, 1));
+        assert!(retain.records[&1].lifts && retain.records[&2].lifts);
+        // 1 is edited and built; 2 is not, and its children are not entered.
+        for revision in 2..6 {
+            assert!(lifted_frame(&mut retain, revision), "2 is skipped");
+            assert!(retain.records[&2].lifts, "revision {revision}: 2 is still recorded to lift");
+            assert!(retain.records[&1].lifts, "revision {revision}: 1 lifts what 2 lifted, though it did not enter it");
+        }
     }
 
     #[test]
