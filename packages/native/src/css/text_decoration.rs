@@ -286,16 +286,16 @@ fn parse_style(value: &str) -> Option<TextDecorationStyle> {
     })
 }
 
-/// `auto`, `from-font`, or a non-negative length or percentage. A percentage is
-/// of `1em` of the declaring element (CSS Text Decoration 4), so it is folded
-/// into the `em` term here.
+/// `auto`, `from-font`, or a length or percentage. A percentage is of `1em` of the
+/// declaring element (CSS Text Decoration 4), so it is folded into the `em` term
+/// here. A negative length is valid, as in Chrome, which computes it and paints a
+/// line of one device pixel, like a length of zero: [`Thickness::fallback`] clamps it.
 pub(crate) fn parse_thickness(token: &str) -> Option<Thickness> {
     let token = token.trim();
     match token.to_ascii_lowercase().as_str() {
         "auto" => Some(Thickness::Auto),
         "from-font" => Some(Thickness::FromFont),
         _ => parse_linear_length(token)
-            .filter(|length| !length.is_negative())
             .map(|length| {
                 Thickness::Length(LinearLength {
                     em: length.em + length.percent,
@@ -418,9 +418,22 @@ mod tests {
 
     #[test]
     fn thickness_rejects_numbers_negatives_and_words() {
-        for value in ["2", "-1px", "-10%", "-0.1em", "thick", "px", "%", ""] {
+        for value in ["2", "-1", "thick", "px", "%", ""] {
             assert_eq!(parse_thickness(value), None, "{value}");
         }
+    }
+
+    #[test]
+    fn a_negative_thickness_is_valid_and_a_device_pixel_when_painted() {
+        assert_eq!(parse_thickness("-1px"), Some(px_thickness(-1.0)));
+        assert_eq!(parse_thickness("-0.1em"), Some(em_thickness(-0.1)));
+        assert_eq!(parse_thickness("-10%"), Some(em_thickness(-0.1)));
+        let lengths = LengthContext::for_tests();
+        for value in ["underline -2px", "underline -50%", "underline -0.1em", "underline 0px"] {
+            assert_eq!(underline_px(value, &lengths), gpui::px(MIN_THICKNESS as f32), "{value}");
+        }
+        let style: StyleDesc = serde_json::from_str(r#"{"textDecoration": "underline", "textDecorationThickness": "-4px"}"#).unwrap();
+        assert_eq!(of(&style).unwrap().thickness, px_thickness(-4.0), "a negative longhand is not ignored");
     }
 
     #[test]
@@ -479,7 +492,6 @@ mod tests {
 
     #[test]
     fn an_invalid_or_repeated_thickness_invalidates_the_shorthand() {
-        assert_eq!(parse_shorthand("underline -10%"), None);
         assert_eq!(parse_shorthand("underline 2"), None);
         assert_eq!(parse_shorthand("underline 10% 1em"), None);
         assert_eq!(parse_shorthand("underline 1px 2px"), None);
@@ -502,7 +514,7 @@ mod tests {
         assert_eq!(of(&style).unwrap().thickness, Thickness::Auto);
         let style: StyleDesc = serde_json::from_value(serde_json::json!({
             "textDecoration": "underline 2px",
-            "textDecorationThickness": "-5%",
+            "textDecorationThickness": "thick",
         }))
         .unwrap();
         assert_eq!(of(&style).unwrap().thickness, px_thickness(2.0));

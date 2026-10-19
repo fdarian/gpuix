@@ -1497,7 +1497,7 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `fontWeight` | `1` through `1000`, or a keyword such as `"bold"` |
 | `fontVariationSettings` | `'"wght" 650, "wdth" 90'`, or `normal` |
 | `textUnderlineOffset` | `auto`, or any length or percentage, may be negative |
-| `textDecorationThickness` | `auto`, `from-font`, or any length or percentage, zero or greater |
+| `textDecorationThickness` | `auto`, `from-font`, or any length or percentage; a negative one paints a device pixel, as zero does |
 | `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
 
@@ -3001,8 +3001,9 @@ a percentage of `1em` of the element's font size (`"10%"` is `"0.1em"`). It is
 resolved at the element that declares it, with that element's own font size, and
 an inline box declaring it with its own `fontSize` uses that size. The lines a
 descendant inherits keep the thickness resolved there; a descendant with a bigger
-font does not thicken them. A negative length and a bare non-zero number are
-invalid and ignored, like in every other length in a style string. Dots and dashes
+font does not thicken them. A negative length is valid and paints one device pixel, as
+Chrome does for it and for zero; a bare non-zero number is invalid and ignored, like in
+every other length in a style string. Dots and dashes
 are laid out as Chrome does, in device pixels: a dash is three thicknesses long
 with a gap of two (two long with a gap of one from a thickness of 3px), the gaps
 stretch or shrink so that the last dash ends where the line does, and a line

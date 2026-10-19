@@ -124,3 +124,18 @@ describeNative("textDecorationThickness: from-font", () => {
     expect(large).toBeLessThanOrEqual(2 * small + 1)
   })
 })
+
+describeNative("textDecorationThickness: a negative length", () => {
+  // Chrome keeps a negative length as a valid value and paints a line of one device pixel for it, as it does
+  // for a length of zero (headless Chrome 1248: -2px, -0.1em and 0px all fill one row).
+  for (const value of ["-2px", "-0.1em", "-50%", "calc(2px - 6px)", "0px"]) {
+    it(`${value} paints one device pixel`, () => {
+      expect(paintedThickness(40, { textDecorationThickness: value }).thickness).toBe(1)
+      expect(paintedThickness(40, { textDecoration: `underline ${value} #ff0000` }).thickness).toBe(1)
+    })
+  }
+
+  it("is not ignored for the thickness the shorthand set before it", () => {
+    expect(paintedThickness(40, { textDecoration: "underline 6px #ff0000", textDecorationThickness: "-3px" }).thickness).toBe(1)
+  })
+})
