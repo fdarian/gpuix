@@ -3461,9 +3461,9 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 
 | `wordBreak` | Breaks |
 |---|---|
-| `normal` (default) | after spaces, after a hyphen, and before and after CJK characters |
+| `normal` (default) | where Chrome breaks: after spaces and hyphens, between CJK characters, and wherever the Unicode line breaking rules allow (see below) |
 | `break-all` | also between any two letters, so a line is filled to its edge even when a space comes earlier |
-| `keep-all` | not between CJK characters, which behave like the letters of a word |
+| `keep-all` | not between two letters or numbers, CJK characters included, which behave like the letters of a word |
 | `break-word` | as `normal` with `overflowWrap: 'anywhere'`, whatever `overflowWrap` says |
 
 ```tsx
@@ -3473,18 +3473,22 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 
 - Without `overflowWrap` a long word, a URL or an identifier is not broken: it
   stretches past the edge of its box, as it does in a browser.
-- A hyphen is a place to break: `well-known` wraps after `well-`, and so does a text after
-  U+2010 (the hyphen) and U+2013 (the en dash), when a letter or a digit follows. The line
-  does not break before the hyphen, nor in front of `.`, `,` or `)` after it, and U+2011
-  (the non-breaking hyphen) is glue. `width: 'min-content'` of a hyphenated word is its
-  longest piece. Chrome also breaks after a hyphen in front of `(`, a quote or a symbol
-  such as `%`; here that is only `(` and CJK.
+- The places a line may break are Chrome's: Blink's table for ASCII and Latin-1 pairs, then the
+  Unicode line breaking algorithm (UAX #14, ICU's `line-break: auto`) for the rest. A line
+  breaks after a space, a hyphen (U+002D, U+2010, U+2013) or a `?`, and before `(`, `<`, `[` and
+  `{` only after punctuation, so `art(x)` and `a/b` do not break and `a/b?c` breaks after the `?`.
+  A hyphen breaks in front of a letter, a quote, `(` or a symbol such as `%`, and not in front
+  of `.`, `,`, `)`, `!`, `?`, `/`, `:`, `;`, `]`, `}` or `$`; a `?` is the same, and does not
+  break in front of a quote either. In front of a digit a hyphen breaks after a letter or a digit
+  (`ABCD-1234`, `2026-10-19`) and not in a minus sign (`-5`, `a -5`). U+2011 (the non-breaking
+  hyphen) and the no-break space are glue. Thai, Lao, Khmer and Burmese are split into words
+  with a dictionary. `width: 'min-content'` of a text is its longest piece.
 - `break-all` does not break before closing punctuation (`)`, `!`, `,`...), after
   opening punctuation or next to a no-break space, and a space still hangs at the
   edge as it does without it.
-- `keep-all` keeps CJK characters and CJK punctuation together; a space and
-  punctuation such as `/` are still places to break. Without a space a run of
-  them overflows, unless `overflowWrap` cuts it.
+- `keep-all` keeps letters and numbers together, CJK characters among them, but not the Thai
+  family of scripts; a space, a hyphen and punctuation are still places to break. Without
+  one a run of them overflows, unless `overflowWrap` cuts it.
 - `<input>` and `<textarea>` ignore both and break a long word at the edge, as a browser's
   `textarea` does.
 - A value CSS does not have throws, like any style that cannot be parsed.
@@ -3496,6 +3500,11 @@ Deviations, where GPUI's text layout cannot build the DOM model:
 
 - In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
   where CSS removes it, so selection and copy see it.
+- The Unicode line breaking rules come from ICU4X, Chrome's from ICU, and they agree on
+  everything but a few rare sequences: a closing or opening quote next to a small kana or the
+  prolonged sound mark (`”ぁ`), and the word boundaries of Lao and Khmer, whose dictionaries differ.
+- `hyphens` and `line-break` are not styles: a soft hyphen (U+00AD) is a place to break and
+  draws no hyphen where it does, and the strictness is Chrome's `auto`.
 
 #### Balanced and pretty lines
 

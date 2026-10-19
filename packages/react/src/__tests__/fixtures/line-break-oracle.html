@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+  Oracle for line-break.test.tsx: where headless Chrome breaks a text, and how wide the text is at `width: min-content`.
+  A case is a text, the columns (a column is one advance of Menlo 16px, measured on the page) of the box it is in plus
+  half a column, and the style that differs from the default. `lines` are the rows of the text as Chrome lays it out, a
+  row's hanging space included, `widths` the width of each row in px, and `minContent` the width at min-content in px.
+  Regenerate with
+
+    sh line-break-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px Menlo}
+#c{position:absolute;left:0;top:0}
+</style></head><body>
+<div id="c"></div>
+<script>
+const probe = document.getElementById('c');
+probe.style.whiteSpace = 'pre';
+probe.textContent = 'aaaaaaaaaa';
+const COLUMN = probe.getBoundingClientRect().width / 10;
+probe.style.whiteSpace = '';
+const NBSP = ' ';
+const cases = [
+  ['no break before an opening bracket after letters', 'art(x)', 3, {}],
+  ['a break after a hyphen before a bracket', 'pre-(fix)', 4, {}],
+  ['a break after a hyphen before a straight quote', 'art-"x"', 4, {}],
+  ['a break after a hyphen before a percent sign', 'art-%x', 4, {}],
+  ['a break after a hyphen before the non-breaking hyphen', 're-‑entry', 3, {}],
+  ['the non-breaking hyphen is glue', 'ab‑cd', 3, {}],
+  ['a break after a question mark, none after a slash', 'a/b?c', 3, {}],
+  ['no break between a question mark and a quote', 'a?"b"', 2, {}],
+  ['a minus sign after a dollar sign', '$-1', 2, {}],
+  ['a hyphen after a letter before a digit', 'x-1', 1, {}],
+  ['a hyphen after a digit before a digit', '1234-5678', 4, {}],
+  ['a minus sign after a space', 'a -5 b', 2, {}],
+  ['a hyphen at the start', '-5', 1, {}],
+  ['a hyphen before a letter beyond ASCII', 'pre-été', 4, {}],
+  ['a hyphen before a Cyrillic letter', 'pre-вв', 4, {}],
+  ['a link breaks after its question mark', 'https://example.com/a/b.html?q=1&r=2#top', 20, {}],
+  ['a percent sign stays with its number', '50% off 50%off', 0, {}],
+  ['a currency sign stays with its number', 'price: $100.00 or €50', 0, {}],
+  ['no break inside a version number, one after its hyphen', 'v1.2.3-beta.1', 0, {}],
+  ['curly quotes hold on to their words', 'the “quoted” text and ‘single’ quotes', 0, {}],
+  ['a quotation that closes a sentence', 'He said: “Go!” now', 0, {}],
+  ['a no-break space is glue', 'a' + NBSP + 'b c' + NBSP + 'd e', 0, {}],
+  ['an em dash breaks on both sides', 'a—b', 1, {}],
+  ['an ellipsis breaks after itself', 'a…b', 1, {}],
+  ['Latin and CJK', 'Mixed Latin中文Text测试more', 0, {}],
+  ['Japanese with its punctuation', '日本語のテキストです。これはテスト。', 0, {}],
+  ['Chinese with its punctuation', 'Hello 世界！你好。', 0, {}],
+  ['brackets in CJK', '「かぎ括弧」と（丸括弧）', 0, {}],
+  ['a small kana may start a line', 'あぁあー', 2, {}],
+  ['Korean breaks between syllables', '한국어 텍스트 입니다', 0, {}],
+  ['emoji break one from another', '😀😁😂 emoji 👨‍👩‍👧 family', 0, {}],
+  ['flags are two letters each', '🇺🇸🇯🇵 flags', 0, {}],
+  ['Thai breaks between its words', 'ภาษาไทยเป็นภาษาที่มีวรรณยุกต์', 0, {}],
+  ['keep-all keeps CJK together', 'Mixed Latin中文Text测试more 世界！你好。', 0, { wordBreak: 'keep-all' }],
+  ['keep-all keeps Hangul together', '한국어 텍스트 입니다', 0, { wordBreak: 'keep-all' }],
+  ['keep-all still breaks after a hyphen', 'well-known 世-界', 0, { wordBreak: 'keep-all' }],
+  ['break-all and a bracket', 'art(x) well-known', 6, { wordBreak: 'break-all' }],
+  ['without wrapping', 'art-"x"', 2, { whiteSpace: 'nowrap' }],
+];
+const kebab = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+const c = document.getElementById('c');
+function apply(style) {
+  c.style.cssText = '';
+  for (const [name, value] of Object.entries(style)) c.style.setProperty(kebab(name), value);
+}
+/** A row as wide as it is with its hanging space, which a range over a collapsed space does not give. */
+function widthOf(row) {
+  const span = document.createElement('span');
+  span.style.cssText = 'position:absolute;white-space:pre';
+  span.textContent = row;
+  document.body.appendChild(span);
+  const width = span.getBoundingClientRect().width;
+  span.remove();
+  return width;
+}
+function layout(text, columns, style) {
+  apply(style);
+  c.style.width = `${(columns + 0.5) * COLUMN}px`;
+  c.textContent = text;
+  const node = c.firstChild;
+  const rows = [];
+  let top = null;
+  let row = '';
+  const finish = () => rows.push({ text: row, width: widthOf(row) });
+  for (let i = 0; i < text.length;) {
+    const size = text.codePointAt(i) > 0xffff ? 2 : 1;
+    const range = document.createRange();
+    range.setStart(node, i);
+    range.setEnd(node, i + size);
+    const rects = range.getClientRects();
+    if (rects.length) {
+      const y = Math.round(rects[0].top);
+      if (top !== null && y !== top) { finish(); row = ''; }
+      top = y;
+    }
+    row += text.slice(i, i + size);
+    i += size;
+  }
+  finish();
+  return rows;
+}
+function minContent(text, style) {
+  apply(style);
+  c.style.width = 'min-content';
+  c.textContent = text;
+  return c.getBoundingClientRect().width;
+}
+const out = { column: COLUMN, cases: {} };
+for (const [name, text, columns, style] of cases) {
+  const rows = layout(text, columns, style);
+  out.cases[name] = {
+    text, columns, style,
+    lines: rows.map((row) => row.text),
+    widths: rows.map((row) => row.width),
+    minContent: minContent(text, style),
+  };
+}
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>
