@@ -989,7 +989,10 @@ impl TestGpuixRenderer {
         // From a sync event handler this only marks the view dirty: the frame
         // is drawn once the input that is being dispatched has returned.
         deliver_frame()?;
-        update_view_or_defer(|_view, _window, cx| cx.notify())
+        update_view_or_defer(|_view, _window, cx| {
+            let view = cx.entity_id();
+            crate::renderer::invalidate_after_commit(cx, view);
+        })
     }
 
     /// Whether the test window is drawn whenever an update or a simulated input flushes, which
@@ -2427,7 +2430,8 @@ impl TestGpuixRenderer {
             let now = view.clock.now();
             let result = run(view, now);
             if repaint {
-                cx.notify();
+                let view = cx.entity_id();
+                crate::renderer::invalidate_after_commit(cx, view);
             }
             result
         })?

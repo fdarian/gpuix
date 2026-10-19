@@ -242,13 +242,12 @@ pub(crate) fn report_deferred_error(message: String) {
     backend::report_deferred_error(message);
 }
 
-/// Redraws the window without leasing the root view, which `applyBatch` may
+/// Marks the root view dirty without leasing it, which `applyBatch` may
 /// need while the input holds it.
 pub(crate) fn invalidate_root_view() -> Result<(), String> {
     with_active_window(|window, cx| {
         let view = root_view(window)?;
-        cx.notify(view.entity_id());
-        window.refresh();
+        crate::renderer::invalidate_after_commit(cx, view.entity_id());
         Ok(())
     })
     .unwrap_or_else(|| Err(NESTED.to_string()))

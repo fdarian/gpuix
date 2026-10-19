@@ -440,14 +440,27 @@ fn update_app<R>(update: impl FnOnce(&mut gpui::App) -> R) -> Result<R> {
     )
 }
 
+/// Marks the root view dirty for a change JS made to the tree, a scroll offset or a motion
+/// value, and wakes the platform. Both renderers go through it, so the test renderer draws the
+/// frame the live window does.
+///
+/// It must not call `Window::refresh`: that sets `refreshing`, and a refreshing frame skips no
+/// replay, so every element is built (5403 for one hover write over 3000 nodes, against 5).
+/// Retention sees all of these: a mutation moves a `subtree_revision`, and a scroll offset and a
+/// running motion are frame deltas. `refresh` is for what it cannot see, as `set_live_image` and
+/// `register_font` do.
+pub(crate) fn invalidate_after_commit(cx: &mut gpui::App, view: gpui::EntityId) {
+    cx.notify(view);
+}
+
 #[cfg(target_os = "macos")]
 fn invalidate_window() -> Result<()> {
     if crate::events::sync_dispatch::in_sync_call() {
         return crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason);
     }
-    update_window(|_view, window, cx| {
-        cx.notify();
-        window.refresh();
+    update_window(|_view, _window, cx| {
+        let view = cx.entity_id();
+        invalidate_after_commit(cx, view);
     })
 }
 
@@ -670,13 +683,13 @@ enum UiCommand {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
-fn refresh_ui_window(
+fn invalidate_ui_window(
     window: gpui::WindowHandle<GpuixView>,
     cx: &mut gpui::AsyncApp,
 ) -> anyhow::Result<()> {
-    window.update(cx, |_view, window, cx| {
-        cx.notify();
-        window.refresh();
+    window.update(cx, |_view, _window, cx| {
+        let view = cx.entity_id();
+        invalidate_after_commit(cx, view);
     })
 }
 
@@ -688,7 +701,7 @@ async fn run_ui_commands(
 ) {
     while let Some(command) = commands.next().await {
         let result = match command {
-            UiCommand::Invalidate => refresh_ui_window(window, cx),
+            UiCommand::Invalidate => invalidate_ui_window(window, cx),
             UiCommand::ActivateWindow => window.update(cx, |_view, window, cx| {
                 cx.activate(true);
                 window.activate_window();
@@ -764,7 +777,7 @@ async fn run_ui_commands(
                 behavior,
             } => {
                 scroll_element_to(id, left, top, behavior);
-                refresh_ui_window(window, cx)
+                invalidate_ui_window(window, cx)
             }
             UiCommand::ScrollToItem { id, index, offset } => {
                 if !VIRTUAL_LIST_STATES.with(|cell| {
@@ -780,7 +793,7 @@ async fn run_ui_commands(
                         }
                     });
                 }
-                refresh_ui_window(window, cx)
+                invalidate_ui_window(window, cx)
             }
             UiCommand::ScrollIntoView { id, options } => {
                 // Align by the tree as it is, not the last frame; see `GetElementBounds`.
@@ -1521,8 +1534,8 @@ impl GpuixRenderer {
                 .set_viewport(f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
             let result = run(view, now);
             if repaint {
-                cx.notify();
-                window.refresh();
+                let view = cx.entity_id();
+                invalidate_after_commit(cx, view);
             }
             result
         };
