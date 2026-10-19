@@ -981,12 +981,17 @@ impl Run {
     }
 
     /// Whether the animation is relevant in Web Animations terms: current
-    /// (before or in its active phase, or running back from after it) or in
-    /// effect through a fill.
+    /// (active, before its active phase going forward, or after it going back)
+    /// or in effect through a fill. Chrome decides by the phase and the rate
+    /// alone: a paused animation at the end of its effect is not current, and
+    /// neither is one run back to the start.
     fn is_relevant(&self) -> bool {
         self.progress.is_some()
-            || matches!(self.phase, Phase::Before | Phase::Active)
-            || (self.phase == Phase::After && self.clock.rate() < 0.0)
+            || match self.phase {
+                Phase::Before => self.clock.rate() > 0.0,
+                Phase::Active => true,
+                Phase::After => self.clock.rate() < 0.0,
+            }
     }
 
     fn info(&self, now: Instant) -> Info {
@@ -995,6 +1000,7 @@ impl Run {
             kind: Kind::Animation,
             name: self.name.clone(),
             current_time: self.local(now) * 1000.0,
+            end_time: self.end_time() * 1000.0,
             playback_rate: self.clock.rate(),
             status: self.clock.status(now, self.end_time()),
         }
@@ -3006,6 +3012,47 @@ mod tests {
         let finished = frames.animations.info(id, frames.at(500)).unwrap();
         assert_eq!(finished.status, Status::Finished);
         assert!(listed(&frames, 500).is_empty(), "finished without a fill, it is not relevant");
+    }
+
+    #[test]
+    fn a_paused_animation_at_its_end_is_listed_only_through_a_fill() {
+        for (animation, listed_at_end) in [("fade 1s linear", false), ("fade 1s linear forwards", true)] {
+            let mut frames = Frames::new();
+            frames.define("fade", FADE);
+            let animated = fading(animation);
+            frames.frame(0, &animated);
+            let id = only(&frames, 0).id;
+            command(&mut frames, 0, id, Command::Pause);
+            command(&mut frames, 0, id, Command::SetCurrentTime(999.0));
+            frames.frame(100, &animated);
+            assert_eq!(only(&frames, 100).status, Status::Paused);
+            command(&mut frames, 100, id, Command::SetCurrentTime(1000.0));
+            frames.frame(200, &animated);
+            let held = frames.animations.info(id, frames.at(200)).unwrap();
+            assert_eq!(held.status, Status::Paused, "{animation}");
+            near(held.current_time, 1000.0);
+            near(held.end_time, 1000.0);
+            assert_eq!(listed(&frames, 200).len(), usize::from(listed_at_end), "{animation}");
+        }
+    }
+
+    #[test]
+    fn an_animation_run_back_to_its_start_is_finished_and_listed_only_through_a_fill() {
+        for (animation, listed_at_start) in [("fade 1s linear", false), ("fade 1s linear backwards", true)] {
+            let mut frames = Frames::new();
+            frames.define("fade", FADE);
+            let animated = fading(animation);
+            frames.frame(0, &animated);
+            let id = only(&frames, 0).id;
+            command(&mut frames, 0, id, Command::SetCurrentTime(500.0));
+            command(&mut frames, 0, id, Command::SetPlaybackRate(-1.0));
+            frames.frame(100, &animated);
+            assert_eq!(only(&frames, 100).status, Status::Running, "{animation}");
+            frames.frame(1000, &animated);
+            let info = frames.animations.info(id, frames.at(1000)).unwrap();
+            assert_eq!(info.status, Status::Finished, "{animation}");
+            assert_eq!(listed(&frames, 1000).len(), usize::from(listed_at_start), "{animation}");
+        }
     }
 
     #[test]

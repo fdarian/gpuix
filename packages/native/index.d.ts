@@ -1730,6 +1730,12 @@ export interface WebAnimationInfo {
    * the last frame.
    */
   currentTime: number
+  /**
+   * Milliseconds where the effect ends, the delay inside it: what
+   * `currentTime` is at the end of a transition that finished. `Infinity`
+   * for an animation that repeats forever.
+   */
+  endTime: number
   playbackRate: number
   /**
    * `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its

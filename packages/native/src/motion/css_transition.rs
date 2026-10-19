@@ -720,6 +720,7 @@ impl Running {
             kind: Kind::Transition,
             name: kebab_case(prop.name()),
             current_time: self.elapsed(now) * 1000.0,
+            end_time: self.end_time() * 1000.0,
             playback_rate: self.clock.rate(),
             status: self.clock.status(now, self.end_time()),
         }

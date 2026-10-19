@@ -59,6 +59,9 @@ pub(crate) struct Info {
     pub(crate) name: String,
     /// Milliseconds.
     pub(crate) current_time: f64,
+    /// Milliseconds where the effect ends, delay included. Infinite for an
+    /// animation that repeats forever.
+    pub(crate) end_time: f64,
     pub(crate) playback_rate: f64,
     pub(crate) status: Status,
 }

@@ -11156,6 +11156,10 @@ pub struct WebAnimationInfo {
     /// Milliseconds from the start of the animation, the delay inside it, as of
     /// the last frame.
     pub current_time: f64,
+    /// Milliseconds where the effect ends, the delay inside it: what
+    /// `currentTime` is at the end of a transition that finished. `Infinity`
+    /// for an animation that repeats forever.
+    pub end_time: f64,
     pub playback_rate: f64,
     /// `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its
     /// `webanimationcancel` event is what makes the object `"idle"`.
@@ -11175,6 +11179,7 @@ impl From<crate::motion::web_animation::Info> for WebAnimationInfo {
             animation_name,
             transition_property,
             current_time: info.current_time,
+            end_time: info.end_time,
             playback_rate: info.playback_rate,
             play_state: info.status.name().to_string(),
         }
