@@ -4910,6 +4910,13 @@ Two reads in one turn see the same frame: a window with nothing pending does not
 redraw, so the offset between a parent and a child stays constant under a moving
 ancestor.
 
+A read right after a write that cannot move a box lays nothing out, as in Chrome. A
+motion value that drives only `opacity`, `boxShadow` or a colour (`color`,
+`backgroundColor`, a border, outline, text decoration, scrollbar or selection colour) is
+such a write, so reading a rect on every frame of a fade costs a read and not a layout. A
+value that drives a size or an inset, or that a transform or a follower computes one from,
+and every state commit, hover, scroll or resize, make the next read lay the window out.
+
 The rect is the layout, as in Chrome, and not the box that is painted: `x`, `y`, `width`
 and `height` are fractions of a pixel, cut down to a multiple of 1/64 as a browser's
 `LayoutUnit` is (a `width: "33.3333%"` of 100 px is 33.328125, and a box after a text
@@ -4922,9 +4929,11 @@ rounded as Chrome rounds them: `clientWidth`, `clientHeight`, `scrollWidth` and
 rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the rounded border
 widths, and `scrollTop` and `scrollLeft` are as they were. Deviations: a length you write
 in px is snapped to a device pixel before layout, so at 1x `width: 100.4` is 100 (a
-percentage, a flex share and a text are not); and the scroll offset an element is placed
+percentage, a flex share and a text are not); the scroll offset an element is placed
 at is the one it is painted at, which is a whole device pixel, so a box inside a scroller
-that is scrolled by a fraction is where it is painted and not where a browser puts it.
+that is scrolled by a fraction is where it is painted and not where a browser puts it; and
+a box that is not a scroller reports its padding box as `clientWidth` and the same number as
+`scrollWidth`, so content that overflows it is not counted.
 
 `renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
 on the test renderer. It does the same flush and layout, and returns `null`
@@ -7118,6 +7127,13 @@ background for the effect to show. `opacity` also composites the element as a
 group, so overlapping children of a half-transparent parent do not show through
 each other.
 
+An `opacity` of `0` paints nothing, in the frame that builds it and in one that replays
+it, and costs a hover frame nothing while it does not change: a design system that keeps
+an `opacity: 0` copy of each label to hold its width pays for layout and not for paint. The
+element is still laid out and has its box, `getBoundingClientRect()` reads it, it is hit
+tested, its listeners and cursor run, and its text is selectable and found by find, as in
+Chrome. A visible element inside it stays hidden, and an element after it shows as usual.
+
 ```tsx
 <div style={{ filter: 'blur(4px) brightness(1.2)' }} />
 <div style={{ backdropFilter: 'blur(12px)', backgroundColor: 'rgba(255,255,255,0.4)' }} />
@@ -8553,14 +8569,32 @@ nothing is recorded there.
 
 A frame does not build a subtree whose inputs did not change; GPUI replays what
 it drew the frame before. The result is the frame a full build gives, and the
-test renderer lets you check that and count what a frame did. Counters you read
-off the renderer:
+test renderer lets you check that and count what a frame did.
+
+What a hover frame does follows from that. Content that did not change and is not
+shown (below the window, outside an `overflow` clip, or `opacity: 0`) is not built,
+measured, shaped, laid out again, prepainted or painted, so a pointer moving over a
+sidebar costs the sidebar whether the page beside it holds 20 cards or 200. What a
+frame still pays per subtree is its replay: cards below the window are not reached,
+but in a scroller each card is a recorded subtree that is replayed, so a frame costs a
+little for each card the scroller holds. A state commit from JS, a motion write, a
+programmatic scroll and a read of the automation tree keep this: they ask for a frame
+and do not force a full rebuild of it. Focus changes, `scrollIntoView`, the window
+title, text selection set from JS, a live image, a font and a background image still
+do. Counters you read off the renderer:
 
 - `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
   and skipped, and the style and inherited-state copies the build made.
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
-  child lists set, passes, and measure calls, since the window was made, and the
-  text system's lines shaped, wrapped layouts built and line layout hits.
+  child lists set, passes, and measure calls, since the window was made, the
+  text system's lines shaped, wrapped layouts built and line layout hits, and the
+  subtrees whose extent for culling and whose scrollable overflow were worked out
+  again (`extentWalks`, `overflowWalks`, `unsnappedOverflowWalks`).
+- `getFrameWorkCounters()`: elements prepainted and painted by themselves (those in
+  a culled subtree apart), and the scene primitives that painting inserted against
+  the ones a replay put in again. A replayed subtree counts none of the elements
+  under it. Subtract two reads to see what one hover frame did to the content that
+  did not change.
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
   how many a scroller moved without building them (`relocations`), and why a
   recording could not be replayed or moved.
