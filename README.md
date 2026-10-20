@@ -7970,8 +7970,11 @@ await animation.finished // resolves with the animation
   transition is replaced, the element goes) rejects the promise that was held with
   an `AbortError` and leaves the animation `idle`
 - **A finished transition** keeps `playState: 'finished'` and its end as
-  `currentTime`, and drops out of `getAnimations()`. Commands on it, and on a
-  cancelled animation, throw an `InvalidStateError`
+  `currentTime`, and drops out of `getAnimations()`, as in Chrome. It can be
+  played, paused, sought and given a rate again until the style moves off its end
+  value, which cancels it (`idle`). One run back to its start at a negative rate
+  stays `finished` and listed, showing the value it started from, until the style
+  changes. Commands on a cancelled animation throw an `InvalidStateError`
 - **Not built.** `cancel()`, `finish()`, `reverse()`, `updatePlaybackRate()`,
   `ready`, `effect`, `timeline`, `startTime`, `onfinish` and `oncancel`;
   `getAnimations({ subtree: true })` and `document.getAnimations()`. Animations of

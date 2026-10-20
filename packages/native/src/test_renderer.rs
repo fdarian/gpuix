@@ -2336,12 +2336,22 @@ impl TestGpuixRenderer {
         self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
     }
 
-    /// One CSS animation or transition by the id `getAnimations` gave. Throws
-    /// once it has finished and left its element, or was cancelled.
+    /// One CSS animation or transition by the id `getAnimations` gave. See
+    /// `GpuixRenderer.getAnimation`.
     #[napi]
     pub fn get_animation(&self, animation_id: f64) -> Result<crate::renderer::WebAnimationInfo> {
         let id = to_element_id(animation_id)?;
         self.with_motion_state(false, move |view, _now| view.web_animation(id))
+    }
+
+    /// See the renderer's `releaseAnimation`.
+    #[napi]
+    pub fn release_animation(&self, animation_id: f64) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(false, move |view, _now| {
+            view.release_web_animation(id);
+            Ok(())
+        })
     }
 
     /// `animation.pause()`: holds the current time at once, and from here the

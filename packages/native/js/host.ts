@@ -2525,6 +2525,7 @@ export type NativeRenderer = MutationHost &
       | "playAnimation"
       | "setAnimationCurrentTime"
       | "setAnimationPlaybackRate"
+      | "releaseAnimation"
       | "cancelDrag"
       | "requestPointerLock"
       | "exitPointerLock"

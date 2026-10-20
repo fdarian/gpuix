@@ -567,6 +567,9 @@ pub(crate) struct Sources<'a> {
     pub measured: Vec<u64>,
     /// The elements whose accessibility links changed since the frame before.
     pub links: Vec<u64>,
+    /// The elements a Web Animations command touched since the frame before. A transition that had
+    /// finished runs again after `play()`, and nothing in its last build said it could.
+    pub commanded: Vec<u64>,
     /// The state each custom element says it keeps for itself, see `CustomElement::retain_state`.
     pub customs: Vec<(u64, Option<u64>)>,
     /// The elements with a motion that is running.
@@ -1131,10 +1134,12 @@ impl Retain {
         self.debug.sources("dynamic-last-build", self.dynamic.iter().copied());
         self.debug.sources("measurement", sources.measured.iter().copied());
         self.debug.sources("link", sources.links.iter().copied());
+        self.debug.sources("web-animation-command", sources.commanded.iter().copied());
         let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
         changed.extend(motion.union(&seen.motion));
         changed.extend(&sources.measured);
         changed.extend(&sources.links);
+        changed.extend(&sources.commanded);
         changed.extend(&self.dynamic);
 
         seen.known = true;
@@ -1979,6 +1984,7 @@ mod tests {
             scrolls: &scrolls,
             measured: Vec::new(),
             links: Vec::new(),
+            commanded: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
             selection: 0,
@@ -2043,6 +2049,7 @@ mod tests {
         within: Vec<u64>,
         measured: Vec<u64>,
         links: Vec<u64>,
+        commanded: Vec<u64>,
         selection: u64,
     }
 
@@ -2064,6 +2071,7 @@ mod tests {
             scrolls: &scrolls,
             measured: changes.measured,
             links: changes.links,
+            commanded: changes.commanded,
             customs: Vec::new(),
             motion: Vec::new(),
             selection: changes.selection,
@@ -2106,12 +2114,13 @@ mod tests {
 
     #[test]
     fn what_changed_in_a_pass_that_did_not_visit_an_element_is_found_by_the_pass_that_does() {
-        let changes: [(&str, fn() -> Changes); 5] = [
+        let changes: [(&str, fn() -> Changes); 6] = [
             ("hovered", || Changes { hovered: vec![1], ..Default::default() }),
             ("active", || Changes { active: vec![1], ..Default::default() }),
             ("focus within", || Changes { within: vec![1], ..Default::default() }),
             ("measured", || Changes { measured: vec![1], ..Default::default() }),
             ("links", || Changes { links: vec![1], ..Default::default() }),
+            ("commanded", || Changes { commanded: vec![1], ..Default::default() }),
         ];
         for (name, change) in changes {
             let mut retain = Retain::new();
@@ -2173,6 +2182,7 @@ mod tests {
             scrolls: &scrolls,
             measured: Vec::new(),
             links: Vec::new(),
+            commanded: Vec::new(),
             customs: Vec::new(),
             motion: motion.to_vec(),
             selection: 0,
@@ -2284,6 +2294,7 @@ mod tests {
             scrolls: &scrolls,
             measured: Vec::new(),
             links: Vec::new(),
+            commanded: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
             selection: 0,

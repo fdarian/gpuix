@@ -8,6 +8,8 @@
 //! Reads and commands happen between frames, at the instant of the last frame
 //! (the timeline time), never at `Instant::now`.
 
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use web_time::Instant;
@@ -21,16 +23,19 @@ pub(crate) enum Status {
     Running,
     Paused,
     Finished,
+    /// Cancelled: only a [retired](Retired) run says so, a run the engine has
+    /// is never idle.
+    Idle,
 }
 
 impl Status {
-    /// The DOM `playState`. A run that was cancelled is gone, and JS reports it
-    /// `idle` from its `cancel` event.
+    /// The DOM `playState`.
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Running => "running",
             Self::Paused => "paused",
             Self::Finished => "finished",
+            Self::Idle => "idle",
         }
     }
 }
@@ -66,6 +71,14 @@ pub(crate) struct Info {
     pub(crate) status: Status,
 }
 
+impl Info {
+    /// What a run showed when it was cancelled.
+    pub(crate) fn cancelled(mut self) -> Self {
+        self.status = Status::Idle;
+        self
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Command {
     Pause,
@@ -91,12 +104,66 @@ impl ApiEventKind {
     }
 }
 
-/// A run finished or was cancelled. `element` is where it ran.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A run finished or was cancelled. `element` is where it ran, `info` what it
+/// showed at that moment.
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ApiEvent {
     pub(crate) element: u64,
     pub(crate) run: u64,
     pub(crate) kind: ApiEventKind,
+    pub(crate) info: Info,
+}
+
+/// The runs whose finish or cancel was reported to JS, as of that moment, until
+/// JS has consumed the event.
+///
+/// Events reach JS after the frame that made them, and an app can read the
+/// animation in between; a transition that finished and a run that was
+/// cancelled are no longer in their engine then. Each event is counted: JS
+/// releases once per event it consumed, and the entry goes with the last.
+#[derive(Debug, Default)]
+pub(crate) struct Retired(HashMap<u64, Held>);
+
+#[derive(Debug)]
+struct Held {
+    info: Info,
+    /// Events of the run JS has not consumed yet.
+    pending: usize,
+}
+
+impl Retired {
+    pub(crate) fn retire(&mut self, info: Info) {
+        match self.0.entry(info.id) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().info = info;
+                entry.get_mut().pending += 1;
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(Held { info, pending: 1 });
+            }
+        }
+    }
+
+    pub(crate) fn get(&self, id: u64) -> Option<&Info> {
+        self.0.get(&id).map(|held| &held.info)
+    }
+
+    /// One event of `id` was consumed. Releasing an id with no entry is
+    /// nothing: JS releases for every event, listed or not.
+    pub(crate) fn release(&mut self, id: u64) {
+        let Some(held) = self.0.get_mut(&id) else {
+            return;
+        };
+        held.pending -= 1;
+        if held.pending == 0 {
+            self.0.remove(&id);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -235,6 +302,16 @@ impl Playback {
     }
 
     pub(super) fn apply(&mut self, command: Command, now: Instant, end: f64) -> Result<(), String> {
+        let outcome = self.apply_command(command, now, end);
+        // A finish that a command undid and redid before any frame saw it is
+        // a new finish.
+        if self.status(now, end) != Status::Finished {
+            self.finish_reported = false;
+        }
+        outcome
+    }
+
+    fn apply_command(&mut self, command: Command, now: Instant, end: f64) -> Result<(), String> {
         match command {
             Command::Pause => self.pause(now, end),
             Command::Play => return self.play(now, end),
@@ -415,6 +492,23 @@ mod tests {
     }
 
     #[test]
+    fn a_finish_undone_and_redone_before_a_frame_is_reported_again() {
+        let (mut clock, origin) = clock();
+        assert!(clock.take_finish(at(origin, 2000), 2.0));
+        clock.apply(Command::SetCurrentTime(500.0), at(origin, 2000), 2.0).unwrap();
+        clock.apply(Command::SetCurrentTime(2000.0), at(origin, 2000), 2.0).unwrap();
+        assert!(clock.take_finish(at(origin, 2000), 2.0));
+    }
+
+    #[test]
+    fn a_command_that_leaves_a_finished_clock_finished_reports_nothing_new() {
+        let (mut clock, origin) = clock();
+        assert!(clock.take_finish(at(origin, 2000), 2.0));
+        clock.apply(Command::SetPlaybackRate(2.0), at(origin, 2000), 2.0).unwrap();
+        assert!(!clock.take_finish(at(origin, 2000), 2.0));
+    }
+
+    #[test]
     fn a_paused_clock_at_the_end_is_paused_not_finished() {
         let (mut clock, origin) = clock();
         clock.apply(Command::Pause, at(origin, 0), 2.0).unwrap();
@@ -488,5 +582,49 @@ mod tests {
         // Time 1.0 is reached at 500 ms; the frame is at 800 ms (time 1.6).
         assert_eq!(clock.instant_at(1.0, at(origin, 800)), at(origin, 500));
         assert_eq!(clock.instant_at(2.0, at(origin, 800)), at(origin, 800));
+    }
+
+    fn info(id: u64, status: Status, current_time: f64) -> Info {
+        Info {
+            id,
+            kind: Kind::Transition,
+            name: "width".to_string(),
+            current_time,
+            end_time: 1000.0,
+            playback_rate: 1.0,
+            status,
+        }
+    }
+
+    #[test]
+    fn a_retired_run_answers_until_its_events_are_released() {
+        let mut retired = Retired::default();
+        assert!(retired.get(7).is_none());
+        retired.retire(info(7, Status::Finished, 1000.0));
+        assert_eq!(retired.get(7).unwrap().status, Status::Finished);
+        retired.release(7);
+        assert!(retired.get(7).is_none());
+        assert_eq!(retired.len(), 0);
+    }
+
+    #[test]
+    fn a_run_retired_twice_keeps_the_last_word_until_both_are_released() {
+        let mut retired = Retired::default();
+        retired.retire(info(7, Status::Finished, 1000.0));
+        retired.retire(info(7, Status::Finished, 1000.0).cancelled());
+        assert_eq!(retired.get(7).unwrap().status, Status::Idle);
+        retired.release(7);
+        assert_eq!(retired.get(7).unwrap().status, Status::Idle, "the cancel is still on its way");
+        retired.release(7);
+        assert!(retired.get(7).is_none());
+    }
+
+    #[test]
+    fn releasing_a_run_that_was_never_retired_does_nothing() {
+        let mut retired = Retired::default();
+        retired.release(3);
+        retired.retire(info(4, Status::Finished, 1000.0));
+        retired.release(3);
+        assert_eq!(retired.len(), 1);
     }
 }

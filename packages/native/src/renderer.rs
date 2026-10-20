@@ -2971,12 +2971,27 @@ impl GpuixRenderer {
         self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
     }
 
-    /// One CSS animation or transition by the id `getAnimations` gave. Throws
-    /// once it has finished and left its element, or was cancelled.
+    /// One CSS animation or transition by the id `getAnimations` gave. A run
+    /// that finished or was cancelled answers as it ended until
+    /// `releaseAnimation` says JS consumed its `webanimationfinish` or
+    /// `webanimationcancel` event; after that, and for a transition whose style
+    /// moved off its end value, it throws.
     #[napi]
     pub fn get_animation(&self, animation_id: f64) -> Result<WebAnimationInfo> {
         let id = to_element_id(animation_id)?;
         self.with_motion_state(false, move |view, _now| view.web_animation(id))
+    }
+
+    /// JS consumed one `webanimationfinish` or `webanimationcancel` event of the
+    /// run: native stops answering for what it ended as. Call it for every such
+    /// event, whether or not an `Animation` object exists for the run.
+    #[napi]
+    pub fn release_animation(&self, animation_id: f64) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(false, move |view, _now| {
+            view.release_web_animation(id);
+            Ok(())
+        })
     }
 
     /// `animation.pause()`: holds the current time at once, and from here the
@@ -5183,6 +5198,8 @@ pub(crate) struct GpuixView {
     css_transitions: crate::motion::CssTransitions,
     /// CSS animation state of the elements that declare `animation*`.
     css_animations: crate::motion::CssAnimations,
+    /// Runs that finished or were cancelled, until JS has consumed the event.
+    retired_animations: crate::motion::web_animation::Retired,
     /// What the last paint measured for the elements that animate.
     measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
@@ -5556,11 +5573,19 @@ fn emit_animation_events(
 /// payload has no path, so it reaches the element's own handlers only and no
 /// ancestor, and it is not subject to a listener check: the `Animation` object
 /// of `getAnimations()` listens by existing.
+///
+/// The run is retired as it showed then, so JS can still read it until it has
+/// consumed the event (`releaseAnimation`).
 fn emit_web_animation_events(
     callback: &Option<EventCallback>,
+    retired: &mut crate::motion::web_animation::Retired,
     events: Vec<crate::motion::web_animation::ApiEvent>,
 ) {
+    if callback.is_none() {
+        return;
+    }
     for event in events {
+        retired.retire(event.info);
         emit_event_full(callback, event.element, event.kind.event_type(), |payload| {
             payload.animation_id = Some(event.run as f64);
         });
@@ -5664,13 +5689,21 @@ impl GpuixView {
         transitions.into_iter().chain(animations).map(WebAnimationInfo::from).collect()
     }
 
+    /// The run `id` as it is now, or as it showed when its finish or cancel
+    /// was reported while JS has not consumed that event.
     pub(crate) fn web_animation(&self, id: u64) -> std::result::Result<WebAnimationInfo, String> {
         self.built_at
             .and_then(|now| {
                 self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
             })
+            .or_else(|| self.retired_animations.get(id).cloned())
             .map(WebAnimationInfo::from)
             .ok_or_else(|| unknown_web_animation(id))
+    }
+
+    /// JS consumed an event of the run `id`.
+    pub(crate) fn release_web_animation(&mut self, id: u64) {
+        self.retired_animations.release(id);
     }
 
     /// Applies `command` at the time of the last frame, which is the time the
@@ -5729,6 +5762,7 @@ impl GpuixView {
             keyframes: Default::default(),
             css_transitions: Default::default(),
             css_animations: Default::default(),
+            retired_animations: Default::default(),
             measurements: Default::default(),
             layout_flips: Default::default(),
             svg_trees: Default::default(),
@@ -6291,8 +6325,8 @@ impl GpuixView {
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, self.css_animations.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active()
             || self.css_animations.take_active()
@@ -7655,8 +7689,8 @@ impl GpuixView {
         debug_assert!(highlight_events.is_empty(), "a highlight is never inside a retained subtree");
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, self.css_animations.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
@@ -7833,6 +7867,12 @@ impl gpui::Render for GpuixView {
             scrolls: &self.scroll_handles,
             measured: self.measurements.take_changed(),
             links: crate::accessibility::links::take_changed(),
+            commanded: self
+                .css_transitions
+                .take_commanded()
+                .into_iter()
+                .chain(self.css_animations.take_commanded())
+                .collect(),
             customs: self.custom_registry.retain_states(),
             motion: self
                 .motion_states
@@ -7914,8 +7954,8 @@ impl gpui::Render for GpuixView {
         emit_motion_value_events(&callback, &motion_value_frame.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, self.css_animations.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
@@ -11161,8 +11201,8 @@ pub struct WebAnimationInfo {
     /// for an animation that repeats forever.
     pub end_time: f64,
     pub playback_rate: f64,
-    /// `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its
-    /// `webanimationcancel` event is what makes the object `"idle"`.
+    /// `"running"`, `"paused"`, `"finished"`, or `"idle"` for a run that was
+    /// cancelled and has not been released yet.
     pub play_state: String,
 }
 
@@ -15325,5 +15365,63 @@ mod decoration_paint_tests {
         let three_px = lines("{}", r#"{"textDecoration": "overline 3px"}"#, cx);
         assert_eq!(dotted[0].thickness, three_px[0].thickness);
         assert_eq!(double.len(), 2, "a double line is two");
+    }
+}
+
+#[cfg(test)]
+mod web_animation_event_tests {
+    use super::*;
+    use crate::motion::web_animation::{ApiEvent, ApiEventKind, Info, Kind, Retired, Status};
+
+    fn event(run: u64, kind: ApiEventKind, status: Status) -> ApiEvent {
+        ApiEvent {
+            element: 5,
+            run,
+            kind,
+            info: Info {
+                id: run,
+                kind: Kind::Transition,
+                name: "width".to_string(),
+                current_time: 1000.0,
+                end_time: 1000.0,
+                playback_rate: 1.0,
+                status,
+            },
+        }
+    }
+
+    fn heard() -> (Option<EventCallback>, Arc<Mutex<Vec<EventPayload>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let callback: EventCallback = Arc::new(move |payload| sink.lock().unwrap().push(payload));
+        (Some(callback), seen)
+    }
+
+    #[test]
+    fn an_event_retires_its_run_until_it_is_released() {
+        let (callback, seen) = heard();
+        let mut retired = Retired::default();
+        emit_web_animation_events(
+            &callback,
+            &mut retired,
+            vec![event(7, ApiEventKind::Finish, Status::Finished), event(8, ApiEventKind::Cancel, Status::Idle)],
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(
+            seen.iter().map(|payload| (payload.event_type.as_str(), payload.animation_id)).collect::<Vec<_>>(),
+            [("webanimationfinish", Some(7.0)), ("webanimationcancel", Some(8.0))]
+        );
+        assert_eq!(retired.get(7).unwrap().status, Status::Finished);
+        assert_eq!(retired.get(8).unwrap().status, Status::Idle);
+        retired.release(7);
+        assert!(retired.get(7).is_none());
+        assert!(retired.get(8).is_some());
+    }
+
+    #[test]
+    fn nothing_is_retired_when_no_one_hears_the_events() {
+        let mut retired = Retired::default();
+        emit_web_animation_events(&None, &mut retired, vec![event(7, ApiEventKind::Finish, Status::Finished)]);
+        assert_eq!(retired.len(), 0, "no release would ever come for it");
     }
 }

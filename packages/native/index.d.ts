@@ -228,10 +228,19 @@ export declare class GpuixRenderer {
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**
-   * One CSS animation or transition by the id `getAnimations` gave. Throws
-   * once it has finished and left its element, or was cancelled.
+   * One CSS animation or transition by the id `getAnimations` gave. A run
+   * that finished or was cancelled answers as it ended until
+   * `releaseAnimation` says JS consumed its `webanimationfinish` or
+   * `webanimationcancel` event; after that, and for a transition whose style
+   * moved off its end value, it throws.
    */
   getAnimation(animationId: number): WebAnimationInfo
+  /**
+   * JS consumed one `webanimationfinish` or `webanimationcancel` event of the
+   * run: native stops answering for what it ended as. Call it for every such
+   * event, whether or not an `Animation` object exists for the run.
+   */
+  releaseAnimation(animationId: number): void
   /**
    * `animation.pause()`: holds the current time at once, and from here the
    * style's `animation-play-state` no longer decides.
@@ -992,10 +1001,12 @@ export declare class TestGpuixRenderer {
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**
-   * One CSS animation or transition by the id `getAnimations` gave. Throws
-   * once it has finished and left its element, or was cancelled.
+   * One CSS animation or transition by the id `getAnimations` gave. See
+   * `GpuixRenderer.getAnimation`.
    */
   getAnimation(animationId: number): WebAnimationInfo
+  /** See the renderer's `releaseAnimation`. */
+  releaseAnimation(animationId: number): void
   /**
    * `animation.pause()`: holds the current time at once, and from here the
    * style's `animation-play-state` no longer decides.
@@ -1738,8 +1749,8 @@ export interface WebAnimationInfo {
   endTime: number
   playbackRate: number
   /**
-   * `"running"`, `"paused"` or `"finished"`. A cancelled run is gone: its
-   * `webanimationcancel` event is what makes the object `"idle"`.
+   * `"running"`, `"paused"`, `"finished"`, or `"idle"` for a run that was
+   * cancelled and has not been released yet.
    */
   playState: string
 }

@@ -172,13 +172,6 @@ async function replay(scenario: Case): Promise<Snapshot[]> {
   }
 }
 
-/**
- * Where Chrome keeps a transition that ran back to its start in effect, showing the width it started from, a
- * transition that finishes at rate -1 settles on the end value like one that ran forward. Everything else about the
- * case matches.
- */
-const WIDTH_DIFFERS = new Set(["a transition run backwards ends at 0"])
-
 describeNative("Web animations against Chrome", () => {
   for (const scenario of ORACLE.cases) {
     // The first window of a loaded machine can take longer than the default 5s to open.
@@ -189,9 +182,7 @@ describeNative("Web animations against Chrome", () => {
         const here = got[index]
         const where = `${scenario.name}, after ${JSON.stringify(want.step)}`
         expect(here.step, where).toEqual(want.step)
-        if (WIDTH_DIFFERS.has(scenario.name)) {
-          // Not compared.
-        } else if (want.width === null) expect(here.width, `${where}: width`).toBeNull()
+        if (want.width === null) expect(here.width, `${where}: width`).toBeNull()
         else expect(here.width, `${where}: width`).toBeCloseTo(want.width, 0)
         if (want.height === null) expect(here.height, `${where}: height`).toBeNull()
         else expect(here.height, `${where}: height`).toBeCloseTo(want.height, 0)
@@ -303,8 +294,101 @@ describeNative("Web animations beyond what Chrome can pin on a paused page", () 
     expect(transition.playState).toBe("finished")
     expect(transition.currentTime).toBe(1000)
     await expect(transition.finished).resolves.toBe(transition)
-    expect(() => transition.play()).toThrow(DOMException)
+    transition.play()
+    expect(transition.playState).toBe("running")
+    expect(transition.currentTime).toBe(0)
+    expect(element.current!.getAnimations()).toEqual([transition])
     unmount()
+  })
+
+  describe("reading an animation before JS has heard that it ended", () => {
+    const setup = () => {
+      const root = createTestRoot()
+      root.renderer.clockPause()
+      const element: { current: PublicInstance | null } = { current: null }
+      const target = (width: number) => (
+        <div
+          testId="box"
+          ref={(node: PublicInstance | null) => {
+            element.current = node
+          }}
+          style={{ width, height: 20, transition: "width 1s linear" }}
+        />
+      )
+      root.render(target(50))
+      root.render(target(150))
+      root.renderer.clockFastForward(0)
+      root.renderer.dispatchNativeEvents()
+      return { ...root, element, target, transition: () => element.current!.getAnimations()[0] }
+    }
+
+    it("answers for a transition in the task of the frame that finished it", async () => {
+      const { renderer, transition: listed, unmount } = setup()
+      const transition = listed()
+      renderer.clockFastForward(1500)
+      // The frame queued its finish event; nothing has delivered it.
+      expect(transition.playState).toBe("finished")
+      expect(transition.currentTime).toBe(1000)
+      expect(transition.playbackRate).toBe(1)
+      renderer.dispatchNativeEvents()
+      expect(transition.playState).toBe("finished")
+      expect(transition.currentTime).toBe(1000)
+      await expect(transition.finished).resolves.toBe(transition)
+      unmount()
+    })
+
+    it("answers idle for a run cancelled in the task of the frame that cancelled it, and stops asking native once it has heard", async () => {
+      const { render, renderer, element, target, transition: listed, unmount } = setup()
+      const transition = listed()
+      const id = renderer.getAnimations(element.current!.id)[0].id
+      // A cancel rejects the promise held when it comes, and leaves a new pending one.
+      const held = transition.finished
+      renderer.clockFastForward(300)
+      render(target(80))
+      renderer.clockFastForward(0)
+      expect(transition.playState).toBe("idle")
+      expect(transition.currentTime).toBeNull()
+      expect(transition.playbackRate).toBe(1)
+      expect(renderer.getAnimation(id).playState).toBe("idle")
+      expect(() => transition.pause()).toThrow(DOMException)
+      renderer.dispatchNativeEvents()
+      expect(transition.playState).toBe("idle")
+      await expect(held).rejects.toMatchObject({ name: "AbortError" })
+      expect(() => renderer.getAnimation(id)).toThrow()
+      unmount()
+    })
+
+    it("releases the run of an event no animation object was made for", () => {
+      const { render, renderer, element, target, unmount } = setup()
+      // Native only: `element.getAnimations()` is what makes the object.
+      const id = renderer.getAnimations(element.current!.id)[0].id
+      renderer.clockFastForward(300)
+      render(target(80))
+      renderer.clockFastForward(0)
+      expect(renderer.getAnimation(id).playState).toBe("idle")
+      renderer.dispatchNativeEvents()
+      expect(() => renderer.getAnimation(id)).toThrow()
+      unmount()
+    })
+
+    it("keeps answering for a transition that finished after its event was heard, until the style moves off its end", () => {
+      const { render, renderer, element, target, transition: listed, unmount } = setup()
+      const transition = listed()
+      const id = renderer.getAnimations(element.current!.id)[0].id
+      renderer.clockFastForward(1500)
+      renderer.dispatchNativeEvents()
+      expect(renderer.getAnimation(id).playState).toBe("finished")
+      render(target(150))
+      renderer.clockFastForward(0)
+      renderer.dispatchNativeEvents()
+      expect(transition.playState).toBe("finished")
+      render(target(90))
+      renderer.clockFastForward(0)
+      renderer.dispatchNativeEvents()
+      expect(transition.playState).toBe("idle")
+      expect(() => renderer.getAnimation(id)).toThrow()
+      unmount()
+    })
   })
 
   it("keeps the internal events away from the listeners of the app", () => {

@@ -175,6 +175,7 @@ interface NativeTestRendererApi
   clickElement(elementId: number): void
   getAnimations(elementId: number): WebAnimationInfo[]
   getAnimation(animationId: number): WebAnimationInfo
+  releaseAnimation(animationId: number): void
   pauseAnimation(animationId: number): void
   playAnimation(animationId: number): void
   setAnimationCurrentTime(animationId: number, milliseconds: number): void
@@ -1257,6 +1258,10 @@ export class TestRenderer implements NativeRenderer {
 
   getAnimation(animationId: number): WebAnimationInfo {
     return this.native.getAnimation(animationId)
+  }
+
+  releaseAnimation(animationId: number): void {
+    this.native.releaseAnimation(animationId)
   }
 
   pauseAnimation(animationId: number): void {

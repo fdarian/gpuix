@@ -917,7 +917,12 @@ impl Run {
     /// cancel either way, as a finished animation is cancelled too.
     fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
         self.advance(id, now, events);
-        api.push(ApiEvent { element: id, run: self.clock.id(), kind: ApiEventKind::Cancel });
+        api.push(ApiEvent {
+            element: id,
+            run: self.clock.id(),
+            kind: ApiEventKind::Cancel,
+            info: self.info(now).cancelled(),
+        });
         if self.phase == Phase::After {
             return;
         }
@@ -1123,6 +1128,8 @@ pub(crate) struct CssAnimations {
     events: Vec<Scheduled>,
     /// What the Web Animations objects of JS are told: finishes and cancels.
     api_events: Vec<ApiEvent>,
+    /// The elements a Web Animations command reached since the last frame.
+    commanded: Vec<u64>,
     active: bool,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
@@ -1165,7 +1172,12 @@ impl CssAnimations {
             run.clock.resolve_pending(now);
             run.progress = run.advance(id, now, &mut self.events).progress;
             if run.clock.take_finish(now, run.end_time()) {
-                self.api_events.push(ApiEvent { element: id, run: run.clock.id(), kind: ApiEventKind::Finish });
+                self.api_events.push(ApiEvent {
+                    element: id,
+                    run: run.clock.id(),
+                    kind: ApiEventKind::Finish,
+                    info: run.info(now),
+                });
             }
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().copied().filter(|prop| scope.animates(*prop)));
@@ -1283,13 +1295,24 @@ impl CssAnimations {
     /// Applies `command` to the animation `id` at `now`, the time of the last
     /// frame. `None` for an id that is not running.
     pub(crate) fn command(&mut self, id: u64, command: Command, now: Instant) -> Option<Result<(), String>> {
-        let run = self.states.values_mut().flat_map(|state| state.runs.iter_mut()).find(|run| run.clock.id() == id)?;
+        let (element, run) = self
+            .states
+            .iter_mut()
+            .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
+            .find(|(_, run)| run.clock.id() == id)?;
         let end = run.end_time();
-        Some(run.clock.apply(command, now, end))
+        let outcome = run.clock.apply(command, now, end);
+        self.commanded.push(element);
+        Some(outcome)
     }
 
     fn run(&self, id: u64) -> Option<&Run> {
         self.states.values().flat_map(|state| state.runs.iter()).find(|run| run.clock.id() == id)
+    }
+
+    /// The elements a command reached since the last call, which the frame has to build again.
+    pub(crate) fn take_commanded(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.commanded)
     }
 
     /// Finishes and cancels since the last call, for the Web Animations objects.

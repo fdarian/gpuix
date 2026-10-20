@@ -14,6 +14,7 @@ export type WebAnimationHost = Required<
     | "playAnimation"
     | "setAnimationCurrentTime"
     | "setAnimationPlaybackRate"
+    | "releaseAnimation"
   >
 >
 
@@ -24,6 +25,7 @@ const HOST_METHODS = [
   "playAnimation",
   "setAnimationCurrentTime",
   "setAnimationPlaybackRate",
+  "releaseAnimation",
 ] as const
 
 const FINISH_EVENT = "webanimationfinish"
@@ -59,21 +61,19 @@ function deferred(): Deferred {
 }
 
 /**
- * Where an animation stands. `live`: native still has the run and answers for
- * it. `frozen`: a transition that finished and left its element, shown as it
- * ended. `idle`: cancelled.
+ * Where an animation stands. `live`: native answers for it, from the run or,
+ * between the frame that cancelled it and the event reaching JS, from what it
+ * showed then. `idle`: cancelled.
  */
-type Mode = "live" | "frozen" | "idle"
+type Mode = "live" | "idle"
 
 interface State {
   readonly host: WebAnimationHost
+  readonly registry: Registry
   readonly id: number
   readonly elementId: number
   mode: Mode
-  /**
-   * What native last said, kept for what outlives the run: a frozen
-   * transition's end and the rate an idle animation still reports.
-   */
+  /** What native last said, kept for what outlives the run: the rate an idle animation still reports. */
   last: WebAnimationInfo
   finished: Deferred
 }
@@ -89,6 +89,7 @@ function stateOf(animation: Animation): State {
 /** What `getAnimations()` makes an `Animation` from. Not for apps. */
 export interface AnimationInit {
   host: WebAnimationHost
+  registry: Registry
   elementId: number
   info: WebAnimationInfo
 }
@@ -102,38 +103,29 @@ function readLive(state: State): WebAnimationInfo {
   return state.last
 }
 
-function requireLive(state: State, action: string): void {
-  if (state.mode === "live") return
-  throw invalidState(
-    state.mode === "idle"
-      ? `Cannot ${action} an animation that was cancelled`
-      : `Cannot ${action} a transition that finished and left its element`
-  )
-}
-
 /**
- * Reads the run after a command. A transition that the command carried to its
- * end is already gone natively, and its finish event is what freezes it:
- * `patch` is what the command changed, kept for that.
+ * Sends a command to native. A run native no longer has is one that was
+ * cancelled since the frame JS last heard of, as far as JS is concerned.
  */
-function readAfterCommand(state: State, patch: Partial<WebAnimationInfo>): WebAnimationInfo | undefined {
-  state.last = { ...state.last, ...patch }
+function command(animation: Animation, action: string, send: (state: State) => void): void {
+  const state = stateOf(animation)
+  const cancelled = () => invalidState(`Cannot ${action} an animation that was cancelled`)
+  if (state.mode === "idle") throw cancelled()
   try {
-    return readLive(state)
+    send(state)
   } catch (error) {
-    if (isUnknownAnimation(error)) return undefined
-    throw error
+    throw isUnknownAnimation(error) ? cancelled() : error
   }
+  renewFinished(state)
 }
 
 /**
  * Once the animation has left `finished` (a `play()` that rewound it, a seek),
  * `finished` is a new promise, as in the DOM.
  */
-function renewFinished(state: State, patch: Partial<WebAnimationInfo> = {}): void {
+function renewFinished(state: State): void {
   if (state.mode !== "live") return
-  const info = readAfterCommand(state, patch)
-  if (info && state.finished.settled === "resolved" && info.playState !== "finished") {
+  if (state.finished.settled === "resolved" && readLive(state).playState !== "finished") {
     state.finished = deferred()
   }
 }
@@ -153,6 +145,7 @@ export class Animation {
   constructor(init: AnimationInit) {
     const state: State = {
       host: init.host,
+      registry: init.registry,
       id: init.info.id,
       elementId: init.elementId,
       mode: "live",
@@ -172,23 +165,22 @@ export class Animation {
   get currentTime(): number | null {
     const state = stateOf(this)
     switch (state.mode) {
-      case "live":
-        return readLive(state).currentTime
+      case "live": {
+        const info = readLive(state)
+        return info.playState === "idle" ? null : info.currentTime
+      }
       case "idle":
         return null
-      case "frozen":
-        return state.last.playbackRate < 0 ? 0 : state.last.endTime
     }
   }
 
   set currentTime(value: number | null) {
-    const state = stateOf(this)
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new TypeError(`Failed to set currentTime: ${String(value)} is not a finite number`)
     }
-    requireLive(state, "set currentTime of")
-    state.host.setAnimationCurrentTime(state.id, value)
-    renewFinished(state)
+    command(this, "set currentTime of", (state) =>
+      state.host.setAnimationCurrentTime(state.id, value)
+    )
   }
 
   /** The speed of time, negative to run back. Changing it keeps `currentTime`. */
@@ -198,13 +190,12 @@ export class Animation {
   }
 
   set playbackRate(value: number) {
-    const state = stateOf(this)
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new TypeError(`Failed to set playbackRate: ${String(value)} is not a finite number`)
     }
-    requireLive(state, "set playbackRate of")
-    state.host.setAnimationPlaybackRate(state.id, value)
-    renewFinished(state, { playbackRate: value })
+    command(this, "set playbackRate of", (state) =>
+      state.host.setAnimationPlaybackRate(state.id, value)
+    )
   }
 
   get playState(): AnimationPlayState {
@@ -214,8 +205,6 @@ export class Animation {
         return readLive(state).playState as AnimationPlayState
       case "idle":
         return "idle"
-      case "frozen":
-        return "finished"
     }
   }
 
@@ -234,9 +223,7 @@ export class Animation {
 
   /** Holds the current time at once. From here `animation-play-state` no longer decides. */
   pause(): void {
-    const state = stateOf(this)
-    requireLive(state, "pause")
-    state.host.pauseAnimation(state.id)
+    command(this, "pause", (state) => state.host.pauseAnimation(state.id))
   }
 
   /**
@@ -245,10 +232,7 @@ export class Animation {
    * `animation-play-state` no longer decides.
    */
   play(): void {
-    const state = stateOf(this)
-    requireLive(state, "play")
-    state.host.playAnimation(state.id)
-    renewFinished(state)
+    command(this, "play", (state) => state.host.playAnimation(state.id))
   }
 }
 
@@ -316,22 +300,26 @@ function isUnknownAnimation(error: unknown): boolean {
   return error instanceof Error && error.message.includes("No running CSS animation or transition has the id")
 }
 
-function release(registry: Registry, state: State, animation: Animation): void {
+function unregister(registry: Registry, state: State, animation: Animation): void {
   registry.byId.delete(state.id)
   const siblings = registry.byElement.get(state.elementId)
   siblings?.delete(animation)
   if (siblings?.size === 0) registry.byElement.delete(state.elementId)
 }
 
-function adopt(registry: Registry, host: WebAnimationHost, elementId: number, info: WebAnimationInfo): Animation {
-  const known = registry.byId.get(info.id)
-  if (known) return known
-  const init = { host, elementId, info }
-  const animation = info.kind === "transition" ? new CSSTransition(init) : new CSSAnimation(init)
-  registry.byId.set(info.id, animation)
+function register(registry: Registry, elementId: number, id: number, animation: Animation): void {
+  registry.byId.set(id, animation)
   const siblings = registry.byElement.get(elementId) ?? new Set()
   siblings.add(animation)
   registry.byElement.set(elementId, siblings)
+}
+
+function adopt(registry: Registry, host: WebAnimationHost, elementId: number, info: WebAnimationInfo): Animation {
+  const known = registry.byId.get(info.id)
+  if (known) return known
+  const init = { host, registry, elementId, info }
+  const animation = info.kind === "transition" ? new CSSTransition(init) : new CSSAnimation(init)
+  register(registry, elementId, info.id, animation)
   return animation
 }
 
@@ -347,9 +335,9 @@ export function getElementAnimations(renderer: NativeRenderer, elementId: number
   return host.getAnimations(elementId).map((info) => adopt(registry, host, elementId, info))
 }
 
-function cancel(registry: Registry, animation: Animation): void {
+function cancel(animation: Animation): void {
   const state = stateOf(animation)
-  release(registry, state, animation)
+  unregister(state.registry, state, animation)
   state.mode = "idle"
   if (state.finished.settled === "pending") {
     state.finished.reject(new DOMException("The animation was cancelled", "AbortError"))
@@ -357,23 +345,12 @@ function cancel(registry: Registry, animation: Animation): void {
   state.finished = deferred()
 }
 
-function finish(registry: Registry, animation: Animation): void {
+function finish(animation: Animation): void {
   const state = stateOf(animation)
   if (state.mode !== "live") return
-  if (state.last.kind === "transition") {
-    // Native dropped the run when it finished: what it showed last is all that is left.
-    release(registry, state, animation)
-    state.mode = "frozen"
-  } else {
-    try {
-      if (readLive(state).playState !== "finished") return
-    } catch (error) {
-      // Cancelled since the frame that finished it: its cancel event is next
-      // and wins, so this finish is not owed to anyone.
-      if (isUnknownAnimation(error)) return
-      throw error
-    }
-  }
+  const info = readLive(state)
+  // Cancelled since the frame that finished it: its cancel event is next and wins.
+  if (info.playState !== "finished") return
   if (state.finished.settled === "pending") state.finished.resolve(animation)
 }
 
@@ -384,18 +361,22 @@ export function isWebAnimationEvent(eventType: string): boolean {
 
 /**
  * Takes the finish or cancel of a CSS animation or transition for the
- * `Animation` object listed for it. Nothing else hears these events: they are
- * not DOM events. A run no one listed is ignored.
+ * `Animation` object listed for it, then tells native it is consumed, which
+ * stops answering for the run as it ended. Nothing else hears these events:
+ * they are not DOM events. A run no one listed is released all the same.
  */
 export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventPayload): void {
   if (event.animationId === undefined) {
     throw new Error(`Event "${event.eventType}" arrived without its animationId`)
   }
-  const registry = registryOf(renderer)
-  const animation = registry.byId.get(event.animationId)
-  if (!animation) return
-  if (event.eventType === FINISH_EVENT) finish(registry, animation)
-  else cancel(registry, animation)
+  try {
+    const animation = registryOf(renderer).byId.get(event.animationId)
+    if (!animation) return
+    if (event.eventType === FINISH_EVENT) finish(animation)
+    else cancel(animation)
+  } finally {
+    renderer.releaseAnimation?.(event.animationId)
+  }
 }
 
 /**
@@ -406,6 +387,6 @@ export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventP
 export function cancelAnimationsOfElements(renderer: object, elementIds: readonly number[]): void {
   const registry = registryOf(renderer)
   for (const elementId of elementIds) {
-    for (const animation of [...(registry.byElement.get(elementId) ?? [])]) cancel(registry, animation)
+    for (const animation of [...(registry.byElement.get(elementId) ?? [])]) cancel(animation)
   }
 }

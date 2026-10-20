@@ -130,6 +130,7 @@ function calls(r, ids) {
     pointerLockElement: () => r.pointerLockElement(),
     readClipboardText: () => r.readClipboardText(),
     registerFont: () => r.registerFont(SQUARE_FONT),
+    releaseAnimation: () => r.releaseAnimation(r.getAnimations(ids.box)[0].id),
     releasePointerCapture: () => r.releasePointerCapture(ids.box, 1),
     requestPointerLock: () => r.requestPointerLock(ids.box),
     requestSubmit: () => r.requestSubmit(ids.form),
