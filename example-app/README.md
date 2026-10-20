@@ -17,7 +17,7 @@ bun run dev
 | `bun run dev` | Start the desktop app with hot remount |
 | `bun run build` | Compile a standalone binary into `dist/todo` |
 | `bun run test` | Drive the app through the GPU test renderer with Vitest |
-| `bun run typecheck` | Run `tsc --noEmit` |
+| `bun run typecheck` | Run `tsrs --noEmit` |
 | `bun run web:dev` | Bundle for the browser and serve on `:4173` |
 | `bun run screenshot` | Drive the app with the automation client and write a PNG |
 
