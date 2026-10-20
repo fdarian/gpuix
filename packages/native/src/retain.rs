@@ -730,7 +730,7 @@ pub(crate) struct Entry<'a> {
     pub stacking_item: bool,
     pub atomic_root: bool,
     /// `Some` for a child spliced out of `display: contents` elements: the key of the styles they
-    /// hand down (`layout::contents::overlay_key`).
+    /// hand down (`layout::contents::Overlay::key`).
     pub contents_overlay: Option<u64>,
     pub anchor_scope: bool,
     /// What an ancestor's `text-box-trim` asks of the ends of the element's lines.
@@ -1508,8 +1508,18 @@ impl Retain {
     }
 
     pub(crate) fn dynamic(&mut self, kind: Dynamic) {
+        self.dynamic_bits(kind as u8);
+    }
+
+    /// `Dynamic` kinds as bits. A spliced child notes what runs on the `display: contents` element
+    /// it came out of: that element is never built, so it cannot say so itself, and its child's
+    /// record is what puts the way up to it on the spine while it runs.
+    pub(crate) fn dynamic_bits(&mut self, bits: u8) {
+        if bits == 0 {
+            return;
+        }
         if let Some(node) = self.top() {
-            node.vol.dynamic |= kind as u8;
+            node.vol.dynamic |= bits;
         }
     }
 

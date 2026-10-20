@@ -69,69 +69,75 @@ pub(crate) fn splice_parent(tree: &RetainedTree, child_id: u64) -> Option<&Retai
     }
 }
 
-/// What a frame that skips the spliced child needs to tell that `inherited_overlay` would give
-/// it the same style: the `display: contents` ancestors between `parent` and the child, and the
-/// style each had when it last changed. 0 for a direct child.
-pub(crate) fn overlay_key(tree: &RetainedTree, parent: &RetainedElement, child_id: u64) -> u64 {
-    let mut fp = crate::retain::Fingerprint::new();
-    let mut current = tree.elements.get(&child_id).and_then(|child| child.parent);
-    while let Some(id) = current.filter(|id| *id != parent.id) {
-        let Some(wrapper) = tree.elements.get(&id) else { break };
-        fp.word(id);
-        fp.word(wrapper.style_serial);
-        current = wrapper.parent;
-    }
-    fp.finish()
+/// What one `display: contents` element hands down in a frame: the inheritable part of its style
+/// as it shows then (with its motion, motion values, transitions and keyframes applied), and the
+/// level it adds to the containers and custom properties.
+#[derive(Debug, Clone)]
+pub(crate) struct Handed {
+    part: StyleDesc,
+    level: Option<ContentsLevel>,
+    /// Of the values above: a spliced child is built again when, and only when, this changes.
+    key: u64,
+    /// What is running on the element, as `retain::Dynamic` bits.
+    pub dynamic: u8,
 }
 
-/// The inheritable style the `display: contents` ancestors between `parent` and a
-/// spliced `child` would have passed down, for `build_element` to fill into the
-/// child's own style. `None` for a direct child.
-pub(crate) fn inherited_overlay(
-    tree: &RetainedTree,
-    parent: &RetainedElement,
-    child_id: u64,
-) -> Option<Box<StyleDesc>> {
-    let chain = contents_between(tree, parent, child_id)?;
-    if chain.is_empty() {
-        return None;
+impl Handed {
+    pub(crate) fn new(id: u64, style: Option<&StyleDesc>, dynamic: u8) -> Self {
+        let part = style.map(StyleDesc::inheritable_part).unwrap_or_default();
+        let level = style.and_then(|style| {
+            let declaration = crate::layout::container::declared(style).map(|declared| (id, declared));
+            (declaration.is_some() || style.custom_properties.is_some())
+                .then(|| ContentsLevel { declaration, custom: style.custom_properties.clone() })
+        });
+        let mut fp = crate::retain::Fingerprint::new();
+        fp.word(id);
+        part.fingerprint(&mut fp);
+        if let Some(level) = &level {
+            fp.str(&format!("{level:?}"));
+        }
+        fp.word(u64::from(dynamic));
+        Self { part, level, key: fp.finish(), dynamic }
     }
+}
 
+/// What the `display: contents` elements between a parent and a spliced child hand it, for
+/// `build_element` to fill into the child's own style.
+pub(crate) struct Overlay {
+    pub style: Box<StyleDesc>,
+    /// What a frame that skips the child needs to tell that `style` is the same: the elements and
+    /// the values each handed down.
+    pub key: u64,
+    pub dynamic: u8,
+}
+
+/// The overlay of `chain`, outermost first. `None` for a direct child.
+pub(crate) fn overlay_of<'a>(chain: impl IntoIterator<Item = &'a Handed>) -> Option<Overlay> {
     let mut overlay = StyleDesc::default();
     let mut levels = Vec::new();
+    let mut fp = crate::retain::Fingerprint::new();
+    let mut dynamic = 0;
+    let mut empty = true;
     // Outermost first, so a nearer ancestor overrides a farther one.
-    for ancestor in chain {
-        if let Some(style) = ancestor.style.as_deref() {
-            overlay.take_inheritable_from(style);
-            let declaration = crate::layout::container::declared(style).map(|declared| (ancestor.id, declared));
-            if declaration.is_some() || style.custom_properties.is_some() {
-                levels.push(ContentsLevel { declaration, custom: style.custom_properties.clone() });
-            }
-        }
+    for handed in chain {
+        empty = false;
+        overlay.take_inheritable_from(&handed.part);
+        levels.extend(handed.level.clone());
+        fp.word(handed.key);
+        dynamic |= handed.dynamic;
+    }
+    if empty {
+        return None;
     }
     overlay.contents_levels = (!levels.is_empty()).then(|| levels.into());
-    Some(Box::new(overlay))
+    Some(Overlay { style: Box::new(overlay), key: fp.finish(), dynamic })
 }
 
-/// What a `display: contents` ancestor passes to the children spliced out of it that is not a
-/// field of the style: the query container it declares, which has no box, and the custom
-/// properties it sets, which a `style()` query of the child reads before the child's own build
-/// has inherited anything.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ContentsLevel {
-    pub declaration: Option<(u64, crate::layout::container::Declared)>,
-    pub custom: Option<crate::css::custom_properties::CustomProperties>,
-}
-
-impl StyleDesc {
-    /// Copies the properties CSS inherits that this style sets.
-    fn take_inheritable_from(&mut self, other: &StyleDesc) {
-        macro_rules! take {
-            ($($field:ident),*) => {
-                $(if other.$field.is_some() { self.$field = other.$field.clone(); })*
-            };
-        }
-        take!(
+/// Runs the macro `$each` on the fields of `StyleDesc` that CSS inherits and that a
+/// `display: contents` element hands down as they are.
+macro_rules! inheritable_fields {
+    ($each:ident) => {
+        $each!(
             color,
             font_size,
             font_family,
@@ -155,11 +161,47 @@ impl StyleDesc {
             visibility,
             user_select,
             selection_color
-        );
+        )
+    };
+}
+
+/// What a `display: contents` ancestor passes to the children spliced out of it that is not a
+/// field of the style: the query container it declares, which has no box, and the custom
+/// properties it sets, which a `style()` query of the child reads before the child's own build
+/// has inherited anything.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ContentsLevel {
+    pub declaration: Option<(u64, crate::layout::container::Declared)>,
+    pub custom: Option<crate::css::custom_properties::CustomProperties>,
+}
+
+impl StyleDesc {
+    /// Copies the properties CSS inherits that this style sets.
+    fn take_inheritable_from(&mut self, other: &StyleDesc) {
+        macro_rules! take {
+            ($($field:ident),*) => {
+                $(if other.$field.is_some() { self.$field = other.$field.clone(); })*
+            };
+        }
+        inheritable_fields!(take);
         // Either `textBoxEdge` or the edge of the `textBox` shorthand.
         if let Some(edge) = crate::css::text_box::of(other).edge {
             self.text_box_edge = Some(edge);
         }
+    }
+
+    /// Mixes in the inheritable properties this style sets, by value.
+    fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
+        macro_rules! mix {
+            ($($field:ident),*) => {
+                $(if let Some(value) = &self.$field {
+                    fp.str(stringify!($field));
+                    fp.str(&format!("{value:?}"));
+                })*
+            };
+        }
+        inheritable_fields!(mix);
+        mix!(text_box_edge);
     }
 
     /// Only the properties CSS inherits: what a box-less element passes to the
@@ -188,31 +230,7 @@ impl StyleDesc {
                 $(if self.$field.is_none() && overlay.$field.is_some() { result.to_mut().$field = overlay.$field.clone(); })*
             };
         }
-        fill!(
-            color,
-            font_size,
-            font_family,
-            font_weight,
-            text_align,
-            direction,
-            line_height,
-            white_space,
-            tab_size,
-            text_underline_offset,
-            word_break,
-            overflow_wrap,
-            border_spacing,
-            border_collapse,
-            caption_side,
-            empty_cells,
-            text_wrap,
-            text_wrap_mode,
-            text_wrap_style,
-            cursor,
-            visibility,
-            user_select,
-            selection_color
-        );
+        inheritable_fields!(fill);
         if overlay.text_box_edge.is_some() && crate::css::text_box::of(&result).edge.is_none() {
             result.to_mut().text_box_edge = overlay.text_box_edge;
         }
@@ -327,12 +345,20 @@ mod tests {
         assert_eq!(merged.text_wrap_style, declared.text_wrap_style);
     }
 
+    fn overlay(tree: &RetainedTree, parent: &RetainedElement, child_id: u64) -> Option<Overlay> {
+        let chain: Vec<Handed> = contents_between(tree, parent, child_id)?
+            .into_iter()
+            .map(|wrapper| Handed::new(wrapper.id, wrapper.style.as_deref(), 0))
+            .collect();
+        overlay_of(&chain)
+    }
+
     #[test]
     fn spliced_children_inherit_from_the_removed_ancestors() {
         let tree = tree();
         let parent = tree.elements.get(&1).unwrap();
-        assert_eq!(inherited_overlay(&tree, parent, 7), None);
-        let overlay = inherited_overlay(&tree, parent, 4).unwrap();
+        assert!(overlay(&tree, parent, 7).is_none());
+        let overlay = overlay(&tree, parent, 4).unwrap().style;
         assert_eq!(overlay.color.as_deref(), Some("red"));
 
         let own = StyleDesc {
@@ -351,6 +377,27 @@ mod tests {
             own_color.with_inherited_overlay(&overlay).color.as_deref(),
             Some("blue")
         );
+    }
+
+    #[test]
+    fn the_key_follows_the_values_handed_down_and_not_the_style_around_them() {
+        let red = Handed::new(2, Some(&StyleDesc { color: Some("red".to_string()), ..Default::default() }), 0);
+        let red_with_background = Handed::new(
+            2,
+            Some(&StyleDesc {
+                color: Some("red".to_string()),
+                background_color: Some("blue".to_string()),
+                ..Default::default()
+            }),
+            0,
+        );
+        let blue = Handed::new(2, Some(&StyleDesc { color: Some("blue".to_string()), ..Default::default() }), 0);
+        let running = Handed::new(2, Some(&StyleDesc { color: Some("red".to_string()), ..Default::default() }), 2);
+        let key = |handed: &Handed| overlay_of([handed]).unwrap().key;
+        assert_eq!(key(&red), key(&red_with_background));
+        assert_ne!(key(&red), key(&blue));
+        assert_ne!(key(&red), key(&running));
+        assert_eq!(overlay_of([&running]).unwrap().dynamic, 2);
     }
 
     #[test]

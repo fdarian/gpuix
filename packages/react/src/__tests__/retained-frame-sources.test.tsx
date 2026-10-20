@@ -892,9 +892,8 @@ describeNative("an inline span and an svg group running inside a root", () => {
     },
   ])
 
-  // gpuix does not apply a motion, a transition or an animation of the display: contents element to what
-  // it hands down (with retention off too), so there is nothing to see move: the frames have to be the
-  // same as the ones a build gives.
+  // The display: contents element is never built, so its children are what carry its running motion, and
+  // they have to be built each frame it runs, with the colour it shows then.
   cases(
     [
       {
@@ -907,7 +906,6 @@ describeNative("an inline span and an svg group running inside a root", () => {
         begin: () => {},
         read: inkOf,
         frames: 4,
-        still: true,
       },
       {
         name: "a CSS transition on the display: contents element itself",
@@ -916,7 +914,6 @@ describeNative("an inline span and an svg group running inside a root", () => {
         ),
         read: inkOf,
         frames: 4,
-        still: true,
       },
       {
         name: "a keyframe animation on the display: contents element itself",
@@ -924,7 +921,6 @@ describeNative("an inline span and an svg group running inside a root", () => {
         begin: () => {},
         read: inkOf,
         frames: 4,
-        still: true,
       },
     ],
     MODES

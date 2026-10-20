@@ -6522,7 +6522,9 @@ so that animation starts at `0`.
   styles (size, padding, background, border) do not apply, its inheritable text
   style (`color`, `fontSize`, `fontFamily`, `fontWeight`, `textAlign`,
   `lineHeight`, `whiteSpace`, `tabSize`, `cursor`, `visibility`, `userSelect`) passes to the
-  children, and `getElementBounds` returns `null` for it. As a root, or as a
+  children, as it shows in each frame: a `motion`, a CSS transition or a keyframes
+  animation of one of those on the element moves the children's text, and one of a
+  property that needs a box (`opacity`, `backgroundColor`, a size) does nothing. `getElementBounds` returns `null` for it. As a root, or as a
   `<virtual-list>` row (a list lays out one measured item per row), it has no
   parent to splice into, so its children lay out in an anonymous block in its
   place. Its own listeners still hear every event that passes through it, with

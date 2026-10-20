@@ -5243,6 +5243,8 @@ pub(crate) struct GpuixView {
     css_animations: crate::motion::CssAnimations,
     /// Runs that finished or were cancelled, until JS has consumed the event.
     retired_animations: crate::motion::web_animation::Retired,
+    /// What the `display: contents` elements handed down in the frame being built, see `splice_overlay`.
+    contents_styles: HashMap<u64, Arc<ContentsFrame>>,
     /// What the last paint measured for the elements that animate.
     measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
@@ -5806,6 +5808,7 @@ impl GpuixView {
             css_transitions: Default::default(),
             css_animations: Default::default(),
             retired_animations: Default::default(),
+            contents_styles: Default::default(),
             measurements: Default::default(),
             layout_flips: Default::default(),
             svg_trees: Default::default(),
@@ -6326,6 +6329,7 @@ impl GpuixView {
             motion_values: &self.motion_values,
             css_transitions: &mut self.css_transitions,
             css_animations: &mut self.css_animations,
+            contents_styles: &mut self.contents_styles,
             keyframes: &self.keyframes,
             measurements: &self.measurements,
             layout_flips: &self.layout_flips,
@@ -6345,6 +6349,7 @@ impl GpuixView {
             pointer: &pointer,
             contents_overlay: None,
             contents_key: 0,
+            contents_dynamic: 0,
             anchor_scope: None,
             stacking_root: true,
             stacking_item: false,
@@ -6496,6 +6501,7 @@ pub(crate) struct BuildCtx<'a> {
     motion_values: &'a crate::motion::MotionValueStore,
     css_transitions: &'a mut crate::motion::CssTransitions,
     css_animations: &'a mut crate::motion::CssAnimations,
+    contents_styles: &'a mut HashMap<u64, Arc<ContentsFrame>>,
     keyframes: &'a crate::motion::KeyframesRegistry,
     measurements: &'a crate::motion::measure::Measurements,
     layout_flips: &'a crate::motion::LayoutFlips,
@@ -6534,8 +6540,11 @@ pub(crate) struct BuildCtx<'a> {
     /// Inheritable style of the `display: contents` ancestors of the child about to be
     /// built, taken by `build_element`.
     pub contents_overlay: Option<Box<StyleDesc>>,
-    /// `layout::contents::overlay_key` of the overlay, set with it.
+    /// `layout::contents::Overlay::key` of the overlay, set with it.
     pub contents_key: u64,
+    /// What runs on the `display: contents` elements of the overlay (`retain::Dynamic` bits), set
+    /// with it.
+    pub contents_dynamic: u8,
     /// Set to an `<anchored>` element's id while building its direct children, taken by
     /// `build_element` to resolve `anchor-size()`.
     pub anchor_scope: Option<u64>,
@@ -7691,6 +7700,7 @@ impl GpuixView {
                 motion_values: &self.motion_values,
                 css_transitions: &mut self.css_transitions,
                 css_animations: &mut self.css_animations,
+                contents_styles: &mut self.contents_styles,
                 keyframes: &self.keyframes,
                 measurements: &self.measurements,
                 layout_flips: &self.layout_flips,
@@ -7708,8 +7718,9 @@ impl GpuixView {
                 focus_styles: env.focus_styles,
                 control_styles: env.control_styles,
                 pointer: &pointer,
-                contents_overlay: splice.and_then(|parent| crate::layout::contents::inherited_overlay(&tree, parent, id)),
-                contents_key: splice.map_or(0, |parent| crate::layout::contents::overlay_key(&tree, parent, id)),
+                contents_overlay: None,
+                contents_key: 0,
+                contents_dynamic: 0,
                 anchor_scope: None,
                 stacking_root: env.stacking_root,
                 stacking_item: env.stacking_item,
@@ -7725,6 +7736,9 @@ impl GpuixView {
                 retain: &mut self.retain,
                 tapes: &self.tapes,
             };
+            if let Some(parent) = splice {
+                splice_overlay(&mut ctx, window, parent, id);
+            }
             build_element_in(id, &mut ctx, window, cx, Some(env.enter))
         };
         self.retain.finish_deferred();
@@ -7882,6 +7896,7 @@ impl gpui::Render for GpuixView {
             .retain(|id| tree.elements.contains_key(&id));
         self.css_animations
             .retain(|id| tree.elements.contains_key(&id));
+        self.contents_styles.clear();
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
         self.layout_flips.retain(|id| {
             tree.elements
@@ -7944,6 +7959,7 @@ impl gpui::Render for GpuixView {
                     motion_values: &self.motion_values,
                     css_transitions: &mut self.css_transitions,
                     css_animations: &mut self.css_animations,
+                    contents_styles: &mut self.contents_styles,
                     keyframes: &self.keyframes,
                     measurements: &self.measurements,
                     layout_flips: &self.layout_flips,
@@ -7968,6 +7984,7 @@ impl gpui::Render for GpuixView {
                     pointer: &pointer,
                     contents_overlay: None,
                     contents_key: 0,
+                    contents_dynamic: 0,
                     anchor_scope: None,
                     stacking_root: true,
                     stacking_item: false,
@@ -8174,6 +8191,7 @@ fn build_element_in(
         });
         if let Some(skip) = skip {
             ctx.contents_overlay = None;
+            ctx.contents_dynamic = 0;
             ctx.anchor_scope = None;
             return retained_root(id, skip, ctx, window, cx);
         }
@@ -8313,6 +8331,320 @@ fn enter_contents(ctx: &mut BuildCtx) -> Option<Inherited> {
     Some(outside)
 }
 
+/// What `animate_style` starts from.
+struct StyleInputs<'a> {
+    /// The style with the `@container` blocks folded in: what the stages ask whether they apply to.
+    declared: Option<&'a StyleDesc>,
+    /// `declared` with the state styles (`hover`, `focus`, ...) folded in.
+    base: Option<&'a StyleDesc>,
+    before_transition: Option<&'a StyleDesc>,
+    pointer_states: crate::events::state_styles::PointerStates,
+    /// Until every container above has been laid out once, the style is a guess that the next
+    /// pass replaces. It must not seed a transition or an animation: the correct style would
+    /// then animate in from the guess.
+    provisional: bool,
+    /// Whether a `display: none` that a transition produces ends the build: only an element with
+    /// a box has one to end.
+    may_hide: bool,
+}
+
+/// An element's style in this frame, after the stages that move with time. Owned, so that the
+/// build of an element and the overlay of a `display: contents` element that is never built read
+/// the one result.
+struct Animated {
+    /// A `display` transition has hidden the element: no stage after it ran.
+    hidden: bool,
+    transitioned: Option<crate::motion::DeclaredStyle>,
+    moved: Option<StyleDesc>,
+    bound: Option<StyleDesc>,
+    animated: Option<StyleDesc>,
+    /// What the animations of an `<svg>` write on its root, for its shapes to inherit.
+    svg_css: Vec<(&'static str, String)>,
+    /// Whether the element is measured (and wrapped to be).
+    measured: bool,
+    measurement: Option<crate::motion::measure::Measurement>,
+    focus_visible_own: Option<bool>,
+    /// What runs on the element now, as `retain::Dynamic` bits.
+    dynamic: u8,
+}
+
+impl Animated {
+    /// The style before `motion`, motion values and keyframes.
+    fn declared<'s>(&'s self, base: Option<&'s StyleDesc>) -> Option<&'s StyleDesc> {
+        self.transitioned.as_ref().map(|declared| &declared.style).or(base)
+    }
+
+    fn current<'s>(&'s self, base: Option<&'s StyleDesc>) -> Option<&'s StyleDesc> {
+        self.animated
+            .as_ref()
+            .or(self.bound.as_ref())
+            .or(self.moved.as_ref())
+            .or_else(|| self.declared(base))
+    }
+
+    /// Whether `current` is another style than `base`.
+    fn restyled(&self) -> bool {
+        self.transitioned.is_some() || self.moved.is_some() || self.bound.is_some() || self.animated.is_some()
+    }
+}
+
+/// Steps what moves an element's style to `ctx.now`, in the order the cascade has it: CSS
+/// transitions on the state-folded style, then `motion` (an `animate` value is an inline style and
+/// beats a transition), then motion values, then CSS animations, which beat every normal
+/// declaration except on a property a transition is running on, as a transition beats an
+/// animation.
+///
+/// It advances the state of the element (`CssTransitions`, `CssAnimations`), so it runs once per
+/// frame for an element, and says what it found to the caller instead of noting it in `ctx.retain`:
+/// the element being built is not always the one that was stepped.
+fn animate_style(
+    ctx: &mut BuildCtx,
+    window: &gpui::Window,
+    element: &crate::retained_tree::RetainedElement,
+    input: StyleInputs,
+) -> Animated {
+    use crate::retain::Dynamic;
+
+    let id = element.id;
+    let props = element.custom_props();
+    let has_motion = props.contains_key("motion");
+    let motion_binding = props.get("motionValues");
+    let transitions_wanted = !input.provisional && ctx.css_transitions.wants(id, input.declared);
+    let animations_wanted = !input.provisional && ctx.css_animations.wants(id, input.declared);
+    // A plain element has no measurement to read: it is not wrapped below, and
+    // the root render prunes the measurement of any element that was not.
+    let measured = has_motion || transitions_wanted || animations_wanted;
+    let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
+    let mut dynamic = 0;
+    if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
+        dynamic |= Dynamic::Motion as u8;
+    }
+    if motion_binding.is_some() {
+        dynamic |= Dynamic::MotionValues as u8;
+    }
+    if animations_wanted {
+        dynamic |= Dynamic::Animation as u8;
+    }
+    let mut focus_visible_own = None;
+    let transitioned = (transitions_wanted || animations_wanted).then(|| {
+        let focus_visible = crate::motion::FocusVisible {
+            own: ctx
+                .focus_handles
+                .get(&id)
+                .is_some_and(|handle| handle.is_focused(window))
+                && window.last_input_was_keyboard(),
+            descendant: ctx.focus_styles.has_focus_visible(id),
+        };
+        focus_visible_own = Some(focus_visible.own);
+        crate::motion::resolve_declared_style(
+            transitions_wanted.then_some(&mut *ctx.css_transitions),
+            animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
+            input.before_transition,
+            &ctx.inherited.colors,
+            &ctx.inherited.parent_font(),
+            input.pointer_states,
+            ctx.motion_states.get(&id),
+            id,
+            input.declared.unwrap_or(&EMPTY_STYLE),
+            focus_visible,
+            measurement.as_ref(),
+            ctx.inherited.interpolate_size,
+            crate::motion::Scope::Element,
+            ctx.now,
+        )
+    });
+    // A `display` transition with `allow-discrete` kept the box until now.
+    if input.may_hide
+        && crate::layout::box_generation::declares_display_none(element)
+        && transitioned
+            .as_ref()
+            .is_none_or(|declared| declared.style.display.as_deref() == Some("none"))
+    {
+        return Animated {
+            hidden: true,
+            transitioned: None,
+            moved: None,
+            bound: None,
+            animated: None,
+            svg_css: Vec::new(),
+            measured,
+            measurement,
+            focus_visible_own,
+            dynamic,
+        };
+    }
+    if transitioned.as_ref().is_some_and(|declared| declared.transitions.is_some()) {
+        dynamic |= Dynamic::Transition as u8;
+    }
+    let declared_style = transitioned.as_ref().map(|declared| &declared.style).or(input.base);
+    let moved = if has_motion {
+        ctx.motion_states
+            .get(&id)
+            .and_then(|state| state.visible_style(ctx.now))
+            .map(|style| {
+                // `Arc<StyleDesc>` is shared, so the animated frame is applied to a
+                // copy. Mutating through the pointer would restyle every element
+                // that declared the same style.
+                let mut resolved = declared_style.cloned().unwrap_or_default();
+                style.apply_to(&mut resolved);
+                resolved
+            })
+    } else {
+        None
+    };
+    // Motion values are inline style as well, and come after `motion`.
+    let bound = motion_binding.map(|binding| {
+        let mut resolved = moved.as_ref().or(declared_style).cloned().unwrap_or_default();
+        ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_font());
+        resolved
+    });
+    let underlying_style = bound.as_ref().or(moved.as_ref()).or(declared_style);
+    let css_values = animations_wanted
+        .then(|| {
+            let beneath = underlying_style.unwrap_or(&EMPTY_STYLE);
+            let subject = if element.element_type == "svg" {
+                crate::motion::Subject::svg_host(beneath, element.custom_props())
+            } else {
+                crate::motion::Subject::element(beneath)
+            };
+            ctx.css_animations.update(
+                id,
+                declared_style.unwrap_or(&EMPTY_STYLE),
+                &subject,
+                &ctx.inherited.colors,
+                &ctx.inherited.parent_font(),
+                measurement.as_ref(),
+                ctx.inherited.interpolate_size,
+                crate::motion::Scope::Element,
+                ctx.now,
+            )
+        })
+        .flatten();
+    // What the animations of an `<svg>` write on its root, for its shapes to inherit.
+    let svg_css = css_values.as_ref().map(crate::motion::AnimationStyle::svg_attributes).unwrap_or_default();
+    let animated = css_values.map(|values| {
+        let mut resolved = underlying_style.cloned().unwrap_or_default();
+        values.apply_to(
+            &mut resolved,
+            transitioned
+                .as_ref()
+                .and_then(|declared| declared.transitions.as_ref()),
+        );
+        resolved
+    });
+    Animated {
+        hidden: false,
+        transitioned,
+        moved,
+        bound,
+        animated,
+        svg_css,
+        measured,
+        measurement,
+        focus_visible_own,
+        dynamic,
+    }
+}
+
+/// What a `display: contents` element handed down in a frame, kept for the other children spliced
+/// out of it.
+struct ContentsFrame {
+    now: web_time::Instant,
+    /// The style it showed, for the elements below it that resolve against it.
+    style: Option<Arc<StyleDesc>>,
+    handed: crate::layout::contents::Handed,
+}
+
+/// Sets the overlay of `child_id`, a child of `parent` spliced out of the `display: contents`
+/// elements between them, and what runs on those elements, in `ctx`. They are never built, so
+/// their motion, motion values, transitions and keyframes are stepped here, once a frame for each
+/// (`ctx.contents_styles`), by the same `animate_style` as an element that is built. What they
+/// pass down is the style they show now, and a `display: contents` element that runs something
+/// marks the build of each child it hands that to as dynamic, so a frame builds it, and the way
+/// up to the `display: contents` element, while it runs.
+fn splice_overlay(
+    ctx: &mut BuildCtx,
+    window: &gpui::Window,
+    parent: &crate::retained_tree::RetainedElement,
+    child_id: u64,
+) {
+    ctx.contents_overlay = None;
+    ctx.contents_key = 0;
+    ctx.contents_dynamic = 0;
+    let Some(wrappers) = crate::layout::contents::contents_between(ctx.tree, parent, child_id) else {
+        return;
+    };
+    if wrappers.is_empty() {
+        return;
+    }
+    let mut frames: Vec<Arc<ContentsFrame>> = Vec::with_capacity(wrappers.len());
+    for (ix, wrapper) in wrappers.iter().enumerate() {
+        let frame = match ctx.contents_styles.get(&wrapper.id).filter(|frame| frame.now == ctx.now) {
+            Some(frame) => frame.clone(),
+            None => {
+                let frame = Arc::new(contents_frame(ctx, window, &wrappers[..ix], &frames, wrapper));
+                ctx.contents_styles.insert(wrapper.id, frame.clone());
+                frame
+            }
+        };
+        frames.push(frame);
+    }
+    if let Some(overlay) = crate::layout::contents::overlay_of(frames.iter().map(|frame| &frame.handed)) {
+        ctx.contents_overlay = Some(overlay.style);
+        ctx.contents_key = overlay.key;
+        ctx.contents_dynamic = overlay.dynamic;
+    }
+}
+
+/// `wrapper`, a `display: contents` element inside `above` (outermost first, with the frames they
+/// showed), as it shows in this frame.
+fn contents_frame(
+    ctx: &mut BuildCtx,
+    window: &gpui::Window,
+    above: &[&crate::retained_tree::RetainedElement],
+    frames: &[Arc<ContentsFrame>],
+    wrapper: &crate::retained_tree::RetainedElement,
+) -> ContentsFrame {
+    let declared = wrapper.style.as_deref();
+    let moves = wrapper.custom_props().contains_key("motion")
+        || wrapper.custom_props().contains_key("motionValues")
+        || ctx.css_transitions.wants(wrapper.id, declared)
+        || ctx.css_animations.wants(wrapper.id, declared);
+    if !moves {
+        return ContentsFrame {
+            now: ctx.now,
+            style: wrapper.style.clone(),
+            handed: crate::layout::contents::Handed::new(wrapper.id, declared, 0),
+        };
+    }
+    // It inherits from the elements around it as they show now: `em`, `currentColor` and the
+    // colours a transition starts from.
+    let inside = above.iter().zip(frames).fold(ctx.inherited.clone(), |inherited, (above, frame)| {
+        inherited.descend(frame.style.as_deref(), above.has_inert_prop())
+    });
+    let outside = std::mem::replace(&mut ctx.inherited, inside);
+    let animated = animate_style(
+        ctx,
+        window,
+        wrapper,
+        StyleInputs {
+            declared,
+            base: declared,
+            before_transition: wrapper.style_before_transition(),
+            pointer_states: Default::default(),
+            provisional: false,
+            may_hide: false,
+        },
+    );
+    ctx.inherited = outside;
+    let shown = animated.current(declared);
+    ContentsFrame {
+        now: ctx.now,
+        style: if animated.restyled() { shown.map(|style| Arc::new(style.clone())) } else { wrapper.style.clone() },
+        handed: crate::layout::contents::Handed::new(wrapper.id, shown, animated.dynamic),
+    }
+}
+
 fn build_element_unpumped(
     id: u64,
     ctx: &mut BuildCtx,
@@ -8328,11 +8660,13 @@ fn build_element_unpumped(
     let passed_trim = std::mem::take(&mut ctx.text_box_trim);
     // Meant for this element, and not for the next one built when it returns early.
     let contents_overlay = ctx.contents_overlay.take();
+    let contents_dynamic = std::mem::take(&mut ctx.contents_dynamic);
     let anchor_scope = ctx.anchor_scope.take();
     let Some(element) = tree.elements.get(&id) else {
         return absent_host(id);
     };
     crate::perf_counters::element_built();
+    ctx.retain.dynamic_bits(contents_dynamic);
 
     // `@container` blocks fold into the declared style before anything reads it, so state
     // styles, transitions and motion all see the style the containers above select.
@@ -8391,142 +8725,38 @@ fn build_element_unpumped(
         ctx.retain.shape(links);
     }
 
-    // State styles and CSS transitions come before motion: an `animate` value
-    // is an inline style and beats a transition. CSS animations come last of
-    // all, as animations beat every normal declaration in CSS, except on a
-    // property a transition is running on: a transition beats an animation.
-    let props = element.custom_props();
-    let has_motion = props.contains_key("motion");
-    let motion_binding = props.get("motionValues");
-    let layout_source = props.get("layout");
-    let transitions_wanted = !provisional && ctx.css_transitions.wants(id, declared);
-    let animations_wanted = !provisional && ctx.css_animations.wants(id, declared);
-    // A plain element has no measurement to read: it is not wrapped below, and
-    // the root render prunes the measurement of any element that was not.
-    let measured = has_motion || transitions_wanted || animations_wanted;
-    let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
-    ctx.retain.measurement(measurement.as_ref());
-    if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
-        ctx.retain.dynamic(crate::retain::Dynamic::Motion);
-    }
-    if motion_binding.is_some() {
-        ctx.retain.dynamic(crate::retain::Dynamic::MotionValues);
-    }
+    let layout_source = element.custom_props().get("layout");
+    let animated = animate_style(
+        ctx,
+        window,
+        element,
+        StyleInputs {
+            declared,
+            base: base_style,
+            before_transition: before_transition.as_ref().or(element.style_before_transition()),
+            pointer_states,
+            provisional,
+            may_hide: true,
+        },
+    );
+    ctx.retain.measurement(animated.measurement.as_ref());
+    ctx.retain.dynamic_bits(animated.dynamic);
     if layout_source.is_some() {
         ctx.retain.exclude(crate::retain::Exclusion::LayoutAnimation);
     }
-    if animations_wanted {
-        ctx.retain.dynamic(crate::retain::Dynamic::Animation);
+    if let Some(own) = animated.focus_visible_own {
+        ctx.retain.focus_visible_own(own);
     }
-    let transitioned = (transitions_wanted || animations_wanted).then(|| {
-        let focus_visible = crate::motion::FocusVisible {
-            own: ctx
-                .focus_handles
-                .get(&id)
-                .is_some_and(|handle| handle.is_focused(window))
-                && window.last_input_was_keyboard(),
-            descendant: ctx.focus_styles.has_focus_visible(id),
-        };
-        ctx.retain.focus_visible_own(focus_visible.own);
-        crate::motion::resolve_declared_style(
-            transitions_wanted.then_some(&mut *ctx.css_transitions),
-            animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
-            before_transition.as_ref().or(element.style_before_transition()),
-            &ctx.inherited.colors,
-            &ctx.inherited.parent_font(),
-            pointer_states,
-            ctx.motion_states.get(&id),
-            id,
-            declared.unwrap_or(&EMPTY_STYLE),
-            focus_visible,
-            measurement.as_ref(),
-            ctx.inherited.interpolate_size,
-            crate::motion::Scope::Element,
-            ctx.now,
-        )
-    });
-    // A `display` transition with `allow-discrete` kept the box until now.
-    if crate::layout::box_generation::declares_display_none(element)
-        && transitioned
-            .as_ref()
-            .is_none_or(|declared| declared.style.display.as_deref() == Some("none"))
-    {
+    if animated.hidden {
         tree.resolved.borrow_mut().forget(id);
         ctx.css_transitions.hide(tree, id, ctx.now);
         ctx.css_animations.hide(tree, id, ctx.now);
         ctx.retain.absent();
         return absent_host(id);
     }
-    if transitioned.as_ref().is_some_and(|declared| declared.transitions.is_some()) {
-        ctx.retain.dynamic(crate::retain::Dynamic::Transition);
-    }
-    let declared_style = transitioned
-        .as_ref()
-        .map(|declared| &declared.style)
-        .or(base_style);
-    let animated_style = if has_motion {
-        ctx.motion_states
-            .get(&id)
-            .and_then(|state| state.visible_style(ctx.now))
-            .map(|style| {
-                // `Arc<StyleDesc>` is shared, so the animated frame is applied to a
-                // copy. Mutating through the pointer would restyle every element
-                // that declared the same style.
-                let mut resolved = declared_style.cloned().unwrap_or_default();
-                style.apply_to(&mut resolved);
-                resolved
-            })
-    } else {
-        None
-    };
-    // Motion values are inline style as well, and come after `motion`.
-    let bound_style = motion_binding.map(|binding| {
-        let mut resolved = animated_style
-            .as_ref()
-            .or(declared_style)
-            .cloned()
-            .unwrap_or_default();
-        ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_font());
-        resolved
-    });
-    let underlying_style = bound_style
-        .as_ref()
-        .or(animated_style.as_ref())
-        .or(declared_style);
-    let css_values = animations_wanted
-        .then(|| {
-            let beneath = underlying_style.unwrap_or(&EMPTY_STYLE);
-            let subject = if element.element_type == "svg" {
-                crate::motion::Subject::svg_host(beneath, element.custom_props())
-            } else {
-                crate::motion::Subject::element(beneath)
-            };
-            ctx.css_animations.update(
-                id,
-                declared_style.unwrap_or(&EMPTY_STYLE),
-                &subject,
-                &ctx.inherited.colors,
-                &ctx.inherited.parent_font(),
-                measurement.as_ref(),
-                ctx.inherited.interpolate_size,
-                crate::motion::Scope::Element,
-                ctx.now,
-            )
-        })
-        .flatten();
-    // What the animations of an `<svg>` write on its root, for its shapes to inherit.
-    let svg_css = css_values.as_ref().map(crate::motion::AnimationStyle::svg_attributes).unwrap_or_default();
-    let css_animated = css_values.map(|values| {
-        let mut resolved = underlying_style.cloned().unwrap_or_default();
-        values.apply_to(
-            &mut resolved,
-            transitioned
-                .as_ref()
-                .and_then(|declared| declared.transitions.as_ref()),
-        );
-        resolved
-    });
-    let current_style = css_animated.as_ref().or(underlying_style);
+    let measured = animated.measured;
+    let declared_style = animated.declared(base_style);
+    let current_style = animated.current(base_style);
     let overlaid_style = contents_overlay
         .map(|overlay| current_style.unwrap_or(&EMPTY_STYLE).with_inherited_overlay(&overlay));
     let style = overlaid_style.as_deref().or(current_style);
@@ -8734,7 +8964,7 @@ fn build_element_unpumped(
                             keyframes: ctx.keyframes,
                             colors: &ctx.inherited.colors,
                             font: &font,
-                            host: svg_css,
+                            host: animated.svg_css.clone(),
                             now: ctx.now,
                         },
                     )
@@ -8765,9 +8995,7 @@ fn build_element_unpumped(
                         crate::layout::box_generation::generates_box(ctx.tree, *child_id)
                     })
                     .map(|(ix, child_id)| {
-                        ctx.contents_overlay =
-                            crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-                        ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
+                        splice_overlay(ctx, window, element, child_id);
                         if custom_type == "anchored" {
                             ctx.anchor_scope = Some(id);
                             ctx.stacking_item = resolved.lays_out_items;
@@ -9592,9 +9820,7 @@ fn build_plan(
                         item,
                     ),
                 });
-                ctx.contents_overlay =
-                    crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
-                ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
+                splice_overlay(ctx, window, element, child_id);
                 ctx.stacking_item = item;
                 ctx.text_box_trim = child_trim;
                 let out_of_flow = child_element.is_some_and(|child| {

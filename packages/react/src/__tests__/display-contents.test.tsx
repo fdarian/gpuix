@@ -7,6 +7,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import React from "react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { defineKeyframes, motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
 import type { PublicInstance } from "../types/host.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -17,6 +18,12 @@ const oracle = JSON.parse(
 )
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
+
+const RED = "#ff0000"
+const BLUE = "#0000ff"
+const LINEAR = { duration: 1, ease: "linear" } as const
+
+defineKeyframes("display-contents-ink", { from: { color: RED }, to: { color: BLUE } })
 
 describeNative("display: contents", () => {
   let testRoot: TestRoot
@@ -282,6 +289,152 @@ describeNative("display: contents", () => {
       testRoot.render(app("contents"))
       testRoot.renderer.flush()
       expect(focused(), "a focused element that loses its box blurs").toBe(null)
+    })
+  })
+
+  describe("what moves on it reaches its children", () => {
+    let shots = 0
+    /** The colour of the darkest pixel of the glyphs in a white box: what the text is painted with. */
+    const ink = (testId: string) => {
+      const box = bounds(testId)!
+      const file = `${SHOTS_DIR}/display-contents-ink-${process.pid}-${shots++}.png`
+      testRoot.renderer.captureScreenshot(file)
+      const pixels = readLogicalPixels(file, testRoot.renderer)
+      let darkest = [255, 255, 255]
+      for (let y = Math.floor(box.y); y < Math.ceil(box.y + box.height); y++) {
+        for (let x = Math.floor(box.x); x < Math.ceil(box.x + box.width); x++) {
+          const pixel = pixels.at(x, y)
+          if (pixel[1] < darkest[1]) darkest = [pixel[0], pixel[1], pixel[2]]
+        }
+      }
+      return { red: darkest[0], blue: darkest[2] }
+    }
+    const word = (style: object = {}) => (
+      <div testId="word" style={{ width: 300, backgroundColor: "#ffffff", fontSize: 32, fontWeight: "bold", fontFamily: "Menlo", ...style }}>
+        WWWW
+      </div>
+    )
+    const after = (ms: number) => {
+      testRoot.renderer.clockFastForward(ms)
+      testRoot.renderer.dispatchNativeEvents()
+    }
+
+    it("follows a motion of color, half way and settled", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(
+        <motion.div style={{ display: "contents" }} initial={{ color: RED }} animate={{ color: BLUE }} transition={LINEAR}>
+          {word()}
+        </motion.div>
+      )
+      expect(ink("word")).toMatchObject({ red: 255, blue: 0 })
+
+      after(500)
+      const half = ink("word")
+      expect(half.red).toBeGreaterThan(100)
+      expect(half.red).toBeLessThan(200)
+      expect(half.blue).toBeGreaterThan(100)
+      expect(half.blue).toBeLessThan(200)
+
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 0, blue: 255 })
+    })
+
+    it("follows a motion of color through a wrapper that has nothing to move", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(
+        <div style={{ display: "contents", color: "#00ff00" }}>
+          <motion.div style={{ display: "contents" }} initial={{ color: RED }} animate={{ color: BLUE }} transition={LINEAR}>
+            <div style={{ display: "contents" }}>{word()}</div>
+          </motion.div>
+        </div>
+      )
+      after(500)
+      const half = ink("word")
+      expect(half.red).toBeGreaterThan(100)
+      expect(half.blue).toBeGreaterThan(100)
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 0, blue: 255 })
+    })
+
+    it("follows a motion of color to the text it holds itself", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(
+        <div testId="word" style={{ width: 300, backgroundColor: "#ffffff", fontSize: 32, fontWeight: "bold", fontFamily: "Menlo" }}>
+          <motion.div style={{ display: "contents" }} initial={{ color: RED }} animate={{ color: BLUE }} transition={LINEAR}>
+            WWWW
+          </motion.div>
+        </div>
+      )
+      after(500)
+      expect(ink("word").red).toBeGreaterThan(100)
+      expect(ink("word").blue).toBeGreaterThan(100)
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 0, blue: 255 })
+    })
+
+    it("follows a CSS transition of color that a style change starts", () => {
+      testRoot.renderer.clockPause()
+      const app = (color: string) => (
+        <div style={{ display: "contents", color, transition: "color 1s linear" }}>{word()}</div>
+      )
+      testRoot.render(app(RED))
+      expect(ink("word")).toMatchObject({ red: 255, blue: 0 })
+
+      testRoot.render(app(BLUE))
+      after(500)
+      const half = ink("word")
+      expect(half.red).toBeGreaterThan(100)
+      expect(half.red).toBeLessThan(200)
+      expect(half.blue).toBeGreaterThan(100)
+
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 0, blue: 255 })
+    })
+
+    it("follows a keyframes animation of color", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(<div style={{ display: "contents", animation: "display-contents-ink 1s linear forwards" }}>{word()}</div>)
+      expect(ink("word")).toMatchObject({ red: 255, blue: 0 })
+
+      after(500)
+      const half = ink("word")
+      expect(half.red).toBeGreaterThan(100)
+      expect(half.red).toBeLessThan(200)
+      expect(half.blue).toBeGreaterThan(100)
+
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 0, blue: 255 })
+    })
+
+    it("lays its children out at an animated fontSize", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(
+        <motion.div style={{ display: "contents" }} initial={{ fontSize: 16 }} animate={{ fontSize: 48 }} transition={LINEAR}>
+          <div testId="word" style={{ width: 300 }}>
+            WWWW
+          </div>
+        </motion.div>
+      )
+      const start = bounds("word")!.height
+      after(500)
+      const half = bounds("word")!.height
+      after(600)
+      const end = bounds("word")!.height
+      expect(half).toBeGreaterThan(start)
+      expect(end).toBeGreaterThan(half)
+    })
+
+    it("does nothing with an opacity: it has no box to fade", () => {
+      testRoot.renderer.clockPause()
+      testRoot.render(
+        <motion.div style={{ display: "contents" }} initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={LINEAR}>
+          {word({ color: RED })}
+        </motion.div>
+      )
+      after(500)
+      expect(ink("word")).toMatchObject({ red: 255, blue: 0 })
+      after(600)
+      expect(ink("word")).toMatchObject({ red: 255, blue: 0 })
     })
   })
 })
