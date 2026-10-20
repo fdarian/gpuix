@@ -293,19 +293,22 @@ pub(crate) fn fold(style: &StyleDesc, containers: &dyn Containers) -> Option<Sty
 }
 
 /// Records what the folded `declared` style of an element with `@container` blocks says about
-/// its `display`, which its parent builds its children by (`display: none` takes no part in the
-/// parent's layout, and the paragraph planner makes a box of it, a word on a line or an atomic
-/// inline by it). Returns whether that is not what the parent assumed, so the frame has to be
-/// built again.
-pub(crate) fn settle_display(element: &RetainedElement, declared: Option<&StyleDesc>) -> bool {
-    let assumed = element.display().map(std::borrow::Cow::into_owned);
-    let folded = declared.and_then(|style| style.display.clone());
-    let changed = assumed != folded;
-    *element.container_display.borrow_mut() = Some(folded);
+/// its `display` and its `order`, which its parent builds its children by (`display: none` takes
+/// no part in the parent's layout, and the paragraph planner makes a box of it, a word on a line
+/// or an atomic inline by it; a flex or grid container sorts its items by `order`). Returns
+/// whether that is not what the parent assumed, so the frame has to be built again.
+pub(crate) fn settle(element: &RetainedElement, declared: Option<&StyleDesc>) -> bool {
+    let assumed_display = element.display().map(std::borrow::Cow::into_owned);
+    let folded_display = declared.and_then(|style| style.display.clone());
+    let assumed_order = element.order();
+    let folded_order = declared.and_then(|style| style.order);
+    let changed = assumed_display != folded_display || assumed_order != folded_order;
+    *element.container_display.borrow_mut() = Some(folded_display);
+    *element.container_order.borrow_mut() = Some(folded_order);
     changed
 }
 
-/// [`settle_display`] for the children of `parent` that its own build may not visit, since
+/// [`settle`] for the children of `parent` that its own build may not visit, since
 /// nothing else would find that their blocks show them or turn them into another kind of box: a
 /// child with no box now, and an inline box of the paragraph (a `<span>`, an element a block made
 /// `inline`), which is not built as an element. The inline boxes' children are settled too,
@@ -332,7 +335,7 @@ fn settle_among(tree: &RetainedTree, parent: &RetainedElement, containers: &dyn 
         let Some(child) = tree.elements.get(child_id) else { continue };
         if let Some(style) = child.style.as_deref().filter(|style| style.container_rules.is_some()) {
             let folded = fold(style, containers);
-            *changed |= settle_display(child, folded.as_ref().or(Some(style)));
+            *changed |= settle(child, folded.as_ref().or(Some(style)));
         }
         if crate::text::inline::is_inline_wrapper(child, parent) {
             settle_among(tree, child, containers, changed);

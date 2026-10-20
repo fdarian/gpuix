@@ -101,6 +101,9 @@ pub struct RetainedElement {
     /// that finds another answer asks for the frame to be built again. Read it through
     /// [`Self::display`].
     pub container_display: std::cell::RefCell<Option<Option<String>>>,
+    /// [`Self::container_display`] for `order`, which the parent sorts its flex or grid items by.
+    /// Read it through [`Self::order`].
+    pub container_order: std::cell::RefCell<Option<Option<f64>>>,
     /// Counts the times the effective style of the element was replaced: all that a build of
     /// the child of a `display: contents` element reads of it is its style, and not the
     /// revisions that its descendants move. Not zero once the element has a style.
@@ -144,6 +147,15 @@ impl RetainedElement {
             .as_deref()
             .and_then(|style| style.display.as_deref())
             .map(std::borrow::Cow::Borrowed)
+    }
+
+    /// The `order` the element has: what its style declares, or what its `@container` blocks made
+    /// of it when the last build folded them in (`container_order`).
+    pub fn order(&self) -> Option<f64> {
+        if let Some(folded) = *self.container_order.borrow() {
+            return folded;
+        }
+        self.style.as_deref().and_then(|style| style.order)
     }
 
     /// The element's `tabIndex`, when it has a usable one.
@@ -262,6 +274,7 @@ impl RetainedElement {
             extras: None,
             auto_focus: false,
             container_display: Default::default(),
+            container_order: Default::default(),
             style_serial: 0,
             subtree_revision: revision,
             search_revision: revision,
@@ -1039,6 +1052,7 @@ impl RetainedTree {
         self.style_serials += 1;
         element.style_serial = self.style_serials;
         *element.container_display.borrow_mut() = None;
+        *element.container_order.borrow_mut() = None;
         let escaped_after = containing_block::may_escape(element);
         self.escaping_count += usize::from(escaped_after);
         self.escaping_count -= usize::from(escaped_before);

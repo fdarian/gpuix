@@ -25,19 +25,21 @@ pub(crate) fn children_in_order<'a>(
 }
 
 /// Out-of-flow children are not flex or grid items, so `order` does not apply.
+///
+/// The `order` is the one the child's `@container` blocks gave it when the parent's build settled
+/// them (`container::settle_children`, before the parent sorts), else the declared one.
 fn order_of(tree: &RetainedTree, id: u64) -> i32 {
-    let Some(style) = tree
-        .elements
-        .get(&id)
-        .and_then(|child| child.style.as_deref())
-    else {
+    let Some(child) = tree.elements.get(&id) else {
+        return 0;
+    };
+    let Some(style) = child.style.as_deref() else {
         return 0;
     };
     if matches!(style.position.as_deref(), Some("absolute") | Some("fixed")) {
         return 0;
     }
-    style
-        .order
+    child
+        .order()
         .map_or(0, |order| order.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32)
 }
 
@@ -90,6 +92,48 @@ mod tests {
         let element = tree.elements.get(&id).unwrap();
         *element.container_display.borrow_mut() = Some(Some("block".to_string()));
         assert_eq!(children_in_order(&tree, element).into_owned(), vec![10, 11]);
+    }
+
+    #[test]
+    fn an_order_a_container_block_gave_decides_the_sort() {
+        let (tree, id) = tree_with_orders(&[None, None, None], "flex");
+        *tree.elements[&12].container_order.borrow_mut() = Some(Some(-1.0));
+        let element = tree.elements.get(&id).unwrap();
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![12, 10, 11]);
+
+        // A block can also take away the order a child declared.
+        let (tree, id) = tree_with_orders(&[Some(2.0), None, None], "flex");
+        let element = tree.elements.get(&id).unwrap();
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![11, 12, 10]);
+        *tree.elements[&10].container_order.borrow_mut() = Some(None);
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![10, 11, 12]);
+    }
+
+    #[test]
+    fn settling_the_folded_order_reports_a_change_once_and_sorts_by_it() {
+        let (tree, id) = tree_with_orders(&[None, None], "flex");
+        let child = &tree.elements[&11];
+        let folded = StyleDesc { order: Some(-1.0), ..Default::default() };
+        assert!(crate::layout::container::settle(child, Some(&folded)));
+        assert!(!crate::layout::container::settle(child, Some(&folded)));
+        let element = tree.elements.get(&id).unwrap();
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![11, 10]);
+
+        // The container grew past the block's query: the order is the declared one again.
+        assert!(crate::layout::container::settle(child, Some(&StyleDesc::default())));
+        assert_eq!(children_in_order(&tree, element).into_owned(), vec![10, 11]);
+    }
+
+    #[test]
+    fn a_new_style_forgets_the_order_a_block_gave() {
+        let mut tree = RetainedTree::new();
+        let mut element = RetainedElement::new(1, "div".to_string(), 0);
+        *element.container_order.borrow_mut() = Some(Some(3.0));
+        assert_eq!(element.order(), Some(3.0));
+        element.style = Some(std::sync::Arc::new(StyleDesc { order: Some(1.0), ..Default::default() }));
+        tree.elements.insert(1, element);
+        tree.set_style(1, std::sync::Arc::new(StyleDesc { order: Some(2.0), ..Default::default() }));
+        assert_eq!(tree.elements[&1].order(), Some(2.0));
     }
 
     #[test]

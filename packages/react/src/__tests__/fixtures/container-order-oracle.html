@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Oracle for container-order.test.tsx: where headless Chrome puts the items of a flex or grid container whose `order` an
+  `@container` block sets, with the query container at several widths. Each case is `{ name, kind, container, items }`:
+  `kind` is the display of the row (`flex`, `grid`, or `contents` for a row that is itself a flex container inside a
+  `display: contents` wrapper), `container` is where the query container is (`outside`: a box around the row, `row`: the
+  row itself, which its items query), and every item is `{ id, order, queried, display }` with the `order` it declares, the
+  `order` the block (`(width < 400px)`) gives it, and the `display` the block gives it. The result of a case is the `x` of
+  each item from the left of the row at each container width. Regenerate with
+
+    sh container-order-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+.box{container:box/inline-size}
+.row.flex{display:flex}
+.row.grid{display:grid;grid-template-columns:40px 40px 40px 40px}
+.row.contents{display:flex}
+.item{width:40px;height:20px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const WIDTHS = [300, 500];
+const item = (id, order, queried, display) => ({ id, order, queried, display });
+const CASES = [
+  { name: 'flex, negative order in the block', kind: 'flex', container: 'outside', items: [item('a'), item('b'), item('c', undefined, -1), item('d')] },
+  { name: 'flex, positive order in the block', kind: 'flex', container: 'outside', items: [item('a', undefined, 2), item('b'), item('c'), item('d')] },
+  { name: 'flex, the block moves several items', kind: 'flex', container: 'outside', items: [item('a', undefined, 3), item('b', undefined, 2), item('c', undefined, 1), item('d')] },
+  { name: 'flex, the block overrides a declared order', kind: 'flex', container: 'outside', items: [item('a', 3, 0), item('b', 2), item('c', 1), item('d')] },
+  { name: 'flex, the block sets order 0 over a negative one', kind: 'flex', container: 'outside', items: [item('a'), item('b', -1, 0), item('c'), item('d')] },
+  { name: 'flex, order in the block ties with a declared order', kind: 'flex', container: 'outside', items: [item('a'), item('b', 1), item('c', undefined, 1), item('d')] },
+  { name: 'flex, a container that is the row itself', kind: 'flex', container: 'row', items: [item('a'), item('b'), item('c', undefined, -1), item('d')] },
+  { name: 'grid, negative order in the block', kind: 'grid', container: 'outside', items: [item('a'), item('b'), item('c', undefined, -1), item('d')] },
+  { name: 'grid, positive order in the block', kind: 'grid', container: 'outside', items: [item('a', undefined, 1), item('b'), item('c', undefined, 2), item('d')] },
+  { name: 'flex, order and display none in the block', kind: 'flex', container: 'outside', items: [item('a'), item('b', undefined, -1, 'none'), item('c'), item('d', undefined, -2)] },
+  { name: 'flex, the row is inside a display: contents box', kind: 'contents', container: 'outside', items: [item('a'), item('b'), item('c', undefined, -1), item('d')] },
+];
+
+const scene = document.getElementById('scene');
+const out = [];
+for (const spec of CASES) {
+  const wrapper = document.createElement('div');
+  const rules = spec.items
+    .filter((entry) => entry.queried !== undefined || entry.display)
+    .map((entry) => `#${entry.id}{${entry.queried !== undefined ? `order:${entry.queried};` : ''}${entry.display ? `display:${entry.display}` : ''}}`)
+    .join('');
+  const row = `<div id="row" class="row ${spec.kind}${spec.container === 'row' ? ' box' : ''}">` +
+    spec.items.map((entry) => `<div id="${entry.id}" class="item"></div>`).join('') +
+    '</div>';
+  // The declared order is a rule of the same specificity as the block's, in front of it: an inline style would beat the block.
+  const declared = spec.items.filter((entry) => entry.order !== undefined).map((entry) => `#${entry.id}{order:${entry.order}}`).join('');
+  wrapper.innerHTML = `<style>${declared}@container box (width < 400px){${rules}}</style>` +
+    (spec.container === 'row' ? row : `<div id="box" class="box">${spec.kind === 'contents' ? `<div style="display:contents">${row}</div>` : row}</div>`);
+  scene.appendChild(wrapper);
+  const sized = document.getElementById(spec.container === 'row' ? 'row' : 'box');
+  const results = {};
+  for (const width of WIDTHS) {
+    sized.style.width = `${width}px`;
+    const origin = document.getElementById('row').getBoundingClientRect().left;
+    results[width] = spec.items.map((entry) => {
+      const element = document.getElementById(entry.id);
+      return getComputedStyle(element).display === 'none' ? null : element.getBoundingClientRect().left - origin;
+    });
+  }
+  out.push({ name: spec.name, kind: spec.kind, container: spec.container, items: spec.items, widths: WIDTHS, results });
+  scene.removeChild(wrapper);
+}
+const output = document.createElement('div');
+output.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(output);
+</script></body></html>

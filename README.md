@@ -7642,7 +7642,8 @@ Differences from the browser:
   stacks) and what part of a table it is (`table`, `inline-table` and the other
   `table-*` values, which also decide what a table, row group or row wraps in an anonymous
   cell, and what a block wraps in an anonymous table): the parent is rebuilt when a block
-  changes one. `display: contents` is not taken from a block, since the parent splices a
+  changes one. A block's `order` is settled the same way, before the parent sorts its items, so
+  an item moves in the frame that resizes the container. `display: contents` is not taken from a block, since the parent splices a
   child in before it is built. An element a block makes `inline` is a span of its parent's
   text, which takes no blocks, so its other blocks stop applying while it is
 - There are no vertical writing modes (`writing-mode`, `text-orientation`), so `cqi` is

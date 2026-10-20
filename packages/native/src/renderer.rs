@@ -8303,10 +8303,10 @@ fn build_element_unpumped(
     let before_transition = element
         .style_before_transition()
         .and_then(|before| crate::layout::container::fold(before, &containers));
-    // A parent builds its children by whether this element has a box, before this element is
-    // built, so what it assumed has to be what the folded style says.
+    // A parent builds its children by whether this element has a box and by its `order`, before
+    // this element is built, so what it assumed has to be what the folded style says.
     if element.style.as_deref().is_some_and(|style| style.container_rules.is_some())
-        && crate::layout::container::settle_display(element, declared)
+        && crate::layout::container::settle(element, declared)
     {
         window.request_redraw_before_present();
     }
