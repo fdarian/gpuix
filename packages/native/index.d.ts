@@ -564,6 +564,13 @@ export declare class TestGpuixRenderer {
    * set, since the window was made: subtract two reads for a span of frames.
    */
   getLayoutCounters(): LayoutCounters
+  /**
+   * What building and drawing the elements did since the window was made: elements prepainted
+   * and painted (culled ones apart), and the scene primitives painting inserted against the
+   * ones a replay inserted again. Subtract two reads for a span of frames. Next to
+   * `getRetainedCounters`, which counts the replays themselves.
+   */
+  getFrameWorkCounters(): FrameWorkCounters
   resetBuildCounters(): void
   /**
    * How many frames the window has painted. A test that must prove a read did not draw once
@@ -1470,6 +1477,28 @@ export interface EventPayload {
   modifiers?: EventModifiers
 }
 
+/**
+ * What building and drawing the elements did in the window since it was made, see
+ * `get_frame_work_counters`.
+ */
+export interface FrameWorkCounters {
+  /**
+   * Elements whose own prepaint ran, outside a subtree the clip hides. A retained subtree that
+   * is replayed prepaints none of its elements, and its root wrapper is not counted.
+   */
+  prepainted: number
+  /** Elements prepainted inside a subtree the clip hides (culled). */
+  culledPrepainted: number
+  /** Elements whose own paint ran. */
+  painted: number
+  /** Elements painted inside a culled subtree. */
+  culledPainted: number
+  /** Primitives painting put into the scene, after what is hidden or clipped away is left out. */
+  paintedPrimitives: number
+  /** Primitives a replay put into the scene again, which are not painted ones. */
+  replayedPrimitives: number
+}
+
 /** True only when this binary compiled the real GPU test renderer. */
 export declare function hasTestGpuixRenderer(): boolean
 
@@ -1566,6 +1595,18 @@ export interface LayoutCounters {
   wrappedLayouts: number
   /** Line layout lookups that found a layout of this frame or the frame before. */
   lineLayoutHits: number
+  /**
+   * Subtrees whose painted extent (what culling reads) was worked out from their children,
+   * not found as an earlier pass or frame left it.
+   */
+  extentWalks: number
+  /** Subtrees whose scrollable overflow was worked out from their children. */
+  overflowWalks: number
+  /**
+   * Like `overflowWalks`, for the overflow from the unsnapped boxes that `scrollWidth` and
+   * `scrollHeight` read.
+   */
+  unsnappedOverflowWalks: number
 }
 
 /** The OS accessibility preferences that media queries expose. */

@@ -73,6 +73,34 @@ pub struct LayoutCounters {
     pub wrapped_layouts: f64,
     /// Line layout lookups that found a layout of this frame or the frame before.
     pub line_layout_hits: f64,
+    /// Subtrees whose painted extent (what culling reads) was worked out from their children,
+    /// not found as an earlier pass or frame left it.
+    pub extent_walks: f64,
+    /// Subtrees whose scrollable overflow was worked out from their children.
+    pub overflow_walks: f64,
+    /// Like `overflowWalks`, for the overflow from the unsnapped boxes that `scrollWidth` and
+    /// `scrollHeight` read.
+    pub unsnapped_overflow_walks: f64,
+}
+
+/// What building and drawing the elements did in the window since it was made, see
+/// `get_frame_work_counters`.
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct FrameWorkCounters {
+    /// Elements whose own prepaint ran, outside a subtree the clip hides. A retained subtree that
+    /// is replayed prepaints none of its elements, and its root wrapper is not counted.
+    pub prepainted: f64,
+    /// Elements prepainted inside a subtree the clip hides (culled).
+    pub culled_prepainted: f64,
+    /// Elements whose own paint ran.
+    pub painted: f64,
+    /// Elements painted inside a culled subtree.
+    pub culled_painted: f64,
+    /// Primitives painting put into the scene, after what is hidden or clipped away is left out.
+    pub painted_primitives: f64,
+    /// Primitives a replay put into the scene again, which are not painted ones.
+    pub replayed_primitives: f64,
 }
 
 /// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
@@ -909,6 +937,28 @@ impl TestGpuixRenderer {
                 shapes: text.shapes as f64,
                 wrapped_layouts: text.wrapped_layouts as f64,
                 line_layout_hits: text.hits as f64,
+                extent_walks: counters.extent_walks as f64,
+                overflow_walks: counters.overflow_walks as f64,
+                unsnapped_overflow_walks: counters.unsnapped_overflow_walks as f64,
+            }
+        })
+    }
+
+    /// What building and drawing the elements did since the window was made: elements prepainted
+    /// and painted (culled ones apart), and the scene primitives painting inserted against the
+    /// ones a replay inserted again. Subtract two reads for a span of frames. Next to
+    /// `getRetainedCounters`, which counts the replays themselves.
+    #[napi]
+    pub fn get_frame_work_counters(&self) -> Result<FrameWorkCounters> {
+        window_call(|window, _cx| {
+            let counters = window.frame_work_counters();
+            FrameWorkCounters {
+                prepainted: counters.prepainted as f64,
+                culled_prepainted: counters.culled_prepainted as f64,
+                painted: counters.painted as f64,
+                culled_painted: counters.culled_painted as f64,
+                painted_primitives: counters.painted_primitives as f64,
+                replayed_primitives: counters.replayed_primitives as f64,
             }
         })
     }

@@ -14,6 +14,7 @@ import {
   TestGpuixRenderer,
   validateKeyframes,
   type BuildCounters,
+  type FrameWorkCounters,
   type LayoutCounters,
   type RetainedCounters,
   type EventPayload,
@@ -139,6 +140,7 @@ interface NativeTestRendererApi
   getBuildCounters(): BuildCounters
   getLayoutCounters(): LayoutCounters
   getRetainedCounters(): RetainedCounters
+  getFrameWorkCounters(): FrameWorkCounters
   getRetentionMismatches(): string[]
   resetBuildCounters(): void
   setRetainVerify(verify: boolean): void
@@ -932,13 +934,22 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getRetainedCounters()
   }
 
+  /** What building and drawing the elements did since the window was made: elements prepainted and
+   *  painted (those in a culled subtree apart), and the scene primitives painting inserted against
+   *  the ones a replay inserted again. A replayed subtree prepaints and paints none of its
+   *  elements; its replays are `getRetainedCounters().replays`. */
+  getFrameWorkCounters(): FrameWorkCounters {
+    return this.native.getFrameWorkCounters()
+  }
+
   /** How the frames compared under `setRetainVerify` differed from a whole build. */
   getRetentionMismatches(): string[] {
     return this.native.getRetentionMismatches()
   }
 
-  /** Layout nodes made, found again and freed, and styles and child lists set,
-   *  by the window's layout engine since the window was made. */
+  /** Layout nodes made, found again and freed, styles and child lists set, text measured and
+   *  shaped, and the subtrees whose extent and overflow were walked again, by the window's layout
+   *  engine since the window was made. */
   getLayoutCounters(): LayoutCounters {
     return this.native.getLayoutCounters()
   }

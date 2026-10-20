@@ -102,6 +102,7 @@ function calls(r, ids) {
     getFocusedElementId: () => r.getFocusedElementId(),
     getLayoutCounters: () => r.getLayoutCounters(),
     getRetainedCounters: () => r.getRetainedCounters(),
+    getFrameWorkCounters: () => r.getFrameWorkCounters(),
     getRetentionMismatches: () => r.getRetentionMismatches(),
     getLayoutPassCount: () => r.getLayoutPassCount(),
     getListScrollTop: () => r.getListScrollTop(ids.scroller),
