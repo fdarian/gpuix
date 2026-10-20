@@ -18,6 +18,7 @@ use gpui::{
     Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput, Point,
     Styled, Window, WindowId,
 };
+use rustc_hash::FxHashMap;
 use web_time::Instant;
 
 use crate::events::key_names::Press;
@@ -73,7 +74,7 @@ impl ElementBounds {
 thread_local! {
     /// Keyed by window as well as element id: element ids are only unique within one renderer,
     /// so two windows would otherwise read each other's boxes.
-    static BOUNDS: RefCell<HashMap<(WindowId, u64), ElementBounds>> = RefCell::new(HashMap::new());
+    static BOUNDS: RefCell<FxHashMap<(WindowId, u64), ElementBounds>> = RefCell::new(FxHashMap::default());
 }
 
 /// Zero-size canvas. Keep it ahead of the app subtree under the root.
