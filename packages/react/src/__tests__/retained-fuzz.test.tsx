@@ -497,6 +497,15 @@ function run(seed: number, steps: number) {
     // Motions that are mid-way when the page is compared, so that one a replay left frozen shows.
     flushSync(() => apply((s) => ({ ...s, scrollerHeight: 380, cards: s.cards.map((c) => ({ ...c, phase: c.phase + 1, fast: false, hide: 0 })) })))
     renderer.flush()
+    // A focused input blinks its caret by wall-clock time, not by the paused motion clock, so two pictures of
+    // the same state taken a moment apart differ by a caret that is not a difference between the two builds.
+    // Clicking the footer blurs it before any picture is taken.
+    const footer = renderer.getElementBounds(renderer.findByTestId("footer").id)
+    if (footer) {
+      renderer.nativeSimulateMouseDown(footer.x + 5, footer.y + 5)
+      renderer.nativeSimulateMouseUp(footer.x + 5, footer.y + 5)
+    }
+    renderer.flush()
     const pictureOf = (name: string) => {
       const file = `${SHOTS_DIR}/retained-fuzz-${seed}-${name}.png`
       fs.rmSync(file, { force: true })
@@ -520,12 +529,6 @@ function run(seed: number, steps: number) {
       expect(replayedPicture === wholePicture, `seed ${seed} picture ${f} frames into the motions\n${log.slice(-12).join("\n")}`).toBe(true)
     }
     for (let f = 0; f < 6; f++) renderer.flush()
-    // a focused input blinks its caret by real time, which is not a difference between the two builds
-    const footer = renderer.getElementBounds(renderer.findByTestId("footer").id)
-    if (footer) {
-      renderer.nativeSimulateMouseDown(footer.x + 5, footer.y + 5)
-      renderer.nativeSimulateMouseUp(footer.x + 5, footer.y + 5)
-    }
     for (let f = 0; f < 6; f++) renderer.flush()
     // snapshot replayed vs whole
     const ids = ["scroller", "footer", "tbl", "lifts", "rscroller", "R", "ctr"]
