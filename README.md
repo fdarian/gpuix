@@ -1,3 +1,7 @@
+> **This is fdarian's proof-of-concept fork of [remorses/gpuix](https://github.com/remorses/gpuix).**
+> It lowers scroll and input latency (a guard so `test-support` builds do not draw inline, a display-link frame pump), adds spring transitions, and makes events, focus, layout, scrolling, paint and motion follow DOM/CSS semantics.
+> It is rebased on upstream regularly and is not published. See [FORK.md](./FORK.md).
+
 # GPUIX
 
 **React and Solid** for [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), Zed's GPU UI framework.
@@ -2580,7 +2584,7 @@ renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrol
 
 ### Sticky positioning
 
-`position: "sticky"` with `top`, `right`, `bottom` and `left` works as in CSS. The element lays out like a relative one and its insets do not move its siblings. Then it is moved to stay inside the scrollport of its nearest scroll container (the window, if none scrolls around it), that far from the edges its insets name, and never out of its parent's content box. A header sticks at the top of the scroller while its section is in view, and the next section's header pushes it out as the section ends. A sticky element also sticks sideways with `left` or `right`.
+`position: "sticky"` with `top`, `right`, `bottom` and `left` works as in CSS. The element lays out like a relative one and its insets do not move its siblings. Then it is moved to stay inside the scrollport of its nearest scroll container less that container's padding on every side (the window, if none scrolls around it), that far from the edges its insets name, and never out of its parent's content box. A header sticks at the top of the scroller while its section is in view, and the next section's header pushes it out as the section ends. A sticky element also sticks sideways with `left` or `right`.
 
 ```tsx
 <div style={{ height: 300, overflow: 'auto' }}>
@@ -2595,7 +2599,7 @@ renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrol
 </div>
 ```
 
-Its insets are pixels. `hidden` and `scroll` containers hold sticky elements the same way, and the geometry (`getElementBounds`, hit testing, `onLayout`) is the stuck position.
+Its insets are pixels, or percentages of that scrollport less its padding. `hidden` and `scroll` containers hold sticky elements the same way, and the geometry (`getElementBounds`, hit testing, `onLayout`) is the stuck position.
 
 ### Panes that must move together
 

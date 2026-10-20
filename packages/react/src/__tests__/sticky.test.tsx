@@ -1,8 +1,10 @@
+import fs from "fs"
 import path from "path"
 import { describe, expect, it } from "vitest"
 import type { ReactNode } from "react"
 import type { StyleDesc } from "@gpuix/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import { elementsOf, expectBoxes } from "./oracle-boxes.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -290,3 +292,54 @@ describeNative("position: sticky is positioned", () => {
   })
 })
 
+/** The boxes `fixtures/sticky-padding-oracle.html` has in Chrome: a sticky box in a scroller with padding and a border,
+ *  scrolled to `scroll`, as `[x, y, width, height]` from the scroller's top left. */
+const PADDING_ORACLE: Record<
+  string,
+  { html: string; scroll: [number, number]; boxes: Record<string, [number, number, number, number]> }
+> = JSON.parse(fs.readFileSync(new URL("./fixtures/sticky-padding-oracle.json", import.meta.url), "utf8"))
+
+function paddingDifferences(name: string): string[] {
+  const source = PADDING_ORACLE[name]!
+  const { render, renderer, unmount } = createTestRoot({ width: 800, height: 600 })
+  try {
+    render(
+      <div testId="case" style={{ position: "absolute", left: 0, top: 0 }}>
+        {elementsOf(source.html)}
+      </div>
+    )
+    try {
+      const scroller = renderer.findByTestId("scroller")!.id
+      renderer.scrollTo(scroller, source.scroll[0], source.scroll[1])
+      const origin = renderer.getElementBounds(scroller)!
+      expectBoxes(renderer, source.boxes, 0.06, [origin.x, origin.y, 0, 0])
+      return []
+    } catch (error) {
+      return [`${name}: ${(error as Error).message}`]
+    }
+  } finally {
+    unmount()
+  }
+}
+
+describeNative("position: sticky in a scroller with padding, against Chrome", () => {
+  const PADDINGS = ["no padding", "padding 4 8 12 16", "padding 4 8 12 16 border 2 3 5 7", "padding 20 0 0 30"]
+  /** The longest padding the name starts with: one is a prefix of the next. */
+  const paddingOf = (name: string) =>
+    PADDINGS.filter((padding) => name.startsWith(`${padding} `)).sort((a, b) => b.length - a.length)[0]
+
+  it("has a padding for every case", () => {
+    expect(Object.keys(PADDING_ORACLE).filter((name) => paddingOf(name) === undefined)).toEqual([])
+  })
+
+  // The sticky view rectangle is the scrollport less the scroller's padding on all four sides, so `top: 0` holds a box
+  // at the top of the padding and not at the border, and `bottom`, `left` and `right` the same on their sides.
+  for (const padding of PADDINGS) {
+    it(`${padding}: top, bottom, left and right hold at the padding`, { timeout: 60_000 }, () => {
+      const failures = Object.keys(PADDING_ORACLE)
+        .filter((name) => paddingOf(name) === padding)
+        .flatMap(paddingDifferences)
+      expect(failures).toEqual([])
+    })
+  }
+})

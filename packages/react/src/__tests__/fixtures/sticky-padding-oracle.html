@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  Oracle for sticky.test.tsx: where headless Chrome puts a `position: sticky` box (`k`, 40x30) in a scroller that has
+  padding and a border, at several scroll offsets. The scroller (`scroller`, 300x200, scrollbars hidden) holds a 1000x1000
+  flex box (`wrap`, the containing block of `k`), and `k` sits after the space the case gives it, down and across. Each case is
+  `{ html, scroll: [left, top], boxes }` with the boxes `[x, y, width, height]` relative to the top left of the scroller
+  once it is scrolled to `scroll`. The sticky view rectangle is the scrollport less the padding of the scroller (the
+  constraining rect), so `top: 0` holds the box at the top of the padding, not at the border.
+  Regenerate with
+
+    sh sticky-padding-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+#case{position:absolute;left:0;top:0}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const PADDINGS = {
+  'no padding': '',
+  'padding 4 8 12 16': 'padding:4px 8px 12px 16px',
+  'padding 4 8 12 16 border 2 3 5 7': 'padding:4px 8px 12px 16px;border-style:solid;border-top-width:2px;border-right-width:3px;border-bottom-width:5px;border-left-width:7px',
+  'padding 20 0 0 30': 'padding:20px 0 0 30px',
+};
+// Where the box would sit without the insets, as the space in front of it (`[down, across]`) and its insets. The space is
+// a sibling and not a margin: a sticky box keeps its margin box inside its containing block, so a margin of 700px would
+// stop it from moving up to the bottom of the scroller.
+const KINDS = {
+  top: [[0, 0], 'top:0'],
+  'top 10': [[0, 0], 'top:10px'],
+  bottom: [[700, 0], 'bottom:0'],
+  'bottom 5': [[700, 0], 'bottom:5px'],
+  left: [[100, 0], 'left:0'],
+  'left 7': [[100, 0], 'left:7px'],
+  right: [[100, 800], 'right:0'],
+  'right 3': [[100, 800], 'right:3px'],
+  'top left': [[0, 0], 'top:0;left:0'],
+  'all four': [[60, 120], 'top:5px;right:6px;bottom:7px;left:8px'],
+  'bottom right': [[700, 800], 'bottom:0;right:0'],
+};
+const SCROLLS = [[0, 0], [40, 40], [150, 300], [500, 700]];
+
+const cases = {};
+for (const [paddingName, padding] of Object.entries(PADDINGS))
+  for (const [kindName, [[down, across], insets]] of Object.entries(KINDS))
+    for (const scroll of SCROLLS)
+      cases[`${paddingName} ${kindName} scroll ${scroll}`] = {
+        html: `<div id="scroller" style="width:300px;height:200px;overflow:scroll;scrollbar-width:none;${padding}">` +
+          `<div id="wrap" style="display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-start;width:1000px;height:1000px">` +
+          (down ? `<div style="flex:none;width:1000px;height:${down}px"></div>` : '') +
+          (across ? `<div style="flex:none;width:${across}px;height:1px"></div>` : '') +
+          `<div id="k" style="position:sticky;flex:none;width:40px;height:30px;${insets}"></div></div></div>`,
+        scroll,
+      };
+
+const scene = document.getElementById('scene');
+const out = {};
+for (const [name, spec] of Object.entries(cases)) {
+  const holder = document.createElement('div');
+  holder.id = 'case';
+  holder.innerHTML = spec.html;
+  scene.appendChild(holder);
+  const scroller = document.getElementById('scroller');
+  scroller.scrollTo(spec.scroll[0], spec.scroll[1]);
+  const origin = scroller.getBoundingClientRect();
+  const boxes = {};
+  for (const element of holder.querySelectorAll('[id]')) {
+    const rect = element.getBoundingClientRect();
+    boxes[element.id] = [rect.left - origin.left, rect.top - origin.top, rect.width, rect.height];
+  }
+  out[name] = { html: spec.html, scroll: [scroller.scrollLeft, scroller.scrollTop], boxes };
+  scene.removeChild(holder);
+}
+const output = document.createElement('div');
+output.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(output);
+</script></body></html>

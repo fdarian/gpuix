@@ -644,8 +644,8 @@ export interface StyleDesc {
    *  resolves `top`/`right`/`bottom`/`left` and percentage sizes against the padding box
    *  of its nearest non-static ancestor (a sticky one counts), a fixed one against the window.
    *  `"sticky"` lays out like `"relative"` with the insets ignored and then stays inside the
-   *  scrollport of its nearest scroll container (or the window), inset by `top`, `right`,
-   *  `bottom` and `left`, without leaving its parent's content box. */
+   *  scrollport of its nearest scroll container (or the window) less that container's padding,
+   *  inset by `top`, `right`, `bottom` and `left`, without leaving its parent's content box. */
   position?: string
   /** Paint and hit-test order among positioned siblings (`position` other than static).
    *  Negative paints below in-flow siblings, positive above. Only reorders siblings of the same
