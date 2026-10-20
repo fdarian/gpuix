@@ -2180,7 +2180,7 @@ impl gpui::Element for EditorTextElement {
         let text_style = window.text_style();
         let min_rows = self.min_rows;
         let max_rows = self.max_rows.max(min_rows);
-        let layout = window.request_measured_layout(style, move |known, available, window, cx| {
+        let layout = window.request_measured_layout(style, move |known, available, _, window, cx| {
             let width = known.width.unwrap_or(match available.width {
                 gpui::AvailableSpace::Definite(width) => width,
                 _ => px(320.0),
