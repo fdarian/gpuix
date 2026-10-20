@@ -1,0 +1,59 @@
+<!doctype html>
+<!--
+  Oracle for fit-content.test.tsx ("a margin of the column or of the item"): the border boxes (`[x, y, width, height]`
+  relative to the case box at the top left of the page) that headless Chrome lays out for a `width: fit-content` item with
+  padding in a column flex container, with margins on the container, on the item, or on both. The container is `c` and
+  the item `i`, a text of three 80px words (`AAAA AAAA AAAA`, 250px on one line) in 12px of padding on each side, so the
+  item is 104px wide at min-content and 274px at max-content. The font is GpuixTestSquare at 20px/20px: a letter is 20px
+  wide and a space 5px.
+  The item's own margins narrow what it can fit into; the container's margins are not part of that space.
+  Regenerate with
+
+    sh fit-content-margin-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:GpuixTestSquare;src:url(gpuix-test-square.ttf)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/1 sans-serif}
+#case{position:absolute;left:0;top:0;width:1280px;font:20px/20px GpuixTestSquare}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const WIDTHS = [60, 118, 200, 270, 310];
+const CONTAINER_MARGINS = { none: '', 'left -12': 'margin-left:-12px', 'right -12': 'margin-right:-12px', 'left 12': 'margin-left:12px', 'top -12': 'margin-top:-12px' };
+const ITEM_MARGINS = { none: '', 'left -12': 'margin-left:-12px', 'right -12': 'margin-right:-12px', 'both -12': 'margin:0 -12px', 'both 12': 'margin:0 12px' };
+// The column's height is auto (its height is the item's) or 300px, and the item stretches or sits at one side.
+const SHAPES = { 'auto stretch': ['', ''], 'height 300 stretch': ['height:300px', ''], 'auto flex-start': ['', 'align-self:flex-start'], 'auto center': ['', 'align-self:center'] };
+
+const cases = {};
+for (const [shapeName, [height, align]] of Object.entries(SHAPES))
+  for (const [containerName, containerMargin] of Object.entries(CONTAINER_MARGINS))
+    for (const [itemName, itemMargin] of Object.entries(ITEM_MARGINS))
+      for (const width of WIDTHS)
+        cases[`${shapeName} container ${containerName} item ${itemName} width ${width}`] = {
+          html: `<div id="c" style="display:flex;flex-direction:column;width:${width}px;${height};${containerMargin}">` +
+            `<div id="i" style="width:fit-content;padding:0 12px;${align};${itemMargin}">AAAA AAAA AAAA</div></div>`,
+        };
+
+document.fonts.load('20px GpuixTestSquare', 'A').then(() => {
+  const scene = document.getElementById('scene');
+  const out = {};
+  for (const [name, spec] of Object.entries(cases)) {
+    const holder = document.createElement('div');
+    holder.id = 'case';
+    holder.innerHTML = spec.html;
+    scene.appendChild(holder);
+    const origin = holder.getBoundingClientRect();
+    const boxes = {};
+    for (const element of holder.querySelectorAll('[id]')) {
+      const rect = element.getBoundingClientRect();
+      boxes[element.id] = [rect.left - origin.left, rect.top - origin.top, rect.width, rect.height];
+    }
+    out[name] = { html: spec.html, boxes };
+    scene.removeChild(holder);
+  }
+  const output = document.createElement('div');
+  output.setAttribute('data-oracle', JSON.stringify(out));
+  document.body.appendChild(output);
+});
+</script></body></html>

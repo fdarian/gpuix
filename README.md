@@ -6300,8 +6300,9 @@ does not shrink below its longest word without `minWidth: 0`.
 </div>
 ```
 
-`fit-content` is the preferred width `min(max-content, max(min-content, available width))`,
-and then `minWidth` and `maxWidth` apply to it, `minWidth` winning, as in CSS. A
+`fit-content` is the preferred width `min(max-content, max(min-content, available width))`
+(in a flex column, the container's content width less the margins of an item that stretches, whatever
+margin the container itself has; an item aligned to a side is not narrowed by its own margin), and then `minWidth` and `maxWidth` apply to it, `minWidth` winning, as in CSS. A
 `maxWidth` under the min-content width is therefore the width (the content overflows), and a
 `maxWidth` in `%` over the max-content width does not widen the box: it hugs its content.
 A child with `width: '100%'` does not count in the box's content sizes (a percentage of a

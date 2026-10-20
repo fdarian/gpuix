@@ -14,6 +14,7 @@ import fs from "fs"
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import { elementsOf, expectBoxes } from "./oracle-boxes.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -328,4 +329,53 @@ describeNative("width: fit-content", () => {
       expectWidths(widths(ROW, { flexBasis: "fit-content", maxWidth: "50%" }, [300]), [200, 300], "basis max50")
     })
   })
+})
+
+/** The boxes `fixtures/fit-content-margin-oracle.html` has in Chrome: a `width: fit-content` item with padding in a column
+ *  flex container, with margins on the container, on the item or on both. */
+const MARGIN_ORACLE: Record<string, { html: string; boxes: Record<string, [number, number, number, number]> }> = JSON.parse(
+  fs.readFileSync(new URL("./fixtures/fit-content-margin-oracle.json", import.meta.url), "utf8")
+)
+
+/** gpui lays text out in whole pixels, which makes a 250px line up to 2px wider; the cases are further apart than that. */
+const TEXT_ROUNDING = 2.5
+
+/** Lays `name` out and returns what differs from Chrome, one line per case. */
+function marginDifferences(name: string): string[] {
+  const source = MARGIN_ORACLE[name]!
+  const { render, renderer, unmount } = createTestRoot({ width: 1280, height: 800 })
+  renderer.registerFont(SQUARE_FONT)
+  try {
+    render(
+      <div testId="case" style={{ position: "absolute", left: 0, top: 0, width: 1280, ...TEXT }}>
+        {elementsOf(source.html)}
+      </div>
+    )
+    try {
+      expectBoxes(renderer, source.boxes, TEXT_ROUNDING)
+      return []
+    } catch (error) {
+      return [`${name}: ${(error as Error).message}`]
+    }
+  } finally {
+    unmount()
+  }
+}
+
+describeNative("width: fit-content in a flex column with margins, against Chrome", () => {
+  const SHAPES = ["auto stretch", "height 300 stretch", "auto flex-start", "auto center"]
+  it("has a shape for every case", () => {
+    expect(Object.keys(MARGIN_ORACLE).filter((name) => !SHAPES.some((shape) => name.startsWith(`${shape} container`)))).toEqual([])
+  })
+
+  // The item fits into the container's content width less its own margins, stretched or aligned to a side. A margin
+  // of the container (a negative one above all) is not part of that space.
+  for (const shape of SHAPES) {
+    it(`${shape}: the container's margins do not size the item and its own do`, { timeout: 60_000 }, () => {
+      const failures = Object.keys(MARGIN_ORACLE)
+        .filter((name) => name.startsWith(`${shape} container`))
+        .flatMap(marginDifferences)
+      expect(failures).toEqual([])
+    })
+  }
 })
