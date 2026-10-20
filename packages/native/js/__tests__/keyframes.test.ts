@@ -138,6 +138,29 @@ describe.skipIf(!hasNativeTestRenderer)("keyframes on the native test renderer",
     renderer.flush()
   })
 
+  it("leaves a disposed or replaced renderer out of later definitions and still reaches the live hosts", () => {
+    new TestRenderer({ width: 100, height: 100 })
+    const disposed = new TestRenderer({ width: 100, height: 100 })
+    const stub = fakeHost()
+    registerKeyframesHost(stub.host)
+    disposed.dispose()
+    expect(() => defineKeyframes("kf-after-dispose", { to: { opacity: 0.25 } })).not.toThrow()
+    expect(stub.calls).toContainEqual(["kf-after-dispose", { to: { opacity: 0.25 } }])
+
+    const live = new TestRenderer({ width: 100, height: 100 })
+    defineKeyframes("kf-live", { to: { opacity: 0.5 } })
+    live.applyBatch(
+      JSON.stringify([
+        ["createElement", 1, "div"],
+        ["setRoot", 1],
+        ["setStyle", 1, { animation: "kf-live 1s linear" }],
+      ])
+    )
+    live.flush()
+    expect(stub.calls).toContainEqual(["kf-live", { to: { opacity: 0.5 } }])
+    live.dispose()
+  })
+
   it("accepts the animation shorthand and longhands in a style and rejects a bad one", () => {
     const renderer = new TestRenderer({ width: 100, height: 100 })
     renderer.applyBatch(

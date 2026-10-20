@@ -41,6 +41,7 @@ import { flushObservations, settleObservations } from "./observers.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import {
   registerKeyframesHost,
+  unregisterKeyframesHost,
   registerKeyframesValidator,
   type KeyframesHost,
 } from "./keyframes.js"
@@ -449,7 +450,13 @@ export class TestRenderer implements NativeRenderer {
     }
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options)
-    if (latestRenderer) forgetFocusSource(latestRenderer)
+    if (latestRenderer) {
+      forgetFocusSource(latestRenderer)
+      // The native side keeps one window per thread and this constructor replaced it, so the
+      // earlier renderer is as dead as a disposed one: it would reach the new window's state, and
+      // throw once that is disposed.
+      unregisterKeyframesHost(latestRenderer.native)
+    }
     latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)
     registerKeyframesHost(this.native)
@@ -494,6 +501,7 @@ export class TestRenderer implements NativeRenderer {
     // build would have shown differently, and says which test's window it was.
     if (process.env.GPUIX_RETAIN_VERIFY !== undefined) reportRetentionMismatches(this.native)
     forgetElementSource(this)
+    unregisterKeyframesHost(this.native)
     this.native.setSyncEventHandler(null)
     this.native.dispose()
   }
